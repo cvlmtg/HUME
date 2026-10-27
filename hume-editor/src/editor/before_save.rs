@@ -10,8 +10,7 @@
 
 use std::time::Duration;
 
-use hume_core::{BufferId, PaneId, Severity};
-use hume_scripting::host::HostToken;
+use hume_core::{BufferId, HostToken, PaneHandle, PaneId, Severity};
 use rustc_hash::FxHashSet;
 
 use super::Editor;
@@ -24,7 +23,6 @@ use super::event::{BEFORE_BUFFER_SAVE, HeldEvent};
 use super::host_token;
 use super::timer_bridge::TimerPayload;
 use hume_core::TimerId;
-use hume_scripting::PaneHandle;
 
 /// Names the writes of one `:wa`.
 #[derive(Clone, Copy, PartialEq, Eq)]

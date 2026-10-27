@@ -2,11 +2,11 @@
 //! is sent: the one place a [`RouteSpec`] meets the live attachments, their
 //! feature filters and each server's capabilities.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, LspFeature, ServerName};
 use hume_lsp::backend::ServerId;
 use hume_lsp::client::ServerState;
 use hume_rope::position_encoding::PositionEncoding;
-use hume_scripting::{LspFeature, RouteSpec, ServerName, ServerRef};
+use hume_scripting::{RouteSpec, ServerRef};
 
 use super::document::Attachment;
 use super::features::{advertises, capability_at, requirement};

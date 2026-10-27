@@ -12,9 +12,10 @@ mod parse;
 pub(in crate::editor) use loads::GrammarLoads;
 pub(in crate::editor) use parse::{SyntaxUse, ensure_syntax_current};
 
-use hume_core::{BufferId, ConfigOrigin, LanguageFields, Severity, WriteOutcome};
-use hume_scripting::BUFFER_LANGUAGE_TIE;
-use hume_scripting::host::BufferIntrinsicOption;
+use hume_core::{
+    BUFFER_LANGUAGE_TIE, BufferId, BufferIntrinsicOption, ConfigOrigin, LanguageFields, Severity,
+    WriteOutcome,
+};
 use hume_treesitter::registry::{DetectPaths, LanguageId, detect_language};
 
 use super::Editor;
@@ -90,7 +91,7 @@ impl Editor {
         if !claimed {
             self.state.report_shadowed(
                 "option",
-                format_args!("'{}' value", BufferIntrinsicOption::Language.key()),
+                format_args!("'{}' value", BufferIntrinsicOption::Language.name()),
             );
         }
         claimed
@@ -332,7 +333,7 @@ impl Editor {
             return;
         };
         for (field, outcome) in languages.configure_fields(id, fields, by) {
-            let key = field.key();
+            let key = field.name();
             match outcome {
                 WriteOutcome::Applied => {}
                 WriteOutcome::Ignored => self.report(

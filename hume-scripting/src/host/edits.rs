@@ -6,12 +6,10 @@
 //! isn't a named editor command, and a second accessor for them would only
 //! duplicate that gate.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, PaneHandle};
 use hume_platform::path::AbsolutePath;
 use hume_rope::position_encoding::PositionEncoding;
 use termina::event::KeyEvent;
-
-use crate::types::PaneHandle;
 
 /// One `apply-text-edits!` entry: a wire range plus its replacement text.
 /// `encoding` is this entry's own producing server's negotiated encoding:

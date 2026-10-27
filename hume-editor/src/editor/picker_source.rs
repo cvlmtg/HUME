@@ -13,13 +13,13 @@
 use std::sync::Arc;
 
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::{HostToken, PickerSourceOpts};
+use hume_scripting::host::PickerSourceOpts;
 use steel::rvals::SteelVal;
 
 use super::input_stack::PickerItem;
 use super::input_stack::picker::{session_for_feed, session_for_token};
 use super::{Editor, EditorState};
-use hume_core::Severity;
+use hume_core::{HostToken, Severity};
 
 /// `EditorHostImpl::picker_source_spawn`'s body: attaches a streaming
 /// external-command source to the picker named by `token`. `Ok(false)` (a

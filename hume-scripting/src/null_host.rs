@@ -14,7 +14,7 @@
 //! capability accessor to it, overriding only the one or two
 //! accessors/methods that make them distinct.
 
-use hume_core::{BufferId, ConfigOrigin, OnUnsaved};
+use hume_core::{BufferId, ConfigOrigin, HostToken, OnUnsaved, OptionInput, PaneHandle};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 
@@ -23,11 +23,10 @@ use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, ClaimRefused, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost,
-    HostToken, LanguageHost, LocationPlace, LspHost, OptionInput, OptionValue, OutputHost,
-    PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost, StoredLanguage,
-    TrackedHold,
+    LanguageHost, LocationPlace, LspHost, OptionValue, OutputHost, PositionParams, RangeParams,
+    RangesParams, SelectionInfo, SettingsHost, StoredLanguage, TrackedHold,
 };
-use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
+use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
 /// Event names `NullHost` reports as known: the names scripting-crate unit
 /// tests actually register (`on-buffer-open`, `on-buffer-save`,
@@ -565,13 +564,13 @@ impl LspHost for EmptyLspHost {
     ) -> Option<std::sync::Arc<serde_json::Value>> {
         None
     }
-    fn lsp_method_feature(&self, _method: &str) -> Option<crate::types::LspFeature> {
+    fn lsp_method_feature(&self, _method: &str) -> Option<hume_core::LspFeature> {
         None
     }
     fn lsp_servers(
         &self,
         _bid: BufferId,
-        _feature: Option<crate::types::LspFeature>,
+        _feature: Option<hume_core::LspFeature>,
         _method: Option<&str>,
     ) -> Result<Vec<crate::ServerRef>, String> {
         Ok(Vec::new())
@@ -579,13 +578,13 @@ impl LspHost for EmptyLspHost {
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry> {
         Vec::new()
     }
-    fn lsp_server_origin(&self, _name: &crate::types::ServerName) -> Option<ConfigOrigin> {
+    fn lsp_server_origin(&self, _name: &hume_core::ServerName) -> Option<ConfigOrigin> {
         None
     }
     fn new_supersede_key(&mut self) -> crate::host::SupersedeKey {
         self.supersede_keys.mint()
     }
-    fn lsp_language_servers(&self, _language: &str) -> Vec<crate::types::ListEntry> {
+    fn lsp_language_servers(&self, _language: &str) -> Vec<hume_core::ListEntry> {
         Vec::new()
     }
     fn lsp_position_params(&self, _pane: PaneHandle) -> Result<Option<PositionParams>, String> {

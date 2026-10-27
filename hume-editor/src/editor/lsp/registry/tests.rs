@@ -1,5 +1,5 @@
 use super::*;
-use hume_scripting::{ListTier, LspFeature};
+use hume_core::{ListTier, LspFeature};
 
 fn touch(path: &Path) {
     std::fs::write(path, b"").unwrap();

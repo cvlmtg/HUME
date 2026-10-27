@@ -10,12 +10,12 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
-use hume_core::{PopupLayout, TruncateEnd};
+use hume_core::{NonEmpty, PaneHandle, PopupLayout, TruncateEnd};
 
 use crate::host::{
-    DrawerItems, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
+    DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
+    token_to_steel,
 };
-use crate::types::PaneHandle;
 use crate::{Callback, Rooted, SteelCtx};
 
 use super::SteelResult;
@@ -321,7 +321,7 @@ pub(crate) fn picker(
     let token = require_cap(ctx.host.ui())?
         .open_picker(pane, items, on_select, opts)
         .map_err(generic_err)?;
-    Ok(token.to_steel())
+    Ok(token_to_steel(token))
 }
 
 /// `(%live-picker! on-select prompt query on-query-change truncate actions)`: the
@@ -360,7 +360,7 @@ pub(crate) fn live_picker(
     let token = require_cap(ctx.host.ui())?
         .open_live_picker(pane, on_select, opts)
         .map_err(generic_err)?;
-    Ok(token.to_steel())
+    Ok(token_to_steel(token))
 }
 
 /// Shared body of `picker-push!`/`picker-replace!`: identical shape, differing

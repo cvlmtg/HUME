@@ -1,14 +1,16 @@
 //! Completion: registering a source, answering an invocation, reading
 //! the ranked view, accept/dismiss, plus trigger-character registration.
 
+use std::sync::Arc;
+
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{AnswerEnd, CompletionSourceTarget, EmittedWord, FirstTab, NamedPrefix};
+use crate::host::{CompletionSourceTarget, EmittedWord};
 use crate::json::json_to_steel;
-use crate::types::{PaneHandle, TriggerKind, TriggerScope};
+use crate::types::TriggerScope;
 use crate::{Callback, Effect, SteelCtx};
-use hume_core::MatchKind;
+use hume_core::{AnswerEnd, FirstTab, MatchKind, NamedPrefix, PaneHandle, TriggerListener};
 
 use super::SteelResult;
 use super::args::{
@@ -66,7 +68,7 @@ pub(crate) fn set_hook_triggers(
     chars: SteelVal,
 ) -> SteelResult {
     let scope = TriggerScope::Language(string_arg(language, "language")?);
-    queue_triggers(ctx, TriggerKind::Hook, source, scope, chars)
+    queue_triggers(ctx, TriggerListener::Hook, source, scope, chars)
 }
 
 /// `(set-attachment-hook-triggers! source pane server feature chars)`: the
@@ -87,7 +89,7 @@ pub(crate) fn set_attachment_hook_triggers(
     chars: SteelVal,
 ) -> SteelResult {
     let scope = attachment_scope(pane, server, feature)?;
-    queue_triggers(ctx, TriggerKind::Hook, source, scope, chars)
+    queue_triggers(ctx, TriggerListener::Hook, source, scope, chars)
 }
 
 fn attachment_scope(
@@ -103,11 +105,12 @@ fn attachment_scope(
 }
 
 /// The one decode behind every trigger-character builtin: queued as an
-/// `Effect`, not applied here; see `Effect::SetTriggers`. Argument decoding
-/// (a well-formed `chars` list) fails synchronously here.
+/// `Effect`, not applied here; see `Effect::SetTriggers`. `listener` builds
+/// the listener the decoded `source` names. Argument decoding (a well-formed
+/// `chars` list) fails synchronously here.
 fn queue_triggers(
     ctx: &mut SteelCtx,
-    kind: TriggerKind,
+    listener: fn(Arc<str>) -> TriggerListener,
     source: SteelVal,
     scope: TriggerScope,
     chars: SteelVal,
@@ -115,8 +118,7 @@ fn queue_triggers(
     let source = string_arg(source, "source")?;
     let chars = chars_arg(chars, "chars")?;
     ctx.push_effect(Effect::SetTriggers {
-        kind,
-        source,
+        listener: listener(source.into()),
         scope,
         chars,
     });
@@ -284,7 +286,7 @@ pub(crate) fn set_completion_triggers(
     chars: SteelVal,
 ) -> SteelResult {
     let scope = TriggerScope::Language(string_arg(language, "language")?);
-    queue_triggers(ctx, TriggerKind::Completion, source, scope, chars)
+    queue_triggers(ctx, TriggerListener::Completion, source, scope, chars)
 }
 
 /// `(set-attachment-completion-triggers! source pane server feature chars)`:
@@ -299,7 +301,7 @@ pub(crate) fn set_attachment_completion_triggers(
     chars: SteelVal,
 ) -> SteelResult {
     let scope = attachment_scope(pane, server, feature)?;
-    queue_triggers(ctx, TriggerKind::Completion, source, scope, chars)
+    queue_triggers(ctx, TriggerListener::Completion, source, scope, chars)
 }
 
 #[cfg(test)]

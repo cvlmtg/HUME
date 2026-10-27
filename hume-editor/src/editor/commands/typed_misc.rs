@@ -267,7 +267,7 @@ pub(in crate::editor) fn typed_theme(
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
     };
-    let name = hume_scripting::host::OptionInput::Text(name.to_string());
+    let name = hume_core::OptionInput::Text(name.to_string());
     crate::editor::settings::ops::apply_global(
         &mut ed.state,
         &mut ed.view,

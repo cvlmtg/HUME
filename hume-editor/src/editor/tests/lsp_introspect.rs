@@ -673,7 +673,7 @@ fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
     let t = crate::editor::commands::CommandPane::resolve(
         &ed.state,
         &ed.view,
-        hume_scripting::PaneHandle::with_pane(hidden_bid, hidden_pid),
+        hume_core::PaneHandle::with_pane(hidden_bid, hidden_pid),
     )
     .expect("a background-tab pane must still resolve");
     let got = crate::editor::geometry::viewport_range(&ed.state, &ed.view, t.pid());

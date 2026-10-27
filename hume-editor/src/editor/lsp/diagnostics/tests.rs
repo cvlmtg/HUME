@@ -42,7 +42,7 @@ fn diag(start: usize, end: usize, severity: DiagSeverity) -> StoredDiag {
         raw: std::sync::Arc::new(serde_json::Value::Null),
         server: hume_scripting::ServerRef {
             id: ServerId(0),
-            name: hume_scripting::ServerName::parse("test-server").unwrap(),
+            name: hume_core::ServerName::parse("test-server").unwrap(),
         },
         encoding: hume_rope::position_encoding::PositionEncoding::Utf16,
     }

@@ -5,10 +5,10 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
+use hume_core::HostToken;
 use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::EditorMode;
-use hume_scripting::host::HostToken;
 
 use super::super::commands::half_page;
 use super::super::error::CommandError;

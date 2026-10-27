@@ -5,10 +5,10 @@
 use super::lsp_rig::{LspRig, RigSpec, TWO_RUST_SERVERS};
 use super::*;
 use crate::editor::lsp::introspect::LspActivity;
+use hume_core::{FeatureFilter, LspFeature};
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
 use hume_rope::position_encoding::PositionEncoding;
-use hume_scripting::{FeatureFilter, LspFeature};
 use test_fixtures::unicode::{ASTRAL, CJK, COMBINING};
 
 const INCREMENTAL: i64 = 2;
@@ -223,7 +223,7 @@ fn last_detach_clears_pending() {
     rig.ed
         .apply_lsp_server_op(hume_scripting::PendingLspServerOp::Restart {
             target: hume_scripting::LspServerTarget::Name(
-                hume_scripting::ServerName::parse("rust-analyzer").unwrap(),
+                hume_core::ServerName::parse("rust-analyzer").unwrap(),
             ),
         });
     let fresh = rig.sid("rust-analyzer");

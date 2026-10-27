@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::editor::host_impl::EditorHostImpl;
-use hume_scripting::PaneHandle;
+use hume_core::PaneHandle;
 use hume_scripting::host::{CommandHost, EditHost, NativeCall};
 use pretty_assertions::assert_eq;
 

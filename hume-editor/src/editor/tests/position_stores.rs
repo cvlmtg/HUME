@@ -323,10 +323,10 @@ fn an_unknown_or_released_token_answers_absent() {
         None
     );
     assert_eq!(
-        ed.state.panes.tracked.position(
-            hume_scripting::host::HostToken::from_raw(u64::MAX),
-            &ed.state.buffers
-        ),
+        ed.state
+            .panes
+            .tracked
+            .position(hume_core::HostToken::from_raw(u64::MAX), &ed.state.buffers),
         None
     );
 }

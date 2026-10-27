@@ -4,7 +4,7 @@
 //! plugin activation's registration is never applied.
 
 use crate::Callback;
-use hume_core::MatchKind;
+use hume_core::{AnswerEnd, FirstTab, MatchKind};
 
 /// `register-completion-source!`'s `#:target`: `'buffer` serves Insert
 /// mode (token: the identifier run before the cursor), `'minibuf` the `:`
@@ -54,49 +54,6 @@ pub struct EmittedWord {
     /// picked. Only a source registered with `#:match 'delegated` may say
     /// anything but [`FirstTab::Common`].
     pub prefix: FirstTab,
-}
-
-/// Whether an answer is a source's whole answer to its invocation, or one
-/// part of it with more to follow (`#:more`). Each part replaces the one
-/// before it, so a part holds every item so far. A `Final` answer closes
-/// the request: a later answer to it is dropped.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum AnswerEnd {
-    #[default]
-    Final,
-    /// More follows: the menu shows this part and its session stays
-    /// pending, so what the minibuffer does once a source has answered,
-    /// and an Insert-mode report of nothing found, wait for the final part.
-    More,
-}
-
-/// What the first Tab puts over a minibuffer word while no row is picked.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub enum FirstTab {
-    /// What the insert texts all start with, when that extends the word.
-    #[default]
-    Common,
-    /// This text, from a source whose insert texts have a syntax the editor
-    /// cannot cut (a quoted shell word).
-    Named(NamedPrefix),
-    /// Nothing: the first Tab only opens the menu.
-    Nothing,
-}
-
-/// The text of a [`FirstTab::Named`]: never empty, since an empty one
-/// would erase the word it is put over.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NamedPrefix(String);
-
-impl NamedPrefix {
-    /// `None` for `""`.
-    pub fn new(text: String) -> Option<Self> {
-        (!text.is_empty()).then_some(Self(text))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 /// Completion session orchestration, accessed through

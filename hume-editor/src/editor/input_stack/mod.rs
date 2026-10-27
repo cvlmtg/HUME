@@ -45,7 +45,7 @@ pub(in crate::editor) use char::{CharLayer, read_command_char, read_steel_char};
 pub(in crate::editor) use command::CommandLayer;
 pub(in crate::editor) use completion::{BufferCompletionLayer, MinibufCompletionLayer};
 pub(in crate::editor) use confirm::{ConfirmAction, ConfirmLayer, ConfirmPermit};
-pub(in crate::editor) use drawer::{DrawerLayer, DrawerSelect};
+pub(in crate::editor) use drawer::{DrawerLayer, DrawerRows, DrawerSelect};
 pub(in crate::editor) use insert::{InsertEntry, InsertLayer};
 pub(in crate::editor) use menu::MenuLayer;
 pub(in crate::editor) use picker::{PickerItem, PickerSession};

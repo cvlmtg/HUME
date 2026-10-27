@@ -27,7 +27,7 @@ fn switch_to_buffer_noop_when_same() {
         hume_editing::text::BufferText::empty(),
     ));
     let bid = ed.focused_buffer_id();
-    let pane = hume_scripting::PaneHandle::with_pane(bid, ed.view.focused_pane());
+    let pane = hume_core::PaneHandle::with_pane(bid, ed.view.focused_pane());
     let mut host = init_host!(ed);
     // Switching to the same buffer should not error.
     host.switch_to_buffer(pane, bid)

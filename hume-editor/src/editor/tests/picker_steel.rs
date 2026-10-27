@@ -59,7 +59,7 @@ fn picker_bang_opens_session_and_returns_its_token() {
         .parse()
         .expect("picker! must return the token as an integer");
     assert_eq!(
-        hume_scripting::host::HostToken::from_raw(logged_token),
+        hume_core::HostToken::from_raw(logged_token),
         session.token()
     );
 }

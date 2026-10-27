@@ -3,28 +3,8 @@
 
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
-use crate::types::{PaneHandle, SteelCmdDef, SteelTypedCmdDef};
-
-/// Ceiling on a command's numeric count prefix (e.g. the `3` in `3w`).
-///
-/// Shared by the keyboard accumulator (`hume-editor`'s `Editor::handle_normal`,
-/// which builds a count one digit at a time and would otherwise overflow
-/// `usize` past ~20 digits) and Steel's `parse_native_args`, which decodes a
-/// script-supplied count with no digit-by-digit limit of its own. Without a
-/// shared ceiling, a count from either origin can still make a command loop
-/// `count` times with no fixed-point exit (e.g. macro replay growing its
-/// replay queue by `count × macro length`) run long enough to hang the editor.
-pub const MAX_COUNT: usize = 10_000;
-
-/// The operand a native command acts with: the character `f`, `r`, … act
-/// on, or the pattern a prompt command searches for. A command declares
-/// which kind it takes through its body's signature; the editor checks the
-/// two match before the body runs, and reads a missing one from the user.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommandArg {
-    Char(char),
-    Text(String),
-}
+use crate::types::{SteelCmdDef, SteelTypedCmdDef};
+use hume_core::{CommandArg, PaneHandle};
 
 /// How a native command is invoked from a script: everything
 /// [`CommandHost::run_command_sync`] takes besides the command and its pane.

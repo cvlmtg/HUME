@@ -7,12 +7,11 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PopupLayout {
     /// Floating, anchored near the focused pane's cursor (`#:anchor
-    /// 'cursor`, the default), painted by `hume-ui`'s `PopupOverlay`.
+    /// 'cursor`, the default).
     Cursor,
-    /// Docked as a full-width chrome band directly above the statusline,
-    /// reserving pane space like the drawer (`#:anchor 'bottom`), painted
-    /// by `hume-ui`'s `PopupBandWidget`. Used for hover content too tall for
-    /// the cursor layout; keeps popup semantics (plain scroll, no selection,
-    /// close-on-any-other-key) rather than becoming a pick-list.
+    /// A full-width band directly above the statusline that reserves pane
+    /// space like the drawer (`#:anchor 'bottom`), for content too tall for
+    /// the cursor layout. It keeps popup semantics: plain scroll, no
+    /// selection, closed by any other key.
     Docked,
 }

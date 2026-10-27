@@ -2,14 +2,15 @@
 
 use std::sync::Arc;
 
-use hume_core::{BufferId, ConfigOrigin};
+use hume_core::{BufferId, ConfigOrigin, HostToken, PaneHandle};
 use hume_rope::position_encoding::PositionEncoding;
 
 use hume_lsp::backend::ServerId;
 
-use super::token::{HostToken, TrackedHold};
+use super::token::TrackedHold;
 use crate::builtins::ids::{DocPos, DocRange, ServerRef};
-use crate::types::{CapabilityQuery, LspFeature, PaneHandle};
+use crate::types::CapabilityQuery;
+use hume_core::{ListEntry, LspFeature, ServerName};
 
 /// A position request's params before encoding: the document URI and a
 /// position each server receives in its own encoding.
@@ -104,14 +105,14 @@ pub trait LspHost {
     /// running), `None` when it is not registered, as of the last applied
     /// effect: the `lsp-server-registered?` builtin applies the ops queued
     /// in its own eval on top of it.
-    fn lsp_server_origin(&self, name: &crate::types::ServerName) -> Option<ConfigOrigin>;
+    fn lsp_server_origin(&self, name: &ServerName) -> Option<ConfigOrigin>;
 
     /// A key no other call has returned, for `lsp-supersede-key`.
     fn new_supersede_key(&mut self) -> SupersedeKey;
 
     /// The servers `language`'s buffers attach to, in order, each with the
     /// feature filter its list entry gives it.
-    fn lsp_language_servers(&self, language: &str) -> Vec<crate::types::ListEntry>;
+    fn lsp_language_servers(&self, language: &str) -> Vec<ListEntry>;
 
     /// The document URI and primary cursor head of `pane`'s own pane.
     /// `Ok(None)` if the buffer has no path. `Err` (kind-B fail-fast) when

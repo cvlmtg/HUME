@@ -152,7 +152,7 @@ impl<'a> EditorHostImpl<'a> {
     /// argument reduces to, as an error `Display`ed at the Steel boundary.
     pub(super) fn command_pane(
         &self,
-        pane: hume_scripting::PaneHandle,
+        pane: hume_core::PaneHandle,
     ) -> Result<crate::editor::commands::CommandPane, String> {
         crate::editor::commands::CommandPane::resolve(self.state, self.view, pane)
             .map_err(|e| e.to_string())

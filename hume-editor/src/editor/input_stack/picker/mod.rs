@@ -9,9 +9,10 @@ mod session;
 
 use termina::event::{KeyCode, Modifiers};
 
+use hume_core::HostToken;
 use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::types::EditorMode;
-use hume_scripting::host::HostToken;
+use hume_scripting::host::token_to_steel;
 use steel::rvals::SteelVal;
 
 use super::super::commands::half_page;
@@ -456,7 +457,7 @@ fn queue_query_change(state: &mut EditorState, r: LayerRef, cb: Option<hume_scri
     let query = session.query().to_string();
     state.queue_steel_call(hume_scripting::SteelCall::new(
         cb,
-        vec![token.to_steel(), SteelVal::StringV(query.into())],
+        vec![token_to_steel(token), SteelVal::StringV(query.into())],
     ));
 }
 

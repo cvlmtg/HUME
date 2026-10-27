@@ -4,8 +4,8 @@
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{PositionParams, RangeParams, RangesParams};
-use crate::types::PaneHandle;
+use crate::host::{PositionParams, RangeParams, RangesParams, token_to_steel};
+use hume_core::PaneHandle;
 
 use crate::builtins::SteelResult;
 use crate::builtins::args::{list_of, string_hash, token_arg};
@@ -81,7 +81,7 @@ pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResul
     let token = require_cap(ctx.host.lsp())?
         .track_position(pane)
         .map_err(generic_err)?;
-    Ok(token.to_steel())
+    Ok(token_to_steel(token))
 }
 
 /// `(tracked-position-params token)` → the `lsp-position-params` shape for

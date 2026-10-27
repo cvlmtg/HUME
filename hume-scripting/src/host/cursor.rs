@@ -1,9 +1,7 @@
 //! Live cursor/selection reads.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, PaneHandle};
 use hume_rope::line::ContentLine;
-
-use crate::types::PaneHandle;
 
 /// One selection as a script reads it: raw 0-indexed char offsets.
 ///

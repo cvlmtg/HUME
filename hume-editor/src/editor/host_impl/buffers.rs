@@ -1,7 +1,7 @@
 //! `EditorHostImpl`'s buffer/pane enumeration, reads, lifecycle, and
 //! viewport geometry.
 
-use hume_core::{BufferId, OnUnsaved};
+use hume_core::{BufferId, OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::lines::line_token_content;
@@ -11,7 +11,6 @@ use super::EditorHostImpl;
 use crate::editor::buffer::lifecycle::CloseBufferRefused;
 use crate::editor::buffer::{TextRefusal, ViewLabel};
 use crate::editor::commands::FocusedPane;
-use hume_scripting::PaneHandle;
 use hume_scripting::host::{BufferHost, DisplayPathForm, StoredLanguage};
 
 impl<'a> BufferHost for EditorHostImpl<'a> {

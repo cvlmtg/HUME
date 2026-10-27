@@ -8,11 +8,11 @@ use std::sync::Arc;
 use steel::rvals::{IntoSteelVal, SteelVal};
 use termina::event::{KeyCode, Modifiers};
 
-use hume_core::{BufferId, Severity};
+use hume_core::{BufferId, HostToken, NonEmpty, Severity};
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_scripting::SteelCall;
-use hume_scripting::host::{DrawerItems, HostToken, NonEmpty};
+use hume_scripting::host::{DrawerItems, token_to_steel};
 
 use crate::editor::host_impl::EditorHostImpl;
 
@@ -57,13 +57,9 @@ impl DrawerLayer {
     /// existing one's token in place, so a stale token a plugin is still
     /// holding can never alias a *different*, later drawer that happens to
     /// reuse the same stack slot.
-    pub(in crate::editor) fn new(
-        items: DrawerItems,
-        select: DrawerSelect,
-        selected: usize,
-    ) -> Self {
+    pub(in crate::editor) fn new(rows: DrawerRows, select: DrawerSelect, selected: usize) -> Self {
         let mut drawer = Self {
-            rows: DrawerRows::new(items),
+            rows,
             selected: 0,
             scroll: 0,
             select,
@@ -87,7 +83,7 @@ impl DrawerLayer {
             .position(|&b| b == current)
             .expect("the focused buffer is in the store");
         Self::new(
-            DrawerItems::Rows(list.rows),
+            DrawerRows::rendered(list.rows),
             DrawerSelect::Buffers(list.buffers),
             selected,
         )
@@ -128,7 +124,7 @@ impl DrawerLayer {
         let selected = kept
             .and_then(|b| list.buffers.iter().position(|&n| n == b))
             .unwrap_or(self.selected);
-        self.rows = DrawerRows::new(DrawerItems::Rows(list.rows));
+        self.rows = DrawerRows::rendered(list.rows);
         self.select = DrawerSelect::Buffers(list.buffers);
         self.select_clamped(selected);
     }
@@ -146,7 +142,7 @@ impl DrawerLayer {
     /// (the selected row, or `#f` on close) and this drawer's token, so an
     /// owner can tell its own drawer's close from a replaced one's.
     fn call_args(&self, payload: SteelVal) -> Vec<SteelVal> {
-        vec![payload, self.token.to_steel()]
+        vec![payload, token_to_steel(self.token)]
     }
 }
 
@@ -164,12 +160,18 @@ pub(in crate::editor) struct DrawerRows {
 }
 
 impl DrawerRows {
-    fn new(items: DrawerItems) -> Self {
+    /// Rows whose text is already rendered.
+    pub(in crate::editor) fn rendered(rows: NonEmpty<String>) -> Self {
+        Self {
+            text: Arc::new(rows.into_vec().into_iter().map(Some).collect()),
+            lazy: None,
+        }
+    }
+
+    /// The rows a script sent.
+    pub(in crate::editor) fn from_items(items: DrawerItems) -> Self {
         match items {
-            DrawerItems::Rows(rows) => Self {
-                text: Arc::new(rows.into_vec().into_iter().map(Some).collect()),
-                lazy: None,
-            },
+            DrawerItems::Rows(rows) => Self::rendered(rows),
             DrawerItems::Keys { keys, render } => Self {
                 text: Arc::new(vec![None; keys.len()]),
                 lazy: Some((keys.into_vec(), render)),
@@ -181,7 +183,7 @@ impl DrawerRows {
         self.text.len()
     }
 
-    /// The last row's index. There is one: [`Self::new`] takes a
+    /// The last row's index. There is one: both constructors take a
     /// [`NonEmpty`] list.
     fn last_index(&self) -> usize {
         self.text.len() - 1
@@ -342,7 +344,7 @@ impl EditorState {
             .input
             .at_mut::<DrawerLayer>(r)
             .expect("drawer_ref_with_token names a live DrawerLayer");
-        drawer.rows = DrawerRows::new(items);
+        drawer.rows = DrawerRows::from_items(items);
         drawer.select = DrawerSelect::Steel(callback);
         drawer.select_clamped(selected);
         self.sync_drawer_view();

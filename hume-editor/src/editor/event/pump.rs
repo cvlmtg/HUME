@@ -7,8 +7,7 @@ use crate::editor::Editor;
 use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::buffer::store::EditOrigin;
 use crate::editor::commands::CommandPane;
-use hume_core::Severity;
-use hume_scripting::PaneHandle;
+use hume_core::{PaneHandle, Severity};
 
 /// Upper bound on total work items processed per `settle()` boundary.
 ///
@@ -290,7 +289,7 @@ impl Editor {
                     // a pane-carrying one needs that pane to still show it:
                     // the same dual check `EditorEvent::handle`'s own doc
                     // describes.
-                    let live = |handle: hume_scripting::PaneHandle| {
+                    let live = |handle: hume_core::PaneHandle| {
                         if handle.pane().is_some() {
                             CommandPane::resolve(&self.state, &self.view, handle).is_ok()
                         } else {

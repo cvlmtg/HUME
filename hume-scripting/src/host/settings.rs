@@ -1,53 +1,6 @@
 //! Global settings and the Steel eval budget.
 
-use hume_core::BufferId;
-
-/// A buffer option stored on the buffer itself rather than in the settings
-/// tables. Each has no global default and is valid only for `:set buffer`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BufferIntrinsicOption {
-    /// The buffer's language. `set-buffer-option!`/`get-buffer-option` handle
-    /// it themselves: a change is queued as `Effect::SetBufferLanguage`, and a
-    /// read has to see one queued earlier in the same eval.
-    Language,
-    /// The line ending a save writes (`lf` or `crlf`).
-    LineEnding,
-}
-
-/// Generate `BufferIntrinsicOption`'s `ALL` and `key` from one list of
-/// `Variant => "key"` pairs. `key` is an exhaustive match, so a variant left
-/// out of the list fails to compile instead of going missing from `ALL`.
-macro_rules! buffer_intrinsic_options {
-    ($($variant:ident => $key:literal),+ $(,)?) => {
-        impl BufferIntrinsicOption {
-            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
-
-            /// The option name as `:set` and the scripting API spell it.
-            pub const fn key(self) -> &'static str {
-                match self {
-                    $(Self::$variant => $key,)+
-                }
-            }
-        }
-    };
-}
-
-buffer_intrinsic_options! {
-    Language => "language",
-    LineEnding => "line-ending",
-}
-
-impl BufferIntrinsicOption {
-    pub fn from_key(key: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|opt| opt.key() == key)
-    }
-}
-
-/// A `language` option value as a language name: `""` is the spelling of
-/// "no language", so it decodes to `None`.
-pub fn language_option_value(value: &str) -> Option<&str> {
-    Some(value).filter(|name| !name.is_empty())
-}
+use hume_core::{BufferId, OptionInput};
 
 /// A setting's effective value, typed just enough for `(get-option key)` to
 /// build the right `SteelVal`. `hume-scripting` has no dependency on
@@ -73,15 +26,6 @@ impl From<OptionValue> for steel::rvals::SteelVal {
             OptionValue::List(words) => crate::builtins::args::string_list(words),
         }
     }
-}
-
-/// A value a script sets an option to. A list stays a list, so only a
-/// word-list option (`shell`) accepts one; every other value is the text
-/// `:set` would carry.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OptionInput {
-    Text(String),
-    Words(Vec<String>),
 }
 
 /// Global settings and the Steel eval budget,

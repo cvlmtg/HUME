@@ -279,7 +279,7 @@ fn goto_revision_host_acts_on_the_given_pane_not_focus() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let (pane_a, pane_b, bid) = split_with_moved_cursor(&mut ed);
 
-    let target_a = hume_scripting::PaneHandle::with_pane(bid, pane_a);
+    let target_a = hume_core::PaneHandle::with_pane(bid, pane_a);
     live_host!(ed)
         .goto_revision(target_a, 0)
         .expect("the root is live");

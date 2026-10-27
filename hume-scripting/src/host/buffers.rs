@@ -2,10 +2,8 @@
 
 use std::ffi::OsString;
 
-use hume_core::{BufferId, OnUnsaved};
+use hume_core::{BufferId, OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
-
-use crate::types::PaneHandle;
 
 /// One revision of a buffer's undo history, as `(buffer-undo-tree pane)`
 /// reports it. `id` and `parent` are the raw integers Steel sees; the only

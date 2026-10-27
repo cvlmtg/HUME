@@ -345,7 +345,7 @@ fn lsp_stop_fails_in_flight_requests_as_stopped_instead_of_orphaning_them() {
 
     ed.apply_lsp_server_op(hume_scripting::PendingLspServerOp::Stop {
         target: hume_scripting::LspServerTarget::Name(
-            hume_scripting::ServerName::parse("rust-analyzer").unwrap(),
+            hume_core::ServerName::parse("rust-analyzer").unwrap(),
         ),
     });
 
@@ -601,7 +601,7 @@ fn a_restart_applies_the_registration_and_ends_the_drift() {
     rig.ed
         .apply_lsp_server_op(hume_scripting::PendingLspServerOp::Restart {
             target: hume_scripting::LspServerTarget::Name(
-                hume_scripting::ServerName::parse("rust-analyzer").unwrap(),
+                hume_core::ServerName::parse("rust-analyzer").unwrap(),
             ),
         });
     rig.eval(RA_WITH_COMMAND);

@@ -5,8 +5,9 @@
 use super::lsp_rig::{LspRig, RigSpec, TWO_RUST_SERVERS};
 use super::*;
 use crate::editor::lsp::introspect;
+use hume_core::{FeatureFilter, ServerName};
 use hume_lsp::test_util::RecordingLspBackend;
-use hume_scripting::{FeatureFilter, LspServerTarget, PendingLspServerOp, ServerName};
+use hume_scripting::{LspServerTarget, PendingLspServerOp};
 
 fn answering(n: usize) -> RecordingLspBackend {
     let (mut backend, _, _) = RecordingLspBackend::new();

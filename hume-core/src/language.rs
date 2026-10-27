@@ -1,11 +1,16 @@
 //! A language's identity and configuration as scripts register them: the
-//! detection data, the per-language fields, and where its grammar is.
+//! detection data, the per-language fields, and where its grammar is. Also
+//! how two writes of a buffer's language rank.
 
 use std::path::{Path, PathBuf};
 
 use globset::Glob;
 
-use crate::{BlockCommentTokens, LineCommentTokens};
+use crate::{BlockCommentTokens, LineCommentTokens, Tie};
+
+/// A buffer's language: a later write from one origin replaces the earlier,
+/// whether the editor applies it or a script reads it back before then.
+pub const BUFFER_LANGUAGE_TIE: Tie = Tie::LaterWins;
 
 /// A glob of a language's detection data, matched against a file's whole
 /// absolute path as Helix matches the `languages.toml` data it
@@ -148,54 +153,30 @@ pub struct LanguageFields {
     pub block_comment_tokens: Option<BlockCommentTokens>,
 }
 
-/// One of [`LanguageFields`]' fields, named by its configuration key.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LanguageField {
-    Roots,
-    LanguageId,
-    CommentTokens,
-    BlockCommentTokens,
-}
-
-impl LanguageField {
-    pub const ALL: [Self; 4] = [
-        Self::Roots,
-        Self::LanguageId,
-        Self::CommentTokens,
-        Self::BlockCommentTokens,
-    ];
-
-    /// The key `configure-language!` and a bundled data file spell it as.
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::Roots => "roots",
-            Self::LanguageId => "language-id",
-            Self::CommentTokens => "comment-tokens",
-            Self::BlockCommentTokens => "block-comment-tokens",
-        }
+named_enum! {
+    /// One of [`LanguageFields`]' fields, named by the key
+    /// `configure-language!` and a bundled data file spell it as.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum LanguageField {
+        Roots => "roots",
+        LanguageId => "language-id",
+        CommentTokens => "comment-tokens",
+        BlockCommentTokens => "block-comment-tokens",
     }
 }
 
-/// A query file a grammar may ship beyond its required highlights.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OptionalQuery {
-    Injections,
-    TextObjects,
-    Indents,
+named_enum! {
+    /// A query file a grammar may ship beyond its required highlights, named
+    /// as scripting names it.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum OptionalQuery {
+        Injections => "injections",
+        TextObjects => "textobjects",
+        Indents => "indents",
+    }
 }
 
 impl OptionalQuery {
-    pub const ALL: [Self; 3] = [Self::Injections, Self::TextObjects, Self::Indents];
-
-    /// The name scripting uses for this kind.
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::Injections => "injections",
-            Self::TextObjects => "textobjects",
-            Self::Indents => "indents",
-        }
-    }
-
     /// The query file's name inside a grammar's query directory.
     pub const fn file_name(self) -> &'static str {
         match self {

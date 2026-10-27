@@ -132,7 +132,8 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
 
 // ── register-hook! / fire_hook ────────────────────────────────────────────
 
-use hume_scripting::{PaneHandle, SteelPane};
+use hume_core::PaneHandle;
+use hume_scripting::SteelPane;
 use steel::rvals::SteelVal;
 
 #[test]

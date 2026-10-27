@@ -168,11 +168,11 @@ mod held {
     use steel::rvals::SteelVal;
 
     use crate::host::{
-        BufferHost, CommandHost, CursorHost, EditorHost, EventHost, HostToken, LanguageHost,
-        SettingsHost,
+        BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, SettingsHost,
     };
     use crate::null_host::{HELD_EVENT, NullHost};
     use crate::{EvalError, ScriptingHost};
+    use hume_core::HostToken;
 
     /// A [`NullHost`] whose event capability keeps the holds open and the
     /// ones finished, as the editor's does for a parked write.

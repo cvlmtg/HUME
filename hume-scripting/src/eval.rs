@@ -13,12 +13,12 @@ use crate::attribution::{Owner, Provenance};
 use crate::command_name::CommandNameSet;
 use crate::command_procs::CommandProc;
 use crate::context::SteelCtx;
-use crate::host::{EditorHost, HostToken};
+use crate::host::{EditorHost, token_to_steel};
 use crate::read_only_host::ReadOnlyHost;
 use crate::types::{Effect, EvalError};
 use crate::watchdog::EvalWatchdog;
 use crate::{Callback, HostBundle, Rooted, ScriptingHost, SteelCall, attribution, builtins};
-use hume_core::Severity;
+use hume_core::{HostToken, Severity};
 
 mod session;
 
@@ -427,7 +427,7 @@ impl ScriptingHost {
                     handler.wrapped_by(helper.clone()),
                     Rc::from([
                         handler.proc().clone(),
-                        Rooted::new(hold.to_steel()),
+                        Rooted::new(token_to_steel(hold)),
                         args_list.clone(),
                     ]),
                 ));

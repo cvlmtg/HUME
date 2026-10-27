@@ -1,6 +1,6 @@
 //! Event-name introspection, and the holds a raiser keeps on its handlers.
 
-use super::HostToken;
+use hume_core::HostToken;
 
 /// Event-name introspection, accessed through [`EditorHost::events`](super::EditorHost::events).
 ///

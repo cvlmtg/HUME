@@ -16,13 +16,12 @@
 //! uses a real `Editor` + `EditorHostImpl` instead (see
 //! `editor/tests/plugins.rs`).
 
-use hume_core::{BufferId, OnUnsaved};
+use hume_core::{BufferId, OnUnsaved, OptionInput, PaneHandle};
 use hume_rope::line::ContentLine;
-use hume_scripting::PaneHandle;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
     BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, LanguageHost,
-    NativeCall, OptionInput, OptionValue, SelectionInfo, SettingsHost, StoredLanguage,
+    NativeCall, OptionValue, SelectionInfo, SettingsHost, StoredLanguage,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -136,7 +135,7 @@ impl EventHost for MockHost {
     fn held_event_arg_count(&self, name: &str) -> Option<usize> {
         crate::editor::event::held_event_arg_count(name)
     }
-    fn finish_hold(&mut self, _hold: hume_scripting::host::HostToken) {}
+    fn finish_hold(&mut self, _hold: hume_core::HostToken) {}
 }
 
 impl BufferHost for MockHost {

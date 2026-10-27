@@ -8,9 +8,9 @@
 
 use std::cmp::Reverse;
 
-use hume_core::TruncateEnd;
+use hume_core::{HostToken, TruncateEnd};
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::{HostToken, LivePickerOpts, PickerOpts};
+use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use hume_scripting::{Callback, Rooted};
 use termina::event::KeyEvent;
 

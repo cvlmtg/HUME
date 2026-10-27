@@ -3,14 +3,14 @@
 //! API. Not LSP-specific (any Steel plugin can populate these), but LSP is
 //! the first and heaviest client.
 
-use hume_core::{DiagSeverity, Side};
+use hume_core::{DiagSeverity, PaneHandle, Side};
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::host::DiagnosticEntry;
 use crate::json::{WireOrigin, to_steel_handle};
-use crate::types::{PaneHandle, VirtualLineSpec};
+use crate::types::VirtualLineSpec;
 
 use super::SteelResult;
 use super::args::{
@@ -320,13 +320,7 @@ pub(crate) fn diagnostics_for_buffer(
 ) -> SteelResult {
     let id = pane.0.buffer();
     let floor = optional_symbol_arg(severity, "#:severity")?
-        .map(|name| {
-            symbol_enum_arg(
-                &name,
-                "#:severity",
-                &DiagSeverity::ALL.map(|severity| (severity.name(), severity)),
-            )
-        })
+        .map(|name| symbol_enum_arg(&name, "#:severity", &DiagSeverity::NAMED))
         .transpose()?;
     let range = optional_hash_entry(range, "#:range", CHAR_RANGE_KEYS)?
         .map(|range| range.char_range())

@@ -1,6 +1,5 @@
 use super::*;
-use crate::types::PaneHandle;
-use hume_core::{PaneId, TimerIds};
+use hume_core::{PaneHandle, PaneId, TimerIds};
 use steel::rvals::IntoSteelVal;
 
 fn pane_val(handle: PaneHandle) -> SteelVal {

@@ -145,6 +145,9 @@ enum Origin {
     View(ViewLabel),
 }
 
+/// A line-ending write from one origin replaces the earlier one.
+const LINE_ENDING_TIE: Tie = Tie::LaterWins;
+
 /// Content-only document: text, undo history, search state, and per-buffer overrides.
 ///
 /// `Buffer` is the SSOT for everything intrinsic to an open file and shared
@@ -672,7 +675,7 @@ impl Buffer {
     ) -> Result<bool, String> {
         self.check_text_change()?;
         if !by
-            .claim(&mut self.line_ending_by, Tie::LaterWins)
+            .claim(&mut self.line_ending_by, LINE_ENDING_TIE)
             .is_applied()
         {
             return Ok(false);

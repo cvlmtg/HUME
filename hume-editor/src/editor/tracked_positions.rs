@@ -6,14 +6,14 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
-use hume_core::BufferId;
+use hume_core::{BufferId, HostToken};
 use hume_editing::edit::TextChange;
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
-use hume_scripting::host::{HostToken, TrackedFate, TrackedHold};
+use hume_scripting::host::{TrackedFate, TrackedHold};
 
 use super::buffer::store::BufferStore;
 use super::host_token;

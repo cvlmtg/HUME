@@ -21,9 +21,9 @@ use super::errors::generic_err;
 use crate::SteelCtx;
 use crate::attribution::Owner;
 use crate::command_procs::{CommandProc, MappableProc, TypedProc};
-use crate::host::{CommandArg, MAX_COUNT, NativeCall};
+use crate::host::NativeCall;
 use crate::types::{SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef};
-use hume_core::Severity;
+use hume_core::{CommandArg, MAX_COUNT, Severity};
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 

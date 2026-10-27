@@ -5,15 +5,15 @@ use proptest::prelude::*;
 
 use super::*;
 
-fn hook(name: &str) -> Listener {
-    Listener::Hook(Arc::from(name))
+fn hook(name: &str) -> TriggerListener {
+    TriggerListener::Hook(Arc::from(name))
 }
 
-fn completion(name: &str) -> Listener {
-    Listener::Completion(Arc::from(name))
+fn completion(name: &str) -> TriggerListener {
+    TriggerListener::Completion(Arc::from(name))
 }
 
-fn firing_on(table: &TriggerTable, ch: char) -> Vec<Listener> {
+fn firing_on(table: &TriggerTable, ch: char) -> Vec<TriggerListener> {
     table.fires_on(ch).cloned().collect()
 }
 
@@ -69,18 +69,18 @@ fn clear_empties_the_table() {
 /// The specification written the slow way: an association list with
 /// replace-on-set semantics and no invariant to maintain.
 #[derive(Default)]
-struct Model(Vec<(Listener, BTreeSet<char>)>);
+struct Model(Vec<(TriggerListener, BTreeSet<char>)>);
 
 impl Model {
-    fn set(&mut self, listener: Listener, chars: BTreeSet<char>) {
+    fn set(&mut self, listener: TriggerListener, chars: BTreeSet<char>) {
         self.0.retain(|(l, _)| *l != listener);
         if !chars.is_empty() {
             self.0.push((listener, chars));
         }
     }
 
-    fn fires_on(&self, ch: char) -> Vec<Listener> {
-        let mut firing: Vec<Listener> = self
+    fn fires_on(&self, ch: char) -> Vec<TriggerListener> {
+        let mut firing: Vec<TriggerListener> = self
             .0
             .iter()
             .filter(|(_, chars)| chars.contains(&ch))
@@ -93,7 +93,7 @@ impl Model {
 
 #[derive(Debug, Clone)]
 enum Op {
-    Set(Listener, Vec<char>),
+    Set(TriggerListener, Vec<char>),
     Clear,
 }
 

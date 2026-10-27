@@ -134,8 +134,8 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
 #[test]
 fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
     use crate::testing::MockHost;
+    use hume_core::PaneHandle;
     use hume_engine::pipeline::Direction;
-    use hume_scripting::PaneHandle;
     use hume_scripting::ScriptingHost;
     use hume_scripting::host::CommandHost;
 

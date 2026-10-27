@@ -49,9 +49,7 @@ pub(in crate::editor) const TWO_RUST_SERVERS: &str = r#"(%define-language! "rust
 /// does.
 pub(in crate::editor) fn stop_server(ed: &mut Editor, name: &str) {
     ed.apply_lsp_server_op(hume_scripting::PendingLspServerOp::Stop {
-        target: hume_scripting::LspServerTarget::Name(
-            hume_scripting::ServerName::parse(name).unwrap(),
-        ),
+        target: hume_scripting::LspServerTarget::Name(hume_core::ServerName::parse(name).unwrap()),
     });
 }
 

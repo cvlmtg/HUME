@@ -4,9 +4,9 @@
 
 use super::lsp_rig::{LspRig, RigSpec, TWO_RUST_SERVERS};
 use super::*;
+use hume_core::LspFeature;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
-use hume_scripting::LspFeature;
 use test_fixtures::unicode::ASTRAL;
 
 const RA: ServerId = ServerId(0);
@@ -1295,7 +1295,7 @@ fn request_with_to_a_server_value_from_before_a_restart_says_it_is_stale() {
     rig.ed
         .apply_lsp_server_op(hume_scripting::PendingLspServerOp::Restart {
             target: hume_scripting::LspServerTarget::Name(
-                hume_scripting::ServerName::parse("rust-analyzer").unwrap(),
+                hume_core::ServerName::parse("rust-analyzer").unwrap(),
             ),
         });
     rig.ed.drain_lsp();

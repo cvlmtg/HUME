@@ -11,10 +11,11 @@ use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::{LspClient, ServerState};
 use hume_platform::process::Launch;
 use hume_rope::position_encoding::PositionEncoding;
-use hume_scripting::{ServerName, ServerRef};
+use hume_scripting::ServerRef;
 
 use super::progress::ProgressTask;
-use super::registry::{LspServerConfig, Registry};
+use super::registry::Registry;
+use hume_core::{LspServerConfig, ServerName};
 
 /// One running server process: its protocol client, the registration name
 /// it was spawned under, and its `$/progress` state.

@@ -226,7 +226,7 @@ impl crate::host::CommandHost for ValidNameHost {
     fn run_command_sync(
         &mut self,
         name: &str,
-        pane: crate::types::PaneHandle,
+        pane: hume_core::PaneHandle,
         call: NativeCall,
     ) -> Result<bool, String> {
         self.inner.run_command_sync(name, pane, call)
@@ -322,7 +322,7 @@ impl crate::host::CommandHost for RegisterCapableHost {
     fn run_command_sync(
         &mut self,
         name: &str,
-        pane: crate::types::PaneHandle,
+        pane: hume_core::PaneHandle,
         call: NativeCall,
     ) -> Result<bool, String> {
         self.inner.run_command_sync(name, pane, call)

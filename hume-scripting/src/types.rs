@@ -1,68 +1,16 @@
 use hume_core::{
-    BindMode, BufferId, ConfigOrigin, GrammarSource, LanguageFields, LanguageIdentity, PaneId,
-    Side, Tie,
+    BindMode, BufferId, ConfigOrigin, GrammarSource, LanguageFields, LanguageIdentity, Side,
+    TriggerListener,
 };
 
 use crate::command_procs::{MappableProc, TypedProc};
 
-/// A buffer's language: a later write from one origin replaces the earlier,
-/// whether the editor applies it or a script reads it back before then.
-pub const BUFFER_LANGUAGE_TIE: Tie = Tie::LaterWins;
-
 mod lsp;
 pub use lsp::{
-    CapabilityQuery, DocSpan, FeatureFilter, ListEntry, ListTier, LspFeature, LspFeatureSet,
-    LspServerStatusEntry, LspServerTarget, Params, PendingLspNotify, PendingLspRequest,
-    PendingLspServerOp, PendingLspServerReg, RequestMode, RequestParams, RouteSpec,
-    SERVER_REGISTRATION_TIE, ServerName, TriggerKind, TriggerScope, WhenUnavailable,
+    CapabilityQuery, DocSpan, LspServerStatusEntry, LspServerTarget, Params, PendingLspNotify,
+    PendingLspRequest, PendingLspServerOp, PendingLspServerReg, RequestMode, RequestParams,
+    RouteSpec, TriggerScope, WhenUnavailable,
 };
-
-/// A buffer paired with the pane it was invoked/observed through, if any:
-/// the value injected everywhere command dispatch, hooks, completion
-/// sources, and `(buffers)`/`(panes)` name a buffer, and the sole argument
-/// shape every buffer-taking builtin decodes.
-///
-/// `pane` is `None` for a value with no pane of its own (a buffer-level hook
-/// argument, `(buffers)`'s list, `open-buffer!`'s return). A builtin that
-/// needs pane state (selections, viewport, focus) fails fast on `None`
-/// rather than guessing one. A builtin that needs only the buffer
-/// ([`Self::buffer`]) works the same either way. A text edit acts through
-/// the pane when the value carries one and through no pane otherwise.
-///
-/// Private fields: the only mints are [`Self::with_pane`]/[`Self::buffer_only`],
-/// so a value can't be assembled from a bid and an unrelated pid that never
-/// actually showed it: every mint site already holds both halves together
-/// (`FocusedPane::current`, a completion session's own `pane_id`, a resolved
-/// dispatch target).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PaneHandle {
-    buffer: BufferId,
-    pane: Option<PaneId>,
-}
-
-impl PaneHandle {
-    /// A buffer observed/invoked through a specific pane.
-    pub fn with_pane(buffer: BufferId, pane: PaneId) -> Self {
-        Self {
-            buffer,
-            pane: Some(pane),
-        }
-    }
-
-    /// A buffer with no pane of its own. See this type's own doc for when
-    /// that's the right mint.
-    pub fn buffer_only(buffer: BufferId) -> Self {
-        Self { buffer, pane: None }
-    }
-
-    pub fn buffer(self) -> BufferId {
-        self.buffer
-    }
-
-    pub fn pane(self) -> Option<PaneId> {
-        self.pane
-    }
-}
 
 /// A Steel command definition built by `define-command!` during init or plugin load.
 ///
@@ -280,10 +228,10 @@ pub enum Effect {
     RegisterCompletionSource(crate::host::PendingCompletionSource),
     /// `(set-hook-triggers! source language chars)`,
     /// `(set-completion-triggers! source language chars)` or their
-    /// `set-attachment-…` forms: `source`'s trigger characters of `kind` in
-    /// `scope`, replacing that triple's previous set; an empty `chars`
-    /// removes it. A `Completion` set must name a registered `Buffer`
-    /// source, checked when this applies. Queued alongside
+    /// `set-attachment-…` forms: `listener`'s trigger characters in `scope`,
+    /// replacing that pair's previous set; an empty `chars` removes it. A
+    /// `Completion` listener must name a registered `Buffer` source, checked
+    /// when this applies. Queued alongside
     /// [`Effect::RegisterCompletionSource`] for the same ordering reason
     /// [`Effect::UnbindKey`] gives for the two binders it follows: a
     /// source registered earlier in the *same* eval must exist by the time
@@ -292,8 +240,7 @@ pub enum Effect {
     /// would race a same-eval `register-completion-source!`, which only
     /// takes effect once the whole eval succeeds.
     SetTriggers {
-        kind: TriggerKind,
-        source: String,
+        listener: TriggerListener,
         scope: TriggerScope,
         chars: Vec<char>,
     },
@@ -333,6 +280,3 @@ impl std::fmt::Display for EvalError {
         f.write_str(&self.message)
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -6,6 +6,7 @@
 
 use std::ops::Range;
 
+use hume_core::AnswerEnd;
 use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
 use hume_editing::edit::TextChange;
 use hume_editing::text::{BufferText, TextVersion};
@@ -14,7 +15,6 @@ use hume_editing::word::{CharClass, WordChars};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_scripting::SteelCall;
-use hume_scripting::host::AnswerEnd;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, SourceRegistry};

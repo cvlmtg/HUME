@@ -4,14 +4,14 @@
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, ListEntry, LspFeature, ServerName};
 use hume_lsp::backend::ServerId;
 
 use super::LspState;
 use super::features::provider;
 use crate::editor::EditorState;
 use hume_platform::path::AbsolutePath;
-use hume_scripting::{CapabilityQuery, ListEntry, LspFeature, ServerName};
+use hume_scripting::CapabilityQuery;
 
 /// The feature a standard request `method` belongs to.
 pub(in crate::editor) fn method_feature(method: &str) -> Option<LspFeature> {
@@ -61,7 +61,7 @@ pub(in crate::editor) fn capabilities(
 pub(in crate::editor) fn servers(
     state: &EditorState,
     bid: BufferId,
-    feature: Option<hume_scripting::LspFeature>,
+    feature: Option<hume_core::LspFeature>,
     method: Option<&str>,
 ) -> Result<Vec<hume_scripting::ServerRef>, String> {
     if state.buffers.try_get(bid).is_none() {

@@ -70,7 +70,7 @@ pub(crate) fn define_language(
 /// `#f` is `None`; any other key is an error. The one decoder for both
 /// `%configure-language!` and a bundled data file.
 pub(crate) fn language_fields(val: SteelVal, ctx_name: &str) -> Result<LanguageFields, SteelErr> {
-    let keys = LanguageField::ALL.map(LanguageField::key);
+    let keys = LanguageField::NAMES;
     fields_of(&hash_entry(val, ctx_name, &keys)?)
 }
 
@@ -79,7 +79,7 @@ pub(crate) fn optional_language_fields(
     val: SteelVal,
     ctx_name: &str,
 ) -> Result<Option<LanguageFields>, SteelErr> {
-    let keys = LanguageField::ALL.map(LanguageField::key);
+    let keys = LanguageField::NAMES;
     optional_hash_entry(val, ctx_name, &keys)?
         .map(|entry| fields_of(&entry))
         .transpose()
@@ -87,7 +87,7 @@ pub(crate) fn optional_language_fields(
 
 fn fields_of(entry: &HashEntry) -> Result<LanguageFields, SteelErr> {
     let field = |field: LanguageField| {
-        let key = field.key();
+        let key = field.name();
         let val = entry.optional(key).unwrap_or(SteelVal::BoolV(false));
         (val, entry.label(key))
     };
@@ -138,7 +138,7 @@ pub(crate) fn configure_language(
 
 /// `(%register-grammar! name grammar-path symbol highlights-path optional-queries)`:
 /// init or command. `optional-queries` is `#f` or a symbol-keyed hash from
-/// `OptionalQuery::key` to a path string or `#f`; any other key is an error.
+/// `OptionalQuery::name` to a path string or `#f`; any other key is an error.
 /// The Scheme-side `register-grammar!` wrapper (`prelude.scm`) builds the hash
 /// from its keyword arguments.
 ///
@@ -164,10 +164,10 @@ pub(crate) fn register_grammar(
         under_cwd(&path_arg(val, ctx_name)?, &cwd, ctx_name).map(|path| path.to_path_buf())
     };
     let mut queries = QueryFiles::new(resolve(highlights_path, "highlights-path")?);
-    let keys = OptionalQuery::ALL.map(OptionalQuery::key);
+    let keys = OptionalQuery::NAMES;
     if let Some(entry) = optional_hash_entry(optional_queries, "optional-queries", &keys)? {
         for kind in OptionalQuery::ALL {
-            let key = kind.key();
+            let key = kind.name();
             let path = entry
                 .optional(key)
                 .map(|val| optional_path_arg(val, &entry.label(key)))
@@ -217,7 +217,7 @@ pub(crate) fn grammar_optional_queries() -> SteelResult {
         .into_iter()
         .map(|kind| {
             cons_pair(
-                SteelVal::SymbolV(kind.key().into()),
+                SteelVal::SymbolV(kind.name().into()),
                 SteelVal::StringV(kind.file_name().into()),
             )
         })

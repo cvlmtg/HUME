@@ -8,13 +8,13 @@ use super::super::registry::{
     SourceRegistry,
 };
 use super::*;
-use hume_core::MatchKind;
+use hume_core::{AnswerEnd, MatchKind};
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
-use hume_scripting::host::{AnswerEnd, EmittedWord};
+use hume_scripting::host::EmittedWord;
 use steel::rvals::SteelVal;
 
 fn item(label: &str) -> CompletionItem {

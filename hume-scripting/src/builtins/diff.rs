@@ -10,7 +10,7 @@ use hume_editing::diff::{WordHunk, WordHunkKind};
 use hume_editing::hunk::{ChangeHunk, LineSpan, text_hunks};
 use hume_editing::text::BufferText;
 
-use crate::types::PaneHandle;
+use hume_core::PaneHandle;
 
 use super::SteelResult;
 use super::args::{char_range_value, list_of, not_live_err, string_arg, string_list, symbol_hash};

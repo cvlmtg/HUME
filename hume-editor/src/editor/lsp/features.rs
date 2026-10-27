@@ -1,6 +1,7 @@
 //! The capability each routable [`LspFeature`] needs a server to advertise.
 
-use hume_scripting::{CapabilityQuery, LspFeature};
+use hume_core::LspFeature;
+use hume_scripting::CapabilityQuery;
 use lsp_types::request::{DocumentDiagnosticRequest, Request as _};
 
 /// The value at `path` in `capabilities` (a server's wire

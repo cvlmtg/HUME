@@ -24,16 +24,16 @@ pub(crate) fn default_bid() -> hume_core::BufferId {
 /// [`default_bid`]'s `PaneHandle` counterpart: a pane-less handle, for a
 /// direct Rust call into a builtin now typed for `PaneHandle`/`ArgPane`/
 /// `LivePane` rather than a bare `BufferId`.
-pub(crate) fn default_pane() -> crate::types::PaneHandle {
-    crate::types::PaneHandle::buffer_only(default_bid())
+pub(crate) fn default_pane() -> hume_core::PaneHandle {
+    hume_core::PaneHandle::buffer_only(default_bid())
 }
 
 /// [`default_pane`], but with a pane half too, for a builtin whose own
 /// contract needs one present (`#:require-focus`'s "needs a pane" check,
 /// a kind-A/B builtin exercised only for its decode, never resolved against
 /// real editor state through `NullHost`).
-pub(crate) fn default_pane_with_pane() -> crate::types::PaneHandle {
-    crate::types::PaneHandle::with_pane(default_bid(), hume_core::PaneId::default())
+pub(crate) fn default_pane_with_pane() -> hume_core::PaneHandle {
+    hume_core::PaneHandle::with_pane(default_bid(), hume_core::PaneId::default())
 }
 
 /// The Steel symbol `name`.

@@ -8,9 +8,9 @@ use crate::editor::settings::{
     SHOW_NEWLINE_VALUES, Scope, SettingText, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY,
     all_setting_keys, setting_scopes,
 };
+use hume_core::BufferIntrinsicOption;
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::LineEnding;
-use hume_scripting::host::BufferIntrinsicOption;
 
 // ── :set arguments ────────────────────────────────────────────────────────────
 
@@ -79,10 +79,9 @@ fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
         .copied()
         .filter(|k| setting_scopes(k).contains(&scope));
     let intrinsic = (scope == Scope::Buffer)
-        .then_some(BufferIntrinsicOption::ALL)
+        .then_some(BufferIntrinsicOption::NAMES)
         .into_iter()
-        .flatten()
-        .map(|opt| opt.key());
+        .flatten();
     prefix_completions(scope_keys.chain(intrinsic), rest)
 }
 
@@ -104,7 +103,7 @@ fn complete_set_value(
     // through the generic gate below. An unparseable `scope` token falls
     // through to the same empty result as a real key rejecting that scope.
     let scope = scope.parse::<Scope>().ok();
-    if let Some(opt) = BufferIntrinsicOption::from_key(key) {
+    if let Some(opt) = BufferIntrinsicOption::from_name(key) {
         if scope != Some(Scope::Buffer) {
             return Vec::new();
         }

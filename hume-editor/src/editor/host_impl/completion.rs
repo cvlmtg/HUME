@@ -4,10 +4,10 @@
 use crate::editor::completion::{
     BufferSourceEntry, MinibufBody, MinibufSourceEntry, RegisterOutcome,
 };
-use hume_core::Severity;
+use hume_core::{AnswerEnd, Severity};
 
 use super::EditorHostImpl;
-use hume_scripting::host::{self, AnswerEnd, CompletionHost, EmittedWord};
+use hume_scripting::host::{self, CompletionHost, EmittedWord};
 
 impl crate::editor::Editor {
     /// Applies a queued `Effect::RegisterCompletionSource`: a Steel

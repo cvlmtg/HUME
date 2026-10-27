@@ -35,9 +35,9 @@ fn scan_registers_secondary_and_sets_default_order() {
     let gjs = crate::editor::lsp::introspect::language_servers(&ed.state.lsp, "gjs");
     let entry = &gjs[0];
     assert_eq!(entry.name.as_str(), "typescript-language-server");
-    assert!(!entry.filter.admits(hume_scripting::LspFeature::Format));
-    assert!(!entry.filter.admits(hume_scripting::LspFeature::Diagnostics));
-    assert!(entry.filter.admits(hume_scripting::LspFeature::Hover));
+    assert!(!entry.filter.admits(hume_core::LspFeature::Format));
+    assert!(!entry.filter.admits(hume_core::LspFeature::Diagnostics));
+    assert!(entry.filter.admits(hume_core::LspFeature::Hover));
 }
 
 #[test]
@@ -232,7 +232,7 @@ fn sync_script_feature_vocabulary_matches_lsp_feature_all() {
         .lines()
         .filter_map(|line| line.trim().strip_prefix('"')?.strip_suffix("\","))
         .collect();
-    let mut hume: Vec<&str> = hume_scripting::LspFeature::ALL
+    let mut hume: Vec<&str> = hume_core::LspFeature::ALL
         .iter()
         .map(|f| f.name())
         .collect();

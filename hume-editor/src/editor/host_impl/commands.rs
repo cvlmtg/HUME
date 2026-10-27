@@ -171,7 +171,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     fn run_command_sync(
         &mut self,
         name: &str,
-        pane: hume_scripting::PaneHandle,
+        pane: hume_core::PaneHandle,
         hume_scripting::host::NativeCall {
             count,
             extend,

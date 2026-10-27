@@ -6,7 +6,7 @@ use crate::editor::commands::CommandPane;
 use crate::editor::commands::effective_word_chars;
 
 use super::EditorHostImpl;
-use hume_scripting::PaneHandle;
+use hume_core::PaneHandle;
 use hume_scripting::host::{CursorHost, SelectionInfo};
 
 impl<'a> EditorHostImpl<'a> {

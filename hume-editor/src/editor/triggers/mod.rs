@@ -1,5 +1,5 @@
 //! Trigger characters plugins register: the typed characters that fire a
-//! [`Listener`], an `on-trigger-char` hook name or a `'buffer` completion
+//! [`TriggerListener`], an `on-trigger-char` hook name or a `'buffer` completion
 //! source (`set-hook-triggers!`, `set-completion-triggers!` and their
 //! attachment forms).
 //!
@@ -15,12 +15,12 @@
 
 use std::sync::Arc;
 
-use hume_core::BufferId;
-use hume_scripting::{TriggerKind, TriggerScope};
+use hume_core::{BufferId, TriggerListener};
+use hume_scripting::TriggerScope;
 
 mod table;
 
-pub(in crate::editor) use table::{Listener, TriggerTable};
+pub(in crate::editor) use table::TriggerTable;
 
 use super::EditorState;
 use super::completion::BufferSourceId;
@@ -35,29 +35,23 @@ pub(in crate::editor) struct Triggered {
 }
 
 impl EditorState {
-    /// Sets `source`'s trigger characters of `kind` in `scope`, replacing
-    /// that listener's previous set; no characters removes it. A
-    /// `Completion` set must name a registered `Buffer` source: a plugin's
-    /// own typo or stale rename, not something to ignore the way a `Hook`
-    /// set has to (a hook's listener need not be a completion source). An
-    /// attachment scope sets nothing unless the server handles its feature
-    /// for the buffer.
+    /// Sets `listener`'s trigger characters in `scope`, replacing its
+    /// previous set; no characters removes it. A `Completion` listener must
+    /// name a registered `Buffer` source: a plugin's own typo or stale
+    /// rename, not something to ignore the way a `Hook` listener has to (a
+    /// hook's listener need not be a completion source). An attachment scope
+    /// sets nothing unless the server handles its feature for the buffer.
     pub(in crate::editor) fn set_triggers(
         &mut self,
-        kind: TriggerKind,
-        source: String,
+        listener: TriggerListener,
         scope: TriggerScope,
         chars: Vec<char>,
     ) -> Result<(), String> {
-        let listener = match kind {
-            TriggerKind::Hook => Listener::Hook(source.into()),
-            TriggerKind::Completion => {
-                self.config
-                    .completion_sources
-                    .require_trigger_source(&source)?;
-                Listener::Completion(source.into())
-            }
-        };
+        if let TriggerListener::Completion(source) = &listener {
+            self.config
+                .completion_sources
+                .require_trigger_source(source)?;
+        }
         match scope {
             TriggerScope::Language(language) => {
                 let language: Box<str> = language.into();
@@ -91,7 +85,7 @@ impl EditorState {
             .try_get(bid)
             .and_then(|buffer| buffer.language)
             .and_then(|id| self.config.triggers.get(self.config.languages.name_of(id)));
-        let mut listeners: Vec<&Listener> = language_table
+        let mut listeners: Vec<&TriggerListener> = language_table
             .into_iter()
             .chain(self.buffer_positions.lsp.trigger_tables(bid))
             .flat_map(|table| table.fires_on(ch))
@@ -102,8 +96,8 @@ impl EditorState {
         let mut triggered = Triggered::default();
         for listener in listeners {
             match listener {
-                Listener::Hook(name) => triggered.hooks.push(Arc::clone(name)),
-                Listener::Completion(name) => triggered
+                TriggerListener::Hook(name) => triggered.hooks.push(Arc::clone(name)),
+                TriggerListener::Completion(name) => triggered
                     .completions
                     .extend(self.config.completion_sources.buffer_id_of(name)),
             }

@@ -6,10 +6,10 @@
 //! then stops pushing; whether a server pushes is observed, not read from
 //! its capabilities.
 
-use hume_core::{BufferId, Severity};
+use hume_core::{BufferId, LspFeature, Severity};
 use hume_lsp::backend::ServerId;
 use hume_lsp::diagnostic::{PullReport, parse_pull_report};
-use hume_scripting::{CapabilityQuery, LspFeature};
+use hume_scripting::CapabilityQuery;
 use lsp_types::request::{DocumentDiagnosticRequest, Request as _};
 
 use super::bridge::{RustDelivery, RustResponder};

@@ -1,5 +1,5 @@
-use hume_core::{BufferId, PaneId};
-use hume_scripting::{PaneHandle, ServerRef};
+use hume_core::{BufferId, PaneHandle, PaneId};
+use hume_scripting::ServerRef;
 use steel::rvals::SteelVal;
 
 use super::*;
@@ -68,7 +68,7 @@ fn all_variants() -> Vec<EditorEvent> {
 fn sample_server() -> ServerRef {
     ServerRef {
         id: hume_lsp::backend::ServerId(7),
-        name: hume_scripting::ServerName::parse("rust-analyzer").expect("valid name"),
+        name: hume_core::ServerName::parse("rust-analyzer").expect("valid name"),
     }
 }
 

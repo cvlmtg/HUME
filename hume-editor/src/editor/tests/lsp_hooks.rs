@@ -576,7 +576,7 @@ fn an_attachment_completion_listener_naming_no_source_fires_nothing() {
     rig.ed.state.buffer_positions.lsp.set_triggers(
         rig.bid,
         sid,
-        crate::editor::triggers::Listener::Completion("ghost".into()),
+        hume_core::TriggerListener::Completion("ghost".into()),
         vec!['.'],
     );
 

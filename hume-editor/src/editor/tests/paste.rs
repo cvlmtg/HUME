@@ -1456,7 +1456,7 @@ fn plain_paste_with_an_empty_kill_ring_is_refused() {
     let ran = live_host!(ed)
         .run_command_sync(
             "paste-after",
-            hume_scripting::PaneHandle::with_pane(bid, pid),
+            hume_core::PaneHandle::with_pane(bid, pid),
             NativeCall {
                 count: Some(1),
                 ..NativeCall::default()

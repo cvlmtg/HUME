@@ -3,15 +3,14 @@
 
 use super::EditorHostImpl;
 use crate::editor::input_stack::{
-    BaseLayer, DrawerLayer, DrawerSelect, MenuLayer, PickerSession, PopupLayer,
+    BaseLayer, DrawerLayer, DrawerRows, DrawerSelect, MenuLayer, PickerSession, PopupLayer,
 };
 use crate::editor::input_stack::{menu, picker, prompt};
 use crate::editor::syntax::GrammarLoads;
-use hume_core::Severity;
-use hume_scripting::PaneHandle;
+use hume_core::{HostToken, NonEmpty, PaneHandle, Severity};
 use hume_scripting::host::{
-    BufferHost, DrawerItems, HostToken, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts,
-    PickerSourceOpts, PopupKind, UiHost,
+    BufferHost, DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts,
+    PopupKind, UiHost,
 };
 
 impl<'a> UiHost for EditorHostImpl<'a> {
@@ -167,7 +166,11 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         {
             return Ok(None);
         }
-        let drawer = DrawerLayer::new(items, DrawerSelect::Steel(callback), selected);
+        let drawer = DrawerLayer::new(
+            DrawerRows::from_items(items),
+            DrawerSelect::Steel(callback),
+            selected,
+        );
         Ok(Some(self.state.open_drawer(self.view, drawer)))
     }
 

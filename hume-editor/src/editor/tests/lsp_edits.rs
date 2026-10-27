@@ -625,9 +625,9 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
 #[test]
 fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files_untouched() {
     use crate::editor::commands::open_pane_in_layout;
+    use hume_core::PaneHandle;
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::Direction;
-    use hume_scripting::PaneHandle;
     use hume_scripting::host::EditHost;
 
     let tmp = tempfile::tempdir().unwrap();
@@ -711,7 +711,7 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
 /// earlier file's changeset is committed.
 #[test]
 fn apply_workspace_edit_read_only_file_leaves_earlier_files_untouched() {
-    use hume_scripting::PaneHandle;
+    use hume_core::PaneHandle;
     use hume_scripting::host::EditHost;
 
     let tmp = tempfile::tempdir().unwrap();

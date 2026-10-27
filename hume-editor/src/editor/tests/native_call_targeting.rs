@@ -8,8 +8,8 @@
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
+use hume_core::PaneHandle;
 use hume_engine::pipeline::Direction;
-use hume_scripting::PaneHandle;
 use hume_scripting::host::CommandHost;
 use hume_scripting::host::NativeCall;
 

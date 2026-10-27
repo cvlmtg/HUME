@@ -3,8 +3,6 @@
 //! or the text typed at the command's prompt.
 
 use hume_engine::pipeline::EngineView;
-use hume_scripting::PaneHandle;
-use hume_scripting::host::CommandArg;
 
 use super::super::dispatch::CmdCtx;
 use super::super::input_stack::{open_shell_prompt, read_command_char};
@@ -15,7 +13,7 @@ use super::search::{all_cursors, open_search_prompt, open_sift_prompt};
 use super::{
     BoundCommand, FocusedPane, Missing, MissingOperand, PendingDispatch, report_arg_error, run,
 };
-use hume_core::Severity;
+use hume_core::{CommandArg, PaneHandle, Severity};
 
 /// Read `missing` from the user, then run its command on `pane` as
 /// dispatched with `ctx`. Starting the read commits the open paste session

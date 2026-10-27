@@ -4,7 +4,7 @@
 use super::*;
 use crate::editor::completion::BufferSourceEntry;
 use hume_core::MatchKind;
-use hume_scripting::TriggerKind::{Completion, Hook};
+use hume_core::TriggerListener::{Completion, Hook};
 use hume_scripting::TriggerScope;
 use steel::rvals::SteelVal;
 
@@ -39,7 +39,7 @@ fn a_completion_set_for_an_unknown_source_errors() {
     let (mut ed, _) = rust_buffer();
     let err = ed
         .state
-        .set_triggers(Completion, "nope".into(), language("rust"), vec!['.'])
+        .set_triggers(Completion("nope".into()), language("rust"), vec!['.'])
         .expect_err("no buffer source named \"nope\"");
     assert!(
         err.contains("no buffer completion source named"),
@@ -57,7 +57,7 @@ fn a_language_set_joins_the_registered_source() {
     assert!(ed.state.triggered_by('.', bid).completions.is_empty());
 
     ed.state
-        .set_triggers(Completion, "dot".into(), language("rust"), vec!['.'])
+        .set_triggers(Completion("dot".into()), language("rust"), vec!['.'])
         .unwrap();
     let id = ed.state.config.completion_sources.buffer_id_of("dot");
     assert_eq!(
@@ -67,7 +67,7 @@ fn a_language_set_joins_the_registered_source() {
     assert!(ed.state.triggered_by(':', bid).completions.is_empty());
 
     ed.state
-        .set_triggers(Completion, "dot".into(), language("python"), vec![':'])
+        .set_triggers(Completion("dot".into()), language("python"), vec![':'])
         .unwrap();
     assert!(
         ed.state.triggered_by(':', bid).completions.is_empty(),
@@ -83,10 +83,10 @@ fn an_empty_set_clears_the_entry() {
         .completion_sources
         .register_buffer(source("dot"));
     ed.state
-        .set_triggers(Completion, "dot".into(), language("rust"), vec!['.'])
+        .set_triggers(Completion("dot".into()), language("rust"), vec!['.'])
         .unwrap();
     ed.state
-        .set_triggers(Completion, "dot".into(), language("rust"), Vec::new())
+        .set_triggers(Completion("dot".into()), language("rust"), Vec::new())
         .unwrap();
     assert!(ed.state.triggered_by('.', bid).completions.is_empty());
 }
@@ -97,7 +97,7 @@ fn re_registering_a_source_keeps_its_triggers() {
     let sources = &mut ed.state.config.completion_sources;
     sources.register_buffer(source("dot"));
     ed.state
-        .set_triggers(Completion, "dot".into(), language("rust"), vec!['.'])
+        .set_triggers(Completion("dot".into()), language("rust"), vec!['.'])
         .unwrap();
     ed.state
         .config
@@ -116,10 +116,10 @@ fn sources_come_back_in_registration_order() {
             .register_buffer(source(name));
     }
     ed.state
-        .set_triggers(Completion, "second".into(), language("rust"), vec!['.'])
+        .set_triggers(Completion("second".into()), language("rust"), vec!['.'])
         .unwrap();
     ed.state
-        .set_triggers(Completion, "first".into(), language("rust"), vec!['.'])
+        .set_triggers(Completion("first".into()), language("rust"), vec!['.'])
         .unwrap();
     let names: Vec<String> = ed
         .state
@@ -146,10 +146,10 @@ fn hook_and_completion_sets_of_one_source_are_independent() {
         .completion_sources
         .register_buffer(source("both"));
     ed.state
-        .set_triggers(Hook, "both".into(), language("rust"), vec!['('])
+        .set_triggers(Hook("both".into()), language("rust"), vec!['('])
         .unwrap();
     ed.state
-        .set_triggers(Completion, "both".into(), language("rust"), vec!['.'])
+        .set_triggers(Completion("both".into()), language("rust"), vec!['.'])
         .unwrap();
 
     let fires = |kind_hooks: bool, ch| {
@@ -185,7 +185,7 @@ fn hook_and_completion_sets_of_one_source_are_independent() {
 fn a_hook_set_needs_no_registered_source() {
     let (mut ed, bid) = rust_buffer();
     ed.state
-        .set_triggers(Hook, "listener".into(), language("rust"), vec!['('])
+        .set_triggers(Hook("listener".into()), language("rust"), vec!['('])
         .unwrap();
     assert_eq!(*ed.state.triggered_by('(', bid).hooks[0], *"listener");
 }
@@ -195,7 +195,7 @@ fn hooks_fire_in_name_order() {
     let (mut ed, bid) = rust_buffer();
     for name in ["zeta", "alpha", "mid"] {
         ed.state
-            .set_triggers(Hook, name.into(), language("rust"), vec!['('])
+            .set_triggers(Hook(name.into()), language("rust"), vec!['('])
             .unwrap();
     }
     let names: Vec<String> = ed
@@ -213,7 +213,7 @@ fn a_buffer_with_no_language_fires_nothing() {
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.focused_buffer_id();
     ed.state
-        .set_triggers(Hook, "listener".into(), language("rust"), vec!['('])
+        .set_triggers(Hook("listener".into()), language("rust"), vec!['('])
         .unwrap();
     assert!(ed.state.triggered_by('(', bid).hooks.is_empty());
 }

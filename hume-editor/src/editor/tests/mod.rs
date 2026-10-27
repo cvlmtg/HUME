@@ -118,8 +118,8 @@ fn editor_from_kitty(input: &str) -> Editor {
 /// site (`run_command_sync`, a direct builtin call) now takes in place of a
 /// bare `BufferId`: the test-harness counterpart of what dispatch injects
 /// for a real keypress.
-fn focused_pane(ed: &Editor) -> hume_scripting::PaneHandle {
-    hume_scripting::PaneHandle::with_pane(ed.focused_buffer_id(), ed.view.focused_pane())
+fn focused_pane(ed: &Editor) -> hume_core::PaneHandle {
+    hume_core::PaneHandle::with_pane(ed.focused_buffer_id(), ed.view.focused_pane())
 }
 
 /// Pin the focused pane to `WrapMode::None`, so a display line is a buffer
@@ -512,11 +512,9 @@ fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsPara
 }
 
 /// `items` as the non-empty list a menu or drawer is built from.
-pub(in crate::editor) fn non_empty_strings(
-    items: &[&str],
-) -> hume_scripting::host::NonEmpty<String> {
+pub(in crate::editor) fn non_empty_strings(items: &[&str]) -> hume_core::NonEmpty<String> {
     let items = items.iter().map(|s| s.to_string()).collect();
-    hume_scripting::host::NonEmpty::new(items).expect("a test list has items")
+    hume_core::NonEmpty::new(items).expect("a test list has items")
 }
 
 /// Drawer rows `items`, already rendered.
@@ -529,7 +527,7 @@ pub(in crate::editor) fn drawer_items(items: &[&str]) -> hume_scripting::host::D
 /// token contract. Returns the live token; panics if `show-drawer-list!` refused the
 /// items or the stack read the request as stale. Neither is under test at
 /// any of this helper's callers.
-fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_scripting::host::HostToken {
+fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_core::HostToken {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
@@ -1007,7 +1005,7 @@ pub(in crate::editor) use live_host;
 /// never reused, as opposed to the reused-slot case, which needs its own,
 /// different setup.
 pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, BufferId) {
-    use hume_scripting::PaneHandle;
+    use hume_core::PaneHandle;
     use hume_scripting::host::CommandHost;
 
     let pid_a = ed.view.focused_pane();

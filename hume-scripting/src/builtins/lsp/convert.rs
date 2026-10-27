@@ -6,7 +6,7 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::host::{LocationPlace, Place};
-use crate::types::PaneHandle;
+use hume_core::PaneHandle;
 
 use crate::builtins::SteelResult;
 use crate::builtins::args::{char_range_value, list_items, string_arg, symbol_hash};

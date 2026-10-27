@@ -8,7 +8,7 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::host::CharTextEdit;
-use crate::types::PaneHandle;
+use hume_core::PaneHandle;
 
 use super::SteelResult;
 use super::args::{

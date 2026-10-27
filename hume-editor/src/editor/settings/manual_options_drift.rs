@@ -59,7 +59,7 @@ fn user_manual_option_tables_match_all_setting_keys() {
     let text = std::fs::read_to_string(&manual_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", manual_path.display()));
 
-    use hume_scripting::host::BufferIntrinsicOption;
+    use hume_core::BufferIntrinsicOption;
     let global_documented = first_cell_keys(section_after(&text, "## Global options"));
     let buffer_documented = first_cell_keys(section_after(&text, "## Buffer options"));
     let mut documented = global_documented.clone();
@@ -72,11 +72,7 @@ fn user_manual_option_tables_match_all_setting_keys() {
     // The buffer-intrinsic options have no define_settings! entry by design
     // (see settings.rs's module doc) but are documented in the Buffer options
     // table, so they're added here rather than to all_setting_keys() itself.
-    code_keys.extend(
-        BufferIntrinsicOption::ALL
-            .iter()
-            .map(|o| o.key().to_string()),
-    );
+    code_keys.extend(BufferIntrinsicOption::NAMES.map(str::to_string));
 
     let missing_from_docs: Vec<_> = code_keys.difference(&documented).collect();
     let stale_in_docs: Vec<_> = documented.difference(&code_keys).collect();
@@ -88,14 +84,14 @@ fn user_manual_option_tables_match_all_setting_keys() {
     use super::Scope;
     let misplaced: Vec<String> = global_documented
         .iter()
-        .filter(|k| BufferIntrinsicOption::from_key(k).is_none())
+        .filter(|k| BufferIntrinsicOption::from_name(k).is_none())
         .filter(|k| !super::setting_scopes(k).contains(&Scope::Global))
         .map(|k| format!("'{k}' is under Global options but its scope list has no Global"))
         .chain(
             buffer_documented
                 .iter()
                 // Buffer-only by special case, no scope entry.
-                .filter(|k| BufferIntrinsicOption::from_key(k).is_none())
+                .filter(|k| BufferIntrinsicOption::from_name(k).is_none())
                 .filter(|k| !super::setting_scopes(k).contains(&Scope::Buffer))
                 .map(|k| format!("'{k}' is under Buffer options but its scope list has no Buffer")),
         )

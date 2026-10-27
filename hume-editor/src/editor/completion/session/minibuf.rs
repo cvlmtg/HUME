@@ -13,12 +13,12 @@ use std::ops::Range;
 
 use hume_rope::grapheme::common_str_prefix;
 use hume_scripting::SteelCall;
-use hume_scripting::host::{AnswerEnd, EmittedWord, FirstTab};
+use hume_scripting::host::EmittedWord;
 
 use super::super::item::{CandidateKey, CompletionItem};
 use super::super::registry::{MinibufSourceId, SourceRegistry};
 use super::slots::{Invocation, SlotSet, SlotTokens};
-use hume_core::MatchKind;
+use hume_core::{AnswerEnd, FirstTab, MatchKind};
 
 /// Byte range in [`MinibufSession`]'s own `input` that a `Minibuf`
 /// invocation answered for. Never moves: nothing can edit the line while

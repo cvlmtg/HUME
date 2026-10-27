@@ -26,12 +26,11 @@
 use std::fmt;
 use std::str::FromStr;
 
-use hume_core::{ConfigOrigin, DiagSeverity, Tie};
+use hume_core::{ConfigOrigin, DiagSeverity, OptionInput, Tie};
 use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 use hume_platform::process::batch::ShellCommand;
-use hume_scripting::host::OptionInput;
 use rustc_hash::FxHashMap;
 
 use crate::statusline::{StatusElement, StatusLineConfig};
@@ -83,18 +82,21 @@ pub(in crate::editor) trait SettingText: Sized {
     fn to_text(&self) -> String;
 }
 
+/// A setting's write from one origin replaces the earlier one.
+const SETTING_TIE: Tie = Tie::LaterWins;
+
 /// The origin of the write behind each value a settings store holds, by
 /// key. A key with none holds its compiled-in default (global) or no
 /// override (buffer). Within one scope a write from an origin below the
 /// recorded one is shadowed, and one from the same or a higher origin
-/// replaces it ([`Tie::LaterWins`]).
+/// replaces it ([`SETTING_TIE`]).
 #[derive(Clone, Debug, Default)]
 pub(in crate::editor::settings) struct SettingOrigins(FxHashMap<&'static str, ConfigOrigin>);
 
 impl SettingOrigins {
     /// Whether `by` may write `key`; recorded as its writer when it may.
     fn claim(&mut self, key: &'static str, by: ConfigOrigin) -> bool {
-        let applies = by.rank(self.held(key), Tie::LaterWins).is_applied();
+        let applies = by.rank(self.held(key), SETTING_TIE).is_applied();
         if applies {
             self.0.insert(key, by);
         }

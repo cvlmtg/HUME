@@ -6,13 +6,13 @@
 use super::*;
 
 use super::language_config::boot;
-use hume_core::{BindMode, ConfigOrigin, LanguageFields};
-use hume_editing::text::LineEnding;
-use hume_scripting::host::{KeymapTarget, OptionInput, OptionValue};
-use hume_scripting::{
-    Effect, FeatureFilter, ListEntry, ListTier, PendingLanguageReg, PendingLspServerOp,
-    PendingLspServerReg, ServerName,
+use hume_core::{
+    BindMode, ConfigOrigin, FeatureFilter, LanguageFields, ListEntry, ListTier, LspServerConfig,
+    OptionInput, ServerName,
 };
+use hume_editing::text::LineEnding;
+use hume_scripting::host::{KeymapTarget, OptionValue};
+use hume_scripting::{Effect, PendingLanguageReg, PendingLspServerOp, PendingLspServerReg};
 
 use crate::editor::settings::ops;
 
@@ -191,11 +191,13 @@ fn server(name: &str) -> ServerName {
 fn registration(by: ConfigOrigin, name: &str, command: String) -> PendingLspServerReg {
     PendingLspServerReg {
         name: server(name),
-        command,
-        args: Vec::new(),
-        init_options: None,
-        settings: None,
-        env: Vec::new(),
+        config: LspServerConfig {
+            command,
+            args: Vec::new(),
+            init_options: None,
+            settings: None,
+            env: Vec::new(),
+        },
         origin: by,
     }
 }
@@ -466,6 +468,49 @@ fn a_hooks_language_read_back_ignores_a_write_the_editor_will_shadow() {
         .map(|e| e.text.as_str())
         .collect();
     assert_eq!(warnings, ["probe:la"]);
+}
+
+const PROBING_UNREGISTER: &str = r#"(register-hook! 'on-language-set
+  (lambda (pane lang)
+    (unregister-lsp-server! "srv")
+    (log! 'warn (if (lsp-server-registered? "srv") "probe:registered" "probe:gone"))))"#;
+
+/// A registration from one origin, then a hook from another unregisters it
+/// and asks whether it is registered in the same eval: the answer agrees
+/// with the rule and with what the registry holds once the eval applies.
+#[test]
+fn a_registration_read_back_agrees_with_the_registry_for_every_origin_pair() {
+    for held_by in ORIGINS {
+        for hook_by in [ConfigOrigin::Plugin, ConfigOrigin::User] {
+            let (init, plugin) = match hook_by {
+                ConfigOrigin::User => (PROBING_UNREGISTER, ""),
+                _ => (r#"(load-plugin! "user/tp")"#, PROBING_UNREGISTER),
+            };
+            let (mut ed, _fixture) = boot("", &[], init, plugin);
+            write_registration(&mut ed, held_by, 1);
+            let bid = ed.focused_buffer_id();
+
+            ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::User);
+            ed.settle();
+
+            let stays = winner(held_by, hook_by, OnTie::LaterWins) == 1;
+            let case = format!("held by {held_by:?}, unregistered by {hook_by:?}");
+            let warnings: Vec<&str> = ed
+                .state
+                .message_log
+                .entries()
+                .filter(|e| e.severity == Severity::Warning)
+                .map(|e| e.text.as_str())
+                .collect();
+            let probe = if stays {
+                "probe:registered"
+            } else {
+                "probe:gone"
+            };
+            assert_eq!(warnings, [probe], "{case}");
+            assert_eq!(read_registration(&ed).is_some(), stays, "{case}");
+        }
+    }
 }
 
 // ── A default list ranks below every explicit list ───────────────────────

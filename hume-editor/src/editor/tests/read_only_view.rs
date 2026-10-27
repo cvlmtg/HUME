@@ -147,7 +147,7 @@ fn insert_entry_beside_another_panes_insert_session_leaves_the_selection_in_plac
     live_host!(ed)
         .run_command_sync(
             "pane-vsplit",
-            hume_scripting::PaneHandle::with_pane(bid, pid_a),
+            hume_core::PaneHandle::with_pane(bid, pid_a),
             hume_scripting::host::NativeCall {
                 count: Some(1),
                 ..Default::default()

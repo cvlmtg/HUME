@@ -17,8 +17,7 @@ use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
 use crate::host::DisplayPathForm;
-use crate::types::PaneHandle;
-use hume_core::OnUnsaved;
+use hume_core::{OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────

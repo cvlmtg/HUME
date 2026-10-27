@@ -11,13 +11,13 @@
 //! value and a plain per-buffer key must stay two distinct kinds of thing,
 //! not the same value with its pane field cleared. Collapsing them would
 //! let a key masquerade as a pane-less handle anywhere a pane is expected,
-//! silently reintroducing the implicit-pane guessing this design exists to
-//! remove (see `types::PaneHandle`'s own doc).
+//! bringing back the implicit-pane guessing [`hume_core::PaneHandle`] exists
+//! to remove.
 //!
 //! Display uses the slotmap `as_ffi` u64 so that `(log! "info" pane)` prints
 //! something readable without revealing internal structure.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, PaneHandle};
 use hume_editing::text::TextVersion;
 use slotmap::Key as _;
 use steel::{
@@ -29,7 +29,7 @@ use hume_lsp::backend::ServerId;
 use hume_rope::offset::CharOffset;
 
 use crate::host::{JobHandle, SupersedeKey, TimerHandle};
-use crate::types::{PaneHandle, ServerName};
+use hume_core::ServerName;
 
 // ── Wrapper types ─────────────────────────────────────────────────────────────
 

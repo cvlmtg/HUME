@@ -463,11 +463,10 @@ impl EditorState {
         bid: BufferId,
         diagnostics: Vec<WireDiagnostic>,
     ) -> bool {
-        let admitted = self.buffer_positions.lsp.admits(
-            bid,
-            server_id,
-            hume_scripting::LspFeature::Diagnostics,
-        );
+        let admitted =
+            self.buffer_positions
+                .lsp
+                .admits(bid, server_id, hume_core::LspFeature::Diagnostics);
         if !admitted {
             let name = self.lsp_server_name(server_id);
             self.report(

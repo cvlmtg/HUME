@@ -9,7 +9,7 @@
 extern crate hume_editor as hume;
 
 use hume::testing::MockHost;
-use hume_core::{BindMode, BufferId};
+use hume_core::{BindMode, BufferId, PaneHandle};
 use hume_platform::dirs::Dirs;
 use hume_scripting::EvalWatchdog;
 use hume_scripting::*;

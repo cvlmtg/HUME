@@ -7,11 +7,13 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
+use hume_core::{LspFeature, PaneHandle, SERVER_REGISTRATION_TIE};
+
 use crate::types::{
-    CapabilityQuery, Effect, LspFeature, PaneHandle, Params, PendingLspNotify, PendingLspRequest,
-    PendingLspServerOp, RequestMode, RequestParams, RouteSpec, WhenUnavailable,
+    CapabilityQuery, Effect, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    RequestMode, RequestParams, RouteSpec, WhenUnavailable,
 };
-use crate::{Callback, SERVER_REGISTRATION_TIE, SteelCtx};
+use crate::{Callback, SteelCtx};
 
 use super::SteelResult;
 use super::args::{

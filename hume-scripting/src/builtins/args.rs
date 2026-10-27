@@ -17,13 +17,13 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
 use termina::event::KeyEvent;
 
-use hume_core::BufferId;
+use hume_core::{BufferId, HostToken, PaneHandle};
 use hume_platform::path::AbsolutePath;
 
 use crate::Rooted;
-use crate::host::{HostToken, JobHandle, SupersedeKey, TimerHandle};
+use crate::host::{JobHandle, SupersedeKey, TimerHandle, token_to_steel};
 use crate::keys::parse_key_sequence;
-use crate::types::{PaneHandle, Params};
+use crate::types::Params;
 
 use super::errors::generic_err;
 
@@ -222,7 +222,7 @@ pub(crate) fn optional_usize_arg(val: SteelVal, ctx_name: &str) -> Result<Option
 /// A widget opener's result: the new widget's token, or `#f` when the open
 /// was dropped.
 pub(crate) fn token_or_false(token: Option<HostToken>) -> SteelVal {
-    token.map_or(SteelVal::BoolV(false), HostToken::to_steel)
+    token.map_or(SteelVal::BoolV(false), token_to_steel)
 }
 
 /// `token_or_false`'s inverse: decodes a `token` argument naming a widget

@@ -67,7 +67,7 @@ pub(crate) fn make_bundle(
 /// queries.
 pub(crate) fn fixture_markdown() -> Arc<GrammarBundle> {
     let highlights = test_fixtures::grammar_query_path("markdown");
-    let injections = highlights.with_file_name("injections.scm");
+    let injections = highlights.with_file_name(OptionalQuery::Injections.file_name());
     test_fixtures::require_fixture_file(&injections, "markdown injections.scm");
     let read = |path: &std::path::Path| std::fs::read_to_string(path).expect("read markdown query");
     make_bundle(

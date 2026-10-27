@@ -1,7 +1,6 @@
-use hume_core::{BufferId, OnUnsaved, Severity};
+use hume_core::{BufferId, OnUnsaved, OptionInput, Severity};
 use hume_platform::io::FileMeta;
 use hume_platform::path::AbsolutePath;
-use hume_scripting::host::OptionInput;
 
 use super::super::Editor;
 use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS};
@@ -219,7 +218,7 @@ pub(in crate::editor) fn typed_set(
     _force: bool,
 ) -> Result<(), CommandError> {
     use crate::editor::settings::Scope;
-    use hume_scripting::host::{BufferIntrinsicOption, language_option_value};
+    use hume_core::{BufferIntrinsicOption, language_option_value};
 
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
@@ -243,7 +242,7 @@ pub(in crate::editor) fn typed_set(
     // `BufferOverrides`, so they have no `scope:` entry in
     // `settings::setting_scopes`. Checked here first, or they would fall
     // through to "unknown setting" below.
-    if let Some(opt) = BufferIntrinsicOption::from_key(key) {
+    if let Some(opt) = BufferIntrinsicOption::from_name(key) {
         if scope_str.parse::<Scope>() != Ok(Scope::Buffer) {
             return Err(CommandError::transient(format!(
                 "'{key}' is per-buffer: use ':set buffer {key}=<value>'"

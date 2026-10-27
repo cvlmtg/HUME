@@ -4,11 +4,13 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use hume_core::BufferId;
+use hume_core::{
+    BUFFER_LANGUAGE_TIE, BufferId, BufferIntrinsicOption, OptionInput, PaneHandle,
+    language_option_value,
+};
 
-use crate::host::{BufferIntrinsicOption, OptionInput, language_option_value};
-use crate::types::{Effect, PaneHandle, QueuedEffect};
-use crate::{BUFFER_LANGUAGE_TIE, SteelCtx};
+use crate::SteelCtx;
+use crate::types::{Effect, QueuedEffect};
 
 use super::SteelResult;
 use super::args::list_to_strings;
@@ -74,7 +76,7 @@ pub(crate) fn set_buffer_option(
     value: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    if key == BufferIntrinsicOption::Language.key() {
+    if key == BufferIntrinsicOption::Language.name() {
         let SteelVal::StringV(language) = value else {
             steel::stop!(TypeMismatch =>
                 "\"language\" must be a string, got {:?}", value);
@@ -123,7 +125,7 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// that may differ from the buffer whose language just changed), same
 /// reasoning as `set-buffer-option!`.
 pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, pane: PaneHandle, key: String) -> SteelResult {
-    if key == BufferIntrinsicOption::Language.key() {
+    if key == BufferIntrinsicOption::Language.name() {
         return Ok(SteelVal::StringV(
             effective_language(ctx, pane.buffer())
                 .unwrap_or_default()

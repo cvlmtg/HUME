@@ -1,97 +1,10 @@
-//! The LSP vocabulary scripting shares with the editor: server names and
-//! features, server registrations, request routing and params, and
-//! trigger-char sets.
+//! The LSP effects and queries a script hands the editor: server
+//! registrations and lifecycle ops, requests and their routing and params,
+//! and trigger-char sets.
 
-use hume_core::{BufferId, ConfigOrigin, PaneId, Tie};
-/// A server registration: a later write from one origin replaces the
-/// earlier, whether the editor applies it or a script reads it back before
-/// then.
-pub const SERVER_REGISTRATION_TIE: Tie = Tie::LaterWins;
-
-/// A language server's registration name: non-empty, no whitespace, so it
-/// reads unambiguously as a `:lsp-stop`/`:lsp-restart` argument.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ServerName(std::sync::Arc<str>);
-
-impl ServerName {
-    /// `Err` names what is wrong with `name`, for a builtin to prefix with
-    /// its own name.
-    pub fn parse(name: &str) -> Result<Self, String> {
-        if name.is_empty() {
-            return Err("server name is empty".to_string());
-        }
-        if name.chars().any(char::is_whitespace) {
-            return Err(format!("server name {name:?} contains whitespace"));
-        }
-        Ok(Self(std::sync::Arc::from(name)))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for ServerName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-/// One macro list generates [`LspFeature`], its wire-name table and
-/// [`LspFeature::ALL`], so the variants, the names and the full list cannot
-/// drift apart.
-macro_rules! lsp_features {
-    ($($variant:ident => $name:literal),+ $(,)?) => {
-        /// A language-server capability requests are routed by: Helix's
-        /// `language-servers` feature vocabulary, spelled the same way so a
-        /// Helix `only-features`/`except-features` list carries over verbatim.
-        /// Features HUME has no command for are still valid names.
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        pub enum LspFeature {
-            $($variant),+
-        }
-
-        impl LspFeature {
-            pub const ALL: [LspFeature; [$(LspFeature::$variant),+].len()] =
-                [$(LspFeature::$variant),+];
-
-            /// Every `(wire name, feature)` pair, the table a feature
-            /// argument is decoded through.
-            pub const NAMED: [(&'static str, LspFeature); [$(LspFeature::$variant),+].len()] =
-                [$(($name, LspFeature::$variant)),+];
-
-            pub fn name(self) -> &'static str {
-                match self {
-                    $(LspFeature::$variant => $name),+
-                }
-            }
-        }
-    };
-}
-
-lsp_features! {
-    Format => "format",
-    GotoDeclaration => "goto-declaration",
-    GotoDefinition => "goto-definition",
-    GotoTypeDefinition => "goto-type-definition",
-    GotoReference => "goto-reference",
-    GotoImplementation => "goto-implementation",
-    SignatureHelp => "signature-help",
-    Hover => "hover",
-    DocumentHighlight => "document-highlight",
-    Completion => "completion",
-    CodeAction => "code-action",
-    DocumentLinks => "document-links",
-    WorkspaceCommand => "workspace-command",
-    DocumentSymbols => "document-symbols",
-    WorkspaceSymbols => "workspace-symbols",
-    Diagnostics => "diagnostics",
-    PullDiagnostics => "pull-diagnostics",
-    RenameSymbol => "rename-symbol",
-    InlayHints => "inlay-hints",
-    DocumentColors => "document-colors",
-    CallHierarchy => "call-hierarchy",
-}
+use hume_core::{
+    BufferId, ConfigOrigin, ListEntry, ListTier, LspFeature, LspServerConfig, PaneId, ServerName,
+};
 
 /// What `(lsp-capability …)` asks a server for: the capability of a feature,
 /// or the one a request method needs.
@@ -101,87 +14,16 @@ pub enum CapabilityQuery<'a> {
     Method(&'a str),
 }
 
-/// A set of [`LspFeature`]s, one bit per variant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct LspFeatureSet(u32);
-
-impl LspFeatureSet {
-    pub fn insert(&mut self, feature: LspFeature) {
-        self.0 |= 1 << feature as u32;
-    }
-
-    pub fn contains(self, feature: LspFeature) -> bool {
-        self.0 & (1 << feature as u32) != 0
-    }
-
-    /// Members in [`LspFeature::ALL`] order.
-    pub fn iter(self) -> impl Iterator<Item = LspFeature> {
-        LspFeature::ALL
-            .into_iter()
-            .filter(move |f| self.contains(*f))
-    }
-}
-
-impl FromIterator<LspFeature> for LspFeatureSet {
-    fn from_iter<I: IntoIterator<Item = LspFeature>>(iter: I) -> Self {
-        let mut set = Self::default();
-        for feature in iter {
-            set.insert(feature);
-        }
-        set
-    }
-}
-
-/// Which features a server may be asked for within one language's server
-/// list: Helix's `only-features`/`except-features`, or neither.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FeatureFilter {
-    All,
-    Only(LspFeatureSet),
-    Except(LspFeatureSet),
-}
-
-impl FeatureFilter {
-    pub fn admits(self, feature: LspFeature) -> bool {
-        match self {
-            FeatureFilter::All => true,
-            FeatureFilter::Only(set) => set.contains(feature),
-            FeatureFilter::Except(set) => !set.contains(feature),
-        }
-    }
-}
-
-/// One entry of a language's ordered server list.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ListEntry {
-    pub name: ServerName,
-    pub filter: FeatureFilter,
-}
-
-/// Which of a language's server lists a write sets. A default list ranks
-/// below every explicit list, whatever the origins of the two.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ListTier {
-    Explicit,
-    Default,
-}
-
 /// One `(register-lsp-server! …)` call queued for the end-of-eval drain.
 ///
-/// `init_options`/`settings` are decoded at the Steel boundary via
+/// `config`'s `init_options`/`settings` are decoded at the Steel boundary via
 /// `crate::json::steel_to_params`: Steel data structures in, real JSON out.
 #[derive(Debug)]
 pub struct PendingLspServerReg {
     /// The registration's identity: re-registering a name replaces its
     /// config, and `unregister-lsp-server!`/`lsp-stop!`/`lsp-restart!` name it.
     pub name: ServerName,
-    pub command: String,
-    pub args: Vec<String>,
-    pub init_options: Option<serde_json::Value>,
-    pub settings: Option<serde_json::Value>,
-    /// `#:env`: extra environment variables applied additively (never
-    /// clearing the inherited environment) when the server process spawns.
-    pub env: Vec<(String, String)>,
+    pub config: LspServerConfig,
     /// Whose code registered it: a registration never replaces one from a
     /// higher origin ([`ConfigOrigin::rank`]).
     pub origin: ConfigOrigin,
@@ -245,15 +87,6 @@ pub struct LspServerStatusEntry {
     pub state: hume_lsp::client::ServerState,
     pub pending: usize,
     pub encoding: hume_rope::position_encoding::PositionEncoding,
-}
-
-/// Which listeners a trigger-char set is for: `on-trigger-char` hooks named
-/// by the source, or the completion source of that name, which a typed
-/// character invokes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TriggerKind {
-    Hook,
-    Completion,
 }
 
 /// Where a trigger-char set applies: the buffers of a language, or one

@@ -4,10 +4,12 @@
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
 
-use crate::types::{
-    Effect, FeatureFilter, ListEntry, ListTier, LspFeature, LspFeatureSet, LspServerTarget,
-    PaneHandle, PendingLspServerOp, ServerName,
+use hume_core::{
+    FeatureFilter, ListEntry, ListTier, LspFeature, LspFeatureSet, LspServerConfig, PaneHandle,
+    ServerName,
 };
+
+use crate::types::{Effect, LspServerTarget, PendingLspServerOp};
 use crate::{PendingLspServerReg, SteelCtx};
 
 use crate::builtins::SteelResult;
@@ -65,11 +67,13 @@ pub(crate) fn register_lsp_server(
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Register(
         PendingLspServerReg {
             name,
-            command,
-            args,
-            init_options,
-            settings,
-            env,
+            config: LspServerConfig {
+                command,
+                args,
+                init_options,
+                settings,
+                env,
+            },
             origin,
         },
     )));
@@ -299,7 +303,7 @@ impl BuiltinArg for LspTargetArg {
             LspTargetArg::Buffer(pane) => Ok(crate::types::LspServerTarget::Buffer(
                 pane.resolve(ctx, arg)?.buffer(),
             )),
-            LspTargetArg::Name(server) => crate::types::ServerName::parse(&server)
+            LspTargetArg::Name(server) => hume_core::ServerName::parse(&server)
                 .map(crate::types::LspServerTarget::Name)
                 .map_err(|e| generic_err(format!("{arg}: {e}"))),
         }

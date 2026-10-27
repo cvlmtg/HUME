@@ -19,9 +19,8 @@
 //! `pub(in crate::editor::settings)`, reachable from exactly this module and
 //! `settings::tests`, rather than from every file under `crate::editor`.
 
-use hume_core::{BufferId, ConfigOrigin};
+use hume_core::{BufferId, BufferIntrinsicOption, ConfigOrigin, OptionInput};
 use hume_engine::pipeline::EngineView;
-use hume_scripting::host::{BufferIntrinsicOption, OptionInput};
 
 use super::{ResyncKey, THEME_KEY, parse_setting_text, resync_key};
 use crate::editor::EditorState;
@@ -161,7 +160,7 @@ pub(in crate::editor) fn apply_buffer(
     value: &OptionInput,
     by: ConfigOrigin,
 ) -> Result<(), String> {
-    if key == BufferIntrinsicOption::LineEnding.key() {
+    if key == BufferIntrinsicOption::LineEnding.name() {
         return set_line_ending(
             state,
             bid,
@@ -183,7 +182,7 @@ pub(in crate::editor) fn set_line_ending(
     value: &str,
     by: ConfigOrigin,
 ) -> Result<(), String> {
-    let key = BufferIntrinsicOption::LineEnding.key();
+    let key = BufferIntrinsicOption::LineEnding.name();
     let line_ending = parse_setting_text(key, value)?;
     if !state
         .buffers

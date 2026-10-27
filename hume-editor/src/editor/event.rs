@@ -4,10 +4,10 @@
 //! compiles in this type, only the `&str` names and `SteelVal` args produced
 //! here (see `hume_scripting::host::EventHost`).
 
-use hume_core::BufferId;
+use hume_core::{BufferId, PaneHandle};
 use hume_scripting::host::OptionValue;
 use hume_scripting::json::JsonHandle;
-use hume_scripting::{PaneHandle, ServerRef, SteelPane};
+use hume_scripting::{ServerRef, SteelPane};
 use steel::rvals::SteelVal;
 
 use super::Mode;

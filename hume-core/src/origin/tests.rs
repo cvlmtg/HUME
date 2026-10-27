@@ -32,61 +32,53 @@ fn expected(held: Option<ConfigOrigin>, by: ConfigOrigin, tie: Tie) -> WriteOutc
     }
 }
 
-fn held_cases() -> impl Iterator<Item = Option<ConfigOrigin>> {
-    std::iter::once(None).chain(ORIGINS.into_iter().map(Some))
+/// Every held origin (or none), writing origin and tie.
+fn cases() -> impl Iterator<Item = (Option<ConfigOrigin>, ConfigOrigin, Tie)> {
+    std::iter::once(None)
+        .chain(ORIGINS.into_iter().map(Some))
+        .flat_map(|held| ORIGINS.into_iter().map(move |by| (held, by)))
+        .flat_map(|(held, by)| [Tie::FirstWins, Tie::LaterWins].map(|tie| (held, by, tie)))
 }
 
 #[test]
 fn rank_follows_the_rule_for_every_pair_and_tie() {
-    for held in held_cases() {
-        for by in ORIGINS {
-            for tie in [Tie::FirstWins, Tie::LaterWins] {
-                assert_eq!(
-                    by.rank(held, tie),
-                    expected(held, by, tie),
-                    "{held:?} {by:?} {tie:?}"
-                );
-            }
-        }
+    for (held, by, tie) in cases() {
+        assert_eq!(
+            by.rank(held, tie),
+            expected(held, by, tie),
+            "{held:?} {by:?} {tie:?}"
+        );
     }
 }
 
 #[test]
 fn claim_records_the_origin_only_when_the_write_applies() {
-    for held in held_cases() {
-        for by in ORIGINS {
-            for tie in [Tie::FirstWins, Tie::LaterWins] {
-                let mut slot = held;
+    for (held, by, tie) in cases() {
+        let mut slot = held;
 
-                let outcome = by.claim(&mut slot, tie);
+        let outcome = by.claim(&mut slot, tie);
 
-                let want = expected(held, by, tie);
-                assert_eq!(outcome, want);
-                assert_eq!(slot, if want.is_applied() { Some(by) } else { held });
-            }
-        }
+        let want = expected(held, by, tie);
+        assert_eq!(outcome, want);
+        assert_eq!(slot, if want.is_applied() { Some(by) } else { held });
     }
 }
 
 #[test]
 fn ranked_write_replaces_the_value_with_its_origin_only_when_it_applies() {
-    for held in held_cases() {
-        for by in ORIGINS {
-            for tie in [Tie::FirstWins, Tie::LaterWins] {
-                let mut slot = held.map(|by| Ranked { value: "old", by });
+    for (held, by, tie) in cases() {
+        let mut slot = held.map(|by| Ranked { value: "old", by });
 
-                let outcome = Ranked::write(&mut slot, "new", by, tie);
+        let outcome = Ranked::write(&mut slot, "new", by, tie);
 
-                let want = expected(held, by, tie);
-                assert_eq!(outcome, want);
-                let (value, origin) = match want.is_applied() {
-                    true => ("new", Some(by)),
-                    false => ("old", held),
-                };
-                assert_eq!(slot.as_ref().map(|r| r.by), origin);
-                assert_eq!(slot.as_ref().map(|r| r.value), origin.map(|_| value));
-            }
-        }
+        let want = expected(held, by, tie);
+        assert_eq!(outcome, want);
+        let (value, origin) = match want.is_applied() {
+            true => ("new", Some(by)),
+            false => ("old", held),
+        };
+        assert_eq!(slot.as_ref().map(|r| r.by), origin);
+        assert_eq!(slot.as_ref().map(|r| r.value), origin.map(|_| value));
     }
 }
 

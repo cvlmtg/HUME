@@ -434,7 +434,7 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
 /// there to open a minibuffer session, then closes that pane through the
 /// command path a hook or timer would use. Returns the surviving pane.
 fn close_pane_under_open_session(ed: &mut Editor, keys: &str) -> PaneId {
-    use hume_scripting::PaneHandle;
+    use hume_core::PaneHandle;
     use hume_scripting::host::CommandHost;
 
     let bid = ed.focused_buffer_id();

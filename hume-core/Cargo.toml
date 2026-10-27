@@ -10,4 +10,5 @@ test-util = []
 
 [dependencies]
 globset = "0.4"
+serde_json.workspace = true
 slotmap = "1"

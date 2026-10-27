@@ -4,11 +4,10 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_core::{BindMode, BufferId};
+use hume_core::{BindMode, BufferId, MAX_COUNT};
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
-use hume_scripting::host::MAX_COUNT;
 
 use super::super::commands::cmd_clear_search;
 use super::super::error::CommandError;
@@ -197,7 +196,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // trie (unbound by default; core:vim-keybind binds it to goto-line-start).
     // `Q1`/`q1` read `1` as a register name: the char layer above this
     // handler takes the key before it gets here.
-    // Clamped to MAX_COUNT; see its doc comment for why.
+    // Clamped to MAX_COUNT.
     if ed.state.pending.keys().is_empty() && key.modifiers == Modifiers::NONE {
         match key.code {
             KeyCode::Char(d @ '0'..='9') if d != '0' || ed.state.count.is_some() => {

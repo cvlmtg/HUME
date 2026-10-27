@@ -4,16 +4,16 @@
 //! buffer some server tracks, and a buffer's queue goes when its last
 //! attachment does. Attachments change only through `attach.rs`.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, FeatureFilter, LspFeature};
 use hume_editing::changeset::ChangeSet;
 use hume_editing::edit::TextChange;
 use hume_editing::text::TextVersion;
 use hume_lsp::backend::ServerId;
-use hume_scripting::{FeatureFilter, LspFeature};
 use ropey::Rope;
 use slotmap::SecondaryMap;
 
-use crate::editor::triggers::{Listener, TriggerTable};
+use crate::editor::triggers::TriggerTable;
+use hume_core::TriggerListener;
 
 /// One server a buffer is attached to, with the features its language's
 /// list lets that server handle for it, and the trigger characters plugins
@@ -203,7 +203,7 @@ impl LspDocuments {
         &mut self,
         bid: BufferId,
         sid: ServerId,
-        listener: Listener,
+        listener: TriggerListener,
         chars: Vec<char>,
     ) {
         if let Some(att) = self.attachment_mut(bid, sid) {

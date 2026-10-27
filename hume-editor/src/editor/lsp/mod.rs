@@ -25,7 +25,7 @@ use std::time::Instant;
 
 use rustc_hash::FxHashSet;
 
-use hume_core::{BufferId, PaneId};
+use hume_core::{BufferId, PaneId, ServerName};
 use hume_editing::text::TextVersion;
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
 use hume_lsp::client::{LspClient, RequestMeta, ServerState};
@@ -34,7 +34,6 @@ use hume_lsp::codec::RequestId;
 use hume_lsp::inline::InlineLspBackend;
 use hume_platform::wake::WakeCallback;
 use hume_rope::position_encoding::PositionEncoding;
-use hume_scripting::ServerName;
 
 use super::Editor;
 use super::async_source::AsyncSource;
@@ -241,8 +240,8 @@ impl LspState {
 
     /// The config `name` is registered with, or `None` if it is not.
     #[cfg(test)]
-    fn config_for_test(&self, name: &str) -> Option<&registry::LspServerConfig> {
-        let name = hume_scripting::ServerName::parse(name).ok()?;
+    fn config_for_test(&self, name: &str) -> Option<&hume_core::LspServerConfig> {
+        let name = hume_core::ServerName::parse(name).ok()?;
         self.registry.get(&name)
     }
 

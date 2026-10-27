@@ -207,7 +207,7 @@ fn diff_words_drops_equal_runs() {
 fn diff_buffer_lines_reports_an_unsupported_host() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let pane = crate::types::PaneHandle::buffer_only(hume_core::BufferId::default());
+    let pane = hume_core::PaneHandle::buffer_only(hume_core::BufferId::default());
     let result = diff_buffer_lines(&mut ctx, pane, SteelVal::StringV("a\n".into()));
     assert!(result.is_err());
     assert!(

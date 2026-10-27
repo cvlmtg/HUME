@@ -139,16 +139,15 @@ impl Editor {
                 }
                 Effect::RegisterCompletionSource(reg) => self.register_completion_source(reg),
                 Effect::SetTriggers {
-                    kind,
-                    source,
+                    listener,
                     scope,
                     chars,
                 } => {
                     // Checked at apply time, not by the builtin that queued
                     // this effect: an earlier effect in the same batch may
-                    // have just registered `source`, so whether it exists
+                    // have just registered the source, so whether it exists
                     // can't be known any sooner than this.
-                    let applied = self.state.set_triggers(kind, source, scope, chars);
+                    let applied = self.state.set_triggers(listener, scope, chars);
                     if let Err(e) = applied {
                         self.report(Severity::Error, e);
                     }

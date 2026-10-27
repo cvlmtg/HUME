@@ -15,7 +15,7 @@
 //! already focused.
 
 use super::*;
-use hume_scripting::PaneHandle;
+use hume_core::PaneHandle;
 use hume_scripting::host::NativeCall;
 use hume_scripting::host::{BufferHost, CommandHost, EditHost};
 use pretty_assertions::assert_eq;

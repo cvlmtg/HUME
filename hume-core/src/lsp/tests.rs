@@ -25,11 +25,3 @@ fn feature_filter_only_and_except_admit_inversely() {
         assert!(FeatureFilter::All.admits(feature));
     }
 }
-
-#[test]
-fn feature_names_round_trip_through_the_table() {
-    assert_eq!(LspFeature::ALL.len(), 21);
-    for (name, feature) in LspFeature::NAMED {
-        assert_eq!(feature.name(), name);
-    }
-}

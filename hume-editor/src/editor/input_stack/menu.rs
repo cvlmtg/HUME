@@ -2,9 +2,9 @@
 
 use termina::event::KeyCode;
 
+use hume_core::{HostToken, NonEmpty};
 use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::types::EditorMode;
-use hume_scripting::host::{HostToken, NonEmpty};
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::replay::{Answer, Choice, InputOpener, PendingAnswer, WaitingInput};

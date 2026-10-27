@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use crate::is_space_char;
+use crate::{NonEmpty, is_space_char};
 
 /// Why a token list was rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,13 +54,11 @@ fn check_token(token: &str) -> Result<(), CommentTokenError> {
 /// The tokens that start a line comment. The first is the one written; any
 /// of them marks a line as commented.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LineCommentTokens(Vec<String>);
+pub struct LineCommentTokens(NonEmpty<String>);
 
 impl LineCommentTokens {
     pub fn new(tokens: Vec<String>) -> Result<Self, CommentTokenError> {
-        if tokens.is_empty() {
-            return Err(CommentTokenError::Empty);
-        }
+        let tokens = NonEmpty::new(tokens).ok_or(CommentTokenError::Empty)?;
         tokens.iter().try_for_each(|t| check_token(t))?;
         Ok(Self(tokens))
     }
@@ -74,7 +72,7 @@ impl LineCommentTokens {
 
     /// The token written when commenting.
     pub fn primary(&self) -> &str {
-        &self.0[0]
+        self.0.first()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &str> {
@@ -102,22 +100,21 @@ impl BlockCommentPair {
 /// The block comment pairs of a language. The first is the one written; any
 /// of them marks a span as commented.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlockCommentTokens(Vec<BlockCommentPair>);
+pub struct BlockCommentTokens(NonEmpty<BlockCommentPair>);
 
 impl BlockCommentTokens {
     pub fn new(pairs: Vec<(String, String)>) -> Result<Self, CommentTokenError> {
-        if pairs.is_empty() {
-            return Err(CommentTokenError::Empty);
-        }
-        pairs
+        let pairs = pairs
             .into_iter()
             .map(|(start, end)| {
                 check_token(&start)?;
                 check_token(&end)?;
                 Ok(BlockCommentPair { start, end })
             })
-            .collect::<Result<_, _>>()
+            .collect::<Result<_, _>>()?;
+        NonEmpty::new(pairs)
             .map(Self)
+            .ok_or(CommentTokenError::Empty)
     }
 
     /// Pairs a test spells as literals. Panics on an invalid one.
@@ -134,7 +131,7 @@ impl BlockCommentTokens {
 
     /// The pair written when commenting.
     pub fn primary(&self) -> &BlockCommentPair {
-        &self.0[0]
+        self.0.first()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &BlockCommentPair> {

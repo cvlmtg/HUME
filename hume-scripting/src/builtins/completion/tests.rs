@@ -201,16 +201,17 @@ fn set_trigger_chars_queues_an_effect_with_the_decoded_fields() {
     let effects = effects(&h);
     assert_eq!(effects.len(), 1);
     let Effect::SetTriggers {
-        kind,
-        source,
+        listener,
         scope,
         chars,
     } = effects[0]
     else {
         panic!("expected SetTriggers, got {:?}", effects[0]);
     };
-    assert_eq!(kind, &crate::types::TriggerKind::Completion);
-    assert_eq!(source, "src");
+    assert_eq!(
+        listener,
+        &hume_core::TriggerListener::Completion("src".into())
+    );
     assert_eq!(
         scope,
         &crate::types::TriggerScope::Language("rust".to_string())
@@ -224,7 +225,7 @@ fn set_attachment_completion_triggers_queues_an_attachment_scope() {
     let mut ctx = h.ctx();
     let server = crate::ServerRef {
         id: hume_lsp::backend::ServerId(4),
-        name: crate::ServerName::parse("ra-lint").unwrap(),
+        name: hume_core::ServerName::parse("ra-lint").unwrap(),
     };
     let pane = crate::test_support::default_pane();
     set_attachment_completion_triggers(
@@ -246,7 +247,7 @@ fn set_attachment_completion_triggers_queues_an_attachment_scope() {
         &crate::types::TriggerScope::Attachment {
             buffer: pane.buffer(),
             server: hume_lsp::backend::ServerId(4),
-            feature: crate::LspFeature::Completion,
+            feature: hume_core::LspFeature::Completion,
         }
     );
 }
@@ -287,7 +288,7 @@ fn an_attachment_feature_that_is_not_a_feature_raises() {
     let mut ctx = h.ctx();
     let server = crate::ServerRef {
         id: hume_lsp::backend::ServerId(4),
-        name: crate::ServerName::parse("ra-lint").unwrap(),
+        name: hume_core::ServerName::parse("ra-lint").unwrap(),
     };
     let err = set_attachment_hook_triggers(
         &mut ctx,
@@ -385,16 +386,14 @@ fn set_hook_triggers_queues_a_hook_kind_effect() {
     drop(ctx);
     let effects = effects(&h);
     let Effect::SetTriggers {
-        kind,
-        source,
+        listener,
         scope,
         chars,
     } = effects[0]
     else {
         panic!("expected SetTriggers, got {:?}", effects[0]);
     };
-    assert_eq!(kind, &crate::types::TriggerKind::Hook);
-    assert_eq!(source, "sig");
+    assert_eq!(listener, &hume_core::TriggerListener::Hook("sig".into()));
     assert_eq!(
         scope,
         &crate::types::TriggerScope::Language("rust".to_string())

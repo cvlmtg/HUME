@@ -3,11 +3,8 @@ use super::*;
 use crate::json::JsonHandle;
 use crate::null_host::EmptyLspHost;
 use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane};
-use crate::types::{
-    FeatureFilter, ListEntry, ListTier, LspServerTarget, RequestMode, RequestParams, RouteSpec,
-    ServerName, WhenUnavailable,
-};
-use hume_core::ConfigOrigin;
+use crate::types::{LspServerTarget, RequestMode, RequestParams, RouteSpec, WhenUnavailable};
+use hume_core::{ConfigOrigin, FeatureFilter, ListEntry, ListTier, LspServerConfig, ServerName};
 use hume_platform::dirs::Dirs;
 use hume_rope::position_encoding::PositionEncoding;
 use steel::HashMap as SteelHashMap;
@@ -94,14 +91,14 @@ fn queues_a_pending_registration_in_init_mode() {
     drop(ctx);
     let reg = expect_register(&h);
     assert_eq!(reg.name.as_str(), "rust-analyzer");
-    assert_eq!(reg.command, "rust-analyzer");
-    assert_eq!(reg.init_options, None);
-    assert_eq!(reg.settings, None);
-    assert_eq!(reg.env, Vec::<(String, String)>::new());
+    assert_eq!(reg.config.command, "rust-analyzer");
+    assert_eq!(reg.config.init_options, None);
+    assert_eq!(reg.config.settings, None);
+    assert_eq!(reg.config.env, Vec::<(String, String)>::new());
 }
 
 /// `#:env` decodes a list of `("KEY" . "VALUE")` dotted pairs into
-/// `PendingLspServerReg.env`, the wire shape `steel-server/plugin.scm`
+/// `PendingLspServerReg.config.env`, the wire shape `steel-server/plugin.scm`
 /// uses to point `STEEL_LSP_HOME` at the generated host-globals file.
 #[test]
 fn decodes_env_dotted_pairs() {
@@ -126,7 +123,7 @@ fn decodes_env_dotted_pairs() {
     drop(ctx);
     let reg = expect_register(&h);
     assert_eq!(
-        reg.env,
+        reg.config.env,
         vec![("STEEL_LSP_HOME".to_string(), "/tmp/lsp-home".to_string())]
     );
 }
@@ -155,8 +152,8 @@ fn decodes_steel_hashmap_blobs_to_json() {
     assert!(result.is_ok());
     drop(ctx);
     let reg = expect_register(&h);
-    assert_eq!(reg.init_options, Some(serde_json::json!({"a": 1})));
-    assert_eq!(reg.settings, Some(serde_json::json!({"b": 2})));
+    assert_eq!(reg.config.init_options, Some(serde_json::json!({"a": 1})));
+    assert_eq!(reg.config.settings, Some(serde_json::json!({"b": 2})));
 }
 
 /// `register-lsp-server!` must queue successfully from a plain
@@ -280,7 +277,7 @@ fn register_unregister_register_ordering_is_preserved() {
     assert_eq!(ops.len(), 3);
     assert!(matches!(
         ops[0],
-        PendingLspServerOp::Register(reg) if reg.args.is_empty()
+        PendingLspServerOp::Register(reg) if reg.config.args.is_empty()
     ));
     assert!(matches!(
         ops[1],
@@ -288,7 +285,7 @@ fn register_unregister_register_ordering_is_preserved() {
     ));
     assert!(matches!(
         ops[2],
-        PendingLspServerOp::Register(reg) if reg.args == vec!["--new-flag".to_string()]
+        PendingLspServerOp::Register(reg) if reg.config.args == vec!["--new-flag".to_string()]
     ));
 }
 
@@ -392,11 +389,13 @@ fn pending_register(name: &str) -> Effect {
 fn pending_register_by(name: &str, origin: hume_core::ConfigOrigin) -> Effect {
     Effect::LspServerOp(PendingLspServerOp::Register(crate::PendingLspServerReg {
         name: server_name(name),
-        command: "rust-analyzer".to_string(),
-        args: Vec::new(),
-        init_options: None,
-        settings: None,
-        env: Vec::new(),
+        config: LspServerConfig {
+            command: "rust-analyzer".to_string(),
+            args: Vec::new(),
+            init_options: None,
+            settings: None,
+            env: Vec::new(),
+        },
         origin,
     }))
 }

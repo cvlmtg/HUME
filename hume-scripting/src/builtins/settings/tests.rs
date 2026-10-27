@@ -1,7 +1,7 @@
 use super::*;
-use crate::host::{OptionInput, OptionValue, StoredLanguage};
+use crate::host::{OptionValue, StoredLanguage};
 use crate::test_support::{SteelCtxTestHarness, default_pane};
-use hume_core::{BufferId, ConfigOrigin, OnUnsaved};
+use hume_core::{BufferId, ConfigOrigin, OnUnsaved, OptionInput};
 use steel::rvals::IntoSteelVal as _;
 
 /// `set-option!` is registered `open` (`builtins/mod.rs`): no eval-mode
@@ -53,7 +53,7 @@ fn a_list_value_is_forwarded_as_words() {
             .unwrap();
         set_buffer_option(
             &mut ctx,
-            crate::types::PaneHandle::buffer_only(target),
+            hume_core::PaneHandle::buffer_only(target),
             "shell".into(),
             list,
         )
@@ -300,19 +300,19 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_ids(&self) -> Vec<BufferId> {
         Vec::new()
     }
-    fn panes(&self) -> Vec<crate::types::PaneHandle> {
+    fn panes(&self) -> Vec<hume_core::PaneHandle> {
         Vec::new()
     }
-    fn focused_pane(&self) -> crate::types::PaneHandle {
+    fn focused_pane(&self) -> hume_core::PaneHandle {
         self.inner.focused_pane()
     }
-    fn buffer_panes(&self, pane: crate::types::PaneHandle) -> Vec<crate::types::PaneHandle> {
+    fn buffer_panes(&self, pane: hume_core::PaneHandle) -> Vec<hume_core::PaneHandle> {
         self.inner.buffer_panes(pane)
     }
-    fn require_focused_pane(&self, pane: crate::types::PaneHandle) -> Result<(), String> {
+    fn require_focused_pane(&self, pane: hume_core::PaneHandle) -> Result<(), String> {
         self.inner.require_focused_pane(pane)
     }
-    fn pane_live(&self, pane: crate::types::PaneHandle) -> bool {
+    fn pane_live(&self, pane: hume_core::PaneHandle) -> bool {
         self.inner.pane_live(pane)
     }
     fn buffer_exists(&self, _id: BufferId) -> bool {
@@ -360,14 +360,14 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     }
     fn switch_to_buffer(
         &mut self,
-        pane: crate::types::PaneHandle,
+        pane: hume_core::PaneHandle,
         target: BufferId,
     ) -> Result<(), String> {
         self.inner.switch_to_buffer(pane, target)
     }
     fn show_read_only_buffer(
         &mut self,
-        pane: crate::types::PaneHandle,
+        pane: hume_core::PaneHandle,
         name: &str,
         text: &str,
     ) -> Result<(), String> {
@@ -404,7 +404,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     }
     fn viewport_range(
         &mut self,
-        pane: crate::types::PaneHandle,
+        pane: hume_core::PaneHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
         self.inner.viewport_range(pane)
     }
@@ -452,7 +452,7 @@ fn set_buffer_option_reaches_host() {
     let mut ctx = h.ctx_with_host(&mut host);
     let result = set_buffer_option(
         &mut ctx,
-        crate::types::PaneHandle::buffer_only(target),
+        hume_core::PaneHandle::buffer_only(target),
         "indent-width".into(),
         SteelVal::IntV(8),
     );
@@ -477,7 +477,7 @@ fn set_buffer_option_refuses_a_symbol_value() {
     let mut ctx = h.ctx_with_host(&mut host);
     let err = set_buffer_option(
         &mut ctx,
-        crate::types::PaneHandle::buffer_only(target),
+        hume_core::PaneHandle::buffer_only(target),
         "indent-style".into(),
         SteelVal::SymbolV("soft".into()),
     )
@@ -515,7 +515,7 @@ fn option_writes_carry_the_callers_origin() {
 
     let mut h = SteelCtxTestHarness::new();
     let mut host = RecordingBufferOptionHost::default();
-    let pane = crate::types::PaneHandle::buffer_only(BufferId::default());
+    let pane = hume_core::PaneHandle::buffer_only(BufferId::default());
     let write = |ctx: &mut SteelCtx| {
         set_option(ctx, "indent-width".into(), SteelVal::IntV(2)).expect("global write");
         set_buffer_option(ctx, pane, "indent-width".into(), SteelVal::IntV(2))

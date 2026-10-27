@@ -27,10 +27,9 @@ mod ui;
 pub(crate) use async_process::exit_code_value;
 pub use async_process::{AsyncProcessHost, JobHandle, async_callback_args, names_callback_args};
 pub use buffers::{BufferHost, DisplayPathForm, StoredLanguage, UndoNode};
-pub use commands::{CommandArg, CommandHost, MAX_COUNT, NativeCall};
+pub use commands::{CommandHost, NativeCall};
 pub use completion::{
-    AnswerEnd, CompletionHost, CompletionSourceTarget, EmittedWord, FirstTab, NamedPrefix,
-    PendingCompletionSource,
+    CompletionHost, CompletionSourceTarget, EmittedWord, PendingCompletionSource,
 };
 pub use cursor::{CursorHost, SelectionInfo};
 pub use decorations::{DecorationHost, DiagnosticEntry};
@@ -44,14 +43,11 @@ pub use lsp::{
 };
 pub use output::{ClaimRefused, OutputHost};
 pub use registers::RegisterHost;
-pub use settings::{
-    BufferIntrinsicOption, OptionInput, OptionValue, SettingsHost, language_option_value,
-};
+pub use settings::{OptionValue, SettingsHost};
 pub use timers::{TimerHandle, TimerHost};
-pub use token::{HostToken, TrackedFate, TrackedHold};
+pub use token::{TrackedFate, TrackedHold, token_to_steel};
 pub use ui::{
-    DrawerItems, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
-    UiHost,
+    DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
 };
 
 /// Which keymap a bind or unbind changes: the global one, or the keymap a

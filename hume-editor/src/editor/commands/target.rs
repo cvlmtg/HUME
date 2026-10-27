@@ -1,9 +1,8 @@
 //! The pane a native command or pane-taking builtin acts through, and the
 //! focused pane as a type of its own.
 
-use hume_core::{BufferId, PaneId};
+use hume_core::{BufferId, PaneHandle, PaneId};
 use hume_engine::pipeline::EngineView;
-use hume_scripting::PaneHandle;
 
 use crate::editor::EditorState;
 use crate::editor::pane_state::{PaneBufferState, PaneEntries};

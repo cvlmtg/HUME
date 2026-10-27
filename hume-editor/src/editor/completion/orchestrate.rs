@@ -14,11 +14,11 @@
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
 //! called again as the user types.
 
-use hume_core::{BufferId, PaneId, Severity};
+use hume_core::{AnswerEnd, BufferId, PaneId, Severity};
 use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 use hume_scripting::SteelCall;
-use hume_scripting::host::{AnswerEnd, EmittedWord};
+use hume_scripting::host::EmittedWord;
 use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
@@ -582,7 +582,7 @@ fn invoke_buffer_sources(
     let buf = buffers.get(bid);
     let text = buf.text();
     let word_chars = buf.overrides.word_chars(settings);
-    let pane = hume_scripting::PaneHandle::with_pane(bid, pid);
+    let pane = hume_core::PaneHandle::with_pane(bid, pid);
     ids.iter()
         .map(|&id| {
             let entry = sources.buffer_get(id);

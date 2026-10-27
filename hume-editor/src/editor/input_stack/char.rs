@@ -14,10 +14,10 @@
 
 use std::collections::VecDeque;
 
+use hume_core::CommandArg;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
-use hume_scripting::host::CommandArg;
 use steel::rvals::SteelVal;
 use termina::event::{KeyCode, Modifiers, MouseEventKind};
 

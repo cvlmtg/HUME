@@ -274,7 +274,7 @@ fn query_files_get_returns_what_with_stored_per_kind() {
     }
 
     for kind in OptionalQuery::ALL {
-        let path = format!("{}-path", kind.key());
+        let path = format!("{}-path", kind.name());
         let files = QueryFiles::new("hl.scm".into()).with(kind, path.clone().into());
         assert_eq!(files.get(kind), Some(Path::new(&path)));
         for other in OptionalQuery::ALL.into_iter().filter(|&k| k != kind) {

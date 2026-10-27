@@ -134,7 +134,7 @@ fn lsp_stop_completes_a_superseding_delivery() {
 
     ed.apply_lsp_server_op(hume_scripting::PendingLspServerOp::Stop {
         target: hume_scripting::LspServerTarget::Name(
-            hume_scripting::ServerName::parse("rust-analyzer").unwrap(),
+            hume_core::ServerName::parse("rust-analyzer").unwrap(),
         ),
     });
 

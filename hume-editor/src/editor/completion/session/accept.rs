@@ -92,7 +92,7 @@ impl BufferSession {
             }
         };
         state.queue_event(EditorEvent::OnCompletionAccept {
-            target: hume_scripting::PaneHandle::with_pane(bid, pid),
+            target: hume_core::PaneHandle::with_pane(bid, pid),
             item: hook_item,
         });
 

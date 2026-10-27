@@ -5,27 +5,11 @@
 
 use std::path::{Path, PathBuf};
 
-use hume_core::{ByOrigin, ConfigOrigin, Ranked};
-use hume_scripting::{FeatureFilter, ListEntry, ListTier, SERVER_REGISTRATION_TIE, ServerName};
+use hume_core::{
+    ByOrigin, ConfigOrigin, FeatureFilter, ListEntry, ListTier, LspServerConfig, Ranked,
+    SERVER_REGISTRATION_TIE, ServerName,
+};
 use rustc_hash::FxHashMap;
-
-/// The process a `register-lsp-server!` call spawns and configures.
-#[derive(Debug, Clone, PartialEq)]
-pub(in crate::editor::lsp) struct LspServerConfig {
-    pub(in crate::editor) command: String,
-    pub(in crate::editor) args: Vec<String>,
-    /// Sent verbatim as `initializationOptions` in the `initialize` request
-    /// (`Instances::spawn`, via `LspClient::set_init_options`).
-    pub(in crate::editor) init_options: Option<serde_json::Value>,
-    /// Pushed as `workspace/didChangeConfiguration` after `initialized`
-    /// (`Instances::spawn`, via `LspClient::set_settings`), and resolved
-    /// per-item to answer `workspace/configuration` pull requests from the
-    /// copy the instance was spawned with.
-    pub(in crate::editor) settings: Option<serde_json::Value>,
-    /// `#:env`: applied additively to the spawned process's inherited
-    /// environment (`Instances::spawn`, via `LspBackend::start`).
-    pub(in crate::editor) env: Vec<(String, String)>,
-}
 
 /// Walks up from `file`'s directory to the first ancestor containing any of
 /// `markers` (a file or a directory, `.git` included); falls back to `cwd`

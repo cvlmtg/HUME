@@ -8,14 +8,13 @@
 //! exactly one source).
 
 use hume_scripting::SteelCall;
-use hume_scripting::host::AnswerEnd;
 use steel::rvals::SteelVal;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyPattern, FuzzyProfile};
 use crate::editor::host_token;
-use hume_core::MatchKind;
+use hume_core::{AnswerEnd, MatchKind};
 
 enum InvocationState {
     Pending,

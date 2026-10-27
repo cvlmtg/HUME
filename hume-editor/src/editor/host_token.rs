@@ -15,7 +15,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use hume_scripting::host::HostToken;
+use hume_core::HostToken;
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 

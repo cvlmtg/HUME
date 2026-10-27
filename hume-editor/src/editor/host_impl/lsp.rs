@@ -1,13 +1,13 @@
 //! `EditorHostImpl`'s LSP server introspection.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, HostToken, LspFeature, PaneHandle};
 
 use super::EditorHostImpl;
 use hume_lsp::backend::ServerId;
 use hume_scripting::host::{
-    HostToken, LocationPlace, LspHost, PositionParams, RangeParams, RangesParams, TrackedHold,
+    LocationPlace, LspHost, PositionParams, RangeParams, RangesParams, TrackedHold,
 };
-use hume_scripting::{CapabilityQuery, LspFeature, PaneHandle, ServerRef};
+use hume_scripting::{CapabilityQuery, ServerRef};
 
 use crate::editor::lsp::{introspect, params};
 
@@ -41,10 +41,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::server_status(&self.state.lsp)
     }
 
-    fn lsp_server_origin(
-        &self,
-        name: &hume_scripting::ServerName,
-    ) -> Option<hume_core::ConfigOrigin> {
+    fn lsp_server_origin(&self, name: &hume_core::ServerName) -> Option<hume_core::ConfigOrigin> {
         crate::editor::lsp::introspect::server_origin(&self.state.lsp, name)
     }
 
@@ -52,7 +49,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         self.state.lsp.new_supersede_key()
     }
 
-    fn lsp_language_servers(&self, language: &str) -> Vec<hume_scripting::ListEntry> {
+    fn lsp_language_servers(&self, language: &str) -> Vec<hume_core::ListEntry> {
         crate::editor::lsp::introspect::language_servers(&self.state.lsp, language)
     }
 

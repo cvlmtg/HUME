@@ -3,9 +3,9 @@
 
 use std::rc::Rc;
 
-use hume_core::BufferId;
+use hume_core::{BufferId, PaneHandle};
 use hume_scripting::host::JobHandle;
-use hume_scripting::{PaneHandle, Rooted, SteelCall};
+use hume_scripting::{Rooted, SteelCall};
 
 use super::EditorEvent;
 use crate::editor::buffer::store::EditOrigin;

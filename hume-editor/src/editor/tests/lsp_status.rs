@@ -3,9 +3,10 @@
 
 use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
+use hume_core::ServerName;
 use hume_lsp::client::{ClientAction, ServerState};
 use hume_lsp::test_util::RecordingLspBackend;
-use hume_scripting::{LspServerTarget, PendingLspServerOp, ServerName};
+use hume_scripting::{LspServerTarget, PendingLspServerOp};
 
 fn rust_rig(tmp: &tempfile::TempDir) -> LspRig {
     LspRig::rust(

@@ -11,17 +11,15 @@ use std::path::PathBuf;
 
 use rustc_hash::FxHashSet;
 
-use hume_core::{BufferId, Severity};
+use hume_core::{BufferId, FeatureFilter, ListTier, LspFeature, ServerName, Severity};
 use hume_engine::pipeline::EngineView;
 use hume_lsp::backend::ServerId;
-use hume_scripting::{
-    FeatureFilter, ListTier, LspFeature, LspServerTarget, PendingLspServerOp, ServerName,
-};
+use hume_scripting::{LspServerTarget, PendingLspServerOp};
 
 use super::LspState;
 use super::ReconcilePhase;
 use super::document::{Attachment, OpenedAs};
-use super::registry::{LspServerConfig, RegistryWrite, RootCache};
+use super::registry::{RegistryWrite, RootCache};
 use crate::editor::buffer::{EditorView, ViewLabel};
 use crate::editor::event::EditorEvent;
 use crate::editor::{Editor, EditorState};
@@ -512,17 +510,11 @@ impl Editor {
         match op {
             PendingLspServerOp::Register(reg) => {
                 let name = reg.name.clone();
-                let write = self.state.lsp.registry.register(
-                    reg.name,
-                    LspServerConfig {
-                        command: reg.command,
-                        args: reg.args,
-                        init_options: reg.init_options,
-                        settings: reg.settings,
-                        env: reg.env,
-                    },
-                    reg.origin,
-                );
+                let write = self
+                    .state
+                    .lsp
+                    .registry
+                    .register(reg.name, reg.config, reg.origin);
                 match write {
                     RegistryWrite::Shadowed => {
                         self.state.report_shadowed(

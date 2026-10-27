@@ -779,6 +779,7 @@ name = "hume-core"
 version = "0.17.0"
 dependencies = [
  "globset",
+ "serde_json",
  "slotmap",
 ]
 

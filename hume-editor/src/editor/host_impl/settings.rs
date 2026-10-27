@@ -1,11 +1,11 @@
 //! `EditorHostImpl`'s global settings, statusline config, and the Steel
 //! eval budget.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, BufferIntrinsicOption, OptionInput};
 
 use super::EditorHostImpl;
 use crate::editor::settings::SettingText;
-use hume_scripting::host::{BufferIntrinsicOption, OptionInput, OptionValue, SettingsHost};
+use hume_scripting::host::{OptionValue, SettingsHost};
 
 impl<'a> SettingsHost for EditorHostImpl<'a> {
     fn set_global_option(
@@ -44,7 +44,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         let Some(buf) = self.state.buffers.try_get(bid) else {
             return Err(format!("invalid buffer id {bid:?}"));
         };
-        if key == BufferIntrinsicOption::LineEnding.key() {
+        if key == BufferIntrinsicOption::LineEnding.name() {
             return Ok(OptionValue::Str(buf.text().line_ending().to_text()));
         }
         crate::editor::settings::setting_value(key, &self.state.settings, Some(&buf.overrides))

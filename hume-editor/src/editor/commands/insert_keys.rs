@@ -94,7 +94,7 @@ pub(in crate::editor) fn insert_default_key(
                 let triggered = state.triggered_by(ch, buf);
                 for source in triggered.hooks {
                     state.queue_event(EditorEvent::OnTriggerChar {
-                        target: hume_scripting::PaneHandle::with_pane(buf, fp.pid()),
+                        target: hume_core::PaneHandle::with_pane(buf, fp.pid()),
                         ch,
                         source: source.to_string(),
                     });

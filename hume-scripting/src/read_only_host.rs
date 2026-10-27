@@ -4,7 +4,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use hume_core::{BufferId, OnUnsaved};
+use hume_core::{BufferId, HostToken, OnUnsaved, OptionInput, PaneHandle};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
@@ -12,10 +12,10 @@ use hume_rope::offset::ExclusiveRange;
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, HostToken,
-    LanguageHost, OptionInput, OptionValue, SelectionInfo, SettingsHost, StoredLanguage, UndoNode,
+    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, LanguageHost,
+    OptionValue, SelectionInfo, SettingsHost, StoredLanguage, UndoNode,
 };
-use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
+use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
 /// Passes every read of the six required capabilities through to the
 /// wrapped host, refuses every write, and offers none of the optional

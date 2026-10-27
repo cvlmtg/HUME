@@ -1,7 +1,7 @@
 //! `EditorHostImpl`'s LSP-driven text edits, workspace edits,
 //! go-to-location, `insert-key!`, `paste-text!` and `edit-text!`.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, PaneHandle};
 use hume_platform::path::AbsolutePath;
 use hume_rope::column::CharCol;
 use termina::event::KeyEvent;
@@ -10,7 +10,6 @@ use super::EditorHostImpl;
 use crate::editor::buffer::offsets::{checked_char_range, widened_to_clusters};
 use crate::editor::commands::{self, FocusedPane};
 use crate::editor::input_stack::PastedText;
-use hume_scripting::PaneHandle;
 use hume_scripting::host::{CharTextEdit, EditHost};
 
 impl<'a> EditHost for EditorHostImpl<'a> {

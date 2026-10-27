@@ -328,8 +328,7 @@ fn typed_set_theme_failure_does_not_persist() {
 #[test]
 fn a_failed_theme_load_restores_the_previous_origin() {
     use crate::editor::settings::{THEME_KEY, ops};
-    use hume_core::ConfigOrigin;
-    use hume_scripting::host::OptionInput;
+    use hume_core::{ConfigOrigin, OptionInput};
 
     let mut ed = editor_from("-[h]>ello\n");
     let set = |ed: &mut Editor, name: &str, by| {
@@ -658,7 +657,7 @@ fn host_set_buffer_option_invalid_bid_errors() {
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.settings().set_buffer_option(
         "indent-width",
-        hume_scripting::host::OptionInput::Text("8".to_string()),
+        hume_core::OptionInput::Text("8".to_string()),
         BufferId::default(),
         hume_core::ConfigOrigin::User,
     );

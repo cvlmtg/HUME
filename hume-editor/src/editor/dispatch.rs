@@ -455,7 +455,7 @@ pub(in crate::editor) fn unknown_command_text(name: &str) -> String {
 fn marshal_leading_args(
     cmd_arity: u16,
     cmd_is_variadic: bool,
-    pane: hume_scripting::PaneHandle,
+    pane: hume_core::PaneHandle,
     first: steel::rvals::SteelVal,
     second: steel::rvals::SteelVal,
     injection_desc: &str,
@@ -484,7 +484,7 @@ mod marshal_leading_args_tests {
     use steel::rvals::SteelVal;
 
     fn pane_stand_in() -> SteelVal {
-        hume_scripting::SteelPane::new(hume_scripting::PaneHandle::buffer_only(BufferId::default()))
+        hume_scripting::SteelPane::new(hume_core::PaneHandle::buffer_only(BufferId::default()))
             .into_steel_val()
     }
 
@@ -492,7 +492,7 @@ mod marshal_leading_args_tests {
         marshal_leading_args(
             cmd_arity,
             cmd_is_variadic,
-            hume_scripting::PaneHandle::buffer_only(BufferId::default()),
+            hume_core::PaneHandle::buffer_only(BufferId::default()),
             SteelVal::IntV(2), // first stand-in
             SteelVal::IntV(3), // second stand-in
             "test injects at most 3 (pane, first, second)",
@@ -545,7 +545,7 @@ mod marshal_leading_args_tests {
         let result = marshal_leading_args(
             4,
             false,
-            hume_scripting::PaneHandle::buffer_only(BufferId::default()),
+            hume_core::PaneHandle::buffer_only(BufferId::default()),
             SteelVal::IntV(2),
             SteelVal::IntV(3),
             "test injects at most 3 (pane, first, second)",
