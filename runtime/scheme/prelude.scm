@@ -45,10 +45,7 @@
                             'indents indents-path)))
 
 (define (configure-statusline! left center right)
-  (set-option! "statusline"
-               (string-join (map (lambda (names) (string-join names ","))
-                                 (list left center right))
-                            "|")))
+  (set-option! "statusline" (hash 'left left 'center center 'right right)))
 
 (define-command! "insert-register"
   "Insert the register named by the next key, or, for f, the buffer's file path and, for p, its directory, relative to the working directory."

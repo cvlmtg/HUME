@@ -87,11 +87,11 @@
   (git-diff/cancel-job! pane key)
   (let* ([id (box #f)]
          [job (spawn-async! program args
-                (lambda (stdout stderr exit-code)
+                (lambda (result)
                   (let ([entry (git-diff/buffer-entry pane)])
                     (when (and entry (equal? (hash-ref entry key) (unbox id)))
                       (git-diff/entry-set! pane key #f)
-                      (on-result stdout stderr exit-code))))
+                      (on-result result))))
                 #:cwd cwd)])
     (set-box! id job)
     (git-diff/entry-set! pane key job)))

@@ -37,7 +37,7 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 
 | Group | Commands |
 |---|---|
-| [Selections](#selections) | `stdlib/selection-anchor`, `-head`, `-start-char`, `-end-char`, `-primary?`, `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
+| [Selections](#selections) | `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
 | [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` |
 | [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
 | [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
@@ -50,13 +50,12 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 
 ### Selections
 
-A selection is the list `(anchor head start end primary?)` that `buffer-selections`
-returns. The accessors are its only reading API, so the shape can change without breaking
-callers. All nine accept `#f` and answer `#f` in turn, so a caller building on a value
-that may itself be `#f` (a picker payload, an optional match) checks once, at the call
-site.
+The helpers work on the list `buffer-selections` returns and read each selection with
+the core `selection-*` builtins, the only readers of its shape. All four accept `#f` and
+answer `#f` in turn, so a caller building on a value that may itself be `#f` (a picker
+payload, an optional match) checks once, at the call site.
 
-`(buffer-selections pane)` is not one of the nine. It raises for a pane that isn't live or
+`(buffer-selections pane)` is not one of the four. It raises for a pane that isn't live or
 isn't shown, since it is where a selection list is fetched, not where an already-fetched
 list is picked apart.
 

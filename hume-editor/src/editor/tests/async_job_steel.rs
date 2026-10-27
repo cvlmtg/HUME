@@ -14,7 +14,7 @@ fn cancel_async_twice_is_a_silent_no_op() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "try-cancel" "" (lambda ()
-             (let ((job (spawn-async! "hume-no-such-program" '() (lambda (out err code) (void)))))
+             (let ((job (spawn-async! "hume-no-such-program" '() (lambda (result) (void)))))
                (cancel-async! job)
                (cancel-async! job)
                (log! 'info "done"))))"#,

@@ -218,14 +218,15 @@ fn a_name_that_is_not_a_listed_file_is_no_data() {
 }
 
 #[test]
-fn bundled_language_grammar_returns_the_four_source_fields() {
+fn bundled_language_grammar_names_the_four_source_fields() {
     eval(
         &[(
             "jsx",
             r#"((grammar "u" "r" "tree_sitter_javascript" "sub"))"#,
         )],
         r#"(let ((source (bundled-language-grammar "jsx")))
-             (unless (equal? source (list "u" "r" "tree_sitter_javascript" "sub"))
+             (unless (equal? source (hash 'url "u" 'rev "r"
+                                          'symbol "tree_sitter_javascript" 'subpath "sub"))
                (error (to-string source))))"#,
     )
     .expect("grammar source");
@@ -298,7 +299,8 @@ fn an_unparsable_file_read_inside_an_outer_handler_leaves_the_vm_usable() {
                            (bundled-language-grammar "bad")))
            (unless (and (string? caught) (string-contains? caught "bad.scm"))
              (error (string-append "expected an error naming bad.scm: " (to-string caught))))
-           (unless (equal? (bundled-language-grammar "good") (list "u" "r" "s" ""))
+           (unless (equal? (bundled-language-grammar "good")
+                           (hash 'url "u" 'rev "r" 'symbol "s" 'subpath ""))
              (error "a read after the caught error failed"))"#,
     )
     .expect("the VM stays usable after a caught parse error");

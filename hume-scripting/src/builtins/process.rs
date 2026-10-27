@@ -12,13 +12,12 @@ use hume_platform::process::{Launch, decode_lossy};
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::exit_code_value;
+use crate::host::process_result;
 use hume_core::Severity;
 
 use super::SteelResult;
 use super::args::{
     ENV_PAIR_SHAPE, cwd_arg, job_arg, list_to_string_pairs, list_to_strings, string_arg,
-    symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -26,11 +25,11 @@ use super::errors::{generic_err, require_cap};
 /// `#:cwd` keyword in `bootstrap.scm`: runs `cmd` with `args` (direct
 /// argv, no shell) in `cwd` (`#f` = the editor's cwd, a relative path joins
 /// onto it), off the main
-/// thread. `callback` fires exactly once, with `(stdout stderr exit-code)`,
-/// once the child exits; never inline, so typing never stalls waiting for
+/// thread. `callback` runs one time, after the child exits, with the hash
+/// `run-capture!` returns; never inline, so typing never stalls waiting for
 /// it. Unlike `picker-source-spawn!`, a spawn failure (missing binary, bad
-/// `cwd`) does not raise: `callback` still fires, with empty stdout, a
-/// message naming `cmd` in stderr, and `exit-code` `#f`: the same
+/// `cwd`) does not raise: `callback` still fires, with empty `'stdout`, a
+/// message naming `cmd` in `'stderr`, and `'exit` `#f`: the same
 /// "callback always fires, exactly once" contract as `lsp-request!`, so a
 /// plugin never has to handle failure in two places. Returns a job for
 /// `cancel-async!`.
@@ -99,19 +98,14 @@ pub(crate) fn run_capture(
         search_path: search_path.as_deref(),
     };
     let captured = ctx.while_waiting(|| hume_platform::process::run_capture(&cmd, &args, launch));
-    let (stdout, stderr, status) = match captured {
-        Ok(output) => (
+    Ok(match captured {
+        Ok(output) => process_result(
             decode_lossy(output.stdout),
             decode_lossy(output.stderr),
             Some(output.status),
         ),
-        Err(e) => (String::new(), e.to_string(), None),
-    };
-    Ok(symbol_hash([
-        ("stdout", SteelVal::StringV(stdout.into())),
-        ("stderr", SteelVal::StringV(stderr.into())),
-        ("exit", exit_code_value(status)),
-    ]))
+        Err(e) => process_result(String::new(), e.to_string(), None),
+    })
 }
 
 /// `(%run-inline-output! cmd args cwd env)`: spawn `cmd` with `args` (a list of

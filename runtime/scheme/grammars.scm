@@ -30,13 +30,6 @@
 (define (grammar-installed? name)
   (path-exists? (grammar-output-path name)))
 
-;; ── Bundled grammar fields ────────────────────────────────────────────────────
-
-(define (grammar-url grammar) (list-ref grammar 0))
-(define (grammar-rev grammar) (list-ref grammar 1))
-(define (grammar-symbol grammar) (list-ref grammar 2))
-(define (grammar-subpath grammar) (list-ref grammar 3))
-
 ;; ── Installed-grammar discovery ───────────────────────────────────────────────
 
 (define (installed-grammars)
@@ -72,7 +65,7 @@
                               "query — run :plum-install-grammar " name " to repair"))
                 (register-grammar-from-sources! name
                                                 (grammar-output-path name)
-                                                (grammar-symbol source)))))))
+                                                (hash-ref source 'symbol)))))))
     (installed-grammars)))
 
 (when (data-dir)

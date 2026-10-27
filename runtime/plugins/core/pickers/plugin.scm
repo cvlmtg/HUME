@@ -76,12 +76,13 @@
                     (list "status" "--porcelain" "-z" "--no-renames"
                           (string-append "--untracked-files="
                                           (if pickers/untracked "all" "no")))
-                    (lambda (stdout stderr exit-code)
-                      (if (equal? exit-code 0)
-                          (picker-push! token (pickers/parse-git-status stdout))
+                    (lambda (result)
+                      (if (equal? (hash-ref result 'exit) 0)
+                          (picker-push! token (pickers/parse-git-status (hash-ref result 'stdout)))
                           (begin
                             (picker-close! token)
-                            (log! 'error (string-append "pickers/git-modified: `git status` failed: " stderr)))))))))
+                            (log! 'error (string-append "pickers/git-modified: `git status` failed: "
+                                                        (hash-ref result 'stderr))))))))))
 
 ;;; Test seam — see README's "Design decisions".
 (define-command! "pickers/git-picker-with"

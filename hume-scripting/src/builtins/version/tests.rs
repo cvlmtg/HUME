@@ -4,34 +4,39 @@ fn int(n: usize) -> SteelVal {
     SteelVal::IntV(n as isize)
 }
 
-fn list_items(v: SteelVal) -> Vec<SteelVal> {
-    match v {
-        SteelVal::ListV(l) => l.into_iter().collect(),
-        other => panic!("expected list, got {other:?}"),
+fn field(version: &SteelVal, key: &str) -> SteelVal {
+    match version {
+        SteelVal::HashMapV(map) => map
+            .get(&SteelVal::SymbolV(key.into()))
+            .cloned()
+            .unwrap_or_else(|| panic!("no '{key} in {version:?}")),
+        other => panic!("expected a hash, got {other:?}"),
     }
 }
 
 #[test]
-fn hume_version_lists_package_triple_then_commit() {
-    let items = list_items(hume_version(&[]).unwrap());
-    let [major, minor, patch, commit] = items.as_slice() else {
-        panic!("expected 4 elements, got {items:?}");
-    };
+fn hume_version_names_package_triple_and_commit() {
+    let version = hume_version(&[]).unwrap();
     let expected: Vec<isize> = env!("CARGO_PKG_VERSION")
         .split('.')
         .map(|part| part.parse().unwrap())
         .collect();
     assert_eq!(
-        [major, minor, patch],
         [
-            &SteelVal::IntV(expected[0]),
-            &SteelVal::IntV(expected[1]),
-            &SteelVal::IntV(expected[2])
+            field(&version, "major"),
+            field(&version, "minor"),
+            field(&version, "patch")
+        ],
+        [
+            SteelVal::IntV(expected[0]),
+            SteelVal::IntV(expected[1]),
+            SteelVal::IntV(expected[2])
         ]
     );
+    let commit = field(&version, "commit");
     assert!(
-        matches!(commit, SteelVal::StringV(s) if !s.is_empty())
-            || *commit == SteelVal::BoolV(false),
+        matches!(&commit, SteelVal::StringV(s) if !s.is_empty())
+            || commit == SteelVal::BoolV(false),
         "commit must be a non-empty string or #f, got {commit:?}"
     );
 }

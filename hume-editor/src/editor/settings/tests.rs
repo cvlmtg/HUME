@@ -313,11 +313,7 @@ fn setting_value_subfield_key_buffer_override_wins_over_global() {
 }
 
 #[test]
-fn setting_value_statusline_round_trips_through_write_global() {
-    // Write a wire string via write_global, then read it back via
-    // setting_value. They must match, proving format_statusline really is
-    // parse_statusline's inverse. (get-option "statusline") must return the
-    // written value after a successful :set global statusline=... write.
+fn setting_value_statusline_reads_back_the_sections_of_a_text_write() {
     let mut s = EditorSettings::default();
     write_global(
         "statusline",
@@ -328,7 +324,11 @@ fn setting_value_statusline_round_trips_through_write_global() {
     .unwrap();
     assert_eq!(
         setting_value("statusline", &s, None),
-        Some(OptionValue::Str("Mode,FileName||Position".to_string()))
+        Some(OptionValue::Sections(hume_core::StatuslineSections {
+            left: vec!["Mode".to_string(), "FileName".to_string()],
+            center: vec![],
+            right: vec!["Position".to_string()],
+        }))
     );
 }
 

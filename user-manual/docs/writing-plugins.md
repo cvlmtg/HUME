@@ -141,15 +141,15 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
   (call! "stdlib/cursor-char-offset" (buffer-selections pane))))
 ```
 
-Those three read the whole list. To work with a single selection (the primary one, say), use these accessors, which also pass a `#f` selection through as `#f`:
+Those three read the whole list. To work with a single selection (the primary one, say), pick it out and read it with the `selection-*` calls, which need no plugin:
 
 ```scheme
-(call! "stdlib/primary-selection" (buffer-selections pane))
-(call! "stdlib/selection-anchor" primary)
-(call! "stdlib/selection-head" primary)
-(call! "stdlib/selection-start-char" primary)
-(call! "stdlib/selection-end-char" primary)
-(call! "stdlib/selection-primary?" primary)
+(let ((primary (call! "stdlib/primary-selection" (buffer-selections pane))))
+  (selection-anchor primary)
+  (selection-head primary)
+  (selection-start-char primary)
+  (selection-end-char primary)
+  (selection-primary? primary))
 ```
 
 `(char-offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since a selection on its own has no line information.
@@ -378,19 +378,19 @@ All four start the program in HUME's working directory unless given `#:cwd`, loo
 
 ```scheme
 (spawn-async! "git" (list "show" (string-append ref ":" path))
-  (lambda (stdout stderr exit-code)
-    (if (equal? exit-code 0)
-        (use-the-output stdout)
-        (report-the-failure stderr)))
+  (lambda (result)
+    (if (equal? (hash-ref result 'exit) 0)
+        (use-the-output (hash-ref result 'stdout))
+        (report-the-failure (hash-ref result 'stderr))))
   #:cwd repo-root)
 ```
 
 `spawn-async!` starts `cmd` with `args` (in `#:cwd`, or HUME's working
 directory when omitted) and returns immediately; nothing blocks. `callback` is called exactly once,
-later, once the command has finished: `stdout` and `stderr` are its complete output as
-strings, `exit-code` is its exit code (`#f` if it was killed by a signal, or if the
-command couldn't even be started, like a missing binary, so compare it with `equal?`
-rather than `=`). A command that fails to
+later, once the command has finished, with the same hash `run-capture!` returns: `'stdout`
+and `'stderr` are its complete output as strings, `'exit` is its exit code (`#f` if it was
+killed by a signal, or if the command couldn't even be started, like a missing binary, so
+compare it with `equal?` rather than `=`). A command that fails to
 start or exits non-zero still calls `callback` rather than raising an error, so there's
 only one place to handle the outcome. `spawn-async!` returns a job; call
 `(cancel-async! job)` to kill the command and discard its callback before it fires,
@@ -456,7 +456,7 @@ Reading lines and editing char ranges together give a command that turns lines i
   (let loop ((sels (buffer-selections pane)) (lines '()))
     (if (null? sels)
         (reverse lines)
-        (let ((line (char-offset->line pane (call! "stdlib/selection-anchor" (car sels)))))
+        (let ((line (char-offset->line pane (selection-anchor (car sels)))))
           (loop (cdr sels)
                 (if (and (pair? lines) (= line (car lines)))
                     lines
@@ -593,10 +593,11 @@ A source can also complete the argument of a `:` command. A `'minibuf` source is
 (register-completion-source! "git-branches"
   (lambda (id input cursor)
     (spawn-async! "git" '("branch" "--format=%(refname:short)")
-      (lambda (stdout stderr exit-code)
+      (lambda (result)
         (completion-emit! id
-          (if (equal? exit-code 0)
-              (filter (lambda (s) (not (equal? s ""))) (split-many stdout "\n"))
+          (if (equal? (hash-ref result 'exit) 0)
+              (filter (lambda (s) (not (equal? s "")))
+                      (split-many (hash-ref result 'stdout) "\n"))
               '())))))
   #:target 'minibuf #:match 'string)
 
@@ -604,8 +605,9 @@ A source can also complete the argument of a `:` command. A `'minibuf` source is
   (lambda (pane arg)
     (when (string? arg)
       (spawn-async! "git" (list "checkout" arg)
-        (lambda (stdout stderr exit-code)
-          (unless (equal? exit-code 0) (log! 'error stderr))))))
+        (lambda (result)
+          (unless (equal? (hash-ref result 'exit) 0)
+            (log! 'error (hash-ref result 'stderr)))))))
   #:complete "git-branches")
 ```
 

@@ -5,8 +5,8 @@
 (define (lsp/primary-selection-range pane)
   (let ((primary (call! "stdlib/primary-selection" (buffer-selections pane))))
     (and primary
-         (hash 'start-char (call! "stdlib/selection-start-char" primary)
-              'end-char (call! "stdlib/selection-end-char" primary)))))
+         (hash 'start-char (selection-start-char primary)
+               'end-char (selection-end-char primary)))))
 
 (define (lsp/action-disabled? action)
   (not (equal? (json-ref-or action #f "disabled") #f)))

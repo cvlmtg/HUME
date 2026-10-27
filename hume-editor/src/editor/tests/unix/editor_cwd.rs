@@ -15,7 +15,7 @@ fn spawn_async_defaults_to_the_editor_cwd() {
         r#"
         (define-command! "go" "" (lambda ()
           (spawn-async! "pwd" '()
-            (lambda (out err code) (log! 'info (trim out))))))
+            (lambda (result) (log! 'info (trim (hash-ref result 'stdout)))))))
         "#,
     );
     call(&mut ed, "go");
@@ -39,7 +39,7 @@ fn spawn_async_joins_a_relative_cwd_onto_the_editor_cwd() {
         r#"
         (define-command! "go" "" (lambda ()
           (spawn-async! "pwd" '()
-            (lambda (out err code) (log! 'info (trim out)))
+            (lambda (result) (log! 'info (trim (hash-ref result 'stdout))))
             #:cwd "sub")))
         "#,
     );

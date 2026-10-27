@@ -53,10 +53,9 @@ fn core_stdlib_plugin_loads_eagerly() {
 /// fires `(error ...)`, which propagates as an `Err`, caught by the assert
 /// below, failing the test with the offending assertion name.
 ///
-/// `stdlib`'s per-selection accessors (`selection-anchor`/`-head`/`-start`/`-end`/`-primary?`,
-/// `primary-selection`) are `call!`-reachable public commands, same as the
-/// three list-level predicates. A plugin holding a single selection
-/// (not a list) can use them for their `#f` passthrough.
+/// `stdlib`'s selection-list helpers (`primary-selection`, `single-selection?`,
+/// `all-single-char?`, `cursor-char-offset`) are `call!`-reachable public
+/// commands that pass `#f` through.
 #[test]
 fn core_stdlib_selection_commands() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
@@ -65,11 +64,6 @@ fn core_stdlib_selection_commands() {
 (unless (equal? (call! "stdlib/all-single-char?" #f) #f) (error "all-single-char? #f passthrough"))
 (unless (equal? (call! "stdlib/single-selection?" #f) #f) (error "single-selection? #f passthrough"))
 (unless (equal? (call! "stdlib/cursor-char-offset" #f) #f) (error "cursor-char-offset #f passthrough"))
-(unless (equal? (call! "stdlib/selection-anchor" #f) #f) (error "selection-anchor #f passthrough"))
-(unless (equal? (call! "stdlib/selection-head" #f) #f) (error "selection-head #f passthrough"))
-(unless (equal? (call! "stdlib/selection-primary?" #f) #f) (error "selection-primary? #f passthrough"))
-(unless (equal? (call! "stdlib/selection-start-char" #f) #f) (error "selection-start-char #f passthrough"))
-(unless (equal? (call! "stdlib/selection-end-char" #f) #f) (error "selection-end-char #f passthrough"))
 (unless (equal? (call! "stdlib/primary-selection" #f) #f) (error "primary-selection #f passthrough"))
 
 (unless (equal? (call! "stdlib/single-selection?" (list (list 0 1 0 2 #t))) #t)
@@ -87,18 +81,6 @@ fn core_stdlib_selection_commands() {
 (unless (equal? (call! "stdlib/cursor-char-offset" (list (list 0 0 0 1 #f) (list 7 4 4 8 #t))) 4)
   (error "cursor-char-offset picks the primary's head"))
 
-(unless (equal? (call! "stdlib/selection-anchor" (list 3 9 3 10 #t)) 3)
-  (error "selection-anchor reads the anchor"))
-(unless (equal? (call! "stdlib/selection-head" (list 3 9 3 10 #t)) 9)
-  (error "selection-head reads the head"))
-(unless (equal? (call! "stdlib/selection-start-char" (list 9 3 3 10 #t)) 3)
-  (error "selection-start-char reads the covered start"))
-(unless (equal? (call! "stdlib/selection-end-char" (list 9 3 3 10 #t)) 10)
-  (error "selection-end-char reads the covered end"))
-(unless (equal? (call! "stdlib/selection-primary?" (list 3 9 3 10 #t)) #t)
-  (error "selection-primary? true"))
-(unless (equal? (call! "stdlib/selection-primary?" (list 3 9 3 10 #f)) #f)
-  (error "selection-primary? false"))
 (unless (equal? (call! "stdlib/primary-selection" (list (list 0 0 0 1 #f) (list 7 4 4 8 #t) (list 1 1 1 2 #f))) (list 7 4 4 8 #t))
   (error "primary-selection picks the flagged selection out of a list"))
 (unless (equal? (call! "stdlib/primary-selection" (list (list 0 0 0 1 #f) (list 1 1 1 2 #f))) #f)
@@ -519,7 +501,7 @@ const MARKDOWN_HEADING: &str = r#"
   (let loop ((sels (buffer-selections pane)) (lines '()))
     (if (null? sels)
         (reverse lines)
-        (let ((line (char-offset->line pane (call! "stdlib/selection-anchor" (car sels)))))
+        (let ((line (char-offset->line pane (selection-anchor (car sels)))))
           (loop (cdr sels)
                 (if (and (pair? lines) (= line (car lines)))
                     lines

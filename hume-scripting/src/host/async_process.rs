@@ -11,26 +11,41 @@ use hume_platform::process::job::JobResult;
 use hume_platform::snapshots::Progress;
 use steel::rvals::SteelVal;
 
-use crate::builtins::args::string_list;
+use crate::builtins::args::{string_list, symbol_hash};
 
 /// A process's exit code as Steel sees it: the code, or `#f` when there is
 /// none (the process could not start, was killed by a signal, or its exit
-/// could not be read). Every builtin that reports an exit code uses this, so
-/// "no exit code" has one spelling.
-pub(crate) fn exit_code_value(status: Option<ExitStatus>) -> SteelVal {
+/// could not be read). Every exit code a builtin reports goes through
+/// [`process_result`], so "no exit code" has one spelling.
+fn exit_code_value(status: Option<ExitStatus>) -> SteelVal {
     status
         .and_then(|status| status.code())
         .map_or(SteelVal::BoolV(false), |code| SteelVal::IntV(code as isize))
 }
 
-/// The arguments a `spawn-async!` callback receives for `result`:
-/// `(stdout stderr exit-code)`, with `exit-code` `#f` when there is none.
+/// A finished process as Steel sees it, from `run-capture!` and
+/// `spawn-async!` alike: `(hash 'stdout s 'stderr s 'exit code)`, with
+/// `'exit` from [`exit_code_value`].
+pub(crate) fn process_result(
+    stdout: String,
+    stderr: String,
+    status: Option<ExitStatus>,
+) -> SteelVal {
+    symbol_hash([
+        ("stdout", SteelVal::StringV(stdout.into())),
+        ("stderr", SteelVal::StringV(stderr.into())),
+        ("exit", exit_code_value(status)),
+    ])
+}
+
+/// The arguments a `spawn-async!` callback receives for `result`: its one
+/// `process_result`.
 pub fn async_callback_args(result: JobResult) -> Vec<SteelVal> {
-    vec![
-        SteelVal::StringV(decode_lossy(result.stdout).into()),
-        SteelVal::StringV(result.stderr.into()),
-        exit_code_value(result.status),
-    ]
+    vec![process_result(
+        decode_lossy(result.stdout),
+        result.stderr,
+        result.status,
+    )]
 }
 
 /// The arguments a background listing's callback receives for `progress`:
@@ -69,7 +84,7 @@ pub trait AsyncProcessHost {
     /// Spawns `cmd` with `args` (direct argv, no shell) in `cwd`, capturing its whole stdout/stderr to
     /// completion. Always returns a job, even if the spawn itself fails;
     /// `callback` still fires exactly once either way, unless cancelled, with
-    /// [`async_callback_args`]: `exit-code` is `#f` for a signal-killed
+    /// [`async_callback_args`]: `'exit` is `#f` for a signal-killed
     /// child, a status the OS never returned, or a spawn failure (missing
     /// binary, bad `cwd`).
     /// No error channel: a plugin holding a callback should never have to

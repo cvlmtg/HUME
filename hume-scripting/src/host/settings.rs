@@ -1,20 +1,22 @@
 //! Global settings and the Steel eval budget.
 
-use hume_core::{BufferId, OptionInput};
+use hume_core::{BufferId, OptionInput, StatuslineSections};
 
 /// A setting's effective value, typed just enough for `(get-option key)` to
 /// build the right `SteelVal`. `hume-scripting` has no dependency on
 /// `hume-editor`'s settings types, so the editor impl converts its own
 /// per-key parser kind (`bool`/`usize`/`enum_str`/…) down to one of these
-/// four shapes at the trait boundary. `Str` is every named value, free text
+/// shapes at the trait boundary. `Str` is every named value, free text
 /// and `name:N` forms alike, in the spelling `set-option!` takes back;
-/// `List` is a word list (`shell`).
+/// `List` is a word list (`shell`); `Sections` is the `statusline`, read
+/// back as `(hash 'left 'center 'right)`, the hash `set-option!` takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptionValue {
     Bool(bool),
     Int(i64),
     Str(String),
     List(Vec<String>),
+    Sections(StatuslineSections),
 }
 
 impl From<OptionValue> for steel::rvals::SteelVal {
@@ -24,6 +26,7 @@ impl From<OptionValue> for steel::rvals::SteelVal {
             OptionValue::Int(n) => Self::IntV(n as isize),
             OptionValue::Str(s) => Self::StringV(s.into()),
             OptionValue::List(words) => crate::builtins::args::string_list(words),
+            OptionValue::Sections(sections) => crate::builtins::settings::sections_value(sections),
         }
     }
 }

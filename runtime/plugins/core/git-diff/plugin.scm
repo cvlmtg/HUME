@@ -76,10 +76,11 @@
           (completion-emit! id '())
           (spawn-async! "git"
             '("for-each-ref" "--format=%(refname:short)" "refs/heads" "refs/tags" "refs/remotes")
-            (lambda (stdout stderr exit-code)
+            (lambda (result)
               (completion-emit! id
-                (if (equal? exit-code 0)
-                    (filter (lambda (s) (not (equal? s ""))) (split-many stdout "\n"))
+                (if (equal? (hash-ref result 'exit) 0)
+                    (filter (lambda (s) (not (equal? s "")))
+                            (split-many (hash-ref result 'stdout) "\n"))
                     '())))
             #:cwd (parent-name path)))))
   #:target 'minibuf #:match 'string)

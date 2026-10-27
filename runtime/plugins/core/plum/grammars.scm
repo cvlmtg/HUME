@@ -115,10 +115,10 @@
 (define (plum/install-grammar name)
   (let* ((source  (or (bundled-language-grammar name)
                       (error (string-append "plum: no grammar for language \"" name "\""))))
-         (subpath (grammar-subpath source))
+         (subpath (hash-ref source 'subpath))
          (out-path (grammar-output-path name)))
     (plum/install-grammar-deps! name)
-    (plum/install-repo! (grammar-url source) (grammar-source-dir name) (grammar-rev source)
+    (plum/install-repo! (hash-ref source 'url) (grammar-source-dir name) (hash-ref source 'rev)
       #:build
       (lambda (dir)
         (plum/fetch-query! name "highlights.scm" (path-join dir "highlights.scm"))
@@ -127,7 +127,7 @@
         (for-each
           (lambda (kind) (plum/try-fetch-query! name (cdr kind) dir))
           (grammar-optional-queries))))
-    (register-grammar-from-sources! name out-path (grammar-symbol source))))
+    (register-grammar-from-sources! name out-path (hash-ref source 'symbol))))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

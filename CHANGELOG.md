@@ -24,6 +24,10 @@
 - `#:supersede` takes a key from the new `lsp-supersede-key`, not a string, so a plugin can no longer cancel another plugin's request, or HUME's own, by reusing its key's name: make one key at your plugin's top level, `(define my-key (lsp-supersede-key))`, and pass it to each request that replaces the last.
 - `log!` spells its warning severity `'warning`, the name `:messages` shows: replace `'warn` with `'warning`.
 - An option's named value is a string both ways: `set-option!` and `set-buffer-option!` raise for a symbol, and `get-option`, `get-buffer-option` and the `on-option-change` hook give a string. Write `"soft"` for `'soft`, and compare a read value with a string. `wrap-mode` reads back as written: `"word"`, not `"word:0"`.
+- `hume-version` returns `(hash 'major 'minor 'patch 'commit)` and `bundled-language-grammar` `(hash 'url 'rev 'symbol 'subpath)`, not a list, and `grammar-url`, `grammar-rev`, `grammar-symbol` and `grammar-subpath` are gone: read a field with `hash-ref`, such as `(hash-ref g 'url)`.
+- A `spawn-async!` callback takes one argument, the `(hash 'stdout 'stderr 'exit)` `run-capture!` returns: write `(lambda (result) ...)` and read `(hash-ref result 'exit)` where the third argument was.
+- `stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-start-char`, `stdlib/selection-end-char` and `stdlib/selection-primary?` are gone: call the new `selection-anchor`, `selection-head`, `selection-start-char`, `selection-end-char` and `selection-primary?` directly, which need no plugin and raise for anything but a selection.
+- `(get-option "statusline")` returns `(hash 'left 'center 'right)`, each a list of element names as `configure-statusline!` takes them, not the `"a,b|c|d"` text: read a section with `hash-ref`. `set-option!` takes that hash too.
 
 ### Syntax & language awareness
 - HUME starts faster: each installed grammar loads the first time a file or an embedded block needs it, not at startup.

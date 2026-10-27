@@ -11,7 +11,7 @@ use hume_platform::wake::counting_wake;
 use super::*;
 
 #[test]
-fn happy_path_delivers_stdout_stderr_and_exit_code() {
+fn happy_path_delivers_run_captures_result_hash() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
@@ -20,8 +20,10 @@ fn happy_path_delivers_stdout_stderr_and_exit_code() {
         r#"
         (define-command! "go" "" (lambda ()
           (spawn-async! "sh" (list "-c" "printf hi")
-            (lambda (out err code)
-              (log! 'info (string-append out "|" err "|" (number->string code)))))))
+            (lambda (result)
+              (log! 'info (string-append (hash-ref result 'stdout) "|"
+                                         (hash-ref result 'stderr) "|"
+                                         (number->string (hash-ref result 'exit))))))))
         "#,
     );
     call(&mut ed, "go");
@@ -41,7 +43,7 @@ fn cwd_keyword_sets_the_child_working_directory() {
         r#"
         (define-command! "go" "" (lambda ()
           (spawn-async! "pwd" '()
-            (lambda (out err code) (log! 'info (trim out)))
+            (lambda (result) (log! 'info (trim (hash-ref result 'stdout))))
             #:cwd "/")))
         "#,
     );
@@ -62,8 +64,9 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
         r#"
         (define-command! "go" "" (lambda ()
           (spawn-async! "sh" (list "-c" "echo boom >&2; exit 3")
-            (lambda (out err code)
-              (log! 'info (string-append err "|" (number->string code)))))))
+            (lambda (result)
+              (log! 'info (string-append (hash-ref result 'stderr) "|"
+                                         (number->string (hash-ref result 'exit))))))))
         "#,
     );
     call(&mut ed, "go");
@@ -83,8 +86,9 @@ fn missing_binary_fires_the_callback_with_no_exit_code() {
         r#"
         (define-command! "go" "" (lambda ()
           (spawn-async! "definitely-not-a-real-binary-xyz" '()
-            (lambda (out err code)
-              (log! 'info (if code (number->string code) "no exit code"))))))
+            (lambda (result)
+              (let ((code (hash-ref result 'exit)))
+                (log! 'info (if code (number->string code) "no exit code")))))))
         "#,
     );
     call(&mut ed, "go");
@@ -106,8 +110,9 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
         r#"
         (define-command! "go" "" (lambda ()
           (spawn-async! "" '()
-            (lambda (out err code)
-              (log! 'info (if code (number->string code) "no exit code"))))))
+            (lambda (result)
+              (let ((code (hash-ref result 'exit)))
+                (log! 'info (if code (number->string code) "no exit code")))))))
         "#,
     );
     call(&mut ed, "go");
@@ -118,7 +123,7 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "no exit code",
-        "an empty cmd must fire the documented failure triple, never raise"
+        "an empty cmd must fire the documented failure result, never raise"
     );
 }
 
@@ -134,7 +139,7 @@ fn spawn_failure_wakes_the_event_loop() {
         r#"
         (define-command! "go" "" (lambda ()
           (spawn-async! "definitely-not-a-real-binary-xyz" '()
-            (lambda (out err code) (void)))))
+            (lambda (result) (void)))))
         "#,
     );
     call(&mut ed, "go");
@@ -159,7 +164,7 @@ fn cancel_async_prevents_the_callback_and_kills_the_child() {
         (define job-id #f)
         (define-command! "go" "" (lambda ()
           (set! job-id (spawn-async! "sleep" (list "30")
-            (lambda (out err code) (log! 'info "must-not-fire"))))))
+            (lambda (result) (log! 'info "must-not-fire"))))))
         (define-command! "cancel-it" "" (lambda () (cancel-async! job-id)))
         "#,
     );
@@ -203,7 +208,7 @@ fn cancel_async_raises_for_a_timer_and_leaves_the_job_running() {
         r#"
         (define timer #f)
         (define-command! "go" "" (lambda ()
-          (spawn-async! "sleep" (list "30") (lambda (out err code) (void)))
+          (spawn-async! "sleep" (list "30") (lambda (result) (void)))
           (set! timer (after! 100000 (lambda () (void))))))
         (define-command! "cancel-it" "" (lambda () (cancel-async! timer)))
         "#,
@@ -239,7 +244,7 @@ fn cancel_timer_raises_for_a_job_and_leaves_the_timer_scheduled() {
         r#"
         (define job #f)
         (define-command! "go" "" (lambda ()
-          (set! job (spawn-async! "sleep" (list "30") (lambda (out err code) (void))))
+          (set! job (spawn-async! "sleep" (list "30") (lambda (result) (void))))
           (after! 0 (lambda () (log! 'info "fired")))))
         (define-command! "cancel-it" "" (lambda () (cancel-timer! job)))
         "#,
@@ -270,7 +275,7 @@ fn an_async_job_callback_edit_leaves_the_ring_stamp_fresh() {
         r#"
         (define-command! "go" "" (lambda ()
           (spawn-async! "sh" (list "-c" "true")
-            (lambda (out err code)
+            (lambda (result)
               (edit-text! (focused-pane)
                 (list (hash 'start-char 1 'end-char 1 'text "!")))))))
         "#,
@@ -313,7 +318,7 @@ fn a_result_due_before_cancel_async_never_fires() {
     cancel_a_due_callback(
         &mut ed,
         r#"(spawn-async! "sh" (list "-c" "printf hi")
-             (lambda (out err code) (log! 'info "fired")))"#,
+             (lambda (result) (log! 'info "fired")))"#,
     );
     assert_eq!(status(&ed), "");
 }
@@ -343,7 +348,7 @@ fn a_failed_spawn_cancelled_at_once_never_fires() {
         (define-command! "go" "" (lambda ()
           (cancel-async!
             (spawn-async! "definitely-not-a-real-binary-xyz" '()
-              (lambda (out err code) (log! 'info "fired"))))))
+              (lambda (result) (log! 'info "fired"))))))
         "#,
     );
     call(&mut ed, "go");

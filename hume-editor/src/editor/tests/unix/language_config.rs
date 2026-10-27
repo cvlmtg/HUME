@@ -421,7 +421,7 @@ fn configuring_a_language_defined_earlier_in_the_same_init_succeeds() {
 fn the_shipped_jsx_file_carries_the_javascript_grammar() {
     let jsx = shipped_grammar("jsx");
 
-    assert_eq!(jsx[2], "tree_sitter_javascript");
+    assert_eq!(jsx.symbol, "tree_sitter_javascript");
     assert_eq!(jsx, shipped_grammar("javascript"));
 }
 

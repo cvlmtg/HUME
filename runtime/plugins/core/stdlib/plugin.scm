@@ -1,29 +1,14 @@
 ;;; core:stdlib
 
 ;; ── Selection helpers (internal) ────────────────────────────────────────────
-;; A selection is (anchor head start end primary?) — see README.md's "Selections".
-
-(define (stdlib/selection-anchor sel)
-  (and sel (list-ref sel 0)))
-
-(define (stdlib/selection-head sel)
-  (and sel (list-ref sel 1)))
-
-(define (stdlib/selection-start-char sel)
-  (and sel (list-ref sel 2)))
-
-(define (stdlib/selection-end-char sel)
-  (and sel (list-ref sel 3)))
-
-(define (stdlib/selection-primary? sel)
-  (and sel (list-ref sel 4)))
+;; Over buffer-selections' entries — see README.md's "Selections".
 
 (define (stdlib/primary-selection sels)
   (and sels
        (let loop ((sels sels))
          (cond
            ((null? sels) #f)
-           ((stdlib/selection-primary? (car sels)) (car sels))
+           ((selection-primary? (car sels)) (car sels))
            (else (loop (cdr sels)))))))
 
 (define (stdlib/single-selection? sels)
@@ -34,12 +19,13 @@
        (let loop ((sels sels))
          (cond
            ((null? sels) #t)
-           ((= (stdlib/selection-anchor (car sels)) (stdlib/selection-head (car sels)))
+           ((= (selection-anchor (car sels)) (selection-head (car sels)))
             (loop (cdr sels)))
            (else #f)))))
 
 (define (stdlib/cursor-char-offset sels)
-  (stdlib/selection-head (stdlib/primary-selection sels)))
+  (let ((primary (stdlib/primary-selection sels)))
+    (and primary (selection-head primary))))
 
 ;; ── Filesystem + list-search helpers (internal) ─────────────────────────────
 
@@ -183,26 +169,6 @@
     v))
 
 ;; ── call!-able commands (public API) ────────────────────────────────────────
-
-(define-command! "stdlib/selection-anchor"
-  "Anchor char offset of the given selection, or #f."
-  stdlib/selection-anchor)
-
-(define-command! "stdlib/selection-head"
-  "Head char offset of the given selection, or #f."
-  stdlib/selection-head)
-
-(define-command! "stdlib/selection-start-char"
-  "First char offset the given selection covers, or #f."
-  stdlib/selection-start-char)
-
-(define-command! "stdlib/selection-end-char"
-  "Char offset one past the last one the given selection covers, or #f."
-  stdlib/selection-end-char)
-
-(define-command! "stdlib/selection-primary?"
-  "#t if the given selection is the primary selection, or #f."
-  stdlib/selection-primary?)
 
 (define-command! "stdlib/primary-selection"
   "The primary selection in the given list, or #f."

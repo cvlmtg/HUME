@@ -24,7 +24,7 @@ mod timers;
 mod token;
 mod ui;
 
-pub(crate) use async_process::exit_code_value;
+pub(crate) use async_process::process_result;
 pub use async_process::{AsyncProcessHost, JobHandle, async_callback_args, names_callback_args};
 pub use buffers::{BufferHost, DisplayPathForm, StoredLanguage, UndoNode};
 pub use commands::{CommandHost, NativeCall};

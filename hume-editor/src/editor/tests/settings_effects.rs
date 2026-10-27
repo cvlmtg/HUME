@@ -488,7 +488,9 @@ fn a_symbol_option_value_raises() {
     let err = eval_set_option(&mut ed, r#"(set-option! "indent-style" 'soft)"#)
         .expect_err("a symbol value is refused");
     assert!(
-        err.contains("value must be a string, bool, integer, or list of strings"),
+        err.contains(
+            "value must be a string, bool, integer, list of strings, or statusline sections hash"
+        ),
         "got: {err}"
     );
     assert_eq!(

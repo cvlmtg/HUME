@@ -285,6 +285,81 @@ fn configure_statusline_new_elements() {
 }
 
 #[test]
+fn configure_statusline_reads_back_as_the_sections_written() {
+    let mut mock = MockHost::new();
+    let mut h = host_with_prelude(&mut mock);
+
+    h.eval_source(
+        r#"(configure-statusline! '("Mode" "FileName") '() '("Position"))
+           (unless (equal? (get-option "statusline")
+                           (hash 'left '("Mode" "FileName") 'center '() 'right '("Position")))
+             (error (to-string (get-option "statusline"))))"#,
+        &mut mock,
+    )
+    .unwrap();
+}
+
+#[test]
+fn set_option_statusline_takes_the_hash_get_option_returns() {
+    use hume_editor::statusline::StatusElement;
+    let mut mock = MockHost::new();
+    let mut h = host();
+
+    h.eval_source(
+        r#"(set-option! "statusline" (hash 'left '("Mode") 'center '("Cwd") 'right '()))"#,
+        &mut mock,
+    )
+    .unwrap();
+
+    assert_eq!(mock.settings.statusline().left, vec![StatusElement::Mode]);
+    assert_eq!(mock.settings.statusline().center, vec![StatusElement::Cwd]);
+    assert!(mock.settings.statusline().right.is_empty());
+}
+
+#[test]
+fn a_statusline_set_as_text_reads_back_as_sections() {
+    let mut mock = MockHost::new();
+    let mut h = host();
+
+    h.eval_source(
+        r#"(set-option! "statusline" "Mode||Position")
+           (unless (equal? (get-option "statusline")
+                           (hash 'left '("Mode") 'center '() 'right '("Position")))
+             (error (to-string (get-option "statusline"))))"#,
+        &mut mock,
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_statusline_hash_needs_all_three_sections() {
+    let mut mock = MockHost::new();
+    let mut h = host();
+
+    let err = h
+        .eval_source(
+            r#"(set-option! "statusline" (hash 'left '("Mode") 'right '()))"#,
+            &mut mock,
+        )
+        .unwrap_err();
+    assert!(err.contains("'center"), "got: {err}");
+}
+
+#[test]
+fn only_the_statusline_takes_a_sections_hash() {
+    let mut mock = MockHost::new();
+    let mut h = host();
+
+    let err = h
+        .eval_source(
+            r#"(set-option! "theme" (hash 'left '() 'center '() 'right '()))"#,
+            &mut mock,
+        )
+        .unwrap_err();
+    assert!(err.contains("invalid value for 'theme'"), "got: {err}");
+}
+
+#[test]
 fn configure_statusline_wrong_arity_errors() {
     let mut mock = MockHost::new();
     let mut h = host_with_prelude(&mut mock);

@@ -8,8 +8,8 @@
   "Align the selected pipe table and frame it with separator rules."
   (lambda (pane)
     (let* ((sel (call! "stdlib/primary-selection" (buffer-selections pane)))
-           (top (char-offset->line pane (call! "stdlib/selection-start-char" sel)))
-           (bottom (char-offset->line pane (- (call! "stdlib/selection-end-char" sel) 1))))
+           (top (char-offset->line pane (selection-start-char sel)))
+           (bottom (char-offset->line pane (- (selection-end-char sel) 1))))
       (sift-within pane "\\|")
       (align-selections pane)
       (demo/select-row pane (+ top 1))

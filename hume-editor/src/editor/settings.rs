@@ -26,7 +26,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use hume_core::{Claim, ConfigOrigin, DiagSeverity, LaterWins, OptionInput};
+use hume_core::{Claim, ConfigOrigin, DiagSeverity, LaterWins, OptionInput, StatuslineSections};
 use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
@@ -118,12 +118,13 @@ pub(in crate::editor) fn for_key<T>(key: &str, parsed: Result<T, String>) -> Res
     parsed.map_err(|e| format!("invalid value for '{key}': {e}"))
 }
 
-/// The text of `value` for a setting that takes one value; a list is
-/// refused.
+/// The text of `value` for a setting that takes one value; a list or the
+/// statusline's sections are refused.
 pub(in crate::editor) fn single_value(value: &OptionInput) -> Result<&str, String> {
     match value {
         OptionInput::Text(text) => Ok(text),
         OptionInput::Words(_) => Err("takes one value, not a list".to_string()),
+        OptionInput::Sections(_) => Err("takes one value, not statusline sections".to_string()),
     }
 }
 
@@ -285,6 +286,7 @@ macro_rules! parse_setting {
             match $value {
                 OptionInput::Text(text) => ShellCommand::parse(text),
                 OptionInput::Words(words) => ShellCommand::from_words(words.clone()),
+                OptionInput::Sections(_) => Err("takes a command, not statusline sections".to_string()),
             },
         )
     };
@@ -522,10 +524,9 @@ macro_rules! define_settings {
                     if !settings.origins.claim($skey, by) { return Ok(false); }
                     settings.$sglobal.$ssub = parsed;
                 } )*
-                // Statusline config, global-only; three sections separated by `|`,
-                // each a comma-separated list of StatusElement names (may be empty).
+                // Statusline config, global-only: `:set`'s text or a script's sections.
                 "statusline" => {
-                    let parsed = for_key(key, single_value(value).and_then(parse_statusline))?;
+                    let parsed = for_key(key, parse_statusline(value))?;
                     if !settings.origins.claim("statusline", by) { return Ok(false); }
                     settings.statusline = parsed;
                 }
@@ -621,8 +622,8 @@ macro_rules! define_settings {
                     };
                     Some(option_value!(value, $sparser))
                 } )*
-                "statusline" => Some(hume_scripting::host::OptionValue::Str(
-                    format_statusline(&settings.statusline),
+                "statusline" => Some(hume_scripting::host::OptionValue::Sections(
+                    statusline_sections(&settings.statusline),
                 )),
                 _ => None,
             }
@@ -912,56 +913,70 @@ define_settings! {
     }
 }
 
-/// Parse the `"left|center|right"` wire format into a `StatusLineConfig`.
+/// Parse a `statusline` value: `:set`'s `"left|center|right"` text, or the
+/// sections a script passes.
 ///
-/// Requires exactly three `|`-separated sections. Each section is a
-/// comma-separated list of `StatusElement` names; an empty section is
-/// allowed, an empty name inside a non-empty one (`Mode,,FileName`) is not.
-fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
-    let parts: Vec<&str> = s.splitn(4, '|').collect();
-    if parts.len() != 3 {
-        return Err(format!(
-            "expected three sections separated by '|' \
-             (e.g. 'Mode,FileName||Position'), got '{s}'"
-        ));
-    }
-    let parse_section = |section: &str| -> Result<Vec<StatusElement>, String> {
+/// The text requires three `|`-separated sections, no more, each a
+/// comma-separated list of `StatusElement` names. Either way an empty
+/// section is allowed, an empty name inside one (`Mode,,FileName`) is not.
+fn parse_statusline(value: &OptionInput) -> Result<StatusLineConfig, String> {
+    let names = |section: &str| -> Vec<String> {
         if section.is_empty() {
-            return Ok(Vec::new());
+            Vec::new()
+        } else {
+            section.split(',').map(str::to_string).collect()
         }
-        section
-            .split(',')
+    };
+    let sections = match value {
+        OptionInput::Sections(sections) => sections.clone(),
+        OptionInput::Text(text) => {
+            let parts: Vec<&str> = text.splitn(4, '|').collect();
+            let [left, center, right] = parts.as_slice() else {
+                return Err(format!(
+                    "expected three sections separated by '|' \
+                     (e.g. 'Mode,FileName||Position'), got '{text}'"
+                ));
+            };
+            StatuslineSections {
+                left: names(left),
+                center: names(center),
+                right: names(right),
+            }
+        }
+        OptionInput::Words(_) => {
+            return Err("takes three sections, not a list".to_string());
+        }
+    };
+    let elements = |names: &[String]| -> Result<Vec<StatusElement>, String> {
+        names
+            .iter()
             .map(|name| {
                 if name.is_empty() {
-                    return Err(format!("section '{section}' has an empty element name"));
+                    return Err(format!(
+                        "section '{}' has an empty element name",
+                        names.join(",")
+                    ));
                 }
                 name.parse::<StatusElement>()
             })
             .collect()
     };
     Ok(StatusLineConfig {
-        left: parse_section(parts[0])?,
-        center: parse_section(parts[1])?,
-        right: parse_section(parts[2])?,
+        left: elements(&sections.left)?,
+        center: elements(&sections.center)?,
+        right: elements(&sections.right)?,
     })
 }
 
-/// Render a `StatusLineConfig` back to the `"left|center|right"` wire format
-/// [`parse_statusline`] accepts: the inverse.
-pub(crate) fn format_statusline(cfg: &StatusLineConfig) -> String {
-    let join = |elems: &[StatusElement]| {
-        elems
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(",")
-    };
-    format!(
-        "{}|{}|{}",
-        join(&cfg.left),
-        join(&cfg.center),
-        join(&cfg.right)
-    )
+/// The element names of each of `cfg`'s sections, as `get-option` reads them:
+/// [`parse_statusline`]'s inverse.
+fn statusline_sections(cfg: &StatusLineConfig) -> StatuslineSections {
+    let names = |elems: &[StatusElement]| elems.iter().map(ToString::to_string).collect();
+    StatuslineSections {
+        left: names(&cfg.left),
+        center: names(&cfg.center),
+        right: names(&cfg.right),
+    }
 }
 
 /// The wire-format strings [`parse_show_newline`] accepts: the single

@@ -30,10 +30,21 @@ impl LanguageOptionText {
 }
 
 /// A value an option is set to, from `:set` or a script. A list stays a
-/// list, so only a word-list option (`shell`) accepts one; every other value
-/// is the text `:set` carries.
+/// list, so only a word-list option (`shell`) accepts one, and only
+/// `statusline` accepts [`StatuslineSections`]; every other value is the
+/// text `:set` carries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptionInput {
     Text(String),
     Words(Vec<String>),
+    Sections(StatuslineSections),
+}
+
+/// The `statusline` option as scripts write and read it: the element names
+/// of its left, center and right sections, in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatuslineSections {
+    pub left: Vec<String>,
+    pub center: Vec<String>,
+    pub right: Vec<String>,
 }

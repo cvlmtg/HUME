@@ -23,6 +23,17 @@ fn awaits_last_callback(ed: &Editor, id: JobHandle) -> bool {
         .is_some_and(|pending| matches!(pending, PendingJob::Ended))
 }
 
+/// Field `key` of the one process-result hash a callback was queued with.
+fn result_field(call_args: &[SteelVal], key: &str) -> SteelVal {
+    let [SteelVal::HashMapV(result)] = call_args else {
+        panic!("expected one result hash, got {call_args:?}");
+    };
+    result
+        .get(&SteelVal::SymbolV(key.into()))
+        .cloned()
+        .unwrap_or_else(|| panic!("no '{key} in {result:?}"))
+}
+
 fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal) -> JobHandle {
     let cwd = ed.state.cwd.to_path_buf();
     EditorHostImpl::new(&mut ed.state, &mut ed.view).spawn_async(
@@ -45,8 +56,12 @@ fn end_to_end_drain_delivers_the_full_result_exactly_once() {
     assert_eq!(pending_calls(&ed).len(), 1);
     let (_, call_args) = pending_calls(&ed).remove(0);
     assert_eq!(
-        call_args,
-        vec![
+        [
+            result_field(&call_args, "stdout"),
+            result_field(&call_args, "stderr"),
+            result_field(&call_args, "exit"),
+        ],
+        [
             SteelVal::StringV("hi".into()),
             SteelVal::StringV("".into()),
             SteelVal::IntV(0),
@@ -68,8 +83,11 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
     drain_sources_until(&mut ed, |ed| !ed.state.config.pending_work.is_empty());
 
     let (_, call_args) = pending_calls(&ed).remove(0);
-    assert_eq!(call_args[1], SteelVal::StringV("boom\n".into()));
-    assert_eq!(call_args[2], SteelVal::IntV(3));
+    assert_eq!(
+        result_field(&call_args, "stderr"),
+        SteelVal::StringV("boom\n".into())
+    );
+    assert_eq!(result_field(&call_args, "exit"), SteelVal::IntV(3));
 }
 
 #[test]
@@ -81,7 +99,7 @@ fn a_child_killed_by_a_signal_has_no_exit_code() {
     drain_sources_until(&mut ed, |ed| !ed.state.config.pending_work.is_empty());
 
     let (_, call_args) = pending_calls(&ed).remove(0);
-    assert_eq!(call_args[2], SteelVal::BoolV(false));
+    assert_eq!(result_field(&call_args, "exit"), SteelVal::BoolV(false));
 }
 
 #[test]
@@ -99,9 +117,12 @@ fn missing_binary_fires_the_callback_synchronously_with_no_exit_code() {
     assert!(awaits_last_callback(&ed, id));
     assert_eq!(pending_calls(&ed).len(), 1);
     let (_, call_args) = pending_calls(&ed).remove(0);
-    assert_eq!(call_args[0], SteelVal::StringV("".into()));
-    assert_eq!(call_args[2], SteelVal::BoolV(false));
-    let SteelVal::StringV(stderr) = &call_args[1] else {
+    assert_eq!(
+        result_field(&call_args, "stdout"),
+        SteelVal::StringV("".into())
+    );
+    assert_eq!(result_field(&call_args, "exit"), SteelVal::BoolV(false));
+    let SteelVal::StringV(stderr) = result_field(&call_args, "stderr") else {
         panic!("expected a string stderr arg");
     };
     assert!(

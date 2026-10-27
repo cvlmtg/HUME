@@ -1041,7 +1041,7 @@ fn a_collection_after_reload_traces_nothing_from_the_old_engine() {
              (lambda (pane)
                (after! 100000 (let ((cell (box 1))) (lambda () (unbox cell))))
                (spawn-async! "sleep" '("10")
-                 (let ((cell (box 1))) (lambda (out err code) (unbox cell))))
+                 (let ((cell (box 1))) (lambda (result) (unbox cell))))
                (picker! pane (list (cons "one" (hash 'cell (box 1))))
                  (let ((cell (box 1))) (lambda (choice) (unbox cell))))))"#,
     );

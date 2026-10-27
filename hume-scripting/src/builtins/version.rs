@@ -1,17 +1,18 @@
 //! Running-editor version builtins.
 //!
-//! | Steel name           | Signature                         | Notes                                           |
-//! |----------------------|-----------------------------------|-------------------------------------------------|
-//! | `hume-version`       | `() → (major minor patch commit)` | `commit`: short sha on a dev build, `#f` on a release |
-//! | `hume-version>=?`    | `int int int → bool`              | numeric comparison only; the commit is never ordered |
+//! | Steel name           | Signature                                          | Notes                                           |
+//! |----------------------|----------------------------------------------------|-------------------------------------------------|
+//! | `hume-version`       | `() → (hash 'major 'minor 'patch 'commit)`         | `commit`: short sha on a dev build, `#f` on a release |
+//! | `hume-version>=?`    | `int int int → bool`                               | numeric comparison only; the commit is never ordered |
 
-use steel::rvals::{IntoSteelVal, SteelVal};
+use steel::rvals::SteelVal;
 
 use super::SteelResult;
-use super::args::usize_arg;
+use super::args::{symbol_hash, usize_arg};
 use super::errors::generic_err;
 
-/// `(hume-version)`: `(major minor patch commit)` of the running editor.
+/// `(hume-version)`: `(hash 'major 'minor 'patch 'commit)` of the running
+/// editor.
 pub(crate) fn hume_version(args: &[SteelVal]) -> SteelResult {
     if !args.is_empty() {
         steel::stop!(ArityMismatch => "expects 0 args, got {}", args.len());
@@ -20,14 +21,21 @@ pub(crate) fn hume_version(args: &[SteelVal]) -> SteelResult {
         Some(sha) => SteelVal::StringV(sha.into()),
         None => SteelVal::BoolV(false),
     };
-    vec![
-        SteelVal::IntV(hume_platform::version::MAJOR as isize),
-        SteelVal::IntV(hume_platform::version::MINOR as isize),
-        SteelVal::IntV(hume_platform::version::PATCH as isize),
-        commit,
-    ]
-    .into_steelval()
-    .map_err(generic_err)
+    Ok(symbol_hash([
+        (
+            "major",
+            SteelVal::IntV(hume_platform::version::MAJOR as isize),
+        ),
+        (
+            "minor",
+            SteelVal::IntV(hume_platform::version::MINOR as isize),
+        ),
+        (
+            "patch",
+            SteelVal::IntV(hume_platform::version::PATCH as isize),
+        ),
+        ("commit", commit),
+    ]))
 }
 
 /// `(hume-version>=? major minor patch)`: whether the running editor is at

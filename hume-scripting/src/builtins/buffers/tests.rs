@@ -79,3 +79,90 @@ fn buffer_selections_raises_with_no_pane_state() {
     let result = buffer_selections(&mut ctx, default_pane());
     assert!(result.is_err());
 }
+
+// ── Selection entry accessors ──────────────────────────────────────────────
+
+fn entry(fields: Vec<SteelVal>) -> SteelVal {
+    fields.into_steelval().unwrap()
+}
+
+/// A backward selection: anchor after head, covering `2..6`.
+fn backward_primary() -> SteelVal {
+    entry(vec![
+        SteelVal::IntV(5),
+        SteelVal::IntV(2),
+        SteelVal::IntV(2),
+        SteelVal::IntV(6),
+        SteelVal::BoolV(true),
+    ])
+}
+
+#[test]
+fn each_selection_accessor_reads_its_own_field() {
+    assert_eq!(
+        [
+            selection_anchor(backward_primary()).unwrap(),
+            selection_head(backward_primary()).unwrap(),
+            selection_start_char(backward_primary()).unwrap(),
+            selection_end_char(backward_primary()).unwrap(),
+            selection_primary(backward_primary()).unwrap(),
+        ],
+        [
+            SteelVal::IntV(5),
+            SteelVal::IntV(2),
+            SteelVal::IntV(2),
+            SteelVal::IntV(6),
+            SteelVal::BoolV(true),
+        ]
+    );
+}
+
+#[test]
+fn an_entry_buffer_selections_builds_reads_back_through_the_accessors() {
+    let built = selection_entry(SelectionInfo {
+        anchor: 1,
+        head: 4,
+        start: 1,
+        end: 5,
+        primary: false,
+    });
+    assert_eq!(selection_anchor(built.clone()).unwrap(), SteelVal::IntV(1));
+    assert_eq!(selection_head(built.clone()).unwrap(), SteelVal::IntV(4));
+    assert_eq!(
+        selection_start_char(built.clone()).unwrap(),
+        SteelVal::IntV(1)
+    );
+    assert_eq!(
+        selection_end_char(built.clone()).unwrap(),
+        SteelVal::IntV(5)
+    );
+    assert_eq!(selection_primary(built).unwrap(), SteelVal::BoolV(false));
+}
+
+#[test]
+fn a_selection_accessor_raises_for_anything_but_an_entry() {
+    let not_entries = [
+        SteelVal::BoolV(false),
+        entry(vec![SteelVal::IntV(0); 4]),
+        entry(vec![
+            SteelVal::IntV(0),
+            SteelVal::IntV(0),
+            SteelVal::IntV(0),
+            SteelVal::IntV(1),
+            SteelVal::IntV(1),
+        ]),
+        entry(vec![
+            SteelVal::IntV(-1),
+            SteelVal::IntV(0),
+            SteelVal::IntV(0),
+            SteelVal::IntV(1),
+            SteelVal::BoolV(true),
+        ]),
+    ];
+    for value in not_entries {
+        assert!(
+            selection_head(value.clone()).is_err(),
+            "{value:?} must be refused"
+        );
+    }
+}

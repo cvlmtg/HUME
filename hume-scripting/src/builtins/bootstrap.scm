@@ -356,8 +356,11 @@
                          (hash-insert fields (car (car rest)) (cdr (car rest))))))))))
 
 (define (bundled-language-grammar name)
-  (let ((data (%read-language-data name)))
-    (and data (%language-data-ref data 'grammar))))
+  (let* ((data (%read-language-data name))
+         (fields (and data (%language-data-ref data 'grammar))))
+    (and fields
+         (hash 'url (list-ref fields 0) 'rev (list-ref fields 1)
+               'symbol (list-ref fields 2) 'subpath (list-ref fields 3)))))
 
 (define (bundled-grammar-languages)
   (filter bundled-language-grammar (%language-data-names)))

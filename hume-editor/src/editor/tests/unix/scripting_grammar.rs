@@ -941,8 +941,8 @@ fn startup_reads_only_installed_languages_data_files() {
 /// than raise.
 ///
 /// `register-installed-grammars!`'s `(when source …)` skips a name
-/// `bundled-language-grammar` returns `#f` for, before `grammar-symbol`'s
-/// `(list-ref #f 2)` can raise.
+/// `bundled-language-grammar` returns `#f` for, before `(hash-ref source
+/// 'symbol)` can raise.
 #[test]
 fn orphan_compiled_grammar_is_skipped_not_registered() {
     let ext = test_fixtures::grammar_platform_ext();

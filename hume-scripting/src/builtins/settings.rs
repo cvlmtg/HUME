@@ -4,28 +4,60 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use hume_core::{BufferId, BufferIntrinsicOption, LanguageOptionText, OptionInput, PaneHandle};
+use hume_core::{
+    BufferId, BufferIntrinsicOption, LanguageOptionText, OptionInput, PaneHandle,
+    StatuslineSections,
+};
 
 use crate::SteelCtx;
 use crate::types::{Effect, QueuedEffect};
 
 use super::SteelResult;
-use super::args::list_to_strings;
+use super::args::{hash_entry, list_to_strings, string_list, symbol_hash};
 use super::errors::generic_err;
 
-/// Coerce a Steel string/bool/int/list-of-strings settings value to what the
-/// settings layer takes: the text `:set` would carry, or a list's words.
-/// A named value is a string, the spelling `get-option` reads back, so a
-/// symbol is refused. `ctx_name` names the argument in the error.
+/// Coerce a Steel string/bool/int/list-of-strings/sections-hash settings
+/// value to what the settings layer takes: the text `:set` would carry, a
+/// list's words, or the statusline's sections. A named value is a string,
+/// the spelling `get-option` reads back, so a symbol is refused. `ctx_name`
+/// names the argument in the error.
 fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, SteelErr> {
     match value {
         SteelVal::StringV(s) => Ok(OptionInput::Text(s.to_string())),
         SteelVal::BoolV(b) => Ok(OptionInput::Text(b.to_string())),
         SteelVal::IntV(n) => Ok(OptionInput::Text(n.to_string())),
         SteelVal::ListV(_) => list_to_strings(value.clone(), ctx_name).map(OptionInput::Words),
+        SteelVal::HashMapV(_) => {
+            decode_sections(value.clone(), ctx_name).map(OptionInput::Sections)
+        }
         _ => steel::stop!(TypeMismatch =>
-            "{ctx_name}: value must be a string, bool, integer, or list of strings, got {:?}", value),
+            "{ctx_name}: value must be a string, bool, integer, list of strings, or statusline sections hash, got {:?}", value),
     }
+}
+
+/// The keys of the statusline's `(hash 'left 'center 'right)`, each a list of
+/// element names.
+const SECTION_KEYS: &[&str] = &["left", "center", "right"];
+
+/// Decodes a statusline sections hash; every section is required.
+fn decode_sections(value: SteelVal, ctx_name: &str) -> Result<StatuslineSections, SteelErr> {
+    let entry = hash_entry(value, ctx_name, SECTION_KEYS)?;
+    let section = |key: &str| list_to_strings(entry.required(key)?, &entry.label(key));
+    Ok(StatuslineSections {
+        left: section("left")?,
+        center: section("center")?,
+        right: section("right")?,
+    })
+}
+
+/// The statusline's sections as `get-option` reads them back:
+/// [`decode_sections`]'s inverse.
+pub(crate) fn sections_value(sections: StatuslineSections) -> SteelVal {
+    symbol_hash([
+        ("left", string_list(sections.left)),
+        ("center", string_list(sections.center)),
+        ("right", string_list(sections.right)),
+    ])
 }
 
 /// The error a global-option builtin raises for a buffer-intrinsic option,

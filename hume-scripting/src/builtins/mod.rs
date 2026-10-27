@@ -364,6 +364,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // is `equal?` (Custom::equality_hint), not a dedicated builtin.
         plain "pane?" ids::is_pane(val: SteelVal);
         plain "json-parse" json::json_parse(s: SteelVal);
+        // Readers of one `buffer-selections` entry.
+        plain "selection-anchor" buffers::selection_anchor(sel: SteelVal);
+        plain "selection-head" buffers::selection_head(sel: SteelVal);
+        plain "selection-start-char" buffers::selection_start_char(sel: SteelVal);
+        plain "selection-end-char" buffers::selection_end_char(sel: SteelVal);
+        plain "selection-primary?" buffers::selection_primary(sel: SteelVal);
         // json-list and the two predicates are fixed-arity; json-ref,
         // json-contains? and json-ref-or take a variadic path and are
         // `rest` entries below.

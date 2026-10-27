@@ -6,6 +6,7 @@
 //! `init.scm` raises a Steel error instead of returning a meaningless
 //! default.
 
+use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
@@ -16,7 +17,7 @@ use super::args::{
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
-use crate::host::DisplayPathForm;
+use crate::host::{DisplayPathForm, SelectionInfo};
 use hume_core::{OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
 
@@ -391,32 +392,83 @@ pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelR
 }
 
 /// `(buffer-selections pane)` → list of `(anchor head start end primary?)`
-/// per selection in `pane`'s own pane. The entry shape is opaque to scripts;
-/// `core:stdlib`'s `stdlib/selection-*` accessors are the reading API.
-/// Offsets are raw 0-indexed chars, direction preserved (anchor > head when
-/// backward), sorted by selection start, exactly one `primary?` = `#t`.
-/// `start`..`end` is what the selection covers, `end` exclusive.
+/// per selection in `pane`'s own pane, each built by [`selection_entry`].
+/// Sorted by selection start, with one `primary?` = `#t`.
 pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     let sels = ctx
         .host
         .cursor()
         .buffer_selections(pane)
         .map_err(generic_err)?;
-    let list: Vec<SteelVal> = sels
-        .into_iter()
-        .map(|sel| {
-            vec![
-                SteelVal::IntV(sel.anchor as isize),
-                SteelVal::IntV(sel.head as isize),
-                SteelVal::IntV(sel.start as isize),
-                SteelVal::IntV(sel.end as isize),
-                SteelVal::BoolV(sel.primary),
-            ]
-            .into_steelval()
-            .map_err(generic_err)
-        })
-        .collect::<Result<_, _>>()?;
-    list.into_steelval().map_err(generic_err)
+    Ok(list_of(sels.into_iter().map(selection_entry)))
+}
+
+/// One `buffer-selections` entry, `(anchor head start end primary?)`: a
+/// positional list rather than a hash, since a hash costs a hasher and a trie
+/// node per selection. The `selection-*` builtins are its readers, through
+/// [`decode_selection`], its inverse. Offsets are 0-indexed chars, direction
+/// preserved (anchor > head when backward); `start`..`end` is what the
+/// selection covers, `end` exclusive.
+fn selection_entry(sel: SelectionInfo) -> SteelVal {
+    list_of([
+        SteelVal::IntV(sel.anchor as isize),
+        SteelVal::IntV(sel.head as isize),
+        SteelVal::IntV(sel.start as isize),
+        SteelVal::IntV(sel.end as isize),
+        SteelVal::BoolV(sel.primary),
+    ])
+}
+
+/// Reads back a [`selection_entry`]; raises for any other value.
+fn decode_selection(entry: &SteelVal) -> Result<SelectionInfo, SteelErr> {
+    let fields: Vec<SteelVal> = match entry {
+        SteelVal::ListV(list) => list.iter().cloned().collect(),
+        _ => Vec::new(),
+    };
+    let offset = |val: &SteelVal| match val {
+        SteelVal::IntV(n) => usize::try_from(*n).ok(),
+        _ => None,
+    };
+    if let [anchor, head, start, end, SteelVal::BoolV(primary)] = fields.as_slice()
+        && let (Some(anchor), Some(head), Some(start), Some(end)) =
+            (offset(anchor), offset(head), offset(start), offset(end))
+    {
+        return Ok(SelectionInfo {
+            anchor,
+            head,
+            start,
+            end,
+            primary: *primary,
+        });
+    }
+    steel::stop!(TypeMismatch =>
+        "expected a buffer-selections entry (anchor head start end primary?), got {}", entry)
+}
+
+/// `(selection-anchor sel)`: the char offset `sel` is anchored at.
+pub(crate) fn selection_anchor(sel: SteelVal) -> SteelResult {
+    Ok(SteelVal::IntV(decode_selection(&sel)?.anchor as isize))
+}
+
+/// `(selection-head sel)`: the char offset of `sel`'s head, its cursor.
+pub(crate) fn selection_head(sel: SteelVal) -> SteelResult {
+    Ok(SteelVal::IntV(decode_selection(&sel)?.head as isize))
+}
+
+/// `(selection-start-char sel)`: the first char offset `sel` covers.
+pub(crate) fn selection_start_char(sel: SteelVal) -> SteelResult {
+    Ok(SteelVal::IntV(decode_selection(&sel)?.start as isize))
+}
+
+/// `(selection-end-char sel)`: the char offset one past the last one `sel`
+/// covers.
+pub(crate) fn selection_end_char(sel: SteelVal) -> SteelResult {
+    Ok(SteelVal::IntV(decode_selection(&sel)?.end as isize))
+}
+
+/// `(selection-primary? sel)`: whether `sel` is the primary selection.
+pub(crate) fn selection_primary(sel: SteelVal) -> SteelResult {
+    Ok(SteelVal::BoolV(decode_selection(&sel)?.primary))
 }
 
 /// `(char-offset->line pane idx)` → 0-indexed content line containing 0-indexed

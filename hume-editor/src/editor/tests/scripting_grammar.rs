@@ -34,11 +34,19 @@ pub(super) fn prelude_source() -> String {
     std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap()
 }
 
-/// `(url rev symbol subpath)` of the grammar language `name` uses, from its
-/// shipped data file, read by `bundled-language-grammar` the way the editor
-/// and `core:plum` read it. Avoids duplicating pins into the test (they drift
-/// otherwise).
-pub(super) fn shipped_grammar(name: &str) -> Vec<String> {
+/// The source fields of a grammar `bundled-language-grammar` returns.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct ShippedGrammar {
+    pub(super) url: String,
+    pub(super) rev: String,
+    pub(super) symbol: String,
+    pub(super) subpath: String,
+}
+
+/// The grammar language `name` uses, from its shipped data file, read by
+/// `bundled-language-grammar` the way the editor and `core:plum` read it.
+/// Avoids duplicating pins into the test (they drift otherwise).
+pub(super) fn shipped_grammar(name: &str) -> ShippedGrammar {
     let mut scripting = hume_scripting::ScriptingHost::new(&repo_runtime_dirs());
     let source = scripting
         .eval_source_for_value(
@@ -46,23 +54,24 @@ pub(super) fn shipped_grammar(name: &str) -> Vec<String> {
             &mut crate::testing::MockHost::new(),
         )
         .unwrap_or_else(|e| panic!("shipped data for '{name}' must be well-formed: {e}"));
-    match source {
-        steel::rvals::SteelVal::ListV(fields) => fields
-            .iter()
-            .map(|field| match field {
-                steel::rvals::SteelVal::StringV(s) => s.to_string(),
-                other => panic!("grammar fields must be strings, got {other:?}"),
-            })
-            .collect(),
-        other => panic!("no shipped grammar for '{name}': {other:?}"),
+    let steel::rvals::SteelVal::HashMapV(fields) = &source else {
+        panic!("no shipped grammar for '{name}': {source:?}");
+    };
+    let field = |key: &str| match fields.get(&steel::rvals::SteelVal::SymbolV(key.into())) {
+        Some(steel::rvals::SteelVal::StringV(s)) => s.to_string(),
+        other => panic!("grammar field '{key} must be a string, got {other:?}"),
+    };
+    ShippedGrammar {
+        url: field("url"),
+        rev: field("rev"),
+        symbol: field("symbol"),
+        subpath: field("subpath"),
     }
 }
 
 /// `(url, rev)` of the grammar language `name` uses; see [`shipped_grammar`].
 pub(super) fn grammar_source(name: &str) -> (String, String) {
-    let mut fields = shipped_grammar(name).into_iter();
-    let url = fields.next().expect("a grammar has a url");
-    let rev = fields.next().expect("a grammar has a rev");
+    let ShippedGrammar { url, rev, .. } = shipped_grammar(name);
     (url, rev)
 }
 

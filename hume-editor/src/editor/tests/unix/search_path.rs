@@ -82,7 +82,7 @@ fn spawn_async_runs_a_program_on_the_editor_search_path() {
         &format!(
             r#"(define-command! "go" "" (lambda ()
                  (spawn-async! "{PROBE}" '("-c" "echo found")
-                   (lambda (out err code) (log! 'info (trim out))))))"#
+                   (lambda (result) (log! 'info (trim (hash-ref result 'stdout)))))))"#
         ),
     );
     call(&mut ed, "go");

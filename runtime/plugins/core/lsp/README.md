@@ -19,8 +19,8 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean` and
   `stdlib/config-integer` at load time; diagnostics navigation, code actions and the
-  other features call `stdlib/cursor-char-offset`, `stdlib/primary-selection` and
-  `stdlib/selection-start-char`/`-end-char` at runtime. `lib/helpers.scm` checks for it, since
+  other features call `stdlib/cursor-char-offset` and `stdlib/primary-selection` at
+  runtime. `lib/helpers.scm` checks for it, since
   every `lib/` file's body runs before `plugin.scm`'s own.
 - **Activates on:** the first buffer with a detected language, or the first of its
   commands typed. Its `manifest.scm` declares one entry for `plugin.scm` with

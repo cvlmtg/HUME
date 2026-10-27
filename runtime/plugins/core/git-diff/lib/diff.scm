@@ -42,19 +42,22 @@
         (git-diff/reconcile-inline! entry pane '())))))
 
 ;;; `spawn-async!` callback for the `git cat-file` below — see docs/pipeline.md.
-(define (git-diff/handle-fetch-result! pane stdout stderr exit-code)
-  (if (equal? exit-code 0)
-      (begin
-        (git-diff/entry-set! pane "ref-text" stdout)
-        (git-diff/apply-hunks! pane (diff-buffer-lines pane stdout)))
-      (begin
-        (let ([entry (git-diff/buffer-entry pane)])
-          (log! (cond [(not exit-code) 'error]
-                      [(hash-ref entry "ref") 'warning]
-                      [else 'trace])
-                (string-append "git-diff: `git cat-file` failed: " (trim stderr))))
-        (git-diff/entry-set! pane "ref-text" 'unavailable)
-        (git-diff/apply-hunks! pane '()))))
+(define (git-diff/handle-fetch-result! pane result)
+  (let ([exit-code (hash-ref result 'exit)]
+        [stdout (hash-ref result 'stdout)])
+    (if (equal? exit-code 0)
+        (begin
+          (git-diff/entry-set! pane "ref-text" stdout)
+          (git-diff/apply-hunks! pane (diff-buffer-lines pane stdout)))
+        (begin
+          (let ([entry (git-diff/buffer-entry pane)])
+            (log! (cond [(not exit-code) 'error]
+                        [(hash-ref entry "ref") 'warning]
+                        [else 'trace])
+                  (string-append "git-diff: `git cat-file` failed: "
+                                 (trim (hash-ref result 'stderr)))))
+          (git-diff/entry-set! pane "ref-text" 'unavailable)
+          (git-diff/apply-hunks! pane '())))))
 
 ;;; `git cat-file --filters <ref>:./<name>`, cwd = `path`'s directory.
 (define (git-diff/fetch-ref! pane path ref)
@@ -62,8 +65,7 @@
                        (list "cat-file" "--filters" "--end-of-options"
                              (string-append ref ":./" (file-name path)))
                        (parent-name path)
-                       (lambda (stdout stderr exit-code)
-                         (git-diff/handle-fetch-result! pane stdout stderr exit-code))))
+                       (lambda (result) (git-diff/handle-fetch-result! pane result))))
 
 ;;; Immediate (non-debounced) refresh — `schedule-refresh!` is the debounced entry point.
 ;;; A buffer without its own ref diffs against `default-ref`.
