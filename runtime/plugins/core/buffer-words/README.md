@@ -11,8 +11,8 @@ ask.
 (load-plugin! "core:buffer-words" #:config (hash 'match 'string 'chars 8000))
 ```
 
-- **Depends on:** `core:stdlib`: config validation calls `stdlib/config-enum`/
-  `stdlib/config-integer` at load time, and the scan calls `stdlib/split-words`.
+- **Depends on:** `core:stdlib`, at load time for config validation and at runtime for
+  the scan.
 - **Activates on:** `Ctrl-Space` (or a completion source's own trigger char) only. It
   has no `manifest.scm`, so it must be loaded eagerly (see the
   [core plugins index](../README.md#loading-model)).
@@ -121,7 +121,10 @@ The update works from the hunks:
   searches the twin's all-lowercase form when the word is capitalized. An all-lowercase
   pattern ignores case, so one search answers for the word and its twin. When nothing
   matches, both leave the set. Only words already in the set are checked, so a walk that
-  hasn't reached a line doesn't search for its words.
+  hasn't reached a line doesn't search for its words. Steel's `hashset-difference` returns
+  the symmetric difference, so the words to remove are first intersected with the set:
+  a twin the set never held, such as `ix` for `Ix` when only `ıx` added `Ix`, would
+  otherwise join it.
 - **Rebuilding.** When a word joins or leaves a finished index, the word list `Ctrl-Space`
   emits is rebuilt from the set. Steel's hashsets copy on change, so this costs time in
   proportion to the number of distinct words. An edit that adds and removes nothing skips

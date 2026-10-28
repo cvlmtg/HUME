@@ -14,9 +14,7 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 (load-plugin! "core:plum")
 ```
 
-- **Depends on:** `core:stdlib`. PLUM calls `stdlib/find`, `stdlib/write-file!`,
-  `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` and
-  `stdlib/resolve-lang-arg` through `call!`.
+- **Depends on:** `core:stdlib`, when its commands run.
 - **Activates on:** the first `:plum-*` command typed, or the first call to
   `plum/ensure-grammars`. Its `manifest.scm` has three entries, each loading on its own
   commands: `plugin.scm` (the four plugin commands), `grammars.scm` (`#:entry`;

@@ -405,6 +405,27 @@ fn a_deleted_word_stays_while_its_case_twin_occurs() {
     );
 }
 
+/// Removing words removes only twins the index holds. Dotless `ı`
+/// uppercases to `I`, which lowercases to `i`, so `ıx`'s twin is `Ix` while
+/// `Ix`'s own twin `ix`, never written, stays out of the index.
+#[test]
+fn a_removed_word_does_not_add_a_twin_the_index_never_held() {
+    let tmp = tempfile::tempdir().unwrap();
+    let guard = RuntimeDirs::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = tempfile::tempdir().unwrap();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "x \u{131}x Ix\n").unwrap();
+    open(&mut ed, &path);
+
+    edit_range(&mut ed, tmp.path(), 2, 7, "zeta");
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "zeta");
+    let got = labels(&ed);
+    assert!(!got.contains(&"ix".to_string()), "{got:?}");
+    assert!(!got.contains(&"Ix".to_string()), "{got:?}");
+}
+
 /// An edit re-reads only the lines it changed. A buffer-scoped `word-chars`
 /// change reindexes nothing, so `foo-bar` on a line no edit touches keeps
 /// the split the first index made, while the edited line is read under the
@@ -461,7 +482,7 @@ fn an_edit_during_a_walk_keeps_the_words_already_read() {
 }
 
 /// 200 lines of `filler`, with `marker` on 0-based line `marker_line`, every
-/// line 7 chars, so a tick at `'chars 35` reads exactly 5 lines per side.
+/// line 7 chars, so a tick at `'chars 35` reads 5 lines per side.
 /// The walk is restarted at line 100; its first tick has read lines 95..105.
 fn walk_from_line_100(
     guard: &RuntimeDirs,

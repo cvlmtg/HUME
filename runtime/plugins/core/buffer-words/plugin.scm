@@ -74,7 +74,7 @@
 
 ;;; Every line of `changes`' hunks under `key` ('old-lines or 'new-lines).
 (define (bw/hunk-lines changes key)
-  (foldl (lambda (h acc) (append (hash-ref h key) acc)) '() changes))
+  (call! "stdlib/concat" (map (lambda (h) (hash-ref h key)) changes)))
 
 (define (bw/line-chars lines)
   (foldl (lambda (line n) (+ n (string-length line))) 0 lines))
@@ -82,7 +82,7 @@
 ;;; The distinct words of `lines`, as a hashset.
 (define (bw/words-in pane lines)
   (apply hashset
-         (foldl (lambda (line acc) (append (call! "stdlib/split-words" pane line) acc)) '() lines)))
+         (call! "stdlib/concat" (map (lambda (line) (call! "stdlib/split-words" pane line)) lines))))
 
 ;;; `words` plus each one's case twin — see README.md's "Case twins".
 (define (bw/with-twins words)
@@ -114,8 +114,10 @@
                                      (bw/with-twins (hashset->list new-words)))])
                   (if (and (null? gone) (null? added))
                       set
+                      ;; See README.md's "Updating after an edit" for the intersection.
                       (hashset-union
-                        (hashset-difference set (apply hashset (bw/with-twins gone)))
+                        (hashset-difference
+                          set (hashset-intersection set (apply hashset (bw/with-twins gone))))
                         (apply hashset added)))))))))
 
 ;;; Walk position `p`, a line of the text before `changes`, in the text after

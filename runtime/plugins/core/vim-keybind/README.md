@@ -10,9 +10,9 @@ natively, `o` to flip the selection in Extend mode, and `Ctrl-6` for the alterna
 (load-plugin! "core:vim-keybind" #:config (hash 'change-to-eol 'smart))
 ```
 
-- **Depends on:** `core:stdlib`: config validation (`'change-to-eol`) calls
-  `stdlib/config-enum` via `call!` at this plugin's own load time, for every
-  `'change-to-eol` value, so a missing `core:stdlib` is a load error naming that command.
+- **Depends on:** `core:stdlib`, at this plugin's own load time for config validation
+  (`'change-to-eol`), for every `'change-to-eol` value, so a missing `core:stdlib` is a
+  load error.
 - **Activates on:** its own key bindings only. Most of what it rebinds
   (`goto-line-start`, `goto-line-end`, …) are built-in commands with no typed form or
   hook of their own, so it has no `manifest.scm` and must be loaded eagerly (see the

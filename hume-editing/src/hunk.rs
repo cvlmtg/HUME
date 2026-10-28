@@ -69,11 +69,23 @@ pub struct LineSpan {
 /// and inserts (old side, columns of the produced text's lines), so no text
 /// diff runs.
 pub fn change_hunks(cs: &ChangeSet, text: &BufferText) -> Vec<ChangeHunk> {
+    change_hunks_within(cs, text, usize::MAX).expect("no group spans more than usize::MAX chars")
+}
+
+/// [`change_hunks`], or `None` when the lines its hunks span, both sides
+/// counted with their line breaks, hold more than `max_chars` chars. Each
+/// group is measured before its lines are copied.
+pub fn change_hunks_within(
+    cs: &ChangeSet,
+    text: &BufferText,
+    max_chars: usize,
+) -> Option<Vec<ChangeHunk>> {
     let regions = cs.edited_regions();
     let lines: Vec<_> = regions.iter().map(|r| affected_lines(r, text)).collect();
     let mut hunks = Vec::new();
     // Old-side lines minus new-side lines over the hunks emitted so far.
     let mut skew = 0isize;
+    let mut left = max_chars;
     let mut i = 0;
     while i < regions.len() {
         let (first, mut end) = lines[i];
@@ -82,13 +94,29 @@ pub fn change_hunks(cs: &ChangeSet, text: &BufferText) -> Vec<ChangeHunk> {
             end = end.max(lines[j].1);
             j += 1;
         }
+        left = left.checked_sub(group_chars(text, &regions[i..j], first, end))?;
         if let Some(hunk) = group_hunk(text, &regions[i..j], first, end, skew) {
             skew += hunk.old_lines.len() as isize - hunk.new_lines.len() as isize;
             hunks.push(hunk);
         }
         i = j;
     }
-    hunks
+    Some(hunks)
+}
+
+/// Chars of the lines `first..end` of `text` plus those of the lines
+/// `regions` turn them into.
+fn group_chars(
+    text: &BufferText,
+    regions: &[EditedRegion<'_>],
+    first: RopeyLine,
+    end: RopeyLine,
+) -> usize {
+    let new = text.line_to_char(end).chars_since(text.line_to_char(first));
+    let old = regions.iter().fold(new, |chars, region| {
+        chars + region.inserted.chars().count() - region.old.end.chars_since(region.old.start)
+    });
+    new + old
 }
 
 /// The lines of `text` a region touches, `first..end`. The line the region's

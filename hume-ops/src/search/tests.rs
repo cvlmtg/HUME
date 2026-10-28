@@ -286,6 +286,16 @@ fn forward_multiple_matches_picks_first_after_from() {
     assert_eq!(incl(span), (3, 4));
 }
 
+/// `a*` matches empty text at offset 0 first; the search goes on to the
+/// non-empty match after it.
+#[test]
+fn forward_skips_a_zero_width_leftmost_match() {
+    let b = buf("bab\n");
+    let found = find_next_match(&b, &re("a*"), bound_at(&b, 0), SearchDirection::Forward)
+        .map(|(span, wrapped)| (incl(span), wrapped));
+    assert_eq!(found, Some(((1, 1), false)));
+}
+
 // ── find_next_match (backward) ────────────────────────────────────────────
 
 #[test]
@@ -984,6 +994,19 @@ fn word_search_pattern_over_matches_a_wider_word_chars_run() {
     let matches = find_all_matches(&b, &r);
     assert_eq!(matches.len(), 1, "the anchors hold inside the longer run");
     assert_eq!(incl(matches[0]), (0, 6)); // inclusive end: 'r' is char index 6
+}
+
+/// A word starting with flag letters followed by `/` still renders with no
+/// flags: the leading `\b` sits before the letters.
+#[test]
+fn a_word_search_pattern_with_flag_letters_before_a_slash_renders_without_flags() {
+    let chars = hume_editing::word::WordChars::default();
+    let pattern = word_search_pattern("mv/s", chars);
+    let rendered = render_search_input(SearchFlags::default(), &pattern);
+    assert_eq!(
+        parse_search_input(&rendered),
+        (SearchFlags::default(), r"\bmv/s\b")
+    );
 }
 
 // ── Corpus ────────────────────────────────────────────────────────────────

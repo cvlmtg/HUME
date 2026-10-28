@@ -503,8 +503,8 @@ impl Buffer {
 
     /// The hunks separating the text at `generation` (old side) from the
     /// live text (new side). `None` when the buffer cannot say: a view
-    /// refresh replaced the text since then, or the change log keeps no step
-    /// that far back.
+    /// refresh replaced the text since then, the change log keeps no step
+    /// that far back, or the changed lines are too large to report.
     pub(in crate::editor) fn changes_since(&self, generation: u64) -> Option<Vec<ChangeHunk>> {
         self.change_log.since(generation, &self.text)
     }

@@ -115,10 +115,11 @@ pub fn parse_search_input(input: &str) -> (SearchFlags, &str) {
 /// such a pattern. `set_search_pattern` re-parses this function's own output
 /// to get the regex it stores, so an unrepresentable pair would silently
 /// compile the *wrong regex* in release, not just mangle the register text.
-/// Every current caller is safe: `*`'s patterns are `\b`-anchored word runs or
-/// pure punctuation runs (never flag letters immediately followed by `/`), and
-/// Ctrl-`/` always sets `verbatim`, which puts a non-empty `v` run in front
-/// regardless of `pattern`'s own text.
+/// Every current caller is safe. A `word_search_pattern` result (`*`, and
+/// `word-search-pattern` for any word a script passes) starts with `\b`
+/// whenever its word starts with a letter, so no run of flag letters comes
+/// before a `/`. Ctrl-`/` always sets `verbatim`, which puts a non-empty `v`
+/// run in front regardless of `pattern`'s own text.
 pub fn render_search_input(flags: SearchFlags, pattern: &str) -> String {
     let mut prefix = String::new();
     if flags.multi {
@@ -176,8 +177,8 @@ pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
 /// - `wrapped` is `true` when the match was found after wrapping around the
 ///   buffer boundary
 ///
-/// Returns `None` when no match exists anywhere in the buffer, or when the
-/// match is zero-width (which would cause the cursor to appear stuck).
+/// Returns `None` when no match exists anywhere in the buffer. Zero-width
+/// matches are skipped, since one would leave the cursor stuck.
 pub fn find_next_match(
     text: &BufferText,
     regex: &Regex,
@@ -522,7 +523,7 @@ fn search_match_in(
             .filter(|m| m.start() < m.end())
             .last()?
     } else {
-        regex.find(input).filter(|m| m.start() < m.end())?
+        regex.find_iter(input).find(|m| m.start() < m.end())?
     };
     text.covering_bytes(m.start()..m.end())
 }

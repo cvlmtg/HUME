@@ -14,8 +14,8 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
   #:config (hash 'signs #t 'inline #f 'ref "HEAD" 'branch-style 'parens))
 ```
 
-- **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean`/
-  `stdlib/config-string` at load time.
+- **Depends on:** `core:stdlib`, at load time for config validation and at runtime for
+  rendering.
 - **Activates on:** the first buffer opened, the first `:toggle-git-signs`/
   `:toggle-inline-diff` typed, or the first call or key press of any `git-diff/*` command
   listed below. Its `manifest.scm` has one entry for `plugin.scm` with

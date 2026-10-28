@@ -161,7 +161,7 @@ fn a_mark_past_the_entry_bound_cannot_be_described() {
 #[test]
 fn a_mark_past_the_deleted_text_bound_cannot_be_described() {
     let mut log = ChangeLog::default();
-    let text = BufferText::from(format!("{}\n", "x".repeat(MAX_HELD_CHARS + 2)).as_str());
+    let text = BufferText::from("xxxxxxx\n".repeat(MAX_HELD_CHARS / 8 + 1).as_str());
     let half = step(&mut log, &text, &[(0, MAX_HELD_CHARS / 2, "")]);
     assert_eq!(
         log.since(text.generation(), &half).map(|h| h.len()),
@@ -173,6 +173,14 @@ fn a_mark_past_the_deleted_text_bound_cannot_be_described() {
         log.since(half.generation(), &live).map(|h| h.len()),
         Some(1)
     );
+}
+
+#[test]
+fn a_change_whose_lines_outgrow_the_report_bound_cannot_be_described() {
+    let mut log = ChangeLog::default();
+    let text = BufferText::from("a\n");
+    let live = step(&mut log, &text, &[(0, 0, &"x".repeat(MAX_REPORTED_CHARS))]);
+    assert_eq!(log.since(text.generation(), &live), None);
 }
 
 #[test]

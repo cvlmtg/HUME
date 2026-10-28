@@ -383,3 +383,16 @@ fn text_hunks_skip_the_spans_of_a_hunk_larger_than_the_budget_left() {
         ]
     );
 }
+
+/// `"xy\n"` turned back into `"abc\n"` spans 3 chars on the new side and 4 on
+/// the old side.
+#[test]
+fn a_budget_below_the_lines_a_change_spans_gives_none() {
+    let buffer = BufferText::from("xy\n");
+    let cs = cs_of(buffer.len_chars(), &[(0, 2, "abc")]);
+    assert_eq!(
+        change_hunks_within(&cs, &buffer, 7),
+        Some(vec![hunk(0, 0, &["abc"], &["xy"])])
+    );
+    assert_eq!(change_hunks_within(&cs, &buffer, 6), None);
+}

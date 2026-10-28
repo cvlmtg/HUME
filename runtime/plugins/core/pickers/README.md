@@ -10,9 +10,8 @@ with no native (Rust) picker definitions.
 (load-plugin! "core:pickers" #:config (hash 'untracked #f))
 ```
 
-- **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean` at load
-  time; `pickers/files`/`pickers/git-modified` call `stdlib/git-repo?`/`stdlib/git-toplevel`
-  at dispatch time; all three pickers call `stdlib/buffer-actions`.
+- **Depends on:** `core:stdlib`, at load time for config validation and when a picker
+  opens.
 - **Activates on:** its own key bindings only. It has no `manifest.scm`, so it must be
   loaded eagerly (see the [core plugins index](../README.md#loading-model)).
 - **User docs:** [Fuzzy Finder](https://cvlmtg.github.io/HUME/pickers.html) and

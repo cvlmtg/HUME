@@ -485,8 +485,7 @@ impl JsonHandle {
     }
 
     /// Convert to a `SteelVal` without returning `Result`: `IntoSteelVal`
-    /// for custom types is infallible, matching `SteelPane::
-    /// into_steel_val`'s own reasoning.
+    /// for custom types is infallible.
     pub fn into_steel_val(self) -> SteelVal {
         self.into_steelval().expect("JsonHandle into_steelval")
     }

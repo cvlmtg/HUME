@@ -15,8 +15,8 @@ download or build of that server registers the installed copy again.
 (load-plugin! "core:lsp-install")
 ```
 
-- **Depends on:** `core:stdlib` (`stdlib/find`, `stdlib/list-subdirs`, `stdlib/write-file!`,
-  `stdlib/delete-file!`, `stdlib/delete-dir!`, `stdlib/resolve-lang-arg`).
+- **Depends on:** `core:stdlib`, at load time for the scan of installed servers and when
+  its commands run.
 - **Activates on:** two entries, each on its own trigger. `plugin.scm` loads on the first
   buffer with a detected language: it scans `<data>/servers/`,
   registers every installed server and gives the discovery hint. It reads `language-servers.scm`

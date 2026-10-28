@@ -1,10 +1,11 @@
 //! What changed in a text since an earlier generation of it, as line hunks.
 
+use std::borrow::Cow;
 use std::collections::VecDeque;
 
 use crate::changeset::{ChangeSet, Operation};
 use crate::edit::TextChange;
-use crate::hunk::{ChangeHunk, change_hunks};
+use crate::hunk::{ChangeHunk, change_hunks_within};
 use crate::text::BufferText;
 
 /// Steps the log keeps. A keystroke's step holds a few ops, so the full log
@@ -14,6 +15,11 @@ const MAX_ENTRIES: usize = 1024;
 /// Deleted chars the kept steps may hold between them, so a few whole-text
 /// rewrites of a large buffer do not keep megabytes alive.
 const MAX_HELD_CHARS: usize = 1 << 20;
+
+/// Chars the lines of one [`ChangeLog::since`] answer may span, both sides
+/// counted, so a large paste or reload reaches handlers as unknown instead
+/// of as copies of every line it touched.
+const MAX_REPORTED_CHARS: usize = 1 << 20;
 
 /// The recent steps of one text's lineage, each able to take the text it
 /// produced back to the generation it started from. A step's start is the
@@ -70,7 +76,8 @@ impl ChangeLog {
 
     /// The hunks separating generation `generation` (old side) from `live`
     /// (new side), the text the newest step produced. `None` when no kept
-    /// step starts at `generation` or a replacement lies between the two.
+    /// step starts at `generation`, a replacement lies between the two, or
+    /// the hunks' lines would span more than `MAX_REPORTED_CHARS`.
     pub fn since(&self, generation: u64, live: &BufferText) -> Option<Vec<ChangeHunk>> {
         if generation == live.generation() {
             return Some(Vec::new());
@@ -80,10 +87,16 @@ impl ChangeLog {
             .steps
             .range(first..)
             .rev()
-            .map(|s| s.undo.clone())
+            .map(|s| s.undo.as_ref())
             .collect::<Option<Vec<_>>>()?;
-        let net = ChangeSet::compose_all(undos).expect("a found step gives one undo at least");
-        Some(change_hunks(&net, live))
+        let net = match undos[..] {
+            [only] => Cow::Borrowed(only),
+            _ => Cow::Owned(
+                ChangeSet::compose_all(undos.into_iter().cloned())
+                    .expect("a found step gives one undo at least"),
+            ),
+        };
+        change_hunks_within(&net, live, MAX_REPORTED_CHARS)
     }
 
     fn push(&mut self, step: Step) {

@@ -33,6 +33,41 @@ use hume_core::ServerName;
 
 // ── Wrapper types ─────────────────────────────────────────────────────────────
 
+/// The Steel surface of a value that compares by its `PartialEq`, hashes by
+/// its `Hash` and prints as `$fmt`, with `$v` bound to the value. The
+/// `fn into_steel_val` form also gives the type an `into_steel_val` that
+/// returns a `SteelVal` without a `Result`: `IntoSteelVal` for a custom type
+/// is infallible, so call sites wrapping one for a hook arg or builtin return
+/// need no `.expect()` of their own.
+macro_rules! steel_value {
+    ($vis:vis fn into_steel_val for $ty:ident => |$v:ident| $fmt:expr) => {
+        impl $ty {
+            $vis fn into_steel_val(self) -> SteelVal {
+                self.into_steelval()
+                    .expect(concat!(stringify!($ty), " into_steelval"))
+            }
+        }
+
+        steel_value!($ty => |$v| $fmt);
+    };
+    ($ty:ident => |$v:ident| $fmt:expr) => {
+        impl Custom for $ty {
+            fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+                let $v = self;
+                Some(Ok($fmt))
+            }
+
+            fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+                as_underlying_type::<Self>(other).is_some_and(|o| o == self)
+            }
+
+            fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
+                Some(self)
+            }
+        }
+    };
+}
+
 /// Opaque Steel handle for a [`PaneHandle`]; see this module's own doc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SteelPane(pub(crate) PaneHandle);
@@ -41,14 +76,6 @@ impl SteelPane {
     /// Wrap a `PaneHandle` into a Steel-facing opaque handle.
     pub fn new(handle: PaneHandle) -> Self {
         Self(handle)
-    }
-
-    /// Convert to a `SteelVal` without returning `Result`.
-    ///
-    /// `IntoSteelVal` for custom types is infallible; this avoids `.expect()` at
-    /// every call site that wraps a `PaneHandle` for hook args or builtin returns.
-    pub fn into_steel_val(self) -> SteelVal {
-        self.into_steelval().expect("SteelPane into_steelval")
     }
 }
 
@@ -65,40 +92,16 @@ pub(crate) fn pane_or_false(pane: Option<PaneHandle>) -> SteelVal {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct SteelBufferKey(pub(crate) BufferId);
 
-impl Custom for SteelPane {
-    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(match self.0.pane() {
-            Some(pid) => format!(
-                "#<pane buffer={} pane={}>",
-                self.0.buffer().data().as_ffi(),
-                pid.data().as_ffi()
-            ),
-            None => format!("#<pane buffer={}>", self.0.buffer().data().as_ffi()),
-        }))
-    }
+steel_value!(pub fn into_steel_val for SteelPane => |p| match p.0.pane() {
+    Some(pid) => format!(
+        "#<pane buffer={} pane={}>",
+        p.0.buffer().data().as_ffi(),
+        pid.data().as_ffi()
+    ),
+    None => format!("#<pane buffer={}>", p.0.buffer().data().as_ffi()),
+});
 
-    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-        as_underlying_type::<Self>(other).is_some_and(|o| o.0 == self.0)
-    }
-
-    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
-        Some(self)
-    }
-}
-
-impl Custom for SteelBufferKey {
-    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!("#<buffer-key {}>", self.0.data().as_ffi())))
-    }
-
-    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-        as_underlying_type::<Self>(other).is_some_and(|o| o.0 == self.0)
-    }
-
-    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
-        Some(self)
-    }
-}
+steel_value!(SteelBufferKey => |k| format!("#<buffer-key {}>", k.0.data().as_ffi()));
 
 /// Opaque Steel value for one running language-server process. Equality
 /// and hashing use `id` alone: a server that stops or restarts is a
@@ -111,12 +114,6 @@ pub struct ServerRef {
 }
 
 impl ServerRef {
-    /// Convert to a `SteelVal` without returning `Result`; see
-    /// [`SteelPane::into_steel_val`].
-    pub fn into_steel_val(self) -> SteelVal {
-        self.into_steelval().expect("ServerRef into_steelval")
-    }
-
     /// The server `val` holds, or `None` if it is some other value.
     pub fn from_steel_val(val: &SteelVal) -> Option<Self> {
         downcast(val)
@@ -137,55 +134,12 @@ impl std::hash::Hash for ServerRef {
     }
 }
 
-impl Custom for ServerRef {
-    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!("#<lsp-server {}>", self.name)))
-    }
+steel_value!(pub fn into_steel_val for ServerRef => |s| format!("#<lsp-server {}>", s.name));
 
-    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
-    }
-
-    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
-        Some(self)
-    }
-}
-
-/// The Steel surface of each opaque `u64` handle the host mints: a value
-/// that compares and hashes by its id and prints as `#<label id>`.
-macro_rules! opaque_handle {
-    ($($ty:ident => $label:literal),+ $(,)?) => {
-        $(
-            impl $ty {
-                /// Convert to a `SteelVal` without returning `Result`; see
-                /// [`SteelPane::into_steel_val`].
-                pub(crate) fn into_steel_val(self) -> SteelVal {
-                    self.into_steelval()
-                        .expect(concat!(stringify!($ty), " into_steelval"))
-                }
-            }
-
-            impl Custom for $ty {
-                fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-                    Some(Ok(format!(concat!("#<", $label, " {}>"), self.raw())))
-                }
-
-                fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-                    as_underlying_type::<Self>(other).is_some_and(|o| o == self)
-                }
-
-                fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
-                    Some(self)
-                }
-            }
-        )+
-    };
-}
-
-opaque_handle!(
-    TimerHandle => "timer",
-    JobHandle => "job",
-    SupersedeKey => "supersede-key",
+steel_value!(pub(crate) fn into_steel_val for TimerHandle => |h| format!("#<timer {}>", h.raw()));
+steel_value!(pub(crate) fn into_steel_val for JobHandle => |h| format!("#<job {}>", h.raw()));
+steel_value!(
+    pub(crate) fn into_steel_val for SupersedeKey => |k| format!("#<supersede-key {}>", k.raw())
 );
 
 /// `(buffer-generation pane)`'s value: the generation of `buffer`'s text
@@ -199,11 +153,6 @@ pub(crate) struct BufferGeneration {
 }
 
 impl BufferGeneration {
-    pub(crate) fn into_steel_val(self) -> SteelVal {
-        self.into_steelval()
-            .expect("BufferGeneration into_steelval")
-    }
-
     /// The generation `val` holds for `buffer`. `arg` names the argument in
     /// the error for any other value, a generation of another buffer included.
     pub(crate) fn of(val: &SteelVal, buffer: BufferId, arg: &str) -> Result<u64, String> {
@@ -215,23 +164,11 @@ impl BufferGeneration {
     }
 }
 
-impl Custom for BufferGeneration {
-    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!(
-            "#<buffer-generation buffer={} {}>",
-            self.buffer.data().as_ffi(),
-            self.generation
-        )))
-    }
-
-    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
-    }
-
-    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
-        Some(self)
-    }
-}
+steel_value!(pub(crate) fn into_steel_val for BufferGeneration => |g| format!(
+    "#<buffer-generation buffer={} {}>",
+    g.buffer.data().as_ffi(),
+    g.generation
+));
 
 /// A buffer position in a request's params, encoded as a wire `Position`
 /// only when the request is serialized for a server, in that server's

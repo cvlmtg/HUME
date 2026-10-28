@@ -1,9 +1,11 @@
 //! BufferText diffing, through `imara-diff`.
 //!
-//! - [`diff_lines`]: line-level diff. Myers runs first; histogram, which
-//!   anchors on lines occurring once on both sides and so reads better
-//!   around moved or repeated lines, replaces its result while its estimated
-//!   cost fits `HISTOGRAM_WORK_LIMIT`. [`LineHunk`] ranges are line indices.
+//! - [`diff_lines`]: line-level diff. Histogram, which anchors on lines
+//!   occurring once on both sides and so reads better around moved or
+//!   repeated lines, runs while its estimated cost fits
+//!   `HISTOGRAM_WORK_LIMIT`, and Myers otherwise. The estimate counts the
+//!   Myers diff's hunks, unless inputs this short fit even at the most hunks
+//!   a diff of them can have. [`LineHunk`] ranges are line indices.
 //! - [`diff_words`]: word-level Myers diff, meant for refining a replaced
 //!   line. [`WordHunk`] ranges are char offsets.
 //!
@@ -71,17 +73,21 @@ pub fn diff_lines<T: Eq + Hash + Clone>(old: &[T], new: &[T]) -> Vec<LineHunk> {
 /// [`diff_lines`] with `limit` in place of [`HISTOGRAM_WORK_LIMIT`].
 fn diff_lines_within<T: Eq + Hash + Clone>(old: &[T], new: &[T], limit: usize) -> Vec<LineHunk> {
     let input = interned(old, new);
-    let myers = computed(Algorithm::Myers, &input);
-    let diff = if histogram_fits(old.len() + new.len(), myers.hunks().count(), limit) {
-        computed(Algorithm::Histogram, &input)
-    } else {
-        myers
+    let lines = old.len() + new.len();
+    // Unchanged lines separate change hunks, and the shorter input holds
+    // every unchanged line, so a diff has at most `most_hunks` hunks.
+    let most_hunks = old.len().min(new.len()) + 1;
+    let myers =
+        (!histogram_fits(lines, most_hunks, limit)).then(|| computed(Algorithm::Myers, &input));
+    let diff = match myers {
+        Some(myers) if !histogram_fits(lines, myers.hunks().count(), limit) => myers,
+        _ => computed(Algorithm::Histogram, &input),
     };
     partition(&diff, old.len(), new.len())
 }
 
-/// Whether a histogram pass over `lines` lines whose Myers diff has `hunks`
-/// change hunks stays within `limit` (see [`HISTOGRAM_WORK_LIMIT`]).
+/// Whether a histogram pass over `lines` lines with at most `hunks` change
+/// hunks stays within `limit` (see [`HISTOGRAM_WORK_LIMIT`]).
 fn histogram_fits(lines: usize, hunks: usize, limit: usize) -> bool {
     lines.saturating_mul(hunks) <= limit
 }
