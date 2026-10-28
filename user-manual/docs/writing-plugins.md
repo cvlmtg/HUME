@@ -1,6 +1,6 @@
 # Writing Plugins
 
-A plugin is Scheme, the same language as your `init.scm`, so anything you can write there you can package and share. This page walks through writing one; [Plugins](plugins.md) covers installing and loading them, and the [Plugin API](plugin-api.md) lists every builtin.
+A plugin is Scheme, the same language as your `init.scm`, so anything you can write there you can package and share. This page walks through writing one; [Plugins](plugins.md) covers installing and loading them, and the [Plugin API](plugin-api.md) lists every editor function.
 
 ## The smallest plugin
 
@@ -89,7 +89,7 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 
 `call!` dispatches any editor command, built-in and Scheme-defined alike, activating the target plugin on demand. A built-in command needs a pane to run on, so `call!` of one raises while `init.scm` or a plugin loads: run it from a key binding, a hook or a command.
 
-A built-in command has no lambda parameter list of its own to receive one, so `call!` requires a pane as its first *argument* instead: always the pane the command should act through: `(call! "delete-selection" pane)`, `(call! "move-right" pane 5)`. Most built-ins act through whatever pane the value names, not necessarily the one you're focused on, as long as that pane still exists and still shows the buffer the value names; a few (entering insert mode, an open prompt, extend mode, pane focus/split/close, tabs, …) still require it to be the pane you're actually focused on (see [Builtin Commands](builtin-commands.md) for the full breakdown). A Scheme-defined command receives `pane` as its own first parameter already (see above), so `call!` passes whatever arguments that command declares, including `pane` itself, if the caller wants to forward the one it's acting through.
+A built-in command has no lambda parameter list of its own to receive one, so `call!` requires a pane as its first *argument* instead: always the pane the command should act through: `(call! "delete-selection" pane)`, `(call! "move-right" pane 5)`. Most built-in commands act through whatever pane the value names, not necessarily the one you're focused on, as long as that pane still exists and still shows the buffer the value names; a few (entering insert mode, an open prompt, extend mode, pane focus/split/close, tabs, …) still require it to be the pane you're actually focused on (see [Editor Commands](editor-commands.md) for the full breakdown). A Scheme-defined command receives `pane` as its own first parameter already (see above), so `call!` passes whatever arguments that command declares, including `pane` itself, if the caller wants to forward the one it's acting through.
 
 For a built-in command, `call!` returns `#f` when the command refused (a too-small split, the last pane, …), and `#t` otherwise. A name it can't reach raises. That's not a guarantee anything changed, just that nothing was refused; it errors if `pane` doesn't resolve for that command (see above). A Scheme-defined command returns whatever its own body returns.
 
@@ -97,7 +97,7 @@ For a built-in command, `call!` returns `#f` when the command refused (a too-sma
 Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`: only editor commands work here. Calling one raises, naming the `:` command to type instead, so `(call! "write")` will not save.
 :::
 
-A few built-ins take one more argument, after the optional count and extend flag: what the command acts with.
+A few built-in commands take one more argument, after the optional count and extend flag: what the command acts with. A key press asks for it when the command runs; a script passes it.
 
 - `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add` act with a character, given as a Scheme character: `(call! "find-forward" pane #\x)`, `(call! "find-forward" pane 2 #\x)`. The character is required: to use one the user types, read it with [`on-next-char!`](#reading-characters) and pass it on. To pass a one-character string, convert it with `(string-ref s 0)`.
 - `search-forward`, `search-backward`, and `sift-within` take a pattern. With one, they work as if you had typed it at their prompt and pressed Enter, without opening the prompt. A search with no match still becomes the current search, as it does after Enter, and `call!` returns `#f`. So does an invalid or empty pattern, which is also reported in `:messages` and leaves the current search as it was, and a `sift-within` that finds no match. The pattern is required: to use one the user types, read it with [`prompt!`](plugin-api.md#other-ui-widgets) and pass it on.
@@ -228,7 +228,7 @@ Plugins react to editor lifecycle events by registering a hook handler with `reg
     (log! 'info (string-append "saved " (buffer-name pane)))))
 ```
 
-Available hooks and their lambda signatures. `register-hook!` raises for a lambda that can't take the arguments its hook passes. Every `pane` argument below is the same opaque value a command's own leading parameter is (see [Defining commands](#defining-commands)); pass it straight into any builtin that takes one. For a hook about a buffer with no pane of its own (most of them), that value carries no particular pane; for `on-buffer-enter`, `on-viewport-change`, `on-trigger-char`, and `on-completion-accept`, it names the exact pane the event happened in:
+Available hooks and their lambda signatures. `register-hook!` raises for a lambda that can't take the arguments its hook passes. Every `pane` argument below is the same opaque value a command's own leading parameter is (see [Defining commands](#defining-commands)); pass it straight into any editor function that takes one. For a hook about a buffer with no pane of its own (most of them), that value carries no particular pane; for `on-buffer-enter`, `on-viewport-change`, `on-trigger-char`, and `on-completion-accept`, it names the exact pane the event happened in:
 
 | Hook | Fires when | Lambda args |
 |------|------------|-------------|
@@ -435,7 +435,7 @@ Returns the buffer's length in characters, the final line break included: the la
 (line->char-offset pane line)
 ```
 
-Returns the 0-based char offset where content line `line` (0-based) starts: the conversion decoration builtins that take char offsets (like `set-extra-highlights!`) need when all you have is a line number, e.g. from a diff hunk. Raises if `line` is at or past the buffer's content line count.
+Returns the 0-based char offset where content line `line` (0-based) starts: the conversion decoration functions that take char offsets (like `set-extra-highlights!`) need when all you have is a line number, e.g. from a diff hunk. Raises if `line` is at or past the buffer's content line count.
 
 ### Example: Markdown headings
 
@@ -511,7 +511,7 @@ Splits both `old-text` and `new-text` into lines the same way HUME treats file c
 (diff-buffer-lines pane ref-text)
 ```
 
-Same result, but compares `ref-text` against the current, unsaved content of the buffer named by `pane`; the buffer never has to be pulled through a builtin as one big string first. This is the one to use in a hook that fires on every keystroke.
+Same result, but compares `ref-text` against the current, unsaved content of the buffer named by `pane`; the buffer never has to be pulled through an editor function as one big string first. This is the one to use in a hook that fires on every keystroke.
 
 For a finer-grained comparison inside a single changed line, highlighting exactly which words differ rather than the whole line:
 

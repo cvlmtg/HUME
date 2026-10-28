@@ -5,7 +5,7 @@ Command mode is where HUME reaches commands that aren't bound to a key. Press `:
 Every command in this manual is one of two kinds, and each is reachable only its own way:
 
 - **Typed commands**: everything on this page. Reached only from the command mode prompt. Each takes a text argument, a `!`, both or neither, as its entry shows, and refuses one it doesn't take.
-- **Editor commands**: everything in the [Builtin Commands](builtin-commands.md) reference. Reached only from a key or a plugin (including your `init.scm`), never by name at the command mode prompt.
+- **Editor commands**: everything in the [Editor Commands](editor-commands.md) reference. Reached only from a key or a plugin (including your `init.scm`), never by name at the command mode prompt.
 
 ::: info
 Navigate buffers with `:bprev`/`:bnext` from the command mode prompt. Doing this often enough to want a keybind? Use the editor commands `goto-prev-buffer`/`goto-next-buffer` in `init.scm` instead:
@@ -169,4 +169,4 @@ Plugins add commands of their own once you load them. The `:plum-*` commands (in
 
 ## Finding a command
 
-There is no listing command. Open the command mode prompt with `:` and press `Tab`: completion shows every registered typed name and alias, including those of plugins that haven't started yet. It never shows editor commands, since you can't run one by name there; see [Builtin Commands](builtin-commands.md) for the full list.
+There is no listing command. Open the command mode prompt with `:` and press `Tab`: completion shows every registered typed name and alias, including those of plugins that haven't started yet. It never shows editor commands, since you can't run one by name there; see [Editor Commands](editor-commands.md) for the full list.

@@ -64,7 +64,7 @@ Kakoune's `extra_word_chars` is usually set per filetype from a `hook`. HUME's e
       (set-buffer-option! pane "word-chars" "-"))))
 ```
 
-`bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.
+`bind-key!` takes a command *name* (the same names listed in [Editor Commands](editor-commands.md)), not a key sequence — there's no key-to-key remapping.
 
 ## What's the same
 

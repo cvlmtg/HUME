@@ -66,7 +66,7 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
       (set-buffer-option! pane "indent-style" "soft"))))
 ```
 
-`bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.
+`bind-key!` takes a command *name* (the same names listed in [Editor Commands](editor-commands.md)), not a key sequence — there's no key-to-key remapping.
 
 ## Bringing your themes over
 

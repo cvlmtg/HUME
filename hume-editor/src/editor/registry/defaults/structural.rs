@@ -20,7 +20,7 @@ use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 /// (`keymap/defaults::build_text_object_trie`), so a kind added here needs
 /// only the arm the compiler asks for in `commands/structural.rs`'s
 /// exhaustive `lexical_object` match. Doc wording mirrors
-/// `user-manual/docs/builtin-commands.md`'s rows for these commands; update
+/// `user-manual/docs/editor-commands.md`'s rows for these commands; update
 /// both together.
 pub(in crate::editor) struct StructuralObject {
     pub(in crate::editor) kind: ObjectKind,

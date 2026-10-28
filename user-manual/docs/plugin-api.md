@@ -1,16 +1,24 @@
 # Plugin API
 
-Reference for every function a plugin or `init.scm` can call directly, as opposed to a command reached through a key binding or [`call!`](writing-plugins.md#calling-other-commands). Three layers make up this surface:
+Reference for the editor functions a plugin or `init.scm` can call. The editor commands keys run are on [Editor Commands](editor-commands.md); see [Commands and functions](#commands-and-functions) for the difference. Three layers make up this surface:
 
-- **Builtins**: native to the editor, always available, called as plain Scheme: `(buffer-text pane)`, `(bind-key! ...)`. Some are thin Scheme wrappers that add keyword arguments and defaults; the signature documented here is the wrapper's.
-- **[Language Server API](lsp-api.md)**: the builtins for registering, configuring, and requesting from language servers.
+- **Editor functions**: native to the editor, always available, called by name as plain Scheme: `(buffer-text pane)`, `(bind-key! ...)`. Some are thin Scheme wrappers that add keyword arguments and defaults; the signature documented here is the wrapper's.
+- **[Language Server API](lsp-api.md)**: the editor functions for registering, configuring, and requesting from language servers.
 - **[Standard Library](standard-library.md)**: `core:stdlib`, an optional bundled *plugin*. Its commands are reached through `call!`, like any other plugin's: `(call! "stdlib/find" pred? lst)`.
 
 This page is a lookup reference: tables of signatures and one-line effects. For narrative walkthroughs and worked examples, see [Writing Plugins](writing-plugins.md), [Language Servers](lsp.md), [Configuration](configuration.md), and the other pages linked throughout.
 
-## Commands and builtins
+## Commands and functions
 
-Editor commands and builtins are different things. A command, such as `completion-trigger` or one a plugin defines with `define-command!`, is something a key can run: bind it with `bind-key!`, or run it from Scheme with `call!`. A builtin, such as `insert-key!` or `buffer-text`, is an ordinary Scheme function: call it by name with its arguments, but it can't be bound to a key and `call!` won't find it. Something is a builtin rather than a command when it needs arguments a keypress can't supply, or when it only makes sense as a step inside a command of your own. The [Builtin Commands](builtin-commands.md) page lists every command the editor ships with; this page lists the builtins.
+A script can run three kinds of things:
+
+| Kind | Examples | Run from | Bound to a key | `call!` | Listed in |
+|------|----------|----------|----------------|---------|-----------|
+| **Editor command** | `move-left`, `completion-trigger`, one a plugin defines with `define-command!` | A key, or a script | Yes | Yes | [Editor Commands](editor-commands.md) for the built-in ones, a plugin's own docs for its commands |
+| **Typed command** | `:write`, one defined with `define-typed-command!` | The `:` prompt | No | No | [Command mode](command-mode.md), a plugin's own docs |
+| **Editor function** | `buffer-text`, `edit-text!`, `bind-key!` | A script | No | No | This page and the [Language Server API](lsp-api.md) |
+
+An editor command takes what a key press supplies: the pane, then an optional count and extend flag. A built-in one can also be called by name, `(move-left pane)`, which is the same as `(call! "move-left" pane)`. Nine built-in commands also act with a character or a pattern that a key press asks for, and a script passes it as an argument instead: `(call! "search-forward" pane "foo")` searches as if you had typed `foo` at the `/` prompt. [Calling other commands](writing-plugins.md#calling-other-commands) lists them. An editor function takes the arguments its entry lists. Something is an editor function rather than a command when it needs arguments a key press can't supply, or when it only makes sense as a step inside a command of your own. Steel's own library functions and the ones you `define` are plain Scheme functions, not editor functions.
 
 ## Conventions
 
@@ -25,7 +33,7 @@ Editor commands and builtins are different things. A command, such as `completio
 - A structured value you pass in or get back (a decoration entry, a diagnostic, a request error, a plugin's `#:config`) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](lsp-api.md#json-handles)). Two kinds of value are hashmaps with string keys, the wire shape: the `lsp-*-params` results (`(hash-ref (lsp-position-params pane) "position")`) and the items `completion-top` returns, whose source is `(hash-ref item "source")`. Picker items `(display . payload)`, picker `#:actions` `(key-spec . proc)`, and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records: the first two are per-row data on a hot path, the last a map. A selection from `buffer-selections` is not a record either, for the same per-row reason: read it with the `selection-*` calls.
 - Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget. `#f` — an opener's own answer when the open was dropped before it could happen — is stale by construction and a no-op the same way.
 - Where a call may run depends on what it touches. Calls that read or change a live buffer, pane, selection, or widget raise at the top level of `init.scm` and in a plugin body loaded at startup, since nothing is on screen yet; call them from a command, hook, timer, or callback. So do calls that start background work that calls you back later (`after!`, `spawn-async!`, `path-programs`) and the calls that stop it (`cancel-timer!`, `cancel-async!`). Registrations (`bind-key!` and its variants without `#:keymap`, `define-command!`, `define-typed-command!`, `register-hook!`, `register-lsp-notification-hook!`, `register-completion-source!`, `define-language!`, `configure-language!`) raise inside a command, hook, timer, or callback; call them at the top level of `init.scm` or in a plugin body. `load-plugin!` and `declare-plugin!` work only at the top level of `init.scm`.
-- A procedure you hand over to be called later (a hook handler, a callback, an `on-select`, a `#:render`) must take the arguments it is called with, as each call's entry lists them. The call that takes it raises when it can't, instead of an error later when it runs. A lambda with a rest parameter that fits is accepted, and so is a builtin.
+- A procedure you hand over to be called later (a hook handler, a callback, an `on-select`, a `#:render`) must take the arguments it is called with, as each call's entry lists them. The call that takes it raises when it can't, instead of an error later when it runs. A lambda with a rest parameter that fits is accepted, and so is an editor function.
 - A value from a fixed set of names (a mode, a hook name, a log level, an enum option's value) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
 ## Settings & statusline
@@ -61,10 +69,10 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 |------|--------|
 | `(define-command! name doc proc #:repeatable #:inline-output)` | Register `name` as an editor command |
 | `(define-typed-command! name doc proc #:inline-output #:complete)` | Register `name` as a typed command, reachable as `:name` |
-| `(call! name args ...)` | Dispatch any editor command (built-in or Scheme-defined), activating its plugin on demand. A built-in takes `pane`, an optional count and extend flag, then the character or pattern the few that need one act with; see [Calling other commands](writing-plugins.md#calling-other-commands) |
+| `(call! name args ...)` | Dispatch any editor command (built-in or Scheme-defined), activating its plugin on demand. A built-in command takes `pane`, an optional count and extend flag, then the character or pattern the few that need one act with; see [Calling other commands](writing-plugins.md#calling-other-commands) |
 | `(on-next-char! callback)` | Call `callback` with the next key typed as a character, or with `#f` when that key isn't one |
 | `(command-plugin name)` | The id string of the plugin that registered command `name`: `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in or a name that isn't a command |
-| `(command-exists? name)` | `#t` if `name` is something your plugin can use: a command reachable with `call!` (built-in, Scheme-defined, or a not-yet-loaded plugin's, but not a key-only command such as `pipe`), or any procedure bound at the top level (a builtin, a Steel library function, or your own `define`). `#f` otherwise, including for macros such as `call!` |
+| `(command-exists? name)` | `#t` if `name` is something your plugin can use: a command reachable with `call!` (built-in, Scheme-defined, or a not-yet-loaded plugin's, but not a key-only command such as `pipe`), or any procedure bound at the top level (an editor function, a Steel library function, or your own `define`). `#f` otherwise, including for macros such as `call!` |
 
 `define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` are covered with examples in [Defining commands](writing-plugins.md#defining-commands), [Calling other commands](writing-plugins.md#calling-other-commands), and [Reading characters](writing-plugins.md#reading-characters). A script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) is stopped where it is, and none of its error handlers run. Time spent waiting on the operating system doesn't count: running a program and waiting for it, compiling a grammar, or deleting a directory tree with `remove-dir!`. `time/sleep-ms` does count, and so does waiting in Steel's own calls, such as its `wait`.
 
@@ -141,7 +149,7 @@ A value naming a closed buffer raises for almost every call: every call in the t
 | `(focused-pane)` | The pane focused right now, paired with its buffer: a live read. Reach for this from a response callback, a timer, or anything else with no pane of its own to act on, e.g. checking `(equal? pane (focused-pane))` before acting on a response, when `pane` was captured before an async request went out. A command body doesn't need this: it receives the pane it was invoked through as its own leading parameter (see [Defining commands](writing-plugins.md#defining-commands)) |
 | `(buffers)` | List of every open buffer, as pane-less pane values, in open-order |
 | `(buffer-live? pane)` | `#t` if `pane`'s buffer is still open, `#f` otherwise; never raises. The idiom for a timer, debounce, or async callback whose captured value may have closed by the time it fires: check this before calling anything that would otherwise raise on a closed buffer |
-| `(pane-live? pane)` | `#t` if `pane` names a pane that still exists and still shows its own buffer, `#f` otherwise, including for a value that carries no pane; never raises. The same idiom as `buffer-live?` for a callback that calls a pane-aware builtin such as `lsp-request!` |
+| `(pane-live? pane)` | `#t` if `pane` names a pane that still exists and still shows its own buffer, `#f` otherwise, including for a value that carries no pane; never raises. The same idiom as `buffer-live?` for a callback that calls a pane-aware editor function such as `lsp-request!` |
 | `(panes)` | List of every open pane, including panes in other tabs |
 | `(buffer-panes pane)` | Every pane currently showing `pane`'s buffer: the focused pane first if it shows that buffer, then the rest of the active tab, then other tabs. `(car (buffer-panes pane))` picks the same one a plugin would want by default when it just needs *some* pane on the buffer |
 | `(buffer-key pane)` | An opaque, comparable value naming just `pane`'s buffer: two pane values for the same buffer (even with different panes, or no pane at all) produce equal keys. Use this, not the pane value itself, as the key in a hash table a plugin keeps for its own per-buffer state |
@@ -172,7 +180,7 @@ A value naming a closed buffer raises for almost every call: every call in the t
 | `(symbol-under-cursor pane)` | The identifier under the primary cursor in `pane`'s own pane, as a string; `""` when the cursor is not on a word character |
 | `(pane? v)` | `#t` if `v` is an opaque pane value |
 
-`buffer-text`, `buffer-lines`, `buffer-line-count`, `buffer-char-count`, `buffer-selections`, `char-offset->line`, `line->char-offset`, and `viewport-range` are covered with examples in [Reading selections](writing-plugins.md#reading-selections) and [Reading buffer text](writing-plugins.md#reading-buffer-text). Every `pane` argument here is an opaque value from one of these functions, or the one a command receives as its own leading parameter (see [Defining commands](writing-plugins.md#defining-commands)); there's no "current buffer" shortcut baked into any builtin itself. Compare two pane values with plain `equal?`; there's no dedicated equality builtin.
+`buffer-text`, `buffer-lines`, `buffer-line-count`, `buffer-char-count`, `buffer-selections`, `char-offset->line`, `line->char-offset`, and `viewport-range` are covered with examples in [Reading selections](writing-plugins.md#reading-selections) and [Reading buffer text](writing-plugins.md#reading-buffer-text). Every `pane` argument here is an opaque value from one of these functions, or the one a command receives as its own leading parameter (see [Defining commands](writing-plugins.md#defining-commands)); there's no "current buffer" shortcut baked into any editor function itself. Compare two pane values with plain `equal?`; there's no dedicated equality function.
 
 ## Editing & navigation
 
@@ -198,7 +206,7 @@ A value naming a closed buffer raises for almost every call: every call in the t
 (bind-key! 'insert "tab" "tab-or-complete")
 ```
 
-`letter-before-cursor?` here is a helper you write yourself, not a builtin.
+`letter-before-cursor?` here is a helper you write yourself, not an editor function.
 
 `paste-text!` does whatever pasting `text` would do at that moment. In Insert mode it goes in at every cursor, with no auto-pairs or auto-indent; in Normal mode it replaces the selections; on the command line, in a prompt, a search or a picker, line breaks become spaces. A list of strings, such as `read-register`'s, is placed the way `p` places a register: one string per selection when there are as many of each, and all of them joined otherwise, which is what a prompt always gets. A character an `on-next-char!` callback is waiting for ends without one, as on a paste. Called from an Insert-mode key's binding, `.` repeats it by running the binding again; called from a hook or a timer during Insert mode, `.` repeats the paste. For example, a key that inserts the working directory, in Insert mode and on the command line:
 
@@ -273,7 +281,7 @@ Full walkthrough (a static source, richer items, trigger characters, an asynchro
 
 ## Pickers
 
-These are editor-builtin commands any plugin can drive: a plugin opens a picker and pushes items through them rather than building its own fuzzy-finder.
+These are editor functions any plugin can use to drive a picker: a plugin opens one and pushes items through them rather than building its own fuzzy-finder.
 
 Full walkthroughs (batch vs. streaming population, truncation direction, exit-code handling, live requery) are in [Custom pickers](writing-plugins.md#custom-pickers) and [Live requery (live grep)](writing-plugins.md#live-requery-live-grep).
 

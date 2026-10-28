@@ -10,7 +10,7 @@ architecture and the *why* behind it, not a build log.
 | Selection policy (Move/Extend, count, multi-cursor) | `hume-ops/src/text_object/argument.rs`, `motion/object.rs` |
 | Command dispatch, registration, keymap | `hume-editor/src/editor/commands/structural.rs`, `registry/defaults/structural.rs`, `keymap/defaults.rs` |
 | `register-grammar!` Scheme API | `runtime/scheme/prelude.scm` |
-| End-user docs | `user-manual/docs/selections.md`, `default-keys.md`, `builtin-commands.md`, `moving-around.md`, `syntax-highlighting.md` |
+| End-user docs | `user-manual/docs/selections.md`, `default-keys.md`, `editor-commands.md`, `moving-around.md`, `syntax-highlighting.md` |
 
 ## Scope and principles
 

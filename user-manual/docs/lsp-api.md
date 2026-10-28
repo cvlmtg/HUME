@@ -1,6 +1,6 @@
 # Language Server API
 
-Reference for the builtins a plugin can call to register, configure, and talk to language servers. An LSP plugin registers and drives a server through these rather than wiring its own protocol client. Conventions (0-based positions, `!` suffix, pane values, symbols, [JSON handles](#json-handles)) are those of the [Plugin API](plugin-api.md#conventions).
+Reference for the editor functions a plugin can call to register, configure, and talk to language servers. An LSP plugin registers and drives a server through these rather than wiring its own protocol client. Conventions (0-based positions, `!` suffix, pane values, symbols, [JSON handles](#json-handles)) are those of the [Plugin API](plugin-api.md#conventions).
 
 Most of this page is lookup tables of signatures and one-line effects; [Sending a custom request](#sending-a-custom-request) walks through using them together. For setting up and using language servers, see [Language Servers](lsp.md).
 
@@ -87,7 +87,7 @@ returns its generated code:
 
 The shape is always the same three steps: send a request built from `lsp-position-params` or
 `lsp-primary-range-params`, transform the server's response, and hand the result to a UI or store
-builtin (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
+function (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
 `apply-workspace-edit!`, …). `err` and `res` are never both set. Check `err` first and stop
 on it, the way every built-in feature does. `res` is a JSON handle: read a field with
 `json-ref`/`json-contains?`/`json-list`, not `hash-ref`; a `null` response arrives as void, not `#f`.
@@ -124,7 +124,7 @@ a request no server can take then calls back with no error and an empty result, 
 The position in `lsp-position-params` (and the ranges in its siblings) is not a line and column
 pair you can read: servers count columns in different units, so each server receives the position
 in its own units when the request is sent. Add your own keys to the params hash, but take the
-position from these builtins rather than building one.
+position from these functions rather than building one.
 
 `lsp-request!` also takes four keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede key` takes a key from `(lsp-supersede-key)`, and cancels the still-pending request filed under the same key (every server it went to gets `$/cancelRequest` and the old callback never fires). Each call to `lsp-supersede-key` returns a new key, so make one at the top level of your plugin and pass it to every request it should replace: no other plugin's request, and none of HUME's own, can share it. This is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. The positions in such an answer still describe the text the request was sent for, while `lsp-position->char-offset`/`lsp-range->char-range` read the buffer as it is now, so after an edit they may land on different text. Before using one, compare `buffer-generation` with the value you read when sending, and send the request again if it moved. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives. Hover, signature help, and code actions use it, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file. `#:tracked token` takes a `track-position!` token for the position the request was asked about: the token follows edits made while the request is pending, and is forgotten once the callback has run, unless the callback calls `keep-tracked-position!`.
 

@@ -86,7 +86,7 @@ HUME has no `vimrc`. Every setting and keybinding is a call to a Scheme function
       (set-buffer-option! pane "indent-style" "soft"))))
 ```
 
-`bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.
+`bind-key!` takes a command *name* (the same names listed in [Editor Commands](editor-commands.md)), not a key sequence — there's no key-to-key remapping.
 
 ## Mode map
 

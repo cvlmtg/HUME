@@ -129,7 +129,7 @@ export default defineConfig({
           { text: 'Command mode', link: '/command-mode' },
           { text: 'Settings', link: '/settings' },
           { text: 'Default Keys', link: '/default-keys' },
-          { text: 'Builtin Commands', link: '/builtin-commands' },
+          { text: 'Editor Commands', link: '/editor-commands' },
         ],
       },
       {

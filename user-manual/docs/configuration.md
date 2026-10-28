@@ -119,7 +119,7 @@ A value you set, in your `init.scm`, a hook it registers or with `:set`, beats a
 (unbind-key! 'normal "ctrl-j")
 ```
 
-`bind-key!` takes an editor command's name (the same names in [Builtin Commands](builtin-commands.md)), never a typed command; there's no way to bind one of those to a key.
+`bind-key!` takes an editor command's name (the same names in [Editor Commands](editor-commands.md)), never a typed command; there's no way to bind one of those to a key.
 
 `bind-key!`: binds a key in the given mode (`'normal`, `'insert`, `'extend`, `'command`). An `'insert` or `'command` binding is a single key.
 `unbind-key!`: unbinds a key.
