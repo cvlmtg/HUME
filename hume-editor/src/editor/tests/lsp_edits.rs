@@ -1429,6 +1429,36 @@ fn server_initiated_apply_edit_applies_answers_true_and_reports_the_buffer_count
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "XYZdef\n");
 }
 
+/// A server's edit whose one file has no edits applies, reports nothing, and
+/// never opens that file.
+#[test]
+fn server_initiated_apply_edit_with_nothing_to_apply_reports_nothing_and_opens_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("untouched.txt");
+    std::fs::write(&file, "abcdef\n").unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+
+    let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
+    let params = serde_json::json!({
+        "edit": {
+            "changes": {
+                uri.as_str(): []
+            }
+        }
+    });
+    let status_before = ed.state.status_msg.clone();
+    let result = apply_edit_request_response(&mut ed.state, &mut ed.view, &params, sid).unwrap();
+    assert_eq!(result["applied"], serde_json::json!(true));
+    assert_eq!(ed.state.status_msg, status_before);
+    assert!(
+        ed.state.buffers.find_by_path(&canonical).is_none(),
+        "a file with no edits must not be opened"
+    );
+}
+
 /// `workspace/applyEdit` opens files via `lsp::edits::resolve_or_open` →
 /// `buffer::lifecycle::open_or_dedup_and_notify`, which can't detect language
 /// inline (see that function's doc); it queues the buffer onto

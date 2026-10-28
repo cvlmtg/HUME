@@ -3,6 +3,7 @@
 //! [`text_hunks`] from a line diff.
 
 use std::ops::Range;
+use std::time::Duration;
 
 use ropey::RopeSlice;
 
@@ -12,7 +13,9 @@ use hume_rope::lines::{line_token_content, strip_line_break};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::changeset::{ChangeSet, EditedRegion};
-use crate::diff::{LineHunk, LineHunkKind, diff_lines, word_change_ranges};
+use crate::diff::{
+    DIFF_LINE_DEADLINE, LineHunk, LineHunkKind, diff_lines_with_deadline, word_change_ranges,
+};
 use crate::text::BufferText;
 
 /// Word tokens [`text_hunks`] word-diffs across all its hunks together,
@@ -220,16 +223,23 @@ fn group_hunk(
 ///
 /// Word spans come from a word diff of each hunk's two sides joined by line
 /// breaks, so an edit is marked where it is whatever the line counts on
-/// either side. All hunks share `HUNK_WORDS_BUDGET`.
+/// either side. All hunks share `HUNK_WORDS_BUDGET`, and the line diff has
+/// `DIFF_LINE_DEADLINE`.
 pub fn text_hunks(old: &BufferText, new: &BufferText) -> HunkDiff {
-    text_hunks_with_budget(old, new, HUNK_WORDS_BUDGET)
+    text_hunks_within(old, new, HUNK_WORDS_BUDGET, DIFF_LINE_DEADLINE)
 }
 
-fn text_hunks_with_budget(old: &BufferText, new: &BufferText, budget: usize) -> HunkDiff {
+/// [`text_hunks`] with an explicit word budget and line-diff deadline.
+fn text_hunks_within(
+    old: &BufferText,
+    new: &BufferText,
+    budget: usize,
+    deadline: Duration,
+) -> HunkDiff {
     let old_tokens: Vec<RopeSlice<'_>> = old.line_tokens().collect();
     let new_tokens: Vec<RopeSlice<'_>> = new.line_tokens().collect();
     let mut left = budget;
-    let diff = diff_lines(&old_tokens, &new_tokens);
+    let diff = diff_lines_with_deadline(&old_tokens, &new_tokens, deadline);
     let deadline_hit = diff.deadline_hit();
     let hunks = diff
         .hunks

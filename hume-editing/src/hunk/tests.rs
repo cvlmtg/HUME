@@ -345,15 +345,30 @@ fn text_hunk_words_split_a_span_across_lines() {
     assert_eq!(words.new, vec![chars(1, 2)]);
 }
 
+/// A line diff that misses its deadline says so, and still hands back the
+/// fallback diff's hunks.
+#[test]
+fn text_hunks_past_the_line_diff_deadline_say_so() {
+    let diff = text_hunks_within(
+        &BufferText::from(TEXT),
+        &BufferText::from("one\nTWO\nthree\n"),
+        HUNK_WORDS_BUDGET,
+        Duration::ZERO,
+    );
+    assert!(diff.deadline_hit);
+    assert!(!diff.hunks.is_empty());
+}
+
 /// Once the shared budget is spent, a replaced hunk keeps its lines and says
 /// its word diff was skipped, which no spans could not tell apart from a
 /// change of whole lines.
 #[test]
 fn text_hunks_past_the_word_budget_say_so() {
-    let hunks = text_hunks_with_budget(
+    let hunks = text_hunks_within(
         &BufferText::from("let x = 1;\n"),
         &BufferText::from("let y = 1;\n"),
         0,
+        DIFF_LINE_DEADLINE,
     )
     .hunks;
     assert_eq!(
@@ -367,10 +382,11 @@ fn text_hunks_past_the_word_budget_say_so() {
 /// first hunk's sides are 7 tokens each, the second's 3 each.
 #[test]
 fn text_hunks_skip_the_spans_of_a_hunk_larger_than_the_budget_left() {
-    let hunks = text_hunks_with_budget(
+    let hunks = text_hunks_within(
         &BufferText::from("p q r s\nkeep\nm n\n"),
         &BufferText::from("p Q r s\nkeep\nm o\n"),
         6,
+        DIFF_LINE_DEADLINE,
     )
     .hunks;
     assert_eq!(

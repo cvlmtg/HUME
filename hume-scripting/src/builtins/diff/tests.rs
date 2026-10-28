@@ -49,6 +49,22 @@ fn diff_words_rejects_a_non_string_new_argument() {
     );
 }
 
+/// A diff whose line diff missed its deadline reads `'deadline-hit #t`.
+#[test]
+fn a_diff_past_its_deadline_reads_deadline_hit_true() {
+    let diff = HunkDiff {
+        hunks: Vec::new(),
+        deadline_hit: true,
+    };
+    assert_eq!(
+        hunks_to_steel(diff),
+        symbol_hash([
+            ("hunks", list_of(Vec::<SteelVal>::new())),
+            ("deadline-hit", SteelVal::BoolV(true)),
+        ])
+    );
+}
+
 // ── NullHost: no DiffHost, buffer_exists=false ──────────────────────────────
 
 /// A line diff's result: its `hunks`, from a diff that finished in time.
