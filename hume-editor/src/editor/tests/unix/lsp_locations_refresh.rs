@@ -1,7 +1,8 @@
 // The locations drawer (`lsp/references`) follows edits: it remembers the
-// symbol it was opened for and, once the line count of a listed buffer
-// changes, asks the server again for that symbol and swaps the rows. Loads the
-// real shipped `core:lsp` plugin in place (`RealRuntimeDirs`).
+// symbol it was opened for and, once an edit changes the line count of a
+// listed buffer or touches or moves a listed row, asks the server again for
+// that symbol and swaps the rows. Loads the real shipped `core:lsp` plugin in
+// place (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -152,7 +153,24 @@ fn several_inserts_within_the_debounce_ask_once() {
 }
 
 #[test]
-fn an_edit_that_keeps_the_line_count_asks_nothing() {
+fn an_edit_on_a_listed_row_asks_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = rust_rig_uri(tmp.path());
+    let answer = serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)]);
+    let (mut ed, _guard, _sid, requests) = setup(tmp.path(), vec![answer.clone(), answer]);
+    set_cursor(&mut ed, FOO_OFFSET);
+    run_references(&mut ed);
+
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    settle_until_idle(&mut ed);
+
+    assert_eq!(reference_requests(&requests), 2);
+}
+
+#[test]
+fn an_edit_off_every_listed_row_asks_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
@@ -162,12 +180,39 @@ fn an_edit_that_keeps_the_line_count_asks_nothing() {
     set_cursor(&mut ed, FOO_OFFSET);
     run_references(&mut ed);
 
+    set_cursor(&mut ed, 0);
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
     settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 1);
+}
+
+/// One edit deletes the line above the rows and appends one below them, so
+/// the line count stays and no change touches a row's own line, yet both
+/// rows move up a line.
+#[test]
+fn an_edit_that_shifts_rows_without_changing_the_line_count_asks_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = rust_rig_uri(tmp.path());
+    let answer = serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)]);
+    let (mut ed, _guard, _sid, requests) = setup(tmp.path(), vec![answer.clone(), answer]);
+    set_cursor(&mut ed, FOO_OFFSET);
+    run_references(&mut ed);
+
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "shift-rows" "" (lambda (pane)
+             (edit-text! pane (list (hash 'start-char 0 'end-char 12 'text "")
+                                    (hash 'start-char 25 'end-char 25 'text "x\n")))))"#,
+    );
+    type_cmd(&mut ed, ":shift-rows");
+    settle_until_idle(&mut ed);
+
+    assert_eq!(text(&ed), "    foo();\n}\nx\n");
+    assert_eq!(reference_requests(&requests), 2);
 }
 
 #[test]

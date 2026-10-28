@@ -112,19 +112,24 @@ reads a location's wire fields.
   after the user looked elsewhere, and the drawer appears where the user is.
 - **Session.** One session exists at a time, since the drawer is one slot. It holds an
   id, the drawer token, the request's `track-position!` token, the request pane, method
-  and params shape, the "nothing found" message, a sequence counter, and the last known
-  line count of each listed buffer keyed by `buffer-key`. The position is recorded before
-  the request is sent and passed with `#:tracked`, so the editor forgets it once the
-  callback has run unless the drawer opened and called `keep-tracked-position!`.
-- **Refresh.** The rows hold the server's positions, which edits make wrong, so the
-  session never keeps them across a line-count change. An `on-text-changed` hook compares
-  each listed buffer's line count with the stored one. On a change, a 300 ms debounced
-  refresh repeats the request at `tracked-position-params` with
-  `#:allow-stale #t` under the drawer's one `#:supersede` key and swaps the rows, keeping the selected
-  index clamped into the new list. An empty answer closes the drawer with the original
-  request's "nothing found" message, an error keeps the rows, and a closed or replaced
-  drawer ends the session. Edits that keep the line count are ignored, so a row can sit a
-  few columns off until the next line-count change.
+  and params shape, the "nothing found" message, a sequence counter, whether the rows are
+  stale, and, keyed by `buffer-key`, each listed buffer's line count and the lines its rows
+  sit on. The position is recorded before the request is sent and passed with `#:tracked`,
+  so the editor forgets it once the callback has run unless the drawer opened and called
+  `keep-tracked-position!`.
+- **Refresh.** The rows hold the server's positions, which edits make wrong. An
+  `on-text-changed` hook in a listed buffer marks the rows stale when the line count
+  differs from the stored one, when a hunk covers a row's line, when a hunk that adds or
+  removes lines starts at or above one, or when the hook carries no hunks. The line-count
+  test also catches a new reference typed below every row. While the rows are stale, every
+  change in a listed buffer counts, since the stored lines belong to an older text than
+  the one the hunks start from. Each change that counts calls a 300 ms debounced refresh, which repeats
+  the request at `tracked-position-params` with `#:allow-stale #t` under the drawer's one
+  `#:supersede` key and swaps the rows, keeping the selected index clamped into the new
+  list. The swap stores fresh counts and lines and clears the stale mark. An empty answer
+  closes the drawer with the original request's "nothing found" message, an error keeps
+  the rows and leaves them stale so the next edit asks again, and a closed or replaced
+  drawer ends the session.
 - **Stale callbacks.** A row callback carries its session's id, and each refresh carries a
   sequence number. The `#f` an outgoing drawer receives when another list replaces it
   ends only the session whose id it carries, and a response for an older sequence is

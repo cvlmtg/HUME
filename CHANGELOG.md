@@ -13,6 +13,7 @@
 - New `stdlib/concat` joins a list of lists in one pass, where `(apply append …)` slows down with many lists. `core:git-diff` repaints a file with many changes about twice as fast with it.
 - Diffs of files with many changes no longer stall the editor for a quarter of a second: `core:git-diff`'s refresh and the `diff-` functions finish in milliseconds.
 - `core:buffer-words` updates its index from the lines an edit changed instead of rescanning the whole buffer, and keeps indexing through edits instead of starting over.
+- The references list follows an edit to a listed line that keeps the line count, where a row could sit a few columns off.
 
 ## [0.17.0] - 2026-10-28
 

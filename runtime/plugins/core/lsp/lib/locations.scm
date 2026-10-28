@@ -54,16 +54,23 @@
     ((and lsp/*locations* (equal? (hash-ref lsp/*locations* 'drawer) drawer))
      (lsp/end-locations-session!))))
 
-(define (lsp/place-line-counts pane places)
+;; `session` listing `places`: each listed buffer's line count and the lines
+;; of its rows, keyed by `buffer-key`, with the rows current.
+(define (lsp/with-places session pane places)
   (let loop ((places places)
-             (counts (hash (buffer-key pane) (buffer-line-count pane))))
+             (counts (hash (buffer-key pane) (buffer-line-count pane)))
+             (lines (hash)))
     (if (null? places)
-        counts
+        (hash-insert (hash-insert (hash-insert session 'counts counts) 'lines lines)
+                     'stale #f)
         (let ((buffer (hash-ref (car places) 'buffer)))
-          (loop (cdr places)
-                (if buffer
-                    (hash-insert counts (buffer-key buffer) (buffer-line-count buffer))
-                    counts))))))
+          (if buffer
+              (let ((key (buffer-key buffer)))
+                (loop (cdr places)
+                      (hash-insert counts key (buffer-line-count buffer))
+                      (hash-insert lines key (cons (hash-ref (car places) 'line)
+                                                   (or (hash-try-get lines key) '())))))
+              (loop (cdr places) counts lines))))))
 
 ;; `places` are the rows to list; `tracked` is the request's position; `shape`
 ;; maps position params to request params.
@@ -72,12 +79,12 @@
   (let ((drawer (show-drawer-list! (focused-pane) (lsp/payload-rows lsp/place-display places)
                                    lsp/locations-on-select)))
     (when drawer
-      (let ((counts (lsp/place-line-counts pane places)))
-        (keep-tracked-position! tracked)
-        (set! lsp/*locations*
+      (keep-tracked-position! tracked)
+      (set! lsp/*locations*
+            (lsp/with-places
               (hash 'drawer drawer 'tracked tracked 'pane pane
-                    'method method 'shape shape 'not-found not-found 'seq 0
-                    'counts counts))))))
+                    'method method 'shape shape 'not-found not-found 'seq 0)
+              pane places)))))
 
 ;; ── Refresh ──
 
@@ -90,8 +97,7 @@
           (if (update-drawer-list! drawer (lsp/payload-rows lsp/place-display places)
                                    lsp/locations-on-select idx)
               (set! lsp/*locations*
-                    (hash-insert session 'counts
-                                 (lsp/place-line-counts (hash-ref session 'pane) places)))
+                    (lsp/with-places session (hash-ref session 'pane) places))
               (lsp/end-locations-session!))))))
 
 (define (lsp/apply-locations! drawer seq err results)
@@ -132,15 +138,31 @@
 
 (define lsp/refresh-locations (debounce 300 lsp/refresh-locations!))
 
+;; Whether a hunk of `changes` covers one of `lines`, or adds or removes lines
+;; at or above one.
+(define (lsp/hunks-move-rows? changes lines)
+  (and (pair? changes)
+       (let* ((h (car changes))
+              (start (hash-ref h 'old-start-line))
+              (end (hash-ref h 'old-end-line))
+              (shifts (not (= (- end start)
+                              (- (hash-ref h 'new-end-line) (hash-ref h 'new-start-line))))))
+         (or (pair? (filter (lambda (line) (and (<= start line) (or shifts (< line end))))
+                            lines))
+             (lsp/hunks-move-rows? (cdr changes) lines)))))
+
 (define (lsp/locations-text-changed pane changes)
   (when lsp/*locations*
-    (let ((counts (hash-ref lsp/*locations* 'counts))
-          (key (buffer-key pane)))
-      (when (hash-contains? counts key)
-        (let ((now (buffer-line-count pane)))
-          (unless (= now (hash-ref counts key))
-            (set! lsp/*locations*
-                  (hash-insert lsp/*locations* 'counts (hash-insert counts key now)))
-            (lsp/refresh-locations)))))))
+    (let* ((session lsp/*locations*)
+           (counts (hash-ref session 'counts))
+           (key (buffer-key pane)))
+      (when (and (hash-contains? counts key)
+                 (or (hash-ref session 'stale)
+                     (not changes)
+                     (not (= (buffer-line-count pane) (hash-ref counts key)))
+                     (lsp/hunks-move-rows?
+                       changes (or (hash-try-get (hash-ref session 'lines) key) '()))))
+        (set! lsp/*locations* (hash-insert session 'stale #t))
+        (lsp/refresh-locations)))))
 
 (register-hook! 'on-text-changed lsp/locations-text-changed)
