@@ -391,6 +391,16 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         self.inner.buffer_generation(id)
     }
+    fn buffer_search(
+        &self,
+        id: BufferId,
+        pattern: &str,
+    ) -> Option<Result<Option<std::ops::Range<usize>>, String>> {
+        self.inner.buffer_search(id, pattern)
+    }
+    fn word_search_pattern(&self, id: BufferId, word: &str) -> Option<String> {
+        self.inner.word_search_pattern(id, word)
+    }
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<crate::host::UndoNode>> {
         self.inner.buffer_undo_tree(id)
     }

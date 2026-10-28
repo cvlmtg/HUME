@@ -511,6 +511,8 @@ builtins! {
     cmd "lsp-locations->merged-places" lsp::lsp_locations_to_merged_places(locs: SteelVal);
     cmd "viewport-range" buffers::viewport_range(pane: args::ShownPane);
     cmd "buffer-generation" buffers::buffer_generation(pane: args::LiveBuffer);
+    cmd "buffer-search" buffers::buffer_search(pane: args::LiveBuffer, pattern: String);
+    cmd "word-search-pattern" buffers::word_search_pattern(pane: args::LiveBuffer, word: String);
     cmd "buffer-undo-tree" buffers::buffer_undo_tree(pane: args::LiveBuffer);
     cmd "buffer-live?" buffers::buffer_live(pane: args::ArgPane);
     cmd "pane-live?" buffers::pane_live(pane: args::ArgPane);

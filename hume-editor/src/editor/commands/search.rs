@@ -4,7 +4,7 @@ use std::sync::Arc;
 use super::super::search::SearchPattern;
 use hume_editing::selection::{Facing, Selection};
 use hume_editing::state::EditState;
-use hume_editing::word::{CharClass, is_word_boundary};
+use hume_editing::word::{CharClass, WordChars, is_word_boundary};
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::search::{
@@ -353,11 +353,18 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     // Computed here (before set_primary_selection) so the immutable `text`/
     // `chars` borrows end before we mutably borrow state.
     let word = text.slice(range.chars()).to_string();
-    let pattern = word_search_pattern(&word, chars);
+    let raw = word_search_input(&word, chars);
 
     set_primary_selection(state, view, t, Selection::covering(range, Facing::Forward));
 
-    set_search_pattern(state, view, t, SearchFlags::default(), &pattern)
+    set_search_pattern(state, view, t, raw)
+}
+
+/// The search input `*` sets for `word`: [`word_search_pattern`] under no
+/// flags, rendered as it would be typed at the `/` prompt. Also what
+/// `(word-search-pattern pane word)` returns.
+pub(in crate::editor) fn word_search_input(word: &str, chars: WordChars<'_>) -> String {
+    render_search_input(SearchFlags::default(), &word_search_pattern(word, chars))
 }
 
 // ── Search selection (Ctrl-/) ────────────────────────────────────────────────
@@ -389,27 +396,25 @@ pub(in crate::editor) fn cmd_search_selection(
         multi: false,
         verbatim: true,
     };
-    set_search_pattern(state, view, t, flags, &selected)
+    set_search_pattern(state, view, t, render_search_input(flags, &selected))
 }
 
-/// Compile `pattern` under `flags`, write the rendered flagged form to the
+/// Compile `raw`, search input in the `/` prompt's form, write it to the
 /// search register, and set it as `t`'s buffer's active search pattern.
 /// Shared tail of `*` and Ctrl-/. Both set the same (register, pattern) pair
 /// that live search sets on confirm; the match-cache/highlights are rebuilt
 /// lazily per-frame regardless of which path set the pattern.
 ///
-/// Renders through `render_search_input` rather than compiling `pattern`
-/// directly, so `SearchPattern::compile` stays the crate's one compilation
-/// path; see `render_search_input`'s own doc for why the round trip is
-/// safe for both of this function's callers.
+/// Callers render `raw` through `render_search_input` rather than handing
+/// over a bare pattern, so `SearchPattern::compile` stays the crate's one
+/// compilation path; see `render_search_input`'s own doc for why the round
+/// trip is safe for both callers.
 fn set_search_pattern(
     state: &mut EditorState,
     view: &EngineView,
     t: CommandPane,
-    flags: SearchFlags,
-    pattern: &str,
+    raw: String,
 ) -> Result<(), CommandError> {
-    let raw = render_search_input(flags, pattern);
     let Some(sp) = SearchPattern::compile(&raw) else {
         return Ok(());
     };

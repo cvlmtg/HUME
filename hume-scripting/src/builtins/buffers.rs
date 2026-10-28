@@ -11,7 +11,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, LINE_RANGE_KEYS, bool_arg, line_range_value, list_of, not_live_err,
+    ArgPane, LINE_RANGE_KEYS, bool_arg, char_range_value, line_range_value, list_of, not_live_err,
     optional_hash_entry, symbol_hash,
 };
 use super::errors::generic_err;
@@ -185,6 +185,39 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: BufferId) -> SteelResul
         generation,
     }
     .into_steel_val())
+}
+
+/// `(buffer-search pane pattern)` → `(hash 'start-char s 'end-char e)` for
+/// the first match of `pattern` in `pane`'s buffer, `#f` when nothing
+/// matches. `pattern` reads as input at the `/` prompt does. Raises for an
+/// empty or invalid pattern. Moves no selection and leaves the current
+/// search alone.
+pub(crate) fn buffer_search(ctx: &mut SteelCtx, bid: BufferId, pattern: String) -> SteelResult {
+    let found = ctx
+        .host
+        .buffers()
+        .buffer_search(bid, &pattern)
+        .ok_or_else(|| not_live_err("pane", bid))?
+        .map_err(generic_err)?;
+    Ok(found.map_or(SteelVal::BoolV(false), |range| {
+        char_range_value(range.start, range.end)
+    }))
+}
+
+/// `(word-search-pattern pane word)` → the search input `*` sets for `word`
+/// in `pane`'s buffer: `word` matched literally, anchored as a whole word
+/// where that buffer's `word-chars` and the regex engine agree on its edge
+/// characters. Pass it to `buffer-search`. Raises for an empty word.
+pub(crate) fn word_search_pattern(ctx: &mut SteelCtx, bid: BufferId, word: String) -> SteelResult {
+    if word.is_empty() {
+        return Err(generic_err("word is empty"));
+    }
+    let pattern = ctx
+        .host
+        .buffers()
+        .word_search_pattern(bid, &word)
+        .ok_or_else(|| not_live_err("pane", bid))?;
+    Ok(SteelVal::StringV(pattern.into()))
 }
 
 /// `(buffer-undo-tree pane)` → a list with one `(hash 'id 'parent 'age-secs

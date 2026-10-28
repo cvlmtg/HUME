@@ -163,6 +163,16 @@ impl BufferHost for NullHost {
     fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
         None
     }
+    fn buffer_search(
+        &self,
+        _id: BufferId,
+        _pattern: &str,
+    ) -> Option<Result<Option<std::ops::Range<usize>>, String>> {
+        None
+    }
+    fn word_search_pattern(&self, _id: BufferId, _word: &str) -> Option<String> {
+        None
+    }
     fn buffer_undo_tree(&self, _id: BufferId) -> Option<Vec<crate::host::UndoNode>> {
         None
     }

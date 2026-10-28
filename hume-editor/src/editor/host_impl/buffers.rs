@@ -10,7 +10,9 @@ use hume_rope::offset::ExclusiveRange;
 use super::EditorHostImpl;
 use crate::editor::buffer::lifecycle::CloseBufferRefused;
 use crate::editor::buffer::{TextRefusal, ViewLabel};
-use crate::editor::commands::{CommandPane, FocusedPane};
+use crate::editor::commands::{CommandPane, FocusedPane, effective_word_chars, word_search_input};
+use crate::editor::search::SearchPattern;
+use hume_ops::search::{SearchDirection, find_next_match};
 use hume_scripting::host::{BufferHost, DisplayPathForm, ShownHandle, StoredLanguage};
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
@@ -177,6 +179,35 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
 
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         Some(self.buffer(id)?.text().generation())
+    }
+
+    fn buffer_search(
+        &self,
+        id: BufferId,
+        pattern: &str,
+    ) -> Option<Result<Option<std::ops::Range<usize>>, String>> {
+        let text = self.buffer(id)?.text();
+        let Some(search) = SearchPattern::compile(pattern) else {
+            return Some(Err(format!("{pattern:?} is not a valid search pattern")));
+        };
+        let start = text.clusters().first().into();
+        Some(Ok(find_next_match(
+            text,
+            &search.regex,
+            start,
+            SearchDirection::Forward,
+        )
+        .map(|(span, _)| {
+            span.start().offset().index()..span.end().offset().index()
+        })))
+    }
+
+    fn word_search_pattern(&self, id: BufferId, word: &str) -> Option<String> {
+        let buffer = self.buffer(id)?;
+        Some(word_search_input(
+            word,
+            effective_word_chars(buffer, &self.state.settings),
+        ))
     }
 
     fn buffer_text(&self, id: BufferId) -> Option<String> {

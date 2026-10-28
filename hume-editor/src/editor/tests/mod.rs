@@ -1631,6 +1631,7 @@ mod box_paging;
 mod bracket_match_highlight;
 mod bracketed_paste;
 mod buffer;
+mod buffer_search_steel;
 mod buffer_store;
 mod buffer_text_steel;
 mod builtin_pane_needs;

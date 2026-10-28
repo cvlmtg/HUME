@@ -283,6 +283,19 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         self.inner.borrow_mut().buffers().buffer_generation(id)
     }
+    fn buffer_search(
+        &self,
+        id: BufferId,
+        pattern: &str,
+    ) -> Option<Result<Option<std::ops::Range<usize>>, String>> {
+        self.inner.borrow_mut().buffers().buffer_search(id, pattern)
+    }
+    fn word_search_pattern(&self, id: BufferId, word: &str) -> Option<String> {
+        self.inner
+            .borrow_mut()
+            .buffers()
+            .word_search_pattern(id, word)
+    }
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<UndoNode>> {
         self.inner.borrow_mut().buffers().buffer_undo_tree(id)
     }
