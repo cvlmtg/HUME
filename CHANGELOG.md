@@ -3,17 +3,21 @@
 ## Unreleased
 
 ### Breaking changes
-- `diff-lines`, `diff-buffer-lines`, `buffer-revision-diff` and `diff-words` return `(hash 'hunks …)` without `'deadline-hit`: a diff always finishes, so drop any code reading that key.
-- `on-text-changed` handlers take `(pane changes)`: add the second parameter, `changes`, the hunks since the previous fire or `#f`.
-- `buffer-generation` returns an opaque value instead of an integer: compare two with `equal?`. `#:expect-generation` takes only that value, and raises for one from another buffer.
+- `diff-lines`, `diff-buffer-lines`, `buffer-revision-diff` and `diff-words` no longer return `'deadline-hit`: drop any code that reads it.
+- `on-text-changed` handlers take the changed lines as a second argument: write `(lambda (pane changes) ...)`.
+- `buffer-generation` returns an opaque value instead of an integer: compare two with `equal?`, and give `#:expect-generation` only a value `buffer-generation` returned.
 
 ### Plugins & scripting
-- New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value was read.
-- New `buffer-search` finds a pattern in a buffer without moving the cursor or changing the current search, and `word-search-pattern` gives the pattern `*` would search for on a word.
-- New `stdlib/concat` joins a list of lists in one pass, where `(apply append …)` slows down with many lists. `core:git-diff` repaints a file with many changes about twice as fast with it.
-- Diffs of files with many changes no longer stall the editor for a quarter of a second: `core:git-diff`'s refresh and the `diff-` functions finish in milliseconds.
-- `core:buffer-words` updates its index from the lines an edit changed instead of rescanning the whole buffer, and keeps indexing through edits instead of starting over.
-- The references list follows an edit to a listed line that keeps the line count, where a row could sit a few columns off.
+- New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value.
+- New `buffer-search` finds a pattern in a buffer without moving the selection or changing the current search, and new `word-search-pattern` gives the pattern `*` searches for a word.
+- New `stdlib/concat` joins a list of lists, much faster than `(apply append …)` over many lists.
+
+### Performance
+- `core:git-diff` refreshes a file with many changes several times faster, and the `diff-` functions no longer take up to a quarter of a second on a large diff.
+- `core:buffer-words` updates its index after an edit much faster: it reads only the lines the edit changed instead of the whole buffer, and no longer restarts its scan at every edit.
+
+### Fixes
+- The `z r` references list keeps every row on the right line and column after an edit that doesn't change the line count.
 
 ## [0.17.0] - 2026-10-28
 
@@ -24,49 +28,45 @@
 - `grammar-url`, `grammar-rev`, `grammar-symbol` and `grammar-subpath` are gone, and `hume-version` and `bundled-language-grammar` return a hash instead of a list: read a field with `hash-ref`, such as `(hash-ref g 'url)`.
 - `log!` spells its warning severity `'warning`: replace `'warn`.
 - `core:buffer-words`'s `"lines"` option is `"chars"`, counted in characters: replace it in your `#:config`, or drop it.
-- A plugin no longer overrides your own setup, even when it loads later: its `define-language!`, `register-grammar!`, `register-lsp-server!`, `unregister-lsp-server!`, `set-language-servers!`, `bind-key!`, `unbind-key!`, `set-option!` and `set-buffer-option!` leave alone what your `init.scm`, its hooks or `:set` set. A command you run, such as `:lsp-install`, still replaces it for the session.
+- A plugin's options, key bindings, languages, grammars and language servers no longer override what your `init.scm` or `:set` set, even when the plugin loads later. A command you run, such as `:lsp-install`, still replaces them for the session.
 - A second `define-language!` for one language in your `init.scm` is ignored with a warning: merge the two.
-- `set-option!` and `set-buffer-option!` take a value only in the type `get-option` returns, and a named value is a string both ways: write `"soft"` for `'soft`, `4` for `"4"`, `#t` for `"true"` and `'("fish" "-c")` for `"fish -c"`. `wrap-mode` reads back as written, `"word"` and not `"word:0"`.
+- `set-option!` and `set-buffer-option!` take a value only of the type `get-option` returns, and a named value is a string: write `"soft"` for `'soft`, `4` for `"4"`, `#t` for `"true"` and `'("fish" "-c")` for `"fish -c"`.
 - `(get-option "statusline")` returns `(hash 'left 'center 'right)`, each a list of element names, instead of the `"a,b|c|d"` text, and `set-option!` takes that hash.
-- A plugin's `#:config` and the `stdlib/config-*` readers take symbol keys: write `(hash 'signs #f)` for `(hash "signs" #f)`. `load-plugin!` raises for a string key or a value that isn't a hash.
+- A plugin's `#:config` and the `stdlib/config-*` readers take symbol keys: write `(hash 'signs #f)` for `(hash "signs" #f)`. `load-plugin!` raises for a string key.
 - `plugin-config` and `plugin-dir` raise outside a plugin's code, such as at the top level of `init.scm`.
 - `stdlib/config-integer` takes an integer minimum: replace a `#f` minimum with the lowest value you accept.
-- `declare-plugin!` raises, instead of ignoring the entry, for an entry declared twice, a command name already taken or listed twice, or a declaration after the plugin's `load-plugin!`: merge, rename or move it. Your own `declare-plugin!` still replaces a plugin's `manifest.scm`.
-- `call!` raises instead of returning `#f` for a command it can't reach (an unknown name, a typed command such as `write`, a key-only one such as `pipe`), for a built-in command while `init.scm` or a plugin loads, and for a negative count. `command-exists?` answers `#f` for a key-only command: probe an optional command with it first.
+- `declare-plugin!` raises, instead of ignoring the entry, for an entry or command name declared twice, a command name already taken, or a declaration after the plugin's `load-plugin!`: merge, rename or move it.
+- `call!` raises instead of returning `#f` for a command it can't reach, for a built-in command while `init.scm` or a plugin loads, and for a negative count: probe an optional command with `command-exists?` first.
 - A built-in `:` command refuses an argument or a `!` it doesn't use, `:b!` and `:e! <path>` included.
-- A callback handed to HUME (a `register-hook!` or `register-lsp-notification-hook!` handler, a timer, a prompt, menu, drawer or picker callback, a background job's or language server's reply, a completion source) raises when it is passed if it can't take the arguments it will get, instead of failing when it runs.
+- A callback handed to HUME that can't take the arguments it will get raises when you pass it, instead of failing when it runs.
 - A `spawn-async!` callback takes one argument, the hash `run-capture!` returns: write `(lambda (result) ...)` and read `(hash-ref result 'exit)`.
 - `on-trigger-char` passes a Scheme char, and the trigger setters take a list of chars: write `'(#\.)` for `'(".")`.
 - `after!`, `spawn-async!` and `path-programs` return an opaque timer or job instead of an integer: compare two with `equal?`. `cancel-timer!` takes only a timer and `cancel-async!` only a job.
-- `path-programs` lists in the background: it takes a `(lambda (names done?) ...)` callback and returns a job. Move code that used its result into the callback, and call it from a command, hook, timer or callback, not at the top level of `init.scm` or of a plugin loaded at startup.
-- `run-capture!` and `spawn-async!` keep only the first and last 4 KiB of a stderr past 8 KiB, and `run-capture!` fails past 64 MiB of stdout, as `spawn-async!` does.
+- `path-programs` lists in the background: it takes a `(lambda (names done?) ...)` callback and returns a job. Move code that used its result into the callback, and out of the top level of `init.scm` or of a plugin loaded at startup.
+- `run-capture!` and `spawn-async!` cut a stderr longer than 8 KiB, and `run-capture!` fails past 64 MiB of stdout, as `spawn-async!` does.
 - `run-inline-output!` raises outside an `#:inline-output` command, the top level of `init.scm` included: move the call into one, or use `run-capture!`.
-- Steel's own print functions (`display`, `displayln`, `newline`, …) write as Steel defines them, over the editor's screen too: report with `log!`, or write a line inside an `#:inline-output` command with the new `print!`.
+- Steel's own print functions (`display`, `displayln`, `newline`, …) write over the editor's screen: report with `log!`, or print inside an `#:inline-output` command with the new `print!`.
 - `close-buffer!` raises for a buffer with unsaved changes: pass `#:discard-unsaved #t` to drop them.
 - `paste-text!` raises for a read-only buffer instead of doing nothing.
 - `edit-text!` edits for no pane when `pane` no longer shows its buffer, as `apply-text-edits!` does.
 - `switch-to-buffer!`, `show-read-only-buffer!` and `goto-location!` return the pane now showing their target: use it for the next call on that buffer.
 - A path given to a HUME call resolves `..` the way the operating system does, and raises for a `..` after a directory that doesn't exist.
-- `define-language!` raises, instead of skipping the entry, for an invalid glob, an extension with a leading or trailing dot or a `/`, or a shebang with a space or a `/`: give the interpreter's name alone, such as `"python"`.
+- `define-language!` raises, instead of skipping the entry, for an invalid glob, extension or shebang: give a shebang as the interpreter's name alone, such as `"python"`.
 - The decoration and trigger setters take the pane first: write `(set-signs! pane source signs)` for `(set-signs! source pane signs)`, and the same for `set-inlay-hints!`, `register-sign-source!`, `set-virtual-lines!`, `set-eol-text!`, `set-extra-highlights!`, `set-line-backgrounds!`, `set-statusline-text!` and the two `set-attachment-*-triggers!`. `set-hook-triggers!` and `set-completion-triggers!` take the language first.
 - A virtual line names its side with `'side` instead of `'anchor`, and its `'segments` take `'start-char-col`/`'end-char-col`, char columns in its `'text`, instead of `'start-char`/`'end-char`.
 - The decoration, trigger and completion-source builtins raise for an empty or blank source name.
-- `show-menu!`, `show-drawer-list!` and `update-drawer-list!` take `(display . payload)` pairs, as `picker!` does, and `on-select` gets the row's payload, or its key with `#:render`, instead of its index.
+- `show-menu!`, `show-drawer-list!` and `update-drawer-list!` take `(display . payload)` pairs, as `picker!` does, and `on-select` gets the row's payload instead of its index.
 - `update-drawer-list!` raises on an empty list instead of returning `#f`: close the drawer instead.
 - `picker!` and `live-picker!` return `#f` when `.` answers them without opening, as `show-menu!` does.
 - Keymap names are strings, like command and plugin names: write `#:keymap "my-keys"` for `#:keymap 'my-keys`.
-- `#:supersede` takes a key made by the new `lsp-supersede-key` instead of a string, so a plugin can't cancel another's request by reusing its name: define one with `(define my-key (lsp-supersede-key))` at your plugin's top level.
-- `diagnostic-counts` returns `(hash 'error 'warning 'info 'hint)` instead of `'errors`/`'warnings`, and counts only severities at or above `lsp-diagnostics-min-severity` or its new `#:severity`. The statusline's counts follow the same floor.
+- `#:supersede` takes a key made by the new `lsp-supersede-key` instead of a string: define one with `(define my-key (lsp-supersede-key))` at your plugin's top level.
+- `diagnostic-counts` returns `(hash 'error 'warning 'info 'hint)` instead of `'errors`/`'warnings`, and, like the statusline, counts only severities at or above `lsp-diagnostics-min-severity` or its new `#:severity`.
 - `diff-lines`, `diff-buffer-lines` and `buffer-revision-diff` return `(hash 'hunks … 'deadline-hit …)`, as `diff-words` does: read `(hash-ref result 'hunks)`. A hunk's `'words` is `#f` when it was too large to compare word by word.
 - `completion-emit!` for a request already answered without `#:more` is dropped and returns `#f`: answer with `#:more #t` until the last part.
 - A `'minibuf` completion source raises for a nonzero `#:priority` and for `#:incomplete #t`, which never had an effect there.
 
-### Syntax & language awareness
-- HUME starts faster: each installed grammar loads the first time a file or an embedded block needs it, not at startup, and a grammar that can't load is reported in `:messages` then.
-
 ### Plugins & scripting
 - `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME.
-- `init.scm` and plugins compile faster, so HUME starts sooner.
 - `lsp-stop!` and `lsp-restart!` take a server value, to stop or restart that one server.
 - `completion-emit!` takes `#:more #t` to answer a request in parts, and `register-completion-source!` takes `#:cancel` to stop work for a request HUME no longer waits on.
 - `completion-emit!` with `#f` for its id returns `#f` instead of raising.
@@ -77,6 +77,9 @@
 - An error from a HUME function starts with the name you called it by, once, and names the argument at fault.
 - `set-option!` and `get-option` on `language` or `line-ending` point to `set-buffer-option!` and `get-buffer-option` instead of reporting an unknown setting.
 - `.` passes a `#:repeatable` command the same `count` its first run got.
+
+### Performance
+- HUME starts faster: it loads each grammar the first time a file needs it instead of all at startup, and compiles `init.scm` and plugins faster.
 
 ### Fixes
 - On Windows, closing the terminal window lets HUME shut down cleanly instead of ending it at once, also while a command's output is shown.
@@ -92,7 +95,7 @@
 - Plugin code that runs later (debounced and timed functions, background process and language server replies, picker actions) no longer reads wrong values or crashes HUME after a while.
 - A plugin error that passes through nested `with-handler`s no longer crashes HUME.
 - Loading some plugin code no longer prints stray text over the screen.
-- `cancel-timer!` and `cancel-async!` also drop a timer or callback that was already due but hadn't run yet, so a debounced function no longer runs twice, and `cancel-timer!` never cancels one of HUME's own timers.
+- A debounced function no longer runs twice: `cancel-timer!` and `cancel-async!` also drop a timer or callback that was due but hadn't run. `cancel-timer!` can't cancel one of HUME's own timers.
 - An error in a timer, a background reply or another plugin's callback no longer empties a completion menu that is still waiting on a source.
 - `core:git-diff`'s inline diff keeps its word highlights when the machine is busy.
 - `show-menu!` raises on an empty list instead of opening a menu that crashed HUME on Enter.
@@ -106,8 +109,8 @@
 - `core:buffer-words` no longer stalls typing on a file with very long lines, nor resets the highlighted item of an open completion menu while it indexes.
 - `Ctrl-c` during a command that shows a program's output, such as a grammar install, stops that program instead of quitting HUME.
 - A file opened through a symlink is named after the link you opened, not its target, in the statusline, tab labels, `:ls` and `:b`.
-- When the symlink you opened a file through starts pointing at another file, `:w` refuses to overwrite that file (`:w!` writes it), `:checktime` reports the change, and `:e!` reads the new file.
-- `..` in a path you type to `:e`, `:w`, `:cd` or path completion leaves the directory it follows the way your shell does: after a symlink, it goes to the link target's parent.
+- HUME notices when the symlink you opened a file through starts pointing at another file: `:w` refuses to overwrite it, and `:e!` reads the new one.
+- `..` after a symlink in a path you type goes to the link target's parent.
 - `goto-location!` takes a path as written, like every other path a plugin passes: a `$` or `~` in a file name no longer opens some other file.
 - Every file named on the command line expands `~` and variables like `$HOME`, the first one included, and so do `--config` and `--output`.
 - `r`, `J`, `&`, `>`, `<`, surround, case changes and a terminal paste on a read-only buffer say so instead of doing nothing, and every read-only refusal names the buffer.
@@ -141,7 +144,7 @@
 - `spawn-async!` passes `#f` as the exit code when the command could not start or was killed by a signal, as `run-capture!` does: compare it with `equal?`, not `=`.
 
 ### Editing
-- `|` pipes each selection through a shell command in the background, `Ctrl-c` stops it, and `Ctrl-|` in Insert mode inserts a command's output at each cursor. The new `shell` option sets the shell, and `Tab` on the prompt completes program names and file paths.
+- `|` pipes each selection through a shell command in the background, and `Ctrl-|` in Insert mode inserts a command's output at each cursor. The new `shell` option sets the shell.
 - `Ctrl-r` in Insert mode and on the command line inserts a register or the current file's path.
 - `m i x` and `m a x` select inside or around a tag pair, and `g x` and `g X` jump to the next or previous one, with or without a markup grammar.
 - `Ctrl-a` and `Ctrl-s` add to or subtract from the number, date or time at each selection, and `G A` and `G S` count up or down across selections.
@@ -149,18 +152,17 @@
 ### Panes & interface
 - `Shift-Tab` (kitty) and `Ctrl-p P` focus the previous pane.
 - `core:git-diff`'s new `"branch-style"` config can show the statusline branch as `⎇ main`.
-- The bottom drawer has a border, open at the bottom, which `popup-border` turns off.
+- The bottom drawer has a border, which `popup-border` turns off.
 - New bundled themes: Catppuccin, Tokyo Night, One Dark, Dracula, GitHub, Kanagawa, Rosé Pine, Solarized and Nord, with their variants.
-- Typing, scrolling and redrawing are faster.
 - The statusline's search match count hides once you type in Insert mode and comes back when you leave it.
 
 ### Plugins & scripting
 - A `live-picker!` source gets a token per query, so a slow source can't overwrite newer rows.
-- New `on-before-buffer-save` hook, which can hold a write until its handler is done.
+- New `on-before-buffer-save` hook can hold a write until its handler is done.
 - `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`.
 - New `paste-text!` inserts text as a paste would, and `edit-text!` replaces char ranges of a buffer in one edit.
 - `bind-key!` takes `'command` to bind keys in the command mode prompt and in plugin prompts.
-- Key bindings can apply to some buffers only: bind them into a named keymap with `#:keymap`, then turn it on in a buffer with `attach-keymap!`.
+- Key bindings can apply to some buffers only, with `bind-key!`'s `#:keymap` and the new `attach-keymap!`.
 - `buffer-display-path` takes `#:relative #t` for the path relative to the working directory.
 - New `register-name?` tells whether a string names a register.
 - New `register-shell-dialect!` teaches `Tab` on the `|` prompt another shell's quoting.
@@ -172,6 +174,9 @@
 - `z s` and `z S` pick a symbol of the current file or of the whole project and jump to it.
 - New `lsp/format-document` formats the buffer from a save hook. The manual's earlier format-on-save recipe never formatted the saved file: replace it with the new one.
 
+### Performance
+- Typing, scrolling and redrawing are faster.
+
 ### Fixes
 - A `'minibuf` completion source gets the cursor counted in characters, not bytes.
 - Tab completion of a file path treats a link to a directory as a directory, and ignores letter case on Windows.
@@ -180,7 +185,7 @@
 - A language server's log keeps going after a line that is not valid UTF-8.
 - A command or language server that cannot start because its working directory is missing says so, instead of reporting the program as missing.
 - A failed `:plum-install-theme` or `:plum-install-grammar` over an installed theme or grammar keeps the installed one working.
-- `:plum-install-grammar` installs the YAML, Vue, Astro, Lean, Org and haskell-persistent grammars, which are partly written in C++, and no longer needs the tree-sitter CLI.
+- `:plum-install-grammar` installs grammars partly written in C++, such as YAML and Vue, and no longer needs the tree-sitter CLI.
 - In Insert mode, `End`, `↑` and `↓` reach the end of a line, after its last character.
 - The command line's completion menu opens right above the command line, over an open drawer or docked popup, instead of above them.
 - Headless `--keys` runs print warnings and errors on stderr and exit with status 1 when an error is logged, lay the file out on an 80×25 screen, and honour a `FILE:LINE[:COL]` input.
@@ -201,16 +206,16 @@
 - `lsp.format-max-ranges` moves to `core:lsp`'s `#:config`, and `lsp.viewport-debounce-ms` is `viewport-debounce-ms`.
 - `bind-wait-char!`, `request-wait-char!` and `pending-char` are removed: commands read keys with `on-next-char!`, so `bind-key!` binds any command.
 - `repeat-last-action` runs only from a key: `call!` of it raises an error.
-- `word-selects-whitespace` takes `off`, `before` (the default) or `after` instead of `true`/`false`, and `maw`/`maW` follow it. `after` makes `w`/`b`, `mm` and `maw` take the whitespace after the word.
+- `word-selects-whitespace` takes `off`, `before` or `after` instead of `true`/`false`, and `maw`/`maW` follow it.
 - The bottom drawer moves one row with `Down`/`Up` instead of `Shift-Down`/`Shift-Up`; `j`/`k` still move the cursor in the buffer.
 - `define-language!` no longer takes `#:roots` or `#:language-id`: set them with the new `configure-language!`.
-- `:plum-install-grammar`, `:plum-list-grammars` and `plum-ensure-grammars` take and list language names. A grammar installed under another name, such as `proto`, is an orphan, which `:plum-list-grammars` lists: remove it with `:plum-cleanup-grammars`.
+- `:plum-install-grammar`, `:plum-list-grammars` and `plum-ensure-grammars` take and list language names: remove a grammar installed under another name, such as `proto`, with `:plum-cleanup-grammars`.
 
 ### Editing
-- `G G` comments or uncomments the lines of each selection, in the language at the cursor. `prefer-line-comments` uses line comments instead of a block comment for several lines.
+- `G G` comments or uncomments the lines of each selection, and the new `prefer-line-comments` option prefers line comments to a block comment.
 - `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.
 - With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
-- Enter, `o` and `O` indent new lines from the language's syntax tree, and a closing token such as `}` typed on a new line moves that line back. Run `:plum-install-grammar <language>` again for each grammar installed before this release.
+- Enter, `o` and `O` indent new lines from the language's syntax tree. Run `:plum-install-grammar <language>` again for each grammar installed before this release.
 - `:set buffer line-ending=lf|crlf` converts a buffer's line endings.
 
 ### Panes & interface
@@ -221,7 +226,7 @@
 - With no `theme` set, HUME loads `sand` from `themes/`, so edits to `sand.toml` apply.
 
 ### Plugins & scripting
-- New `configure-language!` sets a language's project root markers, language server identifier and comments. A value from `init.scm` wins over a plugin's.
+- New `configure-language!` sets a language's project root markers, language server identifier and comments.
 - New `bundled-language-grammar` and `bundled-grammar-languages` read the grammars HUME ships for each language.
 - New `show-read-only-buffer!` shows text in a read-only buffer, reused by name.
 - New `read-data-file`, `data-file` and `data-file-names` read a plugin's Scheme data files.
@@ -232,13 +237,13 @@
 - `register-grammar!` takes an `#:indents` query that indents new lines from the syntax tree.
 
 ### Language servers
-- A box beside the completion menu shows the highlighted completion's documentation, asking the server for it when missing. `completion-docs` turns it off.
+- A box beside the completion menu shows the highlighted completion's documentation, which the new `completion-docs` option turns off.
 
 ### Fixes
 - The search and sift prompts report an invalid or unmatched pattern the same way scripts do. An invalid search pattern is not stored.
 - After `q`, `Q` or `"`, a click or paste cancels the register wait. Esc cancels only the wait.
 - `.` after an Insert session in which you pressed an arrow key leaves a cursor, as Esc did, instead of selecting the typed text.
-- `.` after an Insert session that ended at a key bound to a search, sift or `:` prompt repeats the text typed before that key, without an error or a prompt.
+- `.` after an Insert session that ended at a key opening a search, sift or `:` prompt repeats the typed text without an error or a prompt.
 - `.` inside a macro repeats the last change, including one made before the macro ran. After a macro, `.` repeats the last change the macro made.
 - `n`, `N` and `m/` with no search pattern report it. `.` of a change whose selection step finds no pattern or no match leaves the text alone.
 - `i`, `a`, `I`, `A` and the other Insert entries leave the selection where it was when they are refused: on a read-only buffer, or while another pane is in Insert mode on the same buffer.
@@ -251,6 +256,8 @@
 - `:lsp-catalog` shows the server list in a read-only buffer, sorted by name, instead of printing it over the editor.
 - `core:lsp-install` reports a server whose install receipt is damaged as an interrupted install, instead of failing to load.
 - A position an `lsp-request!` holds through `#:tracked` is released when the code that sent the request raises an error afterwards, instead of staying tracked.
+
+### Performance
 - Text objects and highlighting are faster in Markdown files with many code blocks.
 
 ## [0.14.1] - 2026-10-08
@@ -266,7 +273,8 @@
 - Every scripting function with an effect ends in `!`: `declare-plugin!`, `load-plugin!`, `lsp-request!`, `lsp-notify!`, `after!`, `stdlib/run!`, `stdlib/write-file!`, `stdlib/delete-file!`, `stdlib/delete-dir!`.
 - `buffer-cursor-line` and `offset->line` return 0-based lines.
 - `on-mode-change` passes the old and new modes as symbols (`'insert`).
-- `spawn-async!`, `run-capture!` and `stdlib/run!` take the working directory as `#:cwd`. `run-capture!` and `stdlib/run!` start their child in its own process group, so Ctrl-c during an inline-output command no longer reaches it.
+- `spawn-async!`, `run-capture!` and `stdlib/run!` take the working directory as `#:cwd`.
+- Ctrl-c during an inline-output command no longer reaches a child of `run-capture!` or `stdlib/run!`.
 - `buffer-selections` entries are opaque: read them with `stdlib/selection-anchor`, `-head`, `-start`, `-end` and `-primary?`. `stdlib/selection-start` and `-end` are new.
 - `show-popup!` and `show-menu!` return a token, which `close-popup!`, `close-menu!` and `picker-close!` take.
 - The `on-select` of `show-drawer-list!` and `update-drawer-list!` takes a second argument, the token of the drawer that called it.
@@ -296,7 +304,7 @@
 
 ### Plugins
 - `:plugin-status` also lists plugins that are not installed or whose `manifest.scm` failed.
-- `declare-plugin!` takes `#:entry` to load a plugin in pieces, and can name a local `./file.scm` beside `init.scm` to load it lazily.
+- `declare-plugin!` takes `#:entry` to load a plugin in pieces, and can name a local `./file.scm` to load it lazily.
 - `core:plum` loads its plugin, grammar and theme commands separately, each on first use.
 - New `(plugin-dir)` returns the calling plugin's directory.
 - New `(hume-version)`, `(hume-version>=? major minor patch)` and `(command-exists? name)` let a plugin adapt to the running editor.
@@ -310,7 +318,7 @@
 - `lsp-request!` and `lsp-request-all!` take `#:unavailable 'empty`, which answers a request no server can take with an empty result instead of an error.
 - `run-inline-output!` takes `#:env`.
 - `core:buffer-words` indexes 100 lines on each side of the cursor per step, down from 200.
-- New `core:undotree`: `:undotree` shows the buffer's undo tree in the bottom drawer, and `Enter` jumps to the highlighted revision. With `core:git-diff` loaded, it also shows inline what the current revision changed.
+- New `core:undotree` plugin: `:undotree` browses the buffer's undo tree in the bottom drawer.
 - New `buffer-undo-tree` and `goto-revision!` read the undo tree and jump to a revision, and the `on-undo-history-changed` hook fires when it changes.
 - New `buffer-revision-diff` returns the line hunks, with word spans, between a revision of the undo history and the buffer's current content.
 - New `git-diff/render-diff` and `git-diff/release-diff` in `core:git-diff` let a plugin draw its own hunks inline in place of the buffer's git diff.
@@ -318,7 +326,7 @@
 - `show-drawer-list!` and `update-drawer-list!` take `#:render`, which draws only the visible rows and lets the items be any values.
 
 ### Editing
-- Tab on the `:` line completes the text all candidates share; the next Tab picks the first. `command-completion=first-candidate` fills in the first candidate at once.
+- Tab on the `:` line first completes the text all candidates share. `command-completion=first-candidate` fills in the first candidate at once.
 - Selections never split a character: text objects, motions, edits, search, `:sort`, join, paste and undo keep a letter with its combining marks, emoji sequences and flags whole.
 - `f`/`t`/`F`/`T` match composed and decomposed forms alike, and `:sort` treats them as equal.
 - `G C` capitalizes with title case.
@@ -344,20 +352,20 @@
 ### Files & buffers
 - `:e path:line[:col]` jumps to a position on open.
 - If HUME crashes or loses its terminal, it saves unsaved changes to a dump file and offers to restore them when the file is next opened.
-- Text typed in Insert mode counts as unsaved at once: `[+]`, the tab marker, `:ls` and `buffer-dirty?` show it, and `:q`, `:qa`, `:bd` and `:e` refuse to drop it.
+- Text typed in Insert mode counts as unsaved at once, so `:q`, `:qa`, `:bd` and `:e` refuse to drop it.
 
 ### Terminal & compatibility
 - A crash in a background thread leaves the terminal intact. It shows in `:messages` and is printed after you quit.
 - Yanks reach the clipboard over SSH through OSC 52 when the terminal allows it.
 
 ### Language servers
-- A buffer uses every server in its language's list at once, such as ESLint beside typescript-language-server. New `set-language-servers!` chooses a language's servers, their order and their features, `set-default-language-servers!` gives a plugin's list, and `lsp-language-servers` reads the result.
+- A buffer uses every server in its language's list at once, such as ESLint beside typescript-language-server. New `set-language-servers!`, `set-default-language-servers!` and `lsp-language-servers` set and read those lists.
 - `:lsp-install` also takes a server name, such as ruff or tombi. With `core:lsp-install` loaded, every language starts with Helix's servers for it.
 - A language server stops once no open buffer uses it.
 - `:lsp-install` supports many more servers, including terraform-ls, jdtls and servers installed through `go`, `pip`, `gem` or `dotnet`, and says so when a server doesn't support your platform.
 - The `:diagnostics` drawer names the tool that reported each diagnostic: its `source`, or the server's name when it sets none.
-- Diagnostics from a server that only reports on request, such as ESLint, show. `lsp.diagnostics-pull-debounce-ms` sets how long HUME waits after typing to ask.
-- Diagnostics are hidden on the line you are typing on in Insert mode. `lsp.diagnostics-on-insert-line` keeps them.
+- Diagnostics from a server that only reports on request, such as ESLint, show.
+- Diagnostics are hidden on the line you are typing on in Insert mode, unless the new `lsp.diagnostics-on-insert-line` is set.
 - `on-viewport-change` fires when the lines a pane shows change, not on a resize or scroll that shows the same lines.
 - Completion items are filtered against the text their own edit range covers, a list's default edit range is honored, and accepting replaces that range.
 - The completion menu stays open when text elsewhere changes, and closes once a character outside the completed word is typed.
@@ -389,10 +397,10 @@
 ### Editing
 - `/`, `?`, and `s` accept leading flags: `m/` moves every selection to its own next match, `v/` matches literally.
 - New `:earlier`/`:later` step through undo history by count (`:earlier 3`) or by age (`:earlier 5m`).
-- `.` repeats what you did during an Insert session: an Insert-mode key bound to a command, such as `Ctrl-w`, an accepted completion (its text only, not an import it added elsewhere), a picker pick, and cursor movement such as an arrow key.
+- `.` repeats what you did during an Insert session, such as `Ctrl-w`, an accepted completion, a picker pick or an arrow key.
 
 ### Panes & interface
-- New tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev`, the `tab-new`/`goto-next-tab`/`goto-prev-tab` commands (`Ctrl-p t`/`Ctrl-p T`), and a tab bar controlled by the new `tabline` setting.
+- New tab pages, with `:tabnew`, `:tabclose`, `:tabnext`, `:tabprev`, `Ctrl-p t`/`Ctrl-p T` and a tab bar set by the new `tabline` option.
 - `Ctrl-d`/`Ctrl-u`/`PageDown`/`PageUp` scroll the view, not just the cursor.
 - The bottom drawer's `Ctrl-d`/`Ctrl-u` page by half its height; `Shift-Down`/`Shift-Up` move one row.
 - The file, buffer, and modified-files pickers open a selection in a new tab or split with `Ctrl-t`/`Ctrl-v`/`Ctrl-s`.
@@ -434,9 +442,11 @@
 - The bottom drawer no longer leaves blank rows after its list shrinks.
 - Selecting a `:diagnostics` row after switching buffers jumps to the listed buffer.
 - `:plum-install-plugins`/`:plum-update-plugins` fail instead of hanging when git asks for credentials.
-- Counted undo/redo (`5u`, `3 Ctrl-r`) is much faster over a long history.
 - A server capability set to `null` is treated as unsupported.
 - A macro that finishes while still in Insert mode no longer discards the Insert session it started when you finish it and press `.`.
+
+### Performance
+- Counted undo/redo (`5u`, `3 Ctrl-r`) is much faster over a long history.
 
 ## [0.12.0] - 2026-09-08
 
@@ -456,21 +466,21 @@
 - Leaving Insert mode selects the text you just typed however you entered it, not only after `c`.
 - New `#` jumps between a bracket or tag and its matching partner.
 - Word motions, `miw`/`maw`, `Ctrl-w`, `*`, and quote auto-pairing honor the new `word-chars` buffer option, settable per language, so `foo-bar` can be one word instead of three.
-- New `>`/`<` indent/unindent every selected line by one level (`3>` for three levels).
+- New `>`/`<` indent and unindent the selected lines.
 - `:format-source` formats a multi-line selection, and several selected line ranges at once when the server supports it, instead of the whole buffer.
 - Count prefixes (`3w`, `12j`) are capped at 10,000.
 - Pasting or typing unusual line-break characters no longer splits the buffer into an extra line.
 - Files with old-style line endings (`\r\n`, bare `\r`) are normalized to `\n` everywhere text enters the buffer, not just on load.
 - New tree-sitter text objects for functions, types, comments, unit tests, and array/struct values (`mif`/`maf`, `mit`/`mat`, `mic`/`mac`, `miu`/`mau`, `miv`/`mav`), for any language with textobject support.
 - `mia`/`maa` (argument) handles nested lists, tuples, or structs inside a call.
-- New `goto-next-`/`goto-prev-` navigation for each text-object kind above, bound under `g` on the same letter (e.g. `gf`/`gF` for functions).
-- `}` and forward structural navigation re-center the view on the selected object instead of leaving it at the bottom of the screen (new `object-jump-align` setting).
+- New `g` motions jump to the next or previous of each text-object kind above, such as `gf`/`gF` for functions.
+- `}` and forward structural navigation re-center the view on the selected object instead of leaving it at the bottom of the screen. The new `object-jump-align` option sets where it lands.
 
 ### Files & buffers
 - New `goto-next-buffer`/`goto-prev-buffer` commands, for binding to a key.
 
 ### Appearance
-- New `cursor-shape-insert` setting (`block`/`bar`/`underline`, default `bar`) picks the terminal cursor's shape in Insert mode.
+- New `cursor-shape-insert` option sets the cursor's shape in Insert mode.
 - Curly, dotted, dashed, and double-line underlines render correctly on terminals that support them.
 - Whitespace indicator glyphs (spaces, tabs, newlines) are themable.
 - Inline diagnostic messages use their own theme color instead of always matching the underlined squiggle.
@@ -517,7 +527,7 @@
 - `.` no longer replays `C`/`copy-selection-on-{next,prev}-line` as part of a selection.
 - `core:vim-keybind`'s `C` (default `'smart` config) takes `copy-selection-on-next-line` with any count prefix, not just when a selection is already active.
 - The kill ring dedupes its entries.
-- `p`/`P` run the new `smart-paste-after`/`smart-paste-before`, which paste from the kill ring until something is edited after your last delete, change or yank, and from the clipboard after that. `paste-after`/`paste-before` are unbound.
+- `p`/`P` paste what you last deleted, changed or yanked until you edit something else, and the clipboard after that. They run the new `smart-paste-after`/`smart-paste-before`, and `paste-after`/`paste-before` are unbound.
 - New `:sort` command sorts selected rows by their selected text.
 
 ### Files & buffers
@@ -532,7 +542,7 @@
 - `:messages` entries are colored by severity.
 
 ### Configuration & options
-- `:reload-config` is a full reset: keymaps, options, hooks, commands, and plugins all go back to their defaults before `init.scm` re-runs. Buffers, undo history, and running language servers are untouched.
+- `:reload-config` resets keymaps, options, hooks, commands and plugins to their defaults before it re-runs `init.scm`.
 - `mouse-enabled`/`mouse-select` and `jump-list-capacity` apply immediately when changed with `:set`, instead of only at startup.
 - `wrap-mode` is a buffer option, and `:set global wrap-mode=…` applies to buffers already open. A pane's `:wrap` pin is kept per buffer.
 
@@ -577,11 +587,11 @@
 - Hover docs and other overflow popup/drawer content are syntax-highlighted, with scroll affordance arrows shown when there's more to see.
 
 ### Editing
-- After changing text with `c`, leaving Insert mode now selects the text you just typed. Controlled by the new `select-changed-text` option (default on).
+- Leaving Insert mode after `c` selects the text you typed, unless the new `select-changed-text` option is off.
 - `mii` selects the last insertion.
 - Case transforms: `gu`, `gU`, `gC`.
-- Word motions and `mm`/`MM` now also select adjacent whitespace. Controlled by the new `word-selects-whitespace` option (default on).
-- New `undo-levels` option caps the number of undo states kept per buffer (default `0`, unlimited).
+- Word motions and `mm`/`MM` also select adjacent whitespace, unless the new `word-selects-whitespace` option is off.
+- New `undo-levels` option caps the undo states kept per buffer.
 - Character prompts (`r`, `t`, `f`, …) accept Enter and Tab.
 - Extend-mode `o` (flip selection) moved into the `core:vim-keybind` plugin.
 
@@ -589,7 +599,7 @@
 - Fuzzy file and buffer finders (`core:pickers` plugin): `g f` / `g b`. Plugins can build their own with `picker!`.
 - Configurable sign column in the gutter (`signcolumn` option).
 - `Diagnostics` statusline element, in the default statusline.
-- Indentation guides can now be hidden via the new `indent-guides` option (default on).
+- New `indent-guides` option hides the indentation guides.
 
 ### Plugins & scripting
 - `manifest.scm`: a bare `(declare-plugin "name")` is enough for lazy loading.
@@ -597,9 +607,11 @@
 - `set-buffer-option!` builtin for per-buffer setting overrides from hooks and commands.
 
 ### Terminal & compatibility
-- Bracketed paste — pastes land in one step, without auto-pairing.
-- Event-driven main loop: HUME sleeps when idle instead of polling.
-- Kitty keyboard protocol now works on Windows (Windows Terminal ≥ 1.25).
+- Bracketed paste: a paste lands in one step, without auto-pairing.
+- Kitty keyboard protocol works on Windows (Windows Terminal ≥ 1.25).
+
+### Performance
+- HUME sleeps when idle instead of polling.
 
 ### Theming
 - Theme editor rebuilt as a proper web app.
@@ -617,7 +629,7 @@
 
 ## [0.9.0] - 2026-07-15
 
-First tagged release. HUME has been under active development for a while; this is the point where it's considered stable enough to hand out prebuilt binaries rather than requiring a build from source.
+First tagged release, with prebuilt binaries.
 
 ### Editing model
 - Multiple selections and multi-cursor editing.
