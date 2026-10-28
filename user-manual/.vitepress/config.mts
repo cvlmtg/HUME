@@ -62,6 +62,19 @@ export default defineConfig({
     }],
   ],
 
+  markdown: {
+    // Each space-separated word of inline code is its own <span>, so a table
+    // that lets code wrap (theme/sand.css) breaks it only between words, never
+    // after a hyphen inside one.
+    config(md) {
+      md.renderer.rules.code_inline = (tokens, idx, _options, _env, slf) => {
+        const token = tokens[idx]
+        const words = token.content.split(' ').map((word) => `<span>${md.utils.escapeHtml(word)}</span>`)
+        return `<code${slf.renderAttrs(token)}>${words.join(' ')}</code>`
+      }
+    },
+  },
+
   themeConfig: {
     nav: [
       { text: 'Manual', link: '/' },

@@ -179,6 +179,41 @@
   white-space: nowrap;
 }
 
+/* An API table row: the call's name, then its signature (`(call args)`{.sig})
+   on its own line above the description. Code in these rows is Scheme, not a
+   key sequence, so it wraps between the words config.mts wraps in spans.
+   The columns before the description (the name, and Pane where a table has
+   it) never wrap and take only the width their longest entry needs. A run
+   of code spans joined by `/` has no space to break at, so the description
+   may break between characters where nothing else fits. */
+.vp-doc tr:has(code.sig) > td {
+  vertical-align: top;
+}
+.vp-doc tr:has(code.sig) > td:not(:last-child) {
+  width: 1%;
+  white-space: nowrap;
+}
+.vp-doc tr:has(code.sig) > td:nth-child(2):not(:last-child) {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.vp-doc tr:has(code.sig) > td:last-child {
+  overflow-wrap: anywhere;
+}
+.vp-doc tr:has(code.sig) > td:last-child code {
+  white-space: normal;
+}
+.vp-doc tr:has(code.sig) > td:last-child code > span {
+  white-space: nowrap;
+}
+.vp-doc code.sig {
+  display: block;
+  width: fit-content;
+  padding-left: calc(6px + 2ch);
+  text-indent: -2ch;
+  margin-bottom: 0.6em;
+}
+
 /* Nightly-channel banner (theme/Layout.vue). VitePress positions the nav bar,
    sidebar and content with `--vp-layout-top-height` (default 0px) as the
    reserved space at the top of the viewport — the banner must be `fixed`

@@ -210,32 +210,47 @@ fn pane_probes_cover_every_table_entry_that_checks_a_pane() {
     assert_eq!(probed, declared);
 }
 
-/// Each row of the manual's table of what a call needs from its pane lists
-/// the builtins with that need and no others.
+/// The manual's API tables mark a row's calls `shown` or `focused` in their
+/// Pane column exactly when the builtin declares that need, so an unmarked
+/// call works with a pane value that carries no pane.
 #[test]
-fn manual_lists_every_builtin_that_needs_a_shown_or_focused_pane() {
-    let manual = include_str!("../../../user-manual/docs/plugin-api.md");
-    let row = |first_cell: &str| -> std::collections::BTreeSet<&str> {
-        let prefix = format!("| {first_cell} |");
-        let line = manual
-            .lines()
-            .find(|line| line.starts_with(&prefix))
-            .unwrap_or_else(|| panic!("plugin-api.md has no row {prefix}"));
-        line[prefix.len()..].split('`').skip(1).step_by(2).collect()
-    };
-    let declared = declared_pane_needs();
-    let with_need = |need: PaneNeed| -> std::collections::BTreeSet<&str> {
-        declared
-            .iter()
-            .filter(|&(_, n)| *n == need)
-            .map(|(name, _)| *name)
-            .collect()
-    };
-    assert_eq!(
-        row("A pane that shows the buffer"),
-        with_need(PaneNeed::Shown)
-    );
-    assert_eq!(row("That pane, focused"), with_need(PaneNeed::Focused));
+fn manual_marks_every_builtin_that_needs_a_shown_or_focused_pane() {
+    let pages = [
+        include_str!("../../../user-manual/docs/plugin-api.md"),
+        include_str!("../../../user-manual/docs/lsp-api.md"),
+    ];
+    let mut marked = std::collections::BTreeMap::new();
+    for page in pages {
+        let mut in_pane_table = false;
+        for line in page.lines() {
+            if line == "| Call | Pane | Effect |" {
+                in_pane_table = true;
+                continue;
+            }
+            if !line.starts_with('|') {
+                in_pane_table = false;
+            }
+            if !in_pane_table || line.starts_with("|--") {
+                continue;
+            }
+            let mut cells = line[2..].splitn(3, " | ");
+            let (names, pane) = (cells.next().unwrap_or(""), cells.next().unwrap_or(""));
+            let need = match pane.trim() {
+                "" => continue,
+                "shown" => PaneNeed::Shown,
+                "focused" => PaneNeed::Focused,
+                other => panic!("unknown Pane value {other:?} in {line}"),
+            };
+            for name in names.split('`').skip(1).step_by(2) {
+                marked.insert(name, need);
+            }
+        }
+    }
+    let declared: std::collections::BTreeMap<_, _> = declared_pane_needs()
+        .into_iter()
+        .filter(|(_, need)| matches!(need, PaneNeed::Shown | PaneNeed::Focused))
+        .collect();
+    assert_eq!(marked, declared);
 }
 
 /// `(lsp-stop! #f)` / `(lsp-restart! #f)`: there is no "focused buffer"
