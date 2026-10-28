@@ -283,12 +283,12 @@ fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
     h.eval_source(
         r#"(define-command! "wait-then-log" "doc"
              (lambda ()
-               (run-capture! "sleep" '("0.3"))
+               (run-capture! "sleep" '("1.0"))
                (log! 'info "after the wait")))"#,
         &mut mock,
     )
     .unwrap();
-    mock.settings.steel_command_budget_ms = 50;
+    mock.settings.steel_command_budget_ms = 250;
 
     h.call_steel_cmd_by_name("wait-then-log", vec![], &mut mock)
         .expect("a wait on a child must not use up the budget");
@@ -304,7 +304,7 @@ fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
 fn remove_dir_does_not_count_the_delete_against_the_budget() {
     let tree = tempfile::tempdir().unwrap();
     let root = tree.path().join("tree");
-    for d in 0..50 {
+    for d in 0..200 {
         let dir = root.join(format!("d{d}"));
         std::fs::create_dir_all(&dir).unwrap();
         for f in 0..100 {
@@ -313,15 +313,21 @@ fn remove_dir_does_not_count_the_delete_against_the_budget() {
     }
     let mut h = host();
     let mut mock = MockHost::new();
+    let budget = std::time::Duration::from_millis(250);
 
+    let started = std::time::Instant::now();
     let result = h.eval_source_watchdog(
         &format!("(remove-dir! {})", steel_path_literal(&root).unwrap()),
-        std::time::Duration::from_millis(10),
+        budget,
         &mut mock,
     );
 
     assert!(result.is_ok(), "{result:?}");
     assert!(!root.exists(), "the tree must be gone");
+    assert!(
+        started.elapsed() > budget,
+        "the delete must outlast the budget for the call to show it was not counted"
+    );
 }
 
 /// `remove-dir!` raises on a missing directory.

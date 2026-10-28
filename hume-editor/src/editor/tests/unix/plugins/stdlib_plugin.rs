@@ -672,29 +672,35 @@ fn markdown_heading_is_undone_by_one_undo() {
 }
 
 /// Deleting a large tree is waiting on the OS, which the budget does not
-/// count: `stdlib/delete-dir!` removes thousands of files under a 10 ms
-/// budget.
+/// count: `stdlib/delete-dir!` removes a tree that takes longer to delete
+/// than its budget.
 #[test]
 fn delete_dir_does_not_count_the_delete_against_the_budget() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
     let tree = tempfile::tempdir().unwrap();
     let root = tree.path().join("tree");
-    for d in 0..50 {
+    for d in 0..200 {
         let dir = root.join(format!("d{d}"));
         std::fs::create_dir_all(&dir).unwrap();
         for f in 0..100 {
             std::fs::write(dir.join(format!("f{f}")), "x").unwrap();
         }
     }
+    let budget = std::time::Duration::from_millis(250);
 
     let source = format!(r#"(call! "stdlib/delete-dir!" {})"#, steel_path(&root));
+    let started = std::time::Instant::now();
     let result = {
         let mut ih = init_host!(ed);
-        host.eval_source_watchdog(&source, std::time::Duration::from_millis(10), &mut ih)
+        host.eval_source_watchdog(&source, budget, &mut ih)
     };
 
     assert!(result.is_ok(), "{result:?}");
     assert!(!root.exists(), "the tree must be gone");
+    assert!(
+        started.elapsed() > budget,
+        "the delete must outlast the budget for the call to show it was not counted"
+    );
 }
 
 /// `stdlib/delete-dir!` on a directory that does not exist does nothing.
