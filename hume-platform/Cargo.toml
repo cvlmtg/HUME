@@ -25,14 +25,10 @@ nix = { version = "0.31", default-features = false, features = ["poll", "user", 
 signal-hook = { version = "0.4", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
-# ctrlc is Windows-only now — Unix termination goes through signal-hook
-# directly (see unix.rs). Its `termination` feature (SIGTERM/SIGHUP) is
-# dropped: that feature only does anything in ctrlc's own Unix code path,
-# which is never compiled here.
-ctrlc = { version = "3" }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_System_Console",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_JobObjects",
     "Win32_System_Threading",

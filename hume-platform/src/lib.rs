@@ -33,6 +33,8 @@
 
 #[cfg(unix)]
 mod unix;
+#[cfg(windows)]
+mod windows;
 
 pub mod dirs;
 pub mod file_url;
@@ -68,12 +70,12 @@ pub fn quit_grace() -> Duration {
     QUIT_GRACE
 }
 
-/// Windows' uniform "killed by signal" exit code. `ctrlc` fires one handler
-/// for every console control event (Ctrl-c, Ctrl-Break, console close,
-/// logoff, shutdown) without saying which, so there's no per-event code to
-/// derive the way Unix derives `128 + signo`. Numerically the same as Unix's
-/// `SIGINT` code, but that's incidental: a different exit code with a
-/// different rationale, not the same constant reused.
+/// Windows' exit code for every console control event that ends HUME
+/// (Ctrl-c, Ctrl-Break, console close, logoff, shutdown). Windows has no
+/// signal numbers to derive a code from the way Unix derives `128 + signo`,
+/// so every event exits with the shell's code for an interrupted program.
+/// Numerically the same as Unix's `SIGINT` code, but a different exit code
+/// with a different rationale, not the same constant reused.
 #[cfg(windows)]
 const WINDOWS_SIGNAL_EXIT_CODE: i32 = 130;
 
@@ -180,25 +182,25 @@ pub fn hangup_exit_code(err: &std::io::Error) -> Option<i32> {
     None
 }
 
-/// Spawn a background watcher that terminates the process on: Ctrl-c, `kill
-/// <pid>` (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, and Ctrl-Break and
-/// console-close on Windows. See `unix::spawn_terminator` for the Unix
-/// implementation.
+/// Install the watcher that terminates the process on: Ctrl-c, `kill <pid>`
+/// (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, and Ctrl-c, Ctrl-Break and
+/// console close on Windows. See `unix::spawn_terminator` and
+/// `windows::install_terminator` for each platform's implementation.
 ///
 /// `request_quit` is called with the exit code the process should use
-/// (`128 + signo` on Unix, 130 on Windows, since `ctrlc` doesn't expose which
-/// control event fired) and routes through the editor's normal quit path
-/// (graceful LSP `shutdown`) rather than tearing the terminal down here.
-/// This thread then waits up to `QUIT_GRACE` for the main loop to exit on
-/// its own before force-restoring and exiting with that code anyway; a
-/// second trigger inside the window is ignored. A bare terminal hangup with
+/// (`128 + signo` on Unix, 130 on Windows, which has no signal numbers) and
+/// routes through the editor's normal quit path (graceful LSP `shutdown`)
+/// rather than tearing the terminal down here. The watcher then waits up to
+/// `QUIT_GRACE` for the main loop to exit on its own before force-restoring
+/// and exiting with that code anyway; a second trigger inside the window is
+/// ignored. A bare terminal hangup with
 /// no signal at all does not go through this function at all; see
 /// [`hangup_exit_code`]'s doc.
 ///
 /// In raw mode Ctrl-c reaches HUME as a key, not as SIGINT or a console
 /// event. While a `terminal::InlineOutputScreen` lives, the cooked terminal
 /// sends Ctrl-c to the running child as well, and this watcher drops it: on
-/// Unix SIGINT and SIGQUIT, on Windows every console event.
+/// Unix SIGINT and SIGQUIT, on Windows Ctrl-c and Ctrl-Break.
 pub fn spawn_terminator(
     term: terminal::SharedTerm,
     request_quit: impl Fn(i32) + Send + 'static,
@@ -209,23 +211,7 @@ pub fn spawn_terminator(
     }
     #[cfg(windows)]
     {
-        ctrlc::set_handler(move || {
-            if term.in_inline_output() {
-                return;
-            }
-            // ctrlc fires this handler for every console control event
-            // (Ctrl-c, Ctrl-Break, console close, logoff, shutdown) without
-            // telling us which one, so every trigger uses the same
-            // conventional "killed by signal" code.
-            request_quit(WINDOWS_SIGNAL_EXIT_CODE);
-            // A repeat control event during this sleep changes nothing, the
-            // same as Unix's `wait_out_grace`.
-            std::thread::sleep(QUIT_GRACE);
-            // The main loop had a full grace window and didn't exit the
-            // process itself, so force it down.
-            force_exit(&term, WINDOWS_SIGNAL_EXIT_CODE);
-        })
-        .map_err(std::io::Error::other)?;
+        windows::install_terminator(term, request_quit)?;
     }
     #[cfg(not(any(unix, windows)))]
     {

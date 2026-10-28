@@ -79,6 +79,7 @@
 - `.` passes a `#:repeatable` command the same `count` its first run got, `0` when no count was typed.
 
 ### Fixes
+- On Windows, closing the terminal window lets HUME shut down cleanly instead of ending it at once, also while a command's output is shown.
 - `diff-lines` and `diff-words` work at the top level of `init.scm` and in a plugin body.
 - `lsp-show-status!` opens the status view on the pane it was given, and reports an error in `:messages` when that pane has lost focus by the time the view opens.
 - `:b`, `:goto` and `:set` without an argument report what they take as an error in `:messages`.
