@@ -344,3 +344,92 @@ fn lsp_stop_and_restart_reject_false_target_through_real_registration() {
         );
     }
 }
+
+/// Every builtin that takes a decoration, trigger or completion source name
+/// refuses an empty or blank one, naming itself, before it checks the pane.
+/// `{src}` stands for the name under test.
+#[test]
+fn every_source_name_refuses_an_empty_name_through_real_registration() {
+    const COMMAND_PROBES: &[(&str, &str)] = &[
+        (
+            "set-inlay-hints!",
+            "(set-inlay-hints! (focused-pane) {src} (list))",
+        ),
+        (
+            "register-sign-source!",
+            "(register-sign-source! (focused-pane) {src} 0)",
+        ),
+        ("set-signs!", "(set-signs! (focused-pane) {src} (list))"),
+        (
+            "set-virtual-lines!",
+            "(set-virtual-lines! (focused-pane) {src} (list))",
+        ),
+        (
+            "set-eol-text!",
+            "(set-eol-text! (focused-pane) {src} (list))",
+        ),
+        (
+            "set-extra-highlights!",
+            "(set-extra-highlights! (focused-pane) {src} (list))",
+        ),
+        (
+            "set-line-backgrounds!",
+            "(set-line-backgrounds! (focused-pane) {src} (list))",
+        ),
+        (
+            "set-statusline-text!",
+            r#"(set-statusline-text! (focused-pane) {src} "text")"#,
+        ),
+        (
+            "set-hook-triggers!",
+            r#"(set-hook-triggers! "rust" {src} (list))"#,
+        ),
+        (
+            "set-attachment-hook-triggers!",
+            r#"(set-attachment-hook-triggers! (focused-pane) {src} "srv" 'completion (list))"#,
+        ),
+        (
+            "set-completion-triggers!",
+            r#"(set-completion-triggers! "rust" {src} (list))"#,
+        ),
+        (
+            "set-attachment-completion-triggers!",
+            r#"(set-attachment-completion-triggers! (focused-pane) {src} "srv" 'completion (list))"#,
+        ),
+    ];
+    const INIT_PROBES: &[(&str, &str)] = &[(
+        "register-completion-source!",
+        "(register-completion-source! {src} (lambda (req) (void)) #:target 'buffer)",
+    )];
+    let refused = |name: &str, expr: &str, err: &str| {
+        assert!(
+            err.contains("source name must not be empty") && err.contains(name),
+            "{expr}: {err}"
+        );
+    };
+    for src in [r#""""#, r#""  ""#] {
+        for (i, (name, template)) in COMMAND_PROBES.iter().enumerate() {
+            let expr = template.replace("{src}", src);
+            let mut host = crate::ScriptingHost::new(&Dirs::none());
+            let mut store = crate::null_host::CommandStoreHost::default();
+            let cmd_name = format!("probe-{i}");
+            host.eval_source(
+                &format!(r#"(define-command! "{cmd_name}" "" (lambda () {expr}))"#),
+                &mut store,
+            )
+            .unwrap_or_else(|e| panic!("defining the probe for {name} must not error: {e}"));
+            let err = host
+                .call_steel_cmd_by_name(&cmd_name, vec![], &mut store)
+                .expect_err(&expr);
+            refused(name, &expr, &err.message);
+        }
+        for (name, template) in INIT_PROBES {
+            let expr = template.replace("{src}", src);
+            let mut host = crate::ScriptingHost::new(&Dirs::none());
+            let err = host
+                .eval_source(&expr, &mut crate::null_host::NullHost)
+                .expect_err(&expr);
+            refused(name, &expr, &err);
+        }
+    }
+}

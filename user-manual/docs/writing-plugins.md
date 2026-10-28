@@ -33,7 +33,7 @@ Two verbs, matching the two kinds of command described in [Command mode](command
 
 `define-command!` registers an editor command: bind it to a key, or dispatch it with `call!`; it's never reachable from the command mode prompt. `define-typed-command!` registers a typed command, reachable only as `:typed-command-name`; it's never bindable to a key and never reachable through `call!`. Both take the same first two arguments: a name and a one-line description of what the command does.
 
-Give every `define-command!` name of a plugin one shared prefix followed by `/`, such as `git-diff/toggle-inline-diff`, so two plugins never collide on a name. The prefix is usually the plugin's name but only has to be unique. Typed command names are not prefixed.
+Give every `define-command!` name of a plugin one shared prefix followed by `/`, such as `git-diff/toggle-inline-diff`, so two plugins never collide on a name: `define-command!`, `define-typed-command!` and `declare-plugin!` raise for a name that is already taken. The prefix is usually the plugin's name but only has to be unique. Typed command names are not prefixed.
 
 Command names ignore case: `:Hello`, `:HELLO` and `:hello` run the same command, and two names that differ only in case collide. An editor command name is lowercase; `define-command!` and `#:commands` raise for any other. A typed command name may use any case, and `:` Tab completion fills in the spelling it was defined with.
 
@@ -87,7 +87,7 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
     (call! "collapse-selection" pane)))
 ```
 
-`call!` dispatches any editor command, built-in and Scheme-defined alike, activating the target plugin on demand.
+`call!` dispatches any editor command, built-in and Scheme-defined alike, activating the target plugin on demand. A built-in command needs a pane to run on, so `call!` of one raises while `init.scm` or a plugin loads: run it from a key binding, a hook or a command.
 
 A built-in command has no lambda parameter list of its own to receive one, so `call!` requires a pane as its first *argument* instead: always the pane the command should act through: `(call! "delete-selection" pane)`, `(call! "move-right" pane 5)`. Most built-ins act through whatever pane the value names, not necessarily the one you're focused on, as long as that pane still exists and still shows the buffer the value names; a few (entering insert mode, an open prompt, extend mode, pane focus/split/close, tabs, …) still require it to be the pane you're actually focused on (see [Builtin Commands](builtin-commands.md) for the full breakdown). A Scheme-defined command receives `pane` as its own first parameter already (see above), so `call!` passes whatever arguments that command declares, including `pane` itself, if the caller wants to forward the one it's acting through.
 
@@ -128,7 +128,7 @@ Together, these make a command that removes trailing spaces and tabs from the se
 
 When nothing matches, `sift-within` leaves the selections as they were and returns `#f`, so the `when` is what keeps the command from deleting them.
 
-When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed". This is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would. `.` repeats a `#:repeatable` command with the `count` its first run got, `0` included, unless you type a count before `.`.
+When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed". A negative count raises. This is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would. `.` repeats a `#:repeatable` command with the `count` its first run got, `0` included, unless you type a count before `.`.
 
 ## Reading selections
 
@@ -228,7 +228,7 @@ Plugins react to editor lifecycle events by registering a hook handler with `reg
     (log! 'info (string-append "saved " (buffer-name pane)))))
 ```
 
-Available hooks and their lambda signatures. Every `pane` argument below is the same opaque value a command's own leading parameter is (see [Defining commands](#defining-commands)); pass it straight into any builtin that takes one. For a hook about a buffer with no pane of its own (most of them), that value carries no particular pane; for `on-buffer-enter`, `on-viewport-change`, `on-trigger-char`, and `on-completion-accept`, it names the exact pane the event happened in:
+Available hooks and their lambda signatures. `register-hook!` raises for a lambda that can't take the arguments its hook passes. Every `pane` argument below is the same opaque value a command's own leading parameter is (see [Defining commands](#defining-commands)); pass it straight into any builtin that takes one. For a hook about a buffer with no pane of its own (most of them), that value carries no particular pane; for `on-buffer-enter`, `on-viewport-change`, `on-trigger-char`, and `on-completion-accept`, it names the exact pane the event happened in:
 
 | Hook | Fires when | Lambda args |
 |------|------------|-------------|
@@ -615,12 +615,12 @@ If the user keeps typing or closes the menu before `git` answers, the request is
 
 - **`#:target`** (required): `'buffer` serves Insert mode and calls `(proc id pane prefix)`. Its token is the run of word characters before the cursor. `'minibuf` serves the `:` and `|` lines and calls `(proc id input cursor)`, with `input` the whole line and `cursor` counted in characters. Its token is the whitespace-delimited argument the cursor is in, unless the answer names its own with `#:span`. Either way, the token is what the items are matched against and what accepting one replaces.
 - **`#:match`**: how items are scored against the token. `'fuzzy` (default) keeps items containing the typed characters in order, not necessarily adjacent. `'string` keeps only items that start with the token, all scored equally, so once something is typed, fuzzy matches from other sources rank above them. `'delegated` treats the answer as already filtered and keeps the source's own order.
-- **`#:priority`** (default `0`): breaks score ties between sources, higher first.
+- **`#:priority`** (`'buffer` sources only, default `0`): breaks score ties between sources, higher first.
 - **`#:token-chars`** (`'buffer` sources only, default `""`): adds characters to the token on top of the buffer's `word-chars`. With `#:token-chars "-$"`, `foo-bar` is one token: it is what `prefix` holds and what accepting an item replaces, and typing `-` keeps the menu open. It cannot contain whitespace.
 - **`#:resolve #t`** (`'buffer` sources only, default `#f`): this source's items come from the buffer's language server, so highlighting one (for its documentation) or accepting one may send `completionItem/resolve` for it. Set it only for a source that forwards that server's items, never for one that builds its own items in a buffer with a server attached.
 - **`#:cancel`** (default `#f`): `(cancel id)` is called when HUME stops waiting for request `id` before its last answer: the user typed on, closed the menu or accepted an item, the source was called again, or the source raised an error when HUME called it. Use it to stop work started for that request, such as a `spawn-async!` job, with `cancel-async!`. A request answered in full is never cancelled.
 - **Names**: `'buffer` and `'minibuf` sources have separate names. Registering `name` again under the same target replaces the earlier source; the same `name` under the other target is a second, independent source.
-- **`#:incomplete #t`** on `completion-emit!` asks for the source to be called again as the user keeps typing, instead of filtering the first answer. A server response marked incomplete does the same.
+- **`#:incomplete #t`** on `completion-emit!` (`'buffer` sources only) asks for the source to be called again as the user keeps typing, instead of filtering the first answer. A server response marked incomplete does the same.
 - **`#:more #t`** on `completion-emit!`: more of the answer follows. Each part replaces the one before, so send every item found so far, and send the last part without `#:more`. An answer without it closes the request, and a later answer to it is dropped. The menu shows each part as it arrives; in Insert mode it reports that nothing was found only after the last part. On the `:` line, what the first `Tab` inserts, and the insert of a lone item, wait for the last part, and a row the user picks stays picked while more parts arrive. Send the last part even when the work fails, or the request stays open until the user moves on. The same holds for a source that answers from a callback: an error in the callback leaves the request open, so answer `'()` when the work fails.
 - **`#:span (hash 'start-char s 'end-char e)`** on `completion-emit!` (`'minibuf` sources registered with `#:match 'delegated` only): the part of the line the answer completes, in characters, in place of the argument the cursor is in. It must hold the cursor. Use it when a word can contain spaces, like a quoted shell word.
 - **`#:prefix`** on `completion-emit!` (`'minibuf` sources registered with `#:match 'delegated` only): what the first `Tab` inserts over the token when the answer has several items. Without it, `Tab` inserts what the items' insert texts all start with, when that extends what is typed. A string is inserted as given, and only when the cursor is at the end of the token, since the text after the cursor is not something the source read; it cannot be empty. `#f` inserts nothing, and the first `Tab` only opens the menu. Name the text, or send `#f`, when the insert texts have a syntax of their own, like quoted shell words, whose shared start is not something to put on the line.

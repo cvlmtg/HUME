@@ -99,10 +99,11 @@ fn sift_cancel_after_an_out_of_band_edit_restores_the_carried_selection() {
         &mut ed.state,
         &ed.view.panes,
         PaneHandle::with_pane(bid, pid),
-        &[(
+        &hume_core::NonEmpty::new(vec![(
             hume_lsp::position::from_lsp_range(&delete_prefix.range),
             delete_prefix.new_text.as_str(),
-        )],
+        )])
+        .unwrap(),
         None,
         hume_rope::position_encoding::PositionEncoding::Utf8,
     )
@@ -214,10 +215,11 @@ fn a_tracked_position_follows_an_insertion_above_it() {
         &mut ed.state,
         &ed.view.panes,
         PaneHandle::with_pane(bid, pid),
-        &[(
+        &hume_core::NonEmpty::new(vec![(
             hume_lsp::position::from_lsp_range(&insert_line.range),
             insert_line.new_text.as_str(),
-        )],
+        )])
+        .unwrap(),
         None,
         hume_rope::position_encoding::PositionEncoding::Utf8,
     )

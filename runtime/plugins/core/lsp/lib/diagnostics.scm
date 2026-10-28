@@ -72,7 +72,7 @@
     (let ((diags (diagnostics-for-buffer pane)))
       (if (null? diags)
           (log! 'info "No diagnostics")
-          (let* ((tok (show-drawer-list! pane (lsp/drawer-rows lsp/diag-row diags)
+          (let* ((tok (show-drawer-list! pane (lsp/payload-rows lsp/diag-row diags)
                                          (lsp/diag-select-callback pane))))
             (when tok
               (set! lsp/*diag-drawer* (list (buffer-key pane) tok diags))))))))
@@ -107,7 +107,7 @@
             (if (not sel)
                 (set! lsp/*diag-drawer* #f)
                 (let ((idx (lsp/diag-refresh-index (caddr lsp/*diag-drawer*) sel diags)))
-                  (if (update-drawer-list! tok (lsp/drawer-rows lsp/diag-row diags)
+                  (if (update-drawer-list! tok (lsp/payload-rows lsp/diag-row diags)
                                            (lsp/diag-select-callback pane)
                                            idx)
                       (set! lsp/*diag-drawer* (list (buffer-key pane) tok diags))

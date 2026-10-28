@@ -610,6 +610,22 @@ fn span_refused(ed: &Editor) -> bool {
         .any(|e| e.severity == Severity::Error && e.text.contains("#:span"))
 }
 
+/// Nothing asks a `'minibuf` source again while its menu is open, so an
+/// answer that asks for it is refused and its items are not shown.
+#[test]
+fn an_incomplete_answer_from_a_minibuf_source_is_refused() {
+    let ed = greet_tab("", "string", r#"(list "alpha" "beta")"#, "#:incomplete #t");
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error
+                && e.text.contains("#:incomplete is for a 'buffer source")),
+        "expected a raised #:incomplete error in the message log"
+    );
+    assert_eq!(minibuf_input(&ed), "greet ");
+}
+
 #[test]
 fn a_delegated_source_completes_the_span_it_names() {
     let ed = greet_with_a_spanning_source("delegated", "#:span (hash 'start-char 6 'end-char 12)");

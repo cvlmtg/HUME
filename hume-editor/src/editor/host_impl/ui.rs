@@ -125,7 +125,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn show_menu(
         &mut self,
         pane: PaneHandle,
-        items: NonEmpty<String>,
+        items: NonEmpty<(String, hume_scripting::Rooted)>,
         callback: hume_scripting::Callback,
     ) -> Result<Option<HostToken>, String> {
         self.require_focused_pane(pane)?;

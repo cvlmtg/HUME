@@ -33,7 +33,7 @@ fn changes_map_entries_carry_no_version() {
         file_edits(we).unwrap(),
         [FileEdits {
             uri: uri("file:///a"),
-            edits: vec![edit("x")],
+            edits: NonEmpty::new(vec![edit("x")]).unwrap(),
             version: None,
         }]
     );
@@ -66,7 +66,7 @@ fn document_changes_win_over_changes_and_strip_annotations() {
         file_edits(we).unwrap(),
         [FileEdits {
             uri: uri("file:///a"),
-            edits: vec![edit("plain"), edit("annotated")],
+            edits: NonEmpty::new(vec![edit("plain"), edit("annotated")]).unwrap(),
             version: Some(4),
         }]
     );
@@ -98,4 +98,36 @@ fn a_file_operation_refuses_the_whole_edit() {
 #[test]
 fn an_empty_edit_has_no_files() {
     assert_eq!(file_edits(lsp_types::WorkspaceEdit::default()).unwrap(), []);
+}
+
+#[test]
+fn a_file_with_no_edits_is_left_out() {
+    let changes = lsp_types::WorkspaceEdit {
+        changes: Some(
+            [
+                (uri("file:///empty"), vec![]),
+                (uri("file:///kept"), vec![edit("x")]),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+        ..Default::default()
+    };
+    let document_changes = lsp_types::WorkspaceEdit {
+        document_changes: Some(lsp_types::DocumentChanges::Edits(vec![
+            lsp_types::TextDocumentEdit {
+                text_document: document("file:///empty", Some(1)),
+                edits: vec![],
+            },
+            lsp_types::TextDocumentEdit {
+                text_document: document("file:///kept", Some(1)),
+                edits: vec![lsp_types::OneOf::Left(edit("x"))],
+            },
+        ])),
+        ..Default::default()
+    };
+    for we in [changes, document_changes] {
+        let uris: Vec<_> = file_edits(we).unwrap().into_iter().map(|f| f.uri).collect();
+        assert_eq!(uris, [uri("file:///kept")]);
+    }
 }

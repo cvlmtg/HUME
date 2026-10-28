@@ -562,10 +562,9 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 }
 
 /// Eager-plugin-command collision: an eager plugin defines "foo", then a lazy
-/// plugin declares `#:commands '("foo")`.  The collision is caught at
-/// `declare-plugin!` time, directly against the editor's live registry: the
-/// declaration fails with "no activation entries", the eager SteelBacked
-/// command survives, and no `Lazy` stub is ever registered for "foo".
+/// plugin declares `#:commands '("foo")`. The declaration raises with
+/// `define-command!`'s message, the eager SteelBacked command survives, and
+/// no `Lazy` stub is ever registered for "foo".
 #[test]
 fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let dir = tempfile::tempdir().unwrap();
@@ -601,13 +600,11 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     };
-    // declare-plugin! now hard-errors when all entries are filtered (collision
-    // caught at declaration, not at stub registration).
     let err =
         init_err.expect_err("eval_init must fail: declare-plugin! rejects 'foo' at declare time");
     assert!(
-        err.message.contains("no activation entries") || err.message.contains("conflicted"),
-        "error must explain the cause; got: {err:?}"
+        err.message.contains("command 'foo' is already defined by"),
+        "error must name the collision; got: {err:?}"
     );
 
     ed.scripting = Some(host);
@@ -627,17 +624,16 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     );
 }
 
-/// Two plugins both declare `#:commands '("bar")`: the collision is caught
-/// at `declare-plugin!` time against the editor's live registry: the second
-/// plugin's "bar" entry is dropped (logged as an Error, first-writer-wins),
-/// and both plugins remain `Declared` (neither is stuck or hard-errored).
+/// Two plugins both declare `#:commands '("bar")`: the second declaration
+/// raises, so the first plugin keeps "bar" and the second gets no entry and
+/// no stub, "pb-only" included.
 ///
 /// Runs against a real `Editor` + `EditorHostImpl`, not a hand-rolled
 /// `MockHost`: collision detection is `CommandRegistry`'s decision, and a
-/// `MockHost` copy of the same rules would risk silently drifting from the
-/// real behavior it's meant to prove.
+/// `MockHost` copy of the same rules could drift from the real behavior it's
+/// meant to prove.
 #[test]
-fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
+fn lazy_stub_collision_lazy_vs_lazy_raises_for_the_second() {
     let dir = tempfile::tempdir().unwrap();
     let pa_dir = dir.path().join("plugins").join("user").join("pa");
     let pb_dir = dir.path().join("plugins").join("user").join("pb");
@@ -666,64 +662,40 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
-    {
+    let err = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect("lazy-vs-lazy collision must NOT abort init");
-
-    // Error logged for pb's duplicate "bar" entry. `eval_init` queues log
-    // messages on the host (`ctx.log`) rather than writing `ed.state.
-    // message_log` directly; only `Editor::init_scripting`'s tail code
-    // flushes that queue, which this test bypasses by calling `eval_init`
-    // directly, so check the host's queue itself.
+    .expect_err("the second claim of 'bar' raises");
     assert!(
-        host.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_core::Severity::Error)
-                && msg.contains("bar")
-                && msg.contains("already claimed")
-        }),
-        "expected an Error about 'bar' already claimed; got: {:?}",
-        host.peek_pending_messages()
+        err.message.contains(
+            "command 'bar' is already claimed as an activation command by lazy plugin 'user/pa'"
+        ),
+        "got: {err:?}"
     );
     ed.scripting = Some(host);
 
-    // First-writer (pa) owns the "bar" stub.
-    use hume_scripting::attribution::PluginId;
-    let pa_id = PluginId::User {
+    use hume_scripting::attribution::{EntryId, PluginId};
+    let pa = EntryId::main(PluginId::User {
         user: "user".to_string(),
         repo: "pa".to_string(),
-    };
-    let pb_id = PluginId::User {
+    });
+    let pb = EntryId::main(PluginId::User {
         user: "user".to_string(),
         repo: "pb".to_string(),
-    };
+    });
     assert!(
         matches!(
             ed.state.config.registry.get_mappable("bar"),
-            Some(MappableCommand::Lazy { plugin, .. }) if *plugin == hume_scripting::attribution::EntryId::main(pa_id.clone())
+            Some(MappableCommand::Lazy { plugin, .. }) if *plugin == pa
         ),
-        "bar's Lazy stub must be owned by pa (first-writer-wins)"
+        "bar's Lazy stub must stay owned by pa"
     );
-    // Both plugins are Declared: pb stays declared even though its "bar" entry was dropped.
-    assert!(
-        matches!(
-            ed.scripting
-                .as_ref()
-                .unwrap()
-                .plugin_status(&hume_scripting::attribution::EntryId::main(pa_id.clone())),
-            Some(PluginStatus::Declared)
-        ),
-        "pa must be Declared"
-    );
-    assert!(
-        matches!(
-            ed.scripting
-                .as_ref()
-                .unwrap()
-                .plugin_status(&hume_scripting::attribution::EntryId::main(pb_id.clone())),
-            Some(PluginStatus::Declared)
-        ),
-        "pb must be Declared even with its 'bar' entry dropped"
-    );
+    assert!(ed.state.config.registry.get_mappable("pb-only").is_none());
+    let scripting = ed.scripting.as_ref().unwrap();
+    assert!(matches!(
+        scripting.plugin_status(&pa),
+        Some(PluginStatus::Declared)
+    ));
+    assert!(scripting.plugin_status(&pb).is_none());
 }

@@ -29,11 +29,10 @@ use super::errors::{generic_err, require_cap};
 pub(crate) fn set_inlay_hints(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     hints: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "source")?;
     let parsed = hash_list(hints, "hints", &[CHAR_OFFSET, "text", "side"], |entry| {
         let pos = entry.usize(CHAR_OFFSET)?;
         let text = entry.string("text")?;
@@ -62,14 +61,10 @@ pub(crate) fn set_inlay_hints(
 pub(crate) fn register_sign_source(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     priority: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "source")?;
-    if source.trim().is_empty() {
-        steel::stop!(Generic => "source must not be empty");
-    }
     let priority = int_arg(priority, "priority")?;
     require_cap(ctx.host.decorations())?
         .register_sign_source(source, bid, priority)
@@ -84,11 +79,10 @@ pub(crate) fn register_sign_source(
 pub(crate) fn set_signs(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     signs: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "source")?;
     let parsed = hash_list(signs, "signs", LINE_TEXT_SCOPE, |entry| {
         let text = entry.string("text")?;
         // A sign is a glyph in a fixed-width gutter lane: no control
@@ -122,11 +116,10 @@ pub(crate) fn set_signs(
 pub(crate) fn set_virtual_lines(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     lines: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "source")?;
     let parsed = virtual_line_specs(lines)?;
     require_cap(ctx.host.decorations())?
         .set_virtual_lines(source, bid, parsed)
@@ -236,12 +229,11 @@ const START_END_CHAR_COL_SCOPE: &[&str] = &[START_CHAR_COL, END_CHAR_COL, "scope
 pub(crate) fn set_eol_text(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     lines: SteelVal,
     hide_on_insert_line: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "source")?;
     let parsed = hash_list(lines, "lines", LINE_TEXT_SCOPE, |entry| {
         Ok((
             entry.usize("line")?,
@@ -261,11 +253,10 @@ pub(crate) fn set_eol_text(
 pub(crate) fn set_extra_highlights(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     spans: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "source")?;
     let parsed = hash_list(spans, "spans", START_END_CHAR_SCOPE, char_range_scope)?;
     require_cap(ctx.host.decorations())?
         .set_extra_highlights(source, bid, parsed)
@@ -280,11 +271,10 @@ pub(crate) fn set_extra_highlights(
 pub(crate) fn set_line_backgrounds(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     entries: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "source")?;
     let parsed = hash_list(entries, "entries", &["line", "scope"], |entry| {
         Ok((entry.usize("line")?, entry.string("scope")?))
     })?;
@@ -301,11 +291,10 @@ pub(crate) fn set_line_backgrounds(
 pub(crate) fn set_statusline_text(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     text: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "source")?;
     let text = string_arg(text, "text")?;
     require_cap(ctx.host.decorations())?
         .set_statusline_text(source, bid, text)

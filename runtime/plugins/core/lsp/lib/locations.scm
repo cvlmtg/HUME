@@ -69,7 +69,7 @@
 ;; maps position params to request params.
 (define (lsp/show-locations! pane tracked places method shape not-found)
   (lsp/end-locations-session!)
-  (let ((drawer (show-drawer-list! (focused-pane) (lsp/drawer-rows lsp/place-display places)
+  (let ((drawer (show-drawer-list! (focused-pane) (lsp/payload-rows lsp/place-display places)
                                    lsp/locations-on-select)))
     (when drawer
       (let ((counts (lsp/place-line-counts pane places)))
@@ -87,7 +87,7 @@
     (if (not selected)
         (lsp/end-locations-session!)
         (let ((idx (min selected (- (length places) 1))))
-          (if (update-drawer-list! drawer (lsp/drawer-rows lsp/place-display places)
+          (if (update-drawer-list! drawer (lsp/payload-rows lsp/place-display places)
                                    lsp/locations-on-select idx)
               (set! lsp/*locations*
                     (hash-insert session 'counts

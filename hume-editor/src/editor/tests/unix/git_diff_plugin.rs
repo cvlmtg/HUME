@@ -103,7 +103,7 @@ fn setup_with_git_branch_config(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(set-option! "statusline" "steel:git-branch||")"#,
+        r#"(set-option! "statusline" (hash 'left '("steel:git-branch") 'center '() 'right '()))"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -1478,7 +1478,7 @@ fn git_branch_element_activates_when_placed_after_open() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(set-option! "statusline" "steel:git-branch||")"#,
+        r#"(set-option! "statusline" (hash 'left '("steel:git-branch") 'center '() 'right '()))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

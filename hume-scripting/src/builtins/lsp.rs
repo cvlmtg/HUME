@@ -343,10 +343,11 @@ pub(crate) fn register_lsp_notification_hook(
         steel::stop!(Generic => "methods must not be empty");
     }
     let proc = callable_arg(proc, "proc")?;
-    known_event(ctx, LSP_NOTIFICATION_EVENT).map_err(generic_err)?;
+    let shape = known_event(ctx, LSP_NOTIFICATION_EVENT).map_err(generic_err)?;
     register_entry(
         ctx,
         LSP_NOTIFICATION_EVENT,
+        shape,
         proc,
         Some(methods.into_boxed_slice()),
     )?;

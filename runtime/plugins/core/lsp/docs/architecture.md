@@ -89,9 +89,10 @@ lsp-request! ──▶ transform response ──▶ UI builtin (show-popup!/show
 - **Position formatting.** `lsp/format-position` renders a 0-based line and column as
   1-based `line:col`. The diagnostics drawer and the locations drawer both use it, so a
   position reads the same in both.
-- **Drawer rows.** `lsp/drawer-rows` pairs each item with its display text, the
-  `(display . payload)` rows `show-drawer-list!` takes, so `on-select` gets the item
-  itself. The diagnostics drawer and the locations drawer both build their rows with it.
+- **Payload rows.** `lsp/payload-rows` pairs each item with its display text, the
+  `(display . payload)` rows `show-drawer-list!` and `show-menu!` take, so `on-select`
+  gets the item itself. The diagnostics drawer, the locations drawer and the code-action
+  menu build their rows with it.
 
 ## Locations drawer (`locations.scm`)
 

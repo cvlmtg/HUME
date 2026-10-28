@@ -23,6 +23,20 @@ fn note_keeps_the_first_spelling_and_order() {
     );
 }
 
+/// A declared entry is found under any casing of its plugin, and only for
+/// the entry file it named.
+#[test]
+fn declared_names_the_entry_whatever_the_plugin_casing() {
+    use crate::attribution::{EntryFile, EntryId};
+
+    let mut records = PluginRecords::default();
+    records.note_declared(EntryId::main(id("user/Foo")));
+    assert!(records.declared(&EntryId::main(id("user/foo"))));
+    let extra = EntryId::new(id("user/foo"), EntryFile::parse("extra.scm").unwrap());
+    assert!(!records.declared(&extra));
+    assert_eq!(records.plum_names().collect::<Vec<_>>(), ["user/Foo"]);
+}
+
 #[test]
 fn loaded_replaces_declared_and_declared_never_downgrades() {
     let mut records = PluginRecords::default();

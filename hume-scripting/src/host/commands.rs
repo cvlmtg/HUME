@@ -127,8 +127,8 @@ pub trait CommandHost {
     /// place a name is claimed, with no separate scripting-side activation map.
     ///
     /// Returns `Err(msg)` if `name` is already claimed by any existing
-    /// command (native, `SteelBacked`, or another plugin's `Lazy` stub); the
-    /// message names the conflicting owner for a specific declare-time log.
+    /// command (native, `SteelBacked`, or any `Lazy` stub, `plugin`'s own
+    /// included); the message names the conflicting owner.
     fn register_lazy_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String>;
 
     /// Register a typed `Lazy` activation stub for `name`, owned by `plugin`.
@@ -163,7 +163,8 @@ pub trait CommandHost {
     /// `define-command!`/`define-typed-command!` is dead weight (the plugin
     /// is now `Loaded` and will never re-run its body); on failure, every
     /// stub the plugin ever claimed must be freed so a later plugin can claim
-    /// the name. Never removes a resolved `SteelBacked`/`Steel` command,
-    /// only `Lazy` entries.
+    /// the name. `declare-plugin!` calls it too, when a claim fails after
+    /// others of the same declaration landed. Never removes a resolved
+    /// `SteelBacked`/`Steel` command, only `Lazy` entries.
     fn unregister_lazy_stubs_of(&mut self, plugin: &EntryId);
 }

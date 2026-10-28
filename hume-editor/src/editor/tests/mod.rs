@@ -511,14 +511,10 @@ fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsPara
     }
 }
 
-/// `items` as the non-empty list a menu or drawer is built from.
-pub(in crate::editor) fn non_empty_strings(items: &[&str]) -> hume_core::NonEmpty<String> {
-    let items = items.iter().map(|s| s.to_string()).collect();
-    hume_core::NonEmpty::new(items).expect("a test list has items")
-}
-
-/// Drawer rows `items`, already rendered, each its own payload.
-pub(in crate::editor) fn drawer_items(items: &[&str]) -> hume_scripting::host::DrawerItems {
+/// Menu or drawer rows `items`, each its own payload.
+pub(in crate::editor) fn script_rows(
+    items: &[&str],
+) -> hume_core::NonEmpty<(String, hume_scripting::Rooted)> {
     let rows = items
         .iter()
         .map(|s| {
@@ -528,9 +524,12 @@ pub(in crate::editor) fn drawer_items(items: &[&str]) -> hume_scripting::host::D
             )
         })
         .collect();
-    hume_scripting::host::DrawerItems::Rows(
-        hume_core::NonEmpty::new(rows).expect("a test list has items"),
-    )
+    hume_core::NonEmpty::new(rows).expect("a test list has items")
+}
+
+/// Drawer rows `items`, already rendered, each its own payload.
+pub(in crate::editor) fn drawer_items(items: &[&str]) -> hume_scripting::host::DrawerItems {
+    hume_scripting::host::DrawerItems::Rows(script_rows(items))
 }
 
 /// Opens a drawer with `items` through `EditorHostImpl`'s `UiHost` impl

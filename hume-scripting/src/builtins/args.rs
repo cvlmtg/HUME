@@ -896,6 +896,36 @@ impl BuiltinArg for Usize {
     }
 }
 
+/// The name of a decoration, trigger or completion source: a string or a
+/// symbol, as [`string_arg`] takes, that is not empty or blank. A builtin
+/// declares its source-name parameter as this type in the `builtins!`
+/// table, so a blank name is refused before a `LivePane` sibling's liveness
+/// check can mask it. Decoding has no parameter name, so the error names
+/// only the builtin.
+#[derive(Debug, Clone)]
+pub(crate) struct SourceName(String);
+
+impl FromSteelVal for SourceName {
+    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
+        let name = match val {
+            SteelVal::StringV(s) => s.to_string(),
+            SteelVal::SymbolV(s) => s.to_string(),
+            _ => steel::stop!(TypeMismatch => "expected a source name string, got {:?}", val),
+        };
+        if name.trim().is_empty() {
+            steel::stop!(Generic => "source name must not be empty");
+        }
+        Ok(SourceName(name))
+    }
+}
+
+impl BuiltinArg for SourceName {
+    type Out = String;
+    fn resolve(self, _ctx: &mut crate::SteelCtx, _arg: &'static str) -> Result<String, SteelErr> {
+        Ok(self.0)
+    }
+}
+
 /// A path argument, taken as written and made absolute by [`under_cwd`]: a
 /// relative one joins onto the editor's working directory, and `~` and
 /// variables are not expanded. A builtin declares its positional path

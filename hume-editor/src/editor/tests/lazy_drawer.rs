@@ -286,7 +286,7 @@ fn a_render_proc_that_changes_the_editor_closes_the_drawer() {
         "(range 0 30)",
         r#"(lambda (start keys)
              (with-handler (lambda (e) (begin))
-                           (set-buffer-option! (focused-pane) "indent-width" "8"))
+                           (set-buffer-option! (focused-pane) "indent-width" 8))
              (map (lambda (k) "row") keys))"#,
     );
     frame(&mut ed, WIDTH, HEIGHT);

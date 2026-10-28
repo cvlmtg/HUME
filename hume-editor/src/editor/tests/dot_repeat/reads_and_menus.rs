@@ -366,8 +366,8 @@ fn a_non_repeatable_insert_bindings_prompt_ends_the_change() {
 #[test]
 fn dot_repeats_a_commands_menu_choice() {
     let mut ed = record_rd(
-        r#"(show-menu! pane (list "one" "two")
-             (lambda (i) (when i (call! "replace" pane (if (= i 1) #\t #\o)))))"#,
+        r#"(show-menu! pane (list (cons "one" #\o) (cons "two" #\t))
+             (lambda (c) (when c (call! "replace" pane c))))"#,
         &[key('j'), key_enter()],
     );
     assert_eq!(ed.doc().text().to_string(), "tello\nworld\n");
@@ -382,8 +382,8 @@ fn dot_repeats_a_commands_menu_choice() {
 #[test]
 fn dot_replays_a_menu_closed_unanswered_as_nothing() {
     let mut ed = record_rd(
-        r#"(let ((tok (show-menu! pane (list "one")
-                        (lambda (i) (call! "replace" pane #\x)))))
+        r#"(let ((tok (show-menu! pane (list (cons "one" 'one))
+                        (lambda (c) (call! "replace" pane #\x)))))
              (close-menu! tok)
              (call! "delete" pane))"#,
         &[],
@@ -435,12 +435,12 @@ fn a_drawer_pick_is_no_part_of_the_commands_change() {
 fn dot_refuses_a_menu_choice_missing_from_the_rerun_menu() {
     let mut ed = editor_with_steel(
         "-[h]>ello\nworld\n",
-        r#"(define items (list "one" "two"))
+        r#"(define items (list (cons "one" 'one) (cons "two" 'two)))
            (define-command! "rd" ""
              (lambda (pane)
                (show-menu! pane items
-                 (lambda (i) (when i (call! "replace" pane #\t))))
-               (set! items (list "three")))
+                 (lambda (c) (when c (call! "replace" pane #\t))))
+               (set! items (list (cons "three" 'three))))
              #:repeatable #t)"#,
     );
     ed.execute_keymap_command("rd".into(), Count::typed(1), false);
@@ -464,8 +464,8 @@ fn dot_refuses_a_menu_choice_missing_from_the_rerun_menu() {
 #[test]
 fn dot_repeats_the_second_of_two_menu_items_with_the_same_text() {
     let mut ed = record_rd(
-        r#"(show-menu! pane (list "dup" "dup")
-             (lambda (i) (when i (call! "replace" pane (if (= i 1) #\b #\a)))))"#,
+        r#"(show-menu! pane (list (cons "dup" #\a) (cons "dup" #\b))
+             (lambda (c) (when c (call! "replace" pane c))))"#,
         &[key('j'), key_enter()],
     );
     assert_eq!(ed.doc().text().to_string(), "bello\nworld\n");

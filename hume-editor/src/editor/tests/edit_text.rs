@@ -342,11 +342,15 @@ fn a_stale_expected_generation_is_reported_before_a_range_past_the_end() {
     assert!(msg.contains("buffer changed"), "got: {msg}");
 }
 
+/// An empty list changes nothing, so there is nothing for a stale
+/// generation to refuse.
 #[test]
-fn a_stale_expected_generation_refuses_an_empty_edit_list() {
-    let msg = error_for(
-        "-[a]>bc\n",
-        "'() #:expect-generation (+ 1 (buffer-generation pane))",
+fn an_empty_list_changes_nothing_whatever_the_expected_generation() {
+    assert_eq!(
+        after(
+            "-[a]>bc\n",
+            "'() #:expect-generation (+ 1 (buffer-generation pane))"
+        ),
+        "-[a]>bc\n"
     );
-    assert!(msg.contains("buffer changed"), "got: {msg}");
 }

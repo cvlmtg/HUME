@@ -62,7 +62,7 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
 pub(crate) fn set_hook_triggers(
     ctx: &mut SteelCtx,
     language: SteelVal,
-    source: SteelVal,
+    source: String,
     chars: SteelVal,
 ) -> SteelResult {
     let scope = TriggerScope::Language(string_arg(language, "language")?);
@@ -81,7 +81,7 @@ pub(crate) fn set_hook_triggers(
 pub(crate) fn set_attachment_hook_triggers(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     server: SteelVal,
     feature: SteelVal,
     chars: SteelVal,
@@ -109,11 +109,10 @@ fn attachment_scope(
 fn queue_triggers(
     ctx: &mut SteelCtx,
     listener: fn(Arc<str>) -> TriggerListener,
-    source: SteelVal,
+    source: String,
     scope: TriggerScope,
     chars: SteelVal,
 ) -> SteelResult {
-    let source = string_arg(source, "source")?;
     let chars = chars_arg(chars, "chars")?;
     ctx.push_effect(Effect::SetTriggers {
         listener: listener(source.into()),
@@ -140,7 +139,8 @@ fn queue_triggers(
 /// only reader of this flag, is itself `Buffer`-target only), so a
 /// `'minibuf` source claiming it is a caller error, not a silently-ignored
 /// no-op. `#:token-chars` is refused there too: a `'minibuf` source's token
-/// is its own argument span.
+/// is its own argument span. So is a nonzero `#:priority`: a `'minibuf`
+/// session runs one source, so there is no other source to rank against.
 // Each param is a positional arg the `builtins!` table maps 1:1 from the
 // `%register-completion-source!` wrapper call.
 #[allow(clippy::too_many_arguments)]
@@ -159,6 +159,10 @@ pub(crate) fn register_completion_source(
     let target = target_arg(target)?;
     let match_kind = match_kind_arg(match_kind, "#:match")?;
     let priority = int_arg(priority, "#:priority")?;
+    if priority != 0 && target != CompletionSourceTarget::Buffer {
+        steel::stop!(Generic =>
+            "#:priority: only a 'buffer source can set this");
+    }
     let resolve = bool_arg(resolve, "#:resolve")?;
     if resolve && target != CompletionSourceTarget::Buffer {
         steel::stop!(Generic =>
@@ -280,7 +284,7 @@ pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
 pub(crate) fn set_completion_triggers(
     ctx: &mut SteelCtx,
     language: SteelVal,
-    source: SteelVal,
+    source: String,
     chars: SteelVal,
 ) -> SteelResult {
     let scope = TriggerScope::Language(string_arg(language, "language")?);
@@ -293,7 +297,7 @@ pub(crate) fn set_completion_triggers(
 pub(crate) fn set_attachment_completion_triggers(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    source: SteelVal,
+    source: String,
     server: SteelVal,
     feature: SteelVal,
     chars: SteelVal,

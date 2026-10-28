@@ -23,8 +23,8 @@ use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, ClaimRefused, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost,
-    LanguageHost, LocationPlace, LspHost, OptionValue, OutputHost, PositionParams, RangeParams,
-    RangesParams, SelectionInfo, SettingsHost, StoredLanguage, TrackedHold,
+    EventShape, LanguageHost, LocationPlace, LspHost, OptionValue, OutputHost, PositionParams,
+    RangeParams, RangesParams, SelectionInfo, SettingsHost, StoredLanguage, TrackedHold,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -34,6 +34,8 @@ use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 /// editor never defines. That divergence from the editor's real event set is
 /// deliberate: it lets tests prove that `register-hook!`/`declare-plugin!`
 /// validate through `EditorHost::events()` rather than a compiled-in table.
+/// Each passes one arg, except `on-lsp-notification`'s three, as the
+/// editor's events of those names do.
 const NULL_HOST_EVENT_NAMES: &[&str] = &[
     "on-buffer-open",
     "on-buffer-save",
@@ -78,8 +80,16 @@ impl EventHost for NullHost {
     fn known_event_names(&self) -> &'static [&'static str] {
         NULL_HOST_EVENT_NAMES
     }
-    fn held_event_arg_count(&self, name: &str) -> Option<usize> {
-        (name == HELD_EVENT).then_some(1)
+    fn event_shape(&self, name: &str) -> Option<EventShape> {
+        let args = match name {
+            "on-lsp-notification" => 3,
+            _ if NULL_HOST_EVENT_NAMES.contains(&name) => 1,
+            _ => return None,
+        };
+        Some(EventShape {
+            args,
+            held: name == HELD_EVENT,
+        })
     }
     fn finish_hold(&mut self, _hold: HostToken) {}
 }
@@ -465,11 +475,7 @@ impl CommandStoreHost {
             return Err(format!("'{name}' conflicts with an existing command"));
         }
         if let Some(owner) = self.lazy.get(key.as_ref()) {
-            return if owner == plugin {
-                Ok(())
-            } else {
-                Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
-            };
+            return Err(format!("'{name}' already claimed by lazy plugin '{owner}'"));
         }
         self.lazy.insert(key.into_owned(), plugin.clone());
         Ok(())

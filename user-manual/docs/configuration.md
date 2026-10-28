@@ -69,7 +69,7 @@ Changes apply to the current session and are not persisted. For persistent confi
 (set-option! "option-name" value)
 ```
 
-Sets the global default. The value is a string, a boolean, or an integer, or for a word-list option such as `shell`, a list of strings. A named value, such as `"soft"` or `"word:80"`, is a string, and `get-option` returns it as the string you would write: `"word"`, not `"word:0"`. A word-list option's `get-option` value is a list of strings: `'("sh" "-c")`. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
+Sets the global default. The value has the type `get-option` returns for that option: a boolean, an integer, a string, or for a word-list option such as `shell`, a list of strings. Any other type raises, so write `4`, not `"4"`. A named value, such as `"soft"` or `"word:80"`, is a string, and `get-option` returns it as the string you would write: `"word"`, not `"word:0"`. A word-list option's `get-option` value is a list of strings: `'("sh" "-c")`. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
 
 A value you set, in your `init.scm`, a hook it registers or with `:set`, beats a plugin's value for the same option, whichever comes first; a plugin's later `set-option!` is ignored and noted in `:messages` at trace level. Per-buffer overrides rank the same way among themselves, and a buffer override still beats the global value, whoever set either.
 

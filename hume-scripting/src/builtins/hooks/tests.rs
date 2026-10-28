@@ -1,4 +1,8 @@
+use hume_platform::dirs::Dirs;
+
 use super::*;
+use crate::ScriptingHost;
+use crate::null_host::NullHost;
 use crate::test_support::SteelCtxTestHarness;
 
 fn noop_proc(_args: &[SteelVal]) -> SteelResult {
@@ -163,9 +167,52 @@ fn register_hook_validates_against_the_host_not_a_compiled_in_table() {
     );
 }
 
+/// A fresh host after `(register-hook! 'event handler)` against [`NullHost`].
+fn register_for(event: &str, handler: &str) -> Result<ScriptingHost, String> {
+    let mut host = ScriptingHost::new(&Dirs::none());
+    host.eval_source(
+        &format!("(register-hook! '{event} {handler})"),
+        &mut NullHost,
+    )?;
+    Ok(host)
+}
+
+/// A queued event's handler is called with the event's args, so
+/// a lambda that cannot take that many is refused when it registers. A
+/// builtin's parameter count can't be read, so Steel checks it when the
+/// handler runs.
+#[test]
+fn queued_event_handler_takes_the_event_args() {
+    for accepted in [
+        "(lambda (bid) 0)",
+        "(lambda args 0)",
+        "(lambda (bid . rest) 0)",
+        "+",
+    ] {
+        assert!(
+            register_for("on-buffer-save", accepted).is_ok(),
+            "{accepted}"
+        );
+    }
+    for refused in [
+        "(lambda () 0)",
+        "(lambda (bid extra) 0)",
+        "(lambda (bid extra . rest) 0)",
+    ] {
+        let Err(msg) = register_for("on-buffer-save", refused) else {
+            panic!("{refused} must be refused");
+        };
+        assert!(
+            msg.contains("an 'on-buffer-save handler is a lambda of 1 parameters"),
+            "{msg}"
+        );
+    }
+}
+
 mod held {
-    use hume_platform::dirs::Dirs;
     use steel::rvals::SteelVal;
+
+    use super::register_for;
 
     use crate::host::{
         BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, SettingsHost,
@@ -213,21 +260,12 @@ mod held {
         fn known_event_names(&self) -> &'static [&'static str] {
             self.inner.known_event_names()
         }
-        fn held_event_arg_count(&self, name: &str) -> Option<usize> {
-            self.inner.held_event_arg_count(name)
+        fn event_shape(&self, name: &str) -> Option<crate::host::EventShape> {
+            self.inner.event_shape(name)
         }
         fn finish_hold(&mut self, hold: HostToken) {
             self.finished.push(hold);
         }
-    }
-
-    fn register_for(event: &str, handler: &str) -> Result<ScriptingHost, String> {
-        let mut host = ScriptingHost::new(&Dirs::none());
-        host.eval_source(
-            &format!("(register-hook! '{event} {handler})"),
-            &mut NullHost,
-        )?;
-        Ok(host)
     }
 
     fn register(handler: &str) -> Result<ScriptingHost, String> {
@@ -276,8 +314,6 @@ mod held {
         assert_eq!(host.held_handlers(HELD_EVENT).holds_needed(), 0);
         let host = register("(lambda (pane done) 0)").unwrap();
         assert_eq!(host.held_handlers(HELD_EVENT).holds_needed(), 1);
-        let host = register_for("on-buffer-save", "(lambda (pane extra) 0)").unwrap();
-        assert_eq!(host.held_handlers("on-buffer-save").holds_needed(), 0);
     }
 
     #[test]

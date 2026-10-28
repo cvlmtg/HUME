@@ -46,16 +46,10 @@ fn status_row(host: &ScriptingHost, plugin: &str) -> String {
 
 // ── Zero-entry error distinguishes collided vs not-supplied ────────────────
 
-/// When ALL provided `#:commands` entries collide with built-ins, the
-/// error message must mention "conflicted", not suggest adding #:commands
-/// (which the user already did).
-///
-/// Collision filtering only runs once the plugin is confirmed present on
-/// disk (absent plugins skip it entirely), so this test needs
-/// a real on-disk plugin, unlike a same-named `core:` plugin that would
-/// otherwise hit the absent-path branch first.
+/// A `#:commands` name that is a built-in raises with `define-command!`'s
+/// own message, not the "add #:commands" hint for a declaration with none.
 #[test]
-fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
+fn declare_plugin_builtin_collision_raises_like_define_command() {
     use crate::ScriptingHost;
     use crate::null_host::NullHost;
     use tempfile::TempDir;
@@ -88,8 +82,8 @@ fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
 
     let err = result.expect_err("must error when all entries collide");
     assert!(
-        err.contains("conflicted"),
-        "error must mention the collision; got: {err}"
+        err.contains("'insert-mode' conflicts with a built-in command"),
+        "error must name the collision; got: {err}"
     );
     assert!(
         !err.contains("Add #:commands"),
@@ -122,11 +116,10 @@ fn declare_plugin_all_on_command_collided_records_nothing() {
     );
 }
 
-/// `declare-plugin!` drops `#:commands` entries that conflict with already-registered
-/// eager commands; when the dropped entry was the sole activation signal, it errors
-/// immediately (no orphan entry, no plugin stuck `Declared`).
+/// A `#:commands` name an eager command already took raises, and claims no
+/// stub over it.
 #[test]
-fn declare_plugin_drops_sole_command_conflicting_with_eager() {
+fn declare_plugin_raises_for_a_command_an_eager_plugin_defined() {
     use crate::ScriptingHost;
     use crate::attribution::Owner;
     use crate::command_procs::{CommandProc, MappableProc};
@@ -161,13 +154,12 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
         &mut editor_host,
     );
 
-    // All entries filtered → declare-plugin! must fail with "no activation entries".
     let err = result.expect_err(
-        "declare-plugin! must error when sole #:commands entry is taken by an eager command",
+        "declare-plugin! must error when a #:commands entry is taken by an eager command",
     );
     assert!(
-        err.contains("no activation entries") || err.contains("conflicted"),
-        "error must explain the cause; got: {err}"
+        err.contains("command 'my-eager-cmd' is already defined by"),
+        "error must name the collision; got: {err}"
     );
     // Must not register a Lazy stub for the conflicting eager command name.
     assert!(
@@ -179,27 +171,14 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
     );
 }
 
-/// The typed twin of [`declare_plugin_drops_sole_command_conflicting_with_eager`],
-/// but a *partial* collision. It drives `#:typed-commands` through a real
-/// on-disk `declare-plugin!` and covers "one entry collides, one survives".
-/// One colliding name (`existing-typed`, already defined) must log an `Error`
-/// and be dropped; the plugin still declares because `fresh-typed` survives.
+/// A taken name anywhere in the lists raises before any name is claimed, so
+/// the names listed ahead of it get no stub and the entry is not recorded.
 #[test]
-fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
-    use crate::ScriptingHost;
+fn declare_plugin_typed_collision_raises_and_claims_nothing() {
     use crate::host::EditorHost;
     use crate::null_host::CommandStoreHost;
-    use tempfile::TempDir;
 
-    let dir = TempDir::new().unwrap();
-    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
-
-    let mut host = ScriptingHost::new(&Dirs {
-        data: Some(dir.path().to_path_buf()),
-        ..Dirs::none()
-    });
+    let (_dir, mut host) = host_with_plugin("tp", &[("plugin.scm", "")]);
     let mut editor_host = CommandStoreHost::default();
 
     host.eval_source(
@@ -208,32 +187,150 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
     )
     .expect("pre-existing definition must succeed");
 
-    host.eval_source(
-        r#"(declare-plugin! "user/tp" #:typed-commands '("existing-typed" "fresh-typed"))"#,
-        &mut editor_host,
-    )
-    .expect("declare-plugin! must still succeed: one entry survives");
-
-    let messages = host.peek_pending_messages();
+    let err = host
+        .eval_source(
+            r#"(declare-plugin! "user/tp" #:typed-commands '("fresh-typed" "existing-typed"))"#,
+            &mut editor_host,
+        )
+        .expect_err("a taken typed name must raise");
     assert!(
-        messages.iter().any(|(level, msg)| {
-            matches!(level, hume_core::Severity::Error)
-                && msg.contains("existing-typed")
-                && msg.contains("activation entry ignored")
-        }),
-        "colliding entry must log an Error naming it; messages: {messages:?}"
-    );
-
-    let id = EntryId::main(PluginId::parse("user/tp").unwrap());
-    assert_eq!(
-        editor_host.commands().lazy_command_owner("existing-typed"),
-        None,
-        "colliding entry must not become a lazy stub"
+        err.contains("command 'existing-typed' is already defined by"),
+        "got: {err}"
     );
     assert_eq!(
         editor_host.commands().lazy_command_owner("fresh-typed"),
-        Some(id),
-        "the surviving entry must become a lazy stub owned by the plugin"
+        None,
+        "a name listed before the collision must not be claimed"
+    );
+    assert!(
+        !host
+            .registries
+            .lazy_registry
+            .plugins
+            .contains_key(&main_entry("user/tp"))
+    );
+    assert!(!host.declared_plugins().iter().any(|d| d == "user/tp"));
+}
+
+/// One declaration claims each name once, across both lists.
+#[test]
+fn declare_plugin_raises_for_a_name_listed_twice() {
+    use crate::null_host::CommandStoreHost;
+
+    for lists in [
+        r#"#:commands '("dup-a" "dup-a")"#,
+        r#"#:commands '("dup-a") #:typed-commands '("dup-a")"#,
+        r#"#:typed-commands '("Dup-A" "dup-a")"#,
+    ] {
+        let (_dir, mut host) = host_with_plugin("tp", &[("plugin.scm", "")]);
+        let err = host
+            .eval_source(
+                &format!(r#"(declare-plugin! "user/tp" {lists})"#),
+                &mut CommandStoreHost::default(),
+            )
+            .expect_err(lists);
+        assert!(err.contains("is listed twice"), "{lists}: {err}");
+    }
+}
+
+/// A second declaration of an entry raises, and the first one stands.
+#[test]
+fn declaring_an_entry_twice_raises() {
+    use crate::host::EditorHost;
+    use crate::null_host::CommandStoreHost;
+
+    let (_dir, mut host) = host_with_plugin("tp", &[("plugin.scm", "")]);
+    let mut editor_host = CommandStoreHost::default();
+    host.eval_source(
+        r#"(declare-plugin! "user/tp" #:commands '("tp-cmd"))"#,
+        &mut editor_host,
+    )
+    .expect("the first declaration");
+    let err = host
+        .eval_source(
+            r#"(declare-plugin! "user/tp" #:commands '("tp-other"))"#,
+            &mut editor_host,
+        )
+        .expect_err("the second declaration of the entry");
+    assert!(err.contains("'user/tp' is declared twice"), "got: {err}");
+    assert_eq!(
+        editor_host.commands().lazy_command_owner("tp-cmd"),
+        Some(main_entry("user/tp"))
+    );
+    assert_eq!(editor_host.commands().lazy_command_owner("tp-other"), None);
+}
+
+/// A plugin that is not installed has no entry to activate, but declaring
+/// it twice is the same mistake.
+#[test]
+fn declaring_an_absent_plugin_twice_raises() {
+    use crate::null_host::NullHost;
+
+    let (_dir, mut host) = host_with_plugin("present", &[("plugin.scm", "")]);
+    host.eval_source(
+        r#"(declare-plugin! "user/missing" #:commands '("m-cmd"))"#,
+        &mut NullHost,
+    )
+    .expect("an absent plugin is not an error");
+    let err = host
+        .eval_source(
+            r#"(declare-plugin! "user/missing" #:commands '("m-cmd"))"#,
+            &mut NullHost,
+        )
+        .expect_err("the second declaration of the entry");
+    assert!(
+        err.contains("'user/missing' is declared twice"),
+        "got: {err}"
+    );
+}
+
+/// An entry that already ran is still declared.
+#[test]
+fn declaring_a_loaded_entry_again_raises() {
+    use crate::null_host::NullHost;
+
+    let (_dir, mut host) = host_with_plugin("tp", &[("plugin.scm", "")]);
+    host.eval_source(
+        r#"(declare-plugin! "user/tp" #:events '(on-buffer-open))"#,
+        &mut NullHost,
+    )
+    .expect("the first declaration");
+    host.eval_source(
+        r#"(%activate-plugin-inline! "user/tp" "plugin.scm")"#,
+        &mut NullHost,
+    )
+    .expect("activation");
+    assert!(matches!(
+        host.registries
+            .lazy_registry
+            .plugins
+            .get(&main_entry("user/tp")),
+        Some(PluginState::Loaded)
+    ));
+    let err = host
+        .eval_source(
+            r#"(declare-plugin! "user/tp" #:events '(on-buffer-open))"#,
+            &mut NullHost,
+        )
+        .expect_err("the second declaration of a loaded entry");
+    assert!(err.contains("'user/tp' is declared twice"), "got: {err}");
+}
+
+/// A secondary entry declared twice names the entry.
+#[test]
+fn declaring_a_secondary_entry_twice_names_it() {
+    use crate::null_host::NullHost;
+
+    let (_dir, mut host) = host_with_plugin("tp", &[("plugin.scm", ""), ("extra.scm", "")]);
+    let declare = r#"(declare-plugin! "user/tp" #:entry "extra.scm" #:events '(on-buffer-open))"#;
+    host.eval_source(declare, &mut NullHost)
+        .expect("the first declaration");
+    let err = host
+        .eval_source(declare, &mut NullHost)
+        .expect_err("the second declaration of the entry");
+    assert!(
+        err.contains("'user/tp' declares entry 'extra.scm' twice"),
+        "got: {err}"
     );
 }
 
@@ -617,16 +714,16 @@ fn load_plugin_second_call_is_silent_noop() {
 
 // ── plugin-level state: absent and failed plugins ──────────────────────────
 
-/// Two `declare-plugin!` calls for a plugin that is not installed report the
+/// Declaring two entries of a plugin that is not installed reports the
 /// absence once.
 #[test]
-fn repeated_declare_of_an_absent_plugin_reports_it_once() {
+fn declaring_two_entries_of_an_absent_plugin_reports_it_once() {
     use crate::null_host::NullHost;
 
     let (_dir, mut host) = host_with_plugin("present", &[("plugin.scm", "")]);
     host.eval_source(
         r#"(declare-plugin! "user/gone" #:commands '("a"))
-(declare-plugin! "user/gone" #:commands '("b"))"#,
+(declare-plugin! "user/gone" #:entry "other.scm" #:commands '("b"))"#,
         &mut NullHost,
     )
     .expect("an absent user plugin is not an error");

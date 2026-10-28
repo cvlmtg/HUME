@@ -30,9 +30,9 @@ use crate::attribution::EntryId;
 /// `None` fires for every event of the name. The filter lives on the entry
 /// so rollback removes it together with the handler.
 ///
-/// `takes_done` is set for a handler of a held event
-/// (`EventHost::held_event_arg_count`) that has one parameter more than the
-/// event has args: it takes `done` last.
+/// `takes_done` is set for a handler of a held event (`EventShape::held`)
+/// that has one parameter more than the event has args: it takes `done`
+/// last.
 #[derive(Debug)]
 pub(crate) struct HookEntry {
     pub(crate) handler: Callback,

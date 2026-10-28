@@ -360,18 +360,18 @@ fn eager_plugin_body_error_is_contained() {
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals.
 
-/// `#:commands '("move-right" "my-cmd")`: "move-right" clashes with a built-in →
-/// colliding activation entry is dropped, a `Severity::Error` is logged, init continues with
-/// the remaining valid activation entry "my-cmd".
+/// `#:commands '("my-cmd" "move-right")`: "move-right" clashes with a
+/// built-in, so the declaration raises and claims neither name, "my-cmd"
+/// listed ahead of it included.
 ///
 /// The second half checks the control case: a non-builtin name logs no Error and its
 /// activation entry is registered.
 #[test]
-fn manifest_collision_with_builtin_logs_error_continues() {
+fn declare_collision_with_builtin_raises_and_claims_nothing() {
     use hume_scripting::host::CommandHost;
 
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin! "user/tp" #:commands '("move-right" "my-cmd"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("my-cmd" "move-right"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host_with_data_dir(dir.path().to_path_buf());
@@ -379,36 +379,25 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 
     let builtin_names: hume_scripting::command_name::CommandNameSet =
         ["move-right"].into_iter().collect();
-    h.eval_init(&init_path, 10_000, &mut mock, builtin_names)
-        .expect("partial builtin collision must NOT abort init");
-
-    // Error logged for the dropped activation entry.
+    let err = h
+        .eval_init(&init_path, 10_000, &mut mock, builtin_names)
+        .expect_err("a builtin collision raises");
     assert!(
-        h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_core::Severity::Error)
-                && msg.contains("move-right")
-                && msg.contains("built-in")
-        }),
-        "expected an Error about 'move-right' conflicting with a built-in; got: {:?}",
-        h.peek_pending_messages()
-    );
-    // Colliding activation entry not written; valid one is.
-    assert!(
-        mock.lazy_command_owner("move-right").is_none(),
-        "colliding activation entry must not appear as a Lazy stub"
+        err.message
+            .contains("'move-right' conflicts with a built-in command"),
+        "got: {err:?}"
     );
     assert!(
-        mock.lazy_command_owner("my-cmd").is_some(),
-        "valid activation entry must appear as a Lazy stub"
+        mock.lazy_command_owner("my-cmd").is_none(),
+        "a name listed ahead of the collision must not be claimed"
     );
-    // Plugin stays Declared (body not evaluated), with the remaining activation entry.
     let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
     });
     assert!(
-        matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
-        "plugin must stay Declared after partial-collision #:commands list; got {:?}",
+        h.plugin_status(&id).is_none(),
+        "a failed declaration records no entry; got {:?}",
         h.plugin_status(&id)
     );
 
@@ -938,11 +927,10 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     );
 }
 
-/// Duplicate `(declare-plugin! …)` for the same name stays a silent no-op.
-///
-/// `LazyRegistry::declare` must not treat the repeat as an error.
+/// A second `(declare-plugin! …)` of the same entry raises and stops
+/// `init.scm`; the first declaration stands.
 #[test]
-fn duplicate_declare_remains_silent_noop() {
+fn duplicate_declare_raises() {
     let (dir, init_path) = plugin_fixture(
         "(declare-plugin! \"user/tp\" #:commands '(\"tp-cmd\"))\n\
          (declare-plugin! \"user/tp\" #:commands '(\"tp-cmd\"))",
@@ -952,17 +940,18 @@ fn duplicate_declare_remains_silent_noop() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
-        .expect("duplicate declare must be a silent no-op, not an error");
-
-    // No error-level message about the duplicate declare.
+    let err = h
+        .eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect_err("a duplicate declare raises");
     assert!(
-        !h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_core::Severity::Error) && msg.contains("user/tp")
-        }),
-        "duplicate declare must not log an error; got: {:?}",
-        h.peek_pending_messages()
+        err.message.contains("'user/tp' is declared twice"),
+        "got: {err:?}"
     );
+    let id = attribution::EntryId::main(attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    });
+    assert!(matches!(h.plugin_status(&id), Some(PluginStatus::Declared)));
 }
 
 /// Duplicate `(load-plugin! …)` for the same name stays a silent no-op.

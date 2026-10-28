@@ -1302,18 +1302,12 @@ fn procs_recorded_after_define_command() {
     );
 }
 
-/// **Native `(call!)` at init top-level warns and skips, not aborts**.
-///
-/// A top-level `(call! "move-right")` in init.scm must NOT abort evaluation:
-/// the command is skipped with a `Warning`, and lines that follow it are applied.
-///
-/// Three assertions cover the behavior:
-/// 1. `eval_source` returns `Ok` (no hard error, no abort).
-/// 2. `prompt-history-levels` set after the native call is applied (eval continued past it).
-/// 3. The cursor did not move (command was skipped, not run).
+/// A native command has no pane to run on while the config loads, so a
+/// top-level `(call! "move-right")` in init.scm raises naming it: the file
+/// stops there, the command does not run, and a line after it is not
+/// applied.
 #[test]
-fn native_call_bang_at_init_top_level_warns_and_skips() {
-    // Content is irrelevant; cursor stays at 0.
+fn native_call_bang_at_init_top_level_raises_naming_the_command() {
     let mut ed = editor_from("-[a]>bc\n");
 
     let names: Vec<String> = ed
@@ -1328,41 +1322,20 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    // Eval as init context: native call in the middle, set-option! after it.
-    let result = host.eval_source(
-        r#"(set-option! "prompt-history-levels" 42)
-           (call! "move-right")
-           (set-option! "prompt-history-levels" 77)"#,
-        &mut init_host,
-    );
+    let err = host
+        .eval_source(
+            r#"(call! "move-right")
+               (set-option! "prompt-history-levels" 77)"#,
+            &mut init_host,
+        )
+        .expect_err("a native call! while the config loads raises");
 
     assert!(
-        result.is_ok(),
-        "eval must not abort on native call at init top-level; got: {result:?}"
+        err.contains("'move-right' can't run while loading config"),
+        "got: {err}"
     );
-
-    // The line after the native call must have been applied.
-    assert_eq!(
-        ed.state.settings.prompt_history_levels, 77,
-        "set-option! after native call must be applied (eval continued past it)"
-    );
-
-    // The native command itself must have been skipped.
-    assert_eq!(
-        state(&ed),
-        "-[a]>bc\n",
-        "cursor must not move (native command skipped during init)"
-    );
-
-    // A warning must have been produced for the skipped command.
-    let msgs = host.take_pending_messages();
-    let has_warn = msgs.iter().any(|(lvl, txt)| {
-        matches!(lvl, hume_core::Severity::Warning) && txt.contains("move-right")
-    });
-    assert!(
-        has_warn,
-        "a Warning containing 'move-right' must be emitted; got: {msgs:?}"
-    );
+    assert_ne!(ed.state.settings.prompt_history_levels, 77);
+    assert_eq!(state(&ed), "-[a]>bc\n");
 }
 
 // ── Steel insert-mode dot-repeat ─────────────────────────────────────────────

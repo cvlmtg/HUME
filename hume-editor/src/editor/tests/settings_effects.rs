@@ -487,12 +487,7 @@ fn a_symbol_option_value_raises() {
     let mut ed = editor_from("-[a]>b\n");
     let err = eval_set_option(&mut ed, r#"(set-option! "indent-style" 'soft)"#)
         .expect_err("a symbol value is refused");
-    assert!(
-        err.contains(
-            "value must be a string, bool, integer, list of strings, or statusline sections hash"
-        ),
-        "got: {err}"
-    );
+    assert!(err.contains("'indent-style' takes a string"), "got: {err}");
     assert_eq!(
         ed.state.settings.indent_style,
         hume_editing::tab_style::TabStyle::Hard
@@ -502,16 +497,41 @@ fn a_symbol_option_value_raises() {
 /// A list or a hash given to an option that takes one value is refused for
 /// that, whatever the list or hash holds.
 #[test]
-fn a_composite_value_for_a_one_value_option_raises_takes_one_value() {
+fn a_composite_value_for_a_one_value_option_raises() {
     for value in ["(hash 'n 4)", "'(1 2)"] {
         let mut ed = editor_from("-[a]>b\n");
         let err = eval_set_option(&mut ed, &format!(r#"(set-option! "indent-width" {value})"#))
             .expect_err("a composite value is refused");
         assert!(
-            err.contains("'indent-width' takes one value"),
+            err.contains("'indent-width' takes an integer"),
             "{value}: {err}"
         );
     }
+}
+
+/// A script sets an option in the type `get-option` reads it back in, so a
+/// boolean is not text and text is not an integer.
+#[test]
+fn a_value_of_another_type_raises_and_changes_nothing() {
+    let mut ed = editor_from("-[a]>b\n");
+    let word_chars = ed.state.settings.word_chars.clone();
+    let indent_width = ed.state.settings.indent_width;
+    for (source, refusal) in [
+        (
+            r#"(set-option! "word-chars" #f)"#,
+            "'word-chars' takes a string",
+        ),
+        (
+            r#"(set-option! "indent-width" "4")"#,
+            "'indent-width' takes an integer",
+        ),
+        (r#"(set-option! "mouse" 1)"#, "'mouse' takes a boolean"),
+    ] {
+        let err = eval_set_option(&mut ed, source).expect_err(source);
+        assert!(err.contains(refusal), "{source}: {err}");
+    }
+    assert_eq!(ed.state.settings.word_chars, word_chars);
+    assert_eq!(ed.state.settings.indent_width, indent_width);
 }
 
 /// An unknown option name is reported as unknown, whatever its value.

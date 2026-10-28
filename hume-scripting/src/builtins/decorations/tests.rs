@@ -72,12 +72,7 @@ fn set_inlay_hints_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_inlay_hints(
-        &mut ctx,
-        default_pane(),
-        SteelVal::StringV("test".into()),
-        empty,
-    );
+    let result = set_inlay_hints(&mut ctx, default_pane(), "test".to_string(), empty);
     assert_unsupported(result);
 }
 
@@ -88,24 +83,10 @@ fn register_sign_source_without_decoration_host_errors() {
     let result = register_sign_source(
         &mut ctx,
         default_pane(),
-        SteelVal::StringV("test".into()),
+        "test".to_string(),
         SteelVal::IntV(10),
     );
     assert_unsupported(result);
-}
-
-#[test]
-fn register_sign_source_rejects_an_empty_source() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = register_sign_source(
-        &mut ctx,
-        default_pane(),
-        SteelVal::StringV("  ".into()),
-        SteelVal::IntV(10),
-    );
-    let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("source must not be empty"), "got: {msg}");
 }
 
 #[test]
@@ -113,12 +94,7 @@ fn set_signs_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_signs(
-        &mut ctx,
-        default_pane(),
-        SteelVal::StringV("test".into()),
-        empty,
-    );
+    let result = set_signs(&mut ctx, default_pane(), "test".to_string(), empty);
     assert_unsupported(result);
 }
 
@@ -135,7 +111,7 @@ fn set_signs_rejects_a_control_character_in_the_glyph() {
     let result = set_signs(
         &mut ctx,
         default_pane(),
-        SteelVal::StringV("test".into()),
+        "test".to_string(),
         list(vec![sign(0, "\tS", "ui.sign")]),
     );
     let msg = result.unwrap_err().to_string();
@@ -154,7 +130,7 @@ fn set_signs_accepts_a_multi_codepoint_glyph() {
     let result = set_signs(
         &mut ctx,
         default_pane(),
-        SteelVal::StringV("test".into()),
+        "test".to_string(),
         list(vec![sign(0, "e\u{0301}", "ui.sign")]),
     );
     // The harness has no decoration host, so validation passing means the
@@ -174,7 +150,7 @@ fn set_signs_rejects_a_positional_list_entry() {
     let msg = set_signs(
         &mut ctx,
         default_pane(),
-        SteelVal::StringV("test".into()),
+        "test".to_string(),
         list(vec![positional]),
     )
     .unwrap_err()
@@ -193,7 +169,7 @@ fn set_signs_rejects_a_missing_key() {
     let msg = set_signs(
         &mut ctx,
         default_pane(),
-        SteelVal::StringV("test".into()),
+        "test".to_string(),
         list(vec![entry]),
     )
     .unwrap_err()
@@ -206,12 +182,7 @@ fn set_virtual_lines_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_virtual_lines(
-        &mut ctx,
-        default_pane(),
-        SteelVal::StringV("test".into()),
-        empty,
-    );
+    let result = set_virtual_lines(&mut ctx, default_pane(), "test".to_string(), empty);
     assert_unsupported(result);
 }
 
@@ -223,7 +194,7 @@ fn set_eol_text_without_decoration_host_errors() {
     let result = set_eol_text(
         &mut ctx,
         default_pane(),
-        SteelVal::StringV("test".into()),
+        "test".to_string(),
         empty,
         SteelVal::BoolV(false),
     );
@@ -238,7 +209,7 @@ fn set_eol_text_rejects_a_non_bool_hide_flag() {
     let result = set_eol_text(
         &mut ctx,
         default_pane(),
-        SteelVal::StringV("test".into()),
+        "test".to_string(),
         empty,
         SteelVal::StringV("yes".into()),
     );
@@ -251,12 +222,7 @@ fn set_extra_highlights_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_extra_highlights(
-        &mut ctx,
-        default_pane(),
-        SteelVal::StringV("test".into()),
-        empty,
-    );
+    let result = set_extra_highlights(&mut ctx, default_pane(), "test".to_string(), empty);
     assert_unsupported(result);
 }
 
@@ -267,7 +233,7 @@ fn set_statusline_text_without_decoration_host_errors() {
     let result = set_statusline_text(
         &mut ctx,
         default_pane(),
-        SteelVal::StringV("test".into()),
+        "test".to_string(),
         SteelVal::StringV("main".into()),
     );
     assert_unsupported(result);

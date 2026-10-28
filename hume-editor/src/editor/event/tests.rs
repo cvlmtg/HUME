@@ -116,22 +116,27 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
     );
 }
 
-/// A held event is a real event, and its arg count is the one its own
-/// `into_steel_args` produces.
+/// Every event's declared arg count is the one its own `into_steel_args`
+/// produces, and only the held event is marked held.
 #[test]
-fn held_events_name_real_events_with_their_arg_count() {
-    let buffer = BufferId::default();
-    let held = HeldEvent::OnBeforeBufferSave {
-        target: PaneHandle::buffer_only(buffer),
-    };
-    assert_eq!(
-        held_event_arg_count(held.name()),
-        Some(held.into_steel_args().len())
-    );
-    for (name, _) in HELD_EVENTS {
-        assert!(EVENT_NAMES.contains(name), "{name} is not an event");
+fn every_event_declares_the_args_it_passes() {
+    for event in all_variants() {
+        let name = event.name();
+        let args = event.into_steel_args().len();
+        assert_eq!(
+            event_shape(name),
+            Some(EventShape { args, held: false }),
+            "{name}"
+        );
     }
-    assert_eq!(held_event_arg_count("on-buffer-save"), None);
+    let held = HeldEvent::OnBeforeBufferSave {
+        target: PaneHandle::buffer_only(BufferId::default()),
+    };
+    let name = held.name();
+    let args = held.into_steel_args().len();
+    assert_eq!(event_shape(name), Some(EventShape { args, held: true }));
+    assert_eq!(EVENT_SHAPES.len(), EVENT_NAMES.len());
+    assert_eq!(event_shape("on-no-such-event"), None);
 }
 
 // ── into_steel_args shape table ──────────────────────────────────────────────────

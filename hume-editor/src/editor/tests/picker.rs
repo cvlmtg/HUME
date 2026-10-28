@@ -619,7 +619,7 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
     ed.state.push_layer(
         &ed.view,
         crate::editor::input_stack::MenuLayer::for_test(
-            crate::editor::tests::non_empty_strings(&["m0", "m1"]),
+            crate::editor::tests::script_rows(&["m0", "m1"]),
             hume_scripting::Callback::for_test(marker("menu-cb")),
         ),
     );

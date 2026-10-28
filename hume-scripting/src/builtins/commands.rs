@@ -17,23 +17,29 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use super::SteelResult;
-use super::errors::generic_err;
+use super::errors::{generic_err, require_cmd};
 use crate::SteelCtx;
 use crate::attribution::Owner;
 use crate::command_procs::{CommandProc, MappableProc, TypedProc};
 use crate::host::NativeCall;
 use crate::types::{SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef};
-use hume_core::{CommandArg, Count, Severity};
+use hume_core::{CommandArg, Count};
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
 /// Shared guards behind `define-command!` and `define-typed-command!`: name
-/// syntax, built-in shadowing, true re-definition, and lazy-stub self-
-/// ownership. A mappable and a typed command share one Steel-side proc
-/// namespace just as they share one namespace in the editor's
-/// `CommandRegistry`.
+/// syntax, then [`check_name_free`].
 fn check_definable(ctx: &mut SteelCtx, name: &str) -> Result<(), SteelErr> {
     crate::command_name::check_quotable(name).map_err(generic_err)?;
+    check_name_free(ctx, name)
+}
+
+/// Raises unless `name` is free for the running code to claim: not a
+/// built-in, not defined, and not another lazy entry's activation command.
+/// `define-command!`, `define-typed-command!` and `declare-plugin!` share
+/// it. A mappable and a typed command share one Steel-side proc namespace
+/// just as they share one namespace in the editor's `CommandRegistry`.
+pub(crate) fn check_name_free(ctx: &mut SteelCtx, name: &str) -> Result<(), SteelErr> {
     if ctx.builtin_cmd_names.contains(name) {
         steel::stop!(Generic =>
             "'{}' conflicts with a built-in command and cannot be redefined", name);
@@ -172,8 +178,8 @@ pub(crate) fn define_typed_command(
 ///
 /// - **Native**: decodes the leading `pane` argument, validates count/extend
 ///   and the optional trailing operand, and returns `run_command_sync`'s
-///   `#t`/`#f`. In init mode it warns and returns `#f`, since buffers aren't
-///   available yet.
+///   `#t`/`#f`. While the config loads it raises, naming the command: there
+///   is no pane to run it on yet.
 /// - **Steel command missing from the table**, or a name `call!` cannot
 ///   reach (unknown, typed, key-only): raises, naming it, like any other
 ///   caller mistake.
@@ -186,13 +192,11 @@ pub(crate) fn call_command_primitive(
 
     match ctx.host.commands().command_is_native(&name) {
         Ok(true) => {
-            if ctx.session == crate::context::EvalSession::Init {
-                ctx.log(
-                    Severity::Warning,
-                    format!("skipped runtime command '{name}': it can't run while loading config; bind it to a key or call it from a hook instead"),
-                );
-                return Ok(SteelVal::BoolV(false));
-            }
+            require_cmd(ctx).map_err(|_| {
+                generic_err(format!(
+                    "'{name}' can't run while loading config: bind it to a key or call it from a hook"
+                ))
+            })?;
             let (pane, rest) = args_vec.split_first().ok_or_else(|| {
                 generic_err(format!(
                     "'{name}' needs a pane: (call! \"{name}\" pane [count [extend]] [arg])"
@@ -309,16 +313,16 @@ pub(crate) fn leave_command(ctx: &mut SteelCtx, depth: SteelVal) -> SteelResult 
 /// count. [`count_to_steel`] is its inverse. An untyped count makes
 /// `move-down`/`move-up` move by visual line instead of buffer line (see
 /// `EditorHost::run_command_sync`); every other native command treats it the
-/// same as a count of one. Any other `n` goes through [`Count::typed`], so a
-/// negative count runs once and a huge one is clamped.
+/// same as a count of one. A positive `n` goes through [`Count::typed`], so a
+/// huge one is clamped; a negative one is `Err`, since no keypress makes one.
 pub(crate) fn parse_native_args(
     args: &[SteelVal],
 ) -> Result<(Count, bool, Option<CommandArg>), String> {
-    fn decode(n: isize) -> Count {
-        if n == 0 {
-            Count::UNTYPED
-        } else {
-            Count::typed(n.max(1) as usize)
+    fn decode(n: isize) -> Result<Count, String> {
+        match usize::try_from(n) {
+            Ok(0) => Ok(Count::UNTYPED),
+            Ok(n) => Ok(Count::typed(n)),
+            Err(_) => Err(format!("count must be 0 or more, got {n}")),
         }
     }
     let (head, arg) = match args.split_last() {
@@ -328,8 +332,8 @@ pub(crate) fn parse_native_args(
     };
     let (count, extend) = match head {
         [] => (Count::typed(1), false),
-        [SteelVal::IntV(n)] => (decode(*n), false),
-        [SteelVal::IntV(n), SteelVal::BoolV(ext)] => (decode(*n), *ext),
+        [SteelVal::IntV(n)] => (decode(*n)?, false),
+        [SteelVal::IntV(n), SteelVal::BoolV(ext)] => (decode(*n)?, *ext),
         _ => {
             return Err(format!(
                 "native command args must be [count [extend]] then an optional string or char; got {:?}",

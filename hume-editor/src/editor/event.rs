@@ -5,7 +5,7 @@
 //! here (see `hume_scripting::host::EventHost`).
 
 use hume_core::{BufferId, PaneHandle};
-use hume_scripting::host::OptionValue;
+use hume_scripting::host::{EventShape, OptionValue};
 use hume_scripting::json::JsonHandle;
 use hume_scripting::{ServerRef, SteelPane};
 use steel::rvals::SteelVal;
@@ -323,15 +323,16 @@ impl EditorEvent {
 }
 
 /// Pairs each `EditorEvent` and `HeldEvent` variant with its Steel-facing
-/// name, once, and generates both `name` matches, `EVENT_NAMES` and
-/// `HELD_EVENTS` from those lists. The alternative (a hand-written match
-/// plus a hand-written const array) is the exact kind of
-/// two-places-say-the-same-thing drift a test can catch but not prevent.
+/// name and the number of args its handlers get, once, and generates both
+/// `name` matches, `EVENT_NAMES` and `EVENT_SHAPES` from those lists. The
+/// alternative (a hand-written match plus a hand-written const array) is the
+/// exact kind of two-places-say-the-same-thing drift a test can catch but
+/// not prevent.
 /// Still an explicit table of names (string literals, or a const for one
 /// the write path asks for without an event), not a PascalCase→kebab-case
 /// computation: writing each name out means a variant rename can never
 /// silently rename the Steel-facing event too; this macro only removes
-/// writing each pair twice. A held entry also gives the number of args its
+/// writing each pair twice. A held entry's count is of the args its
 /// handlers get ahead of `done`.
 ///
 /// A variant not listed here would make `name`'s match non-exhaustive and
@@ -342,7 +343,7 @@ impl EditorEvent {
 /// (no `=> $name`) mapping to `None` if one appears.
 macro_rules! editor_event_names {
     (
-        queued { $($variant:ident => $name:tt),+ $(,)? }
+        queued { $($variant:ident => $name:tt ($args:literal)),+ $(,)? }
         held { $($held_variant:ident => $held_name:tt ($held_args:literal)),+ $(,)? }
     ) => {
         impl EditorEvent {
@@ -371,9 +372,11 @@ macro_rules! editor_event_names {
         /// validate names without `hume-scripting` compiling in `EditorEvent`.
         const EVENT_NAMES: &[&str] = &[$($name,)+ $($held_name,)+];
 
-        /// The events whose raiser waits for its handlers, each with the
-        /// number of args it passes ahead of `done`.
-        const HELD_EVENTS: &[(&str, usize)] = &[$(($held_name, $held_args)),+];
+        /// What each event hands its handlers, by name.
+        const EVENT_SHAPES: &[(&str, EventShape)] = &[
+            $(($name, EventShape { args: $args, held: false }),)+
+            $(($held_name, EventShape { args: $held_args, held: true }),)+
+        ];
     };
 }
 
@@ -382,23 +385,23 @@ pub(in crate::editor) const BEFORE_BUFFER_SAVE: &str = "on-before-buffer-save";
 
 editor_event_names! {
     queued {
-        OnBufferOpen => "on-buffer-open",
-        OnBufferClose => "on-buffer-close",
-        OnBufferSave => "on-buffer-save",
-        OnBufferEnter => "on-buffer-enter",
-        OnFocusGained => "on-focus-gained",
-        OnModeChange => "on-mode-change",
-        OnLanguageSet => "on-language-set",
-        OnLspAttach => "on-lsp-attach",
-        OnLspDetach => "on-lsp-detach",
-        OnDiagnosticsChanged => "on-diagnostics-changed",
-        OnViewportChange => "on-viewport-change",
-        OnTriggerChar => "on-trigger-char",
-        OnCompletionAccept => "on-completion-accept",
-        OnLspNotification => "on-lsp-notification",
-        OnOptionChange => "on-option-change",
-        OnTextChanged => "on-text-changed",
-        OnUndoHistoryChanged => "on-undo-history-changed",
+        OnBufferOpen => "on-buffer-open" (1),
+        OnBufferClose => "on-buffer-close" (1),
+        OnBufferSave => "on-buffer-save" (1),
+        OnBufferEnter => "on-buffer-enter" (1),
+        OnFocusGained => "on-focus-gained" (0),
+        OnModeChange => "on-mode-change" (2),
+        OnLanguageSet => "on-language-set" (2),
+        OnLspAttach => "on-lsp-attach" (2),
+        OnLspDetach => "on-lsp-detach" (2),
+        OnDiagnosticsChanged => "on-diagnostics-changed" (1),
+        OnViewportChange => "on-viewport-change" (2),
+        OnTriggerChar => "on-trigger-char" (3),
+        OnCompletionAccept => "on-completion-accept" (2),
+        OnLspNotification => "on-lsp-notification" (3),
+        OnOptionChange => "on-option-change" (2),
+        OnTextChanged => "on-text-changed" (1),
+        OnUndoHistoryChanged => "on-undo-history-changed" (1),
     }
     held {
         OnBeforeBufferSave => BEFORE_BUFFER_SAVE (1),
@@ -497,11 +500,11 @@ pub(crate) fn known_event_names() -> &'static [&'static str] {
     EVENT_NAMES
 }
 
-pub(crate) fn held_event_arg_count(name: &str) -> Option<usize> {
-    HELD_EVENTS
+pub(crate) fn event_shape(name: &str) -> Option<EventShape> {
+    EVENT_SHAPES
         .iter()
-        .find(|(held, _)| *held == name)
-        .map(|&(_, arg_count)| arg_count)
+        .find(|(event, _)| *event == name)
+        .map(|&(_, shape)| shape)
 }
 
 mod pump;

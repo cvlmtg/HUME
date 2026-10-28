@@ -197,9 +197,10 @@ impl SourceId for BufferSourceId {
 }
 
 impl SourceId for MinibufSourceId {
+    /// A minibuffer session runs one source, so every row ties on priority.
     fn facts(self, sources: &SourceRegistry) -> (&str, MatchKind, i64) {
         let e = sources.minibuf_get(self);
-        (&e.name, e.match_kind, e.priority)
+        (&e.name, e.match_kind, 0)
     }
 
     fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Callback> {

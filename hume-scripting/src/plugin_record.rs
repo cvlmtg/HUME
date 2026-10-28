@@ -2,14 +2,15 @@
 //! looking it up found.
 //!
 //! [`PluginRecords`] answers every question about a plugin as a whole (its
-//! config, whether `load-plugin!` ran, whether it was found, whether PLUM
-//! should list it). [`crate::lazy::LazyRegistry`] holds the state of each
-//! entry file of a plugin, which can differ from entry to entry.
+//! config, whether `load-plugin!` ran, which entries `declare-plugin!` named,
+//! whether it was found, whether PLUM should list it).
+//! [`crate::lazy::LazyRegistry`] holds the state of each entry file of a
+//! plugin that is installed, which can differ from entry to entry.
 
 use steel::rvals::SteelVal;
 
 use super::Rooted;
-use super::attribution::PluginId;
+use super::attribution::{EntryFile, EntryId, PluginId};
 
 /// What looking the plugin up found, beyond the entries the lazy registry
 /// holds. Absent until the first lookup that found one of these.
@@ -69,6 +70,9 @@ pub(crate) struct PluginRecord {
     id: PluginId,
     /// Set once `load-plugin!` has run; the latest call's arguments.
     load: Option<LoadCall>,
+    /// The entries `declare-plugin!` declared, whether or not the plugin is
+    /// installed.
+    declared: Vec<EntryFile>,
     resolution: Option<Resolution>,
 }
 
@@ -98,9 +102,26 @@ impl PluginRecords {
             None => self.0.push(PluginRecord {
                 id,
                 load,
+                declared: Vec::new(),
                 resolution: None,
             }),
         }
+    }
+
+    /// Records that `declare-plugin!` declared `entry`, noting its plugin as
+    /// [`Self::note`] does.
+    pub(crate) fn note_declared(&mut self, entry: EntryId) {
+        self.note(entry.plugin.clone(), None);
+        self.find_mut(&entry.plugin)
+            .expect("noted above")
+            .declared
+            .push(entry.file);
+    }
+
+    /// Whether `declare-plugin!` already declared `entry`.
+    pub(crate) fn declared(&self, entry: &EntryId) -> bool {
+        self.find(&entry.plugin)
+            .is_some_and(|r| r.declared.contains(&entry.file))
     }
 
     fn load(&self, id: &PluginId) -> Option<&LoadCall> {

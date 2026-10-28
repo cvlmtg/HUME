@@ -120,7 +120,7 @@ fn failed_secondary_entry_keeps_the_main_entrys_footprint() {
 }
 
 #[test]
-fn redeclaring_an_entry_is_ignored_but_a_new_entry_is_added() {
+fn redeclaring_an_entry_raises_but_a_new_entry_is_added() {
     let (_dir, mut host) = host_with_plugin(
         "multi",
         &[("plugin.scm", ""), ("extra.scm", ""), ("more.scm", "")],
@@ -128,18 +128,23 @@ fn redeclaring_an_entry_is_ignored_but_a_new_entry_is_added() {
     let mut editor_host = CommandStoreHost::default();
     host.eval_source(DECLARE_BOTH, &mut editor_host).unwrap();
 
+    let err = host
+        .eval_source(
+            r#"(declare-plugin! "user/multi" #:entry "extra.scm" #:typed-commands '("other-cmd"))"#,
+            &mut editor_host,
+        )
+        .expect_err("the second declaration of extra.scm");
+    assert!(
+        err.contains("declares entry 'extra.scm' twice"),
+        "got: {err}"
+    );
     host.eval_source(
-        r#"(declare-plugin! "user/multi" #:entry "extra.scm" #:typed-commands '("other-cmd"))
-           (declare-plugin! "user/multi" #:entry "more.scm" #:typed-commands '("more-cmd"))"#,
+        r#"(declare-plugin! "user/multi" #:entry "more.scm" #:typed-commands '("more-cmd"))"#,
         &mut editor_host,
     )
     .unwrap();
 
-    assert_eq!(
-        editor_host.commands().lazy_command_owner("other-cmd"),
-        None,
-        "the second declaration of extra.scm must be ignored"
-    );
+    assert_eq!(editor_host.commands().lazy_command_owner("other-cmd"), None);
     assert_eq!(
         editor_host.commands().lazy_command_owner("more-cmd"),
         Some(secondary("user/multi", "more.scm"))

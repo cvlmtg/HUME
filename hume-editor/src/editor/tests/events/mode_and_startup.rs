@@ -4,6 +4,27 @@ use super::*;
 
 // ── OnModeChange: Insert → Normal ─────────────────────────────────────────────
 
+/// The editor's own event table gives each event's arg count, so a handler
+/// that cannot take them is refused when it registers.
+#[test]
+fn on_mode_change_handler_must_take_both_modes() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut mock = MockHost::new();
+    let err = host
+        .eval_source(
+            "(register-hook! 'on-mode-change (lambda (old) 0))",
+            &mut mock,
+        )
+        .expect_err("a one-parameter handler for a two-arg event");
+    assert!(
+        err.contains("an 'on-mode-change handler is a lambda of 2 parameters"),
+        "{err}"
+    );
+}
+
 /// `cmd_exit_insert` (Esc) must fire `OnModeChange` for the Insert→Normal
 /// transition: `end_insert_session` truncates the `Insert` layer, and
 /// `detect_mode_change`'s observation-point diff at the next `settle()` is

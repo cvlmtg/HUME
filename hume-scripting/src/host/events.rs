@@ -2,6 +2,17 @@
 
 use hume_core::HostToken;
 
+/// What an event hands its handlers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EventShape {
+    /// The number of args each handler is called with.
+    pub args: usize,
+    /// Whether the raiser waits for its handlers. A handler of such an
+    /// event takes `args` and counts as finished when it returns, or takes
+    /// one more, `done`, and holds the raiser until it calls `(done)`.
+    pub held: bool,
+}
+
 /// Event-name introspection, accessed through [`EditorHost::events`](super::EditorHost::events).
 ///
 /// The name-based boundary this crate is built on: `hume-scripting` has no
@@ -12,11 +23,9 @@ pub trait EventHost {
     /// Every Steel-visible event name this host can raise.
     fn known_event_names(&self) -> &'static [&'static str];
 
-    /// For an event whose raiser waits for its handlers, the number of args
-    /// the event passes; `None` for every other event. A handler of such an
-    /// event takes those args and counts as finished when it returns, or
-    /// takes one more, `done`, and holds the raiser until it calls `(done)`.
-    fn held_event_arg_count(&self, name: &str) -> Option<usize>;
+    /// What event `name` hands its handlers; `None` for a name this host
+    /// does not raise.
+    fn event_shape(&self, name: &str) -> Option<EventShape>;
 
     /// Releases `hold`, one a handler of a held event took: its `done` was
     /// called, or the handler raised. A hold already released, or one that

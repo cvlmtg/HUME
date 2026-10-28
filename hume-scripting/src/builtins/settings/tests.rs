@@ -23,8 +23,7 @@ fn set_option_reaches_host_from_command_mode() {
     );
 }
 
-/// `set-option!` rejects value types that are not string, bool, integer,
-/// list of strings, or a sections hash.
+/// `set-option!` rejects a value that is no option's type.
 #[test]
 fn set_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -32,7 +31,10 @@ fn set_option_invalid_value_type_errors() {
     let mut ctx = h.ctx_with_host(&mut host);
     let result = set_option(&mut ctx, "indent-width".into(), SteelVal::Void);
     let msg = result.expect_err("void is not a setting value").to_string();
-    assert!(msg.contains("must be"), "type error expected, got: {msg}");
+    assert!(
+        msg.contains("'indent-width' takes an integer"),
+        "got: {msg}"
+    );
 }
 
 /// A list of strings or symbols is forwarded as its words, so the editor
@@ -100,19 +102,66 @@ fn set_option_init_mode_calls_host() {
     );
 }
 
-/// `set-option!` accepts all three one-value types.
+/// One option per type `get-option` reads back, a value of that type, and
+/// the error a value of every other one-value type raises.
+fn typed_options() -> [(&'static str, SteelVal, &'static str); 3] {
+    [
+        ("mouse", SteelVal::BoolV(true), "'mouse' takes a boolean"),
+        (
+            "indent-width",
+            SteelVal::IntV(4),
+            "'indent-width' takes an integer",
+        ),
+        (
+            "word-chars",
+            SteelVal::StringV("-".into()),
+            "'word-chars' takes a string",
+        ),
+    ]
+}
+
+/// `set-option!` and `set-buffer-option!` take an option's value in the
+/// type `get-option` reads it back in, and refuse the other one-value types.
 #[test]
-fn set_option_accepts_string_bool_int_values() {
+fn an_option_takes_only_the_type_it_reads_back() {
+    let one_values = [
+        SteelVal::BoolV(false),
+        SteelVal::IntV(3),
+        SteelVal::StringV("3".into()),
+    ];
     let mut h = SteelCtxTestHarness::new();
-    for val in [
-        SteelVal::StringV("4".into()),
-        SteelVal::BoolV(true),
-        SteelVal::IntV(4),
-    ] {
-        let mut host = RecordingBufferOptionHost::default();
-        let mut ctx = h.ctx_with_host(&mut host);
-        set_option(&mut ctx, "indent-width".into(), val).expect("a one-value type is accepted");
+    for (key, own, refusal) in typed_options() {
+        for value in &one_values {
+            let mut host = RecordingBufferOptionHost::default();
+            let mut ctx = h.ctx_with_host(&mut host);
+            let global = set_option(&mut ctx, key.into(), value.clone());
+            let buffer = set_buffer_option(&mut ctx, default_pane(), key.into(), value.clone());
+            if std::mem::discriminant(value) == std::mem::discriminant(&own) {
+                global.expect("its own type is accepted");
+                buffer.expect("its own type is accepted");
+            } else {
+                for result in [global, buffer] {
+                    let msg = result.expect_err("another type is refused").to_string();
+                    assert!(msg.contains(refusal), "{key} {value:?}: {msg}");
+                }
+            }
+        }
     }
+}
+
+/// A word-list option takes a list only, not the text `:set` would parse.
+#[test]
+fn a_word_list_option_refuses_text() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = RecordingBufferOptionHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    let msg = set_option(&mut ctx, "shell".into(), SteelVal::StringV("sh -c".into()))
+        .expect_err("text is refused")
+        .to_string();
+    assert!(
+        msg.contains("'shell' takes a list of strings"),
+        "got: {msg}"
+    );
 }
 
 /// `get-option` is registered `open`, so it is readable during init eval too,
@@ -149,8 +198,7 @@ fn get_buffer_option_command_mode_calls_host_with_explicit_bid() {
 
 // ── set-buffer-option! ──────────────────────────────────────────────────────
 
-/// `set-buffer-option!` rejects value types that are not string, bool,
-/// integer, list of strings, or a sections hash.
+/// `set-buffer-option!` rejects a value that is no option's type.
 #[test]
 fn set_buffer_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -163,7 +211,10 @@ fn set_buffer_option_invalid_value_type_errors() {
         SteelVal::Void,
     );
     let msg = result.expect_err("void is not a setting value").to_string();
-    assert!(msg.contains("must be"), "type error expected, got: {msg}");
+    assert!(
+        msg.contains("'indent-width' takes an integer"),
+        "got: {msg}"
+    );
 }
 
 /// `set-buffer-option!`'s `"language"` queues each write as an effect
@@ -225,25 +276,9 @@ fn set_buffer_option_language_rejects_a_non_string() {
 // A direct call to this function (as every other test in this file makes)
 // can't reach that check at all, since it bypasses the registration layer.
 
-/// `set-buffer-option!` accepts all three one-value types.
-#[test]
-fn set_buffer_option_accepts_string_bool_int_values() {
-    let mut h = SteelCtxTestHarness::new();
-    for val in [
-        SteelVal::StringV("2".into()),
-        SteelVal::BoolV(true),
-        SteelVal::IntV(2),
-    ] {
-        let mut host = RecordingBufferOptionHost::default();
-        let mut ctx = h.ctx_with_host(&mut host);
-        set_buffer_option(&mut ctx, default_pane(), "indent-width".into(), val)
-            .expect("a one-value type is accepted");
-    }
-}
-
 /// A [`crate::null_host::NullHost`] wrapper that reports every buffer id as
-/// existing, knows every option (`shell` as a word list, every other one as
-/// one value), and records `set_buffer_option` and `set_buffer_line_ending`
+/// existing, knows every option (`shell` as a word list, `mouse` as a
+/// boolean, `word-chars` as text, every other one as an integer), and records `set_buffer_option` and `set_buffer_line_ending`
 /// calls, so a test can prove the builtin's guards were all passed and the
 /// exact `(key, value, bid)` the host received, without a real editor.
 #[derive(Default)]
@@ -430,6 +465,8 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
         Ok(match key {
             "shell" => OptionValue::List(Vec::new()),
+            "mouse" => OptionValue::Bool(false),
+            "word-chars" => OptionValue::Str(String::new()),
             _ => OptionValue::Int(0),
         })
     }
@@ -445,7 +482,7 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
 }
 
 /// With valid args and a bid the host recognizes, `set-buffer-option!`
-/// reaches the host and forwards exactly the coerced `(key, value, bid)`.
+/// reaches the host and forwards the decoded `(key, value, bid)`.
 #[test]
 fn set_buffer_option_reaches_host() {
     let mut h = SteelCtxTestHarness::new();

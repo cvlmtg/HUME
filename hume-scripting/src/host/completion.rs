@@ -25,6 +25,8 @@ pub struct PendingCompletionSource {
     pub proc: Callback,
     pub target: CompletionSourceTarget,
     pub match_kind: MatchKind,
+    /// `#:priority`: ranks this source's items against other sources'.
+    /// `Buffer`-target only, like `resolve`; 0 for a `'minibuf` source.
     pub priority: i64,
     /// `#:resolve`: the source's own claim that its items are wire
     /// `CompletionItem`s from the buffer's attached LSP server, so

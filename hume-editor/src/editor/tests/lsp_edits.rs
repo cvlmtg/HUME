@@ -356,6 +356,25 @@ fn apply_text_edits_is_one_undo_step() {
     );
 }
 
+/// An empty list changes nothing, so neither a read-only buffer nor a stale
+/// generation refuses it.
+#[test]
+fn apply_text_edits_with_an_empty_list_changes_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = text_edits_editor(tmp.path(), "-[a]>bcdef\n", vec![]);
+    let stale_gen = ed.doc().text().generation() + 1;
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).read_only = true;
+
+    apply_wire_text_edits(
+        &mut ed,
+        tmp.path(),
+        &format!(" #:expect-generation {stale_gen}"),
+    );
+    assert_eq!(ed.doc().text().to_string(), "abcdef\n");
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+}
+
 #[test]
 fn apply_text_edits_version_mismatch_rejected() {
     let tmp = tempfile::tempdir().unwrap();
@@ -705,6 +724,37 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
         "Zghijkl\n",
         "conflict.txt keeps only its own still-open session's own edit, not the workspace edit"
     );
+}
+
+/// A file entry with no edits changes nothing: its file is not opened, and
+/// with nothing to apply a stale generation refuses nothing.
+#[test]
+fn apply_workspace_edit_skips_a_file_with_no_edits() {
+    use hume_core::PaneHandle;
+    use hume_scripting::host::EditHost;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("untouched.txt");
+    std::fs::write(&path, "abcdef\n").unwrap();
+    let canonical = AbsolutePath::canonicalize(&path).unwrap();
+    let wsedit = serde_json::json!({"documentChanges": [
+        {"textDocument": {"uri": file_uri(&canonical), "version": 1}, "edits": []},
+    ]});
+
+    let mut ed = editor_from("-[x]>\n");
+    let bid = ed.focused_buffer_id();
+    let stale_gen = ed.state.buffers.get(bid).text().generation() + 1;
+    let pane = PaneHandle::with_pane(bid, ed.view.focused_pane());
+    let modified = live_host!(ed)
+        .apply_workspace_edit(
+            pane,
+            &wsedit,
+            hume_rope::position_encoding::PositionEncoding::Utf16,
+            Some(stale_gen),
+        )
+        .expect("an edit with nothing to apply changes nothing");
+    assert_eq!(modified, 0);
+    assert!(ed.state.buffers.find_by_path(&canonical).is_none());
 }
 
 /// A read-only file later in the plan aborts the whole edit before any
@@ -1425,7 +1475,7 @@ fn server_initiated_apply_edit_answers_false_with_a_reason_on_bad_uri() {
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
     let params = serde_json::json!({
-        "edit": { "changes": { "not-a-uri": [] } }
+        "edit": { "changes": { "not-a-uri": [wire_edit((0, 0), (0, 0), "x")] } }
     });
     let result = apply_edit_request_response(&mut ed.state, &mut ed.view, &params, sid).unwrap();
     assert_eq!(result["applied"], serde_json::json!(false));

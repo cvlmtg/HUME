@@ -146,8 +146,8 @@ fn dismiss_a_recorded_menu_with(key: KeyEvent) -> Editor {
         "-[h]>ello\nworld\n",
         r#"(define-command! "menu" ""
              (lambda (pane)
-               (show-menu! pane (list "one")
-                 (lambda (i) (when i (call! "replace" pane #\o)))))
+               (show-menu! pane (list (cons "one" #\o))
+                 (lambda (c) (when c (call! "replace" pane c)))))
              #:repeatable #t)"#,
     );
     ed.execute_keymap_command("menu".into(), Count::typed(1), false);

@@ -170,8 +170,8 @@ pub trait EditHost {
     /// all positioned against the text before the call, to `pane`'s buffer
     /// as one undo step, carrying every selection through the change. It
     /// acts through `pane` while that pane shows the buffer, through no pane
-    /// otherwise, as `apply-text-edits!` does. An empty list changes nothing.
-    /// `Err` for an offset past the end, a reversed or overlapping range, a
+    /// otherwise, as `apply-text-edits!` does. An empty list changes nothing
+    /// and is checked for nothing. Otherwise `Err` for an offset past the end, a reversed or overlapping range, a
     /// read-only buffer, or a buffer whose generation is not `expect_gen`.
     fn edit_text(
         &mut self,

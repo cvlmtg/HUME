@@ -5,7 +5,7 @@
          lsp/with-params
          lsp/visible-lines lsp/resolve-pane
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
-         lsp/with-servers lsp/report-unsupported lsp/jump-to! lsp/drawer-rows)
+         lsp/with-servers lsp/report-unsupported lsp/jump-to! lsp/payload-rows)
 
 ;; ── Capabilities ────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@
   (unless (goto-location! (focused-pane) location)
     (log! 'warning "lsp: the location no longer exists")))
 
-(define (lsp/drawer-rows row-text items)
+(define (lsp/payload-rows row-text items)
   (map (lambda (item) (cons (row-text item) item)) items))
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────

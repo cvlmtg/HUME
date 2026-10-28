@@ -28,43 +28,23 @@ fn declare_resolved_path_inserts_declared_state() {
     );
 }
 
-// ── Dedup ─────────────────────────────────────────────────────────────
+// ── One declaration per entry ─────────────────────────────────────────
 
 #[test]
-fn duplicate_declare_is_noop() {
-    let mut reg = LazyRegistry::default();
-    let id = id_user("alice", "foo");
-    reg.declare(
-        id.clone(),
-        fake_path(),
-        vec!["on-buffer-save".to_string()],
-        vec![],
-    );
-    // Second declare with a different path and an additional activation entry: both ignored.
-    reg.declare(
-        id.clone(),
-        PathBuf::from("/other/plugin.scm"),
-        vec!["on-buffer-open".to_string()],
-        vec![],
-    );
-    // State unchanged from first declare.
-    assert!(reg.plugins.len() == 1);
-    // Second declare's event entry not recorded.
-    assert!(
-        !reg.activation_events
-            .get("on-buffer-open")
-            .is_some_and(|ps| ps.contains(&id)),
-        "second declare's activation entry must not be recorded"
-    );
-}
-
-#[test]
-fn case_insensitive_dedup() {
+fn an_entry_is_found_whatever_its_casing() {
     let mut reg = LazyRegistry::default();
     reg.declare(id_user("Alice", "Foo"), fake_path(), vec![], vec![]);
-    // Same plugin, different casing: PluginId equality is case-insensitive.
+    assert!(reg.plugins.contains_key(&id_user("alice", "foo")));
+}
+
+/// `declare_plugin` raises for a second declaration, so one reaching the
+/// registry is a broken caller.
+#[test]
+#[should_panic(expected = "declared twice")]
+fn declaring_an_entry_twice_panics() {
+    let mut reg = LazyRegistry::default();
+    reg.declare(id_user("Alice", "Foo"), fake_path(), vec![], vec![]);
     reg.declare(id_user("alice", "foo"), fake_path(), vec![], vec![]);
-    assert_eq!(reg.plugins.len(), 1, "case-insensitive dedup must fire");
 }
 
 // ── Activation map recording ───────────────────────────────────────────

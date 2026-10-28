@@ -73,16 +73,16 @@ fn parse_native_args_count_and_extend() {
     );
 }
 
-/// Negative counts run once, same as a native keypress count.
+/// A count no keypress can produce is the script's mistake.
 #[test]
-fn parse_native_args_negative_clamps_to_one() {
+fn parse_native_args_refuses_a_negative_count() {
     assert_eq!(
-        parse_native_args(&[SteelVal::IntV(-7)]).unwrap(),
-        (Count::typed(1), false, None)
+        parse_native_args(&[SteelVal::IntV(-7)]).unwrap_err(),
+        "count must be 0 or more, got -7"
     );
     assert_eq!(
-        parse_native_args(&[SteelVal::IntV(-1), SteelVal::BoolV(false)]).unwrap(),
-        (Count::typed(1), false, None)
+        parse_native_args(&[SteelVal::IntV(-1), SteelVal::BoolV(false)]).unwrap_err(),
+        "count must be 0 or more, got -1"
     );
 }
 

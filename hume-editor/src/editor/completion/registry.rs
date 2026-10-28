@@ -114,7 +114,6 @@ impl BufferSourceEntry {
 pub(in crate::editor) struct MinibufSourceEntry {
     pub(in crate::editor) name: Box<str>,
     pub(in crate::editor) match_kind: MatchKind,
-    pub(in crate::editor) priority: i64,
     pub(in crate::editor) body: MinibufBody,
 }
 
@@ -149,13 +148,11 @@ impl SourceRegistry {
         let universe = |name: &str, case_sensitive, body| MinibufSourceEntry {
             name: name.into(),
             match_kind: MatchKind::String { case_sensitive },
-            priority: 0,
             body: MinibufBody::NativeUniverse(body),
         };
         let delegated = |name: &str, body| MinibufSourceEntry {
             name: name.into(),
             match_kind: MatchKind::Delegated,
-            priority: 0,
             body: MinibufBody::NativeDelegated(body),
         };
         Self {

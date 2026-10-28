@@ -17,18 +17,20 @@ use super::SteelResult;
 use super::args::{hash_entry, list_to_strings, string_list, symbol_hash};
 use super::errors::generic_err;
 
-/// What an option takes besides the text `:set` would carry: nothing
-/// (`One`), a list of words, or the statusline's sections.
+/// The type an option's value has in Scheme, the one `get-option` reads it
+/// back in.
 #[derive(Clone, Copy)]
 enum Takes {
-    One,
+    Bool,
+    Int,
+    Text,
     Words,
     Sections,
 }
 
 impl Takes {
-    /// What `key` takes: an option reads back in the shape it is set in, so
-    /// its global value tells. Raises for an unknown `key`.
+    /// What `key` takes: its global value's type. Raises for an unknown
+    /// `key`.
     fn of(ctx: &mut SteelCtx, key: &str) -> Result<Self, SteelErr> {
         let current = ctx
             .host
@@ -36,36 +38,42 @@ impl Takes {
             .get_global_option(key)
             .map_err(generic_err)?;
         Ok(match current {
+            OptionValue::Bool(_) => Takes::Bool,
+            OptionValue::Int(_) => Takes::Int,
+            OptionValue::Str(_) => Takes::Text,
             OptionValue::List(_) => Takes::Words,
             OptionValue::Sections(_) => Takes::Sections,
-            OptionValue::Bool(_) | OptionValue::Int(_) | OptionValue::Str(_) => Takes::One,
         })
+    }
+
+    /// The type as an error names it.
+    fn name(self) -> &'static str {
+        match self {
+            Takes::Bool => "a boolean",
+            Takes::Int => "an integer",
+            Takes::Text => "a string",
+            Takes::Words => "a list of strings",
+            Takes::Sections => "a statusline sections hash",
+        }
     }
 }
 
-/// Coerce a Steel string/bool/int/list-of-strings/sections-hash value for
-/// option `key`, which takes `takes`, to what the settings layer takes: the
-/// text `:set` would carry, a list's words, or the statusline's sections. A
-/// list or a hash is refused for an option that does not take one, before
-/// what it holds is read. A named value is a string, the spelling
-/// `get-option` reads back, so a symbol is refused.
-fn coerce_option_value(value: &SteelVal, key: &str, takes: Takes) -> Result<OptionInput, SteelErr> {
+/// Decodes `value` for option `key`, which takes `takes`, into what the
+/// settings layer takes: the text `:set` would carry, a list's words, or the
+/// statusline's sections. A value of any other type raises before what it
+/// holds is read, a symbol for a named value included.
+fn decode_option_value(value: &SteelVal, key: &str, takes: Takes) -> Result<OptionInput, SteelErr> {
     match (value, takes) {
-        (SteelVal::StringV(s), _) => Ok(OptionInput::Text(s.to_string())),
-        (SteelVal::BoolV(b), _) => Ok(OptionInput::Text(b.to_string())),
-        (SteelVal::IntV(n), _) => Ok(OptionInput::Text(n.to_string())),
+        (SteelVal::BoolV(b), Takes::Bool) => Ok(OptionInput::Text(b.to_string())),
+        (SteelVal::IntV(n), Takes::Int) => Ok(OptionInput::Text(n.to_string())),
+        (SteelVal::StringV(s), Takes::Text) => Ok(OptionInput::Text(s.to_string())),
         (SteelVal::ListV(_), Takes::Words) => {
             list_to_strings(value.clone(), "value").map(OptionInput::Words)
         }
         (SteelVal::HashMapV(_), Takes::Sections) => {
             decode_sections(value.clone()).map(OptionInput::Sections)
         }
-        (SteelVal::ListV(_), _) => Err(generic_err(format!("'{key}' takes one value, not a list"))),
-        (SteelVal::HashMapV(_), _) => {
-            Err(generic_err(format!("'{key}' takes one value, not a hash")))
-        }
-        _ => steel::stop!(TypeMismatch =>
-            "value must be a string, bool, integer, list of strings, or statusline sections hash, got {:?}", value),
+        _ => steel::stop!(TypeMismatch => "'{}' takes {}, got {:?}", key, takes.name(), value),
     }
 }
 
@@ -102,9 +110,10 @@ fn per_buffer_err(opt: BufferIntrinsicOption, builtin: &str) -> SteelErr {
 
 /// `(set-option! key value)`
 ///
-/// Sets the global setting `key` to `value`. The value may be a Steel string,
-/// boolean, integer, or list of strings; only a word-list setting
-/// (`shell`) takes a list. It is forwarded to the editor's settings layer, which is the single validating chokepoint
+/// Sets the global setting `key` to `value`, in the type `get-option` reads
+/// it back in: a boolean, an integer, a string, a list of strings for a
+/// word-list setting (`shell`), or the statusline's sections hash. It is
+/// forwarded to the editor's settings layer, which is the single validating chokepoint
 /// (`editor::settings::ops::apply_global`) regardless of caller, so this is
 /// callable from any context: `init.scm`, plugin load, plugin activation, or
 /// a plain command/hook body. Use `:set buffer …` from the command line, or
@@ -117,7 +126,7 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
         return Err(per_buffer_err(opt, "set-buffer-option!"));
     }
     let takes = Takes::of(ctx, &key)?;
-    let value = coerce_option_value(&value, &key, takes)?;
+    let value = decode_option_value(&value, &key, takes)?;
 
     let origin = ctx.registration_origin();
     ctx.host
@@ -130,8 +139,8 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 
 /// `(set-buffer-option! pane key value)`
 ///
-/// Sets `key`'s per-buffer override on `pane`'s buffer to `value` (same
-/// coercion as `set-option!`). The override persists on the buffer until
+/// Sets `key`'s per-buffer override on `pane`'s buffer to `value`, in the
+/// type `set-option!` takes it in. The override persists on the buffer until
 /// overwritten, same as `:set buffer key=value`.
 ///
 /// `"line-ending"` takes `"lf"` or `"crlf"` and sets the line ending a save writes; it errors on a read-only buffer.
@@ -166,7 +175,7 @@ pub(crate) fn set_buffer_option(
             });
         }
         Some(BufferIntrinsicOption::LineEnding) => {
-            let value = coerce_option_value(&value, &key, Takes::One)?;
+            let value = decode_option_value(&value, &key, Takes::Text)?;
             ctx.host
                 .settings()
                 .set_buffer_line_ending(bid, value, origin)
@@ -174,7 +183,7 @@ pub(crate) fn set_buffer_option(
         }
         None => {
             let takes = Takes::of(ctx, &key)?;
-            let value = coerce_option_value(&value, &key, takes)?;
+            let value = decode_option_value(&value, &key, takes)?;
             ctx.host
                 .settings()
                 .set_buffer_option(&key, value, bid, origin)

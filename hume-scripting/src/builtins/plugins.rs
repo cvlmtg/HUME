@@ -88,20 +88,38 @@ fn mark_absent(
     Ok(())
 }
 
-/// Idempotency rule for `declare-plugin!`: `Loaded` → soft error, else first
-/// declaration wins. Returns `true` if the caller should return immediately.
-fn already_declared(ctx: &mut SteelCtx, entry: &EntryId, name: &str) -> bool {
-    match ctx.registries.lazy_registry.plugins.get(entry) {
-        Some(PluginState::Loaded) => {
-            ctx.log(
-                Severity::Error,
-                format!("declare-plugin!: '{name}' is already loaded; ignoring declare"),
-            );
-            true
-        }
-        Some(_) => true, // Declared/Loading/Failed: first wins
-        None => false,
+/// Raises when `entry` was already declared, installed or not, whatever its
+/// state since: each entry is declared once.
+fn check_not_declared(ctx: &SteelCtx, entry: &EntryId, name: &str) -> Result<(), SteelErr> {
+    if !ctx.registries.plugin_records.declared(entry) {
+        return Ok(());
     }
+    Err(generic_err(if entry.file == EntryFile::main() {
+        format!("'{name}' is declared twice; declare each entry once")
+    } else {
+        format!(
+            "'{name}' declares entry '{}' twice; declare each entry once",
+            entry.file.as_str()
+        )
+    }))
+}
+
+/// Raises for a command name already taken, by the check `define-command!`
+/// makes, and for a name the declaration lists twice. Typed names fold their
+/// case, so both lists are compared folded.
+fn check_names_free(
+    ctx: &mut SteelCtx,
+    commands: &[String],
+    typed_commands: &[String],
+) -> Result<(), SteelErr> {
+    let mut seen = std::collections::HashSet::new();
+    for cmd in commands.iter().chain(typed_commands) {
+        if !seen.insert(crate::command_name::fold(cmd)) {
+            return Err(generic_err(format!("command '{cmd}' is listed twice")));
+        }
+        super::commands::check_name_free(ctx, cmd)?;
+    }
+    Ok(())
 }
 
 /// Gate for plugin-registration verbs (`load-plugin!`, `declare-plugin!`).
@@ -136,45 +154,23 @@ fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// Whether any activation-trigger list is non-empty.
-fn has_trigger(
-    commands: &[String],
-    typed_commands: &[String],
-    events: &[String],
-    languages: &[String],
-) -> bool {
-    !(commands.is_empty() && typed_commands.is_empty() && events.is_empty() && languages.is_empty())
-}
-
-/// Drops names that collide with a built-in and claims each remaining one as a
-/// `Lazy` stub via `register` (`register_lazy_command` or
-/// `register_lazy_typed_command`), logging a failed name instead of aborting.
-fn filter_and_register_lazy(
+/// Claims each name as a `Lazy` stub of `entry` via `register`
+/// (`register_lazy_command` or `register_lazy_typed_command`). A claim the
+/// editor refuses raises after freeing every stub `entry` holds: `entry` is
+/// not declared yet, so those are this declaration's own.
+fn claim_lazy_names(
     ctx: &mut SteelCtx,
-    cmd_list: Vec<String>,
+    names: &[String],
     entry: &EntryId,
     register: impl Fn(&mut dyn crate::host::CommandHost, &str, &EntryId) -> Result<(), String>,
-) -> Vec<String> {
-    let mut valid = Vec::with_capacity(cmd_list.len());
-    for cmd in cmd_list {
-        if ctx.builtin_cmd_names.contains(&cmd) {
-            ctx.log(
-                Severity::Error,
-                format!(
-                    "declare-plugin!: command '{cmd}' conflicts with a built-in; activation entry ignored"
-                ),
-            );
-            continue;
-        }
-        match register(ctx.host.commands(), &cmd, entry) {
-            Ok(()) => valid.push(cmd),
-            Err(msg) => ctx.log(
-                Severity::Error,
-                format!("declare-plugin!: {msg}; activation entry ignored"),
-            ),
+) -> Result<(), SteelErr> {
+    for name in names {
+        if let Err(msg) = register(ctx.host.commands(), name, entry) {
+            ctx.host.commands().unregister_lazy_stubs_of(entry);
+            return Err(generic_err(msg));
         }
     }
-    valid
+    Ok(())
 }
 
 /// `(%declare-plugin! name entry commands typed-commands events languages)`:
@@ -188,8 +184,8 @@ fn filter_and_register_lazy(
 /// entry could never activate. Every trigger list is validated before any
 /// state is recorded; `#:events` goes through `hooks::event_name_arg`, the
 /// decoder `register-hook!` uses. A plugin's config comes from `load-plugin!`
-/// only. Colliding command names are logged and skipped rather than failing
-/// the declaration.
+/// only. A second declaration of the entry, and a command name that is
+/// already taken or listed twice, raise.
 pub(crate) fn declare_plugin(
     ctx: &mut SteelCtx,
     name: String,
@@ -237,9 +233,7 @@ pub(crate) fn declare_plugin(
         return Ok(SteelVal::Void);
     }
 
-    if already_declared(ctx, &entry_id, &name) {
-        return Ok(SteelVal::Void);
-    }
+    check_not_declared(ctx, &entry_id, &name)?;
 
     // Decode and validate every activation-entry list before recording any state
     // below: a malformed entry must leave no plugin record behind, or PLUM
@@ -250,7 +244,7 @@ pub(crate) fn declare_plugin(
     let evt_label = declare_arg_label(ctx, "#:events");
     let evt_list: Vec<String> = list_items(events, &evt_label)?
         .iter()
-        .map(|v| super::hooks::event_name_arg(ctx, v, &evt_label))
+        .map(|v| super::hooks::event_name_arg(ctx, v, &evt_label).map(|(name, _)| name))
         .collect::<Result<_, _>>()?;
     let lang_list = list_to_strings(languages, &declare_arg_label(ctx, "#:languages"))?;
 
@@ -270,13 +264,14 @@ pub(crate) fn declare_plugin(
         )
         .collect::<Result<(), _>>()
         .map_err(generic_err)?;
+    check_names_free(ctx, &cmd_list, &typed_cmd_list)?;
 
-    // Hard error: nothing declared at all. Checked against the raw (unfiltered)
-    // lists, before path resolution: collision filtering only happens once the
-    // plugin is confirmed present on disk (see below), so a non-empty
-    // `cmd_list`/`typed_cmd_list` always skips this branch regardless of what
-    // filtering later drops.
-    if !has_trigger(&cmd_list, &typed_cmd_list, &evt_list, &lang_list) {
+    // Hard error: nothing declared at all.
+    if cmd_list.is_empty()
+        && typed_cmd_list.is_empty()
+        && evt_list.is_empty()
+        && lang_list.is_empty()
+    {
         return Err(generic_err(format!(
             "'{name}' declares no activation entries; it could never be activated. \
              Add #:commands/#:typed-commands/#:events/#:languages."
@@ -302,49 +297,33 @@ pub(crate) fn declare_plugin(
     }
 
     // When the plugin file is absent on disk, it can never be activated:
-    // collision-checking (which claims the name in the editor's registry) would
-    // be pointless and would leave the name claimed with no path to clean it up
-    // via drop_activations_for's usual load/fail transition.  For user/ plugins,
+    // claiming its names in the editor's registry would leave them claimed
+    // with no path to clean them up via drop_activations_for's usual
+    // load/fail transition.  For user/ plugins,
     // log Info, since absent is expected before :plum-install-plugins.  For core: plugins,
     // absent means a typo or broken HUME_RUNTIME; PLUM never installs core:
     // plugins, so it can't catch the error.  The plugin is recorded here so
     // PLUM lists it.
     let Some(path) = path else {
-        ctx.registries.plugin_records.note(plugin_id.clone(), None);
+        ctx.registries.plugin_records.note_declared(entry_id);
         mark_absent(ctx, &plugin_id, &name, "declare-plugin!")?;
         return Ok(SteelVal::Void);
     };
 
-    // Filter colliding command names against the editor's live registry,
-    // reached only now that the plugin is confirmed on disk. Each collision
-    // logs a non-fatal Error (visible in :messages) and the name is dropped.
-    // `register_lazy_command`/`register_lazy_typed_command` claims the name
+    // Claimed in the editor's registry only once the plugin is on disk.
+    // `register_lazy_command`/`register_lazy_typed_command` claim the name
     // in the same registry `define-command!`/`define-typed-command!` and
-    // native commands live in, so this is the single check for "is this name
-    // available" across builtin, activation, and Steel-defined names.
-    let cmd_list = filter_and_register_lazy(ctx, cmd_list, &entry_id, |c, name, entry| {
+    // native commands live in, so a name `check_names_free` passed is free.
+    claim_lazy_names(ctx, &cmd_list, &entry_id, |c, name, entry| {
         c.register_lazy_command(name, entry)
-    });
-    let typed_cmd_list =
-        filter_and_register_lazy(ctx, typed_cmd_list, &entry_id, |c, name, entry| {
-            c.register_lazy_typed_command(name, entry)
-        });
+    })?;
+    claim_lazy_names(ctx, &typed_cmd_list, &entry_id, |c, name, entry| {
+        c.register_lazy_typed_command(name, entry)
+    })?;
 
-    // Hard error: all supplied #:commands/#:typed-commands entries collided,
-    // and no #:events/#:languages entries either: the plugin has no usable
-    // activation entry left. The all-empty case already returned above, so
-    // reaching here means at least one list was non-empty before filtering, so
-    // the message always names the collision, never "none were supplied".
-    if !has_trigger(&cmd_list, &typed_cmd_list, &evt_list, &lang_list) {
-        return Err(generic_err(format!(
-            "'{name}' declares no activation entries; \
-             all #:commands/#:typed-commands entries conflicted with existing commands. \
-             Fix the collision."
-        )));
-    }
-
-    ctx.registries.plugin_records.note(plugin_id.clone(), None);
-
+    ctx.registries
+        .plugin_records
+        .note_declared(entry_id.clone());
     ctx.registries
         .lazy_registry
         .declare(entry_id, path, evt_list, lang_list);

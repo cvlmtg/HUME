@@ -587,7 +587,7 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
         r#"(define-typed-command! "go-drawer" "" (lambda (pane)
              (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "one.rs:1")) (lambda (row tok) (log! 'info (to-string row))))))
            (define-typed-command! "go-menu" "" (lambda (pane)
-             (show-menu! pane (list "Extract function") (lambda (idx) (log! 'info (to-string idx))))))"#,
+             (show-menu! pane (list (cons "Extract function" 'extract)) (lambda (choice) (log! 'info (to-string choice))))))"#,
     );
     type_cmd(&mut ed, ":go-drawer");
     let token = ed

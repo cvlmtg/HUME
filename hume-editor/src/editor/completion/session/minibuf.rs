@@ -104,10 +104,9 @@ impl MinibufSession {
         &mut self,
         id: HostToken,
         items: Vec<CompletionItem>,
-        incomplete: bool,
     ) -> bool {
         self.core
-            .contribute(id, items, incomplete, AnswerEnd::Final, |_, _, _| {})
+            .contribute(id, items, false, AnswerEnd::Final, |_, _, _| {})
     }
 
     /// Lands a Steel source's answer for invocation `id`, completing the
@@ -126,7 +125,6 @@ impl MinibufSession {
         registry: &SourceRegistry,
         id: HostToken,
         items: Vec<CompletionItem>,
-        incomplete: bool,
         end: AnswerEnd,
         word: EmittedWord,
     ) -> Result<bool, String> {
@@ -148,16 +146,14 @@ impl MinibufSession {
                 prefix,
             ))
         };
-        let landed = self
-            .core
-            .contribute(id, items, incomplete, end, |_, minted, _| {
-                if let Some((bytes, prefix)) = named {
-                    if let Some(bytes) = bytes {
-                        minted.bytes = bytes;
-                    }
-                    minted.prefix = prefix;
+        let landed = self.core.contribute(id, items, false, end, |_, minted, _| {
+            if let Some((bytes, prefix)) = named {
+                if let Some(bytes) = bytes {
+                    minted.bytes = bytes;
                 }
-            });
+                minted.prefix = prefix;
+            }
+        });
         if landed {
             self.kept_pick = kept;
         }
@@ -205,6 +201,11 @@ impl MinibufSession {
 
     pub(in crate::editor) fn is_pending(&self) -> bool {
         self.core.is_pending()
+    }
+
+    /// See `BufferSession::awaits`.
+    pub(in crate::editor) fn awaits(&self, id: HostToken) -> bool {
+        self.core.source_of(id).is_some()
     }
 
     /// See `BufferSession::end_request`.

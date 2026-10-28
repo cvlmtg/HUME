@@ -47,15 +47,13 @@ fn id_of(reg: &SourceRegistry, name: &str) -> BufferSourceId {
     reg.buffer_id_of(name).expect("registered")
 }
 
-/// [`registry`]'s `Minibuf` counterpart, for the one test below that opens
-/// a `Minibuf` session.
-fn minibuf_registry(sources: &[(&str, i64)]) -> SourceRegistry {
+/// [`registry`]'s `Minibuf` counterpart: one Steel source per name.
+fn minibuf_registry(sources: &[&str]) -> SourceRegistry {
     let mut reg = SourceRegistry::with_defaults();
-    for (name, priority) in sources {
+    for name in sources {
         reg.register_minibuf(MinibufSourceEntry {
             name: (*name).into(),
             match_kind: MatchKind::Fuzzy,
-            priority: *priority,
             body: MinibufBody::Steel {
                 proc: hume_scripting::Callback::for_test(SteelVal::Void),
                 cancel: Some(hume_scripting::Callback::for_test(SteelVal::Void)),
@@ -799,10 +797,10 @@ fn step_selection_on_an_empty_ranking_does_not_move() {
 
 #[test]
 fn step_selection_wraps_at_either_end() {
-    let reg = minibuf_registry(&[("s", 0)]);
+    let reg = minibuf_registry(&["s"]);
     let mut session = MinibufSession::open("w".into(), 1);
     let id = session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..1));
-    assert!(session.contribute(id, items(&["wa", "wb"]), false));
+    assert!(session.contribute(id, items(&["wa", "wb"])));
     session.rank(&reg);
     assert_eq!(session.selected(), None, "rank leaves nothing picked");
     assert!(session.step_selection(true));
@@ -833,7 +831,7 @@ fn emit(
     end: AnswerEnd,
 ) -> bool {
     session
-        .emit(reg, id, items(labels), false, end, EmittedWord::default())
+        .emit(reg, id, items(labels), end, EmittedWord::default())
         .expect("a plain answer")
 }
 
@@ -844,7 +842,7 @@ fn picked_label(session: &MinibufSession) -> Option<String> {
 
 #[test]
 fn an_answer_with_more_to_come_keeps_its_session_pending() {
-    let reg = minibuf_registry(&[("s", 0)]);
+    let reg = minibuf_registry(&["s"]);
     let (mut session, id) = streaming_session(&reg);
     assert!(emit(&mut session, &reg, id, &["a", "b"], AnswerEnd::More));
     session.rank(&reg);
@@ -864,7 +862,7 @@ fn an_answer_with_more_to_come_keeps_its_session_pending() {
 
 #[test]
 fn ending_a_streamed_request_closes_it_at_the_part_shown() {
-    let reg = minibuf_registry(&[("s", 0)]);
+    let reg = minibuf_registry(&["s"]);
     let (mut session, id) = streaming_session(&reg);
     emit(&mut session, &reg, id, &["a", "b"], AnswerEnd::More);
     assert!(session.end_request(id));
@@ -883,7 +881,7 @@ fn ending_a_streamed_request_closes_it_at_the_part_shown() {
 
 #[test]
 fn a_streamed_update_keeps_the_picked_candidate() {
-    let reg = minibuf_registry(&[("s", 0)]);
+    let reg = minibuf_registry(&["s"]);
     let (mut session, id) = streaming_session(&reg);
     emit(&mut session, &reg, id, &["b", "c"], AnswerEnd::More);
     session.rank(&reg);
@@ -897,7 +895,7 @@ fn a_streamed_update_keeps_the_picked_candidate() {
 
 #[test]
 fn a_final_answer_refuses_a_further_part() {
-    let reg = minibuf_registry(&[("s", 0)]);
+    let reg = minibuf_registry(&["s"]);
     let (mut session, id) = streaming_session(&reg);
     assert!(emit(&mut session, &reg, id, &["b", "c"], AnswerEnd::Final));
     assert!(!emit(
@@ -976,7 +974,7 @@ fn a_landed_answer_is_never_cancelled() {
 
 #[test]
 fn re_invoking_a_streaming_source_cancels_and_ends_its_answer() {
-    let reg = minibuf_registry(&[("s", 0)]);
+    let reg = minibuf_registry(&["s"]);
     let (mut session, id) = streaming_session(&reg);
     emit(&mut session, &reg, id, &["a"], AnswerEnd::More);
     let fresh = session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..0));
@@ -1007,7 +1005,7 @@ fn ending_a_session_cancels_only_what_it_still_awaits() {
     invoke_and_answer(&mut session, &reg, id_of(&reg, "b"), &text, 0, &["foo"]);
     assert_eq!(cancelled_ids(&session.end_requests(&reg)), [a]);
 
-    let reg = minibuf_registry(&[("s", 0)]);
+    let reg = minibuf_registry(&["s"]);
     let (mut session, id) = streaming_session(&reg);
     emit(&mut session, &reg, id, &["a"], AnswerEnd::More);
     assert_eq!(cancelled_ids(&session.end_requests(&reg)), [id]);

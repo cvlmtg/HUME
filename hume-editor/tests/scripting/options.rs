@@ -16,13 +16,18 @@ fn set_option_tab_width_integer() {
 }
 
 #[test]
-fn set_option_tab_width_string() {
+fn set_option_tab_width_string_raises() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source("(set-option! \"indent-width\" \"8\")", &mut mock)
-        .unwrap();
-    assert_eq!(mock.settings.indent_width, 8);
+    let err = h
+        .eval_source("(set-option! \"indent-width\" \"8\")", &mut mock)
+        .unwrap_err();
+    assert!(
+        err.contains("'indent-width' takes an integer"),
+        "got: {err}"
+    );
+    assert_eq!(mock.settings.indent_width, 4);
 }
 
 #[test]

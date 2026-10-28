@@ -1,7 +1,7 @@
 //! `EditorHostImpl`'s LSP-driven text edits, workspace edits,
 //! go-to-location, `insert-key!`, `paste-text!` and `edit-text!`.
 
-use hume_core::{BufferId, PaneHandle};
+use hume_core::{BufferId, NonEmpty, PaneHandle};
 use hume_platform::path::AbsolutePath;
 use hume_rope::column::CharCol;
 use termina::event::KeyEvent;
@@ -20,31 +20,22 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         edits: Vec<hume_scripting::host::WireTextEdit>,
         expect_gen: Option<u64>,
     ) -> Result<(), String> {
+        let Some(edits) = NonEmpty::new(edits) else {
+            return Ok(());
+        };
         // Each entry decoded its own encoding from its own JsonHandle (it
         // may have come from a different response than its batch-mates,
         // e.g. two `additionalTextEdits` merged by a plugin), since a batch that
         // disagrees has no single encoding to convert wire positions with.
-        let mut encoding = None;
-        for edit in &edits {
-            match encoding {
-                None => encoding = Some(edit.encoding),
-                Some(enc) if enc != edit.encoding => {
-                    return Err("edits use inconsistent server encodings".to_string());
-                }
-                _ => {}
-            }
+        let encoding = edits.first().encoding;
+        if edits.iter().any(|edit| edit.encoding != encoding) {
+            return Err("edits use inconsistent server encodings".to_string());
         }
-        let Some(encoding) = encoding else {
-            return Err("no edits given".to_string());
-        };
         crate::editor::lsp::edits::apply_text_edits(
             self.state,
             &self.view.panes,
             pane,
-            &edits
-                .iter()
-                .map(|e| (e.range, e.new_text.as_str()))
-                .collect::<Vec<_>>(),
+            &edits.map_ref(|e| (e.range, e.new_text.as_str())),
             expect_gen,
             encoding,
         )
@@ -162,8 +153,10 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         edits: Vec<CharTextEdit>,
         expect_gen: Option<u64>,
     ) -> Result<(), String> {
-        let buf = self.state.buffers.get(pane.buffer());
-        crate::editor::lsp::edits::check_generation(buf, expect_gen)?;
+        if edits.is_empty() {
+            return Ok(());
+        }
+        let buf = crate::editor::lsp::edits::checked_buffer(self.state, pane.buffer(), expect_gen)?;
         let text = buf.text();
         let char_edits = edits
             .iter()

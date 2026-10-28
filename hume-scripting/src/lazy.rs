@@ -86,7 +86,8 @@ impl LazyRegistry {
     /// (see `declare_plugin` in `builtins/plugins.rs`); this method only
     /// records plugin lifecycle state and the event/language activation maps.
     ///
-    /// - Duplicate `id` (case-insensitive) → no-op (first declaration wins).
+    /// - Each `id` (case-insensitive) is declared once: `declare_plugin`
+    ///   raises for a second declaration before it gets here.
     /// - All plugins are inserted as `Declared`; they activate when an entry is exercised.
     pub(crate) fn declare(
         &mut self,
@@ -95,9 +96,10 @@ impl LazyRegistry {
         events: Vec<String>,
         languages: Vec<String>,
     ) {
-        if self.plugins.contains_key(&id) {
-            return; // already declared: duplicate declare-plugin! call, ignore
-        }
+        assert!(
+            !self.plugins.contains_key(&id),
+            "entry '{id}' declared twice"
+        );
         self.plugins
             .insert(id.clone(), PluginState::Declared { path });
 

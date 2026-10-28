@@ -2,15 +2,15 @@
 
 use super::EditorHostImpl;
 use hume_core::HostToken;
-use hume_scripting::host::EventHost;
+use hume_scripting::host::{EventHost, EventShape};
 
 impl<'a> EventHost for EditorHostImpl<'a> {
     fn known_event_names(&self) -> &'static [&'static str] {
         crate::editor::event::known_event_names()
     }
 
-    fn held_event_arg_count(&self, name: &str) -> Option<usize> {
-        crate::editor::event::held_event_arg_count(name)
+    fn event_shape(&self, name: &str) -> Option<EventShape> {
+        crate::editor::event::event_shape(name)
     }
 
     fn finish_hold(&mut self, hold: HostToken) {

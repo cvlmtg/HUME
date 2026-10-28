@@ -12,8 +12,8 @@ use hume_rope::offset::ExclusiveRange;
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, LanguageHost,
-    OptionValue, SelectionInfo, SettingsHost, StoredLanguage, UndoNode,
+    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, EventShape,
+    LanguageHost, OptionValue, SelectionInfo, SettingsHost, StoredLanguage, UndoNode,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -318,8 +318,8 @@ impl EventHost for ReadOnlyHost<'_> {
     fn known_event_names(&self) -> &'static [&'static str] {
         self.inner.borrow_mut().events().known_event_names()
     }
-    fn held_event_arg_count(&self, name: &str) -> Option<usize> {
-        self.inner.borrow_mut().events().held_event_arg_count(name)
+    fn event_shape(&self, name: &str) -> Option<EventShape> {
+        self.inner.borrow_mut().events().event_shape(name)
     }
     fn finish_hold(&mut self, _hold: HostToken) {
         self.refuse("done");

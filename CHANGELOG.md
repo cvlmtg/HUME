@@ -27,7 +27,7 @@
 - `hume-version` returns `(hash 'major 'minor 'patch 'commit)` and `bundled-language-grammar` `(hash 'url 'rev 'symbol 'subpath)`, not a list, and `grammar-url`, `grammar-rev`, `grammar-symbol` and `grammar-subpath` are gone: read a field with `hash-ref`, such as `(hash-ref g 'url)`.
 - A `spawn-async!` callback takes one argument, the `(hash 'stdout 'stderr 'exit)` `run-capture!` returns: write `(lambda (result) ...)` and read `(hash-ref result 'exit)` where the third argument was.
 - `stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-start-char`, `stdlib/selection-end-char` and `stdlib/selection-primary?` are gone: call the new `selection-anchor`, `selection-head`, `selection-start-char`, `selection-end-char` and `selection-primary?` directly, which need no plugin and raise for anything but a selection.
-- `(get-option "statusline")` returns `(hash 'left 'center 'right)`, each a list of element names as `configure-statusline!` takes them, not the `"a,b|c|d"` text: read a section with `hash-ref`. `set-option!` takes that hash too.
+- `(get-option "statusline")` returns `(hash 'left 'center 'right)`, each a list of element names as `configure-statusline!` takes them, not the `"a,b|c|d"` text: read a section with `hash-ref`. `set-option!` takes that hash.
 - A plugin's `#:config` takes symbol keys, and `load-plugin!` raises for a string key or a value that isn't a hash: write `(hash 'signs #f)` for `(hash "signs" #f)`. The `stdlib/config-*` readers take the key as a symbol too, `'signs` for `"signs"`.
 - `plugin-config` and `plugin-dir` raise outside a plugin's code, such as at the top level of `init.scm`, instead of answering an empty hash or `#f`.
 - `stdlib/config-integer` takes an integer minimum: replace a `#f` minimum with the lowest value you accept.
@@ -43,6 +43,15 @@
 - `show-drawer-list!` and `update-drawer-list!` take `(display . payload)` pairs, as `picker!` does, and `on-select` gets the selected row's payload, or its key with `#:render`, instead of its index: write `(cons text value)` for each row and use the value `on-select` receives.
 - `picker!` and `live-picker!` return `#f` when `.` answers them without opening, as `show-menu!` does.
 - `diff-lines`, `diff-buffer-lines` and `buffer-revision-diff` return `(hash 'hunks … 'deadline-hit …)`, as `diff-words` does, not a list: read the hunks with `(hash-ref result 'hunks)`. A hunk's `'words` is `#f` when it was too large to compare word by word.
+- `show-menu!` takes `(display . payload)` pairs, as `picker!` does, and `on-select` gets the chosen row's payload instead of its index: write `(cons text value)` for each row and use the value `on-select` receives.
+- `call!` of a built-in command while `init.scm` or a plugin loads raises, naming the command, instead of logging a warning and returning `#f`: run it from a key binding, a hook or a command.
+- The decoration, trigger and completion-source builtins raise for an empty or blank source name: give each source a name.
+- `call!` raises for a negative count instead of running the command once: pass `1`, or `0` for no count.
+- A `'minibuf` completion source raises for a nonzero `#:priority` and for `completion-emit!`'s `#:incomplete #t`, which never had an effect there: drop them.
+- `set-option!` and `set-buffer-option!` take a value only in the type `get-option` returns for that option, and raise for any other: write `4` for `"4"`, `#t` for `"true"`, `'("fish" "-c")` for `"fish -c"` for `shell`, and a sections hash for `statusline`. A boolean or a number for a text option such as `word-chars` raises instead of being stored as its spelling.
+- `declare-plugin!` raises for an entry declared twice instead of ignoring the second declaration: merge the two. Your own `declare-plugin!` for a plugin still replaces its `manifest.scm`.
+- `declare-plugin!` raises for a command name already taken (a built-in, another plugin's command, or a command already defined) or listed twice, instead of skipping that name: rename it.
+- `register-hook!` and `register-lsp-notification-hook!` raise for a lambda that can't take the arguments its event passes, instead of failing each time the event fires: give the lambda one parameter per argument the hook lists.
 
 ### Syntax & language awareness
 - HUME starts faster: each installed grammar loads the first time a file or an embedded block needs it, not at startup.
@@ -66,6 +75,7 @@
 - `.` passes a `#:repeatable` command the same `count` its first run got, `0` when no count was typed.
 
 ### Fixes
+- `apply-text-edits!` does nothing for an empty edit list instead of raising, and `apply-workspace-edit!` leaves a file with no edits alone instead of opening it.
 - `:lsp-install` refuses a server archive with a symbolic link that points outside the server's directory.
 - A failed `:lsp-install` removes what it had installed.
 - The Linux archive runs on glibc 2.28 and later: Ubuntu 20.04, Debian 10, RHEL 8 and newer.

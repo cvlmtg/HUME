@@ -193,7 +193,8 @@ pub trait UiHost {
     fn close_popup(&mut self, token: HostToken) -> Result<(), String>;
 
     /// `(show-menu! items on-select)` opens a selection menu near the
-    /// cursor. `on-select` fires exactly once: the chosen index, or `#f` on
+    /// cursor over `items`, the picker's `(display . payload)` rows.
+    /// `on-select` fires exactly once: the chosen row's payload, or `#f` on
     /// dismissal, queued, never invoked inline. A menu that can't be
     /// driven is worse than no menu, so this requires the mode layer to be
     /// `Base` (Normal/Extend; a menu open under Insert or a minibuf mode
@@ -214,7 +215,7 @@ pub trait UiHost {
     fn show_menu(
         &mut self,
         pane: PaneHandle,
-        items: NonEmpty<String>,
+        items: NonEmpty<(String, crate::Rooted)>,
         callback: crate::Callback,
     ) -> Result<Option<HostToken>, String>;
 

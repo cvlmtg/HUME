@@ -132,8 +132,8 @@ impl EventHost for MockHost {
         // instead of keeping a hand-written mirror of its event list in sync.
         crate::editor::event::known_event_names()
     }
-    fn held_event_arg_count(&self, name: &str) -> Option<usize> {
-        crate::editor::event::held_event_arg_count(name)
+    fn event_shape(&self, name: &str) -> Option<hume_scripting::host::EventShape> {
+        crate::editor::event::event_shape(name)
     }
     fn finish_hold(&mut self, _hold: hume_core::HostToken) {}
 }

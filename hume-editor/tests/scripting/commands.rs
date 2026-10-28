@@ -317,18 +317,17 @@ fn set_option_statusline_takes_the_hash_get_option_returns() {
 }
 
 #[test]
-fn a_statusline_set_as_text_reads_back_as_sections() {
+fn a_statusline_given_as_text_raises() {
     let mut mock = MockHost::new();
     let mut h = host();
 
-    h.eval_source(
-        r#"(set-option! "statusline" "Mode||Position")
-           (unless (equal? (get-option "statusline")
-                           (hash 'left '("Mode") 'center '() 'right '("Position")))
-             (error (to-string (get-option "statusline"))))"#,
-        &mut mock,
-    )
-    .unwrap();
+    let err = h
+        .eval_source(r#"(set-option! "statusline" "Mode||Position")"#, &mut mock)
+        .unwrap_err();
+    assert!(
+        err.contains("'statusline' takes a statusline sections hash"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -356,10 +355,7 @@ fn only_the_statusline_takes_a_sections_hash() {
             &mut mock,
         )
         .unwrap_err();
-    assert!(
-        err.contains("'theme' takes one value, not a hash"),
-        "got: {err}"
-    );
+    assert!(err.contains("'theme' takes a string"), "got: {err}");
 }
 
 #[test]

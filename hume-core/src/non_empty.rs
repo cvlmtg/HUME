@@ -1,7 +1,8 @@
 //! A list with at least one item.
 
 /// A list with at least one item: what a menu or drawer is built from, so
-/// a selection index always names a row.
+/// a selection index always names a row, and what an edit is built from,
+/// so an empty edit list never reaches the code that applies one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NonEmpty<T>(Vec<T>);
 
@@ -21,6 +22,11 @@ impl<T> NonEmpty<T> {
 
     pub fn map<U>(self, f: impl FnMut(T) -> U) -> NonEmpty<U> {
         NonEmpty(self.0.into_iter().map(f).collect())
+    }
+
+    /// [`Self::map`] over the items by reference.
+    pub fn map_ref<'a, U>(&'a self, f: impl FnMut(&'a T) -> U) -> NonEmpty<U> {
+        NonEmpty(self.0.iter().map(f).collect())
     }
 }
 

@@ -207,7 +207,7 @@ fn reset_reverts_statusline_config_to_default() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(set-option! "statusline" "Cwd||")"#,
+        r#"(set-option! "statusline" (hash 'left '("Cwd") 'center '() 'right '()))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

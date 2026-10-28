@@ -370,7 +370,7 @@ impl ScriptingHost {
     }
 
     /// The handlers registered for the held event `name`
-    /// (`EventHost::held_event_arg_count`).
+    /// (`EventShape::held`).
     pub fn held_handlers(&self, name: &str) -> HeldHandlers {
         HeldHandlers {
             handlers: self

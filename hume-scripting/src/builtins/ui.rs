@@ -71,7 +71,7 @@ pub(crate) fn show_menu(
     items: SteelVal,
     on_select: Callback,
 ) -> SteelResult {
-    let items = non_empty(list_to_strings(items, "items")?, "items")?;
+    let items = non_empty(picker_items(items, "items")?, "items")?;
     let token = require_cap(ctx.host.ui())?
         .show_menu(pane, items, on_select)
         .map_err(generic_err)?;
@@ -218,7 +218,7 @@ pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: Callback) -> SteelResul
         .map_err(generic_err)
 }
 
-/// Decodes a picker `items` list: each entry must be a `(display . payload)`
+/// Decodes a picker, menu or drawer `items` list: each entry must be a `(display . payload)`
 /// dotted pair; a proper list entry is rejected by `pair_fields`.
 /// `payload` stays an opaque `SteelVal`; Rust
 /// never interprets it, except to reject `#f`: that value is reserved for
@@ -238,8 +238,8 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, Rooted)>
         .collect()
 }
 
-/// What a picker or drawer row hands `on-select`: anything but `#f`, which
-/// the callback gets on a dismissal.
+/// What a picker, menu or drawer row hands `on-select`: anything but `#f`,
+/// which the callback gets on a dismissal.
 fn row_payload(payload: SteelVal, ctx_name: &str) -> Result<Rooted, SteelErr> {
     // absent-decode-safe: #f here is the reserved dismiss sentinel being rejected, not an absent optional
     if matches!(payload, SteelVal::BoolV(false)) {

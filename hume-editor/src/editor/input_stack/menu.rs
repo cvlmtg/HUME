@@ -29,6 +29,8 @@ use super::stack::{
 /// from that slice alone.
 pub(in crate::editor) struct MenuLayer {
     pub(in crate::editor) rows: NonEmpty<hume_ui::popup::MenuRow>,
+    /// One per row: what `callback` gets when that row is chosen.
+    payloads: Vec<hume_scripting::Rooted>,
     pub(in crate::editor) selected: usize,
     pub(in crate::editor) callback: hume_scripting::Callback,
     /// Identifies which `show-menu!` call opened this menu; see
@@ -39,19 +41,21 @@ pub(in crate::editor) struct MenuLayer {
     input: WaitingInput,
 }
 
-/// `show-menu!`'s funnel: opens a menu over `items` whose `callback` gets
-/// the chosen index, or `#f`, and returns its token. `Ok(None)` when the
-/// request is stale (see `EditorState::async_opener_stale`).
+/// `show-menu!`'s funnel: opens a menu over `items`, `(label, payload)`
+/// rows, whose `callback` gets the chosen row's payload, or `#f`, and
+/// returns its token. `Ok(None)` when the request is stale (see
+/// `EditorState::async_opener_stale`).
 ///
 /// During `.` the menu never opens: the recorded [`Answer::Menu`] answers
-/// it, its callback queued to run after the replayed body with the index of
-/// the item its [`Choice`] names, refusing when the next answer is not a
-/// menu's or no item fits the choice, and running nothing for a menu that
-/// never resolved live. Returns `Ok(None)` then, naming no open menu.
+/// it, its callback queued to run after the replayed body with the payload
+/// of the item its [`Choice`] names in this run's `items`, refusing when
+/// the next answer is not a menu's or no item fits the choice, and running
+/// nothing for a menu that never resolved live. Returns `Ok(None)` then,
+/// naming no open menu.
 pub(in crate::editor) fn open_menu(
     state: &mut EditorState,
     view: &EngineView,
-    items: NonEmpty<String>,
+    items: NonEmpty<(String, hume_scripting::Rooted)>,
     callback: hume_scripting::Callback,
 ) -> Result<Option<HostToken>, String> {
     if let Some(replay) = state.dot_replay.as_mut() {
@@ -65,13 +69,13 @@ pub(in crate::editor) fn open_menu(
                     let index = choice
                         .map(|choice| {
                             choice
-                                .find(&items, String::as_str)
+                                .find(&items, |(label, _)| label.as_str())
                                 .ok_or_else(|| choice.missing())
                         })
                         .transpose()?;
                     Ok(PendingAnswer::Call {
                         proc: callback,
-                        arg: hume_scripting::Rooted::new(menu_arg(index)),
+                        arg: menu_arg(index.map(|i| &items[i].1)),
                     })
                 },
             )
@@ -100,12 +104,11 @@ pub(in crate::editor) fn open_menu(
     Ok(Some(token))
 }
 
-/// The argument a menu's callback gets: the chosen row's index, or `#f`.
-fn menu_arg(index: Option<usize>) -> steel::rvals::SteelVal {
-    match index {
-        Some(i) => steel::rvals::SteelVal::IntV(i as isize),
-        None => steel::rvals::SteelVal::BoolV(false),
-    }
+/// The argument a menu's callback gets: the chosen row's payload, or `#f`.
+fn menu_arg(payload: Option<&hume_scripting::Rooted>) -> hume_scripting::Rooted {
+    hume_scripting::Rooted::new(
+        payload.map_or(steel::rvals::SteelVal::BoolV(false), |p| p.value().clone()),
+    )
 }
 
 impl MenuLayer {
@@ -114,11 +117,17 @@ impl MenuLayer {
     /// `DrawerLayer::new`).
     fn new(
         input: WaitingInput,
-        items: NonEmpty<String>,
+        items: NonEmpty<(String, hume_scripting::Rooted)>,
         callback: hume_scripting::Callback,
     ) -> Self {
+        let mut payloads = Vec::with_capacity(items.len());
+        let rows = items.map(|(label, payload)| {
+            payloads.push(payload);
+            hume_ui::popup::MenuRow::plain(label)
+        });
         Self {
-            rows: items.map(hume_ui::popup::MenuRow::plain),
+            rows,
+            payloads,
             selected: 0,
             callback,
             token: HostToken::mint(),
@@ -126,7 +135,7 @@ impl MenuLayer {
         }
     }
 
-    /// Queue this menu's callback with the chosen row's index, or `#f` when
+    /// Queue this menu's callback with the chosen row's payload, or `#f` when
     /// it was dismissed, recording the chosen row's [`Choice`] under its
     /// answer ticket, if it has one. Every way a menu closes with a callback ends
     /// here.
@@ -136,14 +145,14 @@ impl MenuLayer {
             self.input.take_answer(),
             Answer::Menu(picked),
             self.callback.clone(),
-            hume_scripting::Rooted::new(menu_arg(choice)),
+            menu_arg(choice.map(|i| &self.payloads[i])),
         );
     }
 
     /// A menu pushed directly, for a test of the stack's own behavior.
     #[cfg(test)]
     pub(in crate::editor) fn for_test(
-        items: NonEmpty<String>,
+        items: NonEmpty<(String, hume_scripting::Rooted)>,
         callback: hume_scripting::Callback,
     ) -> Self {
         Self::new(WaitingInput::for_test(), items, callback)

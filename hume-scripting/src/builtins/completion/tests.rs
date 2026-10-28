@@ -193,7 +193,7 @@ fn set_trigger_chars_queues_an_effect_with_the_decoded_fields() {
     set_completion_triggers(
         &mut ctx,
         SteelVal::StringV("rust".into()),
-        SteelVal::StringV("src".into()),
+        "src".to_string(),
         SteelVal::ListV(vec![SteelVal::CharV('.'), SteelVal::CharV(':')].into()),
     )
     .expect("valid call");
@@ -231,7 +231,7 @@ fn set_attachment_completion_triggers_queues_an_attachment_scope() {
     set_attachment_completion_triggers(
         &mut ctx,
         pane,
-        SteelVal::StringV("src".into()),
+        "src".to_string(),
         server.into_steel_val(),
         SteelVal::SymbolV("completion".into()),
         SteelVal::ListV(vec![SteelVal::CharV('.')].into()),
@@ -259,7 +259,7 @@ fn a_language_that_is_not_a_string_raises() {
     let err = set_completion_triggers(
         &mut ctx,
         SteelVal::IntV(3),
-        SteelVal::StringV("src".into()),
+        "src".to_string(),
         SteelVal::ListV(vec![SteelVal::CharV('.')].into()),
     )
     .unwrap_err();
@@ -273,7 +273,7 @@ fn an_attachment_server_that_is_not_a_server_raises() {
     let err = set_attachment_hook_triggers(
         &mut ctx,
         crate::test_support::default_pane(),
-        SteelVal::StringV("src".into()),
+        "src".to_string(),
         SteelVal::StringV("rust".into()),
         SteelVal::SymbolV("completion".into()),
         SteelVal::ListV(vec![SteelVal::CharV('.')].into()),
@@ -293,7 +293,7 @@ fn an_attachment_feature_that_is_not_a_feature_raises() {
     let err = set_attachment_hook_triggers(
         &mut ctx,
         crate::test_support::default_pane(),
-        SteelVal::StringV("src".into()),
+        "src".to_string(),
         server.into_steel_val(),
         SteelVal::SymbolV("nonsense".into()),
         SteelVal::ListV(vec![SteelVal::CharV('.')].into()),
@@ -372,6 +372,21 @@ fn register_rejects_token_chars_on_a_minibuf_source() {
     assert!(err.contains("#:token-chars"), "got: {err}");
 }
 
+/// A `'minibuf` session runs one source, so there is no other source for a
+/// priority to rank against.
+#[test]
+fn register_rejects_priority_on_a_minibuf_source() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let err = register(&mut ctx, "minibuf", "fuzzy", 5)
+        .expect_err("priority is buffer-only")
+        .to_string();
+    assert!(
+        err.contains("#:priority: only a 'buffer source"),
+        "got: {err}"
+    );
+}
+
 #[test]
 fn set_hook_triggers_queues_a_hook_kind_effect() {
     let mut h = SteelCtxTestHarness::new();
@@ -379,7 +394,7 @@ fn set_hook_triggers_queues_a_hook_kind_effect() {
     set_hook_triggers(
         &mut ctx,
         SteelVal::StringV("rust".into()),
-        SteelVal::StringV("sig".into()),
+        "sig".to_string(),
         SteelVal::ListV(vec![SteelVal::CharV('(')].into()),
     )
     .expect("valid call");

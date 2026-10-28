@@ -444,6 +444,8 @@ impl EditorState {
     /// Tabbed to a row an unrelated, superseded call has no bearing on.
     /// `word` is for a minibuffer session only: `Err` when a buffer session
     /// awaits `id`, or when [`MinibufSession::emit`] refuses it.
+    /// `incomplete` is for a buffer session only: `Err` when a minibuffer
+    /// session awaits `id`.
     pub(in crate::editor) fn contribute(
         &mut self,
         view: &EngineView,
@@ -482,14 +484,12 @@ impl EditorState {
             .input
             .minibuf_completion_mut()
             .expect("ref_of found the layer");
-        let landed = session.emit(
-            &self.config.completion_sources,
-            id,
-            items,
-            incomplete,
-            end,
-            word,
-        )?;
+        if incomplete && session.awaits(id) {
+            return Err("#:incomplete is for a 'buffer source; nothing asks a \
+                 'minibuf source again while its menu is open"
+                .to_string());
+        }
+        let landed = session.emit(&self.config.completion_sources, id, items, end, word)?;
         if landed {
             self.settle_minibuf_session(view, r);
         }
@@ -638,13 +638,13 @@ fn invoke_minibuf_source(
     match &entry.body {
         MinibufBody::NativeUniverse(f) => {
             let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
-            session.contribute(invocation_id, f(ctx), false);
+            session.contribute(invocation_id, f(ctx));
             None
         }
         MinibufBody::NativeDelegated(f) => {
             let (span, items) = f(input, cursor, ctx);
             let invocation_id = session.invoke(id, Invocation::minibuf(span));
-            session.contribute(invocation_id, items, false);
+            session.contribute(invocation_id, items);
             None
         }
         MinibufBody::Steel { proc, .. } => {

@@ -456,18 +456,18 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-undo-tree" buffers::buffer_undo_tree(pane: args::LivePane);
         cmd "buffer-live?" buffers::buffer_live(pane: args::ArgPane);
         cmd "pane-live?" buffers::pane_live(pane: args::ArgPane);
-        open "set-hook-triggers!" completion::set_hook_triggers(language: SteelVal, source: SteelVal, chars: SteelVal);
-        open "set-attachment-hook-triggers!" completion::set_attachment_hook_triggers(pane: args::LivePane, source: SteelVal, server: SteelVal, feature: SteelVal, chars: SteelVal);
+        open "set-hook-triggers!" completion::set_hook_triggers(language: SteelVal, source: args::SourceName, chars: SteelVal);
+        open "set-attachment-hook-triggers!" completion::set_attachment_hook_triggers(pane: args::LivePane, source: args::SourceName, server: SteelVal, feature: SteelVal, chars: SteelVal);
 
         // Decoration stores + diagnostics pull.
-        cmd "set-inlay-hints!" decorations::set_inlay_hints(pane: args::LivePane, source: SteelVal, hints: SteelVal);
-        open "register-sign-source!" decorations::register_sign_source(pane: args::LivePane, source: SteelVal, priority: SteelVal);
-        cmd "set-signs!" decorations::set_signs(pane: args::LivePane, source: SteelVal, signs: SteelVal);
-        cmd "set-virtual-lines!" decorations::set_virtual_lines(pane: args::LivePane, source: SteelVal, lines: SteelVal);
-        cmd "%set-eol-text!" => "set-eol-text!" decorations::set_eol_text(pane: args::LivePane, source: SteelVal, lines: SteelVal, hide_on_insert_line: SteelVal);
-        cmd "set-extra-highlights!" decorations::set_extra_highlights(pane: args::LivePane, source: SteelVal, spans: SteelVal);
-        cmd "set-line-backgrounds!" decorations::set_line_backgrounds(pane: args::LivePane, source: SteelVal, entries: SteelVal);
-        cmd "set-statusline-text!" decorations::set_statusline_text(pane: args::LivePane, source: SteelVal, text: SteelVal);
+        cmd "set-inlay-hints!" decorations::set_inlay_hints(pane: args::LivePane, source: args::SourceName, hints: SteelVal);
+        open "register-sign-source!" decorations::register_sign_source(pane: args::LivePane, source: args::SourceName, priority: SteelVal);
+        cmd "set-signs!" decorations::set_signs(pane: args::LivePane, source: args::SourceName, signs: SteelVal);
+        cmd "set-virtual-lines!" decorations::set_virtual_lines(pane: args::LivePane, source: args::SourceName, lines: SteelVal);
+        cmd "%set-eol-text!" => "set-eol-text!" decorations::set_eol_text(pane: args::LivePane, source: args::SourceName, lines: SteelVal, hide_on_insert_line: SteelVal);
+        cmd "set-extra-highlights!" decorations::set_extra_highlights(pane: args::LivePane, source: args::SourceName, spans: SteelVal);
+        cmd "set-line-backgrounds!" decorations::set_line_backgrounds(pane: args::LivePane, source: args::SourceName, entries: SteelVal);
+        cmd "set-statusline-text!" decorations::set_statusline_text(pane: args::LivePane, source: args::SourceName, text: SteelVal);
         cmd "%diagnostics-for-buffer" => "diagnostics-for-buffer" decorations::diagnostics_for_buffer(pane: args::ArgPane, severity: SteelVal, range: SteelVal);
         cmd "%diagnostic-counts" => "diagnostic-counts" decorations::diagnostic_counts(pane: args::ArgPane, severity: SteelVal);
 
@@ -489,13 +489,13 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Completion: sources register at config time; answers, the ranked
         // view, and accept/dismiss are command-time.
-        config "%register-completion-source!" => "register-completion-source!" completion::register_completion_source(name: String, proc: args::ScriptProc, target: SteelVal, match_kind: SteelVal, priority: SteelVal, resolve: SteelVal, token_chars: SteelVal, cancel: SteelVal);
+        config "%register-completion-source!" => "register-completion-source!" completion::register_completion_source(name: args::SourceName, proc: args::ScriptProc, target: SteelVal, match_kind: SteelVal, priority: SteelVal, resolve: SteelVal, token_chars: SteelVal, cancel: SteelVal);
         cmd "%completion-emit!" => "completion-emit!" completion::completion_emit(id: SteelVal, items: SteelVal, incomplete: SteelVal, more: SteelVal, span: SteelVal, prefix: SteelVal);
         cmd "completion-top" completion::completion_top(n: SteelVal);
         cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
         cmd "completion-dismiss!" completion::completion_dismiss();
-        open "set-completion-triggers!" completion::set_completion_triggers(language: SteelVal, source: SteelVal, chars: SteelVal);
-        open "set-attachment-completion-triggers!" completion::set_attachment_completion_triggers(pane: args::LivePane, source: SteelVal, server: SteelVal, feature: SteelVal, chars: SteelVal);
+        open "set-completion-triggers!" completion::set_completion_triggers(language: SteelVal, source: args::SourceName, chars: SteelVal);
+        open "set-attachment-completion-triggers!" completion::set_attachment_completion_triggers(pane: args::LivePane, source: args::SourceName, server: SteelVal, feature: SteelVal, chars: SteelVal);
 
         // Cursor-anchored popup widget.
         cmd "%show-popup!" => "show-popup!" ui::show_popup(pane: args::LivePane, text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);

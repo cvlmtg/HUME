@@ -17,7 +17,6 @@ fn steel_minibuf_entry(name: &str) -> MinibufSourceEntry {
     MinibufSourceEntry {
         name: name.into(),
         match_kind: MatchKind::Fuzzy,
-        priority: 0,
         body: MinibufBody::Steel {
             proc: hume_scripting::Callback::for_test(SteelVal::Void),
             cancel: None,

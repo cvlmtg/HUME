@@ -13,10 +13,33 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
         ed,
         tmp,
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-menu! pane (list "Extract function" "Inline variable" "Rename")
-               (lambda (idx) (log! 'info (to-string idx))))))"#,
+             (show-menu! pane (list (cons "Extract function" 'extract)
+                                    (cons "Inline variable" 'inline)
+                                    (cons "Rename" 'rename))
+               (lambda (choice) (log! 'info (to-string choice))))))"#,
     );
     type_cmd(ed, ":go");
+}
+
+#[test]
+fn show_menu_refuses_a_false_payload_and_opens_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-menu! pane (list (cons "No payload" #f)) (lambda (choice) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    assert!(
+        has_error(&ed, "item payload must not be #f"),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert!(ed.state.input.menu().is_none());
 }
 
 #[test]
@@ -27,7 +50,7 @@ fn show_menu_with_empty_items_raises_and_opens_nothing() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-menu! pane (list) (lambda (idx) (void)))))"#,
+             (show-menu! pane (list) (lambda (choice) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
     ed.settle();
@@ -43,7 +66,7 @@ fn show_menu_with_empty_items_raises_and_opens_nothing() {
 // ── Selection + confirm/cancel ────────────────────────────────────────────────
 
 #[test]
-fn select_second_item_calls_back_with_index_1() {
+fn select_second_item_calls_back_with_its_payload() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
@@ -53,7 +76,7 @@ fn select_second_item_calls_back_with_index_1() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "inline");
     assert!(
         ed.state.input.menu().is_none(),
         "menu must close after Enter"
@@ -87,7 +110,7 @@ fn selection_clamps_at_the_top() {
     ed.settle();
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
-        "0",
+        "extract",
         "clamped at the top"
     );
 }
@@ -106,7 +129,7 @@ fn selection_clamps_at_the_bottom() {
     ed.settle();
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
-        "2",
+        "rename",
         "clamped at the bottom, not wrapped"
     );
 }
@@ -120,7 +143,7 @@ fn arrow_keys_also_move_the_selection() {
     ed.feed_key(key_down());
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "inline");
 }
 
 // ── Stray key dismisses and still executes ───────────────────────────────────
@@ -166,7 +189,7 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     let token = host
         .show_menu(
             pane,
-            non_empty_strings(&["a", "b"]),
+            script_rows(&["a", "b"]),
             hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         )
         .unwrap()
@@ -218,7 +241,7 @@ fn show_menu_from_insert_warns_instead_of_opening() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        non_empty_strings(&["a"]),
+        script_rows(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );
     assert!(
@@ -257,7 +280,7 @@ fn show_menu_accepted_in_normal_mode() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        non_empty_strings(&["a"]),
+        script_rows(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );
     assert!(result.is_ok());
@@ -295,7 +318,7 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        non_empty_strings(&["a"]),
+        script_rows(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );
     assert!(
@@ -346,7 +369,7 @@ fn show_menu_opens_over_an_open_drawer() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        non_empty_strings(&["a"]),
+        script_rows(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );
 
@@ -378,7 +401,7 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_menu(
         pane,
-        non_empty_strings(&["old"]),
+        script_rows(&["old"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     )
     .unwrap();
@@ -388,7 +411,7 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        non_empty_strings(&["new-a", "new-b"]),
+        script_rows(&["new-a", "new-b"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );
 
@@ -424,8 +447,9 @@ fn selected_row_renders_with_the_menu_selected_scope() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-menu! pane (list "Extract function" "Inline variable")
-               (lambda (idx) (void)))))"#,
+             (show-menu! pane (list (cons "Extract function" 'extract)
+                                    (cons "Inline variable" 'inline))
+               (lambda (choice) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
 

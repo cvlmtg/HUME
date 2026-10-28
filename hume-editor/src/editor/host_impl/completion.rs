@@ -48,7 +48,6 @@ impl crate::editor::Editor {
                 .register_minibuf(MinibufSourceEntry {
                     name: name.clone().into(),
                     match_kind: reg.match_kind,
-                    priority: reg.priority,
                     body: MinibufBody::Steel {
                         proc: reg.proc,
                         cancel: reg.cancel,

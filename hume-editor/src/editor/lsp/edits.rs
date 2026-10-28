@@ -9,7 +9,7 @@
 //! it shares the edit-application path with `apply-workspace-edit!` and
 //! belongs next to it.
 
-use hume_core::{BufferId, OnUnsaved, PaneHandle};
+use hume_core::{BufferId, NonEmpty, OnUnsaved, PaneHandle};
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::apply_keeping_final_break;
 use hume_editing::text::BufferText;
@@ -28,7 +28,9 @@ use crate::editor::doc_ops;
 
 /// Shared precondition check for every edit entry point in this module: the
 /// buffer exists, is writable, and hasn't moved since the caller computed its
-/// positions against it.
+/// positions against it. A caller reading positions out of its edits checks
+/// this before reading them, so a stale edit is reported as stale rather than
+/// as a position the current text lacks.
 pub(in crate::editor) fn checked_buffer(
     state: &EditorState,
     bid: BufferId,
@@ -38,23 +40,11 @@ pub(in crate::editor) fn checked_buffer(
         return Err("no such buffer".to_string());
     };
     buf.check_text_change()?;
-    check_generation(buf, expect_gen)?;
-    Ok(buf)
-}
-
-/// Refuses edits computed against a generation of `buf` other than
-/// `expect_gen`. A caller reading positions out of the edits checks this
-/// before reading them, so a stale edit is reported as stale rather than as
-/// a position the current text lacks.
-pub(in crate::editor) fn check_generation(
-    buf: &Buffer,
-    expect_gen: Option<u64>,
-) -> Result<(), String> {
     match expect_gen {
         Some(expected) if buf.text().generation() != expected => {
             Err("buffer changed since these edits were computed".to_string())
         }
-        _ => Ok(()),
+        _ => Ok(buf),
     }
 }
 
@@ -76,14 +66,11 @@ pub(in crate::editor) fn check_generation(
 fn build_edit_changeset(
     state: &EditorState,
     bid: BufferId,
-    edits: &[(ExclusiveRange<WirePos>, &str)],
+    edits: &NonEmpty<(ExclusiveRange<WirePos>, &str)>,
     expect_gen: Option<u64>,
     encoding: PositionEncoding,
 ) -> Result<ChangeSet, String> {
     let buf = checked_buffer(state, bid, expect_gen)?;
-    if edits.is_empty() {
-        return Err("no edits given".to_string());
-    }
     let rope = buf.text().rope();
     let char_edits = edits
         .iter()
@@ -205,7 +192,7 @@ pub(in crate::editor) fn apply_text_edits(
     state: &mut EditorState,
     panes: &PanePool,
     requester: PaneHandle,
-    edits: &[(ExclusiveRange<WirePos>, &str)],
+    edits: &NonEmpty<(ExclusiveRange<WirePos>, &str)>,
     expect_gen: Option<u64>,
     encoding: PositionEncoding,
 ) -> Result<(), String> {
@@ -229,10 +216,8 @@ pub(in crate::editor) fn apply_text_edits(
 /// `rope_at` is the pre-accept snapshot and `cs_forward` is the accept
 /// edit's own changeset.
 ///
-/// Returns an empty `Vec` (not an error) when `edits` is empty, matching
-/// `apply-text-edits!`'s convention of erroring on an empty list only when
-/// the caller has no legitimate empty-response case; both callers here do
-/// (no `additionalTextEdits` at all is normal).
+/// Returns an empty `Vec` when `edits` is empty: an empty edit list changes
+/// nothing, as it does for `apply-text-edits!`.
 pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
     rope_at: &ropey::Rope,
     cs_forward: &ChangeSet,
@@ -271,7 +256,7 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
 /// [`build_edits_from_earlier_document`] or any other char-space source)
 /// against `requester`'s buffer's *current* text as one `ChangeSet`, through
 /// `requester`'s pane while that pane shows the buffer. A caller whose edits
-/// must match a generation checks it with [`check_generation`] before
+/// must match a generation checks it with [`checked_buffer`] before
 /// computing them. Validates overlap/reversed-range
 /// across the batch itself (via [`build_changeset_from_char_edits`])
 /// immediately before mutating.
@@ -338,6 +323,12 @@ pub(in crate::editor) fn apply_workspace_edit(
     encoding: PositionEncoding,
     expect_gen: Option<u64>,
 ) -> Result<WorkspaceEditSummary, String> {
+    let entries = hume_lsp::workspace_edit::file_edits(we)?;
+    if entries.is_empty() {
+        return Ok(WorkspaceEditSummary {
+            buffers_modified: 0,
+        });
+    }
     // Checked against `requester`'s buffer, the one the request was made
     // from, not any file the edit touches: "has it changed since," the same
     // staleness `apply-text-edits!`'s `#:expect-generation` guards. Per-file
@@ -346,7 +337,6 @@ pub(in crate::editor) fn apply_workspace_edit(
     if expect_gen.is_some() {
         checked_buffer(state, requester.buffer(), expect_gen)?;
     }
-    let entries = hume_lsp::workspace_edit::file_edits(we)?;
     let mut planned: Vec<(PaneHandle, ChangeSet)> = Vec::with_capacity(entries.len());
     for hume_lsp::workspace_edit::FileEdits {
         uri,
@@ -388,15 +378,12 @@ pub(in crate::editor) fn apply_workspace_edit(
             ));
         }
         let expect_gen = version.map(|v| v as u64);
-        let wire_edits: Vec<_> = edits
-            .iter()
-            .map(|e| {
-                (
-                    hume_lsp::position::from_lsp_range(&e.range),
-                    e.new_text.as_str(),
-                )
-            })
-            .collect();
+        let wire_edits = edits.map_ref(|e| {
+            (
+                hume_lsp::position::from_lsp_range(&e.range),
+                e.new_text.as_str(),
+            )
+        });
         let cs = build_edit_changeset(state, bid, &wire_edits, expect_gen, encoding)
             .map_err(|e| format!("{}: {e}", display()))?;
         planned.push((target, cs));

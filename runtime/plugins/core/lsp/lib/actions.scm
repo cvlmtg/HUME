@@ -91,9 +91,8 @@
                     (lsp/report-answer-errors! "code action" results)
                     (if (null? offered)
                         (log! 'info "No code actions")
-                        (show-menu! pane (map (lsp/action-row offered) offered)
-                          (lambda (idx)
-                            (when idx
-                              (let ((entry (list-ref offered idx)))
-                                (lsp/run-action pane (car entry) (cdr entry) gen)))))))))
+                        (show-menu! pane (lsp/payload-rows (lsp/action-row offered) offered)
+                          (lambda (entry)
+                            (when entry
+                              (lsp/run-action pane (car entry) (cdr entry) gen))))))))
             #:require-focus #t))))))
