@@ -30,7 +30,7 @@ use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use crate::process::child::{
-    JOB_STDOUT_CAP, STDERR_CAPTURE_CAP, read_bounded, read_capped, spawn_bridge,
+    STDERR_CAPTURE_CAP, STDOUT_CAPTURE_CAP, read_bounded, read_capped, spawn_bridge,
     spawn_bridge_waking, spawn_piped,
 };
 use crate::process::tracked::TrackedChild;
@@ -39,8 +39,8 @@ use crate::wake::WakeCallback;
 
 /// The complete output of a finished [`SpawnedJob`]: whole stdout as raw
 /// bytes, left to the caller to decode (never truncated: capped
-/// at `JOB_STDOUT_CAP`, but exceeding it fails the job rather than handing
-/// back a short prefix), whole stderr (capped at `STDERR_CAPTURE_CAP`;
+/// at `STDOUT_CAPTURE_CAP`, but exceeding it fails the job rather than handing
+/// back a short prefix), stderr (capped at `STDERR_CAPTURE_CAP`;
 /// diagnostic only, so truncation there is fine), and exit status (`None`
 /// on a stdout read failure/overflow or a failed stdin write, or if the
 /// capture thread's wait for the exit failed or the thread panicked before
@@ -85,7 +85,7 @@ pub struct SpawnedJob {
 /// Spawns `cmd` with `args` (direct argv, no shell) and piped stdio, with
 /// `input` written to its stdin, which then closes (at once when `input`
 /// is empty). One thread reads stderr to EOF (capped, lenient); a second
-/// reads stdout to EOF (capped at `JOB_STDOUT_CAP`, strict: a read error or
+/// reads stdout to EOF (capped at `STDOUT_CAPTURE_CAP`, strict: a read error or
 /// overflow fails the job), joins the first and the stdin writer, then
 /// sends the combined capture once and fires `wake`.
 pub fn spawn_job(
@@ -129,7 +129,7 @@ pub fn spawn_job(
     // panicking read still wakes the drain to observe the synthesized
     // result `try_take_result` produces on disconnect.
     spawn_bridge_waking(cmd, "hume-job", wake, move |_| {
-        let stdout_result = read_bounded(stdout, JOB_STDOUT_CAP);
+        let stdout_result = read_bounded(stdout, STDOUT_CAPTURE_CAP);
         // A panicked stderr thread degrades to empty stderr rather than
         // wedging this job forever. The exit status still carries the
         // failure, and stdout is what most callers actually want.

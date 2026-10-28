@@ -52,19 +52,20 @@ fn run_capture_child_shares_the_callers_process_group() {
     assert_in_callers_group(&output.stdout);
 }
 
-/// Guards the deadlock `run_capture`'s own doc comment documents: reading
-/// stdout to EOF, then waiting, then reading stderr blocks forever once a child fills its stderr
-/// pipe before exiting. `Command::output` drains both concurrently, so this
-/// must return well under any reasonable test timeout rather than hang.
+/// Guards the deadlock this module's doc describes: reading stdout to EOF,
+/// then waiting, then reading stderr blocks forever once a child fills its
+/// stderr pipe before exiting. Both pipes are drained concurrently, so this
+/// returns rather than hangs, with the first `STDERR_CAPTURE_CAP` bytes kept.
 #[test]
-fn run_capture_does_not_deadlock_on_large_stderr() {
+fn run_capture_drains_a_large_stderr_and_keeps_its_first_8_kib() {
     let out = run_capture(
         "sh",
         &["-c".to_string(), "yes | head -c 200000 1>&2".to_string()],
         Launch::with_process_path(Path::new(".")),
     )
     .expect("run_capture");
-    assert_eq!(out.stderr.len(), 200_000);
+    assert_eq!(out.stderr.len(), 8 * 1024);
+    assert!(out.status.success());
 }
 
 /// `run_capture`'s stdout counterpart to the stderr deadlock test above.
@@ -79,6 +80,26 @@ fn run_capture_captures_large_stdout_whole() {
     )
     .expect("run_capture");
     assert_eq!(out.stdout.len(), 200_000);
+}
+
+/// A program writing more stdout than the capture keeps fails the capture,
+/// naming the program, rather than handing back a prefix.
+#[test]
+fn run_capture_fails_past_the_stdout_cap() {
+    let captured = run_capture(
+        "sh",
+        &[
+            "-c".to_string(),
+            format!("head -c {} /dev/zero", 64 * 1024 * 1024 + 1),
+        ],
+        Launch::with_process_path(Path::new(".")),
+    );
+    let msg = match captured {
+        Ok(out) => panic!("captured {} bytes of stdout", out.stdout.len()),
+        Err(e) => e.to_string(),
+    };
+    assert!(msg.starts_with("sh: "), "{msg}");
+    assert!(msg.contains("output exceeded 67108864 bytes"), "{msg}");
 }
 
 /// `run_capture` must deny git a credential prompt: this call has no

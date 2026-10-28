@@ -56,8 +56,7 @@ pub(crate) fn apply_text_edits(
 /// decode using the handle's own tagged encoding (the server that produced
 /// it; see `JsonHandle::position_encoding`), so unlike `goto-location!`'s
 /// char-indexed shape a hand-built value raises: there is no server to have
-/// negotiated an encoding with. Returns the number of buffers modified; the
-/// `apply-workspace-edit!` Scheme wrapper reports that count.
+/// negotiated an encoding with. Returns the number of buffers modified.
 pub(crate) fn apply_workspace_edit(
     ctx: &mut SteelCtx,
     pane: PaneHandle,

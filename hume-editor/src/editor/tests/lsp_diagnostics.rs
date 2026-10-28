@@ -676,3 +676,49 @@ fn zero_width_diagnostic_on_minimal_buffer_is_widened_onto_the_newline() {
         "the widened diagnostic must also be visible to for_range, not just counts"
     );
 }
+
+// ── The diagnostics-for-buffer read cap ─────────────────────────────────────
+
+/// How many `:messages` traces say `diagnostics-for-buffer` cut a buffer's
+/// diagnostics.
+fn read_cap_traces(ed: &Editor) -> Vec<String> {
+    ed.state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace && e.text.contains("returns the first 1000"))
+        .map(|e| e.text.clone())
+        .collect()
+}
+
+/// A publish of `n` one-char diagnostics on line 0 of `uri`.
+fn publish_n(uri: &str, n: u32) -> lsp_types::PublishDiagnosticsParams {
+    let fixtures: Vec<DiagFixture> = (0..n).map(|_| ((0, 0), (0, 1), 1)).collect();
+    params_of(publish_diagnostics_notification(uri, &fixtures))
+}
+
+/// A buffer whose diagnostics pass the read cap is traced once per
+/// crossing: not again while it stays over, again after it drops back.
+#[test]
+fn passing_the_read_cap_is_traced_once_per_crossing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, sid, _bid, uri) = plain_rig(&tmp, "one two three\n");
+
+    rig.ed
+        .ingest_typed_publish_for_test(sid, publish_n(&uri, 1001));
+    let traces = read_cap_traces(&rig.ed);
+    assert_eq!(traces.len(), 1, "{traces:?}");
+    assert!(
+        traces[0].contains("main.rs has 1001 diagnostics"),
+        "{traces:?}"
+    );
+
+    rig.ed
+        .ingest_typed_publish_for_test(sid, publish_n(&uri, 1002));
+    assert_eq!(read_cap_traces(&rig.ed).len(), 1, "still over the cap");
+
+    rig.ed
+        .ingest_typed_publish_for_test(sid, publish_n(&uri, 10));
+    rig.ed
+        .ingest_typed_publish_for_test(sid, publish_n(&uri, 1001));
+    assert_eq!(read_cap_traces(&rig.ed).len(), 2, "a second crossing");
+}

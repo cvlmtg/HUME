@@ -134,6 +134,11 @@ impl DiagnosticsStore {
         self.store.buffers()
     }
 
+    /// How many diagnostics `bid` has, from every server, at any severity.
+    pub(in crate::editor) fn count(&self, bid: BufferId) -> usize {
+        self.store.for_buffer(bid).count()
+    }
+
     /// Counts `bid`'s diagnostics by severity; a severity below `floor`
     /// counts as none.
     pub(in crate::editor) fn counts(&self, bid: BufferId, floor: DiagSeverity) -> DiagnosticCounts {
@@ -509,9 +514,20 @@ impl EditorState {
             })
             .collect();
 
-        self.buffer_positions
-            .diagnostics
-            .replace(server_id, bid, stored);
+        let diagnostics = &mut self.buffer_positions.diagnostics;
+        let before = diagnostics.count(bid);
+        diagnostics.replace(server_id, bid, stored);
+        let after = diagnostics.count(bid);
+        if before <= DIAGNOSTICS_READ_CAP && after > DIAGNOSTICS_READ_CAP {
+            let name = self.buffers.get(bid).display_name();
+            self.report(
+                Severity::Trace,
+                format!(
+                    "lsp: {name} has {after} diagnostics; diagnostics-for-buffer returns the \
+                     first {DIAGNOSTICS_READ_CAP} by position"
+                ),
+            );
+        }
         true
     }
 
@@ -555,8 +571,14 @@ pub(in crate::editor) fn severity_floor(
     requested.unwrap_or(state.settings.lsp_diagnostics_min_severity)
 }
 
+/// How many diagnostics `diagnostics-for-buffer` returns at most: the first
+/// ones by position. Converting each to a Steel hash costs about 0.75 µs,
+/// and core:lsp pulls a buffer's diagnostics on every publish.
+/// [`EditorState::store_server_diagnostics`] traces when a buffer passes it.
+pub(in crate::editor) const DIAGNOSTICS_READ_CAP: usize = 1000;
+
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start-char . end-char))`:
-/// decoded, filtered, capped-at-1000 hashmaps. `start-char`/`end-char`
+/// decoded, filtered hashmaps, at most [`DIAGNOSTICS_READ_CAP`] of them. `start-char`/`end-char`
 /// are char offsets, *addressing* units that `goto-location!`'s `'char-offset`
 /// takes as they are. `start-char` is clamped onto the buffer's last
 /// character, so a diagnostic past the end starts on the final line break.
@@ -581,7 +603,6 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     floor: Option<DiagSeverity>,
     range: Option<(usize, usize)>,
 ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
-    const CAP: usize = 1000;
     let floor = severity_floor(state, floor);
     let Some(text) = state.buffers.try_get(bid).map(|b| b.text()) else {
         return Ok(Vec::new());
@@ -600,7 +621,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
         .buffer_positions
         .diagnostics
         .for_range(bid, range, floor)
-        .take(CAP)
+        .take(DIAGNOSTICS_READ_CAP)
         .map(|d| {
             // Clamped to the last char, not `len_chars()`: a server can
             // report a diagnostic anchored at end-of-file, and `len_chars()`

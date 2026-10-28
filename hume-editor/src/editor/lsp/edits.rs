@@ -9,7 +9,7 @@
 //! it shares the edit-application path with `apply-workspace-edit!` and
 //! belongs next to it.
 
-use hume_core::{BufferId, NonEmpty, OnUnsaved, PaneHandle};
+use hume_core::{BufferId, NonEmpty, OnUnsaved, PaneHandle, Severity};
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::apply_keeping_final_break;
 use hume_editing::text::BufferText;
@@ -304,7 +304,8 @@ fn resolve_or_open(
 /// `(apply-workspace-edit! edit)`: validates and builds every file's
 /// changeset first (opening unopened files as buffers along the way), and
 /// only commits any of them once every file has passed: a bad edit in file
-/// 3 of 5 must leave files 1 and 2 untouched.
+/// 3 of 5 must leave files 1 and 2 untouched. Reports how many buffers it
+/// changed, and nothing for an edit with nothing to apply.
 ///
 /// `encoding` is the caller's own resolve (`edit`'s tagged producing-server
 /// encoding) and shared by every file in `we`: one server produced the
@@ -392,6 +393,10 @@ pub(in crate::editor) fn apply_workspace_edit(
     for (target, cs) in planned {
         commit_changeset(state, target, cs)?;
     }
+    state.report(
+        Severity::Info,
+        format!("{buffers_modified} buffers modified — :wa writes all"),
+    );
     Ok(WorkspaceEditSummary { buffers_modified })
 }
 

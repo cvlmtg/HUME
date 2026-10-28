@@ -6,7 +6,7 @@
 //! module backs (`run-capture!`, `run-inline-output!`, `spawn-async!`,
 //! `picker-source-spawn!`) rather than Steel's `steel/process`, which reads
 //! stdout to EOF before stderr, so a child that fills its stderr pipe
-//! deadlocks; [`run_capture`]'s `Command::output` drains both.
+//! deadlocks; [`run_capture`] drains both at once.
 //!
 //! Stdio is captured ([`run_capture`], `grammar_build`) or inherited so the
 //! user sees live progress (`run_inline_output`).
@@ -132,9 +132,10 @@ pub fn run_inline_output(
 /// than racing the editor's own key reads on the terminal). Backs the
 /// `run-capture!` Steel builtin.
 ///
-/// Built on `Command::output`, which drains both pipes concurrently rather
-/// than one after the other (see this module's doc for the deadlock that
-/// closes). The child stays in the caller's process group, so a Ctrl-c
+/// Both pipes drain concurrently rather than one after the other (see this
+/// module's doc for the deadlock that closes), and keep what a job's
+/// capture keeps: stdout past `STDOUT_CAPTURE_CAP` fails the capture,
+/// stderr past `STDERR_CAPTURE_CAP` is cut. The child stays in the caller's process group, so a Ctrl-c
 /// during an `#:inline-output` command interrupts it as it does a
 /// [`run_inline_output`] child.
 pub fn run_capture(
@@ -168,12 +169,40 @@ pub fn grammar_build(
 }
 
 /// `command`'s output, stdout and stderr captured and stdin closed, for
-/// [`run_capture`] and [`grammar_build`].
+/// [`run_capture`] and [`grammar_build`]. Stderr is read on a thread of its
+/// own while stdout is read here, through the capped readers a job uses. A
+/// stdout past its cap fails the capture, naming the program, once the
+/// child has exited.
 fn capture(mut command: Command) -> io::Result<std::process::Output> {
-    command
+    let mut process = command
         .stdin(Stdio::null())
-        .output()
-        .map_err(|e| spawn_failed(&command, e))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| spawn_failed(&command, e))?;
+    let program = command.get_program().to_string_lossy().into_owned();
+    let stdout = process.stdout.take().expect("piped stdout");
+    let stderr = process.stderr.take().expect("piped stderr");
+    let stderr_reader = match spawn_bridge(&program, "hume-capture-stderr", move || {
+        child::read_capped(stderr, child::STDERR_CAPTURE_CAP)
+    }) {
+        Ok(reader) => reader,
+        Err(e) => {
+            let _ = process.kill();
+            let _ = process.wait();
+            return Err(e);
+        }
+    };
+    let stdout = child::read_bounded(stdout, child::STDOUT_CAPTURE_CAP);
+    // A panicked stderr thread degrades to empty stderr, as a job's does.
+    let stderr = stderr_reader.join().unwrap_or_default();
+    let status = process.wait()?;
+    let stdout = stdout.map_err(|e| io::Error::new(e.kind(), format!("{program}: {e}")))?;
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 /// `e`, from any step of starting `program` (the spawn itself or a thread

@@ -15,14 +15,16 @@ use crate::wake::{WakeCallback, spawn_waking};
 /// blocks writing to it) but discarded.
 pub(crate) const STDERR_CAPTURE_CAP: usize = 8 * 1024;
 
-/// Cap on captured job stdout ([`crate::process::job`]): large enough for any
-/// realistic command's legitimate output, small enough that a runaway
-/// child (`cat /dev/zero`, a multi-GB blob) can't grow the editor's memory
-/// without bound. Unlike [`STDERR_CAPTURE_CAP`], exceeding this fails the
-/// job outright ([`read_bounded`]) rather than silently keeping a prefix:
-/// stdout is the caller's data, and a truncated batch would be
-/// indistinguishable from an untruncated short one.
-pub(crate) const JOB_STDOUT_CAP: usize = 64 * 1024 * 1024;
+/// Cap on the stdout of every whole-output capture, a job's
+/// ([`crate::process::job`]) and `run-capture!`'s
+/// ([`crate::process::run_capture`]) alike: large enough for any realistic
+/// command's legitimate output, small enough that a runaway child
+/// (`cat /dev/zero`, a multi-GB blob) can't grow the editor's memory without
+/// bound. Unlike [`STDERR_CAPTURE_CAP`], exceeding this fails the capture
+/// outright ([`read_bounded`]) rather than keeping a prefix: stdout is the
+/// caller's data, and a truncated batch would be indistinguishable from an
+/// untruncated short one.
+pub(crate) const STDOUT_CAPTURE_CAP: usize = 64 * 1024 * 1024;
 
 /// Spawns `cmd` with `args` (direct argv, no shell) in its own process
 /// group, all three stdio streams piped, with `env` added to the inherited

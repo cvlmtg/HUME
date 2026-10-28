@@ -50,6 +50,7 @@
 - A `'minibuf` completion source raises for a nonzero `#:priority` and for `completion-emit!`'s `#:incomplete #t`, which never had an effect there: drop them.
 - `set-option!` and `set-buffer-option!` take a value only in the type `get-option` returns for that option, and raise for any other: write `4` for `"4"`, `#t` for `"true"`, `'("fish" "-c")` for `"fish -c"` for `shell`, and a sections hash for `statusline`. A boolean or a number for a text option such as `word-chars` raises instead of being stored as its spelling.
 - `declare-plugin!` raises for an entry declared twice instead of ignoring the second declaration: merge the two. Your own `declare-plugin!` for a plugin still replaces its `manifest.scm`.
+- `run-capture!` keeps the first 8 KiB of a command's stderr, and fails like a command that couldn't start when it writes more than 64 MiB to stdout, as `spawn-async!` does, instead of holding all of both in memory.
 - `declare-plugin!` raises for a command name already taken (a built-in, another plugin's command, or a command already defined) or listed twice, instead of skipping that name: rename it.
 - `register-hook!` and `register-lsp-notification-hook!` raise for a lambda that can't take the arguments its event passes, instead of failing each time the event fires: give the lambda one parameter per argument the hook lists.
 
@@ -76,6 +77,7 @@
 
 ### Fixes
 - `apply-text-edits!` does nothing for an empty edit list instead of raising, and `apply-workspace-edit!` leaves a file with no edits alone instead of opening it.
+- A language server's own workspace edit, such as one a code action asks for, shows how many buffers it changed, and an edit that changes nothing shows nothing.
 - `:lsp-install` refuses a server archive with a symbolic link that points outside the server's directory.
 - A failed `:lsp-install` removes what it had installed.
 - The Linux archive runs on glibc 2.28 and later: Ubuntu 20.04, Debian 10, RHEL 8 and newer.

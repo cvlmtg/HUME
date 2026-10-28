@@ -84,7 +84,7 @@ impl Editor {
     /// Fires the callback of every job that has completed since the last
     /// frame, with its process-result hash: `'exit` is `#f` for a
     /// signal-killed child, a status the OS never returned, or a stdout
-    /// read that failed or exceeded `JOB_STDOUT_CAP` (`'stderr` then names
+    /// read that failed or exceeded `STDOUT_CAPTURE_CAP` (`'stderr` then names
     /// the failure instead of carrying the child's own diagnostics). A
     /// listing's callback fires once per drain with news, with its latest
     /// names. Work that has reported its end stays in the map as

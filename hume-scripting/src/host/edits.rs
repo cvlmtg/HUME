@@ -67,8 +67,8 @@ pub trait EditHost {
     /// (`JsonHandle::position_encoding`); every position in `edit` is
     /// counted in it. A `WorkspaceEdit` can touch many files at once; each is
     /// edited through `pane`'s pane while that pane shows it and for no pane
-    /// otherwise, as `apply_text_edits` does. Returns the number of buffers
-    /// modified.
+    /// otherwise, as `apply_text_edits` does. Reports and returns the number
+    /// of buffers modified.
     ///
     /// `expect_gen`, like `apply_text_edits`'s own, is the *requesting*
     /// pane's buffer generation at the time the request that produced

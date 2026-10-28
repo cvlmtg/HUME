@@ -489,6 +489,14 @@ fn apply_workspace_edit_changes_shape() {
 }
 
 #[test]
+fn apply_workspace_edit_with_nothing_to_apply_reports_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = workspace_edit_editor(tmp.path(), serde_json::json!({"changes": {}}));
+    apply_wire_workspace_edit(&mut ed, tmp.path());
+    assert_eq!(ed.state.status_msg, None);
+}
+
+#[test]
 fn apply_workspace_edit_document_changes_shape() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("a.txt");
@@ -1421,6 +1429,32 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
         .find_by_path(&canonical)
         .expect("workspace/applyEdit must have opened the file as a buffer");
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "XYZdef\n");
+}
+
+#[test]
+fn server_initiated_apply_edit_reports_the_buffer_count() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("srv.txt");
+    std::fs::write(&file, "abcdef\n").unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+
+    let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
+    let params = serde_json::json!({
+        "edit": {
+            "changes": {
+                uri.as_str(): [{
+                    "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
+                    "newText": "XYZ",
+                }]
+            }
+        }
+    });
+    let result = apply_edit_request_response(&mut ed.state, &mut ed.view, &params, sid).unwrap();
+    assert_eq!(result["applied"], serde_json::json!(true));
+    insta::assert_snapshot!(ed.state.status_msg.as_deref().unwrap_or_default(), @"1 buffers modified — :wa writes all");
 }
 
 /// `workspace/applyEdit` opens files via `lsp::edits::resolve_or_open` →

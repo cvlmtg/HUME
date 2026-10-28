@@ -167,9 +167,7 @@
   (%edit-text! pane edits gen))
 
 (define (apply-workspace-edit! pane wsedit #:expect-generation [gen #f])
-  (let ((n (%apply-workspace-edit! pane wsedit gen)))
-    (log! 'info (to-string n " buffers modified — :wa writes all"))
-    n))
+  (%apply-workspace-edit! pane wsedit gen))
 
 (define (prompt! pane label on-confirm #:prefill [prefill ""])
   (%prompt! pane label prefill on-confirm))
