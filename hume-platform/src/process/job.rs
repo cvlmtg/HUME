@@ -29,10 +29,7 @@ use std::process::{ChildStdin, ExitStatus};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
-use crate::process::child::{
-    STDERR_CAPTURE_CAP, STDOUT_CAPTURE_CAP, read_bounded, read_capped, spawn_bridge,
-    spawn_bridge_waking, spawn_piped,
-};
+use crate::process::child::{OutputCapture, spawn_bridge, spawn_bridge_waking, spawn_piped};
 use crate::process::tracked::TrackedChild;
 use crate::process::{Launch, decode_lossy};
 use crate::wake::WakeCallback;
@@ -112,10 +109,7 @@ pub fn spawn_job(
 
     let writer = feed_stdin(cmd, stdin, input).map_err(failed)?;
 
-    let stderr_thread = spawn_bridge(cmd, "hume-job-stderr", move || {
-        read_capped(stderr, STDERR_CAPTURE_CAP)
-    })
-    .map_err(failed)?;
+    let capture = OutputCapture::start(cmd, stderr).map_err(failed)?;
 
     let job_child = child.clone();
     let job_cmd = cmd.to_string();
@@ -129,11 +123,9 @@ pub fn spawn_job(
     // panicking read still wakes the drain to observe the synthesized
     // result `try_take_result` produces on disconnect.
     spawn_bridge_waking(cmd, "hume-job", wake, move |_| {
-        let stdout_result = read_bounded(stdout, STDOUT_CAPTURE_CAP);
-        // A panicked stderr thread degrades to empty stderr rather than
-        // wedging this job forever. The exit status still carries the
-        // failure, and stdout is what most callers actually want.
-        let stderr_bytes = stderr_thread.join().unwrap_or_default();
+        let (stdout_result, stderr_bytes) = capture.finish(stdout, || {
+            job_child.reap();
+        });
         let status = job_child.wait_for_exit().ok();
         // Joined after the exit: a writer still blocked on a full pipe
         // is released by the child's death, never the other way round.

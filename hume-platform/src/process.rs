@@ -135,9 +135,9 @@ pub fn run_inline_output(
 /// Both pipes drain concurrently rather than one after the other (see this
 /// module's doc for the deadlock that closes), and keep what a job's
 /// capture keeps: stdout past `STDOUT_CAPTURE_CAP` fails the capture,
-/// stderr past `STDERR_CAPTURE_CAP` is cut. The child stays in the caller's process group, so a Ctrl-c
-/// during an `#:inline-output` command interrupts it as it does a
-/// [`run_inline_output`] child.
+/// stderr past `STDERR_CAPTURE_CAP` loses its middle. The child stays in
+/// the caller's process group, so a Ctrl-c during an `#:inline-output`
+/// command interrupts it as it does a [`run_inline_output`] child.
 pub fn run_capture(
     cmd: &str,
     args: &[String],
@@ -148,10 +148,11 @@ pub fn run_capture(
 
 /// Compile the tree-sitter grammar at `src` to a shared library at `out`
 /// by running the grammar compiler `tool` (see [`crate::dirs::Dirs::grammar_build`]),
-/// its output captured and stdin closed, as [`run_capture`] runs a program:
-/// the compiler writes only errors, which the caller reports. It stays in
-/// the caller's process group, so a Ctrl-c during an `#:inline-output`
-/// command interrupts it as it does a [`run_inline_output`] child.
+/// its output captured and stdin closed, as [`run_capture`] runs a program,
+/// stderr capped the same way: the compiler writes only errors, which the
+/// caller reports. It stays in the caller's process group, so a Ctrl-c
+/// during an `#:inline-output` command interrupts it as it does a
+/// [`run_inline_output`] child.
 pub fn grammar_build(
     tool: &Path,
     src: &Path,
@@ -169,10 +170,9 @@ pub fn grammar_build(
 }
 
 /// `command`'s output, stdout and stderr captured and stdin closed, for
-/// [`run_capture`] and [`grammar_build`]. Stderr is read on a thread of its
-/// own while stdout is read here, through the capped readers a job uses. A
-/// stdout past its cap fails the capture, naming the program, once the
-/// child has exited.
+/// [`run_capture`] and [`grammar_build`], read through the
+/// [`child::OutputCapture`] a job uses. A stdout past its cap fails the
+/// capture, naming the program, once the child has exited.
 fn capture(mut command: Command) -> io::Result<std::process::Output> {
     let mut process = command
         .stdin(Stdio::null())
@@ -183,19 +183,17 @@ fn capture(mut command: Command) -> io::Result<std::process::Output> {
     let program = command.get_program().to_string_lossy().into_owned();
     let stdout = process.stdout.take().expect("piped stdout");
     let stderr = process.stderr.take().expect("piped stderr");
-    let stderr_reader = match spawn_bridge(&program, "hume-capture-stderr", move || {
-        child::read_capped(stderr, child::STDERR_CAPTURE_CAP)
-    }) {
-        Ok(reader) => reader,
+    let capture = match child::OutputCapture::start(&program, stderr) {
+        Ok(capture) => capture,
         Err(e) => {
             let _ = process.kill();
             let _ = process.wait();
             return Err(e);
         }
     };
-    let stdout = child::read_bounded(stdout, child::STDOUT_CAPTURE_CAP);
-    // A panicked stderr thread degrades to empty stderr, as a job's does.
-    let stderr = stderr_reader.join().unwrap_or_default();
+    let (stdout, stderr) = capture.finish(stdout, || {
+        let _ = process.kill();
+    });
     let status = process.wait()?;
     let stdout = stdout.map_err(|e| io::Error::new(e.kind(), format!("{program}: {e}")))?;
     Ok(std::process::Output {

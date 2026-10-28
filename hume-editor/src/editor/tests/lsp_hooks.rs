@@ -4,7 +4,7 @@
 use hume_platform::dirs::Dirs;
 use std::path::Path;
 
-use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec};
+use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec, answering};
 use super::*;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
@@ -31,19 +31,13 @@ fn trigger_count(ed: &Editor, bid: BufferId) -> usize {
         .sum()
 }
 
-fn answering_initialize() -> RecordingLspBackend {
-    let (mut backend, _, _) = RecordingLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
-    backend
-}
-
 #[test]
 fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server) (call! "move-right" (focused-pane))))"#,
-        answering_initialize(),
+        answering(1),
     );
     let before = state(&rig.ed);
 
@@ -66,7 +60,7 @@ fn on_lsp_detach_fires_when_a_server_is_stopped() {
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-detach (lambda (pane server) (call! "move-right" (focused-pane))))"#,
-        answering_initialize(),
+        answering(1),
     );
     rig.ed.drain_lsp();
     rig.ed.settle();
@@ -99,7 +93,7 @@ fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (set-hook-triggers! (get-buffer-option pane "language") "test" '(#\.))))
            (register-hook! 'on-trigger-char (lambda (pane ch source) (call! "move-right" pane)))"#,
-        answering_initialize(),
+        answering(1),
     );
     rig.ed.drain_lsp();
     rig.ed.settle();
@@ -128,9 +122,7 @@ fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
 #[test]
 fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each_other() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut backend, _, _) = RecordingLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
-    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    let backend = answering(2);
     let mut rig = starting_rig(
         &tmp,
         r#"(register-lsp-server! "pylsp" #:command "pylsp")
@@ -213,7 +205,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
     let tmp = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&root.join("src/main.rs")).unwrap();
-    let mut backend = answering_initialize();
+    let mut backend = answering(1);
     // Two publishes for the same (server, uri) within one drain batch:
     // `drain_lsp` coalesces to the last one, but the hook must still fire
     // exactly once, not zero (dropped) or twice (one per publish).
@@ -436,7 +428,7 @@ fn set_attachment_hook_triggers_fires_for_that_buffer_only() {
              (when (equal? (get-buffer-option pane "language") "rust")
                (set-attachment-hook-triggers! pane "test" server 'diagnostics '(#\.)))))
            (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warning source)))"#,
-        answering_initialize(),
+        answering(1),
     );
     rig.ed.drain_lsp();
     rig.ed.settle();
@@ -464,7 +456,7 @@ fn set_attachment_hook_triggers_fires_for_that_buffer_only() {
 #[test]
 fn attachment_triggers_are_per_buffer_not_per_instance() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut rig = starting_rig(&tmp, "", answering_initialize());
+    let mut rig = starting_rig(&tmp, "", answering(1));
     rig.ed.drain_lsp();
     rig.ed.settle();
     let lib = rig.root.join("src/lib.rs");
@@ -486,7 +478,7 @@ fn attachment_triggers_are_per_buffer_not_per_instance() {
 #[test]
 fn attachment_triggers_for_an_unadvertised_feature_set_nothing() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut rig = starting_rig(&tmp, "", answering_initialize());
+    let mut rig = starting_rig(&tmp, "", answering(1));
     rig.ed.drain_lsp();
     rig.ed.settle();
 
@@ -502,7 +494,7 @@ fn attachment_triggers_for_an_unadvertised_feature_set_nothing() {
 #[test]
 fn a_listener_set_in_both_scopes_fires_once() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut rig = starting_rig(&tmp, "", answering_initialize());
+    let mut rig = starting_rig(&tmp, "", answering(1));
     rig.ed.drain_lsp();
     rig.ed.settle();
 
@@ -568,7 +560,7 @@ fn set_attachment_completion_triggers_fires_the_source_for_that_buffer_only() {
 #[test]
 fn an_attachment_completion_listener_naming_no_source_fires_nothing() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut rig = starting_rig(&tmp, "", answering_initialize());
+    let mut rig = starting_rig(&tmp, "", answering(1));
     rig.ed.drain_lsp();
     rig.ed.settle();
     let sid = rig.sid("rust-analyzer");
@@ -597,7 +589,7 @@ fn attachment_triggers_vanish_when_the_server_stops() {
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (set-attachment-hook-triggers! pane "test" server 'diagnostics '(#\.))))
            (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warning source)))"#,
-        answering_initialize(),
+        answering(1),
     );
     rig.ed.drain_lsp();
     rig.ed.settle();
@@ -659,7 +651,7 @@ fn reload_clears_attachment_triggers() {
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (set-attachment-hook-triggers! pane "test" server 'diagnostics '(#\.))))"#,
-        answering_initialize(),
+        answering(1),
     );
     rig.ed.drain_lsp();
     rig.ed.settle();

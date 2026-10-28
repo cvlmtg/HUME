@@ -29,7 +29,7 @@ mod mock_host {
             .register_command(cmd_def("dup"))
             .expect_err("second registration of the same name must be rejected");
         assert!(
-            err.contains("dup") && err.contains("conflicts with existing command"),
+            err.contains("command 'dup' is already defined by"),
             "unexpected message: {err}"
         );
         assert_eq!(
@@ -40,15 +40,18 @@ mod mock_host {
     }
 
     #[test]
-    fn register_command_overwrites_lazy_stub() {
+    fn register_command_overwrites_its_own_lazy_stub() {
         let mut mock = MockHost::new();
         let plugin = hume_scripting::attribution::PluginId::parse("core:test").unwrap();
-        mock.register_lazy_command("bar", &hume_scripting::attribution::EntryId::main(plugin))
+        let entry = hume_scripting::attribution::EntryId::main(plugin);
+        mock.register_lazy_commands(&entry, &["bar".into()], &[])
             .unwrap();
         assert!(mock.lazy_command_owner("bar").is_some());
 
-        mock.register_command(cmd_def("bar"))
-            .expect("defining over a Lazy stub must succeed");
+        let mut def = cmd_def("bar");
+        def.body.proc = hume_scripting::MappableProc::for_test_registered_in(entry);
+        mock.register_command(def)
+            .expect("the stub's own plugin body defines over it");
 
         assert!(
             mock.lazy_command_owner("bar").is_none(),

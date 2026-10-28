@@ -23,26 +23,31 @@ hume_core::named_enum! {
 pub struct PendingCompletionSource {
     pub name: String,
     pub proc: Callback,
-    pub target: CompletionSourceTarget,
+    pub target: PendingTarget,
     pub match_kind: MatchKind,
-    /// `#:priority`: ranks this source's items against other sources'.
-    /// `Buffer`-target only, like `resolve`; 0 for a `'minibuf` source.
-    pub priority: i64,
-    /// `#:resolve`: the source's own claim that its items are wire
-    /// `CompletionItem`s from the buffer's attached LSP server, so
-    /// `completionItem/resolve` may be sent for a selected or accepted one.
-    /// `Buffer`-target only; the builtin layer rejects `#t` on a `'minibuf`
-    /// source before this is ever constructed (see `builtins/completion.rs`'s
-    /// `register_completion_source`).
-    pub resolve: bool,
-    /// `#:token-chars`: characters that belong to this source's token on
-    /// top of the buffer's word characters. `Buffer`-target only, like
-    /// `resolve`; empty for a `'minibuf` source.
-    pub token_chars: String,
     /// `#:cancel`: called as `(cancel id)` when request `id` ends before
     /// its final answer landed, so the source can stop work nothing will
     /// read. Either target.
     pub cancel: Option<Callback>,
+}
+
+/// A [`PendingCompletionSource`]'s target, with the options only a
+/// `'buffer` source takes.
+#[derive(Debug)]
+pub enum PendingTarget {
+    Buffer {
+        /// `#:priority`: ranks this source's items against other sources'.
+        priority: i64,
+        /// `#:resolve`: the source's own claim that its items are wire
+        /// `CompletionItem`s from the buffer's attached LSP server, so
+        /// `completionItem/resolve` may be sent for a selected or accepted
+        /// one.
+        resolve: bool,
+        /// `#:token-chars`: characters that belong to this source's token on
+        /// top of the buffer's word characters.
+        token_chars: String,
+    },
+    Minibuf,
 }
 
 /// What a `'minibuf` source's answer says about the word it completes.

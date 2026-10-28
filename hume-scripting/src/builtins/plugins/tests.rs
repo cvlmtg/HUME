@@ -293,7 +293,7 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
     let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
-        .register_lazy_command("my-lazy-cmd", &id)
+        .register_lazy_commands(&id, &["my-lazy-cmd".into()], &[])
         .expect("stub claim must succeed on a fresh host");
 
     let result = host.eval_source(
@@ -335,7 +335,7 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
     let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
-        .register_lazy_typed_command("my-lazy-cmd", &id)
+        .register_lazy_commands(&id, &[], &["my-lazy-cmd".into()])
         .expect("stub claim must succeed on a fresh host");
 
     let result = host.eval_source(

@@ -5,10 +5,10 @@
 
 use super::*;
 
-// ── CommandHost::register_lazy_command — collision rejection ─────────────────
+// ── CommandHost::register_lazy_commands — collision rejection ────────────────
 
 /// When a lazy command's claimed name collides with an already-registered
-/// name, `CommandHost::register_lazy_command` must return `Err` and NOT
+/// name, `CommandHost::register_lazy_commands` must return `Err` and NOT
 /// register a `Lazy` stub for it.
 #[test]
 fn lazy_stub_collision_rejected_and_stub_not_registered() {
@@ -24,9 +24,10 @@ fn lazy_stub_collision_rejected_and_stub_not_registered() {
     // "move-right" is a native built-in guaranteed to be in the registry.
     let result = {
         let mut host = init_host!(ed);
-        host.commands().register_lazy_command(
-            "move-right",
+        host.commands().register_lazy_commands(
             &hume_scripting::attribution::EntryId::main(plugin.clone()),
+            &["move-right".into()],
+            &[],
         )
     };
 

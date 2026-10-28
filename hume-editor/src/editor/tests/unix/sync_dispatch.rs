@@ -40,7 +40,7 @@ fn lazy_command_first_dispatch_forwards_extend() {
     });
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);

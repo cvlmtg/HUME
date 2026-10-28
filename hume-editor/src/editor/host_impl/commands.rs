@@ -6,37 +6,17 @@ use crate::editor::registry::{
 };
 
 use super::EditorHostImpl;
-use hume_scripting::host::CommandHost;
-
-impl<'a> EditorHostImpl<'a> {
-    /// Shared guard behind `register_lazy_command`/`register_lazy_typed_command`:
-    /// both claim `name` in the same registry namespace and differ only in
-    /// what they insert on success. Any existing claim refuses it, one by
-    /// the same entry included.
-    fn claim_lazy_name(&self, name: &str) -> Result<(), String> {
-        if let Some(owner) = self.state.config.registry.lazy_owner(name) {
-            return Err(format!("'{name}' already claimed by lazy plugin '{owner}'"));
-        }
-        if self.state.config.registry.contains(name) {
-            return Err(format!("'{name}' conflicts with an existing command"));
-        }
-        Ok(())
-    }
-}
+use hume_scripting::CommandProc;
+use hume_scripting::host::{CommandHolder, CommandHost, check_lazy_claim};
 
 impl<'a> CommandHost for EditorHostImpl<'a> {
+    fn command_holder(&self, name: &str) -> Option<CommandHolder> {
+        self.state.config.registry.holder(name)
+    }
+
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
-        // `get_mappable` misses a name claimed by a typed command (it returns
-        // `None` for a `Command::Typed` entry, same as for a free name);
-        // `contains` is the kind-agnostic check needed to reject that case too.
-        let claimed_by_other = match self.state.config.registry.get_mappable(&def.name) {
-            Some(MappableCommand::Lazy { .. }) => false,
-            Some(_) => true,
-            None => self.state.config.registry.contains(&def.name),
-        };
-        if claimed_by_other {
-            return Err(format!("'{}' conflicts with existing command", def.name));
-        }
+        CommandProc::Mappable(def.body.proc.clone())
+            .check_define(&def.name, self.state.config.registry.holder(&def.name))?;
         self.state
             .config
             .registry
@@ -52,13 +32,8 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         &mut self,
         def: hume_scripting::SteelTypedCmdDef,
     ) -> Result<(), String> {
-        let claimed_by_other = match self.state.config.registry.get_typed(&def.name) {
-            Some(tc) => !matches!(tc.body, TypedBody::Lazy(_)),
-            None => self.state.config.registry.contains(&def.name),
-        };
-        if claimed_by_other {
-            return Err(format!("'{}' conflicts with existing command", def.name));
-        }
+        CommandProc::Typed(def.body.proc.clone())
+            .check_define(&def.name, self.state.config.registry.holder(&def.name))?;
         self.state
             .config
             .registry
@@ -87,36 +62,43 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             .unregister_registered_in(activation);
     }
 
-    fn register_lazy_command(
+    fn register_lazy_commands(
         &mut self,
-        name: &str,
         plugin: &hume_scripting::attribution::EntryId,
+        commands: &[String],
+        typed_commands: &[String],
     ) -> Result<(), String> {
-        self.claim_lazy_name(name)?;
-        self.state.config.registry.register(MappableCommand::Lazy {
-            name: name.to_owned().into(),
-            plugin: plugin.clone(),
-        })?;
-        Ok(())
-    }
-
-    fn register_lazy_typed_command(
-        &mut self,
-        name: &str,
-        plugin: &hume_scripting::attribution::EntryId,
-    ) -> Result<(), String> {
-        self.claim_lazy_name(name)?;
-        self.state.config.registry.register_typed(TypedCommand {
-            name: name.to_owned().into(),
-            // No doc for a not-yet-loaded stub, mirroring `MappableCommand::Lazy`,
-            // which carries no doc field at all (`MappableCommand::doc()`
-            // answers `""` for it too).
-            doc: std::borrow::Cow::Borrowed(""),
-            aliases: &[],
-            body: TypedBody::Lazy(plugin.clone()),
-            completer: None,
-            arg_expansion: ArgExpansion::Paths,
-        })?;
+        use hume_scripting::command_name::{check_mappable, check_typed};
+        let registry = &mut self.state.config.registry;
+        // Every name is checked before any is registered, so a refused
+        // declaration claims nothing.
+        for name in commands {
+            check_mappable(name)?;
+            check_lazy_claim(name, registry.holder(name))?;
+        }
+        for name in typed_commands {
+            check_typed(name)?;
+            check_lazy_claim(name, registry.holder(name))?;
+        }
+        for name in commands {
+            registry.register(MappableCommand::Lazy {
+                name: name.clone().into(),
+                plugin: plugin.clone(),
+            })?;
+        }
+        for name in typed_commands {
+            registry.register_typed(TypedCommand {
+                name: name.clone().into(),
+                // No doc for a not-yet-loaded stub, mirroring `MappableCommand::Lazy`,
+                // which carries no doc field at all (`MappableCommand::doc()`
+                // answers `""` for it too).
+                doc: std::borrow::Cow::Borrowed(""),
+                aliases: &[],
+                body: TypedBody::Lazy(plugin.clone()),
+                completer: None,
+                arg_expansion: ArgExpansion::Paths,
+            })?;
+        }
         Ok(())
     }
 

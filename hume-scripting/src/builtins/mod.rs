@@ -165,7 +165,7 @@ macro_rules! builtins {
 // contract, %finish-manifest-load! recording any error.
 //
 // define-typed-command!: the `:` counterpart of define-command!, sharing its
-// collision guard (commands::check_definable) and bookkeeping but registering
+// name rule (CommandProc::check_define) and bookkeeping but registering
 // a TypedBody::Steel entry. A name defined one way is never reachable the
 // other way. No #:repeatable: dot-repeat means nothing for a `:` command.
 //

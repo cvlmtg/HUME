@@ -375,8 +375,6 @@ fn mappable_commands_not_shadowed_by_typed() {
 fn dummy_typed(
     _ed: &mut crate::editor::Editor,
     _fp: crate::editor::commands::FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), crate::editor::error::CommandError> {
     Ok(())
 }
@@ -407,7 +405,7 @@ fn runtime_register_typed_and_lookup() {
         name: Cow::Owned("steel-typed-cmd".to_string()),
         doc: Cow::Borrowed("A dummy Steel typed command for testing."),
         aliases: &["stc"],
-        body: TypedBody::Native(dummy_typed),
+        body: TypedBody::Native(NativeTyped::Bare(dummy_typed)),
         completer: None,
         arg_expansion: ArgExpansion::Paths,
     })
@@ -434,7 +432,11 @@ fn register_typed_rejects_a_name_or_alias_the_colon_line_cannot_reach() {
         let mut reg = CommandRegistry::with_defaults();
         let before = reg.len();
         let err = reg
-            .register_typed(typed_cmd(name, aliases, TypedBody::Native(dummy_typed)))
+            .register_typed(typed_cmd(
+                name,
+                aliases,
+                TypedBody::Native(NativeTyped::Bare(dummy_typed)),
+            ))
             .expect_err(name);
         assert!(err.contains("'b7'"), "unexpected message: {err}");
         assert_eq!(reg.len(), before, "{name}: nothing may be registered");
@@ -484,8 +486,12 @@ fn lookups_ignore_case() {
     assert_eq!(reg.lazy_owner("PROBE"), Some(&plugin));
 
     let before = reg.len();
-    reg.register_typed(typed_cmd("Probe", &[], TypedBody::Native(dummy_typed)))
-        .expect("a valid typed command name");
+    reg.register_typed(typed_cmd(
+        "Probe",
+        &[],
+        TypedBody::Native(NativeTyped::Bare(dummy_typed)),
+    ))
+    .expect("a valid typed command name");
 
     assert_eq!(reg.len(), before, "`Probe` replaces the `probe` stub");
     assert_eq!(

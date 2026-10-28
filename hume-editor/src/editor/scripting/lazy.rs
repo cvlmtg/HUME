@@ -27,7 +27,7 @@ impl Editor {
                 self.tui.clone(),
                 self.kitty_enabled,
             );
-            host.activate_plugin_inline(plugin, init_budget, &mut ih, &self.builtin_cmd_names)
+            host.activate_plugin_inline(plugin, init_budget, &mut ih)
         };
         self.apply_script_result(result, "");
     }

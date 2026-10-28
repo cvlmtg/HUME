@@ -140,9 +140,6 @@ fn editor_fields_are_classified() {
             // preserved: :reload-config must re-evaluate the source
             // the session booted from, not the default init.scm
             config_source: _,
-            // config: overwritten wholesale by init_scripting from
-            // the fresh registry, every call including a reload's
-            builtin_cmd_names: _,
             parse_worker: _,                   // preserved
             parse_worker_disconnect_logged: _, // preserved
             // config: reset_config_state cancels only the Steel-thunk

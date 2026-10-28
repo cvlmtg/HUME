@@ -246,19 +246,17 @@ impl crate::host::CommandHost for ValidNameHost {
     fn unregister_commands_registered_in(&mut self, activation: &crate::attribution::EntryId) {
         self.inner.unregister_commands_registered_in(activation)
     }
-    fn register_lazy_command(
-        &mut self,
-        name: &str,
-        plugin: &crate::attribution::EntryId,
-    ) -> Result<(), String> {
-        self.inner.register_lazy_command(name, plugin)
+    fn command_holder(&self, name: &str) -> Option<crate::host::CommandHolder> {
+        self.inner.command_holder(name)
     }
-    fn register_lazy_typed_command(
+    fn register_lazy_commands(
         &mut self,
-        name: &str,
         plugin: &crate::attribution::EntryId,
+        commands: &[String],
+        typed_commands: &[String],
     ) -> Result<(), String> {
-        self.inner.register_lazy_typed_command(name, plugin)
+        self.inner
+            .register_lazy_commands(plugin, commands, typed_commands)
     }
     fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
         self.inner.lazy_command_owner(name)
@@ -342,19 +340,17 @@ impl crate::host::CommandHost for RegisterCapableHost {
     fn unregister_commands_registered_in(&mut self, activation: &crate::attribution::EntryId) {
         self.inner.unregister_commands_registered_in(activation)
     }
-    fn register_lazy_command(
-        &mut self,
-        name: &str,
-        plugin: &crate::attribution::EntryId,
-    ) -> Result<(), String> {
-        self.inner.register_lazy_command(name, plugin)
+    fn command_holder(&self, name: &str) -> Option<crate::host::CommandHolder> {
+        self.inner.command_holder(name)
     }
-    fn register_lazy_typed_command(
+    fn register_lazy_commands(
         &mut self,
-        name: &str,
         plugin: &crate::attribution::EntryId,
+        commands: &[String],
+        typed_commands: &[String],
     ) -> Result<(), String> {
-        self.inner.register_lazy_typed_command(name, plugin)
+        self.inner
+            .register_lazy_commands(plugin, commands, typed_commands)
     }
     fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
         self.inner.lazy_command_owner(name)

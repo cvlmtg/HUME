@@ -324,10 +324,7 @@ impl EditorEvent {
 
 /// Pairs each `EditorEvent` and `HeldEvent` variant with its Steel-facing
 /// name and the number of args its handlers get, once, and generates both
-/// `name` matches, `EVENT_NAMES` and `EVENT_SHAPES` from those lists. The
-/// alternative (a hand-written match plus a hand-written const array) is the
-/// exact kind of two-places-say-the-same-thing drift a test can catch but
-/// not prevent.
+/// `name` matches, `EVENT_NAMES` and `EVENT_SHAPES` from those lists.
 /// Still an explicit table of names (string literals, or a const for one
 /// the write path asks for without an event), not a PascalCase→kebab-case
 /// computation: writing each name out means a variant rename can never

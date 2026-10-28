@@ -91,7 +91,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     let bid = ed.focused_buffer_id();
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init");
     ed.state
@@ -135,7 +135,7 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
     let mut host = ScriptingHost::new(&Dirs::none());
     let effects = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init");
     ed.apply_script_effects(effects);
@@ -338,7 +338,7 @@ fn passive_load_registers_grammar_and_an_unknown_call_raises() {
     ));
     let effects = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
 
@@ -458,7 +458,7 @@ fn install_real_json_grammar_e2e() {
     });
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init");
     ed.state
@@ -1107,7 +1107,7 @@ fn runtime_register_grammar_with_a_bad_library_raises() {
     let mut ed = editor_from("-[a]>b\n");
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init");
     ed.scripting = Some(host);

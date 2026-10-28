@@ -48,8 +48,8 @@ fn settle(ed: &mut Editor) {
 }
 
 /// The messages stored for the rig's buffer, in buffer order.
-fn stored_messages(rig: &LspRig) -> Vec<String> {
-    crate::editor::lsp::diagnostics::diagnostics_for_buffer(&rig.ed.state, rig.bid, None, None)
+fn stored_messages(rig: &mut LspRig) -> Vec<String> {
+    crate::editor::lsp::diagnostics::diagnostics_for_buffer(&mut rig.ed.state, rig.bid, None, None)
         .unwrap()
         .into_iter()
         .map(|d| d.message)
@@ -70,7 +70,7 @@ fn server_that_never_pushed_is_pulled_on_attach() {
         rig.requests_to(sid, PULL),
         [serde_json::json!({"textDocument": {"uri": rig.uri()}})]
     );
-    assert_eq!(stored_messages(&rig), ["from pull"]);
+    assert_eq!(stored_messages(&mut rig), ["from pull"]);
 }
 
 fn type_insert(ed: &mut Editor, text: &str) {
@@ -102,7 +102,7 @@ fn an_edit_pulls_again_with_the_previous_result_id() {
             serde_json::json!({"textDocument": {"uri": uri}, "previousResultId": "r1"}),
         ]
     );
-    assert_eq!(stored_messages(&rig), ["second"]);
+    assert_eq!(stored_messages(&mut rig), ["second"]);
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn a_save_pulls_without_waiting_for_the_edit_debounce() {
     settle(&mut rig.ed);
 
     assert_eq!(rig.requests_to(sid, PULL).len(), 2);
-    assert_eq!(stored_messages(&rig), ["second"]);
+    assert_eq!(stored_messages(&mut rig), ["second"]);
 }
 
 #[test]
@@ -158,7 +158,7 @@ fn a_refresh_request_is_answered_and_pulls_again() {
         rig.requests_to(sid, PULL)[1]["previousResultId"],
         serde_json::json!("r1")
     );
-    assert_eq!(stored_messages(&rig), ["second"]);
+    assert_eq!(stored_messages(&mut rig), ["second"]);
 }
 
 fn excluding(feature: &str) -> String {
@@ -207,10 +207,10 @@ fn excluding_pull_diagnostics_sends_no_pull() {
 #[test]
 fn excluding_diagnostics_sends_no_pull() {
     let tmp = tempfile::tempdir().unwrap();
-    let rig = attached_to(&tmp, &excluding("diagnostics"), pull_capabilities());
+    let mut rig = attached_to(&tmp, &excluding("diagnostics"), pull_capabilities());
 
     assert!(rig.requests_to(rig.sid("rust-analyzer"), PULL).is_empty());
-    assert!(stored_messages(&rig).is_empty());
+    assert!(stored_messages(&mut rig).is_empty());
 }
 
 #[test]
@@ -223,7 +223,7 @@ fn restoring_a_pull_only_servers_diagnostics_pulls_again() {
     settle(&mut rig.ed);
 
     assert_eq!(rig.requests_to(sid, PULL).len(), 1);
-    assert_eq!(stored_messages(&rig), ["from pull"]);
+    assert_eq!(stored_messages(&mut rig), ["from pull"]);
 }
 
 #[test]
@@ -239,14 +239,14 @@ fn a_pull_after_a_filter_change_carries_no_previous_result_id() {
 
     rig.eval(&excluding("diagnostics"));
     settle(&mut rig.ed);
-    assert!(stored_messages(&rig).is_empty());
+    assert!(stored_messages(&mut rig).is_empty());
     rig.eval(r#"(set-language-servers! "rust" '("rust-analyzer"))"#);
     settle(&mut rig.ed);
 
     let pulls = rig.requests_to(sid, PULL);
     assert_eq!(pulls.len(), 2);
     assert_eq!(pulls[1].get("previousResultId"), None);
-    assert_eq!(stored_messages(&rig), ["first"]);
+    assert_eq!(stored_messages(&mut rig), ["first"]);
 }
 
 #[test]
@@ -284,7 +284,7 @@ fn a_save_with_no_edit_since_the_last_pull_pulls_again() {
     settle(&mut rig.ed);
 
     assert_eq!(rig.requests_to(sid, PULL).len(), 2);
-    assert_eq!(stored_messages(&rig), ["second"]);
+    assert_eq!(stored_messages(&mut rig), ["second"]);
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn a_pull_answer_that_lands_after_a_push_is_dropped() {
     settle(&mut rig.ed);
 
     assert_eq!(rig.requests_to(sid, PULL).len(), 2);
-    assert_eq!(stored_messages(&rig), ["pushed"]);
+    assert_eq!(stored_messages(&mut rig), ["pushed"]);
 }
 
 #[test]
@@ -360,7 +360,7 @@ fn an_unchanged_report_keeps_what_is_stored_and_moves_the_result_id() {
 
     type_insert(&mut rig.ed, "x");
     settle(&mut rig.ed);
-    assert_eq!(stored_messages(&rig), ["first"]);
+    assert_eq!(stored_messages(&mut rig), ["first"]);
 
     type_insert(&mut rig.ed, "y");
     settle(&mut rig.ed);
@@ -368,7 +368,7 @@ fn an_unchanged_report_keeps_what_is_stored_and_moves_the_result_id() {
         rig.requests_to(sid, PULL)[2]["previousResultId"],
         serde_json::json!("r2")
     );
-    assert_eq!(stored_messages(&rig), ["third"]);
+    assert_eq!(stored_messages(&mut rig), ["third"]);
 }
 
 #[test]
@@ -385,7 +385,7 @@ fn a_reload_from_disk_pulls_without_the_previous_result_id() {
     settle(&mut rig.ed);
     let sid = rig.sid("rust-analyzer");
     rig.ed.state.settings.lsp_diagnostics_pull_debounce_ms = 0;
-    assert_eq!(stored_messages(&rig), ["first"]);
+    assert_eq!(stored_messages(&mut rig), ["first"]);
 
     let path = rig
         .ed
@@ -434,7 +434,7 @@ fn a_config_reload_pulls_again_from_a_server_it_keeps() {
     let pulls = rig.requests_to(sid, PULL);
     assert_eq!(pulls.len(), 2);
     assert_eq!(pulls[1]["previousResultId"], serde_json::json!("r1"));
-    assert_eq!(stored_messages(&rig), ["second"]);
+    assert_eq!(stored_messages(&mut rig), ["second"]);
 }
 
 #[test]
@@ -447,11 +447,11 @@ fn a_failed_pull_is_asked_again_for_the_same_text() {
     let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
     settle(&mut rig.ed);
     let sid = rig.sid("rust-analyzer");
-    assert!(stored_messages(&rig).is_empty());
+    assert!(stored_messages(&mut rig).is_empty());
 
     rig.ed.state.lsp_pull_diagnostics(rig.bid);
     settle(&mut rig.ed);
 
     assert_eq!(rig.requests_to(sid, PULL).len(), 2);
-    assert_eq!(stored_messages(&rig), ["retried"]);
+    assert_eq!(stored_messages(&mut rig), ["retried"]);
 }

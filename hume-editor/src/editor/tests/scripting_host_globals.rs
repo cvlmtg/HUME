@@ -19,17 +19,12 @@ fn lsp_home_dir() -> std::path::PathBuf {
 /// reaches just before evaluating the user's `init.scm`: native command names
 /// registered, then `prelude.scm`, `shells.scm`, `languages.scm` and `grammars.scm`
 /// evaluated in production order. With no user config, `host_global_names()`
-/// is HUME's shipped surface. Also returns the command-registry names, for
-/// callers that evaluate more `.scm` with production's `builtin_names`.
+/// is HUME's shipped surface.
 ///
 /// `grammars.scm` calls `(runtime-dir)`, and the crate-dir cwd under
 /// `cargo test` defeats the cwd-relative fallback, so the host is given the
 /// real runtime directory explicitly.
-fn host_and_editor_after_runtime_layers() -> (
-    ScriptingHost,
-    Editor,
-    hume_scripting::command_name::CommandNameSet,
-) {
+fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor) {
     let runtime_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root")
@@ -42,19 +37,16 @@ fn host_and_editor_after_runtime_layers() -> (
     let native_names: Vec<&str> = ed.state.config.registry.native_mappable_names().collect();
     host.register_command_names(&native_names);
 
-    let builtin_names: hume_scripting::command_name::CommandNameSet =
-        ed.state.config.registry.names().collect();
-
     for rel in ["prelude.scm", "shells.scm", "languages.scm", "grammars.scm"] {
         let path = runtime_root.join("scheme").join(rel);
         let effects = {
             let mut ih = init_host!(ed);
-            host.eval_init(&path, 10_000, &mut ih, builtin_names.clone())
+            host.eval_init(&path, 10_000, &mut ih)
                 .unwrap_or_else(|e| panic!("evaluating runtime/scheme/{rel}: {}", e.message))
         };
         ed.apply_script_effects(effects);
     }
-    (host, ed, builtin_names)
+    (host, ed)
 }
 
 /// Renders `hume-globals.scm`'s exact expected content from `names`. Panics
@@ -160,7 +152,7 @@ fn hume_globals_scm_matches_generated_host_names() {
 /// would fail.
 #[test]
 fn steel_server_plugin_registers_its_server_with_generated_globals_env() {
-    let (mut host, mut ed, builtin_names) = host_and_editor_after_runtime_layers();
+    let (mut host, mut ed) = host_and_editor_after_runtime_layers();
     let runtime_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root")
@@ -169,7 +161,7 @@ fn steel_server_plugin_registers_its_server_with_generated_globals_env() {
     let plugin_path = runtime_root.join("plugins/core/steel-server/plugin.scm");
     let effects = {
         let mut ih = init_host!(ed);
-        host.eval_init(&plugin_path, 10_000, &mut ih, builtin_names.clone())
+        host.eval_init(&plugin_path, 10_000, &mut ih)
             .unwrap_or_else(|e| panic!("evaluating plugin.scm: {}", e.message))
     };
     ed.apply_script_effects(effects);
@@ -241,7 +233,7 @@ fn steel_server_plugin_registers_its_server_with_generated_globals_env() {
 fn bundled_language_data_detects_by_path_and_dotted_extension() {
     use hume_treesitter::registry::{DetectPaths, detect_language};
 
-    let (_host, ed, _) = host_and_editor_after_runtime_layers();
+    let (_host, ed) = host_and_editor_after_runtime_layers();
     let languages = &ed.state.config.languages;
     let detect = |path: &str| {
         let path = hume_platform::path::AbsolutePath::rooted(path);
@@ -265,7 +257,7 @@ fn bundled_language_data_detects_by_path_and_dotted_extension() {
 fn bundled_language_data_detects_versioned_interpreters() {
     use hume_treesitter::registry::detect_language;
 
-    let (_host, ed, _) = host_and_editor_after_runtime_layers();
+    let (_host, ed) = host_and_editor_after_runtime_layers();
     let languages = &ed.state.config.languages;
     let detect = |line: &str| {
         detect_language(None, &ropey::Rope::from_str(line), languages)
@@ -281,14 +273,14 @@ fn bundled_language_data_detects_versioned_interpreters() {
 /// resolve to it, and the language keeps the bundled extensions.
 #[test]
 fn steel_server_plugin_gives_scheme_its_root_and_server_list() {
-    let (mut host, mut ed, builtin_names) = host_and_editor_after_runtime_layers();
+    let (mut host, mut ed) = host_and_editor_after_runtime_layers();
     let plugin_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root")
         .join("runtime/plugins/core/steel-server/plugin.scm");
     let effects = {
         let mut ih = init_host!(ed);
-        host.eval_init(&plugin_path, 10_000, &mut ih, builtin_names)
+        host.eval_init(&plugin_path, 10_000, &mut ih)
             .unwrap_or_else(|e| panic!("evaluating plugin.scm: {}", e.message))
     };
     ed.apply_script_effects(effects);

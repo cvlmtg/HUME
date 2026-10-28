@@ -75,9 +75,9 @@ pub struct SteelTypedCmdDef {
 /// there is no enforcement here beyond the absent keyword).
 #[derive(Clone, Debug)]
 pub struct SteelTypedCmdBody {
-    /// Number of required positional parameters the lambda accepts (0, 1, or
-    /// 2: `(arg)`/`(arg force)`). Introspected once at definition time from
-    /// the closure's arity.
+    /// Number of required positional parameters the lambda accepts, at most
+    /// 3: `(pane arg force)`, or a prefix of it. Introspected once at
+    /// definition time from the closure's arity.
     pub arity: u16,
     /// `true` if the lambda accepts a rest parameter (variadic).
     pub is_variadic: bool,

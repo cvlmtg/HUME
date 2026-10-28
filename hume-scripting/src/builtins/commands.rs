@@ -27,44 +27,6 @@ use hume_core::{CommandArg, Count};
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// Shared guards behind `define-command!` and `define-typed-command!`: name
-/// syntax, then [`check_name_free`].
-fn check_definable(ctx: &mut SteelCtx, name: &str) -> Result<(), SteelErr> {
-    crate::command_name::check_quotable(name).map_err(generic_err)?;
-    check_name_free(ctx, name)
-}
-
-/// Raises unless `name` is free for the running code to claim: not a
-/// built-in, not defined, and not another lazy entry's activation command.
-/// `define-command!`, `define-typed-command!` and `declare-plugin!` share
-/// it. A mappable and a typed command share one Steel-side proc namespace
-/// just as they share one namespace in the editor's `CommandRegistry`.
-pub(crate) fn check_name_free(ctx: &mut SteelCtx, name: &str) -> Result<(), SteelErr> {
-    if ctx.builtin_cmd_names.contains(name) {
-        steel::stop!(Generic =>
-            "'{}' conflicts with a built-in command and cannot be redefined", name);
-    }
-    // Guard against true re-definition, mappable or typed. A lazy stub has no
-    // proc, so a plugin defining its own activation command passes here.
-    if let Some(defined) = ctx.host.commands().defined_command(name) {
-        steel::stop!(Generic =>
-            "command '{}' is already defined by '{}'", name, defined.owner());
-    }
-    // Guard against stealing a lazy plugin's activation command. A lazy plugin
-    // can still define its own activation command during its own body (the
-    // stub stays registered until unregister_lazy_stubs_of runs at the end of
-    // finish_lazy_activation), so a definition made inside that body passes.
-    if let Some(claimant) = ctx.host.commands().lazy_command_owner(name) {
-        let is_self = ctx.activation().as_deref() == Some(&claimant);
-        if !is_self {
-            steel::stop!(Generic =>
-                "command '{}' is already claimed as an activation command by lazy plugin '{}'",
-                name, claimant);
-        }
-    }
-    Ok(())
-}
-
 /// `(%define-command! name doc proc repeatable inline-output)`
 ///
 /// Native primitive behind the `(define-command! …)` Steel wrapper.
@@ -84,11 +46,9 @@ pub(crate) fn check_name_free(ctx: &mut SteelCtx, name: &str) -> Result<(), Stee
 /// - Variadic lambdas receive all three.
 ///
 /// Raises a Steel error if:
-/// - `name` conflicts with a core built-in command.
-/// - The same name, in any case, is already defined by another plugin or in
-///   init.scm.
-/// - The host refuses `name`, as the editor does one that is not lowercase
-///   ([`crate::command_name::check_mappable`]).
+/// - The host refuses `name`: one already taken, in any case
+///   ([`crate::CommandProc::check_define`]), or, as the editor does, one that
+///   is not lowercase ([`crate::command_name::check_mappable`]).
 /// - Called from a command body (only valid during init.scm or plugin load).
 pub(crate) fn define_command(
     ctx: &mut SteelCtx,
@@ -103,7 +63,7 @@ pub(crate) fn define_command(
             "'#:repeatable #t' and '#:inline-output #t' are mutually exclusive: \
              shell-out commands must not participate in dot-repeat");
     }
-    check_definable(ctx, &name)?;
+    crate::command_name::check_quotable(&name).map_err(generic_err)?;
     let proc = super::args::callable_arg(proc, "third arg (proc)")?;
     let (arity, is_variadic) = super::args::command_shape(proc.value());
     let proc = MappableProc::new(proc, std::rc::Rc::clone(ctx.owner()), ctx.activation());
@@ -151,7 +111,7 @@ pub(crate) fn define_typed_command(
     inline_output: bool,
     completer: SteelVal,
 ) -> SteelResult {
-    check_definable(ctx, &name)?;
+    crate::command_name::check_quotable(&name).map_err(generic_err)?;
     let proc = super::args::callable_arg(proc, "third arg (proc)")?;
     let completer = super::args::optional_string_arg(completer, "#:complete")?;
     let (arity, is_variadic) = super::args::command_shape(proc.value());

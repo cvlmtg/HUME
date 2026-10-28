@@ -7,7 +7,7 @@ use crate::editor::completion::{
 use hume_core::{AnswerEnd, HostToken, Severity};
 
 use super::EditorHostImpl;
-use hume_scripting::host::{self, CompletionHost, EmittedWord};
+use hume_scripting::host::{CompletionHost, EmittedWord};
 
 impl crate::editor::Editor {
     /// Applies a queued `Effect::RegisterCompletionSource`: a Steel
@@ -28,20 +28,24 @@ impl crate::editor::Editor {
     ) {
         let name = reg.name;
         let outcome = match reg.target {
-            host::CompletionSourceTarget::Buffer => self
+            hume_scripting::PendingTarget::Buffer {
+                priority,
+                resolve,
+                token_chars,
+            } => self
                 .state
                 .config
                 .completion_sources
                 .register_buffer(BufferSourceEntry {
                     name: name.clone().into(),
                     match_kind: reg.match_kind,
-                    priority: reg.priority,
+                    priority,
                     proc: reg.proc,
-                    resolve: reg.resolve,
+                    resolve,
                     cancel: reg.cancel,
-                    token_chars: reg.token_chars.into(),
+                    token_chars: token_chars.into(),
                 }),
-            host::CompletionSourceTarget::Minibuf => self
+            hume_scripting::PendingTarget::Minibuf => self
                 .state
                 .config
                 .completion_sources

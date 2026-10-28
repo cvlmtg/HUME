@@ -16,7 +16,7 @@ use hume_scripting::host::DiagnosticCounts;
 #[cfg(test)]
 use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::editor::{Editor, EditorState};
 use hume_decorations::{Anchored, RangeAnchored, SourceStore};
@@ -74,6 +74,10 @@ impl RangeAnchored for StoredDiag {
 #[derive(Default)]
 pub(in crate::editor) struct DiagnosticsStore {
     store: SourceStore<ServerId, StoredDiag>,
+    /// Each buffer and floor a `diagnostics-for-buffer` read found past
+    /// [`DIAGNOSTICS_READ_CAP`], until a whole-buffer read at that floor
+    /// finds it under.
+    over_cap: FxHashSet<(BufferId, DiagSeverity)>,
 }
 
 impl DiagnosticsStore {
@@ -120,6 +124,7 @@ impl DiagnosticsStore {
     /// was actually removed, so a reload caller only fires
     /// `OnDiagnosticsChanged` when the display actually changes.
     pub(in crate::editor) fn remove_buffer(&mut self, bid: BufferId) -> bool {
+        self.over_cap.retain(|(over, _)| *over != bid);
         self.store.remove_buffer(bid)
     }
 
@@ -134,9 +139,26 @@ impl DiagnosticsStore {
         self.store.buffers()
     }
 
-    /// How many diagnostics `bid` has, from every server, at any severity.
-    pub(in crate::editor) fn count(&self, bid: BufferId) -> usize {
-        self.store.for_buffer(bid).count()
+    /// Notes that a read of `bid` at `floor` matched `matched` diagnostics,
+    /// over the whole buffer when `whole`. `true` for the first read past
+    /// [`DIAGNOSTICS_READ_CAP`] since a whole-buffer read at `floor` found
+    /// `bid` under it. A ranged read under the cap says nothing about the
+    /// rest of the buffer.
+    fn note_read(
+        &mut self,
+        bid: BufferId,
+        floor: DiagSeverity,
+        matched: usize,
+        whole: bool,
+    ) -> bool {
+        if matched > DIAGNOSTICS_READ_CAP {
+            self.over_cap.insert((bid, floor))
+        } else {
+            if whole {
+                self.over_cap.remove(&(bid, floor));
+            }
+            false
+        }
     }
 
     /// Counts `bid`'s diagnostics by severity; a severity below `floor`
@@ -164,7 +186,7 @@ impl DiagnosticsStore {
         bid: BufferId,
         range: ExclusiveRange<CharOffset>,
         floor: DiagSeverity,
-    ) -> impl Iterator<Item = &StoredDiag> {
+    ) -> impl ExactSizeIterator<Item = &StoredDiag> {
         let mut out: Vec<&StoredDiag> = self.for_range_unsorted(bid, range, floor).collect();
         out.sort_by_key(|d| d.start);
         out.into_iter()
@@ -514,20 +536,9 @@ impl EditorState {
             })
             .collect();
 
-        let diagnostics = &mut self.buffer_positions.diagnostics;
-        let before = diagnostics.count(bid);
-        diagnostics.replace(server_id, bid, stored);
-        let after = diagnostics.count(bid);
-        if before <= DIAGNOSTICS_READ_CAP && after > DIAGNOSTICS_READ_CAP {
-            let name = self.buffers.get(bid).display_name();
-            self.report(
-                Severity::Trace,
-                format!(
-                    "lsp: {name} has {after} diagnostics; diagnostics-for-buffer returns the \
-                     first {DIAGNOSTICS_READ_CAP} by position"
-                ),
-            );
-        }
+        self.buffer_positions
+            .diagnostics
+            .replace(server_id, bid, stored);
         true
     }
 
@@ -574,13 +585,14 @@ pub(in crate::editor) fn severity_floor(
 /// How many diagnostics `diagnostics-for-buffer` returns at most: the first
 /// ones by position. Converting each to a Steel hash costs about 0.75 µs,
 /// and core:lsp pulls a buffer's diagnostics on every publish.
-/// [`EditorState::store_server_diagnostics`] traces when a buffer passes it.
+/// [`diagnostics_for_buffer`] traces a read it cuts, once until a
+/// whole-buffer read at that floor finds the buffer under it again.
 pub(in crate::editor) const DIAGNOSTICS_READ_CAP: usize = 1000;
 
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start-char . end-char))`:
-/// decoded, filtered hashmaps, at most [`DIAGNOSTICS_READ_CAP`] of them. `start-char`/`end-char`
-/// are char offsets, *addressing* units that `goto-location!`'s `'char-offset`
-/// takes as they are. `start-char` is clamped onto the buffer's last
+/// decoded, filtered hashmaps, at most [`DIAGNOSTICS_READ_CAP`] of them.
+/// `start-char`/`end-char` are char offsets, *addressing* units that
+/// `goto-location!`'s `'char-offset` takes as they are. `start-char` is clamped onto the buffer's last
 /// character, so a diagnostic past the end starts on the final line break.
 /// `start-line` is
 /// the line of `start-char` and `grapheme-col`
@@ -598,12 +610,13 @@ pub(in crate::editor) const DIAGNOSTICS_READ_CAP: usize = 1000;
 ///
 /// With no `#:severity`, the floor is [`severity_floor`]'s default.
 pub(in crate::editor) fn diagnostics_for_buffer(
-    state: &EditorState,
+    state: &mut EditorState,
     bid: BufferId,
     floor: Option<DiagSeverity>,
     range: Option<(usize, usize)>,
 ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
     let floor = severity_floor(state, floor);
+    let whole = range.is_none();
     let Some(text) = state.buffers.try_get(bid).map(|b| b.text()) else {
         return Ok(Vec::new());
     };
@@ -617,10 +630,12 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             .map_err(|e| format!("#:range {e}"))?,
     };
 
-    let entries = state
+    let matched = state
         .buffer_positions
         .diagnostics
-        .for_range(bid, range, floor)
+        .for_range(bid, range, floor);
+    let count = matched.len();
+    let entries = matched
         .take(DIAGNOSTICS_READ_CAP)
         .map(|d| {
             // Clamped to the last char, not `len_chars()`: a server can
@@ -660,6 +675,21 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             }
         })
         .collect();
+    if state
+        .buffer_positions
+        .diagnostics
+        .note_read(bid, floor, count, whole)
+    {
+        let name = state.buffers.get(bid).display_name();
+        state.report(
+            Severity::Trace,
+            format!(
+                "lsp: {name}: diagnostics-for-buffer matched {count} diagnostics at {} or above \
+                 and returns the first {DIAGNOSTICS_READ_CAP} by position",
+                floor.name()
+            ),
+        );
+    }
     Ok(entries)
 }
 

@@ -4,7 +4,7 @@ Command mode is where HUME reaches commands that aren't bound to a key. Press `:
 
 Every command in this manual is one of two kinds, and each is reachable only its own way:
 
-- **Typed commands**: everything on this page. Reached only from the command mode prompt, take a text argument and an optional `!`.
+- **Typed commands**: everything on this page. Reached only from the command mode prompt. Each takes a text argument, a `!`, both or neither, as its entry shows, and refuses one it doesn't take.
 - **Editor commands**: everything in the [Builtin Commands](builtin-commands.md) reference. Reached only from a key or a plugin (including your `init.scm`), never by name at the command mode prompt.
 
 ::: info

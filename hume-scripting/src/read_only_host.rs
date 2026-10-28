@@ -12,8 +12,8 @@ use hume_rope::offset::ExclusiveRange;
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, EventShape,
-    LanguageHost, OptionValue, SelectionInfo, SettingsHost, StoredLanguage, UndoNode,
+    BufferHost, CommandHolder, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost,
+    EventShape, LanguageHost, OptionValue, SelectionInfo, SettingsHost, StoredLanguage, UndoNode,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -135,15 +135,16 @@ impl CommandHost for ReadOnlyHost<'_> {
             .commands()
             .is_valid_register_name(ch)
     }
-    fn register_lazy_command(&mut self, _name: &str, _plugin: &EntryId) -> Result<(), String> {
-        Err(self.refuse("register_lazy_command"))
+    fn command_holder(&self, name: &str) -> Option<CommandHolder> {
+        self.inner.borrow_mut().commands().command_holder(name)
     }
-    fn register_lazy_typed_command(
+    fn register_lazy_commands(
         &mut self,
-        _name: &str,
         _plugin: &EntryId,
+        _commands: &[String],
+        _typed_commands: &[String],
     ) -> Result<(), String> {
-        Err(self.refuse("register_lazy_typed_command"))
+        Err(self.refuse("register_lazy_commands"))
     }
     fn lazy_command_owner(&self, name: &str) -> Option<EntryId> {
         self.inner.borrow_mut().commands().lazy_command_owner(name)

@@ -397,10 +397,6 @@ fn every_source_name_refuses_an_empty_name_through_real_registration() {
             r#"(set-attachment-completion-triggers! (focused-pane) {src} "srv" 'completion (list))"#,
         ),
     ];
-    const INIT_PROBES: &[(&str, &str)] = &[(
-        "register-completion-source!",
-        "(register-completion-source! {src} (lambda (req) (void)) #:target 'buffer)",
-    )];
     let refused = |name: &str, expr: &str, err: &str| {
         assert!(
             err.contains("source name must not be empty") && err.contains(name),
@@ -408,28 +404,16 @@ fn every_source_name_refuses_an_empty_name_through_real_registration() {
         );
     };
     for src in [r#""""#, r#""  ""#] {
-        for (i, (name, template)) in COMMAND_PROBES.iter().enumerate() {
+        for (name, template) in COMMAND_PROBES {
             let expr = template.replace("{src}", src);
-            let mut host = crate::ScriptingHost::new(&Dirs::none());
-            let mut store = crate::null_host::CommandStoreHost::default();
-            let cmd_name = format!("probe-{i}");
-            host.eval_source(
-                &format!(r#"(define-command! "{cmd_name}" "" (lambda () {expr}))"#),
-                &mut store,
-            )
-            .unwrap_or_else(|e| panic!("defining the probe for {name} must not error: {e}"));
-            let err = host
-                .call_steel_cmd_by_name(&cmd_name, vec![], &mut store)
-                .expect_err(&expr);
+            let err = call_probe(&expr).expect_err(&expr);
             refused(name, &expr, &err.message);
         }
-        for (name, template) in INIT_PROBES {
-            let expr = template.replace("{src}", src);
-            let mut host = crate::ScriptingHost::new(&Dirs::none());
-            let err = host
-                .eval_source(&expr, &mut crate::null_host::NullHost)
-                .expect_err(&expr);
-            refused(name, &expr, &err);
-        }
+        let expr =
+            format!("(register-completion-source! {src} (lambda (req) (void)) #:target 'buffer)");
+        let err = crate::ScriptingHost::new(&Dirs::none())
+            .eval_source(&expr, &mut crate::null_host::NullHost)
+            .expect_err(&expr);
+        refused("register-completion-source!", &expr, &err);
     }
 }

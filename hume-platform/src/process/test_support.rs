@@ -33,3 +33,16 @@ pub fn starts_and_peak(log: &Path) -> (usize, i32) {
     }
     (events.lines().filter(|&line| line == "+").count(), peak)
 }
+
+/// What a stderr capture keeps of `stream`, a stream longer than its 8 KiB
+/// cap: the first and last 4 KiB around a line naming the bytes cut.
+#[cfg(test)]
+pub(crate) fn kept_stderr(stream: &str) -> String {
+    const HALF: usize = 4 * 1024;
+    let cut = stream.len() - 2 * HALF;
+    format!(
+        "{}\n[… {cut} bytes cut …]\n{}",
+        &stream[..HALF],
+        &stream[stream.len() - HALF..]
+    )
+}

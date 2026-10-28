@@ -745,7 +745,7 @@ fn type_cmd_event(ed: &mut Editor, cmd: &str) {
 /// exercises.
 fn run_set(ed: &mut Editor, cmd: &str) -> Result<(), crate::editor::error::CommandError> {
     let fp = FocusedPane::current(&ed.view);
-    crate::editor::commands::typed_set(ed, fp, Some(cmd), false)
+    crate::editor::commands::typed_set(ed, fp, cmd)
 }
 
 /// Enters Insert mode, types `text` (translating `\n` to Enter, same as a
@@ -1151,7 +1151,6 @@ impl Editor {
             kitty_enabled: false,
             scripting: None,
             config_source: crate::cli::ConfigSource::Default,
-            builtin_cmd_names: hume_scripting::command_name::CommandNameSet::default(),
             parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
             timers: super::timer_bridge::Timers::new(),
@@ -1360,7 +1359,7 @@ fn eval_with_real_host(
     std::fs::write(&init_path, source).unwrap();
     let effects = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init");
     ed.apply_script_effects(effects);

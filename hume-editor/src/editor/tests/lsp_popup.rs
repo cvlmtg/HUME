@@ -553,7 +553,7 @@ fn popup_content_is_rebuilt_after_a_theme_reload() {
     let first = popup_view_lines_arc(&ed).expect("popup must be showing after a frame");
 
     let fp = FocusedPane::current(&ed.view);
-    crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"), false)
+    crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"))
         .expect(":theme gruvbox must succeed");
 
     ed.settle();

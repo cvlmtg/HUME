@@ -27,8 +27,6 @@ use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 pub(in crate::editor) fn typed_messages(
     ed: &mut Editor,
     fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     let (content, spans) = ed.state.message_log.format_with_spans();
     if content.is_empty() {
@@ -64,8 +62,6 @@ pub(in crate::editor) fn typed_messages(
 pub(in crate::editor) fn typed_list_buffers(
     ed: &mut Editor,
     fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     let drawer = DrawerLayer::buffer_list(&ed.state, fp.bid(&ed.view));
     ed.state.open_drawer(&ed.view, drawer);
@@ -77,8 +73,6 @@ pub(in crate::editor) fn typed_list_buffers(
 pub(in crate::editor) fn typed_plugin_status(
     ed: &mut Editor,
     fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     let out = if let Some(host) = ed.scripting.as_ref() {
         host.lazy_status_string(&ed.state.config.registry.lazy_stubs())
@@ -110,7 +104,6 @@ pub(in crate::editor) fn typed_split(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     split_focused_pane(ed, fp, arg, Direction::Vertical)
 }
@@ -120,7 +113,6 @@ pub(in crate::editor) fn typed_vsplit(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     split_focused_pane(ed, fp, arg, Direction::Horizontal)
 }
@@ -178,7 +170,6 @@ pub(in crate::editor) fn typed_tabnew(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     let bid = match arg {
         Some(path) => open_path_arg(ed, path)?,
@@ -198,7 +189,6 @@ pub(in crate::editor) fn typed_tabnew(
 pub(in crate::editor) fn typed_tabclose(
     ed: &mut Editor,
     _fp: FocusedPane,
-    _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
     match ed.run_stopping_pipes(force, |ed| super::close_tab(&mut ed.state, &mut ed.view)) {
@@ -220,8 +210,6 @@ pub(in crate::editor) fn typed_tabclose(
 pub(in crate::editor) fn typed_tabnext(
     ed: &mut Editor,
     _fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     super::goto_tab_in_order(&mut ed.state, &mut ed.view, Cycle::Next);
     Ok(())
@@ -231,8 +219,6 @@ pub(in crate::editor) fn typed_tabnext(
 pub(in crate::editor) fn typed_tabprev(
     ed: &mut Editor,
     _fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     super::goto_tab_in_order(&mut ed.state, &mut ed.view, Cycle::Prev);
     Ok(())
@@ -259,7 +245,6 @@ pub(in crate::editor) fn typed_theme(
     ed: &mut Editor,
     _fp: FocusedPane,
     arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
         let current = active_theme_name(ed);
@@ -286,8 +271,6 @@ pub(in crate::editor) fn typed_theme(
 pub(in crate::editor) fn typed_theme_debug(
     ed: &mut Editor,
     _fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     fn color_str(c: Option<Rgb>) -> String {
         match c {
@@ -396,8 +379,6 @@ pub(in crate::editor) fn typed_theme_debug(
 pub(in crate::editor) fn typed_version(
     ed: &mut Editor,
     _fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     ed.report(
         Severity::Info,
@@ -406,12 +387,7 @@ pub(in crate::editor) fn typed_version(
     Ok(())
 }
 
-pub(in crate::editor) fn typed_tutor(
-    ed: &mut Editor,
-    fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub(in crate::editor) fn typed_tutor(ed: &mut Editor, fp: FocusedPane) -> Result<(), CommandError> {
     // Resolve the install source. Fail fast on missing runtime or file.
     let Some(runtime) = ed.state.dirs.runtime.clone() else {
         return Err(CommandError::new(
@@ -474,10 +450,8 @@ pub(in crate::editor) fn typed_tutor(
 pub(in crate::editor) fn typed_goto_line(
     ed: &mut Editor,
     fp: FocusedPane,
-    arg: Option<&str>,
-    _force: bool,
+    raw: &str,
 ) -> Result<(), CommandError> {
-    let raw = arg.ok_or_else(|| CommandError::transient(":goto requires a line number"))?;
     let n: usize = raw
         .trim()
         .parse()
@@ -558,13 +532,7 @@ pub(in crate::editor) fn typed_sort(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: Option<&str>,
-    force: bool,
 ) -> Result<(), CommandError> {
-    if force {
-        return Err(CommandError::transient(
-            "`:sort` takes no `!`; use `-r` to reverse",
-        ));
-    }
     let opts = parse_sort_flags(arg)?;
 
     let t = fp.pane();
@@ -647,27 +615,6 @@ type TravelStepFn =
 /// the age is unsatisfiable; see `History::undo_steps_older_than`'s own doc.
 type TravelResolveAgeFn = fn(&Buffer, Duration) -> Result<usize, usize>;
 
-/// Direction of `:earlier`/`:later` travel: everything the two commands
-/// differ in, so the shared `travel` core below stays straight-line: a
-/// single match binding the three per-direction values, rather than three
-/// separate one-caller-each methods.
-#[derive(Clone, Copy)]
-enum TravelDir {
-    Earlier,
-    Later,
-}
-
-impl TravelDir {
-    /// `(name, step, resolve_age)`. `name` is `:earlier`/`:later`'s own
-    /// command word, for the `!`-rejection error message below.
-    fn parts(self) -> (&'static str, TravelStepFn, TravelResolveAgeFn) {
-        match self {
-            TravelDir::Earlier => ("earlier", undo_steps, Buffer::undo_steps_older_than),
-            TravelDir::Later => ("later", redo_steps, Buffer::redo_steps_newer_than),
-        }
-    }
-}
-
 /// Shared `:earlier`/`:later` body: resolve the spec to a step count, then
 /// travel through the same `undo_steps`/`redo_steps` `u`/`Ctrl-r` dispatch to, so
 /// the whole walk (however many revisions an age spans) propagates to panes,
@@ -679,13 +626,9 @@ fn travel(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: Option<&str>,
-    force: bool,
-    dir: TravelDir,
+    step: TravelStepFn,
+    resolve_age: TravelResolveAgeFn,
 ) -> Result<(), CommandError> {
-    let (name, step, resolve_age) = dir.parts();
-    if force {
-        return Err(CommandError::transient(format!("`:{name}` takes no `!`")));
-    }
     let spec = parse_travel_spec(arg.unwrap_or("1"))?;
     let t = fp.pane();
     let steps = match spec {
@@ -708,9 +651,8 @@ pub(in crate::editor) fn typed_earlier(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: Option<&str>,
-    force: bool,
 ) -> Result<(), CommandError> {
-    travel(ed, fp, arg, force, TravelDir::Earlier)
+    travel(ed, fp, arg, undo_steps, Buffer::undo_steps_older_than)
 }
 
 /// `:later [N|age]`: the mirror of `:earlier`, forward along the
@@ -721,7 +663,6 @@ pub(in crate::editor) fn typed_later(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: Option<&str>,
-    force: bool,
 ) -> Result<(), CommandError> {
-    travel(ed, fp, arg, force, TravelDir::Later)
+    travel(ed, fp, arg, redo_steps, Buffer::redo_steps_newer_than)
 }

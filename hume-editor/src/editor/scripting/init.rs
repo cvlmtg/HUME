@@ -69,12 +69,6 @@ impl Editor {
                 "scripting: no data directory: HOME/APPDATA unset; user plugins unavailable".into(),
             ),
         }
-        // Capture built-in names before any plugin code runs; stable for the
-        // editor's lifetime.  Stored on Editor so dispatch-time activation can
-        // borrow it disjointly from &mut self.scripting / settings / keymap.
-        let builtin_names: hume_scripting::command_name::CommandNameSet =
-            self.state.config.registry.names().collect();
-        self.builtin_cmd_names = builtin_names.clone();
         // Load runtime/scheme/prelude.scm before init.scm so its macros
         // (bind-keys! etc.) are available to init.scm and plugin modules,
         // and shells.scm so init.scm can add or replace a shell dialect.
@@ -88,10 +82,10 @@ impl Editor {
         // Each eval gets a fresh EditorHostImpl over `state` + `view`; the
         // `require_cmd_ctx!` guard keeps command-mode builtins unreachable
         // during init evals.
-        self.eval_runtime_scheme(&mut host, "scheme/prelude.scm", builtin_names.clone());
-        self.eval_runtime_scheme(&mut host, "scheme/shells.scm", builtin_names.clone());
-        self.eval_runtime_scheme(&mut host, "scheme/languages.scm", builtin_names.clone());
-        self.eval_runtime_scheme(&mut host, "scheme/grammars.scm", builtin_names.clone());
+        self.eval_runtime_scheme(&mut host, "scheme/prelude.scm");
+        self.eval_runtime_scheme(&mut host, "scheme/shells.scm");
+        self.eval_runtime_scheme(&mut host, "scheme/languages.scm");
+        self.eval_runtime_scheme(&mut host, "scheme/grammars.scm");
         // `Skipped` (`--no-config`) and `NoConfigDir` both mean there's no
         // `init.scm` to evaluate, so every plugin it would otherwise
         // `load-plugin!` is skipped for free. The runtime scheme above
@@ -131,7 +125,7 @@ impl Editor {
                         self.tui.clone(),
                         self.kitty_enabled,
                     );
-                    host.eval_init(&path, init_budget, &mut ih, builtin_names)
+                    host.eval_init(&path, init_budget, &mut ih)
                 };
                 // Named by the path actually evaluated ("init.scm: " for the
                 // default location, the override's own file name under
@@ -275,12 +269,7 @@ impl Editor {
     /// runtime dir) as an init-mode eval. A missing runtime dir or a missing
     /// file at that path is a silent no-op (every bundled layer is optional);
     /// a file that exists but fails to parse/eval is reported as an error.
-    fn eval_runtime_scheme(
-        &mut self,
-        host: &mut hume_scripting::ScriptingHost,
-        rel_path: &str,
-        builtin_names: hume_scripting::command_name::CommandNameSet,
-    ) {
+    fn eval_runtime_scheme(&mut self, host: &mut hume_scripting::ScriptingHost, rel_path: &str) {
         let Some(path) = host.runtime_dir().map(|rt| rt.join(rel_path)) else {
             return;
         };
@@ -292,7 +281,7 @@ impl Editor {
                 self.tui.clone(),
                 self.kitty_enabled,
             );
-            host.eval_runtime(&path, init_budget, &mut ih, builtin_names)
+            host.eval_runtime(&path, init_budget, &mut ih)
         };
         self.apply_init_result(host, result, &format!("runtime/{rel_path}: "));
     }

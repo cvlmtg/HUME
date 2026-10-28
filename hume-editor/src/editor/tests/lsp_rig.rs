@@ -45,6 +45,16 @@ pub(in crate::editor) const TWO_RUST_SERVERS: &str = r#"(%define-language! "rust
 (register-lsp-server! "ra-lint" #:command "ra-lint")
 (set-language-servers! "rust" '("rust-analyzer" "ra-lint"))"#;
 
+/// A backend answering the first `n` `initialize` requests with no
+/// capabilities.
+pub(in crate::editor) fn answering(n: usize) -> RecordingLspBackend {
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    for _ in 0..n {
+        backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    }
+    backend
+}
+
 /// Stops every instance of the server called `name`, as `:lsp-stop name`
 /// does.
 pub(in crate::editor) fn stop_server(ed: &mut Editor, name: &str) {

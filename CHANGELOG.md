@@ -14,6 +14,7 @@
 - `define-language!` raises for a shebang entry with a space or a `/`: give the interpreter's name alone, such as `"python"`.
 - A path given to a HUME call resolves `..` the way the operating system does, and a `..` after a directory that doesn't exist raises: write the path without it.
 - `paste-text!` raises for a read-only buffer instead of doing nothing.
+- A built-in `:` command refuses an argument or a `!` it doesn't use instead of ignoring it, `:b!` and `:e! <path>` included: drop the extra text.
 - Steel's own print functions (`display`, `displayln`, `newline`, …) write as Steel defines them, over the editor's screen too: report with `log!`, and write a line inside an `#:inline-output` command with the new `print!`.
 - `run-inline-output!` raises outside an `#:inline-output` command, the top level of `init.scm` included: move the call into one, or use `run-capture!`.
 - `after!`, `spawn-async!` and `path-programs` return an opaque timer or job, not an integer: compare two with `equal?`. `cancel-timer!` raises for anything but a timer, and `cancel-async!` for anything but a job, so one kind can no longer cancel the other.
@@ -50,7 +51,7 @@
 - A `'minibuf` completion source raises for a nonzero `#:priority` and for `completion-emit!`'s `#:incomplete #t`, which never had an effect there: drop them.
 - `set-option!` and `set-buffer-option!` take a value only in the type `get-option` returns for that option, and raise for any other: write `4` for `"4"`, `#t` for `"true"`, `'("fish" "-c")` for `"fish -c"` for `shell`, and a sections hash for `statusline`. A boolean or a number for a text option such as `word-chars` raises instead of being stored as its spelling.
 - `declare-plugin!` raises for an entry declared twice instead of ignoring the second declaration: merge the two. Your own `declare-plugin!` for a plugin still replaces its `manifest.scm`.
-- `run-capture!` keeps the first 8 KiB of a command's stderr, and fails like a command that couldn't start when it writes more than 64 MiB to stdout, as `spawn-async!` does, instead of holding all of both in memory.
+- `run-capture!` and `spawn-async!` keep the first and last 4 KiB of a command's stderr past 8 KiB, and `run-capture!` fails like a command that couldn't start when it writes more than 64 MiB to stdout, as `spawn-async!` does, instead of holding all of both in memory.
 - `declare-plugin!` raises for a command name already taken (a built-in, another plugin's command, or a command already defined) or listed twice, instead of skipping that name: rename it.
 - `register-hook!` and `register-lsp-notification-hook!` raise for a lambda that can't take the arguments its event passes, instead of failing each time the event fires: give the lambda one parameter per argument the hook lists.
 
@@ -76,6 +77,7 @@
 - `.` passes a `#:repeatable` command the same `count` its first run got, `0` when no count was typed.
 
 ### Fixes
+- `:b`, `:goto` and `:set` without an argument report what they take as an error in `:messages`.
 - `apply-text-edits!` does nothing for an empty edit list instead of raising, and `apply-workspace-edit!` leaves a file with no edits alone instead of opening it.
 - A language server's own workspace edit, such as one a code action asks for, shows how many buffers it changed, and an edit that changes nothing shows nothing.
 - `:lsp-install` refuses a server archive with a symbolic link that points outside the server's directory.

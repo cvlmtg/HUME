@@ -371,6 +371,9 @@ fn define_command_propagates_host_rejection() {
 
 #[test]
 fn define_command_dup_names_error_names_existing_owner() {
+    fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
+        Ok(SteelVal::Void)
+    }
     let mut h = SteelCtxTestHarness::new();
     let mut host = plum_defined(CommandProc::Mappable(MappableProc::new(
         crate::Rooted::new(SteelVal::BoolV(false)),
@@ -382,7 +385,7 @@ fn define_command_dup_names_error_names_existing_owner() {
         &mut ctx,
         "my-cmd".to_string(),
         "doc".to_string(),
-        SteelVal::BoolV(false),
+        SteelVal::FuncV(dummy_proc),
         false,
         false,
     )
@@ -398,10 +401,8 @@ fn define_command_dup_names_error_names_existing_owner() {
     );
 }
 
-/// Same collision, but both sides typed: `check_definable`'s re-definition
-/// guard checks typed procs too, so a second `define-typed-command!` for
-/// the same name names the owner here. The editor-side host's generic
-/// "conflicts with existing command" error would not.
+/// Same collision, but both sides typed: a second `define-typed-command!`
+/// for the same name names the owner too.
 #[test]
 fn define_typed_command_dup_names_error_names_existing_owner() {
     fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
@@ -414,8 +415,8 @@ fn define_typed_command_dup_names_error_names_existing_owner() {
         None,
     )));
     let mut ctx = h.ctx_init_with_host(&mut host);
-    // A real callable proc: check_definable must reject before ever reaching
-    // `callable_arg`'s type check, or this fails on the wrong error entirely.
+    // A real callable proc, so the refusal is the name rule's, not
+    // `callable_arg`'s.
     let err = define_typed_command(
         &mut ctx,
         "my-cmd".to_string(),

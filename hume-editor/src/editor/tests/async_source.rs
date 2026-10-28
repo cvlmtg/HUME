@@ -138,7 +138,7 @@ fn scripted_initialize_round_trip_through_editor() {
 /// while a client is `Starting` or reporting `$/progress`. These tests pin
 /// that rewrite directly against `wake_timeout`.
 mod next_wake_covers_client_state {
-    use super::super::lsp_rig::{LspRig, RigSpec};
+    use super::super::lsp_rig::{LspRig, RigSpec, answering};
     use super::*;
     use hume_lsp::client::{ClientAction, RequestMeta};
     use hume_lsp::test_util::RecordingLspBackend;
@@ -207,9 +207,7 @@ mod next_wake_covers_client_state {
         // with `.min()`: a far deadline on one server must never hide a
         // near one on another.
         let tmp = tempfile::tempdir().unwrap();
-        let (mut backend, _, _) = RecordingLspBackend::new();
-        backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
-        backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+        let backend = answering(2);
         let init = r#"
             (register-lsp-server! "near" #:command "near")
             (register-lsp-server! "far" #:command "far")

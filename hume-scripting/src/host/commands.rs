@@ -29,6 +29,78 @@ pub struct NativeCall {
     pub arg: Option<CommandArg>,
 }
 
+/// The two kinds of command, which share one namespace: an editor command
+/// (`define-command!`, `#:commands`) and a typed command
+/// (`define-typed-command!`, `#:typed-commands`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandKind {
+    Mappable,
+    Typed,
+}
+
+impl CommandKind {
+    /// The `declare-plugin!` keyword that lists names of this kind.
+    fn keyword(self) -> &'static str {
+        match self {
+            CommandKind::Mappable => "#:commands",
+            CommandKind::Typed => "#:typed-commands",
+        }
+    }
+}
+
+/// What holds a command name, as [`CommandHost::command_holder`] reports it.
+#[derive(Debug, Clone)]
+pub enum CommandHolder {
+    /// A native command, or a native typed command's alias.
+    Native,
+    /// A Steel command.
+    Defined(CommandProc),
+    /// A lazy entry's activation stub.
+    Lazy { entry: EntryId, kind: CommandKind },
+}
+
+/// Whether `name`, which `holder` holds, is free for a command of `kind`
+/// defined while `activation`'s body runs. The one rule every registration
+/// goes through: a lazy entry's own stub of the same kind is the only
+/// holder a command may replace.
+pub(crate) fn check_name_free(
+    name: &str,
+    holder: Option<CommandHolder>,
+    kind: CommandKind,
+    activation: Option<&EntryId>,
+) -> Result<(), String> {
+    match holder {
+        None => Ok(()),
+        Some(CommandHolder::Native) => Err(format!(
+            "'{name}' conflicts with a built-in command and cannot be redefined"
+        )),
+        Some(CommandHolder::Defined(proc)) => Err(format!(
+            "command '{name}' is already defined by '{}'",
+            proc.owner()
+        )),
+        Some(CommandHolder::Lazy { entry, kind: stub }) if activation == Some(&entry) => {
+            if stub == kind {
+                Ok(())
+            } else {
+                Err(format!(
+                    "command '{name}' is declared by lazy plugin '{entry}' in {}",
+                    stub.keyword()
+                ))
+            }
+        }
+        Some(CommandHolder::Lazy { entry, .. }) => Err(format!(
+            "command '{name}' is already claimed as an activation command by lazy plugin '{entry}'"
+        )),
+    }
+}
+
+/// Whether `declare-plugin!` may claim `name`, which `holder` holds, as an
+/// activation command. No plugin body runs at the top level it is called
+/// from, so any holder refuses it.
+pub fn check_lazy_claim(name: &str, holder: Option<CommandHolder>) -> Result<(), String> {
+    check_name_free(name, holder, CommandKind::Mappable, None)
+}
+
 /// Command registry queries, synchronous native dispatch, and Steel command
 /// registration, accessed through [`EditorHost::commands`](super::EditorHost::commands).
 pub trait CommandHost {
@@ -89,22 +161,21 @@ pub trait CommandHost {
         call: NativeCall,
     ) -> Result<bool, String>;
 
+    /// What holds `name` (in any case), or `None` for a free name.
+    fn command_holder(&self, name: &str) -> Option<CommandHolder>;
+
     /// Register a Steel command in the editor's `CommandRegistry`.
     ///
     /// Called inline from `define-command!` during init or plugin load.
-    /// Overwrites a `Lazy` stub for the same name (expected path: a lazy plugin
-    /// body's `define-command!` replaces the activation command stub).
-    /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
+    /// Refuses a name [`CommandProc::check_define`] refuses; the one holder
+    /// it replaces is the defining body's own `Lazy` stub.
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String>;
 
     /// Register a Steel *typed* command in the editor's `CommandRegistry`,
     /// invocable from the `:` command line.
     ///
     /// Called inline from `define-typed-command!` during init or plugin load.
-    /// Overwrites a typed `Lazy` stub for the same name (expected path: a
-    /// lazy plugin body's `define-typed-command!` replaces the activation
-    /// stub declared via `#:typed-commands`).
-    /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
+    /// Same rule as [`Self::register_command`].
     fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String>;
 
     /// The proc of the Steel command (mappable or typed) registered under
@@ -120,23 +191,19 @@ pub trait CommandHost {
     /// Whether `ch` names a valid register (`0`–`9`, `k`, `c`, `b`).
     fn is_valid_register_name(&self, ch: char) -> bool;
 
-    /// Register a `Lazy` activation stub for `name`, owned by `plugin`.
+    /// Register `plugin`'s `Lazy` activation stubs: one per name in
+    /// `commands` and in `typed_commands`, all distinct.
     ///
-    /// Called from `declare-plugin!`'s `#:commands` processing, once per
-    /// accepted command name, so the editor's `CommandRegistry` is the single
-    /// place a name is claimed, with no separate scripting-side activation map.
-    ///
-    /// Returns `Err(msg)` if `name` is already claimed by any existing
-    /// command (native, `SteelBacked`, or any `Lazy` stub, `plugin`'s own
-    /// included); the message names the conflicting owner.
-    fn register_lazy_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String>;
-
-    /// Register a typed `Lazy` activation stub for `name`, owned by `plugin`.
-    ///
-    /// Called from `declare-plugin!`'s `#:typed-commands` processing: the
-    /// typed counterpart of [`Self::register_lazy_command`]. Same conflict
-    /// rules, same message shape.
-    fn register_lazy_typed_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String>;
+    /// Called from `declare-plugin!`, so the editor's `CommandRegistry` is
+    /// the single place a name is claimed, with no separate scripting-side
+    /// activation map. All or nothing: `Err` for the first name
+    /// [`check_lazy_claim`] refuses, with no stub registered.
+    fn register_lazy_commands(
+        &mut self,
+        plugin: &EntryId,
+        commands: &[String],
+        typed_commands: &[String],
+    ) -> Result<(), String>;
 
     /// The plugin that owns `name`'s `Lazy` stub (mappable or typed alike),
     /// or `None` if `name` is not a pending lazy activation entry (already
@@ -163,8 +230,7 @@ pub trait CommandHost {
     /// `define-command!`/`define-typed-command!` is dead weight (the plugin
     /// is now `Loaded` and will never re-run its body); on failure, every
     /// stub the plugin ever claimed must be freed so a later plugin can claim
-    /// the name. `declare-plugin!` calls it too, when a claim fails after
-    /// others of the same declaration landed. Never removes a resolved
-    /// `SteelBacked`/`Steel` command, only `Lazy` entries.
+    /// the name. Never removes a resolved `SteelBacked`/`Steel` command,
+    /// only `Lazy` entries.
     fn unregister_lazy_stubs_of(&mut self, plugin: &EntryId);
 }

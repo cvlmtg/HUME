@@ -395,7 +395,10 @@ pub(in crate::editor) fn apply_workspace_edit(
     }
     state.report(
         Severity::Info,
-        format!("{buffers_modified} buffers modified — :wa writes all"),
+        format!(
+            "{buffers_modified} buffer{} modified — :wa writes all",
+            if buffers_modified == 1 { "" } else { "s" }
+        ),
     );
     Ok(WorkspaceEditSummary { buffers_modified })
 }

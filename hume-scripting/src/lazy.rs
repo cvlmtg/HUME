@@ -5,7 +5,7 @@
 //! state and the two activation maps consulted by event firing and
 //! language-set to activate lazy plugins on demand.  Command activation
 //! routing is *not* tracked here: the editor's `CommandRegistry` is the sole
-//! owner of `Lazy` command stubs (see `CommandHost::register_lazy_command`),
+//! owner of `Lazy` command stubs (see `CommandHost::register_lazy_commands`),
 //! reached through the host rather than a parallel map.
 
 use rustc_hash::FxHashMap;
@@ -82,7 +82,7 @@ impl LazyRegistry {
     /// Record a plugin from a `%declare-plugin!` call (always lazy).
     ///
     /// Command activation entries are registered separately, directly in the
-    /// editor's `CommandRegistry` via `CommandHost::register_lazy_command`
+    /// editor's `CommandRegistry` via `CommandHost::register_lazy_commands`
     /// (see `declare_plugin` in `builtins/plugins.rs`); this method only
     /// records plugin lifecycle state and the event/language activation maps.
     ///
@@ -96,12 +96,10 @@ impl LazyRegistry {
         events: Vec<String>,
         languages: Vec<String>,
     ) {
-        assert!(
-            !self.plugins.contains_key(&id),
-            "entry '{id}' declared twice"
-        );
-        self.plugins
+        let previous = self
+            .plugins
             .insert(id.clone(), PluginState::Declared { path });
+        assert!(previous.is_none(), "entry '{id}' declared twice");
 
         for hook in events {
             self.activation_events

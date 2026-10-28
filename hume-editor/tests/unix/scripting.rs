@@ -185,7 +185,7 @@ fn eager_load_no_keywords_reaches_loaded_state() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("eager load must succeed");
 
     let id = attribution::EntryId::main(attribution::PluginId::User {
@@ -219,7 +219,7 @@ fn lazy_load_stays_declared_body_not_evaluated() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("lazy load must not error during init");
 
     let id = attribution::EntryId::main(attribution::PluginId::User {
@@ -251,7 +251,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("#:commands declaration must not error during init");
 
     let id = attribution::EntryId::main(attribution::PluginId::User {
@@ -287,7 +287,7 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("init must succeed");
 
     let id = attribution::EntryId::main(attribution::PluginId::User {
@@ -296,7 +296,7 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     });
 
     // First activation: Declared → Loaded, registers the plugin's command.
-    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+    h.activate_plugin_inline(&id, 10_000, &mut mock)
         .expect("activate_plugin_inline must succeed");
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Loaded)),
@@ -310,7 +310,7 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
 
     // Second activation: already Loaded → idempotent, no new registrations.
     let count_after_first = mock.registered_cmds.len();
-    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+    h.activate_plugin_inline(&id, 10_000, &mut mock)
         .expect("second activate_plugin_inline must succeed");
     assert_eq!(
         mock.registered_cmds.len(),
@@ -333,7 +333,7 @@ fn eager_plugin_body_error_is_contained() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
         h.peek_pending_messages().iter().any(|(level, msg)| {
@@ -376,11 +376,10 @@ fn declare_collision_with_builtin_raises_and_claims_nothing() {
     );
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
+    mock.native_names = ["move-right"].into_iter().collect();
 
-    let builtin_names: hume_scripting::command_name::CommandNameSet =
-        ["move-right"].into_iter().collect();
     let err = h
-        .eval_init(&init_path, 10_000, &mut mock, builtin_names)
+        .eval_init(&init_path, 10_000, &mut mock)
         .expect_err("a builtin collision raises");
     assert!(
         err.message
@@ -408,10 +407,9 @@ fn declare_collision_with_builtin_raises_and_claims_nothing() {
     );
     let mut h2 = host_with_data_dir(dir2.path().to_path_buf());
     let mut mock2 = MockHost::new();
+    mock2.native_names = ["move-right"].into_iter().collect();
 
-    let builtin_names2: hume_scripting::command_name::CommandNameSet =
-        ["move-right"].into_iter().collect();
-    h2.eval_init(&init_path2, 10_000, &mut mock2, builtin_names2)
+    h2.eval_init(&init_path2, 10_000, &mut mock2)
         .expect("non-colliding activation entry must not error");
     assert!(
         !h2.peek_pending_messages()
@@ -450,7 +448,7 @@ fn command_plugin_names_lazy_stub_owner_before_activation() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("init must succeed");
 
     assert_eq!(command_plugin(&mut h, &mut mock, "bar"), "user/tp");
@@ -467,13 +465,13 @@ fn command_plugin_forgets_undefined_stub_after_activation() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("init must succeed");
     let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
     });
-    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+    h.activate_plugin_inline(&id, 10_000, &mut mock)
         .expect("activate_plugin_inline must succeed");
 
     assert_eq!(command_plugin(&mut h, &mut mock, "bar"), "user/tp");
@@ -493,7 +491,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("init must succeed");
 
     // Lazy stub is present before activation.
@@ -506,7 +504,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
         user: "user".to_string(),
         repo: "tp".to_string(),
     });
-    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+    h.activate_plugin_inline(&id, 10_000, &mut mock)
         .expect("activate_plugin_inline must succeed");
 
     // Lazy stub is removed after activation.
@@ -528,7 +526,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("#:languages declaration must not error during init");
 
     let id = attribution::EntryId::main(attribution::PluginId::User {
@@ -563,7 +561,7 @@ fn activate_plugin_drops_language_activation_on_loaded() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("init must succeed");
 
     assert!(
@@ -575,7 +573,7 @@ fn activate_plugin_drops_language_activation_on_loaded() {
         user: "user".to_string(),
         repo: "tp".to_string(),
     });
-    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+    h.activate_plugin_inline(&id, 10_000, &mut mock)
         .expect("activate_plugin_inline must succeed");
 
     assert!(
@@ -601,7 +599,7 @@ fn declare_then_load_keeps_the_plugin_lazy() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("declare-then-load must succeed");
 
     let id = attribution::EntryId::main(attribution::PluginId::User {
@@ -646,7 +644,7 @@ fn load_then_declare_ignored_with_soft_error() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("load-then-declare must succeed (soft error, not hard)");
 
     let id = attribution::EntryId::main(attribution::PluginId::User {
@@ -699,7 +697,7 @@ fn load_then_declare_on_lazy_plugin_is_reported() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("load-then-declare must succeed (soft error, not hard)");
 
     assert!(
@@ -732,7 +730,7 @@ fn declare_then_load_of_an_absent_plugin_reports_it_once() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("an absent user plugin is not an error");
 
     let absent = h
@@ -768,7 +766,7 @@ fn load_plugin_in_plugin_body_rejected() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
         h.peek_pending_messages().iter().any(|(level, msg)| {
@@ -813,7 +811,7 @@ fn declare_plugin_in_plugin_body_rejected() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
         h.peek_pending_messages().iter().any(|(level, msg)| {
@@ -852,7 +850,7 @@ fn declare_plugin_without_triggers_hard_error_scripting_level() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
+    let result = h.eval_init(&init_path, 10_000, &mut mock);
     assert!(
         result.is_err(),
         "declare-plugin! without triggers must hard-error"
@@ -884,7 +882,7 @@ fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
+    let result = h.eval_init(&init_path, 10_000, &mut mock);
     assert!(
         result.is_err(),
         "%declare-plugin! with no activation entries must hard-error"
@@ -917,10 +915,9 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
 
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
+    mock.native_names = ["move-right"].into_iter().collect();
 
-    let builtin_names: hume_scripting::command_name::CommandNameSet =
-        ["move-right"].into_iter().collect();
-    let result = h.eval_init(&init_path, 10_000, &mut mock, builtin_names);
+    let result = h.eval_init(&init_path, 10_000, &mut mock);
     assert!(
         result.is_err(),
         "all-collide #:commands with no other activation entry must hard-error"
@@ -941,7 +938,7 @@ fn duplicate_declare_raises() {
     let mut mock = MockHost::new();
 
     let err = h
-        .eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .eval_init(&init_path, 10_000, &mut mock)
         .expect_err("a duplicate declare raises");
     assert!(
         err.message.contains("'user/tp' is declared twice"),
@@ -967,7 +964,7 @@ fn duplicate_load_remains_silent_noop() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+    h.eval_init(&init_path, 10_000, &mut mock)
         .expect("duplicate load must be a silent no-op, not an error");
 
     // No error-level message about the duplicate load.

@@ -46,10 +46,9 @@ fn lazy_command_first_dispatch_via_keypress() {
 }
 
 /// `:cmd arg` on a lazy *typed* command's very first dispatch must forward
-/// `arg` to the lambda. `Editor::run_typed_steel_command` depends on an
-/// ordering: activation (which replaces the typed `Lazy` stub with
-/// `TypedBody::Steel`) must complete before arg marshalling reads the
-/// resolved arity.
+/// `arg` to the lambda. The `:` line depends on an ordering: activation
+/// (which replaces the typed `Lazy` stub with `TypedBody::Steel`) must
+/// complete before the refusal and arg marshalling read the resolved arity.
 #[test]
 fn lazy_typed_command_first_dispatch_via_command_line() {
     let (mut ed, _dir) = setup_lazy_editor(

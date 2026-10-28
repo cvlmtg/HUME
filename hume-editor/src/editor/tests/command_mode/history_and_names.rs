@@ -348,3 +348,14 @@ fn colon_editor_command_name_in_another_case_does_not_dispatch() {
     );
     assert_eq!(state(&ed), before, "selection must be untouched");
 }
+
+/// A native typed command's alias is as taken as its name.
+#[test]
+fn a_native_alias_cannot_be_defined() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let err = eval_err(&mut ed, r#"(define-typed-command! "w" "" (lambda () #t))"#);
+    assert!(
+        err.contains("'w' conflicts with a built-in command and cannot be redefined"),
+        "got: {err}"
+    );
+}

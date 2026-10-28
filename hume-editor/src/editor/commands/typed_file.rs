@@ -45,7 +45,6 @@ impl From<WriteError> for CommandError {
 pub(in crate::editor) fn typed_quit(
     ed: &mut Editor,
     fp: FocusedPane,
-    _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
     // When the active tab has more than one pane, `:q` closes the focused
@@ -99,7 +98,6 @@ pub(in crate::editor) fn typed_quit(
 pub(in crate::editor) fn typed_quit_all(
     ed: &mut Editor,
     fp: FocusedPane,
-    _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
     ed.state
@@ -188,10 +186,10 @@ pub(in crate::editor) fn conclude_write(
         return written.map_err(Into::into);
     };
     match written {
-        Ok(()) => typed_quit(ed, pane, None, force),
+        Ok(()) => typed_quit(ed, pane, force),
         Err(WriteError::InProgress) => Err(WriteError::InProgress.into()),
         Err(e) if force => {
-            typed_quit(ed, pane, None, true)
+            typed_quit(ed, pane, true)
                 .expect("force quit cannot fail: it skips the unsaved-changes and pipe checks");
             Err(e.into())
         }
@@ -202,8 +200,6 @@ pub(in crate::editor) fn conclude_write(
 pub(in crate::editor) fn typed_toggle_soft_wrap(
     ed: &mut Editor,
     fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     let now_wrapping = ed.toggle_wrap(fp);
     let state = if now_wrapping { "on" } else { "off" };
@@ -211,21 +207,19 @@ pub(in crate::editor) fn typed_toggle_soft_wrap(
     Ok(())
 }
 
+/// What `:set` takes.
+pub(in crate::editor) const SET_USAGE: &str = "global|buffer|pane key=value";
+
 pub(in crate::editor) fn typed_set(
     ed: &mut Editor,
     fp: FocusedPane,
-    arg: Option<&str>,
-    _force: bool,
+    arg: &str,
 ) -> Result<(), CommandError> {
     use crate::editor::settings::Scope;
     use hume_core::{BufferIntrinsicOption, LanguageOptionText};
 
-    const USAGE: &str = "Usage: :set global|buffer|pane key=value";
-    let Some(arg) = arg else {
-        return Err(CommandError::transient(USAGE));
-    };
     let Some((scope_str, rest)) = arg.split_once(' ') else {
-        return Err(CommandError::transient(USAGE));
+        return Err(CommandError::transient(format!("Usage: :set {SET_USAGE}")));
     };
     // Tolerate stray extra whitespace before the key, matching
     // `complete_set`'s tolerance. Otherwise Tab can complete
@@ -449,7 +443,6 @@ fn write_file(
 pub(in crate::editor) fn typed_write_all(
     ed: &mut Editor,
     fp: FocusedPane,
-    _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
     let dirty_savable: Vec<BufferId> = ed

@@ -3,9 +3,9 @@
 // unit-tested directly in `editor::lsp::diagnostics` (no Editor needed
 // there); this file covers the parts that need a real buffer + backend.
 
-use super::lsp_rig::{LspRig, RigSpec, stop_server};
+use super::lsp_rig::{LspRig, RigSpec, TWO_RUST_SERVERS, answering, stop_server};
 use super::*;
-use hume_core::BufferId;
+use hume_core::{BufferId, DiagSeverity};
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
 
@@ -201,7 +201,7 @@ fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
 fn a_stored_diagnostic_keeps_the_wire_value_a_server_sent() {
     let tmp = tempfile::tempdir().unwrap();
     let uri = uri_under(&tmp, "src/main.rs");
-    let rig = rig_with(&tmp, "one two three\n", |b| {
+    let mut rig = rig_with(&tmp, "one two three\n", |b| {
         b.push_from_server(
             ServerId(0),
             hume_lsp::codec::Message::Notification {
@@ -222,9 +222,13 @@ fn a_stored_diagnostic_keeps_the_wire_value_a_server_sent() {
         );
     });
 
-    let entries =
-        crate::editor::lsp::diagnostics::diagnostics_for_buffer(&rig.ed.state, rig.bid, None, None)
-            .unwrap();
+    let entries = crate::editor::lsp::diagnostics::diagnostics_for_buffer(
+        &mut rig.ed.state,
+        rig.bid,
+        None,
+        None,
+    )
+    .unwrap();
     assert_eq!(
         entries[0].raw.get("x-ext"),
         Some(&serde_json::json!({"keep": true}))
@@ -679,7 +683,7 @@ fn zero_width_diagnostic_on_minimal_buffer_is_widened_onto_the_newline() {
 
 // ── The diagnostics-for-buffer read cap ─────────────────────────────────────
 
-/// How many `:messages` traces say `diagnostics-for-buffer` cut a buffer's
+/// The `:messages` traces saying `diagnostics-for-buffer` cut a buffer's
 /// diagnostics.
 fn read_cap_traces(ed: &Editor) -> Vec<String> {
     ed.state
@@ -690,35 +694,170 @@ fn read_cap_traces(ed: &Editor) -> Vec<String> {
         .collect()
 }
 
-/// A publish of `n` one-char diagnostics on line 0 of `uri`.
-fn publish_n(uri: &str, n: u32) -> lsp_types::PublishDiagnosticsParams {
-    let fixtures: Vec<DiagFixture> = (0..n).map(|_| ((0, 0), (0, 1), 1)).collect();
-    params_of(publish_diagnostics_notification(uri, &fixtures))
+/// `n` one-char diagnostics of wire `severity` on line 0.
+fn n_diagnostics(n: u32, severity: i64) -> Vec<DiagFixture> {
+    (0..n).map(|_| ((0, 0), (0, 1), severity)).collect()
 }
 
-/// A buffer whose diagnostics pass the read cap is traced once per
-/// crossing: not again while it stays over, again after it drops back.
+/// A publish of `n` one-char errors on line 0 of `uri`.
+fn publish_n(uri: &str, n: u32) -> lsp_types::PublishDiagnosticsParams {
+    params_of(publish_diagnostics_notification(uri, &n_diagnostics(n, 1)))
+}
+
+/// A `diagnostics-for-buffer` read of the rig's buffer at `floor` over
+/// `range`, as `(start-char . end-char)`; how many diagnostics it returned.
+fn read(rig: &mut LspRig, floor: Option<DiagSeverity>, range: Option<(usize, usize)>) -> usize {
+    crate::editor::lsp::diagnostics::diagnostics_for_buffer(
+        &mut rig.ed.state,
+        rig.bid,
+        floor,
+        range,
+    )
+    .unwrap()
+    .len()
+}
+
+/// A read past the cap is traced once per crossing: not on the publish, not
+/// again while the buffer stays over, again after a read finds it back under.
 #[test]
-fn passing_the_read_cap_is_traced_once_per_crossing() {
+fn a_read_past_the_cap_is_traced_once_per_crossing() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, _bid, uri) = plain_rig(&tmp, "one two three\n");
 
     rig.ed
         .ingest_typed_publish_for_test(sid, publish_n(&uri, 1001));
+    assert_eq!(
+        read_cap_traces(&rig.ed),
+        Vec::<String>::new(),
+        "nothing read yet"
+    );
+
+    assert_eq!(read(&mut rig, None, None), 1000);
     let traces = read_cap_traces(&rig.ed);
     assert_eq!(traces.len(), 1, "{traces:?}");
     assert!(
-        traces[0].contains("main.rs has 1001 diagnostics"),
+        traces[0]
+            .contains("main.rs: diagnostics-for-buffer matched 1001 diagnostics at hint or above"),
         "{traces:?}"
     );
 
     rig.ed
         .ingest_typed_publish_for_test(sid, publish_n(&uri, 1002));
+    read(&mut rig, None, None);
     assert_eq!(read_cap_traces(&rig.ed).len(), 1, "still over the cap");
 
     rig.ed
         .ingest_typed_publish_for_test(sid, publish_n(&uri, 10));
+    read(&mut rig, None, None);
     rig.ed
         .ingest_typed_publish_for_test(sid, publish_n(&uri, 1001));
+    read(&mut rig, None, None);
     assert_eq!(read_cap_traces(&rig.ed).len(), 2, "a second crossing");
+}
+
+/// A read counts at its own floor: diagnostics below it never reach its
+/// cap, and a `#:severity` read below the setting's floor is traced at
+/// that floor.
+#[test]
+fn a_read_is_traced_at_its_own_floor() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, sid, _bid, uri) = plain_rig(&tmp, "one two three\n");
+    rig.ed.state.settings.lsp_diagnostics_min_severity = DiagSeverity::Warning;
+    let mut fixtures = n_diagnostics(1500, 4);
+    fixtures.extend(n_diagnostics(5, 1));
+    rig.ed.ingest_typed_publish_for_test(
+        sid,
+        params_of(publish_diagnostics_notification(&uri, &fixtures)),
+    );
+
+    assert_eq!(read(&mut rig, None, None), 5);
+    assert_eq!(read_cap_traces(&rig.ed), Vec::<String>::new());
+
+    assert_eq!(read(&mut rig, Some(DiagSeverity::Hint), None), 1000);
+    let traces = read_cap_traces(&rig.ed);
+    assert_eq!(traces.len(), 1, "{traces:?}");
+    assert!(
+        traces[0].contains("1505 diagnostics at hint or above"),
+        "{traces:?}"
+    );
+}
+
+/// Lowering `lsp-diagnostics-min-severity` past the cap is traced by the
+/// next read at the new floor.
+#[test]
+fn a_lowered_floor_is_traced_by_the_next_read() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, sid, _bid, uri) = plain_rig(&tmp, "one two three\n");
+    rig.ed.state.settings.lsp_diagnostics_min_severity = DiagSeverity::Error;
+    rig.ed.ingest_typed_publish_for_test(
+        sid,
+        params_of(publish_diagnostics_notification(
+            &uri,
+            &n_diagnostics(1200, 2),
+        )),
+    );
+    read(&mut rig, None, None);
+    assert_eq!(read_cap_traces(&rig.ed), Vec::<String>::new());
+
+    rig.ed.state.settings.lsp_diagnostics_min_severity = DiagSeverity::Warning;
+    read(&mut rig, None, None);
+    let traces = read_cap_traces(&rig.ed);
+    assert_eq!(traces.len(), 1, "{traces:?}");
+    assert!(
+        traces[0].contains("1200 diagnostics at warning or above"),
+        "{traces:?}"
+    );
+}
+
+/// A `#:range` read the cap cuts is traced. One it does not cut says
+/// nothing about the rest of the buffer, so only a whole-buffer read under
+/// the cap re-arms the trace.
+#[test]
+fn a_ranged_read_is_traced_but_does_not_re_arm() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, sid, _bid, uri) = plain_rig(&tmp, "one two three\n");
+    rig.ed
+        .ingest_typed_publish_for_test(sid, publish_n(&uri, 1001));
+
+    assert_eq!(read(&mut rig, None, Some((0, 3))), 1000);
+    assert_eq!(read_cap_traces(&rig.ed).len(), 1);
+
+    assert_eq!(read(&mut rig, None, Some((4, 7))), 0);
+    read(&mut rig, None, Some((0, 3)));
+    read(&mut rig, None, None);
+    assert_eq!(read_cap_traces(&rig.ed).len(), 1, "still over the cap");
+
+    rig.ed
+        .ingest_typed_publish_for_test(sid, publish_n(&uri, 10));
+    read(&mut rig, None, None);
+    rig.ed
+        .ingest_typed_publish_for_test(sid, publish_n(&uri, 1001));
+    assert_eq!(read_cap_traces(&rig.ed).len(), 1, "not read since");
+    read(&mut rig, None, Some((0, 3)));
+    assert_eq!(read_cap_traces(&rig.ed).len(), 2, "a second crossing");
+}
+
+/// One buffer's cap counts every server's diagnostics together.
+#[test]
+fn every_servers_diagnostics_count_toward_the_read_cap() {
+    let tmp = tempfile::tempdir().unwrap();
+    let backend = answering(2);
+    let mut rig = LspRig::drained(
+        tmp.path(),
+        RigSpec::rust(&marked("one two three\n")).with_init(TWO_RUST_SERVERS),
+        backend,
+    );
+    let (ra, lint, uri) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"), rig.uri());
+
+    rig.ed
+        .ingest_typed_publish_for_test(ra, publish_n(&uri, 600));
+    read(&mut rig, None, None);
+    assert_eq!(read_cap_traces(&rig.ed).len(), 0, "600 is under the cap");
+
+    rig.ed
+        .ingest_typed_publish_for_test(lint, publish_n(&uri, 401));
+    read(&mut rig, None, None);
+    let traces = read_cap_traces(&rig.ed);
+    assert_eq!(traces.len(), 1, "{traces:?}");
+    assert!(traces[0].contains("matched 1001 diagnostics"), "{traces:?}");
 }

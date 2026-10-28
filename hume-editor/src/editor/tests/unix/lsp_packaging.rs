@@ -38,7 +38,7 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin! "core:stdlib")
 
 /// Declares `core:lsp` lazily (`declare_src`, normally `DECLARE_LSP`)
 /// instead of `(load-plugin! "core:lsp")`: `declare-plugin!` registers the
-/// `Lazy` stub directly via `CommandHost::register_lazy_command` as the
+/// `Lazy` stub directly via `CommandHost::register_lazy_commands` as the
 /// rig's init runs, so a `:`-command dispatch can trigger activation with no
 /// separate stub-registration step.
 ///
@@ -113,7 +113,7 @@ fn declared_but_undispatched_plugin_is_declared_not_loaded() {
 /// the real plugin body from disk, replaces the lazy stub, and runs the real
 /// hover request through to a populated popup.
 ///
-/// Without `CommandHost::register_lazy_command` claiming the stub at
+/// Without `CommandHost::register_lazy_commands` claiming the stub at
 /// declare time, `lsp/hover` would be an unknown command and this would
 /// report an error, not show a popup; without the real activation wiring,
 /// `plugin_status` would stay `Declared`.

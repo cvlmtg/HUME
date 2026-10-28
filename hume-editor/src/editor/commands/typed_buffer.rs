@@ -8,6 +8,7 @@ use super::{FocusedPane, jump_pane_to};
 use crate::editor::buffer::{DiskCheckTrigger, ReloadError, lifecycle};
 use crate::editor::error::CommandError;
 use crate::editor::jump_list::{JumpRule, with_jump};
+use crate::editor::registry::ArgOrForceInput;
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
 
@@ -28,85 +29,89 @@ use crate::editor::jump_list::{JumpRule, with_jump};
 ///
 /// Dedup uses `find_by_path` on the file the path names (see
 /// [`AbsolutePath::resolve`](hume_platform::path::AbsolutePath::resolve)), which a not-yet-existing path has too. `force` (`!`
-/// suffix) only takes effect in the no-arg reload branch: it discards unsaved
+/// suffix) belongs to the no-arg reload branch: it discards unsaved
 /// changes, stops a pipe running in the buffer, and re-reads the file from
-/// disk. When a path is given, `force` is unused.
+/// disk. Its shape takes no `!` with a path, since opening a file discards
+/// nothing.
 pub(in crate::editor) fn typed_edit(
     ed: &mut Editor,
     fp: FocusedPane,
-    arg: Option<&str>,
-    force: bool,
+    input: ArgOrForceInput<'_>,
 ) -> Result<(), CommandError> {
-    if let Some(raw_arg) = arg {
-        // An unsaved new-file buffer literally named `notes:12` must stay
-        // reachable the same way a file on disk does, so the probe counts
-        // open buffers too, on top of `cli::literal_path_on_disk`'s disk check.
-        let literal_exists = |candidate: &str| {
-            AbsolutePath::from_typed(candidate, &ed.state.cwd).is_ok_and(|typed| {
-                find_buffer_named(ed, &typed).is_some() || crate::cli::literal_path_on_disk(&typed)
-            })
-        };
-        let (path_str, pos) = crate::cli::split_path_position(raw_arg, literal_exists)
-            .map_err(CommandError::transient)?;
+    match input {
+        ArgOrForceInput::Arg(raw_arg) => {
+            // An unsaved new-file buffer literally named `notes:12` must stay
+            // reachable the same way a file on disk does, so the probe counts
+            // open buffers too, on top of `cli::literal_path_on_disk`'s disk check.
+            let literal_exists = |candidate: &str| {
+                AbsolutePath::from_typed(candidate, &ed.state.cwd).is_ok_and(|typed| {
+                    find_buffer_named(ed, &typed).is_some()
+                        || crate::cli::literal_path_on_disk(&typed)
+                })
+            };
+            let (path_str, pos) = crate::cli::split_path_position(raw_arg, literal_exists)
+                .map_err(CommandError::transient)?;
 
-        // A buffer already open for the file, one whose file was deleted
-        // included, is reused without re-reading.
-        let (bid, is_new) = AbsolutePath::from_typed(path_str, &ed.state.cwd)
-            .and_then(|typed| {
-                lifecycle::open_or_dedup_and_notify(&mut ed.view, &mut ed.state, typed)
-            })
-            .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
-        let opened_msg = is_new.then(|| {
-            let buf = ed.state.buffers.get(bid);
-            Editor::new_file_open_msg(buf)
-                .unwrap_or_else(|| format!("Opened {}", buf.display_name()))
-        });
+            // A buffer already open for the file, one whose file was deleted
+            // included, is reused without re-reading.
+            let (bid, is_new) = AbsolutePath::from_typed(path_str, &ed.state.cwd)
+                .and_then(|typed| {
+                    lifecycle::open_or_dedup_and_notify(&mut ed.view, &mut ed.state, typed)
+                })
+                .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
+            let opened_msg = is_new.then(|| {
+                let buf = ed.state.buffers.get(bid);
+                Editor::new_file_open_msg(buf)
+                    .unwrap_or_else(|| format!("Opened {}", buf.display_name()))
+            });
 
-        // `jump_pane_to` does the only switch when a position is given; see
-        // its caller contract.
-        match pos {
-            Some(pos) => {
-                let target = crate::editor::pane_state::line_grapheme_to_cluster(
-                    ed.state.buffers.get(bid).text(),
-                    pos.line,
-                    pos.grapheme_col,
-                );
-                jump_pane_to(&mut ed.state, &mut ed.view, fp.pane(), bid, target);
+            // `jump_pane_to` does the only switch when a position is given; see
+            // its caller contract.
+            match pos {
+                Some(pos) => {
+                    let target = crate::editor::pane_state::line_grapheme_to_cluster(
+                        ed.state.buffers.get(bid).text(),
+                        pos.line,
+                        pos.grapheme_col,
+                    );
+                    jump_pane_to(&mut ed.state, &mut ed.view, fp.pane(), bid, target);
+                }
+                None => ed.enter_buffer(fp, bid),
             }
-            None => ed.enter_buffer(fp, bid),
+            if let Some(msg) = opened_msg {
+                ed.report(Severity::Info, msg);
+            }
+            Ok(())
         }
-        if let Some(msg) = opened_msg {
-            ed.report(Severity::Info, msg);
+        ArgOrForceInput::Bare { force } => {
+            // Reload current file. The history-preserving reload keeps the existing
+            // Buffer: its text is swapped, and its file follows the fresh read.
+            let doc = super::doc(&ed.state, &ed.view, fp.pane());
+            // Nothing on disk to reload from yet: a reload here would just be a
+            // no-op, so short-circuit before the dirty check rather than making
+            // the user add `!` to force a reload that would discard edits for no
+            // reason.
+            if doc.is_new_file() {
+                let name = doc.display_name();
+                ed.report(
+                    Severity::Info,
+                    format!("{name}: new file, nothing to reload"),
+                );
+                return Ok(());
+            }
+            let on_unsaved = OnUnsaved::from_force(force);
+            ed.run_stopping_pipes(force, |ed| ed.reload_from_file(fp, on_unsaved))
+                .map_err(|error| match error {
+                    ReloadError::NoFile => CommandError::transient("no file name"),
+                    ReloadError::Unsaved(unsaved) => {
+                        CommandError::transient(unsaved.message(&ed.state, ":e!"))
+                    }
+                    ReloadError::PipeRunning(running) => {
+                        super::pipe_running_refusal(&ed.state, &ed.view, running, ":e!")
+                    }
+                    ReloadError::Read(e) => e,
+                })
         }
-        Ok(())
-    } else {
-        // Reload current file. The history-preserving reload keeps the existing
-        // Buffer: its text is swapped, and its file follows the fresh read.
-        let doc = super::doc(&ed.state, &ed.view, fp.pane());
-        // Nothing on disk to reload from yet: a reload here would just be a
-        // no-op, so short-circuit before the dirty check rather than making
-        // the user add `!` to force a reload that would discard edits for no
-        // reason.
-        if doc.is_new_file() {
-            let name = doc.display_name();
-            ed.report(
-                Severity::Info,
-                format!("{name}: new file, nothing to reload"),
-            );
-            return Ok(());
-        }
-        let on_unsaved = OnUnsaved::from_force(force);
-        ed.run_stopping_pipes(force, |ed| ed.reload_from_file(fp, on_unsaved))
-            .map_err(|error| match error {
-                ReloadError::NoFile => CommandError::transient("no file name"),
-                ReloadError::Unsaved(unsaved) => {
-                    CommandError::transient(unsaved.message(&ed.state, ":e!"))
-                }
-                ReloadError::PipeRunning(running) => {
-                    super::pipe_running_refusal(&ed.state, &ed.view, running, ":e!")
-                }
-                ReloadError::Read(e) => e,
-            })
     }
 }
 
@@ -117,13 +122,11 @@ pub(in crate::editor) fn typed_edit(
 /// exception: a buffer whose change the user already declined (`[k]eep`)
 /// still gets a warning here: a direct "check now" request must never come
 /// back silent just because an earlier prompt was dismissed. See
-/// `DiskCheckTrigger::Explicit`. `force` has no effect: force accepting a
-/// reload is what the confirm's `[r]eload` choice (or `:e!`) is for.
+/// `DiskCheckTrigger::Explicit`. It takes no `!`: forcing a reload is what
+/// the confirm's `[r]eload` choice (or `:e!`) is for.
 pub(in crate::editor) fn typed_checktime(
     ed: &mut Editor,
     _fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     ed.check_all_disk_state(DiskCheckTrigger::Explicit);
     Ok(())
@@ -138,7 +141,6 @@ pub(in crate::editor) fn typed_cd(
     ed: &mut Editor,
     _fp: FocusedPane,
     arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     let (label, target) = match arg.map(str::trim).filter(|s| !s.is_empty()) {
         Some(s) => (s.to_owned(), AbsolutePath::from_typed(s, &ed.state.cwd)),
@@ -163,12 +165,7 @@ pub(in crate::editor) fn typed_cd(
 }
 
 /// `:pwd` / `:print-working-directory`: display the current working directory.
-pub(in crate::editor) fn typed_pwd(
-    ed: &mut Editor,
-    _fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub(in crate::editor) fn typed_pwd(ed: &mut Editor, _fp: FocusedPane) -> Result<(), CommandError> {
     ed.report(
         Severity::Info,
         hume_platform::path::display_form(&ed.state.cwd),
@@ -184,7 +181,6 @@ pub(in crate::editor) fn typed_pwd(
 pub(in crate::editor) fn typed_buffer_delete(
     ed: &mut Editor,
     fp: FocusedPane,
-    _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
     let id = fp.bid(&ed.view);
@@ -203,16 +199,11 @@ pub(in crate::editor) fn typed_buffer_delete(
 ///    then looked up in the store.
 /// 3. Exact display-name match (basename or `*scratch*`).
 /// 4. Unique basename prefix.
-///
-/// The `force` flag is accepted syntactically but has no effect: there is
-/// nothing to force on a plain buffer switch.
 pub(in crate::editor) fn typed_buffer(
     ed: &mut Editor,
     fp: FocusedPane,
-    arg: Option<&str>,
-    _force: bool,
+    arg: &str,
 ) -> Result<(), CommandError> {
-    let arg = arg.ok_or_else(|| CommandError::transient("usage: :b <name|#|index>"))?;
     let bid = resolve_buffer_arg(ed, arg)?;
     ed.enter_buffer(fp, bid);
     Ok(())
@@ -347,21 +338,11 @@ fn typed_buffer_step(ed: &mut Editor, fp: FocusedPane, cycle: Cycle) -> Result<(
 }
 
 /// `:bnext` / `:bn`: switch to the next buffer in open-order.
-pub(in crate::editor) fn typed_bnext(
-    ed: &mut Editor,
-    fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub(in crate::editor) fn typed_bnext(ed: &mut Editor, fp: FocusedPane) -> Result<(), CommandError> {
     typed_buffer_step(ed, fp, Cycle::Next)
 }
 
 /// `:bprev` / `:bp`: switch to the previous buffer in open-order.
-pub(in crate::editor) fn typed_bprev(
-    ed: &mut Editor,
-    fp: FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
-) -> Result<(), CommandError> {
+pub(in crate::editor) fn typed_bprev(ed: &mut Editor, fp: FocusedPane) -> Result<(), CommandError> {
     typed_buffer_step(ed, fp, Cycle::Prev)
 }

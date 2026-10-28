@@ -7,9 +7,9 @@ use pretty_assertions::assert_eq;
 fn buffer_no_arg_errors() {
     let mut ed = editor_from("-[h]>ello\n");
     let err = ed.execute_typed("b", None).unwrap_err();
-    assert!(
-        err.to_string().contains("usage"),
-        "must show usage, got: {err}"
+    assert_eq!(
+        err.message(),
+        "`:buffer` requires an argument: <name|#|index>"
     );
 }
 
@@ -85,23 +85,17 @@ fn buffer_long_alias_accepted() {
 }
 
 #[test]
-fn buffer_bang_force_is_ignored() {
-    // `:b` takes a `force` flag for syntactic compatibility with the
-    // `<cmd>!` convention, but there is nothing to force on a plain
-    // buffer switch: `:b!` must behave identically to `:b`.
+fn buffer_bang_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let other = tmp.path().join("other.txt");
+    std::fs::write(&other, "other\n").unwrap();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
     let before_id = ed.focused_buffer_id();
-    ed.execute_typed("b!", Some("*scratch*")).unwrap();
-    assert_eq!(
-        ed.focused_buffer_id(),
-        before_id,
-        ":b! to current buffer must be a no-op, same as :b"
-    );
-    let err = ed.execute_typed("b!", Some("xyz_no_such_buf")).unwrap_err();
-    assert!(
-        err.to_string().contains("no buffer matching"),
-        ":b! must still report resolution errors, got: {err}"
-    );
+    let err = ed.execute_typed("b!", Some("*scratch*")).unwrap_err();
+    assert_eq!(err.message(), "`:buffer` takes no `!`");
+    assert_eq!(ed.focused_buffer_id(), before_id);
 }
 
 // ── :b on a buffer whose backing file has been deleted ───────────────────────

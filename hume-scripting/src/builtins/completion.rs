@@ -175,15 +175,20 @@ pub(crate) fn register_completion_source(
     }
     hume_editing::word::WordChars::validate(&token_chars)
         .map_err(|e| generic_err(format!("#:token-chars: {e}")))?;
+    let target = match target {
+        CompletionSourceTarget::Buffer => crate::host::PendingTarget::Buffer {
+            priority,
+            resolve,
+            token_chars,
+        },
+        CompletionSourceTarget::Minibuf => crate::host::PendingTarget::Minibuf,
+    };
     ctx.push_effect(Effect::RegisterCompletionSource(
         crate::host::PendingCompletionSource {
             name,
             proc,
             target,
             match_kind,
-            priority,
-            resolve,
-            token_chars,
             cancel,
         },
     ));

@@ -32,3 +32,4 @@ mod entry_and_editing;
 mod goto_and_sort;
 mod history_and_names;
 mod quit_and_write;
+mod typed_refusals;

@@ -44,43 +44,23 @@ fn status_row(host: &ScriptingHost, plugin: &str) -> String {
         .to_string()
 }
 
-// ── Zero-entry error distinguishes collided vs not-supplied ────────────────
+// ── Taken #:commands names ─────────────────────────────────────────────────
 
 /// A `#:commands` name that is a built-in raises with `define-command!`'s
 /// own message, not the "add #:commands" hint for a declaration with none.
 #[test]
 fn declare_plugin_builtin_collision_raises_like_define_command() {
-    use crate::ScriptingHost;
-    use crate::null_host::NullHost;
-    use tempfile::TempDir;
+    use crate::null_host::CommandStoreHost;
 
-    let dir = TempDir::new().unwrap();
-    let plugin_dir = dir
-        .path()
-        .join("plugins")
-        .join("user")
-        .join("test-collision");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+    let (_dir, mut host) = host_with_plugin("test-collision", &[("plugin.scm", "")]);
+    let mut store = CommandStoreHost::with_natives(&["insert-mode"]);
 
-    let mut host = ScriptingHost::new(&Dirs {
-        data: Some(dir.path().to_path_buf()),
-        ..Dirs::none()
-    });
-    // Mark "insert-mode" as a built-in so collision filtering drops it.
-    let builtin_names: crate::command_name::CommandNameSet = ["insert-mode"].into_iter().collect();
+    let result = host.eval_source(
+        r#"(declare-plugin! "user/test-collision" #:commands '("insert-mode"))"#,
+        &mut store,
+    );
 
-    let result = host
-        .eval_source_raw(
-            r#"(declare-plugin! "user/test-collision" #:commands '("insert-mode"))"#.to_owned(),
-            crate::attribution::Owner::User,
-            builtin_names,
-            10_000,
-            &mut NullHost,
-        )
-        .map_err(|e| e.message);
-
-    let err = result.expect_err("must error when all entries collide");
+    let err = result.expect_err("a built-in name must raise");
     assert!(
         err.contains("'insert-mode' conflicts with a built-in command"),
         "error must name the collision; got: {err}"
@@ -91,23 +71,20 @@ fn declare_plugin_builtin_collision_raises_like_define_command() {
     );
 }
 
-/// A declare that fails because every command collided must not leave the
-/// plugin in PLUM's list.
+/// A declaration refused for a taken name must not leave the plugin in
+/// PLUM's list.
 #[test]
 fn declare_plugin_all_on_command_collided_records_nothing() {
-    use crate::null_host::NullHost;
+    use crate::null_host::CommandStoreHost;
 
     let (_dir, mut host) = host_with_plugin("collided", &[("plugin.scm", "")]);
-    let builtin_names: crate::command_name::CommandNameSet = ["insert-mode"].into_iter().collect();
+    let mut store = CommandStoreHost::with_natives(&["insert-mode"]);
 
-    host.eval_source_raw(
-        r#"(declare-plugin! "user/collided" #:commands '("insert-mode"))"#.to_owned(),
-        crate::attribution::Owner::User,
-        builtin_names,
-        10_000,
-        &mut NullHost,
+    host.eval_source(
+        r#"(declare-plugin! "user/collided" #:commands '("insert-mode"))"#,
+        &mut store,
     )
-    .expect_err("must error when all entries collide");
+    .expect_err("a built-in name must raise");
 
     assert!(
         !host.declared_plugins().iter().any(|d| d == "user/collided"),
@@ -120,24 +97,14 @@ fn declare_plugin_all_on_command_collided_records_nothing() {
 /// stub over it.
 #[test]
 fn declare_plugin_raises_for_a_command_an_eager_plugin_defined() {
-    use crate::ScriptingHost;
     use crate::attribution::Owner;
     use crate::command_procs::{CommandProc, MappableProc};
     use crate::host::EditorHost;
     use crate::null_host::CommandStoreHost;
     use steel::rvals::SteelVal;
-    use tempfile::TempDir;
 
-    let dir = TempDir::new().unwrap();
     // Plugin file must exist so declare-plugin! proceeds past the path check.
-    let plugin_dir = dir.path().join("plugins").join("user").join("test-repo");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
-
-    let mut host = ScriptingHost::new(&Dirs {
-        data: Some(dir.path().to_path_buf()),
-        ..Dirs::none()
-    });
+    let (_dir, mut host) = host_with_plugin("test-repo", &[("plugin.scm", "")]);
     // Simulate an eager command already occupying the name in the editor's registry.
     let mut editor_host = CommandStoreHost::default();
     editor_host.define(

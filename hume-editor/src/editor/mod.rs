@@ -598,8 +598,6 @@ pub(crate) struct Editor {
     /// booted from (and `:reload-config` refuses to run at all under
     /// `ConfigSource::Skip`, see `typed_reload_config`).
     pub(super) config_source: crate::cli::ConfigSource,
-    /// Snapshot of Rust-builtin command names taken at end of `init_scripting`.
-    pub(super) builtin_cmd_names: hume_scripting::command_name::CommandNameSet,
     /// Parse backend: threaded in production, synchronous-inline in tests.
     parse_worker: Box<dyn ParseBackend>,
     /// Whether the one-shot "parse worker disconnected" message has been logged.

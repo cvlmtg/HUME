@@ -244,7 +244,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
     }
 
     fn diagnostics_for_buffer(
-        &self,
+        &mut self,
         bid: BufferId,
         severity_floor: Option<DiagSeverity>,
         range: Option<(usize, usize)>,

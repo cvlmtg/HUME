@@ -417,7 +417,7 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
 
     assert!(result.is_ok());
     assert_eq!(
-        ed.state.input.menu().unwrap().rows.len(),
+        ed.state.input.menu().unwrap().rows().len(),
         2,
         "the fresh item list must have replaced the old one"
     );

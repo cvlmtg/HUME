@@ -22,6 +22,7 @@ use crate::{
 use super::SteelResult;
 use super::args::{list_items, list_to_strings, optional_string_arg, symbol_hash};
 use super::errors::generic_err;
+use crate::host::check_lazy_claim;
 use paths::{
     entry_path, installed_plugin_dir, path_exists, plugin_dir_for_id, require_program_for_path,
 };
@@ -104,9 +105,9 @@ fn check_not_declared(ctx: &SteelCtx, entry: &EntryId, name: &str) -> Result<(),
     }))
 }
 
-/// Raises for a command name already taken, by the check `define-command!`
-/// makes, and for a name the declaration lists twice. Typed names fold their
-/// case, so both lists are compared folded.
+/// Raises for a command name already taken ([`check_lazy_claim`]), and for
+/// a name the declaration lists twice. Typed names fold their case, so both
+/// lists are compared folded.
 fn check_names_free(
     ctx: &mut SteelCtx,
     commands: &[String],
@@ -117,7 +118,8 @@ fn check_names_free(
         if !seen.insert(crate::command_name::fold(cmd)) {
             return Err(generic_err(format!("command '{cmd}' is listed twice")));
         }
-        super::commands::check_name_free(ctx, cmd)?;
+        let holder = ctx.host.commands().command_holder(cmd);
+        check_lazy_claim(cmd, holder).map_err(generic_err)?;
     }
     Ok(())
 }
@@ -153,25 +155,6 @@ fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
 }
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
-
-/// Claims each name as a `Lazy` stub of `entry` via `register`
-/// (`register_lazy_command` or `register_lazy_typed_command`). A claim the
-/// editor refuses raises after freeing every stub `entry` holds: `entry` is
-/// not declared yet, so those are this declaration's own.
-fn claim_lazy_names(
-    ctx: &mut SteelCtx,
-    names: &[String],
-    entry: &EntryId,
-    register: impl Fn(&mut dyn crate::host::CommandHost, &str, &EntryId) -> Result<(), String>,
-) -> Result<(), SteelErr> {
-    for name in names {
-        if let Err(msg) = register(ctx.host.commands(), name, entry) {
-            ctx.host.commands().unregister_lazy_stubs_of(entry);
-            return Err(generic_err(msg));
-        }
-    }
-    Ok(())
-}
 
 /// `(%declare-plugin! name entry commands typed-commands events languages)`:
 /// backs the Scheme `declare-plugin!` wrapper. Top-level only
@@ -299,31 +282,25 @@ pub(crate) fn declare_plugin(
     // When the plugin file is absent on disk, it can never be activated:
     // claiming its names in the editor's registry would leave them claimed
     // with no path to clean them up via drop_activations_for's usual
-    // load/fail transition.  For user/ plugins,
-    // log Info, since absent is expected before :plum-install-plugins.  For core: plugins,
-    // absent means a typo or broken HUME_RUNTIME; PLUM never installs core:
-    // plugins, so it can't catch the error.  The plugin is recorded here so
-    // PLUM lists it.
+    // load/fail transition. For user/ plugins, log Info, since absent is
+    // expected before :plum-install-plugins. For core: plugins, absent means
+    // a typo or broken HUME_RUNTIME; PLUM never installs core: plugins, so
+    // it can't catch the error. The plugin is recorded here so PLUM lists it.
     let Some(path) = path else {
-        ctx.registries.plugin_records.note_declared(entry_id);
+        ctx.registries.plugin_records.note_declared(&entry_id);
         mark_absent(ctx, &plugin_id, &name, "declare-plugin!")?;
         return Ok(SteelVal::Void);
     };
 
-    // Claimed in the editor's registry only once the plugin is on disk.
-    // `register_lazy_command`/`register_lazy_typed_command` claim the name
-    // in the same registry `define-command!`/`define-typed-command!` and
-    // native commands live in, so a name `check_names_free` passed is free.
-    claim_lazy_names(ctx, &cmd_list, &entry_id, |c, name, entry| {
-        c.register_lazy_command(name, entry)
-    })?;
-    claim_lazy_names(ctx, &typed_cmd_list, &entry_id, |c, name, entry| {
-        c.register_lazy_typed_command(name, entry)
-    })?;
+    // Claimed in the editor's registry only once the plugin is on disk, in
+    // the same registry `define-command!`/`define-typed-command!` and native
+    // commands live in, so a name `check_names_free` passed is free.
+    ctx.host
+        .commands()
+        .register_lazy_commands(&entry_id, &cmd_list, &typed_cmd_list)
+        .map_err(generic_err)?;
 
-    ctx.registries
-        .plugin_records
-        .note_declared(entry_id.clone());
+    ctx.registries.plugin_records.note_declared(&entry_id);
     ctx.registries
         .lazy_registry
         .declare(entry_id, path, evt_list, lang_list);
@@ -375,7 +352,7 @@ pub(crate) fn load_plugin(
     check_config(&config)?;
 
     ctx.registries.plugin_records.note(
-        plugin_id.clone(),
+        &plugin_id,
         Some(LoadCall {
             config: Rooted::new(config),
             git_ref,

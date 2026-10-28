@@ -59,7 +59,7 @@ pub use builtins::commands::count_to_steel;
 pub use builtins::ids::{DocPos, DocRange, ServerRef, SteelPane};
 pub use command_procs::{CommandProc, MappableProc, TypedProc};
 pub use eval::HeldHandlers;
-pub use host::PendingCompletionSource;
+pub use host::{PendingCompletionSource, PendingTarget};
 pub use keys::parse_key_stream;
 pub use lazy::PluginStatus;
 pub use rooted::{Callback, Rooted, SteelCall};
@@ -415,21 +415,15 @@ impl ScriptingHost {
 impl ScriptingHost {
     /// Shared tail for [`eval_source`](Self::eval_source) and
     /// [`eval_source_watchdog`](Self::eval_source_watchdog): delegates to
-    /// `eval_source_raw` with empty `builtin_names`, at the given budget.
+    /// `eval_source_raw` as the user's, at the given budget.
     fn eval_source_with_budget(
         &mut self,
         source: &str,
         budget_ms: u64,
         host: &mut dyn host::EditorHost,
     ) -> Result<Vec<Effect>, String> {
-        self.eval_source_raw(
-            source.to_owned(),
-            attribution::Owner::User,
-            Default::default(),
-            budget_ms,
-            host,
-        )
-        .map_err(|e| e.message)
+        self.eval_source_raw(source.to_owned(), attribution::Owner::User, budget_ms, host)
+            .map_err(|e| e.message)
     }
 
     /// Evaluate a Steel source string directly, without a file.

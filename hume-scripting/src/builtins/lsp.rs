@@ -324,7 +324,7 @@ pub(crate) fn lsp_location(uri: SteelVal, range: SteelVal) -> SteelResult {
 /// The event `register-lsp-notification-hook!` registers on. This crate
 /// compiles in no event list, so the name is checked against the host's on
 /// every call and a rename in the editor fails loudly here.
-const LSP_NOTIFICATION_EVENT: &str = "on-lsp-notification";
+pub(crate) const LSP_NOTIFICATION_EVENT: &str = "on-lsp-notification";
 
 /// `(register-lsp-notification-hook! methods proc)`: an `on-lsp-notification`
 /// handler that fires only for a notification whose method is `methods` (a

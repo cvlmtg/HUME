@@ -27,7 +27,7 @@ fn typed_set_applies_to_open_buffers() {
     // cap to the buffer. Without it both edits would stay undoable.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.view);
-    crate::editor::commands::typed_set(&mut ed, fp, Some("global undo-levels=1"), false)
+    crate::editor::commands::typed_set(&mut ed, fp, "global undo-levels=1")
         .expect("set undo-levels");
 
     let after_first_edit = two_edits(&mut ed);
@@ -46,7 +46,7 @@ fn new_buffer_inherits_undo_levels() {
     // buffer would keep both edits undoable.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.view);
-    crate::editor::commands::typed_set(&mut ed, fp, Some("global undo-levels=1"), false)
+    crate::editor::commands::typed_set(&mut ed, fp, "global undo-levels=1")
         .expect("set undo-levels");
 
     let bid2 = ed.open_buffer(Buffer::scratch());

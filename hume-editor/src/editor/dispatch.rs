@@ -145,6 +145,27 @@ impl Editor {
         }
     }
 
+    /// Activate a typed `Lazy` stub's `plugin` and return the Steel body of
+    /// the typed command that replaced it. Fails as [`Self::resolve_lazy`]
+    /// does.
+    pub(super) fn resolve_lazy_typed(
+        &mut self,
+        plugin: &hume_scripting::attribution::EntryId,
+        name: &str,
+    ) -> Result<hume_scripting::SteelTypedCmdBody, CommandError> {
+        self.activate_lazy(plugin, name)?;
+        match self
+            .state
+            .config
+            .registry
+            .get_typed(name)
+            .map(|tc| &tc.body)
+        {
+            Some(super::registry::TypedBody::Steel(body)) => Ok(body.clone()),
+            _ => Err(command_lost(name)),
+        }
+    }
+
     /// Resolve a named command and dispatch it through the unified pipeline.
     ///
     /// Delegates to [`Editor::dispatch`] which handles all bookkeeping (paste
@@ -229,68 +250,24 @@ impl Editor {
         )
     }
 
-    /// Run the body of a Steel-backed or Lazy *typed* command, dispatched
-    /// from the `:` command line via `(define-typed-command! …)`.
+    /// Run `body`, the Steel body of the *typed* command `name` (its
+    /// registered spelling), dispatched from the `:` command line via
+    /// `(define-typed-command! …)`, with the `input` its lambda accepted.
     ///
-    /// Mirrors [`Self::run_steel_command`] but resolves metadata from
-    /// [`super::registry::TypedBody`] rather than `MappableCommand`, and
-    /// marshals `(arg force)` rather than `(count extend)`. The two never
-    /// share a lookup because the registry keeps the kinds strictly separate
-    /// (see `registry/mod.rs`'s module doc). `name` is resolved as `:`
-    /// resolves it, so any casing names the command. Fails, unreported, on
-    /// the same failure classes as `run_steel_command`, and when the lambda
-    /// has no parameter for a given argument or `!`.
+    /// Mirrors [`Self::run_steel_command`] but marshals `(arg force)` rather
+    /// than `(count extend)`. Fails, unreported, on the same failure classes
+    /// as `run_steel_command`.
     pub(super) fn run_typed_steel_command(
         &mut self,
         name: &str,
-        lazy_plugin: Option<hume_scripting::attribution::EntryId>,
-        arg: Option<String>,
-        force: bool,
+        body: hume_scripting::SteelTypedCmdBody,
+        input: &crate::editor::registry::Accepted,
     ) -> Result<(), CommandError> {
-        let name = self
-            .state
-            .config
-            .registry
-            .typed_canonical_name(name)
-            .map(str::to_owned)
-            .ok_or_else(|| command_lost(name))?;
-        let name = name.as_str();
-        if let Some(plugin) = lazy_plugin {
-            self.activate_lazy(&plugin, name)?;
-        }
-
-        let body = match self
-            .state
-            .config
-            .registry
-            .get_typed(name)
-            .map(|tc| &tc.body)
-        {
-            Some(super::registry::TypedBody::Steel(body)) => body.clone(),
-            _ => return Err(command_lost(name)),
-        };
-
-        // A fixed parameter list is the lambda's whole input, so an argument
-        // or `!` it has no parameter for is the user's mistake, not noise to
-        // drop. A variadic lambda takes everything.
-        if !body.is_variadic {
-            let refused = if arg.is_some() && body.arity < 2 {
-                Some("takes no argument")
-            } else if force && body.arity < 3 {
-                Some("takes no `!`")
-            } else {
-                None
-            };
-            if let Some(reason) = refused {
-                return Err(CommandError::new(format!("`:{name}` {reason}")));
-            }
-        }
-
         // Scheme-idiomatic absence: an untyped argument is `#f`, not a
         // sentinel string or a fabricated count; a lambda that only cares
         // whether an arg was given writes a plain `(if arg …)` guard.
-        let arg_val = match &arg {
-            Some(s) => steel::rvals::SteelVal::StringV(s.clone().into()),
+        let arg_val = match input.arg() {
+            Some(s) => steel::rvals::SteelVal::StringV(s.into()),
             None => steel::rvals::SteelVal::BoolV(false),
         };
         let effective_args = marshal_leading_args(
@@ -298,7 +275,7 @@ impl Editor {
             body.is_variadic,
             crate::editor::commands::FocusedPane::current(&self.view).handle(&self.view),
             arg_val,
-            steel::rvals::SteelVal::BoolV(force),
+            steel::rvals::SteelVal::BoolV(input.force()),
             "typed-command injection supplies at most 3 (pane, arg, force)",
         )
         .map_err(|msg| CommandError::new(format!("{name}: {msg}")))?;
@@ -437,6 +414,13 @@ pub(in crate::editor) fn unknown_command_text(name: &str) -> String {
     format!("unknown command: {name}")
 }
 
+/// How many of the three injected leading parameters (the pane, then two
+/// more) a command lambda of `arity` receives: all three with a rest
+/// parameter.
+pub(in crate::editor) fn injected_params(arity: u16, is_variadic: bool) -> u16 {
+    if is_variadic { 3 } else { arity }
+}
+
 /// Shared arity guard + argument marshalling behind
 /// [`Editor::run_steel_command`] and [`Editor::run_typed_steel_command`]:
 /// both cap a Steel command lambda at three leading injected params:
@@ -458,16 +442,15 @@ fn marshal_leading_args(
             "lambda declares {cmd_arity} required params; {injection_desc}"
         ));
     }
-    Ok(match (cmd_arity, cmd_is_variadic) {
-        (0, false) => vec![],
-        (1, false) => vec![hume_scripting::SteelPane::new(pane).into_steel_val()],
-        (2, false) => vec![hume_scripting::SteelPane::new(pane).into_steel_val(), first],
-        _ => vec![
-            hume_scripting::SteelPane::new(pane).into_steel_val(),
-            first,
-            second,
-        ],
-    })
+    let params = injected_params(cmd_arity, cmd_is_variadic);
+    Ok([
+        hume_scripting::SteelPane::new(pane).into_steel_val(),
+        first,
+        second,
+    ]
+    .into_iter()
+    .take(usize::from(params))
+    .collect())
 }
 
 #[cfg(test)]

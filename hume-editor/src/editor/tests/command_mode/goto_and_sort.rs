@@ -275,14 +275,12 @@ fn sort_unknown_long_flag_reports_a_flag_error_not_an_argument_error() {
 
 #[test]
 fn sort_bang_is_rejected() {
-    // `!` means "force" everywhere else in HUME; `:sort` has no force
-    // behavior, so it points the user at `-r` instead of ignoring the `!`.
     let mut ed = editor_from("-{b}>\n-[a]>\n");
     let before = state(&ed);
     let err = ed
         .execute_typed("sort!", None)
         .expect_err(":sort! must be rejected");
-    assert_eq!(err.message(), "`:sort` takes no `!`; use `-r` to reverse");
+    assert_eq!(err.message(), "`:sort` takes no `!`");
     assert_eq!(state(&ed), before);
 }
 

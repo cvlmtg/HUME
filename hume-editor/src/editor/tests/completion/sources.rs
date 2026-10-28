@@ -1078,7 +1078,7 @@ fn a_registration_in_a_failed_init_is_never_applied() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let err = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect_err("the init must fail");
     ed.apply_script_effects(err.effects);

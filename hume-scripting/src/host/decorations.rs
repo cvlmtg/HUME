@@ -117,13 +117,14 @@ pub trait DecorationHost {
 
     /// `(diagnostics-for-buffer pane #:severity floor #:range (start-char end-char))`:
     /// one [`DiagnosticEntry`] per diagnostic, filtered then capped at 1000.
+    /// A read the cap cuts is traced in `:messages`.
     /// `start_char` is an addressing unit (feeds `goto-location!`);
     /// `grapheme_col` is the display unit (the one every HUME surface shows
     /// the user). `severity_floor` is `None` for the
     /// `lsp-diagnostics-min-severity` option's floor; `range` is `None` for
     /// the whole buffer.
     fn diagnostics_for_buffer(
-        &self,
+        &mut self,
         bid: BufferId,
         severity_floor: Option<DiagSeverity>,
         range: Option<(usize, usize)>,
@@ -158,6 +159,11 @@ impl DiagnosticCounts {
             DiagSeverity::Info => &mut self.info,
             DiagSeverity::Hint => &mut self.hint,
         }
+    }
+
+    /// The count over every severity.
+    pub fn total(self) -> usize {
+        self.error + self.warning + self.info + self.hint
     }
 }
 

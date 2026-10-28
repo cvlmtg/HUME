@@ -21,7 +21,7 @@ fn setup_stdlib_editor() -> (Editor, ScriptingHost, RuntimeDirs, tempfile::TempD
     let mut host = ScriptingHost::new(&ed.state.dirs);
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed loading core:stdlib");
 

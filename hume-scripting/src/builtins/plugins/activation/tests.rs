@@ -23,10 +23,6 @@ fn plugin_id(name: &str) -> EntryId {
     EntryId::main(PluginId::parse(name).unwrap())
 }
 
-fn no_builtins() -> crate::command_name::CommandNameSet {
-    crate::command_name::CommandNameSet::default()
-}
-
 // ── Case 1: Declared → Loaded with a valid command body ──────────────────
 
 #[test]
@@ -45,7 +41,7 @@ fn declared_to_loaded_registers_command() {
         .insert(id.clone(), PluginState::Declared { path });
 
     let mut store = CommandStoreHost::default();
-    host.activate_plugin_inline(&id, 10_000, &mut store, &no_builtins())
+    host.activate_plugin_inline(&id, 10_000, &mut store)
         .unwrap();
 
     assert!(
@@ -77,7 +73,7 @@ fn syntax_error_transitions_to_failed() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
 
-    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost);
 
     assert!(
         result.is_ok(),
@@ -120,7 +116,7 @@ fn failed_activation_message_names_plugin_and_location() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
 
-    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost);
     assert!(
         result.is_ok(),
         "must be contained, not propagate; got: {result:?}"
@@ -170,7 +166,7 @@ fn already_loaded_is_noop() {
         .plugins
         .insert(id.clone(), PluginState::Loaded);
 
-    host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins())
+    host.activate_plugin_inline(&id, 10_000, &mut NullHost)
         .unwrap();
 
     assert!(
@@ -191,7 +187,7 @@ fn already_failed_is_noop() {
         .plugins
         .insert(id.clone(), PluginState::Failed);
 
-    host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins())
+    host.activate_plugin_inline(&id, 10_000, &mut NullHost)
         .unwrap();
 
     assert!(
@@ -208,7 +204,7 @@ fn absent_plugin_is_noop() {
     let id = plugin_id("core:absent");
     let mut host = ScriptingHost::new(&Dirs::none());
 
-    host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins())
+    host.activate_plugin_inline(&id, 10_000, &mut NullHost)
         .unwrap();
 
     assert!(
@@ -228,7 +224,7 @@ fn loading_reentrancy_guard_is_noop() {
         .plugins
         .insert(id.clone(), PluginState::Loading);
 
-    host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins())
+    host.activate_plugin_inline(&id, 10_000, &mut NullHost)
         .unwrap();
 
     assert!(
@@ -253,7 +249,7 @@ fn path_with_quote_char_transitions_to_failed() {
         },
     );
 
-    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost);
 
     assert!(result.is_err(), "path with '\"' must be rejected");
     assert!(
@@ -489,7 +485,7 @@ fn partial_define_before_failure_is_rolled_back() {
         .insert(id.clone(), PluginState::Declared { path });
 
     let mut store = CommandStoreHost::default();
-    let result = host.activate_plugin_inline(&id, 10_000, &mut store, &no_builtins());
+    let result = host.activate_plugin_inline(&id, 10_000, &mut store);
 
     assert!(
         result.is_ok(),
@@ -532,7 +528,7 @@ fn queued_effects_before_failure_are_rolled_back() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
 
-    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost);
 
     assert!(
         result.is_ok(),
@@ -579,7 +575,7 @@ fn committed_activation_effects_survive_failed_outer_command() {
     let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
-        .register_lazy_command("b-cmd", &id_b)
+        .register_lazy_commands(&id_b, &["b-cmd".into()], &[])
         .expect("stub claim must succeed on a fresh host");
 
     host.eval_source(
@@ -670,10 +666,10 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
     let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
-        .register_lazy_command("c-cmd", &id_c)
+        .register_lazy_commands(&id_c, &["c-cmd".into()], &[])
         .expect("stub claim must succeed on a fresh host");
 
-    let result = host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins());
+    let result = host.activate_plugin_inline(&id_b, 10_000, &mut editor_host);
 
     let effects = result.expect("B's failure must be contained, not propagate");
     assert_eq!(
@@ -748,7 +744,7 @@ fn hook_registered_before_failure_is_rolled_back() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
 
-    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost);
 
     assert!(
         result.is_ok(),
@@ -803,10 +799,10 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
     let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
-        .register_lazy_command("hc-cmd", &id_c)
+        .register_lazy_commands(&id_c, &["hc-cmd".into()], &[])
         .expect("stub claim must succeed on a fresh host");
 
-    let result = host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins());
+    let result = host.activate_plugin_inline(&id_b, 10_000, &mut editor_host);
 
     assert!(
         result.is_ok(),
@@ -866,10 +862,10 @@ fn registrations_a_called_command_makes_in_a_failing_body_are_rolled_back() {
         .plugins
         .insert(id_b.clone(), PluginState::Declared { path: path_b });
     let mut editor_host = CommandStoreHost::default();
-    host.activate_plugin_inline(&id_a, 10_000, &mut editor_host, &no_builtins())
+    host.activate_plugin_inline(&id_a, 10_000, &mut editor_host)
         .unwrap();
 
-    host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins())
+    host.activate_plugin_inline(&id_b, 10_000, &mut editor_host)
         .unwrap();
 
     assert!(
@@ -922,12 +918,12 @@ fn a_called_command_may_define_the_running_bodys_activation_command() {
     let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
-        .register_lazy_command("b-act", &id_b)
+        .register_lazy_commands(&id_b, &["b-act".into()], &[])
         .expect("stub claim must succeed on a fresh host");
-    host.activate_plugin_inline(&id_a, 10_000, &mut editor_host, &no_builtins())
+    host.activate_plugin_inline(&id_a, 10_000, &mut editor_host)
         .unwrap();
 
-    host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins())
+    host.activate_plugin_inline(&id_b, 10_000, &mut editor_host)
         .unwrap();
 
     assert!(
@@ -1009,10 +1005,10 @@ fn lazy_plugin_can_define_its_own_activation_command() {
     let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
-        .register_lazy_command("self-act-cmd", &id)
+        .register_lazy_commands(&id, &["self-act-cmd".into()], &[])
         .expect("stub claim must succeed on a fresh host");
 
-    let result = host.activate_plugin_inline(&id, 10_000, &mut editor_host, &no_builtins());
+    let result = host.activate_plugin_inline(&id, 10_000, &mut editor_host);
 
     assert!(
         result.is_ok(),
@@ -1116,7 +1112,7 @@ fn call_of_command_owned_by_newly_failed_plugin_errors() {
     let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
-        .register_lazy_command("broken-cmd", &id)
+        .register_lazy_commands(&id, &["broken-cmd".into()], &[])
         .expect("stub claim must succeed on a fresh host");
 
     let err = host
@@ -1364,7 +1360,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
     let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
-        .register_lazy_command("deep-cmd", &id)
+        .register_lazy_commands(&id, &["deep-cmd".into()], &[])
         .expect("stub claim must succeed on a fresh host");
 
     let dummy = EntryId::main(PluginId::parse("core:dummy").unwrap());

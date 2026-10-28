@@ -131,7 +131,6 @@ impl SteelCtxTestHarness {
                 dirs,
                 watchdog,
             ),
-            Default::default(),
             crate::attribution::Owner::User,
         )
     }
@@ -162,7 +161,6 @@ impl SteelCtxTestHarness {
                 dirs,
                 watchdog,
             ),
-            Default::default(),
             crate::attribution::Owner::User,
         )
     }
@@ -189,7 +187,6 @@ impl SteelCtxTestHarness {
                 dirs,
                 watchdog,
             ),
-            Default::default(),
         )
     }
 

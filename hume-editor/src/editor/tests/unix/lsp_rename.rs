@@ -82,7 +82,7 @@ fn cancel_sends_no_rename_request() {
             .status_msg
             .clone()
             .unwrap_or_default()
-            .contains("buffers modified"),
+            .contains(" modified — :wa"),
         "cancel must not send the rename request at all"
     );
 }

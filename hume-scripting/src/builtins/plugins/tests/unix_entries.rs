@@ -584,7 +584,7 @@ fn init_host(
     std::fs::write(&init, init_src).unwrap();
     let mut host = ScriptingHost::new(&Dirs::none());
     let result = host
-        .eval_init(&init, 10_000, editor_host, Default::default())
+        .eval_init(&init, 10_000, editor_host)
         .map(drop)
         .map_err(|e| e.to_string());
     (dir, host, result)
@@ -738,7 +738,7 @@ fn a_runtime_file_does_not_set_the_local_plugin_directory() {
     let mut host = ScriptingHost::new(&Dirs::none());
 
     let err = host
-        .eval_runtime(&runtime, 10_000, &mut NullHost, Default::default())
+        .eval_runtime(&runtime, 10_000, &mut NullHost)
         .expect_err("a runtime file has no init.scm to resolve a local plugin against")
         .to_string();
 

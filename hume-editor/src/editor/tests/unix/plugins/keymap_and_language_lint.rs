@@ -124,7 +124,7 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     let init_path = dir.path().join("init.scm");
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);

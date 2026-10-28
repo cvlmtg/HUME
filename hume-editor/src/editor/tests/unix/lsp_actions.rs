@@ -69,7 +69,7 @@ fn menu_items(ed: &Editor) -> Vec<String> {
     ed.state
         .input
         .menu()
-        .map(|m| m.rows.iter().map(|r| r.main.to_string()).collect())
+        .map(|m| m.rows().iter().map(|r| r.main.to_string()).collect())
         .unwrap_or_default()
 }
 

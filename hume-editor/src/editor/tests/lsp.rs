@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec};
+use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec, answering};
 use super::*;
 use hume_lsp::backend::ServerId;
 use hume_lsp::client::ServerState;
@@ -305,9 +305,7 @@ fn workspace_configuration_answers_null_when_requesting_server_has_no_registered
 #[test]
 fn workspace_configuration_resolves_each_servers_own_settings_for_one_language() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut backend, _, _) = RecordingLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
-    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    let backend = answering(2);
     let mut rig = LspRig::drained(
         tmp.path(),
         RigSpec::rust("-[w]>ord\n").with_init(

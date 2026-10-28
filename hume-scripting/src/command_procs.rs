@@ -15,6 +15,7 @@ use steel::steel_vm::engine::Engine;
 
 use crate::Rooted;
 use crate::attribution::{EntryId, Owner};
+use crate::host::{CommandHolder, CommandKind, check_name_free};
 
 /// `owner` and `activation` are shared so that cloning a proc on every
 /// dispatch copies no strings. A command has an author but no requester:
@@ -124,6 +125,17 @@ impl CommandProc {
 
     pub(crate) fn owner(&self) -> &Rc<Owner> {
         &self.defined().owner
+    }
+
+    /// Whether this proc may be defined under `name`, which `holder` holds:
+    /// only the stub of the entry whose body defined it, and of its own
+    /// kind, may be replaced.
+    pub fn check_define(&self, name: &str, holder: Option<CommandHolder>) -> Result<(), String> {
+        let kind = match self {
+            Self::Mappable(_) => CommandKind::Mappable,
+            Self::Typed(_) => CommandKind::Typed,
+        };
+        check_name_free(name, holder, kind, self.defined().activation.as_deref())
     }
 
     /// Whether this command was defined while `activation`'s body ran, the

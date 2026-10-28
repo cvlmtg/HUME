@@ -7,7 +7,7 @@ use super::super::dispatch::unknown_command_text;
 use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
-use super::super::registry::{ArgExpansion, TypedBody};
+use super::super::registry::{ArgExpansion, Takes, TypedBody};
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
 use super::paste::PastedText;
@@ -221,12 +221,11 @@ fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
     // Bare line number `:42`: shorthand for `:goto 42`.
     // The parser leaves `cmd = ""` for digit-only input (a name can't start
     // with a digit, so `:42` → cmd="" arg=Some("42")).
-    if cmd.is_empty()
-        && !force
-        && arg.is_some_and(|a| !a.is_empty() && a.bytes().all(|b| b.is_ascii_digit()))
-    {
+    if let Some(line) = arg.filter(|a| {
+        cmd.is_empty() && !force && !a.is_empty() && a.bytes().all(|b| b.is_ascii_digit())
+    }) {
         let fp = commands::FocusedPane::current(&ed.view);
-        return commands::typed_goto_line(ed, fp, arg, false);
+        return commands::typed_goto_line(ed, fp, line);
     }
 
     // `:` resolves only typed commands: an editor (key-bindable) command's
@@ -234,27 +233,31 @@ fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
     let Some(tc) = ed.state.config.registry.get_typed(cmd) else {
         return Err(ed.unknown_command(cmd, unknown_command_text(cmd)));
     };
-
-    let expanded = match arg {
-        Some(a) if tc.arg_expansion == ArgExpansion::Paths => Some(expand_command_arg(ed, a)?),
-        other => other.map(str::to_owned),
+    let name = tc.name.clone();
+    let expansion = tc.arg_expansion;
+    let expand = |ed: &Editor, a: &str| match expansion {
+        ArgExpansion::Paths => expand_command_arg(ed, a),
+        ArgExpansion::Verbatim => Ok(a.to_owned()),
     };
 
-    match &tc.body {
-        TypedBody::Native(fun) => {
-            let fun = *fun;
+    let body = match &tc.body {
+        TypedBody::Native(native) => {
+            let native = *native;
+            let input = native
+                .takes()
+                .accept(&name, arg, force, |a| expand(ed, a))?;
             let fp = commands::FocusedPane::current(&ed.view);
-            fun(ed, fp, expanded.as_deref(), force)
+            return native.run(ed, fp, &input);
         }
-        // Lazy-stub activation and Steel arg marshalling both happen
-        // inside `Editor::run_typed_steel_command`, so `:bar arg`
-        // cannot silently drop `arg` on the plugin's first call.
-        TypedBody::Steel(_) => ed.run_typed_steel_command(cmd, None, expanded, force),
+        TypedBody::Steel(body) => body.clone(),
+        // Activated before the refusal, which reads the lambda's arity.
         TypedBody::Lazy(plugin) => {
             let plugin = plugin.clone();
-            ed.run_typed_steel_command(cmd, Some(plugin), expanded, force)
+            ed.resolve_lazy_typed(&plugin, &name)?
         }
-    }
+    };
+    let input = Takes::of_steel(&body).accept(&name, arg, force, |a| expand(ed, a))?;
+    ed.run_typed_steel_command(&name, body, &input)
 }
 
 // ── Typed-command helpers ─────────────────────────────────────────────────────

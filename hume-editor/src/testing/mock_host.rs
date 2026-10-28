@@ -10,18 +10,18 @@
 //! # Design rule: never approximate
 //!
 //! Every method either delegates to a real production structure or function,
-//! records what the test told it, or mirrors a specific real rule (cited at
-//! the call site), such as `CommandRegistry`'s name-collision check. A test
-//! needing finer behavior (native/typed collisions, real grammar parsing)
-//! uses a real `Editor` + `EditorHostImpl` instead (see
-//! `editor/tests/plugins.rs`).
+//! records what the test told it, or applies a real rule over what it
+//! recorded, such as the command-name rule every registration goes through
+//! (`CommandProc::check_define`). A test needing finer behavior (native
+//! aliases, real grammar parsing) uses a real `Editor` + `EditorHostImpl`
+//! instead (see `editor/tests/plugins.rs`).
 
 use hume_core::{BufferId, OnUnsaved, OptionInput, PaneHandle};
 use hume_rope::line::ContentLine;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
-    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, LanguageHost,
-    NativeCall, OptionValue, SelectionInfo, SettingsHost, StoredLanguage,
+    BufferHost, CommandHolder, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost,
+    LanguageHost, NativeCall, OptionValue, SelectionInfo, SettingsHost, StoredLanguage,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -46,9 +46,15 @@ pub struct MockHost {
     /// against, so every call is recorded regardless of `pane`. See
     /// `run_command_sync`'s own doc.
     pub dispatched_native: Vec<DispatchedNativeCall>,
-    /// Lazy activation stubs registered via `register_lazy_command`, keyed
+    /// Lazy activation stubs registered via `register_lazy_commands`, keyed
     /// by the name folded.
-    pub lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::attribution::EntryId>,
+    pub lazy_cmds: rustc_hash::FxHashMap<
+        String,
+        (
+            hume_scripting::attribution::EntryId,
+            hume_scripting::host::CommandKind,
+        ),
+    >,
     /// Buffer ids `buffer_exists` answers `true` for. Empty by default, so
     /// every id (including `focused_pane()`'s own `BufferId::default()`)
     /// is "stale" from an explicit-`pane` builtin's point of view unless a
@@ -70,19 +76,6 @@ impl MockHost {
             lazy_cmds: rustc_hash::FxHashMap::default(),
             live_buffer_ids: rustc_hash::FxHashSet::default(),
         }
-    }
-
-    /// Whether `name` is already claimed by a defined (non-Lazy) command,
-    /// mappable or typed: the two vectors are one namespace in the real
-    /// registry.
-    fn is_registered(&self, name: &str) -> bool {
-        self.registered_cmds
-            .iter()
-            .any(|d| same_name(&d.name, name))
-            || self
-                .registered_typed_cmds
-                .iter()
-                .any(|d| same_name(&d.name, name))
     }
 }
 
@@ -361,17 +354,23 @@ impl CommandHost for MockHost {
         self.dispatched_native.push((name.to_owned(), pane, call));
         Ok(true)
     }
-    fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
-        // Mirrors `EditorHostImpl::register_command` (host_impl.rs), reduced
-        // to what this mock actually tracks: a name already in
-        // `registered_cmds`/`registered_typed_cmds` is a SteelBacked/native/
-        // typed conflict (the real host's `Some(_) => Err` branch); a name
-        // only in `lazy_cmds` is a `Lazy` stub, which the real
-        // `CommandRegistry::register` allows overwriting (`Some(Lazy) | None
-        // => Ok`), so clear it here too.
-        if self.is_registered(&def.name) {
-            return Err(format!("'{}' conflicts with existing command", def.name));
+    fn command_holder(&self, name: &str) -> Option<CommandHolder> {
+        if self.native_names.contains(name) {
+            return Some(CommandHolder::Native);
         }
+        if let Some(proc) = self.defined_command(name) {
+            return Some(CommandHolder::Defined(proc));
+        }
+        self.lazy_cmds
+            .get(fold(name).as_ref())
+            .map(|(entry, kind)| CommandHolder::Lazy {
+                entry: entry.clone(),
+                kind: *kind,
+            })
+    }
+    fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
+        hume_scripting::CommandProc::Mappable(def.body.proc.clone())
+            .check_define(&def.name, self.command_holder(&def.name))?;
         self.lazy_cmds.remove(fold(&def.name).as_ref());
         self.registered_cmds.push(def);
         Ok(())
@@ -380,12 +379,8 @@ impl CommandHost for MockHost {
         &mut self,
         def: hume_scripting::SteelTypedCmdDef,
     ) -> Result<(), String> {
-        // Mirrors `register_command` above: mappable and typed names share
-        // one namespace in the real registry, so the collision check covers
-        // both vectors (see `is_registered`).
-        if self.is_registered(&def.name) {
-            return Err(format!("'{}' conflicts with existing command", def.name));
-        }
+        hume_scripting::CommandProc::Typed(def.body.proc.clone())
+            .check_define(&def.name, self.command_holder(&def.name))?;
         self.lazy_cmds.remove(fold(&def.name).as_ref());
         self.registered_typed_cmds.push(def);
         Ok(())
@@ -413,46 +408,42 @@ impl CommandHost for MockHost {
         self.registered_typed_cmds
             .retain(|d| !CommandProc::Typed(d.body.proc.clone()).registered_in(activation));
     }
-    fn register_lazy_command(
+    fn register_lazy_commands(
         &mut self,
-        name: &str,
         plugin: &hume_scripting::attribution::EntryId,
+        commands: &[String],
+        typed_commands: &[String],
     ) -> Result<(), String> {
-        // Permissive, like `register_command` above. Collision
-        // detection is `CommandRegistry`'s decision; testing it here would be
-        // a second copy of the same rules that can silently drift from the
-        // real behavior it's meant to prove. Tests that need real collision
-        // semantics use a real `Editor` + `EditorHostImpl` instead (see
-        // `hume-editor/src/editor/tests/plugins.rs`).
-        self.lazy_cmds
-            .insert(fold(name).into_owned(), plugin.clone());
-        Ok(())
-    }
-    fn register_lazy_typed_command(
-        &mut self,
-        name: &str,
-        plugin: &hume_scripting::attribution::EntryId,
-    ) -> Result<(), String> {
-        self.lazy_cmds
-            .insert(fold(name).into_owned(), plugin.clone());
+        use hume_scripting::host::{CommandKind, check_lazy_claim};
+        let names = commands
+            .iter()
+            .map(|name| (name, CommandKind::Mappable))
+            .chain(typed_commands.iter().map(|name| (name, CommandKind::Typed)));
+        for (name, _) in names.clone() {
+            check_lazy_claim(name, self.command_holder(name))?;
+        }
+        for (name, kind) in names {
+            self.lazy_cmds
+                .insert(fold(name).into_owned(), (plugin.clone(), kind));
+        }
         Ok(())
     }
     fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::EntryId> {
-        self.lazy_cmds.get(fold(name).as_ref()).cloned()
+        self.lazy_cmds
+            .get(fold(name).as_ref())
+            .map(|(entry, _)| entry.clone())
     }
-    // `lazy_cmds` tracks no kind, so this mock can't tell a typed-only stub
-    // from a mappable one, same answer as `lazy_command_owner`. A test
-    // needing the real mappable-only distinction (`call!` on a typed-only
-    // lazy name) uses a real `Editor` + `EditorHostImpl` instead, per this
-    // struct's own doc.
     fn lazy_mappable_command_owner(
         &self,
         name: &str,
     ) -> Option<hume_scripting::attribution::EntryId> {
-        self.lazy_cmds.get(fold(name).as_ref()).cloned()
+        self.lazy_cmds
+            .get(fold(name).as_ref())
+            .filter(|(_, kind)| *kind == hume_scripting::host::CommandKind::Mappable)
+            .map(|(entry, _)| entry.clone())
     }
     fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::EntryId) {
-        self.lazy_cmds.retain(|_, p| p != plugin);
+        self.lazy_cmds.retain(|_, (p, _)| p != plugin);
     }
 }
 

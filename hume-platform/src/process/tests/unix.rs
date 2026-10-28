@@ -55,16 +55,19 @@ fn run_capture_child_shares_the_callers_process_group() {
 /// Guards the deadlock this module's doc describes: reading stdout to EOF,
 /// then waiting, then reading stderr blocks forever once a child fills its
 /// stderr pipe before exiting. Both pipes are drained concurrently, so this
-/// returns rather than hangs, with the first `STDERR_CAPTURE_CAP` bytes kept.
+/// returns rather than hangs, keeping the stream's first and last 4 KiB.
 #[test]
-fn run_capture_drains_a_large_stderr_and_keeps_its_first_8_kib() {
+fn run_capture_drains_a_large_stderr_and_keeps_its_head_and_tail() {
     let out = run_capture(
         "sh",
         &["-c".to_string(), "yes | head -c 200000 1>&2".to_string()],
         Launch::with_process_path(Path::new(".")),
     )
     .expect("run_capture");
-    assert_eq!(out.stderr.len(), 8 * 1024);
+    assert_eq!(
+        decode_lossy(out.stderr),
+        test_support::kept_stderr(&"y\n".repeat(100_000))
+    );
     assert!(out.status.success());
 }
 

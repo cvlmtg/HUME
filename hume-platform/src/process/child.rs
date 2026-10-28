@@ -3,6 +3,7 @@
 //! shapes build on: [`crate::process::line_source`]'s line-batch streaming
 //! and [`crate::process::job`]'s whole-output capture.
 
+use std::collections::VecDeque;
 use std::io::{self, Read};
 use std::process::{ChildStderr, ChildStdin, ChildStdout, Stdio};
 use std::thread::{self, JoinHandle};
@@ -10,9 +11,11 @@ use std::thread::{self, JoinHandle};
 use crate::process::{Launch, ReapOnDrop, base_command, spawn_in_own_group, start_failed};
 use crate::wake::{WakeCallback, spawn_waking};
 
-/// Cap on captured stderr bytes: enough for a useful error message. Bytes
-/// past the cap are still drained from the pipe (so a chatty child never
-/// blocks writing to it) but discarded.
+/// Cap on captured stderr bytes: enough for a useful error message. Past
+/// it, [`read_capped`] keeps the first and last halves, so both a
+/// program's first error and its closing summary survive. The bytes
+/// between are still drained from the pipe (so a chatty child never blocks
+/// writing to it) but discarded.
 pub(crate) const STDERR_CAPTURE_CAP: usize = 8 * 1024;
 
 /// Cap on the stdout of every whole-output capture, a job's
@@ -86,28 +89,40 @@ where
 }
 
 /// Reads `r` to EOF, retaining at most `cap` bytes but always draining the
-/// rest of the pipe so a chatty child never blocks on write. A read error
-/// past `Interrupted` just stops the read early rather than failing it.
+/// rest of the pipe so a chatty child never blocks on write. A stream past
+/// `cap` keeps its first `cap / 2` bytes and its last `cap - cap / 2`,
+/// joined by a line naming how many bytes were cut. A read error past
+/// `Interrupted` just stops the read early rather than failing it.
 /// This is for diagnostic-only captures ([`STDERR_CAPTURE_CAP`]) where a
 /// shorter-than-expected result is harmless; [`read_bounded`] is the
 /// error-propagating counterpart for output a caller actually depends on.
 pub(crate) fn read_capped(mut r: impl Read, cap: usize) -> Vec<u8> {
+    let head_cap = cap / 2;
+    let tail_cap = cap - head_cap;
     let mut buf = [0u8; 4096];
-    let mut captured = Vec::new();
+    let mut head = Vec::new();
+    let mut tail = VecDeque::<u8>::new();
+    let mut cut = 0;
     loop {
         match r.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => {
-                if captured.len() < cap {
-                    let remaining = cap - captured.len();
-                    captured.extend_from_slice(&buf[..n.min(remaining)]);
-                }
+                let to_head = n.min(head_cap - head.len());
+                head.extend_from_slice(&buf[..to_head]);
+                tail.extend(&buf[to_head..n]);
+                let excess = tail.len().saturating_sub(tail_cap);
+                tail.drain(..excess);
+                cut += excess;
             }
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(_) => break,
         }
     }
-    captured
+    if cut > 0 {
+        head.extend_from_slice(format!("\n[… {cut} bytes cut …]\n").as_bytes());
+    }
+    head.extend(tail);
+    head
 }
 
 /// Reads `r` to EOF, erroring instead of truncating: a real read error
@@ -117,29 +132,57 @@ pub(crate) fn read_capped(mut r: impl Read, cap: usize) -> Vec<u8> {
 /// past `limit` (discarding the bytes) so the child's write doesn't block
 /// on a full pipe while it finishes. The point is to bound this reader's
 /// memory, not to stop the child from writing what it's going to write.
-pub(crate) fn read_bounded(mut r: impl Read, limit: usize) -> io::Result<Vec<u8>> {
-    let mut buf = [0u8; 4096];
+///
+/// A read error ends the draining, so it calls `stop_writer` first: a
+/// child left blocked on a full pipe would never exit, and a caller's
+/// wait for it would never return.
+pub(crate) fn read_bounded(
+    mut r: impl Read,
+    limit: usize,
+    stop_writer: impl FnOnce(),
+) -> io::Result<Vec<u8>> {
     let mut captured = Vec::new();
-    let mut overflowed = false;
-    loop {
-        match r.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                if !overflowed && captured.len() + n > limit {
-                    overflowed = true;
-                }
-                if !overflowed {
-                    captured.extend_from_slice(&buf[..n]);
-                }
-            }
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
-        }
+    let drained = r
+        .by_ref()
+        .take(limit as u64 + 1)
+        .read_to_end(&mut captured)
+        .and_then(|_| io::copy(&mut r, &mut io::sink()));
+    if let Err(e) = drained {
+        stop_writer();
+        return Err(e);
     }
-    if overflowed {
+    if captured.len() > limit {
         return Err(io::Error::other(format!("output exceeded {limit} bytes")));
     }
     Ok(captured)
+}
+
+/// A whole-output capture of a child in progress: its stderr read on a
+/// thread of its own, so a child filling its stderr pipe never blocks the
+/// stdout read [`Self::finish`] does.
+pub(crate) struct OutputCapture(JoinHandle<Vec<u8>>);
+
+impl OutputCapture {
+    /// Starts reading `stderr` through [`read_capped`].
+    pub(crate) fn start(program: &str, stderr: ChildStderr) -> io::Result<Self> {
+        spawn_bridge(program, "hume-capture-stderr", move || {
+            read_capped(stderr, STDERR_CAPTURE_CAP)
+        })
+        .map(Self)
+    }
+
+    /// `stdout` read to EOF through [`read_bounded`], then the stderr read
+    /// so far. A panicked stderr thread degrades to empty stderr rather
+    /// than wedging the capture: the exit status still carries the failure,
+    /// and stdout is what most callers want.
+    pub(crate) fn finish(
+        self,
+        stdout: ChildStdout,
+        stop_writer: impl FnOnce(),
+    ) -> (io::Result<Vec<u8>>, Vec<u8>) {
+        let stdout = read_bounded(stdout, STDOUT_CAPTURE_CAP, stop_writer);
+        (stdout, self.0.join().unwrap_or_default())
+    }
 }
 
 #[cfg(test)]

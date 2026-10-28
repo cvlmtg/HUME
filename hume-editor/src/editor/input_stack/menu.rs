@@ -28,9 +28,9 @@ use super::stack::{
 /// stays open. Measuring is `resolve_menu`'s own job, done fresh each call
 /// from that slice alone.
 pub(in crate::editor) struct MenuLayer {
-    pub(in crate::editor) rows: NonEmpty<hume_ui::popup::MenuRow>,
+    rows: NonEmpty<hume_ui::popup::MenuRow>,
     /// One per row: what `callback` gets when that row is chosen.
-    payloads: Vec<hume_scripting::Rooted>,
+    payloads: NonEmpty<hume_scripting::Rooted>,
     pub(in crate::editor) selected: usize,
     pub(in crate::editor) callback: hume_scripting::Callback,
     /// Identifies which `show-menu!` call opened this menu; see
@@ -106,9 +106,9 @@ pub(in crate::editor) fn open_menu(
 
 /// The argument a menu's callback gets: the chosen row's payload, or `#f`.
 fn menu_arg(payload: Option<&hume_scripting::Rooted>) -> hume_scripting::Rooted {
-    hume_scripting::Rooted::new(
-        payload.map_or(steel::rvals::SteelVal::BoolV(false), |p| p.value().clone()),
-    )
+    payload
+        .cloned()
+        .unwrap_or_else(|| hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)))
 }
 
 impl MenuLayer {
@@ -120,11 +120,9 @@ impl MenuLayer {
         items: NonEmpty<(String, hume_scripting::Rooted)>,
         callback: hume_scripting::Callback,
     ) -> Self {
-        let mut payloads = Vec::with_capacity(items.len());
-        let rows = items.map(|(label, payload)| {
-            payloads.push(payload);
-            hume_ui::popup::MenuRow::plain(label)
-        });
+        let (rows, payloads) = items
+            .map(|(label, payload)| (hume_ui::popup::MenuRow::plain(label), payload))
+            .unzip();
         Self {
             rows,
             payloads,
@@ -156,6 +154,12 @@ impl MenuLayer {
         callback: hume_scripting::Callback,
     ) -> Self {
         Self::new(WaitingInput::for_test(), items, callback)
+    }
+
+    /// The rows the menu shows.
+    #[cfg(test)]
+    pub(in crate::editor) fn rows(&self) -> &[hume_ui::popup::MenuRow] {
+        &self.rows
     }
 
     /// `show-menu!`'s return value, checked by `close-menu!` so a caller

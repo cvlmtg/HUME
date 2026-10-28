@@ -61,7 +61,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
     // declare-plugin! queues no effects: nothing to apply from this eval.
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
 
@@ -75,7 +75,6 @@ fn effect_log_preserves_emission_order_across_kinds() {
             &hume_scripting::attribution::EntryId::main(plugin_id.clone()),
             10_000,
             &mut ih,
-            &Default::default(),
         )
     }
     .expect("activation must succeed");
@@ -164,7 +163,7 @@ fn failed_command_delivers_committed_activation_effects() {
     });
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);
@@ -231,7 +230,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     });
     let err = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect_err("eval_init must fail on the top-level error");
 
@@ -332,7 +331,7 @@ fn steel_open_buffer_detects_language() {
     let mut host = ScriptingHost::new(&Dirs::none());
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);
@@ -380,7 +379,7 @@ fn steel_open_buffer_detects_a_symlinked_file_by_its_typed_name() {
     let mut host = ScriptingHost::new(&Dirs::none());
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);
@@ -422,7 +421,7 @@ fn steel_open_buffer_missing_path_opens_new_file() {
     let mut host = ScriptingHost::new(&Dirs::none());
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);
@@ -483,7 +482,7 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
     let mut host = ScriptingHost::new(&Dirs::none());
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);

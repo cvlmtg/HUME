@@ -1,5 +1,5 @@
 use super::*;
-use crate::host::CompletionSourceTarget;
+use crate::host::PendingTarget;
 use crate::test_support::{SteelCtxTestHarness, sym};
 
 fn dummy_proc(_: &[SteelVal]) -> Result<SteelVal, SteelErr> {
@@ -76,15 +76,20 @@ fn register_queues_an_effect_with_the_decoded_fields() {
         panic!("expected RegisterCompletionSource, got {:?}", effects[0]);
     };
     assert_eq!(reg.name, "src");
-    assert_eq!(reg.target, CompletionSourceTarget::Buffer);
+    let PendingTarget::Buffer {
+        priority, resolve, ..
+    } = &reg.target
+    else {
+        panic!("expected a 'buffer target, got {:?}", reg.target);
+    };
     assert_eq!(
         reg.match_kind,
         MatchKind::String {
             case_sensitive: true
         }
     );
-    assert_eq!(reg.priority, 7);
-    assert!(!reg.resolve, "#:resolve defaults to #f");
+    assert_eq!(*priority, 7);
+    assert!(!resolve, "#:resolve defaults to #f");
     assert!(reg.cancel.is_none());
 }
 
@@ -120,7 +125,10 @@ fn register_decodes_resolve_true_on_a_buffer_source() {
     let Effect::RegisterCompletionSource(reg) = effects(&h)[0] else {
         panic!("expected RegisterCompletionSource");
     };
-    assert!(reg.resolve);
+    assert!(matches!(
+        reg.target,
+        PendingTarget::Buffer { resolve: true, .. }
+    ));
 }
 
 /// `#:resolve #t` on a `'minibuf` source is a caller error, not a silently
@@ -146,7 +154,7 @@ fn register_decodes_a_minibuf_target() {
     let Effect::RegisterCompletionSource(reg) = effects(&h)[0] else {
         panic!("expected RegisterCompletionSource");
     };
-    assert_eq!(reg.target, CompletionSourceTarget::Minibuf);
+    assert!(matches!(reg.target, PendingTarget::Minibuf));
     assert_eq!(reg.match_kind, MatchKind::Delegated);
 }
 
@@ -328,8 +336,12 @@ fn register_decodes_token_chars_on_a_buffer_source() {
     else {
         panic!("expected two RegisterCompletionSource effects");
     };
-    assert_eq!(with.token_chars, "-$");
-    assert_eq!(without.token_chars, "");
+    let token_chars = |target: &PendingTarget| match target {
+        PendingTarget::Buffer { token_chars, .. } => token_chars.clone(),
+        PendingTarget::Minibuf => panic!("expected a 'buffer target"),
+    };
+    assert_eq!(token_chars(&with.target), "-$");
+    assert_eq!(token_chars(&without.target), "");
 }
 
 /// A whitespace token char would leave a token with no terminator, same as

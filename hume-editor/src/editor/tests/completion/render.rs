@@ -204,8 +204,7 @@ fn doc_box_content_is_rebuilt_after_a_theme_reload() {
     let first = doc_lines(&ed).expect("doc box showing");
 
     let fp = FocusedPane::current(&ed.view);
-    commands::typed_theme(&mut ed, fp, Some("gruvbox"), false)
-        .expect(":theme gruvbox must succeed");
+    commands::typed_theme(&mut ed, fp, Some("gruvbox")).expect(":theme gruvbox must succeed");
     frame(&mut ed, 60, 16);
     let second = doc_lines(&ed).expect("doc box still showing");
     assert!(!std::sync::Arc::ptr_eq(&first, &second));

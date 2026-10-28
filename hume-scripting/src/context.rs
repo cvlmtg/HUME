@@ -51,9 +51,6 @@ pub(crate) struct SteelCtx<'a> {
     /// `ScriptingHost::new`.
     pub(crate) dirs: &'a crate::builtins::dirs::ScriptDirs,
     // ── Transient per-eval state (owned) ──────────────────────────────────────
-    /// Built-in command names known at eval start.  `define-command!` checks
-    /// against this to prevent shadowing core commands.
-    pub(crate) builtin_cmd_names: crate::command_name::CommandNameSet,
     /// Stops the session's budget while a builtin waits on the OS.
     budget: crate::watchdog::BudgetClock<'a>,
     // ── Input state and command side-effects ─────────────────────────────────
@@ -144,7 +141,6 @@ impl<'a> SteelCtx<'a> {
     pub(super) fn new_init(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
-        builtin_cmd_names: crate::command_name::CommandNameSet,
         owner: Owner,
     ) -> Self {
         Self {
@@ -155,7 +151,6 @@ impl<'a> SteelCtx<'a> {
             pending_messages: host_bundle.pending_messages,
             effects: host_bundle.effects,
             dirs: host_bundle.dirs,
-            builtin_cmd_names,
             budget: host_bundle.budget,
             current_register_prefix: None,
             session: EvalSession::Init,
@@ -177,11 +172,10 @@ impl<'a> SteelCtx<'a> {
     pub(super) fn new_activation(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
-        builtin_cmd_names: crate::command_name::CommandNameSet,
     ) -> Self {
         Self {
             session: EvalSession::Runtime,
-            ..Self::new_init(host, host_bundle, builtin_cmd_names, Owner::Core)
+            ..Self::new_init(host, host_bundle, Owner::Core)
         }
     }
 
@@ -308,7 +302,6 @@ impl<'a> SteelCtx<'a> {
             pending_messages: host_bundle.pending_messages,
             effects: host_bundle.effects,
             dirs: host_bundle.dirs,
-            builtin_cmd_names: crate::command_name::CommandNameSet::default(),
             budget: host_bundle.budget,
             current_register_prefix: None,
             session: EvalSession::Runtime,

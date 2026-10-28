@@ -356,8 +356,6 @@ impl Editor {
 pub(in crate::editor) fn typed_reload_config(
     ed: &mut Editor,
     _fp: crate::editor::commands::FocusedPane,
-    _arg: Option<&str>,
-    _force: bool,
 ) -> Result<(), CommandError> {
     // Checked before anything is touched: failing here, before
     // `reset_config_state` wipes languages/keymap/theme/highlighting, means a

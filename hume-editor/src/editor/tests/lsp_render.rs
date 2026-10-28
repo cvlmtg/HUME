@@ -119,8 +119,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
     crate::editor::commands::typed_set(
         &mut c.ed,
         fp,
-        Some("global lsp-diagnostics-min-severity=warning"),
-        false,
+        "global lsp-diagnostics-min-severity=warning",
     )
     .unwrap();
     let mut ctx = RenderContext::new();
@@ -212,13 +211,8 @@ fn diagnostic_underline_is_hidden_on_the_insert_cursor_line_and_returns_on_esc()
 fn diagnostic_underline_stays_in_insert_with_the_option_on() {
     let mut c = setup_with_diagnostics("abc\ndef\n", &[((0, 0), (0, 1), 1), ((1, 0), (1, 1), 1)]);
     let fp = FocusedPane::current(&c.ed.view);
-    crate::editor::commands::typed_set(
-        &mut c.ed,
-        fp,
-        Some("global lsp-diagnostics-on-insert-line=true"),
-        false,
-    )
-    .unwrap();
+    crate::editor::commands::typed_set(&mut c.ed, fp, "global lsp-diagnostics-on-insert-line=true")
+        .unwrap();
 
     c.ed.feed_key(key('i'));
     render(&mut c.ed);

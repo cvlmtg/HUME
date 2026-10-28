@@ -41,7 +41,7 @@ mod unix {
     use std::time::{Duration, Instant};
 
     use super::*;
-    use crate::process::test_support::is_alive;
+    use crate::process::test_support::{is_alive, kept_stderr};
     use crate::wake::counting_wake;
 
     fn spawn_sh(script: &str) -> SpawnedJob {
@@ -111,7 +111,7 @@ mod unix {
     fn stderr_capture_is_capped() {
         let mut job = spawn_sh("yes x | head -c 200000 1>&2; exit 0");
         let result = poll_until_result(&mut job);
-        assert!(result.stderr.len() <= STDERR_CAPTURE_CAP);
+        assert_eq!(result.stderr, kept_stderr(&"x\n".repeat(100_000)));
     }
 
     #[test]
@@ -133,7 +133,7 @@ mod unix {
         let mut job = spawn_sh("(yes x | head -c 200000) & (yes y | head -c 200000 1>&2) & wait");
         let result = poll_until_result(&mut job);
         assert_eq!(result.stdout.len(), 200_000);
-        assert!(result.stderr.len() <= STDERR_CAPTURE_CAP);
+        assert_eq!(result.stderr, kept_stderr(&"y\n".repeat(100_000)));
     }
 
     #[test]

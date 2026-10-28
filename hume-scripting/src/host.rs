@@ -27,9 +27,10 @@ mod ui;
 pub(crate) use async_process::process_result;
 pub use async_process::{AsyncProcessHost, JobHandle, async_callback_args, names_callback_args};
 pub use buffers::{BufferHost, DisplayPathForm, StoredLanguage, UndoNode};
-pub use commands::{CommandHost, NativeCall};
+pub(crate) use commands::check_name_free;
+pub use commands::{CommandHolder, CommandHost, CommandKind, NativeCall, check_lazy_claim};
 pub use completion::{
-    CompletionHost, CompletionSourceTarget, EmittedWord, PendingCompletionSource,
+    CompletionHost, CompletionSourceTarget, EmittedWord, PendingCompletionSource, PendingTarget,
 };
 pub use cursor::{CursorHost, SelectionInfo};
 pub use decorations::{DecorationHost, DiagnosticCounts, DiagnosticEntry};

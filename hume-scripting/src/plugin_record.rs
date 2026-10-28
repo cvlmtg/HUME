@@ -89,33 +89,39 @@ impl PluginRecords {
         self.0.iter_mut().find(|r| r.id == *id)
     }
 
+    /// The record for `id`, pushed empty if `init.scm` has not named it yet.
+    fn record_mut(&mut self, id: &PluginId) -> &mut PluginRecord {
+        let index = match self.0.iter().position(|r| r.id == *id) {
+            Some(index) => index,
+            None => {
+                self.0.push(PluginRecord {
+                    id: id.clone(),
+                    load: None,
+                    declared: Vec::new(),
+                    resolution: None,
+                });
+                self.0.len() - 1
+            }
+        };
+        &mut self.0[index]
+    }
+
     /// Records that `init.scm` named `id`. The first spelling is kept. A
     /// `Some` call (from `load-plugin!`) replaces any earlier one; `None`
     /// (from `declare-plugin!`) never removes one.
-    pub(crate) fn note(&mut self, id: PluginId, load: Option<LoadCall>) {
-        match self.find_mut(&id) {
-            Some(record) => {
-                if load.is_some() {
-                    record.load = load;
-                }
-            }
-            None => self.0.push(PluginRecord {
-                id,
-                load,
-                declared: Vec::new(),
-                resolution: None,
-            }),
+    pub(crate) fn note(&mut self, id: &PluginId, load: Option<LoadCall>) {
+        let record = self.record_mut(id);
+        if load.is_some() {
+            record.load = load;
         }
     }
 
     /// Records that `declare-plugin!` declared `entry`, noting its plugin as
     /// [`Self::note`] does.
-    pub(crate) fn note_declared(&mut self, entry: EntryId) {
-        self.note(entry.plugin.clone(), None);
-        self.find_mut(&entry.plugin)
-            .expect("noted above")
+    pub(crate) fn note_declared(&mut self, entry: &EntryId) {
+        self.record_mut(&entry.plugin)
             .declared
-            .push(entry.file);
+            .push(entry.file.clone());
     }
 
     /// Whether `declare-plugin!` already declared `entry`.

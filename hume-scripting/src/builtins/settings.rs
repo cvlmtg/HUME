@@ -1,7 +1,7 @@
 //! `(set-option! key value)` / `(get-option key)` / `(set-buffer-option! pane
 //! key value)` / `(get-buffer-option pane key)` builtins.
 
-use steel::rerrs::SteelErr;
+use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::SteelVal;
 
 use hume_core::{
@@ -73,8 +73,16 @@ fn decode_option_value(value: &SteelVal, key: &str, takes: Takes) -> Result<Opti
         (SteelVal::HashMapV(_), Takes::Sections) => {
             decode_sections(value.clone()).map(OptionInput::Sections)
         }
-        _ => steel::stop!(TypeMismatch => "'{}' takes {}, got {:?}", key, takes.name(), value),
+        _ => Err(type_mismatch(key, takes, value)),
     }
+}
+
+/// The error for a `value` that option `key`, which takes `takes`, refuses.
+fn type_mismatch(key: &str, takes: Takes, value: &SteelVal) -> SteelErr {
+    SteelErr::new(
+        ErrorKind::TypeMismatch,
+        format!("'{key}' takes {}, got {value:?}", takes.name()),
+    )
 }
 
 /// The keys of the statusline's `(hash 'left 'center 'right)`, each a list of
@@ -164,8 +172,7 @@ pub(crate) fn set_buffer_option(
     match BufferIntrinsicOption::from_name(&key) {
         Some(BufferIntrinsicOption::Language) => {
             let SteelVal::StringV(language) = value else {
-                steel::stop!(TypeMismatch =>
-                    "\"language\" must be a string, got {:?}", value);
+                return Err(type_mismatch(&key, Takes::Text, &value));
             };
             let language = LanguageOptionText::decode(&language).map(str::to_string);
             ctx.push_effect(Effect::SetBufferLanguage {

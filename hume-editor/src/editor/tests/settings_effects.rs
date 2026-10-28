@@ -141,8 +141,7 @@ fn set_global_mouse_resyncs_applied_mode_next_frame() {
     );
 
     let fp = FocusedPane::current(&ed.view);
-    crate::editor::commands::typed_set(&mut ed, fp, Some("global mouse=false"), false)
-        .expect("set mouse");
+    crate::editor::commands::typed_set(&mut ed, fp, "global mouse=false").expect("set mouse");
     assert_eq!(
         ed.applied_mouse_mode,
         (true, false),
@@ -304,12 +303,7 @@ fn typed_set_theme_failure_does_not_persist() {
     // `:theme bad` (load-then-store) does.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.view);
-    let result = crate::editor::commands::typed_set(
-        &mut ed,
-        fp,
-        Some("global theme=no_such_theme_xyz"),
-        false,
-    );
+    let result = crate::editor::commands::typed_set(&mut ed, fp, "global theme=no_such_theme_xyz");
     assert!(
         result.is_err(),
         "a failed theme load must surface as a command error: {result:?}"
@@ -363,8 +357,7 @@ fn typed_theme_bad_name_leaves_setting() {
     // above.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.view);
-    let result =
-        crate::editor::commands::typed_theme(&mut ed, fp, Some("no_such_theme_xyz"), false);
+    let result = crate::editor::commands::typed_theme(&mut ed, fp, Some("no_such_theme_xyz"));
     assert!(
         result.is_err(),
         "a failed theme load must surface as a command error: {result:?}"
@@ -382,7 +375,7 @@ fn typed_theme_sets_setting_on_success() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.dirs = repo_runtime_dirs();
     let fp = FocusedPane::current(&ed.view);
-    let result = crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"), false);
+    let result = crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"));
     assert!(result.is_ok(), "command must not error: {result:?}");
     assert_eq!(ed.state.settings.theme, "gruvbox");
 }

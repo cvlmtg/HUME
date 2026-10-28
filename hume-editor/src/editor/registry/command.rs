@@ -352,7 +352,7 @@ pub(in crate::editor) enum MappableCommand {
     SteelBacked(SteelCommand),
     /// A placeholder for a lazy plugin command that has not yet been loaded.
     ///
-    /// Registered by `CommandHost::register_lazy_command` as `declare-plugin!`
+    /// Registered by `CommandHost::register_lazy_commands` as `declare-plugin!`
     /// processes its `#:commands` entries. When dispatched, the owning
     /// plugin's body is evaluated, the stub is replaced by the real
     /// `SteelBacked` command, and dispatch re-runs.
@@ -778,7 +778,8 @@ pub(in crate::editor) enum TypedBody {
     /// when the `:` line was confirmed (captured once at invocation, the
     /// same rule a mappable command's target follows, so a body never reads
     /// focus again after its own work may have moved it), an optional
-    /// argument (e.g. a file path), and whether `!` was appended.
+    /// argument (e.g. a file path), and whether `!` was appended, as far as
+    /// its [`NativeTyped`] shape takes them.
     ///
     /// Kept as `&mut Editor` rather than a native `EditorCmd`'s `(&mut
     /// EditorState, &mut EngineView, …)` shape, for three reasons: the only
@@ -790,9 +791,7 @@ pub(in crate::editor) enum TypedBody {
     /// coarse shape); and this is the Editor-orchestration layer, driving
     /// whole-app ops (`:w`, `:e`, `:bd`, `:split`, `:set language`) that
     /// legitimately span state + view + `parse_worker` + Steel together.
-    Native(
-        fn(&mut super::super::Editor, FocusedPane, Option<&str>, bool) -> Result<(), CommandError>,
-    ),
+    Native(NativeTyped),
     /// A command implemented as a Steel lambda, registered by
     /// `(define-typed-command! …)`. The lambda receives `(arg force)`,
     /// `(arg)`, or `()` based on its declared arity; see
@@ -801,4 +800,175 @@ pub(in crate::editor) enum TypedBody {
     /// A placeholder for a lazy plugin's typed command that has not yet been
     /// loaded. Mirrors [`MappableCommand::Lazy`]; see its doc.
     Lazy(hume_scripting::attribution::EntryId),
+}
+
+/// Whether a typed command takes an argument and a `!`. The `:` line
+/// refuses either one the command does not take.
+#[derive(Debug, Clone, Copy)]
+pub(in crate::editor) struct Takes {
+    arg: ArgTaken,
+    force: ForceTaken,
+}
+
+/// Whether a typed command takes an argument.
+#[derive(Debug, Clone, Copy)]
+enum ArgTaken {
+    Never,
+    Optional,
+    /// It cannot run without one; `usage` says what to type.
+    Required {
+        usage: &'static str,
+    },
+}
+
+/// When a typed command takes a `!`.
+#[derive(Debug, Clone, Copy)]
+enum ForceTaken {
+    Never,
+    Always,
+    /// Only on a line with no argument.
+    WithoutArg,
+}
+
+impl Takes {
+    /// What a Steel typed command's lambda takes: an argument when it has a
+    /// second injected parameter, a `!` when it has a third.
+    pub(in crate::editor) fn of_steel(body: &hume_scripting::SteelTypedCmdBody) -> Self {
+        let params = super::super::dispatch::injected_params(body.arity, body.is_variadic);
+        Self {
+            arg: if params >= 2 {
+                ArgTaken::Optional
+            } else {
+                ArgTaken::Never
+            },
+            force: if params >= 3 {
+                ForceTaken::Always
+            } else {
+                ForceTaken::Never
+            },
+        }
+    }
+
+    /// `arg` and `force` for the typed command `name`, refusing either one
+    /// it does not take, and a missing argument it requires. `expand` runs
+    /// on an accepted argument only, so a refusal is what the user sees, not
+    /// an expansion error.
+    pub(in crate::editor) fn accept(
+        self,
+        name: &str,
+        arg: Option<&str>,
+        force: bool,
+        expand: impl FnOnce(&str) -> Result<String, CommandError>,
+    ) -> Result<Accepted, CommandError> {
+        if arg.is_some() && matches!(self.arg, ArgTaken::Never) {
+            return Err(refusal(name, "takes no argument"));
+        }
+        match (force, self.force) {
+            (true, ForceTaken::Never) => return Err(refusal(name, "takes no `!`")),
+            (true, ForceTaken::WithoutArg) if arg.is_some() => {
+                return Err(refusal(name, "takes no `!` with an argument"));
+            }
+            _ => {}
+        }
+        if let (None, ArgTaken::Required { usage }) = (arg, self.arg) {
+            return Err(refusal(name, &format!("requires an argument: {usage}")));
+        }
+        Ok(Accepted {
+            arg: arg.map(expand).transpose()?,
+            force,
+        })
+    }
+}
+
+/// The error for a typed command `name` refusing what was typed: an
+/// argument or `!` it does not take is the user's mistake, not noise to
+/// drop.
+fn refusal(name: &str, reason: &str) -> CommandError {
+    CommandError::new(format!("`:{name}` {reason}"))
+}
+
+/// What a typed command was given on the `:` line. Only [`Takes::accept`]
+/// builds one, so a body never runs on an input its command refuses.
+pub(in crate::editor) struct Accepted {
+    arg: Option<String>,
+    force: bool,
+}
+
+impl Accepted {
+    pub(in crate::editor) fn arg(&self) -> Option<&str> {
+        self.arg.as_deref()
+    }
+
+    pub(in crate::editor) fn force(&self) -> bool {
+        self.force
+    }
+}
+
+/// What a [`NativeTyped::ArgOrForce`] body gets: the argument, or with none,
+/// whether `!` was typed.
+#[derive(Debug, Clone, Copy)]
+pub(in crate::editor) enum ArgOrForceInput<'a> {
+    Arg(&'a str),
+    Bare { force: bool },
+}
+
+type NativeResult = Result<(), CommandError>;
+
+/// A native typed command's body, by the inputs it takes. The shape is the
+/// declaration [`Takes`] reads, so a body cannot read an input the `:`
+/// line would refuse.
+#[derive(Clone, Copy)]
+pub(in crate::editor) enum NativeTyped {
+    Bare(fn(&mut super::super::Editor, FocusedPane) -> NativeResult),
+    Arg(fn(&mut super::super::Editor, FocusedPane, Option<&str>) -> NativeResult),
+    /// An argument the body cannot run without, and the usage a line
+    /// without one is refused with.
+    ArgRequired(
+        fn(&mut super::super::Editor, FocusedPane, &str) -> NativeResult,
+        &'static str,
+    ),
+    Force(fn(&mut super::super::Editor, FocusedPane, bool) -> NativeResult),
+    ArgForce(fn(&mut super::super::Editor, FocusedPane, Option<&str>, bool) -> NativeResult),
+    /// An argument, or a `!` on a line with none.
+    ArgOrForce(fn(&mut super::super::Editor, FocusedPane, ArgOrForceInput<'_>) -> NativeResult),
+}
+
+impl NativeTyped {
+    pub(in crate::editor) fn takes(self) -> Takes {
+        let (arg, force) = match self {
+            Self::Bare(_) => (ArgTaken::Never, ForceTaken::Never),
+            Self::Arg(_) => (ArgTaken::Optional, ForceTaken::Never),
+            Self::ArgRequired(_, usage) => (ArgTaken::Required { usage }, ForceTaken::Never),
+            Self::Force(_) => (ArgTaken::Never, ForceTaken::Always),
+            Self::ArgForce(_) => (ArgTaken::Optional, ForceTaken::Always),
+            Self::ArgOrForce(_) => (ArgTaken::Optional, ForceTaken::WithoutArg),
+        };
+        Takes { arg, force }
+    }
+
+    /// Runs the body with the inputs its shape takes, `input` having been
+    /// accepted by [`Self::takes`].
+    pub(in crate::editor) fn run(
+        self,
+        ed: &mut super::super::Editor,
+        fp: FocusedPane,
+        input: &Accepted,
+    ) -> NativeResult {
+        let (arg, force) = (input.arg(), input.force());
+        match self {
+            Self::Bare(f) => f(ed, fp),
+            Self::Arg(f) => f(ed, fp, arg),
+            Self::ArgRequired(f, _) => f(ed, fp, arg.expect("a missing argument is refused")),
+            Self::Force(f) => f(ed, fp, force),
+            Self::ArgForce(f) => f(ed, fp, arg, force),
+            Self::ArgOrForce(f) => {
+                debug_assert!(arg.is_none() || !force, "`!` with an argument is refused");
+                f(
+                    ed,
+                    fp,
+                    arg.map_or(ArgOrForceInput::Bare { force }, ArgOrForceInput::Arg),
+                )
+            }
+        }
+    }
 }

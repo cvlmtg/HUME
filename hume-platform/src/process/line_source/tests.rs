@@ -104,7 +104,7 @@ fn spawn_missing_binary_is_io_error() {
 #[cfg(unix)]
 mod unix {
     use super::*;
-    use crate::process::test_support::is_alive;
+    use crate::process::test_support::{is_alive, kept_stderr};
     use crate::wake::counting_wake;
     use std::time::Instant;
 
@@ -209,7 +209,7 @@ mod unix {
         .expect("spawn sh");
         drain_until_disconnected(&mut source);
         let exit = source.finish();
-        assert!(exit.stderr.len() <= STDERR_CAPTURE_CAP);
+        assert_eq!(exit.stderr, kept_stderr(&"x\n".repeat(100_000)));
     }
 
     #[test]

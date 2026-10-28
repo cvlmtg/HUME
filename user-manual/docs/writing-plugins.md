@@ -386,7 +386,7 @@ All four start the program in HUME's working directory unless given `#:cwd`, loo
 `spawn-async!` starts `cmd` with `args` (in `#:cwd`, or HUME's working
 directory when omitted) and returns immediately; nothing blocks. `callback` is called exactly once,
 later, once the command has finished, with the same hash `run-capture!` returns: `'stdout`
-is its complete output as a string, `'stderr` its first 8 KiB of error output, `'exit` is its exit code (`#f` if it was
+is its complete output as a string, `'stderr` its error output (past 8 KiB, the first and last 4 KiB of it), `'exit` is its exit code (`#f` if it was
 killed by a signal, or if the command couldn't even be started, like a missing binary, so
 compare it with `equal?` rather than `=`). A command that writes more than 64 MiB to stdout
 gets the answer of one that couldn't start, with the reason in `'stderr`. A command that fails to

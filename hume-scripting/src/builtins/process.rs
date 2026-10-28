@@ -32,8 +32,8 @@ use super::errors::{generic_err, require_cap};
 /// message naming `cmd` in `'stderr`, and `'exit` `#f`: the same
 /// "callback always fires, exactly once" contract as `lsp-request!`, so a
 /// plugin never has to handle failure in two places. A stdout past 64 MiB
-/// answers the same way, with the reason in `'stderr`; `'stderr` keeps its
-/// first 8 KiB. Returns a job for `cancel-async!`.
+/// answers the same way, with the reason in `'stderr`; past 8 KiB, `'stderr`
+/// keeps its first and last 4 KiB. Returns a job for `cancel-async!`.
 pub(crate) fn spawn_async(
     ctx: &mut SteelCtx,
     cmd: SteelVal,
@@ -78,8 +78,8 @@ pub(crate) fn cancel_async(ctx: &mut SteelCtx, job: SteelVal) -> SteelResult {
 /// collapses into one `Err`, and in the signal-killed shape it returns
 /// `Ok`). On spawn failure `stdout` is `""` and `stderr` names `cmd` and the
 /// io error, and so is a stdout past 64 MiB, which `run_capture` fails as a
-/// job's capture does. `stderr` keeps its first 8 KiB. Callers rely on this
-/// three-case contract.
+/// job's capture does. Past 8 KiB, `stderr` keeps its first and last 4 KiB.
+/// Callers rely on this contract.
 pub(crate) fn run_capture(
     ctx: &mut SteelCtx,
     cmd: SteelVal,

@@ -10,7 +10,6 @@ use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 
 use crate::attribution::{Owner, Provenance};
-use crate::command_name::CommandNameSet;
 use crate::command_procs::CommandProc;
 use crate::context::SteelCtx;
 use crate::host::{EditorHost, token_to_steel};
@@ -44,16 +43,16 @@ impl HeldHandlers {
 /// Which [`SteelCtx`] constructor a session's context comes from, with who
 /// the code it runs is credited to.
 enum CtxKind {
-    Init(CommandNameSet, Owner),
-    Activation(CommandNameSet),
+    Init(Owner),
+    Activation,
     Command(Provenance),
 }
 
 impl CtxKind {
     fn build<'a>(self, host: &'a mut dyn EditorHost, bundle: HostBundle<'a>) -> SteelCtx<'a> {
         match self {
-            Self::Init(names, owner) => SteelCtx::new_init(host, bundle, names, owner),
-            Self::Activation(names) => SteelCtx::new_activation(host, bundle, names),
+            Self::Init(owner) => SteelCtx::new_init(host, bundle, owner),
+            Self::Activation => SteelCtx::new_activation(host, bundle),
             Self::Command(base) => SteelCtx::new_command(host, bundle, base),
         }
     }
@@ -125,11 +124,10 @@ impl ScriptingHost {
         &mut self,
         source: String,
         owner: Owner,
-        builtin_names: crate::command_name::CommandNameSet,
         budget_ms: u64,
         host: &mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
-        let kind = CtxKind::Init(builtin_names, owner);
+        let kind = CtxKind::Init(owner);
         self.run_session(host, kind, budget_ms, |steel| {
             steel.compile_and_run_raw_program(source).map(|_| ())
         })
@@ -159,13 +157,12 @@ impl ScriptingHost {
         id: &attribution::EntryId,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-        builtin_names: &crate::command_name::CommandNameSet,
     ) -> Result<Vec<Effect>, EvalError> {
         let args = vec![
             SteelVal::StringV(id.plugin.to_string().into()),
             SteelVal::StringV(id.file.as_str().into()),
         ];
-        let kind = CtxKind::Activation(builtin_names.clone());
+        let kind = CtxKind::Activation;
         self.run_session(host, kind, budget_ms, |steel| {
             steel
                 .call_function_by_name_with_args("%activate-plugin-inline!", args)
@@ -212,10 +209,9 @@ impl ScriptingHost {
         path: &Path,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-        builtin_names: crate::command_name::CommandNameSet,
     ) -> Result<Vec<Effect>, EvalError> {
         self.dirs.init_dir = path.parent().map(Path::to_path_buf);
-        self.eval_file(path, Owner::User, budget_ms, host, builtin_names)
+        self.eval_file(path, Owner::User, budget_ms, host)
     }
 
     /// Evaluate a bundled runtime Scheme file at `path` with `eval_init`'s
@@ -228,9 +224,8 @@ impl ScriptingHost {
         path: &Path,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-        builtin_names: crate::command_name::CommandNameSet,
     ) -> Result<Vec<Effect>, EvalError> {
-        self.eval_file(path, Owner::Core, budget_ms, host, builtin_names)
+        self.eval_file(path, Owner::Core, budget_ms, host)
     }
 
     /// The file `eval_init` and `eval_runtime` read, evaluated as `owner`'s;
@@ -241,14 +236,13 @@ impl ScriptingHost {
         owner: Owner,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-        builtin_names: crate::command_name::CommandNameSet,
     ) -> Result<Vec<Effect>, EvalError> {
         let source = match std::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(format!("reading {}: {e}", path.display()).into()),
         };
-        self.eval_source_raw(source, owner, builtin_names, budget_ms, host)
+        self.eval_source_raw(source, owner, budget_ms, host)
     }
 
     /// Shared tail for every eval entry point's atomicity contract: on

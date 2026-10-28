@@ -159,7 +159,7 @@ fn event_trigger_one_to_many_activates_all() {
     });
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);
@@ -298,7 +298,7 @@ fn declare_plugin_no_triggers_is_hard_error() {
     let mut ed = editor_from("-[a]>b\n");
     let result = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     };
     assert!(
         result.is_err(),
@@ -326,7 +326,7 @@ fn load_plugin_absent_top_level_silently_skips() {
     let mut ed = editor_from("-[a]>b\n");
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("absent top-level load-plugin! must not error");
 
@@ -377,7 +377,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     });
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);
@@ -519,7 +519,7 @@ fn nested_activation_multi_file_via_real_editor_host() {
     });
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed: B's top-level call! must inline-activate multi-file A");
     ed.scripting = Some(host);
@@ -599,7 +599,7 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
     });
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed: B must see its own #:config after nested-activating A");
 }
@@ -665,20 +665,15 @@ fn a_plugins_command_called_from_the_users_runs_as_the_plugin() {
 }
 
 /// A lazy plugin activated via the in-Steel `call!` path whose body tries to
-/// shadow a native command must fail cleanly, and the native command survives.
-///
-/// The in-Steel path matters: `SteelCtx::new_command` carries an empty
-/// `builtin_cmd_names` set, so the Steel-side shadow guard is inert and the
-/// conflict is only caught by `host.register_command`. The rejected define
-/// leaves no proc behind, and the rollback removes only Steel-defined
-/// commands, so `move-left` stays.
+/// shadow a native command fails with the built-in refusal, and the native
+/// command survives: the rejected define leaves no proc behind, and the
+/// rollback removes only Steel-defined commands.
 #[test]
 fn native_command_survives_failed_shadowing_plugin() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        // Eager command whose body triggers the lazy plugin via call!:
-        // the in-Steel activation path (empty builtin_cmd_names).
+        // Eager command whose body triggers the lazy plugin via call!.
         r#"(declare-plugin! "user/tp" #:commands '("bar"))
            (define-typed-command! "trigger" "doc" (lambda () (call! "bar")))"#,
         // Plugin body shadows a native command.
@@ -701,6 +696,14 @@ fn native_command_survives_failed_shadowing_plugin() {
             Some(PluginStatus::Failed)
         ),
         "plugin must be Failed after shadowing attempt"
+    );
+    let errors = error_log(&ed);
+    assert!(
+        errors
+            .iter()
+            .any(|e| e
+                .contains("'move-left' conflicts with a built-in command and cannot be redefined")),
+        "got: {errors:?}"
     );
     // The native command must survive in the registry.
     assert!(

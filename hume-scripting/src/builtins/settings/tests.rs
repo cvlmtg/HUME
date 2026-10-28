@@ -102,10 +102,18 @@ fn set_option_init_mode_calls_host() {
     );
 }
 
-/// One option per type `get-option` reads back, a value of that type, and
-/// the error a value of every other one-value type raises.
-fn typed_options() -> [(&'static str, SteelVal, &'static str); 3] {
-    [
+/// `set-option!` and `set-buffer-option!` take an option's value in the
+/// type `get-option` reads it back in, and refuse the other one-value types.
+#[test]
+fn an_option_takes_only_the_type_it_reads_back() {
+    let one_values = [
+        SteelVal::BoolV(false),
+        SteelVal::IntV(3),
+        SteelVal::StringV("3".into()),
+    ];
+    // One option per type `get-option` reads back, a value of that type,
+    // and the error a value of every other one-value type raises.
+    let typed_options = [
         ("mouse", SteelVal::BoolV(true), "'mouse' takes a boolean"),
         (
             "indent-width",
@@ -117,20 +125,9 @@ fn typed_options() -> [(&'static str, SteelVal, &'static str); 3] {
             SteelVal::StringV("-".into()),
             "'word-chars' takes a string",
         ),
-    ]
-}
-
-/// `set-option!` and `set-buffer-option!` take an option's value in the
-/// type `get-option` reads it back in, and refuse the other one-value types.
-#[test]
-fn an_option_takes_only_the_type_it_reads_back() {
-    let one_values = [
-        SteelVal::BoolV(false),
-        SteelVal::IntV(3),
-        SteelVal::StringV("3".into()),
     ];
     let mut h = SteelCtxTestHarness::new();
-    for (key, own, refusal) in typed_options() {
+    for (key, own, refusal) in typed_options {
         for value in &one_values {
             let mut host = RecordingBufferOptionHost::default();
             let mut ctx = h.ctx_with_host(&mut host);
@@ -265,7 +262,7 @@ fn set_buffer_option_language_rejects_a_non_string() {
     )
     .unwrap_err()
     .to_string();
-    assert!(msg.contains("must be a string"), "got: {msg}");
+    assert!(msg.contains("'language' takes a string"), "got: {msg}");
 }
 
 // `set-buffer-option!`'s `bid` is now validated live before the builtin

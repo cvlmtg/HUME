@@ -3,8 +3,8 @@
 `diagnostics.scm` sends no request. It reads the diagnostics store through
 `diagnostics-for-buffer`, which returns a buffer's first 1000 entries by position, and
 turns them into navigation, a drawer, an end-of-line (EOL) summary and gutter signs. Past
-1000, all four stop at the 1000th while underlines go on, and `:messages` notes it at
-trace level. `inlay.scm`
+1000 at the `lsp-diagnostics-min-severity` floor, all four stop at the 1000th while
+underlines go on, and the read that cuts them notes it in `:messages` at trace level. `inlay.scm`
 requests inlay hints. Both are covered here.
 
 ## Diagnostics navigation

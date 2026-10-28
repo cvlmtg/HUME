@@ -52,7 +52,7 @@ fn setup_vim_keybind_editor_with_config(
     let mut host = ScriptingHost::new(&ed.state.dirs);
     let effects = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed loading core:vim-keybind");
     // Mirror `init_scripting`: an eval's effects (here, the plugin's

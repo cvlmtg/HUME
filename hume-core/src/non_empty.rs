@@ -30,6 +30,14 @@ impl<T> NonEmpty<T> {
     }
 }
 
+impl<A, B> NonEmpty<(A, B)> {
+    /// The pairs split into two lists of the same length.
+    pub fn unzip(self) -> (NonEmpty<A>, NonEmpty<B>) {
+        let (a, b) = self.0.into_iter().unzip();
+        (NonEmpty(a), NonEmpty(b))
+    }
+}
+
 /// Read-only: no `DerefMut`, so nothing can empty the list.
 impl<T> std::ops::Deref for NonEmpty<T> {
     type Target = [T];

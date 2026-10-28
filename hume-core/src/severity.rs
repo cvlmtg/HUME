@@ -20,7 +20,7 @@ named_enum! {
     /// How serious a diagnostic is. Ordered least-to-most-lenient so
     /// `severity <= floor` means "at least as severe as floor": e.g. `floor =
     /// Warning` keeps `Error` and `Warning`, drops `Info`/`Hint`.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum DiagSeverity {
         Error => "error",
         Warning => "warning",

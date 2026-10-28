@@ -7,7 +7,7 @@ use hume_platform::dirs::Dirs;
 use hume_scripting::PluginStatus;
 
 /// After `eval_init`, a `Lazy` stub is present for the declared command name:
-/// `declare-plugin!` registers it directly via `CommandHost::register_lazy_command`
+/// `declare-plugin!` registers it directly via `CommandHost::register_lazy_commands`
 /// as the manifest is processed, with no separate post-init pass.
 #[test]
 fn lazy_stub_present_after_init() {
@@ -58,7 +58,7 @@ fn first_dispatch_activates_plugin_and_runs() {
     );
 }
 
-/// `register_lazy_typed_command` hardcodes `completer: None` on the stub;
+/// `register_lazy_commands` hardcodes `completer: None` on a typed stub;
 /// `#:complete` only reaches the registry once the plugin body actually
 /// runs `define-typed-command!`. Tab on the command's *first* use must
 /// still resolve it: `trigger_minibuf_completion`'s `Editor`-level callers
@@ -598,7 +598,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     // declare-plugin! runs, so the filter loop rejects "foo".
     let init_err = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     };
     let err =
         init_err.expect_err("eval_init must fail: declare-plugin! rejects 'foo' at declare time");
@@ -664,7 +664,7 @@ fn lazy_stub_collision_lazy_vs_lazy_raises_for_the_second() {
     });
     let err = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect_err("the second claim of 'bar' raises");
     assert!(
@@ -698,4 +698,22 @@ fn lazy_stub_collision_lazy_vs_lazy_raises_for_the_second() {
         Some(PluginStatus::Declared)
     ));
     assert!(scripting.plugin_status(&pb).is_none());
+}
+
+/// A plugin body defines its activation command as the kind it declared.
+#[test]
+fn an_activation_cannot_define_its_command_as_the_other_kind() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
+        r#"(define-command! "bar" "doc" (lambda () #t))"#,
+    );
+
+    ed.execute_typed("bar", None)
+        .expect_err("the activation raises");
+    let errors = error_log(&ed);
+    assert!(
+        errors.iter().any(|e| e
+            .contains("command 'bar' is declared by lazy plugin 'user/tp' in #:typed-commands")),
+        "got: {errors:?}"
+    );
 }

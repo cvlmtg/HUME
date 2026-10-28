@@ -1,7 +1,7 @@
 // Observability + lifecycle commands:
 // :lsp-status, :lsp-stop, :lsp-restart, and stderr/log-message routing.
 
-use super::lsp_rig::{LspRig, RigSpec};
+use super::lsp_rig::{LspRig, RigSpec, answering};
 use super::*;
 use hume_core::ServerName;
 use hume_lsp::client::{ClientAction, ServerState};
@@ -211,9 +211,7 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
 #[test]
 fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut backend, _, _) = RecordingLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
-    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    let backend = answering(2);
     let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[f]>n main() {}\n"), backend);
     let old_sid = rig.sid("rust-analyzer");
     let diagnostic = serde_json::json!([{

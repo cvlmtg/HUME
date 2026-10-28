@@ -153,12 +153,15 @@ fn end_line_is_one_past_the_last_line_the_diagnostic_touches() {
     let through_break: DiagFixture = ((0, 1), (1, 0), 1, "through-break");
     let empty: DiagFixture = ((1, 0), (1, 0), 1, "empty");
     let DiagSetup {
-        ed, _guard, _root, ..
+        mut ed,
+        _guard,
+        _root,
+        ..
     } = setup_diagnostics("abc\ndef\n", &[single, multi, through_break, empty]);
     let bid = ed.focused_buffer_id();
 
     let entries =
-        crate::editor::lsp::diagnostics::diagnostics_for_buffer(&ed.state, bid, None, None)
+        crate::editor::lsp::diagnostics::diagnostics_for_buffer(&mut ed.state, bid, None, None)
             .expect("diagnostics-for-buffer must not error");
     let lines = |msg: &str| {
         let entry = entries
@@ -181,11 +184,14 @@ fn end_line_is_one_past_the_last_line_the_diagnostic_touches() {
 /// `(start_char, start_line, grapheme_col)` of the one diagnostic in `text`.
 fn start_of(text: &str, diag: DiagFixture) -> (usize, usize, usize) {
     let DiagSetup {
-        ed, _guard, _root, ..
+        mut ed,
+        _guard,
+        _root,
+        ..
     } = setup_diagnostics(text, &[diag]);
     let bid = ed.focused_buffer_id();
     let entries =
-        crate::editor::lsp::diagnostics::diagnostics_for_buffer(&ed.state, bid, None, None)
+        crate::editor::lsp::diagnostics::diagnostics_for_buffer(&mut ed.state, bid, None, None)
             .expect("diagnostics-for-buffer must not error");
     let entry = &entries[0];
     (entry.start_char, entry.start_line, entry.grapheme_col)

@@ -31,8 +31,9 @@ mod command;
 mod defaults;
 
 pub(in crate::editor) use command::{
-    ArgExpansion, CmdMeta, EditFn, FocusedCmdFn, PaneCharCmdFn, PaneCmdFn, PaneTextCmdFn,
-    SelectionTracking, TextPrompt, TypedBody, TypedCommand,
+    Accepted, ArgExpansion, ArgOrForceInput, CmdMeta, EditFn, FocusedCmdFn, NativeTyped,
+    PaneCharCmdFn, PaneCmdFn, PaneTextCmdFn, SelectionTracking, Takes, TextPrompt, TypedBody,
+    TypedCommand,
 };
 // Narrower than the re-exports above: these carry a native command's `fun`
 // function pointer, wrapped in `commands::NativeBody` so only
@@ -233,12 +234,6 @@ impl CommandRegistry {
         self.get_typed(name).map(|tc| tc.name.as_ref())
     }
 
-    /// Iterate over all registered canonical command names (not aliases),
-    /// folded.
-    pub(in crate::editor) fn names(&self) -> impl Iterator<Item = &str> {
-        self.commands.keys().map(|k| k.as_ref())
-    }
-
     /// Iterate over the canonical names of every registered typed command
     /// (not aliases), each spelled as it was registered. Feeds `:` Tab
     /// completion (`complete_command`), the typed-only counterpart of
@@ -273,12 +268,9 @@ impl CommandRegistry {
     /// The plugin owning `name`'s `Lazy` stub (mappable or typed alike), or
     /// `None` if `name` is not a pending lazy activation entry.
     ///
-    /// Single source of truth for "is this name currently claimed as a lazy
-    /// stub": since the two kinds share one namespace, `define-command!`'s
-    /// and `define-typed-command!`'s self-ownership guards, `command-plugin`,
-    /// and `:` Tab's activation of a lazy command's plugin all read this
-    /// rather than matching on `Command::Mappable`/`Command::Typed`
-    /// themselves.
+    /// Since the two kinds share one namespace, `command-plugin` and `:`
+    /// Tab's activation of a lazy command's plugin read this rather than
+    /// matching on `Command::Mappable`/`Command::Typed` themselves.
     pub(in crate::editor) fn lazy_owner(
         &self,
         name: &str,
@@ -322,6 +314,35 @@ impl CommandRegistry {
                     .map(|plugin| (name_of(cmd).to_string(), plugin.clone(), is_typed_lazy(cmd)))
             })
             .collect()
+    }
+
+    /// What holds `name` (in any case): a native command (a native typed
+    /// command's alias included), a Steel command, or a lazy stub.
+    pub(in crate::editor) fn holder(
+        &self,
+        name: &str,
+    ) -> Option<hume_scripting::host::CommandHolder> {
+        use hume_scripting::host::{CommandHolder, CommandKind};
+        let key = fold(name);
+        let canonical = self
+            .alias_map
+            .get(key.as_ref())
+            .map_or(key.as_ref(), |c| c.as_ref());
+        let cmd = self.commands.get(canonical)?;
+        Some(if let Some(entry) = lazy_owner_of(cmd) {
+            CommandHolder::Lazy {
+                entry: entry.clone(),
+                kind: if is_typed_lazy(cmd) {
+                    CommandKind::Typed
+                } else {
+                    CommandKind::Mappable
+                },
+            }
+        } else if let Some(proc) = steel_proc_of(cmd) {
+            CommandHolder::Defined(proc)
+        } else {
+            CommandHolder::Native
+        })
     }
 
     /// The proc of the Steel command registered under `name`
@@ -408,6 +429,12 @@ fn is_typed_lazy(cmd: &Command) -> bool {
 
 #[cfg(test)]
 impl CommandRegistry {
+    /// Iterate over all registered canonical command names (not aliases),
+    /// folded.
+    pub(in crate::editor) fn names(&self) -> impl Iterator<Item = &str> {
+        self.commands.keys().map(|k| k.as_ref())
+    }
+
     /// Collect the canonical names of every `SteelBacked` command. Test-only.
     pub(in crate::editor::registry) fn steel_backed_names(&self) -> Vec<String> {
         self.commands

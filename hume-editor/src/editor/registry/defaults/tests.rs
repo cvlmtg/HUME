@@ -1,14 +1,16 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::typed_quit;
-use crate::editor::registry::{ArgExpansion, CommandRegistry, TypedBody, TypedCommand};
+use crate::editor::registry::{
+    ArgExpansion, CommandRegistry, NativeTyped, TypedBody, TypedCommand,
+};
 
 fn typed(name: &'static str, aliases: &'static [&'static str]) -> TypedCommand {
     TypedCommand {
         name: Cow::Borrowed(name),
         doc: Cow::Borrowed(""),
         aliases,
-        body: TypedBody::Native(typed_quit),
+        body: TypedBody::Native(NativeTyped::Force(typed_quit)),
         completer: None,
         arg_expansion: ArgExpansion::Paths,
     }

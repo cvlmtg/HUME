@@ -233,8 +233,6 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    let builtin_names: hume_scripting::command_name::CommandNameSet = Default::default();
-
     // Stage a prelude file and an init.scm that uses its macros.
     let dir = tempfile::tempdir().unwrap();
     let prelude_path = dir.path().join("prelude.scm");
@@ -249,7 +247,7 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     .unwrap();
 
     // Load prelude first, then init.scm, mirroring init_scripting's sequence.
-    h.eval_init(&prelude_path, 10_000, &mut mock, builtin_names.clone())
+    h.eval_init(&prelude_path, 10_000, &mut mock)
         .expect("prelude eval_init must succeed");
     assert_eq!(
         mock.registered_cmds
@@ -261,7 +259,7 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     );
 
     let effects = h
-        .eval_init(&init_path, 10_000, &mut mock, builtin_names)
+        .eval_init(&init_path, 10_000, &mut mock)
         .expect("init.scm using bind-keys! must succeed after prelude is loaded");
 
     use termina::event::{KeyCode, KeyEvent, Modifiers};

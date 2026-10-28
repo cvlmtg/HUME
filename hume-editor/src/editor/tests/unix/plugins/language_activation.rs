@@ -175,7 +175,7 @@ fn language_trigger_one_to_many_activates_all() {
     });
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);
@@ -343,7 +343,7 @@ fn language_wildcard_and_specific_entry_coexist() {
     });
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed");
     ed.scripting = Some(host);

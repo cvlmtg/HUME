@@ -298,9 +298,9 @@ fn a_bundled_runtime_file_attributes_to_hume() {
 
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut editor_host = CommandStoreHost::default();
-    host.eval_runtime(&bundled, 10_000, &mut editor_host, Default::default())
+    host.eval_runtime(&bundled, 10_000, &mut editor_host)
         .expect("the bundled file evaluates");
-    host.eval_init(&init, 10_000, &mut editor_host, Default::default())
+    host.eval_init(&init, 10_000, &mut editor_host)
         .expect("init.scm evaluates");
 
     let owners = host.eval_source_for_value(

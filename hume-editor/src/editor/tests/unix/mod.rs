@@ -150,7 +150,7 @@ fn assert_core_plugin_load_fails(dirs: Dirs, init: &str, plugin: &str, expected:
     let mut host = ScriptingHost::new(&ed.state.dirs);
     {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("a failed plugin load must be contained, not abort eval_init");
 
@@ -629,7 +629,7 @@ fn setup_lazy_editor_on(
     });
     let effects = {
         let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+        host.eval_init(&init_path, 10_000, &mut ih)
     }
     .expect("eval_init must succeed in setup_lazy_editor_on");
     ed.apply_script_effects(effects);
