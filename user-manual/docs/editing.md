@@ -141,7 +141,15 @@ The comment follows the language at the cursor: in a Markdown file, a fenced Rus
 
 `|` asks for a command and runs it once for each selection, each in its own process, with the selection's text as its input. The output replaces the selection, and the selection then covers the output. `| sort` sorts the lines of each selection; `| jq .` formats a selected JSON value.
 
-Any program that reads text and prints a result works, including AI assistants that can run without a chat window. With [Claude Code](https://claude.com/claude-code), select a paragraph and run `| claude -p "turn this into a bullet list"` to replace it with the list, or `| claude -p "summarize in one sentence"` to replace it with a summary.
+Any program that reads text and prints a result works, including AI assistants that can run without a chat window:
+
+::: tip Claude Code
+With [Claude Code](https://claude.com/claude-code), select a paragraph and run `| claude -p "turn this into a bullet list"` to replace it with the list, or `| claude -p "summarize in one sentence"` to replace it with a summary.
+:::
+
+::: tip Apple Foundation Models
+macOS 27 includes `fm`, a command-line tool for Apple's on-device model. Select a paragraph and run `| fm respond -i "summarize in one sentence"` to replace it with a summary.
+:::
 
 In Insert mode, `Ctrl-|` runs the command once for each cursor, with no input, and inserts its output where you are typing. You stay in Insert mode. Every cursor gets its own process, so `uuidgen` gives each cursor a different value.
 
