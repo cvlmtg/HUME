@@ -304,7 +304,7 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
     assert_eq!(inputs.len(), 2, "got {inputs:?}");
     assert!(
         matches!(&inputs[0], Input::Binding { name, answers, .. }
-                if name == "pick-word"
+                if &**name == "pick-word"
                     && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: Some(Picked::Choice(c)), .. })] if c.label == "alpha" && c.nth == 0))
             && is_binding(&inputs[1], "exit-insert"),
         "got {inputs:?}"
@@ -373,7 +373,7 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     assert_eq!(inputs.len(), 2, "got {inputs:?}");
     assert!(
         matches!(&inputs[0], Input::Binding { name, answers, .. }
-                if name == "pick-word"
+                if &**name == "pick-word"
                     && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: Some(Picked::Choice(c)), .. })] if c.label == "alpha" && c.nth == 0))
             && is_binding(&inputs[1], "exit-insert"),
         "the binding records its pick, and nothing of the foreign 'Z' insert: {inputs:?}"
@@ -440,7 +440,7 @@ fn dot_repeat_keeps_a_pick_when_a_foreign_edit_follows_the_bindings_own_edit() {
         .transcript;
     assert!(
         matches!(inputs.first(), Some(Input::Binding { name, answers, .. })
-            if name == "edit-then-pick"
+            if &**name == "edit-then-pick"
                 && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: Some(Picked::Choice(c)), .. })] if c.label == "alpha" && c.nth == 0)),
         "the binding records its pick: {inputs:?}"
     );
@@ -485,7 +485,7 @@ fn dot_repeat_replays_a_dismissed_pick_as_a_dismissal() {
         is_key(&inputs[0], 'x')
             && is_key(&inputs[1], 'y')
             && matches!(&inputs[2], Input::Binding { name, answers, .. }
-                if name == "pick-word"
+                if &**name == "pick-word"
                     && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: None, .. })]))
             && is_binding(&inputs[3], "exit-insert"),
         "got {inputs:?}"

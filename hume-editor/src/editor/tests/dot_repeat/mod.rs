@@ -9,7 +9,7 @@ fn is_key(i: &Input, ch: char) -> bool {
 
 /// `i` is the recorded binding of `name`.
 fn is_binding(i: &Input, name: &str) -> bool {
-    matches!(i, Input::Binding { name: n, .. } if n == name)
+    matches!(i, Input::Binding { name: n, .. } if &**n == name)
 }
 
 /// An editor over `initial_state` with the Steel commands `source` defines.

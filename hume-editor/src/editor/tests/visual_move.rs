@@ -1064,11 +1064,7 @@ fn select_word_nearest_scopes_to_visual_display_line() {
     ed.handle_key(key('j'));
     assert_eq!(ed.current_view().primary().head().offset(), co(76));
 
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Count::typed(1),
-        false,
-    );
+    ed.execute_keymap_command("select-word-nearest-on-line", Count::typed(1), false);
 
     let sel = ed.current_view().primary();
     assert_ne!(
@@ -1098,11 +1094,7 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
     let mut ed = word_wrap_editor();
 
     let call_select = |ed: &mut Editor| {
-        ed.execute_keymap_command(
-            std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-            Count::typed(1),
-            false,
-        )
+        ed.execute_keymap_command("select-word-nearest-on-line", Count::typed(1), false)
     };
 
     // First j + select: lands on "ratatui" (head = 83).
@@ -1137,11 +1129,7 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
     let mut ed = word_wrap_editor();
 
     ed.handle_key(key('j')); // head -> char 76 (leading space of display line 1)
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Count::typed(1),
-        false,
-    );
+    ed.execute_keymap_command("select-word-nearest-on-line", Count::typed(1), false);
 
     let sel = ed.current_view().primary();
     assert_eq!(
@@ -1181,11 +1169,7 @@ fn nearest_on_wrapped(
     ed.state.settings.word_selects_whitespace = side;
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 6 });
 
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Count::typed(1),
-        false,
-    );
+    ed.execute_keymap_command("select-word-nearest-on-line", Count::typed(1), false);
 
     let sel = ed.current_view().primary();
     (sel.anchor().offset(), sel.head().offset())
@@ -1233,11 +1217,7 @@ fn select_word_absorbs_previous_display_line_whitespace_unlike_nearest_on_line()
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 6 });
 
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word"),
-        Count::typed(1),
-        false,
-    );
+    ed.execute_keymap_command("select-word", Count::typed(1), false);
 
     let sel = ed.current_view().primary();
     assert_eq!(
@@ -1256,11 +1236,7 @@ fn select_word_nearest_respects_word_selects_whitespace_off() {
     ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
 
     ed.handle_key(key('j')); // head -> char 76 (leading space of display line 1)
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Count::typed(1),
-        false,
-    );
+    ed.execute_keymap_command("select-word-nearest-on-line", Count::typed(1), false);
 
     let sel = ed.current_view().primary();
     assert_eq!(

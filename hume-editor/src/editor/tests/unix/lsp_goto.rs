@@ -42,7 +42,7 @@ fn setup(
 /// Dispatches the key-bindable `lsp/goto-*` command through the keymap pipeline,
 /// the way its bound key would.
 fn run_goto(ed: &mut Editor, cmd: &str) {
-    ed.execute_keymap_command(cmd.to_owned().into(), Count::typed(1), false);
+    ed.execute_keymap_command(cmd, Count::typed(1), false);
     // Settle now (mirrors the real interactive loop, which drains after
     // every keystroke) before the async response arrives: same ordering
     // fix as lsp_hover.rs.

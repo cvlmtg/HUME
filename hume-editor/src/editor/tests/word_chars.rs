@@ -107,11 +107,7 @@ fn symbol_under_cursor_returns_whole_hyphenated_word() {
 fn select_word_nearest_on_line_follows_word_chars() {
     let mut ed = editor_from("-[f]>oo-bar baz\n");
     ed.state.settings.word_chars = "-".into();
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Count::typed(1),
-        false,
-    );
+    ed.execute_keymap_command("select-word-nearest-on-line", Count::typed(1), false);
     assert_eq!(state(&ed), "-[foo-bar ]>baz\n");
 }
 
@@ -131,11 +127,7 @@ fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_display_line(
     let mut ed = editor_from("hello world foo-b-[a]>r\n");
     ed.state.settings.word_chars = "-".into();
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 12 });
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Count::typed(1),
-        false,
-    );
+    ed.execute_keymap_command("select-word-nearest-on-line", Count::typed(1), false);
     assert_eq!(state(&ed), "hello world -[foo-bar]>\n");
 }
 

@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use hume_core::ConfigOrigin;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
@@ -15,7 +13,7 @@ use crate::editor::registry::STRUCTURAL_OBJECTS;
 macro_rules! cmd {
     ($name:expr) => {
         KeymapCommand {
-            name: Cow::Borrowed($name),
+            name: $name.into(),
             force_extend: false,
         }
     };
@@ -27,7 +25,7 @@ macro_rules! cmd {
 macro_rules! cmd_extend {
     ($name:expr) => {
         KeymapCommand {
-            name: Cow::Borrowed($name),
+            name: $name.into(),
             force_extend: true,
         }
     };
@@ -109,8 +107,8 @@ fn build_text_object_trie() -> KeyTrie {
     for (chars, inner_name, around_name) in objects {
         for &ch in *chars {
             let k = KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE);
-            inner_trie.bind_leaf(k, cmd!(inner_name));
-            around_trie.bind_leaf(k, cmd!(around_name));
+            inner_trie.bind_leaf(k, cmd!(*inner_name));
+            around_trie.bind_leaf(k, cmd!(*around_name));
         }
     }
     // Structural kinds (function/class/argument/comment/unit-test/value/tag):
@@ -148,7 +146,7 @@ fn build_text_object_trie() -> KeyTrie {
     for (chars, name) in surround_objects {
         for &ch in *chars {
             let k = KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE);
-            surround_trie.bind_leaf(k, cmd!(name));
+            surround_trie.bind_leaf(k, cmd!(*name));
         }
     }
 

@@ -173,11 +173,11 @@ impl Editor {
     /// commands.
     pub(in crate::editor) fn execute_keymap_command(
         &mut self,
-        name: std::borrow::Cow<'static, str>,
+        name: &str,
         count: Count,
         extend: bool,
     ) {
-        let Some(reg_cmd) = self.resolve_mappable(name.as_ref()) else {
+        let Some(reg_cmd) = self.resolve_mappable(name) else {
             return;
         };
 

@@ -336,7 +336,7 @@ fn runtime_register_and_lookup() {
         Ok(())
     }
     let cmd = MappableCommand::Native(NativeCommand::EditorCmd {
-        name: Cow::Owned("steel-test-cmd".to_string()),
+        name: "steel-test-cmd".into(),
         doc: Cow::Borrowed("A dummy Steel command for testing."),
         fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Pane(dummy_fn)),
         defers_paste_commit: false,
@@ -455,7 +455,7 @@ fn register_refuses_an_editor_command_name_that_is_not_lowercase() {
     let before = reg.len();
     let err = reg
         .register(MappableCommand::Lazy {
-            name: Cow::Borrowed("Probe"),
+            name: "Probe".into(),
             plugin: test_plugin(),
         })
         .expect_err("an uppercase editor command name must be refused");
@@ -510,8 +510,8 @@ fn steel_backed_names_filters_by_variant() {
 
     // Register two SteelBacked commands alongside a non-SteelBacked one.
     reg.register(MappableCommand::SteelBacked(SteelCommand {
-        name: Cow::Owned("my-steel-cmd".to_string()),
-        doc: Cow::Borrowed("doc"),
+        name: "my-steel-cmd".into(),
+        doc: "doc".into(),
         body: hume_scripting::SteelCmdBody {
             arity: 0,
             is_variadic: false,
@@ -522,8 +522,8 @@ fn steel_backed_names_filters_by_variant() {
     }))
     .expect("a lowercase editor command name");
     reg.register(MappableCommand::SteelBacked(SteelCommand {
-        name: Cow::Owned("another-steel-cmd".to_string()),
-        doc: Cow::Borrowed("doc"),
+        name: "another-steel-cmd".into(),
+        doc: "doc".into(),
         body: hume_scripting::SteelCmdBody {
             arity: 0,
             is_variadic: false,
@@ -545,7 +545,7 @@ fn steel_backed_names_filters_by_variant() {
         Ok(())
     }
     reg.register(MappableCommand::Native(NativeCommand::EditorCmd {
-        name: Cow::Owned("%hume-cmd-decoy".to_string()),
+        name: "%hume-cmd-decoy".into(),
         doc: Cow::Borrowed("doc"),
         fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Pane(noop)),
         defers_paste_commit: false,
@@ -579,8 +579,8 @@ fn unregister_registered_in_removes_only_the_entrys_steel_commands() {
 
     fn mappable(name: &str, proc: MappableProc) -> MappableCommand {
         MappableCommand::SteelBacked(SteelCommand {
-            name: Cow::Owned(name.to_string()),
-            doc: Cow::Borrowed(""),
+            name: name.into(),
+            doc: "".into(),
             body: SteelCmdBody {
                 arity: 0,
                 is_variadic: false,
@@ -625,7 +625,7 @@ fn unregister_registered_in_removes_only_the_entrys_steel_commands() {
     ))
     .expect("a valid typed command name");
     reg.register(MappableCommand::Lazy {
-        name: Cow::Borrowed("failed-stub"),
+        name: "failed-stub".into(),
         plugin: failed.clone(),
     })
     .expect("a lowercase editor command name");

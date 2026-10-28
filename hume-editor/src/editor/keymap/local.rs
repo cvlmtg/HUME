@@ -1,6 +1,6 @@
 //! Named keymaps attached to buffers, looked up before the global keymap.
 
-use std::borrow::Cow;
+use std::rc::Rc;
 
 use hume_core::{BindMode, BufferId, ConfigOrigin};
 use rustc_hash::FxHashMap;
@@ -38,7 +38,7 @@ impl LocalKeymaps {
         name: String,
         mode: BindMode,
         keys: &[KeyEvent],
-        command: Cow<'static, str>,
+        command: Rc<str>,
         force_extend: bool,
         by: ConfigOrigin,
     ) -> bool {

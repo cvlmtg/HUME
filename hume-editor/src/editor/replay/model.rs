@@ -2,7 +2,7 @@
 //! selection recipe, the answers its interactive inputs got, and the
 //! transcript of its Insert-session input.
 
-use std::borrow::Cow;
+use std::rc::Rc;
 
 use hume_core::Count;
 
@@ -133,7 +133,7 @@ pub(crate) enum Input {
     /// input it opens ends the change and drops this entry.
     Binding {
         id: BindingId,
-        name: Cow<'static, str>,
+        name: Rc<str>,
         answers: Vec<Answer>,
     },
     /// The net edit a completion accept produced at the cursor: a completion
@@ -163,9 +163,7 @@ pub(crate) struct CursorReplacement {
 #[derive(Debug, Clone)]
 pub(crate) struct RepeatableAction {
     /// The command name that began this change (e.g. `"delete"`, `"change"`).
-    /// `Cow::Borrowed` for built-ins (zero allocation); `Cow::Owned` for a
-    /// dynamically-registered (Steel) command.
-    pub command: Cow<'static, str>,
+    pub command: Rc<str>,
     /// The count prefix the change ran with. Overridden when `.` itself is given a
     /// count.
     pub count: Count,

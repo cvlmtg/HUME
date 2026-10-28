@@ -361,7 +361,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     .get_mappable(cmd.name.as_ref())
                     .is_some_and(|r| r.is_extendable());
             let count = std::mem::take(&mut ed.state.count);
-            ed.execute_keymap_command(cmd.name, count, extend);
+            ed.execute_keymap_command(&cmd.name, count, extend);
         }
         WalkResult::Interior => {
             // More keys needed. The pending sequence stays populated.

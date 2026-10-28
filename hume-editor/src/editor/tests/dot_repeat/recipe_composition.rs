@@ -271,11 +271,7 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
 fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
     let mut ed = editor_from("-[f]>oo bar\n");
 
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Count::typed(1),
-        false,
-    );
+    ed.execute_keymap_command("select-word-nearest-on-line", Count::typed(1), false);
     ed.feed_key(key('d'));
     assert_eq!(ed.doc().text().to_string(), "bar\n");
 

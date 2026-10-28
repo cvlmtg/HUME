@@ -508,7 +508,7 @@ fn dot_repeat_keeps_a_pick_whose_on_select_is_lost_to_the_drain_cap() {
                 .last_action()
                 .and_then(|a| a.transcript.last()),
             Some(Input::Binding { name, answers, .. })
-                if name == "pick-word"
+                if &**name == "pick-word"
                     && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: Some(Picked::Choice(c)), .. })] if c.label == "alpha" && c.nth == 0)
         ),
         "the binding records the pick the user made"
@@ -585,7 +585,7 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_records_a_dismissal() {
         .transcript;
     assert!(
         matches!(inputs.as_slice(), [Input::Binding { name, answers, .. }]
-            if name == "edit-then-pick"
+            if &**name == "edit-then-pick"
                 && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: None, .. })])),
         "the binding is recorded, its torn-down picker as a dismissal: {inputs:?}"
     );

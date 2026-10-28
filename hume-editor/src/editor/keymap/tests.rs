@@ -10,11 +10,13 @@ fn bind_sequence_single_key() {
     trie.bind_sequence(
         &[key!('z')],
         KeymapCommand {
-            name: Cow::Borrowed("my-cmd"),
+            name: "my-cmd".into(),
             force_extend: false,
         },
     );
-    assert!(matches!(trie.walk(&[key!('z')]), Some(WalkResult::Leaf(ref c)) if c.name == "my-cmd"));
+    assert!(
+        matches!(trie.walk(&[key!('z')]), Some(WalkResult::Leaf(ref c)) if &*c.name == "my-cmd")
+    );
 }
 
 #[test]
@@ -23,7 +25,7 @@ fn bind_sequence_multi_key() {
     trie.bind_sequence(
         &[key!('g'), key!('g')],
         KeymapCommand {
-            name: Cow::Borrowed("goto-first-line"),
+            name: "goto-first-line".into(),
             force_extend: false,
         },
     );
@@ -33,7 +35,7 @@ fn bind_sequence_multi_key() {
     ));
     assert!(matches!(
         trie.walk(&[key!('g'), key!('g')]),
-        Some(WalkResult::Leaf(ref c)) if c.name == "goto-first-line"
+        Some(WalkResult::Leaf(ref c)) if &*c.name == "goto-first-line"
     ));
 }
 
@@ -44,7 +46,7 @@ fn bind_sequence_shadows_existing_leaf() {
     trie.bind_sequence(
         &[key!('g')],
         KeymapCommand {
-            name: Cow::Borrowed("old-cmd"),
+            name: "old-cmd".into(),
             force_extend: false,
         },
     );
@@ -52,7 +54,7 @@ fn bind_sequence_shadows_existing_leaf() {
     trie.bind_sequence(
         &[key!('g'), key!('g')],
         KeymapCommand {
-            name: Cow::Borrowed("new-cmd"),
+            name: "new-cmd".into(),
             force_extend: false,
         },
     );
@@ -62,7 +64,7 @@ fn bind_sequence_shadows_existing_leaf() {
     ));
     assert!(matches!(
         trie.walk(&[key!('g'), key!('g')]),
-        Some(WalkResult::Leaf(ref c)) if c.name == "new-cmd"
+        Some(WalkResult::Leaf(ref c)) if &*c.name == "new-cmd"
     ));
 }
 
@@ -72,7 +74,7 @@ fn unbind_sequence_single_key_hides_it() {
     trie.bind_sequence(
         &[key!('z')],
         KeymapCommand {
-            name: Cow::Borrowed("my-cmd"),
+            name: "my-cmd".into(),
             force_extend: false,
         },
     );
@@ -86,7 +88,7 @@ fn unbind_sequence_multi_key_keeps_the_prefix() {
     trie.bind_sequence(
         &[key!('g'), key!('g')],
         KeymapCommand {
-            name: Cow::Borrowed("goto-first-line"),
+            name: "goto-first-line".into(),
             force_extend: false,
         },
     );
@@ -107,12 +109,14 @@ fn unbind_sequence_leaves_other_bindings() {
     trie.bind_sequence(
         &[key!('z')],
         KeymapCommand {
-            name: Cow::Borrowed("my-cmd"),
+            name: "my-cmd".into(),
             force_extend: false,
         },
     );
     trie.unbind_sequence(&[key!('q')]);
-    assert!(matches!(trie.walk(&[key!('z')]), Some(WalkResult::Leaf(ref c)) if c.name == "my-cmd"));
+    assert!(
+        matches!(trie.walk(&[key!('z')]), Some(WalkResult::Leaf(ref c)) if &*c.name == "my-cmd")
+    );
 }
 
 #[test]
@@ -121,13 +125,13 @@ fn bind_in_normal_mode() {
     km.bind(
         BindMode::Normal,
         &[key!('z')],
-        Cow::Borrowed("my-cmd"),
+        "my-cmd".into(),
         false,
         ConfigOrigin::User,
     );
     assert!(matches!(
         km.normal.walk(&[key!('z')]),
-        WalkResult::Leaf(ref c) if c.name == "my-cmd"
+        WalkResult::Leaf(ref c) if &*c.name == "my-cmd"
     ));
     // Insert mode unchanged.
     assert!(matches!(km.insert.walk(&[key!('z')]), WalkResult::NoMatch));
@@ -139,17 +143,17 @@ fn bind_in_command_mode() {
     km.bind(
         BindMode::Command,
         &[key!('z')],
-        Cow::Borrowed("my-cmd"),
+        "my-cmd".into(),
         false,
         ConfigOrigin::User,
     );
     assert!(matches!(
         km.command.walk(&[key!('z')]),
-        WalkResult::Leaf(ref c) if c.name == "my-cmd"
+        WalkResult::Leaf(ref c) if &*c.name == "my-cmd"
     ));
     assert!(!matches!(
         km.normal.walk(&[key!('z')]),
-        WalkResult::Leaf(ref c) if c.name == "my-cmd"
+        WalkResult::Leaf(ref c) if &*c.name == "my-cmd"
     ));
 }
 
@@ -159,7 +163,7 @@ fn unbind_in_normal_mode() {
     km.bind(
         BindMode::Normal,
         &[key!('z')],
-        Cow::Borrowed("my-cmd"),
+        "my-cmd".into(),
         false,
         ConfigOrigin::User,
     );
@@ -172,7 +176,7 @@ fn unbind_in_normal_mode() {
 /// Bind `keys` to `name` in Normal mode from `by`, returning whether a
 /// higher origin's binding hides it.
 fn bind_from(km: &mut Keymap, keys: &[KeyEvent], name: &'static str, by: ConfigOrigin) -> bool {
-    km.bind(BindMode::Normal, keys, Cow::Borrowed(name), false, by)
+    km.bind(BindMode::Normal, keys, name.into(), false, by)
 }
 
 /// The command `keys` resolve to in Normal mode.
@@ -326,14 +330,14 @@ fn collect_command_names_includes_nested_leaves() {
     trie.bind_sequence(
         &[key!('x')],
         KeymapCommand {
-            name: Cow::Borrowed("delete-char-forward"),
+            name: "delete-char-forward".into(),
             force_extend: false,
         },
     );
     trie.bind_sequence(
         &[key!('g'), key!('g')],
         KeymapCommand {
-            name: Cow::Borrowed("goto-first-line"),
+            name: "goto-first-line".into(),
             force_extend: false,
         },
     );
@@ -352,21 +356,21 @@ fn all_command_names_covers_every_mode() {
     km.bind(
         BindMode::Normal,
         &[key!('Q')],
-        Cow::Borrowed("normal-sentinel"),
+        "normal-sentinel".into(),
         false,
         ConfigOrigin::User,
     );
     km.bind(
         BindMode::Insert,
         &[key!('Q')],
-        Cow::Borrowed("insert-sentinel"),
+        "insert-sentinel".into(),
         false,
         ConfigOrigin::User,
     );
     km.bind(
         BindMode::Command,
         &[key!('Q')],
-        Cow::Borrowed("command-sentinel"),
+        "command-sentinel".into(),
         false,
         ConfigOrigin::User,
     );
@@ -393,7 +397,7 @@ fn walk_resolves_uppercase_leaf_regardless_of_incoming_shift_bit() {
     trie.bind_leaf(
         key!('I'),
         KeymapCommand {
-            name: Cow::Borrowed("insert-at-line-start"),
+            name: "insert-at-line-start".into(),
             force_extend: false,
         },
     );
@@ -404,11 +408,11 @@ fn walk_resolves_uppercase_leaf_regardless_of_incoming_shift_bit() {
     let clean = KeyEvent::new(KeyCode::Char('I'), Modifiers::NONE);
     assert!(matches!(
         trie.walk(&[non_conformant]),
-        Some(WalkResult::Leaf(ref c)) if c.name == "insert-at-line-start"
+        Some(WalkResult::Leaf(ref c)) if &*c.name == "insert-at-line-start"
     ));
     assert!(matches!(
         trie.walk(&[clean]),
-        Some(WalkResult::Leaf(ref c)) if c.name == "insert-at-line-start"
+        Some(WalkResult::Leaf(ref c)) if &*c.name == "insert-at-line-start"
     ));
 }
 
@@ -421,7 +425,7 @@ fn walk_resolves_repeat_kind_key_like_press() {
     trie.bind_leaf(
         key!('j'),
         KeymapCommand {
-            name: Cow::Borrowed("move-down"),
+            name: "move-down".into(),
             force_extend: false,
         },
     );
@@ -429,7 +433,7 @@ fn walk_resolves_repeat_kind_key_like_press() {
     repeated.kind = KeyEventKind::Repeat;
     assert!(matches!(
         trie.walk(&[repeated]),
-        Some(WalkResult::Leaf(ref c)) if c.name == "move-down"
+        Some(WalkResult::Leaf(ref c)) if &*c.name == "move-down"
     ));
 }
 
@@ -443,12 +447,12 @@ fn bind_shift_lowercase_and_uppercase_are_the_same_binding() {
     km.bind(
         BindMode::Normal,
         &[KeyEvent::new(KeyCode::Char('a'), Modifiers::SHIFT)],
-        Cow::Borrowed("my-cmd"),
+        "my-cmd".into(),
         false,
         ConfigOrigin::User,
     );
     assert!(matches!(
         km.normal.walk(&[key!('A')]),
-        WalkResult::Leaf(ref c) if c.name == "my-cmd"
+        WalkResult::Leaf(ref c) if &*c.name == "my-cmd"
     ));
 }

@@ -31,20 +31,20 @@ fn insert_char_is_no_match() {
 fn ctrl_bindings_in_normal_keymap() {
     let trie = default_normal_keymap();
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'c')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "cancel-pipe"),
+        matches!(trie.walk(&[key!(Ctrl + 'c')]), Some(WalkResult::Leaf(ref cmd)) if &*cmd.name == "cancel-pipe"),
         "Ctrl-c should map to cancel-pipe"
     );
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'r')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "redo"),
+        matches!(trie.walk(&[key!(Ctrl + 'r')]), Some(WalkResult::Leaf(ref cmd)) if &*cmd.name == "redo"),
         "Ctrl-r should map to redo"
     );
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'x')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "select-line"),
+        matches!(trie.walk(&[key!(Ctrl + 'x')]), Some(WalkResult::Leaf(ref cmd)) if &*cmd.name == "select-line"),
         "Ctrl-x should map to select-line"
     );
     // Ctrl-e flips anchor↔head and works on legacy terminals (0x05 control byte).
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'e')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "flip-selections"),
+        matches!(trie.walk(&[key!(Ctrl + 'e')]), Some(WalkResult::Leaf(ref cmd)) if &*cmd.name == "flip-selections"),
         "Ctrl-e should map to flip-selections"
     );
     // Ctrl-w is unbound (kitty one-shot extend via strip-CONTROL).
@@ -59,7 +59,7 @@ fn ctrl_bindings_in_normal_keymap() {
     );
     // Ctrl-/ → search-selection (kitty-only).
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + '/')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "search-selection"),
+        matches!(trie.walk(&[key!(Ctrl + '/')]), Some(WalkResult::Leaf(ref cmd)) if &*cmd.name == "search-selection"),
         "Ctrl-/ should map to search-selection"
     );
     // Legacy terminals encode Ctrl-/ as Ctrl-'7' (control byte 0x1F), which must
@@ -184,10 +184,10 @@ fn default_keymap_omits_kitty_only_binds() {
     );
     // The plain-key counterparts remain bound regardless of kitty mode.
     assert!(
-        matches!(km.normal.walk(&[key!(';')]), WalkResult::Leaf(ref c) if c.name == "collapse-and-exit-extend")
+        matches!(km.normal.walk(&[key!(';')]), WalkResult::Leaf(ref c) if &*c.name == "collapse-and-exit-extend")
     );
     assert!(
-        matches!(km.normal.walk(&[key!(',')]), WalkResult::Leaf(ref c) if c.name == "keep-primary-selection")
+        matches!(km.normal.walk(&[key!(',')]), WalkResult::Leaf(ref c) if &*c.name == "keep-primary-selection")
     );
 }
 
@@ -223,7 +223,7 @@ fn goto_trie_holds_real_gotos_and_structural_navigation() {
     for (k, name) in must_resolve {
         match trie.walk(&[key!('g'), *k]) {
             Some(WalkResult::Leaf(ref cmd)) => {
-                assert_eq!(cmd.name, *name, "g + {:?} should map to {:?}", k, name)
+                assert_eq!(&*cmd.name, *name, "g + {:?} should map to {:?}", k, name)
             }
             _ => panic!("g + {:?} should be a leaf bound to {:?}", k, name),
         }
@@ -244,13 +244,13 @@ fn goto_trie_holds_real_gotos_and_structural_navigation() {
 fn view_trie_is_directional_and_frees_vims_initials() {
     let trie = default_normal_keymap();
     assert!(
-        matches!(trie.walk(&[key!('z'), key!('z')]), Some(WalkResult::Leaf(ref c)) if c.name == "center-view-on-cursor")
+        matches!(trie.walk(&[key!('z'), key!('z')]), Some(WalkResult::Leaf(ref c)) if &*c.name == "center-view-on-cursor")
     );
     assert!(
-        matches!(trie.walk(&[key!('z'), key!('k')]), Some(WalkResult::Leaf(ref c)) if c.name == "top-view-on-cursor")
+        matches!(trie.walk(&[key!('z'), key!('k')]), Some(WalkResult::Leaf(ref c)) if &*c.name == "top-view-on-cursor")
     );
     assert!(
-        matches!(trie.walk(&[key!('z'), key!('j')]), Some(WalkResult::Leaf(ref c)) if c.name == "bottom-view-on-cursor")
+        matches!(trie.walk(&[key!('z'), key!('j')]), Some(WalkResult::Leaf(ref c)) if &*c.name == "bottom-view-on-cursor")
     );
     for freed in [key!('t'), key!('b')] {
         assert!(
@@ -268,19 +268,19 @@ fn apply_kitty_defaults_binds_kitty_only_keys() {
     let WalkResult::Leaf(c) = km.normal.walk(&[key!(Ctrl + ';')]) else {
         panic!("Ctrl-; should bind to collapse-to-anchor-and-exit-extend");
     };
-    assert_eq!(c.name, "collapse-to-anchor-and-exit-extend");
+    assert_eq!(&*c.name, "collapse-to-anchor-and-exit-extend");
     let WalkResult::Leaf(c) = km.normal.walk(&[key!(Ctrl + ',')]) else {
         panic!("Ctrl-, should bind to remove-primary-selection");
     };
-    assert_eq!(c.name, "remove-primary-selection");
+    assert_eq!(&*c.name, "remove-primary-selection");
     let WalkResult::Leaf(c) = km.normal.walk(&[key!(Tab)]) else {
         panic!("Tab should bind to pane-focus-next under kitty defaults");
     };
-    assert_eq!(c.name, "pane-focus-next");
+    assert_eq!(&*c.name, "pane-focus-next");
     let WalkResult::Leaf(c) = km.normal.walk(&[key!(BackTab)]) else {
         panic!("Shift-Tab should bind to pane-focus-prev under kitty defaults");
     };
-    assert_eq!(c.name, "pane-focus-prev");
+    assert_eq!(&*c.name, "pane-focus-prev");
 }
 
 #[test]
@@ -289,6 +289,6 @@ fn pane_focus_prev_is_ctrl_p_shift_p_and_shift_tab_needs_kitty() {
     let Some(WalkResult::Leaf(c)) = trie.walk(&[key!(Ctrl + 'p'), key!('P')]) else {
         panic!("Ctrl-p P should bind to pane-focus-prev");
     };
-    assert_eq!(c.name, "pane-focus-prev");
+    assert_eq!(&*c.name, "pane-focus-prev");
     assert!(trie.walk(&[key!(BackTab)]).is_none());
 }

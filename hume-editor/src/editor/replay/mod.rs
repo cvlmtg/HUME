@@ -22,7 +22,6 @@
 
 use hume_core::Count;
 use hume_engine::pipeline::EngineView;
-use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
 
@@ -217,7 +216,7 @@ fn dispatch_key_binding(ed: &mut Editor, running: Running, cmd: Dispatchable) ->
 /// A fresh change a repeatable command starts, as [`record_change`] records
 /// it.
 pub(in crate::editor) struct NewChange {
-    pub(in crate::editor) command: Cow<'static, str>,
+    pub(in crate::editor) command: Rc<str>,
     pub(in crate::editor) count: Count,
     /// The operand the command was dispatched with, recorded as its first
     /// answer.
@@ -763,7 +762,7 @@ impl EditorState {
     /// runs in, `None` when the open Insert session records no change.
     pub(in crate::editor) fn record_binding(
         &mut self,
-        name: Cow<'static, str>,
+        name: Rc<str>,
         repeatable: bool,
     ) -> Option<(BindingId, RecordingScope)> {
         let rec = self.session_recording()?;

@@ -9,13 +9,7 @@ fn buffers() -> (BufferId, BufferId) {
 
 fn global_with(mode: BindMode, keys: &[KeyEvent], command: &'static str) -> Keymap {
     let mut global = Keymap::empty();
-    global.bind(
-        mode,
-        keys,
-        Cow::Borrowed(command),
-        false,
-        ConfigOrigin::User,
-    );
+    global.bind(mode, keys, command.into(), false, ConfigOrigin::User);
     global
 }
 
@@ -30,7 +24,7 @@ fn bind(
         name.into(),
         mode,
         keys,
-        Cow::Borrowed(command),
+        command.into(),
         false,
         ConfigOrigin::User,
     );
@@ -59,7 +53,7 @@ fn resolved(
     keys: &[KeyEvent],
 ) -> String {
     match local.resolve(global, buffer, mode, keys).walk {
-        WalkResult::Leaf(cmd) => cmd.name.into_owned(),
+        WalkResult::Leaf(cmd) => cmd.name.to_string(),
         WalkResult::Interior => "<prefix>".to_owned(),
         WalkResult::NoMatch => "<none>".to_owned(),
     }
@@ -232,7 +226,7 @@ fn a_plugins_bind_into_a_named_keymap_stays_below_the_users() {
         "k".into(),
         BindMode::Normal,
         &[key!('z')],
-        Cow::Borrowed("plugin-z"),
+        "plugin-z".into(),
         false,
         ConfigOrigin::Plugin,
     );
@@ -315,7 +309,7 @@ fn extend_mode_tries_each_keymap_whole_before_the_next() {
     let global = global_with(BindMode::Extend, &[key!('o')], "global-extend-o");
     let local = attached_with(buf, BindMode::Normal, &[key!('o')], "local-o");
     let found = local.resolve(&global, buf, BindMode::Extend, &[key!('o')]);
-    assert!(matches!(found.walk, WalkResult::Leaf(ref c) if c.name == "local-o"));
+    assert!(matches!(found.walk, WalkResult::Leaf(ref c) if &*c.name == "local-o"));
     assert!(!found.extend_override);
 }
 
@@ -334,7 +328,7 @@ fn an_extend_override_wins_over_normal_in_its_own_keymap() {
     );
     local.attach(buf, "k").expect("k exists");
     let found = local.resolve(&global, buf, BindMode::Extend, &[key!('o')]);
-    assert!(matches!(found.walk, WalkResult::Leaf(ref c) if c.name == "local-extend-o"));
+    assert!(matches!(found.walk, WalkResult::Leaf(ref c) if &*c.name == "local-extend-o"));
     assert!(found.extend_override);
 }
 

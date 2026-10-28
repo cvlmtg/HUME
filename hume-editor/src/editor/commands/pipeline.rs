@@ -3,7 +3,7 @@
 //! list, selection recipe, sticky extend) that wraps every dispatch,
 //! composed into one pipeline by `run`.
 
-use std::borrow::Cow;
+use std::rc::Rc;
 
 use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::EngineView;
@@ -306,10 +306,7 @@ impl From<ArgError> for BindError {
 /// operand and is to read one, or its operand doesn't fit it.
 pub(in crate::editor) enum FocusedBindError {
     NeedsOperand(Missing),
-    Arg {
-        name: Cow<'static, str>,
-        error: ArgError,
-    },
+    Arg { name: Rc<str>, error: ArgError },
 }
 
 /// Bind `cmd`'s body to its target, then to its operand `arg`: `any`
@@ -400,7 +397,7 @@ pub(in crate::editor) fn report_arg_error(
 /// shape, so there is no way to construct one whose body and target
 /// disagree.
 pub(in crate::editor) struct BoundCommand {
-    name: Cow<'static, str>,
+    name: Rc<str>,
     meta: CmdMeta,
     body: Bound,
 }
@@ -654,9 +651,8 @@ pub(in crate::editor) fn run(
     ctx: CmdCtx,
 ) -> bool {
     let meta = bound.meta;
-    // Clone the name once, before the body consumes `bound`. A `&'static str`
-    // name (every built-in) clones with no allocation; the AFTER steps reuse
-    // this.
+    // Clone the name once, before the body consumes `bound`; the AFTER steps
+    // reuse this.
     let name = bound.name.clone();
     // A command cannot be both repeatable (an edit that modifies the buffer)
     // and a selection-builder (a pure cursor movement): the fresh-recording

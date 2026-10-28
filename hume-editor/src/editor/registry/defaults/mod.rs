@@ -26,7 +26,7 @@ macro_rules! motion {
     (@build $reg:expr, $name:literal, $doc:literal, $body:expr,
      jump: $jump:literal, aligns_view: $aligns:literal) => {
         $reg.register_builtin(MappableCommand::Native(NativeCommand::Motion {
-            name: Cow::Borrowed($name),
+            name: $name.into(),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new($body),
             jump: $jump,
@@ -62,7 +62,7 @@ macro_rules! selection {
     (@build $reg:expr, $name:literal, $doc:literal, $body:expr,
      jump: $jump:literal, tracking: $tracking:ident) => {
         $reg.register_builtin(MappableCommand::Native(NativeCommand::Selection {
-            name: Cow::Borrowed($name),
+            name: $name.into(),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new($body),
             jump: $jump,
@@ -93,7 +93,7 @@ macro_rules! selection {
 macro_rules! edit {
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
         $reg.register_builtin(MappableCommand::Native(NativeCommand::Edit {
-            name: Cow::Borrowed($name),
+            name: $name.into(),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new($fun),
             repeatable: false,
@@ -101,7 +101,7 @@ macro_rules! edit {
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, repeatable) => {
         $reg.register_builtin(MappableCommand::Native(NativeCommand::Edit {
-            name: Cow::Borrowed($name),
+            name: $name.into(),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new($fun),
             repeatable: true,

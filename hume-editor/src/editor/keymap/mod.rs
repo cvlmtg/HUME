@@ -28,7 +28,7 @@ pub(in crate::editor) use local::{LocalKeymaps, Resolved, UnknownKeymap};
 
 use hume_core::{BindMode, ByOrigin, ConfigOrigin};
 use rustc_hash::FxHashMap;
-use std::borrow::Cow;
+use std::rc::Rc;
 
 use termina::event::KeyEvent;
 
@@ -44,7 +44,7 @@ use crate::editor::registry::CommandRegistry;
 #[derive(Debug, Clone)]
 pub(in crate::editor) struct KeymapCommand {
     /// The command name to look up in the registry.
-    pub name: Cow<'static, str>,
+    pub name: Rc<str>,
     /// When `true`, the dispatcher always dispatches this command with
     /// `extend = true`, regardless of kitty mode. Set on default Ctrl
     /// bindings whose extend-line semantics are inherent (e.g. `Ctrl-x` →
@@ -299,7 +299,7 @@ impl Keymap {
         &mut self,
         mode: BindMode,
         keys: &[KeyEvent],
-        command: Cow<'static, str>,
+        command: Rc<str>,
         force_extend: bool,
         by: ConfigOrigin,
     ) -> bool {
@@ -358,7 +358,7 @@ impl Keymap {
         keys: &[KeyEvent],
     ) -> Option<(String, bool)> {
         match self.bindings(mode).walk(keys) {
-            WalkResult::Leaf(cmd) => Some((cmd.name.into_owned(), cmd.force_extend)),
+            WalkResult::Leaf(cmd) => Some((cmd.name.to_string(), cmd.force_extend)),
             _ => None,
         }
     }

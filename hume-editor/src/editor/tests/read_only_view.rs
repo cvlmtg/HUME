@@ -129,7 +129,7 @@ fn insert_entry_on_a_read_only_buffer_leaves_the_selection_in_place() {
         ed.doc_mut().read_only = true;
         let before = state(&ed);
 
-        ed.execute_keymap_command(cmd.to_string().into(), Count::UNTYPED, false);
+        ed.execute_keymap_command(cmd, Count::UNTYPED, false);
 
         assert_eq!(state(&ed), before, "{cmd}");
         assert_ne!(ed.state.mode(), Mode::Insert, "{cmd}");
@@ -151,7 +151,7 @@ fn insert_entry_beside_another_panes_insert_session_leaves_the_selection_in_plac
     ed.state.focus.set_for_test(&mut ed.view, pid_b);
     let before = state(&ed);
 
-    ed.execute_keymap_command("insert-after".to_string().into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("insert-after", Count::UNTYPED, false);
 
     assert_eq!(state(&ed), before);
     assert!(

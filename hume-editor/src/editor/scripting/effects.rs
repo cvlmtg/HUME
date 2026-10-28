@@ -77,7 +77,7 @@ impl Editor {
                     keymap,
                     origin,
                 } => {
-                    let cmd = std::borrow::Cow::Owned(cmd);
+                    let cmd: std::rc::Rc<str> = cmd.into();
                     let hidden = match keymap {
                         KeymapTarget::Global => {
                             self.state

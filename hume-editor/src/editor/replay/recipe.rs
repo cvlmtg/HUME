@@ -1,7 +1,7 @@
 //! The selection recipe: the steps that built the extent a repeatable
 //! command acted on, recorded so `.` can rebuild it first.
 
-use std::borrow::Cow;
+use std::rc::Rc;
 
 use hume_core::Count;
 
@@ -18,7 +18,7 @@ use crate::editor::registry::{CmdMeta, SelectionTracking};
 #[derive(Debug, Clone)]
 pub(crate) struct SelectionStep {
     /// Command name (e.g. `"select-line"`, `"surround-paren"`).
-    pub command: Cow<'static, str>,
+    pub command: Rc<str>,
     /// Count prefix originally used.
     pub count: Count,
     /// `true` if this step ran in Extend mode (grew the existing selection).
@@ -70,13 +70,10 @@ impl EditorState {
     ///
     /// `selection_changed` gates `Establishes`/`Composes`, so a command that found
     /// nothing (`select-all-matches`, `ms(`) leaves the staged recipe untouched.
-    // `&Cow` not `&str`: `.clone()` must preserve Borrowed (built-ins) or Owned
-    // (Steel) without an unconditional heap alloc.
-    #[allow(clippy::ptr_arg)]
     pub(in crate::editor) fn update_recipe(
         &mut self,
         meta: &CmdMeta,
-        name: &Cow<'static, str>,
+        name: &Rc<str>,
         ctx: &CmdCtx,
         selection_changed: bool,
     ) {

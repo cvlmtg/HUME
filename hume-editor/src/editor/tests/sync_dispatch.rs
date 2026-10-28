@@ -1364,7 +1364,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::ev
     ed.state.config.keymap.bind(
         BindMode::Normal,
         &[f2],
-        std::borrow::Cow::Owned(cmd_name.to_owned()),
+        cmd_name.into(),
         false,
         hume_core::ConfigOrigin::User,
     );

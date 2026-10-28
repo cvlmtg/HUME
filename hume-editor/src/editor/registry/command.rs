@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::rc::Rc;
 
 use crate::editor::commands::{CommandPane, FocusedPane, NativeBody};
 use crate::editor::error::CommandError;
@@ -357,7 +358,7 @@ pub(in crate::editor) enum MappableCommand {
     /// plugin's body is evaluated, the stub is replaced by the real
     /// `SteelBacked` command, and dispatch re-runs.
     Lazy {
-        name: Cow<'static, str>,
+        name: Rc<str>,
         plugin: hume_scripting::attribution::EntryId,
     },
 }
@@ -365,12 +366,11 @@ pub(in crate::editor) enum MappableCommand {
 impl MappableCommand {
     /// The command's registered name.
     ///
-    /// Returns the stored `Cow` (not `&str`) so the dispatch pipeline can clone
-    /// it preserving `Cow::Borrowed`: a `&'static str` name (every built-in)
-    /// clones with no heap allocation; only `Cow::Owned` Steel names allocate.
+    /// Returns the stored `Rc` (not `&str`) so the dispatch pipeline can keep
+    /// the name past the registry borrow with a refcount bump, never a copy.
     /// Pure field extraction, distinct from [`NativeCommand::meta`], which is
     /// the single source of truth for derived bookkeeping properties.
-    pub(in crate::editor) fn name(&self) -> &Cow<'static, str> {
+    pub(in crate::editor) fn name(&self) -> &Rc<str> {
         match self {
             Self::Native(cmd) => cmd.name(),
             Self::SteelBacked(cmd) => &cmd.name,
@@ -449,7 +449,7 @@ pub(in crate::editor) enum NativeCommand {
     /// Motions are always extendable. The `mode` parameter selects Move or Extend
     /// semantics at dispatch time, with no separate extend-variant functions needed.
     Motion {
-        name: Cow<'static, str>,
+        name: Rc<str>,
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
@@ -469,7 +469,7 @@ pub(in crate::editor) enum NativeCommand {
     /// `_mode` and ignore it; extendable text objects branch on it. The `usize`
     /// is a count argument; commands that don't use it accept `_count`.
     Selection {
-        name: Cow<'static, str>,
+        name: Rc<str>,
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
@@ -491,7 +491,7 @@ pub(in crate::editor) enum NativeCommand {
     ///
     /// Edits are never extendable: they don't carry `MotionMode`.
     Edit {
-        name: Cow<'static, str>,
+        name: Rc<str>,
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
@@ -512,7 +512,7 @@ pub(in crate::editor) enum NativeCommand {
     /// Silent no-ops return `Ok(())`. Stored and dispatched as a function
     /// pointer exactly like the other variants.
     EditorCmd {
-        name: Cow<'static, str>,
+        name: Rc<str>,
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
@@ -554,7 +554,7 @@ pub(in crate::editor) enum NativeCommand {
 
 impl NativeCommand {
     /// The command's registered name. See [`MappableCommand::name`].
-    pub(in crate::editor) fn name(&self) -> &Cow<'static, str> {
+    pub(in crate::editor) fn name(&self) -> &Rc<str> {
         match self {
             Self::Motion { name, .. }
             | Self::Selection { name, .. }
@@ -673,10 +673,10 @@ impl NativeCommand {
 /// lambda body). Dot-repeat is opt-in via `#:repeatable #t` in `(define-command! …)`.
 #[derive(Clone)]
 pub(in crate::editor) struct SteelCommand {
-    pub(in crate::editor) name: Cow<'static, str>,
+    pub(in crate::editor) name: Rc<str>,
     // Pending command-palette / :help integration.
     #[allow(dead_code)]
-    pub(in crate::editor) doc: Cow<'static, str>,
+    pub(in crate::editor) doc: Rc<str>,
     pub(in crate::editor) body: hume_scripting::SteelCmdBody,
 }
 

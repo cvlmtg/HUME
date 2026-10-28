@@ -534,7 +534,7 @@ fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
     let transcript = &ed.state.last_action().expect("`i` recorded").transcript;
     assert!(
         matches!(transcript.as_slice(), [Input::Binding { name, answers, .. }]
-            if name == "b" && matches!(answers.as_slice(), [Answer::Unanswered])),
+            if &**name == "b" && matches!(answers.as_slice(), [Answer::Unanswered])),
         "got {transcript:?}"
     );
 }

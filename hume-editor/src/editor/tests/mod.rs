@@ -1403,7 +1403,7 @@ fn call(ed: &mut Editor, name: &str) {
 
 /// [`call`] with the count prefix `count`.
 fn call_counted(ed: &mut Editor, name: &str, count: Count) {
-    ed.execute_keymap_command(name.to_string().into(), count, false);
+    ed.execute_keymap_command(name, count, false);
 }
 
 /// Evaluates `source` against the editor's `ScriptingHost`, or a fresh one

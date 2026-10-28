@@ -5,7 +5,6 @@ use super::*;
 use crate::editor::tests::before_save::warning_texts;
 use hume_core::BindMode;
 use pretty_assertions::assert_eq;
-use std::borrow::Cow;
 
 /// Bind `keys` to `command` in a keymap attached to the focused buffer.
 fn bind_here(ed: &mut Editor, mode: BindMode, keys: &[KeyEvent], command: &'static str) {
@@ -15,7 +14,7 @@ fn bind_here(ed: &mut Editor, mode: BindMode, keys: &[KeyEvent], command: &'stat
         "test".into(),
         mode,
         keys,
-        Cow::Borrowed(command),
+        command.into(),
         false,
         hume_core::ConfigOrigin::User,
     );

@@ -82,7 +82,7 @@ fn lazy_repeatable_insert_bindings_pick_is_recorded_on_first_press() {
     let transcript = &ed.state.last_action().expect("`i` recorded").transcript;
     assert!(
         matches!(transcript.first(), Some(Input::Binding { name, answers, .. })
-            if name == "tp-pick" && answers.len() == 1),
+            if &**name == "tp-pick" && answers.len() == 1),
         "got {transcript:?}"
     );
 }

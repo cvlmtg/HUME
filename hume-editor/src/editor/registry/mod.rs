@@ -95,14 +95,13 @@ impl CommandRegistry {
 
     /// Register a mappable command.
     ///
-    /// The name is extracted from the command and used as the `FxHashMap` key.
-    /// For static built-ins the clone is a pointer copy (zero allocation).
+    /// The name is copied from the command into the `FxHashMap` key.
     /// Refuses the command, registering nothing, when its name is not
     /// lowercase ([`hume_scripting::command_name::check_mappable`]), so the
     /// name is its own folded key.
     pub(in crate::editor) fn register(&mut self, cmd: MappableCommand) -> Result<(), String> {
         hume_scripting::command_name::check_mappable(cmd.name())?;
-        let key = cmd.name().clone();
+        let key = Cow::Owned(cmd.name().to_string());
         self.commands.insert(key, Command::Mappable(cmd));
         Ok(())
     }

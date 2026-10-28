@@ -578,7 +578,7 @@ impl EditorState {
             BindMode::Normal,
             &[KeyEvent::new(code, modifiers)],
         );
-        matches!(resolved.walk, WalkResult::Leaf(cmd) if cmd.name == "cancel-pipe")
+        matches!(resolved.walk, WalkResult::Leaf(cmd) if &*cmd.name == "cancel-pipe")
     }
 
     /// Cancel `bid`'s run, if one is in flight: kill its processes, change
