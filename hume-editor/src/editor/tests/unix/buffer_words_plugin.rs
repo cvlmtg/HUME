@@ -134,17 +134,24 @@ fn wait_for_word(ed: &mut Editor, target: &str) {
     }
 }
 
-/// Jumps to 1-based `line` and makes a one-character edit there (typed then
-/// left in place). An edit while a walk is still running restarts the walk
-/// from the cursor, so this is how a test anchors that restart at a specific
-/// line: `:goto` alone moves the cursor but restarts nothing. Each caller
-/// edits right after `open`, while the first walk is still running; an edit
-/// after a walk finishes updates the index instead.
-fn goto_line_and_edit(ed: &mut Editor, line: usize, ch: char) {
+/// Queues the global `word-chars` change that restarts every open
+/// buffer's walk from its cursor, and settles once, so the restarted walk's
+/// first tick has run.
+fn queue_word_chars_reindex(ed: &mut Editor) {
+    ed.state.settings.word_chars = "-".into();
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnOptionChange {
+            key: "word-chars".into(),
+            value: hume_scripting::host::OptionValue::Str("-".into()),
+        });
+    ed.settle();
+}
+
+/// Jumps to 1-based `line` and restarts the walk from there. An edit doesn't
+/// restart a walk, so a restart is how a test pins a walk to a line.
+fn goto_line_and_reindex(ed: &mut Editor, line: usize) {
     type_cmd(ed, &format!(":{line}"));
-    ed.feed_key(key('i'));
-    ed.feed_key(key(ch));
-    ed.feed_key(key_esc());
+    queue_word_chars_reindex(ed);
 }
 
 /// A text of `count` lines, line `n` (1-based) reading `line(n)`, each ending
@@ -225,7 +232,7 @@ fn lines_longer_than_the_budget_are_still_walked_to_both_ends() {
     });
     std::fs::write(&path, text).unwrap();
     open(&mut ed, &path);
-    goto_line_and_edit(&mut ed, 20, 'z');
+    goto_line_and_reindex(&mut ed, 20);
     ed.feed_key(key('i'));
     wait_for_word(&mut ed, "first_word");
     wait_for_word(&mut ed, "last_word");
@@ -422,6 +429,89 @@ fn an_edit_rereads_only_the_lines_it_changed() {
     assert!(!got.contains(&"foo-bar".to_string()), "{got:?}");
 }
 
+/// An edit during a walk doesn't restart it: the words the walk has read
+/// stay offered while it goes on. Each tick reads 5 lines, so a restart
+/// would need three ticks to reach line 12 again.
+#[test]
+fn an_edit_during_a_walk_keeps_the_words_already_read() {
+    let tmp = tempfile::tempdir().unwrap();
+    let guard = RuntimeDirs::new();
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash 'chars 35)"#));
+    let file_dir = tempfile::tempdir().unwrap();
+    let path = file_dir.path().join("f.txt");
+    let text = numbered_text(400, |n| {
+        if n == 13 { "earlyw" } else { "filler" }.to_string()
+    });
+    std::fs::write(&path, text).unwrap();
+    open(&mut ed, &path);
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "earlyw");
+    leave_insert(&mut ed);
+
+    edit_range(&mut ed, tmp.path(), 300 * 7, 300 * 7, "late ");
+    std::thread::sleep(Duration::from_millis(200));
+    ed.settle();
+    ed.feed_key(key('i'));
+    trigger(&mut ed);
+    assert!(
+        labels(&ed).contains(&"earlyw".to_string()),
+        "{:?}",
+        labels(&ed)
+    );
+}
+
+/// 200 lines of `filler`, with `marker` on 0-based line `marker_line`, every
+/// line 7 chars, so a tick at `'chars 35` reads exactly 5 lines per side.
+/// The walk is restarted at line 100; its first tick has read lines 95..105.
+fn walk_from_line_100(
+    guard: &RuntimeDirs,
+    tmp: &Path,
+    file_dir: &Path,
+    marker_line: usize,
+    marker: &str,
+) -> Editor {
+    let mut ed = setup(guard, tmp, Some(r#"(hash 'chars 35)"#));
+    let path = file_dir.join("f.txt");
+    let text = numbered_text(200, |n| {
+        if n == marker_line + 1 {
+            marker
+        } else {
+            "filler"
+        }
+        .to_string()
+    });
+    std::fs::write(&path, text).unwrap();
+    open(&mut ed, &path);
+    goto_line_and_reindex(&mut ed, 101);
+    ed
+}
+
+/// Deleting lines above the walk's forward side moves the unread lines
+/// after it up; the walk follows them instead of skipping the first few.
+#[test]
+fn a_deletion_above_the_forward_side_skips_no_line() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file_dir = tempfile::tempdir().unwrap();
+    let guard = RuntimeDirs::new();
+    let mut ed = walk_from_line_100(&guard, tmp.path(), file_dir.path(), 105, "fwdmkr");
+    edit_range(&mut ed, tmp.path(), 10 * 7, 15 * 7, "");
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "fwdmkr");
+}
+
+/// Inserting lines above the walk's backward side moves the unread lines
+/// before it down; the walk follows them instead of skipping the last few.
+#[test]
+fn an_insertion_above_the_backward_side_skips_no_line() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file_dir = tempfile::tempdir().unwrap();
+    let guard = RuntimeDirs::new();
+    let mut ed = walk_from_line_100(&guard, tmp.path(), file_dir.path(), 94, "bwdmkr");
+    edit_range(&mut ed, tmp.path(), 10 * 7, 10 * 7, &"filler\n".repeat(5));
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "bwdmkr");
+}
+
 /// A request the walk had already finished for is answered in full, so a
 /// reindex finishing while its menu is open leaves the menu alone. The
 /// global `word-chars` option change is the trigger: `'on-option-change`
@@ -458,12 +548,7 @@ fn a_reindex_after_a_complete_answer_leaves_the_selection_alone() {
 /// file's own test doc for why that matters) and waits, bounded, for the
 /// walk it restarts to finish.
 fn reindex_via_option_change(ed: &mut Editor) {
-    ed.state.settings.word_chars = "-".into();
-    ed.state
-        .queue_event(crate::editor::event::EditorEvent::OnOptionChange {
-            key: "word-chars".into(),
-            value: hume_scripting::host::OptionValue::Str("-".into()),
-        });
+    queue_word_chars_reindex(ed);
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         ed.settle();
@@ -484,9 +569,9 @@ fn reindex_via_option_change(ed: &mut Editor) {
 /// A walk cancelled mid-way through a large buffer must not leave its
 /// partial `"building"` set to survive into the fresh walk that replaces
 /// it: `bw/reindex!` clears `"building"` in the same install that bumps
-/// `"gen"`, so a word removed by the edit that triggered the reindex can't
-/// resurface from a stale partial scan the old (cancelled) walk already
-/// folded it into.
+/// `"gen"`, so a word deleted just before the reindex can't resurface from
+/// a partial scan the cancelled walk already folded it into. The restart
+/// comes in the same settle that observes the deletion.
 #[test]
 fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() {
     let tmp = tempfile::tempdir().unwrap();
@@ -509,12 +594,11 @@ fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() 
     std::thread::sleep(Duration::from_millis(80));
     ed.settle();
 
-    // Delete "targetword" from line 1: the edit `on-text-changed`'s
-    // debounced `bw/reindex!` restarts the walk over.
+    // Delete "targetword" from line 1, then restart the walk.
     type_cmd(&mut ed, ":1");
     ed.feed_key(key('d'));
     ed.feed_key(key('w'));
-    ed.settle();
+    queue_word_chars_reindex(&mut ed);
 
     ed.feed_key(key('i'));
     wait_for_word_gone(&mut ed, "targetword");
@@ -719,7 +803,7 @@ fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     });
     std::fs::write(&path, text).unwrap();
     open(&mut ed, &path);
-    goto_line_and_edit(&mut ed, 60, 'z');
+    goto_line_and_reindex(&mut ed, 60);
     ed.feed_key(key('i'));
     wait_for_word(&mut ed, "buried_word");
 }
@@ -775,9 +859,8 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
 /// This does not reproduce the orphaned-tick race that guard covers: a tick
 /// already dequeued off the timer wheel, firing after a fresh `bw/reindex!`
 /// has installed a new generation. That needs `drain_due_timers` to pop the
-/// walk's pending tick and a fresh debounce timer in the same batch, in that
-/// order, which a wall-clock-driven test can't force: the walk's tick is due
-/// far sooner (16ms) than a fresh debounce (150ms), so it always drains first.
+/// walk's pending tick in the same batch as the event that restarts it, in
+/// that order, which a wall-clock-driven test can't force.
 #[test]
 fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     let tmp = tempfile::tempdir().unwrap();
@@ -795,20 +878,15 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     });
     std::fs::write(&path, text).unwrap();
     open(&mut ed, &path);
-    goto_line_and_edit(&mut ed, 80, 'z');
-    // Lets the debounce fire, starting the walk outward from line 80. Each
-    // tick covers 5 `filler` lines in both directions, so the walk is about
-    // 16 ticks, and the words reach the candidate list only once all of them
-    // have run.
+    goto_line_and_reindex(&mut ed, 80);
+    // The walk goes outward from line 80. Each tick covers 5 `filler` lines
+    // in both directions, so the walk is about 16 ticks, and the words reach
+    // the candidate list only once all of them have run.
     // Ticks run only when the editor settles, so none run during the sleep.
     std::thread::sleep(Duration::from_millis(200));
     ed.settle();
-    // A second edit restarts the walk while the first is still mid-flight:
-    // its remaining ticks need at least 15 * 16ms = 240ms, and the
-    // restart's debounce fires after 150ms.
-    ed.feed_key(key('i'));
-    type_in_insert(&mut ed, "y");
-    ed.feed_key(key_esc());
+    // A second restart while the first walk is still mid-flight.
+    queue_word_chars_reindex(&mut ed);
     ed.feed_key(key('i'));
     wait_for_word(&mut ed, "far_back");
     wait_for_word(&mut ed, "far_fwd");
@@ -832,9 +910,9 @@ fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
     let big_content = "filler\n".repeat(500);
     std::fs::write(&path, &big_content).unwrap();
     open(&mut ed, &path);
-    goto_line_and_edit(&mut ed, 250, 'z');
-    // The walk starts (debounce) and makes real progress outward from line
-    // 250 in both directions, but 500 lines at 5 per tick is far from done.
+    goto_line_and_reindex(&mut ed, 250);
+    // The walk makes real progress outward from line 250 in both
+    // directions, but 500 lines at 5 per tick is far from done.
     std::thread::sleep(Duration::from_millis(200));
     ed.settle();
 

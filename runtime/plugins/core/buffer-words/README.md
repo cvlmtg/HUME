@@ -47,8 +47,8 @@ cursor line
 
 ### Cursor-outward, line-windowed indexing
 
-A walk builds the cache on `on-buffer-open`, and after an edit the update below can't
-handle. The per-buffer entry has the same shape `core:git-diff` uses for its own state (see
+A walk builds the cache on `on-buffer-open`, and again whenever a restart is needed (see
+[Updating after an edit](#updating-after-an-edit)). The per-buffer entry has the same shape `core:git-diff` uses for its own state (see
 the [core plugins index](../README.md#per-buffer-state)). Each walk goes outward from the
 cursor's line in both directions, one batch of lines per direction per tick, sized by
 the character budget below, fetched with `(buffer-lines pane #:range …)` and scanned to
@@ -56,8 +56,8 @@ completion in the same tick. A word cannot span two lines, so nothing carries ac
 tick boundary.
 
 Nothing blocks however large the buffer is, and the words nearest the cursor are indexed
-first. An edit that interrupts a walk restarts it from the new cursor position, so the
-region most likely to have changed is already covered.
+first. An edit during a walk doesn't restart it: the next tick catches up with the edit
+before it reads.
 
 The walk fetches by line. `buffer-lines` seeks into the buffer's rope by line index, so
 fetching a window of lines costs the same wherever the window is. Re-slicing a string at a
@@ -95,13 +95,24 @@ line before it.
 
 ### Updating after an edit
 
-`on-text-changed` schedules an update, debounced 150ms per buffer. A debounced call sees
-only the last of several fires, so it ignores the hook's own hunks. Instead it asks
-`buffer-changes-since` for everything since the `buffer-generation` value the index
-matches. A finished walk stores that value when the buffer did not change while it ran,
-and every update stores the one it reached.
+The entry keeps `"seen"`, the `buffer-generation` value its set and the walk's positions
+match. Every walk tick and every update advance it. On an edit, that value gives
+`buffer-changes-since` its starting point: everything since, as hunks. Two places use the
+hunks, and both apply them with the same update (`bw/updated-set`):
 
-The update then works from the hunks:
+- **A walk's next tick.** Before reading, a tick that finds the buffer changed updates the
+  set being built and moves both of its positions through the hunks (`bw/shift-line`).
+  Lines are read by number, so without the move a deletion above the forward side would
+  carry unread lines past it, and an insertion above the backward side would carry unread
+  lines below it; no hunk names those lines. A position under a hunk that spans it moves
+  to that hunk's end (forward side) or start (backward side), since the update has already
+  added the hunk's new lines. Lines read twice cost nothing in a set.
+- **A finished index.** `on-text-changed` schedules a refresh, debounced 150ms per buffer.
+  A debounced call sees only the last of several fires, so it ignores the hook's own hunks
+  and asks for everything since `"seen"`. While a walk runs, the refresh does nothing: the
+  walk's next tick catches up.
+
+The update works from the hunks:
 
 - **Adding.** The words of every new line, with their case twins, join the set.
 - **Removing.** A word of an old line that the new lines don't contain may be gone, or may
@@ -109,19 +120,22 @@ The update then works from the hunks:
   `(buffer-search pane (word-search-pattern pane w))`, the whole-word pattern `*` uses. It
   searches the twin's all-lowercase form when the word is capitalized. An all-lowercase
   pattern ignores case, so one search answers for the word and its twin. When nothing
-  matches, both leave the set.
-- **Rebuilding.** When a word joins or leaves, the word list `Ctrl-Space` emits is rebuilt
-  from the set. Steel's hashsets copy on change, so this costs time in proportion to the
-  number of distinct words. An edit that adds and removes nothing skips it.
+  matches, both leave the set. Only words already in the set are checked, so a walk that
+  hasn't reached a line doesn't search for its words.
+- **Rebuilding.** When a word joins or leaves a finished index, the word list `Ctrl-Space`
+  emits is rebuilt from the set. Steel's hashsets copy on change, so this costs time in
+  proportion to the number of distinct words. An edit that adds and removes nothing skips
+  it.
 
-A walk runs instead when the update has nothing to start from or would block for too long:
+The walk restarts from the cursor instead when the update has nothing to start from or
+would block for too long:
 
-- no complete index yet, or a walk still running;
-- the buffer changed while the last walk ran, so no value matches the index;
 - `buffer-changes-since` returns `#f`;
 - the hunks' lines hold more than `'chars` characters, one walk tick's budget;
 - more than `bw/max-word-checks` (32) words need a search. A search for a word that is gone
   reads the whole buffer and blocks the editor while it does; a walk yields between ticks.
+
+The other restarts are on `on-buffer-open` and on a global `word-chars` change.
 
 ### Staleness and cancellation
 
@@ -136,10 +150,10 @@ generation is a second guard on a tick, not the only one.
 #### Buffer close and reindex
 
 `on-buffer-close` forgets the buffer's entry and cancels its pending tick. `on-buffer-open`
-also forgets the entry before it reindexes. A debounced reindex can fire after the entry is
-gone, and `bw/reindex!` creates a fresh entry only while the buffer is still open (`buffer-live?`),
-so a reindex that outlives a close does not recreate state for a buffer that no longer
-exists.
+also forgets the entry before it reindexes. A debounced refresh can fire after the entry is
+gone. With no entry it calls `bw/reindex!`, which creates a fresh entry only while the buffer
+is still open (`buffer-live?`), so a refresh that outlives a close does not recreate state
+for a closed buffer.
 
 #### Restart and bounds
 
@@ -148,9 +162,8 @@ forward window's. A buffer that shrinks mid-walk (`:e!` onto a shorter file, a l
 an LSP `applyEdit`) would otherwise let the backward side request a range past the new
 end, which `buffer-lines` raises on and does not clamp.
 
-Every restart empties the in-progress word set along with bumping the generation. A
-cancelled walk's partial set is stale by the time a new one starts, since an edit
-triggered the restart.
+Every restart empties the in-progress word set along with bumping the generation: a
+restart happens because the set can't be brought up to date.
 
 ### Double-buffered cache
 
@@ -252,9 +265,6 @@ words elsewhere.
   ends a longer word that `word-chars` joins (`a$x` keeps `$x` when `$` is a word
   character), since `*`'s pattern can't check the character before such an edge. A word
   still in the buffer is never dropped.
-- **Continuous typing during a walk can starve the far ends of a large buffer.** An edit
-  during a walk restarts it and discards its work, so the far ends stay unindexed while
-  edits keep arriving. Once a walk has finished, edits update the index without one.
 - **A buffer-scoped `word-chars` change does not invalidate that buffer's cache.** Lines an
   edit changes are read under the new value, and every other line keeps the split the last
   walk made. Fixing it needs a Rust-side event this plugin cannot add.

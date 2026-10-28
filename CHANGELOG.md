@@ -9,7 +9,7 @@
 ### Plugins & scripting
 - New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value was read.
 - New `buffer-search` finds a pattern in a buffer without moving the cursor or changing the current search, and `word-search-pattern` gives the pattern `*` would search for on a word.
-- `core:buffer-words` updates its index from the lines an edit changed instead of rescanning the whole buffer.
+- `core:buffer-words` updates its index from the lines an edit changed instead of rescanning the whole buffer, and keeps indexing through edits instead of starting over.
 
 ## [0.17.0] - 2026-10-28
 
