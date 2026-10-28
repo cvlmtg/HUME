@@ -27,10 +27,15 @@ fn run_probe(ed: &mut Editor) {
 fn after(initial: &str, edits: &str) -> String {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from(initial);
-    define_probe(&mut ed, tmp.path(), edits);
-    run_probe(&mut ed);
-    assert_eq!(error_log(&ed), Vec::<String>::new());
-    state(&ed)
+    after_in(&mut ed, tmp.path(), edits)
+}
+
+/// The marked state after running `edits` on `ed`.
+fn after_in(ed: &mut Editor, tmp: &std::path::Path, edits: &str) -> String {
+    define_probe(ed, tmp, edits);
+    run_probe(ed);
+    assert_eq!(error_log(ed), Vec::<String>::new());
+    state(ed)
 }
 
 /// The error `edits` reports on `initial`, with the text checked unchanged
@@ -38,14 +43,42 @@ fn after(initial: &str, edits: &str) -> String {
 fn error_for(initial: &str, edits: &str) -> String {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from(initial);
-    define_probe(&mut ed, tmp.path(), edits);
-    run_probe(&mut ed);
-    assert_eq!(state(&ed), initial, "a refused edit changes nothing");
-    let errors = error_log(&ed);
+    error_in(&mut ed, tmp.path(), edits)
+}
+
+/// [`error_for`] on a prepared `ed`, whose state must be unchanged.
+fn error_in(ed: &mut Editor, tmp: &std::path::Path, edits: &str) -> String {
+    let initial = state(ed);
+    define_probe(ed, tmp, edits);
+    run_probe(ed);
+    assert_eq!(state(ed), initial, "a refused edit changes nothing");
+    let errors = error_log(ed);
     assert_eq!(errors.len(), 1, "one error expected, got {errors:?}");
     let msg = errors.into_iter().next().unwrap_or_default();
     assert!(msg.contains("edit-text!"), "got: {msg}");
     msg
+}
+
+/// An editor showing `initial` with a Scheme global `stale` holding a
+/// `buffer-generation` value the buffer has moved past: an edit and its undo
+/// leave the text as `initial` under a later generation.
+fn with_stale_generation(initial: &str, tmp: &std::path::Path) -> Editor {
+    let mut ed = editor_from(initial);
+    run(
+        &mut ed,
+        tmp,
+        r#"(define stale #f)
+           (define-typed-command! "snap" "" (lambda (pane) (set! stale (buffer-generation pane))))"#,
+    );
+    type_cmd(&mut ed, ":snap");
+    ed.feed_key(key('d'));
+    ed.feed_key(key('u'));
+    assert_eq!(
+        state(&ed),
+        initial,
+        "the edit and its undo restore the text"
+    );
+    ed
 }
 
 fn edit(start: usize, end: usize, text: &str) -> String {
@@ -323,11 +356,38 @@ fn a_pane_less_value_edits_its_buffer() {
 
 #[test]
 fn a_stale_expected_generation_refuses_the_edit() {
-    let msg = error_for(
-        "-[a]>bc\n",
-        "(list (hash 'start-char 0 'end-char 1 'text \"X\")) #:expect-generation (+ 1 (buffer-generation pane))",
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = with_stale_generation("-[a]>bc\n", tmp.path());
+    let msg = error_in(
+        &mut ed,
+        tmp.path(),
+        "(list (hash 'start-char 0 'end-char 1 'text \"X\")) #:expect-generation stale",
     );
     assert!(msg.contains("buffer changed"), "got: {msg}");
+}
+
+/// A generation of another buffer is refused before anything is checked
+/// against it.
+#[test]
+fn another_buffers_generation_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define other-gen #f)
+           (define-typed-command! "snap" "" (lambda (pane) (set! other-gen (buffer-generation pane))))"#,
+    );
+    let first = ed.focused_buffer_id();
+    open_other_buffer(&mut ed, "other\n");
+    type_cmd(&mut ed, ":snap");
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), first);
+    let msg = error_in(
+        &mut ed,
+        tmp.path(),
+        "(list (hash 'start-char 0 'end-char 1 'text \"X\")) #:expect-generation other-gen",
+    );
+    assert!(msg.contains("a generation of another buffer"), "got: {msg}");
 }
 
 /// A stale generation is reported as stale even when an edit's range is
@@ -335,9 +395,12 @@ fn a_stale_expected_generation_refuses_the_edit() {
 /// text that is gone.
 #[test]
 fn a_stale_expected_generation_is_reported_before_a_range_past_the_end() {
-    let msg = error_for(
-        "-[a]>bc\n",
-        "(list (hash 'start-char 90 'end-char 95 'text \"X\")) #:expect-generation (+ 1 (buffer-generation pane))",
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = with_stale_generation("-[a]>bc\n", tmp.path());
+    let msg = error_in(
+        &mut ed,
+        tmp.path(),
+        "(list (hash 'start-char 90 'end-char 95 'text \"X\")) #:expect-generation stale",
     );
     assert!(msg.contains("buffer changed"), "got: {msg}");
 }
@@ -346,11 +409,10 @@ fn a_stale_expected_generation_is_reported_before_a_range_past_the_end() {
 /// generation to refuse.
 #[test]
 fn an_empty_list_changes_nothing_whatever_the_expected_generation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = with_stale_generation("-[a]>bc\n", tmp.path());
     assert_eq!(
-        after(
-            "-[a]>bc\n",
-            "'() #:expect-generation (+ 1 (buffer-generation pane))"
-        ),
+        after_in(&mut ed, tmp.path(), "'() #:expect-generation stale"),
         "-[a]>bc\n"
     );
 }

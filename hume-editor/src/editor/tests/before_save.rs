@@ -329,7 +329,7 @@ fn a_parked_write_is_raised_before_the_events_its_drain_pass_detects() {
         &mut ed,
         dir.path(),
         r#"(register-hook! 'on-before-buffer-save (lambda (pane) (log! 'trace "before")))
-           (register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+           (register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
     );
     ed.settle();
 

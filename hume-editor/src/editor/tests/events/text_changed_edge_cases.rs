@@ -14,7 +14,7 @@ fn e_bang_reload_fires_on_text_changed() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
         &mut mock,
     )
     .unwrap();
@@ -50,7 +50,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
         &mut mock,
     )
     .unwrap();
@@ -97,7 +97,7 @@ fn opening_a_buffer_fires_on_buffer_open_not_on_text_changed() {
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-open (lambda (bid) (log! 'trace "opened")))
-           (register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+           (register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
         &mut mock,
     )
     .unwrap();
@@ -150,7 +150,7 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-text-changed
-             (lambda (bid)
+             (lambda (bid changes)
                (call! "make-text-uppercase" (focused-pane))
                (call! "make-text-lowercase" (focused-pane))))
            (define-typed-command! "kick" "" (lambda () (call! "make-text-uppercase" (focused-pane))))"#,
@@ -192,7 +192,7 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))
            (register-hook! 'on-buffer-open (lambda (bid) (log! 'trace "opened")))"#,
         &mut mock,
     )
@@ -251,7 +251,8 @@ fn read_only_view_refresh_fires_on_text_changed() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        r#"(register-hook! 'on-text-changed
+             (lambda (bid changes) (log! 'trace (if changes "hunks" "changed"))))"#,
         &mut mock,
     )
     .unwrap();
@@ -289,7 +290,7 @@ fn read_only_view_refresh_fires_on_text_changed() {
     assert_eq!(
         fire_count(&ed),
         1,
-        "refreshing an existing read-only view must fire on-text-changed once"
+        "refreshing an existing read-only view must fire on-text-changed once, with #f for its changes"
     );
 }
 
@@ -311,7 +312,7 @@ fn identity_edit_fires_no_on_text_changed() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
         &mut mock,
     )
     .unwrap();
@@ -424,7 +425,7 @@ fn insert_then_backspace_records_no_revision() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
         &mut mock,
     )
     .unwrap();
@@ -499,7 +500,7 @@ fn identity_reload_fires_no_on_text_changed() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
         &mut mock,
     )
     .unwrap();
@@ -545,7 +546,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))
            (define-typed-command! "start" ""
              (lambda (bid) (after! 0 (lambda () (close-buffer! bid #:discard-unsaved #t)))))"#,
         tmp.path(),

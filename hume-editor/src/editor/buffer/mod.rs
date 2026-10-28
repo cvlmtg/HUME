@@ -7,9 +7,11 @@ use crate::editor::edit_session::EditGroup;
 use crate::editor::position_stores::PositionStores;
 use crate::editor::settings::BufferOverrides;
 use hume_core::{BufferId, BufferLanguageTie, Claim, ConfigOrigin, LaterWins, PaneHandle, PaneId};
+use hume_editing::change_log::ChangeLog;
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::edit::{Edited, TextChange};
 use hume_editing::history::{History, RevisionId};
+use hume_editing::hunk::ChangeHunk;
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, LineEnding};
@@ -191,6 +193,8 @@ pub(crate) struct Buffer {
     /// text's generation at a drain observation point (see
     /// `BufferStore::take_text_changed`) rather than at `install` itself.
     pub(in crate::editor) announced_generation: u64,
+    /// The recent text changes, read through [`Self::changes_since`].
+    change_log: ChangeLog,
     /// The history state most recently announced as an
     /// `on-undo-history-changed` event, diffed the same way
     /// `announced_generation` is (see `BufferStore::take_history_changed`).
@@ -302,6 +306,7 @@ impl Buffer {
             language_by: Claim::default(),
             line_ending_by: Claim::default(),
             announced_generation,
+            change_log: ChangeLog::default(),
             announced_history,
             syntax: None,
             read_only: false,
@@ -479,15 +484,29 @@ impl Buffer {
         match change {
             Change::Edit(changes) => {
                 let change = TextChange::new(&before, &self.text, changes);
-                if !relabel && let Some(syn) = self.syntax.as_mut() {
-                    syn.record_edit(&change);
+                if !relabel {
+                    self.change_log.record(&change);
+                    if let Some(syn) = self.syntax.as_mut() {
+                        syn.record_edit(&change);
+                    }
                 }
                 stores.carry(target, &change);
             }
-            Change::Replace => stores.reset(target.buffer(), || {
-                crate::editor::pane_state::fresh_from_buf(self)
-            }),
+            Change::Replace => {
+                self.change_log.record_replace(&before);
+                stores.reset(target.buffer(), || {
+                    crate::editor::pane_state::fresh_from_buf(self)
+                });
+            }
         }
+    }
+
+    /// The hunks separating the text at `generation` (old side) from the
+    /// live text (new side). `None` when the buffer cannot say: a view
+    /// refresh replaced the text since then, or the change log keeps no step
+    /// that far back.
+    pub(in crate::editor) fn changes_since(&self, generation: u64) -> Option<Vec<ChangeHunk>> {
+        self.change_log.since(generation, &self.text)
     }
 
     /// Bind the buffer to `file`. A view buffer is never bound to one: a

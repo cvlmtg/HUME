@@ -149,7 +149,7 @@
   (debounce-by 150 bw/reindex! #:key (lambda (p . _) (buffer-key p))))
 
 (register-hook! 'on-text-changed
-  (lambda (pane) (bw/schedule-reindex! pane)))
+  (lambda (pane changes) (bw/schedule-reindex! pane)))
 
 (register-hook! 'on-buffer-close
   (lambda (pane) (bw/forget! pane)))

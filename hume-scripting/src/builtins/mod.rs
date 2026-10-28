@@ -604,6 +604,7 @@ builtins! {
     cmd "diff-buffer-lines" diff::diff_buffer_lines(pane: args::LiveBuffer, ref_text: SteelVal);
     plain "diff-words" diff::diff_words(old: SteelVal, new: SteelVal);
     cmd "buffer-revision-diff" diff::buffer_revision_diff(pane: args::LiveBuffer, revision: args::Usize);
+    cmd "buffer-changes-since" diff::buffer_changes_since(pane: args::LiveBuffer, generation: SteelVal);
     open "language-has-grammar?" syntax::language_has_grammar(name: SteelVal);
 
     // Editor-integration directory info, read from `ctx.dirs` (computed

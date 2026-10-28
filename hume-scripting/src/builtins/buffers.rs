@@ -15,7 +15,7 @@ use super::args::{
     optional_hash_entry, symbol_hash,
 };
 use super::errors::generic_err;
-use super::ids::{SteelBufferKey, SteelPane};
+use super::ids::{BufferGeneration, SteelBufferKey, SteelPane};
 use crate::SteelCtx;
 use crate::host::{DisplayPathForm, SelectionInfo, ShownHandle};
 use hume_core::{BufferId, OnUnsaved, PaneHandle};
@@ -170,16 +170,21 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     Ok(SteelVal::BoolV(dirty))
 }
 
-/// `(buffer-generation pane)` → int, bumped by every mutation to `pane`'s
-/// buffer. Steel-side staleness token; not LSP-specific despite the
-/// motivation.
+/// `(buffer-generation pane)` → an opaque [`BufferGeneration`], a new one
+/// after every mutation to `pane`'s buffer and `equal?` to every value read
+/// before the next. The staleness token `#:expect-generation` and
+/// `buffer-changes-since` take.
 pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     let generation = ctx
         .host
         .buffers()
         .buffer_generation(bid)
         .ok_or_else(|| not_live_err("pane", bid))?;
-    Ok(SteelVal::IntV(generation as isize))
+    Ok(BufferGeneration {
+        buffer: bid,
+        generation,
+    }
+    .into_steel_val())
 }
 
 /// `(buffer-undo-tree pane)` → a list with one `(hash 'id 'parent 'age-secs

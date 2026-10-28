@@ -5,6 +5,7 @@
 //! here (see `hume_scripting::host::EventHost`).
 
 use hume_core::{BufferId, PaneHandle};
+use hume_editing::hunk::ChangeHunk;
 use hume_scripting::host::{EventShape, OptionValue};
 use hume_scripting::json::JsonHandle;
 use hume_scripting::{ServerRef, SteelPane};
@@ -177,8 +178,16 @@ pub(in crate::editor) enum EditorEvent {
     /// already-open view buffer, even a byte-identical one; a handler that
     /// resolves the buffer's path must handle `#f` (these buffers have none).
     /// See `Buffer::announced_generation`'s doc.
+    ///
+    /// `changes` is `Buffer::changes_since` the text the buffer's previous
+    /// event announced: hunks with that text on the old side and the text at
+    /// detection on the new side, `None` when the buffer cannot say (a view
+    /// refresh, or a change log that keeps no step that far back). A
+    /// handler that edits the buffer moves it past the new side for the
+    /// handlers after it, and the next event reports that edit.
     OnTextChanged {
         buffer: BufferId,
+        changes: Option<Vec<ChangeHunk>>,
     },
     /// Fires when a buffer's undo history changes: a revision recorded (an
     /// edit, an Insert or paste session ending, an `:e!` reload), an undo,
@@ -253,7 +262,7 @@ impl EditorEvent {
             | EditorEvent::OnLspAttach { buffer, .. }
             | EditorEvent::OnLspDetach { buffer, .. }
             | EditorEvent::OnDiagnosticsChanged { buffer }
-            | EditorEvent::OnTextChanged { buffer }
+            | EditorEvent::OnTextChanged { buffer, .. }
             | EditorEvent::OnUndoHistoryChanged { buffer } => {
                 Some(PaneHandle::buffer_only(*buffer))
             }
@@ -397,7 +406,7 @@ editor_event_names! {
         OnCompletionAccept => "on-completion-accept" (2),
         OnLspNotification => "on-lsp-notification" (3),
         OnOptionChange => "on-option-change" (2),
-        OnTextChanged => "on-text-changed" (1),
+        OnTextChanged => "on-text-changed" (2),
         OnUndoHistoryChanged => "on-undo-history-changed" (1),
     }
     held {
@@ -417,9 +426,14 @@ impl EditorEvent {
             | EditorEvent::OnBufferClose { buffer }
             | EditorEvent::OnBufferSave { buffer }
             | EditorEvent::OnDiagnosticsChanged { buffer }
-            | EditorEvent::OnTextChanged { buffer }
             | EditorEvent::OnUndoHistoryChanged { buffer } => {
                 vec![SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val()]
+            }
+            EditorEvent::OnTextChanged { buffer, changes } => {
+                vec![
+                    SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val(),
+                    hume_scripting::hunk_list_value(changes),
+                ]
             }
             EditorEvent::OnBufferEnter { target } => {
                 vec![SteelPane::new(target).into_steel_val()]

@@ -58,6 +58,7 @@ pub(crate) mod watchdog;
 pub use builtins::args::line_range_value;
 pub use builtins::args::symbol_hash;
 pub use builtins::commands::count_to_steel;
+pub use builtins::diff::hunk_list_value;
 pub use builtins::ids::{DocPos, DocRange, ServerRef, SteelPane};
 pub use command_procs::{CommandProc, MappableProc, TypedProc};
 pub use eval::HeldHandlers;

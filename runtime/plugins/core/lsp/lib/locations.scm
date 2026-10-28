@@ -132,7 +132,7 @@
 
 (define lsp/refresh-locations (debounce 300 lsp/refresh-locations!))
 
-(define (lsp/locations-text-changed pane)
+(define (lsp/locations-text-changed pane changes)
   (when lsp/*locations*
     (let ((counts (hash-ref lsp/*locations* 'counts))
           (key (buffer-key pane)))

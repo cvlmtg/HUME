@@ -153,7 +153,7 @@ Place `"steel:<name>"` for any `<name>` of your choosing to add your own element
   (set-statusline-text! pane "line-count"
     (string-append (number->string (buffer-line-count pane)) "L")))
 
-(register-hook! 'on-text-changed refresh-line-count!)
+(register-hook! 'on-text-changed (lambda (pane changes) (refresh-line-count! pane)))
 (register-hook! 'on-buffer-enter refresh-line-count!)
 ```
 

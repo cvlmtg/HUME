@@ -230,9 +230,9 @@ impl Editor {
     /// event (`BufferStore::take_text_changed` advances the baseline as it
     /// reports).
     fn detect_text_changed(&mut self) {
-        for buffer in self.state.buffers.take_text_changed() {
+        for (buffer, changes) in self.state.buffers.take_text_changed() {
             self.state
-                .queue_event(EditorEvent::OnTextChanged { buffer });
+                .queue_event(EditorEvent::OnTextChanged { buffer, changes });
             if self.state.lsp_buffer_wants_pull(buffer) {
                 self.debounce_diagnostic_pull(buffer);
             }

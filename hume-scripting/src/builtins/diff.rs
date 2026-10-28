@@ -1,5 +1,6 @@
 //! `(diff-lines old-text new-text)` / `(diff-buffer-lines pane ref-text)` /
-//! `(buffer-revision-diff pane id)` / `(diff-words old-text new-text)`:
+//! `(buffer-revision-diff pane id)` / `(buffer-changes-since pane generation)` /
+//! `(diff-words old-text new-text)`:
 //! native line and word diff, exposed to Steel plugins. `diff-lines` and
 //! `diff-words` read no editor state, so they call `hume-editing` directly.
 
@@ -18,6 +19,7 @@ use super::args::{
     symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
+use super::ids::BufferGeneration;
 
 /// `(diff-lines old-text new-text)` → `(hash 'hunks (…) 'deadline-hit b)`:
 /// the hunks oldest side first, and whether the line diff missed its
@@ -66,6 +68,31 @@ pub(crate) fn buffer_revision_diff(
         .revision_diff(bid, revision)
         .map_err(generic_err)?;
     Ok(hunks_to_steel(diff))
+}
+
+/// `(buffer-changes-since pane generation)` → the hunks separating the text
+/// of `generation`, a `buffer-generation` value of `pane`'s buffer, from the
+/// live text, as [`hunk_list_value`] gives them: the old side is the text at
+/// `generation`. `#f` when the buffer cannot say. Raises for a generation
+/// of another buffer.
+pub(crate) fn buffer_changes_since(
+    ctx: &mut SteelCtx,
+    bid: BufferId,
+    generation: SteelVal,
+) -> SteelResult {
+    let generation = BufferGeneration::of(&generation, bid, "generation").map_err(generic_err)?;
+    let hunks = require_cap(ctx.host.diff())?
+        .changes_since(bid, generation)
+        .map_err(generic_err)?;
+    Ok(hunk_list_value(hunks))
+}
+
+/// `hunks` as a list of the hunks `diff-lines` returns, or `#f` for `None`:
+/// the `on-text-changed` payload and what `buffer-changes-since` returns.
+pub fn hunk_list_value(hunks: Option<Vec<ChangeHunk>>) -> SteelVal {
+    hunks.map_or(SteelVal::BoolV(false), |hunks| {
+        list_of(hunks.into_iter().map(hunk_to_steel))
+    })
 }
 
 fn hunks_to_steel(diff: HunkDiff) -> SteelVal {

@@ -32,7 +32,7 @@
       (git-diff/schedule-branch-refresh! (focused-pane) git-diff/branch-style))))
 
 (register-hook! 'on-text-changed
-  (lambda (pane) (git-diff/schedule-refresh! pane git-diff/ref)))
+  (lambda (pane changes) (git-diff/schedule-refresh! pane git-diff/ref)))
 
 (register-hook! 'on-buffer-save
   (lambda (pane)

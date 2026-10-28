@@ -188,6 +188,51 @@ opaque_handle!(
     SupersedeKey => "supersede-key",
 );
 
+/// `(buffer-generation pane)`'s value: the generation of `buffer`'s text
+/// when it was read. It names its buffer because generations are counted
+/// per buffer, so the same number from two buffers names two unrelated
+/// texts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct BufferGeneration {
+    pub(crate) buffer: BufferId,
+    pub(crate) generation: u64,
+}
+
+impl BufferGeneration {
+    pub(crate) fn into_steel_val(self) -> SteelVal {
+        self.into_steelval()
+            .expect("BufferGeneration into_steelval")
+    }
+
+    /// The generation `val` holds for `buffer`. `arg` names the argument in
+    /// the error for any other value, a generation of another buffer included.
+    pub(crate) fn of(val: &SteelVal, buffer: BufferId, arg: &str) -> Result<u64, String> {
+        match downcast::<Self>(val) {
+            Some(g) if g.buffer == buffer => Ok(g.generation),
+            Some(_) => Err(format!("{arg}: a generation of another buffer")),
+            None => Err(format!("{arg}: expected a value from buffer-generation")),
+        }
+    }
+}
+
+impl Custom for BufferGeneration {
+    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+        Some(Ok(format!(
+            "#<buffer-generation buffer={} {}>",
+            self.buffer.data().as_ffi(),
+            self.generation
+        )))
+    }
+
+    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
+    }
+
+    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
+        Some(self)
+    }
+}
+
 /// A buffer position in a request's params, encoded as a wire `Position`
 /// only when the request is serialized for a server, in that server's
 /// position encoding. `offset` is a char offset into the text of `buffer`

@@ -17,7 +17,7 @@ fn a_read_opened_outside_the_change_mid_insert_ends_the_change() {
         tmp.path(),
         r#"(define armed #t)
            (register-hook! 'on-text-changed
-             (lambda (bid)
+             (lambda (bid changes)
                (when armed
                  (set! armed #f)
                  (on-next-char! (lambda (c) (+ 1 0))))))"#,

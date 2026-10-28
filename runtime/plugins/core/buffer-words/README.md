@@ -214,9 +214,10 @@ words elsewhere.
 
 ## Known limitations
 
-- **A full rescan runs on every edit.** `on-text-changed` carries no change range, so every
-  refresh rescans the whole buffer, the same cost `core:git-diff` pays on every debounced
-  edit. Cursor-outward indexing changes the order of the work and does not reduce it.
+- **A full rescan runs on every edit.** Every refresh rescans the whole buffer, the same
+  cost `core:git-diff` pays on every debounced edit, although `on-text-changed` and
+  `buffer-changes-since` name the changed lines. Cursor-outward indexing changes the order
+  of the work and does not reduce it.
 - **Continuous typing near the cursor can starve the far ends of a large buffer.** Every
   restart discards in-progress work, so the far ends stay unindexed while edits keep
   arriving.

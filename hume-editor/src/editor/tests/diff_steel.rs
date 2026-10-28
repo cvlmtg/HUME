@@ -170,6 +170,91 @@ fn buffer_revision_diff_on_an_unknown_revision_raises() {
     );
 }
 
+/// `buffer-changes-since` returns the hunks between the text a
+/// `buffer-generation` value was taken at (old side) and the live text (new
+/// side), across every edit since.
+#[test]
+fn buffer_changes_since_returns_the_hunks_since_a_generation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\nd\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define snap #f)
+           (define-typed-command! "snap" "" (lambda (bid) (set! snap (buffer-generation bid))))
+           (define-typed-command! "now" "" (lambda (bid)
+             (log! 'info (to-string (buffer-changes-since bid (buffer-generation bid))))))"#,
+    );
+    type_cmd(&mut ed, ":snap");
+    ed.feed_key(key('d'));
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "c\nd\n");
+
+    let hunks = log_probe(
+        &mut ed,
+        tmp.path(),
+        r#"(to-string
+             (map (lambda (h)
+                    (list (hash-ref h 'old-start-line) (hash-ref h 'old-end-line)
+                          (hash-ref h 'new-start-line) (hash-ref h 'new-end-line)
+                          (hash-ref h 'old-lines) (hash-ref h 'new-lines)))
+                  (buffer-changes-since bid snap)))"#,
+    );
+    assert_eq!(hunks, r#"((0 1 0 1 ("abc") ("c")))"#);
+
+    type_cmd(&mut ed, ":now");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("()"),
+        "nothing separates the live text from itself"
+    );
+}
+
+/// A generation value names its buffer: equal to itself, and different
+/// once the buffer changes.
+#[test]
+fn a_buffer_generation_compares_equal_until_the_buffer_changes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define snap #f)
+           (define-typed-command! "snap" "" (lambda (bid) (set! snap (buffer-generation bid))))
+           (define-typed-command! "same" "" (lambda (bid)
+             (log! 'info (if (equal? snap (buffer-generation bid)) "same" "moved"))))"#,
+    );
+    type_cmd(&mut ed, ":snap");
+    type_cmd(&mut ed, ":same");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("same"));
+    ed.feed_key(key('d'));
+    type_cmd(&mut ed, ":same");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("moved"));
+}
+
+/// A generation of another buffer raises: its number means nothing for this
+/// buffer's text.
+#[test]
+fn buffer_changes_since_with_another_buffers_generation_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define snap #f)
+           (define-typed-command! "snap" "" (lambda (bid) (set! snap (buffer-generation bid))))
+           (define-typed-command! "since" "" (lambda (bid) (buffer-changes-since bid snap)))"#,
+    );
+    type_cmd(&mut ed, ":snap");
+    open_other_buffer(&mut ed, "other\n");
+    type_cmd(&mut ed, ":since");
+    assert!(
+        has_error(&ed, "a generation of another buffer"),
+        "got: {:?}",
+        error_log(&ed)
+    );
+}
+
 /// `diff-words` returns `(hash 'hunks … 'deadline-hit …)`, each hunk a hash of
 /// char offsets and texts.
 ///

@@ -19,7 +19,7 @@ fn typing_one_character_fires_on_text_changed_once() {
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed
-             (lambda (bid)
+             (lambda (bid changes)
                (log! 'trace (if (equal? (buffer-key bid) (buffer-key (focused-pane))) "correct-bid" "wrong-bid"))))"#,
         &mut mock,
     )
@@ -46,6 +46,53 @@ fn typing_one_character_fires_on_text_changed_once() {
     );
 }
 
+/// The handler's second argument is the hunks since the previous
+/// `on-text-changed`: the text before the insert session on the old side.
+#[test]
+fn the_hook_receives_the_hunks_since_the_previous_event() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\nc\n");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed
+             (lambda (pane changes)
+               (log! 'trace
+                 (to-string
+                   (map (lambda (h)
+                          (list (hash-ref h 'old-start-line) (hash-ref h 'old-end-line)
+                                (hash-ref h 'new-start-line) (hash-ref h 'new-end-line)
+                                (hash-ref h 'old-lines) (hash-ref h 'new-lines)))
+                        changes)))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+    ed.settle();
+    ed.feed_key(key('x'));
+    ed.feed_key(key('d'));
+    ed.settle();
+
+    let traces: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert_eq!(
+        traces,
+        vec![r#"((0 1 0 1 ("ab") ("xab")))"#, r#"((0 1 0 0 ("xab") ()))"#,]
+    );
+}
+
 /// Several mutations to the same buffer before a single `settle()` coalesce
 /// into one `on-text-changed`: the contract `on-text-changed`'s doc states
 /// and `BufferStore::take_text_changed` implements.
@@ -58,7 +105,7 @@ fn several_edits_before_one_settle_coalesce_into_one_event() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
         &mut mock,
     )
     .unwrap();
@@ -99,7 +146,7 @@ fn undo_fires_but_a_no_op_undo_at_root_does_not() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
         &mut mock,
     )
     .unwrap();
@@ -148,7 +195,7 @@ fn editor_with_history_hooks(input: &str) -> Editor {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "text")))
+        r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "text")))
            (register-hook! 'on-undo-history-changed (lambda (bid) (log! 'trace "history")))"#,
         &mut mock,
     )

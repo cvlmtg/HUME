@@ -59,7 +59,10 @@ fn all_variants() -> Vec<EditorEvent> {
             params: std::sync::Arc::new(serde_json::json!({"x": 1})),
             origin: hume_scripting::json::WireOrigin::Local,
         },
-        EditorEvent::OnTextChanged { buffer },
+        EditorEvent::OnTextChanged {
+            buffer,
+            changes: None,
+        },
         EditorEvent::OnUndoHistoryChanged { buffer },
     ]
 }
@@ -170,7 +173,6 @@ fn buffer_only_events_carry_one_pane_less_handle_arg() {
         EditorEvent::OnBufferClose { buffer },
         EditorEvent::OnBufferSave { buffer },
         EditorEvent::OnDiagnosticsChanged { buffer },
-        EditorEvent::OnTextChanged { buffer },
         EditorEvent::OnUndoHistoryChanged { buffer },
     ] {
         let label = format!("{event:?}");
@@ -178,6 +180,40 @@ fn buffer_only_events_carry_one_pane_less_handle_arg() {
         assert_eq!(args.len(), 1, "{label} must carry exactly one arg");
         assert_steel_pane(&args, 0, PaneHandle::buffer_only(buffer));
     }
+}
+
+/// `OnTextChanged` carries its pane-less handle, then the hunks as a list,
+/// or `#f` when the buffer could not say what changed.
+#[test]
+fn text_changed_carries_a_pane_less_handle_and_its_hunks() {
+    let buffer = BufferId::default();
+    let hunk = hume_editing::hunk::ChangeHunk {
+        old_start: hume_rope::line::ContentLine::new(0),
+        new_start: hume_rope::line::ContentLine::new(0),
+        old_lines: vec!["a".to_owned()],
+        new_lines: vec!["b".to_owned()],
+        words: None,
+    };
+    let args = EditorEvent::OnTextChanged {
+        buffer,
+        changes: Some(vec![hunk]),
+    }
+    .into_steel_args();
+    assert_eq!(args.len(), 2);
+    assert_steel_pane(&args, 0, PaneHandle::buffer_only(buffer));
+    assert!(
+        matches!(&args[1], SteelVal::ListV(hunks) if hunks.len() == 1),
+        "expected a one-hunk list, got {:?}",
+        args[1]
+    );
+
+    let args = EditorEvent::OnTextChanged {
+        buffer,
+        changes: None,
+    }
+    .into_steel_args();
+    assert_eq!(args.len(), 2);
+    assert_eq!(args[1], SteelVal::BoolV(false));
 }
 
 /// `OnBufferEnter` carries a pane too, always `Some`, since a buffer only

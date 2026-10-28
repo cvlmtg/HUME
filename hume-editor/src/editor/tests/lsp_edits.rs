@@ -72,6 +72,18 @@ fn apply_wire_text_edits(ed: &mut Editor, tmp: &std::path::Path, expect_gen_clau
     ed.settle();
 }
 
+/// Stores the focused buffer's `buffer-generation` in the Scheme global
+/// `snap`.
+fn snap_generation(ed: &mut Editor, tmp: &std::path::Path) {
+    run(
+        ed,
+        tmp,
+        r#"(define snap #f)
+           (define-typed-command! "snap" "" (lambda (bid) (set! snap (buffer-generation bid))))"#,
+    );
+    type_cmd(ed, ":snap");
+}
+
 // ── apply-text-edits! ───────────────────────────────────────────────────────
 
 #[test]
@@ -362,15 +374,13 @@ fn apply_text_edits_is_one_undo_step() {
 fn apply_text_edits_with_an_empty_list_changes_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(tmp.path(), "-[a]>bcdef\n", vec![]);
-    let stale_gen = ed.doc().text().generation() + 1;
+    snap_generation(&mut ed, tmp.path());
+    ed.handle_key(key('d'));
+    ed.handle_key(key('u'));
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).read_only = true;
 
-    apply_wire_text_edits(
-        &mut ed,
-        tmp.path(),
-        &format!(" #:expect-generation {stale_gen}"),
-    );
+    apply_wire_text_edits(&mut ed, tmp.path(), " #:expect-generation snap");
     assert_eq!(ed.doc().text().to_string(), "abcdef\n");
     assert_eq!(error_log(&ed), Vec::<String>::new());
 }
@@ -383,7 +393,7 @@ fn apply_text_edits_version_mismatch_rejected() {
         "-[a]>bcdef\n",
         vec![wire_edit((0, 0), (0, 1), "Z")],
     );
-    let stale_gen = ed.doc().text().generation();
+    snap_generation(&mut ed, tmp.path());
     // Make an unrelated edit first so the buffer's generation moves past
     // what the (fictional) LSP response was computed against.
     ed.handle_key(key('i'));
@@ -391,11 +401,7 @@ fn apply_text_edits_version_mismatch_rejected() {
     ed.handle_key(key_esc());
 
     let before = ed.doc().text().to_string();
-    apply_wire_text_edits(
-        &mut ed,
-        tmp.path(),
-        &format!(" #:expect-generation {stale_gen}"),
-    );
+    apply_wire_text_edits(&mut ed, tmp.path(), " #:expect-generation snap");
     assert_eq!(
         ed.doc().text().to_string(),
         before,

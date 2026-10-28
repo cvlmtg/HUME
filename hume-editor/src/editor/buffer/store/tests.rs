@@ -190,7 +190,7 @@ fn take_text_changed_reports_a_touched_buffer_once() {
         "edited\n",
     );
 
-    assert_eq!(store.take_text_changed(), vec![id]);
+    assert_eq!(store.take_text_changed(), vec![(id, None)]);
     assert_eq!(
         store.take_text_changed(),
         Vec::new(),
@@ -221,7 +221,58 @@ fn take_text_changed_coalesces_multiple_mutations_into_one_report() {
         "third\n",
     );
 
-    assert_eq!(store.take_text_changed(), vec![id]);
+    assert_eq!(store.take_text_changed(), vec![(id, None)]);
+}
+
+/// The report carries the hunks of every mutation since the previous report,
+/// the text as of that report on the old side.
+#[test]
+fn take_text_changed_reports_the_hunks_since_the_last_report() {
+    let (mut store, mut ev) = store_with_engine();
+    let id = make_id(&mut ev);
+    store.open(id, make_buf());
+    record_revision(&mut store, id, "first\n");
+    record_revision(&mut store, id, "first\nsecond\n");
+
+    let reports = store.take_text_changed();
+    let lines: Vec<_> = reports
+        .into_iter()
+        .map(|(bid, hunks)| {
+            let hunks = hunks.map(|hs| {
+                hs.into_iter()
+                    .map(|h| {
+                        (
+                            h.old_start.index(),
+                            h.old_lines,
+                            h.new_start.index(),
+                            h.new_lines,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            });
+            (bid, hunks)
+        })
+        .collect();
+    let owned = |ls: &[&str]| ls.iter().map(|l| (*l).to_owned()).collect::<Vec<_>>();
+    assert_eq!(
+        lines,
+        vec![(
+            id,
+            Some(vec![(0, owned(&["hello"]), 0, owned(&["first", "second"]))])
+        )]
+    );
+
+    record_revision(&mut store, id, "first\n");
+    let next = store.take_text_changed();
+    assert_eq!(next.len(), 1);
+    assert_eq!(
+        next[0]
+            .1
+            .as_ref()
+            .map(|hs| hs.iter().map(|h| h.old_lines.clone()).collect::<Vec<_>>()),
+        Some(vec![owned(&["second"])]),
+        "the second report starts from the text the first one ended at"
+    );
 }
 
 // ── take_history_changed ────────────────────────────────────────────────────
@@ -291,5 +342,5 @@ fn take_text_changed_ignores_untouched_siblings() {
         "only b\n",
     );
 
-    assert_eq!(store.take_text_changed(), vec![b]);
+    assert_eq!(store.take_text_changed(), vec![(b, None)]);
 }

@@ -29,6 +29,7 @@ const PANE_PROBES: &[&str] = &[
     r#"(detach-keymap! p "keys")"#,
     r#"(diff-buffer-lines p "")"#,
     "(buffer-revision-diff p 0)",
+    "(buffer-changes-since p #f)",
     r#"(lsp-notify! p "m" (hash))"#,
     "(lsp-servers p)",
     "(lsp-document-params p)",

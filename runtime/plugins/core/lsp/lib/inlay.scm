@@ -82,7 +82,8 @@
 
 (register-hook! 'on-diagnostics-changed lsp/refresh-hints-for-buffer)
 
-(register-hook! 'on-text-changed lsp/refresh-hints-for-buffer)
+(register-hook! 'on-text-changed
+  (lambda (pane changes) (lsp/refresh-hints-for-buffer pane)))
 
 (register-hook! 'on-lsp-detach
   (lambda (pane server)

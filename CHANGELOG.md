@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Breaking changes
+- `on-text-changed` handlers take `(pane changes)`: add the second parameter, `changes`, the hunks since the previous fire or `#f`.
+- `buffer-generation` returns an opaque value instead of an integer: compare two with `equal?`. `#:expect-generation` takes only that value, and raises for one from another buffer.
+
+### Plugins & scripting
+- New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value was read.
+
 ## [0.17.0] - 2026-10-28
 
 ### Breaking changes

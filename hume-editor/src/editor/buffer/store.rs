@@ -9,6 +9,7 @@
 use slotmap::SecondaryMap;
 
 use hume_core::BufferId;
+use hume_editing::hunk::ChangeHunk;
 use hume_engine::pipeline::Cycle;
 use hume_platform::path::AbsolutePath;
 
@@ -160,25 +161,27 @@ impl BufferStore {
             .find_map(|(id, buf)| buf.is_busy().then_some(id))
     }
 
-    /// Every open buffer whose text generation has moved since the last call:
-    /// the observation-point source for `on-text-changed`
-    /// (`EditorEvent::OnTextChanged`'s doc has the full contract: what bumps
-    /// text generation, what coalesces, what never fires). Advances each touched
-    /// buffer's `announced_generation` to match as it goes, so a buffer
-    /// reported once stays quiet until it mutates again, so a burst of edits
-    /// between two calls coalesces into one entry. Walks `order` (open-order)
-    /// for deterministic event ordering.
+    /// Every open buffer whose text generation has moved since the last call,
+    /// with the hunks separating the text of that call from the live one
+    /// (`Buffer::changes_since`): the observation-point source for
+    /// `on-text-changed` (`EditorEvent::OnTextChanged`'s doc has the full
+    /// contract: what bumps text generation, what coalesces, what never
+    /// fires). Advances each touched buffer's `announced_generation` to match
+    /// as it goes, so a buffer reported once stays quiet until it mutates
+    /// again, so a burst of edits between two calls coalesces into one entry.
+    /// Walks `order` (open-order) for deterministic event ordering.
     ///
     /// Unlike `edit_seq` (global and edit-only by design: a `:messages`
     /// refresh or `:e!` must not look like an edit to paste-stamping, see its
     /// doc), this is per-buffer and fires for every text replacement
     /// `install` performs.
-    pub(in crate::editor) fn take_text_changed(&mut self) -> Vec<BufferId> {
-        self.take_announced(|buf| {
+    pub(in crate::editor) fn take_text_changed(
+        &mut self,
+    ) -> Vec<(BufferId, Option<Vec<ChangeHunk>>)> {
+        self.take_announced(|id, buf| {
             let generation = buf.text().generation();
-            let changed = generation != buf.announced_generation;
-            buf.announced_generation = generation;
-            changed
+            let announced = std::mem::replace(&mut buf.announced_generation, generation);
+            (generation != announced).then(|| (id, buf.changes_since(announced)))
         })
     }
 
@@ -188,22 +191,25 @@ impl BufferStore {
     /// advance-as-it-reports shape as [`Self::take_text_changed`], over
     /// [`Buffer::history_mark`](super::Buffer::history_mark).
     pub(in crate::editor) fn take_history_changed(&mut self) -> Vec<BufferId> {
-        self.take_announced(|buf| {
+        self.take_announced(|id, buf| {
             let mark = buf.history_mark();
             let changed = mark != buf.announced_history;
             buf.announced_history = mark;
-            changed
+            changed.then_some(id)
         })
     }
 
-    /// The open buffers, in open-order, for which `announce` returns `true`.
-    /// `announce` advances its own baseline, so each buffer is reported once
-    /// per change.
-    fn take_announced(&mut self, mut announce: impl FnMut(&mut Buffer) -> bool) -> Vec<BufferId> {
+    /// What `announce` reports for each open buffer, in open-order, skipping
+    /// the buffers it returns `None` for. `announce` advances its own
+    /// baseline, so each buffer is reported once per change.
+    fn take_announced<T>(
+        &mut self,
+        mut announce: impl FnMut(BufferId, &mut Buffer) -> Option<T>,
+    ) -> Vec<T> {
         let Self { order, buffers, .. } = self;
         order
             .iter()
-            .filter_map(|&id| announce(buffers.get_mut(id)?).then_some(id))
+            .filter_map(|&id| announce(id, buffers.get_mut(id)?))
             .collect()
     }
 
