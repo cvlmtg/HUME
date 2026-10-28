@@ -28,7 +28,7 @@ fn completion_over_a_live_scrollable_popup_clears_it() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_popup(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         "hover".to_string(),
         PopupKind::Scrollable,
         hume_core::PopupLayout::Cursor,
@@ -60,7 +60,7 @@ fn completion_over_a_sticky_popup_leaves_it_open() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_popup(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         "sig-help".to_string(),
         PopupKind::Sticky,
         hume_core::PopupLayout::Cursor,
@@ -102,7 +102,7 @@ fn a_popup_landing_above_a_live_session_does_not_strand_it() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_popup(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         "hover".to_string(),
         PopupKind::Scrollable,
         hume_core::PopupLayout::Cursor,
@@ -140,7 +140,7 @@ fn dismissing_the_session_leaves_a_popup_above_it_open() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_popup(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         "hover".to_string(),
         PopupKind::Scrollable,
         hume_core::PopupLayout::Cursor,

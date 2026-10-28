@@ -98,7 +98,7 @@ fn toggle_extend_closes_a_sticky_popup_shown_from_normal() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_popup(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         "hi".to_string(),
         hume_scripting::host::PopupKind::Sticky,
         hume_core::PopupLayout::Cursor,

@@ -180,7 +180,7 @@ fn current_line_number_reads_live_position() {
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     let before = live_host!(ed)
-        .buffer_cursor_line(pane)
+        .buffer_cursor_line(hume_scripting::host::ShownHandle::for_test(pane))
         .expect("line before");
     assert_eq!(before.index(), 0, "cursor starts on line 0");
 
@@ -198,7 +198,9 @@ fn current_line_number_reads_live_position() {
             .unwrap();
     }
 
-    let after = live_host!(ed).buffer_cursor_line(pane).expect("line after");
+    let after = live_host!(ed)
+        .buffer_cursor_line(hume_scripting::host::ShownHandle::for_test(pane))
+        .expect("line after");
     assert_eq!(
         after.index(),
         1,
@@ -669,7 +671,9 @@ fn steel_native_via_call_preserves_own_count() {
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     let host = live_host!(ed);
-    let line = host.buffer_cursor_line(pane).expect("buffer_cursor_line");
+    let line = host
+        .buffer_cursor_line(hume_scripting::host::ShownHandle::for_test(pane))
+        .expect("buffer_cursor_line");
     // Started on line 0, moved down 3 → should be on line 3.
     assert_eq!(
         line.index(),
@@ -1733,7 +1737,7 @@ fn buffer_selections_end_covers_a_whole_multi_char_cluster() {
     let pane = focused_pane(&ed);
     let host = live_host!(ed);
     let sels = host
-        .buffer_selections(pane)
+        .buffer_selections(hume_scripting::host::ShownHandle::for_test(pane))
         .expect("pane state must be seeded");
     assert_eq!(sels, vec![sel_info(0, 0, 0, 2, true)]);
 }
@@ -1748,7 +1752,7 @@ fn buffer_selections_sorted_multi_cursor() {
     let pane = focused_pane(&ed);
     let host = live_host!(ed);
     let sels = host
-        .buffer_selections(pane)
+        .buffer_selections(hume_scripting::host::ShownHandle::for_test(pane))
         .expect("pane state must be seeded");
     assert_eq!(
         sels,
@@ -1767,7 +1771,7 @@ fn buffer_selections_preserves_backward_direction() {
     let pane = focused_pane(&ed);
     let host = live_host!(ed);
     let sels = host
-        .buffer_selections(pane)
+        .buffer_selections(hume_scripting::host::ShownHandle::for_test(pane))
         .expect("pane state must be seeded");
     assert_eq!(
         sels,
@@ -1786,7 +1790,7 @@ fn buffer_selections_primary_flag_follows_primary_index() {
     let pane = focused_pane(&ed);
     let host = live_host!(ed);
     let sels = host
-        .buffer_selections(pane)
+        .buffer_selections(hume_scripting::host::ShownHandle::for_test(pane))
         .expect("pane state must be seeded");
     assert_eq!(
         sels,

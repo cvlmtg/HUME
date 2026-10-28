@@ -238,7 +238,7 @@ fn set_attachment_completion_triggers_queues_an_attachment_scope() {
     let pane = crate::test_support::default_pane();
     set_attachment_completion_triggers(
         &mut ctx,
-        pane,
+        pane.buffer(),
         "src".to_string(),
         server.into_steel_val(),
         SteelVal::SymbolV("completion".into()),
@@ -280,7 +280,7 @@ fn an_attachment_server_that_is_not_a_server_raises() {
     let mut ctx = h.ctx();
     let err = set_attachment_hook_triggers(
         &mut ctx,
-        crate::test_support::default_pane(),
+        crate::test_support::default_pane().buffer(),
         "src".to_string(),
         SteelVal::StringV("rust".into()),
         SteelVal::SymbolV("completion".into()),
@@ -300,7 +300,7 @@ fn an_attachment_feature_that_is_not_a_feature_raises() {
     };
     let err = set_attachment_hook_triggers(
         &mut ctx,
-        crate::test_support::default_pane(),
+        crate::test_support::default_pane().buffer(),
         "src".to_string(),
         server.into_steel_val(),
         SteelVal::SymbolV("nonsense".into()),

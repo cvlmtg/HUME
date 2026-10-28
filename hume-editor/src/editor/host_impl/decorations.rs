@@ -322,7 +322,7 @@ pub(super) fn virtual_line_segments_to_bytes(
 /// The live text for `bid`, or `Err` if `bid` doesn't name
 /// an open buffer. Every decoration setter needs this to validate/convert
 /// its Steel-facing positions. `bid`'s liveness is already checked before
-/// any of these setters' bodies run (`args::LivePane`'s `BuiltinArg::resolve`
+/// any of these setters' bodies run (`args::LiveBuffer`'s `BuiltinArg::resolve`
 /// in the `builtins!`-registered closure), so the `Err` arm here is a
 /// defensive fallback, not the primary check. It is kept because `try_get` could
 /// in principle diverge from the liveness check's own `buffer_exists`.

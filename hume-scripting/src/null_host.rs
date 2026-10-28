@@ -26,7 +26,7 @@ use crate::host::{
     BufferHost, ClaimRefused, CommandHolder, CommandHost, CommandKind, CursorHost, DisplayPathForm,
     EditorHost, EventHost, EventShape, LanguageHost, LocationPlace, LspHost, OptionValue,
     OutputHost, PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost,
-    StoredLanguage, TrackedHold, check_lazy_claim,
+    ShownHandle, StoredLanguage, TrackedHold, check_lazy_claim,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -106,16 +106,8 @@ impl BufferHost for NullHost {
     fn focused_pane(&self) -> PaneHandle {
         PaneHandle::buffer_only(BufferId::default())
     }
-    fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle> {
-        vec![pane]
-    }
-    // Read-like, not a mutator: there's no real focus state to check a
-    // `pane` against here, so this permissively passes. The `UiHost`
-    // openers this backs have no `NullHost` implementation at all (`ui()`
-    // returns `None`), so a test exercising the gate itself needs
-    // `EditorHostImpl`/`MockHost`, not this stub.
-    fn require_focused_pane(&self, _pane: PaneHandle) -> Result<(), String> {
-        Ok(())
+    fn buffer_panes(&self, id: BufferId) -> Vec<PaneHandle> {
+        vec![PaneHandle::buffer_only(id)]
     }
     fn pane_live(&self, _pane: PaneHandle) -> bool {
         false
@@ -155,14 +147,14 @@ impl BufferHost for NullHost {
     }
     fn switch_to_buffer(
         &mut self,
-        _pane: PaneHandle,
+        _pane: ShownHandle,
         _target: BufferId,
     ) -> Result<PaneHandle, String> {
         Err("NullHost: switch_to_buffer not available".into())
     }
     fn show_read_only_buffer(
         &mut self,
-        _pane: PaneHandle,
+        _pane: ShownHandle,
         _name: &str,
         _text: &str,
     ) -> Result<PaneHandle, String> {
@@ -199,7 +191,7 @@ impl BufferHost for NullHost {
     }
     fn viewport_range(
         &mut self,
-        _pane: PaneHandle,
+        _pane: ShownHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
         Err("NullHost: viewport_range not available".into())
     }
@@ -307,22 +299,22 @@ impl CommandHost for NullHost {
 }
 
 impl CursorHost for NullHost {
-    fn buffer_cursor_line(&self, _pane: PaneHandle) -> Result<ContentLine, String> {
+    fn buffer_cursor_line(&self, _pane: ShownHandle) -> Result<ContentLine, String> {
         Err("NullHost: buffer_cursor_line not available".into())
     }
-    fn buffer_selections(&self, _pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
+    fn buffer_selections(&self, _pane: ShownHandle) -> Result<Vec<SelectionInfo>, String> {
         Err("NullHost: buffer_selections not available".into())
     }
     fn char_offset_to_line(&self, _bid: BufferId, _idx: usize) -> Result<ContentLine, String> {
         Err("NullHost: char_offset_to_line not available".into())
     }
-    fn symbol_under_cursor(&self, _pane: PaneHandle) -> Result<String, String> {
+    fn symbol_under_cursor(&self, _pane: ShownHandle) -> Result<String, String> {
         Err("NullHost: symbol_under_cursor not available".into())
     }
-    fn selections_linewise(&self, _pane: PaneHandle) -> Result<bool, String> {
+    fn selections_linewise(&self, _pane: ShownHandle) -> Result<bool, String> {
         Err("NullHost: selections_linewise not available".into())
     }
-    fn selections_charwise(&self, _pane: PaneHandle) -> Result<bool, String> {
+    fn selections_charwise(&self, _pane: ShownHandle) -> Result<bool, String> {
         Err("NullHost: selections_charwise not available".into())
     }
 }
@@ -635,13 +627,13 @@ impl LspHost for EmptyLspHost {
     fn lsp_language_lists(&self, _language: &str) -> hume_core::LanguageLists {
         hume_core::LanguageLists::default()
     }
-    fn lsp_position_params(&self, _pane: PaneHandle) -> Result<Option<PositionParams>, String> {
+    fn lsp_position_params(&self, _pane: ShownHandle) -> Result<Option<PositionParams>, String> {
         Ok(None)
     }
     fn lsp_document_uri(&self, _id: BufferId) -> Option<String> {
         None
     }
-    fn track_position(&mut self, _pane: PaneHandle) -> Result<HostToken, String> {
+    fn track_position(&mut self, _pane: ShownHandle) -> Result<HostToken, String> {
         Err("EmptyLspHost: track_position not available".into())
     }
     fn tracked_position_params(&self, _token: HostToken) -> Option<PositionParams> {
@@ -652,12 +644,12 @@ impl LspHost for EmptyLspHost {
     fn hold_tracked_position(&self, _token: HostToken) -> Option<TrackedHold> {
         None
     }
-    fn lsp_primary_range_params(&self, _pane: PaneHandle) -> Result<Option<RangeParams>, String> {
+    fn lsp_primary_range_params(&self, _pane: ShownHandle) -> Result<Option<RangeParams>, String> {
         Ok(None)
     }
     fn lsp_linewise_ranges_params(
         &self,
-        _pane: PaneHandle,
+        _pane: ShownHandle,
     ) -> Result<Option<RangesParams>, String> {
         Ok(None)
     }

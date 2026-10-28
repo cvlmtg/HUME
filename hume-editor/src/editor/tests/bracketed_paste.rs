@@ -316,7 +316,7 @@ pub(super) fn open_scrollable_test_popup(ed: &mut Editor) {
     let pane = focused_pane(ed);
     EditorHostImpl::new(&mut ed.state, &mut ed.view)
         .show_popup(
-            pane,
+            hume_scripting::host::FocusedHandle::for_test(pane),
             "doc".to_string(),
             PopupKind::Scrollable,
             hume_core::PopupLayout::Cursor,

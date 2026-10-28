@@ -125,7 +125,7 @@ fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.prompt(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         "Name: ".to_string(),
         String::new(),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
@@ -435,9 +435,8 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
     );
 }
 
-/// `symbol-under-cursor` needs a pane, not just a buffer: kind-B fail-fast
-/// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
-/// own return shape) raises.
+/// `symbol-under-cursor` needs a pane that shows the buffer, not just a
+/// buffer: a pane-less handle (`(buffers)`'s own return shape) raises.
 #[test]
 fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     let tmp = tempfile::tempdir().unwrap();
@@ -472,7 +471,7 @@ fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
         .clone()
         .expect("symbol-under-cursor on a paneless handle must raise");
     assert!(
-        msg.contains("pane"),
-        "error must name the missing pane; got: {msg}"
+        msg.contains("symbol-under-cursor: needs a pane, but was given none"),
+        "got: {msg}"
     );
 }

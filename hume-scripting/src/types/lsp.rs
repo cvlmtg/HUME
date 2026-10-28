@@ -6,6 +6,8 @@ use hume_core::{
     BufferId, ConfigOrigin, ListEntry, ListTier, LspFeature, LspServerConfig, PaneId, ServerName,
 };
 
+use crate::host::FocusedHandle;
+
 /// What `(lsp-capability …)` asks a server for: the capability of a feature,
 /// or the one a request method needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,7 +75,11 @@ pub enum PendingLspServerOp {
     Restart {
         target: LspServerTarget,
     },
-    ShowStatus,
+    /// Opens the `[lsp-status]` view on `pane`, if it is still the focused
+    /// pane when the op applies.
+    ShowStatus {
+        pane: FocusedHandle,
+    },
 }
 
 /// One entry of `(lsp-server-status)`, mirroring `:lsp-status`'s data

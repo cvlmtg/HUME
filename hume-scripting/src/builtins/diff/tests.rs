@@ -2,13 +2,6 @@ use super::*;
 use crate::builtins::args::{list_of, string_list, symbol_hash};
 use crate::test_support::{SteelCtxTestHarness, hash_field};
 
-// ── Gate (init mode rejection) ────────────────────────────────────────────
-//
-// All diff builtins are `cmd`-gated in `builtins!`'s registration table:
-// the gate lives in the registration wrapper closure, not the function
-// body, so these test the gate primitive directly rather than calling the
-// builtin (its body has no guard to hit).
-
 // ── Type errors ────────────────────────────────────────────────────────────
 
 /// `diff-lines` rejects a non-string argument.
@@ -17,9 +10,7 @@ use crate::test_support::{SteelCtxTestHarness, hash_field};
 /// `(diff-lines 1 "x")` silently diff the literal text `"1"`.
 #[test]
 fn diff_lines_rejects_a_non_string_argument() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = diff_lines(&mut ctx, SteelVal::IntV(1), SteelVal::StringV("".into()));
+    let result = diff_lines(SteelVal::IntV(1), SteelVal::StringV("".into()));
     assert!(result.is_err());
     assert!(
         result
@@ -35,9 +26,7 @@ fn diff_lines_rejects_a_non_string_argument() {
 /// the text `"1"` for `(diff-words 1 "x")`.
 #[test]
 fn diff_words_rejects_a_non_string_old_argument() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = diff_words(&mut ctx, SteelVal::IntV(1), SteelVal::StringV("".into()));
+    let result = diff_words(SteelVal::IntV(1), SteelVal::StringV("".into()));
     assert!(result.is_err());
     assert!(
         result
@@ -50,9 +39,7 @@ fn diff_words_rejects_a_non_string_old_argument() {
 /// `diff-words` rejects a non-string `new` argument.
 #[test]
 fn diff_words_rejects_a_non_string_new_argument() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = diff_words(&mut ctx, SteelVal::StringV("".into()), SteelVal::IntV(1));
+    let result = diff_words(SteelVal::StringV("".into()), SteelVal::IntV(1));
     assert!(result.is_err());
     assert!(
         result
@@ -92,28 +79,19 @@ fn words_result(hunks: Vec<SteelVal>) -> SteelVal {
 }
 
 fn run_diff_words(old: &str, new: &str) -> SteelVal {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    diff_words(
-        &mut ctx,
-        SteelVal::StringV(old.into()),
-        SteelVal::StringV(new.into()),
-    )
-    .expect("diff-words needs no host capability")
+    diff_words(SteelVal::StringV(old.into()), SteelVal::StringV(new.into()))
+        .expect("two strings diff")
 }
 
-/// `diff-lines` diffs two strings with no editor state, so a host with no
-/// diff capability still answers.
+/// `diff-lines` reports one hunk for a changed line, with empty word spans
+/// since the whole line changed.
 #[test]
-fn diff_lines_needs_no_host_capability() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+fn diff_lines_reports_a_whole_line_change() {
     let result = diff_lines(
-        &mut ctx,
         SteelVal::StringV("a\n".into()),
         SteelVal::StringV("b\n".into()),
     )
-    .expect("diff-lines needs no host capability");
+    .expect("two strings diff");
     let expected = lines_result(list_of([symbol_hash([
         ("old-start-line", int(0)),
         ("old-end-line", int(1)),
@@ -134,14 +112,11 @@ fn diff_lines_needs_no_host_capability() {
 /// "a\nlet y = 1;\n".
 #[test]
 fn diff_lines_new_side_offsets_count_a_crlf_as_one_char() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
     let result = diff_lines(
-        &mut ctx,
         SteelVal::StringV("a\r\nlet x = 1;\r\n".into()),
         SteelVal::StringV("a\r\nlet y = 1;\r\n".into()),
     )
-    .expect("diff-lines needs no host capability");
+    .expect("two strings diff");
     let expected = lines_result(list_of([symbol_hash([
         ("old-start-line", int(1)),
         ("old-end-line", int(2)),
@@ -222,15 +197,18 @@ fn diff_words_drops_equal_runs() {
     );
 }
 
-/// `diff-buffer-lines` on a host with no `DiffHost` capability raises. The pane's liveness is checked at decode time
-/// (`LivePane`, in the `builtins!`-registered closure, unreachable from this
+/// `diff-buffer-lines` on a host with no `DiffHost` capability raises. The pane's liveness is checked at resolve time
+/// (`LiveBuffer`, in the `builtins!`-registered closure, unreachable from this
 /// direct call), so `require_cap` is the first gate this call reaches.
 #[test]
 fn diff_buffer_lines_reports_an_unsupported_host() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let pane = hume_core::PaneHandle::buffer_only(hume_core::BufferId::default());
-    let result = diff_buffer_lines(&mut ctx, pane, SteelVal::StringV("a\n".into()));
+    let result = diff_buffer_lines(
+        &mut ctx,
+        hume_core::BufferId::default(),
+        SteelVal::StringV("a\n".into()),
+    );
     assert!(result.is_err());
     assert!(
         result

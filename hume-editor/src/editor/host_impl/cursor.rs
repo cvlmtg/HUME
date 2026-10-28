@@ -6,8 +6,7 @@ use crate::editor::commands::CommandPane;
 use crate::editor::commands::effective_word_chars;
 
 use super::EditorHostImpl;
-use hume_core::PaneHandle;
-use hume_scripting::host::{CursorHost, SelectionInfo};
+use hume_scripting::host::{CursorHost, SelectionInfo, ShownHandle};
 
 impl<'a> EditorHostImpl<'a> {
     /// `t`'s buffer and selections, as tracked in `t`'s own pane. Shared by
@@ -55,14 +54,14 @@ impl<'a> EditorHostImpl<'a> {
 }
 
 impl<'a> CursorHost for EditorHostImpl<'a> {
-    fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<ContentLine, String> {
-        let t = self.command_pane(pane)?;
+    fn buffer_cursor_line(&self, pane: ShownHandle) -> Result<ContentLine, String> {
+        let t = self.shown(pane)?;
         let (buf, sels) = self.buffer_and_selections(t);
         Ok(buf.text().char_to_line(sels.primary().head().offset()))
     }
 
-    fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
-        let t = self.command_pane(pane)?;
+    fn buffer_selections(&self, pane: ShownHandle) -> Result<Vec<SelectionInfo>, String> {
+        let t = self.shown(pane)?;
         let (_, sels) = self.buffer_and_selections(t);
         Ok(sels
             .iter()
@@ -97,8 +96,8 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         )
     }
 
-    fn symbol_under_cursor(&self, pane: PaneHandle) -> Result<String, String> {
-        let t = self.command_pane(pane)?;
+    fn symbol_under_cursor(&self, pane: ShownHandle) -> Result<String, String> {
+        let t = self.shown(pane)?;
         let (buf, sels) = self.buffer_and_selections(t);
         let text = buf.text();
         let head = sels.primary().head();
@@ -120,13 +119,13 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         Ok(text.slice(range.chars()).to_string())
     }
 
-    fn selections_linewise(&self, pane: PaneHandle) -> Result<bool, String> {
-        let t = self.command_pane(pane)?;
+    fn selections_linewise(&self, pane: ShownHandle) -> Result<bool, String> {
+        let t = self.shown(pane)?;
         Ok(self.all_unambiguous_selections(t, |linewise| linewise))
     }
 
-    fn selections_charwise(&self, pane: PaneHandle) -> Result<bool, String> {
-        let t = self.command_pane(pane)?;
+    fn selections_charwise(&self, pane: ShownHandle) -> Result<bool, String> {
+        let t = self.shown(pane)?;
         Ok(self.all_unambiguous_selections(t, |linewise| !linewise))
     }
 }

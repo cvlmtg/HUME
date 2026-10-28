@@ -77,6 +77,8 @@
 - `.` passes a `#:repeatable` command the same `count` its first run got, `0` when no count was typed.
 
 ### Fixes
+- `diff-lines` and `diff-words` work at the top level of `init.scm` and in a plugin body.
+- `lsp-show-status!` opens the status view on the pane it was given, and reports an error in `:messages` when that pane has lost focus by the time the view opens.
 - `:b`, `:goto` and `:set` without an argument report what they take as an error in `:messages`.
 - `apply-text-edits!` does nothing for an empty edit list instead of raising, and `apply-workspace-edit!` leaves a file with no edits alone instead of opening it.
 - A language server's own workspace edit, such as one a code action asks for, shows how many buffers it changed, and an edit that changes nothing shows nothing.

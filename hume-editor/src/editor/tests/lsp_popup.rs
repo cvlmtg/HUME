@@ -171,7 +171,7 @@ fn show_popup_scrollable_does_not_land_above_an_open_picker() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_popup(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         "hi".to_string(),
         hume_scripting::host::PopupKind::Scrollable,
         hume_core::PopupLayout::Cursor,

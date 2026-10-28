@@ -10,10 +10,11 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
-use hume_core::{NonEmpty, PaneHandle, PopupLayout, TruncateEnd};
+use hume_core::{NonEmpty, PopupLayout, TruncateEnd};
 
 use crate::host::{
-    DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
+    DrawerItems, FocusedHandle, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts,
+    PopupKind,
 };
 use crate::{Callback, Rooted, SteelCtx};
 
@@ -34,7 +35,7 @@ use super::errors::{generic_err, require_cap};
 /// [`PopupKind`].
 pub(crate) fn show_popup(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    pane: FocusedHandle,
     text: SteelVal,
     anchor: SteelVal,
     kind: SteelVal,
@@ -67,7 +68,7 @@ pub(crate) fn close_popup(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 /// `close-menu!`, or `#f` when the call was dropped as stale.
 pub(crate) fn show_menu(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    pane: FocusedHandle,
     items: SteelVal,
     on_select: Callback,
 ) -> SteelResult {
@@ -98,7 +99,7 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 /// rather than treat as a live drawer's token.
 pub(crate) fn show_drawer_list(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    pane: FocusedHandle,
     items: SteelVal,
     on_select: Callback,
     selected: SteelVal,
@@ -191,7 +192,7 @@ pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx, token: SteelVal) -> Stee
 /// (queued, never inline), with the confirmed text, or `#f` on cancel.
 pub(crate) fn prompt(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    pane: FocusedHandle,
     label: SteelVal,
     prefill: SteelVal,
     on_confirm: Callback,
@@ -291,7 +292,7 @@ fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelE
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn picker(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    pane: FocusedHandle,
     items: SteelVal,
     on_select: Callback,
     prompt: SteelVal,
@@ -332,7 +333,7 @@ pub(crate) fn picker(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn live_picker(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    pane: FocusedHandle,
     on_select: Callback,
     prompt: SteelVal,
     query: SteelVal,

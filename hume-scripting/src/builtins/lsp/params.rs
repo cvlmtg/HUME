@@ -4,8 +4,8 @@
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{PositionParams, RangeParams, RangesParams, token_to_steel};
-use hume_core::PaneHandle;
+use crate::host::{PositionParams, RangeParams, RangesParams, ShownHandle, token_to_steel};
+use hume_core::BufferId;
 
 use crate::builtins::SteelResult;
 use crate::builtins::args::{list_of, string_hash, token_arg};
@@ -43,8 +43,8 @@ fn ranges_params_value(params: RangesParams) -> SteelVal {
     ])
 }
 
-/// A kind-B params read as a Steel value: `Err` (a stale `pane`) raises,
-/// `Ok(None)` (a buffer with no path) is `#f`.
+/// A params read as a Steel value: `Err` raises, `Ok(None)` (a buffer with
+/// no path) is `#f`.
 fn params_result<T>(result: Result<Option<T>, String>, to_steel: fn(T) -> SteelVal) -> SteelResult {
     let params = result.map_err(generic_err)?;
     Ok(params.map_or(SteelVal::BoolV(false), to_steel))
@@ -53,20 +53,19 @@ fn params_result<T>(result: Result<Option<T>, String>, to_steel: fn(T) -> SteelV
 /// `(lsp-document-params pane)` → `{"textDocument" {"uri"}}` for the buffer
 /// `pane` names, or `#f` for a buffer with no path. Reads only the buffer, so
 /// a value with no pane works.
-pub(crate) fn lsp_document_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+pub(crate) fn lsp_document_params(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     Ok(require_cap(ctx.host.lsp())?
-        .lsp_document_uri(pane.buffer())
+        .lsp_document_uri(bid)
         .map_or(SteelVal::BoolV(false), |uri| {
             string_hash([("textDocument", text_document(uri))])
         }))
 }
 
 /// `(lsp-position-params pane)` → `{"textDocument" {"uri"} "position" p}`
-/// for the primary cursor head in `pane`'s own pane, `p` an opaque position
+/// for the primary cursor head in `pane`'s pane, `p` an opaque position
 /// each server receives in its own encoding, or `#f` for a buffer with no
-/// path. Raises (kind-B fail-fast) when `pane` carries no pane, a closed
-/// one, or one that no longer shows its buffer.
-pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+/// path.
+pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     params_result(
         require_cap(ctx.host.lsp())?.lsp_position_params(pane),
         position_params_value,
@@ -74,10 +73,8 @@ pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
 }
 
 /// `(track-position! pane)` → a token naming the primary cursor head in
-/// `pane`'s own pane, carried through every edit. Raises (kind-B fail-fast)
-/// when `pane` carries no pane, a closed one, or one that no longer shows its
-/// buffer.
-pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+/// `pane`'s pane, carried through every edit.
+pub(crate) fn track_position(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     let token = require_cap(ctx.host.lsp())?
         .track_position(pane)
         .map_err(generic_err)?;
@@ -114,7 +111,7 @@ pub(crate) fn untrack_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResu
 
 /// `(lsp-primary-range-params pane)` → same shape but a `"range"` from the
 /// primary selection alone, an opaque range value.
-pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     params_result(
         require_cap(ctx.host.lsp())?.lsp_primary_range_params(pane),
         range_params_value,
@@ -129,7 +126,7 @@ pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> 
 /// return value is a wire-ready params hash forwarded to `lsp-request!`
 /// unchanged or with a protocol key inserted, and a non-protocol key here
 /// would break that (see `CursorHost::selections_linewise`'s doc comment).
-pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     params_result(
         require_cap(ctx.host.lsp())?.lsp_linewise_ranges_params(pane),
         ranges_params_value,

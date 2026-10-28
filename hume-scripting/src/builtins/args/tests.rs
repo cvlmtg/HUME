@@ -1,5 +1,6 @@
 use super::*;
 use crate::builtins::lsp::LspTargetArg;
+use hume_core::PaneHandle;
 use steel::rvals::IntoSteelVal as _;
 
 fn list_of(items: &[&str]) -> SteelVal {
@@ -207,47 +208,6 @@ fn pair_fields_rejects_non_pair_scalar() {
 /// the "expected pane" substring every buffer-touching builtin's
 /// wrong-type test asserts on.
 ///
-/// Accepting any value here would let every argument silently decode as a
-/// pane.
-#[test]
-fn arg_pane_rejects_non_pane() {
-    let err = ArgPane::from_steelval(&SteelVal::StringV("not-a-pane".into())).unwrap_err();
-    assert!(err.to_string().contains("expected pane"), "got: {err}");
-}
-
-#[test]
-fn arg_pane_accepts_a_real_pane() {
-    use crate::builtins::ids::SteelPane;
-    let val = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
-    assert_eq!(
-        ArgPane::from_steelval(&val).unwrap().0.buffer(),
-        BufferId::default()
-    );
-}
-
-// ── LivePane ─────────────────────────────────────────────────────────────
-
-/// `LivePane::from_steelval`: type check only, same as `ArgPane`'s; the
-/// liveness half is `BuiltinArg::resolve`'s job (proven through a real
-/// `ScriptingHost`, `builtins::tests::
-/// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`,
-/// since a direct call here has no `SteelCtx`/host to check liveness against).
-#[test]
-fn live_pane_rejects_non_pane() {
-    let err = LivePane::from_steelval(&SteelVal::StringV("not-a-pane".into())).unwrap_err();
-    assert!(err.to_string().contains("expected pane"), "got: {err}");
-}
-
-#[test]
-fn live_pane_accepts_a_real_pane() {
-    use crate::builtins::ids::SteelPane;
-    let val = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
-    assert_eq!(
-        LivePane::from_steelval(&val).unwrap().0.buffer(),
-        BufferId::default()
-    );
-}
-
 // ── Usize ───────────────────────────────────────────────────────
 
 #[test]
@@ -266,7 +226,7 @@ fn usize_newtype_accepts_non_negative() {
 /// `LspTargetArg::from_steelval`: type check only, deciding `Buffer` vs
 /// `Name`; the `Buffer` case's liveness half is `BuiltinArg::resolve`'s
 /// job (proven through a real `ScriptingHost`, `builtins::tests::
-/// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`'s
+/// pane_builtins_raise_on_a_closed_buffer_through_real_registration`'s
 /// `lsp-stop!`/`lsp-restart!` rows).
 #[test]
 fn lsp_target_arg_accepts_a_pane() {
@@ -274,7 +234,7 @@ fn lsp_target_arg_accepts_a_pane() {
     let val = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
     assert!(matches!(
         LspTargetArg::from_steelval(&val).unwrap(),
-        LspTargetArg::Buffer(pane) if pane.0.buffer() == BufferId::default()
+        LspTargetArg::Buffer(_)
     ));
 }
 

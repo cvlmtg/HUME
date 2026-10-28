@@ -1,9 +1,9 @@
 //! One marshalling vocabulary for builtins: plain `SteelVal` decoders,
-//! `FromSteelVal` newtypes for pane params (`ArgPane`/`LivePane`, plus
-//! `Usize` for a `LivePane`-sibling argument that
-//! needs the same steel-core-driven, ahead-of-the-closure-body decode;
-//! see `BuiltinArg`, the seam that runs `LivePane`'s liveness check),
-//! and the shared list/hash decoders every multi-field setter builds on.
+//! `FromSteelVal` newtypes for pane params ([`pane`], plus `Usize` for a
+//! pane-sibling argument that needs the same steel-core-driven,
+//! ahead-of-the-closure-body decode; see `BuiltinArg`, the seam that runs
+//! each closed-buffer check), and the shared list/hash decoders every
+//! multi-field setter builds on.
 //! Server wire values (positions, ranges, text edits) decode in `wire`.
 //!
 //! `#f`-means-absent is decoded only by this module's `optional_*` family.
@@ -17,7 +17,7 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
 use termina::event::KeyEvent;
 
-use hume_core::{BufferId, HostToken, PaneHandle};
+use hume_core::{BufferId, HostToken};
 use hume_platform::path::AbsolutePath;
 
 use crate::Rooted;
@@ -27,9 +27,13 @@ use crate::types::Params;
 
 use super::errors::generic_err;
 
+pub(crate) mod pane;
+
+pub(crate) use pane::{ArgPane, FocusedPane, LiveBuffer, PaneNeed, RequesterPane, ShownPane};
+
 /// The shared "this bid names no open buffer" error: one wording for every
-/// liveness check that raises on a stale `PaneHandle`'s buffer: [`LivePane`]'s
-/// own decode-time check, [`LspTargetArg::Buffer`](super::lsp::LspTargetArg::Buffer)'s, and every
+/// liveness check that raises on a stale `PaneHandle`'s buffer: each pane
+/// argument type's resolve ([`pane`]), [`LspTargetArg::Buffer`](super::lsp::LspTargetArg::Buffer)'s, and every
 /// `buffers.rs`/`diff.rs` builtin whose host call already does the liveness
 /// lookup (so a second `buffer_exists` check would be redundant) but still
 /// needs this message. `arg` names the argument that carried the pane.
@@ -784,52 +788,18 @@ pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, St
 // them inside `errors::named`, which puts the builtin's name in front of a
 // failure, so these messages carry no `ctx_name` of their own.
 
-/// A decoded [`PaneHandle`] argument, tolerant of a since-closed buffer,
-/// for a builtin whose own contract is "answer `#f`/empty for a `pane`
-/// this host doesn't currently show anything for," where a closed buffer is
-/// just one more case of that, not a distinct error (`diagnostic-counts`,
-/// `buffer-live?`, …). [`LivePane`] is the counterpart for a builtin
-/// that must raise on a closed buffer instead. Neither checks the pane half
-/// live: a builtin that needs the pane itself (kind A/B, see
-/// `hume-editor`'s `CommandPane::resolve`/`FocusedPane::resolve`) resolves and checks it through the host,
-/// not here; a kind-C builtin never looks at `.pane()` at all.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ArgPane(pub(crate) PaneHandle);
-
-impl FromSteelVal for ArgPane {
-    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        super::ids::downcast_pane(val)
-            .map(ArgPane)
-            .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "expected pane".to_string()))
-    }
-}
-
-/// A [`PaneHandle`] argument checked live during decoding (see
-/// [`BuiltinArg`]'s impl below): the funnel every explicit-pane builtin
-/// that must raise on a closed buffer (rather than answer `#f`/empty, see
-/// [`ArgPane`]) declares its `pane` parameter as, in the `builtins!` table.
-/// The private field keeps `FromSteelVal` (type only) and `BuiltinArg`
-/// (type + liveness) as the only two ways to produce one, so a builtin can't
-/// accidentally skip the liveness half by constructing this directly.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct LivePane(PaneHandle);
-
-impl FromSteelVal for LivePane {
-    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        super::ids::downcast_pane(val)
-            .map(LivePane)
-            .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "expected pane".to_string()))
-    }
-}
-
 /// One marshalling step every ctx-taking `builtins!` table entry (`cmd`,
 /// `config`, `open`) runs each declared argument through, right after its
-/// `FromSteelVal` decode and its eval-mode gate: the seam [`LivePane`]'s
-/// liveness check hooks into without every builtin body repeating
-/// `ctx.host.buffers().buffer_exists(...)` by hand. Every other declared
-/// arg type is `Self`-identity here: decode is already everything they
-/// need. `arg` is the argument's name in the table, which a failure names.
+/// `FromSteelVal` decode and its eval-mode gate: the seam where the pane
+/// argument types ([`pane`]) check that a pane value's buffer is open and
+/// make the value a body hands the host, so no body checks either by hand.
+/// Every other declared arg type is
+/// `Self`-identity here: decode is already everything they need. `arg` is
+/// the argument's name in the table, which a failure names.
 pub(crate) trait BuiltinArg {
+    /// What the type needs from a pane value, `None` for one that checks no
+    /// pane.
+    const PANE_NEED: Option<PaneNeed> = None;
     type Out;
     fn resolve(self, ctx: &mut crate::SteelCtx, arg: &'static str) -> Result<Self::Out, SteelErr>;
 }
@@ -856,24 +826,13 @@ macro_rules! identity_builtin_arg {
 
 identity_builtin_arg!(SteelVal, String, bool, ArgPane);
 
-impl BuiltinArg for LivePane {
-    type Out = PaneHandle;
-    fn resolve(self, ctx: &mut crate::SteelCtx, arg: &'static str) -> Result<PaneHandle, SteelErr> {
-        if ctx.host.buffers().buffer_exists(self.0.buffer()) {
-            Ok(self.0)
-        } else {
-            Err(not_live_err(arg, self.0.buffer()))
-        }
-    }
-}
-
-/// [`usize_arg`]'s `FromSteelVal` counterpart, for a `LivePane`-sibling
-/// argument that must decode (the `builtins!` table decodes every argument,
-/// left to right, ahead of every resolve) before
-/// `LivePane`'s liveness check ever runs, so a malformed sibling argument
-/// isn't masked behind a stale-buffer error. `usize_arg`'s plain-function
-/// form stays the one every other (no-`LivePane`) builtin decodes its own
-/// integer arguments with; this exists only where the ordering matters.
+/// [`usize_arg`]'s `FromSteelVal` counterpart, for a pane-sibling argument
+/// that must decode (the `builtins!` table decodes every argument, left to
+/// right, ahead of every resolve) before the pane's buffer is checked, so a
+/// malformed sibling argument isn't masked behind a closed-buffer error.
+/// `usize_arg`'s plain-function form stays the one every other builtin
+/// decodes its own integer arguments with; this exists only where the
+/// ordering matters.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Usize(pub(crate) usize);
 
@@ -899,7 +858,7 @@ impl BuiltinArg for Usize {
 /// The name of a decoration, trigger or completion source: a string or a
 /// symbol, as [`string_arg`] takes, that is not empty or blank. A builtin
 /// declares its source-name parameter as this type in the `builtins!`
-/// table, so a blank name is refused before a `LivePane` sibling's liveness
+/// table, so a blank name is refused before a pane sibling's closed-buffer
 /// check can mask it. Decoding has no parameter name, so the error names
 /// only the builtin.
 #[derive(Debug, Clone)]

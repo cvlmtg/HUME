@@ -40,6 +40,8 @@ mod context;
 mod eval;
 #[cfg(test)]
 mod null_host;
+#[cfg(any(test, feature = "test-util"))]
+pub mod pane_probes;
 mod read_only_host;
 mod rooted;
 #[cfg(any(test, feature = "test-util"))]

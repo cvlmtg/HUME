@@ -3,7 +3,6 @@
 
 use hume_platform::dirs::Dirs;
 #[cfg(unix)]
-use hume_scripting::host::NativeCall;
 use std::cell::RefCell;
 use std::path::Path;
 #[cfg(unix)]
@@ -748,8 +747,6 @@ fn require_focus_drops_the_callback_after_a_buffer_switch() {
 /// `anchor_admits` would miss this, since the split changes only the pane.
 #[test]
 fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
-    use hume_scripting::host::CommandHost;
-
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
@@ -771,19 +768,7 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
     // Split the focused (requesting) pane. `pane-vsplit` focuses the new
     // pane, so the requesting pane is no longer focused even though both
     // panes show the same buffer.
-    let pane = focused_pane(&ed);
-    {
-        let mut host = live_host!(ed);
-        host.run_command_sync(
-            "pane-vsplit",
-            pane,
-            NativeCall {
-                count: Count::typed(1),
-                ..NativeCall::default()
-            },
-        )
-        .expect("pane-vsplit must succeed");
-    }
+    vsplit_focused(&mut ed);
 
     ed.drain_lsp();
     ed.settle();

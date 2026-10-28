@@ -30,7 +30,7 @@ fn switch_to_buffer_noop_when_same() {
     let pane = hume_core::PaneHandle::with_pane(bid, ed.view.focused_pane());
     let mut host = init_host!(ed);
     // Switching to the same buffer should not error.
-    host.switch_to_buffer(pane, bid)
+    host.switch_to_buffer(hume_scripting::host::ShownHandle::for_test(pane), bid)
         .expect("same-buffer switch");
 }
 

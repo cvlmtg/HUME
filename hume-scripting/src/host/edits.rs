@@ -11,6 +11,8 @@ use hume_platform::path::AbsolutePath;
 use hume_rope::position_encoding::PositionEncoding;
 use termina::event::KeyEvent;
 
+use super::{FocusedHandle, ShownHandle};
+
 /// One `apply-text-edits!` entry: a wire range plus its replacement text.
 /// `encoding` is this entry's own producing server's negotiated encoding:
 /// each entry decodes from its own `JsonHandle`, so a batch built from more
@@ -36,15 +38,13 @@ pub struct CharTextEdit {
 /// LSP-driven text edits, workspace edits, and go-to-location, accessed
 /// through [`EditorHost::edits`](super::EditorHost::edits).
 ///
-/// Every method but [`Self::insert_key`] is kind-B: it acts through `pane`'s
-/// own pane (mapping selections through the edit, moving the cursor on
-/// goto), not the focused one. A response landing after the user has since
-/// switched panes must still edit or navigate the pane the request was
-/// actually made from. `Err` (fail-fast) when `pane` carries no pane, a
-/// closed one, or one that shows another buffer. The exceptions are
-/// [`Self::apply_text_edits`] and [`Self::apply_workspace_edit`], which edit
-/// through the pane while it shows the buffer being edited and otherwise for
-/// no pane.
+/// A method acts through `pane`'s pane (mapping selections through the
+/// edit, moving the cursor on goto), not the focused one: a response landing
+/// after the user has since switched panes must still edit or navigate the
+/// pane the request was made from. [`Self::apply_text_edits`],
+/// [`Self::apply_workspace_edit`] and [`Self::edit_text`] take any `pane`,
+/// and edit through it while it shows the buffer being edited and for no
+/// pane otherwise.
 pub trait EditHost {
     /// `(apply-text-edits! pane edits #:expect-generation gen)`: `edits` is
     /// a list of wire-coordinate ranges plus replacement text. Applied as
@@ -96,7 +96,7 @@ pub trait EditHost {
     /// nothing moves, and a buffer this call opened for it is closed again.
     fn goto_location_value(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         loc: &serde_json::Value,
         encoding: PositionEncoding,
     ) -> Result<Option<PaneHandle>, String>;
@@ -113,7 +113,7 @@ pub trait EditHost {
     /// trait.
     fn goto_location_path(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         path: AbsolutePath,
         line: usize,
         char_col: usize,
@@ -125,7 +125,7 @@ pub trait EditHost {
     /// Scheme computed it for a live buffer.
     fn goto_location_buffer(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         target: BufferId,
         char_offset: usize,
     ) -> Result<PaneHandle, String>;
@@ -136,16 +136,15 @@ pub trait EditHost {
     /// validated here. `Err` for a number the buffer has no revision for
     /// (never recorded, or trimmed away), or for a read-only buffer, so a
     /// refusal is never mistaken for a jump that happened.
-    fn goto_revision(&mut self, pane: PaneHandle, revision: usize) -> Result<(), String>;
+    fn goto_revision(&mut self, pane: ShownHandle, revision: usize) -> Result<(), String>;
 
     /// `(insert-key! pane key)`: runs `key`'s Insert-mode default
     /// behaviour (indent-style-aware Tab, auto-pairs, auto-indented Enter, …)
-    /// against `pane`, without walking the Insert keymap. Kind-A: `pane`
-    /// must be the focused pane, since this acts on live Insert-session
-    /// bookkeeping (the open undo group, autoindent ownership, a live
-    /// completion session), which is inherently focus-bound rather than a
-    /// property of an arbitrary background pane. `Err` when `pane` isn't
-    /// the focused pane, the focused mode isn't Insert, the call isn't from
+    /// against `pane`, without walking the Insert keymap. `pane` must be the
+    /// focused pane, since this acts on live Insert-session bookkeeping (the
+    /// open undo group, autoindent ownership, a live completion session),
+    /// which is focus-bound rather than a property of an arbitrary
+    /// background pane. `Err` when the focused mode isn't Insert, the call isn't from
     /// inside a command an Insert-mode key's own binding is dispatching
     /// (a hook or timer calling this instead would edit untracked for dot-
     /// repeat), or `key` has no default Insert-mode behaviour to run
@@ -156,15 +155,14 @@ pub trait EditHost {
     /// override it (e.g. Tab: complete after a letter, else insert a tab).
     /// There is otherwise no way to hand a key back to "as if unbound"
     /// once a binding has claimed it.
-    fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String>;
+    fn insert_key(&mut self, pane: FocusedHandle, key: KeyEvent) -> Result<(), String>;
 
     /// `(paste-text! pane text)`: pastes `values` into whatever has focus,
     /// through the same path a terminal paste takes, so it does whatever a
     /// paste would do there. Several values are placed at the selections as
-    /// `p` places a register's. `Err` when `pane` isn't the focused pane,
-    /// or when the paste was refused (its buffer is read-only, or busy with
-    /// a pipe).
-    fn paste_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String>;
+    /// `p` places a register's. `Err` when the paste was refused (its buffer
+    /// is read-only, or busy with a pipe).
+    fn paste_text(&mut self, pane: FocusedHandle, values: Vec<String>) -> Result<(), String>;
 
     /// `(edit-text! pane edits #:expect-generation gen)`: applies `edits`,
     /// all positioned against the text before the call, to `pane`'s buffer

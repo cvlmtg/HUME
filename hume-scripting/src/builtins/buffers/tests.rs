@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::{SteelCtxTestHarness, default_pane};
+use crate::test_support::SteelCtxTestHarness;
 
 // ── Gate (init mode rejection) ────────────────────────────────────────────
 //
@@ -15,13 +15,12 @@ use crate::test_support::{SteelCtxTestHarness, default_pane};
 // takes a plain `usize`) ever runs, so it cannot be exercised by calling the
 // function directly with a malformed `SteelVal`.
 //
-// Likewise, every explicit-`pane` builtin's "invalid buffer id" error on a
-// closed buffer is raised by `args::LivePane`'s `BuiltinArg::resolve`,
-// in the `builtins!`-registered closure, before the function body (which
-// takes a plain `PaneHandle`, already known live) ever runs. A direct
-// call here has no way to reach that check at all; it's covered once,
-// centrally, through a real `ScriptingHost` by
-// `builtins::tests::live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`.
+// Likewise, every explicit-`pane` builtin's pane check (an open buffer, a
+// pane that shows it, focus) runs in its pane argument type's
+// `BuiltinArg::resolve`, in the `builtins!`-registered closure, before the
+// function body ever runs. A direct call here has no way to reach that
+// check at all; it's covered once, centrally, through a real
+// `ScriptingHost` by the `builtins::tests::pane_builtins_*` tests.
 
 // ── Command-mode success paths (NullHost read methods return None/empty) ──
 
@@ -57,27 +56,6 @@ fn buffers_command_mode_returns_empty_list() {
         matches!(result.unwrap(), SteelVal::ListV(lst) if lst.is_empty()),
         "buffers must return an empty list when no buffers exist"
     );
-}
-
-/// `buffer-cursor-line` raises when `pane` carries no pane state (NullHost).
-/// Kind-B fail-fast: a builtin that needs a pane to answer meaningfully
-/// must say so loudly when it doesn't have one, not silently guess a
-/// default (see `CursorHost`'s doc).
-#[test]
-fn buffer_cursor_line_raises_with_no_pane_state() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = buffer_cursor_line(&mut ctx, default_pane());
-    assert!(result.is_err());
-}
-
-/// `buffer-selections` raises when `pane` carries no pane state (NullHost).
-#[test]
-fn buffer_selections_raises_with_no_pane_state() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = buffer_selections(&mut ctx, default_pane());
-    assert!(result.is_err());
 }
 
 // ── Selection entry accessors ──────────────────────────────────────────────

@@ -17,8 +17,8 @@ use super::args::{
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
-use crate::host::{DisplayPathForm, SelectionInfo};
-use hume_core::{OnUnsaved, PaneHandle};
+use crate::host::{DisplayPathForm, SelectionInfo, ShownHandle};
+use hume_core::{BufferId, OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────
@@ -63,14 +63,14 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
 }
 
 /// `(buffer-panes pane)` → list of every pane showing `pane`'s buffer,
-/// focused pane first, then the rest of the active tab, then other tabs:
-/// the explicit choice a caller makes in place of the pane guess this
-/// design removed. `(car (buffer-panes pane))` reproduces that guess.
-pub(crate) fn buffer_panes(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+/// focused pane first, then the rest of the active tab, then other tabs.
+/// `(car (buffer-panes pane))` is the caller's own choice of a pane on the
+/// buffer.
+pub(crate) fn buffer_panes(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     let list: Vec<SteelVal> = ctx
         .host
         .buffers()
-        .buffer_panes(pane)
+        .buffer_panes(bid)
         .into_iter()
         .map(|h| SteelPane(h).into_steel_val())
         .collect();
@@ -84,7 +84,7 @@ pub(crate) fn buffer_panes(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult 
 /// cleared). The idiom for per-buffer plugin state (a hash keyed by buffer,
 /// a `debounce-by` key) that must coalesce regardless of which pane a
 /// command or hook happened to carry.
-pub(crate) fn buffer_key(_ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
+pub(crate) fn buffer_key(pane: ArgPane) -> SteelResult {
     SteelBufferKey(pane.0.buffer())
         .into_steelval()
         .map_err(generic_err)
@@ -93,8 +93,8 @@ pub(crate) fn buffer_key(_ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
 // ── Buffer property builtins ───────────────────────────────────────────────────
 
 /// `(buffer-path pane)` → absolute path string, or `#f` for unsaved buffers.
-pub(crate) fn buffer_path(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    match ctx.host.buffers().buffer_path(pane.buffer()) {
+pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
+    match ctx.host.buffers().buffer_path(bid) {
         Some(p) => p
             .to_string_lossy()
             .into_owned()
@@ -111,7 +111,7 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
 /// `buffer-path`, never suitable for filesystem ops.
 pub(crate) fn buffer_display_path(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     relative: SteelVal,
 ) -> SteelResult {
     let form = if bool_arg(relative, "#:relative")? {
@@ -119,19 +119,18 @@ pub(crate) fn buffer_display_path(
     } else {
         DisplayPathForm::Absolute
     };
-    match ctx.host.buffers().buffer_display_path(pane.buffer(), form) {
+    match ctx.host.buffers().buffer_display_path(bid, form) {
         Some(p) => p.into_steelval().map_err(generic_err),
         None => Ok(SteelVal::BoolV(false)),
     }
 }
 
 /// `(buffer-name pane)` → display name (filename or `"*scratch*"`). `pane`'s
-/// buffer liveness is already checked at decode time (`LivePane`), so a
+/// buffer liveness is already checked at resolve time (`LiveBuffer`), so a
 /// `None` here would mean the host answered inconsistently with
 /// `buffer_exists`. Never observed, but the trait still returns `Option`,
 /// so it's handled rather than assumed.
-pub(crate) fn buffer_name(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn buffer_name(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     ctx.host
         .buffers()
         .buffer_display_name(bid)
@@ -141,8 +140,8 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
 }
 
 /// `(buffer-live? pane)` → `#t` if `pane`'s buffer still names an open
-/// buffer, `#f` otherwise. Never raises, unlike every `LivePane`-checked
-/// builtin. The idiom for a timer, debounce, or async continuation whose
+/// buffer, `#f` otherwise. Never raises, unlike every builtin with a checked
+/// pane argument. The idiom for a timer, debounce, or async continuation whose
 /// captured `pane` may have closed by the time it fires: check this first,
 /// rather than discovering the fact via a raise from whatever builtin the
 /// callback was actually going to call.
@@ -154,15 +153,15 @@ pub(crate) fn buffer_live(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
 
 /// `(pane-live? pane)` → `#t` if `pane` names a pane that still exists and
 /// still shows its own buffer, `#f` otherwise. Never raises: the pane-aware
-/// sibling of `buffer-live?` above. See [`crate::host::BufferHost::pane_live`]'s doc for
-/// the async-continuation use case this exists for.
+/// sibling of `buffer-live?` above, for a debounced or async continuation
+/// whose captured `pane` may have closed, or been repointed at another
+/// buffer, by the time it fires.
 pub(crate) fn pane_live(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
     Ok(SteelVal::BoolV(ctx.host.buffers().pane_live(pane.0)))
 }
 
 /// `(buffer-dirty? pane)` → `#t` if the buffer has unsaved edits.
-pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     let dirty = ctx
         .host
         .buffers()
@@ -174,8 +173,7 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult 
 /// `(buffer-generation pane)` → int, bumped by every mutation to `pane`'s
 /// buffer. Steel-side staleness token; not LSP-specific despite the
 /// motivation.
-pub(crate) fn buffer_generation(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     let generation = ctx
         .host
         .buffers()
@@ -188,8 +186,7 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
 /// 'current? 'saved?)` per revision of `pane`'s buffer's undo history, in id
 /// order (every parent precedes its children). `'parent` is `#f` for the
 /// root; `'age-secs` is whole seconds since the revision was recorded.
-pub(crate) fn buffer_undo_tree(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn buffer_undo_tree(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     let nodes = ctx
         .host
         .buffers()
@@ -212,8 +209,7 @@ pub(crate) fn buffer_undo_tree(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRes
 
 /// `(buffer-text pane)` → the buffer's full live (dirty) content, string,
 /// trailing `\n` included.
-pub(crate) fn buffer_text(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     ctx.host
         .buffers()
         .buffer_text(bid)
@@ -226,8 +222,7 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
 /// excluding the phantom line past its structural trailing `\n` (matches
 /// the statusline and `:w`). O(1): reads `buffer_line_count` directly rather
 /// than counting a materialized `(buffer-lines pane)` list.
-pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     let count = ctx
         .host
         .buffers()
@@ -238,8 +233,7 @@ pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
 
 /// `(buffer-char-count pane)` → int: `pane`'s buffer's length in chars,
 /// structural trailing `\n` included. O(1), with no `buffer-text` copy.
-pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     let count = ctx
         .host
         .buffers()
@@ -256,8 +250,7 @@ pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
 /// trailing `\n` is never included (matches the statusline's and `:w`'s line
 /// count). Raises rather than clamping on a missing end, `start-line >
 /// end-line`, or `end-line` past the line count.
-pub(crate) fn buffer_lines(ctx: &mut SteelCtx, pane: PaneHandle, range: SteelVal) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -> SteelResult {
     let range = optional_hash_entry(range, "#:range", LINE_RANGE_KEYS)?
         .map(|range| range.line_range())
         .transpose()?;
@@ -321,7 +314,7 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult
 /// one a pipe is running in.
 pub(crate) fn close_buffer(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     discard_unsaved: SteelVal,
 ) -> SteelResult {
     let on_unsaved = OnUnsaved::from_force(bool_arg(discard_unsaved, "#:discard-unsaved")?);
@@ -330,7 +323,7 @@ pub(crate) fn close_buffer(
     // `focused_pane()` read already sees it on their very next call.
     ctx.host
         .buffers()
-        .close_buffer(pane.buffer(), on_unsaved)
+        .close_buffer(bid, on_unsaved)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
@@ -345,12 +338,12 @@ pub(crate) fn close_buffer(
 /// that no longer shows `pane`'s own buffer.
 pub(crate) fn switch_to_buffer(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
-    target: PaneHandle,
+    pane: ShownHandle,
+    target: BufferId,
 ) -> SteelResult {
     ctx.host
         .buffers()
-        .switch_to_buffer(pane, target.buffer())
+        .switch_to_buffer(pane, target)
         .map(|shown| SteelPane::new(shown).into_steel_val())
         .map_err(generic_err)
 }
@@ -366,7 +359,7 @@ pub(crate) fn switch_to_buffer(
 /// would also refuse.
 pub(crate) fn show_read_only_buffer(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    pane: ShownHandle,
     name: String,
     text: String,
 ) -> SteelResult {
@@ -384,7 +377,7 @@ pub(crate) fn show_read_only_buffer(
 ///
 /// Reads live state: reflects any synchronous edits or motions that ran
 /// earlier in the same Steel eval (e.g. after `(move-left)`).
-pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     Ok(SteelVal::IntV(
         ctx.host
             .cursor()
@@ -397,7 +390,7 @@ pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelR
 /// `(buffer-selections pane)` → list of `(anchor head start end primary?)`
 /// per selection in `pane`'s own pane, each built by [`selection_entry`].
 /// Sorted by selection start, with one `primary?` = `#t`.
-pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     let sels = ctx
         .host
         .cursor()
@@ -489,16 +482,16 @@ pub(crate) fn selection_primary(sel: SteelVal) -> SteelResult {
 /// buffer length in chars is on the last content line. Raises when `idx` is
 /// past the buffer length, and on a stale buffer, same
 /// liveness contract as every other explicit-pane builtin, checked at
-/// decode time (`LivePane`) before `idx` is ever looked at, so a malformed
+/// resolve time (`LiveBuffer`) after `idx` is decoded, so a malformed
 /// `idx` still raises its own error on a stale buffer rather than being
 /// masked behind the liveness one (steel-core decodes `idx`'s own `Usize`
 /// argument type first regardless, left to right, but the ordering holds
 /// either way).
-pub(crate) fn char_offset_to_line(ctx: &mut SteelCtx, pane: PaneHandle, idx: usize) -> SteelResult {
+pub(crate) fn char_offset_to_line(ctx: &mut SteelCtx, bid: BufferId, idx: usize) -> SteelResult {
     let line = ctx
         .host
         .cursor()
-        .char_offset_to_line(pane.buffer(), idx)
+        .char_offset_to_line(bid, idx)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(line.index() as isize))
 }
@@ -511,12 +504,7 @@ pub(crate) fn char_offset_to_line(ctx: &mut SteelCtx, pane: PaneHandle, idx: usi
 /// Named for the conversion family (`char-offset->line`, `lsp-position->char-offset`,
 /// `lsp-range->char-range`, `path->display`), not the `buffer-text`/
 /// `buffer-lines` accessor family.
-pub(crate) fn line_to_char_offset(
-    ctx: &mut SteelCtx,
-    pane: PaneHandle,
-    line: usize,
-) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn line_to_char_offset(ctx: &mut SteelCtx, bid: BufferId, line: usize) -> SteelResult {
     let invalid_id = || not_live_err("pane", bid);
     let line_count = ctx
         .host
@@ -546,7 +534,7 @@ pub(crate) fn line_to_char_offset(
 /// focused (see `EditorHostImpl::viewport_range`'s own doc). Reads live
 /// view state, which only exists at command dispatch, hook fire, or a
 /// queued-call drain.
-pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     let range = ctx
         .host
         .buffers()
@@ -556,7 +544,7 @@ pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResul
 }
 
 /// `(selections-linewise? pane)`.
-pub(crate) fn selections_linewise(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+pub(crate) fn selections_linewise(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     Ok(SteelVal::BoolV(
         ctx.host
             .cursor()
@@ -566,7 +554,7 @@ pub(crate) fn selections_linewise(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
 }
 
 /// `(selections-charwise? pane)`.
-pub(crate) fn selections_charwise(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+pub(crate) fn selections_charwise(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     Ok(SteelVal::BoolV(
         ctx.host
             .cursor()
@@ -576,7 +564,7 @@ pub(crate) fn selections_charwise(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
 }
 
 /// `(symbol-under-cursor pane)`.
-pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
     Ok(SteelVal::StringV(
         ctx.host
             .cursor()

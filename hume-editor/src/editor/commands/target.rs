@@ -3,6 +3,7 @@
 
 use hume_core::{BufferId, PaneHandle, PaneId};
 use hume_engine::pipeline::{EngineView, PanePool};
+use hume_scripting::host::{FocusedHandle, ShownHandle};
 
 use crate::editor::EditorState;
 use crate::editor::pane_state::{PaneBufferState, PaneEntries};
@@ -10,8 +11,9 @@ use crate::editor::pane_state::{PaneBufferState, PaneEntries};
 /// A pane resolved as the target of a native command's Pane-category body,
 /// or of a pane-taking builtin: the pane a `(call! "cmd" pane)` or a
 /// builtin acts through, which need not be the focused pane. The private
-/// field means the only ways to get one are [`Self::resolve`] or narrowing a
-/// [`FocusedPane`], never wrapping an arbitrary `PaneId` from outside.
+/// field means the only ways to get one are [`Self::resolve`],
+/// [`Self::checked`] or narrowing a [`FocusedPane`], never wrapping an
+/// arbitrary `PaneId` from outside.
 ///
 /// `bid` is read live rather than cached at resolution time: a jump or
 /// `goto-*-buffer` body switches the pane's own buffer, and the AFTER steps
@@ -42,6 +44,17 @@ impl CommandPane {
             return Err(TargetError::PaneShowsOther);
         }
         Ok(Self(pid))
+    }
+
+    /// [`Self::resolve`] for a builtin's shown pane: the one reader of the
+    /// pane a [`ShownHandle`] carries.
+    #[allow(clippy::disallowed_methods)]
+    pub(in crate::editor) fn checked(
+        state: &EditorState,
+        view: &EngineView,
+        pane: ShownHandle,
+    ) -> Result<Self, TargetError> {
+        Self::resolve(state, view, pane.handle())
     }
 
     /// `pid` as a target if that pane still exists: for a session that
@@ -98,9 +111,9 @@ pub(in crate::editor) fn shown_through(
 /// body that only received a `CommandPane` has no way to reach any of it: it
 /// would need a `FocusedPane`, which it was never given.
 ///
-/// Minted three ways: [`Self::resolve`] checks an explicit handle,
-/// [`Self::of`] checks a resolved target, and [`Self::current`] reads live
-/// focus. `current` belongs only at an entry point: the place an input first
+/// Minted four ways: [`Self::resolve`] checks an explicit handle,
+/// [`Self::checked`] a builtin's focused pane, [`Self::of`] a resolved
+/// target, and [`Self::current`] reads live focus. `current` belongs only at an entry point: the place an input first
 /// arrives and "the focused pane" is the meaning of the input itself:
 /// keypress and `:` dispatch (`dispatch.rs`,
 /// `input_stack/{base,command,insert,search}.rs`), dot-repeat replay, the
@@ -137,6 +150,17 @@ impl FocusedPane {
         Self::of(target, view).ok_or(TargetError::NotFocused)
     }
 
+    /// [`Self::resolve`] for a builtin's focused pane: the one reader of the
+    /// pane a [`FocusedHandle`] carries.
+    #[allow(clippy::disallowed_methods)]
+    pub(in crate::editor) fn checked(
+        state: &EditorState,
+        view: &EngineView,
+        pane: FocusedHandle,
+    ) -> Result<Self, TargetError> {
+        Self::resolve(state, view, pane.handle())
+    }
+
     /// `target` as the focused pane, if it is the focused one.
     pub(in crate::editor) fn of(target: CommandPane, view: &EngineView) -> Option<Self> {
         (target.pid() == view.focused_pane()).then_some(Self(target))
@@ -164,11 +188,11 @@ impl FocusedPane {
 }
 
 /// Why a [`PaneHandle`] could not resolve to a [`CommandPane`] or
-/// [`FocusedPane`]. `Display`ed by `EditorHostImpl::
-/// run_command_sync` and by every pane-taking builtin's host method, the
-/// places these reach a user (via `%call-native!`'s `Err`, or a builtin's
-/// own raise). Checked in declaration order: a closed buffer reports
-/// `Closed` even when the handle also carries no pane.
+/// [`FocusedPane`]. `Display`ed by `EditorHostImpl::run_command_sync` and
+/// by `EditorHostImpl::shown`/`focused`, the places these reach a user (via
+/// `%call-native!`'s `Err`, or a builtin acting through its pane). Checked in
+/// declaration order: a closed buffer reports `Closed` even when the handle
+/// also carries no pane.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::editor) enum TargetError {
     /// The handle's buffer names no live buffer.

@@ -7,7 +7,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use hume_core::{LspFeature, PaneHandle, ServerName};
+use hume_core::{BufferId, LspFeature, PaneHandle, ServerName};
 
 use crate::types::{
     CapabilityQuery, Effect, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
@@ -263,7 +263,7 @@ pub(crate) fn lsp_request_all(
 /// against).
 pub(crate) fn lsp_notify(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     method: SteelVal,
     params: SteelVal,
     feature: SteelVal,
@@ -274,7 +274,7 @@ pub(crate) fn lsp_notify(
     let route = route_arg(feature, to)?;
     reject_feature_on_standard_method(ctx, &route, &method)?;
     ctx.push_effect(Effect::LspNotify(PendingLspNotify {
-        bid: pane.buffer(),
+        bid,
         method,
         params,
         route,
@@ -288,14 +288,14 @@ pub(crate) fn lsp_notify(
 /// request of that feature or method would reach now.
 pub(crate) fn lsp_servers(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     feature: SteelVal,
     method: SteelVal,
 ) -> SteelResult {
     let feature = feature_arg(feature, "#:feature")?;
     let method = optional_string_arg(method, "#:method")?;
     let servers = require_cap(ctx.host.lsp())?
-        .lsp_servers(pane.buffer(), feature, method.as_deref())
+        .lsp_servers(bid, feature, method.as_deref())
         .map_err(generic_err)?;
     Ok(list_of(servers.into_iter().map(ServerRef::into_steel_val)))
 }

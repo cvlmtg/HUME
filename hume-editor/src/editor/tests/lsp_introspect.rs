@@ -594,9 +594,8 @@ fn viewport_range_end_is_one_past_the_last_visible_row() {
     );
 }
 
-/// `(viewport-range pane)` needs a pane, not just a buffer: kind-B fail-fast
-/// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
-/// own return shape) raises.
+/// `(viewport-range pane)` needs a pane that shows the buffer, not just a
+/// buffer: a pane-less handle (`(buffers)`'s own return shape) raises.
 #[test]
 fn viewport_range_raises_for_a_paneless_buffer_handle() {
     let tmp = tempfile::tempdir().unwrap();
@@ -640,8 +639,8 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
         .clone()
         .expect("viewport-range on a paneless handle must raise");
     assert!(
-        msg.contains("pane"),
-        "error must name the missing pane; got: {msg}"
+        msg.contains("viewport-range: needs a pane, but was given none"),
+        "got: {msg}"
     );
 }
 
@@ -729,9 +728,9 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
     );
 }
 
-/// `lsp-position-params` needs a pane, not just a buffer: kind-B fail-fast
-/// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
-/// own return shape) raises, even when the buffer is attached to a running
+/// `lsp-position-params` needs a pane that shows the buffer, not just a
+/// buffer: a pane-less handle (`(buffers)`'s own return shape) raises,
+/// even when the buffer is attached to a running
 /// server and still has a seeded (now stale) pane state.
 #[test]
 fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
@@ -774,8 +773,8 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
         .clone()
         .expect("lsp-position-params on a paneless handle must raise");
     assert!(
-        msg.contains("pane"),
-        "error must name the missing pane; got: {msg}"
+        msg.contains("lsp-position-params: needs a pane, but was given none"),
+        "got: {msg}"
     );
 }
 

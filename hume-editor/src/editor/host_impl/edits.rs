@@ -8,9 +8,9 @@ use termina::event::KeyEvent;
 
 use super::EditorHostImpl;
 use crate::editor::buffer::offsets::{checked_char_range, widened_to_clusters};
-use crate::editor::commands::{self, FocusedPane};
+use crate::editor::commands;
 use crate::editor::input_stack::PastedText;
-use hume_scripting::host::{CharTextEdit, EditHost};
+use hume_scripting::host::{CharTextEdit, EditHost, FocusedHandle, ShownHandle};
 
 impl<'a> EditHost for EditorHostImpl<'a> {
     // ── Edit + navigation primitives ────────────────────────────────────
@@ -62,11 +62,11 @@ impl<'a> EditHost for EditorHostImpl<'a> {
 
     fn goto_location_value(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         loc: &serde_json::Value,
         encoding: hume_rope::position_encoding::PositionEncoding,
     ) -> Result<Option<PaneHandle>, String> {
-        let t = self.command_pane(pane)?;
+        let t = self.shown(pane)?;
         let wl = hume_lsp::location::decode_location(loc)?;
         let target = crate::editor::lsp::edits::GotoTarget::Wire {
             uri: wl.uri,
@@ -78,12 +78,12 @@ impl<'a> EditHost for EditorHostImpl<'a> {
 
     fn goto_location_path(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         path: AbsolutePath,
         line: usize,
         char_col: usize,
     ) -> Result<Option<PaneHandle>, String> {
-        let t = self.command_pane(pane)?;
+        let t = self.shown(pane)?;
         let target = crate::editor::lsp::edits::GotoTarget::Path {
             path,
             line,
@@ -94,23 +94,23 @@ impl<'a> EditHost for EditorHostImpl<'a> {
 
     fn goto_location_buffer(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         target: BufferId,
         char_offset: usize,
     ) -> Result<PaneHandle, String> {
-        let t = self.command_pane(pane)?;
+        let t = self.shown(pane)?;
         crate::editor::lsp::edits::goto_buffer_offset(self.state, self.view, t, target, char_offset)
     }
 
-    fn goto_revision(&mut self, pane: PaneHandle, revision: usize) -> Result<(), String> {
-        let t = self.command_pane(pane)?;
+    fn goto_revision(&mut self, pane: ShownHandle, revision: usize) -> Result<(), String> {
+        let t = self.shown(pane)?;
         commands::goto_revision(self.state, self.view, t, revision)
             .map(|_| ())
             .map_err(|e| e.message().to_owned())
     }
 
-    fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String> {
-        let fp = FocusedPane::resolve(self.state, self.view, pane).map_err(|e| e.to_string())?;
+    fn insert_key(&mut self, pane: FocusedHandle, key: KeyEvent) -> Result<(), String> {
+        let fp = self.focused(pane)?;
         let entry = self
             .state
             .input
@@ -136,8 +136,8 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    fn paste_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String> {
-        FocusedPane::resolve(self.state, self.view, pane).map_err(|e| e.to_string())?;
+    fn paste_text(&mut self, pane: FocusedHandle, values: Vec<String>) -> Result<(), String> {
+        self.focused(pane)?;
         match PastedText::new(values) {
             Some(text) => self
                 .state

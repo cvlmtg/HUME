@@ -6,7 +6,7 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::host::{LocationPlace, Place};
-use hume_core::PaneHandle;
+use hume_core::{BufferId, PaneHandle};
 
 use crate::builtins::SteelResult;
 use crate::builtins::args::{char_range_value, list_items, string_arg, symbol_hash};
@@ -26,10 +26,9 @@ use crate::builtins::wire::{tagged_json_arg, wire_position, wire_range};
 /// failing on it. Raises when the host has no LSP capability.
 pub(crate) fn lsp_position_to_char_offset(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     position: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let (handle, encoding) = tagged_json_arg(&position, "position")?;
     let pos = wire_position(handle.value())?;
     let offset = require_cap(ctx.host.lsp())?.lsp_wire_point_to_char(bid, pos, encoding);
@@ -47,10 +46,9 @@ pub(crate) fn lsp_position_to_char_offset(
 /// Raises when the host has no LSP capability.
 pub(crate) fn lsp_range_to_char_range(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     range: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let (handle, encoding) = tagged_json_arg(&range, "range")?;
     let range = wire_range(handle.value())?;
     let range = require_cap(ctx.host.lsp())?.lsp_wire_range_to_chars(bid, range, encoding);
@@ -61,7 +59,6 @@ pub(crate) fn lsp_range_to_char_range(
 
 /// `(lsp-label-offsets->text label offsets)` → the slice of `label` that a
 /// `ParameterInformation.label` `[start, end)` wire offset pair names.
-/// Raises when the host has no LSP capability.
 ///
 /// `offsets` is the raw two-element `[start, end)` array straight off the
 /// wire, handed over undecoded the way `goto-location!` takes a raw
@@ -71,11 +68,7 @@ pub(crate) fn lsp_range_to_char_range(
 /// value raises, since there is then no server to have negotiated one with. The offsets count code units in that encoding, so
 /// Scheme can neither convert them nor index by them. That is the whole
 /// reason this builtin exists rather than a Scheme helper.
-pub(crate) fn lsp_label_offsets_to_text(
-    ctx: &mut SteelCtx,
-    label: SteelVal,
-    offsets: SteelVal,
-) -> SteelResult {
+pub(crate) fn lsp_label_offsets_to_text(label: SteelVal, offsets: SteelVal) -> SteelResult {
     let label = string_arg(label, "label")?;
     let (handle, encoding) = tagged_json_arg(&offsets, "offsets")?;
     let arr = handle
@@ -90,7 +83,6 @@ pub(crate) fn lsp_label_offsets_to_text(
     };
     let start = json_usize(start, "offsets")?;
     let end = json_usize(end, "offsets")?;
-    require_cap(ctx.host.lsp())?;
     let range =
         hume_rope::position_encoding::wire_offsets_to_byte_range(&label, start, end, encoding);
     Ok(SteelVal::StringV(label[range].into()))

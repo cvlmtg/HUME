@@ -21,7 +21,8 @@ use hume_rope::line::ContentLine;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
     BufferHost, CommandHolder, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost,
-    LanguageHost, NativeCall, OptionValue, SelectionInfo, SettingsHost, StoredLanguage,
+    LanguageHost, NativeCall, OptionValue, SelectionInfo, SettingsHost, ShownHandle,
+    StoredLanguage,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -141,11 +142,8 @@ impl BufferHost for MockHost {
     fn focused_pane(&self) -> PaneHandle {
         PaneHandle::buffer_only(BufferId::default())
     }
-    fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle> {
-        vec![pane]
-    }
-    fn require_focused_pane(&self, _pane: PaneHandle) -> Result<(), String> {
-        Err("MockHost: require_focused_pane not available".into())
+    fn buffer_panes(&self, id: BufferId) -> Vec<PaneHandle> {
+        vec![PaneHandle::buffer_only(id)]
     }
     fn pane_live(&self, _pane: PaneHandle) -> bool {
         false
@@ -192,14 +190,14 @@ impl BufferHost for MockHost {
     }
     fn switch_to_buffer(
         &mut self,
-        _pane: PaneHandle,
+        _pane: ShownHandle,
         _target: BufferId,
     ) -> Result<PaneHandle, String> {
         Err("MockHost: switch_to_buffer not available".into())
     }
     fn show_read_only_buffer(
         &mut self,
-        _pane: PaneHandle,
+        _pane: ShownHandle,
         _name: &str,
         _text: &str,
     ) -> Result<PaneHandle, String> {
@@ -236,7 +234,7 @@ impl BufferHost for MockHost {
     }
     fn viewport_range(
         &mut self,
-        _pane: PaneHandle,
+        _pane: ShownHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
         Err("MockHost: viewport_range not available".into())
     }
@@ -448,22 +446,22 @@ impl CommandHost for MockHost {
 }
 
 impl CursorHost for MockHost {
-    fn buffer_cursor_line(&self, _pane: PaneHandle) -> Result<ContentLine, String> {
+    fn buffer_cursor_line(&self, _pane: ShownHandle) -> Result<ContentLine, String> {
         Err("MockHost: buffer_cursor_line not available".into())
     }
-    fn buffer_selections(&self, _pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
+    fn buffer_selections(&self, _pane: ShownHandle) -> Result<Vec<SelectionInfo>, String> {
         Err("MockHost: buffer_selections not available".into())
     }
     fn char_offset_to_line(&self, _bid: BufferId, _idx: usize) -> Result<ContentLine, String> {
         Err("MockHost: char_offset_to_line not available".into())
     }
-    fn symbol_under_cursor(&self, _pane: PaneHandle) -> Result<String, String> {
+    fn symbol_under_cursor(&self, _pane: ShownHandle) -> Result<String, String> {
         Err("MockHost: symbol_under_cursor not available".into())
     }
-    fn selections_linewise(&self, _pane: PaneHandle) -> Result<bool, String> {
+    fn selections_linewise(&self, _pane: ShownHandle) -> Result<bool, String> {
         Err("MockHost: selections_linewise not available".into())
     }
-    fn selections_charwise(&self, _pane: PaneHandle) -> Result<bool, String> {
+    fn selections_charwise(&self, _pane: ShownHandle) -> Result<bool, String> {
         Err("MockHost: selections_charwise not available".into())
     }
 }

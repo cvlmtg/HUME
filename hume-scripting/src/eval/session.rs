@@ -104,7 +104,7 @@ pub(super) fn run_steel_session<'a, R>(
 
 /// A failed [`run_steel_session`]: the reported message, plus whether the
 /// failure was the session's budget running out rather than an ordinary
-/// Steel error (a raised exception, a stale-buffer `LivePane` raise, an arity
+/// Steel error (a raised exception, a stale-buffer pane argument, an arity
 /// mismatch), as the watchdog's `cancel` reported it. `run_session` reads
 /// only `.message`;
 /// `run_tracked_calls` reads `interrupted` to skip the calls queued after an

@@ -13,7 +13,8 @@ use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, CommandHolder, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost,
-    EventShape, LanguageHost, OptionValue, SelectionInfo, SettingsHost, StoredLanguage, UndoNode,
+    EventShape, LanguageHost, OptionValue, SelectionInfo, SettingsHost, ShownHandle,
+    StoredLanguage, UndoNode,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -82,10 +83,10 @@ impl EditorHost for ReadOnlyHost<'_> {
 }
 
 impl CursorHost for ReadOnlyHost<'_> {
-    fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<ContentLine, String> {
+    fn buffer_cursor_line(&self, pane: ShownHandle) -> Result<ContentLine, String> {
         self.inner.borrow_mut().cursor().buffer_cursor_line(pane)
     }
-    fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
+    fn buffer_selections(&self, pane: ShownHandle) -> Result<Vec<SelectionInfo>, String> {
         self.inner.borrow_mut().cursor().buffer_selections(pane)
     }
     fn char_offset_to_line(&self, bid: BufferId, idx: usize) -> Result<ContentLine, String> {
@@ -94,13 +95,13 @@ impl CursorHost for ReadOnlyHost<'_> {
             .cursor()
             .char_offset_to_line(bid, idx)
     }
-    fn symbol_under_cursor(&self, pane: PaneHandle) -> Result<String, String> {
+    fn symbol_under_cursor(&self, pane: ShownHandle) -> Result<String, String> {
         self.inner.borrow_mut().cursor().symbol_under_cursor(pane)
     }
-    fn selections_linewise(&self, pane: PaneHandle) -> Result<bool, String> {
+    fn selections_linewise(&self, pane: ShownHandle) -> Result<bool, String> {
         self.inner.borrow_mut().cursor().selections_linewise(pane)
     }
-    fn selections_charwise(&self, pane: PaneHandle) -> Result<bool, String> {
+    fn selections_charwise(&self, pane: ShownHandle) -> Result<bool, String> {
         self.inner.borrow_mut().cursor().selections_charwise(pane)
     }
 }
@@ -222,11 +223,8 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn focused_pane(&self) -> PaneHandle {
         self.inner.borrow_mut().buffers().focused_pane()
     }
-    fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle> {
-        self.inner.borrow_mut().buffers().buffer_panes(pane)
-    }
-    fn require_focused_pane(&self, pane: PaneHandle) -> Result<(), String> {
-        self.inner.borrow_mut().buffers().require_focused_pane(pane)
+    fn buffer_panes(&self, id: BufferId) -> Vec<PaneHandle> {
+        self.inner.borrow_mut().buffers().buffer_panes(id)
     }
     fn pane_live(&self, pane: PaneHandle) -> bool {
         self.inner.borrow_mut().buffers().pane_live(pane)
@@ -269,14 +267,14 @@ impl BufferHost for ReadOnlyHost<'_> {
     }
     fn switch_to_buffer(
         &mut self,
-        _pane: PaneHandle,
+        _pane: ShownHandle,
         _target: BufferId,
     ) -> Result<PaneHandle, String> {
         Err(self.refuse("switch_to_buffer"))
     }
     fn show_read_only_buffer(
         &mut self,
-        _pane: PaneHandle,
+        _pane: ShownHandle,
         _name: &str,
         _text: &str,
     ) -> Result<PaneHandle, String> {
@@ -310,7 +308,7 @@ impl BufferHost for ReadOnlyHost<'_> {
             .buffers()
             .line_to_char_offset(id, line)
     }
-    fn viewport_range(&mut self, pane: PaneHandle) -> Result<ExclusiveRange<ContentLine>, String> {
+    fn viewport_range(&mut self, pane: ShownHandle) -> Result<ExclusiveRange<ContentLine>, String> {
         self.inner.get_mut().buffers().viewport_range(pane)
     }
 }

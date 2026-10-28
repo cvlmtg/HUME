@@ -446,7 +446,7 @@ impl ScriptingHost {
     ///
     /// Each call runs in its *own* `with_mut_reference` session, isolated
     /// from its siblings: an ordinary Steel error (a raised exception, a
-    /// stale-buffer `LivePane` raise, an arity mismatch) does not abort the
+    /// stale-buffer pane argument, an arity mismatch) does not abort the
     /// rest of the batch, so one plugin's bug in one hook handler or queued
     /// callback can't silently drop every other one behind it in the same
     /// batch. A call stopped by its budget is the one exception: it means the

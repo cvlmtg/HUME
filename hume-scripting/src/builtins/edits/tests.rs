@@ -1,7 +1,9 @@
 use super::*;
 use crate::builtins::args::symbol_hash;
 use crate::json::JsonHandle;
-use crate::test_support::{SteelCtxTestHarness, default_pane, str_val};
+use crate::test_support::{
+    SteelCtxTestHarness, default_focused, default_pane, default_shown, str_val,
+};
 use hume_rope::position_encoding::PositionEncoding;
 use steel::rvals::IntoSteelVal as _;
 
@@ -15,7 +17,7 @@ fn insert_key_without_edit_host_is_unsupported() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let key: SteelVal = "tab".to_string().into_steelval().unwrap();
-    let err = insert_key(&mut ctx, default_pane(), key).unwrap_err();
+    let err = insert_key(&mut ctx, default_focused(), key).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
 }
@@ -27,7 +29,7 @@ fn paste_text_without_edit_host_is_unsupported() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let text: SteelVal = "x".to_string().into_steelval().unwrap();
-    let msg = paste_text(&mut ctx, default_pane(), text)
+    let msg = paste_text(&mut ctx, default_focused(), text)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
@@ -37,7 +39,7 @@ fn paste_text_without_edit_host_is_unsupported() {
 fn paste_text_rejects_a_value_that_is_neither_text_nor_a_list() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let msg = paste_text(&mut ctx, default_pane(), SteelVal::IntV(5))
+    let msg = paste_text(&mut ctx, default_focused(), SteelVal::IntV(5))
         .unwrap_err()
         .to_string();
     assert!(
@@ -53,7 +55,7 @@ fn insert_key_rejects_a_multi_key_spec() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let key: SteelVal = "g h".to_string().into_steelval().unwrap();
-    let msg = insert_key(&mut ctx, default_pane(), key)
+    let msg = insert_key(&mut ctx, default_focused(), key)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("exactly one key"), "got: {msg}");
@@ -136,7 +138,7 @@ fn goto_location_accepts_a_tagged_json_handle() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let msg = goto_location(&mut ctx, default_pane(), handle)
+    let msg = goto_location(&mut ctx, default_shown(), handle)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
@@ -148,7 +150,7 @@ fn goto_location_accepts_a_tagged_json_handle() {
 fn goto_location_rejects_a_bare_scalar() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let msg = goto_location(&mut ctx, default_pane(), SteelVal::IntV(5))
+    let msg = goto_location(&mut ctx, default_shown(), SteelVal::IntV(5))
         .unwrap_err()
         .to_string();
     assert!(msg.contains("expected a Location"), "got: {msg}");
@@ -169,7 +171,7 @@ fn goto_location_wire_shape_requires_a_tagged_handle() {
         "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
     }))
     .into_steel_val();
-    let msg = goto_location(&mut ctx, default_pane(), handle)
+    let msg = goto_location(&mut ctx, default_shown(), handle)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
@@ -196,7 +198,7 @@ fn goto_location_char_indexed_shapes_never_touch_encoding() {
         ("char-col", SteelVal::IntV(0)),
     ]);
     for target in [pane_target, path_target] {
-        let msg = goto_location(&mut ctx, default_pane(), target)
+        let msg = goto_location(&mut ctx, default_shown(), target)
             .unwrap_err()
             .to_string();
         assert!(msg.contains("not supported by this host"), "got: {msg}");
@@ -215,7 +217,7 @@ fn goto_location_pane_target_rejects_line_and_char_col() {
             ("char-offset", SteelVal::IntV(0)),
             (key, SteelVal::IntV(0)),
         ]);
-        let msg = goto_location(&mut ctx, default_pane(), target)
+        let msg = goto_location(&mut ctx, default_shown(), target)
             .unwrap_err()
             .to_string();
         assert!(
@@ -235,7 +237,7 @@ fn goto_location_path_target_rejects_char_offset() {
         ("target", SteelVal::StringV("/tmp/a.txt".into())),
         ("char-offset", SteelVal::IntV(0)),
     ]);
-    let msg = goto_location(&mut ctx, default_pane(), target)
+    let msg = goto_location(&mut ctx, default_shown(), target)
         .unwrap_err()
         .to_string();
     assert!(
@@ -252,7 +254,7 @@ fn goto_path_target_error(path: &str) -> String {
         ("line", SteelVal::IntV(0)),
         ("char-col", SteelVal::IntV(0)),
     ]);
-    goto_location(&mut ctx, default_pane(), target)
+    goto_location(&mut ctx, default_shown(), target)
         .unwrap_err()
         .to_string()
 }

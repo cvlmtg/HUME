@@ -1,7 +1,5 @@
 use super::*;
 use crate::editor::doc_ops;
-use hume_scripting::host::CommandHost;
-use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
 /// One `undo_n(1)` walk through the history funnel, on the focused pane.
@@ -162,18 +160,7 @@ fn split_with_moved_cursor(ed: &mut Editor) -> (PaneId, PaneId, BufferId) {
     let pane_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     ed.feed_key(key('d'));
-    let handle = focused_pane(ed);
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            handle,
-            NativeCall {
-                count: Count::typed(1),
-                ..NativeCall::default()
-            },
-        )
-        .expect("pane-vsplit must succeed");
-    let pane_b = ed.view.focused_pane();
+    let pane_b = vsplit_focused(ed);
     assert_ne!(pane_a, pane_b);
     for _ in 0..3 {
         ed.feed_key(key('l'));
@@ -264,11 +251,19 @@ fn goto_revision_host_errors_on_read_only_and_unknown_id() {
     let br = two_branches(&mut ed);
     let handle = focused_pane(&ed);
 
-    assert!(live_host!(ed).goto_revision(handle, 999).is_err());
+    assert!(
+        live_host!(ed)
+            .goto_revision(hume_scripting::host::ShownHandle::for_test(handle), 999)
+            .is_err()
+    );
     assert_eq!(state(&ed), br.b.0);
 
     ed.doc_mut().read_only = true;
-    assert!(live_host!(ed).goto_revision(handle, br.a.1).is_err());
+    assert!(
+        live_host!(ed)
+            .goto_revision(hume_scripting::host::ShownHandle::for_test(handle), br.a.1)
+            .is_err()
+    );
     assert_eq!(state(&ed), br.b.0, "a read-only buffer is left alone");
 }
 
@@ -281,7 +276,7 @@ fn goto_revision_host_acts_on_the_given_pane_not_focus() {
 
     let target_a = hume_core::PaneHandle::with_pane(bid, pane_a);
     live_host!(ed)
-        .goto_revision(target_a, 0)
+        .goto_revision(hume_scripting::host::ShownHandle::for_test(target_a), 0)
         .expect("the root is live");
 
     assert_eq!(

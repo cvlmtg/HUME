@@ -143,7 +143,7 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_popup(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         "hi".to_string(),
         PopupKind::Scrollable,
         hume_core::PopupLayout::Cursor,
@@ -155,7 +155,7 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_drawer_list(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         drawer_items(&["one"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
         0,
@@ -199,7 +199,7 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_drawer_list(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         drawer_items(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         0,
@@ -291,7 +291,7 @@ fn show_drawer_list_from_insert_warns_instead_of_opening() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_drawer_list(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         drawer_items(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         0,

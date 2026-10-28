@@ -13,10 +13,7 @@ use super::errors::generic_err;
 
 /// `(hume-version)`: `(hash 'major 'minor 'patch 'commit)` of the running
 /// editor.
-pub(crate) fn hume_version(args: &[SteelVal]) -> SteelResult {
-    if !args.is_empty() {
-        steel::stop!(ArityMismatch => "expects 0 args, got {}", args.len());
-    }
+pub(crate) fn hume_version() -> SteelResult {
     let commit = match hume_platform::version::COMMIT {
         Some(sha) => SteelVal::StringV(sha.into()),
         None => SteelVal::BoolV(false),
@@ -40,12 +37,13 @@ pub(crate) fn hume_version(args: &[SteelVal]) -> SteelResult {
 
 /// `(hume-version>=? major minor patch)`: whether the running editor is at
 /// least that version. A dev build counts as the release it is heading toward.
-pub(crate) fn hume_version_at_least(args: &[SteelVal]) -> SteelResult {
-    let [major, minor, patch] = args else {
-        steel::stop!(ArityMismatch => "expects 3 args, got {}", args.len());
-    };
-    let component = |val: &SteelVal, label: &str| -> Result<u32, steel::rerrs::SteelErr> {
-        let n = usize_arg(val.clone(), label)?;
+pub(crate) fn hume_version_at_least(
+    major: SteelVal,
+    minor: SteelVal,
+    patch: SteelVal,
+) -> SteelResult {
+    let component = |val: SteelVal, label: &str| -> Result<u32, steel::rerrs::SteelErr> {
+        let n = usize_arg(val, label)?;
         u32::try_from(n).map_err(|_| generic_err(format!("{n} is out of range")))
     };
     Ok(SteelVal::BoolV(hume_platform::version::at_least(

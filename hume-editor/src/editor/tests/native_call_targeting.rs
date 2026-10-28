@@ -400,17 +400,7 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
 
     // Split onto the *same* buffer, then refocus A. `pane-vsplit` focuses
     // the new pane, so B (the split) is left unfocused here.
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            PaneHandle::with_pane(bid, pid_a),
-            NativeCall {
-                count: Count::typed(1),
-                ..NativeCall::default()
-            },
-        )
-        .expect("pane-vsplit must succeed");
-    let pid_b = ed.view.focused_pane();
+    let pid_b = vsplit_focused(&mut ed);
     assert_ne!(pid_b, pid_a, "setup: vsplit must open a second pane");
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
 
@@ -462,17 +452,7 @@ fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
     let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
 
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            PaneHandle::with_pane(bid, pid_a),
-            NativeCall {
-                count: Count::typed(1),
-                ..NativeCall::default()
-            },
-        )
-        .expect("pane-vsplit must succeed");
-    let pid_b = ed.view.focused_pane();
+    let pid_b = vsplit_focused(&mut ed);
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
 
     ed.feed_key(key('i'));
@@ -517,17 +497,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
 
     // B, a sibling on the same buffer, survives A's close so the buffer
     // itself stays open throughout.
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            PaneHandle::with_pane(bid, pid_a),
-            NativeCall {
-                count: Count::typed(1),
-                ..NativeCall::default()
-            },
-        )
-        .expect("pane-vsplit must succeed");
-    let pid_b = ed.view.focused_pane();
+    let pid_b = vsplit_focused(&mut ed);
 
     // Close A while it's focused (`pane-close` is a FocusedPane command).
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
@@ -550,17 +520,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
     // Open a new pane from B: slotmap reuses A's freed index (LIFO free
     // list), so the new pane's id shares A's index with a newer version.
     ed.state.focus.set_for_test(&mut ed.view, pid_b);
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            PaneHandle::with_pane(bid, pid_b),
-            NativeCall {
-                count: Count::typed(1),
-                ..NativeCall::default()
-            },
-        )
-        .expect("pane-vsplit must succeed");
-    let pid_c = ed.view.focused_pane();
+    let pid_c = vsplit_focused(&mut ed);
     assert_ne!(pid_a, pid_c, "setup: C must be a distinct pane from A");
     // Touch C's own pane_state so its slot in the *secondary* map records
     // the newer version too. Otherwise `pid_a`'s stale version would read
@@ -627,17 +587,7 @@ fn a_refused_delete_clears_the_register_prefix_and_writes_nothing() {
     let mut ed = editor_from("-[a]>aaa\n");
     let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            PaneHandle::with_pane(bid, pid_a),
-            NativeCall {
-                count: Count::typed(1),
-                ..NativeCall::default()
-            },
-        )
-        .expect("pane-vsplit must succeed");
-    let pid_b = ed.view.focused_pane();
+    let pid_b = vsplit_focused(&mut ed);
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));

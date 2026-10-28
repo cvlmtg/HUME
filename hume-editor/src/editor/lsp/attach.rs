@@ -486,7 +486,7 @@ impl Editor {
                 | PendingLspServerOp::SetLanguageServers { .. } => true,
                 PendingLspServerOp::Stop { .. }
                 | PendingLspServerOp::Restart { .. }
-                | PendingLspServerOp::ShowStatus => false,
+                | PendingLspServerOp::ShowStatus { .. } => false,
             };
             if !registry_change && std::mem::take(&mut unreconciled) {
                 self.state.lsp_reconcile_all(&self.view);
@@ -587,17 +587,19 @@ impl Editor {
             PendingLspServerOp::Restart { target } => {
                 self.stop_servers(&target, ServerOp::Restart);
             }
-            PendingLspServerOp::ShowStatus => {
-                let content = self.lsp_status_text();
-                // Applied from the effect log after the eval that queued it,
-                // so the pane focused now is where the status view opens.
-                let fp = crate::editor::commands::FocusedPane::current(&self.view);
-                self.open_read_only_view(
-                    fp,
-                    &ViewLabel::editor(EditorView::LspStatus),
-                    &content,
-                    Some(hume_rope::line::ContentLine::new(0)),
-                );
+            PendingLspServerOp::ShowStatus { pane } => {
+                match crate::editor::commands::FocusedPane::checked(&self.state, &self.view, pane) {
+                    Ok(fp) => {
+                        let content = self.lsp_status_text();
+                        self.open_read_only_view(
+                            fp,
+                            &ViewLabel::editor(EditorView::LspStatus),
+                            &content,
+                            Some(hume_rope::line::ContentLine::new(0)),
+                        );
+                    }
+                    Err(e) => self.report(Severity::Error, format!("lsp-show-status!: {e}")),
+                }
             }
         }
     }

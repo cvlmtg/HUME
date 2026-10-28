@@ -55,4 +55,11 @@ disallowed-methods = [
     # one caller that computes them; the engine's own layout tests are the
     # other exception.
     "hume_engine::pipeline::EngineView::screen_layout",
+    # The editor acts through a builtin's shown or focused pane only after it
+    # checks that the pane still shows its buffer (and is focused).
+    # `CommandPane::checked`/`FocusedPane::checked`
+    # (`hume-editor/src/editor/commands/target.rs`) run that check and are the
+    # only readers of the raw pane.
+    "hume_scripting::host::ShownHandle::handle",
+    "hume_scripting::host::FocusedHandle::handle",
 ]

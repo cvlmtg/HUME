@@ -625,7 +625,7 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let token = host
         .open_picker(
-            pane,
+            hume_scripting::host::FocusedHandle::for_test(pane),
             vec![(
                 "one".to_string(),
                 hume_scripting::Rooted::new(SteelVal::StringV("p1".into())),
@@ -673,7 +673,7 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let token = host
         .open_picker(
-            pane,
+            hume_scripting::host::FocusedHandle::for_test(pane),
             vec![(
                 "one".to_string(),
                 hume_scripting::Rooted::new(SteelVal::StringV("p1".into())),

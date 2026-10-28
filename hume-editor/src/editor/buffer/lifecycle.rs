@@ -184,7 +184,7 @@ pub(in crate::editor) fn show_read_only_view(
 /// any other buffer open would be. `id`'s own slot is always freed: a
 /// versioned key is never reused for different content, so a captured `id`
 /// can never silently start naming the replacement; a same-slot in-place
-/// replace would leave that failure mode open for any `LivePane` builtin
+/// replace would leave that failure mode open for any pane-taking builtin
 /// whose bid outlived the close.
 ///
 /// Returns, only when the last-buffer branch fired, the freshly allocated

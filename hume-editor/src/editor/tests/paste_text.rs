@@ -4,7 +4,7 @@
 use super::*;
 use crate::editor::host_impl::EditorHostImpl;
 use hume_core::PaneHandle;
-use hume_scripting::host::{CommandHost, EditHost, NativeCall};
+use hume_scripting::host::EditHost;
 use pretty_assertions::assert_eq;
 
 const PROBE: &str = "paste-text-probe";
@@ -222,22 +222,15 @@ fn paste_text_refuses_for_an_unfocused_pane() {
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            PaneHandle::with_pane(bid, pid_a),
-            NativeCall {
-                count: Count::typed(1),
-                ..NativeCall::default()
-            },
-        )
-        .expect("pane-vsplit succeeds");
-    let pid_b = ed.view.focused_pane();
+    let pid_b = vsplit_focused(&mut ed);
     assert_ne!(pid_b, pid_a);
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
 
     let err = EditorHostImpl::new(&mut ed.state, &mut ed.view)
-        .paste_text(PaneHandle::with_pane(bid, pid_b), vec!["x".to_string()])
+        .paste_text(
+            hume_scripting::host::FocusedHandle::for_test(PaneHandle::with_pane(bid, pid_b)),
+            vec!["x".to_string()],
+        )
         .unwrap_err();
     assert!(err.contains("focused pane"), "got: {err}");
     assert_eq!(ed.doc().text().to_string(), "hello\n");

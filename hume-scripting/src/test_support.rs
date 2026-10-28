@@ -14,26 +14,35 @@ use hume_core::Severity;
 /// A stand-in bid for a builtin test that doesn't care which buffer it
 /// names: [`NullHost`]/[`crate::testing`] mocks don't track real buffers,
 /// so any value type-checks the same. A direct Rust call to a builtin
-/// function (every caller of this) never runs `LivePane`'s liveness check at
-/// all (that only happens inside the `builtins!`-registered Steel
-/// closure), so this needs no "live" counterpart.
+/// function (every caller of this) never runs its pane arguments' checks
+/// (those only run inside the `builtins!`-registered Steel closure), so this
+/// needs no "live" counterpart.
 pub(crate) fn default_bid() -> hume_core::BufferId {
     hume_core::BufferId::default()
 }
 
 /// [`default_bid`]'s `PaneHandle` counterpart: a pane-less handle, for a
-/// direct Rust call into a builtin now typed for `PaneHandle`/`ArgPane`/
-/// `LivePane` rather than a bare `BufferId`.
+/// direct Rust call into a builtin typed for `PaneHandle`/`ArgPane`.
 pub(crate) fn default_pane() -> hume_core::PaneHandle {
     hume_core::PaneHandle::buffer_only(default_bid())
 }
 
 /// [`default_pane`], but with a pane half too, for a builtin whose own
-/// contract needs one present (`#:require-focus`'s "needs a pane" check,
-/// a kind-A/B builtin exercised only for its decode, never resolved against
-/// real editor state through `NullHost`).
+/// contract needs one present (`#:require-focus`'s "needs a pane" check).
 pub(crate) fn default_pane_with_pane() -> hume_core::PaneHandle {
     hume_core::PaneHandle::with_pane(default_bid(), hume_core::PaneId::default())
+}
+
+/// [`default_pane_with_pane`] as a shown pane, for a direct Rust call into
+/// a builtin that acts through one.
+pub(crate) fn default_shown() -> crate::host::ShownHandle {
+    crate::host::ShownHandle::for_test(default_pane_with_pane())
+}
+
+/// [`default_pane_with_pane`] as a focused pane, for a direct Rust call
+/// into a builtin that acts through one.
+pub(crate) fn default_focused() -> crate::host::FocusedHandle {
+    crate::host::FocusedHandle::for_test(default_pane_with_pane())
 }
 
 /// The Steel symbol `name`.

@@ -10,7 +10,7 @@ use hume_editing::diff::{WordHunk, WordHunkKind};
 use hume_editing::hunk::{ChangeHunk, HunkDiff, LineSpan, text_hunks};
 use hume_editing::text::BufferText;
 
-use hume_core::PaneHandle;
+use hume_core::BufferId;
 
 use super::SteelResult;
 use super::args::{
@@ -27,7 +27,7 @@ use super::errors::{generic_err, require_cap};
 /// inserted at or deleted from. `Equal` runs are dropped. Both texts are read
 /// as buffer content (see [`text_hunks`]). The end lines are derived here
 /// from the line lists, since [`ChangeHunk`] stores no end.
-pub(crate) fn diff_lines(_ctx: &mut SteelCtx, old: SteelVal, new: SteelVal) -> SteelResult {
+pub(crate) fn diff_lines(old: SteelVal, new: SteelVal) -> SteelResult {
     let old = string_arg(old, "old-text")?;
     let new = string_arg(new, "new-text")?;
     Ok(hunks_to_steel(text_hunks(
@@ -41,12 +41,11 @@ pub(crate) fn diff_lines(_ctx: &mut SteelCtx, old: SteelVal, new: SteelVal) -> S
 /// round-tripping the whole buffer through Steel.
 pub(crate) fn diff_buffer_lines(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     ref_text: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let ref_text = string_arg(ref_text, "ref-text")?;
-    // `LivePane` already checked liveness; `None` would be a host disagreeing with itself.
+    // `LiveBuffer` already checked liveness; `None` would be a host disagreeing with itself.
     let diff = require_cap(ctx.host.diff())?
         .diff_buffer_lines(bid, &ref_text)
         .ok_or_else(|| not_live_err("pane", bid))?;
@@ -60,11 +59,11 @@ pub(crate) fn diff_buffer_lines(
 /// the buffer has no such revision.
 pub(crate) fn buffer_revision_diff(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     revision: usize,
 ) -> SteelResult {
     let diff = require_cap(ctx.host.diff())?
-        .revision_diff(pane.buffer(), revision)
+        .revision_diff(bid, revision)
         .map_err(generic_err)?;
     Ok(hunks_to_steel(diff))
 }
@@ -135,7 +134,7 @@ fn line_span_to_steel(span: LineSpan) -> SteelVal {
 /// or delete has a zero-width side with empty text. `'deadline-hit` is `#t`
 /// when Myers timed out and returned a coarse result, which a caller should
 /// treat as a fallback rather than a precise diff.
-pub(crate) fn diff_words(_ctx: &mut SteelCtx, old: SteelVal, new: SteelVal) -> SteelResult {
+pub(crate) fn diff_words(old: SteelVal, new: SteelVal) -> SteelResult {
     let old = string_arg(old, "old-text")?;
     let new = string_arg(new, "new-text")?;
     let diff = hume_editing::diff::diff_words(&old, &new);

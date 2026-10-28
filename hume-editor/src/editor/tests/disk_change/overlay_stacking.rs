@@ -79,7 +79,7 @@ fn stale_confirm_retirement_does_not_take_a_prompt_above_it_with_it() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.prompt(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         "Name: ".to_string(),
         String::new(),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),

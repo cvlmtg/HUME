@@ -7,9 +7,9 @@ use crate::editor::input_stack::{
 };
 use crate::editor::input_stack::{menu, picker, prompt};
 use crate::editor::syntax::GrammarLoads;
-use hume_core::{HostToken, NonEmpty, PaneHandle, Severity};
+use hume_core::{HostToken, NonEmpty, Severity};
 use hume_scripting::host::{
-    BufferHost, DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts,
+    DrawerItems, FocusedHandle, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts,
     PopupKind, UiHost,
 };
 
@@ -21,12 +21,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
 
     fn prompt(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         label: String,
         prefill: String,
         callback: hume_scripting::Callback,
     ) -> Result<(), String> {
-        self.require_focused_pane(pane)?;
+        self.focused(pane)?;
         prompt::open_prompt(self.state, self.view, label, prefill, callback)
     }
 
@@ -52,13 +52,13 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// rather than stack regardless of which of the two was showing before.
     fn show_popup(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         text: String,
         kind: PopupKind,
         layout: hume_core::PopupLayout,
         lang: Option<String>,
     ) -> Result<Option<HostToken>, String> {
-        self.require_focused_pane(pane)?;
+        self.focused(pane)?;
         let mut loads =
             GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry);
         let syntax = lang.and_then(|lang| {
@@ -124,11 +124,11 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     // ── Selection menu ────────────────────────────────────────────────────
     fn show_menu(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         items: NonEmpty<(String, hume_scripting::Rooted)>,
         callback: hume_scripting::Callback,
     ) -> Result<Option<HostToken>, String> {
-        self.require_focused_pane(pane)?;
+        self.focused(pane)?;
         menu::open_menu(self.state, self.view, items, callback)
     }
 
@@ -148,12 +148,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     // ── Bottom drawer ──────────────────────────────────────────────────────
     fn show_drawer_list(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         items: DrawerItems,
         callback: hume_scripting::Callback,
         selected: usize,
     ) -> Result<Option<HostToken>, String> {
-        self.require_focused_pane(pane)?;
+        self.focused(pane)?;
         // Async staleness; see `EditorState::async_opener_stale`'s own doc.
         // `top` `Drawer` is the self-replace exception below: a second
         // `show-drawer-list!` call while the first is still open (a
@@ -219,23 +219,23 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     // ── Fuzzy picker ──────────────────────────────────────────────────────
     fn open_picker(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         items: Vec<(String, hume_scripting::Rooted)>,
         on_select: hume_scripting::Callback,
         opts: PickerOpts,
     ) -> Result<Option<HostToken>, String> {
-        self.require_focused_pane(pane)?;
+        self.focused(pane)?;
         let session = PickerSession::new(on_select, opts, picker::picker_items(items));
         picker::open_picker(self.state, self.view, session)
     }
 
     fn open_live_picker(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         on_select: hume_scripting::Callback,
         opts: LivePickerOpts,
     ) -> Result<Option<HostToken>, String> {
-        self.require_focused_pane(pane)?;
+        self.focused(pane)?;
         let session = PickerSession::new_live(on_select, opts);
         picker::open_picker(self.state, self.view, session)
     }

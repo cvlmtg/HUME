@@ -7,7 +7,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::CharTextEdit;
+use crate::host::{CharTextEdit, FocusedHandle, ShownHandle};
 use hume_core::PaneHandle;
 
 use super::SteelResult;
@@ -92,7 +92,7 @@ pub(crate) fn apply_workspace_edit(
 ///
 /// A hashmap is one of the char-indexed shapes and a handle is the wire one.
 /// Keys that belong to the other char-indexed shape raise.
-pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal) -> SteelResult {
+pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: ShownHandle, loc: SteelVal) -> SteelResult {
     match &loc {
         SteelVal::HashMapV(map)
             if map.iter().any(
@@ -170,7 +170,7 @@ fn has_uri_scheme(s: &str) -> bool {
 /// exactly one chord (see [`single_key_arg`]), decoded here rather than
 /// left to the host: the host trait takes an already-parsed `KeyEvent`,
 /// same as every other typed `EditHost` param.
-pub(crate) fn insert_key(ctx: &mut SteelCtx, pane: PaneHandle, key: SteelVal) -> SteelResult {
+pub(crate) fn insert_key(ctx: &mut SteelCtx, pane: FocusedHandle, key: SteelVal) -> SteelResult {
     let key = single_key_arg(key, "key")?;
     require_cap(ctx.host.edits())?
         .insert_key(pane, key)
@@ -180,7 +180,7 @@ pub(crate) fn insert_key(ctx: &mut SteelCtx, pane: PaneHandle, key: SteelVal) ->
 
 /// `(paste-text! pane text)`: paste `text`, a string or a list of strings,
 /// into whatever has focus.
-pub(crate) fn paste_text(ctx: &mut SteelCtx, pane: PaneHandle, text: SteelVal) -> SteelResult {
+pub(crate) fn paste_text(ctx: &mut SteelCtx, pane: FocusedHandle, text: SteelVal) -> SteelResult {
     let values = strings_arg(text, "text")?;
     require_cap(ctx.host.edits())?
         .paste_text(pane, values)
@@ -216,7 +216,7 @@ pub(crate) fn edit_text(
 /// `(goto-revision! pane id)`: move `pane`'s buffer to revision `id` of its
 /// undo history (a number from `(buffer-undo-tree pane)`), across branches.
 /// Raises when the buffer has no such revision or is read-only.
-pub(crate) fn goto_revision(ctx: &mut SteelCtx, pane: PaneHandle, revision: usize) -> SteelResult {
+pub(crate) fn goto_revision(ctx: &mut SteelCtx, pane: ShownHandle, revision: usize) -> SteelResult {
     require_cap(ctx.host.edits())?
         .goto_revision(pane, revision)
         .map(|()| SteelVal::Void)

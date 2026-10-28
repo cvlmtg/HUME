@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::{SteelCtxTestHarness, default_pane};
+use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane};
 use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
 use steel::rvals::IntoSteelVal as _;
@@ -72,7 +72,7 @@ fn set_inlay_hints_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_inlay_hints(&mut ctx, default_pane(), "test".to_string(), empty);
+    let result = set_inlay_hints(&mut ctx, default_bid(), "test".to_string(), empty);
     assert_unsupported(result);
 }
 
@@ -82,7 +82,7 @@ fn register_sign_source_without_decoration_host_errors() {
     let mut ctx = h.ctx();
     let result = register_sign_source(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "test".to_string(),
         SteelVal::IntV(10),
     );
@@ -94,7 +94,7 @@ fn set_signs_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_signs(&mut ctx, default_pane(), "test".to_string(), empty);
+    let result = set_signs(&mut ctx, default_bid(), "test".to_string(), empty);
     assert_unsupported(result);
 }
 
@@ -110,7 +110,7 @@ fn set_signs_rejects_a_control_character_in_the_glyph() {
     let mut ctx = h.ctx();
     let result = set_signs(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "test".to_string(),
         list(vec![sign(0, "\tS", "ui.sign")]),
     );
@@ -129,7 +129,7 @@ fn set_signs_accepts_a_multi_codepoint_glyph() {
     let mut ctx = h.ctx();
     let result = set_signs(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "test".to_string(),
         list(vec![sign(0, "e\u{0301}", "ui.sign")]),
     );
@@ -149,7 +149,7 @@ fn set_signs_rejects_a_positional_list_entry() {
     ]);
     let msg = set_signs(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "test".to_string(),
         list(vec![positional]),
     )
@@ -168,7 +168,7 @@ fn set_signs_rejects_a_missing_key() {
     ]);
     let msg = set_signs(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "test".to_string(),
         list(vec![entry]),
     )
@@ -182,7 +182,7 @@ fn set_virtual_lines_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_virtual_lines(&mut ctx, default_pane(), "test".to_string(), empty);
+    let result = set_virtual_lines(&mut ctx, default_bid(), "test".to_string(), empty);
     assert_unsupported(result);
 }
 
@@ -193,7 +193,7 @@ fn set_eol_text_without_decoration_host_errors() {
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
     let result = set_eol_text(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "test".to_string(),
         empty,
         SteelVal::BoolV(false),
@@ -208,7 +208,7 @@ fn set_eol_text_rejects_a_non_bool_hide_flag() {
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
     let result = set_eol_text(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "test".to_string(),
         empty,
         SteelVal::StringV("yes".into()),
@@ -222,7 +222,7 @@ fn set_extra_highlights_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_extra_highlights(&mut ctx, default_pane(), "test".to_string(), empty);
+    let result = set_extra_highlights(&mut ctx, default_bid(), "test".to_string(), empty);
     assert_unsupported(result);
 }
 
@@ -232,7 +232,7 @@ fn set_statusline_text_without_decoration_host_errors() {
     let mut ctx = h.ctx();
     let result = set_statusline_text(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "test".to_string(),
         SteelVal::StringV("main".into()),
     );

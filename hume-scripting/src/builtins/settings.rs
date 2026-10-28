@@ -5,8 +5,7 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::SteelVal;
 
 use hume_core::{
-    BufferId, BufferIntrinsicOption, LanguageOptionText, OptionInput, PaneHandle,
-    StatuslineSections,
+    BufferId, BufferIntrinsicOption, LanguageOptionText, OptionInput, StatuslineSections,
 };
 
 use crate::SteelCtx;
@@ -163,11 +162,10 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 /// that may differ from the buffer whose language just changed).
 pub(crate) fn set_buffer_option(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     key: String,
     value: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let origin = ctx.registration_origin();
     match BufferIntrinsicOption::from_name(&key) {
         Some(BufferIntrinsicOption::Language) => {
@@ -228,8 +226,7 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// explicit argument rather than relying on `(focused-pane)` (a live read
 /// that may differ from the buffer whose language just changed), same
 /// reasoning as `set-buffer-option!`.
-pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, pane: PaneHandle, key: String) -> SteelResult {
-    let bid = pane.buffer();
+pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, bid: BufferId, key: String) -> SteelResult {
     match BufferIntrinsicOption::from_name(&key) {
         Some(BufferIntrinsicOption::Language) => {
             let language = effective_language(ctx, bid);

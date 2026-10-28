@@ -414,3 +414,37 @@ fn lsp_shutdown_all_with_no_clients_returns_immediately() {
         "no clients means nothing to wait for: must not block on the grace window"
     );
 }
+
+/// `lsp-show-status!` opens the view on the pane it was given, once the call
+/// returns: a body that moves focus after the call opens nothing and reports
+/// the refusal.
+#[test]
+fn show_status_opens_nothing_once_its_pane_has_lost_focus() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (lsp-show-status! pane)
+             (call! "pane-vsplit" pane)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    assert!(
+        has_error(
+            &ed,
+            "lsp-show-status!: acts on the focused pane, which this pane isn't"
+        ),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert!(
+        !ed.state
+            .buffers
+            .iter()
+            .any(|(_, buffer)| buffer.display_name() == "[lsp-status]"),
+        "the status view must not open"
+    );
+}

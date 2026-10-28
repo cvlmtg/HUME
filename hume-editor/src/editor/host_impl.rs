@@ -16,8 +16,8 @@ use hume_engine::pipeline::EngineView;
 use crate::editor::timer_bridge::Timers;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
-    DiffHost, EditHost, EditorHost, EventHost, LanguageHost, LspHost, OutputHost, RegisterHost,
-    SettingsHost, TimerHost, UiHost,
+    DiffHost, EditHost, EditorHost, EventHost, FocusedHandle, LanguageHost, LspHost, OutputHost,
+    RegisterHost, SettingsHost, ShownHandle, TimerHost, UiHost,
 };
 
 use super::EditorState;
@@ -147,14 +147,24 @@ impl<'a> EditorHostImpl<'a> {
         self.state.buffers.try_get(id)
     }
 
-    /// Resolve `pane` to a [`CommandPane`](crate::editor::commands::CommandPane), the shared tail every
-    /// `CursorHost`/`EditHost`/`BufferHost` method with a `PaneHandle`
-    /// argument reduces to, as an error `Display`ed at the Steel boundary.
-    pub(super) fn command_pane(
+    /// `pane` as the [`CommandPane`](crate::editor::commands::CommandPane)
+    /// a host method acts through: the one check that its pane still shows
+    /// its buffer, which every method taking a [`ShownHandle`] runs before
+    /// acting.
+    pub(super) fn shown(
         &self,
-        pane: hume_core::PaneHandle,
+        pane: ShownHandle,
     ) -> Result<crate::editor::commands::CommandPane, String> {
-        crate::editor::commands::CommandPane::resolve(self.state, self.view, pane)
+        crate::editor::commands::CommandPane::checked(self.state, self.view, pane)
+            .map_err(|e| e.to_string())
+    }
+
+    /// [`Self::shown`] for a focused pane.
+    pub(super) fn focused(
+        &self,
+        pane: FocusedHandle,
+    ) -> Result<crate::editor::commands::FocusedPane, String> {
+        crate::editor::commands::FocusedPane::checked(self.state, self.view, pane)
             .map_err(|e| e.to_string())
     }
 }

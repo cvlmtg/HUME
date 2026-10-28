@@ -1,11 +1,11 @@
 //! `EditorHostImpl`'s LSP server introspection.
 
-use hume_core::{BufferId, HostToken, LspFeature, PaneHandle};
+use hume_core::{BufferId, HostToken, LspFeature};
 
 use super::EditorHostImpl;
 use hume_lsp::backend::ServerId;
 use hume_scripting::host::{
-    LocationPlace, LspHost, PositionParams, RangeParams, RangesParams, TrackedHold,
+    LocationPlace, LspHost, PositionParams, RangeParams, RangesParams, ShownHandle, TrackedHold,
 };
 use hume_scripting::{CapabilityQuery, ServerRef};
 
@@ -56,8 +56,8 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::language_lists(&self.state.lsp, language)
     }
 
-    fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<PositionParams>, String> {
-        let t = self.command_pane(pane)?;
+    fn lsp_position_params(&self, pane: ShownHandle) -> Result<Option<PositionParams>, String> {
+        let t = self.shown(pane)?;
         Ok(params::position_params(self.state, self.view, t))
     }
 
@@ -65,8 +65,8 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         params::document_uri(self.state, id)
     }
 
-    fn track_position(&mut self, pane: PaneHandle) -> Result<HostToken, String> {
-        let t = self.command_pane(pane)?;
+    fn track_position(&mut self, pane: ShownHandle) -> Result<HostToken, String> {
+        let t = self.shown(pane)?;
         let bid = t.bid(self.view);
         let text = self.state.buffers.get(bid).text().clone();
         let head = t
@@ -98,13 +98,16 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         self.state.panes.tracked.hold(token)
     }
 
-    fn lsp_primary_range_params(&self, pane: PaneHandle) -> Result<Option<RangeParams>, String> {
-        let t = self.command_pane(pane)?;
+    fn lsp_primary_range_params(&self, pane: ShownHandle) -> Result<Option<RangeParams>, String> {
+        let t = self.shown(pane)?;
         Ok(params::primary_range_params(self.state, self.view, t))
     }
 
-    fn lsp_linewise_ranges_params(&self, pane: PaneHandle) -> Result<Option<RangesParams>, String> {
-        let t = self.command_pane(pane)?;
+    fn lsp_linewise_ranges_params(
+        &self,
+        pane: ShownHandle,
+    ) -> Result<Option<RangesParams>, String> {
+        let t = self.shown(pane)?;
         Ok(params::linewise_ranges_params(self.state, self.view, t))
     }
 

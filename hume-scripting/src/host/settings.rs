@@ -52,9 +52,8 @@ pub trait SettingsHost {
     /// builtins route each `BufferIntrinsicOption` elsewhere. Command/hook
     /// context (`cmd` kind),
     /// unlike `set_global_option`. `Err` for a stale buffer, a global-only
-    /// key, or a bad value. Kind-C: only the buffer matters, `pane`'s own
-    /// pane (if any) is ignored: the builtin layer narrows the decoded
-    /// `PaneHandle` to a plain `bid` before this is called. It ranks as
+    /// key, or a bad value. Only the buffer matters: the builtin declares
+    /// its `pane` a `LiveBuffer`, which resolves to a plain `bid`. It ranks as
     /// `origin` against the buffer's override, as `set_global_option` does
     /// against the global value.
     fn set_buffer_option(
@@ -91,7 +90,6 @@ pub trait SettingsHost {
     /// context (`cmd` kind): the idiomatic caller is a hook handler that
     /// received the target pane as an explicit argument (e.g.
     /// `on-language-set`, whose buffer may differ from the focused one).
-    /// Kind-C, same as `set_buffer_option`.
     fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
 
     /// `(get-buffer-option pane "line-ending")`: in the spelling the setter

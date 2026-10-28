@@ -2,11 +2,12 @@
 
 use std::sync::Arc;
 
-use hume_core::{BufferId, HostToken, PaneHandle};
+use hume_core::{BufferId, HostToken};
 use hume_rope::position_encoding::PositionEncoding;
 
 use hume_lsp::backend::ServerId;
 
+use super::ShownHandle;
 use super::token::TrackedHold;
 use crate::builtins::ids::{DocPos, DocRange, ServerRef};
 use crate::types::CapabilityQuery;
@@ -115,21 +116,18 @@ pub trait LspHost {
     /// ([`hume_core::LanguageLists::plan`]).
     fn lsp_language_lists(&self, language: &str) -> LanguageLists;
 
-    /// The document URI and primary cursor head of `pane`'s own pane.
-    /// `Ok(None)` if the buffer has no path. `Err` (kind-B fail-fast) when
-    /// `pane` carries no pane, a closed one, or one that no longer shows
-    /// `pane`'s buffer.
-    fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<PositionParams>, String>;
+    /// The document URI and primary cursor head of `pane`'s pane.
+    /// `Ok(None)` if the buffer has no path.
+    fn lsp_position_params(&self, pane: ShownHandle) -> Result<Option<PositionParams>, String>;
 
     /// The document URI of buffer `id`. `None` for a closed buffer or one
-    /// with no path. Reads only the buffer, so any `PaneHandle` works.
+    /// with no path.
     fn lsp_document_uri(&self, id: BufferId) -> Option<String>;
 
     /// `(track-position! pane)`: remembers the primary cursor head in
-    /// `pane`'s own pane, carried through every edit, and returns the token
-    /// naming it. `Err` (kind-B fail-fast) when `pane` carries no pane, a
-    /// closed one, or one that no longer shows `pane`'s buffer.
-    fn track_position(&mut self, pane: PaneHandle) -> Result<HostToken, String>;
+    /// `pane`'s pane, carried through every edit, and returns the token
+    /// naming it.
+    fn track_position(&mut self, pane: ShownHandle) -> Result<HostToken, String>;
 
     /// `(tracked-position-params token)`: the
     /// [`lsp_position_params`](Self::lsp_position_params) shape for where the
@@ -155,16 +153,17 @@ pub trait LspHost {
 
     /// Same as [`lsp_position_params`](Self::lsp_position_params) but the
     /// range the primary selection covers.
-    fn lsp_primary_range_params(&self, pane: PaneHandle) -> Result<Option<RangeParams>, String>;
+    fn lsp_primary_range_params(&self, pane: ShownHandle) -> Result<Option<RangeParams>, String>;
 
-    /// One range per *linewise* selection in `pane`'s own pane, coalescing
+    /// One range per *linewise* selection in `pane`'s pane, coalescing
     /// any run of selections that touch end-to-end into a single range (an
     /// LSP range is naturally contiguous, so a touching run needs no
     /// splitting). A non-linewise selection is skipped, not an error:
     /// `ranges` is empty when none of the selections are linewise.
     /// `Ok(None)` (as opposed to an empty `ranges`) only for a buffer with
-    /// no path. `Err` per [`lsp_position_params`](Self::lsp_position_params).
-    fn lsp_linewise_ranges_params(&self, pane: PaneHandle) -> Result<Option<RangesParams>, String>;
+    /// no path.
+    fn lsp_linewise_ranges_params(&self, pane: ShownHandle)
+    -> Result<Option<RangesParams>, String>;
 
     /// A wire `[start, end)` range → char offsets, decoded in `encoding`.
     /// Backs `lsp-range->char-range`. `encoding` comes from the caller's own

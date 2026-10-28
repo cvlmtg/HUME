@@ -34,7 +34,7 @@ fn switch_to_buffer_ends_insert_session_on_focused_pane() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .switch_to_buffer(pane, new_bid)
+        .switch_to_buffer(hume_scripting::host::ShownHandle::for_test(pane), new_bid)
         .expect("switch must succeed");
 
     assert_eq!(
@@ -71,7 +71,11 @@ fn goto_location_to_another_buffer_ends_insert_session_on_focused_pane() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .goto_location_buffer(pane, new_bid, 1)
+        .goto_location_buffer(
+            hume_scripting::host::ShownHandle::for_test(pane),
+            new_bid,
+            1,
+        )
         .expect("goto-location! must succeed");
 
     assert_eq!(
@@ -101,7 +105,7 @@ fn goto_location_within_the_focused_buffer_leaves_insert_session_open() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .goto_location_buffer(pane, bid, 3)
+        .goto_location_buffer(hume_scripting::host::ShownHandle::for_test(pane), bid, 3)
         .expect("goto-location! must succeed");
 
     assert_eq!(
@@ -136,7 +140,7 @@ fn goto_location_within_the_focused_buffer_invalidates_the_typed_run() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .goto_location_buffer(pane, bid, 3)
+        .goto_location_buffer(hume_scripting::host::ShownHandle::for_test(pane), bid, 3)
         .expect("goto-location! must succeed");
 
     assert!(!snapshot_bookkeeping(&ed).typed_run_open);
@@ -295,7 +299,7 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .switch_to_buffer(pane, new_bid)
+        .switch_to_buffer(hume_scripting::host::ShownHandle::for_test(pane), new_bid)
         .expect("switch must succeed");
 
     assert!(
@@ -338,7 +342,7 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
     // touch A's own open Insert session.
     let pane_b = PaneHandle::with_pane(bid_b, pid_b);
     live_host!(ed)
-        .switch_to_buffer(pane_b, bid_c)
+        .switch_to_buffer(hume_scripting::host::ShownHandle::for_test(pane_b), bid_c)
         .expect("remote switch must succeed");
 
     assert_eq!(
@@ -463,7 +467,11 @@ fn goto_location_from_an_auto_indented_blank_line_records_a_jump_back() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .goto_location_buffer(pane, new_bid, 1)
+        .goto_location_buffer(
+            hume_scripting::host::ShownHandle::for_test(pane),
+            new_bid,
+            1,
+        )
         .expect("goto-location! must succeed");
     assert_eq!(
         ed.state.buffers.get(old_bid).text().to_string(),

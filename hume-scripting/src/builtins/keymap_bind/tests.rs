@@ -434,11 +434,11 @@ fn bind_key_permitted_during_plugin_load() {
 
 #[test]
 fn attach_keymap_queues_an_attach_for_the_panes_buffer() {
-    use crate::test_support::{default_bid, default_pane};
+    use crate::test_support::default_bid;
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx();
-        attach_keymap(&mut ctx, default_pane(), sym("md-keys")).expect("attach must succeed");
+        attach_keymap(&mut ctx, default_bid(), sym("md-keys")).expect("attach must succeed");
     }
     assert!(
         matches!(
@@ -452,11 +452,11 @@ fn attach_keymap_queues_an_attach_for_the_panes_buffer() {
 
 #[test]
 fn detach_keymap_queues_a_detach_for_the_panes_buffer() {
-    use crate::test_support::{default_bid, default_pane};
+    use crate::test_support::default_bid;
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx();
-        detach_keymap(&mut ctx, default_pane(), sym("md-keys")).expect("detach must succeed");
+        detach_keymap(&mut ctx, default_bid(), sym("md-keys")).expect("detach must succeed");
     }
     assert!(
         matches!(
@@ -470,16 +470,12 @@ fn detach_keymap_queues_a_detach_for_the_panes_buffer() {
 
 #[test]
 fn attach_keymap_takes_a_string_name() {
-    use crate::test_support::{default_bid, default_pane};
+    use crate::test_support::default_bid;
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx();
-        attach_keymap(
-            &mut ctx,
-            default_pane(),
-            SteelVal::StringV("md-keys".into()),
-        )
-        .expect("a string name attaches");
+        attach_keymap(&mut ctx, default_bid(), SteelVal::StringV("md-keys".into()))
+            .expect("a string name attaches");
     }
     assert!(
         matches!(

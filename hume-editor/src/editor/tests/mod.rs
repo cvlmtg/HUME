@@ -544,7 +544,7 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_core::HostToken
     let pane = focused_pane(ed);
     EditorHostImpl::new(&mut ed.state, &mut ed.view)
         .show_drawer_list(
-            pane,
+            hume_scripting::host::FocusedHandle::for_test(pane),
             drawer_items(items),
             hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
             0,
@@ -1005,6 +1005,25 @@ macro_rules! live_host {
 #[allow(unused_imports)]
 pub(in crate::editor) use live_host;
 
+/// Splits the focused pane with `pane-vsplit` and returns the new pane,
+/// which the split focuses. Both panes show the same buffer.
+fn vsplit_focused(ed: &mut Editor) -> PaneId {
+    use hume_scripting::host::CommandHost;
+
+    let pane = focused_pane(ed);
+    live_host!(ed)
+        .run_command_sync(
+            "pane-vsplit",
+            pane,
+            NativeCall {
+                count: Count::typed(1),
+                ..NativeCall::default()
+            },
+        )
+        .expect("pane-vsplit succeeds");
+    ed.view.focused_pane()
+}
+
 /// Split the focused pane so B (a sibling on the same buffer) survives, then
 /// close the original pane A while it's focused, leaving A's slot vacant
 /// with no new pane reusing it. Returns `(pid_a, bid)`, the closed pane's own
@@ -1021,16 +1040,7 @@ pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, Buffer
     let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
 
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            PaneHandle::with_pane(bid, pid_a),
-            NativeCall {
-                count: Count::typed(1),
-                ..NativeCall::default()
-            },
-        )
-        .expect("pane-vsplit must succeed");
+    vsplit_focused(ed);
 
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
     live_host!(ed)
@@ -1623,6 +1633,7 @@ mod bracketed_paste;
 mod buffer;
 mod buffer_store;
 mod buffer_text_steel;
+mod builtin_pane_needs;
 mod busy_buffer;
 mod command_arg;
 mod command_exists;

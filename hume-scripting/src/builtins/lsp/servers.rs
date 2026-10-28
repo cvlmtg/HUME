@@ -5,16 +5,16 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
 
 use hume_core::{
-    FeatureFilter, ListEntry, ListTier, LspFeature, LspFeatureSet, LspServerConfig, PaneHandle,
-    ServerName,
+    FeatureFilter, ListEntry, ListTier, LspFeature, LspFeatureSet, LspServerConfig, ServerName,
 };
 
+use crate::host::FocusedHandle;
 use crate::types::{Effect, LspServerTarget, PendingLspServerOp};
 use crate::{PendingLspServerReg, SteelCtx};
 
 use crate::builtins::SteelResult;
 use crate::builtins::args::{
-    BuiltinArg, ENV_PAIR_SHAPE, LivePane, hash_entry, list_of, list_to_string_pairs,
+    BuiltinArg, ENV_PAIR_SHAPE, LiveBuffer, PaneNeed, hash_entry, list_of, list_to_string_pairs,
     list_to_strings, optional_json_arg, optional_list_items, string_arg, symbol_enum_arg,
     symbol_hash,
 };
@@ -274,27 +274,24 @@ pub(crate) fn lsp_restart(ctx: &mut SteelCtx, target: LspServerTarget) -> SteelR
 }
 
 /// `(lsp-show-status! pane)`: queues opening the `[lsp-status]` read-only
-/// view, applied at the end of the current eval. Kind-A: `pane` must be the
-/// focused pane, since the view opens anchored there.
-pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    ctx.host
-        .buffers()
-        .require_focused_pane(pane)
-        .map_err(generic_err)?;
-    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::ShowStatus));
+/// view on `pane`, applied at the end of the current eval. The editor checks
+/// then that `pane` is still the focused pane, and reports a refusal instead
+/// of opening the view.
+pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: FocusedHandle) -> SteelResult {
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::ShowStatus { pane }));
     Ok(SteelVal::Void)
 }
 
 /// `(lsp-stop! target)` / `(lsp-restart! target)`'s `target` argument, ahead
 /// of [`BuiltinArg::resolve`]'s liveness check on the `Buffer` case. A
-/// server value names that one instance, a pane decodes like [`LivePane`]
-/// (only its buffer is used: this is a kind-C, buffer-only operation), and a
+/// server value names that one instance, a pane decodes like [`LiveBuffer`]
+/// (only its buffer is used), and a
 /// string or symbol names a registered server (required: there is no
 /// "focused buffer" fallback to decode `#f` into).
 #[derive(Debug)]
 pub(crate) enum LspTargetArg {
     Server(crate::ServerRef),
-    Buffer(LivePane),
+    Buffer(LiveBuffer),
     Name(String),
 }
 
@@ -303,7 +300,7 @@ impl FromSteelVal for LspTargetArg {
         if let Some(server) = crate::ServerRef::from_steel_val(val) {
             return Ok(LspTargetArg::Server(server));
         }
-        if let Ok(pane) = LivePane::from_steelval(val) {
+        if let Ok(pane) = LiveBuffer::from_steelval(val) {
             return Ok(LspTargetArg::Buffer(pane));
         }
         match val {
@@ -318,6 +315,7 @@ impl FromSteelVal for LspTargetArg {
 }
 
 impl BuiltinArg for LspTargetArg {
+    const PANE_NEED: Option<PaneNeed> = LiveBuffer::PANE_NEED;
     type Out = crate::types::LspServerTarget;
     fn resolve(
         self,
@@ -327,7 +325,7 @@ impl BuiltinArg for LspTargetArg {
         match self {
             LspTargetArg::Server(server) => Ok(crate::types::LspServerTarget::Server(server.id)),
             LspTargetArg::Buffer(pane) => Ok(crate::types::LspServerTarget::Buffer(
-                pane.resolve(ctx, arg)?.buffer(),
+                pane.resolve(ctx, arg)?,
             )),
             LspTargetArg::Name(server) => hume_core::ServerName::parse(&server)
                 .map(crate::types::LspServerTarget::Name)

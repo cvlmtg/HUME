@@ -537,7 +537,7 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.open_picker(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         vec![],
         hume_scripting::Callback::for_test(SteelVal::Void),
         PickerOpts {
@@ -578,7 +578,7 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.open_picker(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         vec![(
             "a".to_string(),
             hume_scripting::Rooted::new(SteelVal::StringV("a".into())),

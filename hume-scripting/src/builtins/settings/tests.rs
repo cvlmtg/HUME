@@ -1,6 +1,6 @@
 use super::*;
 use crate::host::{OptionValue, StoredLanguage};
-use crate::test_support::{SteelCtxTestHarness, default_pane};
+use crate::test_support::{SteelCtxTestHarness, default_bid};
 use hume_core::{BufferId, ConfigOrigin, OnUnsaved, OptionInput};
 use steel::rvals::IntoSteelVal as _;
 
@@ -56,7 +56,7 @@ fn a_list_value_is_forwarded_as_words() {
             .unwrap();
         set_buffer_option(
             &mut ctx,
-            hume_core::PaneHandle::buffer_only(target),
+            hume_core::PaneHandle::buffer_only(target).buffer(),
             "shell".into(),
             list,
         )
@@ -132,7 +132,7 @@ fn an_option_takes_only_the_type_it_reads_back() {
             let mut host = RecordingBufferOptionHost::default();
             let mut ctx = h.ctx_with_host(&mut host);
             let global = set_option(&mut ctx, key.into(), value.clone());
-            let buffer = set_buffer_option(&mut ctx, default_pane(), key.into(), value.clone());
+            let buffer = set_buffer_option(&mut ctx, default_bid(), key.into(), value.clone());
             if std::mem::discriminant(value) == std::mem::discriminant(&own) {
                 global.expect("its own type is accepted");
                 buffer.expect("its own type is accepted");
@@ -184,7 +184,7 @@ fn get_option_reaches_host_during_init_eval() {
 fn get_buffer_option_command_mode_calls_host_with_explicit_bid() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = get_buffer_option(&mut ctx, default_pane(), "indent-width".into());
+    let result = get_buffer_option(&mut ctx, default_bid(), "indent-width".into());
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -203,7 +203,7 @@ fn set_buffer_option_invalid_value_type_errors() {
     let mut ctx = h.ctx_with_host(&mut host);
     let result = set_buffer_option(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "indent-width".into(),
         SteelVal::Void,
     );
@@ -224,7 +224,7 @@ fn set_buffer_option_language_queues_every_write_with_its_origin() {
     for _ in 0..2 {
         set_buffer_option(
             &mut ctx,
-            default_pane(),
+            default_bid(),
             "language".into(),
             SteelVal::StringV("rust".into()),
         )
@@ -256,7 +256,7 @@ fn set_buffer_option_language_rejects_a_non_string() {
     let mut ctx = h.ctx();
     let msg = set_buffer_option(
         &mut ctx,
-        default_pane(),
+        default_bid(),
         "language".into(),
         SteelVal::BoolV(false),
     )
@@ -265,11 +265,11 @@ fn set_buffer_option_language_rejects_a_non_string() {
     assert!(msg.contains("'language' takes a string"), "got: {msg}");
 }
 
-// `set-buffer-option!`'s `bid` is now validated live before the builtin
-// body (this function) ever runs (`args::LivePane`'s `BuiltinArg::resolve`,
-// in the `builtins!`-registered closure), covered once, centrally, through
-// a real `ScriptingHost` by `builtins::tests::
-// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`.
+// `set-buffer-option!`'s `bid` is validated live before the builtin body
+// (this function) ever runs (`args::LiveBuffer`'s `BuiltinArg::resolve`, in
+// the `builtins!`-registered closure), covered once, centrally, through a
+// real `ScriptingHost` by `builtins::tests::
+// pane_builtins_raise_on_a_closed_buffer_through_real_registration`.
 // A direct call to this function (as every other test in this file makes)
 // can't reach that check at all, since it bypasses the registration layer.
 
@@ -324,11 +324,8 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn focused_pane(&self) -> hume_core::PaneHandle {
         self.inner.focused_pane()
     }
-    fn buffer_panes(&self, pane: hume_core::PaneHandle) -> Vec<hume_core::PaneHandle> {
-        self.inner.buffer_panes(pane)
-    }
-    fn require_focused_pane(&self, pane: hume_core::PaneHandle) -> Result<(), String> {
-        self.inner.require_focused_pane(pane)
+    fn buffer_panes(&self, id: BufferId) -> Vec<hume_core::PaneHandle> {
+        self.inner.buffer_panes(id)
     }
     fn pane_live(&self, pane: hume_core::PaneHandle) -> bool {
         self.inner.pane_live(pane)
@@ -378,14 +375,14 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     }
     fn switch_to_buffer(
         &mut self,
-        pane: hume_core::PaneHandle,
+        pane: crate::host::ShownHandle,
         target: BufferId,
     ) -> Result<hume_core::PaneHandle, String> {
         self.inner.switch_to_buffer(pane, target)
     }
     fn show_read_only_buffer(
         &mut self,
-        pane: hume_core::PaneHandle,
+        pane: crate::host::ShownHandle,
         name: &str,
         text: &str,
     ) -> Result<hume_core::PaneHandle, String> {
@@ -422,7 +419,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     }
     fn viewport_range(
         &mut self,
-        pane: hume_core::PaneHandle,
+        pane: crate::host::ShownHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
         self.inner.viewport_range(pane)
     }
@@ -488,7 +485,7 @@ fn set_buffer_option_reaches_host() {
     let mut ctx = h.ctx_with_host(&mut host);
     let result = set_buffer_option(
         &mut ctx,
-        hume_core::PaneHandle::buffer_only(target),
+        hume_core::PaneHandle::buffer_only(target).buffer(),
         "indent-width".into(),
         SteelVal::IntV(8),
     );
@@ -513,7 +510,7 @@ fn set_buffer_option_refuses_a_symbol_value() {
     let mut ctx = h.ctx_with_host(&mut host);
     let err = set_buffer_option(
         &mut ctx,
-        hume_core::PaneHandle::buffer_only(target),
+        hume_core::PaneHandle::buffer_only(target).buffer(),
         "indent-style".into(),
         SteelVal::SymbolV("soft".into()),
     )
@@ -554,7 +551,7 @@ fn option_writes_carry_the_callers_origin() {
     let pane = hume_core::PaneHandle::buffer_only(BufferId::default());
     let write = |ctx: &mut SteelCtx| {
         set_option(ctx, "indent-width".into(), SteelVal::IntV(2)).expect("global write");
-        set_buffer_option(ctx, pane, "indent-width".into(), SteelVal::IntV(2))
+        set_buffer_option(ctx, pane.buffer(), "indent-width".into(), SteelVal::IntV(2))
             .expect("buffer write");
     };
     write(&mut h.ctx_with_host(&mut host));
@@ -630,7 +627,7 @@ fn set_buffer_option_line_ending_reaches_the_line_ending_setter() {
     let mut ctx = h.ctx_with_host(&mut host);
     set_buffer_option(
         &mut ctx,
-        hume_core::PaneHandle::buffer_only(target),
+        hume_core::PaneHandle::buffer_only(target).buffer(),
         "line-ending".into(),
         SteelVal::StringV("crlf".into()),
     )

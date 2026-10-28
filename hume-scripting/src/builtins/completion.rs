@@ -10,7 +10,7 @@ use crate::host::{CompletionSourceTarget, EmittedWord};
 use crate::json::json_to_steel;
 use crate::types::TriggerScope;
 use crate::{Callback, Effect, SteelCtx};
-use hume_core::{AnswerEnd, FirstTab, MatchKind, NamedPrefix, PaneHandle, TriggerListener};
+use hume_core::{AnswerEnd, BufferId, FirstTab, MatchKind, NamedPrefix, TriggerListener};
 
 use super::SteelResult;
 use super::args::{
@@ -80,23 +80,23 @@ pub(crate) fn set_hook_triggers(
 /// `feature` and `server` advertises it.
 pub(crate) fn set_attachment_hook_triggers(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     server: SteelVal,
     feature: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let scope = attachment_scope(pane, server, feature)?;
+    let scope = attachment_scope(bid, server, feature)?;
     queue_triggers(ctx, TriggerListener::Hook, source, scope, chars)
 }
 
 fn attachment_scope(
-    pane: PaneHandle,
+    bid: BufferId,
     server: SteelVal,
     feature: SteelVal,
 ) -> Result<TriggerScope, SteelErr> {
     Ok(TriggerScope::Attachment {
-        buffer: pane.buffer(),
+        buffer: bid,
         server: server_arg(&server, "server")?.id,
         feature: required_feature_arg(feature, "feature")?,
     })
@@ -301,13 +301,13 @@ pub(crate) fn set_completion_triggers(
 /// `set-attachment-hook-triggers!` is to `set-hook-triggers!`.
 pub(crate) fn set_attachment_completion_triggers(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     server: SteelVal,
     feature: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let scope = attachment_scope(pane, server, feature)?;
+    let scope = attachment_scope(bid, server, feature)?;
     queue_triggers(ctx, TriggerListener::Completion, source, scope, chars)
 }
 

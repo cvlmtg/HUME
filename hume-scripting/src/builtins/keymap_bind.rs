@@ -8,7 +8,7 @@ use steel::rvals::SteelVal;
 use crate::host::KeymapTarget;
 use crate::keys::parse_key_sequence;
 use crate::{Effect, SteelCtx};
-use hume_core::{BindMode, PaneHandle};
+use hume_core::{BindMode, BufferId};
 
 use super::SteelResult;
 use super::args::{optional_string_arg, string_arg, symbol_arg, symbol_enum_arg};
@@ -149,12 +149,9 @@ fn keymap_name(name: SteelVal) -> Result<String, SteelErr> {
 /// Makes the keymap `name` apply in `pane`'s buffer, ahead of the keymaps
 /// attached before it. A keymap already attached keeps its place. The editor
 /// warns when no keymap has that name yet.
-pub(crate) fn attach_keymap(ctx: &mut SteelCtx, pane: PaneHandle, name: SteelVal) -> SteelResult {
+pub(crate) fn attach_keymap(ctx: &mut SteelCtx, bid: BufferId, name: SteelVal) -> SteelResult {
     let name = keymap_name(name)?;
-    ctx.push_effect(Effect::AttachKeymap {
-        buffer: pane.buffer(),
-        name,
-    });
+    ctx.push_effect(Effect::AttachKeymap { buffer: bid, name });
     Ok(SteelVal::Void)
 }
 
@@ -162,12 +159,9 @@ pub(crate) fn attach_keymap(ctx: &mut SteelCtx, pane: PaneHandle, name: SteelVal
 ///
 /// Stops the keymap `name` applying in `pane`'s buffer. The editor warns when
 /// no keymap has that name.
-pub(crate) fn detach_keymap(ctx: &mut SteelCtx, pane: PaneHandle, name: SteelVal) -> SteelResult {
+pub(crate) fn detach_keymap(ctx: &mut SteelCtx, bid: BufferId, name: SteelVal) -> SteelResult {
     let name = keymap_name(name)?;
-    ctx.push_effect(Effect::DetachKeymap {
-        buffer: pane.buffer(),
-        name,
-    });
+    ctx.push_effect(Effect::DetachKeymap { buffer: bid, name });
     Ok(SteelVal::Void)
 }
 

@@ -54,7 +54,7 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 
 /// `diff-buffer-lines` on a stale bid raises "invalid buffer id", not a
 /// silent "no differences": `bid`'s liveness is checked at argument-resolve
-/// time (`args::LivePane`'s `BuiltinArg::resolve`, in the `builtins!`-
+/// time (`args::LiveBuffer`'s `BuiltinArg::resolve`, in the `builtins!`-
 /// registered closure), before `diff_buffer_lines`'s body (and thus
 /// `DiffHost::diff_buffer_lines` itself) ever runs. Errors raised inside a
 /// `define-command!` body surface as a `Severity::Error` message-log entry

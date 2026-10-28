@@ -456,7 +456,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_drawer_list(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         drawer_items(&["one", "two"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         0,

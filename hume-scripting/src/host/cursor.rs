@@ -1,7 +1,9 @@
 //! Live cursor/selection reads.
 
-use hume_core::{BufferId, PaneHandle};
+use hume_core::BufferId;
 use hume_rope::line::ContentLine;
+
+use super::ShownHandle;
 
 /// One selection as a script reads it: raw 0-indexed char offsets.
 ///
@@ -20,41 +22,35 @@ pub struct SelectionInfo {
 }
 
 /// Live cursor/selection reads, accessed through [`EditorHost::cursor`](super::EditorHost::cursor).
-///
-/// Every method but [`Self::char_offset_to_line`] is kind-B (see `docs/LSP.md`'s
-/// pane-targeting convention): it acts through `pane`'s own pane, and raises
-/// (`Err`) rather than answering a default when `pane` carries no pane, a
-/// closed one, or one that no longer shows `pane`'s buffer: the same
-/// fail-fast contract every pane-needing builtin shares.
 pub trait CursorHost {
     /// `(buffer-cursor-line pane)`: 0-indexed content line of the primary
-    /// cursor in `pane`'s own pane.
-    fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<ContentLine, String>;
+    /// cursor in `pane`'s pane.
+    fn buffer_cursor_line(&self, pane: ShownHandle) -> Result<ContentLine, String>;
 
-    /// `(buffer-selections pane)`: every selection in `pane`'s own pane, as
+    /// `(buffer-selections pane)`: every selection in `pane`'s pane, as
     /// [`SelectionInfo`]s sorted by selection start, with exactly one flagged
     /// primary.
-    fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<SelectionInfo>, String>;
+    fn buffer_selections(&self, pane: ShownHandle) -> Result<Vec<SelectionInfo>, String>;
 
     /// `(char-offset->line bid idx)`: 0-indexed content line containing the
     /// 0-indexed char offset `idx` in `bid`'s live text; `len_chars()`, the
     /// offset after the final line break, is on the last content line. Pure
-    /// text math, not selection/pane state. Kind-C, unlike every other method
-    /// here: `bid` need not be shown in any pane.
+    /// text math, not selection/pane state: `bid` need not be shown in any
+    /// pane.
     ///
     /// `Err` when `idx` is past `len_chars()`: Scheme computed it for a live
     /// buffer, so a value out of range is a caller bug to raise, not a
     /// question to answer `#f` to. `bid`'s liveness is checked at
-    /// argument-resolve time (`args::LivePane`), so a stale `bid` never
+    /// argument-resolve time (`args::LiveBuffer`), so a stale `bid` never
     /// reaches here.
     fn char_offset_to_line(&self, bid: BufferId, idx: usize) -> Result<ContentLine, String>;
 
     /// `(symbol-under-cursor pane)`: the word at the primary cursor head in
-    /// `pane`'s own pane, `""` on whitespace/punctuation.
-    fn symbol_under_cursor(&self, pane: PaneHandle) -> Result<String, String>;
+    /// `pane`'s pane, `""` on whitespace/punctuation.
+    fn symbol_under_cursor(&self, pane: ShownHandle) -> Result<String, String>;
 
     /// `(selections-linewise? pane)`: every *unambiguous* selection in
-    /// `pane`'s own pane is linewise (spans whole lines, anchor to trailing
+    /// `pane`'s pane is linewise (spans whole lines, anchor to trailing
     /// `\n`). A selection collapsed onto a single empty line is ambiguous
     /// (see `SelectionView::linewise_classification`) and carries
     /// no vote either way. `false` when every selection is ambiguous,
@@ -69,12 +65,12 @@ pub trait CursorHost {
     /// pair means *mixed*; an all-ambiguous set answers `(false, true)`,
     /// indistinguishable from all-charwise, which is the
     /// default it's meant to take.
-    fn selections_linewise(&self, pane: PaneHandle) -> Result<bool, String>;
+    fn selections_linewise(&self, pane: ShownHandle) -> Result<bool, String>;
 
     /// `(selections-charwise? pane)`: no *unambiguous* selection in
-    /// `pane`'s own pane is linewise. `true` when every selection is
+    /// `pane`'s pane is linewise. `true` when every selection is
     /// ambiguous (the complementary default to [`Self::selections_linewise`]'s
     /// `false` in that same case). See [`Self::selections_linewise`] for why
     /// this is a second predicate rather than a verdict field elsewhere.
-    fn selections_charwise(&self, pane: PaneHandle) -> Result<bool, String>;
+    fn selections_charwise(&self, pane: ShownHandle) -> Result<bool, String>;
 }

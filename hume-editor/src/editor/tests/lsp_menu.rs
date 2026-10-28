@@ -63,6 +63,34 @@ fn show_menu_with_empty_items_raises_and_opens_nothing() {
     assert!(ed.state.input.menu().is_none());
 }
 
+/// A menu opens only over the focused pane: `show-menu!` on another pane
+/// showing the same buffer raises and opens nothing.
+#[test]
+fn show_menu_on_an_unfocused_pane_raises_and_opens_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    vsplit_focused(&mut ed);
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (let ((other (cadr (buffer-panes pane))))
+               (show-menu! other (list (cons "Rename" 'rename)) (lambda (choice) (void))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    assert!(
+        has_error(
+            &ed,
+            "show-menu!: acts on the focused pane, which this pane isn't"
+        ),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert!(ed.state.input.menu().is_none());
+}
+
 // ── Selection + confirm/cancel ────────────────────────────────────────────────
 
 #[test]
@@ -188,7 +216,7 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let token = host
         .show_menu(
-            pane,
+            hume_scripting::host::FocusedHandle::for_test(pane),
             script_rows(&["a", "b"]),
             hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         )
@@ -240,7 +268,7 @@ fn show_menu_from_insert_warns_instead_of_opening() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         script_rows(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );
@@ -279,7 +307,7 @@ fn show_menu_accepted_in_normal_mode() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         script_rows(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );
@@ -317,7 +345,7 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         script_rows(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );
@@ -368,7 +396,7 @@ fn show_menu_opens_over_an_open_drawer() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         script_rows(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );
@@ -400,7 +428,7 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_menu(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         script_rows(&["old"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     )
@@ -410,7 +438,7 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
-        pane,
+        hume_scripting::host::FocusedHandle::for_test(pane),
         script_rows(&["new-a", "new-b"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     );

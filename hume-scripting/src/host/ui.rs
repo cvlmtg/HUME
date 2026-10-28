@@ -10,7 +10,9 @@
 
 use termina::event::KeyEvent;
 
-use hume_core::{HostToken, NonEmpty, PaneHandle, PopupLayout, TruncateEnd};
+use hume_core::{HostToken, NonEmpty, PopupLayout, TruncateEnd};
+
+use super::FocusedHandle;
 
 /// A drawer's rows, as `show-drawer-list!`/`update-drawer-list!` received
 /// them.
@@ -141,16 +143,17 @@ pub enum PickerFeedMode {
 /// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
 /// prompt, accessed through [`EditorHost::ui`](super::EditorHost::ui). `None` from that accessor
 /// means "no UI surface to drive" (test stubs); every method here is
-/// required once a host does provide `UiHost`.
+/// required once a host does provide `UiHost`. Every opener opens over the
+/// focused pane its `pane` names.
 pub trait UiHost {
-    /// `(prompt! label #:prefill text on-confirm)` opens a one-shot
+    /// `(prompt! pane label on-confirm #:prefill text)` opens a one-shot
     /// Command-mode minibuffer session. `callback` fires exactly once, with
     /// the confirmed text or `#f` on cancel, queued through the same
     /// drained-at-frame-boundary path as every other Rust→Steel call, never
     /// invoked inline. Errors if a minibuffer session is already open.
     fn prompt(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         label: String,
         prefill: String,
         callback: crate::Callback,
@@ -180,7 +183,7 @@ pub trait UiHost {
     /// same shape as [`Self::show_drawer_list`]'s own return.
     fn show_popup(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         text: String,
         kind: PopupKind,
         layout: PopupLayout,
@@ -214,7 +217,7 @@ pub trait UiHost {
     /// `None` when the call was dropped as stale.
     fn show_menu(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         items: NonEmpty<(String, crate::Rooted)>,
         callback: crate::Callback,
     ) -> Result<Option<HostToken>, String>;
@@ -248,7 +251,7 @@ pub trait UiHost {
     /// checked by `EditorState::async_opener_stale`.
     fn show_drawer_list(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         items: DrawerItems,
         callback: crate::Callback,
         selected: usize,
@@ -317,7 +320,7 @@ pub trait UiHost {
     /// same selected-payload argument and exactly-once, queued contract.
     fn open_picker(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         items: Vec<(String, crate::Rooted)>,
         on_select: crate::Callback,
         opts: PickerOpts,
@@ -342,7 +345,7 @@ pub trait UiHost {
     /// tearing it down.
     fn open_live_picker(
         &mut self,
-        pane: PaneHandle,
+        pane: FocusedHandle,
         on_select: crate::Callback,
         opts: LivePickerOpts,
     ) -> Result<Option<HostToken>, String>;

@@ -5,6 +5,8 @@ use std::ffi::OsString;
 use hume_core::{BufferId, OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
 
+use super::ShownHandle;
+
 /// One revision of a buffer's undo history, as `(buffer-undo-tree pane)`
 /// reports it. `id` and `parent` are the raw integers Steel sees; the only
 /// way back to a revision is [`EditHost::goto_revision`], which validates the
@@ -63,30 +65,15 @@ pub trait BufferHost {
     /// buffer a request or edit is actually *about*.
     fn focused_pane(&self) -> PaneHandle;
 
-    /// `pane`'s own pane, still showing `pane`'s own buffer, else every
-    /// other pane showing that buffer: focused pane first, then the rest of
-    /// the active tab, then other tabs. Backs `(buffer-panes pane)`, the
-    /// explicit alternative to the pane guess this design removes: `(car
-    /// (buffer-panes pane))` reproduces it, chosen by the caller rather than
-    /// applied silently.
-    fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle>;
+    /// Every pane showing buffer `id`: the focused pane first if it shows
+    /// it, then the rest of the active tab, then other tabs. Backs
+    /// `(buffer-panes pane)`: `(car (buffer-panes pane))` is the caller's
+    /// own choice of a pane on the buffer, where no builtin guesses one.
+    fn buffer_panes(&self, id: BufferId) -> Vec<PaneHandle>;
 
-    /// The kind-A gate: requires `pane` to name the currently *focused*
-    /// pane, for a builtin whose action (open a popup/menu/drawer/picker,
-    /// jump to the LSP status view) is meaningless anywhere but the pane the
-    /// user is looking at. `Err` (never a silent default) when `pane`
-    /// carries no pane, a closed one, one that no longer shows its buffer,
-    /// or one that simply isn't focused.
-    fn require_focused_pane(&self, pane: PaneHandle) -> Result<(), String>;
-
-    /// `#t` if `pane` names a pane that still exists and still shows
-    /// `pane`'s own buffer, `#f` otherwise (including when `pane` carries no
-    /// pane component at all). Never raises; the pane-aware sibling of
-    /// `buffer_exists`/`(buffer-live? pane)`. The idiom for a debounced or
-    /// otherwise async continuation whose captured `pane` may have closed,
-    /// or been repointed at another buffer, by the time it fires: check
-    /// this first, rather than discovering the fact via a raise from
-    /// whatever kind-B builtin the continuation was actually going to call.
+    /// Whether `pane` names a pane that still exists and still shows
+    /// `pane`'s buffer; `false` when `pane` carries no pane. Never raises.
+    /// Backs `(pane-live? pane)`.
     fn pane_live(&self, pane: PaneHandle) -> bool;
 
     // ── Buffer reads (None ⇒ unknown/stale id) ──────────────────────────────
@@ -122,23 +109,20 @@ pub trait BufferHost {
     /// unsaved changes and `on_unsaved` is [`OnUnsaved::Refuse`], or while a
     /// pipe runs in it.
     fn close_buffer(&mut self, id: BufferId, on_unsaved: OnUnsaved) -> Result<(), String>;
-    /// Redirect `pane`'s own pane to `target`, recording a jump entry, and
-    /// return the handle naming that pane and `target`. Kind-B: raises if
-    /// `pane` carries no pane, a closed one, or one that no longer shows
-    /// `pane`'s buffer.
+    /// Redirect `pane`'s pane to `target`, recording a jump entry, and
+    /// return the handle naming that pane and `target`.
     fn switch_to_buffer(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         target: BufferId,
     ) -> Result<PaneHandle, String>;
     /// Show `text` on `pane`'s own pane in the read-only buffer labelled
     /// `[name]`, opening it on first use and replacing its text after, and
-    /// return the handle naming that pane and the view.
-    /// Kind-B, like [`Self::switch_to_buffer`]. `Err` for an empty name or
-    /// one the editor's own views use.
+    /// return the handle naming that pane and the view. `Err` for an empty
+    /// name or one the editor's own views use.
     fn show_read_only_buffer(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         name: &str,
         text: &str,
     ) -> Result<PaneHandle, String>;
@@ -202,18 +186,16 @@ pub trait BufferHost {
         line: hume_rope::line::ContentLine,
     ) -> Option<usize>;
 
-    /// The content-domain line range currently visible in `pane`'s own pane.
+    /// The content-domain line range currently visible in `pane`'s pane.
     /// Backs the Steel `(viewport-range pane)` builtin, which unwraps the
     /// range to a `(hash 'start-line first 'end-line end)` at the Steel boundary
     /// (0-based, end-exclusive). Pane geometry, not LSP state, so it doesn't need
-    /// an attached server. Kind-B: raises if `pane` carries no pane, a
-    /// closed one, or one that no longer shows `pane`'s buffer. A pane on a
-    /// background tab answers too: its size follows the terminal, but its
+    /// an attached server. A pane on a background tab answers too: its size follows the terminal, but its
     /// scroll position stays where it was until that tab is focused again.
     /// Takes `&mut self` so the host can first lay its panes out against a
     /// band opened or closed since its last frame.
     fn viewport_range(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String>;
 }

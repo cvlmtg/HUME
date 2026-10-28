@@ -3,7 +3,8 @@ use super::*;
 use crate::json::JsonHandle;
 use crate::null_host::EmptyLspHost;
 use crate::test_support::{
-    SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane, hash_field,
+    SteelCtxTestHarness, default_bid, default_focused, default_pane, default_pane_with_pane,
+    default_shown, hash_field,
 };
 use crate::types::{LspServerTarget, RequestMode, RequestParams, RouteSpec, WhenUnavailable};
 use hume_core::{ConfigOrigin, FeatureFilter, ListEntry, ListTier, LspServerConfig, ServerName};
@@ -378,12 +379,16 @@ fn lsp_restart_queues_a_restart_op_with_the_given_name() {
 fn lsp_show_status_queues_a_show_status_op() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_show_status(&mut ctx, default_pane());
+    let result = lsp_show_status(&mut ctx, default_focused());
     assert!(result.is_ok());
     drop(ctx);
     let ops = lsp_server_ops(&h);
     assert_eq!(ops.len(), 1);
-    assert!(matches!(ops[0], PendingLspServerOp::ShowStatus));
+    assert!(
+        matches!(ops[0], PendingLspServerOp::ShowStatus { pane } if *pane == default_focused()),
+        "got {:?}",
+        ops[0]
+    );
 }
 
 /// Unlike the buffer/pane-touching LSP builtins above,
@@ -1168,7 +1173,7 @@ fn position_params_hash_carries_a_doc_pos() {
 fn lsp_position_to_char_offset_untagged_handle_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let msg = lsp_position_to_char_offset(&mut ctx, default_pane(), wire_pos(0, 0))
+    let msg = lsp_position_to_char_offset(&mut ctx, default_bid(), wire_pos(0, 0))
         .unwrap_err()
         .to_string();
     assert!(
@@ -1176,7 +1181,7 @@ fn lsp_position_to_char_offset_untagged_handle_errors() {
         "got: {msg}"
     );
     let local = JsonHandle::new(serde_json::json!({"line": 0, "character": 0})).into_steel_val();
-    let msg = lsp_position_to_char_offset(&mut ctx, default_pane(), local)
+    let msg = lsp_position_to_char_offset(&mut ctx, default_bid(), local)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
@@ -1195,7 +1200,7 @@ fn lsp_reads_without_lsp_host_error() {
         ("lsp-servers", |ctx| {
             lsp_servers(
                 ctx,
-                default_pane(),
+                default_bid(),
                 SteelVal::BoolV(false),
                 SteelVal::BoolV(false),
             )
@@ -1216,18 +1221,20 @@ fn lsp_reads_without_lsp_host_error() {
             lsp_server_registered(ctx, "rust-analyzer".into_steelval().unwrap())
         }),
         ("lsp-document-params", |ctx| {
-            lsp_document_params(ctx, default_pane())
+            lsp_document_params(ctx, default_bid())
         }),
         ("lsp-position-params", |ctx| {
-            lsp_position_params(ctx, default_pane())
+            lsp_position_params(ctx, default_shown())
         }),
         ("lsp-primary-range-params", |ctx| {
-            lsp_primary_range_params(ctx, default_pane())
+            lsp_primary_range_params(ctx, default_shown())
         }),
         ("lsp-linewise-ranges-params", |ctx| {
-            lsp_linewise_ranges_params(ctx, default_pane())
+            lsp_linewise_ranges_params(ctx, default_shown())
         }),
-        ("track-position!", |ctx| track_position(ctx, default_pane())),
+        ("track-position!", |ctx| {
+            track_position(ctx, default_shown())
+        }),
         ("tracked-position-params", |ctx| {
             tracked_position_params(ctx, SteelVal::IntV(1))
         }),
@@ -1287,7 +1294,7 @@ fn lsp_position_to_char_offset_without_lsp_host_errors() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let msg = lsp_position_to_char_offset(&mut ctx, default_pane(), position)
+    let msg = lsp_position_to_char_offset(&mut ctx, default_bid(), position)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
@@ -1300,7 +1307,7 @@ fn lsp_position_to_char_offset_errors_on_missing_character() {
     let position =
         JsonHandle::server_for_test(serde_json::json!({"line": 0}), PositionEncoding::Utf16)
             .into_steel_val();
-    let result = lsp_position_to_char_offset(&mut ctx, default_pane(), position);
+    let result = lsp_position_to_char_offset(&mut ctx, default_bid(), position);
     let msg = result.unwrap_err().to_string();
     assert!(
         msg.contains("position must be an object with numeric 'line' and 'character' fields"),
@@ -1317,7 +1324,7 @@ fn lsp_position_to_char_offset_errors_on_non_numeric_line() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let result = lsp_position_to_char_offset(&mut ctx, default_pane(), position);
+    let result = lsp_position_to_char_offset(&mut ctx, default_bid(), position);
     let msg = result.unwrap_err().to_string();
     assert!(
         msg.contains("position must be an object with numeric 'line' and 'character' fields"),
@@ -1329,7 +1336,7 @@ fn lsp_position_to_char_offset_errors_on_non_numeric_line() {
 fn lsp_position_to_char_offset_errors_on_non_hashmap_arg() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_position_to_char_offset(&mut ctx, default_pane(), SteelVal::IntV(5));
+    let result = lsp_position_to_char_offset(&mut ctx, default_bid(), SteelVal::IntV(5));
     let msg = result.unwrap_err().to_string();
     assert!(
         msg.contains("position: expected a JSON handle from a server response"),
@@ -1344,7 +1351,7 @@ fn lsp_range_to_char_range_untagged_handle_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let range = hashmap(vec![("start", wire_pos(0, 0)), ("end", wire_pos(0, 3))]);
-    let msg = lsp_range_to_char_range(&mut ctx, default_pane(), range)
+    let msg = lsp_range_to_char_range(&mut ctx, default_bid(), range)
         .unwrap_err()
         .to_string();
     assert!(
@@ -1356,7 +1363,7 @@ fn lsp_range_to_char_range_untagged_handle_errors() {
         "end": {"line": 0, "character": 3},
     }))
     .into_steel_val();
-    let msg = lsp_range_to_char_range(&mut ctx, default_pane(), local)
+    let msg = lsp_range_to_char_range(&mut ctx, default_bid(), local)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
@@ -1371,7 +1378,7 @@ fn lsp_range_to_char_range_without_lsp_host_errors() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let msg = lsp_range_to_char_range(&mut ctx, default_pane(), range)
+    let msg = lsp_range_to_char_range(&mut ctx, default_bid(), range)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
@@ -1386,7 +1393,7 @@ fn lsp_range_to_char_range_errors_on_missing_end() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let result = lsp_range_to_char_range(&mut ctx, default_pane(), range);
+    let result = lsp_range_to_char_range(&mut ctx, default_bid(), range);
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("range has no 'end' field"), "got: {msg}");
 }
@@ -1400,7 +1407,7 @@ fn lsp_range_to_char_range_errors_on_malformed_start() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let result = lsp_range_to_char_range(&mut ctx, default_pane(), range);
+    let result = lsp_range_to_char_range(&mut ctx, default_bid(), range);
     let msg = result.unwrap_err().to_string();
     assert!(
         msg.contains("range start: position must be an object"),
@@ -1424,30 +1431,21 @@ fn offset_pair(items: &[isize]) -> SteelVal {
     .into_steel_val()
 }
 
+/// The encoding comes from the offsets' own tag, so no LSP host is needed.
 #[test]
-fn lsp_label_offsets_to_text_without_lsp_host_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let msg = lsp_label_offsets_to_text(
-        &mut ctx,
+fn lsp_label_offsets_to_text_slices_without_an_lsp_host() {
+    let text = lsp_label_offsets_to_text(
         SteelVal::StringV("fn foo(a: i32)".into()),
         offset_pair(&[7, 13]),
     )
-    .unwrap_err()
-    .to_string();
-    assert!(msg.contains("not supported by this host"), "got: {msg}");
+    .unwrap();
+    assert_eq!(text, SteelVal::StringV("a: i32".into()));
 }
 
 #[test]
 fn lsp_label_offsets_to_text_errors_on_a_wrong_length_offset_list() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
     for offsets in [offset_pair(&[7]), offset_pair(&[7, 13, 20])] {
-        let result = lsp_label_offsets_to_text(
-            &mut ctx,
-            SteelVal::StringV("fn foo(a: i32)".into()),
-            offsets,
-        );
+        let result = lsp_label_offsets_to_text(SteelVal::StringV("fn foo(a: i32)".into()), offsets);
         let msg = result.unwrap_err().to_string();
         assert!(
             msg.contains("offsets must be a two-element (start end) array"),
@@ -1458,10 +1456,7 @@ fn lsp_label_offsets_to_text_errors_on_a_wrong_length_offset_list() {
 
 #[test]
 fn lsp_label_offsets_to_text_errors_on_a_negative_offset() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
     let result = lsp_label_offsets_to_text(
-        &mut ctx,
         SteelVal::StringV("fn foo(a: i32)".into()),
         offset_pair(&[-1, 13]),
     );
@@ -1474,9 +1469,7 @@ fn lsp_label_offsets_to_text_errors_on_a_negative_offset() {
 
 #[test]
 fn lsp_label_offsets_to_text_errors_on_a_non_string_label() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = lsp_label_offsets_to_text(&mut ctx, SteelVal::IntV(5), offset_pair(&[7, 13]));
+    let result = lsp_label_offsets_to_text(SteelVal::IntV(5), offset_pair(&[7, 13]));
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("label: expected a string"), "got: {msg}");
 }
@@ -1485,16 +1478,10 @@ fn lsp_label_offsets_to_text_errors_on_a_non_string_label() {
 /// rejected before the array-shape check even runs.
 #[test]
 fn lsp_label_offsets_to_text_rejects_a_hand_built_list() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
     let untagged: SteelVal = vec![SteelVal::IntV(7), SteelVal::IntV(13)]
         .into_steelval()
         .unwrap();
-    let result = lsp_label_offsets_to_text(
-        &mut ctx,
-        SteelVal::StringV("fn foo(a: i32)".into()),
-        untagged,
-    );
+    let result = lsp_label_offsets_to_text(SteelVal::StringV("fn foo(a: i32)".into()), untagged);
     let msg = result.unwrap_err().to_string();
     assert!(
         msg.contains("expected a JSON handle from a server response"),
@@ -1533,21 +1520,11 @@ fn lsp_locations_to_places_rejects_untagged_locations() {
 
 #[test]
 fn lsp_label_offsets_to_text_accepts_a_json_array_handle() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
     let offsets = JsonHandle::server_for_test(serde_json::json!([7, 13]), PositionEncoding::Utf16)
         .into_steel_val();
-    let msg = lsp_label_offsets_to_text(
-        &mut ctx,
-        SteelVal::StringV("fn foo(a: i32)".into()),
-        offsets,
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(
-        msg.contains("not supported by this host"),
-        "the offsets must decode before the capability check; got: {msg}"
-    );
+    let text =
+        lsp_label_offsets_to_text(SteelVal::StringV("fn foo(a: i32)".into()), offsets).unwrap();
+    assert_eq!(text, SteelVal::StringV("a: i32".into()));
 }
 
 /// The offsets count code units in the handle's encoding: `é` is one
@@ -1555,28 +1532,18 @@ fn lsp_label_offsets_to_text_accepts_a_json_array_handle() {
 /// read as UTF-16.
 #[test]
 fn lsp_label_offsets_to_text_slices_the_label_in_the_handle_encoding() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = EmptyLspHost::default();
-    let mut ctx = h.ctx_with_host(&mut host);
     let offsets = JsonHandle::server_for_test(serde_json::json!([5, 11]), PositionEncoding::Utf16)
         .into_steel_val();
     let text =
-        lsp_label_offsets_to_text(&mut ctx, SteelVal::StringV("fn é(a: i32)".into()), offsets)
-            .unwrap();
+        lsp_label_offsets_to_text(SteelVal::StringV("fn é(a: i32)".into()), offsets).unwrap();
     assert_eq!(text, SteelVal::StringV("a: i32".into()));
 }
 
 #[test]
 fn lsp_label_offsets_to_text_errors_on_a_wrong_length_array_handle() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
     let offsets = JsonHandle::server_for_test(serde_json::json!([7]), PositionEncoding::Utf16)
         .into_steel_val();
-    let result = lsp_label_offsets_to_text(
-        &mut ctx,
-        SteelVal::StringV("fn foo(a: i32)".into()),
-        offsets,
-    );
+    let result = lsp_label_offsets_to_text(SteelVal::StringV("fn foo(a: i32)".into()), offsets);
     let msg = result.unwrap_err().to_string();
     assert!(
         msg.contains("offsets must be a two-element (start end) array"),

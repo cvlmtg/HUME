@@ -143,18 +143,7 @@ fn insert_entry_on_a_read_only_buffer_leaves_the_selection_in_place() {
 fn insert_entry_beside_another_panes_insert_session_leaves_the_selection_in_place() {
     let mut ed = editor_from("he-[ll]>o world\n");
     let pid_a = ed.view.focused_pane();
-    let bid = ed.focused_buffer_id();
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            hume_core::PaneHandle::with_pane(bid, pid_a),
-            hume_scripting::host::NativeCall {
-                count: Count::typed(1),
-                ..Default::default()
-            },
-        )
-        .expect("pane-vsplit must succeed");
-    let pid_b = ed.view.focused_pane();
+    let pid_b = vsplit_focused(&mut ed);
     assert_ne!(pid_a, pid_b, "setup: the split must focus a new pane");
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
     ed.feed_key(key('i'));

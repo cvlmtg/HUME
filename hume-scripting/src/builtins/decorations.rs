@@ -3,7 +3,7 @@
 //! API. Not LSP-specific (any Steel plugin can populate these), but LSP is
 //! the first and heaviest client.
 
-use hume_core::{DiagSeverity, PaneHandle, Side};
+use hume_core::{BufferId, DiagSeverity, Side};
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
@@ -28,11 +28,10 @@ use super::errors::{generic_err, require_cap};
 /// wire position came in.
 pub(crate) fn set_inlay_hints(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     hints: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let parsed = hash_list(hints, "hints", &[CHAR_OFFSET, "text", "side"], |entry| {
         let pos = entry.usize(CHAR_OFFSET)?;
         let text = entry.string("text")?;
@@ -60,11 +59,10 @@ pub(crate) fn set_inlay_hints(
 /// last-wins semantics.
 pub(crate) fn register_sign_source(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     priority: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let priority = int_arg(priority, "priority")?;
     require_cap(ctx.host.decorations())?
         .register_sign_source(source, bid, priority)
@@ -78,11 +76,10 @@ pub(crate) fn register_sign_source(
 /// unregistered `source` errors rather than being silently dropped.
 pub(crate) fn set_signs(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     signs: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let parsed = hash_list(signs, "signs", LINE_TEXT_SCOPE, |entry| {
         let text = entry.string("text")?;
         // A sign is a glyph in a fixed-width gutter lane: no control
@@ -115,11 +112,10 @@ pub(crate) fn set_signs(
 /// validated at the host boundary, not here (see `VirtualLineSpec::segments`).
 pub(crate) fn set_virtual_lines(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     lines: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let parsed = virtual_line_specs(lines)?;
     require_cap(ctx.host.decorations())?
         .set_virtual_lines(source, bid, parsed)
@@ -228,12 +224,11 @@ const START_END_CHAR_COL_SCOPE: &[&str] = &[START_CHAR_COL, END_CHAR_COL, "scope
 /// owner, same as every other decoration kind is to LSP.
 pub(crate) fn set_eol_text(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     lines: SteelVal,
     hide_on_insert_line: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let parsed = hash_list(lines, "lines", LINE_TEXT_SCOPE, |entry| {
         Ok((
             entry.usize("line")?,
@@ -252,11 +247,10 @@ pub(crate) fn set_eol_text(
 /// 'start-char 'end-char 'scope)`, char offsets.
 pub(crate) fn set_extra_highlights(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     spans: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let parsed = hash_list(spans, "spans", START_END_CHAR_SCOPE, char_range_scope)?;
     require_cap(ctx.host.decorations())?
         .set_extra_highlights(source, bid, parsed)
@@ -270,11 +264,10 @@ pub(crate) fn set_extra_highlights(
 /// entries from different sources break ties by source name.
 pub(crate) fn set_line_backgrounds(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     entries: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let parsed = hash_list(entries, "entries", &["line", "scope"], |entry| {
         Ok((entry.usize("line")?, entry.string("scope")?))
     })?;
@@ -290,11 +283,10 @@ pub(crate) fn set_line_backgrounds(
 /// separate step, this only pushes the value a placed element will show.
 pub(crate) fn set_statusline_text(
     ctx: &mut SteelCtx,
-    pane: PaneHandle,
+    bid: BufferId,
     source: String,
     text: SteelVal,
 ) -> SteelResult {
-    let bid = pane.buffer();
     let text = string_arg(text, "text")?;
     require_cap(ctx.host.decorations())?
         .set_statusline_text(source, bid, text)

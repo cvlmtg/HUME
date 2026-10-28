@@ -10,8 +10,8 @@ use hume_rope::offset::ExclusiveRange;
 use super::EditorHostImpl;
 use crate::editor::buffer::lifecycle::CloseBufferRefused;
 use crate::editor::buffer::{TextRefusal, ViewLabel};
-use crate::editor::commands::FocusedPane;
-use hume_scripting::host::{BufferHost, DisplayPathForm, StoredLanguage};
+use crate::editor::commands::{CommandPane, FocusedPane};
+use hume_scripting::host::{BufferHost, DisplayPathForm, ShownHandle, StoredLanguage};
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -30,22 +30,16 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         FocusedPane::current(self.view).handle(self.view)
     }
 
-    fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle> {
+    fn buffer_panes(&self, id: BufferId) -> Vec<PaneHandle> {
         self.state
-            .buffer_panes(self.view, pane.buffer())
+            .buffer_panes(self.view, id)
             .into_iter()
-            .map(|pid| PaneHandle::with_pane(pane.buffer(), pid))
+            .map(|pid| PaneHandle::with_pane(id, pid))
             .collect()
     }
 
-    fn require_focused_pane(&self, pane: PaneHandle) -> Result<(), String> {
-        FocusedPane::resolve(self.state, self.view, pane)
-            .map(|_| ())
-            .map_err(|e| e.to_string())
-    }
-
     fn pane_live(&self, pane: PaneHandle) -> bool {
-        self.command_pane(pane).is_ok()
+        CommandPane::resolve(self.state, self.view, pane).is_ok()
     }
 
     // ── Buffer reads ─────────────────────────────────────────────────────────
@@ -131,10 +125,10 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
     fn switch_to_buffer(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         target: BufferId,
     ) -> Result<PaneHandle, String> {
-        let t = self.command_pane(pane)?;
+        let t = self.shown(pane)?;
         crate::editor::buffer::lifecycle::switch_to_buffer_with_jump(
             self.state,
             self.view,
@@ -145,11 +139,11 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
     fn show_read_only_buffer(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
         name: &str,
         text: &str,
     ) -> Result<PaneHandle, String> {
-        let t = self.command_pane(pane)?;
+        let t = self.shown(pane)?;
         let pid = t.pid();
         let label = ViewLabel::named(name).map_err(|e| e.to_string())?;
         let view = crate::editor::buffer::lifecycle::show_read_only_view(
@@ -222,9 +216,9 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
 
     fn viewport_range(
         &mut self,
-        pane: PaneHandle,
+        pane: ShownHandle,
     ) -> Result<ExclusiveRange<hume_rope::line::ContentLine>, String> {
-        let t = self.command_pane(pane)?;
+        let t = self.shown(pane)?;
         // No active-tab restriction: `EditorState::pane_size` lays out a
         // background tab's panes against the current terminal too, so a
         // background-tab pane's *size* is as trustworthy as an active
