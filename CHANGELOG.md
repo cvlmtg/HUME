@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.17.0] - 2026-10-28
+
 ### Breaking changes
 - `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
 - `stdlib/run!` is gone: call `run-capture!`.
