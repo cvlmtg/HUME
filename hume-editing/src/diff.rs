@@ -22,9 +22,9 @@ use unicode_segmentation::UnicodeSegmentation;
 
 /// The most `lines × hunks` the histogram pass may cost, `lines` counting
 /// both inputs and `hunks` the Myers diff's change hunks. Histogram's time
-/// grows with that product, at about 0.85 ns a unit in a release build from
-/// 5,000 to 100,000 lines, so this keeps it near 14 ms on top of a per-line
-/// cost Myers pays too.
+/// grows with that product, at about 0.85 ns a unit in a release build on an
+/// M4 Pro from 5,000 to 100,000 lines, so this keeps it near 14 ms there on
+/// top of a per-line cost Myers pays too.
 const HISTOGRAM_WORK_LIMIT: usize = 16_000_000;
 
 // ── Line-level types ──────────────────────────────────────────────────────────
