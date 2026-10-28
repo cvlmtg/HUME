@@ -152,7 +152,7 @@ fn drawer_items(
     items: SteelVal,
     render: SteelVal,
 ) -> Result<DrawerItems, SteelErr> {
-    Ok(match optional_callback_arg(ctx, render, "#:render")? {
+    Ok(match optional_callback_arg(ctx, render, 2, "#:render")? {
         None => DrawerItems::Rows(non_empty(picker_items(items, "items")?, "items")?),
         Some(render) => DrawerItems::Keys {
             keys: non_empty(
@@ -265,7 +265,7 @@ fn picker_actions(
         .map(|entry| {
             let (spec, proc) = pair_fields(entry, ctx_name, "(key-spec . proc)")?;
             let key = single_key_arg(spec, ctx_name)?;
-            let proc = callback_arg(ctx, proc, ctx_name)?;
+            let proc = callback_arg(ctx, proc, 1, ctx_name)?;
             Ok((key, proc))
         })
         .collect()
@@ -343,7 +343,7 @@ pub(crate) fn live_picker(
 ) -> SteelResult {
     let prompt = string_arg(prompt, "#:prompt")?;
     let query = string_arg(query, "#:query")?;
-    let on_query_change = callback_arg(ctx, on_query_change, "on-query-change")?;
+    let on_query_change = callback_arg(ctx, on_query_change, 2, "on-query-change")?;
     let truncate = truncate_end_arg(truncate, "#:truncate")?;
     let actions = picker_actions(ctx, actions, "#:actions")?;
     let opts = LivePickerOpts {

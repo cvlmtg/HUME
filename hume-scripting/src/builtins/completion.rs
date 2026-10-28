@@ -155,7 +155,7 @@ pub(crate) fn register_completion_source(
     token_chars: SteelVal,
     cancel: SteelVal,
 ) -> SteelResult {
-    let cancel = optional_callback_arg(ctx, cancel, "#:cancel")?;
+    let cancel = optional_callback_arg(ctx, cancel, 1, "#:cancel")?;
     let target = target_arg(target)?;
     let match_kind = match_kind_arg(match_kind, "#:match")?;
     let priority = int_arg(priority, "#:priority")?;

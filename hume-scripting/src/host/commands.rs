@@ -149,7 +149,7 @@ pub trait CommandHost {
     /// last step), still returns `Ok(true)`. This is the value `(call! …)`
     /// yields for a native command.
     /// Returns `Err(msg)` when the name is not found, is not a native
-    /// command, `pane`'s buffer isn't live, `pane` doesn't resolve
+    /// command, runs only from a key, `pane`'s buffer isn't live, `pane` doesn't resolve
     /// against the command's own target requirement (see above), or
     /// `call.arg` doesn't match what the command takes.
     ///

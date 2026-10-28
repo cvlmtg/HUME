@@ -197,8 +197,9 @@ pub trait UiHost {
 
     /// `(show-menu! items on-select)` opens a selection menu near the
     /// cursor over `items`, the picker's `(display . payload)` rows.
-    /// `on-select` fires exactly once: the chosen row's payload, or `#f` on
-    /// dismissal, queued, never invoked inline. A menu that can't be
+    /// `on-select` fires at most once: the chosen row's payload, or `#f` on
+    /// any dismissal but [`Self::close_menu`], which fires nothing; queued,
+    /// never invoked inline. A menu that can't be
     /// driven is worse than no menu, so this requires the mode layer to be
     /// `Base` (Normal/Extend; a menu open under Insert or a minibuf mode
     /// has no way to route its own keys) *and* the stack to be otherwise

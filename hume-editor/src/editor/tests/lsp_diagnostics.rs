@@ -704,8 +704,8 @@ fn publish_n(uri: &str, n: u32) -> lsp_types::PublishDiagnosticsParams {
     params_of(publish_diagnostics_notification(uri, &n_diagnostics(n, 1)))
 }
 
-/// A `diagnostics-for-buffer` read of the rig's buffer at `floor` over
-/// `range`, as `(start-char . end-char)`; how many diagnostics it returned.
+/// A `diagnostics-for-buffer` read of the rig's buffer at `floor` over the
+/// char range `range`; how many diagnostics it returned.
 fn read(rig: &mut LspRig, floor: Option<DiagSeverity>, range: Option<(usize, usize)>) -> usize {
     crate::editor::lsp::diagnostics::diagnostics_for_buffer(
         &mut rig.ed.state,

@@ -30,7 +30,9 @@ When a buffer is opened, HUME runs detection to determine the language. The
 detection logic tries three strategies in order, stopping at the first match:
 
 1. **Glob patterns** — registered patterns like `Makefile`, `*.config.js`, or
-   `{Dockerfile,dockerfile}` are matched against the full filename. This tier
+   `{Dockerfile,dockerfile}` are matched against the end of the file's path,
+   so `Makefile` matches in any directory and `.github/workflows/*.yaml`
+   matches only under that directory. This tier
    exists for files that have a meaningful name but no extension, or whose
    extension alone is ambiguous. When two languages' patterns match the same
    file, the language defined last wins. Which definition of one language

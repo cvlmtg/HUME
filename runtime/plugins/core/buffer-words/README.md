@@ -41,7 +41,7 @@ cursor line
         …outward in both directions until both hit a buffer edge…
 ```
 
-`N` is `"chars"`, rounded to whole lines.
+`N` is `'chars`, rounded to whole lines.
 
 ### Cursor-outward, line-windowed indexing
 
@@ -61,7 +61,7 @@ The walk fetches by line. `buffer-lines` seeks into the buffer's rope by line in
 fetching a window of lines costs the same wherever the window is. Re-slicing a string at a
 character offset would cost time proportional to the offset on every call. Each tick
 converts only the lines it is about to scan, so memory during a walk is bounded by
-`"chars"`, not by buffer size. A single line is read and scanned whole, with no cap; see
+`'chars`, not by buffer size. A single line is read and scanned whole, with no cap; see
 [Known limitations](#known-limitations).
 
 Each tick reschedules itself after a 16ms delay. A zero-delay timer is due the instant it

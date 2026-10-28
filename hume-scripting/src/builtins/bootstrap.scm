@@ -214,7 +214,7 @@
 
 (define (picker-command-source argv-for #:cwd [cwd #f] #:nul [nul #f]
                                          #:ok-exit-codes [ok-exit-codes %picker-source-default-ok-exit-codes])
-  (unless (%callable? argv-for)
+  (unless (%callable? argv-for 1)
     (error "picker-command-source: argv-for must be a procedure of one argument (the query)"))
   (lambda (token q)
     (let ([argv (argv-for q)])
@@ -231,7 +231,7 @@
                        #:debounce-ms [debounce-ms 150]
                        #:truncate [truncate 'head]
                        #:actions [actions '()])
-  (unless (%callable? source)
+  (unless (%callable? source 2)
     (error "live-picker!: #:source must be a procedure of two arguments (the picker token and the query)"))
   (unless (and (integer? debounce-ms) (>= debounce-ms 0))
     (error "live-picker!: #:debounce-ms must be a non-negative integer"))

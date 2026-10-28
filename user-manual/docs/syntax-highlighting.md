@@ -131,7 +131,7 @@ Now `my-lang` is detected like any built-in. `:plum-install-grammar` installs gr
 ```
 
 The required fields, in order:
-- language name (define it with `define-language!` first)
+- language name: one you haven't defined with `define-language!` works too, but no file is detected as that language until you define it
 - path to the compiled library
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file

@@ -34,7 +34,7 @@ pub trait DecorationHost {
     /// replaced text, until the buffer closes; there is no withdrawal.
     fn register_sign_source(
         &mut self,
-        name: String,
+        source: String,
         bid: BufferId,
         priority: i64,
     ) -> Result<(), String>;
@@ -115,7 +115,7 @@ pub trait DecorationHost {
         text: String,
     ) -> Result<(), String>;
 
-    /// `(diagnostics-for-buffer pane #:severity floor #:range (start-char end-char))`:
+    /// `(diagnostics-for-buffer pane #:severity floor #:range (hash 'start-char s 'end-char e))`:
     /// one [`DiagnosticEntry`] per diagnostic, filtered then capped at 1000.
     /// A read the cap cuts is traced in `:messages`.
     /// `start_char` is an addressing unit (feeds `goto-location!`);

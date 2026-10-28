@@ -3,7 +3,7 @@
 use steel::rvals::SteelVal;
 
 use super::SteelResult;
-use super::args::{callable_arg, closure_shape, symbol_arg, token_arg};
+use super::args::{callable_arg, closure_shape, symbol_arg, takes_args, token_arg};
 use super::errors::generic_err;
 use crate::SteelCtx;
 use crate::host::EventShape;
@@ -75,16 +75,16 @@ fn handler_takes_done(
     proc: &SteelVal,
 ) -> Result<bool, steel::rerrs::SteelErr> {
     let args = shape.args;
-    // A closure with a rest parameter counts it in its arity.
-    match (closure_shape(proc), shape.held) {
-        (Some((count, false)), _) if count == args => Ok(false),
-        (Some((count, false)), true) if count == args + 1 => Ok(true),
-        (Some((count, true)), false) if count <= args + 1 => Ok(false),
-        (None, false) => Ok(false),
-        (_, false) => steel::stop!(
-            TypeMismatch => "an '{} handler is a lambda of {} parameters", name, args
-        ),
-        (_, true) => steel::stop!(
+    if !shape.held {
+        if takes_args(proc, args) {
+            return Ok(false);
+        }
+        steel::stop!(TypeMismatch => "an '{} handler is a lambda of {} parameters", name, args);
+    }
+    match closure_shape(proc) {
+        Some((count, false)) if count == args => Ok(false),
+        Some((count, false)) if count == args + 1 => Ok(true),
+        _ => steel::stop!(
             TypeMismatch =>
             "an '{} handler is a lambda of {} parameters, or {} to take `done`",
             name,

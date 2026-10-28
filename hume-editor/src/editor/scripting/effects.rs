@@ -13,7 +13,7 @@ impl Editor {
     /// separate channels with a hardcoded apply order. Consecutive
     /// `Effect::LanguageReg` entries are grouped into one
     /// `apply_pending_language_regs` call so a large run (e.g.
-    /// `languages.scm`'s ~700 `define-language!` calls) rebuilds the glob
+    /// `languages.scm`'s 342 `define-language!` calls) rebuilds the glob
     /// matcher once, not once per entry. Consecutive `Effect::LspServerOp`
     /// entries are likewise one `apply_lsp_server_ops` call, so buffers
     /// reconcile to a run of registry changes once. Every other effect kind

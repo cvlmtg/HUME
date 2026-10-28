@@ -74,7 +74,7 @@ fn declare_plugin_builtin_collision_raises_like_define_command() {
 /// A declaration refused for a taken name must not leave the plugin in
 /// PLUM's list.
 #[test]
-fn declare_plugin_all_on_command_collided_records_nothing() {
+fn declare_plugin_with_a_taken_command_name_records_nothing() {
     use crate::null_host::CommandStoreHost;
 
     let (_dir, mut host) = host_with_plugin("collided", &[("plugin.scm", "")]);

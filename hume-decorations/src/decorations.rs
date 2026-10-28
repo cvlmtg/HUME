@@ -500,7 +500,7 @@ pub struct DecorationStores {
     /// `core:git-diff` on first tracked render), and holds it for that
     /// buffer's life. There is no withdrawal; a source that stops having
     /// anything to show still keeps its (now blank) slot via
-    /// `set-signs! source bid '()`, same as any other empty `set-signs!`
+    /// `(set-signs! pane source '())`, same as any other empty `set-signs!`
     /// call. This is what keeps a buffer neither source ever touches (a
     /// plain buffer with no LSP server and no git repo) from ever reserving
     /// either slot. Not touch-stamped: it isn't decoration content, so no
@@ -641,18 +641,18 @@ impl DecorationStores {
             })
     }
 
-    /// Registers `name` as a sign source at `priority` for `bid`, replacing
+    /// Registers `source` as a sign source at `priority` for `bid`, replacing
     /// any prior registration under that name in *that buffer* (last wins,
     /// matching `register-lsp-server!`) rather than leaving a stale entry at
     /// the old priority's sort position alongside the new one. A no-op when
-    /// `name` is already registered for `bid` at this exact `priority`:
+    /// `source` is already registered for `bid` at this exact `priority`:
     /// callers re-register on every render (see `sign_sources`' doc), so
     /// this is the common case and skips the remove-then-resort dance
     /// entirely rather than repeating it every frame for nothing. See
     /// [`Self::sign_slot`] for what a registration buys a caller.
-    pub fn register_sign_source(&mut self, name: String, bid: BufferId, priority: i64) {
+    pub fn register_sign_source(&mut self, source: String, bid: BufferId, priority: i64) {
         let sources = self.sign_sources.entry(bid).or_default();
-        if let Some(idx) = sources.iter().position(|(n, _)| *n == name) {
+        if let Some(idx) = sources.iter().position(|(n, _)| *n == source) {
             if sources[idx].1 == priority {
                 return;
             }
@@ -662,9 +662,9 @@ impl DecorationStores {
         // is its index in this order, so registration order itself must
         // never matter, only the declared priority and name.
         let idx = sources.partition_point(|(n, p)| {
-            (std::cmp::Reverse(*p), n.as_str()) < (std::cmp::Reverse(priority), name.as_str())
+            (std::cmp::Reverse(*p), n.as_str()) < (std::cmp::Reverse(priority), source.as_str())
         });
-        sources.insert(idx, (name, priority));
+        sources.insert(idx, (source, priority));
     }
 
     /// `name`'s gutter slot in `bid` (its index in that buffer's

@@ -4,7 +4,8 @@ use super::*;
 use hume_platform::dirs::Dirs;
 
 /// Defines the fixtures, then a `:check` command that logs `(command-exists? name)`
-/// for each of `names`, and returns the logged values in order.
+/// for each of `names`, and returns the logged values in order. The engine
+/// binds the native command names first, as `Editor::init_scripting` does.
 fn exists(ed: &mut Editor, tmp: &std::path::Path, setup: &str, names: &[&str]) -> Vec<bool> {
     let calls: String = names
         .iter()
@@ -15,10 +16,12 @@ fn exists(ed: &mut Editor, tmp: &std::path::Path, setup: &str, names: &[&str]) -
         r#"{setup}
            (define-typed-command! "check" "" (lambda (bid) (log! 'info (to-string (list {calls})))))"#
     );
-    let host = hume_scripting::ScriptingHost::new(&Dirs {
+    let mut host = hume_scripting::ScriptingHost::new(&Dirs {
         data: Some(tmp.to_path_buf()),
         ..Dirs::none()
     });
+    let native: Vec<&str> = ed.state.config.registry.native_mappable_names().collect();
+    host.register_command_names(&native);
     install_source(ed, host, &source, tmp);
     type_cmd(ed, ":check");
     let msg = ed.state.status_msg.clone().unwrap();

@@ -9,9 +9,9 @@
 //!   passes one as the first argument: `(call! "move-right" pane 5)`. A
 //!   trailing char or string is the command's operand:
 //!   `(call! "find-forward" pane #\x)`, `(call! "sift-within" pane "\\w+")`. Returns
-//!   `#f` if the command refused, `#t` otherwise; in init mode it warns and
-//!   returns `#f`.
-//! - **Unknown**: error logged, `#f` returned.
+//!   `#f` if the command refused, `#t` otherwise. Raises while `init.scm` or a
+//!   plugin loads, and for a key-only command.
+//! - **Unknown** or typed: raises, naming the kind the name belongs to.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -41,7 +41,7 @@ use hume_core::{CommandArg, Count};
 /// `count`, and `extend` arguments based on its declared arity:
 /// - `(lambda ())`: no injection.
 /// - `(lambda (pane))`: receives the pane the command was invoked through.
-/// - `(lambda (pane count))`: pane and the repeat count (integer ≥ 1).
+/// - `(lambda (pane count))`: pane and the repeat count typed, `0` when none was.
 /// - `(lambda (pane count extend))`: pane, count, and `#t`/`#f` extend flag.
 /// - Variadic lambdas receive all three.
 ///

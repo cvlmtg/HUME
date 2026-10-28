@@ -52,9 +52,9 @@ pub(crate) fn diff_buffer_lines(
     Ok(hunks_to_steel(diff))
 }
 
-/// `(buffer-revision-diff pane id)` → the hunks that separate `pane`'s buffer's
-/// live text from revision `id` of its undo history (a number from
-/// `(buffer-undo-tree pane)`), in the shape `diff-lines` returns.
+/// `(buffer-revision-diff pane id)` → the `(hash 'hunks 'deadline-hit)` that
+/// separates `pane`'s buffer's live text from revision `id` of its undo
+/// history (a number from `(buffer-undo-tree pane)`), as `diff-lines` returns.
 /// The revision's text is the old side and the live text the new. Raises when
 /// the buffer has no such revision.
 pub(crate) fn buffer_revision_diff(

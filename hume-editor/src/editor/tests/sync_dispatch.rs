@@ -384,7 +384,9 @@ fn call_repeat_last_action_stops_the_script_before_its_next_call() {
 
 /// All three native-classification sites must agree for every registered command:
 /// `MappableCommand::is_native()`, `command_is_native()`, and the
-/// `native_mappable_names()` set must all return the same true/false answer.
+/// `native_mappable_names()` set must all return the same true/false answer,
+/// except that a key-only command is refused by `command_is_native()` and has
+/// no bare binding.
 ///
 /// The expected answer comes from a hand-written exhaustive match (no `_`)
 /// inside this test, re-stating the four-variant native set from first
@@ -440,13 +442,19 @@ fn classification_sites_all_agree() {
         .collect();
 
     for (name, is_nat, expected) in &triples {
+        let key_only = ed
+            .state
+            .config
+            .registry
+            .get_mappable(name)
+            .is_some_and(|cmd| cmd.meta().key_only);
         assert_eq!(
             *is_nat, *expected,
             "is_native() disagrees with the expected native set for '{name}'"
         );
         assert_eq!(
             native_names.contains(name.as_str()),
-            *expected,
+            *expected && !key_only,
             "native_mappable_names() membership disagrees with the expected native set for '{name}'"
         );
     }

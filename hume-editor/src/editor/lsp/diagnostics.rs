@@ -589,7 +589,7 @@ pub(in crate::editor) fn severity_floor(
 /// whole-buffer read at that floor finds the buffer under it again.
 pub(in crate::editor) const DIAGNOSTICS_READ_CAP: usize = 1000;
 
-/// `(diagnostics-for-buffer bid #:severity floor #:range (start-char . end-char))`:
+/// `(diagnostics-for-buffer bid #:severity floor #:range (hash 'start-char s 'end-char e))`:
 /// decoded, filtered hashmaps, at most [`DIAGNOSTICS_READ_CAP`] of them.
 /// `start-char`/`end-char` are char offsets, *addressing* units that
 /// `goto-location!`'s `'char-offset` takes as they are. `start-char` is clamped onto the buffer's last

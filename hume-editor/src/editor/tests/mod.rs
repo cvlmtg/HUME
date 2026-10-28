@@ -1635,6 +1635,7 @@ mod buffer_store;
 mod buffer_text_steel;
 mod builtin_pane_needs;
 mod busy_buffer;
+mod callback_arity;
 mod command_arg;
 mod command_exists;
 mod command_keymap;

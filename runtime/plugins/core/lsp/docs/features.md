@@ -209,5 +209,6 @@ buffer has changed since the request was sent. It fits requests whose result is 
 another way: edits carry `#:expect-generation`, and the locations refresh re-requests at
 the tracked position. The goto commands use neither, so a navigation the user asked for
 completes even if they looked elsewhere while waiting. `#:supersede` cancels the
-pending request under the same key. Each key comes from `lsp-supersede-key` at the
-plugin's top level, so no other caller can cancel these requests.
+pending request under the same key. Each key comes from `lsp-supersede-key`, minted once at the
+plugin's top level or once per buffer for inlay hints, so no other caller can cancel these
+requests.

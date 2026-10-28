@@ -19,8 +19,8 @@ use super::stack::{
 /// `(show-menu! items on-select)`'s raw content, held on `EditorState`
 /// until the next frame's `Editor::sync_menu_view` resolves it into a
 /// positioned `hume_ui::popup::PopupState` with `selected` set. `callback`
-/// fires exactly once (one per selection or dismissal), then the whole
-/// model is dropped.
+/// fires at most once, on a selection or a dismissal and never on
+/// `close-menu!`, then the whole model is dropped.
 ///
 /// `rows` is built once at construction, not rebuilt per frame: labels
 /// never change during a menu's lifetime (only `selected` does), so

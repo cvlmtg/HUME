@@ -483,8 +483,8 @@ builtins! {
     cmd "lsp-restart!" lsp::lsp_restart(target: lsp::LspTargetArg);
     cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::FocusedPane);
     // Generic LSP bridge: any protocol method reachable from Steel.
-    cmd "%lsp-request!" => "lsp-request!" lsp::lsp_request(pane: args::RequesterPane, method: SteelVal, params: SteelVal, callback: args::ScriptProc, feature: SteelVal, to: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
-    cmd "%lsp-request-all!" => "lsp-request-all!" lsp::lsp_request_all(pane: args::RequesterPane, method: SteelVal, params: SteelVal, callback: args::ScriptProc, feature: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+    cmd "%lsp-request!" => "lsp-request!" lsp::lsp_request(pane: args::RequesterPane, method: SteelVal, params: SteelVal, callback: args::ScriptProc<2>, feature: SteelVal, to: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+    cmd "%lsp-request-all!" => "lsp-request-all!" lsp::lsp_request_all(pane: args::RequesterPane, method: SteelVal, params: SteelVal, callback: args::ScriptProc<2>, feature: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
     cmd "%lsp-notify!" => "lsp-notify!" lsp::lsp_notify(pane: args::LiveBuffer, method: SteelVal, params: SteelVal, feature: SteelVal, to: SteelVal);
     config "register-lsp-notification-hook!" lsp::register_lsp_notification_hook(methods: SteelVal, proc: SteelVal);
     // Introspection
@@ -541,13 +541,13 @@ builtins! {
     cmd "selections-charwise?" buffers::selections_charwise(pane: args::ShownPane);
 
     // Minibuffer prompt.
-    cmd "%prompt!" => "prompt!" ui::prompt(pane: args::FocusedPane, label: SteelVal, prefill: SteelVal, on_confirm: args::ScriptProc);
-    cmd "on-next-char!" ui::on_next_char(callback: args::ScriptProc);
+    cmd "%prompt!" => "prompt!" ui::prompt(pane: args::FocusedPane, label: SteelVal, prefill: SteelVal, on_confirm: args::ScriptProc<1>);
+    cmd "on-next-char!" ui::on_next_char(callback: args::ScriptProc<1>);
     cmd "symbol-under-cursor" buffers::symbol_under_cursor(pane: args::ShownPane);
 
     // Completion: sources register at config time; answers, the ranked
     // view, and accept/dismiss are command-time.
-    config "%register-completion-source!" => "register-completion-source!" completion::register_completion_source(name: args::SourceName, proc: args::ScriptProc, target: SteelVal, match_kind: SteelVal, priority: SteelVal, resolve: SteelVal, token_chars: SteelVal, cancel: SteelVal);
+    config "%register-completion-source!" => "register-completion-source!" completion::register_completion_source(name: args::SourceName, proc: args::ScriptProc<3>, target: SteelVal, match_kind: SteelVal, priority: SteelVal, resolve: SteelVal, token_chars: SteelVal, cancel: SteelVal);
     cmd "%completion-emit!" => "completion-emit!" completion::completion_emit(id: SteelVal, items: SteelVal, incomplete: SteelVal, more: SteelVal, span: SteelVal, prefix: SteelVal);
     cmd "completion-top" completion::completion_top(n: SteelVal);
     cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
@@ -560,38 +560,38 @@ builtins! {
     cmd "close-popup!" ui::close_popup(token: SteelVal);
 
     // Selection menu widget.
-    cmd "show-menu!" ui::show_menu(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc);
+    cmd "show-menu!" ui::show_menu(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc<1>);
     cmd "close-menu!" ui::close_menu(token: SteelVal);
 
     // Bottom drawer.
-    cmd "%show-drawer-list!" => "show-drawer-list!" ui::show_drawer_list(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc, selected: SteelVal, render: SteelVal);
+    cmd "%show-drawer-list!" => "show-drawer-list!" ui::show_drawer_list(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc<2>, selected: SteelVal, render: SteelVal);
     cmd "close-drawer!" ui::close_drawer(token: SteelVal);
-    cmd "%update-drawer-list!" => "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: args::ScriptProc, selected: SteelVal, render: SteelVal);
+    cmd "%update-drawer-list!" => "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: args::ScriptProc<2>, selected: SteelVal, render: SteelVal);
     cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);
 
     // Fuzzy-picker widget.
-    cmd "%picker!" => "picker!" ui::picker(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
-    cmd "%live-picker!" => "live-picker!" ui::live_picker(pane: args::FocusedPane, on_select: args::ScriptProc, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
+    cmd "%picker!" => "picker!" ui::picker(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc<1>, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
+    cmd "%live-picker!" => "live-picker!" ui::live_picker(pane: args::FocusedPane, on_select: args::ScriptProc<1>, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
     cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
     cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
     cmd "%picker-source-spawn!" => "picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
     cmd "picker-source-stop!" ui::picker_source_stop(token: SteelVal);
     cmd "picker-close!" ui::picker_close(token: SteelVal);
     // Backs the #:source and argv-for checks only. See args::is_callable's doc.
-    plain "%callable?" => "%callable?" args::is_callable(val: SteelVal);
+    plain "%callable?" => "%callable?" args::is_callable(val: SteelVal, args: SteelVal);
 
     cmd "%held-done" => "done" hooks::held_done(hold: SteelVal);
 
     // Timers: not LSP-specific, any plugin can schedule one.
-    cmd "after!" timers::after(ms: SteelVal, thunk: args::ScriptProc);
+    cmd "after!" timers::after(ms: SteelVal, thunk: args::ScriptProc<0>);
     cmd "cancel-timer!" timers::cancel_timer(id: SteelVal);
 
     // Background work with a callback, stopped by `cancel-async!`: a
     // subprocess's one-shot capture (a streaming picker source is
     // `picker-source-spawn!`'s shape) and a program scan's reports.
-    cmd "%spawn-async!" => "spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: args::ScriptProc);
+    cmd "%spawn-async!" => "spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: args::ScriptProc<1>);
     cmd "cancel-async!" process::cancel_async(id: SteelVal);
-    cmd "path-programs" fs::path_programs(prefix: String, extensions: SteelVal, on_names: args::ScriptProc);
+    cmd "path-programs" fs::path_programs(prefix: String, extensions: SteelVal, on_names: args::ScriptProc<2>);
 
     // Blocking subprocess capture, no callback.
     // `open`, not `cmd`: Steel's own `spawn-process`/`wait`, which

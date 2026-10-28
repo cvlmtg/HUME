@@ -23,10 +23,11 @@ pub(crate) const STDERR_CAPTURE_CAP: usize = 8 * 1024;
 /// ([`crate::process::run_capture`]) alike: large enough for any realistic
 /// command's legitimate output, small enough that a runaway child
 /// (`cat /dev/zero`, a multi-GB blob) can't grow the editor's memory without
-/// bound. Unlike [`STDERR_CAPTURE_CAP`], exceeding this fails the capture
-/// outright ([`read_bounded`]) rather than keeping a prefix: stdout is the
-/// caller's data, and a truncated batch would be indistinguishable from an
-/// untruncated short one.
+/// bound, or keep the capture waiting on it forever. Unlike
+/// [`STDERR_CAPTURE_CAP`], exceeding this fails the capture outright and
+/// stops the child ([`read_bounded`]) rather than keeping a prefix: stdout
+/// is the caller's data, and a truncated batch would be indistinguishable
+/// from an untruncated short one.
 pub(crate) const STDOUT_CAPTURE_CAP: usize = 64 * 1024 * 1024;
 
 /// Spawns `cmd` with `args` (direct argv, no shell) in its own process
@@ -128,33 +129,28 @@ pub(crate) fn read_capped(mut r: impl Read, cap: usize) -> Vec<u8> {
 /// Reads `r` to EOF, erroring instead of truncating: a real read error
 /// propagates (`read_capped` would silently stop and keep the prefix), and
 /// exceeding `limit` bytes fails the whole read rather than returning a
-/// prefix indistinguishable from untruncated short output. Keeps draining
-/// past `limit` (discarding the bytes) so the child's write doesn't block
-/// on a full pipe while it finishes. The point is to bound this reader's
-/// memory, not to stop the child from writing what it's going to write.
+/// prefix indistinguishable from untruncated short output.
 ///
-/// A read error ends the draining, so it calls `stop_writer` first: a
-/// child left blocked on a full pipe would never exit, and a caller's
-/// wait for it would never return.
+/// Both failures call `stop_writer` and stop reading at once. Nothing
+/// reads the pipe after that, so a child left running would block on it,
+/// or write forever when its output is endless, and a caller's wait for it
+/// would never return.
 pub(crate) fn read_bounded(
-    mut r: impl Read,
+    r: impl Read,
     limit: usize,
     stop_writer: impl FnOnce(),
 ) -> io::Result<Vec<u8>> {
     let mut captured = Vec::new();
-    let drained = r
-        .by_ref()
-        .take(limit as u64 + 1)
-        .read_to_end(&mut captured)
-        .and_then(|_| io::copy(&mut r, &mut io::sink()));
-    if let Err(e) = drained {
-        stop_writer();
-        return Err(e);
-    }
-    if captured.len() > limit {
-        return Err(io::Error::other(format!("output exceeded {limit} bytes")));
-    }
-    Ok(captured)
+    let read = r.take(limit as u64 + 1).read_to_end(&mut captured);
+    let failure = match read {
+        Err(e) => e,
+        Ok(_) if captured.len() > limit => {
+            io::Error::other(format!("output exceeded {limit} bytes"))
+        }
+        Ok(_) => return Ok(captured),
+    };
+    stop_writer();
+    Err(failure)
 }
 
 /// A whole-output capture of a child in progress: its stderr read on a

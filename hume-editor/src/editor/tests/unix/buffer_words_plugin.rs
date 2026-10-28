@@ -186,7 +186,7 @@ fn ctrl_space_offers_identifiers_from_the_buffer() {
 }
 
 /// A word far from the cursor, on a buffer many times longer than one
-/// tick's `"chars"` budget, is still found: the actual case a background
+/// tick's `'chars` budget, is still found: the actual case a background
 /// walk exists for. The word lies about 15 windows past the cursor, so the
 /// walk has to keep rescheduling itself until the forward side reaches the
 /// buffer's end.
@@ -594,7 +594,7 @@ fn closing_a_buffer_drops_its_index() {
 /// anchors at line 0, where the forward side never empties out. This test
 /// anchors at the buffer's *last* line instead (the forward side exhausts
 /// on tick 1) and places the target word inside a backward tick's window
-/// (`"chars" 70`), at a fixed, predictable offset.
+/// (`'chars 70`), at a fixed, predictable offset.
 #[test]
 fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     let tmp = tempfile::tempdir().unwrap();

@@ -399,6 +399,15 @@ impl MappableCommand {
         }
     }
 
+    /// Whether a script can reach this command, by `call!` or by its bare
+    /// binding. A [`CmdMeta::key_only`] command runs only from a key.
+    pub(in crate::editor) fn runs_from_script(&self) -> bool {
+        match self {
+            Self::Native(cmd) => !cmd.meta().key_only,
+            Self::SteelBacked(_) | Self::Lazy { .. } => true,
+        }
+    }
+
     /// Returns `true` if this command executes synchronously in Rust
     /// ([`NativeCommand`]) rather than through the Steel dispatch queue
     /// (`SteelBacked`/`Lazy`).

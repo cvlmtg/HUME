@@ -627,13 +627,11 @@ fn declare_then_load_keeps_the_plugin_lazy() {
     );
 }
 
-/// `(load-plugin! "foo")` then `(declare-plugin! "foo" …)`: load runs first,
-/// plugin is `Loaded`; the declare is ignored with a soft error.
-///
-/// That error comes from the load-then-declare guard in `declare_plugin`, which
-/// runs ahead of the first-wins guard, a no-op that logs nothing.
+/// `(load-plugin! "foo")` then `(declare-plugin! "foo" …)`: the load has
+/// already decided the plugin's entries, so the declare raises and leaves the
+/// plugin `Loaded` with no stub for its commands.
 #[test]
-fn load_then_declare_ignored_with_soft_error() {
+fn load_then_declare_raises() {
     use hume_scripting::host::CommandHost;
 
     let (dir, init_path) = plugin_fixture(
@@ -644,8 +642,14 @@ fn load_then_declare_ignored_with_soft_error() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock)
-        .expect("load-then-declare must succeed (soft error, not hard)");
+    let err = h
+        .eval_init(&init_path, 10_000, &mut mock)
+        .expect_err("a declare after load-plugin! raises");
+    assert!(
+        err.message
+            .contains("'user/tp' comes after its load-plugin!"),
+        "got: {err:?}"
+    );
 
     let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
@@ -656,28 +660,17 @@ fn load_then_declare_ignored_with_soft_error() {
         "plugin must remain Loaded; got {:?}",
         h.plugin_status(&id)
     );
-    // Soft error: the declare after load is contradictory and must be logged.
-    assert!(
-        h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_core::Severity::Error)
-                && msg.contains("user/tp")
-                && msg.contains("comes after its load-plugin!")
-        }),
-        "expected a soft error about load-then-declare contradiction; got: {:?}",
-        h.peek_pending_messages()
-    );
-    // The declare was ignored: no Lazy stub for "my-cmd" should be registered.
     assert!(
         mock.lazy_command_owner("my-cmd").is_none(),
-        "my-cmd must not be registered as a Lazy stub, declare was ignored"
+        "my-cmd must not be registered as a Lazy stub"
     );
 }
 
 /// `(load-plugin! "x")` then `(declare-plugin! "x" …)` for a plugin that ships a
-/// manifest: the manifest's entries are already declared, the user's declare is
-/// ignored, and the ignored declare is reported.
+/// manifest: the manifest's entries are already declared, and the user's
+/// declare raises.
 #[test]
-fn load_then_declare_on_lazy_plugin_is_reported() {
+fn load_then_declare_on_lazy_plugin_raises() {
     use hume_scripting::host::CommandHost;
 
     let (dir, init_path) = plugin_fixture(
@@ -697,22 +690,38 @@ fn load_then_declare_on_lazy_plugin_is_reported() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    h.eval_init(&init_path, 10_000, &mut mock)
-        .expect("load-then-declare must succeed (soft error, not hard)");
-
+    let err = h
+        .eval_init(&init_path, 10_000, &mut mock)
+        .expect_err("a declare after load-plugin! raises");
     assert!(
-        h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_core::Severity::Error)
-                && msg.contains("user/tp")
-                && msg.contains("comes after its load-plugin!")
-        }),
-        "expected an error about the declare after load-plugin!; got: {:?}",
-        h.peek_pending_messages()
+        err.message
+            .contains("'user/tp' comes after its load-plugin!"),
+        "got: {err:?}"
     );
     assert!(
         mock.lazy_command_owner("my-cmd").is_none(),
-        "my-cmd must not be registered as a Lazy stub, declare was ignored"
+        "my-cmd must not be registered as a Lazy stub"
     );
+}
+
+/// `(declare-plugin! "x")`, `(load-plugin! "x")`, then the same declare again:
+/// the second declare of one entry raises, as it does before any load.
+#[test]
+fn declare_load_declare_of_one_entry_raises() {
+    let (dir, init_path) = plugin_fixture(
+        "(declare-plugin! \"user/tp\" #:commands '(\"my-cmd\"))\n\
+         (load-plugin! \"user/tp\")\n\
+         (declare-plugin! \"user/tp\" #:commands '(\"my-cmd\"))",
+        r#"(define-command! "my-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    let err = h
+        .eval_init(&init_path, 10_000, &mut mock)
+        .expect_err("a second declare after load-plugin! raises");
+    assert!(err.message.contains("'user/tp'"), "got: {err:?}");
 }
 
 /// `(declare-plugin! …)` then `(load-plugin! …)` for a plugin that is not
@@ -894,19 +903,14 @@ fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
     );
 }
 
-/// `#:commands` names that ALL collide with builtins leave zero effective
-/// activation entries → hard error (the post-filter zero-entry check fires).
-///
-/// `declare_plugin`'s second emptiness check runs after collision filtering;
-/// the first, before it, still sees the colliding name.
+/// A `#:commands` name a built-in already takes raises.
 #[test]
-fn declare_plugin_all_commands_collide_is_hard_error() {
+fn declare_plugin_with_a_built_in_command_name_raises() {
     let dir = tempfile::tempdir().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
     let init_path = dir.path().join("init.scm");
-    // "move-right" is a built-in, so the collision filter drops it, leaving no activation entries.
     std::fs::write(
         &init_path,
         r#"(declare-plugin! "user/tp" #:commands '("move-right"))"#,
@@ -918,10 +922,7 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     mock.native_names = ["move-right"].into_iter().collect();
 
     let result = h.eval_init(&init_path, 10_000, &mut mock);
-    assert!(
-        result.is_err(),
-        "all-collide #:commands with no other activation entry must hard-error"
-    );
+    assert!(result.is_err(), "a built-in command name must raise");
 }
 
 /// A second `(declare-plugin! …)` of the same entry raises and stops

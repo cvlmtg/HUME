@@ -25,6 +25,7 @@ use crate::host::{JobHandle, SupersedeKey, TimerHandle, token_to_steel};
 use crate::keys::parse_key_sequence;
 use crate::types::Params;
 
+use super::SteelResult;
 use super::errors::generic_err;
 
 pub(crate) mod pane;
@@ -248,6 +249,26 @@ pub(crate) fn closure_shape(proc: &SteelVal) -> Option<(usize, bool)> {
     }
 }
 
+/// Whether `proc` can be called with `args` arguments: a closure of exactly
+/// that many parameters, or one with a rest parameter whose fixed ones fit.
+/// A builtin's parameter count can't be read, so Steel checks it when it
+/// runs.
+pub(crate) fn takes_args(proc: &SteelVal, args: usize) -> bool {
+    match closure_shape(proc) {
+        Some((count, false)) => count == args,
+        // A closure with a rest parameter counts it in its arity.
+        Some((count, true)) => count <= args + 1,
+        None => true,
+    }
+}
+
+/// The error for a callback HUME calls with `args` arguments, when `proc`
+/// can't take them.
+fn arity_problem(proc: &SteelVal, args: usize) -> Option<String> {
+    let noun = if args == 1 { "parameter" } else { "parameters" };
+    (!takes_args(proc, args)).then(|| format!("expected a procedure of {args} {noun}"))
+}
+
 /// A command procedure's `(arity, is_variadic)`. A builtin's arity is not
 /// introspectable, so it counts as 0-arg non-variadic: keymap injection then
 /// passes no leading args rather than blindly injecting 2.
@@ -338,27 +359,23 @@ pub(crate) fn callable_arg(val: SteelVal, ctx_name: &str) -> Result<Rooted, Stee
     Ok(Rooted::new(val))
 }
 
-/// A callable argument that may be `#f` (absent).
-pub(crate) fn optional_callable_arg(
-    val: SteelVal,
-    ctx_name: &str,
-) -> Result<Option<Rooted>, SteelErr> {
-    optional(val, ctx_name, callable_arg)
-}
-
-/// `(%callable? v)`: backs the `#:source` check of `live-picker!` and the
-/// `argv-for` check of `picker-command-source` (see `bootstrap.scm`).
+/// `(%callable? v args)`: whether `v` is a callable that can take `args`
+/// arguments ([`takes_args`]). Backs the `#:source` check of `live-picker!`
+/// and the `argv-for` check of `picker-command-source` (see `bootstrap.scm`).
 /// `live-picker!` must validate its source in Scheme before composing the
 /// debounced-requery wrapper around it: once wrapped, `%live-picker!`'s own
-/// `callable_arg` check on `on_query_change` sees only the wrapper closure,
+/// `callback_arg` check on `on_query_change` sees only the wrapper closure,
 /// not the caller's value. Uses `callable_arg`'s own check, not
 /// Steel's own `function?`/`procedure?`, which accept
 /// `BoxedFunction`/`ContinuationFunction`/`BuiltIn` too, wider than the
 /// three variants `callable_arg` (and `define-command!`'s `proc` check)
 /// accept; a second, looser "is this callable" decode here would be exactly
 /// the drift `is_callable_value`'s own doc comment says to avoid.
-pub(crate) fn is_callable(val: SteelVal) -> bool {
-    is_callable_value(&val)
+pub(crate) fn is_callable(val: SteelVal, args: SteelVal) -> SteelResult {
+    let args = usize_arg(args, "args")?;
+    Ok(SteelVal::BoolV(
+        is_callable_value(&val) && takes_args(&val, args),
+    ))
 }
 
 /// A Steel list, unpacked to a `Vec<SteelVal>`.
@@ -917,26 +934,30 @@ impl BuiltinArg for ScriptPath {
     }
 }
 
-/// A proc a script hands HUME to call later, made a [`crate::Callback`]
-/// run as the code that handed it over. A builtin declares its callback
-/// parameters as this type in the `builtins!` table. Decoding checks it is
-/// callable, as [`callback_arg`] does, so a bad one raises at the call
-/// rather than when it is first run. Decoding has no parameter name, so the
-/// error names only the builtin; a builtin taking two callbacks decodes the
-/// second with [`callback_arg`].
+/// A proc a script hands HUME to call later with `ARGS` arguments, made a
+/// [`crate::Callback`] run as the code that handed it over. A builtin
+/// declares its callback parameters as this type in the `builtins!` table,
+/// spelling the count its call site passes. Decoding checks it is callable
+/// and can take `ARGS` arguments ([`takes_args`]), as [`callback_arg`]
+/// does, so a bad one raises at the call rather than when it is first run.
+/// Decoding has no parameter name, so the error names only the builtin; a
+/// builtin taking two callbacks decodes the second with [`callback_arg`].
 #[derive(Debug, Clone)]
-pub(crate) struct ScriptProc(Rooted);
+pub(crate) struct ScriptProc<const ARGS: usize>(Rooted);
 
-impl FromSteelVal for ScriptProc {
+impl<const ARGS: usize> FromSteelVal for ScriptProc<ARGS> {
     fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
         if !is_callable_value(val) {
             steel::stop!(TypeMismatch => "expected a callable, got {:?}", val);
+        }
+        if let Some(problem) = arity_problem(val, ARGS) {
+            steel::stop!(TypeMismatch => "{}", problem);
         }
         Ok(ScriptProc(Rooted::new(val.clone())))
     }
 }
 
-impl BuiltinArg for ScriptProc {
+impl<const ARGS: usize> BuiltinArg for ScriptProc<ARGS> {
     type Out = crate::Callback;
     fn resolve(
         self,
@@ -947,23 +968,32 @@ impl BuiltinArg for ScriptProc {
     }
 }
 
-/// A callable argument, made a [`crate::Callback`] run as the code `ctx`
-/// is running.
+/// A callable argument HUME calls later with `args` arguments, made a
+/// [`crate::Callback`] run as the code `ctx` is running. Raises unless it
+/// can take them ([`takes_args`]).
 pub(crate) fn callback_arg(
     ctx: &crate::SteelCtx,
     val: SteelVal,
+    args: usize,
     ctx_name: &str,
 ) -> Result<crate::Callback, SteelErr> {
-    Ok(crate::Callback::capture(ctx, callable_arg(val, ctx_name)?))
+    let proc = callable_arg(val, ctx_name)?;
+    if let Some(problem) = arity_problem(proc.value(), args) {
+        steel::stop!(TypeMismatch => "{}: {}", ctx_name, problem);
+    }
+    Ok(crate::Callback::capture(ctx, proc))
 }
 
 /// A callable argument that may be `#f` (absent), as [`callback_arg`].
 pub(crate) fn optional_callback_arg(
     ctx: &crate::SteelCtx,
     val: SteelVal,
+    args: usize,
     ctx_name: &str,
 ) -> Result<Option<crate::Callback>, SteelErr> {
-    Ok(optional_callable_arg(val, ctx_name)?.map(|proc| crate::Callback::capture(ctx, proc)))
+    optional(val, ctx_name, |val, ctx_name| {
+        callback_arg(ctx, val, args, ctx_name)
+    })
 }
 
 #[cfg(test)]

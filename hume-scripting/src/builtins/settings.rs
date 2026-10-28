@@ -157,9 +157,9 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 /// activate plugins, which must not happen inside the current eval.
 ///
 /// Command/hook context only (`cmd` kind). The idiomatic caller is an
-/// `on-language-set` hook handler, which receives the target buffer id as an
-/// explicit argument rather than relying on `(focused-pane)` (a live read
-/// that may differ from the buffer whose language just changed).
+/// `on-language-set` hook handler, which receives a pane naming the target
+/// buffer as an explicit argument rather than relying on `(focused-pane)` (a
+/// live read that may differ from the buffer whose language just changed).
 pub(crate) fn set_buffer_option(
     ctx: &mut SteelCtx,
     bid: BufferId,
@@ -222,9 +222,9 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// `"crlf"`; it has no global default.
 ///
 /// Command/hook context only (`cmd` kind). The idiomatic caller is an
-/// `on-language-set` hook handler, which receives the target buffer id as an
-/// explicit argument rather than relying on `(focused-pane)` (a live read
-/// that may differ from the buffer whose language just changed), same
+/// `on-language-set` hook handler, which receives a pane naming the target
+/// buffer as an explicit argument rather than relying on `(focused-pane)` (a
+/// live read that may differ from the buffer whose language just changed), same
 /// reasoning as `set-buffer-option!`.
 pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, bid: BufferId, key: String) -> SteelResult {
     match BufferIntrinsicOption::from_name(&key) {

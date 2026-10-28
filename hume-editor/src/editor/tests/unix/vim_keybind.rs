@@ -332,7 +332,7 @@ fn shift_c_shadows_copy_selection_command() {
     );
 }
 
-// ── #:config "change-to-eol" ─────────────────────────────────────────────────
+// ── #:config 'change-to-eol ──────────────────────────────────────────────────
 
 /// `#:config (hash 'change-to-eol 'off)` drops the `C` binding, restoring the
 /// native `copy-selection-on-next-line` (adds a second cursor on the next
@@ -369,7 +369,7 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
     assert!(heads.contains(&co(6)), "new cursor lands at col 0 line 1");
 }
 
-/// `#:config "change-to-eol" 'off` only affects `C`: `D` (which shadows
+/// `#:config (hash 'change-to-eol 'off)` only affects `C`: `D` (which shadows
 /// nothing) stays bound to its vim behavior.
 #[test]
 fn change_to_eol_off_leaves_d_bound_to_vim_delete() {

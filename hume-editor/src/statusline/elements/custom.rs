@@ -9,7 +9,7 @@ use crate::statusline::colors::EditorColors;
 /// reason [`super::file_path`]'s `render` is a free function instead.
 ///
 /// Renders the focused buffer's last-pushed text for `name` (`(set-
-/// statusline-text! name bid text)`), or empty if nothing has been pushed
+/// statusline-text! pane source text)`), or empty if nothing has been pushed
 /// yet: same "absent = empty" convention as every other element.
 pub(in crate::statusline) fn render(
     editor: &HumeStatusline<'_>,

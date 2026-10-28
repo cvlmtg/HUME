@@ -76,7 +76,7 @@ every slot's live job before it drops the entry, so a new slot needs no change i
 ### Per-buffer ref
 
 Both commands share one per-buffer `"ref"` override. `buffer-ref` (`state.scm`) resolves
-it: the per-buffer override when set, else the config `"ref"` default. A refresh resolves it
+it: the per-buffer override when set, else the config `'ref` default. A refresh resolves it
 when it runs, not when a hook scheduled it. The shared body
 `run-toggle!` handles both commands:
 

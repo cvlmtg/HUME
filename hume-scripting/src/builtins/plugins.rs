@@ -206,14 +206,9 @@ pub(crate) fn declare_plugin(
     // `plugin.scm` decide its entries. The manifest's own declare is the one
     // exception.
     if ctx.manifest_resolving.is_none() && ctx.registries.plugin_records.was_loaded(&plugin_id) {
-        ctx.log(
-            Severity::Error,
-            format!(
-                "declare-plugin!: '{name}' comes after its load-plugin!; \
-                 put declare-plugin! first. Declaration ignored."
-            ),
-        );
-        return Ok(SteelVal::Void);
+        return Err(generic_err(format!(
+            "'{name}' comes after its load-plugin!; put declare-plugin! first"
+        )));
     }
 
     check_not_declared(ctx, &entry_id, &name)?;

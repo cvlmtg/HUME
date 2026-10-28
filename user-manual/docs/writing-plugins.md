@@ -128,7 +128,7 @@ Together, these make a command that removes trailing spaces and tabs from the se
 
 When nothing matches, `sift-within` leaves the selections as they were and returns `#f`, so the `when` is what keeps the command from deleting them.
 
-When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed". A negative count raises. This is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would. `.` repeats a `#:repeatable` command with the `count` its first run got, `0` included, unless you type a count before `.`.
+When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed". Leaving the count out is a count of one, so `(call! "move-down" pane)` moves one buffer line, while `(call! "move-down" pane 0)` moves the way a bare `j` does. A negative count raises. This is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would. `.` repeats a `#:repeatable` command with the `count` its first run got, `0` included, unless you type a count before `.`.
 
 ## Reading selections
 
@@ -338,7 +338,7 @@ A plugin can read the `#:config` hash its user passed to `load-plugin!` with `(p
   (bind-key! 'normal "C" "my-command"))
 ```
 
-`stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`, and `stdlib/config-list` cover the other common config shapes; see [Standard Library](standard-library.md#plugin-configuration) for their signatures. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first (see "Depending on another plugin" above).
+`stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`, and `stdlib/config-list` cover the other common config shapes; see [Standard Library](standard-library.md#plugin-configuration) for their signatures. This call happens in your plugin's own body, at load time, so without `core:stdlib` declared your plugin fails to load (see "Depending on another plugin" above).
 
 Document the keys your plugin understands so users know what to pass.
 

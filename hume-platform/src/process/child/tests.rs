@@ -32,9 +32,46 @@ fn read_bounded_errors_on_overflow_instead_of_truncating() {
         err.to_string().contains("10"),
         "error should name the limit: {err}"
     );
+    assert!(stopped.get(), "an overflow stops the writer");
+}
+
+/// A `Read` that never reaches EOF, as `cat /dev/zero` writing into a pipe,
+/// and fails once `fail_after` bytes have been served so a read past the
+/// cap ends the test instead of hanging it.
+struct EndlessReader {
+    served: usize,
+    fail_after: usize,
+}
+
+impl Read for EndlessReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.served >= self.fail_after {
+            return Err(io::Error::other("read past the cap"));
+        }
+        buf.fill(b'x');
+        self.served += buf.len();
+        Ok(buf.len())
+    }
+}
+
+#[test]
+fn read_bounded_stops_reading_an_endless_stream_at_the_limit() {
+    let mut reader = EndlessReader {
+        served: 0,
+        fail_after: 1 << 20,
+    };
+    let stopped = std::cell::Cell::new(false);
+    let err = read_bounded(&mut reader, 10, || stopped.set(true))
+        .expect_err("an endless stream overflows");
     assert!(
-        !stopped.get(),
-        "an overflow drains to EOF, so the writer is left to finish"
+        err.to_string().contains("output exceeded 10 bytes"),
+        "{err}"
+    );
+    assert!(stopped.get(), "an overflow stops the writer");
+    assert!(
+        reader.served < reader.fail_after,
+        "read {} bytes",
+        reader.served
     );
 }
 

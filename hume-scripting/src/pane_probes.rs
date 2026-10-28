@@ -69,7 +69,7 @@ const PANE_PROBES: &[&str] = &[
     r#"(prompt! p "label" (lambda (s) s))"#,
     r#"(show-popup! p "text")"#,
     r#"(show-menu! p (list (cons "a" 'a)) (lambda (i) i))"#,
-    r#"(show-drawer-list! p (list (cons "a" 'a)) (lambda (i) i))"#,
+    r#"(show-drawer-list! p (list (cons "a" 'a)) (lambda (i t) i))"#,
     r#"(picker! p (list) (lambda (i) i))"#,
     "(live-picker! p (lambda (i) i) #:source (lambda (t q) q))",
     r#"(insert-key! p "tab")"#,

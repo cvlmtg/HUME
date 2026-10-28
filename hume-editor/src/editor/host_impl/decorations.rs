@@ -45,14 +45,14 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 
     fn register_sign_source(
         &mut self,
-        name: String,
+        source: String,
         bid: BufferId,
         priority: i64,
     ) -> Result<(), String> {
         self.state
             .config
             .decorations
-            .register_sign_source(name, bid, priority);
+            .register_sign_source(source, bid, priority);
         Ok(())
     }
 

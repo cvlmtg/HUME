@@ -171,9 +171,7 @@ impl CommandRegistry {
         let cmd = self.get_mappable(name).ok_or_else(|| {
             self.unknown_command_message(name, crate::editor::dispatch::unknown_command_text(name))
         })?;
-        if let MappableCommand::Native(native) = cmd
-            && native.meta().key_only
-        {
+        if !cmd.runs_from_script() {
             return Err(format!("'{name}': runs only from a key"));
         }
         Ok(cmd)
@@ -245,16 +243,18 @@ impl CommandRegistry {
         })
     }
 
-    /// Iterate over the names of native mappable commands only:
-    /// `Motion`, `Selection`, `Edit`, and `EditorCmd` variants.
+    /// Iterate over the names of native mappable commands a script can
+    /// reach: `Motion`, `Selection`, `Edit`, and `EditorCmd` variants that
+    /// are not key-only.
     ///
-    /// Excludes `SteelBacked`, `Lazy` (plugin commands), and `TypedCommand`
-    /// (`:` command-line only) entries.  Used to pre-register bare command
-    /// bindings in the Steel engine so `(move-left)` etc. compile without a
-    /// `FreeIdentifier` error.
+    /// Excludes `SteelBacked`, `Lazy` (plugin commands), `TypedCommand`
+    /// (`:` command-line only), and key-only entries. Used to pre-register
+    /// bare command bindings in the Steel engine so `(move-left)` etc.
+    /// compile without a `FreeIdentifier` error, which is also what
+    /// `command-exists?` finds.
     pub(in crate::editor) fn native_mappable_names(&self) -> impl Iterator<Item = &str> {
         self.commands.iter().filter_map(|(k, v)| match v {
-            Command::Mappable(cmd) if cmd.is_native() => Some(k.as_ref()),
+            Command::Mappable(cmd) if cmd.is_native() && cmd.runs_from_script() => Some(k.as_ref()),
             _ => None,
         })
     }

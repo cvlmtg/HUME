@@ -34,7 +34,9 @@ For running HUME from a shell instead, see [Command-line Flags](cli.md).
 | `:w <path>` | Save as |
 | `:w!` | Save, retrying with a permission change if the first attempt is refused; also overwrites a file changed on disk since it was last read or saved |
 | `:wa`, `:write-all` | Save every modified buffer |
+| `:wa!` | Save every modified buffer as `:w!` does, including those whose file changed on disk |
 | `:wq`, `:write-quit` | Save, then close the focused pane; with one pane, close the buffer, and quit HUME when it's the last one |
+| `:wq!` | Save as `:w!` does, then close as `:wq` does |
 
 Relative paths given to `:w` resolve against HUME's working directory (`:pwd`), not the shell's.
 

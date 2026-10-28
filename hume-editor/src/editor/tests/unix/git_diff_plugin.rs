@@ -748,7 +748,7 @@ fn render_diff_with_no_hunks_clears_the_callers_source() {
     assert!(line_bgs_in(&ed, bid, OTHER_SOURCE).is_empty());
 }
 
-/// [`setup`] with `"inline"` on, then the [`render_probe_source`] commands.
+/// [`setup`] with `'inline` on, then the [`render_probe_source`] commands.
 fn setup_inline_with_probes(tmp: &Path) -> (Editor, RealRuntimeDirs) {
     let (mut ed, guard) = setup(tmp, Some(r#"(hash 'signs #t 'inline #t)"#));
     let mut host = ed.scripting.take().expect("setup() installs a host");

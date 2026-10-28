@@ -132,8 +132,8 @@ driven by `on-buffer-enter`, not `on-buffer-open`, which fires for every buffer 
 not it is displayed. It also runs on `on-buffer-save`, since a hook run on save or a
 checkout in another terminal can move HEAD without a focus change.
 
-`refresh-branch!` checks `branch-element-placed?` (a substring check for
-`"steel:git-branch"` in the statusline option) before it spawns anything. Nothing places the
+`refresh-branch!` checks `branch-element-placed?` (whether `"steel:git-branch"` is one of
+the statusline option's left, center or right elements) before it spawns anything. Nothing places the
 element by default, so an unconditional fetch would spawn `git` on every focus change and
 save for work nobody can see. `plugin.scm`'s `on-option-change` hook re-runs
 `schedule-branch-refresh!` on the focused buffer whenever the `statusline` option changes,

@@ -8,8 +8,8 @@
 //! plain sentence lacks. This lint rejects those phrases in any `//`
 //! comment in the workspace, tests included.
 //!
-//! The retired kind-A/B/C names for what a builtin needs from a pane are
-//! rejected in either spelling ([`retired_kind_term`]): the pane argument
+//! The kind-A/B/C names for what a builtin needs from a pane are rejected
+//! in either spelling ([`retired_kind_term`]): the pane argument
 //! types of the `builtins!` table name those needs.
 //!
 //! Only unambiguous phrases are listed. History wording such as "no longer"

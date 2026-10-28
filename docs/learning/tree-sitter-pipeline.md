@@ -319,7 +319,7 @@ Putting it all together, here is what happens when you open `main.rs`:
    has its syntax detached, and one that later shrinks back under the cap is
    re-attached without a restart.
 
-5. **Hook** — `on-language-set` fires with the buffer id and `"rust"`.
+5. **Hook** — `on-language-set` fires with the buffer and `"rust"`.
    Plugins can react (e.g. configuring indent width, setting options).
 
 6. **`on-buffer-open`** — fires next. By this point the language is
