@@ -22,8 +22,9 @@ pub trait DiffHost {
 
     /// The hunks separating `bid`'s text at `generation` (old side) from its
     /// live text (new side), `Ok(None)` when the buffer cannot say (a view
-    /// refresh replaced the text since, or its change log keeps no step that
-    /// far back). `Err` for a buffer the host has no text for.
+    /// refresh replaced the text since, its change log keeps no step that
+    /// far back, or the changed lines are too large to report). `Err` for a
+    /// buffer the host has no text for.
     fn changes_since(
         &self,
         bid: BufferId,

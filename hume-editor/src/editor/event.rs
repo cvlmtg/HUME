@@ -183,9 +183,9 @@ pub(in crate::editor) enum EditorEvent {
     /// event announced: hunks with that text on the old side and the text at
     /// detection on the new side, `None` when the buffer cannot say (a view
     /// refresh, a change log that keeps no step that far back, or changed
-    /// lines too large to report). A
-    /// handler that edits the buffer moves it past the new side for the
-    /// handlers after it, and the next event reports that edit.
+    /// lines too large to report). A handler that edits the buffer moves it
+    /// past the new side for the handlers after it, and the next event
+    /// reports that edit.
     OnTextChanged {
         buffer: BufferId,
         changes: Option<Vec<ChangeHunk>>,

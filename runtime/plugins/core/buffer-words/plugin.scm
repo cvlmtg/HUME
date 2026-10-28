@@ -109,16 +109,13 @@
                                                      (not (hashset-contains? new-words w))))
                                     (hashset->list (bw/words-in pane old-lines)))])
            (and (<= (length candidates) bw/max-word-checks)
-                (let ([gone (filter (lambda (w) (not (bw/present? pane w))) candidates)]
-                      [added (filter (lambda (w) (not (hashset-contains? set w)))
-                                     (bw/with-twins (hashset->list new-words)))])
-                  (if (and (null? gone) (null? added))
-                      set
-                      ;; See README.md's "Updating after an edit" for the intersection.
-                      (hashset-union
-                        (hashset-difference
-                          set (hashset-intersection set (apply hashset (bw/with-twins gone))))
-                        (apply hashset added)))))))))
+                (let* ([gone (filter (lambda (w) (not (bw/present? pane w))) candidates)]
+                       [kept (if (null? gone)
+                                 set
+                                 ;; See README.md's "Updating after an edit" for the intersection.
+                                 (hashset-difference
+                                   set (hashset-intersection set (apply hashset (bw/with-twins gone)))))])
+                  (foldl (lambda (w s) (bw/add-word s w)) kept (hashset->list new-words))))))))
 
 ;;; Walk position `p`, a line of the text before `changes`, in the text after
 ;;; them. `side` is 'forward or 'backward, the end of a hunk spanning `p` it
@@ -174,9 +171,7 @@
   (let ([entry (bw/entry pane)])
     (when (and entry (= (hash-ref entry "gen") gen))
       (let* ([now (buffer-generation pane)]
-             [changes (if (equal? now (hash-ref entry "seen"))
-                          '()
-                          (buffer-changes-since pane (hash-ref entry "seen")))]
+             [changes (buffer-changes-since pane (hash-ref entry "seen"))]
              [caught-up (and changes
                              (bw/updated-set (or (hash-ref entry "building") (hashset)) pane changes))])
         (if (not caught-up)
@@ -229,8 +224,7 @@
              [current (and updated (hash-insert entry "seen" (buffer-generation pane)))])
         (cond [(not updated) (bw/reindex! pane)]
               [(eq? updated set) (bw/install! pane current)]
-              [else (bw/install! pane
-                      (hash-insert (hash-insert current "set" updated) "words" (hashset->list updated)))])))))
+              [else (bw/install! pane (bw/finish-entry current updated))])))))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 

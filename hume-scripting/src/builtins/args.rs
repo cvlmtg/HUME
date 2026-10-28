@@ -309,6 +309,18 @@ pub(crate) fn optional_supersede_key_arg(
     })
 }
 
+/// A generation of `buffer` that may be `#f` (absent), as `buffer-generation`
+/// hands it out.
+pub(crate) fn optional_generation_arg(
+    val: SteelVal,
+    buffer: BufferId,
+    ctx_name: &str,
+) -> Result<Option<u64>, SteelErr> {
+    optional(val, ctx_name, |v, ctx| {
+        super::ids::BufferGeneration::of(&v, buffer, ctx).map_err(generic_err)
+    })
+}
+
 /// A server value that may be `#f` (absent).
 pub(crate) fn optional_server_arg(
     val: SteelVal,

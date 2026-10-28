@@ -192,53 +192,29 @@ pub struct DocRange {
 }
 
 impl DocPos {
-    pub fn into_steel_val(self) -> SteelVal {
-        self.into_steelval().expect("DocPos into_steelval")
-    }
-
     pub fn from_steel_val(val: &SteelVal) -> Option<Self> {
         downcast(val)
     }
 }
 
 impl DocRange {
-    pub fn into_steel_val(self) -> SteelVal {
-        self.into_steelval().expect("DocRange into_steelval")
-    }
-
     pub fn from_steel_val(val: &SteelVal) -> Option<Self> {
         downcast(val)
     }
 }
 
-impl Custom for DocPos {
-    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!(
-            "#<doc-pos buffer={} offset={}>",
-            self.buffer.data().as_ffi(),
-            self.offset.index()
-        )))
-    }
+steel_value!(pub fn into_steel_val for DocPos => |p| format!(
+    "#<doc-pos buffer={} offset={}>",
+    p.buffer.data().as_ffi(),
+    p.offset.index()
+));
 
-    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
-    }
-}
-
-impl Custom for DocRange {
-    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!(
-            "#<doc-range buffer={} {}..{}>",
-            self.buffer.data().as_ffi(),
-            self.start.index(),
-            self.end.index()
-        )))
-    }
-
-    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
-    }
-}
+steel_value!(pub fn into_steel_val for DocRange => |r| format!(
+    "#<doc-range buffer={} {}..{}>",
+    r.buffer.data().as_ffi(),
+    r.start.index(),
+    r.end.index()
+));
 
 /// The `T` a Steel custom value holds, cloned out, or `None` for any other
 /// value.

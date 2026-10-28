@@ -147,8 +147,8 @@
               (end (hash-ref h 'old-end-line))
               (shifts (not (= (- end start)
                               (- (hash-ref h 'new-end-line) (hash-ref h 'new-start-line))))))
-         (or (pair? (filter (lambda (line) (and (<= start line) (or shifts (< line end))))
-                            lines))
+         (or (call! "stdlib/find" (lambda (line) (and (<= start line) (or shifts (< line end))))
+                    lines)
              (lsp/hunks-move-rows? (cdr changes) lines)))))
 
 (define (lsp/locations-text-changed pane changes)

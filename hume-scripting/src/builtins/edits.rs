@@ -12,23 +12,12 @@ use hume_core::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    CHAR_OFFSET, END_CHAR, START_CHAR, hash_entry, hash_list, list_items, single_key_arg,
-    string_arg, strings_arg, under_cwd,
+    CHAR_OFFSET, END_CHAR, START_CHAR, hash_entry, hash_list, list_items, optional_generation_arg,
+    single_key_arg, string_arg, strings_arg, under_cwd,
 };
 use super::errors::{generic_err, require_cap};
-use super::ids::{BufferGeneration, SteelPane, pane_or_false};
+use super::ids::{SteelPane, pane_or_false};
 use super::wire::{tagged_json_arg, wire_text_edit_arg};
-
-/// A `#:expect-generation` argument: the generation of `pane`'s buffer the
-/// caller's edits were computed against, or `#f` for none.
-fn expect_generation_arg(val: SteelVal, pane: PaneHandle) -> Result<Option<u64>, SteelErr> {
-    if val == SteelVal::BoolV(false) {
-        return Ok(None);
-    }
-    BufferGeneration::of(&val, pane.buffer(), "#:expect-generation")
-        .map(Some)
-        .map_err(generic_err)
-}
 
 /// `(%apply-text-edits! pane edits expect-gen)`. `edits` is a list of
 /// `JsonHandle`s onto wire `TextEdit`s (unconverted response elements, e.g.
@@ -45,7 +34,7 @@ pub(crate) fn apply_text_edits(
     edits: SteelVal,
     expect_gen: SteelVal,
 ) -> SteelResult {
-    let expect_gen = expect_generation_arg(expect_gen, pane)?;
+    let expect_gen = optional_generation_arg(expect_gen, pane.buffer(), "#:expect-generation")?;
     let parsed = list_items(edits, "edits")?
         .into_iter()
         .map(wire_text_edit_arg)
@@ -69,7 +58,7 @@ pub(crate) fn apply_workspace_edit(
     expect_gen: SteelVal,
 ) -> SteelResult {
     let (handle, encoding) = tagged_json_arg(&wsedit, "wsedit")?;
-    let expect_gen = expect_generation_arg(expect_gen, pane)?;
+    let expect_gen = optional_generation_arg(expect_gen, pane.buffer(), "#:expect-generation")?;
     let count = require_cap(ctx.host.edits())?
         .apply_workspace_edit(pane, handle.value(), encoding, expect_gen)
         .map_err(generic_err)?;
@@ -203,7 +192,7 @@ pub(crate) fn edit_text(
     edits: SteelVal,
     expect_gen: SteelVal,
 ) -> SteelResult {
-    let expect_gen = expect_generation_arg(expect_gen, pane)?;
+    let expect_gen = optional_generation_arg(expect_gen, pane.buffer(), "#:expect-generation")?;
     let edits = hash_list(edits, "edits", &[START_CHAR, END_CHAR, "text"], |entry| {
         let (start, end) = entry.char_range()?;
         Ok(CharTextEdit {

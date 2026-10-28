@@ -89,13 +89,15 @@ pub(crate) fn buffer_changes_since(
 /// `hunks` as a list of the hunks `diff-lines` returns, or `#f` for `None`:
 /// the `on-text-changed` payload and what `buffer-changes-since` returns.
 pub fn hunk_list_value(hunks: Option<Vec<ChangeHunk>>) -> SteelVal {
-    hunks.map_or(SteelVal::BoolV(false), |hunks| {
-        list_of(hunks.into_iter().map(hunk_to_steel))
-    })
+    hunks.map_or(SteelVal::BoolV(false), hunk_list)
 }
 
 fn hunks_to_steel(hunks: Vec<ChangeHunk>) -> SteelVal {
-    symbol_hash([("hunks", list_of(hunks.into_iter().map(hunk_to_steel)))])
+    symbol_hash([("hunks", hunk_list(hunks))])
+}
+
+fn hunk_list(hunks: Vec<ChangeHunk>) -> SteelVal {
+    list_of(hunks.into_iter().map(hunk_to_steel))
 }
 
 /// `'words`: `(hash 'old (list span …) 'new (list span …))`, or `#f` when the

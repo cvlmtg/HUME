@@ -73,8 +73,8 @@ pub fn change_hunks(cs: &ChangeSet, text: &BufferText) -> Vec<ChangeHunk> {
 }
 
 /// [`change_hunks`], or `None` when the lines its hunks span, both sides
-/// counted with their line breaks, hold more than `max_chars` chars. Each
-/// group is measured before its lines are copied.
+/// counted with their line breaks, hold more than `max_chars` chars. Every
+/// group is measured before any lines are copied.
 pub fn change_hunks_within(
     cs: &ChangeSet,
     text: &BufferText,
@@ -82,10 +82,8 @@ pub fn change_hunks_within(
 ) -> Option<Vec<ChangeHunk>> {
     let regions = cs.edited_regions();
     let lines: Vec<_> = regions.iter().map(|r| affected_lines(r, text)).collect();
-    let mut hunks = Vec::new();
-    // Old-side lines minus new-side lines over the hunks emitted so far.
-    let mut skew = 0isize;
-    let mut left = max_chars;
+    // Each group's regions, as an index range, and the lines `first..end` they touch.
+    let mut groups = Vec::new();
     let mut i = 0;
     while i < regions.len() {
         let (first, mut end) = lines[i];
@@ -94,12 +92,24 @@ pub fn change_hunks_within(
             end = end.max(lines[j].1);
             j += 1;
         }
-        left = left.checked_sub(group_chars(text, &regions[i..j], first, end))?;
-        if let Some(hunk) = group_hunk(text, &regions[i..j], first, end, skew) {
+        groups.push((i..j, first, end));
+        i = j;
+    }
+    let chars: usize = groups
+        .iter()
+        .map(|(group, first, end)| group_chars(text, &regions[group.clone()], *first, *end))
+        .sum();
+    if chars > max_chars {
+        return None;
+    }
+    let mut hunks = Vec::new();
+    // Old-side lines minus new-side lines over the hunks emitted so far.
+    let mut skew = 0isize;
+    for (group, first, end) in groups {
+        if let Some(hunk) = group_hunk(text, &regions[group], first, end, skew) {
             skew += hunk.old_lines.len() as isize - hunk.new_lines.len() as isize;
             hunks.push(hunk);
         }
-        i = j;
     }
     Some(hunks)
 }

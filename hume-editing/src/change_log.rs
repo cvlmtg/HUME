@@ -82,7 +82,7 @@ impl ChangeLog {
         if generation == live.generation() {
             return Some(Vec::new());
         }
-        let first = self.steps.iter().position(|s| s.from == generation)?;
+        let first = self.steps.iter().rposition(|s| s.from == generation)?;
         let undos = self
             .steps
             .range(first..)

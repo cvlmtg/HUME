@@ -9,8 +9,6 @@
 //! - [`diff_words`]: word-level Myers diff, meant for refining a replaced
 //!   line. [`WordHunk`] ranges are char offsets.
 //!
-//! Neither has a deadline: `imara-diff`'s Myers keeps its cost near-linear
-//! with git's heuristics, and histogram runs only within its estimate.
 //! `imara-diff` stays an implementation detail: consumers depend only on the
 //! hunk types defined here.
 
@@ -117,9 +115,7 @@ fn computed<T>(algorithm: Algorithm, input: &InternedInput<T>) -> Diff {
 fn partition(diff: &Diff, old_len: usize, new_len: usize) -> Vec<LineHunk> {
     let mut hunks = Vec::new();
     let (mut old_at, mut new_at) = (0, 0);
-    for hunk in diff.hunks() {
-        let old = hunk.before.start as usize..hunk.before.end as usize;
-        let new = hunk.after.start as usize..hunk.after.end as usize;
+    for (old, new) in token_ranges(diff) {
         if old.start > old_at {
             hunks.push(LineHunk {
                 old: old_at..old.start,
@@ -143,6 +139,16 @@ fn partition(diff: &Diff, old_len: usize, new_len: usize) -> Vec<LineHunk> {
         });
     }
     hunks
+}
+
+/// `diff`'s change hunks as old-side and new-side token-index ranges.
+fn token_ranges(diff: &Diff) -> impl Iterator<Item = (Range<usize>, Range<usize>)> + '_ {
+    diff.hunks().map(|hunk| {
+        (
+            hunk.before.start as usize..hunk.before.end as usize,
+            hunk.after.start as usize..hunk.after.end as usize,
+        )
+    })
 }
 
 // ── Word-level types ──────────────────────────────────────────────────────────
@@ -243,18 +249,11 @@ pub(crate) fn word_change_ranges(
     *budget -= tokens.old.len() + tokens.new.len();
     let input = interned(&tokens.old, &tokens.new);
     Some(
-        computed(Algorithm::Myers, &input)
-            .hunks()
-            .map(|hunk| {
+        token_ranges(&computed(Algorithm::Myers, &input))
+            .map(|(old, new)| {
                 (
-                    char_range(
-                        &tokens.old_offsets,
-                        &(hunk.before.start as usize..hunk.before.end as usize),
-                    ),
-                    char_range(
-                        &tokens.new_offsets,
-                        &(hunk.after.start as usize..hunk.after.end as usize),
-                    ),
+                    char_range(&tokens.old_offsets, &old),
+                    char_range(&tokens.new_offsets, &new),
                 )
             })
             .unzip(),

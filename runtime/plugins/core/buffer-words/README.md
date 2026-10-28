@@ -114,7 +114,8 @@ hunks, and both apply them with the same update (`bw/updated-set`):
 
 The update works from the hunks:
 
-- **Adding.** The words of every new line, with their case twins, join the set.
+- **Adding.** The words of every new line join the set as a walk adds them, with their
+  case twins.
 - **Removing.** A word of an old line that the new lines don't contain may be gone, or may
   still occur elsewhere. `bw/present?` searches the buffer for it with
   `(buffer-search pane (word-search-pattern pane w))`, the whole-word pattern `*` uses. It
