@@ -9,13 +9,16 @@
 ;;; Not 0 — see README.md's "Cursor-outward, line-windowed indexing".
 (define bw/tick-delay-ms 16)
 
+;;; See README.md's "Updating after an edit".
+(define bw/max-word-checks 32)
+
 ;; ── State ─────────────────────────────────────────────────────────────────────
 
 (define bw/*buffers* (box (hash)))
 
 ;;; SSOT for a buffer's starting shape — see README.md's "Double-buffered cache".
 (define (bw/fresh-entry)
-  (hash "words" #f "building" #f "timer" #f "gen" 0 "live-id" #f))
+  (hash "words" #f "set" #f "since" #f "started" #f "building" #f "timer" #f "gen" 0 "live-id" #f))
 
 (define (bw/entry pane)
   (let ([table (unbox bw/*buffers*)]
@@ -68,10 +71,15 @@
     (if (null? panes) 0 (buffer-cursor-line (car panes)))))
 
 ;;; Pure — see README.md's "Double-buffered cache"; `bw/walk!` installs and pushes.
-(define (bw/finish-entry entry building)
+;;; `since` is the generation the finished index matches, or `#f`.
+(define (bw/finish-entry entry building since)
   (hash-insert
     (hash-insert
-      (hash-insert entry "words" (hashset->list building))
+      (hash-insert
+        (hash-insert
+          (hash-insert entry "words" (hashset->list building))
+          "set" building)
+        "since" since)
       "building" #f)
     "timer" #f))
 
@@ -115,7 +123,9 @@
                                                    pane fwd-lines)
                                      pane bwd-lines)])
         (if (and (>= fwd-hi total) (<= bwd-lo 0))
-            (let ([finished (bw/finish-entry entry building)])
+            (let* ([started (hash-ref entry "started")]
+                   [since (and (equal? started (buffer-generation pane)) started)]
+                   [finished (bw/finish-entry entry building since)])
               (bw/install! pane finished)
               (bw/push-finished-answer! pane finished))
             (bw/install! pane
@@ -134,8 +144,71 @@
       (bw/cancel-timer! entry)
       (let* ([anchor (bw/anchor-line pane)]
              [gen (+ (hash-ref entry "gen") 1)])
-        (bw/install! pane (hash-insert (hash-insert entry "gen" gen) "building" #f))
+        (bw/install! pane
+          (hash-insert (hash-insert (hash-insert entry "gen" gen) "building" #f)
+                       "started" (buffer-generation pane)))
         (bw/walk! pane gen anchor anchor)))))
+
+;; ── Updating after an edit ────────────────────────────────────────────────────
+
+;;; Every line of `changes`' hunks under `key` ('old-lines or 'new-lines).
+(define (bw/hunk-lines changes key)
+  (foldl (lambda (h acc) (append (hash-ref h key) acc)) '() changes))
+
+(define (bw/line-chars lines)
+  (foldl (lambda (line n) (+ n (string-length line))) 0 lines))
+
+;;; The distinct words of `lines`, as a hashset.
+(define (bw/words-in pane lines)
+  (apply hashset
+         (foldl (lambda (line acc) (append (call! "stdlib/split-words" pane line) acc)) '() lines)))
+
+;;; `words` plus each one's case twin — see README.md's "Case twins".
+(define (bw/with-twins words)
+  (foldl (lambda (w acc)
+           (let ([twin (bw/case-twin w)])
+             (if twin (cons w (cons twin acc)) (cons w acc))))
+         '() words))
+
+;;; Whether `w` or its case twin still occurs as a word — see README.md's "Updating after an edit".
+(define (bw/present? pane w)
+  (let* ([head (string-ref w 0)]
+         [twin (bw/case-twin w)]
+         [form (if (and twin (not (equal? head (char-downcase head)))) twin w)])
+    (and (buffer-search pane (word-search-pattern pane form)) #t)))
+
+;;; `entry` updated for `changes`, or `#f` when a full walk costs less — see
+;;; README.md's "Updating after an edit".
+(define (bw/apply-changes entry pane changes)
+  (let ([old-lines (bw/hunk-lines changes 'old-lines)]
+        [new-lines (bw/hunk-lines changes 'new-lines)])
+    (and (<= (+ (bw/line-chars old-lines) (bw/line-chars new-lines)) bw/chars-per-tick)
+         (let* ([set (hash-ref entry "set")]
+                [new-words (bw/words-in pane new-lines)]
+                [candidates (filter (lambda (w) (and (hashset-contains? set w)
+                                                     (not (hashset-contains? new-words w))))
+                                    (hashset->list (bw/words-in pane old-lines)))])
+           (and (<= (length candidates) bw/max-word-checks)
+                (let* ([gone (filter (lambda (w) (not (bw/present? pane w))) candidates)]
+                       [added (filter (lambda (w) (not (hashset-contains? set w)))
+                                      (bw/with-twins (hashset->list new-words)))]
+                       [current (hash-insert entry "since" (buffer-generation pane))])
+                  (if (and (null? gone) (null? added))
+                      current
+                      (let ([grown (hashset-union
+                                     (hashset-difference set (apply hashset (bw/with-twins gone)))
+                                     (apply hashset added))])
+                        (hash-insert (hash-insert current "set" grown) "words" (hashset->list grown))))))))))
+
+;;; Brings `pane`'s index up to date after edits — see README.md's "Updating after an edit".
+(define (bw/refresh! pane)
+  (let* ([entry (bw/entry pane)]
+         [since (and entry (not (hash-ref entry "building")) (hash-ref entry "since"))]
+         [changes (and since (buffer-changes-since pane since))]
+         [updated (and changes (bw/apply-changes entry pane changes))])
+    (if updated
+        (bw/install! pane updated)
+        (bw/reindex! pane))))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -145,11 +218,11 @@
     (bw/reindex! pane)))
 
 ;;; See README.md's "Cursor-outward, line-windowed indexing" for the keying.
-(define bw/schedule-reindex!
-  (debounce-by 150 bw/reindex! #:key (lambda (p . _) (buffer-key p))))
+(define bw/schedule-refresh!
+  (debounce-by 150 bw/refresh! #:key (lambda (p . _) (buffer-key p))))
 
 (register-hook! 'on-text-changed
-  (lambda (pane changes) (bw/schedule-reindex! pane)))
+  (lambda (pane changes) (bw/schedule-refresh! pane)))
 
 (register-hook! 'on-buffer-close
   (lambda (pane) (bw/forget! pane)))

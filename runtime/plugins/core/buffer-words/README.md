@@ -23,14 +23,16 @@ ask.
 | Key | Default | Meaning |
 |---|---|---|
 | `'match` | `'string` | `'string`: a case-sensitive prefix gate, the vim `i_CTRL-N` feel. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
-| `'chars` | `8000` | Characters fetched and scanned per side (before/after the cursor) on each background indexing tick; an integer of at least 1. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
+| `'chars` | `8000` | Characters fetched and scanned per side (before/after the cursor) on each background indexing tick, and the most an edit's changed lines may hold for the index to be updated without a walk; an integer of at least 1. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
 
 ## How it works
 
 Vim's `i_CTRL-N` rescans the buffer on every invocation, synchronously, in C. This plugin
 scans in interpreted Steel, so it keeps a per-buffer cache instead. A background walk that
 yields back to the editor between ticks builds the cache, and `Ctrl-Space` reads whatever
-that walk has indexed so far.
+that walk has indexed so far. After an edit, the cache is updated from the lines the edit
+changed (see [Updating after an edit](#updating-after-an-edit)); a walk runs again only
+when that can't be done.
 
 ```
 cursor line
@@ -45,9 +47,9 @@ cursor line
 
 ### Cursor-outward, line-windowed indexing
 
-The cache is rebuilt on `on-buffer-open` and, debounced 150ms, on `on-text-changed`, the
-same shape `core:git-diff` uses for its own per-buffer state (see the
-[core plugins index](../README.md#per-buffer-state)). Each rebuild walks outward from the
+A walk builds the cache on `on-buffer-open`, and after an edit the update below can't
+handle. The per-buffer entry has the same shape `core:git-diff` uses for its own state (see
+the [core plugins index](../README.md#per-buffer-state)). Each walk goes outward from the
 cursor's line in both directions, one batch of lines per direction per tick, sized by
 the character budget below, fetched with `(buffer-lines pane #:range …)` and scanned to
 completion in the same tick. A word cannot span two lines, so nothing carries across a
@@ -91,6 +93,36 @@ needs a pane. A background buffer, one never focused or edited by a script or an
 the forward side scans the anchor line from its start, and the backward side starts at the
 line before it.
 
+### Updating after an edit
+
+`on-text-changed` schedules an update, debounced 150ms per buffer. A debounced call sees
+only the last of several fires, so it ignores the hook's own hunks. Instead it asks
+`buffer-changes-since` for everything since the `buffer-generation` value the index
+matches. A finished walk stores that value when the buffer did not change while it ran,
+and every update stores the one it reached.
+
+The update then works from the hunks:
+
+- **Adding.** The words of every new line, with their case twins, join the set.
+- **Removing.** A word of an old line that the new lines don't contain may be gone, or may
+  still occur elsewhere. `bw/present?` searches the buffer for it with
+  `(buffer-search pane (word-search-pattern pane w))`, the whole-word pattern `*` uses. It
+  searches the twin's all-lowercase form when the word is capitalized. An all-lowercase
+  pattern ignores case, so one search answers for the word and its twin. When nothing
+  matches, both leave the set.
+- **Rebuilding.** When a word joins or leaves, the word list `Ctrl-Space` emits is rebuilt
+  from the set. Steel's hashsets copy on change, so this costs time in proportion to the
+  number of distinct words. An edit that adds and removes nothing skips it.
+
+A walk runs instead when the update has nothing to start from or would block for too long:
+
+- no complete index yet, or a walk still running;
+- the buffer changed while the last walk ran, so no value matches the index;
+- `buffer-changes-since` returns `#f`;
+- the hunks' lines hold more than `'chars` characters, one walk tick's budget;
+- more than `bw/max-word-checks` (32) words need a search. A search for a word that is gone
+  reads the whole buffer and blocks the editor while it does; a walk yields between ticks.
+
 ### Staleness and cancellation
 
 #### Generation guard
@@ -123,10 +155,11 @@ triggered the restart.
 ### Double-buffered cache
 
 Each buffer keeps two sets: the last complete index, which `Ctrl-Space` reads, and the
-walk in progress. The in-progress set is rebuilt tick by tick. When a walk finishes it is
-promoted into a plain word list that a trigger can pass straight to `completion-emit!`.
-Until then the complete index keeps answering triggers, so a deleted word can linger for
-up to one refresh cycle. Before the first walk completes there is no complete index, and
+walk in progress. The in-progress set is rebuilt tick by tick. When a walk finishes it
+becomes the complete index, kept both as the set that later updates change and as a plain
+word list that a trigger can pass straight to `completion-emit!`. Until then the previous
+complete index keeps answering triggers, so a deleted word can linger for up to one
+refresh cycle. Before the first walk completes there is no complete index, and
 a trigger falls back to the in-progress set's word list, so the first `Ctrl-Space` after
 a buffer opens is not empty.
 
@@ -214,14 +247,16 @@ words elsewhere.
 
 ## Known limitations
 
-- **A full rescan runs on every edit.** Every refresh rescans the whole buffer, the same
-  cost `core:git-diff` pays on every debounced edit, although `on-text-changed` and
-  `buffer-changes-since` name the changed lines. Cursor-outward indexing changes the order
-  of the work and does not reduce it.
-- **Continuous typing near the cursor can starve the far ends of a large buffer.** Every
-  restart discards in-progress work, so the far ends stay unindexed while edits keep
-  arriving.
-- **A buffer-scoped `word-chars` change does not invalidate that buffer's cache.** Fixing it
-  needs a Rust-side event this plugin cannot add.
+- **Some deleted words stay offered.** A word stays while a form of it that differs only in
+  case remains (`APPLY` keeps `apply`), since the search ignores case. It also stays while it
+  ends a longer word that `word-chars` joins (`a$x` keeps `$x` when `$` is a word
+  character), since `*`'s pattern can't check the character before such an edge. A word
+  still in the buffer is never dropped.
+- **Continuous typing during a walk can starve the far ends of a large buffer.** An edit
+  during a walk restarts it and discards its work, so the far ends stay unindexed while
+  edits keep arriving. Once a walk has finished, edits update the index without one.
+- **A buffer-scoped `word-chars` change does not invalidate that buffer's cache.** Lines an
+  edit changes are read under the new value, and every other line keeps the split the last
+  walk made. Fixing it needs a Rust-side event this plugin cannot add.
 - **A single line is scanned whole.** A very long line, a minified file for instance, costs
   one tick proportional to its length.

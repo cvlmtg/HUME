@@ -135,10 +135,11 @@ fn wait_for_word(ed: &mut Editor, target: &str) {
 }
 
 /// Jumps to 1-based `line` and makes a one-character edit there (typed then
-/// left in place), leaving the editor in Insert mode. `on-text-changed`
-/// hands the hook only a buffer id, so this is how a test anchors the
-/// background walk's next restart at a specific line: `:goto` alone moves
-/// the cursor but fires no reindex on its own; only an actual edit does.
+/// left in place). An edit while a walk is still running restarts the walk
+/// from the cursor, so this is how a test anchors that restart at a specific
+/// line: `:goto` alone moves the cursor but restarts nothing. Each caller
+/// edits right after `open`, while the first walk is still running; an edit
+/// after a walk finishes updates the index instead.
 fn goto_line_and_edit(ed: &mut Editor, line: usize, ch: char) {
     type_cmd(ed, &format!(":{line}"));
     ed.feed_key(key('i'));
@@ -312,6 +313,113 @@ fn an_edit_refreshes_the_index() {
         ed.feed_key(key_backspace());
     }
     wait_for_word_gone(&mut ed, "newword");
+}
+
+/// Replaces chars `start..end` of the focused buffer with `text` through
+/// `edit-text!`, from a typed command named after the range, then settles.
+/// The cursor stays where it was, so the edit names no live token.
+fn edit_range(ed: &mut Editor, tmp: &Path, start: usize, end: usize, text: &str) {
+    let name = format!("edit-{start}-{end}");
+    run(
+        ed,
+        tmp,
+        &format!(
+            r#"(define-typed-command! "{name}" "" (lambda (pane)
+                 (edit-text! pane (list (hash 'start-char {start} 'end-char {end} 'text {text:?})))))"#
+        ),
+    );
+    type_cmd(ed, &format!(":{name}"));
+    ed.settle();
+}
+
+/// Closes the completion menu, then leaves Insert mode.
+fn leave_insert(ed: &mut Editor) {
+    ed.feed_key(key_esc());
+    ed.feed_key(key_esc());
+    assert_eq!(ed.state.mode(), Mode::Normal);
+}
+
+/// A word deleted in one place stays offered while it occurs elsewhere, and
+/// goes once its last occurrence does.
+#[test]
+fn a_deleted_word_stays_while_it_occurs_elsewhere() {
+    let tmp = tempfile::tempdir().unwrap();
+    let guard = RuntimeDirs::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = tempfile::tempdir().unwrap();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "x alpha\nalpha\n").unwrap();
+    open(&mut ed, &path);
+
+    edit_range(&mut ed, tmp.path(), 2, 7, "beta");
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "beta");
+    assert!(
+        labels(&ed).contains(&"alpha".to_string()),
+        "{:?}",
+        labels(&ed)
+    );
+    leave_insert(&mut ed);
+
+    edit_range(&mut ed, tmp.path(), 7, 12, "gamma");
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "gamma");
+    wait_for_word_gone(&mut ed, "alpha");
+}
+
+/// Deleting a capitalized word keeps it and its lowercase twin while the
+/// lowercase form remains, and deleting that too drops both.
+#[test]
+fn a_deleted_word_stays_while_its_case_twin_occurs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let guard = RuntimeDirs::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = tempfile::tempdir().unwrap();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "x Apply\napply\n").unwrap();
+    open(&mut ed, &path);
+
+    edit_range(&mut ed, tmp.path(), 2, 7, "zeta");
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "zeta");
+    let got = labels(&ed);
+    assert!(got.contains(&"Apply".to_string()), "{got:?}");
+    assert!(got.contains(&"apply".to_string()), "{got:?}");
+    leave_insert(&mut ed);
+
+    edit_range(&mut ed, tmp.path(), 7, 12, "eta");
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "eta");
+    wait_for_word_gone(&mut ed, "apply");
+    assert!(
+        !labels(&ed).contains(&"Apply".to_string()),
+        "{:?}",
+        labels(&ed)
+    );
+}
+
+/// An edit re-reads only the lines it changed. A buffer-scoped `word-chars`
+/// change reindexes nothing, so `foo-bar` on a line no edit touches keeps
+/// the split the first index made, while the edited line is read under the
+/// new `word-chars`.
+#[test]
+fn an_edit_rereads_only_the_lines_it_changed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let guard = RuntimeDirs::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = tempfile::tempdir().unwrap();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "x foo-bar\nzzz\n").unwrap();
+    open(&mut ed, &path);
+    type_cmd(&mut ed, ":set buffer word-chars=-");
+
+    edit_range(&mut ed, tmp.path(), 13, 13, " new-word");
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "new-word");
+    let got = labels(&ed);
+    assert!(got.contains(&"foo".to_string()), "{got:?}");
+    assert!(got.contains(&"bar".to_string()), "{got:?}");
+    assert!(!got.contains(&"foo-bar".to_string()), "{got:?}");
 }
 
 /// A request the walk had already finished for is answered in full, so a

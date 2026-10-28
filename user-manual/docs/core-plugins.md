@@ -238,7 +238,7 @@ Configure with `#:config`:
 | Key | Type | Default | Effect |
 |---|---|---|---|
 | `'match` | `'string` \| `'fuzzy` | `'string` | `'string` narrows by prefix as you type (the vim `i_CTRL-N` feel); `'fuzzy` scores subsequence matches like `core:lsp`'s own candidates |
-| `'chars` | integer (≥ 1) | `8000` | Characters scanned per side of the cursor on each background indexing step, rounded down to whole lines but always at least one line. Lower to trim a pause on a huge buffer, raise to index a large buffer in fewer steps |
+| `'chars` | integer (≥ 1) | `8000` | Characters scanned per side of the cursor on each background indexing step, rounded down to whole lines but always at least one line. An edit changing more characters than this re-indexes in background steps instead of at once. Lower to trim a pause on a huge buffer, raise to index a large buffer in fewer steps |
 
 ## core:vim-keybind
 
