@@ -34,6 +34,10 @@
         ((pred? (car lst)) (car lst))
         (else (stdlib/find pred? (cdr lst)))))
 
+;;; See README.md's "Filesystem and list search".
+(define (stdlib/concat lists)
+  (reverse (foldl (lambda (lst acc) (foldl cons acc lst)) '() lists)))
+
 (define (stdlib/write-file! path content)
   ;; `#:exists 'truncate` — without it, `open-output-file` fails when the file
   ;; already exists.
@@ -198,6 +202,10 @@
 (define-command! "stdlib/find"
   "First element of the given list satisfying the given predicate, or #f."
   stdlib/find)
+
+(define-command! "stdlib/concat"
+  "The given lists joined into one list, in order."
+  stdlib/concat)
 
 (define-command! "stdlib/write-file!"
   "Write the given content to the given path, creating or truncating it."

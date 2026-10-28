@@ -29,7 +29,7 @@
 ;;; Registers first regardless of `hunks` — see docs/rendering.md's "Signs".
 (define (git-diff/render-signs! pane hunks)
   (register-sign-source! pane git-diff/*source* git-diff/*sign-priority*)
-  (set-signs! pane git-diff/*source* (apply append (map git-diff/hunk->signs hunks))))
+  (set-signs! pane git-diff/*source* (call! "stdlib/concat" (map git-diff/hunk->signs hunks))))
 
 ;; ── Inline: deleted lines + word highlights ─────────────────────────────────
 ;; See docs/rendering.md.
@@ -79,8 +79,8 @@
 ;;; Two setter calls, not one — see docs/rendering.md.
 (define (git-diff/render-inline! pane source hunks)
   (let* ([results (map git-diff/hunk-inline-data hunks)]
-         [virtual-lines (apply append (map car results))]
-         [spans (apply append (map cdr results))])
+         [virtual-lines (call! "stdlib/concat" (map car results))]
+         [spans (call! "stdlib/concat" (map cdr results))])
     (set-virtual-lines! pane source virtual-lines)
     (set-extra-highlights! pane source spans)))
 
@@ -96,7 +96,7 @@
           (map (lambda (line) (hash 'line line 'scope scope)) (range new-start new-end))))))
 
 (define (git-diff/render-line-bgs! pane source hunks)
-  (set-line-backgrounds! pane source (apply append (map git-diff/hunk->line-bgs hunks))))
+  (set-line-backgrounds! pane source (call! "stdlib/concat" (map git-diff/hunk->line-bgs hunks))))
 
 ;;; Inline rendering under `source`; the one entry point for any plugin's hunks — see docs/rendering.md.
 (define (git-diff/render-diff! pane source hunks)

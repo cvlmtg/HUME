@@ -85,7 +85,7 @@
 
 ;; The elements of every server's array answer, in server order.
 (define (lsp/answer-items results)
-  (apply append (map json-list (lsp/answers results))))
+  (call! "stdlib/concat" (map json-list (lsp/answers results))))
 
 ;; Whether no server in an `lsp-request-all!` answer gave a result, errors aside.
 (define (lsp/none-answered? results)

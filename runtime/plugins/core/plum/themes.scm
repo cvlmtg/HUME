@@ -116,7 +116,7 @@
     ;; Pair each repo with its theme names once, reused below for `managed`.
     (let* ((per-repo (map (lambda (slug) (cons slug (plum/repo-theme-names slug)))
                           (plum/installed-theme-repos)))
-           (managed (apply append (map cdr per-repo)))
+           (managed (call! "stdlib/concat" (map cdr per-repo)))
            (unmanaged (filter (lambda (n) (not (member n managed)))
                               (stems-with-suffix (plum/themes-dir) ".toml"))))
       (call! "stdlib/show-report!" pane "plum-themes"

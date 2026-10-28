@@ -28,7 +28,7 @@
 ;; server's error reported.
 (define (lsp/answer-locations what results)
   (lsp/report-answer-errors! what results)
-  (apply append (map lsp/response-locations (lsp/answers results))))
+  (call! "stdlib/concat" (map lsp/response-locations (lsp/answers results))))
 
 (define (lsp/place-display place)
   (string-append (path->display (hash-ref place 'path)) ":"

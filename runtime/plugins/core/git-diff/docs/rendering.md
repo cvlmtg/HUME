@@ -60,7 +60,7 @@ gap (gitsigns' convention). `(- new-start-line 1)` also keeps a deletion at end 
 addressing a line past the end. The bottom-aligned glyph reads as a mark on the boundary
 below that line. A deletion at line 0 has no line above, so it gets the top-aligned glyph.
 
-The `(apply append …)` that joins the per-hunk sign lists is not `flatten`: a sign entry
+The `stdlib/concat` that joins the per-hunk sign lists is not `flatten`: a sign entry
 is itself a list, and `flatten` would tear each one apart. An empty `hunks` clears the
 gutter, since `set-signs!` replaces a source's signs wholesale, so the same function clears.
 

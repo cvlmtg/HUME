@@ -26,6 +26,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay a 
 | Call | Effect |
 |------|--------|
 | `(call! "stdlib/find" pred? lst)` | First element of `lst` satisfying `pred?`, or `#f` |
+| `(call! "stdlib/concat" lists)` | The lists in `lists` joined into one, in order. Unlike `(apply append lists)`, it stays fast however many lists there are |
 | `(call! "stdlib/write-file!" path content)` | Write `content` to `path`, creating or truncating it |
 | `(call! "stdlib/delete-dir!" dir)` | Recursively delete `dir`; idempotent |
 | `(call! "stdlib/delete-file!" path)` | Delete `path`; idempotent |

@@ -10,7 +10,7 @@
 (define (plum/two-level-repos root marker)
   (if (not (path-exists? root))
       '()
-      (apply append
+      (call! "stdlib/concat"
              (map (lambda (user)
                     (let ((udir (path-join root user)))
                       (map (lambda (repo) (string-append user "/" repo))

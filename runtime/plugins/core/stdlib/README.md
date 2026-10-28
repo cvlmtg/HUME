@@ -38,7 +38,7 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 | Group | Commands |
 |---|---|
 | [Selections](#selections) | `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
-| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` |
+| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/concat`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` |
 | [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
 | [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
 | [Reports](#reports) | `stdlib/report-section`, `stdlib/show-report!` |
@@ -67,6 +67,13 @@ Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
 a missing target is not an error. `list-subdirs` returns the names of the directories
 under a path, sorted, and skips stray files that sit alongside a directory tree
 (`.install-lock`, `.DS_Store`).
+
+`concat` joins a list of lists into one, in order, with one `foldl` over each list and a
+single `reverse`. Steel's `append` called with many lists (`(apply append lists)`) costs
+time that grows with the number of lists times their total length: on 2,000 one-entry
+lists, as `core:git-diff` builds for 2,000 changed lines, it took 16 ms where `concat`
+takes about 0.5 ms. `core:git-diff`, `core:lsp` and `core:plum` join their per-item lists
+with it.
 
 ### Git
 

@@ -2,7 +2,7 @@
 (declare-plugin! "core:stdlib"
   #:commands '("stdlib/primary-selection"
                "stdlib/all-single-char?" "stdlib/single-selection?" "stdlib/cursor-char-offset"
-               "stdlib/find" "stdlib/write-file!" "stdlib/delete-dir!" "stdlib/delete-file!"
+               "stdlib/find" "stdlib/concat" "stdlib/write-file!" "stdlib/delete-dir!" "stdlib/delete-file!"
                "stdlib/list-subdirs"
                "stdlib/git-repo?" "stdlib/git-toplevel" "stdlib/resolve-lang-arg"
                "stdlib/report-section" "stdlib/show-report!"

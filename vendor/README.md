@@ -88,6 +88,15 @@ at different HUME versions, so their absolute times differ.
 In six profiled startups the analysis pass's self time fell from 269 to 72 samples (1 ms
 interval). With core plugins loaded, constant evaluation went from 48 to 19 ms per startup.
 
+### Known slow, not patched
+
+**`append` with many lists.** `append` (`src/primitives/lists.rs`) joins its arguments one
+at a time with `append_mut`, so `(apply append lists)` costs time that grows with the number
+of lists times their total length. On 2,000 one-element lists it took 16 ms, where a
+`foldl`/`cons` loop and one `reverse` took 0.55 ms (measured 2026-10-28, `opt-level=3`).
+`apply` itself is not the cost: 23 µs for 2,000 arguments. HUME's core plugins join lists
+with `core:stdlib`'s `stdlib/concat` instead.
+
 ## steel-parser 0.8.3
 
 Upstream: [mattwparas/steel](https://github.com/mattwparas/steel), `crates/steel-parser` at

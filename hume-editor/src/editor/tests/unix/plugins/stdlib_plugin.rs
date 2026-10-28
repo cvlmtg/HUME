@@ -249,6 +249,38 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
     );
 }
 
+/// `stdlib/concat` joins a list of lists in order, one level deep: lists
+/// that are themselves elements stay whole, and an empty first list loses
+/// nothing after it.
+#[test]
+fn core_stdlib_concat_joins_lists_in_order() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let assertions = r#"
+(define (check name got want)
+  (unless (equal? got want)
+    (error (string-append name ": got " (to-string got)))))
+(check "no lists" (call! "stdlib/concat" '()) '())
+(check "in order" (call! "stdlib/concat" (list '(1 2) '() '(3) '(4 5))) '(1 2 3 4 5))
+(check "empty first, then mapped"
+       (map (lambda (n) (* n 10)) (call! "stdlib/concat" (list '() '(1 2 3 4 5 6))))
+       '(10 20 30 40 50 60))
+(check "one level deep"
+       (call! "stdlib/concat" (list (list '(a b)) (list '(c) '(d e))))
+       (list '(a b) '(c) '(d e)))
+(check "many lists" (call! "stdlib/concat" (map list (range 0 2000))) (range 0 2000))
+"#;
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(assertions, &mut ih)
+    };
+    assert!(
+        result.is_ok(),
+        "stdlib/concat assertions must pass: {result:?}"
+    );
+}
+
 /// `stdlib/write-file!` must replace a file's entire content, not just
 /// overwrite its leading bytes: writing a shorter string over a longer
 /// existing file must not leave the old tail behind.

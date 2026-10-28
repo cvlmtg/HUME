@@ -10,6 +10,7 @@
 ### Plugins & scripting
 - New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value was read.
 - New `buffer-search` finds a pattern in a buffer without moving the cursor or changing the current search, and `word-search-pattern` gives the pattern `*` would search for on a word.
+- New `stdlib/concat` joins a list of lists in one pass, where `(apply append …)` slows down with many lists. `core:git-diff` repaints a file with many changes about twice as fast with it.
 - Diffs of files with many changes no longer stall the editor for a quarter of a second: `core:git-diff`'s refresh and the `diff-` functions finish in milliseconds.
 - `core:buffer-words` updates its index from the lines an edit changed instead of rescanning the whole buffer, and keeps indexing through edits instead of starting over.
 

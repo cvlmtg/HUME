@@ -57,7 +57,7 @@
 
 ;; `(server . action)` for every enabled action, in server order.
 (define (lsp/offered-actions results)
-  (apply append
+  (call! "stdlib/concat"
     (map (lambda (r)
            (map (lambda (a) (cons (hash-ref r 'server) a))
                 (filter (lambda (a) (not (lsp/action-disabled? a)))
