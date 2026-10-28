@@ -2131,6 +2131,7 @@ dependencies = [
  "hume-editing",
  "hume-rope",
  "pretty_assertions",
+ "tempfile",
  "unicode-segmentation",
 ]
 

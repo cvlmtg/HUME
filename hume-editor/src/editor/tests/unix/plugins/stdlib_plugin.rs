@@ -677,30 +677,13 @@ fn markdown_heading_is_undone_by_one_undo() {
 #[test]
 fn delete_dir_does_not_count_the_delete_against_the_budget() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
-    let tree = tempfile::tempdir().unwrap();
-    let root = tree.path().join("tree");
-    for d in 0..200 {
-        let dir = root.join(format!("d{d}"));
-        std::fs::create_dir_all(&dir).unwrap();
-        for f in 0..100 {
-            std::fs::write(dir.join(format!("f{f}")), "x").unwrap();
-        }
-    }
     let budget = std::time::Duration::from_millis(250);
 
-    let source = format!(r#"(call! "stdlib/delete-dir!" {})"#, steel_path(&root));
-    let started = std::time::Instant::now();
-    let result = {
+    test_fixtures::slow_delete::assert_delete_outlasts_budget(budget, |root| {
+        let source = format!(r#"(call! "stdlib/delete-dir!" {})"#, steel_path(root));
         let mut ih = init_host!(ed);
         host.eval_source_watchdog(&source, budget, &mut ih)
-    };
-
-    assert!(result.is_ok(), "{result:?}");
-    assert!(!root.exists(), "the tree must be gone");
-    assert!(
-        started.elapsed() > budget,
-        "the delete must outlast the budget for the call to show it was not counted"
-    );
+    });
 }
 
 /// `stdlib/delete-dir!` on a directory that does not exist does nothing.

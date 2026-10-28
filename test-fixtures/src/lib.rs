@@ -14,6 +14,7 @@
 
 use std::path::{Path, PathBuf};
 
+pub mod slow_delete;
 pub mod testing;
 pub mod unicode;
 

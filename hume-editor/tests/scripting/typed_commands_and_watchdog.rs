@@ -302,32 +302,17 @@ fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
 /// does not count.
 #[test]
 fn remove_dir_does_not_count_the_delete_against_the_budget() {
-    let tree = tempfile::tempdir().unwrap();
-    let root = tree.path().join("tree");
-    for d in 0..200 {
-        let dir = root.join(format!("d{d}"));
-        std::fs::create_dir_all(&dir).unwrap();
-        for f in 0..100 {
-            std::fs::write(dir.join(format!("f{f}")), "x").unwrap();
-        }
-    }
     let mut h = host();
     let mut mock = MockHost::new();
     let budget = std::time::Duration::from_millis(250);
 
-    let started = std::time::Instant::now();
-    let result = h.eval_source_watchdog(
-        &format!("(remove-dir! {})", steel_path_literal(&root).unwrap()),
-        budget,
-        &mut mock,
-    );
-
-    assert!(result.is_ok(), "{result:?}");
-    assert!(!root.exists(), "the tree must be gone");
-    assert!(
-        started.elapsed() > budget,
-        "the delete must outlast the budget for the call to show it was not counted"
-    );
+    test_fixtures::slow_delete::assert_delete_outlasts_budget(budget, |root| {
+        h.eval_source_watchdog(
+            &format!("(remove-dir! {})", steel_path_literal(root).unwrap()),
+            budget,
+            &mut mock,
+        )
+    });
 }
 
 /// `remove-dir!` raises on a missing directory.

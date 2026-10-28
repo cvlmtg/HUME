@@ -8,4 +8,5 @@ publish = false
 hume-editing = { path = "../hume-editing", features = ["test-util"] }
 hume-rope = { path = "../hume-rope" }
 pretty_assertions = "1.4.1"
+tempfile = "3"
 unicode-segmentation.workspace = true
