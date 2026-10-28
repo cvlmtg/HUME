@@ -11,7 +11,7 @@ test-util = []
 [dependencies]
 ropey.workspace = true
 unicode-segmentation.workspace = true
-similar.workspace = true
+imara-diff.workspace = true
 rustc-hash.workspace = true
 hume-rope = { path = "../hume-rope" }
 hume-core = { path = "../hume-core" }

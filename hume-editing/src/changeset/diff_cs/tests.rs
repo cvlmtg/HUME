@@ -106,17 +106,16 @@ fn completely_different_inputs() {
 }
 
 #[test]
-fn myers_coarse_replace_still_round_trips() {
-    // Duration::ZERO forces the histogram pass to bail and Myers to
-    // return the coarsest single-Replace result. The hunk partition
-    // invariant still holds, so the round-trip must succeed regardless.
-    let old: String = (0..40).map(|i| format!("line-{i}-pad-{}", i % 3)).collect();
+fn lines_changed_throughout_round_trip() {
+    let old: String = (0..40)
+        .map(|i| format!("line-{i}-pad-{}\n", i % 3))
+        .collect();
     let new: String = (0..40)
-        .map(|i| format!("line-{i}-pad-{}", (i + 1) % 5))
+        .map(|i| format!("line-{i}-pad-{}\n", (i + 1) % 5))
         .collect();
     let old_t = BufferText::from(old.as_str());
     let new_t = BufferText::from(new.as_str());
-    let (fwd, inv) = changesets_from_line_diff_with_deadline(&old_t, &new_t, Duration::ZERO);
+    let (fwd, inv) = changesets_from_line_diff(&old_t, &new_t);
 
     let applied_fwd = fwd.apply(&old_t).expect("forward apply");
     assert_eq!(applied_fwd.to_string(), new_t.to_string());

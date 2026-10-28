@@ -501,7 +501,7 @@ Two functions compute a line-level diff, useful for anything that shows what cha
 (diff-lines old-text new-text)
 ```
 
-Splits both `old-text` and `new-text` into lines the same way HUME treats file content (every line ending becomes LF, and a missing trailing newline doesn't count as a change), then returns `(hash 'hunks hunks 'deadline-hit too-long?)`: the hunks where they differ, and whether the diff ran out of time and settled for a coarser answer. Unchanged lines are left out entirely. Each hunk is:
+Splits both `old-text` and `new-text` into lines the same way HUME treats file content (every line ending becomes LF, and a missing trailing newline doesn't count as a change), then returns `(hash 'hunks hunks)`: the hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
 
 ```scheme
 (hash 'old-start-line s 'old-end-line e 'new-start-line s 'new-end-line e 'old-lines texts 'new-lines texts 'words spans)
@@ -521,7 +521,7 @@ For a finer-grained comparison inside a single changed line, highlighting exactl
 (diff-words old-text new-text)
 ```
 
-Returns `(hash 'hunks hunks 'deadline-hit too-long?)`. `'hunks` is a list of `(hash 'old-start-char 'old-end-char 'new-start-char 'new-end-char 'old-text 'new-text)`: 0-based character positions into `old-text`/`new-text`, with `'old-text`/`'new-text` on each hunk holding the actual changed words. A pure insertion has an empty `'old-text` and `'old-start-char` equal to `'old-end-char`; a pure deletion mirrors that on the new side. `'deadline-hit` is `#t` when the two texts were too large to compare word-by-word in time. Treat that as a signal to fall back to highlighting the whole line instead of individual words.
+Returns `(hash 'hunks hunks)`. `'hunks` is a list of `(hash 'old-start-char 'old-end-char 'new-start-char 'new-end-char 'old-text 'new-text)`: 0-based character positions into `old-text`/`new-text`, with `'old-text`/`'new-text` on each hunk holding the actual changed words. A pure insertion has an empty `'old-text` and `'old-start-char` equal to `'old-end-char`; a pure deletion mirrors that on the new side. It is meant for short texts such as one changed line: for long ones, compare lines with `diff-lines` first.
 
 ## Drawing a diff
 

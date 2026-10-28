@@ -255,7 +255,7 @@ fn buffer_changes_since_with_another_buffers_generation_raises() {
     );
 }
 
-/// `diff-words` returns `(hash 'hunks … 'deadline-hit …)`, each hunk a hash of
+/// `diff-words` returns `(hash 'hunks …)`, each hunk a hash of
 /// char offsets and texts.
 ///
 /// This is the one test of the whole shape registered at the Steel
@@ -263,7 +263,7 @@ fn buffer_changes_since_with_another_buffers_generation_raises() {
 /// tokenization of "foo bar" (`"foo"`, `" "`, `"bar"`/`"baz"`: offsets
 /// `0,3,4,7`).
 #[test]
-fn diff_words_returns_a_hunks_and_deadline_hit_hash() {
+fn diff_words_returns_a_hunks_hash() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
@@ -273,14 +273,15 @@ fn diff_words_returns_a_hunks_and_deadline_hit_hash() {
         tmp.path(),
         r#"(equal? (diff-words "foo bar" "foo baz")
                    (hash 'hunks (list (hash 'old-start-char 4 'old-end-char 7 'new-start-char 4 'new-end-char 7
-                                        'old-text "bar" 'new-text "baz"))
-                         'deadline-hit #f))"#,
+                                        'old-text "bar" 'new-text "baz"))))"#,
     );
     assert!(fired, "diff-words must return the expected hunk/pair shape");
 }
 
 /// A replaced hunk with more old lines than new ones marks the edited words
 /// on the line that holds them, not on the old line sharing the new line's index.
+/// Deleting " one" or "one " gives the same text; the diff places an ambiguous
+/// change as late as it can.
 #[test]
 fn diff_lines_words_follow_the_edit_across_uneven_sides() {
     let tmp = tempfile::tempdir().unwrap();
@@ -291,7 +292,7 @@ fn diff_lines_words_follow_the_edit_across_uneven_sides() {
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r##"(equal? (hash-ref (car (hash-ref (diff-lines "# h\n\nkeep one two\n" "keep two\n") 'hunks)) 'words)
-                   (hash 'old (list (hash 'line 2 'start-char-col 4 'end-char-col 8)) 'new (list)))"##,
+                   (hash 'old (list (hash 'line 2 'start-char-col 5 'end-char-col 9)) 'new (list)))"##,
     );
     assert!(
         fired,

@@ -1,46 +1,31 @@
-//! BufferText diffing.
+//! BufferText diffing, through `imara-diff`.
 //!
-//! - [`diff_lines`]: line-level histogram diff, falling back to Myers when
-//!   histogram misses its deadline (histogram's anchor search can blow up on
-//!   huge files or very long lines). [`LineHunk`] ranges are line indices.
+//! - [`diff_lines`]: line-level diff. Myers runs first; histogram, which
+//!   anchors on lines occurring once on both sides and so reads better
+//!   around moved or repeated lines, replaces its result while its estimated
+//!   cost fits `HISTOGRAM_WORK_LIMIT`. [`LineHunk`] ranges are line indices.
 //! - [`diff_words`]: word-level Myers diff, meant for refining a replaced
 //!   line. [`WordHunk`] ranges are char offsets.
 //!
-//! `similar` stays an implementation detail: consumers depend only on the
+//! Neither has a deadline: `imara-diff`'s Myers keeps its cost near-linear
+//! with git's heuristics, and histogram runs only within its estimate.
+//! `imara-diff` stays an implementation detail: consumers depend only on the
 //! hunk types defined here.
 
 use std::hash::Hash;
 use std::ops::Range;
-use std::time::{Duration, Instant};
 
-use similar::{Algorithm, DiffOp, capture_diff_slices, capture_diff_slices_deadline};
+use imara_diff::{Algorithm, Diff, InternedInput, Interner};
 use unicode_segmentation::UnicodeSegmentation;
 
-/// Wall-clock budget for the line-level histogram pass. If histogram cannot
-/// finish within this duration, the line diff falls back to Myers with a
-/// fresh budget of the same size.
-///
-/// Configurable later: replace with a setting threaded through from the editor.
-pub(crate) const DIFF_LINE_DEADLINE: Duration = Duration::from_millis(250);
-
-/// Wall-clock budget for the word-level Myers pass. Word diffs are meant as a
-/// refinement pass on single replaced lines, so the budget is tighter than the
-/// line-level one; on timeout Myers returns a coarse (Replace-all) result and
-/// [`WordDiff::deadline_hit`] reports it. The guard is a safety net; callers
-/// are still expected to pass short strings.
-const DIFF_WORD_DEADLINE: Duration = Duration::from_millis(50);
+/// The most `lines × hunks` the histogram pass may cost, `lines` counting
+/// both inputs and `hunks` the Myers diff's change hunks. Histogram's time
+/// grows with that product, at about 0.85 ns a unit in a release build from
+/// 5,000 to 100,000 lines, so this keeps it near 14 ms on top of a per-line
+/// cost Myers pays too.
+const HISTOGRAM_WORK_LIMIT: usize = 16_000_000;
 
 // ── Line-level types ──────────────────────────────────────────────────────────
-
-/// Which algorithm produced a [`LineDiff`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AlgoUsed {
-    /// Histogram diff completed within the deadline.
-    Histogram,
-    /// Myers diff, used as a fallback because the histogram pass hit the
-    /// deadline.
-    Myers,
-}
 
 /// The kind of a [`LineHunk`]. No variant carries a payload: every consumer
 /// re-slices the changed lines from its own input via the hunk's `old`/`new`
@@ -69,92 +54,89 @@ pub struct LineHunk {
     pub old: Range<usize>,
     /// Line indices in the new input covered by this hunk.
     pub new: Range<usize>,
-    /// What kind of change this is, plus any changed-line payloads.
+    /// What kind of change this is.
     pub kind: LineHunkKind,
 }
 
-/// Result of a line-level diff.
-///
-/// `deadline_hit()` is derived from `algo_used`. Myers only ever runs as a
-/// histogram fallback, so the two are never out of step (single source of
-/// truth on which algorithm won).
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[must_use]
-pub struct LineDiff {
-    /// Which algorithm ran.
-    pub algo_used: AlgoUsed,
-    /// The captured change hunks, in order.
-    pub hunks: Vec<LineHunk>,
-}
-
-impl LineDiff {
-    /// `true` when the histogram pass could not finish in time and Myers was
-    /// used as a fallback. Always `false` when `algo_used == Histogram`.
-    pub fn deadline_hit(&self) -> bool {
-        self.algo_used == AlgoUsed::Myers
-    }
-}
-
-/// Line-level diff with an explicit deadline, for callers that want a tighter
-/// budget than the public default (e.g. scripting, tests). The public
-/// [`diff_lines`] uses `DIFF_LINE_DEADLINE`.
-///
-/// Generic over the token type: `LineHunkKind` carries no payload, so
-/// nothing here requires `&str`; a caller that already has, say,
-/// `Cow<'_, str>` line tokens can pass them straight through with no
-/// intermediate `&str` view.
-pub fn diff_lines_with_deadline<T: Eq + Hash>(
-    old: &[T],
-    new: &[T],
-    deadline: Duration,
-) -> LineDiff {
-    let start = Instant::now();
-    let deadline_instant = start + deadline;
-    let ops = capture_diff_slices_deadline(Algorithm::Histogram, old, new, Some(deadline_instant));
-    // Wall-clock check: if we used the full budget, treat the histogram pass
-    // as having bailed out and retry with Myers. The slop is microseconds and
-    // the budget is hundreds of milliseconds, so this is robust in practice.
-    if start.elapsed() < deadline {
-        return LineDiff {
-            algo_used: AlgoUsed::Histogram,
-            hunks: ops_to_line_hunks(&ops),
-        };
-    }
-
-    // Histogram bailed, so Myers gets a fresh budget. Myers' divide-and-conquer
-    // recursion still produces a usable (if coarser) result when it too hits
-    // the deadline, so we keep whatever it returns.
-    let myers_start = Instant::now();
-    let myers_deadline = myers_start + deadline;
-    let myers_ops = capture_diff_slices_deadline(Algorithm::Myers, old, new, Some(myers_deadline));
-    LineDiff {
-        algo_used: AlgoUsed::Myers,
-        hunks: ops_to_line_hunks(&myers_ops),
-    }
-}
-
-/// Line-level diff with the default deadline.
+/// Line-level diff: the hunks partition both inputs, in order, unchanged runs
+/// included as [`LineHunkKind::Equal`].
 ///
 /// `old` and `new` are line slices; the caller decides how to tokenize
 /// (rope lines, file lines, etc.). This keeps `diff.rs` independent of
 /// `ropey` and lets the rope-vs-plain-text choice live with the caller.
-pub fn diff_lines<T: Eq + Hash>(old: &[T], new: &[T]) -> LineDiff {
-    diff_lines_with_deadline(old, new, DIFF_LINE_DEADLINE)
+pub fn diff_lines<T: Eq + Hash + Clone>(old: &[T], new: &[T]) -> Vec<LineHunk> {
+    diff_lines_within(old, new, HISTOGRAM_WORK_LIMIT)
 }
 
-fn ops_to_line_hunks(ops: &[DiffOp]) -> Vec<LineHunk> {
-    ops.iter()
-        .map(|op| LineHunk {
-            old: op.old_range(),
-            new: op.new_range(),
-            kind: match op {
-                DiffOp::Equal { .. } => LineHunkKind::Equal,
-                DiffOp::Delete { .. } => LineHunkKind::Delete,
-                DiffOp::Insert { .. } => LineHunkKind::Insert,
-                DiffOp::Replace { .. } => LineHunkKind::Replace,
-            },
-        })
-        .collect()
+/// [`diff_lines`] with `limit` in place of [`HISTOGRAM_WORK_LIMIT`].
+fn diff_lines_within<T: Eq + Hash + Clone>(old: &[T], new: &[T], limit: usize) -> Vec<LineHunk> {
+    let input = interned(old, new);
+    let myers = computed(Algorithm::Myers, &input);
+    let diff = if histogram_fits(old.len() + new.len(), myers.hunks().count(), limit) {
+        computed(Algorithm::Histogram, &input)
+    } else {
+        myers
+    };
+    partition(&diff, old.len(), new.len())
+}
+
+/// Whether a histogram pass over `lines` lines whose Myers diff has `hunks`
+/// change hunks stays within `limit` (see [`HISTOGRAM_WORK_LIMIT`]).
+fn histogram_fits(lines: usize, hunks: usize, limit: usize) -> bool {
+    lines.saturating_mul(hunks) <= limit
+}
+
+/// `old` and `new` interned for `imara-diff`.
+fn interned<T: Eq + Hash + Clone>(old: &[T], new: &[T]) -> InternedInput<T> {
+    let mut input = InternedInput {
+        before: Vec::with_capacity(old.len()),
+        after: Vec::with_capacity(new.len()),
+        interner: Interner::new(old.len() + new.len()),
+    };
+    input.update_before(old.iter().cloned());
+    input.update_after(new.iter().cloned());
+    input
+}
+
+/// `algorithm`'s diff of `input`, its hunks merged and slid down where their
+/// placement is ambiguous.
+fn computed<T>(algorithm: Algorithm, input: &InternedInput<T>) -> Diff {
+    let mut diff = Diff::compute(algorithm, input);
+    diff.postprocess_no_heuristic(input);
+    diff
+}
+
+/// `diff`'s change hunks over inputs of `old_len` and `new_len` tokens, with
+/// the unchanged runs between them, as token-index ranges in order.
+fn partition(diff: &Diff, old_len: usize, new_len: usize) -> Vec<LineHunk> {
+    let mut hunks = Vec::new();
+    let (mut old_at, mut new_at) = (0, 0);
+    for hunk in diff.hunks() {
+        let old = hunk.before.start as usize..hunk.before.end as usize;
+        let new = hunk.after.start as usize..hunk.after.end as usize;
+        if old.start > old_at {
+            hunks.push(LineHunk {
+                old: old_at..old.start,
+                new: new_at..new.start,
+                kind: LineHunkKind::Equal,
+            });
+        }
+        (old_at, new_at) = (old.end, new.end);
+        let kind = match (old.is_empty(), new.is_empty()) {
+            (true, _) => LineHunkKind::Insert,
+            (_, true) => LineHunkKind::Delete,
+            _ => LineHunkKind::Replace,
+        };
+        hunks.push(LineHunk { old, new, kind });
+    }
+    if old_at < old_len {
+        hunks.push(LineHunk {
+            old: old_at..old_len,
+            new: new_at..new_len,
+            kind: LineHunkKind::Equal,
+        });
+    }
+    hunks
 }
 
 // ── Word-level types ──────────────────────────────────────────────────────────
@@ -193,38 +175,11 @@ pub struct WordHunk {
     pub kind: WordHunkKind,
 }
 
-/// Result of a word-level diff.
+/// Word-level Myers diff: the hunks partition both inputs, in order.
 ///
-/// `deadline_hit()` reports whether Myers could not finish within
-/// `DIFF_WORD_DEADLINE` and returned a coarse (Replace-all) result. Unlike
-/// [`LineDiff`], word-level has a single algorithm, so the deadline hit is
-/// independent state with nothing to derive from, hence the private field
-/// behind the accessor.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[must_use]
-pub struct WordDiff {
-    /// The captured change hunks, in order.
-    pub hunks: Vec<WordHunk>,
-    deadline_hit: bool,
-}
-
-impl WordDiff {
-    /// `true` when Myers could not finish within `DIFF_WORD_DEADLINE` and
-    /// returned a coarse (Replace-all) result.
-    pub fn deadline_hit(&self) -> bool {
-        self.deadline_hit
-    }
-}
-
-/// Word-level diff using Myers, protected by `DIFF_WORD_DEADLINE`.
-///
-/// # Contract
-///
-/// Callers **should** pass short strings (e.g. the contents of a single
-/// replaced line, or two short snippets for plugin use). The deadline is a
-/// safety net, not a license to feed huge inputs: on timeout Myers returns a
-/// coarse (Replace-all) result and [`WordDiff::deadline_hit`] reports it. For
-/// large inputs, diff at the line level first and refine per-line with this.
+/// Meant for short strings (e.g. the contents of a single replaced line, or
+/// two short snippets for plugin use). For large inputs, diff at the line
+/// level first and refine per-line with this.
 ///
 /// Tokenization uses Unicode word boundaries (UAX #29) via
 /// `unicode-segmentation`, so token boundaries are grapheme-safe: a combining
@@ -234,57 +189,33 @@ impl WordDiff {
 /// Note: this UAX #29 notion of "word" is linguistic and distinct from the
 /// vim `w`/`W` semantics in [`crate::word`]; the two intentionally do not
 /// agree.
-pub fn diff_words(old: &str, new: &str) -> WordDiff {
-    diff_words_with_deadline(old, new, DIFF_WORD_DEADLINE)
-}
-
-/// Word-level diff with an explicit deadline, for callers that want a tighter
-/// budget than the public default (e.g. scripting, tests). The public
-/// [`diff_words`] uses `DIFF_WORD_DEADLINE`.
-///
-/// Myers' divide-and-conquer recursion still produces a coherent (if coarser)
-/// result when it hits the deadline (the ranges always partition the input),
-/// so we keep whatever it returns and report the timeout via
-/// [`WordDiff::deadline_hit`].
-pub fn diff_words_with_deadline(old: &str, new: &str, deadline: Duration) -> WordDiff {
+pub fn diff_words(old: &str, new: &str) -> Vec<WordHunk> {
     let tokens = WordTokens::new(old, new);
-    let start = Instant::now();
-    let ops = capture_diff_slices_deadline(
-        Algorithm::Myers,
-        &tokens.old,
-        &tokens.new,
-        Some(start + deadline),
-    );
-    let deadline_hit = start.elapsed() >= deadline;
-    let hunks = ops
-        .iter()
-        .map(|op| {
-            let old_range = op.old_range();
-            let new_range = op.new_range();
-            let kind = match op {
-                DiffOp::Equal { .. } => WordHunkKind::Equal,
-                DiffOp::Delete { .. } => {
-                    WordHunkKind::Delete(tokens.old[old_range.clone()].join(""))
-                }
-                DiffOp::Insert { .. } => {
-                    WordHunkKind::Insert(tokens.new[new_range.clone()].join(""))
-                }
-                DiffOp::Replace { .. } => WordHunkKind::Replace {
-                    old: tokens.old[old_range.clone()].join(""),
-                    new: tokens.new[new_range.clone()].join(""),
-                },
-            };
-            WordHunk {
-                old: char_range(&tokens.old_offsets, &old_range),
-                new: char_range(&tokens.new_offsets, &new_range),
-                kind,
-            }
-        })
-        .collect();
-    WordDiff {
-        hunks,
-        deadline_hit,
-    }
+    let input = interned(&tokens.old, &tokens.new);
+    partition(
+        &computed(Algorithm::Myers, &input),
+        tokens.old.len(),
+        tokens.new.len(),
+    )
+    .into_iter()
+    .map(|LineHunk { old, new, kind }| {
+        let joined = |side: &[&str], range: &Range<usize>| side[range.clone()].join("");
+        let kind = match kind {
+            LineHunkKind::Equal => WordHunkKind::Equal,
+            LineHunkKind::Delete => WordHunkKind::Delete(joined(&tokens.old, &old)),
+            LineHunkKind::Insert => WordHunkKind::Insert(joined(&tokens.new, &new)),
+            LineHunkKind::Replace => WordHunkKind::Replace {
+                old: joined(&tokens.old, &old),
+                new: joined(&tokens.new, &new),
+            },
+        };
+        WordHunk {
+            old: char_range(&tokens.old_offsets, &old),
+            new: char_range(&tokens.new_offsets, &new),
+            kind,
+        }
+    })
+    .collect()
 }
 
 /// Changed char ranges of the old side, then of the new side.
@@ -294,9 +225,9 @@ pub(crate) type ChangedRanges = (Vec<Range<usize>>, Vec<Range<usize>>);
 /// with no text payloads. The two sides' word tokens come off `budget`, or
 /// the result is `None` and `budget` is untouched when they outnumber it.
 /// Tokenizing stops at the budget, so the cost of an input far over it is
-/// the budget's. Myers runs with no deadline: `similar`'s own work limit
-/// keeps its cost near-linear in the token count. A pure insertion or
-/// deletion contributes a zero-width range to the side it leaves untouched.
+/// the budget's. Myers keeps its cost near-linear in the token count. A pure
+/// insertion or deletion contributes a zero-width range to the side it
+/// leaves untouched.
 pub(crate) fn word_change_ranges(
     old: &str,
     new: &str,
@@ -304,14 +235,20 @@ pub(crate) fn word_change_ranges(
 ) -> Option<ChangedRanges> {
     let tokens = WordTokens::within(old, new, *budget)?;
     *budget -= tokens.old.len() + tokens.new.len();
+    let input = interned(&tokens.old, &tokens.new);
     Some(
-        capture_diff_slices(Algorithm::Myers, &tokens.old, &tokens.new)
-            .iter()
-            .filter(|op| !matches!(op, DiffOp::Equal { .. }))
-            .map(|op| {
+        computed(Algorithm::Myers, &input)
+            .hunks()
+            .map(|hunk| {
                 (
-                    char_range(&tokens.old_offsets, &op.old_range()),
-                    char_range(&tokens.new_offsets, &op.new_range()),
+                    char_range(
+                        &tokens.old_offsets,
+                        &(hunk.before.start as usize..hunk.before.end as usize),
+                    ),
+                    char_range(
+                        &tokens.new_offsets,
+                        &(hunk.after.start as usize..hunk.after.end as usize),
+                    ),
                 )
             })
             .unzip(),

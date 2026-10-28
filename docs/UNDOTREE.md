@@ -114,7 +114,7 @@ and its old-side lines are those same lines with `C` spliced in. Lines both
 sides share at a hunk's edges are trimmed, so a region that restores its own
 text leaves no hunk. The old-side line number is the new-side one, corrected
 by the line breaks `C` deletes and inserts before it. No full text is rebuilt
-and no Myers pass runs, so the cost scales with the edit, not the buffer.
+and no line diff runs, so the cost scales with the edit, not the buffer.
 
 The word spans are the `Delete` and `Insert` positions themselves, so a hunk
 carries them and needs no `diff-words` call: the plus side as char ranges of
@@ -126,7 +126,7 @@ empty `'words`.
 
 ### Hunks cross the Steel boundary, changesets do not
 
-`(buffer-revision-diff pane id)` returns `(hash 'hunks … 'deadline-hit #f)`, its hunks in the
+`(buffer-revision-diff pane id)` returns `(hash 'hunks …)`, its hunks in the
 shape `diff-buffer-lines` returns them.
 The revision's text is the old side and the live buffer's the new. Both
 builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind

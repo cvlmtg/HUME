@@ -13,20 +13,18 @@ fn diff_lines_basic() {
     let old = lines("a\nb\nc\nd");
     let new = lines("a\nB\nc\nd");
     let d = diff_lines(&old, &new);
-    assert_eq!(d.algo_used, AlgoUsed::Histogram);
-    assert!(!d.deadline_hit());
     // Expect: equal "a", replace "b"→"B", equal "c\nd".
-    assert_eq!(d.hunks.len(), 3);
-    assert_eq!(d.hunks[0].kind, LineHunkKind::Equal);
-    assert_eq!(d.hunks[0].old, 0..1);
-    assert_eq!(d.hunks[1].kind, LineHunkKind::Replace);
-    assert_eq!(d.hunks[1].old, 1..2);
-    assert_eq!(d.hunks[1].new, 1..2);
-    assert_eq!(old[d.hunks[1].old.clone()].join(""), "b");
-    assert_eq!(new[d.hunks[1].new.clone()].join(""), "B");
-    assert_eq!(d.hunks[2].kind, LineHunkKind::Equal);
-    assert_eq!(d.hunks[2].old, 2..4);
-    assert_eq!(d.hunks[2].new, 2..4);
+    assert_eq!(d.len(), 3);
+    assert_eq!(d[0].kind, LineHunkKind::Equal);
+    assert_eq!(d[0].old, 0..1);
+    assert_eq!(d[1].kind, LineHunkKind::Replace);
+    assert_eq!(d[1].old, 1..2);
+    assert_eq!(d[1].new, 1..2);
+    assert_eq!(old[d[1].old.clone()].join(""), "b");
+    assert_eq!(new[d[1].new.clone()].join(""), "B");
+    assert_eq!(d[2].kind, LineHunkKind::Equal);
+    assert_eq!(d[2].old, 2..4);
+    assert_eq!(d[2].new, 2..4);
 }
 
 #[test]
@@ -34,11 +32,10 @@ fn diff_lines_all_equal() {
     let old = lines("x\ny\nz");
     let new = lines("x\ny\nz");
     let d = diff_lines(&old, &new);
-    assert_eq!(d.algo_used, AlgoUsed::Histogram);
-    assert_eq!(d.hunks.len(), 1);
-    assert_eq!(d.hunks[0].kind, LineHunkKind::Equal);
-    assert_eq!(d.hunks[0].old, 0..3);
-    assert_eq!(d.hunks[0].new, 0..3);
+    assert_eq!(d.len(), 1);
+    assert_eq!(d[0].kind, LineHunkKind::Equal);
+    assert_eq!(d[0].old, 0..3);
+    assert_eq!(d[0].new, 0..3);
 }
 
 #[test]
@@ -47,7 +44,6 @@ fn diff_lines_pure_insert() {
     let new = lines("a\nb\nc");
     let d = diff_lines(&old, &new);
     let insert = d
-        .hunks
         .iter()
         .find(|h| h.kind == LineHunkKind::Insert)
         .expect("should have an insert hunk");
@@ -62,7 +58,6 @@ fn diff_lines_pure_delete() {
     let new = lines("a\nc");
     let d = diff_lines(&old, &new);
     let delete = d
-        .hunks
         .iter()
         .find(|h| h.kind == LineHunkKind::Delete)
         .expect("should have a delete hunk");
@@ -77,7 +72,6 @@ fn diff_lines_replace_block() {
     let new = lines("a\nX\nY\nz");
     let d = diff_lines(&old, &new);
     let replace = d
-        .hunks
         .iter()
         .find(|h| h.kind == LineHunkKind::Replace)
         .expect("should have a replace hunk");
@@ -92,41 +86,41 @@ fn diff_lines_replace_block() {
 #[test]
 fn diff_words_basic() {
     let d = diff_words("foo bar baz", "foo baz qux");
-    // Tokenization via split_word_bounds yields
-    //   old: ["foo", " ", "bar", " ", "baz"]
-    //   new: ["foo", " ", "baz", " ", "qux"]
-    // Myers aligns the shared " " between "bar" and "baz", producing:
-    //   Equal "foo " | Replace "bar"→"baz" | Equal " " | Replace "baz"→"qux"
-    assert!(!d.hunks.is_empty());
-    // "foo " must be an Equal run at char offsets 0..4 on both sides.
-    let prefix = d
-        .hunks
-        .iter()
-        .find(|h| matches!(h.kind, WordHunkKind::Equal))
-        .expect("should have an equal prefix");
-    assert_eq!(prefix.old, 0..4);
-    assert_eq!(prefix.new, 0..4);
-    // "bar" (old chars 4..7) should be replaced by "baz".
-    let bar_replaced = d.hunks.iter().any(|h| {
-        matches!(&h.kind, WordHunkKind::Replace { old, new } if old == "bar" && new == "baz")
-            && h.old == (4..7)
-            && h.new == (4..7)
-    });
-    assert!(bar_replaced, "should replace `bar` with `baz` at 4..7");
-    // "baz" (old chars 8..11) should be replaced by "qux".
-    let qux_added = d.hunks.iter().any(|h| {
-        matches!(&h.kind, WordHunkKind::Replace { old, new } if old == "baz" && new == "qux")
-            && h.old == (8..11)
-            && h.new == (8..11)
-    });
-    assert!(qux_added, "should replace `baz` with `qux` at 8..11");
+    // Tokens: old ["foo", " ", "bar", " ", "baz"], new ["foo", " ", "baz",
+    // " ", "qux"]. Any minimal diff keeps three tokens and changes four: it
+    // keeps either the second space or "baz". Myers keeps "baz", so "bar "
+    // goes and " qux" arrives around it.
+    assert_eq!(
+        d,
+        vec![
+            WordHunk {
+                old: 0..4,
+                new: 0..4,
+                kind: WordHunkKind::Equal
+            },
+            WordHunk {
+                old: 4..8,
+                new: 4..4,
+                kind: WordHunkKind::Delete("bar ".into())
+            },
+            WordHunk {
+                old: 8..11,
+                new: 4..7,
+                kind: WordHunkKind::Equal
+            },
+            WordHunk {
+                old: 11..11,
+                new: 7..11,
+                kind: WordHunkKind::Insert(" qux".into())
+            },
+        ]
+    );
 }
 
 #[test]
 fn diff_words_replace() {
     let d = diff_words("hello world", "hello there");
     let replace = d
-        .hunks
         .iter()
         .find(|h| matches!(h.kind, WordHunkKind::Replace { .. }))
         .expect("should have a replace hunk");
@@ -155,7 +149,6 @@ fn diff_words_grapheme_safe() {
     // combining sequence) must be an Equal run covering chars 0..6
     // (c, a, f, e, U+0301, space).
     let prefix = d
-        .hunks
         .iter()
         .find(|h| matches!(h.kind, WordHunkKind::Equal))
         .expect("should have an equal prefix hunk");
@@ -169,9 +162,7 @@ fn diff_words_grapheme_safe() {
 fn diff_lines_empty() {
     // No lines on either side → no hunks. Pins the empty-input contract.
     let d = diff_lines::<&str>(&[], &[]);
-    assert_eq!(d.algo_used, AlgoUsed::Histogram);
-    assert!(!d.deadline_hit());
-    assert!(d.hunks.is_empty());
+    assert!(d.is_empty());
 }
 
 #[test]
@@ -180,12 +171,12 @@ fn diff_lines_completely_different() {
     let old = lines("aaa\nbbb");
     let new = lines("xxx\nyyy\nzzz");
     let d = diff_lines(&old, &new);
-    assert_eq!(d.hunks.len(), 1);
-    assert_eq!(d.hunks[0].kind, LineHunkKind::Replace);
-    assert_eq!(d.hunks[0].old, 0..2);
-    assert_eq!(d.hunks[0].new, 0..3);
-    assert_eq!(old[d.hunks[0].old.clone()].join(""), "aaabbb");
-    assert_eq!(new[d.hunks[0].new.clone()].join(""), "xxxyyyzzz");
+    assert_eq!(d.len(), 1);
+    assert_eq!(d[0].kind, LineHunkKind::Replace);
+    assert_eq!(d[0].old, 0..2);
+    assert_eq!(d[0].new, 0..3);
+    assert_eq!(old[d[0].old.clone()].join(""), "aaabbb");
+    assert_eq!(new[d[0].new.clone()].join(""), "xxxyyyzzz");
 }
 
 #[test]
@@ -196,33 +187,10 @@ fn diff_lines_trailing_newline() {
     let new = lines("a\n");
     assert_eq!(old.len(), 2);
     let d = diff_lines(&old, &new);
-    assert_eq!(d.hunks.len(), 1);
-    assert_eq!(d.hunks[0].kind, LineHunkKind::Equal);
-    assert_eq!(d.hunks[0].old, 0..2);
-    assert_eq!(d.hunks[0].new, 0..2);
-}
-
-#[test]
-fn diff_lines_myers_fallback_coherent() {
-    // With a zero deadline the histogram pass can never finish in time, so
-    // the fallback to Myers is deterministic regardless of machine speed.
-    // Myers too hits the zero budget immediately and returns the coarsest
-    // result (a single Replace spanning the whole input), which is still
-    // a coherent, well-formed diff (ranges cover the inputs, kind matches).
-    let old: Vec<String> = (0..20).map(|i| format!("line-{i}-pad-{}", i % 3)).collect();
-    let new: Vec<String> = (0..20)
-        .map(|i| format!("line-{i}-pad-{}", (i + 1) % 5))
-        .collect();
-    let old_refs: Vec<&str> = old.iter().map(String::as_str).collect();
-    let new_refs: Vec<&str> = new.iter().map(String::as_str).collect();
-
-    let d = diff_lines_with_deadline(&old_refs, &new_refs, Duration::ZERO);
-    assert_eq!(d.algo_used, AlgoUsed::Myers);
-    assert!(d.deadline_hit());
-    assert_eq!(d.hunks.len(), 1);
-    assert_eq!(d.hunks[0].old, 0..20);
-    assert_eq!(d.hunks[0].new, 0..20);
-    assert_eq!(d.hunks[0].kind, LineHunkKind::Replace);
+    assert_eq!(d.len(), 1);
+    assert_eq!(d[0].kind, LineHunkKind::Equal);
+    assert_eq!(d[0].old, 0..2);
+    assert_eq!(d[0].new, 0..2);
 }
 
 #[test]
@@ -230,8 +198,7 @@ fn diff_words_empty() {
     // Empty strings → no hunks, guard not triggered. Pins the empty-input
     // contract.
     let d = diff_words("", "");
-    assert!(d.hunks.is_empty());
-    assert!(!d.deadline_hit());
+    assert!(d.is_empty());
 }
 
 #[test]
@@ -248,18 +215,17 @@ fn diff_words_zwj_emoji() {
     // Equal prefix "x 👨‍👩‍👧 " covers chars 0..8 on both sides; the ZWJ
     // sequence is inside it and never split.
     let prefix = d
-        .hunks
         .iter()
         .find(|h| matches!(h.kind, WordHunkKind::Equal))
         .expect("should have an equal prefix hunk");
     assert_eq!(prefix.old, 0..8);
     assert_eq!(prefix.new, 0..8);
     // "y" → "z" is the only change, at char offset 8..9 on both sides.
-    assert_eq!(d.hunks.len(), 2);
-    assert_eq!(d.hunks[1].old, 8..9);
-    assert_eq!(d.hunks[1].new, 8..9);
+    assert_eq!(d.len(), 2);
+    assert_eq!(d[1].old, 8..9);
+    assert_eq!(d[1].new, 8..9);
     assert_eq!(
-        d.hunks[1].kind,
+        d[1].kind,
         WordHunkKind::Replace {
             old: "y".into(),
             new: "z".into(),
@@ -281,25 +247,77 @@ fn diff_words_cjk() {
     //   Delete "語"      old 2..3  new 2..2
     //   Equal " "        old 3..4  new 2..3
     //   Replace abc→go   old 4..7  new 3..5
-    assert_eq!(d.hunks.len(), 4);
-    assert_eq!(d.hunks[0].kind, WordHunkKind::Equal);
-    assert_eq!(d.hunks[0].old, 0..2);
-    assert_eq!(d.hunks[0].new, 0..2);
-    assert_eq!(d.hunks[1].kind, WordHunkKind::Delete("語".into()));
-    assert_eq!(d.hunks[1].old, 2..3);
-    assert_eq!(d.hunks[1].new, 2..2);
-    assert_eq!(d.hunks[2].kind, WordHunkKind::Equal);
-    assert_eq!(d.hunks[2].old, 3..4);
-    assert_eq!(d.hunks[2].new, 2..3);
+    assert_eq!(d.len(), 4);
+    assert_eq!(d[0].kind, WordHunkKind::Equal);
+    assert_eq!(d[0].old, 0..2);
+    assert_eq!(d[0].new, 0..2);
+    assert_eq!(d[1].kind, WordHunkKind::Delete("語".into()));
+    assert_eq!(d[1].old, 2..3);
+    assert_eq!(d[1].new, 2..2);
+    assert_eq!(d[2].kind, WordHunkKind::Equal);
+    assert_eq!(d[2].old, 3..4);
+    assert_eq!(d[2].new, 2..3);
     assert_eq!(
-        d.hunks[3].kind,
+        d[3].kind,
         WordHunkKind::Replace {
             old: "abc".into(),
             new: "go".into(),
         }
     );
-    assert_eq!(d.hunks[3].old, 4..7);
-    assert_eq!(d.hunks[3].new, 3..5);
+    assert_eq!(d[3].old, 4..7);
+    assert_eq!(d[3].new, 3..5);
+}
+
+// ── Algorithm choice ─────────────────────────────────────────────────────
+
+/// `u1` and `u2` each occur once on both sides. Histogram anchors on `u1`, so
+/// `u1` and the braces around it stay put and `u2 }` reads as moved: inserted
+/// above them, deleted below them.
+#[test]
+fn diff_lines_anchors_on_a_line_unique_to_both_sides() {
+    let old = ["}", "}", "u1", "}", "}", "u2", "}", "}"];
+    let new = ["}", "u2", "}", "}", "u1", "}", "}", "}"];
+    let d = diff_lines(&old, &new);
+    let got: Vec<_> = d
+        .iter()
+        .map(|h| (h.kind, h.old.clone(), h.new.clone()))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (LineHunkKind::Equal, 0..1, 0..1),
+            (LineHunkKind::Insert, 1..1, 1..3),
+            (LineHunkKind::Equal, 1..5, 3..7),
+            (LineHunkKind::Delete, 5..7, 7..7),
+            (LineHunkKind::Equal, 7..8, 7..8),
+        ]
+    );
+}
+
+#[test]
+fn histogram_runs_only_while_its_estimated_work_fits() {
+    assert!(histogram_fits(10, 3, 30));
+    assert!(!histogram_fits(10, 4, 30));
+    assert!(histogram_fits(usize::MAX, 0, 0));
+    assert!(!histogram_fits(usize::MAX, 2, usize::MAX - 1));
+}
+
+/// Past the work limit the Myers result stands. Both sides hold six braces,
+/// so the longest common run is the six braces and any minimal diff changes
+/// four lines; Myers keeps the braces where histogram kept `u1`.
+#[test]
+fn past_the_work_limit_the_myers_result_stands() {
+    let old = ["}", "}", "u1", "}", "}", "u2", "}", "}"];
+    let new = ["}", "u2", "}", "}", "u1", "}", "}", "}"];
+    let within = diff_lines_within(&old, &new, usize::MAX);
+    let past = diff_lines_within(&old, &new, 0);
+    assert_ne!(past, within);
+    let changed: usize = past
+        .iter()
+        .filter(|h| h.kind != LineHunkKind::Equal)
+        .map(|h| h.old.len() + h.new.len())
+        .sum();
+    assert_eq!(changed, 4);
 }
 
 // ── Property-based round-trip tests ──────────────────────────────────────
@@ -307,35 +325,6 @@ fn diff_words_cjk() {
 // The hunk ranges must partition the input, so
 // concatenating the covered slices reconstructs the original input. This
 // catches off-by-one range bugs without mirroring the implementation.
-
-#[test]
-fn diff_words_deadline_hit() {
-    // With a zero deadline Myers bails immediately. The input is large
-    // enough (400 tokens, no common prefix) that Myers returns a coarse
-    // result: a single Replace covering everything except the trailing
-    // space, which is common to both inputs and found as an Equal anchor
-    // before the deadline check. Deterministic regardless of machine speed.
-    let old: String = (0..200).map(|i| format!("a{i} ")).collect();
-    let new: String = (0..200).map(|i| format!("b{i} ")).collect();
-    let d = diff_words_with_deadline(&old, &new, Duration::ZERO);
-    assert!(d.deadline_hit());
-    assert_eq!(d.hunks.len(), 2);
-    assert_eq!(d.hunks[0].old, 0..889);
-    assert_eq!(d.hunks[0].new, 0..889);
-    assert!(matches!(d.hunks[0].kind, WordHunkKind::Replace { .. }));
-    assert_eq!(d.hunks[1].old, 889..890);
-    assert_eq!(d.hunks[1].new, 889..890);
-    assert_eq!(d.hunks[1].kind, WordHunkKind::Equal);
-}
-
-#[test]
-fn diff_words_no_deadline_on_small_input() {
-    // A small input finishes well within the 50ms budget; the guard must
-    // not fire spuriously on fast machines.
-    let d = diff_words("foo bar", "foo baz");
-    assert!(!d.deadline_hit());
-    assert_eq!(d.hunks.len(), 2);
-}
 
 use proptest::prelude::*;
 
@@ -359,21 +348,21 @@ proptest! {
         // each hunk's old lines (joined with no separator, matching the
         // payload policy) reconstructs old_lines joined with no separator.
         let recon_old: String =
-            d.hunks.iter().map(|h| old_lines[h.old.clone()].join("")).collect();
+            d.iter().map(|h| old_lines[h.old.clone()].join("")).collect();
         prop_assert_eq!(&recon_old, &old_lines.join(""));
         // Same for the new side.
         let recon_new: String =
-            d.hunks.iter().map(|h| new_lines[h.new.clone()].join("")).collect();
+            d.iter().map(|h| new_lines[h.new.clone()].join("")).collect();
         prop_assert_eq!(&recon_new, &new_lines.join(""));
         // Ranges must be contiguous and cover the whole input.
         let mut old_end = 0;
-        for h in &d.hunks {
+        for h in &d {
             prop_assert_eq!(h.old.start, old_end);
             old_end = h.old.end;
         }
         prop_assert_eq!(old_end, old_lines.len());
         let mut new_end = 0;
-        for h in &d.hunks {
+        for h in &d {
             prop_assert_eq!(h.new.start, new_end);
             new_end = h.new.end;
         }
@@ -392,20 +381,20 @@ proptest! {
         // Char-offset ranges must partition the input string: slicing and
         // concatenating reconstructs the original.
         let recon_old: String =
-            d.hunks.iter().map(|h| &old[old_bytes[h.old.start]..old_bytes[h.old.end]]).collect();
+            d.iter().map(|h| &old[old_bytes[h.old.start]..old_bytes[h.old.end]]).collect();
         prop_assert_eq!(&recon_old, &old);
         let recon_new: String =
-            d.hunks.iter().map(|h| &new[new_bytes[h.new.start]..new_bytes[h.new.end]]).collect();
+            d.iter().map(|h| &new[new_bytes[h.new.start]..new_bytes[h.new.end]]).collect();
         prop_assert_eq!(&recon_new, &new);
         // Ranges contiguous and cover the whole input.
         let mut old_end = 0;
-        for h in &d.hunks {
+        for h in &d {
             prop_assert_eq!(h.old.start, old_end);
             old_end = h.old.end;
         }
         prop_assert_eq!(old_end, old_n);
         let mut new_end = 0;
-        for h in &d.hunks {
+        for h in &d {
             prop_assert_eq!(h.new.start, new_end);
             new_end = h.new.end;
         }

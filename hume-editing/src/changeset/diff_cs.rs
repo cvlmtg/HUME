@@ -21,18 +21,17 @@
 //! does not mutate either buffer. The caller still owns the text swap.
 
 use std::ops::Range;
-use std::time::Duration;
 
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use ropey::RopeSlice;
 
-use crate::diff::{LineHunk, LineHunkKind, diff_lines_with_deadline};
+use crate::diff::{LineHunk, LineHunkKind, diff_lines};
 use crate::text::BufferText;
 
 use super::{ChangeSet, ChangeSetBuilder};
 
 /// Build `(forward, inverse)` `ChangeSet`s describing the old → new text
-/// transformation at the line level, using the default line-diff deadline.
+/// transformation at the line level.
 ///
 /// `forward` is sized to `old.len_chars()`; `inverse` to `new.len_chars()`.
 /// Applying `forward` to `old` yields `new`; applying `inverse` to `new` yields
@@ -42,23 +41,10 @@ use super::{ChangeSet, ChangeSetBuilder};
 /// The caller still owns the `BufferText` mutation; this helper only produces the
 /// `ChangeSet`s, it does not touch either buffer.
 pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeSet, ChangeSet) {
-    changesets_from_line_diff_with_deadline(old, new, crate::diff::DIFF_LINE_DEADLINE)
-}
-
-/// Like [`changesets_from_line_diff`] but with an explicit line-diff deadline.
-/// Crate-private: its own tests (a child module) reach it directly to force
-/// the Myers fallback (`Duration::ZERO`) and exercise the coarse
-/// single-Replace path; [`changesets_from_line_diff`] is the only production
-/// caller.
-fn changesets_from_line_diff_with_deadline(
-    old: &BufferText,
-    new: &BufferText,
-    deadline: Duration,
-) -> (ChangeSet, ChangeSet) {
     let (old_tokens, old_offsets) = tokens_with_offsets(old);
     let (new_tokens, new_offsets) = tokens_with_offsets(new);
 
-    let diff = diff_lines_with_deadline(&old_tokens, &new_tokens, deadline);
+    let hunks = diff_lines(&old_tokens, &new_tokens);
 
     debug_assert_eq!(
         old_offsets
@@ -77,7 +63,7 @@ fn changesets_from_line_diff_with_deadline(
         "new token char count must equal rope len_chars",
     );
 
-    build_changesets(old, new, &diff.hunks, &old_offsets, &new_offsets)
+    build_changesets(old, new, &hunks, &old_offsets, &new_offsets)
 }
 
 /// Walk the line-diff hunks and emit the `(forward, inverse)` `ChangeSet` pair.

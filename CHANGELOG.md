@@ -3,12 +3,14 @@
 ## Unreleased
 
 ### Breaking changes
+- `diff-lines`, `diff-buffer-lines`, `buffer-revision-diff` and `diff-words` return `(hash 'hunks …)` without `'deadline-hit`: a diff always finishes, so drop any code reading that key.
 - `on-text-changed` handlers take `(pane changes)`: add the second parameter, `changes`, the hunks since the previous fire or `#f`.
 - `buffer-generation` returns an opaque value instead of an integer: compare two with `equal?`. `#:expect-generation` takes only that value, and raises for one from another buffer.
 
 ### Plugins & scripting
 - New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value was read.
 - New `buffer-search` finds a pattern in a buffer without moving the cursor or changing the current search, and `word-search-pattern` gives the pattern `*` would search for on a word.
+- Diffs of files with many changes no longer stall the editor for a quarter of a second: `core:git-diff`'s refresh and the `diff-` functions finish in milliseconds.
 - `core:buffer-words` updates its index from the lines an edit changed instead of rescanning the whole buffer, and keeps indexing through edits instead of starting over.
 
 ## [0.17.0] - 2026-10-28

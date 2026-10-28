@@ -8,7 +8,7 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use hume_editing::diff::{WordHunk, WordHunkKind};
-use hume_editing::hunk::{ChangeHunk, HunkDiff, LineSpan, text_hunks};
+use hume_editing::hunk::{ChangeHunk, LineSpan, text_hunks};
 use hume_editing::text::BufferText;
 
 use hume_core::BufferId;
@@ -21,9 +21,8 @@ use super::args::{
 use super::errors::{generic_err, require_cap};
 use super::ids::BufferGeneration;
 
-/// `(diff-lines old-text new-text)` → `(hash 'hunks (…) 'deadline-hit b)`:
-/// the hunks oldest side first, and whether the line diff missed its
-/// deadline and fell back to Myers. Each hunk is `(hash 'old-start-line 'old-end-line 'new-start-line
+/// `(diff-lines old-text new-text)` → `(hash 'hunks (…))`: the hunks, oldest
+/// side first. Each hunk is `(hash 'old-start-line 'old-end-line 'new-start-line
 /// 'new-end-line 'old-lines 'new-lines 'words)`: 0-based lines, end-exclusive,
 /// so a side with no lines has an empty range at the point the other side was
 /// inserted at or deleted from. `Equal` runs are dropped. Both texts are read
@@ -54,7 +53,7 @@ pub(crate) fn diff_buffer_lines(
     Ok(hunks_to_steel(diff))
 }
 
-/// `(buffer-revision-diff pane id)` → the `(hash 'hunks 'deadline-hit)` that
+/// `(buffer-revision-diff pane id)` → the `(hash 'hunks)` that
 /// separates `pane`'s buffer's live text from revision `id` of its undo
 /// history (a number from `(buffer-undo-tree pane)`), as `diff-lines` returns.
 /// The revision's text is the old side and the live text the new. Raises when
@@ -95,11 +94,8 @@ pub fn hunk_list_value(hunks: Option<Vec<ChangeHunk>>) -> SteelVal {
     })
 }
 
-fn hunks_to_steel(diff: HunkDiff) -> SteelVal {
-    symbol_hash([
-        ("hunks", list_of(diff.hunks.into_iter().map(hunk_to_steel))),
-        ("deadline-hit", SteelVal::BoolV(diff.deadline_hit)),
-    ])
+fn hunks_to_steel(hunks: Vec<ChangeHunk>) -> SteelVal {
+    symbol_hash([("hunks", list_of(hunks.into_iter().map(hunk_to_steel)))])
 }
 
 /// `'words`: `(hash 'old (list span …) 'new (list span …))`, or `#f` when the
@@ -155,22 +151,17 @@ fn line_span_to_steel(span: LineSpan) -> SteelVal {
     ])
 }
 
-/// `(diff-words old-text new-text)` → `(hash 'hunks … 'deadline-hit …)`.
-/// `'hunks` is a list of `(hash 'old-start-char 'old-end-char 'new-start-char
-/// 'new-end-char 'old-text 'new-text)`, char offsets, `Equal` runs dropped; a pure insert
-/// or delete has a zero-width side with empty text. `'deadline-hit` is `#t`
-/// when Myers timed out and returned a coarse result, which a caller should
-/// treat as a fallback rather than a precise diff.
+/// `(diff-words old-text new-text)` → `(hash 'hunks …)`. `'hunks` is a list
+/// of `(hash 'old-start-char 'old-end-char 'new-start-char 'new-end-char
+/// 'old-text 'new-text)`, char offsets, `Equal` runs dropped; a pure insert or
+/// delete has a zero-width side with empty text.
 pub(crate) fn diff_words(old: SteelVal, new: SteelVal) -> SteelResult {
     let old = string_arg(old, "old-text")?;
     let new = string_arg(new, "new-text")?;
-    let diff = hume_editing::diff::diff_words(&old, &new);
-    let deadline_hit = diff.deadline_hit();
-    let hunks = list_of(diff.hunks.into_iter().filter_map(word_hunk_to_steel));
-    Ok(symbol_hash([
-        ("hunks", hunks),
-        ("deadline-hit", SteelVal::BoolV(deadline_hit)),
-    ]))
+    let hunks = hume_editing::diff::diff_words(&old, &new)
+        .into_iter()
+        .filter_map(word_hunk_to_steel);
+    Ok(symbol_hash([("hunks", list_of(hunks))]))
 }
 
 fn word_hunk_to_steel(hunk: WordHunk) -> Option<SteelVal> {

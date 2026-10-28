@@ -49,27 +49,11 @@ fn diff_words_rejects_a_non_string_new_argument() {
     );
 }
 
-/// A diff whose line diff missed its deadline reads `'deadline-hit #t`.
-#[test]
-fn a_diff_past_its_deadline_reads_deadline_hit_true() {
-    let diff = HunkDiff {
-        hunks: Vec::new(),
-        deadline_hit: true,
-    };
-    assert_eq!(
-        hunks_to_steel(diff),
-        symbol_hash([
-            ("hunks", list_of(Vec::<SteelVal>::new())),
-            ("deadline-hit", SteelVal::BoolV(true)),
-        ])
-    );
-}
-
 // ── NullHost: no DiffHost, buffer_exists=false ──────────────────────────────
 
-/// A line diff's result: its `hunks`, from a diff that finished in time.
+/// A line diff's result: its `hunks`.
 fn lines_result(hunks: SteelVal) -> SteelVal {
-    symbol_hash([("hunks", hunks), ("deadline-hit", SteelVal::BoolV(false))])
+    symbol_hash([("hunks", hunks)])
 }
 
 fn int(n: isize) -> SteelVal {
@@ -88,10 +72,7 @@ fn word_hunk(old: (isize, isize, &str), new: (isize, isize, &str)) -> SteelVal {
 }
 
 fn words_result(hunks: Vec<SteelVal>) -> SteelVal {
-    symbol_hash([
-        ("hunks", list_of(hunks)),
-        ("deadline-hit", SteelVal::BoolV(false)),
-    ])
+    symbol_hash([("hunks", list_of(hunks))])
 }
 
 fn run_diff_words(old: &str, new: &str) -> SteelVal {

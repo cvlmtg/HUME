@@ -226,9 +226,7 @@ fn a_whole_line_diff_revision_has_no_word_spans() {
 }
 
 fn text_of(old: &str, new: &str) -> Vec<ChangeHunk> {
-    let diff = text_hunks(&BufferText::from(old), &BufferText::from(new));
-    assert!(!diff.deadline_hit, "a test text diffs in time");
-    diff.hunks
+    text_hunks(&BufferText::from(old), &BufferText::from(new))
 }
 
 /// The words of a text hunk with both sides, which must be its only hunk.
@@ -318,7 +316,9 @@ fn text_hunks_treat_non_lf_unicode_breaks_as_content() {
 #[test]
 fn text_hunk_words_mark_the_edit_not_the_unpaired_line() {
     let words = words_of("## core:plum\n\n**PLUM** a commands b\n", "**PLUM** a b\n");
-    assert_eq!(words.old, vec![span(2, 10, 19)]);
+    // Deleting " commands" or "commands " gives the same text; the diff
+    // places an ambiguous change as late as it can.
+    assert_eq!(words.old, vec![span(2, 11, 20)]);
     assert_eq!(words.new, Vec::new());
 }
 
@@ -345,20 +345,6 @@ fn text_hunk_words_split_a_span_across_lines() {
     assert_eq!(words.new, vec![chars(1, 2)]);
 }
 
-/// A line diff that misses its deadline says so, and still hands back the
-/// fallback diff's hunks.
-#[test]
-fn text_hunks_past_the_line_diff_deadline_say_so() {
-    let diff = text_hunks_within(
-        &BufferText::from(TEXT),
-        &BufferText::from("one\nTWO\nthree\n"),
-        HUNK_WORDS_BUDGET,
-        Duration::ZERO,
-    );
-    assert!(diff.deadline_hit);
-    assert!(!diff.hunks.is_empty());
-}
-
 /// Once the shared budget is spent, a replaced hunk keeps its lines and says
 /// its word diff was skipped, which no spans could not tell apart from a
 /// change of whole lines.
@@ -368,9 +354,7 @@ fn text_hunks_past_the_word_budget_say_so() {
         &BufferText::from("let x = 1;\n"),
         &BufferText::from("let y = 1;\n"),
         0,
-        DIFF_LINE_DEADLINE,
-    )
-    .hunks;
+    );
     assert_eq!(
         hunks,
         vec![over_budget(hunk(0, 0, &["let x = 1;"], &["let y = 1;"]))]
@@ -386,9 +370,7 @@ fn text_hunks_skip_the_spans_of_a_hunk_larger_than_the_budget_left() {
         &BufferText::from("p q r s\nkeep\nm n\n"),
         &BufferText::from("p Q r s\nkeep\nm o\n"),
         6,
-        DIFF_LINE_DEADLINE,
-    )
-    .hunks;
+    );
     assert_eq!(
         hunks,
         vec![
