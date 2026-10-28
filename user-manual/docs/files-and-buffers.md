@@ -1,6 +1,6 @@
 # Files & Buffers
 
-Open several files, view one file in two places at once, and keep them all straight. This page covers opening, saving, splitting, and quitting, plus what HUME does and doesn't guarantee about your data.
+Open several files, view one file in two places at once, and keep track of them all. This page covers opening, saving, splitting and quitting, plus what HUME does and doesn't guarantee about your data.
 
 ## Opening files
 
@@ -9,29 +9,33 @@ Open several files, view one file in two places at once, and keep them all strai
 :e path/to/file.txt
 ```
 
-Tab completion is available for file paths.
+Tab completes file paths.
 
-`:e` with no argument reloads the current file from disk. If the file has been modified HUME will not reload it, unless you use `:e!`.
+`:e` with no argument reloads the current file from disk. If the buffer has unsaved changes, HUME won't reload it unless you use `:e!`.
 
 ### Opening at a position
 
-Append a line, or line and column, to jump straight there: `:e file.txt:42` or `:e file.txt:42:5`. Both numbers are 1-based, matching a `file:line:col` diagnostic from a compiler, linter, or `grep`, so you can paste one straight after `:e`. A path that exists exactly as typed, on disk or already open, always wins over splitting: a file genuinely named `notes:2024` still opens as itself.
+Append a line, or a line and column, to jump straight there: `:e file.txt:42` or `:e file.txt:42:5`. Both numbers are 1-based, as in a `file:line:col` diagnostic from a compiler, linter or `grep`, so you can paste one straight after `:e`. A path that exists as typed, on disk or already open, always wins over splitting: a file named `notes:2024` still opens as itself.
 
 ### New files
 
-`:e filename` on a path that doesn't exist yet opens an empty buffer bound to it instead of failing. The file is created the first time you save, with `:w`. Until then, `:e` with no argument does nothing on that buffer: there's nothing on disk yet to reload. `:wa` saves it along with any other modified buffer. If something else creates a file at that path before you save, `:w` refuses to overwrite it; add `!` (`:w!`) to save anyway.
+`:e filename` on a path that doesn't exist yet opens an empty buffer bound to it instead of failing. `:w` creates the file the first time you save, and `:wa` saves it along with any other modified buffer. Until then, `:e` with no argument does nothing on that buffer, since there's nothing on disk to reload. If something else creates a file at that path before you save, `:w` refuses to overwrite it; `:w!` saves anyway.
 
 ### External changes
 
-If something else changes a file you have open (another program, a formatter, `git checkout`), HUME notices the next time you switch back to its window, switch to that buffer, or run `:checktime`, and asks whether to reload. Answering yes replaces the buffer's content but keeps it undoable (`u` brings back what you had). Answering no leaves the buffer as-is; the file stays flagged as changed until you reload it or explicitly overwrite it. Any other key dismisses the prompt the same way and still does its usual job, so a keystroke aimed at the editor is never lost just because you didn't notice the prompt.
+If something else changes a file you have open (another program, a formatter, `git checkout`), HUME notices the next time you switch back to its window, switch to that buffer, or run `:checktime`, and asks whether to reload:
 
-The prompt only appears when it can't interrupt something else you're doing. While you're typing a command or search, or in Insert mode, HUME warns instead and asks the next time you land on the buffer.
+- **`r`** (reload) replaces the buffer's content but keeps it undoable (`u` brings back what you had).
+- **`k`** (keep) leaves the buffer as-is, and HUME doesn't ask again about that change. The file stays flagged as changed until you reload it or explicitly overwrite it.
+- **Any other key**, or `Esc`, dismisses the prompt without answering, and HUME asks again the next time you land on the buffer. A key other than `Esc` still does its usual job, so a keystroke aimed at the editor is never lost because you didn't notice the prompt.
 
-Turn the prompt off with `:set global file-reload-prompt=false` (or `:set buffer file-reload-prompt=false` for just the current buffer). HUME still warns you, it just won't ask. Either way, `:w` refuses to overwrite a file that's changed since you last read or saved it; add `!` (`:w!`) to save anyway.
+The prompt only appears when it can't interrupt something else. While you're typing a command or search, or in Insert mode, HUME warns instead and asks the next time you land on the buffer.
+
+Turn the prompt off with `:set global file-reload-prompt=false` (or `:set buffer file-reload-prompt=false` for the current buffer only). HUME still warns you; it just won't ask. Either way, `:w` refuses to overwrite a file that changed since you last read or saved it; `:w!` saves anyway.
 
 ## The buffer list
 
-A **buffer** is an open file (or scratch text). HUME can have multiple buffers open at once.
+A **buffer** is an open file (or scratch text). HUME can have several buffers open at once.
 
 | Command | Effect |
 |---------|--------|
@@ -42,42 +46,46 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 | `:bd` | Close (delete) current buffer (blocked if unsaved) |
 | `:bd!` | Force close, discarding unsaved changes |
 
-`:b` accepts a name prefix, a full path, a 1-based index as shown by `:ls`, or `#` to switch to the alternate buffer. When two open files share a name, Tab completion shows their parent directories to tell them apart.
+`:b` accepts a name prefix, a full path, a 1-based index as shown by `:ls`, or `#` for the alternate buffer. When two open files share a name, Tab completion shows their parent directories to tell them apart.
 
-`:ls` opens a list across the bottom of the screen with one row per buffer: its number, `%` for the buffer you are in, `#` for the alternate, `+` for unsaved changes, its name and its path. `Down`/`Up` move the highlight, `Ctrl-d`/`Ctrl-u` page it, `Enter` switches the focused pane to the highlighted buffer and leaves the list open, and `Esc` closes it. It works like the [language server lists](lsp.md).
+`:ls` opens a list across the bottom of the screen, one row per buffer: its number, `%` for the buffer you are in, `#` for the alternate, `+` for unsaved changes, its name and its path. It works like the [language server lists](lsp.md):
 
-`:bnext`/`:bprev` also have bindable editor-command spellings, `goto-next-buffer` and `goto-prev-buffer`, for mapping to a key.
+- `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it.
+- `Enter` switches the focused pane to the highlighted buffer and leaves the list open.
+- `Esc` closes it.
 
-For fuzzy-searching files and buffers by typing a few characters instead, see [Fuzzy Finder](pickers.md).
+`:bnext`/`:bprev` also exist as editor commands, `goto-next-buffer` and `goto-prev-buffer`, for binding to a key.
+
+To fuzzy-search files and buffers by typing a few characters instead, see [Fuzzy Finder](pickers.md).
 
 Closing the last remaining buffer leaves an empty scratch buffer rather than exiting.
 
 ### Alternate buffer
 
-`:b #` switches back to the buffer you were in before this one. `:e #` does the same, but only works when that buffer has a file on disk. For scratch and other file-less buffers, use `:b #`.
+`:b #` switches back to the buffer you were in before this one. `:e #` does the same, but only when that buffer has a file on disk. For scratch and other file-less buffers, use `:b #`.
 
 ## Splits and panes
 
-A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane is where you view it: two panes can show the same buffer at once, each with its own scroll position and, if pinned, its own wrap style.
+A **pane** is a viewport onto a buffer. The buffer is the open file; a pane is where you view it. Two panes can show the same buffer at once, each with its own scroll position and, if pinned, its own wrap style.
 
 | Command | Aliases | Effect |
 |---------|---------|--------|
 | `:split <path>` | `:sp` | Split the focused pane, stacking the new pane below it |
 | `:vsplit <path>` | `:vsp` | Split the focused pane side by side |
 
-`<path>` is optional. Without it, the new pane views the same buffer as the focused one. With it, the new pane opens that file instead.
+`<path>` is optional. Without it, the new pane views the same buffer as the focused one; with it, the new pane opens that file.
 
 The keys for splitting, focusing, closing and rotating panes are listed under [Pane prefix](default-keys.md#pane-prefix-ctrl-p) in Default Keys.
 
-Splitting is refused with a message when the pane is already too small to divide. Every pane sharing a split axis is kept an equal size (three `:vsplit`s in a row give three equal columns, not one half and two quarters), and closing a pane redistributes its space equally between the survivors.
+HUME refuses to split, with a message, when the pane is already too small to divide. Panes sharing a split axis are kept the same size: three `:vsplit`s in a row give three equal columns, not one half and two quarters. Closing a pane shares its space equally among the rest.
 
-`:q` is pane-aware: with multiple panes open it closes the focused pane and leaves the buffer in the buffer list. With a single pane it closes the current buffer and moves you to another one, quitting HUME only when there's nothing left to go back to. Unsaved changes block it; use `:q!` to discard them.
+`:q` is pane-aware. With several panes open, it closes the focused pane and leaves the buffer in the buffer list. With a single pane, it closes the current buffer and moves you to another one, quitting HUME only when there's nothing left to go back to. Unsaved changes block it; `:q!` discards them.
 
-A divider is drawn between panes (controlled by the `pane-dividers` option, on by default), and the pane without focus is dimmed. Wrap normally follows the buffer/global setting, but it can be pinned per pane: `:wrap` toggles it on/off for the focused pane, and `:set pane wrap-mode=<value>` pins its style directly, so two panes on the same buffer can wrap independently once pinned. See [Text wrap](settings.md#text-wrap).
+A divider is drawn between panes (the `pane-dividers` option, on by default), and the pane without focus is dimmed. Wrap follows the buffer/global setting unless you pin it for a pane: `:wrap` toggles it for the focused pane, and `:set pane wrap-mode=<value>` pins its style directly. Two panes on the same buffer then wrap independently. See [Text wrap](settings.md#text-wrap).
 
 ## Tabs
 
-A **tab** is a saved window layout (its own splits and focused pane), not a per-buffer strip. Each tab remembers its layout, so switching away and back restores its splits and focus where you left them.
+A **tab** is a saved window layout (its own splits and focused pane), not a per-buffer strip. Switching away from a tab and back restores its splits and focus where you left them.
 
 | Command | Aliases | Effect |
 |---------|---------|--------|
@@ -86,15 +94,15 @@ A **tab** is a saved window layout (its own splits and focused pane), not a per-
 | `:tabnext` | `:tabn` | Switch to the next tab (wraps around) |
 | `:tabprev` | `:tabp` | Switch to the previous tab (wraps around) |
 
-`[path]` is optional. Without it, the new tab views the same buffer as the focused pane. With it, the new tab opens that file instead.
+`[path]` is optional. Without it, the new tab views the same buffer as the focused pane; with it, the new tab opens that file.
 
 The keys for switching tabs are listed under [Pane prefix](default-keys.md#pane-prefix-ctrl-p) in Default Keys.
 
-`:tabnext`/`:tabprev` also have bindable editor-command spellings, `goto-next-tab` and `goto-prev-tab`, for mapping to a key, as does bare `:tabnew` (no `[path]`), spelled `tab-new`.
+`:tabnext`/`:tabprev` also exist as editor commands, `goto-next-tab` and `goto-prev-tab`, for binding to a key, and so does bare `:tabnew` (no `[path]`), as `tab-new`.
 
-Click a tab in the tab bar to switch to it; the bar scrolls when tabs overflow the screen width. By default it only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this).
+Click a tab in the tab bar to switch to it. The bar scrolls when tabs overflow the screen width. By default it appears only once more than one tab is open; `:set global tabline=always`/`never`/`dynamic` changes this.
 
-`:q` on a tab's last pane closes the tab rather than the editor, and `:tabclose` is refused with a message when it's the only tab. Either way the buffers stay open in the buffer list.
+`:q` on a tab's last pane closes the tab rather than the editor, and `:tabclose` refuses, with a message, to close the only tab. Either way the buffers stay open in the buffer list.
 
 ## Saving
 
@@ -105,7 +113,7 @@ Click a tab in the tab bar to switch to it; the bar scrolls when tabs overflow t
 | `:w!` | Force save (tries `chmod` + retry on permission errors; also overwrites a file changed on disk since you last read or saved it; see [External changes](#external-changes)) |
 | `:wa` | Save every modified buffer |
 
-A `[+]` indicator in the status bar means the buffer has unsaved changes. Files using CRLF line endings are detected and preserved on save. Relative paths are resolved against HUME's working directory (`:pwd`), which isn't necessarily the shell's.
+A `[+]` in the status bar means the buffer has unsaved changes. CRLF line endings are preserved on save (see [Persistence and safety](#persistence-and-safety)). Relative paths resolve against HUME's working directory (`:pwd`), which isn't necessarily the shell's.
 
 ## Working directory
 
@@ -126,11 +134,11 @@ A `[+]` indicator in the status bar means the buffer has unsaved changes. Files 
 
 ## The scratch buffer
 
-If you launch HUME with no arguments, it opens a scratch buffer named `*scratch*`. This buffer has no associated file, so a bare `:w` fails with "no file name". Give it one with `:w <path>`.
+Launched with no arguments, HUME opens a scratch buffer named `*scratch*`. It has no file, so a bare `:w` fails with "no file name". Give it one with `:w <path>`.
 
 ## Read-only buffers
 
-The editor's own informational buffers (`:messages`, `:plugin-status`) are read-only. The status bar shows `[RO]`, and editing commands are refused with a warning. Files you open are always editable, whatever their permissions on disk; a write you aren't allowed to make fails at `:w` rather than being blocked up front.
+The editor's own informational buffers (`:messages`, `:plugin-status`) are read-only: the status bar shows `[RO]`, and editing commands are refused with a warning. Files you open are always editable, whatever their permissions on disk. A write you aren't allowed to make fails at `:w` rather than being blocked up front.
 
 ## Synthetic buffers
 
@@ -141,25 +149,32 @@ Some commands open special read-only buffers for inspecting the editor's state:
 | `:messages` | `[messages]` | Message log |
 | `:plugin-status` | `[plugin-status]` | Plugin states |
 
-These are regular buffers in all other respects: you can scroll, search, and quit them with `:q` or `:bd`.
+Otherwise these are regular buffers: you can scroll, search, and quit them with `:q` or `:bd`.
 
-In `[messages]`, each entry's `[warning]`/`[error]`/`[trace]` tag and message text are colored by severity; themes can restyle these independently of everything else.
+In `[messages]`, each entry's `[warning]`/`[error]`/`[trace]` tag and message text are colored by severity, and themes can restyle these independently of everything else.
 
 ## Persistence and safety
 
 - **Undo history is in-memory only.** It's **lost when HUME exits**; there is no undo across restarts (not yet).
-- **No swap or backup files.** HUME does not write Vim-style `.swp` files while you edit. Saves write to a temporary file and rename it into place, so the file on disk holds either the old content or the new, never a half-written mix.
+- **No swap or backup files.** HUME doesn't write Vim-style `.swp` files while you edit. A save writes to a temporary file and renames it into place, so the file on disk holds either the old content or the new, never a half-written mix.
 - **Unsaved changes survive a crash.** If HUME itself panics, it writes them to disk and offers them back the next time you open the file; see [Crash recovery](#crash-recovery).
-- **A background crash doesn't stop HUME.** If a background task crashes (syntax highlighting, a language server connection), HUME keeps running, the crash appears as an error in `:messages`, and it is printed on the terminal after you quit. The feature that task ran can stop working until you restart.
-- **UTF-8 only.** Files must be valid UTF-8: invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it will appear as a character at the top of the buffer.
-- **CRLF detected and preserved.** Files using CRLF line endings are normalized to LF in the buffer and re-expanded to CRLF on save; the status bar shows `CRLF` or `LF`. To convert a file, run `:set buffer line-ending=lf` or `:set buffer line-ending=crlf` and save. Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in LF no matter the source. A file using bare CR line endings (pre-OS X Mac) is read correctly but is not a preserved convention: it loads and saves as LF.
-- **No on-disk log file.** `:messages` is the entire logging surface: an in-memory ring capped at 1000 entries, discarded on exit. If you need to keep warnings/errors, copy them out of `:messages` before quitting.
+- **A background crash doesn't stop HUME.** If a background task crashes (syntax highlighting, a language server connection), HUME keeps running. The crash appears as an error in `:messages` and is printed on the terminal after you quit. The feature that task ran can stop working until you restart.
+- **UTF-8 only.** Invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it appears as a character at the top of the buffer.
+- **CRLF detected and preserved.** A CRLF file is normalized to LF in the buffer and re-expanded to CRLF on save; the status bar shows `CRLF` or `LF`. To convert a file, run `:set buffer line-ending=lf` or `:set buffer line-ending=crlf` and save. Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in LF. A file with bare CR line endings (pre-OS X Mac) reads correctly, but HUME doesn't preserve that convention: it loads and saves as LF.
+- **No on-disk log file.** `:messages` is the whole logging surface: an in-memory ring capped at 1000 entries, discarded on exit. To keep warnings or errors, copy them out of `:messages` before quitting.
 
 ### Crash recovery
 
-If HUME panics, receives a signal such as `SIGTERM` or `SIGHUP`, or loses its terminal (you closed the window), it writes every buffer with unsaved changes to a dump file and prints each path on stderr, when there's still a terminal to print to. A buffer for `foo.txt` is dumped next to it as `foo.txt.dump`, in the same directory, with its line endings intact. An unsaved scratch buffer has no file to sit next to, and a file whose folder can't be written to has no place for one, so each goes to `scratch-<pid>-<n>.dump` (`<file>-<pid>-<n>.dump` for a file) in the `dumps` folder of HUME's data directory (`~/.local/share/hume/dumps`, or `$XDG_DATA_HOME/hume/dumps`; `%LOCALAPPDATA%\hume\dumps` on Windows). HUME doesn't offer those dumps back; open the file and copy what you need out of it. On Linux and macOS a dump is readable only by you; on Windows it gets the folder's permissions, like any new file there.
+If HUME panics, receives a signal such as `SIGTERM` or `SIGHUP`, or loses its terminal (you closed the window), it writes every buffer with unsaved changes to a dump file. It prints each path on stderr, if there's still a terminal to print to.
 
-No dump is written after `:q!` or `:qa!`, which discard on purpose. Nothing can be written when HUME is killed outright (`SIGKILL`, a crash of the whole machine, a power cut). A dump written just before a machine crash or power cut may not have reached the disk. A HUME that is stuck and doesn't react to a signal within about three seconds is forced to exit without one.
+A buffer for `foo.txt` is dumped next to it as `foo.txt.dump`, with its line endings intact. Two cases have nowhere to put a dump beside the file: an unsaved scratch buffer, and a file whose folder can't be written to. These go to the `dumps` folder of HUME's data directory (`~/.local/share/hume/dumps`, or `$XDG_DATA_HOME/hume/dumps`; `%LOCALAPPDATA%\hume\dumps` on Windows) as `scratch-<pid>-<n>.dump` (`<file>-<pid>-<n>.dump` for a file). HUME doesn't offer those dumps back; open the file and copy what you need out of it. On Linux and macOS a dump is readable only by you; on Windows it gets the folder's permissions, like any new file there.
+
+No dump is written:
+
+- after `:q!` or `:qa!`, which discard on purpose;
+- when HUME is killed outright (`SIGKILL`, a crash of the whole machine, a power cut).
+
+A dump written just before a machine crash or power cut may not have reached the disk. A HUME that is stuck and doesn't react to a signal within about three seconds is forced to exit without one.
 
 The next time you open `foo.txt` and `foo.txt.dump` exists, HUME asks what to do with it:
 
@@ -169,7 +184,7 @@ The next time you open `foo.txt` and `foo.txt.dump` exists, HUME asks what to do
 | `d` | Discard: the dump is deleted and the buffer stays as the file is on disk. |
 | `k` or `Esc` | Keep: the dump stays on disk and HUME doesn't ask again this session. It asks again the next time you open the file. |
 
-Any other key dismisses the prompt and still does its usual job. HUME asks again the next time you switch to the buffer. The prompt also appears for a file that doesn't exist yet but has a dump, and restoring it fills the new buffer.
+Any other key dismisses the prompt and still does its usual job; HUME asks again the next time you switch to the buffer. The prompt also appears for a file that doesn't exist yet but has a dump, and restoring fills the new buffer.
 
 A dump that is a link, or that belongs to another user, is ignored with a warning and no prompt.
 

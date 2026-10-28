@@ -7,14 +7,12 @@ installs the servers themselves, so getting a language working is usually one co
 
 ## Setup
 
-Bring in `core:lsp` and `core:lsp-install` from your [`init.scm`](configuration.md) (see
+Load `core:lsp` and `core:lsp-install` from your [`init.scm`](configuration.md) (see
 [Core Plugins](core-plugins.md#core-lsp) for how they fit alongside HUME's other bundled
-plugins) and make sure a server is registered, and named in the language's list, for the
-languages you use. The easiest way to get a server, which does both, is [`:lsp-install`](#installing-servers): run it once per language and it downloads,
-verifies, and registers the server in one step, no separate download tool needed. If
-you'd rather manage a server yourself (a local build, a version HUME's catalog
-doesn't carry, or a `$PATH` copy you want to take precedence), register it by hand
-instead. See [Registering a language server](#registering-a-language-server).
+plugins). Each language you use also needs a server that is registered and named in the
+language's list. [`:lsp-install`](#installing-servers) does both: run it once per language
+and it downloads, verifies, and registers the server, with no separate download tool. To
+manage a server yourself, [register it by hand](#registering-a-language-server) instead.
 
 ```scheme
 (load-plugin! "core:stdlib")       ; the plugins depend on it
@@ -27,19 +25,18 @@ Neither plugin slows down startup: each starts the first time you open a file in
 To start `core:lsp` only for some languages, or only from some commands, see [Choosing your own triggers](plugins.md#choosing-your-own-triggers).
 
 Opening a file attaches every server its language's list names, starting each one once per
-project root. A language's [list](#choosing-which-server-a-language-uses) is filled in by
-`core:lsp-install` once it is loaded, and empty until you set one otherwise.
+project root. `core:lsp-install` fills in a language's [list](#choosing-which-server-a-language-uses)
+once it is loaded; otherwise the list is empty until you set one.
 
 ## Installing servers
 
 `core:lsp-install` downloads and manages language servers for you, the same way [PLUM](core-plugins.md#core-plum)
-handles tree-sitter grammars, with no need to track down a binary or install it by hand.
+handles tree-sitter grammars, so you never hunt down and install a binary by hand.
 
 ### Prerequisites
 
-Installing a server shells out to a few external tools. Most are already on your system; if
-one is missing, the install tells you which one before downloading anything. Depending on the
-server:
+Installing a server runs a few external tools. Most are already on your system; if one is
+missing, the install names it before downloading anything. Depending on the server:
 
 - `curl`: for servers downloaded as a release asset
 - `gzip`: for servers distributed as a single gzip-compressed binary
@@ -59,13 +56,13 @@ How you install these depends on your operating system:
 
 - **macOS**: [Homebrew](https://brew.sh): `brew install curl gzip unzip node go`; install
   `cargo` via [rustup.rs](https://rustup.rs).
-- **Linux**: use your distribution's package manager; these are usually already installed
-  except `node`/`npm`, which most distros package as `nodejs`/`npm`, and `cargo`, best
+- **Linux**: use your distribution's package manager. These are usually installed already,
+  except `node`/`npm` (most distros package them as `nodejs`/`npm`) and `cargo`, best
   installed via [rustup.rs](https://rustup.rs) rather than a distro package.
-- **Windows**: `tar` and `curl` ship with Windows 10+; `gzip` needs Git for Windows (or an
-  equivalent) on `PATH`; install `node` from [nodejs.org](https://nodejs.org) or via
-  [winget](https://learn.microsoft.com/windows/package-manager/winget/)/[Scoop](https://scoop.sh);
-  install `cargo` via [rustup.rs](https://rustup.rs).
+- **Windows**: `tar` and `curl` ship with Windows 10+. `gzip` needs Git for Windows (or an
+  equivalent) on `PATH`. Install `node` from [nodejs.org](https://nodejs.org) or via
+  [winget](https://learn.microsoft.com/windows/package-manager/winget/)/[Scoop](https://scoop.sh),
+  and `cargo` via [rustup.rs](https://rustup.rs).
 
 ### Install a server
 
@@ -81,12 +78,12 @@ Or name the language directly. Tab completes every language HUME's catalog has a
 :lsp-install rust
 ```
 
-HUME downloads the pinned release, verifies its checksum, unpacks it, and registers it;
-already-open buffers of that language attach immediately, no restart needed. Running
-`:lsp-install` again for a server that's already at the version HUME pins never
-re-downloads. A download or build replaces a server you've registered by hand under the
-same name until the next start, when your own registration applies again; to keep both,
-register yours under a name of its own.
+HUME downloads the pinned release, verifies its checksum, unpacks it, and registers it.
+Already-open buffers of that language attach immediately, with no restart. Running
+`:lsp-install` again for a server already at the pinned version never re-downloads. A
+download or build replaces a server you've registered by hand under the same name until the
+next start, when your own registration applies again. To keep both, register yours under a
+name of its own.
 
 `:lsp-install` installs the first server HUME knows for a language. Some languages have
 more than one (Python: ty, ruff, jedi, pylsp, zuban; TOML: taplo, tombi). To install
@@ -110,12 +107,11 @@ uninstalled server shows a one-line `run :lsp-install` hint, once per language p
 :lsp-catalog
 ```
 
-Opens a read-only `[lsp-catalog]` buffer listing every server HUME knows about, by name: its
-languages, and whether it's installed, out of date, or not installable on your platform
-(and why). A language a server
-only backs second to another is marked `(secondary)`. Not every entry can
-be installed for you: many are listed so you can point HUME at a copy you install yourself,
-with `register-lsp-server!` below.
+Opens a read-only `[lsp-catalog]` buffer listing every server HUME knows about, by name,
+with its languages and whether it's installed, out of date, or not installable on your
+platform (and why). A language a server only backs second to another is marked
+`(secondary)`. HUME can't install every entry for you: many are listed so you can point HUME
+at a copy you install yourself, with `register-lsp-server!` below.
 
 ### Manage installed servers
 
@@ -124,13 +120,13 @@ with `register-lsp-server!` below.
 ```
 
 Shuts down any running client for that server, unregisters it, and removes it from disk. Use
-the server's name from `:lsp-catalog`, not the language name, e.g.
-`:lsp-uninstall rust-analyzer`, not `:lsp-uninstall rust`. Tab completes every server with an
-install directory on disk, including an orphan one no longer in HUME's catalog.
+the server's name from `:lsp-catalog`, not the language name: `:lsp-uninstall rust-analyzer`,
+not `:lsp-uninstall rust`. Tab completes every server with an install directory on disk,
+including an orphan that HUME's catalog doesn't list.
 
 Reinstalling a server that's already running (e.g. to pick up an update) shuts the old client
-down first. If the install fails anyway (a locked file on Windows is the usual reason), the
-message tells you to run `:lsp-install` again, which normally succeeds the second time.
+down first. If the install fails anyway (usually a locked file on Windows), the message tells
+you to run `:lsp-install` again, which normally succeeds the second time.
 
 ### Troubleshooting
 
@@ -143,48 +139,45 @@ doesn't support your operating system.
 **A server installs but fails to start.** A few servers need more than the install provides:
 the Java server (jdtls) needs a JDK 21 or newer and `python3` on your `$PATH` when it runs.
 
-**`:lsp-install` says "not installable".** Not every server HUME knows about can be
-auto-installed: some don't publish prebuilt binaries HUME can unpack, are pinned by their
-package manager to a git revision rather than a released version, or are only available
-through a package manager not yet supported (`opam`, `luarocks`, …). Install it yourself
-and register it manually as described in [Registering a language server](#registering-a-language-server)
-below.
+**`:lsp-install` says "not installable".** HUME can't auto-install every server it knows
+about. Some don't publish prebuilt binaries HUME can unpack, some are pinned by their package
+manager to a git revision rather than a released version, and some are only available through
+a package manager not yet supported (`opam`, `luarocks`, …). Install it yourself and register
+it as described in [Registering a language server](#registering-a-language-server) below.
 
-**A server is on disk but nothing attaches.** `core:lsp-install` is probably not loaded from your `init.scm`. Add `(load-plugin! "core:lsp-install")` to it.
+**A server is on disk but nothing attaches.** `core:lsp-install` is probably not loaded. Add `(load-plugin! "core:lsp-install")` to your `init.scm`.
 
 **A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always spawns the managed
-copy, even when the same command name also resolves on `$PATH`. You'll see a note about this
-after installing. Register the server manually instead if you want your `$PATH` copy to take
-precedence: register it under the same name `:lsp-catalog` shows for the managed server
-(`"rust-analyzer"`, not `"rust"`), as described in
+copy, even when the same command name also resolves on `$PATH`, and a note after installing
+says so. To make your `$PATH` copy take precedence, register it by hand under the same name
+`:lsp-catalog` shows for the managed server (`"rust-analyzer"`, not `"rust"`), as described in
 [Registering a language server](#registering-a-language-server).
 
 ## Registering a language server
 
-Registering by hand is only needed if you're not using
-[`:lsp-install`](#installing-servers): a locally built server, a version HUME's
+You only need to register a server by hand if you're not using
+[`:lsp-install`](#installing-servers) for it: a locally built server, a version HUME's
 catalog doesn't carry, or a `$PATH` copy you want to take precedence over a managed install.
-`register-lsp-server!` itself has no dependency on `core:lsp`, but the
-[managing-servers commands](#managing-servers) below (`:lsp-status`, `:lsp-stop`,
-`:lsp-restart`) are `core:lsp` commands, so a manually registered server still needs
-`core:lsp` loaded to inspect, stop, or restart it. A manual `register-lsp-server!`
-call under the same name as a server installed with `:lsp-install` replaces it, whether it comes
-before or after `(load-plugin! "core:lsp")` in your init.scm; order doesn't matter.
+`register-lsp-server!` itself doesn't need `core:lsp`, but inspecting, stopping or restarting
+the server does: the [managing-servers commands](#managing-servers) (`:lsp-status`,
+`:lsp-stop`, `:lsp-restart`) come from `core:lsp`. A `register-lsp-server!` call under the
+same name as a server installed with `:lsp-install` replaces it, whether it comes before or
+after `(load-plugin! "core:lsp")` in your init.scm.
 
 A registration says how to start a server. A server serves a language only once that
-language's server list names it, so the examples that follow list each server for its
-languages with a [`set-language-servers!`](#choosing-which-server-a-language-uses) call. The project root
-comes from the language's own root markers, which the bundled languages already carry
-(`Cargo.toml` for Rust, `go.mod` for Go, and so on). `register-lsp-server!` takes:
+language's server list names it, so each example below also adds the server to its
+languages' lists with [`set-language-servers!`](#choosing-which-server-a-language-uses). The
+project root comes from the language's own root markers, which the bundled languages already
+carry (`Cargo.toml` for Rust, `go.mod` for Go, and so on). `register-lsp-server!` takes:
 
 | Argument | Meaning |
 |----------|---------|
-| name | The server's name. Registering the same name again replaces its registration, and `:lsp-stop`/`:lsp-restart` take it. No spaces |
+| name | The server's name, with no spaces. `:lsp-stop`/`:lsp-restart` take it, and registering the same name again replaces its registration |
 | `#:command` | The executable to run |
 | `#:args` | Extra command-line arguments, if the server needs them |
 | `#:init-options` | Server configuration, sent once at startup; see below |
 | `#:settings` | Server configuration, handed over on an ongoing basis; see below |
-| `#:env` | Extra environment variables for the server process, as a list of `("NAME" . "value")` pairs, added on top of the environment HUME itself runs in, never replacing it |
+| `#:env` | Extra environment variables for the server process, as a list of `("NAME" . "value")` pairs, added on top of HUME's own environment rather than replacing it |
 
 Examples for a few commonly used servers:
 
@@ -218,12 +211,20 @@ Examples for a few commonly used servers:
 A language uses the servers its list names, and a buffer attaches to all of them, in list
 order. With `core:lsp-install` loaded, every language it knows starts with a list of its
 own. Any other language has no list until you set one, so a server you register yourself
-serves nothing until a list names it. Diagnostics from every server
-show together, completion lists every server's items, code actions list every server's
-actions (with the server's name beside each when several offer some), goto and references
-combine every server's locations, and inlay hints come from all of them. Hover, signature
-help, rename and formatting use the first server in the list that is running and supports
-the feature. Give the names in the order you want:
+serves nothing until a list names it.
+
+With several servers attached:
+
+- diagnostics from every server show together
+- completion lists every server's items
+- code actions list every server's actions, with the server's name beside each when several
+  offer some
+- goto and references combine every server's locations
+- inlay hints come from all of them
+- hover, signature help, rename and formatting use the first server in the list that is
+  running and supports the feature
+
+Give the names in the order you want:
 
 ```scheme
 (set-language-servers! "python" '("pyright" "ruff"))
@@ -254,9 +255,10 @@ when you save.
 :::
 
 `:lsp-status` shows which languages each running server serves. A name that isn't registered
-yet takes its place in the list once it registers. An entry can
-also limit a server to some features, with `only-features` or `except-features` (give one,
-not both), using these feature names: `format`, `goto-declaration`, `goto-definition`, `goto-type-definition`, `goto-reference`, `goto-implementation`, `signature-help`, `hover`, `document-highlight`, `completion`, `code-action`, `document-links`, `workspace-command`, `document-symbols`, `workspace-symbols`, `diagnostics`, `pull-diagnostics`, `rename-symbol`, `inlay-hints`, `document-colors`, `call-hierarchy`.
+yet takes its place in the list once it registers.
+
+An entry can also limit a server to some features, with `only-features` or `except-features`
+(give one, not both), using these feature names: `format`, `goto-declaration`, `goto-definition`, `goto-type-definition`, `goto-reference`, `goto-implementation`, `signature-help`, `hover`, `document-highlight`, `completion`, `code-action`, `document-links`, `workspace-command`, `document-symbols`, `workspace-symbols`, `diagnostics`, `pull-diagnostics`, `rename-symbol`, `inlay-hints`, `document-colors`, `call-hierarchy`.
 
 ```scheme
 (set-language-servers! "python"
@@ -273,9 +275,9 @@ Passing `#f` instead of a list clears what you set, and the plugin's list applie
 
 ### Server configuration (`#:init-options` and `#:settings`)
 
-Language servers each have their own configuration options (code style, extra warnings, where to find things), and most of them read the *shape and names* of those options straight from their own documentation, not from anything LSP-specific. HUME just needs to hand the hash over in the right way, and servers differ on which way that is. Check your server's own docs for the option names, and try `#:init-options` first.
+Each language server has its own configuration options (code style, extra warnings, where to find things), named and shaped by its own documentation, not by anything LSP-specific. HUME only hands the hash over, and servers differ on how they want it. Check your server's docs for the option names, and try `#:init-options` first.
 
-**`#:init-options` is sent once, when the server starts up.** This is how most servers actually pick up their configuration, including well-known ones like rust-analyzer and gopls:
+**`#:init-options` is sent once, when the server starts up.** Most servers, rust-analyzer and gopls among them, pick up their configuration this way:
 
 ```scheme
 ;; gopls reads its own option names directly off the hash you pass here —
@@ -286,7 +288,7 @@ Language servers each have their own configuration options (code style, extra wa
                        "usePlaceholders" #t))
 ```
 
-**`#:settings` is handed to the server on an ongoing basis instead of just once at startup:** HUME sends it right after the server is ready, and keeps it on hand to answer if the server asks for a specific piece of it later by name. Which of those two a given server actually pays attention to depends on the server (some read what's handed to them upfront, some ask for a named piece, some do both), so when in doubt, shape the hash to match whatever your server's own docs show for a settings file, and pass it as both:
+**`#:settings` is handed to the server on an ongoing basis, not just once at startup.** HUME sends it right after the server is ready, and keeps it to answer when the server later asks for a piece of it by name. Some servers read what's handed to them upfront, some ask for a named piece, some do both. When in doubt, shape the hash the way your server's docs show for a settings file, and pass it as both:
 
 ```scheme
 ;; typescript-language-server reads its "typescript" and "javascript"
@@ -296,9 +298,9 @@ Language servers each have their own configuration options (code style, extra wa
   #:settings (hash "typescript" (hash "inlayHints" (hash "parameterNames" (hash "enabled" "all")))))
 ```
 
-If a server does ask for a specific named piece and it isn't in your `#:settings` hash, that's a plain "nothing configured for this" answer, not an error. Well-behaved servers, including gopls and rust-analyzer, take that in stride and keep whatever configuration they already have.
+If a server asks for a named piece that isn't in your `#:settings` hash, HUME answers that nothing is configured for it, which is not an error. Well-behaved servers, including gopls and rust-analyzer, keep whatever configuration they already have.
 
-Changing either and running `:reload-config` updates what HUME has stored, but an already-running server keeps the configuration it started with until it restarts, and HUME says so once in the message log. Run `:lsp-restart` (or reinstall the server) to push the change.
+Changing either and running `:reload-config` updates what HUME has stored, but a running server keeps the configuration it started with until it restarts, and HUME says so once in the message log. Run `:lsp-restart` (or reinstall the server) to push the change.
 
 ## Commands and keys
 
@@ -323,38 +325,36 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
 opens that file as a buffer; `Ctrl-o` jumps back. A goto with more than one match opens a
-list to pick from instead of jumping directly, and `z r` (references) always opens the list,
-even for a single hit.
+list to pick from instead of jumping, and `z r` (references) always opens the list, even for
+a single hit.
 
 That list (the same one `:diagnostics` opens) is a scrolling drawer across the bottom of
 the screen. `Ctrl-d`/`Ctrl-u` page it half a screen at a time, `Down`/`Up` move one row,
 `Enter` jumps to the highlighted row, and `Esc` closes it. Every other key, including `j`/`k`,
-reaches the buffer underneath instead: the drawer stays
-open while you keep editing, so you can browse a long references list and edit at the same
-time without losing your place in either.
+reaches the buffer underneath. The drawer stays open while you edit, so you can browse a long
+references list and edit without losing your place in either.
 
-The list follows your edits: when the number of lines changes in the file you asked from, or in a file it lists, or an
-edit touches or moves a listed line, HUME asks the language server again about the same
-symbol once you pause typing, wherever your cursor is, and replaces the rows. If nothing is
-found any more the drawer closes with a message.
+The list follows your edits. When the number of lines changes in the file you asked from, or
+in a file it lists, or an edit touches or moves a listed line, HUME asks the language server
+again about the same symbol once you pause typing, wherever your cursor is, and replaces the
+rows. If nothing is found any more, the drawer closes with a message.
 
 Typing while a completion menu is open narrows it. `Tab` and `Down` move to the next entry,
 `Shift-Tab` and `Up` to the previous, `Enter` accepts the highlighted one, and `Esc`
-dismisses the menu. Signature help pops up automatically as you type an argument list for a
-function the server knows about, and inlay hints (see below) appear inline once enabled.
+dismisses the menu. Signature help pops up as you type an argument list for a function the
+server knows about, and inlay hints (see below) appear inline once enabled.
 
-`g n` and `g p` show the full diagnostic message in a popup after they jump; it clears on
-your next keypress or mouse action. Each line with a problem also gets a short summary at
-its end. While you type in Insert mode, the underline and summary are hidden on the line
-the cursor is on and return when you leave Insert mode or move to another line. Set
+After `g n` or `g p` jumps, a popup shows the full diagnostic message until your next
+keypress or mouse action. Each line with a problem also gets a short summary at its end.
+While you type in Insert mode, the underline and summary are hidden on the cursor's line,
+and return when you leave Insert mode or move to another line. Set
 `lsp-diagnostics-on-insert-line` to `#t` to keep them showing.
 
 ## Settings
 
-The `lsp.*` options configure HUME's built-in language-server support, shared by every
+The `lsp-*` options configure HUME's built-in language-server support, shared by every
 plugin that talks to a language server. They are global options, described in full in
-[Global options](settings.md#global-options). Set them the same way as any other
-global option:
+[Global options](settings.md#global-options), and you set them like any other:
 
 ```scheme
 (set-option! "lsp-diagnostics-min-severity" "warning")
@@ -373,14 +373,14 @@ global option:
 
 ### Format on save
 
-Not on by default. Add this to your `init.scm` to format the whole buffer every time you save, before the file is written:
+Off by default. To format the whole buffer every time you save, before the file is written, add this to your `init.scm`:
 
 ```scheme
 (register-hook! 'on-before-buffer-save
   (lambda (pane done) (call! "lsp/format-document" pane done)))
 ```
 
-The save waits for the language server's answer, and `:wa` formats buffers that no pane is showing too. If there is no server, or it fails or doesn't answer within `hook-before-save-timeout-ms` (see [Global options](settings.md#global-options)), the buffer is saved as it is, and an answer that arrives later still formats the buffer, leaving it modified.
+The save waits for the language server's answer, and `:wa` also formats buffers that no pane is showing. If there is no server, or it fails or doesn't answer within `hook-before-save-timeout-ms` (see [Global options](settings.md#global-options)), the buffer is saved as it is. An answer that arrives later still formats the buffer, leaving it modified.
 
 ## Managing servers
 
@@ -390,13 +390,13 @@ server from disk, see [Installing servers](#installing-servers).
 | Command | Effect |
 |---------|--------|
 | `:lsp-status` | Show every running server and its state, each buffer's servers, and the servers you stopped |
-| `:lsp-stop [name]` | Stop a server (default: every server on the focused buffer); with a name, every running copy of that server. It stays stopped, for new buffers and changes to a server list too, until `:lsp-restart`, `:reload-config` or a new `register-lsp-server!` of its name |
+| `:lsp-stop [name]` | Stop a server (default: every server on the focused buffer); with a name, every running copy of that server. It stays stopped, even for new buffers and server-list changes, until `:lsp-restart`, `:reload-config` or a new `register-lsp-server!` of its name |
 | `:lsp-restart [name]` | Stop and respawn a server, or start one that was stopped (default: every server on the focused buffer) |
 
-A server stops by itself once no open buffer uses it: after you close its last buffer, or after
-a server list or a buffer's language no longer includes it. Opening a matching file starts it
+A server stops by itself once no open buffer uses it: after you close its last buffer, or
+when a server list, or a buffer's language, no longer includes it. Opening a matching file starts it
 again. A server that crashed stays down for its buffers until you run `:lsp-restart`.
 
-Server output and protocol errors are visible in `:messages`.
+Server output and protocol errors show in `:messages`.
 
 A plugin can also send a server requests of its own, such as a server extension `core:lsp` doesn't use. See [Sending a custom request](lsp-api.md#sending-a-custom-request).

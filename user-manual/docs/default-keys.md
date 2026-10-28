@@ -3,7 +3,7 @@
 Every default key, by mode. Use your browser's search (or the search box above) to find one fast.
 
 ::: info
-Keys with a ✓ in the **Kitty** column require the kitty keyboard protocol, auto-detected at startup on supported terminals. See [Terminal compatibility](installation.md#terminal-compatibility). Legacy terminal encodings cannot transmit those key combinations, so the bindings are unavailable there.
+Keys with a ✓ in the **Kitty** column need the kitty keyboard protocol, which HUME detects at startup on terminals that support it. Legacy terminal encodings can't send those key combinations, so those bindings don't work there. See [Terminal compatibility](installation.md#terminal-compatibility).
 :::
 
 ## Normal mode
@@ -60,7 +60,7 @@ the current line.
 | `Ctrl-x` | `select-line` (extend) |  | Same as `x` but always extends |
 | `Ctrl-Shift-x` | `select-line-backward` (extend) | ✓ | Same as `X` but always extends |
 | `S` | `split-selection-on-newlines` |  | Split multi-line selections on newlines |
-| `C` | `copy-selection-on-next-line` |  | Copy each selection one selection-height down (a count prefix adds that many copies, e.g. `3C`) |
+| `C` | `copy-selection-on-next-line` |  | Copy each selection one selection-height down (a count adds that many copies, e.g. `3C`) |
 | `_` | `trim-selection-whitespace` |  | Shrink each selection to exclude leading/trailing whitespace (text unchanged) |
 | `,` | `keep-primary-selection` |  | Keep only the primary selection |
 | `Ctrl-,` | `remove-primary-selection` | ✓ | Remove primary, promote next |
@@ -87,7 +87,7 @@ Text objects (use the `m` prefix):
 | `m i v` / `m a v` | `inner-value` / `around-value` |  | Inner / around array/tuple/struct value |
 | `m i x` / `m a x` | `inner-tag` / `around-tag` |  | Inner / around tag pair (structure-aware) |
 | `m i i` | `select-last-insertion` |  | Select the text typed during the last insert |
-| `m m` | `select-word` |  | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b`; see `word-selects-whitespace`) |
+| `m m` | `select-word` |  | Select the word under the cursor, with the same whitespace rule as `w`/`b` |
 | `M M` | `select-uppercase-word` |  | WORD variant of `m m` |
 | `m s` + char | `surround-paren` (and other `surround-*` delimiters) |  | Select surrounding delimiter pair |
 | `m w` + char | `surround-add` |  | Wrap each selection with a delimiter pair |
@@ -103,7 +103,7 @@ Text objects (use the `m` prefix):
 | `p` | `smart-paste-after` |  | Smart-paste after. See [Copy & Paste](copy-and-paste.md) |
 | `P` | `smart-paste-before` |  | Smart-paste before |
 | `[` / `]` | `paste-ring-older` / `paste-ring-newer` |  | Cycle kill ring older / newer and re-paste (only after a `p`/`P`) |
-| `r` + char | `replace` |  | Replace every selected character (line endings are left alone). `Enter`/`Tab` count as the character, replacing with a newline/tab |
+| `r` + char | `replace` |  | Replace every selected character except line endings. `Enter`/`Tab` replace with a newline/tab |
 | `J` | `join-lines-select-spaces` |  | Join the selected lines into one |
 | `&` | `align-selections` |  | Align selections into a column |
 | `>` | `indent` |  | Indent lines touched by a selection |
@@ -129,7 +129,7 @@ Text objects (use the `m` prefix):
 | `:` | `command-mode` |  | Open command mode prompt |
 | `/` | `search-forward` |  | Search forward |
 | `?` | `search-backward` |  | Search backward. `Ctrl-?` (kitty) extends the selection to the match |
-| `s` | `sift-within` |  | Sift within (narrow each selection to its regex matches) |
+| `s` | `sift-within` |  | Narrow each selection to its regex matches |
 
 ### Search
 
@@ -164,8 +164,8 @@ See [Register prefix](copy-and-paste.md#register-prefix) for the full register l
 
 ## Goto prefix (`g`)
 
-Press `g` then a second key. Every one names a destination: a place in the buffer, or (for
-the structural pairs) the next/previous instance of a kind, selected as a whole:
+Press `g` then a second key. Each names a destination: a place in the buffer or, for the
+structural pairs, the next or previous instance of a kind, selected as a whole:
 
 | Key | Command | Kitty | Action |
 |-----|---------|:-----:|--------|
@@ -252,12 +252,12 @@ Press `Ctrl-p` then a second key:
 | `Delete` | — |  | Delete character under cursor |
 | `Enter` | — |  | Insert newline, indented as described in [Indentation](editing.md#indentation) |
 | `Ctrl-w` | `delete-word-backward` |  | Delete word before cursor |
-| `Ctrl-Space` | `completion-trigger` |  | Show completions at the cursor, from every registered completion source (a language server's, say; see [Language servers](lsp.md)) |
+| `Ctrl-Space` | `completion-trigger` |  | Show completions at the cursor from every registered completion source, such as a language server (see [Language servers](lsp.md)) |
 | `Ctrl-r` | `insert-register` |  | Insert the register named by the next key, or the file's path (`f`) or directory (`p`); see [Inserting a register while typing](copy-and-paste.md#inserting-a-register-while-typing) |
 | `Ctrl-\|` | `pipe` | ✓ | Run a shell command and insert its output at each cursor; see [Shell commands](editing.md#shell-commands) |
 | Any other character | — |  | Insert character (auto-pairs aware) |
 
-Insert mode handles auto-pair insertion: typing `(`, `[`, `{`, `"`, `'`, or `` ` `` inserts the matching close character. Backspace inside an empty pair deletes both characters. A quote typed right after the same quote is inserted on its own, so ```` ``` ```` and `"""` come out as typed.
+In Insert mode, typing `(`, `[`, `{`, `"`, `'`, or `` ` `` also inserts the matching close character. Backspace inside an empty pair deletes both characters. A quote typed right after the same quote is inserted on its own, so ```` ``` ```` and `"""` come out as typed.
 
 While a completion menu is open, typing narrows it and these keys drive it; any other key closes it:
 
@@ -269,9 +269,9 @@ While a completion menu is open, typing narrows it and these keys drive it; any 
 | `Esc` | Close the menu, stay in Insert mode |
 | `Ctrl-d` / `Ctrl-u` | Scroll the documentation box down / up |
 
-A box beside the menu shows the highlighted entry's details and documentation, when it has any and there is room to the right or left of the menu; with no room, the details show in the menu. Turn it off with `:set global completion-docs=false`, and the details show in the menu instead.
+A box beside the menu shows the highlighted entry's details and documentation, when it has any. The box needs room to the right or left of the menu. Without that room, or with `:set global completion-docs=false`, the details show in the menu instead.
 
-Rebinding one of these keys replaces its behaviour outright. A plugin command can fall back to it with `insert-key!` (see [Editing & navigation](plugin-api.md#editing-navigation)), letting a binding decide per keypress whether to override the key or leave it as-is.
+Rebinding one of these keys replaces its behaviour outright. A plugin command can fall back to that behaviour with `insert-key!` (see [Editing & navigation](plugin-api.md#editing-navigation)), so a binding can decide on each keypress whether to override the key.
 
 ## Extend mode
 
@@ -301,7 +301,7 @@ A key you bind in `'command` mode replaces these; see [Keys in the command line]
 
 ## Search mode
 
-Entered with `/` (forward) or `?` (backward). Every keystroke live-previews the next match from the position where search was opened.
+Open it with `/` (forward) or `?` (backward). Each keystroke previews the next match from where the search started.
 
 | Key | Action |
 |-----|--------|
@@ -319,7 +319,7 @@ Entered with `/` (forward) or `?` (backward). Every keystroke live-previews the 
 
 ## Sift mode
 
-Entered with `s` from Normal mode (requires at least one selection wider than a single character). Live-previews sub-match selections within the original selections. Does **not** overwrite the search register, so `n`/`N` continue the prior search after `Enter`.
+Open it with `s` from Normal mode; at least one selection must be wider than a single character. As you type, the matches inside the original selections preview as new selections. Sift mode leaves the search register alone, so after `Enter`, `n`/`N` continue the previous search.
 
 | Key | Action |
 |-----|--------|

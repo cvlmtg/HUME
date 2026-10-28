@@ -23,7 +23,7 @@ fn plum_plugin_loads_with_real_language_data() {
 /// `:plum-list-plugins` exercises `plugins.scm`'s `plum/installed-plugins` (built on
 /// `core:stdlib`'s `stdlib/list-subdirs`, a Steel `read-dir`-backed helper)
 /// against a real (empty) data dir, no network. Pins that plugin discovery
-/// via Steel's stdlib process/fs helpers (see `user-manual/docs/plugins.md`'s
+/// via Steel's stdlib process/fs helpers (see `user-manual/docs/writing-plugins.md`'s
 /// "Filesystem and processes") works for loading and basic discovery.
 #[test]
 fn plum_list_runs_with_no_errors_against_empty_data_dir() {

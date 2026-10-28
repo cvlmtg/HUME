@@ -1,6 +1,6 @@
 # Core Plugins
 
-HUME ships some plugins under the `core:` namespace: a plugin and grammar manager, language server support, live git diff, an undo-history graph, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your [`init.scm`](configuration.md), so a default HUME is exactly what you see.
+HUME ships some plugins under the `core:` namespace: a plugin and grammar manager, language server support, live git diff, an undo-history graph, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your [`init.scm`](configuration.md).
 
 Bring a plugin in with `load-plugin!`:
 
@@ -19,7 +19,7 @@ Loading a plugin doesn't slow down startup: most start the first time you use th
 (load-plugin! "core:plum")
 ```
 
-PLUM never installs anything on its own: the commands below do the work when you run them.
+PLUM installs nothing on its own; the commands below do the work when you run them.
 
 | Command | Effect |
 |---------|--------|
@@ -35,17 +35,17 @@ PLUM never installs anything on its own: the commands below do the work when you
 | `:plum-list-themes` | Show installed theme repos and the themes each provides |
 | `:plum-remove-theme <user/repo>` | Remove an installed theme repo; Tab-completes installed slugs |
 
-`plum/ensure-grammars` (install a list of grammars not yet compiled) is for `init.scm`, not the command mode prompt; it takes a list argument.
+`plum/ensure-grammars` installs a list of grammars not yet compiled. It takes a list argument, so it is for `init.scm`, not the `:` prompt:
 
 ```scheme
 (call! "plum/ensure-grammars" '("rust" "toml"))
 ```
 
-Leaving PLUM out only removes these commands. Already-installed plugins, grammars, and themes keep working without it. PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow and [Themes](themes.md#installing-themes) for the theme workflow.
+Leaving PLUM out only removes these commands. Already-installed plugins, grammars, and themes keep working without it; PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow and [Themes](themes.md#installing-themes) for the theme workflow.
 
 ## core:lsp
 
-Language server support: hover, go-to-definition, references, symbol pickers, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints, and manages the running server processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`). Downloading the servers is `core:lsp-install`'s job.
+Language server support (hover, go-to-definition, references, symbol pickers, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints), plus management of the running server processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`). Downloading the servers is `core:lsp-install`'s job.
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -58,7 +58,7 @@ See [Language Servers](lsp.md) for setup, the full command and key tables, and s
 
 ## core:lsp-install
 
-Downloads and verifies language servers and sets them up for `core:lsp`: `:lsp-install`, `:lsp-uninstall` and `:lsp-catalog`. Each language uses the same servers Helix picks for it. Without this plugin, `core:lsp` works with servers you [register yourself](lsp.md#registering-a-language-server).
+Downloads and verifies language servers and sets them up for `core:lsp`, with `:lsp-install`, `:lsp-uninstall` and `:lsp-catalog`. Each language uses the same servers Helix picks for it. Without this plugin, `core:lsp` works with servers you [register yourself](lsp.md#registering-a-language-server).
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -69,10 +69,10 @@ Requires `core:stdlib` loaded first. See [Language Servers](lsp.md#installing-se
 
 ## core:steel-server
 
-Registers a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), which includes your
-own `init.scm` and plugin files, so you get hover, diagnostics, and completion while editing
-your HUME config. It also makes `cog.scm` the project root marker for Scheme. Requires `core:lsp`, which provides the editor-side features that make a
-registered server useful.
+Registers a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including your own
+`init.scm` and plugin files, so you get hover, diagnostics, and completion while editing your
+HUME config. It also makes `cog.scm` the project root marker for Scheme. It requires
+`core:lsp`, which provides the editor-side features that make a registered server useful.
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -80,26 +80,25 @@ registered server useful.
 (load-plugin! "core:steel-server")
 ```
 
-The server knows HUME's own commands and configuration functions, so you won't see
-unknown-identifier warnings for anything HUME itself provides while you edit `init.scm` or a
-plugin file.
+The server knows HUME's own commands and configuration functions, so nothing HUME provides
+raises an unknown-identifier warning while you edit `init.scm` or a plugin file.
 
 **This is a temporary plugin.** The underlying server isn't in HUME's regular server catalog
-yet, so it can't be installed through `:lsp-install` like other servers. Once it lands
+yet, so `:lsp-install` can't install it like other servers. Once it lands
 upstream, HUME's catalog will pick it up automatically and this plugin will be retired.
 
 | Command | Effect |
 |---------|--------|
 | `:steel-server-install` | Install the Scheme language server and register it for Scheme buffers |
 
-Installing requires `cargo`. Install Rust from [rustup.rs](https://rustup.rs) first. See
+Installing requires `cargo`; install Rust from [rustup.rs](https://rustup.rs) first. See
 [Language Servers](lsp.md) for the general LSP workflow.
 
 ## core:pickers
 
 Fuzzy file, buffer, and modified-file finders: `z f` opens a file picker (git-index-backed
-inside a repo, `fd`-backed otherwise), `z b` opens a buffer switcher, `z m` opens a picker
-over files with staged or unstaged git changes.
+inside a repo, `fd`-backed otherwise), `z b` a buffer switcher, and `z m` a picker over files
+with staged or unstaged git changes.
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -113,10 +112,13 @@ modified-files details, and options.
 
 ## core:git-diff
 
-Live, VSCode-style inline git diff. As you type, compares the buffer against a git ref
-(default `HEAD`) and renders gutter `+`/`~` signs plus a boundary mark (`▁`/`▔`) for
-deletions, deleted lines as virtual lines, added/changed lines with a background tint, and
-word-level highlights inside changed lines.
+Live, VSCode-style inline git diff. As you type, it compares the buffer against a git ref
+(default `HEAD`) and renders:
+
+- gutter `+`/`~` signs, plus a boundary mark (`▁`/`▔`) for deletions
+- deleted lines as virtual lines
+- added/changed lines with a background tint
+- word-level highlights inside changed lines
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -130,19 +132,20 @@ Requires `core:stdlib` loaded first.
 | `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer |
 | `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer |
 
-Both take an optional git ref, e.g. `:toggle-inline-diff HEAD~2`, Tab-completing branches and
-tags from the current buffer's repo. Giving a ref always turns that rendering on and points it
-at that ref; it's sticky across a later bare toggle off/on. The ref is shared between the two
-commands. A file git doesn't know about yet (untracked, brand-new, or outside a repo) shows no
-diff.
+Both take an optional git ref, e.g. `:toggle-inline-diff HEAD~2`, and Tab-complete branches
+and tags from the current buffer's repo. Giving a ref always turns that rendering on and
+points it at that ref, and the ref sticks across a later bare toggle off and on. The two
+commands share the ref. A file git doesn't know about yet (untracked, brand-new, or outside a
+repo) shows no diff.
 
-Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer, e.g.
-`(main)`, or `⎇ main` with `'branch-style` set to `'icon` (see below). Just add it to your own `configure-statusline!` call (see
-[Statusline → Custom elements](settings.md#custom-elements)). Updates when you switch to
-a buffer and when you save it; empty for a buffer outside any repo.
+The plugin also keeps a `"steel:git-branch"` statusline element fresh for the focused
+buffer, e.g. `(main)`, or `⎇ main` with `'branch-style` set to `'icon` (see below). Add it to
+your own `configure-statusline!` call (see
+[Statusline → Custom elements](settings.md#custom-elements)). It updates when you switch to a
+buffer and when you save it, and is empty for a buffer outside any repo.
 
-Both commands are typed commands, run from the `:` prompt. No keys are bound by default, but
-each has a key-bindable twin without the ref argument:
+Both commands are typed commands, run from the `:` prompt, with no keys bound by default. Each has an
+editor-command twin, without the ref argument, that you can bind to a key:
 
 ```scheme
 (bind-key! 'normal "space i" "git-diff/toggle-inline-diff")
@@ -166,8 +169,8 @@ Configure with `#:config`:
 | `'ref` | string | `"HEAD"` | The default git ref a buffer diffs against, until overridden per-buffer via the toggle commands |
 | `'branch-style` | `'parens` or `'icon` | `'parens` | How the `"steel:git-branch"` statusline element writes the branch: `(main)` or `⎇ main` |
 
-Inline rendering's background tint and word highlights depend on your theme defining colors
-for them; HUME's bundled themes do.
+Inline rendering's background tint and word highlights need your theme to define colors for
+them; HUME's bundled themes do.
 
 ## core:undotree
 
@@ -190,7 +193,7 @@ The plugin ships no key. Bind one in your `init.scm`:
 (bind-key! 'normal "z u" "undotree/toggle")
 ```
 
-Each row is one revision: the graph, a marker column, and how long ago it was made. `@` in the marker column is the revision the buffer is on, and `S` is the revision your file was last saved at. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from:
+Each row is one revision: the graph, a marker column, and how long ago it was made. In the marker column, `@` is the revision the buffer is on and `S` the revision your file was last saved at. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from:
 
 ```
 o          2m
@@ -201,16 +204,22 @@ o          2m
 o-'     S 12m
 ```
 
-The drawer opens with the highlight on the current revision. `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time, and `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
+The drawer opens with the highlight on the current revision. `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time; `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
 
-With `core:stdlib` and `core:git-diff` loaded before it, the buffer also shows what the revision you are on changed: the text of its parent revision as deleted lines above the changed lines, the changed words highlighted, and a tint on the changed lines, drawn the way `core:git-diff`'s inline diff draws a diff against a git ref. It follows every jump and edit while the drawer is open, the root revision shows nothing, and closing the drawer clears it. Without `core:git-diff` the drawer works the same, and opening it shows a message saying to load the plugin. The diff does not depend on whether `core:git-diff`'s own inline diff is switched on.
+With `core:stdlib` and `core:git-diff` loaded before it, the buffer also shows what the revision you are on changed, drawn the way `core:git-diff`'s inline diff draws a diff against a git ref:
+
+- the text of its parent revision as deleted lines above the changed lines
+- the changed words highlighted
+- a tint on the changed lines
+
+The diff follows every jump and edit while the drawer is open. The root revision shows nothing, and closing the drawer clears it. The diff does not depend on whether `core:git-diff`'s own inline diff is switched on. Without `core:git-diff` the drawer works the same, and opening it shows a message saying to load the plugin.
 
 The drawer follows the buffer: it redraws after an edit, an undo or a redo, and switches to the new buffer when you switch buffers. The ages update once a minute while it is open. Opening another drawer, such as the references list, replaces it. A read-only buffer can't be jumped, and `Enter` there reports an error. The history lives in memory only, so it starts fresh each time you open a file.
 
 ## core:buffer-words
 
-Offers every identifier already in the buffer as an Insert-mode completion. Works in any
-buffer, including a scratch buffer or a `.txt` file where `core:lsp` has no server to ask.
+Offers every identifier already in the buffer as an Insert-mode completion, in any buffer,
+including a scratch buffer or a `.txt` file where `core:lsp` has no server to ask.
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -219,14 +228,14 @@ buffer, including a scratch buffer or a `.txt` file where `core:lsp` has no serv
 
 Requires `core:stdlib` loaded first.
 
-Keeps a per-buffer index of identifiers, refreshed as you type; `Ctrl-Space` reads it, it
-never scans the buffer itself. Ranks alongside `core:lsp`'s own completions in the same menu
-when both are loaded, with `core:lsp`'s answers preferred on a tie.
+It keeps a per-buffer index of identifiers, refreshed as you type, and `Ctrl-Space` reads
+that index instead of scanning the buffer. When both plugins are loaded, its candidates rank
+alongside `core:lsp`'s in the same menu, with `core:lsp`'s answers preferred on a tie.
 
 A word written capitalized (`Apply`) is also offered lowercase (`apply`), and the reverse,
-following the case you type, so a word capitalized only because it started a sentence is
-still found when you type it lowercase mid-sentence. A word with an inner capital (`HashMap`)
-or written in all caps (`MAX_LEN`) is offered only as written.
+following the case you type. A word capitalized only because it started a sentence is still
+found when you type it lowercase mid-sentence. A word with an inner capital (`HashMap`) or in
+all caps (`MAX_LEN`) is offered only as written.
 
 Configure with `#:config`:
 
@@ -242,7 +251,7 @@ Configure with `#:config`:
 
 ## core:vim-keybind
 
-Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl-6` (alternate buffer, kitty only), and `o` in Extend mode to swap the selection's ends. It does not bind `G`: that key is HUME's own prefix (`G L`/`G U`/`G C`/`G G`, plus `G R` with `core:lsp`), and `g e` already goes to the last line.
+Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl-6` (alternate buffer, kitty only), and `o` in Extend mode to swap the selection's ends. It doesn't bind `G`, which is HUME's own prefix (`G L`/`G U`/`G C`/`G G`, plus `G R` with `core:lsp`); `g e` already goes to the last line.
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -251,14 +260,14 @@ Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `C
 
 Requires `core:stdlib` loaded first.
 
-By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count it changes to end of line as in vim, but with a real selection, or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays fully reachable. Change this with `#:config`:
+By default (`'smart`), `C` is context-sensitive. On a bare cursor with no count it changes to end of line as in vim. With a real selection or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays reachable. Change this with `#:config`:
 
 ```scheme
 (load-plugin! "core:vim-keybind" #:config (hash 'change-to-eol 'on))
 ```
 
-`'on` always changes to end of line; `'off` leaves `C` alone. `core:stdlib` is required for
-every mode, not just `'smart`, since config validation itself goes through it.
+`'on` always changes to end of line; `'off` leaves `C` alone. Every mode needs `core:stdlib`,
+not just `'smart`, because config validation goes through it.
 
 ## core:helix-surround
 
@@ -280,14 +289,14 @@ GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P`
 
 ## core:stdlib
 
-A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:buffer-words`, `core:git-diff`, `core:lsp`, `core:lsp-install`, `core:pickers`, `core:plum` and `core:vim-keybind` all depend on it, so load it before them:
+A toolkit of small helpers that other plugins build on, not something you use directly. `core:buffer-words`, `core:git-diff`, `core:lsp`, `core:lsp-install`, `core:pickers`, `core:plum` and `core:vim-keybind` all depend on it, so load it before them:
 
 ```scheme
 (load-plugin! "core:stdlib")
 ```
 
 ::: warning Keep its own triggers
-Load `core:stdlib` as shown above, without a `declare-plugin!` line of your own. The plugins that depend on it need every one of its helpers, and with a narrower trigger list they misbehave instead of reporting a clear error.
+Load `core:stdlib` as shown above, without a `declare-plugin!` line of your own. The plugins that depend on it need every one of its helpers; with a narrower trigger list they misbehave instead of reporting a clear error.
 :::
 
-If you're writing a plugin yourself, see [Standard Library](standard-library.md) for every command it offers.
+If you're writing a plugin, see [Standard Library](standard-library.md) for every command it offers.

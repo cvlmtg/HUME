@@ -1,12 +1,12 @@
 # Modes
 
-One keyboard, several meanings. Because `d` only deletes when you're in the mode where `d` means delete, HUME can put a whole editor's worth of commands on plain letters, with no modifier gymnastics.
+One keyboard, several meanings. `d` deletes only in the mode where `d` means delete, so HUME can put a whole editor's worth of commands on plain letters, with no modifier gymnastics.
 
-The active mode is shown on the right of the status bar. `Esc` always takes you back to Normal.
+The status bar shows the active mode on its right. `Esc` always takes you back to Normal.
 
 ## Normal mode
 
-Normal mode is the default. You land here at startup and return here with `Esc`. In Normal mode, keys are commands: they move the cursor, modify text, or switch to another mode. Nothing you type appears in the buffer.
+Normal mode is the default. Its keys are commands: they move the cursor, modify text, or switch to another mode. Nothing you type appears in the buffer.
 
 **Enter:** at startup, or `Esc` from any mode
 
@@ -14,7 +14,7 @@ Normal mode is the default. You land here at startup and return here with `Esc`.
 
 ## Insert mode
 
-Insert mode lets you type text directly into the buffer. The cursor changes to a bar to indicate you are inserting.
+In Insert mode, what you type goes straight into the buffer. The cursor becomes a bar while you insert.
 
 **Enter:** `i`, `a`, `I`, `A`, `o`, `O`, or `c`. See [Editing](editing.md) for what each key does.
 
@@ -22,7 +22,7 @@ Insert mode lets you type text directly into the buffer. The cursor changes to a
 
 ## Extend mode
 
-Extend mode works like Normal mode, but every motion *extends* the current selection instead of replacing it. Use it to build up a multi-character or multi-line selection before acting on it. Motions also run in reverse: moving back toward where you started shrinks the selection instead of growing it.
+Extend mode works like Normal mode, but every motion *extends* the current selection instead of replacing it. Use it to build a multi-character or multi-line selection before acting on it. Moving back toward where you started shrinks the selection.
 
 **Enter:** `e` (toggles; status bar shows `EXT`)
 
@@ -48,7 +48,7 @@ Search mode opens a prompt for a search pattern. `n` / `N` cycle through matches
 
 ## Sift mode
 
-Sift mode opens a regex prompt (`⫽`) that narrows each existing selection down to its matching sub-ranges. Use it to break a selection into individual tokens.
+Sift mode opens a regex prompt (`⫽`) that narrows each selection to its matching sub-ranges. Use it to break a selection into individual tokens.
 
 **Enter:** `s`
 
@@ -56,7 +56,7 @@ Sift mode opens a regex prompt (`⫽`) that narrows each existing selection down
 
 ## Multi-key sequences
 
-Some Normal-mode keys wait for a second key before doing anything. Either they open a small family of related commands, or they take a single character as their argument.
+Some Normal-mode keys wait for a second key before doing anything. Either they open a family of related commands, or they take a single character as their argument.
 
 ### Prefixes
 

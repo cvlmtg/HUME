@@ -417,7 +417,7 @@ editor_event_names! {
 
 impl EditorEvent {
     /// The single definition of every event's Steel arg shape: the SSOT
-    /// `user-manual/docs/plugins.md`'s hook table is checked against, and
+    /// `user-manual/docs/writing-plugins.md`'s hook table mirrors, and
     /// the only place `IntoSteelVal`/`to_steel_handle` is invoked for events.
     /// Called at drain, after the `has_hook_handlers` early-exit, so an
     /// event nobody subscribes to never allocates a `SteelVal`.

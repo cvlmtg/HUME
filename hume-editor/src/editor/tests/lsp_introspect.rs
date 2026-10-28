@@ -554,7 +554,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
 
 /// `viewport-range`'s `end` names one past the buffer's last *content* line,
 /// never ropey's phantom line past the structural trailing `\n`, so the
-/// manual's documented recipe (`user-manual/docs/plugins.md`) stays within
+/// manual's documented recipe (`user-manual/docs/writing-plugins.md`) stays within
 /// `buffer-lines`' bounds check when the viewport reaches EOF.
 #[test]
 fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {

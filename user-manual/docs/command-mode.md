@@ -1,14 +1,14 @@
 # Command mode
 
-Command mode is where HUME reaches commands that aren't bound to a key. Press `:` in Normal mode to open the command mode prompt, type a name, and press `Enter`. `Esc` dismisses without running.
+Command mode runs commands that aren't bound to a key. Press `:` in Normal mode to open the command mode prompt, type a name, and press `Enter`. `Esc` dismisses it without running anything.
 
-Every command in this manual is one of two kinds, and each is reachable only its own way:
+Every command in this manual is one of two kinds, each reachable only its own way:
 
 - **Typed commands**: everything on this page. Reached only from the command mode prompt. Each takes a text argument, a `!`, both or neither, as its entry shows, and refuses one it doesn't take.
 - **Editor commands**: everything in the [Editor Commands](editor-commands.md) reference. Reached only from a key or a plugin (including your `init.scm`), never by name at the command mode prompt.
 
 ::: info
-Navigate buffers with `:bprev`/`:bnext` from the command mode prompt. Doing this often enough to want a keybind? Use the editor commands `goto-prev-buffer`/`goto-next-buffer` in `init.scm` instead:
+`:bprev`/`:bnext` switch buffers from the command mode prompt. To bind buffer switching to keys, use the editor commands `goto-prev-buffer`/`goto-next-buffer` in `init.scm`:
 
 ```scheme
 (bind-key! 'normal "ctrl-h" "goto-prev-buffer")
@@ -16,9 +16,9 @@ Navigate buffers with `:bprev`/`:bnext` from the command mode prompt. Doing this
 ```
 :::
 
-Most typed commands have a short alias. Both forms are listed below, and both work. Command names ignore case. A name ends at the first character that is not a letter, digit, `-` or `_`, so put a space before an argument: `:e 1.txt`, not `:e1.txt`. `:b2` is the one exception: `:b` followed only by digits switches to that buffer.
+Most typed commands have a short alias; the tables list both forms, and both work. Command names ignore case. A name ends at the first character that is not a letter, digit, `-` or `_`, so put a space before an argument: `:e 1.txt`, not `:e1.txt`. `:b2` is the one exception: `:b` followed only by digits switches to that buffer.
 
-Press `Tab` at any point for completion of names and, where it makes sense, arguments. When several candidates match, the first `Tab` completes the text they share and opens the candidate list; press `Tab` again to pick the first candidate and `Shift-Tab` to pick the last. `:set global command-completion=first-candidate` fills in the first candidate at once instead.
+Press `Tab` at any point to complete names and, where it makes sense, arguments. When several candidates match, the first `Tab` completes the text they share and opens the candidate list; another `Tab` picks the first candidate and `Shift-Tab` the last. `:set global command-completion=first-candidate` makes the first `Tab` fill in the first candidate at once instead.
 
 For running HUME from a shell instead, see [Command-line Flags](cli.md).
 
@@ -35,7 +35,7 @@ For running HUME from a shell instead, see [Command-line Flags](cli.md).
 | `:w!` | Save, retrying with a permission change if the first attempt is refused; also overwrites a file changed on disk since it was last read or saved |
 | `:wa`, `:write-all` | Save every modified buffer |
 | `:wa!` | Save every modified buffer as `:w!` does, including those whose file changed on disk |
-| `:wq`, `:write-quit` | Save, then close the focused pane; with one pane, close the buffer, and quit HUME when it's the last one |
+| `:wq`, `:write-quit` | Save, then close as `:q` does |
 | `:wq!` | Save as `:w!` does, then close as `:wq` does |
 
 Relative paths given to `:w` resolve against HUME's working directory (`:pwd`), not the shell's.
@@ -47,9 +47,9 @@ Relative paths given to `:w` resolve against HUME's working directory (`:pwd`), 
 | `:e <path>`, `:edit <path>` | Open a file. `<path>` may end in `:line` or `:line:col` to jump there, e.g. `:e file.txt:42:5` |
 | `:e` | Reload the current file. Refuses if there are unsaved changes |
 | `:e!` | Reload, discarding unsaved changes |
-| `:checktime` | Check every open buffer against its file on disk right now, instead of waiting for the next automatic check (switching back to HUME, switching to the buffer) |
+| `:checktime` | Check every open buffer against its file on disk now, instead of waiting for the next automatic check (switching back to HUME, switching to the buffer) |
 
-In arguments, `%` expands to the current file's path and `#` to the alternate file's. Both only work as a whole argument: `:w %.bak` won't expand. `:b` is the exception: it resolves `#` itself, which is why `:b #` works for buffers with no file on disk.
+In arguments, `%` expands to the current file's path and `#` to the alternate file's, but only as a whole argument: `:w %.bak` won't expand. `:b` is the exception: it resolves `#` itself, so `:b #` works for buffers with no file on disk.
 
 See [Files & Buffers](files-and-buffers.md#external-changes) for what happens when a file changes on disk.
 
@@ -64,7 +64,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:bd`, `:buffer-delete` | Close the buffer. Refuses if there are unsaved changes; closing the last one leaves a scratch buffer |
 | `:bd!` | Close the buffer, discarding unsaved changes |
 
-`:b#` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key, and `core:vim-keybind` binds it to `Ctrl-6` for you.
+`:b#` is the quickest way back to the previous buffer. To bind the same jump to a key, use the editor command `goto-alternate-buffer`; `core:vim-keybind` binds it to `Ctrl-6` for you.
 
 ## Panes
 
@@ -73,7 +73,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:sp`, `:split` | Split the focused pane, stacking the new pane below |
 | `:vsp`, `:vsplit` | Split the focused pane side by side |
 
-Splitting is refused with a message when the pane is already too small. Focusing, closing and rotating panes use the `Ctrl-p` prefix. See the [Default Keys](default-keys.md).
+Splitting a pane that is already too small is refused with a message. Focusing, closing and rotating panes use the `Ctrl-p` prefix; see the [Default Keys](default-keys.md).
 
 ## Tabs
 
@@ -81,12 +81,12 @@ A tab is a saved window layout (its own set of panes and splits), not a per-buff
 
 | Command | Effect |
 |---------|--------|
-| `:tabnew [path]`, `:tabe [path]` | Open a new tab. With no `path`, the new tab's pane views the same buffer as the current one; with `path`, it opens that file instead |
+| `:tabnew [path]`, `:tabe [path]` | Open a new tab. With no `path`, the new tab's pane views the current buffer; with `path`, it opens that file instead |
 | `:tabclose`, `:tabc` | Close the current tab and every pane it owns. Refused with a message if it's the only tab, or if a `\|` run from one of its panes is still running; `:tabclose!` stops it and closes the tab |
 | `:tabnext`, `:tabn` | Switch to the next tab in display order |
 | `:tabprev`, `:tabp` | Switch to the previous tab in display order |
 
-Cycling is also bound to `Ctrl-p t`/`Ctrl-p T`. See the [Default Keys](default-keys.md). By default the tab bar only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this; see [Global options](settings.md#global-options)).
+`Ctrl-p t`/`Ctrl-p T` also cycle tabs; see the [Default Keys](default-keys.md). By default the tab bar appears only once more than one tab is open; `:set global tabline=always`/`never`/`dynamic` changes this (see [Global options](settings.md#global-options)).
 
 ## Editing
 
@@ -98,24 +98,16 @@ Cycling is also bound to `Ctrl-p t`/`Ctrl-p T`. See the [Default Keys](default-k
 | `:earlier [n\|5m]` | Step back `n` revisions (`:earlier`, `:earlier 3`), or back to how the buffer looked an age ago (`:earlier 5m`) |
 | `:later [n\|5m]` | Step forward again after `:earlier`, same argument forms |
 
-`:sort` groups your selections into runs of adjacent rows and sorts each run
-independently, keyed by whatever text you selected on that row, not
-necessarily the whole line. Select whole lines (`%` selects the whole buffer)
-to sort a file; select a single column across a block of lines to sort by
-that column instead. A run sorts numerically only if *every* row's key looks
-like a number: one row with non-numeric text drops the whole run back to
-plain text order. Two selections on the same row combine into one key rather
-than being treated as separate rows, so sorting several items *within* one
-line isn't what `:sort` does.
+`:sort` groups your selections into runs of adjacent rows and sorts each run on its own. Each row's key is the text you selected on it, not necessarily the whole line:
 
-A single selection that spans several rows keeps its place in the buffer:
-the rows underneath it reorder, but the selection itself still covers the
-same stretch of text afterward.
+- Select whole lines to sort a file (`%` selects the whole buffer).
+- Select a single column across a block of lines to sort by that column.
 
-`:earlier` and `:later` step through the undo history: back, then forward
-again along the path redo follows. A bare number counts revisions; a number
-with an `s`/`m`/`h`/`d` suffix names an age (`:earlier 90s`, `:later 2h`).
-Traveling past either end stops at the oldest/newest revision with a message.
+A run sorts numerically only if every row's key looks like a number: one row with non-numeric text drops the whole run back to plain text order. Two selections on the same row combine into one key rather than counting as separate rows, so `:sort` can't sort several items within one line.
+
+A single selection that spans several rows keeps its place in the buffer: the rows underneath it reorder, but the selection still covers the same stretch of text afterward.
+
+`:earlier` and `:later` step through the undo history: back, then forward again along the path redo follows. A bare number counts revisions; a number with an `s`/`m`/`h`/`d` suffix names an age (`:earlier 90s`, `:later 2h`). Going past either end stops at the oldest or newest revision with a message.
 
 <div class="key-demo">
 <strong>Select the count on each row, then run <code>:sort</code></strong><br>
@@ -165,8 +157,14 @@ See [Settings](settings.md) for every option.
 | `:ver`, `:version` | Show the editor version |
 | `:tutor` | Open the interactive tutorial |
 
-Plugins add commands of their own once you load them. The `:plum-*` commands (installing plugins and grammars) come from `core:plum`, and `:lsp-status`, `:lsp-stop`, `:lsp-restart`, `:diagnostics`, and `:format-source` from `core:lsp`, and `:lsp-install`, `:lsp-uninstall`, and `:lsp-catalog` from `core:lsp-install`. None of these plugins is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).
+Plugins add commands of their own once you load them:
+
+- `core:plum`: the `:plum-*` commands, which install plugins and grammars.
+- `core:lsp`: `:lsp-status`, `:lsp-stop`, `:lsp-restart`, `:diagnostics`, and `:format-source`.
+- `core:lsp-install`: `:lsp-install`, `:lsp-uninstall`, and `:lsp-catalog`.
+
+None of these plugins is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).
 
 ## Finding a command
 
-There is no listing command. Open the command mode prompt with `:` and press `Tab`: completion shows every registered typed name and alias, including those of plugins that haven't started yet. It never shows editor commands, since you can't run one by name there; see [Editor Commands](editor-commands.md) for the full list.
+There is no listing command. Press `:`, then `Tab`: completion shows every registered typed name and alias, including those of plugins that haven't started yet. It never shows editor commands, since you can't run one by name at the `:` prompt; see [Editor Commands](editor-commands.md) for the full list.

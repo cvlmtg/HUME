@@ -234,7 +234,7 @@ fn buffer_lines_start_past_end_raises() {
 }
 
 /// The user manual's `(viewport-range bid)` + `buffer-lines` recipe
-/// (`user-manual/docs/plugins.md`) must not raise on the common case of a
+/// (`user-manual/docs/writing-plugins.md`) must not raise on the common case of a
 /// buffer shorter than the pane, where the viewport's `end` sits at one past
 /// the buffer's last content line. `viewport-range` returns the very range
 /// value `buffer-lines` takes, so it passes straight through.

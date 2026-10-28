@@ -97,7 +97,7 @@ impl CommandRegistry {
         // own bookkeeping.
         ecmd_pane(
             "copy-selection-on-next-line",
-            "Duplicate each selection on the line below.",
+            "Duplicate each selection one selection-height below.",
             cmd_copy_selection_on_next_line,
         )
         .composes_selection()
@@ -105,7 +105,7 @@ impl CommandRegistry {
         .reg(self);
         ecmd_pane(
             "copy-selection-on-prev-line",
-            "Duplicate each selection on the line above.",
+            "Duplicate each selection one selection-height above.",
             cmd_copy_selection_on_prev_line,
         )
         .composes_selection()

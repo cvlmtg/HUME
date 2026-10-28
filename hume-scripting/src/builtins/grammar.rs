@@ -5,7 +5,7 @@
 //! | `compile-grammar!`     | `string string → void` | `hume-grammar-build -o out src` |
 //!
 //! No sandbox checks: full-trust plugin model (see
-//! `user-manual/docs/plugins.md`'s "Filesystem and processes"). This is a Rust
+//! `user-manual/docs/writing-plugins.md`'s "Filesystem and processes"). This is a Rust
 //! builtin because the compiler is found beside the HUME executable, which
 //! only the scripting host knows. The compiler's output is captured, never
 //! written to the terminal, so a compile runs anywhere a script does.

@@ -1,6 +1,8 @@
 # Editor Commands
 
-These are the editor commands built into HUME: what a key runs, also reached from a plugin with `(call! …)`, never by name at the command mode prompt. Typed commands are listed on the [Command mode](command-mode.md) page instead, and editor functions such as `insert-key!`, which only a script can call, on the [Plugin API](plugin-api.md#commands-and-functions) page. A plugin's own commands are listed in its documentation. They are callable two ways from Scheme:
+These are the editor commands built into HUME. A key runs them and a plugin reaches them with `(call! …)`, but you can't run them by name at the command mode prompt. Typed commands are on the [Command mode](command-mode.md) page. Editor functions such as `insert-key!`, which only a script can call, are on the [Plugin API](plugin-api.md#commands-and-functions) page. A plugin's own commands are listed in its documentation.
+
+Scheme can call the commands on this page two ways:
 
 ```scheme
 ;; directly, as a bare binding
@@ -9,7 +11,22 @@ These are the editor commands built into HUME: what a key runs, also reached fro
 (call! "move-left" pane)
 ```
 
-Most commands act through whatever pane `pane` names (not necessarily the one you're focused on, as long as it's still open and still shows the buffer `pane` names), so a hook or a timer can act on a pane you aren't currently looking at. A few commands require `pane` to be the one you're actually focused on: entering insert mode, opening a search or command prompt, toggling extend mode, paste and paste-cycling, opening or switching tabs, and every pane-focus/split/close command. `repeat-last-action` and `pipe` run only from a key: calling them from Scheme raises an error. Every command needs a `pane` that names a pane — a value with only a buffer (from `(buffers)`, or a buffer-level hook) is refused. Either way, a `pane` the command can't act on errors rather than falling back to whatever is focused. The first form is only valid for the commands on this page; `call!` works for any editor command but `repeat-last-action` and `pipe`, built in or defined by a script. Nine commands also act with a value a key press asks for: `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add` with a character, `search-forward`, `search-backward` and `sift-within` with a pattern. From a script that value is an argument, as each entry says; see [Calling other commands](writing-plugins.md#calling-other-commands). Each entry lists the command name and what it does. For key bindings that trigger these commands, see the [key reference](default-keys.md) and the per-topic pages.
+The bare form works only for the commands on this page. `call!` works for any editor command, built in or defined by a script, except `repeat-last-action` and `pipe`. Those two run only from a key: calling them from Scheme raises an error.
+
+Every command needs a `pane` that names a pane. A value with only a buffer (from `(buffers)`, or a buffer-level hook) is refused. Most commands act on the pane `pane` names even when it isn't the focused one, as long as it is still open and still shows the buffer `pane` names. That lets a hook or a timer act on a pane you aren't looking at. A few commands require `pane` to be the focused pane:
+
+- entering insert mode
+- opening a search or command prompt
+- toggling extend mode
+- paste and paste-cycling
+- opening or switching tabs
+- every pane-focus, split and close command
+
+A `pane` the command can't act on raises an error; the command never falls back to whatever is focused.
+
+Nine commands also take a value that a key press asks for. `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add` take a character; `search-forward`, `search-backward` and `sift-within` take a pattern. From a script, that value is an argument, as each entry says; see [Calling other commands](writing-plugins.md#calling-other-commands).
+
+For the keys that run these commands, see the [key reference](default-keys.md) and the per-topic pages.
 
 ## Motions
 
@@ -67,8 +84,8 @@ Create, refine, or manipulate the selection set.
 | `collapse-and-exit-extend` | `;` | Collapse each selection to its cursor and exit extend mode. |
 | `collapse-selection` | — | Collapse each selection to a single cursor at the head. |
 | `collapse-to-anchor-and-exit-extend` | `Ctrl-;` | Collapse each selection to its anchor and exit extend mode. |
-| `copy-selection-on-next-line` | `C` | Duplicate each selection on the line below. |
-| `copy-selection-on-prev-line` | — | Duplicate each selection on the line above. |
+| `copy-selection-on-next-line` | `C` | Duplicate each selection one selection-height below. |
+| `copy-selection-on-prev-line` | — | Duplicate each selection one selection-height above. |
 | `cycle-primary-backward` | `(` | Cycle the primary selection backward. |
 | `cycle-primary-forward` | `)` | Cycle the primary selection forward. |
 | `flip-selections` | `Ctrl-e` | Swap anchor and head for each selection. |

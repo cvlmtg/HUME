@@ -1,7 +1,7 @@
 # Fuzzy Finder
 
 A modal panel for jumping straight to a file or an open buffer, without leaving the
-keyboard: type a few characters, watch the list narrow, `Enter` to go there.
+keyboard: type a few characters, watch the list narrow, press `Enter` to go there.
 
 ## Setup
 
@@ -18,7 +18,7 @@ Requires `core:stdlib` loaded first.
 `:cd`):
 
 - **Inside a git repository**, it lists every file `git` knows about: tracked files plus
-  untracked-but-not-ignored ones. This reads straight from git's index, so it stays fast
+  untracked ones that aren't ignored. It reads git's index directly, so it stays fast
   even in huge repos.
 - **Outside a git repository**, it lists files with [`fd`](https://github.com/sharkdp/fd)
   (or Debian's `fdfind` package) if you have it installed.
@@ -29,23 +29,22 @@ git's index doesn't know it's gone.
 
 ## Picking buffers
 
-`z b` opens a picker over every open buffer, showing each one's full path rather than just
-its filename, so two open files that happen to share a name, like two different `mod.rs`
-files, show up as distinct, disambiguated rows.
+`z b` opens a picker over every open buffer. Each row shows the full path, not just the
+filename, so two open files that share a name, like two different `mod.rs` files, stay
+distinct.
 
 ## Picking modified files
 
 `z m` opens a picker over every file with staged or unstaged changes, as reported by
-`git status`: the row shows the two-letter status (`M ` staged, ` M` unstaged, `??`
-untracked, and so on) alongside the path, so you can tell at a glance what kind of change
-each file has. Selecting a row opens that file, regardless of which subdirectory `:pwd`
-currently points at.
+`git status`. Each row shows the path and its two-letter status (`M ` staged, ` M`
+unstaged, `??` untracked, and so on). Selecting a row opens that file, whichever
+subdirectory `:pwd` points at.
 
-A working directory outside any git repository shows a status message instead of opening a
-picker. A clean tree (nothing changed) opens the picker with no rows.
+Outside a git repository, `z m` shows a status message instead of opening a picker. In a
+clean tree (nothing changed), the picker opens with no rows.
 
-By default, untracked files are included, each shown as its own row. Turn them off when
-loading the plugin:
+Untracked files are included by default, each as its own row. To leave them out, configure
+the plugin when loading it:
 
 ```scheme
 (load-plugin! "core:stdlib")

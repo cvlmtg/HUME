@@ -453,7 +453,7 @@ pub(super) fn cmd_visual_move_up(
     Ok(())
 }
 
-/// Duplicate each selection on the line below.
+/// Duplicate each selection one selection-height below.
 pub(super) fn cmd_copy_selection_on_next_line(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -465,7 +465,7 @@ pub(super) fn cmd_copy_selection_on_next_line(
     Ok(())
 }
 
-/// Duplicate each selection on the line above.
+/// Duplicate each selection one selection-height above.
 pub(super) fn cmd_copy_selection_on_prev_line(
     state: &mut EditorState,
     view: &mut EngineView,

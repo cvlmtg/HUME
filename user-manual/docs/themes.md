@@ -8,17 +8,23 @@ HUME colors its interface and your code from a theme: a TOML file in the Helix t
 
 To see which themes are available, type `:theme ` and press `Tab`.
 
-HUME reads `sand` from the `themes/` directories like any other theme, so editing your copy changes what you see. A built-in fallback theme is used instead when no `sand` theme is found or when the theme set in `init.scm` fails to load.
+HUME reads `sand` from the `themes/` directories like any other theme, so editing your copy changes what you see. HUME falls back to a built-in theme when no `sand` theme is found or when the theme set in `init.scm` fails to load.
 
-Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory, hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](configuration.md#file-locations)); a config-dir theme of the same name wins.
+Hand-authored themes go in the `themes/` subdirectory of your HUME config directory, alongside `init.scm`. A theme installed by a tool goes in the `themes/` subdirectory of your HUME data directory instead (see [File locations](configuration.md#file-locations)); a config-dir theme of the same name wins.
 
-HUME reads the Helix theme format and aims to support Helix themes as they are written. It is not there in every detail yet, but it is close: most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`). HUME treats the two as equivalent, though Helix itself reads only the flat form, so a section-header theme won't travel back. The theme editor below exports the flat form.
+HUME aims to support Helix themes as they are written. It isn't there in every detail, but it is close: most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`). HUME treats the two the same, but Helix reads only the flat form, so a section-header theme won't travel back. The theme editor below exports the flat form.
 
-A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on). These resolve to fixed colors from the standard terminal palette rather than to whatever your own terminal happens to have those colors set to, so a theme looks the same everywhere and unfocused-pane dimming has an actual color to blend toward. A color value outside these three forms leaves that one entry unstyled rather than failing the whole load, and `:messages` names it.
+A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on). The names resolve to fixed colors from the standard terminal palette, not to whatever your terminal has those colors set to, so a theme looks the same everywhere and unfocused-pane dimming has a real color to blend toward. A color value in any other form leaves that one entry unstyled instead of failing the whole load, and `:messages` names it.
 
-One thing a Helix theme can contain isn't supported, but it doesn't stop the rest of the theme from loading either: the top-level `rainbow` array. HUME has no rainbow-bracket highlighting, so it has nothing to drive. The theme still loads, and the entry is reported in `:messages` like any other one HUME couldn't use.
+HUME doesn't support a Helix theme's top-level `rainbow` array, since it has no rainbow-bracket highlighting to drive. The rest of the theme still loads, and `:messages` reports the entry like any other entry HUME couldn't use.
 
-A theme fails to load outright only when the problem is with the document rather than one entry in it: invalid TOML syntax, an `inherits` parent that doesn't exist or forms a cycle or nests more than eight deep, or an `inherits`/`palette` key that isn't a string/table. Loading then keeps your current theme.
+A theme fails to load outright only when the problem is with the document rather than one entry in it:
+
+- invalid TOML syntax;
+- an `inherits` parent that doesn't exist, forms a cycle, or nests more than eight deep;
+- an `inherits`/`palette` key that isn't a string/table.
+
+Loading then keeps your current theme.
 
 ## Installing themes
 
@@ -47,16 +53,16 @@ code carries over as-is.
 
 These have no Helix equivalent:
 
-- `ui.cursor.match.search`: coloring every visible search match, falling back to
+- `ui.cursor.match.search`: every visible search match, falling back to
   `ui.cursor.match` when unset
 - `ui.popup.scroll`: scrollbar thumb on a scrolled hover popup (Helix only themes a
   scrollbar for `ui.menu`)
-- `ui.window.focused`: seam divider segments adjacent to the focused pane, falling back
+- `ui.window.focused`: seam divider segments next to the focused pane, falling back
   to `ui.window`
 - `ui.drawer`: background and border of the bottom drawer (`show-drawer-list!`), a
   generic pick-list panel Helix doesn't have
-- `ui.tabline` / `ui.tabline.active`: the tab bar's row and its active tab. `.active` left
-  unset falls back to the base `ui.tabline` style, unlike the statusline separator below
+- `ui.tabline` / `ui.tabline.active`: the tab bar's row and its active tab. An unset
+  `.active` falls back to the base `ui.tabline` style, unlike the statusline separator below
 - `ui.statusline.search` / `.command` / `.sift`: one more mode-tinted statusline scope
   per HUME mode Helix doesn't have, alongside Helix's own
   `ui.statusline.normal`/`.insert`/`.select` (`.select` colors **Extend**, HUME's name for
@@ -66,8 +72,8 @@ These have no Helix equivalent:
 - `diff.plus.line` / `diff.minus.line` / `diff.delta.line`: the whole-line background tint
   `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also
   colors the ghost text of a deleted line, since nothing is left in the buffer to color).
-  Falls back to nothing if left undefined. An unmodified Helix theme colors the gutter
-  marker (below) but paints no line tint, which is the deliberate trade-off rather than a bug
+  Left undefined, they paint nothing: an unmodified Helix theme colors the gutter marker
+  (through `diff.plus`, `diff.minus` and `diff.delta`) but paints no line tint. This is intended, not a bug
 - `diff.plus.word` / `diff.minus.word`: word-level highlight inside a changed line
   (`core:git-diff`'s inline diff), inside the line-level `.line` tint above
 - `diagnostic.error.message` / `.warning.message` / `.info.message` / `.hint.message` and
@@ -81,8 +87,8 @@ These have no Helix equivalent:
 
 ### Helix scopes HUME doesn't read
 
-Declaring any of these has no effect today. They fall into two groups, and the difference
-matters if you're deciding whether to keep them in a theme you maintain.
+Declaring any of these has no effect today. They fall into two groups, which matters if
+you're deciding whether to keep them in a theme you maintain.
 
 **Waiting on a feature.** HUME doesn't have the thing these color yet. When it does, these
 scopes are the natural way to theme it, so leaving them in a theme costs nothing:
@@ -101,9 +107,9 @@ scopes are the natural way to theme it, so leaving them in a theme costs nothing
   `ui.virtual.ruler`, `ui.virtual.wrap`, `ui.virtual.jump-label`,
   `ui.virtual.inlay-hint.parameter`, `ui.virtual.inlay-hint.type`
 
-**HUME's interface works differently.** These color a piece of Helix's UI that HUME either
-doesn't present the same way or styles from another scope. They may never apply, so the
-listed alternative is where to put the color instead:
+**HUME's interface works differently.** These color a piece of Helix's UI that HUME
+either doesn't present the same way or styles from another scope. They may never apply, so put
+the color in the listed alternative instead:
 
 - `ui.picker.header`, `ui.picker.header.column`, `ui.picker.header.column.active`: HUME's
   picker has no column headers to style
@@ -121,19 +127,17 @@ listed alternative is where to put the color instead:
 ### Scopes HUME reads differently
 
 `ui.window` is the seam between split panes. HUME draws the divider glyph itself, so it
-reads that scope's foreground; a theme that sets only a background falls back to the
-theme's own base text color (`ui.text`) for it, the same fallback every other undecorated
-element uses.
+reads that scope's foreground. A theme that sets only a background gets the theme's base
+text color (`ui.text`) for it, the same fallback every other undecorated element uses.
 
 `ui.statusline.separator` divides the statusline's segments. HUME tints the whole
-statusline row by mode, so leaving this scope undefined takes the row's own current color
-rather than the untinted `ui.statusline`; otherwise the separator would show through a
-mode-tinted row as a stripe of the wrong color. Set it explicitly and that wins, in every
-mode.
+statusline row by mode, so an undefined separator takes the row's current color rather
+than the untinted `ui.statusline`, which would show through a mode-tinted row as a
+stripe of the wrong color. A separator you set explicitly wins, in every mode.
 
 HUME's tab bar is a saved window layout per tab (Vim's tab pages), not a per-buffer strip,
-so it's styled with its own `ui.tabline` / `ui.tabline.active` scopes rather than Helix's
+so it has its own `ui.tabline` / `ui.tabline.active` scopes rather than Helix's
 `ui.bufferline` / `ui.bufferline.active`. A theme that sets only the latter (every Helix
 theme, since `ui.tabline` is HUME's own addition) still renders correctly: `ui.tabline`
-falls back to `ui.bufferline` when unset, and `ui.tabline.active` to `ui.bufferline.active`,
-so the bar picks up a ported theme's colors without it needing to name HUME's scopes at all.
+falls back to `ui.bufferline` when unset, and `ui.tabline.active` to `ui.bufferline.active`.
+A ported theme's colors carry over without naming HUME's scopes at all.

@@ -2,9 +2,9 @@
 
 Options, key bindings, the statusline, plugins, and language servers are all configured in one language, in one file. There's no separate config format to learn: `init.scm` is a Scheme program, so anything you can compute you can configure.
 
-HUME can be configured two ways: the `:set` command for runtime changes during a session, or an `init.scm` file for persistent configuration loaded at startup.
+Use the `:set` command for changes during a session, and an `init.scm` file for persistent configuration loaded at startup.
 
-HUME reads persistent configuration from:
+HUME reads `init.scm` from:
 
 - **macOS / Linux:** `$XDG_CONFIG_HOME/hume/init.scm` (defaults to `~/.config/hume/init.scm`)
 - **Windows:** `%APPDATA%\hume\init.scm`
@@ -29,16 +29,21 @@ What the plugins it loads give you:
 
 The commented-out lines are optional; [Core Plugins](core-plugins.md) describes each one.
 
-Before your `init.scm` runs, HUME loads its own prelude (which defines `bind-keys!`, `define-language!`, `configure-language!` and friends) and its built-in language definitions, so those are always available to you.
+Before your `init.scm` runs, HUME loads its own prelude, which defines `bind-keys!`, `define-language!`, `configure-language!` and friends, and its built-in language definitions, so you can always use them.
 
 ## Errors and reloading
 
-If the file does not exist, HUME starts with defaults. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied, so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
+If the file does not exist, HUME starts with defaults. If it fails partway through, `:messages` reports the error and everything before it stays applied: a broken line late in the file leaves you half-configured, not back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
 
-A plugin that fails to load doesn't stop the rest: HUME reports the error, naming the plugin and pointing at the file and line the problem is in, and keeps going with the rest of `init.scm`. See [Plugins](plugins.md) for how to recover.
+A plugin that fails to load doesn't stop the rest of `init.scm`. HUME reports the error, naming the plugin and the file and line the problem is in, and carries on. See [Plugins](plugins.md) for how to recover.
 
 ::: details What `:reload-config` resets
-`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default first, then the file runs again, so removing a line from `init.scm` and reloading does undo what it did. Any `:set global`/`:set buffer`/[`:theme`](themes.md) change you made during the session is discarded too, not just what `init.scm` set, with two exceptions: a pane-scoped `:set pane` override, which stays as you left it (panes are editing state, not config), and an explicit `:set buffer language=<name>`, which is restored after the reload rather than discarded: detection can't reconstruct it on its own (that's exactly why you had to set it explicitly), so losing it on every reload would be more surprising than keeping it. If the file fails partway through this time, you're left with defaults plus whatever ran before the error, same as at startup.
+`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default, then the file runs again. So removing a line from `init.scm` and reloading undoes what it did. Any `:set global`/`:set buffer`/[`:theme`](themes.md) change you made during the session is discarded too, with two exceptions:
+
+- A `:set pane` override stays as you left it, since panes are editing state, not config.
+- An explicit `:set buffer language=<name>` is restored after the reload, since detection can't reconstruct it.
+
+If the file fails partway through this time, you're left with defaults plus whatever ran before the error, as at startup.
 
 Buffers stay open and language servers stay attached across a reload: it behaves as if every open file were closed and reopened. Completion triggers, inline diagnostics, and any per-language setup your config applies (e.g. from `on-language-set`) come back too, without restarting the language server or losing your place in the file.
 
@@ -47,11 +52,11 @@ A file named with `--config` must exist: if it is missing at startup or when you
 
 ## Setting options
 
-There are two ways to set an option: the `:set` command for runtime changes, or `set-option!` in `init.scm` for persistent defaults. [Settings](settings.md) lists every option.
+Set an option with the `:set` command for runtime changes, or with `set-option!` in `init.scm` for persistent defaults. [Settings](settings.md) lists every option.
 
 ### `:set` command
 
-The `:set` command takes a scope and a `key=value` pair. The scope is required:
+`:set` takes a scope, which is required, and a `key=value` pair:
 
 ```
 :set global <option>=<value>     set the global default
@@ -59,9 +64,9 @@ The `:set` command takes a scope and a `key=value` pair. The scope is required:
 :set pane <option>=<value>       override for the current pane only (view-scoped settings)
 ```
 
-For a buffer option (see [Buffer options](settings.md#buffer-options)), `:set global` takes effect immediately in every buffer that has no override of its own, not just newly opened ones. `wrap-mode` additionally accepts `:set pane`, which pins one pane's wrap style above both the buffer and global setting (see [Text wrap](settings.md#text-wrap)).
+For a buffer option (see [Buffer options](settings.md#buffer-options)), `:set global` takes effect at once in every buffer without its own override, not just newly opened ones. `wrap-mode` also accepts `:set pane`, which pins one pane's wrap style above both the buffer and global setting (see [Text wrap](settings.md#text-wrap)).
 
-Changes apply to the current session and are not persisted. For persistent configuration, use `init.scm` (below).
+`:set` changes last for the current session only. For persistent configuration, use `init.scm` (below).
 
 ### From `init.scm`
 
@@ -69,16 +74,16 @@ Changes apply to the current session and are not persisted. For persistent confi
 (set-option! "option-name" value)
 ```
 
-Sets the global default. The value has the type `get-option` returns for that option: a boolean, an integer, a string, or for a word-list option such as `shell`, a list of strings. Any other type raises, so write `4`, not `"4"`. A named value, such as `"soft"` or `"word:80"`, is a string, and `get-option` returns it as the string you would write: `"word"`, not `"word:0"`. A word-list option's `get-option` value is a list of strings: `'("sh" "-c")`. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
+Sets the global default. The value has the type `get-option` returns for that option: a boolean, an integer, a string, or, for a word-list option such as `shell`, a list of strings (`'("sh" "-c")`). Any other type raises an error, so write `4`, not `"4"`. A named value, such as `"soft"` or `"word:80"`, is a string, and `get-option` returns it as the string you would write: `"word"`, not `"word:0"`. `set-option!` works anywhere Scheme code runs: `init.scm`, a plugin body, or a command or hook body.
 
-A value you set, in your `init.scm`, a hook it registers or with `:set`, beats a plugin's value for the same option, whichever comes first; a plugin's later `set-option!` is ignored and noted in `:messages` at trace level. Per-buffer overrides rank the same way among themselves, and a buffer override still beats the global value, whoever set either.
+A value you set, in your `init.scm`, a hook it registers or with `:set`, beats a plugin's value for the same option, whichever comes first. A plugin's later `set-option!` is ignored and noted in `:messages` at trace level. Per-buffer overrides rank the same way among themselves, and a buffer override still beats the global value, whoever set either.
 
 ```scheme
 (set-option! "gutter-line-numbers" "absolute")
 (set-option! "indent-width" 2)
 ```
 
-`init.scm` is a real Scheme program, not a flat list of settings, so you can react to what's being opened rather than only set fixed defaults. The most common case is configuring an option per file type: register an `on-language-set` handler and call `(set-buffer-option! pane "option" value)` to override just that buffer (see [Hooks](writing-plugins.md#hooks) for the full hook API):
+Because `init.scm` is a program, not a flat list of settings, it can react to what's being opened instead of only setting fixed defaults. The most common case is an option per file type: register an `on-language-set` handler that calls `(set-buffer-option! pane "option" value)` to override just that buffer (see [Hooks](writing-plugins.md#hooks) for the full hook API):
 
 ```scheme
 ; 2-space indentation for Markdown buffers
@@ -119,13 +124,18 @@ A value you set, in your `init.scm`, a hook it registers or with `:set`, beats a
 (unbind-key! 'normal "ctrl-j")
 ```
 
-`bind-key!` takes an editor command's name (the same names in [Editor Commands](editor-commands.md)), never a typed command; there's no way to bind one of those to a key.
+`bind-key!` takes an editor command's name (as listed in [Editor Commands](editor-commands.md)), never a typed command: there's no way to bind a typed command to a key.
 
-`bind-key!`: binds a key in the given mode (`'normal`, `'insert`, `'extend`, `'command`). An `'insert` or `'command` binding is a single key.
-`unbind-key!`: unbinds a key.
-`bind-key-extend!`: binds a `'normal` key so it always extends the selection, as the one-shot `Ctrl-` motions do.
+- `bind-key!` binds a key in the given mode (`'normal`, `'insert`, `'extend`, `'command`). An `'insert` or `'command` binding is a single key.
+- `unbind-key!` unbinds a key.
+- `bind-key-extend!` binds a `'normal` key so it always extends the selection, as the one-shot `Ctrl-` motions do.
 
-A binding from your `init.scm` beats a plugin's binding of the same keys, whichever runs first, and a plugin's beats HUME's own. Unbinding keys in your `init.scm` removes a plugin's or HUME's binding of them, and no plugin can bind them again; a plugin's `unbind-key!` leaves yours alone. Bindings from different places combine under one prefix: your `g x` and HUME's `g g` both work, while binding a bare `g` hides every `g` sequence beneath it. Of two bindings of the same keys in your `init.scm`, the later one wins.
+When bindings come from several places:
+
+- A binding from your `init.scm` beats a plugin's binding of the same keys, whichever runs first, and a plugin's beats HUME's own.
+- Unbinding keys in your `init.scm` removes a plugin's or HUME's binding of them, and no plugin can bind them again. A plugin's `unbind-key!` leaves yours alone.
+- Bindings from different places combine under one prefix: your `g x` and HUME's `g g` both work, while binding a bare `g` hides every `g` sequence beneath it.
+- Of two bindings of the same keys in your `init.scm`, the later one wins.
 
 To set several bindings at once, use the plural forms:
 
@@ -141,11 +151,11 @@ To set several bindings at once, use the plural forms:
 (unbind-keys! 'normal "ctrl-j" "ctrl-k")
 ```
 
-`bind-keys!` batches `bind-key!`, `bind-keys-extend!` batches `bind-key-extend!`, and `unbind-keys!` batches `unbind-key!`. Each takes one or more `(key cmd)` pairs (or, for `unbind-keys!`, one or more bare keys) instead of a single one.
+Each plural form batches its singular one, taking one or more `(key cmd)` pairs (bare keys, for `unbind-keys!`) instead of a single one.
 
 ### Keys for one buffer
 
-Add `#:keymap` and a name to put a binding in a keymap of its own instead of the global bindings. The first binding into a name creates that keymap. A keymap does nothing until you attach it to a buffer with `attach-keymap!`, and `detach-keymap!` turns it off again. This makes `Ctrl-j` and `Ctrl-k` jump between paragraphs in Markdown buffers only:
+Add `#:keymap` and a name to put a binding in a keymap of its own instead of the global bindings. The first binding into a name creates that keymap. A keymap does nothing until you attach it to a buffer with `attach-keymap!`; `detach-keymap!` turns it off again. This makes `Ctrl-j` and `Ctrl-k` jump between paragraphs in Markdown buffers only:
 
 ```scheme
 (bind-keys! 'normal #:keymap "markdown-keys"
@@ -159,19 +169,25 @@ Add `#:keymap` and a name to put a binding in a keymap of its own instead of the
         (detach-keymap! pane "markdown-keys"))))
 ```
 
-`bind-key!`, `bind-key-extend!` and `unbind-key!` take `#:keymap` after their other arguments, as in `(unbind-key! 'normal "ctrl-k" #:keymap "markdown-keys")`, and the plural forms take it right after the mode. The hook detaches the keymap when a buffer's language changes away from Markdown. Detaching removes only that keymap, so the other keymaps attached to the buffer, a plugin's for instance, keep working.
+`bind-key!`, `bind-key-extend!` and `unbind-key!` take `#:keymap` after their other arguments, as in `(unbind-key! 'normal "ctrl-k" #:keymap "markdown-keys")`; the plural forms take it right after the mode. The hook detaches the keymap when a buffer's language changes away from Markdown. Detaching removes only that keymap, so other keymaps attached to the buffer, a plugin's for instance, keep working.
 
-In a buffer, keys are looked up in its attached keymaps, the most recently attached first, then in the global bindings. Attaching a keymap that is already attached keeps its place. The first keymap that has the keys, as a binding or as the start of a longer one, decides. So a key bound in a keymap hides the global bindings that start with it (binding `g` hides the global `g g`), and the start of a longer binding hides a global binding of the same keys. Bindings that only share their first keys combine: with `G H` in a keymap and the global `G G`, both work. In Extend mode, each keymap's `'extend` bindings are tried before its `'normal` ones, and both before the next keymap, so a keymap's `'normal` binding wins over a global `'extend` binding of the same keys.
+In a buffer, HUME looks keys up in its attached keymaps, most recently attached first, then in the global bindings. Attaching a keymap that is already attached keeps its place. The first keymap that has the keys, as a binding or as the start of a longer one, decides:
+
+- A key bound in a keymap hides the global bindings that start with it: binding `g` hides the global `g g`.
+- The start of a longer binding hides a global binding of the same keys.
+- Bindings that only share their first keys combine: with `G H` in a keymap and the global `G G`, both work.
+
+In Extend mode, each keymap's `'extend` bindings are tried before its `'normal` ones, and both before the next keymap. So a keymap's `'normal` binding wins over a global `'extend` binding of the same keys.
 
 Attaching or detaching a name nothing has been bound into yet does nothing and logs a warning in `:messages`. Bind first: attaching before the first binding has no effect, even once the keymap exists.
 
-Global bindings belong in `init.scm` or a plugin body, but bindings with `#:keymap` and attaching work from commands and hooks too, so you can build and attach a keymap while you edit. Keymap names are shared by every plugin, so a plugin's keymap names start with the plugin's own, like `"my-plugin/keys"`. `:reload-config` clears every keymap along with the other bindings, and a hook like the one above attaches its keymap again when it runs.
+Global bindings belong in `init.scm` or a plugin body, but `#:keymap` bindings and attaching work from commands and hooks too, so you can build and attach a keymap while you edit. Keymap names are shared by every plugin, so a plugin's keymap names start with the plugin's own, like `"my-plugin/keys"`. `:reload-config` clears every keymap along with the other bindings, and a hook like the one above attaches its keymap again when it runs.
 
 ### Falling back to a key's normal Insert-mode behaviour
 
 Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [Plugin API](plugin-api.md#editing-navigation), which also has a worked example) lets a command decide, per keypress, whether to override the key or fall back to what it would otherwise do.
 
-`.` re-runs an Insert-mode key's binding, so it decides again at the new cursor, and a side effect such as saving the file happens again too. If the binding's command is repeatable (a built-in like `replace`, or a plugin command marked `#:repeatable`) and asks you for something (a picker, a `prompt!`, a character), `.` reuses your answer; if it isn't, the change ends at that key. A completion is replayed as the text it left at the cursor, and a binding that reaches completion only on replay reports an error. See [Dot-repeat](writing-plugins.md#dot-repeat).
+`.` re-runs an Insert-mode key's binding, so it decides again at the new cursor, and a side effect such as saving the file happens again too. If the binding's command is repeatable (one of HUME's own, like `replace`, or a plugin command marked `#:repeatable`) and asks you for something (a picker, a `prompt!`, a character), `.` reuses your answer; if it isn't, the change ends at that key. A completion replays as the text it left at the cursor, and a binding that reaches completion only on replay reports an error. See [Dot-repeat](writing-plugins.md#dot-repeat).
 
 ### Keys in the command line
 
@@ -185,7 +201,7 @@ A `'command` binding applies in the command mode prompt and in prompts plugins o
 
 ### Binding a command that reads a character
 
-A command that needs a character typed after its key (find/till motions, `replace`, `surround-add`) waits for it on its own, so it is bound like any other command:
+A command that needs a character typed after its key (find/till motions, `replace`, `surround-add`) waits for it on its own, so you bind it like any other command:
 
 ```scheme
 (bind-key! 'normal "m s" "surround-add")
@@ -203,7 +219,7 @@ A key string is a **whitespace-separated** list of tokens. Each token is `[modif
 | Named keys | `space`, `tab`, `enter` / `return` / `cr` / `ret`, `esc` / `escape`, `lt` (`<`), `backspace` / `bs`, `delete` / `del`, `insert` / `ins`, `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`–`f12` |
 | Single char | Any single Unicode character; case is preserved (`"G"` and `"g"` are distinct); an uppercase letter and an explicit `shift-` are equivalent (`"ctrl-X"` and `"ctrl-shift-x"` bind the same key) |
 
-Multi-key sequences are space-separated: `"g e"`, `"m i w"`, `"ctrl-p h"`. Examples: `"ctrl-j"`, `"shift-tab"` (becomes `BackTab`), `"ctrl-shift-left"`, `"g e"`.
+Examples: `"ctrl-j"`, `"shift-tab"` (becomes `BackTab`), `"ctrl-shift-left"`, and multi-key sequences such as `"g e"`, `"m i w"`, `"ctrl-p h"`.
 
 ::: tip Binding the backslash key
 In Scheme string literals `\` is the escape character, so to bind the `\` key write it escaped: `"\\"`, not `"\"`:
@@ -226,7 +242,7 @@ HUME resolves its directories per OS:
 | Runtime dir (bundled `runtime/`: `tutor.rst`, `themes/`, `scheme/`, `init.scm.example`, core plugins) | see below | see below |
 | Grammar compiler (`hume-grammar-build`, which builds tree-sitter grammars) | `../libexec/hume/` relative to the binary, else next to the binary | next to the binary |
 
-`--config <FILE>` overrides only which file HUME evaluates as `init.scm`; user `themes/` and the data dir still resolve from the config dir above regardless.
+`--config <FILE>` overrides only which file HUME evaluates as `init.scm`; user `themes/` and the data dir still resolve from the directories above regardless.
 
 HUME looks for its runtime directory in this order, taking the first that exists:
 
@@ -235,9 +251,9 @@ HUME looks for its runtime directory in this order, taking the first that exists
 3. `runtime/` next to the binary (the Windows archive layout)
 4. `runtime/` in the current working directory (handy when running from a source checkout)
 
-A relative value in `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$HUME_RUNTIME` or `$TMPDIR` is resolved against the directory HUME was started in, once, at startup. A later `:cd` does not change where these point.
+A relative value in `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$HUME_RUNTIME` or `$TMPDIR` is resolved once, at startup, against the directory HUME was started in. A later `:cd` does not change where these point.
 
-Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars), `data/themes/` (installed third-party themes).
+Notable subpaths inside the data dir: `plugins/` (PLUM-managed plugin clones), `grammars/` and `grammars/sources/` (compiled and source tree-sitter grammars), `themes/` (installed third-party themes).
 
 ::: warning Plugins are trusted code
 Plugins run with the same privileges as HUME itself: they can read and write any file your user account can, and run other programs. There is no sandbox. Install third-party plugins only from sources you trust.

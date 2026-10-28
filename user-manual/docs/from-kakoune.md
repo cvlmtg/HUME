@@ -8,13 +8,13 @@ Kakoune invented the editing model HUME is built on, so more transfers here than
 
 `hume file.txt` opens a file, and several names open several buffers. To start on a given line, append it to the name: `hume file.txt:42` (or `file.txt:42:5` for a column) instead of `kak +42 file.txt`. Each `hume` is a standalone editor: there is no session to attach to with `-c`. See [Splits, windows, and tabs](#splits-windows-and-tabs).
 
-`:e path` works as in Kakoune, including on a path that doesn't exist yet: the file is created on the first `:w`. Bare `:e` reloads the file from disk, and `:e!` throws away your changes while doing it.
+`:e path` works as in Kakoune, even on a path that doesn't exist yet: the first `:w` creates the file. Bare `:e` reloads the file from disk, and `:e!` reloads it, discarding your changes.
 
 A fuzzy finder ships as a plugin. Load `core:pickers` (the [starter config](configuration.md#example-init-scm) already does) and `z f` finds a file, `z b` an open buffer. See [Fuzzy Finder](pickers.md).
 
 ### Editing
 
-Type `:tutor` and press `Enter`. The tutor is your own copy, so edit it freely. Then make the same edits you would in Kakoune on its opening paragraphs, finding each line with `/` as you would there:
+Type `:tutor` and press `Enter`. The tutor is your own copy, so edit it freely. Make the same edits you would in Kakoune on its opening paragraphs, finding each line with `/` as you would there:
 
 | Edit | Kakoune | HUME |
 |------|---------|------|
@@ -25,7 +25,7 @@ Type `:tutor` and press `Enter`. The tutor is your own copy, so edit it freely. 
 
 What each step shows:
 
-- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Kakoune selects up to the target. `e` toggles Extend mode, where every motion grows the selection, so `t T` grows `Welcome` to `Welcome. ` and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` extends for one motion, the job Shift does in Kakoune: `Ctrl-t T` grows the selection without entering Extend mode.
+- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Kakoune selects up to the target. `e` toggles Extend mode, where every motion grows the selection. So `t T` grows `Welcome` to `Welcome. `, and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` extends for one motion, the job Shift does in Kakoune: `Ctrl-t T` grows the selection without entering Extend mode.
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection).
 - **`Esc` keeps what you typed selected.** After the change, `play` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 - **The system clipboard needs no wiring.** `y` copies to it as well as to HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the clipboard once you have.
@@ -34,13 +34,13 @@ Shift does not extend a selection: `W`, `H`, `J`, `K`, `L` do something else her
 
 ### Saving and quitting
 
-`:w`, `:wq`, `:q!` and `:w!` work as in Kakoune. Kakoune's `:q` leaves the client; HUME's closes the current buffer. If other files are still open, you land on one of them, and HUME quits only when nothing is left. `:qa` leaves in one step. Kakoune's `:db` is `:bd`. See [Quitting](files-and-buffers.md#quitting).
+`:w`, `:wq`, `:q!` and `:w!` work as in Kakoune. Kakoune's `:q` leaves the client; HUME's closes the current buffer. If other files are still open, you land on one of them; HUME quits only when nothing is left. `:qa` leaves in one step. Kakoune's `:db` is `:bd`. See [Quitting](files-and-buffers.md#quitting).
 
 The tutor you just started is the hands-on tour of everything else: carry on from its Introduction. To start over with a clean copy, close it with `:bd!` and run `:tutor` again.
 
 ## Bringing your config over
 
-`kakrc` is kakscript: `set-option` for options, `map` for keys, `hook` for events, `define-command` for new commands. HUME's [`init.scm`](configuration.md) is Scheme, with the same four ideas under different names, plus conditionals, loops, and abstraction from day one, closer to what you would reach `%sh{}` for in kakrc, without leaving the editor: `(set-option! "name" value)` for options, `(bind-key! 'normal "keys" "command")` for keys.
+`kakrc` is kakscript: `set-option` for options, `map` for keys, `hook` for events, `define-command` for new commands. HUME's [`init.scm`](configuration.md) is Scheme, with the same four ideas under different names: `(set-option! "name" value)` for options, `(bind-key! 'normal "keys" "command")` for keys. It also has conditionals, loops, and abstraction from day one, closer to what you would reach `%sh{}` for in kakrc, without leaving the editor.
 
 | Setting | Kakoune `kakrc` | HUME `init.scm` |
 |---|---|---|
@@ -64,11 +64,11 @@ Kakoune's `extra_word_chars` is usually set per filetype from a `hook`. HUME's e
       (set-buffer-option! pane "word-chars" "-"))))
 ```
 
-`bind-key!` takes a command *name* (the same names listed in [Editor Commands](editor-commands.md)), not a key sequence — there's no key-to-key remapping.
+`bind-key!` takes a command *name* (listed in [Editor Commands](editor-commands.md)), not a key sequence: there's no key-to-key remapping.
 
 ## What's the same
 
-These work the way you expect, same keys:
+These work the way you expect, on the same keys:
 
 - Select-then-act, selections always covering at least one character, multiple selections as a first-class tool
 - `;` reduce to cursor, `,` keep only the main selection, `(` / `)` rotate the main selection
@@ -87,13 +87,13 @@ These work the way you expect, same keys:
 
 Kakoune is built to hand text to other programs: `|` pipes selections through a command, `!` inserts a command's output, and `%sh{ … }` expansions let the config shell out for anything the editor doesn't do itself.
 
-HUME keeps `|`, with the same newline rule as Kakoune's, and inserts a command's output with `Ctrl-|` (kitty only) in Insert mode instead of `!` (see [Shell commands](editing.md#shell-commands)). The rest differs by design. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the shell ecosystem.
+HUME keeps `|`, with the same newline rule as Kakoune's. Instead of `!`, `Ctrl-|` (kitty only) in Insert mode inserts a command's output (see [Shell commands](editing.md#shell-commands)). The rest differs by design: Kakoune composes with UNIX, HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the shell ecosystem.
 
 ### Extending selections
 
 This is the one that will trip you up most often. In Kakoune, holding Shift extends: `w` replaces the selection, `W` extends it, and the same goes for `H`, `J`, `K`, `L`. There is no extend *mode*: `v` opens view mode.
 
-HUME's uppercase keys are not extends. `W` and `B` are the WORD variants, the job Kakoune gives to `<a-w>` and `<a-b>`. Extending happens two other ways: **Extend mode**, toggled with `e`, where every motion extends until you act or press `Esc`; or a **one-shot** `Ctrl`+motion, which extends for a single keystroke without changing mode.
+HUME's uppercase keys are not extends. `W` and `B` are the WORD variants, the job Kakoune gives to `<a-w>` and `<a-b>`. Extending happens two other ways. **Extend mode**, toggled with `e`, extends with every motion until you act or press `Esc`. A **one-shot** `Ctrl`+motion extends for a single keystroke without changing mode.
 
 | Kakoune | HUME |
 |---------|------|
@@ -106,7 +106,7 @@ HUME's uppercase keys are not extends. `W` and `B` are the WORD variants, the jo
 
 The `Ctrl` one-shots and `Ctrl-,` need the kitty keyboard protocol; Extend mode works on any terminal. See [Terminal compatibility](installation.md#terminal-compatibility).
 
-Bare `K` (no modifier) is not an extend at all in HUME: it shows LSP hover docs for the symbol under the cursor (with `core:lsp` loaded).
+Bare `K` (no modifier) is not an extend in HUME: it shows LSP hover docs for the symbol under the cursor (with `core:lsp` loaded).
 
 ### Word characters
 
@@ -124,7 +124,7 @@ HUME's `x` re-anchors instead: each press selects one line and moves on, rather 
 | 2nd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 | 3rd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 
-`X` and `Ctrl-Shift-x` are the backward forms, so a line selection grown downward with `Ctrl-x` shrinks back up with `X` in Extend mode, or `Ctrl-Shift-x` (kitty only). There is no equivalent of `<a-x>`; `_` trims whitespace, not to line bounds.
+`X` and `Ctrl-Shift-x` are the backward forms: a line selection grown downward with `Ctrl-x` shrinks back up with `X` in Extend mode, or `Ctrl-Shift-x` (kitty only). There is no equivalent of `<a-x>`; `_` trims whitespace, not to line bounds.
 
 ### Splitting and merging selections
 
@@ -153,14 +153,14 @@ The search keys overlap heavily in spelling and barely at all in meaning.
 | `<c-/>` | | Set pattern from the selection, verbatim |
 
 ::: warning
-Two traps: `?` opens a backward search in HUME (Vim-style), not an extend like Kakoune's. And `N` has no equivalent — use `m /` to select every match at once instead, then narrow with `(`/`)` and `Ctrl-,` (`,` keeps only the primary). `Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")` for Kakoune's own `<a-,>`.
+Two traps. `?` opens a backward search in HUME (Vim-style), not an extend like Kakoune's. And `N` has no equivalent: use `m /` to select every match at once instead, then narrow with `(`/`)` and `Ctrl-,` (`,` keeps only the primary). `Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")` for Kakoune's own `<a-,>`.
 :::
 
-Neither `*` moves the cursor; both just set the pattern for `n` to use. The difference is what they read: Kakoune uses whatever is selected, HUME expands to the whole word under the cursor and ignores the selection. `Ctrl-/` is the closer match to Kakoune's `*` family, and it needs kitty.
+Neither `*` moves the cursor; both just set the pattern for `n` to use. They differ in what they read: Kakoune uses whatever is selected, HUME the whole word under the cursor. `Ctrl-/` is the closer match to Kakoune's `*` family, and it needs kitty.
 
 ### Text objects
 
-Kakoune reaches objects with `<a-i>` and `<a-a>`. HUME puts them behind an `m` prefix, so `<a-i>w` becomes `m i w` and `<a-a>(` becomes `m a (`.
+Kakoune reaches objects with `<a-i>` and `<a-a>`; HUME puts them behind an `m` prefix:
 
 | Kakoune | HUME |
 |---------|------|
@@ -169,11 +169,11 @@ Kakoune reaches objects with `<a-i>` and `<a-a>`. HUME puts them behind an `m` p
 | `m` (jump to matching pair) | `#` |
 | `[` / `]` / `{` / `}` (to object start/end) | *(none)* |
 
-Two things to watch: Kakoune's `m` jumps to the matching bracket/tag (HUME's is `#`, since `m` is taken by text objects; select the pair instead with `m s` + delimiter, e.g. `m s (`). And `[`/`]`/`{`/`}` are all bound elsewhere: kill-ring cycling and paragraph motions.
+Two things to watch. Kakoune's `m` jumps to the matching bracket/tag. HUME's is `#`, since `m` is taken by text objects; to select the pair instead, use `m s` + delimiter, e.g. `m s (`. And `[`/`]`/`{`/`}` are all bound elsewhere: kill-ring cycling and paragraph motions.
 
 The objects available are word (`w`), WORD (`W`), the bracket and quote pairs, argument (`a`), and line (`l`). HUME adds `m i i`, which selects the text you typed during your last insert, and `m w` + a delimiter, which wraps each selection in a pair.
 
-For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test), and `m i v`/`m a v` (array/tuple/struct value). Kakoune has no built-in equivalent. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command that jumps to the next/previous one as a selection, on the same letter under `g` (lowercase forward, uppercase backward, e.g. `g f`/`g F`).
+For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test), and `m i v`/`m a v` (array/tuple/struct value). Kakoune has no built-in equivalent. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command that selects the next/previous one, on the same letter under `g` (lowercase forward, uppercase backward, e.g. `g f`/`g F`).
 
 ### Registers, paste, and the clipboard
 
@@ -188,13 +188,13 @@ Kakoune registers are lists of text, one entry per selection, and you name any o
 
 There is no arbitrary `"x`, and no register holding the buffer name or selection indices. Kakoune's `%`, `.` and `#` registers exist to feed `%sh{}`, which HUME has no use for.
 
-The clipboard is also reachable directly as `"c`. `[`/`]` cycle through older/newer kill-ring entries after a paste.
+`[`/`]` cycle through older/newer kill-ring entries after a paste.
 
 See [Register prefix](copy-and-paste.md#register-prefix) for the full syntax.
 
 ### Macros
 
-Same keys (`Q` starts and stops recording, `q` replays), but the storage differs. Kakoune records into `@` by default and takes any other register through the `"` prefix. HUME records into `q` by default (`Q Q` to record, `q q` to play) and otherwise only accepts digits: `Q 3` records into register 3. Those digit slots are the same ones `"3y` writes to, and the last write wins, so keep macros and yanked text on separate numbers.
+Same keys (`Q` starts and stops recording, `q` replays), but the storage differs. Kakoune records into `@` by default and takes any other register through the `"` prefix. HUME records into `q` by default (`Q Q` to record, `q q` to play) and otherwise only accepts digits: `Q 3` records into register 3. Those are the same digit slots `"3y` writes to, and the last write wins, so keep macros and yanked text on separate numbers.
 
 ### Repeat
 
@@ -204,7 +204,7 @@ Kakoune's `.` repeats the last insert-mode change, and `<a-.>` repeats the last 
 
 Kakoune has no window management by design: you run multiple clients against one session and let tmux or your window manager arrange them.
 
-HUME has panes built in: `Ctrl-p` is the prefix, `Ctrl-p s` and `Ctrl-p v` split, `Ctrl-p h/j/k/l` move focus, `Ctrl-p c` closes. `:sp` and `:vsp` do the same from the command mode prompt. There is no client/server model, so no attaching a second client to a running session.
+HUME has panes built in. `Ctrl-p` is the prefix: `Ctrl-p s` and `Ctrl-p v` split, `Ctrl-p h/j/k/l` move focus, `Ctrl-p c` closes. `:sp` and `:vsp` do the same from the command mode prompt. There is no client/server model, so no attaching a second client to a running session.
 
 On top of that, a **tab** saves a whole pane layout: its own splits and focused pane. `:tabnew` opens a second arrangement, `:tabclose` drops it, and `Ctrl-p t` / `Ctrl-p T` cycle between them. Buffers are shared across every tab; only the layout differs. The nearest Kakoune analogue is a second tmux window with another client attached to the same session. See [Tabs](files-and-buffers.md#tabs).
 

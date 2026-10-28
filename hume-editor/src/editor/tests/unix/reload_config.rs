@@ -383,7 +383,7 @@ fn reload_config_under_no_config_errors() {
 }
 
 /// A `set-buffer-option!` written from an `on-language-set` hook (the
-/// pattern `user-manual/docs/plugins.md` documents) must still be in
+/// pattern `user-manual/docs/configuration.md` documents) must still be in
 /// effect after `:reload-config`, not silently revert: `reset_config_state`
 /// clears the buffer's language identity (see `clear_languages_all`)
 /// precisely so `init_scripting`'s post-reload re-detect sweep is a real
