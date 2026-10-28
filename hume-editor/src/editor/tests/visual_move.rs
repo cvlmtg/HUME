@@ -1362,7 +1362,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
 /// movement: dispatching it with `Count::UNTYPED` (as a keymap trie leaf would
 /// for a bare keypress) injects `count = 0` into the lambda, which round-trips
 /// back to `UNTYPED` through `parse_native_args`: the count-forwarding contract
-/// documented in `plugins.md`'s "Calling other commands" section.
+/// documented in `writing-plugins.md`'s "Calling other commands" section.
 ///
 /// If `run_steel_command` injected `1` for an untyped count instead of `0`,
 /// the lambda would see `1` and always move by buffer line (head 81), never 76.

@@ -488,7 +488,7 @@ fn a_sift_after_a_cancelled_prompt_scans_its_own_pattern() {
     assert_eq!(state(&ed), "ab -[cd]> ab\n");
 }
 
-/// The `:trim-trailing` typed command `plugins.md` shows: sift each line's
+/// The `:trim-trailing` typed command `writing-plugins.md` shows: sift each line's
 /// trailing blanks out of the selected lines, or out of the whole buffer when
 /// no selection covers whole lines, then delete them.
 const TRIM_TRAILING: &str = r#"(define-typed-command! "trim-trailing" "Remove trailing blanks."

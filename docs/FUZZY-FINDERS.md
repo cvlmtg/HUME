@@ -10,7 +10,7 @@ remaining work below ships.
 | Topic | Where |
 |---|---|
 | User-facing behavior, keys, file-source chain | `user-manual/docs/pickers.md`, `core-plugins.md` |
-| Steel API (`picker!`, `live-picker!`, `picker-push!`, `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`) | `user-manual/docs/plugins.md` "Custom pickers" / "Live requery" |
+| Steel API (`picker!`, `live-picker!`, `picker-push!`, `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`) | `user-manual/docs/writing-plugins.md` "Custom pickers" / "Live requery" |
 | Plugin internals (git/fd probing, config, path resolution) | `runtime/plugins/core/pickers/plugin.scm`, `README.md` |
 | Store, ranking | `hume-editor/src/editor/input_stack/picker/session.rs` |
 | Layer, chokepoints (open/close) | `hume-editor/src/editor/input_stack/picker/mod.rs` |
@@ -32,7 +32,7 @@ remaining work below ships.
   fd-fallback posture proves inadequate in practice. Also tracked in
   `docs/ROADMAP.md`.
 - **Steel-side list row formatter** — `#:truncate 'head|'tail` (see
-  `user-manual/docs/plugins.md`'s "Custom pickers") only chooses which end of
+  `user-manual/docs/writing-plugins.md`'s "Custom pickers") only chooses which end of
   an over-long row is clipped; a plugin that wants to elide differently (e.g.
   `core:pickers`' git-modified rows, `M  src/foo.rs`, whose `M `/`??` status
   code falls off under the default head-cut on a long path) needs a
