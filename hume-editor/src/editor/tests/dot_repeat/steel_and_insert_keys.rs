@@ -32,7 +32,7 @@ fn steel_dot_repeatable_round_trip() {
     );
 
     // Run the repeatable Steel command.
-    ed.execute_keymap_command("del-sel".into(), Count::typed(1), false);
+    ed.execute_keymap_command("del-sel", Count::typed(1), false);
     // "foo" deleted; buffer is " bar\n".
     assert_eq!(ed.doc().text().to_string(), " bar\n", "first run");
 
@@ -107,7 +107,7 @@ fn steel_command_is_not_repeatable() {
     );
 
     // Run the Steel command: it calls (call! "delete" (focused-pane)) internally.
-    ed.execute_keymap_command("del-sel".into(), Count::typed(1), false);
+    ed.execute_keymap_command("del-sel", Count::typed(1), false);
 
     // the recorded change must still be "delete", not "del-sel".
     assert_eq!(
@@ -140,7 +140,7 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     );
 
     // Run the non-repeatable Steel command.
-    ed.execute_keymap_command("noop-move".into(), Count::typed(1), false);
+    ed.execute_keymap_command("noop-move", Count::typed(1), false);
 
     // the recorded change must still be "delete".
     assert_eq!(

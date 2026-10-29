@@ -46,7 +46,7 @@ fn lazy_command_first_dispatch_forwards_extend() {
     ed.scripting = Some(host);
 
     // Dispatch with extend=true on the first (Lazy) call.
-    ed.execute_keymap_command("tp-branch".into(), Count::typed(1), true);
+    ed.execute_keymap_command("tp-branch", Count::typed(1), true);
 
     // move-right advances by 1 char on line 1; move-down would land on line 2.
     // (The inner (call! "move-right" bid) dispatches without extend, so the

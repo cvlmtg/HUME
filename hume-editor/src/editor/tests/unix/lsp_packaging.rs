@@ -133,7 +133,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     // drain sequence `lsp_hover.rs`'s `run_hover` uses for an eagerly-loaded
     // plugin is enough here too. lsp/hover is key-bindable, not typed, so
     // dispatch through the keymap pipeline, the way `K` would.
-    ed.execute_keymap_command("lsp/hover".into(), Count::typed(1), false);
+    ed.execute_keymap_command("lsp/hover", Count::typed(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();

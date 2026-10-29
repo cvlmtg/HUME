@@ -702,8 +702,8 @@ fn closing_another_pane_on_the_buffer_keeps_the_run() {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     start_sort(&mut ed);
-    ed.execute_keymap_command("pane-vsplit".into(), Count::UNTYPED, false);
-    ed.execute_keymap_command("pane-close".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("pane-vsplit", Count::UNTYPED, false);
+    ed.execute_keymap_command("pane-close", Count::UNTYPED, false);
     assert!(busy(&ed, bid));
 }
 
@@ -824,7 +824,7 @@ fn q_bang_quits() {
 fn split_running_sort() -> (Editor, BufferId) {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
-    ed.execute_keymap_command("pane-vsplit".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("pane-vsplit", Count::UNTYPED, false);
     start_sort(&mut ed);
     (ed, bid)
 }
@@ -832,7 +832,7 @@ fn split_running_sort() -> (Editor, BufferId) {
 /// A second tab whose only pane started a run in `bid`.
 fn tab_running_sort() -> (Editor, BufferId) {
     let mut ed = editor_from("-[a]>\n");
-    ed.execute_keymap_command("tab-new".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("tab-new", Count::UNTYPED, false);
     let bid = ed.focused_buffer_id();
     start_sort(&mut ed);
     (ed, bid)
@@ -861,7 +861,7 @@ fn q_in_a_split_closes_a_pane_whose_buffer_runs_a_pipe_started_elsewhere() {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     start_sort(&mut ed);
-    ed.execute_keymap_command("pane-vsplit".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("pane-vsplit", Count::UNTYPED, false);
     type_cmd(&mut ed, ":q");
     assert_eq!(ed.view.active_pane_ids().len(), 1);
     assert!(busy(&ed, bid), "the run from the pane left open goes on");
@@ -906,7 +906,7 @@ fn tabclose_bang_closes_the_tab_and_cancels() {
 fn wq_in_a_split_writes_then_refuses() {
     let (mut ed, file) = editor_with_file("-[a]>\n", "a\n");
     let bid = ed.focused_buffer_id();
-    ed.execute_keymap_command("pane-vsplit".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("pane-vsplit", Count::UNTYPED, false);
     keys(&mut ed, "rx");
     start_sort(&mut ed);
     type_cmd(&mut ed, ":wq");

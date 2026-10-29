@@ -31,7 +31,7 @@ fn setup(
 fn run_references(ed: &mut Editor) {
     // lsp/references is key-bindable, not typed, so dispatch through the
     // keymap pipeline, the way its bound key (`z r`) would.
-    ed.execute_keymap_command("lsp/references".into(), Count::typed(1), false);
+    ed.execute_keymap_command("lsp/references", Count::typed(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -138,7 +138,7 @@ fn stale_response_after_a_buffer_switch_opens_no_drawer() {
     // Sends the request synchronously; no settle() before the
     // switch below, the same technique as `lsp_hover.rs`'s own
     // `stale_response_after_a_buffer_switch_shows_no_popup`.
-    ed.execute_keymap_command("lsp/references".into(), Count::typed(1), false);
+    ed.execute_keymap_command("lsp/references", Count::typed(1), false);
 
     let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();

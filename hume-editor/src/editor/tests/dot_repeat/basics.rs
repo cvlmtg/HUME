@@ -111,7 +111,7 @@ fn a_failed_steel_body_leaves_the_next_change_recordable() {
         "-[f]>oo bar\n",
         r#"(define-command! "boom" "" (lambda (pane) (error "boom")) #:repeatable #t)"#,
     );
-    ed.execute_keymap_command("boom".into(), Count::typed(1), false);
+    ed.execute_keymap_command("boom", Count::typed(1), false);
     assert!(ed.state.recording_scope.running().is_none());
 
     ed.feed_key(key('d'));
@@ -391,7 +391,7 @@ fn dot_repeats_plain_paste_after() {
     let mut ed = editor_from("-[ab]>cd\n");
 
     seed_ring(&mut ed, &["ab"]);
-    ed.execute_keymap_command("paste-after".into(), Count::typed(1), false);
+    ed.execute_keymap_command("paste-after", Count::typed(1), false);
     // Plain paste never collapses on repeat. Move off the pasted text so
     // the replayed paste lands next to it instead of replacing it.
     ed.feed_key(key('l'));

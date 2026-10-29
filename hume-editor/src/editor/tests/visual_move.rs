@@ -1323,7 +1323,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
     ed.scripting = Some(host);
     // Simulates `5<key>` bound to "steel-move-down": the outer count (5) must
     // have no bearing on the inner call's buffer-line-vs-visual-display-line choice.
-    ed.execute_keymap_command("steel-move-down".into(), Count::typed(5), false);
+    ed.execute_keymap_command("steel-move-down", Count::typed(5), false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1359,7 +1359,7 @@ fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
 
     ed.scripting = Some(host);
     // Simulates a bare `<key>` bound to "steel-jk": no count was typed.
-    ed.execute_keymap_command("steel-jk".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("steel-jk", Count::UNTYPED, false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1400,7 +1400,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("steel-jk".into(), Count::typed(3), false);
+    ed.execute_keymap_command("steel-jk", Count::typed(3), false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1430,7 +1430,7 @@ fn steel_call_move_down_zero_count_moves_visual_display_line() {
 
     ed.scripting = Some(host);
     // Outer count is 1, irrelevant since the body hardcodes 0.
-    ed.execute_keymap_command("steel-vis".into(), Count::typed(1), false);
+    ed.execute_keymap_command("steel-vis", Count::typed(1), false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1471,7 +1471,7 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("steel-vis-direct".into(), Count::typed(1), false);
+    ed.execute_keymap_command("steel-vis-direct", Count::typed(1), false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),

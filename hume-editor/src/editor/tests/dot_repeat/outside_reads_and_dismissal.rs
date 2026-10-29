@@ -150,7 +150,7 @@ fn dismiss_a_recorded_menu_with(key: KeyEvent) -> Editor {
                  (lambda (c) (when c (call! "replace" pane c)))))
              #:repeatable #t)"#,
     );
-    ed.execute_keymap_command("menu".into(), Count::typed(1), false);
+    ed.execute_keymap_command("menu", Count::typed(1), false);
     ed.settle();
     assert!(
         ed.state.input.menu().is_some(),
@@ -274,7 +274,7 @@ fn a_failed_steel_body_that_opened_insert_keeps_its_session_keys() {
         Some("delete")
     );
 
-    ed.execute_keymap_command("ins-boom".into(), Count::typed(1), false);
+    ed.execute_keymap_command("ins-boom", Count::typed(1), false);
     assert_eq!(
         ed.state.mode(),
         Mode::Insert,

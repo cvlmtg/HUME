@@ -678,7 +678,7 @@ fn a_span_in_an_answer_after_the_line_closed_is_dropped_unchecked() {
         ed.state.input.minibuf().is_none(),
         "sanity: the line closed"
     );
-    ed.execute_keymap_command("late".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("late", Count::UNTYPED, false);
     assert_eq!(status(&ed), "dropped");
     assert!(!span_refused(&ed));
 }
@@ -873,7 +873,7 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
         tmp.path(),
         r#"(define-command! "check" "" (lambda () (completion-accept! 0)))"#,
     );
-    ed.execute_keymap_command("check".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("check", Count::UNTYPED, false);
     assert!(
         status(&ed).contains("not a buffer-target session"),
         "got {:?}",

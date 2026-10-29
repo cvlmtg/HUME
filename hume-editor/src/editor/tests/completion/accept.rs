@@ -14,7 +14,7 @@ use hume_rope::offset::CharOffset;
 const ACCEPT_0: &str = r#"(define-command! "finish" "" (lambda () (completion-accept! 0)))"#;
 
 fn accept_via_steel(ed: &mut Editor) {
-    ed.execute_keymap_command("finish".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("finish", Count::UNTYPED, false);
 }
 
 // ── The insertText fallback over the token ────────────────────────────────

@@ -141,7 +141,7 @@ fn a_script_edit_is_refused() {
              (edit-text! pane (list (hash 'start-char 0 'end-char 1 'text "X")))))"#,
     );
     let _hold = hold(&mut ed);
-    ed.execute_keymap_command("probe".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("probe", Count::UNTYPED, false);
     assert_eq!(state(&ed), "-[ab]> cd\n");
     assert!(logged_busy(&ed));
 }
@@ -156,7 +156,7 @@ fn paste_text_raises_the_busy_refusal() {
         r#"(define-command! "probe" "" (lambda (pane) (paste-text! pane "xy")))"#,
     );
     let _hold = hold(&mut ed);
-    ed.execute_keymap_command("probe".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("probe", Count::UNTYPED, false);
     assert_eq!(state(&ed), "-[ab]> cd\n");
     assert!(
         logged_busy(&ed),
@@ -186,7 +186,7 @@ fn goto_revision_raises_the_busy_refusal() {
         r#"(define-command! "probe" "" (lambda (pane) (goto-revision! pane 1)))"#,
     );
     let _hold = hold(&mut ed);
-    ed.execute_keymap_command("probe".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("probe", Count::UNTYPED, false);
     assert_eq!(state(&ed), "-[ab]> cd\n");
     assert!(logged_busy(&ed));
 }

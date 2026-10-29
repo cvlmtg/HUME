@@ -498,7 +498,7 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
     // drain rather than answering inline, but `settle()` itself drains LSP
     // (`drain_async_sources` → `drain_lsp`): calling it now would close the
     // race window before this test ever opens it.
-    ed.execute_keymap_command("lsp/goto-definition".into(), Count::typed(1), false);
+    ed.execute_keymap_command("lsp/goto-definition", Count::typed(1), false);
 
     // Switch focus to an unrelated, server-less buffer *before* the
     // response arrives. This is the race window. The rig registers
@@ -550,7 +550,7 @@ fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
         );
     });
 
-    ed.execute_keymap_command("lsp/goto-definition".into(), Count::typed(1), false);
+    ed.execute_keymap_command("lsp/goto-definition", Count::typed(1), false);
     let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();
     ed.execute_typed("e", Some(other.to_str().unwrap()))
@@ -769,7 +769,7 @@ fn a_reply_dropped_as_stale_releases_the_tracked_position() {
         );
     });
 
-    ed.execute_keymap_command("lsp/goto-definition".into(), Count::typed(1), false);
+    ed.execute_keymap_command("lsp/goto-definition", Count::typed(1), false);
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());

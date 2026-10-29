@@ -20,7 +20,7 @@ fn define_probe(ed: &mut Editor, tmp: &std::path::Path, edits: &str) {
 }
 
 fn run_probe(ed: &mut Editor) {
-    ed.execute_keymap_command(PROBE.into(), Count::UNTYPED, false);
+    ed.execute_keymap_command(PROBE, Count::UNTYPED, false);
 }
 
 /// The marked state after running `edits` on `initial`.
@@ -172,7 +172,7 @@ fn another_panes_selections_are_carried() {
     define_probe(&mut ed, tmp.path(), &edits(&[edit(0, 0, "XY")]));
     ed.execute_typed("split", None).unwrap();
     run_probe(&mut ed);
-    ed.execute_keymap_command("pane-focus-prev".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("pane-focus-prev", Count::UNTYPED, false);
     assert_eq!(state(&ed), "XY-[h]>ello\n");
 }
 
@@ -314,7 +314,7 @@ fn a_closed_pane_edits_its_buffer_for_no_pane() {
     let bid = ed.focused_buffer_id();
     ed.execute_typed("split", None).unwrap();
     let closed = ed.view.focused_pane();
-    ed.execute_keymap_command("pane-close".into(), Count::UNTYPED, false);
+    ed.execute_keymap_command("pane-close", Count::UNTYPED, false);
     assert!(
         ed.view.panes.get(closed).is_none(),
         "sanity: the pane is gone"

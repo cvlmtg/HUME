@@ -31,7 +31,7 @@ fn lazy_command_first_dispatch_via_keypress() {
         r#"(define-command! "bar" "" (lambda () (call! "delete" (focused-pane))) #:repeatable #t)"#,
     );
     let before = snapshot_bookkeeping(&ed);
-    ed.execute_keymap_command("bar".into(), Count::typed(1), false);
+    ed.execute_keymap_command("bar", Count::typed(1), false);
     let after = snapshot_bookkeeping(&ed);
 
     assert_ne!(before, after, "first dispatch must run and leave a trace");
