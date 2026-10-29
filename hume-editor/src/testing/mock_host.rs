@@ -20,9 +20,8 @@ use hume_core::{BufferId, OnUnsaved, OptionInput, PaneHandle};
 use hume_rope::line::ContentLine;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
-    BufferHost, CommandHolder, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost,
-    LanguageHost, NativeCall, OptionValue, SelectionInfo, SettingsHost, ShownHandle,
-    StoredLanguage,
+    BufferHost, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost,
+    NativeCall, OptionValue, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -154,7 +153,11 @@ impl BufferHost for MockHost {
     fn buffer_path(&self, _id: BufferId) -> Option<hume_platform::path::AbsolutePath> {
         None
     }
-    fn buffer_display_path(&self, _id: BufferId, _form: DisplayPathForm) -> Option<String> {
+    fn buffer_display_path(
+        &self,
+        _id: BufferId,
+        _relative_to: Option<&hume_platform::path::AbsolutePath>,
+    ) -> Option<String> {
         None
     }
     fn buffer_display_name(&self, _id: BufferId) -> Option<String> {

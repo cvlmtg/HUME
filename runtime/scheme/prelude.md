@@ -26,7 +26,7 @@ it.
 ## `insert-register`
 
 `Ctrl-r` in Insert mode and on the command line reads one more key with `on-next-char!` and
-inserts with `paste-text!`: `f` gives `(buffer-display-path pane #:relative #t)`, `p` that
+inserts with `paste-text!`: `f` gives `(buffer-display-path pane #:relative (cwd))`, `p` that
 path's `parent-name` joined with `""` for the trailing separator (`.` when the file sits in the
 working directory), and a key for which `register-name?` holds `read-register`'s whole list,
 which `paste-text!` places as `p` places a register. Any other key raises `insert-register`'s

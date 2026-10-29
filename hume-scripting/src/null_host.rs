@@ -23,10 +23,10 @@ use crate::builtins::lsp::LSP_NOTIFICATION_EVENT;
 use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, ClaimRefused, CommandHolder, CommandHost, CommandKind, CursorHost, DisplayPathForm,
-    EditorHost, EventHost, EventShape, LanguageHost, LocationPlace, LspHost, OptionValue,
-    OutputHost, PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost,
-    ShownHandle, StoredLanguage, TrackedHold, check_lazy_claim,
+    BufferHost, ClaimRefused, CommandHolder, CommandHost, CommandKind, CursorHost, EditorHost,
+    EventHost, EventShape, LanguageHost, LocationPlace, LspHost, OptionValue, OutputHost,
+    PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost, ShownHandle,
+    StoredLanguage, TrackedHold, check_lazy_claim,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -118,7 +118,11 @@ impl BufferHost for NullHost {
     fn buffer_path(&self, _id: BufferId) -> Option<AbsolutePath> {
         None
     }
-    fn buffer_display_path(&self, _id: BufferId, _form: DisplayPathForm) -> Option<String> {
+    fn buffer_display_path(
+        &self,
+        _id: BufferId,
+        _relative_to: Option<&AbsolutePath>,
+    ) -> Option<String> {
         None
     }
     fn buffer_display_name(&self, _id: BufferId) -> Option<String> {

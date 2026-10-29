@@ -624,6 +624,7 @@ builtins! {
     open "unlock-file!" fs::unlock_file(path: args::ScriptPath);
     open "path-entries" fs::path_entries(dir: args::ScriptPath, prefix: String);
     open "find-program" fs::find_program(name: String);
+    open "%path->display" => "path->display" fs::path_to_display(path: args::ScriptPath, relative: SteelVal);
     plain "home-dir" fs::home_dir();
 
     // Build info of the running editor.
@@ -634,7 +635,6 @@ builtins! {
     // `json-ref`/`json-contains?`/`json-ref-or` take a variadic path
     // (`j seg ...`).
     rest "path-join" fs::path_join;
-    rest "path->display" fs::path_to_display;
     rest "safe-path-segment?" fs::safe_path_segment;
     rest "json-ref" json::json_ref;
     rest "json-contains?" json::json_contains;

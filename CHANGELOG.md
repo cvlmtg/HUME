@@ -6,11 +6,15 @@
 - `diff-lines`, `diff-buffer-lines`, `buffer-revision-diff` and `diff-words` no longer return `'deadline-hit`: drop any code that reads it.
 - `on-text-changed` handlers take the changed lines as a second argument: write `(lambda (pane changes) ...)`.
 - `buffer-generation` returns an opaque value instead of an integer: compare two with `equal?`, and give `#:expect-generation` only a value `buffer-generation` returned.
+- `buffer-display-path`'s `#:relative` takes the directory to be relative to: replace `#:relative #t` with `#:relative (cwd)`.
 
 ### Plugins & scripting
 - New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value.
 - New `buffer-search` finds a pattern in a buffer without moving the selection or changing the current search, and new `word-search-pattern` gives the pattern `*` searches for a word.
 - New `stdlib/concat` joins a list of lists, much faster than `(apply append …)` over many lists.
+
+### Language servers
+- The workspace symbols picker and the goto and references list show a file inside the working directory by its path relative to it.
 
 ### Performance
 - `core:git-diff` refreshes a file with many changes several times faster, and the `diff-` functions no longer take up to a quarter of a second on a large diff.

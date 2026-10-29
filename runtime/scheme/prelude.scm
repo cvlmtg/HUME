@@ -55,9 +55,9 @@
         (let ([text
                (cond
                  [(not ch) #f]
-                 [(eqv? ch #\f) (buffer-display-path pane #:relative #t)]
+                 [(eqv? ch #\f) (buffer-display-path pane #:relative (cwd))]
                  [(eqv? ch #\p)
-                  (let ([file (buffer-display-path pane #:relative #t)])
+                  (let ([file (buffer-display-path pane #:relative (cwd))])
                     (and file
                          (let ([dir (parent-name file)])
                            (path-join (if (equal? dir "") "." dir) ""))))]

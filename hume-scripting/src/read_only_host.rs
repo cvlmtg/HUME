@@ -12,9 +12,8 @@ use hume_rope::offset::ExclusiveRange;
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHolder, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost,
-    EventShape, LanguageHost, OptionValue, SelectionInfo, SettingsHost, ShownHandle,
-    StoredLanguage, UndoNode,
+    BufferHost, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost, EventShape,
+    LanguageHost, OptionValue, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage, UndoNode,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -235,11 +234,15 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_path(&self, id: BufferId) -> Option<AbsolutePath> {
         self.inner.borrow_mut().buffers().buffer_path(id)
     }
-    fn buffer_display_path(&self, id: BufferId, form: DisplayPathForm) -> Option<String> {
+    fn buffer_display_path(
+        &self,
+        id: BufferId,
+        relative_to: Option<&AbsolutePath>,
+    ) -> Option<String> {
         self.inner
             .borrow_mut()
             .buffers()
-            .buffer_display_path(id, form)
+            .buffer_display_path(id, relative_to)
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
         self.inner.borrow_mut().buffers().buffer_display_name(id)

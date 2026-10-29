@@ -47,8 +47,9 @@ answer replaces the rows with every server's symbols, and an error or an answer 
 in it replaces them with none, so the picker stops refreshing whatever the outcome. An
 answer that arrives after the user typed on is dropped, since its token is for the earlier
 query. An empty query clears the rows. The detail is the symbol's
-`path:line:col`. A symbol whose `location` has no `range` is left out, since the client
-does not advertise `workspaceSymbol/resolve` and such a symbol names no place to jump to.
+`path:line:col`, the path relative to the working directory when inside it. A symbol
+whose `location` has no `range` is left out, since the client does not advertise
+`workspaceSymbol/resolve` and such a symbol names no place to jump to.
 A symbol HUME cannot jump to, such as one in a `jdt://` file or on a line past the
 end of an open file, is left out.
 

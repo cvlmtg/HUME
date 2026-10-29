@@ -157,6 +157,9 @@
 (define (buffer-display-path pane #:relative [relative #f])
   (%buffer-display-path pane relative))
 
+(define (path->display path #:relative [relative #f])
+  (%path->display path relative))
+
 (define (close-buffer! pane #:discard-unsaved [discard-unsaved #f])
   (%close-buffer! pane discard-unsaved))
 

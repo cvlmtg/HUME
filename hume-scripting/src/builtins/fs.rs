@@ -27,7 +27,7 @@
 //! | `unlock-file!`  | `string → void`                | Releases a lock this session took            |
 //! | `first-path-outside` | `string list → string \| #f` | The first path that, symlinks resolved, lies outside a directory |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
-//! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
+//! | `path->display` | `string → string`               | Relative to `#:relative` inside it, else UNC-strip + `~`-collapse; no filesystem access |
 //! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
 //! | `path-entries`  | `string string → list`         | What a typed path completes to, as `:e` lists it |
 //! | `path-programs` | `string list proc → job`       | Lists the search path's programs by name prefix in the background |
@@ -50,7 +50,7 @@ use crate::SteelCtx;
 use hume_core::Severity;
 
 use super::SteelResult;
-use super::args::{list_to_strings, string_list, under_cwd};
+use super::args::{list_to_strings, relative_base_arg, string_list, under_cwd};
 use super::errors::{generic_err, require_cap};
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
@@ -373,21 +373,24 @@ pub(crate) fn safe_path_segment(args: &[SteelVal]) -> SteelResult {
 
 // ── path->display ─────────────────────────────────────────────────────────────
 
-/// `(path->display path)`: run `path` through HUME's display-form pipeline
-/// (Windows `\\?\` stripping, `~`-collapse) so a path a plugin only has as a
-/// string (e.g. `lsp/place-display`'s `path->display` call on the
-/// already-decoded path `lsp-locations->places` hands it) renders the
-/// same way as paths that came from `buffer-display-path`. No filesystem
-/// access; expects an absolute path (`~`-collapse is a no-op on relative
-/// input).
-pub(crate) fn path_to_display(args: &[SteelVal]) -> SteelResult {
-    if args.len() != 1 {
-        steel::stop!(ArityMismatch => "expects exactly 1 arg, got {}", args.len());
-    }
-    let SteelVal::StringV(s) = &args[0] else {
-        steel::stop!(TypeMismatch => "arg must be a string, got {:?}", args[0]);
-    };
-    hume_platform::path::display_form(Path::new(s.as_str()))
+/// `(path->display path #:relative base)`: `path` as a plugin shows it, the
+/// same way `buffer-display-path` shows a buffer's file (e.g.
+/// `lsp/place-display`'s call on the path `lsp-locations->places` decoded).
+/// With `base`, `path` relative to it when inside it. Otherwise, or outside
+/// `base`, the display form: Windows `\\?\` stripped, home collapsed to `~`.
+/// A relative `path` or `base` is taken against `(cwd)`. Compares the paths
+/// as written, with no filesystem access, so a symlink is not followed.
+pub(crate) fn path_to_display(
+    ctx: &mut SteelCtx,
+    path: AbsolutePath,
+    relative: SteelVal,
+) -> SteelResult {
+    relative_base_arg(relative, &ctx.host.buffers().cwd())?
+        .and_then(|base| hume_platform::path::relative_to(&path, &base))
+        .map_or_else(
+            || hume_platform::path::display_form(&path),
+            |inside| inside.display().to_string(),
+        )
         .into_steelval()
         .map_err(generic_err)
 }

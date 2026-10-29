@@ -219,6 +219,22 @@ fn typing_queries_the_server_and_lists_rows_with_their_position() {
 }
 
 #[test]
+fn a_symbol_inside_the_working_directory_shows_its_path_relative_to_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _requests) =
+        workspace_setup(tmp.path(), foo_and_main_reply(&rust_rig_uri(tmp.path())));
+    ed.state.cwd = AbsolutePath::canonicalize(tmp.path()).unwrap();
+
+    call_and_pump(&mut ed, "lsp/workspace-symbols");
+    type_query(&mut ed, "fo");
+
+    insta::assert_snapshot!(picker_rows(&ed).join("\n"), @r"
+    foo  function  src/main.rs:2:5
+    main  function  src/main.rs:1:4
+    ");
+}
+
+#[test]
 fn a_failed_workspace_query_settles_the_picker_with_no_rows() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup_cursor_at_start(

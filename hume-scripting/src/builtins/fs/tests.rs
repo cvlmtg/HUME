@@ -90,9 +90,9 @@ fn safe_path_segment_wrong_arity_errors() {
 
 // ── path->display ─────────────────────────────────────────────────────────
 
-fn call_path_to_display(path: &str) -> String {
-    let args = vec![SteelVal::StringV(path.into())];
-    match path_to_display(&args).unwrap() {
+/// `(path->display path rest...)`'s string, through the real registration.
+fn call_path_to_display(path: &Path, rest: &str) -> String {
+    match eval_value(&format!("(path->display {} {rest})", literal(path))) {
         SteelVal::StringV(s) => s.to_string(),
         other => panic!("expected string, got {other:?}"),
     }
@@ -103,8 +103,11 @@ fn call_path_to_display(path: &str) -> String {
 /// logic out of the expected value.
 #[test]
 fn path_to_display_leaves_unrelated_path_unchanged() {
-    let input = "/some/absolute/path/file.rs";
-    assert_eq!(call_path_to_display(input), input);
+    let input = AbsolutePath::rooted("/some/absolute/path/file.rs");
+    assert_eq!(
+        call_path_to_display(&input, ""),
+        input.display().to_string()
+    );
 }
 
 /// `~`-collapse: a path under `$HOME` must come back with the home prefix
@@ -119,7 +122,7 @@ fn path_to_display_collapses_home_prefix() {
     let input = home.join("dev").join("hume").join("x.rs");
     let sep = std::path::MAIN_SEPARATOR;
     let expected = format!("~{sep}dev{sep}hume{sep}x.rs");
-    assert_eq!(call_path_to_display(input.to_str().unwrap()), expected);
+    assert_eq!(call_path_to_display(&input, ""), expected);
 }
 
 /// UNC-strip: a Windows verbatim-prefixed path must have `\\?\` removed,
@@ -128,20 +131,47 @@ fn path_to_display_collapses_home_prefix() {
 #[test]
 fn path_to_display_strips_windows_verbatim_prefix() {
     assert_eq!(
-        call_path_to_display(r"\\?\C:\Users\x\file.rs"),
+        call_path_to_display(Path::new(r"\\?\C:\Users\x\file.rs"), ""),
         r"C:\Users\x\file.rs"
     );
 }
 
 #[test]
+fn path_to_display_inside_the_base_is_relative_to_it() {
+    let base = AbsolutePath::rooted("/proj");
+    let input = base.join("src").join("a.rs");
+    let rest = format!("#:relative {}", literal(&base));
+    assert_eq!(
+        call_path_to_display(&input, &rest),
+        Path::new("src").join("a.rs").display().to_string()
+    );
+}
+
+#[test]
+fn path_to_display_outside_the_base_is_the_absolute_form() {
+    let input = AbsolutePath::rooted("/other/a.rs");
+    let rest = format!("#:relative {}", literal(&AbsolutePath::rooted("/proj")));
+    assert_eq!(
+        call_path_to_display(&input, &rest),
+        input.display().to_string()
+    );
+}
+
+#[test]
+fn path_to_display_rejects_a_base_that_is_not_a_path() {
+    let input = AbsolutePath::rooted("/proj/a.rs");
+    let source = format!("(path->display {} #:relative 42)", literal(&input));
+    assert!(eval_result(&source).is_err());
+}
+
+#[test]
 fn path_to_display_no_args_errors() {
-    assert!(path_to_display(&[]).is_err());
+    assert!(eval_result("(path->display)").is_err());
 }
 
 #[test]
 fn path_to_display_type_error() {
-    let args = vec![SteelVal::IntV(42)];
-    assert!(path_to_display(&args).is_err());
+    assert!(eval_result("(path->display 42)").is_err());
 }
 
 // ── path-separator (steel-core builtin, not registered by HUME) ──────────

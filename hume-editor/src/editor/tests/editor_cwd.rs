@@ -18,7 +18,7 @@ pub(in crate::editor::tests) fn editor_in(dir: &Path) -> Editor {
 }
 
 pub(in crate::editor::tests) fn relative_display_path(ed: &mut Editor, tmp: &Path) -> String {
-    log_probe(ed, tmp, "(buffer-display-path bid #:relative #t)")
+    log_probe(ed, tmp, "(buffer-display-path bid #:relative (cwd))")
 }
 
 #[test]
@@ -104,6 +104,23 @@ fn relative_display_path_is_relative_to_the_editor_cwd() {
 }
 
 #[test]
+fn a_relative_base_is_taken_against_the_editor_cwd() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("sub")).unwrap();
+    std::fs::write(tmp.path().join("sub").join("f.rs"), "x\n").unwrap();
+    let mut ed = editor_in(tmp.path());
+    type_cmd(&mut ed, ":e sub/f.rs");
+
+    let shown = log_probe(
+        &mut ed,
+        tmp.path(),
+        r#"(buffer-display-path bid #:relative "sub")"#,
+    );
+
+    assert_eq!(shown, "f.rs");
+}
+
+#[test]
 fn relative_display_path_outside_the_cwd_is_the_display_path() {
     let cwd = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
@@ -140,7 +157,7 @@ fn relative_display_path_of_a_scratch_buffer_is_false() {
     let shown = log_probe(
         &mut ed,
         tmp.path(),
-        r#"(if (buffer-display-path bid #:relative #t) "a path" "none")"#,
+        r#"(if (buffer-display-path bid #:relative (cwd)) "a path" "none")"#,
     );
 
     assert_eq!(shown, "none");

@@ -31,7 +31,7 @@
   (call! "stdlib/concat" (map lsp/response-locations (lsp/answers results))))
 
 (define (lsp/place-display place)
-  (string-append (path->display (hash-ref place 'path)) ":"
+  (string-append (path->display (hash-ref place 'path) #:relative (cwd)) ":"
                  (lsp/format-position (hash-ref place 'line)
                                       (hash-ref place 'grapheme-col-or-wire))))
 

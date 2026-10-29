@@ -13,7 +13,7 @@ use crate::editor::buffer::{TextRefusal, ViewLabel};
 use crate::editor::commands::{CommandPane, FocusedPane, effective_word_chars, word_search_input};
 use crate::editor::search::SearchPattern;
 use hume_ops::search::{SearchDirection, find_next_match};
-use hume_scripting::host::{BufferHost, DisplayPathForm, ShownHandle, StoredLanguage};
+use hume_scripting::host::{BufferHost, ShownHandle, StoredLanguage};
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -51,16 +51,19 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn buffer_path(&self, id: BufferId) -> Option<AbsolutePath> {
         self.buffer(id)?.path().cloned()
     }
-    fn buffer_display_path(&self, id: BufferId, form: DisplayPathForm) -> Option<String> {
+    fn buffer_display_path(
+        &self,
+        id: BufferId,
+        relative_to: Option<&AbsolutePath>,
+    ) -> Option<String> {
         let file = self.buffer(id)?.file()?;
-        let relative = match form {
-            DisplayPathForm::Absolute => None,
-            // The canonical path catches a file typed through a symlink to
-            // the working directory, which is canonical.
-            DisplayPathForm::CwdRelative => [file.typed(), file.resolved()]
+        // The canonical path catches a file typed through a symlink to a
+        // canonical base, such as the working directory.
+        let relative = relative_to.and_then(|base| {
+            [file.typed(), file.resolved()]
                 .into_iter()
-                .find_map(|path| hume_platform::path::relative_to(path, &self.state.cwd)),
-        };
+                .find_map(|path| hume_platform::path::relative_to(path, base))
+        });
         Some(relative.map_or_else(|| file.display().to_owned(), |p| p.display().to_string()))
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {

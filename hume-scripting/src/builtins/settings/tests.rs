@@ -339,9 +339,9 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_display_path(
         &self,
         id: BufferId,
-        form: crate::host::DisplayPathForm,
+        relative_to: Option<&hume_platform::path::AbsolutePath>,
     ) -> Option<String> {
-        self.inner.buffer_display_path(id, form)
+        self.inner.buffer_display_path(id, relative_to)
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
         self.inner.buffer_display_name(id)

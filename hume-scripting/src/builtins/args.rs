@@ -199,6 +199,17 @@ pub(crate) fn cwd_arg(
     }
 }
 
+/// A `#:relative` argument: `#f` is no base, a relative path resolves
+/// against `editor_cwd` as a [`ScriptPath`] does.
+pub(crate) fn relative_base_arg(
+    val: SteelVal,
+    editor_cwd: &AbsolutePath,
+) -> Result<Option<AbsolutePath>, SteelErr> {
+    optional_path_arg(val, "#:relative")?
+        .map(|base| under_cwd(&base, editor_cwd, "#:relative"))
+        .transpose()
+}
+
 /// `path`, taken as written, made absolute against `cwd` as
 /// [`AbsolutePath::from_path`] makes it, its error naming `ctx_name`.
 pub(crate) fn under_cwd(

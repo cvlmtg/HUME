@@ -12,12 +12,12 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use super::SteelResult;
 use super::args::{
     ArgPane, LINE_RANGE_KEYS, bool_arg, char_range_value, line_range_value, list_of, not_live_err,
-    optional_hash_entry, symbol_hash,
+    optional_hash_entry, relative_base_arg, symbol_hash,
 };
 use super::errors::generic_err;
 use super::ids::{BufferGeneration, SteelBufferKey, SteelPane};
 use crate::SteelCtx;
-use crate::host::{DisplayPathForm, SelectionInfo, ShownHandle};
+use crate::host::{SelectionInfo, ShownHandle};
 use hume_core::{BufferId, OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
 
@@ -104,22 +104,19 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     }
 }
 
-/// `(buffer-display-path pane #:relative)` → fully display-ready path string
-/// (absolutized, `..`-free, UNC-stripped, `~`-collapsed) to print
-/// verbatim, or `#f` for unsaved buffers. With `relative`, the path relative
-/// to the editor's working directory when the file is inside it. Unlike
-/// `buffer-path`, never suitable for filesystem ops.
+/// `(buffer-display-path pane #:relative base)` → fully display-ready path
+/// string (absolutized, `..`-free, UNC-stripped, `~`-collapsed) to print
+/// verbatim, or `#f` for unsaved buffers. With `base`, the path relative to
+/// it when the file is inside it. Unlike `buffer-path`, never suitable for
+/// filesystem ops.
 pub(crate) fn buffer_display_path(
     ctx: &mut SteelCtx,
     bid: BufferId,
     relative: SteelVal,
 ) -> SteelResult {
-    let form = if bool_arg(relative, "#:relative")? {
-        DisplayPathForm::CwdRelative
-    } else {
-        DisplayPathForm::Absolute
-    };
-    match ctx.host.buffers().buffer_display_path(bid, form) {
+    let buffers = ctx.host.buffers();
+    let base = relative_base_arg(relative, &buffers.cwd())?;
+    match buffers.buffer_display_path(bid, base.as_ref()) {
         Some(p) => p.into_steelval().map_err(generic_err),
         None => Ok(SteelVal::BoolV(false)),
     }
