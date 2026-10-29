@@ -1,4 +1,4 @@
-;;; HUME demo config, passed with --config by tools/demo/demo.tape
+;;; HUME demo config, passed with --config by tools/demo/record.sh
 
 (load-plugin! "core:stdlib")
 (load-plugin! "core:pickers")
