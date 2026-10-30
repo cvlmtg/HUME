@@ -268,7 +268,7 @@ A `registrations/` record omits each default field: `command` when it equals the
 └── servers/
     ├── .install-lock            transient — held only during an install/uninstall
     └── rust-analyzer/
-        └── 1761812345678/      one install folder, numbered after every other
+        └── 1/                  one install folder, numbered after every other
             ├── receipt.scm     written LAST — the install commit point
             └── rust-analyzer   (or node_modules/… for npm, bin/… for cargo/golang/gem/nuget, venv/… for pypi)
 ```
@@ -345,9 +345,8 @@ A `registrations/` record omits each default field: `command` when it equals the
   `:reload-config` re-registration applies on next spawn; `:lsp-install` over a server
   whose client is running (reinstall/upgrade) first shuts that client down — the same
   path `:lsp-uninstall` needs — then installs, registers, and re-attaches open buffers,
-  spawning fresh. The new install goes in its own folder and the existing one stays
-  current until the new one commits, so a failed or stopped upgrade leaves the installed server
-  registered (see Installation layout).
+  spawning fresh. A failed or stopped upgrade leaves the installed server registered (see
+  Installation layout).
 - **Binary resolution is managed-first**: the scan registers the command as
   an *absolute path* (install folder + receipt's `bin-path`), so a managed install always spawns
   the pinned binary — no lookup-order logic in the bridge. Bare command names (from manual

@@ -1,11 +1,10 @@
 ;;; core:lsp-install/receipts.scm — see README.md.
 
 (require "catalog.scm")
-(require-builtin steel/time)
 
 (provide lsp-install/servers-dir lsp-install/server-dir
-         lsp-install/current-install lsp-install/new-install-folder
-         lsp-install/read-receipt lsp-install/write-receipt!
+         lsp-install/current-install lsp-install/build-new-install!
+         lsp-install/read-receipt
          lsp-install/receipt-bin lsp-install/receipt-version lsp-install/receipt-env-dirs)
 
 (define (lsp-install/servers-dir) (path-join (data-dir) "servers"))
@@ -40,13 +39,10 @@
 
 ;;; A path for `name`'s next install folder, numbered after every other.
 (define (lsp-install/new-install-folder name)
-  (let ((installs (lsp-install/installs name))
-        (now      (current-milliseconds)))
+  (let ((installs (lsp-install/installs name)))
     (path-join (lsp-install/server-dir name)
                (number->string
-                 (if (null? installs)
-                     now
-                     (max now (+ 1 (string->number (last installs)))))))))
+                 (if (null? installs) 1 (+ 1 (string->number (last installs))))))))
 
 (define (lsp-install/read-receipt name)
   (let ((current (lsp-install/current-install name)))
@@ -74,3 +70,38 @@
                                                 " . " (lsp-install/scheme-quote (cdr entry)) ")"))
                                env-dirs))
                    "))")))
+
+;;; Builds `name`'s next install with `(build folder)`, which answers `(bin . env-dirs)`,
+;;; commits it under `version` and answers the installed binary's path.
+(define (lsp-install/build-new-install! name version build)
+  (let* ((dir       (lsp-install/server-dir name))
+         (folder    (lsp-install/new-install-folder name))
+         (installed
+           (with-handler
+             (lambda (err)
+               (with-handler
+                 (lambda (delete-err)
+                   (log! 'error (string-append "LSP: could not delete the failed install in "
+                                               folder ": " (to-string delete-err))))
+                 (call! "stdlib/delete-dir!" folder)
+                 (when (and (path-exists? dir) (null? (call! "stdlib/list-entries" dir)))
+                   (call! "stdlib/delete-dir!" dir)))
+               (raise-error err))
+             (create-directory! folder)
+             (let ((installed (build folder)))
+               (lsp-install/write-receipt! folder name version (car installed) (cdr installed))
+               installed))))
+    (for-each
+      (lambda (entry)
+        (let ((path (path-join dir entry)))
+          (unless (equal? path folder)
+            (with-handler
+              (lambda (err)
+                (log! 'warning (string-append "LSP: " name " is installed, but " path
+                                              " could not be deleted, the next :lsp-install of "
+                                              name " tries again: " (to-string err))))
+              (if (is-dir? path)
+                  (call! "stdlib/delete-dir!" path)
+                  (call! "stdlib/delete-file!" path))))))
+      (call! "stdlib/list-entries" dir))
+    (path-join folder (car installed))))

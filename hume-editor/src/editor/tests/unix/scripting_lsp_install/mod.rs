@@ -29,8 +29,9 @@ fn server_dir(data_dir_root: &Path, name: &str) -> PathBuf {
     servers_dir(data_dir_root).join(name)
 }
 
-/// The numbered install folders in `servers/<name>/`, oldest first.
-fn install_folders(data_dir_root: &Path, name: &str) -> Vec<PathBuf> {
+/// The numbered install folders in `servers/<name>/` with their numbers,
+/// oldest first.
+fn numbered_installs(data_dir_root: &Path, name: &str) -> Vec<(u64, PathBuf)> {
     let Ok(entries) = std::fs::read_dir(server_dir(data_dir_root, name)) else {
         return Vec::new();
     };
@@ -42,7 +43,15 @@ fn install_folders(data_dir_root: &Path, name: &str) -> Vec<PathBuf> {
         })
         .collect();
     numbered.sort();
-    numbered.into_iter().map(|(_, path)| path).collect()
+    numbered
+}
+
+/// The numbered install folders in `servers/<name>/`, oldest first.
+fn install_folders(data_dir_root: &Path, name: &str) -> Vec<PathBuf> {
+    numbered_installs(data_dir_root, name)
+        .into_iter()
+        .map(|(_, path)| path)
+        .collect()
 }
 
 /// `name`'s current install: its newest numbered folder holding a receipt.
@@ -82,17 +91,9 @@ fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) 
 /// leaves: numbered after every other install of `name`, with a partial file
 /// and no receipt.
 fn stop_an_install(data_dir_root: &Path, name: &str) -> PathBuf {
-    let next = install_folders(data_dir_root, name)
+    let next = numbered_installs(data_dir_root, name)
         .last()
-        .map_or(1, |last| {
-            last.file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .parse::<u64>()
-                .unwrap()
-                + 1
-        });
+        .map_or(1, |(last, _)| last + 1);
     let folder = server_dir(data_dir_root, name).join(next.to_string());
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(folder.join("partial"), b"").unwrap();
@@ -114,8 +115,7 @@ fn hold_install_lock(data_dir_root: &Path) -> std::fs::File {
 fn assert_installed(data_root: &Path, ed: &Editor, name: &str, version: &str, bin: &str) {
     let log = ed.state.message_log.format_for_display();
     let dir = install_dir(data_root, name);
-    let receipt = std::fs::read_to_string(dir.join("receipt.scm"))
-        .unwrap_or_else(|e| panic!("{name} has no receipt: {e}\n{log}"));
+    let receipt = std::fs::read_to_string(dir.join("receipt.scm")).unwrap();
     assert!(
         receipt.contains(&format!("(version . \"{version}\")")),
         "{receipt}\n{log}"
@@ -125,6 +125,17 @@ fn assert_installed(data_root: &Path, ed: &Editor, name: &str, version: &str, bi
         dir.join(bin).to_str(),
         "{log}"
     );
+}
+
+/// A failed install of `name`: no server dir under `data_root`, and no
+/// server registered.
+fn assert_install_left_nothing(data_root: &Path, ed: &Editor, name: &str) {
+    let server_dir = server_dir(data_root, name);
+    assert!(
+        !server_dir.exists(),
+        "a failed install must leave no server dir"
+    );
+    assert!(ed.state.lsp.registered_command_for_test(name).is_none());
 }
 
 /// One `sources/<name>.scm` fixture: the server's name and its record.

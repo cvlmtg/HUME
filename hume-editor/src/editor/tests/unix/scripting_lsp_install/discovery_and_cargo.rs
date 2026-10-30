@@ -270,22 +270,12 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
     );
     let seeded_version = argv[5].strip_prefix("pest-language-server@").unwrap();
 
-    let receipt = std::fs::read_to_string(install_dir.join("receipt.scm"))
-        .expect("receipt.scm must be written on success");
-    assert!(
-        receipt.contains(&format!("(version . \"{seeded_version}\")")),
-        "receipt version must match the version cargo was told to install: {receipt}"
-    );
-
-    let cmd = ed
-        .state
-        .lsp
-        .registered_command_for_test("pest-language-server")
-        .expect("pest must be registered after a successful cargo install");
-    assert_eq!(
-        Path::new(&cmd),
-        install_dir.join("bin").join("pest-language-server"),
-        "the registered command must be the absolute bin/ path cargo --root produces"
+    assert_installed(
+        data_tmp.path(),
+        &ed,
+        "pest-language-server",
+        seeded_version,
+        "bin/pest-language-server",
     );
 }
 
@@ -309,16 +299,5 @@ fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
         log.contains("expected binary not found after cargo install"),
         "a cargo install that produces no binary must fail loudly: {log}"
     );
-
-    assert!(
-        !server_dir(data_tmp.path(), "pest-language-server").exists(),
-        "a failed install must leave no server dir"
-    );
-    assert!(
-        ed.state
-            .lsp
-            .registered_command_for_test("pest-language-server")
-            .is_none(),
-        "pest must not be registered when the install failed"
-    );
+    assert_install_left_nothing(data_tmp.path(), &ed, "pest-language-server");
 }

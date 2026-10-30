@@ -32,7 +32,7 @@
        (log! 'info (string-append "LSP: " name " already installed (v"
                                   (lsp-install/receipt-version receipt) ") — up to date"))
        (lsp-install/register-installed-servers!))
-      ((path-exists? (lsp-install/server-dir name))
+      (receipt
        (unregister-lsp-server! name)
        (after! 0 (lambda () (call! "lsp-install/install-server" name))))
       (else (lsp-install/install! name)))))

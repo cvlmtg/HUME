@@ -206,15 +206,12 @@ fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
     let asset = work.path().join("marksman-fake");
     std::fs::write(&asset, b"#!/bin/sh\necho new\n").unwrap();
     let sources = github_source("marksman", "marksman-fake", &asset, "marksman-fake");
-    let (_shim, path) = write_fake_curl_shim(&asset, &asset.with_extension("curl-argv"));
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
-    let mut ed = editor_from("-[x]>\n");
-    let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
     let installed = install_dir(data_tmp.path(), "marksman");
-    ed.state.dirs.search_path = Some(path.into());
 
-    type_cmd(&mut ed, ":lsp-install markdown");
+    let (data_tmp, mut ed, _runtime, _shim) =
+        install_from_fixture_into(data_tmp, &sources, &asset, "markdown");
     assert_eq!(
         install_folders(data_tmp.path(), "marksman"),
         [installed.clone()],
@@ -291,14 +288,32 @@ fn install_from_fixture(
     fixture: &Path,
     lang: &str,
 ) -> (tempfile::TempDir, Editor, tempfile::TempDir) {
+    let (data_tmp, ed, runtime, _shim) =
+        install_from_fixture_into(tempfile::tempdir().unwrap(), sources, fixture, lang);
+    (data_tmp, ed, runtime)
+}
+
+/// [`install_from_fixture`] over the data dir `data_tmp`, which the caller has
+/// prepared. Also returns the curl shim's dir, which an install over an
+/// existing one needs until it runs on a later tick.
+fn install_from_fixture_into(
+    data_tmp: tempfile::TempDir,
+    sources: &[SourceFixture],
+    fixture: &Path,
+    lang: &str,
+) -> (
+    tempfile::TempDir,
+    Editor,
+    tempfile::TempDir,
+    tempfile::TempDir,
+) {
     let args_file = fixture.with_extension("curl-argv");
-    let (_shim, path) = write_fake_curl_shim(fixture, &args_file);
-    let data_tmp = tempfile::tempdir().unwrap();
+    let (shim, path) = write_fake_curl_shim(fixture, &args_file);
     let mut ed = editor_from("-[x]>\n");
     let runtime = load_lsp_with_sources(&mut ed, sources, data_tmp.path());
     ed.state.dirs.search_path = Some(path.into());
     type_cmd(&mut ed, &format!(":lsp-install {lang}"));
-    (data_tmp, ed, runtime)
+    (data_tmp, ed, runtime, shim)
 }
 
 /// Install `server` for `lang` from a gzip fixture while an executable named
@@ -433,17 +448,6 @@ fn assert_left_alone(outside: &Path) {
         0o644,
         "the link's target must be left alone"
     );
-}
-
-/// A failed install of `name`: no server dir under `data_root`, and no
-/// server registered.
-fn assert_install_left_nothing(data_root: &Path, ed: &Editor, name: &str) {
-    let server_dir = server_dir(data_root, name);
-    assert!(
-        !server_dir.exists(),
-        "a failed install must leave no server dir"
-    );
-    assert!(ed.state.lsp.registered_command_for_test(name).is_none());
 }
 
 #[test]
@@ -649,14 +653,11 @@ fn lsp_install_missing_binary_after_unpack_fails_loudly() {
 fn lsp_install_failed_reinstall_keeps_the_installed_server() {
     let work = tempfile::tempdir().unwrap();
     let (served, sources) = mismatched_marksman(work.path());
-    let (_shim, path) = write_fake_curl_shim(&served, &served.with_extension("curl-argv"));
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
-    let mut ed = editor_from("-[x]>\n");
-    let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
-    ed.state.dirs.search_path = Some(path.into());
 
-    type_cmd(&mut ed, ":lsp-install markdown");
+    let (data_tmp, mut ed, _runtime, _shim) =
+        install_from_fixture_into(data_tmp, &sources, &served, "markdown");
     ed.drain_async_sources();
     ed.settle();
 
@@ -684,15 +685,12 @@ fn lsp_install_reinstall_deletes_a_stopped_install() {
     let asset = work.path().join("marksman-fake");
     std::fs::write(&asset, b"#!/bin/sh\necho new\n").unwrap();
     let sources = github_source("marksman", "marksman-fake", &asset, "marksman-fake");
-    let (_shim, path) = write_fake_curl_shim(&asset, &asset.with_extension("curl-argv"));
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
     stop_an_install(data_tmp.path(), "marksman");
-    let mut ed = editor_from("-[x]>\n");
-    let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
-    ed.state.dirs.search_path = Some(path.into());
 
-    type_cmd(&mut ed, ":lsp-install markdown");
+    let (data_tmp, mut ed, _runtime, _shim) =
+        install_from_fixture_into(data_tmp, &sources, &asset, "markdown");
     ed.drain_async_sources();
     ed.settle();
 
@@ -707,15 +705,12 @@ fn lsp_install_reinstall_deletes_a_stopped_install() {
 fn lsp_install_failed_reinstall_after_a_stopped_one_keeps_the_installed_server() {
     let work = tempfile::tempdir().unwrap();
     let (served, sources) = mismatched_marksman(work.path());
-    let (_shim, path) = write_fake_curl_shim(&served, &served.with_extension("curl-argv"));
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
     let stopped = stop_an_install(data_tmp.path(), "marksman");
-    let mut ed = editor_from("-[x]>\n");
-    let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
-    ed.state.dirs.search_path = Some(path.into());
 
-    type_cmd(&mut ed, ":lsp-install markdown");
+    let (data_tmp, mut ed, _runtime, _shim) =
+        install_from_fixture_into(data_tmp, &sources, &served, "markdown");
     ed.drain_async_sources();
     ed.settle();
 

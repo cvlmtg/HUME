@@ -13,6 +13,7 @@ fn lsp_uninstall_removes_registration_and_directory() {
         &seeded_version("rust-analyzer"),
         "rust-analyzer",
     );
+    stop_an_install(data_tmp.path(), "rust-analyzer");
 
     let mut ed = editor_from("-[x]>\n");
     load_with_init(
@@ -41,28 +42,7 @@ fn lsp_uninstall_removes_registration_and_directory() {
     let dir = server_dir(data_tmp.path(), "rust-analyzer");
     assert!(
         !dir.exists(),
-        "uninstall must remove the server directory once the deferred (after! 0 ...) fires"
-    );
-}
-
-/// Uninstalling a server removes every install folder it has, a stopped
-/// install's included.
-#[test]
-fn lsp_uninstall_removes_every_install_folder() {
-    let data_tmp = tempfile::tempdir().unwrap();
-    fabricate_server(data_tmp.path(), "rust-analyzer", "0.0.1", "rust-analyzer");
-    stop_an_install(data_tmp.path(), "rust-analyzer");
-    let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path());
-
-    type_cmd(&mut ed, ":lsp-uninstall rust-analyzer");
-    ed.drain_async_sources();
-    ed.settle();
-
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        !server_dir(data_tmp.path(), "rust-analyzer").exists(),
-        "{log}"
+        "uninstall must remove the server directory, with every install folder in it, once the deferred (after! 0 ...) fires"
     );
 }
 
