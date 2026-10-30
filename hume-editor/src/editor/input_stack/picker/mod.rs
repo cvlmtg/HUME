@@ -70,8 +70,8 @@ impl Layer for PickerLayer {
     ///   mid-completion (e.g. `picker!` bound to a key pressed while
     ///   completing) must not leave a stale session behind it.
     /// - Retires an already-open picker, firing its `#:on-close`, before
-    ///   this one lands: the exactly-once callback contract must never have
-    ///   a window where a session can be silently dropped without firing.
+    ///   this one lands: the exactly-once callback contract leaves no window
+    ///   in which a session is dropped without firing.
     ///   No keymap binding closes it here, so it records no binding's pick
     ///   even when a binding of it opened this one.
     /// - Clears any open popup: unlike a menu or drawer, which stay open
@@ -310,7 +310,8 @@ fn fire_close(
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is
-/// open) and fires [`fire_close`] with `closer`. Takes the layer *by value*
+/// open) and fires [`fire_close`] with the pick of `closer`, the keymap
+/// binding closing it, built against the session. Takes the layer *by value*
 /// via `EditorState::take_layer` (tearing down whatever was pushed above it,
 /// but not the picker itself) rather than `truncate_layers`, since
 /// `PickerLayer::tear_down` would otherwise fire `#:on-close` right before
@@ -326,13 +327,14 @@ fn fire_close(
 pub(in crate::editor) fn close_picker_with(
     state: &mut super::super::EditorState,
     view: &EngineView,
-    closer: Option<Pick>,
+    closer: Option<PickerKeyRun>,
 ) {
     let Some(r) = state.input.ref_of::<PickerLayer>() else {
         return;
     };
     let mut layer = state.take_layer::<PickerLayer>(view, r);
-    fire_close(state, &mut layer, closer);
+    let pick = closer.map(|run| run.into_pick(|i, payload| layer.session.picked(i, payload)));
+    fire_close(state, &mut layer, pick);
 }
 
 /// `close_picker_with` for a close no keymap binding made.
@@ -359,10 +361,11 @@ pub(in crate::editor) fn move_picker(
     count: isize,
     step: PickerStep,
 ) {
-    let rows = visible_rows(state, view);
-    let Some(session) = session_for_token(state, token) else {
+    if session_for_token(state, token).is_none() {
         return;
-    };
+    }
+    let rows = visible_rows(state, view);
+    let session = session_for_token(state, token).expect("checked above, and nothing ran since");
     let rows_per_step = match step {
         PickerStep::Row => 1,
         PickerStep::Page => rows,
@@ -391,18 +394,17 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     let session = picker_mut(&mut ed.state, r);
     if let Some(binding) = session.binding_for(canonical).cloned() {
         let token = session.token();
-        let (picked, item) = match session.selected_index() {
-            Some(i) => {
-                let (picked, payload) = session.picked(i);
-                (Some(picked), payload)
-            }
-            None => (None, steel_false()),
-        };
+        let selected = session
+            .selected_index()
+            .map(|i| (i, session.payload(i).clone()));
+        let item = selected
+            .as_ref()
+            .map_or_else(steel_false, |(_, payload)| payload.clone());
         let call = SteelCall::with_args(
             binding,
             Rc::from([Rooted::new(token_to_steel(token)), item]),
         );
-        let run = PickerKeyRun::new(token, canonical, picked);
+        let run = PickerKeyRun::new(token, canonical, selected);
         ed.state.push_work(PendingWork::call(
             call,
             Some(CallGuard::PickerKey(run)),

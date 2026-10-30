@@ -486,8 +486,8 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
 /// there's no key path for this, since the picker is full-modal) must run
 /// `Insert`'s own teardown on the way out (commit the edit group, clear
 /// `active_session`) via `EditorState::take_layer`, and must still fire the
-/// picker's own `#:on-close` exactly once: not twice, and not silently
-/// dropped by `Insert`'s teardown running first.
+/// picker's own `#:on-close` exactly once: not twice, and not dropped by
+/// `Insert`'s teardown running first.
 ///
 /// Acting only on the last removed layer (the picker) would skip `Insert`'s
 /// `tear_down`, leaving `active_session` set and the edit group open.

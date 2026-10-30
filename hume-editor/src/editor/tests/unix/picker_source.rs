@@ -97,7 +97,7 @@ fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
     assert_eq!(
         picker
             .selected_index()
-            .map(|i| picker.picked(i).1.value().clone()),
+            .map(|i| picker.payload(i).value().clone()),
         Some(SteelVal::StringV("a\0b".into())),
         "the payload must keep the raw NUL so a plugin's own split stays unambiguous"
     );

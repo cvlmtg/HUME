@@ -48,7 +48,7 @@ fn open_live() -> PickerSession {
 }
 
 fn selected_payload(s: &PickerSession) -> Option<SteelVal> {
-    s.selected_index().map(|i| s.picked(i).1.value().clone())
+    s.selected_index().map(|i| s.payload(i).value().clone())
 }
 
 fn payload_str(v: &SteelVal) -> &str {

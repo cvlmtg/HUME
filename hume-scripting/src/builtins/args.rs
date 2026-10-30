@@ -58,14 +58,18 @@ pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelE
     }
 }
 
-/// A key-spec string (`bind-key!`'s own syntax, decoded via
+/// [`single_key`] of a key-spec string argument.
+pub(crate) fn single_key_arg(val: SteelVal, ctx_name: &str) -> Result<KeyEvent, SteelErr> {
+    single_key(&string_arg(val, ctx_name)?, ctx_name)
+}
+
+/// A key spec (`bind-key!`'s own syntax, decoded via
 /// [`parse_key_sequence`]) that must name exactly one chord, not a
 /// sequence. Shared by `insert-key!` (one key, no destination for a
 /// sequence) and `picker!`/`live-picker!`'s keymap (one chord
 /// dispatched at a time).
-pub(crate) fn single_key_arg(val: SteelVal, ctx_name: &str) -> Result<KeyEvent, SteelErr> {
-    let spec = string_arg(val, ctx_name)?;
-    let mut keys = parse_key_sequence(&spec)
+pub(crate) fn single_key(spec: &str, ctx_name: &str) -> Result<KeyEvent, SteelErr> {
+    let mut keys = parse_key_sequence(spec)
         .map_err(|e| generic_err(format!("{ctx_name}: invalid key spec '{spec}': {e}")))?;
     if keys.len() != 1 {
         steel::stop!(Generic => "{}: key spec '{}' must name exactly one key, not a sequence", ctx_name, spec);

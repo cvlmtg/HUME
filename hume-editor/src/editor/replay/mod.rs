@@ -22,6 +22,7 @@
 
 use hume_core::{Count, HostToken};
 use hume_engine::pipeline::EngineView;
+use hume_scripting::Rooted;
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
 
@@ -111,32 +112,42 @@ enum Running {
 }
 
 /// A picker keymap binding's queued call: the picker whose key was pressed,
-/// and the pick that picker's answer records if the binding closes it.
-#[derive(Debug)]
+/// the key, and the item the binding was handed, from which the picker's
+/// answer builds its pick if the binding closes it.
+#[derive(Debug, Clone)]
 pub(in crate::editor) struct PickerKeyRun {
     picker: HostToken,
-    pick: Pick,
+    key: CanonicalKey,
+    selected: Option<(usize, Rooted)>,
 }
 
 impl PickerKeyRun {
     /// The binding for `key` pressed in the picker `picker` names, with
-    /// `picked` the item it was handed, `None` when nothing matched.
+    /// `selected` the index in the picker's items and the payload of the
+    /// item it was handed, `None` when nothing matched.
     pub(in crate::editor) fn new(
         picker: HostToken,
         key: CanonicalKey,
-        picked: Option<Picked>,
+        selected: Option<(usize, Rooted)>,
     ) -> Self {
         Self {
             picker,
-            pick: Pick {
-                action: Some(key),
-                picked,
-            },
+            key,
+            selected,
         }
     }
 
     pub(in crate::editor) fn picker(&self) -> HostToken {
         self.picker
+    }
+
+    /// The pick the picker's answer records when this binding closes it,
+    /// `picked` naming the handed item for `.`.
+    pub(in crate::editor) fn into_pick(self, picked: impl FnOnce(usize, Rooted) -> Picked) -> Pick {
+        Pick {
+            action: Some(self.key),
+            picked: self.selected.map(|(index, payload)| picked(index, payload)),
+        }
     }
 }
 
@@ -160,12 +171,12 @@ impl ScopeSlot {
         }
     }
 
-    /// The pick the picker `picker` names records when the running code
-    /// closes it: `Some` only inside a keymap binding of that picker that
-    /// has not closed it yet.
-    pub(in crate::editor) fn closing_binding(&self, picker: HostToken) -> Option<Pick> {
+    /// The binding whose pick the picker `picker` names records when the
+    /// running code closes it: `Some` only inside a keymap binding of that
+    /// picker that has not closed it yet.
+    pub(in crate::editor) fn closing_binding(&self, picker: HostToken) -> Option<PickerKeyRun> {
         match &self.0 {
-            Some(Running::PickerKey(run)) if run.picker == picker => Some(run.pick.clone()),
+            Some(Running::PickerKey(run)) if run.picker == picker => Some(run.clone()),
             _ => None,
         }
     }

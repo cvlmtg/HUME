@@ -20,7 +20,7 @@ use crate::{Callback, Rooted, SteelCtx};
 use super::SteelResult;
 use super::args::{
     bool_arg, callback_arg, cwd_arg, int_arg, list_items, list_to_i32s, list_to_strings,
-    optional_callback_arg, optional_string_arg, pair_fields, single_key_arg, string_arg,
+    optional_callback_arg, optional_string_arg, pair_fields, single_key, string_arg,
     symbol_enum_arg, token_arg, token_or_false, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
@@ -250,7 +250,7 @@ fn row_payload(payload: SteelVal, ctx_name: &str) -> Result<Rooted, SteelErr> {
 
 /// Decodes `picker!`'s/`live-picker!`'s `keymap`: a hashmap from key spec
 /// to a procedure of two arguments (the picker's token and the selected
-/// item). Each spec must parse (via [`single_key_arg`]) to exactly one
+/// item). Each spec must parse (via [`single_key`]) to exactly one
 /// `KeyEvent`: the picker dispatches one chord at a time, so a multi-key
 /// spec like `"z f"` binding only its first key would be a trap. Two specs
 /// naming the same key are caught by the editor, which owns key identity.
@@ -264,10 +264,10 @@ fn picker_keymap(
     };
     map.iter()
         .map(|(spec, binding)| {
-            let key = single_key_arg(spec.clone(), ctx_name)?;
+            let spec = string_arg(spec.clone(), ctx_name)?;
             Ok(PickerBinding {
-                spec: string_arg(spec.clone(), ctx_name)?,
-                key,
+                key: single_key(&spec, ctx_name)?,
+                spec,
                 binding: callback_arg(ctx, binding.clone(), 2, ctx_name)?,
             })
         })

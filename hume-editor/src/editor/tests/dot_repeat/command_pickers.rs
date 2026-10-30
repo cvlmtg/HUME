@@ -83,6 +83,26 @@ fn dot_repeats_a_commands_picker_through_the_closing_binding() {
     assert_eq!(ed.doc().text().to_string(), "[A]ello\n[A]orld\n");
 }
 
+/// `.` runs the closing binding again whole, so what it did before its
+/// `picker-close!` is repeated too.
+#[test]
+fn dot_repeats_the_closing_binding_before_its_close() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        r#"(picker! pane (list (cons "a" "A"))
+             (hash "enter" (lambda (token p)
+                     (call! "replace" pane #\x)
+                     (picker-close! token)
+                     (call! "surround-add" pane #\[))))"#,
+        &[key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "[x]ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "[x]ello\n[x]orld\n");
+}
+
 /// A picker closed by a dismissing binding is repeated as a dismissal: the
 /// dismissing key's binding runs again.
 #[test]

@@ -622,17 +622,21 @@ impl PickerSession {
         self.filtered.get(self.selected).map(|&idx| idx as usize)
     }
 
-    /// How `.` replays a pick of the item at `index` in `items`, and that
-    /// item's payload: by its text when every item came from the opener's
-    /// list (`items_from_opener`), by its payload otherwise.
-    pub(in crate::editor) fn picked(&self, index: usize) -> (Picked, Rooted) {
-        let payload = self.items[index].payload.clone();
-        let picked = if self.items_from_opener {
+    /// The payload of the item at `index` in `items`.
+    pub(in crate::editor) fn payload(&self, index: usize) -> &Rooted {
+        &self.items[index].payload
+    }
+
+    /// How `.` replays a pick of the item that was at `index` in `items`
+    /// with `payload`: by its text when every item came from the opener's
+    /// list (`items_from_opener`), by `payload` otherwise. Any feed clears
+    /// `items_from_opener`, so while it holds `index` still names the item.
+    pub(in crate::editor) fn picked(&self, index: usize, payload: Rooted) -> Picked {
+        if self.items_from_opener {
             Picked::Choice(Choice::of(&self.items, index, |item| &item.display))
         } else {
-            Picked::Payload(payload.clone())
-        };
-        (picked, payload)
+            Picked::Payload(payload)
+        }
     }
 
     /// The payload of the item `choice` names, `None` with no such item.

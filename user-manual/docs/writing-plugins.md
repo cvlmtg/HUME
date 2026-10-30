@@ -76,7 +76,7 @@ An editor command that `.` should repeat takes `#:repeatable #t`. `define-typed-
 
 - Anything else that asks the user while a change is recorded (a non-repeatable command bound in Insert mode, a hook, a timer) ends the change there: `.` repeats only what came before.
 - A `picker!` pick or `show-menu!` choice is matched by its text in the list the command builds this time, so the second of two "foo" items stays the second. A `live-picker!` pick, or one from a `picker!` that got items after it opened (`#:pending`, `picker-push!`, `picker-source-spawn!`), reuses its original payload, which a configuration reload forgets.
-- A picker is repeated through the binding of the key that closed it, called with the item it got the first time. Bindings that left the picker open (moving the selection, say) are not repeated, and only what the closing binding does after its `picker-close!` is part of the change. A picker closed by anything but one of its bindings repeats only its `#:on-close`.
+- A picker is repeated through the binding of the key that closed it, called with the item it got the first time. Bindings that left the picker open (moving the selection, say) are not repeated. The closing binding runs again in full, including whatever it did before its `picker-close!`, so call `picker-close!` before anything else. A picker closed by anything but one of its bindings repeats only its `#:on-close`.
 - A `show-drawer-list!` pick is never recorded, and its `on-select` is not part of the change.
 - `.` raises an error when the re-run asks for something different or more than the first run did, can't find the picked item or a forgotten payload, or opens a picker whose keymap doesn't bind the key that closed it the first time.
 
