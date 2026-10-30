@@ -170,7 +170,7 @@ fn picker_source_spawn_runs_a_program_on_the_editor_search_path() {
             r#"
             (define tok #f)
             (define-typed-command! "go" "" (lambda (pane)
-              (set! tok (picker! pane '() (lambda (x) (void))))))
+              (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
             (define-command! "spawn-it" "" (lambda ()
               (picker-source-spawn! tok "{PROBE}" '("-c" "echo found"))))
             "#

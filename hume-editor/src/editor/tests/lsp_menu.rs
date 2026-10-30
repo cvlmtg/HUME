@@ -328,10 +328,11 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
+        Vec::new(),
         PickerOpts::default(),
         Vec::new(),
-    );
+    )
+    .expect("an empty keymap repeats no key");
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 

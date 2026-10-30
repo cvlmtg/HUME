@@ -22,7 +22,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (log! 'info (to-string x)))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (log! 'info (to-string x))))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "printf 'a\nb\nc\n'"))))
         "#,
@@ -53,7 +53,7 @@ fn nul_delimited_source_splits_on_nul() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "printf 'a\\0b'") #:nul #t)))
         "#,
@@ -73,7 +73,7 @@ fn nonzero_exit_reports_a_status_message() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "echo boom >&2; exit 4"))))
         "#,
@@ -94,7 +94,7 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-no-matches" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "exit 1") #:ok-exit-codes '(0 1))))
         (define-command! "spawn-bad-regex" "" (lambda ()
@@ -129,7 +129,7 @@ fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sh"
             (list "-c" "for i in 1 2 3 4 5 6 7 8 9 10; do echo $i; sleep 0.2; done"))))
@@ -182,7 +182,7 @@ fn respawn_reports_an_already_exited_outgoing_source() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-first" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "echo boom >&2; exit 2"))))
         (define-command! "spawn-second" "" (lambda ()
@@ -224,7 +224,7 @@ fn respawn_does_not_report_a_still_running_outgoing_source() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-first" "" (lambda ()
           (picker-source-spawn! tok "sleep" (list "30"))))
         (define-command! "spawn-second" "" (lambda ()
@@ -249,7 +249,7 @@ fn picker_close_kills_the_source_child() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (log! 'info (to-string x)))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (log! 'info (to-string x))))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sleep" (list "30"))))
         "#,
@@ -310,7 +310,7 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (live-picker! pane (lambda (x) (log! 'info (to-string x)))
+          (set! tok (live-picker! pane (test-picker-keys (lambda (x) (log! 'info (to-string x))))
             #:query "a"
             #:debounce-ms 0
             #:source (picker-command-source
@@ -391,7 +391,7 @@ fn live_picker_spawn_through_a_superseded_query_token_is_refused() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (live-picker! pane (lambda (x) (void))
+          (set! tok (live-picker! pane (test-picker-keys (lambda (x) (void)))
             #:debounce-ms 100000
             #:source (lambda (token q) (void))))))
         (define-command! "spawn-old" "" (lambda ()
@@ -412,7 +412,7 @@ fn live_picker_requery_with_no_output_clears_the_previous_rows() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define-typed-command! "go" "" (lambda (pane)
-          (live-picker! pane (lambda (x) (log! 'info (to-string x)))
+          (live-picker! pane (test-picker-keys (lambda (x) (log! 'info (to-string x))))
             #:query "a"
             #:debounce-ms 0
             #:source (picker-command-source

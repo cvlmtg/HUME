@@ -15,16 +15,14 @@
 
 ;; ── Files picker ──────────────────────────────────────────────────────────────
 
-;;; Hoisted to a name so it can be passed twice — see README.md's "Design decisions".
 (define (pickers/open-file! path)
   (when path
     (switch-to-buffer! (focused-pane) (open-buffer! path))))
 
 (define (pickers/open-files-picker! pane cmd args)
   (let ([token (picker! pane '()
-                        pickers/open-file!
-                        #:prompt "files: "
-                        #:actions (call! "stdlib/buffer-actions" pickers/open-file!))])
+                        (call! "stdlib/picker-keymap" pickers/open-file!)
+                        #:prompt "files: ")])
     (picker-source-spawn! token cmd args #:nul #t)))
 
 ;;; Test seam — see README's "Design decisions".
@@ -58,16 +56,14 @@
 
 (define (pickers/open-git-picker! pane root)
   (let* ([job-id #f]
-         ;; Hoisted to a name — see README.md's "Design decisions".
          [handler (lambda (path)
-                    (if path
-                        (switch-to-buffer! (focused-pane) (open-buffer! (path-join root path)))
-                        (cancel-async! job-id)))]
+                    (when path
+                      (switch-to-buffer! (focused-pane) (open-buffer! (path-join root path)))))]
          [token (picker! pane '()
-                         handler
+                         (call! "stdlib/picker-keymap" handler)
                          #:prompt "git: "
                          #:pending #t
-                         #:actions (call! "stdlib/buffer-actions" handler))])
+                         #:on-close (lambda () (cancel-async! job-id)))])
     (set! job-id
       (spawn-async! "git"
                     (list "status" "--porcelain" "-z" "--no-renames"
@@ -102,7 +98,7 @@
   (let ([path (buffer-display-path pane)])
     (cons (or path (buffer-name pane)) pane)))
 
-;;; Hoisted to a name — see README.md's "Design decisions" and "Buffers".
+;;; See README.md's "Buffers".
 (define (pickers/switch-to-buffer! target)
   (when target (switch-to-buffer! (focused-pane) target)))
 
@@ -110,9 +106,8 @@
   "Fuzzy-pick an open buffer and switch to it."
   (lambda (pane)
     (picker! pane (map pickers/buffer-item (buffers))
-             pickers/switch-to-buffer!
-             #:prompt "buffers: "
-             #:actions (call! "stdlib/buffer-actions" pickers/switch-to-buffer!))))
+             (call! "stdlib/picker-keymap" pickers/switch-to-buffer!)
+             #:prompt "buffers: ")))
 
 ;; ── Keybindings ───────────────────────────────────────────────────────────────
 

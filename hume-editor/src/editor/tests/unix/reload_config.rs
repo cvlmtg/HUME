@@ -1027,7 +1027,7 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
 /// `:reload-config` drops that engine: a collection in the new one then
 /// traces no root into the old heap. One store of each kind holds a value
 /// over a box: a command, a hook, a pending timer, an async job's callback,
-/// an open picker's callback and payload.
+/// an open picker's binding and payload.
 #[test]
 fn a_collection_after_reload_traces_nothing_from_the_old_engine() {
     let fixture = ReloadFixture::new(
@@ -1041,7 +1041,7 @@ fn a_collection_after_reload_traces_nothing_from_the_old_engine() {
                (spawn-async! "sleep" '("10")
                  (let ((cell (box 1))) (lambda (result) (unbox cell))))
                (picker! pane (list (cons "one" (hash 'cell (box 1))))
-                 (let ((cell (box 1))) (lambda (choice) (unbox cell))))))"#,
+                 (hash "enter" (let ((cell (box 1))) (lambda (token choice) (unbox cell)))))))"#,
     );
     let mut ed = editor_from("-[a]>b\n");
     ed.state.dirs = fixture.dirs();

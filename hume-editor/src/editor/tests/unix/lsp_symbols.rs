@@ -99,6 +99,7 @@ fn accepting_a_nested_symbol_jumps_to_its_selection_range() {
 
     call_and_pump(&mut ed, "lsp/document-symbols");
     ed.feed_key(key_down());
+    ed.settle();
     ed.feed_key(key_enter());
     pump_lsp(&mut ed);
 

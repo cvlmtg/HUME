@@ -52,15 +52,15 @@
   (and (find-program "git")
        (stdlib/run-stdout "git" '("rev-parse" "--show-toplevel"))))
 
-;; ── Picker buffer-placement actions ──────────────────────────────────────────
+;; ── Picker keymap ─────────────────────────────────────────────────────────────
 
-;;; A false/no payload skips the tab but still calls `handler` — see README.md's "Picker buffer-placement".
+;;; A false/no payload skips the tab but still calls `handler` — see README.md's "Picker keymap".
 (define (stdlib/with-tab handler)
   (lambda (payload)
     (when payload (call! "tab-new" (focused-pane)))
     (handler payload)))
 
-;;; Shared core for `with-vsplit`/`with-split` — see README.md's "Picker buffer-placement".
+;;; Shared core for `with-vsplit`/`with-split` — see README.md's "Picker keymap".
 (define (stdlib/with-pane-command command handler)
   (lambda (payload)
     (if payload
@@ -73,11 +73,31 @@
 (define (stdlib/with-split handler)
   (stdlib/with-pane-command "pane-split" handler))
 
-(define (stdlib/buffer-actions handler)
-  (list (cons "ctrl-o" handler)
-        (cons "ctrl-t" (stdlib/with-tab handler))
-        (cons "ctrl-v" (stdlib/with-vsplit handler))
-        (cons "ctrl-s" (stdlib/with-split handler))))
+(define (stdlib/picker-accept handler)
+  (lambda (token item)
+    (picker-close! token)
+    (handler item)))
+
+(define (stdlib/picker-mover count by)
+  (lambda (token item)
+    (picker-move! token count #:by by)))
+
+;;; See README.md's "Picker keymap".
+(define (stdlib/picker-keymap handler)
+  (hash "down" (stdlib/picker-mover 1 'row)
+        "ctrl-n" (stdlib/picker-mover 1 'row)
+        "up" (stdlib/picker-mover -1 'row)
+        "ctrl-p" (stdlib/picker-mover -1 'row)
+        "pagedown" (stdlib/picker-mover 1 'page)
+        "pageup" (stdlib/picker-mover -1 'page)
+        "ctrl-d" (stdlib/picker-mover 1 'half-page)
+        "ctrl-u" (stdlib/picker-mover -1 'half-page)
+        "esc" (lambda (token item) (picker-close! token))
+        "enter" (stdlib/picker-accept handler)
+        "ctrl-o" (stdlib/picker-accept handler)
+        "ctrl-t" (stdlib/picker-accept (stdlib/with-tab handler))
+        "ctrl-v" (stdlib/picker-accept (stdlib/with-vsplit handler))
+        "ctrl-s" (stdlib/picker-accept (stdlib/with-split handler))))
 
 ;; ── Command-argument helper ──────────────────────────────────────────────────
 
@@ -237,9 +257,9 @@
   "Wraps the given handler: splits the focused pane stacked and calls the handler in the new pane with the picker's payload. A false payload skips the split (still calls the handler); a pane too small to split skips the handler too, leaving the current pane untouched."
   stdlib/with-split)
 
-(define-command! "stdlib/buffer-actions"
-  "A picker!/live-picker! #:actions alist binding Ctrl-O/T/V/S to the given handler placed in the current pane, a new tab, a vertical split, and a horizontal split respectively."
-  stdlib/buffer-actions)
+(define-command! "stdlib/picker-keymap"
+  "The default picker!/live-picker! keymap for the given handler: Down/Ctrl-N and Up/Ctrl-P move the selection, PageDown/PageUp page it, Ctrl-D/Ctrl-U move it half a page, Esc closes the picker, and Enter/Ctrl-O close it and call the handler with the selected item (#f when nothing matches); Ctrl-T, Ctrl-V and Ctrl-S do the same in a new tab, a vertical split, and a horizontal split."
+  stdlib/picker-keymap)
 
 (define-command! "stdlib/split-words"
   "Every word in the given string, tokenized using the given buffer's own word-chars setting — split-words with word-chars pulled from get-buffer-option automatically."

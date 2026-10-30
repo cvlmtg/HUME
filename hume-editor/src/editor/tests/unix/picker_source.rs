@@ -13,25 +13,23 @@ use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
-    let session = PickerSession::new(
-        hume_scripting::Callback::for_test(SteelVal::BoolV(false)),
-        PickerOpts::default(),
-        Vec::new(),
-    );
+    let session = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
+        .expect("an empty keymap repeats no key");
     picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 }
 
 fn open_live_picker(ed: &mut Editor) {
     let session = PickerSession::new_live(
-        hume_scripting::Callback::for_test(SteelVal::BoolV(false)),
+        Vec::new(),
         LivePickerOpts {
             prompt: String::new(),
             query: String::new(),
             on_query_change: hume_scripting::Callback::for_test(SteelVal::BoolV(false)),
             truncate: TruncateEnd::Head,
-            actions: Vec::new(),
+            on_close: None,
         },
-    );
+    )
+    .expect("an empty keymap repeats no key");
     picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 }
 
@@ -258,11 +256,8 @@ fn replacing_the_session_kills_the_previous_source_child() {
 
     // A fresh `open_picker` call replaces (and, via `close_picker`, drops)
     // whatever session was open, same as a second `picker!` from Steel.
-    let replacement = PickerSession::new(
-        hume_scripting::Callback::for_test(SteelVal::BoolV(false)),
-        PickerOpts::default(),
-        Vec::new(),
-    );
+    let replacement = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
+        .expect("an empty keymap repeats no key");
     picker::open_picker(&mut ed.state, &ed.view, replacement).expect("no `.` is in progress");
 
     assert!(

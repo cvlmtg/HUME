@@ -13,11 +13,8 @@ fn dummy_on_select() -> SteelVal {
 }
 
 fn open() -> PickerSession {
-    PickerSession::new(
-        hume_scripting::Callback::for_test(dummy_on_select()),
-        PickerOpts::default(),
-        Vec::new(),
-    )
+    PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
+        .expect("an empty keymap repeats no key")
 }
 
 fn open_pending() -> PickerSession {
@@ -26,26 +23,28 @@ fn open_pending() -> PickerSession {
 
 fn open_pending_with(items: Vec<PickerItem>) -> PickerSession {
     PickerSession::new(
-        hume_scripting::Callback::for_test(dummy_on_select()),
+        Vec::new(),
         PickerOpts {
             pending: true,
             ..Default::default()
         },
         items,
     )
+    .expect("an empty keymap repeats no key")
 }
 
 fn open_live() -> PickerSession {
     PickerSession::new_live(
-        hume_scripting::Callback::for_test(dummy_on_select()),
+        Vec::new(),
         LivePickerOpts {
             prompt: String::new(),
             query: String::new(),
             on_query_change: hume_scripting::Callback::for_test(dummy_on_select()),
             truncate: TruncateEnd::Head,
-            actions: Vec::new(),
+            on_close: None,
         },
     )
+    .expect("an empty keymap repeats no key")
 }
 
 fn selected_payload(s: &PickerSession) -> Option<SteelVal> {
@@ -75,13 +74,14 @@ fn new_session_is_empty() {
 #[test]
 fn prompt_is_stored_verbatim() {
     let s = PickerSession::new(
-        hume_scripting::Callback::for_test(dummy_on_select()),
+        Vec::new(),
         PickerOpts {
             prompt: "files: ".to_string(),
             ..Default::default()
         },
         Vec::new(),
-    );
+    )
+    .expect("an empty keymap repeats no key");
     assert_eq!(s.prompt(), "files: ");
 }
 
@@ -173,13 +173,14 @@ fn set_query_filters_non_matches() {
 #[test]
 fn query_prefill_is_visible_and_applied_at_construction() {
     let mut s = PickerSession::new(
-        hume_scripting::Callback::for_test(dummy_on_select()),
+        Vec::new(),
         PickerOpts {
             query: "f".to_string(),
             ..Default::default()
         },
         Vec::new(),
-    );
+    )
+    .expect("an empty keymap repeats no key");
     assert_eq!(s.query(), "f");
     // Applied through the same `rerank` a later push would use: a
     // batch arriving after open is filtered by the prefilled query

@@ -41,7 +41,8 @@ fn editor_from(input: &str) -> Editor {
 
 /// Build a `ScriptingHost`, pre-register every native command name as a Steel
 /// binding (so `(move-right)`-style calls in `src` resolve), eval `src`, and
-/// install the result as `ed.scripting`.
+/// install the result as `ed.scripting`. [`TEST_PICKER_KEYS`] is defined
+/// first, on the source's first line.
 ///
 /// Not a fit for a test that needs `live_host!`'s LSP/timer access instead of
 /// a bare `EditorHostImpl`, or one that inspects `eval_source`'s `Result`
@@ -61,7 +62,7 @@ fn attach_steel(ed: &mut Editor, src: &str) {
         .unwrap_or_else(|| hume_scripting::ScriptingHost::for_testing(&Dirs::none()));
     host.register_command_names(&name_refs);
     let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(src, &mut init_host)
+    host.eval_source(&format!("{TEST_PICKER_KEYS} {src}"), &mut init_host)
         .expect("the test's Steel source must evaluate");
     ed.scripting = Some(host);
 }
@@ -1348,9 +1349,18 @@ fn plum_init_source(init_src: &str, config: Option<&str>) -> String {
     )
 }
 
+/// A picker keymap every test source [`attach_steel`] or
+/// [`eval_with_real_host`] evaluates can build with
+/// `(test-picker-keys on-select)`: `enter` closes the picker and calls
+/// `on-select` with the selected item, `esc` closes it and calls `on-select`
+/// with `#f`, and `down`/`up` move the selection one row. One line, so
+/// prepending it moves no line of the source after it.
+const TEST_PICKER_KEYS: &str = r#"(define (test-picker-keys on-select) (hash "enter" (lambda (token item) (picker-close! token) (on-select item)) "esc" (lambda (token item) (picker-close! token) (on-select #f)) "down" (lambda (token item) (picker-move! token 1)) "up" (lambda (token item) (picker-move! token -1))))"#;
+
 /// Write `source` as `<tmp>/init.scm`, evaluate it against the real
 /// `EditorHostImpl`, and apply the effects it queued: the harness mirror of
-/// `Editor::init_scripting`'s eval/apply pair.
+/// `Editor::init_scripting`'s eval/apply pair. [`TEST_PICKER_KEYS`] is
+/// defined first, on the source's first line.
 ///
 /// Applying is not optional: effects an eval queues (`bind-key!`,
 /// `register-lsp-server!`, …) only take hold once `apply_script_effects` runs,
@@ -1362,7 +1372,7 @@ fn eval_with_real_host(
     tmp: &std::path::Path,
 ) {
     let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
+    std::fs::write(&init_path, format!("{TEST_PICKER_KEYS} {source}")).unwrap();
     let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)

@@ -159,10 +159,11 @@ fn show_popup_scrollable_does_not_land_above_an_open_picker() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
+        Vec::new(),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
-    );
+    )
+    .expect("an empty keymap repeats no key");
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 

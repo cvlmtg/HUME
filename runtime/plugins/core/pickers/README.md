@@ -39,9 +39,9 @@ The three keys sit under `z`. A picker opens a panel over the buffer and waits, 
 shape as `core:lsp`'s references list and code-action menu, also on `z`; `g` is left to
 commands that name a place.
 
-Every picker also binds `Ctrl-o`, `Ctrl-t`, `Ctrl-v` and `Ctrl-s` to open the selection in
-the current pane, a new tab, a vertical split or a horizontal split. They come from
-`core:stdlib`'s [picker buffer-placement](../stdlib/README.md#picker-buffer-placement).
+Every picker takes `core:stdlib`'s default [picker keymap](../stdlib/README.md#picker-keymap),
+which also binds `Ctrl-o`, `Ctrl-t`, `Ctrl-v` and `Ctrl-s` to open the selection in the
+current pane, a new tab, a vertical split or a horizontal split.
 
 ## How it works
 
@@ -68,7 +68,7 @@ which is used directly as the picker payload.
 The switch targets whichever pane is focused when the pick is made (`(focused-pane)`).
 This is an exception to the index's
 [capture the target](../README.md#capture-the-target-dont-re-read-focus) pattern: the
-selection callback runs synchronously with Enter or `Ctrl-o`, so the picker's origin pane
+`Enter` or `Ctrl-o` binding runs before the next key is read, so the picker's origin pane
 and the focused pane are the same.
 
 ### Git-modified files
@@ -106,18 +106,17 @@ selection opens the right file when `:pwd` is a subdirectory of the repo.
 
 A `git status` failure logs `'error` and calls `picker-close!` with this picker's token.
 That is a no-op if the picker has already closed or been replaced, so a slow failure
-cannot tear down a picker the user opened since. Dismissing without selecting cancels the
-outstanding `git status` job.
+cannot tear down a picker the user opened since. The picker's `#:on-close` cancels the
+`git status` job, so closing it before the status arrives, however it closes, leaves no
+job running.
 
 ## Design decisions
 
 - **Accepting a row switches the focused pane.** Every picker's handler wraps `open-buffer!`
   in `switch-to-buffer!`.
-- **All three pickers pass `#:actions (call! "stdlib/buffer-actions" handler)`.** That gives
-  each the `Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s` placements. `buffer-actions` needs the same
-  proc twice, once as `on-select` and once wrapped for each placement, so each picker's
-  handler is a named `define` (`pickers/open-file!`, `pickers/switch-to-buffer!`, and the
-  git picker's own `handler`) and not an inline lambda.
+- **All three pickers pass `(call! "stdlib/picker-keymap" handler)` as their keymap.** That
+  gives each the default movement keys and the `Enter`/`Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s`
+  placements.
 - **`pickers/files` and `pickers/git-modified` each split into a public command and an
   internal `pickers/*-with` command.** The internal one takes the git/fd probe result (or
   repo root) as an argument. A test drives each branch (repo or no repo, `fd` present or

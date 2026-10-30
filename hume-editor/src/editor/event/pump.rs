@@ -7,6 +7,8 @@ use crate::editor::Editor;
 use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::buffer::store::EditOrigin;
 use crate::editor::commands::CommandPane;
+use crate::editor::input_stack::picker;
+use crate::editor::replay;
 use hume_core::{PaneHandle, Severity};
 
 /// Upper bound on total work items processed per `settle()` boundary.
@@ -204,7 +206,7 @@ impl Editor {
     /// flag flip can each change it), so this diffs it the same shape
     /// `detect_buffer_enter` uses above. Run every pass of
     /// `drain_pending_work`'s loop, not just once before it, so a
-    /// handler-driven mode change (a picker `on_select` that enters Insert)
+    /// handler-driven mode change (a picker binding that enters Insert)
     /// is caught by the very next pass, and a transition that nets out
     /// within one pass (a `:cmd` body that enters and leaves Insert) is
     /// invisible, same as a dot-repeat replay, which never calls
@@ -441,6 +443,15 @@ impl Editor {
                     });
                 });
             }
+            CallGuard::PickerKey(run) => {
+                if picker::session_for_token(&mut self.state, run.picker()).is_some() {
+                    self.with_edit_origin(origin, |ed| {
+                        replay::run_picker_key(ed, run, |ed| {
+                            ed.run_call_batch(vec![call]);
+                        });
+                    });
+                }
+            }
             CallGuard::Job(id) => {
                 if !self.state.config.async_jobs.contains_key(&id) {
                     return;
@@ -470,7 +481,7 @@ impl Editor {
     /// call would have.
     fn drop_unrun(&mut self, guard: CallGuard) {
         match guard {
-            CallGuard::Reply { .. } | CallGuard::Answer(_) => {}
+            CallGuard::Reply { .. } | CallGuard::Answer(_) | CallGuard::PickerKey(_) => {}
             CallGuard::Job(id) => self.forget_job_callback(id),
             CallGuard::Timer(id) => {
                 self.timers.take_queued(id);

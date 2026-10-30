@@ -1,16 +1,14 @@
 //! The queue of deferred Steel work: an event to fire by name or a captured
 //! callback to call, each raised here and drained in order by `pump`.
 
-use std::rc::Rc;
-
 use hume_core::{BufferId, HostToken, PaneHandle};
+use hume_scripting::SteelCall;
 use hume_scripting::host::JobHandle;
-use hume_scripting::{Rooted, SteelCall};
 
 use super::EditorEvent;
 use crate::editor::buffer::store::EditOrigin;
 use crate::editor::lsp::ResponseAnchor;
-use crate::editor::replay::AnswerTicket;
+use crate::editor::replay::{AnswerTicket, PickerKeyRun};
 use crate::editor::{Editor, EditorState};
 use hume_core::TimerId;
 
@@ -75,6 +73,9 @@ pub(in crate::editor) enum CallGuard {
     /// (`Editor::run_answered`), so only this call's own work belongs to the
     /// change.
     Answer(AnswerTicket),
+    /// A picker keymap binding's call. The call is dropped when its picker
+    /// closed before its turn, and runs inside `replay::run_picker_key`.
+    PickerKey(PickerKeyRun),
     /// The `ConfigState.async_jobs` entry this call reports for. The call
     /// is dropped when `cancel-async!` removed the entry before its turn,
     /// and takes the entry with it once it was the entry's last report or
@@ -106,16 +107,8 @@ impl PendingWork {
 
     /// The `Call` an interactive input's callback queues: the user's,
     /// answering `ticket`'s input if any.
-    pub(in crate::editor) fn answer(
-        proc: hume_scripting::Callback,
-        arg: Rooted,
-        ticket: Option<AnswerTicket>,
-    ) -> Self {
-        Self::call(
-            SteelCall::with_args(proc, Rc::from([arg])),
-            ticket.map(CallGuard::Answer),
-            EditOrigin::User,
-        )
+    pub(in crate::editor) fn answer(call: SteelCall, ticket: Option<AnswerTicket>) -> Self {
+        Self::call(call, ticket.map(CallGuard::Answer), EditOrigin::User)
     }
 }
 

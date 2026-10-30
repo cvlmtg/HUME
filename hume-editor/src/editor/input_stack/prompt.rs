@@ -44,10 +44,10 @@ pub(in crate::editor) fn open_prompt(
                     _ => None,
                 },
                 |text| {
-                    Ok(PendingAnswer::Call {
-                        proc: callback,
-                        arg: hume_scripting::Rooted::new(prompt_arg(text)),
-                    })
+                    Ok(PendingAnswer::Calls(vec![hume_scripting::SteelCall::new(
+                        callback,
+                        vec![prompt_arg(text)],
+                    )]))
                 },
             )
             .map_err(|refusal| refusal.to_string());
@@ -87,13 +87,9 @@ impl PromptLayer {
     /// Queue this prompt's callback with `text`, or `#f`, recording it under
     /// its answer ticket, if it has one. Every way a prompt closes ends here.
     fn fire(&mut self, state: &mut EditorState, text: Option<String>) {
-        let arg = hume_scripting::Rooted::new(prompt_arg(text.clone()));
-        state.queue_answered_call(
-            self.input.take_answer(),
-            Answer::Prompt(text),
-            self.callback.clone(),
-            arg,
-        );
+        let call =
+            hume_scripting::SteelCall::new(self.callback.clone(), vec![prompt_arg(text.clone())]);
+        state.queue_answered_call(self.input.take_answer(), Answer::Prompt(text), call);
     }
 }
 

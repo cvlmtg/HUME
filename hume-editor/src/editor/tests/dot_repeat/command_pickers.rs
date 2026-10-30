@@ -42,7 +42,9 @@ fn dot_repeats_a_commands_picker_selection() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = record_pk(
         tmp.path(),
-        &format!(r#"(picker! pane (list (cons "a" "A") (cons "b" "B")) {PK_SELECT})"#),
+        &format!(
+            r#"(picker! pane (list (cons "a" "A") (cons "b" "B")) (test-picker-keys {PK_SELECT}))"#
+        ),
         &[key_down(), key_enter()],
     );
     assert_eq!(ed.doc().text().to_string(), "(B)ello\nworld\n");
@@ -60,17 +62,19 @@ fn dot_repeats_a_commands_picker_selection() {
     );
 }
 
-/// A pick made through an `#:actions` key is repeated through that action.
+/// A pick is repeated through the binding of the key that closed the
+/// picker.
 #[test]
-fn dot_repeats_a_commands_picker_action() {
+fn dot_repeats_a_commands_picker_through_the_closing_binding() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = record_pk(
         tmp.path(),
-        &format!(
-            r#"(picker! pane (list (cons "a" "A")) {PK_SELECT}
-                 #:actions (list (cons "ctrl-t"
-                   (lambda (p) (call! "replace" pane (string-ref p 0)) (call! "surround-add" pane #\[)))))"#
-        ),
+        r#"(picker! pane (list (cons "a" "A"))
+             (hash "enter" (lambda (token p) (picker-close! token) (call! "replace" pane #\e))
+                   "ctrl-t" (lambda (token p)
+                     (picker-close! token)
+                     (call! "replace" pane (string-ref p 0))
+                     (call! "surround-add" pane #\[))))"#,
         &[key_ctrl('t')],
     );
     assert_eq!(ed.doc().text().to_string(), "[A]ello\nworld\n");
@@ -79,15 +83,16 @@ fn dot_repeats_a_commands_picker_action() {
     assert_eq!(ed.doc().text().to_string(), "[A]ello\n[A]orld\n");
 }
 
-/// A dismissed picker is repeated as a dismissal: `on_select` gets `#f`.
+/// A picker closed by a dismissing binding is repeated as a dismissal: the
+/// dismissing key's binding runs again.
 #[test]
 fn dot_repeats_a_commands_dismissed_picker() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = record_pk(
         tmp.path(),
         r#"(picker! pane (list (cons "a" "A"))
-             (lambda (p)
-               (unless p (call! "replace" pane #\z) (call! "surround-add" pane #\())))"#,
+             (test-picker-keys (lambda (p)
+               (unless p (call! "replace" pane #\z) (call! "surround-add" pane #\()))))"#,
         &[key_esc()],
     );
     assert_eq!(ed.doc().text().to_string(), "(z)ello\nworld\n");
@@ -104,7 +109,7 @@ fn a_replayed_picker_returns_false() {
     let mut ed = record_pk(
         tmp.path(),
         &format!(
-            r#"(log! 'warning (if (picker! pane (list (cons "a" "A")) {PK_SELECT}) "token" "no-token"))"#
+            r#"(log! 'warning (if (picker! pane (list (cons "a" "A")) (test-picker-keys {PK_SELECT})) "token" "no-token"))"#
         ),
         &[key_enter()],
     );
@@ -124,7 +129,7 @@ fn a_replayed_live_picker_returns_false() {
     let mut ed = record_pk(
         tmp.path(),
         &format!(
-            r#"(let ((tok (live-picker! pane {PK_SELECT} #:source (picker-command-source (lambda (q) #f)))))
+            r#"(let ((tok (live-picker! pane (test-picker-keys {PK_SELECT}) #:source (picker-command-source (lambda (q) #f)))))
                  (log! 'warning (if tok "token" "no-token"))
                  (picker-push! tok (list (cons "b" "B"))))"#
         ),
@@ -146,7 +151,7 @@ fn dot_repeats_a_commands_live_picker_selection() {
     let mut ed = record_pk(
         tmp.path(),
         &format!(
-            r#"(let ((tok (live-picker! pane {PK_SELECT} #:source (picker-command-source (lambda (q) #f)))))
+            r#"(let ((tok (live-picker! pane (test-picker-keys {PK_SELECT}) #:source (picker-command-source (lambda (q) #f)))))
                  (picker-push! tok (list (cons "b" "B"))))"#
         ),
         &[key_enter()],
@@ -176,7 +181,7 @@ fn dot_refuses_a_picker_where_a_read_was_recorded() {
                (set! runs (+ runs 1))
                (if (= runs 1)
                    (on-next-char! (lambda (c) (when c (call! "replace" pane c))))
-                   (picker! pane (list (cons "a" "A")) (lambda (p) (+ 1 0)))))
+                   (picker! pane (list (cons "a" "A")) (test-picker-keys (lambda (p) (+ 1 0))))))
              #:repeatable #t)"#,
     );
     ed.execute_keymap_command("br", Count::typed(1), false);
@@ -203,7 +208,7 @@ fn dot_refuses_a_picker_where_a_read_was_recorded() {
 #[test]
 fn reload_keeps_a_label_pick() {
     let tmp = tempfile::tempdir().unwrap();
-    let body = format!(r#"(picker! pane (list (cons "a" "A")) {PK_SELECT})"#);
+    let body = format!(r#"(picker! pane (list (cons "a" "A")) (test-picker-keys {PK_SELECT}))"#);
     let mut ed = record_pk(tmp.path(), &body, &[key_enter()]);
     assert_eq!(ed.doc().text().to_string(), "(A)ello\nworld\n");
     ed.reset_config_state();
@@ -223,7 +228,7 @@ fn reload_keeps_a_label_pick() {
 fn reload_forgets_a_live_picks_payload() {
     let tmp = tempfile::tempdir().unwrap();
     let body = format!(
-        r#"(let ((tok (live-picker! pane {PK_SELECT} #:source (picker-command-source (lambda (q) #f)))))
+        r#"(let ((tok (live-picker! pane (test-picker-keys {PK_SELECT}) #:source (picker-command-source (lambda (q) #f)))))
              (picker-push! tok (list (cons "b" "B"))))"#
     );
     let mut ed = record_pk(tmp.path(), &body, &[key_enter()]);
@@ -253,7 +258,7 @@ fn dot_repeats_a_pick_from_items_pushed_after_the_picker_opened() {
     let mut ed = record_pk(
         tmp.path(),
         &format!(
-            r#"(let ((tok (picker! pane '() {PK_SELECT})))
+            r#"(let ((tok (picker! pane '() (test-picker-keys {PK_SELECT}))))
                  (picker-push! tok (list (cons "b" "B"))))"#
         ),
         &[key_enter()],
@@ -278,7 +283,7 @@ fn dot_refuses_a_pick_whose_text_is_gone() {
         &format!(
             r#"(picker! pane
                  (if (= (buffer-cursor-line pane) 0) (list (cons "b" "B")) (list (cons "c" "C")))
-                 {PK_SELECT})"#
+                 (test-picker-keys {PK_SELECT}))"#
         ),
         &[key_enter()],
     );
@@ -293,18 +298,18 @@ fn dot_refuses_a_pick_whose_text_is_gone() {
     );
 }
 
-/// A pick made through an `#:actions` key the re-run picker does not bind:
-/// `.` refuses and says so.
+/// A pick closed by a key the re-run picker's keymap does not bind: `.`
+/// refuses and says so.
 #[test]
-fn dot_refuses_a_pick_whose_action_key_is_unbound() {
+fn dot_refuses_a_pick_whose_key_is_unbound() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = record_pk(
         tmp.path(),
         &format!(
-            r#"(picker! pane (list (cons "a" "A")) {PK_SELECT}
-                 #:actions (if (= (buffer-cursor-line pane) 0)
-                               (list (cons "ctrl-t" {PK_SELECT}))
-                               '()))"#
+            r#"(picker! pane (list (cons "a" "A"))
+                 (if (= (buffer-cursor-line pane) 0)
+                     (hash "ctrl-t" (lambda (token p) (picker-close! token) ({PK_SELECT} p)))
+                     (hash)))"#
         ),
         &[key_ctrl('t')],
     );
@@ -313,31 +318,172 @@ fn dot_refuses_a_pick_whose_action_key_is_unbound() {
     ed.settle();
     assert_eq!(ed.doc().text().to_string(), "(A)ello\nworld\n");
     assert!(
-        status(&ed).contains("not one of this picker's actions"),
+        status(&ed).contains("not bound in this picker's keymap"),
         "got: {}",
         status(&ed)
     );
 }
 
-/// `.` matches a `picker!` pick by its label among the items the re-run
-/// builds, so a payload that depends on where the command runs is the one
-/// for the new spot.
+/// `.` runs the closing binding the re-run command builds, so what the
+/// binding captured is what the command saw at the new spot.
 #[test]
-fn dot_matches_a_pick_by_label_at_the_new_spot() {
+fn dot_runs_the_rerun_commands_own_binding() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = record_pk(
         tmp.path(),
-        &format!(
-            r#"(picker! pane
-                 (list (cons "same" (if (= (buffer-cursor-line pane) 0) "A" "B")))
-                 {PK_SELECT})"#
-        ),
+        r#"(let ((line (number->string (buffer-cursor-line pane))))
+             (picker! pane (list (cons "a" "A"))
+               (hash "enter" (lambda (token p)
+                 (picker-close! token)
+                 (call! "replace" pane (string-ref line 0))))))"#,
         &[key_enter()],
     );
-    assert_eq!(ed.doc().text().to_string(), "(A)ello\nworld\n");
+    assert_eq!(ed.doc().text().to_string(), "0ello\nworld\n");
     ed.feed_key(key('.'));
     ed.settle();
-    assert_eq!(ed.doc().text().to_string(), "(A)ello\n(B)orld\n");
+    assert_eq!(ed.doc().text().to_string(), "0ello\n1orld\n");
+}
+
+/// Bindings that leave the picker open (moving the selection, here) are not
+/// part of the change: `.` replays only the binding that closed it, with the
+/// item it was handed.
+#[test]
+fn dot_skips_bindings_that_left_the_picker_open() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        r#"(picker! pane (list (cons "a" #\a) (cons "b" #\b) (cons "c" #\c))
+             (hash "down" (lambda (token c) (picker-move! token 1) (call! "replace" pane #\x))
+                   "enter" (lambda (token c) (picker-close! token) (call! "replace" pane c))))"#,
+        &[key_down(), key_down(), key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "cello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "cello\ncorld\n");
+}
+
+/// A picker closed by something other than one of its bindings replays as
+/// that close: its `#:on-close` runs, and no binding does.
+#[test]
+fn dot_repeats_a_close_no_binding_made_through_on_close_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define tok #f)
+           (define-command! "pk" ""
+             (lambda (pane)
+               (set! tok (picker! pane (list (cons "a" "A"))
+                 (hash "enter" (lambda (token p) (picker-close! token) (call! "replace" pane #\e)))
+                 #:on-close (lambda () (call! "surround-add" pane #\()))))
+             #:repeatable #t)
+           (define-command! "close-it" "" (lambda () (picker-close! tok)))"#,
+    );
+    ed.execute_keymap_command("pk", Count::typed(1), false);
+    ed.settle();
+    ed.execute_keymap_command("close-it", Count::typed(1), false);
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "(h)ello\nworld\n");
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "(h)ello\n(w)orld\n");
+}
+
+/// A binding that closes its picker and opens another chains the two picks
+/// into one change, each replayed through its own closing binding.
+#[test]
+fn dot_repeats_a_chain_of_pickers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        r#"(picker! pane (list (cons "a" #\a) (cons "b" #\b))
+             (hash "enter" (lambda (token first)
+               (picker-close! token)
+               (picker! pane (list (cons "paren" #\() (cons "bracket" #\[))
+                 (hash "down" (lambda (token second) (picker-move! token 1))
+                       "enter" (lambda (token second)
+                         (picker-close! token)
+                         (call! "replace" pane first)
+                         (call! "surround-add" pane second)))))))"#,
+        &[key_enter(), key_down(), key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "[a]ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "`.` must not open either picker"
+    );
+    assert_eq!(ed.doc().text().to_string(), "[a]ello\n[a]orld\n");
+}
+
+/// A binding that closes a picker no change records runs as code outside
+/// every change: a repeatable command it runs after the close is a change of
+/// its own.
+#[test]
+fn a_repeatable_command_after_an_unrecorded_pickers_close_is_its_own_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "pick-op" ""
+             (lambda (pane)
+               (picker! pane (list (cons "delete" "delete"))
+                 (hash "enter" (lambda (token name) (picker-close! token) (call! name pane))))))"#,
+    );
+    ed.execute_keymap_command("pick-op", Count::typed(1), false);
+    ed.settle();
+    ed.feed_key(key_enter());
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "ello\nworld\n");
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "ello\norld\n");
+}
+
+/// A binding that leaves its picker open is no change of its own: a
+/// repeatable command it runs is not what `.` repeats.
+#[test]
+fn a_repeatable_command_from_a_binding_that_leaves_the_picker_open_is_no_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "pick-op" ""
+             (lambda (pane)
+               (picker! pane (list (cons "a" "A"))
+                 (hash "ctrl-r" (lambda (token item) (call! "replace" pane #\z))
+                       "esc" (lambda (token item) (picker-close! token))))))"#,
+    );
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "ello\nworld\n");
+
+    ed.execute_keymap_command("pick-op", Count::typed(1), false);
+    ed.settle();
+    ed.feed_key(key_ctrl('r'));
+    ed.settle();
+    ed.feed_key(key_esc());
+    ed.settle();
+    assert!(ed.state.input.picker().is_none());
+    assert_eq!(ed.doc().text().to_string(), "zllo\nworld\n");
+
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "llo\nworld\n",
+        "`.` repeats `d`, not the binding's replace"
+    );
 }
 
 // ── Insert-key binding: reads and picks ─────────────────────────────────────
@@ -356,8 +502,8 @@ fn dot_reruns_an_insert_binding_answering_its_picker() {
         r#"(define-command! "pick-word" ""
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane)))))
+                 (test-picker-keys (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
@@ -441,7 +587,7 @@ fn record_insert_with_unrepeatable_input(open: &str, answer: KeyEvent) -> Editor
 fn a_non_repeatable_insert_bindings_picker_ends_the_change() {
     let mut ed = record_insert_with_unrepeatable_input(
         r#"(picker! pane (list (cons "w" "W"))
-             (lambda (p) (when p (call! "delete-word-backward" pane))))"#,
+             (test-picker-keys (lambda (p) (when p (call! "delete-word-backward" pane)))))"#,
         key_enter(),
     );
     let transcript = &ed.state.last_action().expect("`i` recorded").transcript;
@@ -549,7 +695,7 @@ fn reload_with_a_bindings_picker_open_releases_the_change() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "pick" ""
-             (lambda (pane) (picker! pane (list (cons "a" "A")) (lambda (p) (+ 1 0)))))
+             (lambda (pane) (picker! pane (list (cons "a" "A")) (test-picker-keys (lambda (p) (+ 1 0))))))
            (bind-key! 'insert "ctrl-y" "pick")"#,
     );
     ed.feed_key(key('i'));

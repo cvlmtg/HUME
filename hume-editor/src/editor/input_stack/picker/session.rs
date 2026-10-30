@@ -10,16 +10,15 @@ use std::cmp::Reverse;
 
 use hume_core::{HostToken, TruncateEnd};
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::{LivePickerOpts, PickerOpts};
+use hume_scripting::host::{LivePickerOpts, PickerBinding, PickerOpts};
 use hume_scripting::{Callback, Rooted};
-use termina::event::KeyEvent;
 
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::keymap::CanonicalKey;
 use super::super::super::replay::{Choice, Picked};
 
 /// One row in a picker: a display string shown to the user and an opaque
-/// payload handed back to `on_select` verbatim. Rust never interprets
+/// payload handed to a keymap binding verbatim. Rust never interprets
 /// `payload`, mirroring the drawer's "rows are pre-formatted display
 /// strings" contract.
 pub(in crate::editor) struct PickerItem {
@@ -94,9 +93,9 @@ enum Population {
 }
 
 /// Rust-side store for one open picker: items, query, ranked indices,
-/// selection, scroll, and a stale-push-or-replace guard token. Steel drives
-/// it through `picker!`/`live-picker!`/`picker-push!`/`picker-replace!`/
-/// `picker-close!`;
+/// selection, scroll, keymap, and a stale-push-or-replace guard token. Steel
+/// drives it through `picker!`/`live-picker!`/`picker-push!`/
+/// `picker-replace!`/`picker-move!`/`picker-close!`;
 /// this module has no Steel-facing surface of its own.
 pub(in crate::editor) struct PickerSession {
     /// Append-only via `push`/`new`, the common case, and what lets
@@ -118,7 +117,8 @@ pub(in crate::editor) struct PickerSession {
     selected: usize,
     /// First visible row index into `filtered`.
     scroll: usize,
-    on_select: Callback,
+    /// `#:on-close`, fired once when the picker closes.
+    on_close: Option<Callback>,
     /// Label painted before the query in the input line, e.g. `"files: "`.
     /// Empty by default: an empty prompt renders identically to no prompt
     /// at all.
@@ -154,11 +154,10 @@ pub(in crate::editor) struct PickerSession {
     /// still in flight from the *outgoing* source can also reach (see
     /// `replace`'s doc).
     requery_armed: bool,
-    /// `#:actions`: extra key→proc bindings tried, in order, after every
-    /// built-in picker key. A linear scan, not a map: real sessions carry a
-    /// handful of entries at most, so scanning a `Vec` beats hashing into a
-    /// map.
-    actions: Vec<(CanonicalKey, Callback)>,
+    /// Every key the picker answers besides typing, no key twice. A linear
+    /// scan, not a map: a keymap holds a dozen entries or so, where scanning
+    /// a `Vec` beats hashing into a map.
+    keymap: Vec<(CanonicalKey, Callback)>,
     /// Whether every item came from the list `picker!` opened with: no
     /// `#:pending`, no `live-picker!`, and nothing fed since (`push`,
     /// `replace`, an attached source). Only then does a re-run `picker!`
@@ -172,30 +171,31 @@ impl PickerSession {
     /// is not a batch arrival: nothing has come back yet, so `#:pending`
     /// survives it; a non-empty one goes through `append`, which clears
     /// `pending` because a populated list needs no "still arriving" marker.
-    /// Every later feed clears `items_from_opener`.
+    /// Every later feed clears `items_from_opener`. `Err` when two of
+    /// `keymap`'s specs name the same key.
     pub(in crate::editor) fn new(
-        on_select: Callback,
+        keymap: Vec<PickerBinding>,
         opts: PickerOpts,
         items: Vec<PickerItem>,
-    ) -> Self {
+    ) -> Result<Self, String> {
         let population = if opts.pending {
             Population::Awaiting
         } else {
             Population::Complete
         };
         let mut session = Self::build(
-            on_select,
+            keymap,
+            opts.on_close,
             opts.prompt,
             opts.query,
             opts.truncate,
-            opts.actions,
             population,
             PickerMode::Filter,
-        );
+        )?;
         if !items.is_empty() {
             session.append(items);
         }
-        session
+        Ok(session)
     }
 
     /// `live-picker!`: always live from construction, and always opens
@@ -204,14 +204,17 @@ impl PickerSession {
     /// through its own `on_query_change` (which itself drives
     /// `picker-push!`/`picker-replace!`/`picker-source-spawn!`):
     /// `population` starts `Complete` and only changes once a source
-    /// actually attaches.
-    pub(in crate::editor) fn new_live(on_select: Callback, opts: LivePickerOpts) -> Self {
+    /// actually attaches. `Err` as for [`Self::new`].
+    pub(in crate::editor) fn new_live(
+        keymap: Vec<PickerBinding>,
+        opts: LivePickerOpts,
+    ) -> Result<Self, String> {
         Self::build(
-            on_select,
+            keymap,
+            opts.on_close,
             opts.prompt,
             opts.query,
             opts.truncate,
-            opts.actions,
             Population::Complete,
             PickerMode::Live {
                 on_query_change: opts.on_query_change,
@@ -220,16 +223,33 @@ impl PickerSession {
     }
 
     fn build(
-        on_select: Callback,
+        keymap: Vec<PickerBinding>,
+        on_close: Option<Callback>,
         prompt: String,
         query: String,
         truncate: TruncateEnd,
-        actions: Vec<(KeyEvent, Callback)>,
         population: Population,
         mode: PickerMode,
-    ) -> Self {
+    ) -> Result<Self, String> {
+        let keys: Vec<CanonicalKey> = keymap
+            .iter()
+            .map(|entry| CanonicalKey::from(entry.key))
+            .collect();
+        for (i, key) in keys.iter().enumerate() {
+            if let Some(first) = keys[..i].iter().position(|seen| seen == key) {
+                return Err(format!(
+                    "keymap: \"{}\" and \"{}\" name the same key",
+                    keymap[first].spec, keymap[i].spec
+                ));
+            }
+        }
+        let keymap = keys
+            .into_iter()
+            .zip(keymap)
+            .map(|(key, entry)| (key, entry.binding))
+            .collect();
         let token = HostToken::mint();
-        Self {
+        Ok(Self {
             items: Vec::new(),
             query,
             filtered: Vec::new(),
@@ -237,7 +257,7 @@ impl PickerSession {
             matcher: FuzzyMatcher::new(FuzzyProfile::Picker),
             selected: 0,
             scroll: 0,
-            on_select,
+            on_close,
             prompt,
             truncate,
             token,
@@ -246,11 +266,8 @@ impl PickerSession {
             population,
             mode,
             requery_armed: false,
-            actions: actions
-                .into_iter()
-                .map(|(k, p)| (CanonicalKey::from(k), p))
-                .collect(),
-        }
+            keymap,
+        })
     }
 
     pub(in crate::editor) fn token(&self) -> HostToken {
@@ -627,20 +644,16 @@ impl PickerSession {
             .map(|i| &self.items[i].payload)
     }
 
-    /// Cheap `Rc` clone: the accept/dismiss dispatch fires this via
-    /// `queue_steel_call`; the store itself never invokes it.
-    pub(in crate::editor) fn on_select(&self) -> &Callback {
-        &self.on_select
+    /// `#:on-close`, if the picker has one.
+    pub(in crate::editor) fn on_close(&self) -> Option<&Callback> {
+        self.on_close.as_ref()
     }
 
-    /// The `#:actions` proc bound to `key`, if any, tried only after every
-    /// built-in picker key, so an entry for a key `picker_input`
-    /// (`input_stack/picker/mod.rs`) already matches (movement, `Backspace`,
-    /// `Enter`, `Escape`, query input) can never be reached from here.
-    pub(in crate::editor) fn action_for(&self, key: CanonicalKey) -> Option<&Callback> {
-        self.actions
+    /// The keymap's binding for `key`, if it has one.
+    pub(in crate::editor) fn binding_for(&self, key: CanonicalKey) -> Option<&Callback> {
+        self.keymap
             .iter()
-            .find_map(|(bound, proc)| (*bound == key).then_some(proc))
+            .find_map(|(bound, binding)| (*bound == key).then_some(binding))
     }
 
     /// Rebuilds `filtered` from `items`/`query`: the ranking-only half

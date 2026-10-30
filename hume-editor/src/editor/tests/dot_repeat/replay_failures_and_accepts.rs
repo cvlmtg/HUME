@@ -455,10 +455,10 @@ fn dot_repeat_of_a_binding_that_accepts_then_exits_insert_in_one_body() {
 }
 
 /// A `MAX_EVENT_DRAIN` cascade drop that catches the batch holding a
-/// picker's own `on_select`: the pick the user made is still the binding's
+/// picker's own `#:on-close`: the pick the user made is still the binding's
 /// answer, and the session keeps recording what is typed after it.
 #[test]
-fn dot_repeat_keeps_a_pick_whose_on_select_is_lost_to_the_drain_cap() {
+fn dot_repeat_keeps_a_pick_whose_on_close_is_lost_to_the_drain_cap() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
@@ -467,7 +467,8 @@ fn dot_repeat_keeps_a_pick_whose_on_select_is_lost_to_the_drain_cap() {
         r#"(define-command! "pick-word" ""
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload) (void))))
+                 (test-picker-keys (lambda (payload) (void)))
+                 #:on-close (lambda () (void))))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
@@ -475,14 +476,25 @@ fn dot_repeat_keeps_a_pick_whose_on_select_is_lost_to_the_drain_cap() {
     ed.feed_key(key('i'));
     ed.feed_key(key_ctrl('y'));
     assert!(ed.state.input.picker().is_some(), "sanity: picker open");
-    ed.feed_key(key_enter()); // closes the picker, queues on_select
+    ed.feed_key(key_enter()); // queues the binding that closes the picker
+    let binding = ed
+        .state
+        .config
+        .pending_work
+        .pop_front()
+        .expect("Enter queued its binding");
+    ed.run_pending_batch(std::collections::VecDeque::from([binding]));
+    assert!(
+        ed.state.input.picker().is_none(),
+        "sanity: the binding closed it"
+    );
     assert!(
         !ed.state.config.pending_work.is_empty(),
-        "sanity: on_select is queued, not yet run"
+        "sanity: #:on-close is queued, not yet run"
     );
 
     // Pad the same batch past the drain cap (1000, `event/pump.rs`'s
-    // `MAX_EVENT_DRAIN`), so the whole thing, on_select included, is
+    // `MAX_EVENT_DRAIN`), so the whole thing, `#:on-close` included, is
     // dropped without ever running.
     for _ in 0..1100 {
         ed.state
@@ -531,15 +543,15 @@ fn dot_repeat_keeps_a_pick_whose_on_select_is_lost_to_the_drain_cap() {
 
 /// `PickerLayer::tear_down`'s own hand-off, reached when a picker is
 /// removed by something other than `close_picker`/`close_picker_with`
-/// (every other picker test in this file closes through Enter or Esc,
-/// which route through those). `end_insert_session` (what a reload or a
-/// focus/buffer switch runs) truncates the Insert layer top-first, tearing
-/// down the Picker on top of it via `tear_down` (not `close_picker`) and
-/// then Insert itself. `on_select` must still fire, after the session is
-/// gone, and the binding stays recorded with its picker answered as a
-/// dismissal.
+/// (every other picker test in this file closes through a binding's
+/// `picker-close!`, which routes through those). `end_insert_session` (what
+/// a reload or a focus/buffer switch runs) truncates the Insert layer
+/// top-first, tearing down the Picker on top of it via `tear_down` (not
+/// `close_picker`) and then Insert itself. `#:on-close` must still fire,
+/// after the session is gone, and the binding stays recorded with its
+/// picker answered as a close no binding made.
 #[test]
-fn picker_torn_down_by_a_reload_fires_on_select_and_records_a_dismissal() {
+fn picker_torn_down_by_a_reload_fires_on_close_and_records_a_dismissal() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
     run(
@@ -549,8 +561,9 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_records_a_dismissal() {
              (lambda (pane)
                (insert-key! pane "x")
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane)))))
+                 (test-picker-keys (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))
+                 #:on-close (lambda () (log! 'info "closed"))))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "edit-then-pick")"#,
     );
@@ -575,7 +588,12 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_records_a_dismissal() {
     assert_eq!(
         ed.doc().text().to_string(),
         "abc xdef\nuvw xyz\n",
-        "on_select(#f) must have run and done nothing, not panicked or been skipped"
+        "no binding runs for a torn-down picker"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("closed"),
+        "#:on-close must have run, not been skipped"
     );
 
     let inputs = &ed
@@ -586,7 +604,7 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_records_a_dismissal() {
     assert!(
         matches!(inputs.as_slice(), [Input::Binding { name, answers, .. }]
             if &**name == "edit-then-pick"
-                && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: None, .. })])),
+                && matches!(answers.as_slice(), [Answer::Pick(Pick { action: None, picked: None })])),
         "the binding is recorded, its torn-down picker as a dismissal: {inputs:?}"
     );
 }

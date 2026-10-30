@@ -61,20 +61,19 @@ fn a_callback_of_the_wrong_arity_raises_where_it_is_handed_over() {
             "update-drawer-list!: expected a procedure of 2 parameters",
         ),
         (
-            r#"(picker! pane (list (cons "a" 1)) (lambda () 1))"#,
-            "picker!: expected a procedure of 1 parameter",
+            r#"(picker! pane (list (cons "a" 1)) (hash "enter" (lambda (item) 1)))"#,
+            "picker!: keymap: expected a procedure of 2 parameters",
         ),
         (
-            r#"(picker! pane (list (cons "a" 1)) (lambda (x) 1)
-                 #:actions (list (cons "ctrl-t" (lambda () 1))))"#,
-            "picker!: #:actions: expected a procedure of 1 parameter",
+            r#"(picker! pane (list (cons "a" 1)) (hash) #:on-close (lambda (x) 1))"#,
+            "picker!: #:on-close: expected a procedure of 0 parameters",
         ),
         (
-            "(live-picker! pane (lambda () 1) #:source (lambda (t q) 1))",
-            "live-picker!: expected a procedure of 1 parameter",
+            r#"(live-picker! pane (hash "enter" (lambda (item) 1)) #:source (lambda (t q) 1))"#,
+            "live-picker!: keymap: expected a procedure of 2 parameters",
         ),
         (
-            "(live-picker! pane (lambda (x) 1) #:source (lambda (q) 1))",
+            "(live-picker! pane (hash) #:source (lambda (q) 1))",
             "live-picker!: #:source must be a procedure of two arguments",
         ),
         (

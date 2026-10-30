@@ -108,13 +108,13 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     );
 }
 
-/// End-to-end proof that `#:actions (call! "stdlib/buffer-actions" ...)`
-/// reaches a real picker through the full Steel round-trip (`picker!` →
-/// `%picker!` → `picker_actions` decode → `PickerSession::action_for` →
-/// `close_picker_with`). The Rust-level unit tests in `tests/picker.rs`
-/// cover the dispatch mechanism itself with a synthetic session; this proves
+/// End-to-end proof that `(call! "stdlib/picker-keymap" ...)` reaches a real
+/// picker through the full Steel round-trip (`picker!` → `%picker!` →
+/// `picker_keymap` decode → `PickerSession::binding_for` → the binding's
+/// `picker-close!`). The Rust-level unit tests in `tests/picker.rs` cover
+/// the dispatch mechanism itself with a synthetic session; this proves
 /// `core:pickers`' actual shipped wiring, `stdlib/with-tab`'s `(call!
-/// "tab-new")`, and the action handlers all compose.
+/// "tab-new")`, and the keymap's bindings all compose.
 #[test]
 fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
     let guard = RuntimeDirs::new();
@@ -780,7 +780,7 @@ fn git_modified_picker_not_a_repo_names_git() {
 fn git_modified_picker_git_status_failure_does_not_say_clean() {
     let guard = RuntimeDirs::new();
     // Not a repo, no `git init`. The seam's `root` argument is only used by
-    // `on-select`'s `path-join`, never to select `git status`'s cwd, so a
+    // the accepting handler's `path-join`, never to select `git status`'s cwd, so a
     // truthy-but-bogus root bypasses the not-a-repo check while `git status`
     // itself still runs (and fails) against this non-repo cwd: the failure
     // branch `pickers/open-git-picker!` must not fold into "clean".
@@ -848,7 +848,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
     );
     assert!(
         ed.state.status_msg.is_none(),
-        "cancelling must not raise: a `job-id` still `#f` when `on-select` \
+        "cancelling must not raise: a `job-id` still `#f` when `#:on-close` \
          fires would surface as a status message here"
     );
     assert_eq!(

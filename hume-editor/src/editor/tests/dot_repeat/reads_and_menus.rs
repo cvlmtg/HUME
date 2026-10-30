@@ -220,8 +220,8 @@ fn dot_repeats_a_pick_and_a_character_read_from_one_binding() {
              (lambda (pane)
                (on-next-char! (lambda (c) (when c (call! "replace" pane c))))
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane)))))
+                 (test-picker-keys (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "read-and-pick")"#,
     );
@@ -278,7 +278,7 @@ fn dot_repeats_an_edit_a_binding_makes_after_opening_a_picker() {
         r#"(define-command! "pick-then-type" ""
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload) (when payload (call! "replace" pane #\z))))
+                 (test-picker-keys (lambda (payload) (when payload (call! "replace" pane #\z)))))
                (insert-key! pane "x"))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-then-type")"#,
@@ -479,7 +479,7 @@ fn dot_repeats_the_second_of_two_menu_items_with_the_same_text() {
 fn dot_repeats_the_second_of_two_picker_items_with_the_same_text() {
     let mut ed = record_rd(
         r#"(picker! pane (list (cons "dup" #\a) (cons "dup" #\b))
-             (lambda (c) (when c (call! "replace" pane c))))"#,
+             (test-picker-keys (lambda (c) (when c (call! "replace" pane c)))))"#,
         &[key_down(), key_enter()],
     );
     assert_eq!(ed.doc().text().to_string(), "bello\nworld\n");

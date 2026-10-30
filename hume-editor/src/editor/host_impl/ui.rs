@@ -9,8 +9,8 @@ use crate::editor::input_stack::{menu, picker, prompt};
 use crate::editor::syntax::GrammarLoads;
 use hume_core::{HostToken, NonEmpty, Severity};
 use hume_scripting::host::{
-    DrawerItems, FocusedHandle, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts,
-    PopupKind, UiHost,
+    DrawerItems, FocusedHandle, LivePickerOpts, PickerBinding, PickerFeedMode, PickerOpts,
+    PickerSourceOpts, PickerStep, PopupKind, UiHost,
 };
 
 impl<'a> UiHost for EditorHostImpl<'a> {
@@ -221,22 +221,22 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         &mut self,
         pane: FocusedHandle,
         items: Vec<(String, hume_scripting::Rooted)>,
-        on_select: hume_scripting::Callback,
+        keymap: Vec<PickerBinding>,
         opts: PickerOpts,
     ) -> Result<Option<HostToken>, String> {
         self.focused(pane)?;
-        let session = PickerSession::new(on_select, opts, picker::picker_items(items));
+        let session = PickerSession::new(keymap, opts, picker::picker_items(items))?;
         picker::open_picker(self.state, self.view, session)
     }
 
     fn open_live_picker(
         &mut self,
         pane: FocusedHandle,
-        on_select: hume_scripting::Callback,
+        keymap: Vec<PickerBinding>,
         opts: LivePickerOpts,
     ) -> Result<Option<HostToken>, String> {
         self.focused(pane)?;
-        let session = PickerSession::new_live(on_select, opts);
+        let session = PickerSession::new_live(keymap, opts)?;
         picker::open_picker(self.state, self.view, session)
     }
 
@@ -271,10 +271,21 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         crate::editor::picker_source::stop_source(self.state, token)
     }
 
+    /// A close made by a keymap binding of the picker it closes records
+    /// that binding's pick ([`ScopeSlot::closing_binding`]); any other close
+    /// records none.
+    ///
+    /// [`ScopeSlot::closing_binding`]: crate::editor::replay::ScopeSlot::closing_binding
     fn picker_close(&mut self, token: HostToken) {
-        if picker::session_for_token(self.state, token).is_none() {
+        let Some(session) = picker::session_for_token(self.state, token) else {
             return;
-        }
-        picker::close_picker(self.state, self.view);
+        };
+        let picker = session.token();
+        let closer = self.state.recording_scope.closing_binding(picker);
+        picker::close_picker_with(self.state, self.view, closer);
+    }
+
+    fn picker_move(&mut self, token: HostToken, count: isize, step: PickerStep) {
+        picker::move_picker(self.state, self.view, token, count, step);
     }
 }

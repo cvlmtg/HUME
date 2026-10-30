@@ -18,10 +18,11 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
+        Vec::new(),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
-    );
+    )
+    .expect("an empty keymap repeats no key");
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 
@@ -170,10 +171,11 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
     assert!(ed.state.input.confirm().is_some(), "sanity: confirm open");
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
+        Vec::new(),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
-    );
+    )
+    .expect("an empty keymap repeats no key");
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 
@@ -215,7 +217,7 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
 ///
 /// Truncating at the confirm's ref would also remove the picker, and the
 /// picker's `tear_down` (its "fires exactly once" contract for an incidental
-/// removal) would fire `on_select` with `#f`.
+/// removal) would fire its `#:on-close`.
 #[test]
 fn picker_above_a_retired_confirm_survives_untouched() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -234,10 +236,11 @@ fn picker_above_a_retired_confirm_survives_untouched() {
     );
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Callback::for_test(steel::rvals::SteelVal::StringV("cb".into())),
+        Vec::new(),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
-    );
+    )
+    .expect("an empty keymap repeats no key");
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
     assert!(

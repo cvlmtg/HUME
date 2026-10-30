@@ -57,12 +57,36 @@ hume_core::named_enum! {
     }
 }
 
+/// One `picker!`/`live-picker!` keymap entry: the key spec as the script
+/// wrote it (named in an error when two specs name the same key), the one
+/// key it names, and the binding, called with the picker's token and the
+/// selected item's payload (`#f` when nothing matches) when that key is
+/// pressed.
+pub struct PickerBinding {
+    pub spec: String,
+    pub key: KeyEvent,
+    pub binding: crate::Callback,
+}
+
+hume_core::named_enum! {
+    /// What `picker-move!`'s count counts: `#:by`'s symbol, decoded once at
+    /// the builtin boundary.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PickerStep {
+        Row => "row",
+        /// As many rows as the panel shows.
+        Page => "page",
+        /// Half the rows the panel shows.
+        HalfPage => "half-page",
+    }
+}
+
 /// Grouped `picker!` open-time keyword options. [`UiHost::open_picker`] takes
-/// the Scheme call's positional arguments (`items`, `on_select`) directly;
+/// the Scheme call's positional arguments (`items`, `keymap`) directly;
 /// every `#:`-prefixed one rides here instead, the same split
 /// [`PickerSourceOpts`] uses for `picker_source_spawn`. `Default` is every
-/// keyword's own default (empty prompt, not pending, empty query), the
-/// shape a test that doesn't care about any of them wants.
+/// keyword's own default (empty prompt, not pending, empty query, no
+/// `#:on-close`), the shape a test that doesn't care about any of them wants.
 #[derive(Default)]
 pub struct PickerOpts {
     /// `#:prompt`: label painted before the query in the input line.
@@ -74,12 +98,8 @@ pub struct PickerOpts {
     pub query: String,
     /// `#:truncate`: see [`TruncateEnd`].
     pub truncate: TruncateEnd,
-    /// `#:actions`: extra key→proc bindings tried, in order, after every
-    /// built-in picker key (movement, `Backspace`, `Enter`, `Escape`, query
-    /// input). See [`UiHost::open_picker`]'s doc. Empty by default: a
-    /// picker whose payload isn't a placeable buffer target simply omits
-    /// `#:actions` rather than opting out of a flag.
-    pub actions: Vec<(KeyEvent, crate::Callback)>,
+    /// `#:on-close`: see [`UiHost::open_picker`]'s doc.
+    pub on_close: Option<crate::Callback>,
 }
 
 /// Grouped `live-picker!` open-time keyword options: the live counterpart
@@ -108,8 +128,8 @@ pub struct LivePickerOpts {
     pub on_query_change: crate::Callback,
     /// `#:truncate`: see [`TruncateEnd`].
     pub truncate: TruncateEnd,
-    /// `#:actions`: see [`PickerOpts::actions`].
-    pub actions: Vec<(KeyEvent, crate::Callback)>,
+    /// `#:on-close`: as [`PickerOpts::on_close`].
+    pub on_close: Option<crate::Callback>,
 }
 
 /// Grouped `picker-source-spawn!` keyword options, the same split
@@ -294,41 +314,47 @@ pub trait UiHost {
     /// never interprets a row's payload; only the owner knows what a row *is*).
     fn drawer_selected_index(&self, token: HostToken) -> Option<usize>;
 
-    /// `(picker! items on-select #:prompt "…" #:pending [#f] #:query [""])`
-    /// opens the fuzzy-finder panel, always fuzzy-filtered over `items`
-    /// (query-change never leaves the local filter; for a source whose
-    /// query drives an external command instead, see
-    /// [`open_live_picker`](Self::open_live_picker)). `items` are
-    /// `(display . payload)` pairs; `payload` is handed back to `on-select`
+    /// `(picker! pane items keymap #:prompt "…" #:pending [#f] #:query [""]
+    /// #:truncate ['head] #:on-close [#f])` opens the fuzzy-finder panel,
+    /// always fuzzy-filtered over `items` (query-change never leaves the
+    /// local filter; for a source whose query drives an external command
+    /// instead, see [`open_live_picker`](Self::open_live_picker)). `items`
+    /// are `(display . payload)` pairs; `payload` is handed to a binding
     /// verbatim, never interpreted by Rust. Returns a token that scopes
-    /// later `picker-push!`/`picker-replace!`/`picker-source-spawn!` calls
-    /// to this session, or `None` (`#f`) under `.` replay, which opens no
-    /// picker, as [`Self::show_menu`] does. Unlike the menu/drawer, the picker is allowed from
-    /// any mode but closes any live completion session first, since only
-    /// one modal owner may be active at a time. `on-select` fires exactly
-    /// once, queued (never invoked inline): the selected payload on
-    /// `Enter`, or `#f` on `Esc`, `picker-close!`, or being replaced by a
-    /// second `picker!`/`live-picker!` call. `pending`: set when a caller
-    /// opens empty and expects more results via `spawn-async!` rather than
+    /// later `picker-push!`/`picker-replace!`/`picker-source-spawn!`/
+    /// `picker-move!`/`picker-close!` calls to this session, or `None`
+    /// (`#f`) under `.` replay, which opens no picker, as [`Self::show_menu`]
+    /// does. Unlike the menu/drawer, the picker is allowed from any mode but
+    /// closes any live completion session first, since only one modal owner
+    /// may be active at a time.
+    ///
+    /// `keymap` is every key the picker answers besides typing: a pressed
+    /// key it binds runs its binding, queued (never invoked inline), and
+    /// nothing else; the picker stays open until a binding calls
+    /// `picker-close!`. An unbound key with a plain character (no Ctrl or
+    /// Alt) types into the query and an unbound `Backspace` deletes from it;
+    /// any other unbound key does nothing. `Err` when two of its specs name
+    /// the same key.
+    ///
+    /// `on_close` (`#:on-close`), when given, fires once, queued,
+    /// however the picker closes: `picker-close!`, a second
+    /// `picker!`/`live-picker!` replacing it, or being removed under a
+    /// layer that closes. `pending`: set when a caller opens empty and
+    /// expects more results via `spawn-async!` rather than
     /// `picker-source-spawn!` (which already implies "still populating" on
     /// its own). Surfaced to the UI as a "results still arriving"
     /// indicator, cleared by the first `push!`/`replace!` that actually
-    /// applies. `query`, `actions`: see [`PickerOpts`]. An `actions` entry is
-    /// tried only after every built-in picker key (movement, `Backspace`,
-    /// `Enter`, `Escape`, query input); it can never override one of those,
-    /// so `#:actions` is purely additive. A matching entry fires *instead
-    /// of* `on-select` for that keystroke (not in addition to it), with the
-    /// same selected-payload argument and exactly-once, queued contract.
+    /// applies. `query`: see [`PickerOpts`].
     fn open_picker(
         &mut self,
         pane: FocusedHandle,
         items: Vec<(String, crate::Rooted)>,
-        on_select: crate::Callback,
+        keymap: Vec<PickerBinding>,
         opts: PickerOpts,
     ) -> Result<Option<HostToken>, String>;
 
-    /// `(live-picker! on-select #:source source #:prompt "…" #:query [""]
-    /// #:debounce-ms [150])`
+    /// `(live-picker! pane keymap #:source source #:prompt "…" #:query [""]
+    /// #:debounce-ms [150] #:truncate ['head] #:on-close [#f])`
     /// opens the fuzzy-finder panel with the query driving an external
     /// source instead of the local fuzzy filter: `filtered` is always the
     /// identity permutation over whatever `items` currently holds (see
@@ -336,18 +362,17 @@ pub trait UiHost {
     /// parameter: a live session starts empty and is populated entirely by
     /// its own `on_query_change` callback (via `picker-push!`/
     /// `picker-replace!`/`picker-source-spawn!`, exactly as a `picker!`
-    /// session's async sources are). Same return, exactly-once `on-select`,
-    /// and modal-ownership contract as `open_picker`. `opts`: see
+    /// session's async sources are). Same return, keymap, `#:on-close` and
+    /// modal-ownership contract as `open_picker`. `opts`: see
     /// [`LivePickerOpts`]. This method itself never fires
     /// `on_query_change`; the `live-picker!` Scheme wrapper runs the source for a
     /// non-empty seed `query` itself, undebounced, right after this
     /// returns, so a bad `#:source` raise on that seed leaves the session
-    /// this call already opened in place (Esc still closes it) rather than
-    /// tearing it down.
+    /// this call already opened in place rather than tearing it down.
     fn open_live_picker(
         &mut self,
         pane: FocusedHandle,
-        on_select: crate::Callback,
+        keymap: Vec<PickerBinding>,
         opts: LivePickerOpts,
     ) -> Result<Option<HostToken>, String>;
 
@@ -411,11 +436,15 @@ pub trait UiHost {
     fn picker_source_stop(&mut self, token: HostToken) -> bool;
 
     /// `(picker-close! token)` ends the picker `token` names, firing its
-    /// `on-select` with `#f` (unlike `close-menu!`/`close-drawer!`, which
-    /// drop the callback without invoking it, since the picker's callback
-    /// lifecycle guarantees exactly one fire per session no matter how it
-    /// ends). A no-op if no picker is open or the open one carries a
-    /// different token (someone else's session has since taken over), the
-    /// same guard `picker-push!` applies.
+    /// `#:on-close`, if any (unlike `close-menu!`/`close-drawer!`, which
+    /// drop the callback without invoking it). A no-op if no picker is open
+    /// or the open one carries a different token (someone else's session
+    /// has since taken over), the same guard `picker-push!` applies.
     fn picker_close(&mut self, token: HostToken);
+
+    /// `(picker-move! token count #:by ['row])` moves the selection of the
+    /// picker `token` names by `count` steps of `step` (negative: up),
+    /// stopping at the first and last item. A no-op under the same guard as
+    /// [`Self::picker_close`].
+    fn picker_move(&mut self, token: HostToken, count: isize, step: PickerStep);
 }

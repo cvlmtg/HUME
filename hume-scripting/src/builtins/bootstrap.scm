@@ -204,10 +204,13 @@
 (define (update-drawer-list! token items on-select selected #:render [render #f])
   (%update-drawer-list! token items on-select selected render))
 
-(define (picker! pane items on-select #:prompt [prompt ""] #:pending [pending #f]
-                                       #:query [query ""] #:truncate [truncate 'head]
-                                       #:actions [actions '()])
-  (%picker! pane items on-select prompt pending query truncate actions))
+(define (picker! pane items keymap #:prompt [prompt ""] #:pending [pending #f]
+                                    #:query [query ""] #:truncate [truncate 'head]
+                                    #:on-close [on-close #f])
+  (%picker! pane items keymap prompt pending query truncate on-close))
+
+(define (picker-move! token count #:by [by 'row])
+  (%picker-move! token count by))
 
 (define %picker-source-default-ok-exit-codes '(0))
 
@@ -229,11 +232,11 @@
                                   #:cwd cwd #:nul nul #:ok-exit-codes ok-exit-codes))
           (picker-replace! token '())))))
 
-(define (live-picker! pane on-select #:source source
+(define (live-picker! pane keymap #:source source
                        #:prompt [prompt ""] #:query [query ""]
                        #:debounce-ms [debounce-ms 150]
                        #:truncate [truncate 'head]
-                       #:actions [actions '()])
+                       #:on-close [on-close #f])
   (unless (%callable? source 2)
     (error "live-picker!: #:source must be a procedure of two arguments (the picker token and the query)"))
   (unless (and (integer? debounce-ms) (>= debounce-ms 0))
@@ -243,11 +246,11 @@
                       (with-handler
                         (lambda (e) (picker-replace! token '()) (raise-error e))
                         (source token q))))]
-         [token (%live-picker! pane on-select prompt query
+         [token (%live-picker! pane keymap prompt query
                   (lambda (token q)
                     (picker-source-stop! token)
                     (requery token q))
-                  truncate actions)])
+                  truncate on-close)])
     (unless (equal? query "")
       (source token query))
     token))

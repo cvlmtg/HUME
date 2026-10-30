@@ -8,19 +8,18 @@
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
-use termina::event::KeyEvent;
 
 use hume_core::{NonEmpty, PopupLayout, TruncateEnd};
 
 use crate::host::{
-    DrawerItems, FocusedHandle, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts,
-    PopupKind,
+    DrawerItems, FocusedHandle, LivePickerOpts, PickerBinding, PickerFeedMode, PickerOpts,
+    PickerSourceOpts, PickerStep, PopupKind,
 };
 use crate::{Callback, Rooted, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callback_arg, cwd_arg, list_items, list_to_i32s, list_to_strings,
+    bool_arg, callback_arg, cwd_arg, int_arg, list_items, list_to_i32s, list_to_strings,
     optional_callback_arg, optional_string_arg, pair_fields, single_key_arg, string_arg,
     symbol_enum_arg, token_arg, token_or_false, usize_arg,
 };
@@ -222,10 +221,9 @@ pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: Callback) -> SteelResul
 /// Decodes a picker, menu or drawer `items` list: each entry must be a `(display . payload)`
 /// dotted pair; a proper list entry is rejected by `pair_fields`.
 /// `payload` stays an opaque `SteelVal`; Rust
-/// never interprets it, except to reject `#f`: that value is reserved for
-/// the dismiss signal (`on-select` receives it on Esc / `picker-close!` /
-/// replace), so a `#f` payload would make an accepted row indistinguishable
-/// from a dismissal.
+/// never interprets it, except to reject `#f`: that value means no row (a
+/// dismissed menu or drawer, a picker binding run with nothing matching),
+/// so a `#f` payload would make a chosen row indistinguishable from none.
 fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, Rooted)>, SteelErr> {
     list_items(items, ctx_name)?
         .into_iter()
@@ -239,34 +237,39 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, Rooted)>
         .collect()
 }
 
-/// What a picker, menu or drawer row hands `on-select`: anything but `#f`,
-/// which the callback gets on a dismissal.
+/// What a picker, menu or drawer row hands its callback: anything but `#f`,
+/// which the callback gets for no row (a dismissed menu, a picker with
+/// nothing matching).
 fn row_payload(payload: SteelVal, ctx_name: &str) -> Result<Rooted, SteelErr> {
-    // absent-decode-safe: #f here is the reserved dismiss sentinel being rejected, not an absent optional
+    // absent-decode-safe: #f here is the reserved no-row sentinel being rejected, not an absent optional
     if matches!(payload, SteelVal::BoolV(false)) {
         steel::stop!(Generic => "{}: item payload must not be #f (#f is reserved for the dismiss signal)", ctx_name);
     }
     Ok(Rooted::new(payload))
 }
 
-/// Decodes `picker!`'s/`live-picker!`'s `#:actions` alist: each entry is a
-/// `(key-spec . proc)` dotted pair; a proper list entry is rejected by
-/// `pair_fields`, same as `picker_items`. `key-spec` must parse (via
-/// [`single_key_arg`]) to exactly one `KeyEvent`. The picker dispatches
-/// one chord at a time, so a multi-key spec like `"z f"` silently binding
-/// only its first key would be a trap rather than a useful feature.
-fn picker_actions(
+/// Decodes `picker!`'s/`live-picker!`'s `keymap`: a hashmap from key spec
+/// to a procedure of two arguments (the picker's token and the selected
+/// item). Each spec must parse (via [`single_key_arg`]) to exactly one
+/// `KeyEvent`: the picker dispatches one chord at a time, so a multi-key
+/// spec like `"z f"` binding only its first key would be a trap. Two specs
+/// naming the same key are caught by the editor, which owns key identity.
+fn picker_keymap(
     ctx: &SteelCtx,
-    actions: SteelVal,
+    keymap: SteelVal,
     ctx_name: &str,
-) -> Result<Vec<(KeyEvent, Callback)>, SteelErr> {
-    list_items(actions, ctx_name)?
-        .into_iter()
-        .map(|entry| {
-            let (spec, proc) = pair_fields(entry, ctx_name, "(key-spec . proc)")?;
-            let key = single_key_arg(spec, ctx_name)?;
-            let proc = callback_arg(ctx, proc, 1, ctx_name)?;
-            Ok((key, proc))
+) -> Result<Vec<PickerBinding>, SteelErr> {
+    let SteelVal::HashMapV(map) = keymap else {
+        steel::stop!(TypeMismatch => "{}: expected a hashmap from key spec to procedure", ctx_name);
+    };
+    map.iter()
+        .map(|(spec, binding)| {
+            let key = single_key_arg(spec.clone(), ctx_name)?;
+            Ok(PickerBinding {
+                spec: string_arg(spec.clone(), ctx_name)?,
+                key,
+                binding: callback_arg(ctx, binding.clone(), 2, ctx_name)?,
+            })
         })
         .collect()
 }
@@ -282,7 +285,7 @@ fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelE
     )
 }
 
-/// `(%picker! items on-select prompt pending query truncate actions)`: the
+/// `(%picker! items keymap prompt pending query truncate on-close)`: the
 /// `picker!` Scheme wrapper supplies the keyword defaults. Returns the new
 /// session's token.
 // Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
@@ -294,35 +297,36 @@ pub(crate) fn picker(
     ctx: &mut SteelCtx,
     pane: FocusedHandle,
     items: SteelVal,
-    on_select: Callback,
+    keymap: SteelVal,
     prompt: SteelVal,
     pending: SteelVal,
     query: SteelVal,
     truncate: SteelVal,
-    actions: SteelVal,
+    on_close: SteelVal,
 ) -> SteelResult {
     let items = picker_items(items, "items")?;
+    let keymap = picker_keymap(ctx, keymap, "keymap")?;
     let prompt = string_arg(prompt, "#:prompt")?;
     let pending = bool_arg(pending, "#:pending")?;
     let query = string_arg(query, "#:query")?;
     let truncate = truncate_end_arg(truncate, "#:truncate")?;
-    let actions = picker_actions(ctx, actions, "#:actions")?;
+    let on_close = optional_callback_arg(ctx, on_close, 0, "#:on-close")?;
     let opts = PickerOpts {
         prompt,
         pending,
         query,
         truncate,
-        actions,
+        on_close,
     };
     let token = require_cap(ctx.host.ui())?
-        .open_picker(pane, items, on_select, opts)
+        .open_picker(pane, items, keymap, opts)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }
 
-/// `(%live-picker! on-select prompt query on-query-change truncate actions)`: the
-/// `live-picker!` Scheme wrapper supplies the keyword defaults and composes
-/// `on-query-change` itself (stop-then-debounce around the
+/// `(%live-picker! keymap prompt query on-query-change truncate on-close)`:
+/// the `live-picker!` Scheme wrapper supplies the keyword defaults and
+/// composes `on-query-change` itself (stop-then-debounce around the
 /// caller's `#:source`); this layer only decodes it as a required
 /// callable.
 // Same shape as `picker`'s own allow, just above: each param is a
@@ -334,27 +338,28 @@ pub(crate) fn picker(
 pub(crate) fn live_picker(
     ctx: &mut SteelCtx,
     pane: FocusedHandle,
-    on_select: Callback,
+    keymap: SteelVal,
     prompt: SteelVal,
     query: SteelVal,
     on_query_change: SteelVal,
     truncate: SteelVal,
-    actions: SteelVal,
+    on_close: SteelVal,
 ) -> SteelResult {
+    let keymap = picker_keymap(ctx, keymap, "keymap")?;
     let prompt = string_arg(prompt, "#:prompt")?;
     let query = string_arg(query, "#:query")?;
     let on_query_change = callback_arg(ctx, on_query_change, 2, "on-query-change")?;
     let truncate = truncate_end_arg(truncate, "#:truncate")?;
-    let actions = picker_actions(ctx, actions, "#:actions")?;
+    let on_close = optional_callback_arg(ctx, on_close, 0, "#:on-close")?;
     let opts = LivePickerOpts {
         prompt,
         query,
         on_query_change,
         truncate,
-        actions,
+        on_close,
     };
     let token = require_cap(ctx.host.ui())?
-        .open_live_picker(pane, on_select, opts)
+        .open_live_picker(pane, keymap, opts)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }
@@ -441,5 +446,21 @@ pub(crate) fn picker_source_stop(ctx: &mut SteelCtx, token: SteelVal) -> SteelRe
 pub(crate) fn picker_close(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
     require_cap(ctx.host.ui())?.picker_close(token);
+    Ok(SteelVal::Void)
+}
+
+/// `(%picker-move! token count by)`: the `picker-move!` Scheme wrapper
+/// supplies `#:by`'s default. A `#f` token is a no-op, as for
+/// `picker-close!`.
+pub(crate) fn picker_move(
+    ctx: &mut SteelCtx,
+    token: SteelVal,
+    count: SteelVal,
+    by: SteelVal,
+) -> SteelResult {
+    let token = token_arg(token, "token")?;
+    let count = int_arg(count, "count")? as isize;
+    let step = symbol_enum_arg(string_arg(by, "#:by")?.as_str(), "#:by", &PickerStep::NAMED)?;
+    require_cap(ctx.host.ui())?.picker_move(token, count, step);
     Ok(SteelVal::Void)
 }

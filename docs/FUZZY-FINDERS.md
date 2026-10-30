@@ -10,10 +10,11 @@ remaining work below ships.
 | Topic | Where |
 |---|---|
 | User-facing behavior, keys, file-source chain | `user-manual/docs/pickers.md`, `core-plugins.md` |
-| Steel API (`picker!`, `live-picker!`, `picker-push!`, `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`) | `user-manual/docs/writing-plugins.md` "Custom pickers" / "Live requery" |
+| Steel API (`picker!`, `live-picker!`, `picker-push!`, `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`, `picker-move!`, `picker-close!`) | `user-manual/docs/writing-plugins.md` "Custom pickers" / "Live requery" |
 | Plugin internals (git/fd probing, config, path resolution) | `runtime/plugins/core/pickers/plugin.scm`, `README.md` |
+| Default keymap | `runtime/plugins/core/stdlib/plugin.scm`'s `stdlib/picker-keymap`, its `README.md` "Picker keymap" |
 | Store, ranking | `hume-editor/src/editor/input_stack/picker/session.rs` |
-| Layer, chokepoints (open/close) | `hume-editor/src/editor/input_stack/picker/mod.rs` |
+| Layer, keymap dispatch, chokepoints (open/close/move) | `hume-editor/src/editor/input_stack/picker/mod.rs` |
 | Fuzzy matcher + budget | `hume-editor/src/editor/fuzzy.rs` |
 | Panel widget, theme scopes, geometry | `hume-ui/src/picker_panel.rs` |
 | Streaming external-command source | `hume-platform/src/process/line_source.rs`, `hume-editor/src/editor/picker_source.rs` |
@@ -47,4 +48,4 @@ remaining work below ships.
   formatter is up to 27 Steel dispatches per frame — wants a generation/dirty
   gate keyed on the row set and budget. Also tracked in `docs/ROADMAP.md`.
 
-Not planned: multi-select, picker-specific keybinding customization.
+Not planned: multi-select.

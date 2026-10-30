@@ -19,7 +19,7 @@ fn stale_token_returns_false_without_spawning() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (log! 'info (to-string x)))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (log! 'info (to-string x))))))))
         (define-command! "spawn-stale" "" (lambda ()
           (log! 'info (to-string
             (picker-source-spawn! (+ tok 1) "definitely-not-a-real-binary-xyz" '())))))
@@ -58,7 +58,7 @@ fn spawn_failure_raises_and_leaves_the_picker_open() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-bad" "" (lambda ()
           (picker-source-spawn! tok "definitely-not-a-real-binary-xyz" '())))
         "#,
@@ -83,7 +83,7 @@ fn empty_cmd_raises_naming_the_arg() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-empty" "" (lambda ()
           (picker-source-spawn! tok "" '())))
         "#,
@@ -110,7 +110,7 @@ fn ok_exit_codes_rejects_a_value_outside_i32_range() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "definitely-not-a-real-binary-xyz" '()
             #:ok-exit-codes (list 4294967297))))

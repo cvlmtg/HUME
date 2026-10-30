@@ -7,7 +7,7 @@ use pretty_assertions::assert_eq;
 
 /// End to end: a picker accept switching onto a buffer
 /// whose backing file changed externally must open the reload confirm. Built
-/// on `tests/picker_steel.rs`'s harness: a picker's `on_select` callback
+/// on `tests/picker_steel.rs`'s harness: a picker's keymap binding
 /// queues as a `PendingWork::Call`, drained by the next `render_to_buf`
 /// (`settle()` internally), same as `on-buffer-enter`.
 ///
@@ -42,7 +42,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
                  (picker! pane (list (cons "target" {steel_target}))
-                   (lambda (p) (when p (switch-to-buffer! pane (open-buffer! p)))))))"#
+                   (test-picker-keys (lambda (p) (when p (switch-to-buffer! pane (open-buffer! p))))))))"#
         ),
         tmp.path(),
     );
@@ -54,7 +54,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
     let rect = Rect::new(0, 0, 40, 12);
     let _ = ed.render_to_buf(rect);
 
-    // Accept: close_picker queues on_select as a PendingWork::Call.
+    // Accept: Enter queues its binding as a PendingWork::Call.
     ed.feed_key(key_enter());
 
     // The next render_to_buf drains the callback (switching to the stale

@@ -236,7 +236,7 @@ fn a_refused_picker_in_an_insert_binding_leaves_the_next_change_recordable() {
              (lambda (pane)
                (define other
                  (car (filter (lambda (p) (not (equal? p (focused-pane)))) (panes))))
-               (picker! other (list (cons "alpha" "ALPHA")) (lambda (payload) (+ 1 0)))))
+               (picker! other (list (cons "alpha" "ALPHA")) (test-picker-keys (lambda (payload) (+ 1 0))))))
            (bind-key! 'insert "ctrl-y" "pick-other")"#,
     );
 

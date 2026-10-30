@@ -20,7 +20,7 @@
 //! transcript at the seam the input arrives, never by inferring afterward
 //! what a dispatch did.
 
-use hume_core::Count;
+use hume_core::{Count, HostToken};
 use hume_engine::pipeline::EngineView;
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
@@ -28,6 +28,7 @@ use std::rc::{Rc, Weak};
 use super::dispatch::CmdCtx;
 use super::edit_session::{self, EditSessionKind, InsertSession};
 use super::input_stack::char::{AfterRead, CharRead};
+use super::keymap::CanonicalKey;
 use super::pipe_run::RunId;
 use super::registry::{Dispatchable, MappableCommand};
 use super::{Editor, EditorState, Mode, commands};
@@ -102,12 +103,50 @@ enum Running {
     /// dispatches starts no change: the prompt is not part of what `.`
     /// repeats.
     CommandLineKey,
+    /// A picker keymap binding's call while its picker is open. Like
+    /// [`Running::CommandLineKey`], it runs no recorded change's code: `.`
+    /// repeats only the binding that closes the picker, which from that
+    /// point runs as the picker's answer ([`ScopeSlot::picker_key_closed`]).
+    PickerKey(PickerKeyRun),
+}
+
+/// A picker keymap binding's queued call: the picker whose key was pressed,
+/// and the pick that picker's answer records if the binding closes it.
+#[derive(Debug)]
+pub(in crate::editor) struct PickerKeyRun {
+    picker: HostToken,
+    pick: Pick,
+}
+
+impl PickerKeyRun {
+    /// The binding for `key` pressed in the picker `picker` names, with
+    /// `picked` the item it was handed, `None` when nothing matched.
+    pub(in crate::editor) fn new(
+        picker: HostToken,
+        key: CanonicalKey,
+        picked: Option<Picked>,
+    ) -> Self {
+        Self {
+            picker,
+            pick: Pick {
+                action: Some(key),
+                picked,
+            },
+        }
+    }
+
+    pub(in crate::editor) fn picker(&self) -> HostToken {
+        self.picker
+    }
 }
 
 /// The code running now, if any: a [`RecordingScope`], an Insert key's
-/// binding, or a command-line key's binding. Only [`with_recording_scope`],
-/// [`dispatch_insert_key`] and [`dispatch_command_line_key`] set it, for the
-/// extent of one call, so nothing outlives the code it names.
+/// binding, a command-line key's binding, or a picker keymap binding. Only
+/// [`with_recording_scope`], [`dispatch_insert_key`],
+/// [`dispatch_command_line_key`] and [`run_picker_key`] set it, for the
+/// extent of one call, so nothing outlives the code it names. A picker
+/// binding's entry turns into its picker's answer scope when the binding
+/// closes the picker, for the rest of the same call.
 #[derive(Debug, Default)]
 pub(in crate::editor) struct ScopeSlot(Option<Running>);
 
@@ -116,8 +155,30 @@ impl ScopeSlot {
     pub(in crate::editor) fn running(&self) -> Option<&RecordingScope> {
         match &self.0 {
             Some(Running::Scope(scope) | Running::InsertKey(Some(scope))) => Some(scope),
-            Some(Running::InsertKey(None) | Running::CommandLineKey) | None => None,
+            Some(Running::InsertKey(None) | Running::CommandLineKey | Running::PickerKey(_))
+            | None => None,
         }
+    }
+
+    /// The pick the picker `picker` names records when the running code
+    /// closes it: `Some` only inside a keymap binding of that picker that
+    /// has not closed it yet.
+    pub(in crate::editor) fn closing_binding(&self, picker: HostToken) -> Option<Pick> {
+        match &self.0 {
+            Some(Running::PickerKey(run)) if run.picker == picker => Some(run.pick.clone()),
+            _ => None,
+        }
+    }
+
+    /// The running picker binding closed its picker: the rest of the call
+    /// runs as that picker's answer, in `scope` when the picker belongs to a
+    /// recorded change and outside every scope otherwise.
+    pub(in crate::editor) fn picker_key_closed(&mut self, scope: Option<RecordingScope>) {
+        debug_assert!(
+            matches!(self.0, Some(Running::PickerKey(_))),
+            "only a running picker binding closes its picker as its answer"
+        );
+        self.0 = scope.map(Running::Scope);
     }
 
     /// Whether an Insert key's binding is dispatching. Dispatch never yields
@@ -129,7 +190,8 @@ impl ScopeSlot {
     }
 
     /// Whether anything runs: a recorded change's code, an Insert key's
-    /// binding, or a command-line key's binding.
+    /// binding, a command-line key's binding, or a picker binding that has
+    /// not closed its picker.
     pub(in crate::editor) fn is_set(&self) -> bool {
         self.0.is_some()
     }
@@ -201,6 +263,18 @@ pub(in crate::editor) fn dispatch_insert_key(
 /// explicit count of 1, never extending.
 pub(in crate::editor) fn dispatch_command_line_key(ed: &mut Editor, cmd: Dispatchable) {
     dispatch_key_binding(ed, Running::CommandLineKey, cmd);
+}
+
+/// Runs `f`, a picker keymap binding's queued call, with `run` set for the
+/// whole call: a repeatable command it dispatches starts no change, and a
+/// `picker-close!` it makes on `run`'s picker records `run`'s pick
+/// ([`ScopeSlot::closing_binding`]).
+pub(in crate::editor) fn run_picker_key<R>(
+    ed: &mut Editor,
+    run: PickerKeyRun,
+    f: impl FnOnce(&mut Editor) -> R,
+) -> R {
+    with_running(ed, Some(Running::PickerKey(run)), f)
 }
 
 /// Dispatches `cmd` at an explicit count of 1, never extending, with
@@ -290,6 +364,19 @@ fn repeat_slot_owned(state: &mut EditorState) -> bool {
 pub(in crate::editor) struct AnswerTicket {
     scope: RecordingScope,
     index: usize,
+}
+
+impl AnswerTicket {
+    /// A second hold on the scope the input opened in, for code that runs
+    /// as the input's answer beside the call the ticket goes to.
+    pub(in crate::editor) fn reopen_scope(&self) -> RecordingScope {
+        RecordingScope {
+            source: SourceTicket {
+                sources: Rc::clone(&self.scope.source.sources),
+            },
+            slot: self.scope.slot,
+        }
+    }
 }
 
 /// The change currently being recorded, and the last one settled.
@@ -525,11 +612,10 @@ pub(in crate::editor) enum PendingAnswer {
     /// A command's text prompt: the command and the text it was confirmed
     /// with, `None` when it was cancelled.
     Text(commands::PendingDispatch, Option<String>),
-    /// A picker, prompt or menu callback and the argument its answer gives.
-    Call {
-        proc: hume_scripting::Callback,
-        arg: hume_scripting::Rooted,
-    },
+    /// What a picker, prompt or menu answer runs, in order: its callback
+    /// called with what the answer gives; for a picker, the binding that
+    /// closed it and then its `#:on-close`.
+    Calls(Vec<hume_scripting::SteelCall>),
 }
 
 impl DotReplay {
@@ -822,13 +908,12 @@ impl EditorState {
         &mut self,
         ticket: Option<AnswerTicket>,
         answer: Answer,
-        proc: hume_scripting::Callback,
-        arg: hume_scripting::Rooted,
+        call: hume_scripting::SteelCall,
     ) -> super::event::PendingWork {
         if let Some(ticket) = &ticket {
             self.record_answer(ticket, answer);
         }
-        super::event::PendingWork::answer(proc, arg, ticket)
+        super::event::PendingWork::answer(call, ticket)
     }
 
     /// [`Self::answered_call`], queued: how a picker, prompt or menu fires
@@ -837,11 +922,10 @@ impl EditorState {
         &mut self,
         ticket: Option<AnswerTicket>,
         answer: Answer,
-        proc: hume_scripting::Callback,
-        arg: hume_scripting::Rooted,
+        call: hume_scripting::SteelCall,
     ) {
-        let call = self.answered_call(ticket, answer, proc, arg);
-        self.push_work(call);
+        let work = self.answered_call(ticket, answer, call);
+        self.push_work(work);
     }
 
     /// The check a completion trigger or accept passes before it opens.
@@ -1247,26 +1331,29 @@ impl Editor {
                 .as_mut()
                 .and_then(|replay| replay.pending.pop_front())
         {
-            let call = match answer {
+            let calls = match answer {
                 PendingAnswer::Read(read, answer) => {
                     let resolved = super::input_stack::char::resolve(&mut self.state, read, answer);
                     match super::input_stack::char::run_resolved(self, resolved) {
                         AfterRead::Done(done) => {
                             ran = done;
-                            None
+                            Vec::new()
                         }
-                        AfterRead::Call(call) => Some(call),
+                        AfterRead::Call(call) => vec![call],
                     }
                 }
                 PendingAnswer::Text(then, text) => {
                     ran = commands::finish_text_operand(self, then, None, text);
-                    None
+                    Vec::new()
                 }
-                PendingAnswer::Call { proc, arg } => {
-                    Some(super::event::PendingWork::answer(proc, arg, None))
-                }
+                PendingAnswer::Calls(calls) => calls
+                    .into_iter()
+                    .map(|call| super::event::PendingWork::answer(call, None))
+                    .collect(),
             };
-            if let Some(call) = call {
+            // One batch each, as live: a raise in a picker's binding still
+            // runs its `#:on-close`.
+            for call in calls {
                 self.run_pending_batch(VecDeque::from([call]));
             }
         }
@@ -1301,8 +1388,8 @@ pub(in crate::editor) enum ReplayRefusal {
     Diverged,
     /// The re-run list has no item the recorded choice names.
     MissingItem(Choice),
-    /// The recorded pick's key is not one of the re-run picker's actions.
-    UnboundAction,
+    /// The recorded pick's key is not bound in the re-run picker's keymap.
+    UnboundKey,
     /// A config reload forgot the value the recorded pick carried.
     ForgottenPayload,
 }
@@ -1321,8 +1408,8 @@ impl std::fmt::Display for ReplayRefusal {
                 "`.` found no item \"{label}\" number {} among those with that text",
                 nth + 1
             ),
-            Self::UnboundAction => f.write_str(
-                "`.` can't repeat this pick: its key is not one of this picker's actions",
+            Self::UnboundKey => f.write_str(
+                "`.` can't repeat this pick: its key is not bound in this picker's keymap",
             ),
             Self::ForgottenPayload => {
                 f.write_str("`.` can't repeat this pick: a config reload forgot the picked value")

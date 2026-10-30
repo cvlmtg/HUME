@@ -47,7 +47,7 @@ a contributor needs beyond that.
 | [Git](#git) | `plugin.scm` | `stdlib/git-repo?`, `stdlib/git-toplevel` |
 | [Command arguments](#command-arguments) | `plugin.scm` | `stdlib/resolve-lang-arg` |
 | [Reports](#reports) | `plugin.scm` | `stdlib/report-section`, `stdlib/show-report!` |
-| [Picker buffer-placement](#picker-buffer-placement) | `plugin.scm` | `stdlib/with-tab`, `stdlib/with-vsplit`, `stdlib/with-split`, `stdlib/buffer-actions` |
+| [Picker keymap](#picker-keymap) | `plugin.scm` | `stdlib/picker-keymap`, `stdlib/with-tab`, `stdlib/with-vsplit`, `stdlib/with-split` |
 | [Word tokenization](#word-tokenization) | `plugin.scm` | `stdlib/split-words` |
 | [Plugin config](#plugin-config) | `plugin.scm` | `stdlib/config-boolean`, `-string`, `-enum`, `-integer`, `-list` |
 
@@ -135,10 +135,21 @@ status-line slot `log!` writes to. `stdlib/report-section` renders one section: 
 with a blank line and shows them with `show-read-only-buffer!`, in the buffer `[name]`.
 `core:plum`'s list commands and `:lsp-catalog` build their output this way.
 
-### Picker buffer-placement
+### Picker keymap
 
-`stdlib/with-tab`, `stdlib/with-vsplit` and `stdlib/with-split` each wrap a handler (the
-one a picker already passes as `on-select`). Accepting an item then does two things:
+`stdlib/picker-keymap` is the one default keymap a picker takes: `picker!` and
+`live-picker!` answer no key besides typing and `Backspace` unless their keymap binds it.
+It is a plain hashmap built per call around the plugin's own handler, so a plugin reuses it
+whole or `hash-insert`s the keys it wants different. The three `core:pickers` pickers and
+`core:lsp`'s symbol pickers use it as is.
+
+Movement keys call `picker-move!` and leave the picker open. `Esc` only closes it.
+`Enter`, `Ctrl-o`, `Ctrl-t`, `Ctrl-v` and `Ctrl-s` go through `stdlib/picker-accept`, which
+calls `picker-close!` before the handler: only what a binding does after its close is part
+of a `.`-repeatable change, and the handler is what `.` should repeat.
+
+`stdlib/with-tab`, `stdlib/with-vsplit` and `stdlib/with-split` each wrap a handler. Accepting
+an item then does two things:
 
 1. Place a pane: a new tab, a side-by-side split or a stacked split. The placement command
    leaves the new pane focused.
@@ -154,18 +165,10 @@ Two guards sit in front of placement. `with-vsplit` and `with-split` share them 
 minimum-size failure:
 
 - **A false payload** (an empty or not-yet-matching picker) skips placement but still
-  calls the handler. The git-modified picker's handler cancels its in-flight async job on
-  `#f`, so skipping the call would leave the job running.
+  calls the handler, which decides what "nothing matched" means, the same as `Enter`.
 - **A split refused for being too small** skips the handler, so the payload does not open
   in the pane that stayed put. This matches the typed `:split` and `:vsplit [path]`
   commands, which abort before the side effect.
-
-`stdlib/buffer-actions` combines all three, plus a bare `ctrl-o` that runs the handler
-as-is (an `Enter` synonym), into one `#:actions` alist for `picker!` and `live-picker!`.
-The three `core:pickers` pickers use it. `picker!` and `live-picker!` try `#:actions` only
-after every built-in picker key, so `ctrl-o`, `ctrl-t`, `ctrl-v` and `ctrl-s` never collide with a built-in; a plugin adding
-its own entries picks keys the same way. A picker whose payload is not a placeable buffer
-target (a theme picker, a command palette) omits `#:actions`.
 
 ### Word tokenization
 

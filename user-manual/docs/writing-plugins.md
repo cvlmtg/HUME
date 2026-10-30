@@ -76,9 +76,9 @@ An editor command that `.` should repeat takes `#:repeatable #t`. `define-typed-
 
 - Anything else that asks the user while a change is recorded (a non-repeatable command bound in Insert mode, a hook, a timer) ends the change there: `.` repeats only what came before.
 - A `picker!` pick or `show-menu!` choice is matched by its text in the list the command builds this time, so the second of two "foo" items stays the second. A `live-picker!` pick, or one from a `picker!` that got items after it opened (`#:pending`, `picker-push!`, `picker-source-spawn!`), reuses its original payload, which a configuration reload forgets.
-- A dismissal is repeated as a dismissal: the callback gets `#f`.
+- A picker is repeated through the binding of the key that closed it, called with the item it got the first time. Bindings that left the picker open (moving the selection, say) are not repeated, and only what the closing binding does after its `picker-close!` is part of the change. A picker closed by anything but one of its bindings repeats only its `#:on-close`.
 - A `show-drawer-list!` pick is never recorded, and its `on-select` is not part of the change.
-- `.` raises an error when the re-run asks for something different or more than the first run did, can't find the picked item or a forgotten payload, or doesn't bind the `#:actions` key the first run used.
+- `.` raises an error when the re-run asks for something different or more than the first run did, can't find the picked item or a forgotten payload, or opens a picker whose keymap doesn't bind the key that closed it the first time.
 
 ## Calling other commands
 
@@ -681,23 +681,47 @@ The shipped procedures are `shell/posix-parse` and `shell/posix-write`, and the 
 The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widget any plugin can drive: `core:pickers` builds its own file and buffer finders from this API alone.
 
 ```scheme
-(picker! pane items on-select #:prompt "buffers: ")
+(picker! pane items keymap #:prompt "buffers: ")
 ```
 
 `pane` must still be the focused pane when the picker opens. Pass the pane the enclosing command or hook was given, or `(focused-pane)` if none is in scope.
 
-`items` is a list of `(display . payload)` pairs. `display` is the string shown and matched against. `payload` is anything you like (a path, a number, a hashmap) except `#f`, which is reserved for the dismiss signal; HUME never looks inside it. `on-select` fires once: with the chosen item's `payload` if the user presses `Enter`, or with `#f` on `Esc`, on `picker-close!`, or when a second picker opens and replaces this one.
+`items` is a list of `(display . payload)` pairs. `display` is the string shown and matched against. `payload` is anything you like (a path, a number, a hashmap) except `#f`, which means "nothing matches"; HUME never looks inside it.
+
+`keymap` is every key the picker answers besides typing. It's a hashmap from a key, written as `bind-key!` writes one (`"ctrl-v"`, `"alt-o"`, `"f5"`, never a sequence like `"z f"`), to a procedure of two arguments: the picker's token and the selected item's payload, or `#f` when nothing matches. A key the keymap doesn't bind does nothing, except a plain character, which types into the query, and `Backspace`, which deletes from it; bind either one to change that. `picker!` raises when two keys in the keymap are the same key, such as `"ctrl-n"` and `"c-n"`.
+
+A binding never closes the picker by itself: it calls `(picker-close! token)`. To move the selection it calls `(picker-move! token count #:by 'row)`. `#:by` is `'row` (the default), `'page` or `'half-page`, and a negative `count` moves up.
+
+`core:stdlib`'s `stdlib/picker-keymap` is the keymap `core:pickers` uses. Give it the procedure that handles a chosen item, and it binds `Down`/`Ctrl-n` and `Up`/`Ctrl-p` to move the selection, `PageDown`/`PageUp` and `Ctrl-d`/`Ctrl-u` to move it by a page and half a page, `Esc` to close the picker, `Enter`/`Ctrl-o` to close it and call the procedure with the selected item (`#f` when nothing matches), and `Ctrl-t`/`Ctrl-v`/`Ctrl-s` to do the same in a new tab, a side-by-side split or a stacked split:
+
+```scheme
+(picker! pane items (call! "stdlib/picker-keymap" open-item!) #:prompt "files: ")
+```
+
+To change or add a key, set it in that map:
+
+```scheme
+(picker! pane items
+  (hash-insert (call! "stdlib/picker-keymap" open-item!)
+               "ctrl-y" (lambda (token item) (picker-close! token) (copy-path! item)))
+  #:prompt "files: ")
+```
+
+`#:on-close` takes a procedure of no arguments, called once when the picker closes, however it closes: a binding's `picker-close!`, a `picker-close!` from anywhere else, or a second picker opening and replacing this one. Use it to clean up after the picker, such as cancelling a `spawn-async!` job still filling it.
 
 `picker!` returns a token naming this picker, which `picker-close!` takes. The close does nothing if the picker has since been closed or replaced, so a late callback (a `spawn-async!` result, say) never tears down a different picker the user has opened since.
 
 For a handful of items (buffers, a plugin's own static list, a quick synchronous command's output), pass the whole list to `picker!`. For large lists (file lists, grep-style output), open the picker empty and stream an external command's output into it:
 
 ```scheme
-(define token (picker! pane '() (lambda (path) (when path (open-buffer! path))) #:prompt "files: "))
+(define token
+  (picker! pane '()
+    (call! "stdlib/picker-keymap" (lambda (path) (when path (open-buffer! path))))
+    #:prompt "files: "))
 (picker-source-spawn! token "git" '("ls-files" "-z" "--cached" "--others" "--exclude-standard") #:nul #t)
 ```
 
-`picker-source-spawn!` runs `cmd` with `args` directly (no shell). It splits stdout into lines (or NUL-delimited fields with `#:nul #t`) and appends each to the picker as a `(line . line)` item. Display and payload are the same raw line, except that a NUL *inside* a line shows as `:` in the display. That happens when a command uses NUL as an in-line field separator rather than a record delimiter, such as `rg --vimgrep --null`; the payload keeps the NUL, so parsing in `on-select` still sees the real separator. The output never passes through Scheme, so this stays fast even for tens of thousands of results: parse the selected line in `on-select`, not up front. Closing or replacing the picker before the command finishes kills the child process. For a source that produces its own results asynchronously (an LSP request, a timer), `(picker-push! token items)` appends a batch of ordinary `(display . payload)` items instead.
+`picker-source-spawn!` runs `cmd` with `args` directly (no shell). It splits stdout into lines (or NUL-delimited fields with `#:nul #t`) and appends each to the picker as a `(line . line)` item. Display and payload are the same raw line, except that a NUL *inside* a line shows as `:` in the display. That happens when a command uses NUL as an in-line field separator rather than a record delimiter, such as `rg --vimgrep --null`; the payload keeps the NUL, so parsing it in a binding still sees the real separator. The output never passes through Scheme, so this stays fast even for tens of thousands of results: parse the selected line in the binding, not up front. Closing or replacing the picker before the command finishes kills the child process. For a source that produces its own results asynchronously (an LSP request, a timer), `(picker-push! token items)` appends a batch of ordinary `(display . payload)` items instead.
 
 `picker-source-spawn!` shows the user that results are still loading. A picker filled by `picker-push!` from a `spawn-async!` callback has no such signal, so pass `#:pending #t` to `picker!` when opening it empty. That marks the panel as "results still arriving" until the first `picker-push!`/`picker-replace!` call lands.
 
@@ -706,24 +730,13 @@ A row too wide for the panel is clipped to fit, with `…` at the dropped end. `
 - `'head` (default) drops the front and keeps the tail: right for a file path, whose basename sits at the end.
 - `'tail` drops the back and keeps the head: right for a row whose distinguishing part sits at the *front*, like a grep match's `path:line:col:` prefix before the line preview, where a head-cut would swallow the path and show only preview text.
 
-`Enter` accepts the selected row in the picker's own pane; `#:actions` adds more ways to accept it:
-
-```scheme
-(picker! pane items on-select #:prompt "files: "
-  #:actions (call! "stdlib/buffer-actions" on-select))
-```
-
-`stdlib/buffer-actions` (from `core:stdlib`) is a ready-made `#:actions` list. It binds `Ctrl-o` to `on-select` itself (like `Enter`), and `Ctrl-t`/`Ctrl-v`/`Ctrl-s` to opening the selection in a new tab, a side-by-side split, or a stacked split. `core:pickers`' file, buffer, and modified-files pickers use it, and `core:stdlib`'s reference covers `with-tab`/`with-vsplit`/`with-split`, the three combinators it composes.
-
-Written by hand, `#:actions` is a list of `(key-spec . proc)` pairs, each `proc` taking the one payload argument `on-select` takes. `key-spec` is a single key written as `bind-key!` writes one (`"ctrl-v"`, `"alt-o"`, `"f5"`), never a multi-key sequence like `"z f"`. An entry can never override a key the picker uses itself (typing to filter, `Backspace`, the movement keys, `Enter`, `Esc`), so pick a key outside that set: a `Ctrl`/`Alt` combination other than the movement ones, or a function key.
-
 A spawned source's nonzero exit is reported as an error. For a command where some nonzero exits are a normal outcome (`rg` exits `1` for "no matches"), pass `#:ok-exit-codes`. The list replaces the usual "zero is success" rule instead of adding to it, so include `0` unless you want a successful run reported as a failure. `rg` also needs an explicit path argument here: with no path and no terminal attached to its input, it searches its (empty) stdin instead of the working directory, and finds nothing:
 
 ```scheme
 (picker-source-spawn! token "rg" (list "--vimgrep" "--" pattern ".") #:ok-exit-codes '(0 1))
 ```
 
-`.` repeats a `#:repeatable` command's pick without opening the picker again, through the same `on-select` or `#:actions` proc; see [Dot-repeat](#dot-repeat).
+`.` repeats a `#:repeatable` command's pick without opening the picker again, through the binding of the key that closed it; see [Dot-repeat](#dot-repeat).
 
 For a query that drives the *source* itself instead of filtering an already-fetched list, see [Live requery](#live-requery-live-grep) below.
 
@@ -733,7 +746,8 @@ A picker whose query should re-run an external command with the new pattern on e
 
 ```scheme
 (define (grep/open! pane seed)
-  (live-picker! pane (lambda (row) (when row (goto-location! pane (grep/parse row))))
+  (live-picker! pane (call! "stdlib/picker-keymap"
+                       (lambda (row) (when row (goto-location! pane (grep/parse row)))))
                 #:prompt "grep: " #:query seed
                 #:source (picker-command-source
                           (lambda (query)
@@ -743,13 +757,13 @@ A picker whose query should re-run an external command with the new pattern on e
                 #:truncate 'tail))
 ```
 
-`grep/parse` is left to the reader. `live-picker!` accepts `#:truncate` and `#:actions` as `picker!` does (see [Custom pickers](#custom-pickers) above). Here `#:truncate 'tail` keeps the path and clips the line preview: `rg --vimgrep`'s rows are `path:line:col:preview`, so the default head-cut would clip the path. `#:actions` can open a match in a new tab or split instead of the current pane.
+`grep/parse` is left to the reader. `live-picker!` takes a keymap and accepts `#:truncate` and `#:on-close` as `picker!` does (see [Custom pickers](#custom-pickers) above). Here `#:truncate 'tail` keeps the path and clips the line preview: `rg --vimgrep`'s rows are `path:line:col:preview`, so the default head-cut would clip the path. `stdlib/picker-keymap`'s `Ctrl-t`/`Ctrl-v`/`Ctrl-s` open a match in a new tab or split instead of the current pane.
 
 [grep.hume](https://github.com/cvlmtg/grep.hume) is this same idea, finished, with `grep/parse` included.
 
 `live-picker!` opens empty, with no `items` argument and no `#:pending`: its own requery fills it, never a caller pushing items. `#:source` is a function of the picker token and the current query. HUME calls it on every keystroke, after the debounce window, and it fills the picker with `picker-replace!`, `picker-push!` or `picker-source-spawn!`. A source that never answers leaves the previous rows up.
 
-Each query gets its own token, the one `#:source` is called with. A source that answers later, from a language server say, keeps that token and fills the picker through it. Once the user has typed on, `picker-replace!`, `picker-push!` and `picker-source-spawn!` on an earlier query's token do nothing and return `#f`, so an old answer never overwrites newer rows. Fill the picker through that token, not the one `live-picker!` returns. That one, as with `picker!`, is for `picker-close!` and `picker-source-stop!`, which keep working through it after the user has typed on. The picker shows "refreshing" until an answer for the current query arrives, so a source should reply even with nothing to show, with an empty list.
+Each query gets its own token, the one `#:source` is called with. A source that answers later, from a language server say, keeps that token and fills the picker through it. Once the user has typed on, `picker-replace!`, `picker-push!` and `picker-source-spawn!` on an earlier query's token do nothing and return `#f`, so an old answer never overwrites newer rows. Fill the picker through that token, not the one `live-picker!` returns. That one, as with `picker!`, is for `picker-close!`, `picker-move!` and `picker-source-stop!`, which keep working through it after the user has typed on; it is also the token a binding gets. The picker shows "refreshing" until an answer for the current query arrives, so a source should reply even with nothing to show, with an empty list.
 
 `picker-command-source` builds the common source, one that runs a subprocess. Its first argument maps the current query to a full argv list (the `cmd args...` shape `picker-source-spawn!` takes) or `#f`. An argv is spawned as `picker-source-spawn!` would, with `#:cwd`, `#:nul` and `#:ok-exit-codes` applying the same way. Returning `#f`, as above for an empty query, makes the picker show nothing instead of searching for an empty pattern. That clear also waits out the debounce window, like a real search, since the source runs only once the window has passed.
 

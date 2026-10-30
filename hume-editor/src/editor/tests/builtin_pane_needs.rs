@@ -86,7 +86,7 @@ fn a_malformed_argument_is_reported_before_a_pane_refusal() {
             "prompt!: label: expected a string",
         ),
         (
-            "(picker! p (list) (lambda (i) i) #:prompt 42)",
+            "(picker! p (list) (test-picker-keys (lambda (i) i)) #:prompt 42)",
             "picker!: #:prompt: expected a string",
         ),
         (

@@ -299,7 +299,7 @@ pub(super) fn boxed_popup_rows(state: &hume_ui::popup::PopupState) -> (usize, us
 
 /// Whether `key` pages by half a window: `Some(true)` for Ctrl-d,
 /// `Some(false)` for Ctrl-u, `None` for any other key. Every layer that
-/// pages (a scrollable box, the drawer, the picker) decodes them here.
+/// pages (a scrollable box, completion, the drawer) decodes them here.
 pub(super) fn half_page_key(key: &KeyEvent) -> Option<bool> {
     if !key.modifiers.contains(Modifiers::CONTROL) {
         return None;

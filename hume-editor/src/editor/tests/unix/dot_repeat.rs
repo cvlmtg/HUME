@@ -68,7 +68,8 @@ fn lazy_repeatable_insert_bindings_pick_is_recorded_on_first_press() {
            (bind-key! 'insert "ctrl-y" "tp-pick")"#,
         r#"(define-command! "tp-pick" ""
              (lambda (pane)
-               (picker! pane (list (cons "a" "A")) (lambda (p) (+ 1 0))))
+               (picker! pane (list (cons "a" "A"))
+                 (hash "enter" (lambda (token p) (picker-close! token)))))
              #:repeatable #t)"#,
     );
 

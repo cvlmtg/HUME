@@ -169,10 +169,11 @@ fn minibuf_does_not_resolve_a_prompt_buried_under_a_picker() {
     assert!(ed.state.minibuf().is_some(), "sanity: prompt owns the row");
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
+        Vec::new(),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
-    );
+    )
+    .expect("an empty keymap repeats no key");
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 

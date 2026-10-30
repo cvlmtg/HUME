@@ -1,15 +1,17 @@
 // Fuzzy-picker panel: input handling (`Editor::picker_input`), the open
-// chokepoint (`picker::open_picker`), and the per-frame write side
+// and close chokepoints (`picker::open_picker`, `picker::close_picker`),
+// selection movement (`picker::move_picker`), and the per-frame write side
 // (`sync_picker_view`). Sessions are still constructed directly rather than
-// through the `picker!` Steel builtin; see `tests/picker_steel.rs` for
-// end-to-end coverage of the Steel surface itself.
+// through the `picker!` Steel builtin, with marker values standing in for
+// keymap bindings, which these tests only ever see queued; see
+// `tests/picker_steel.rs` for end-to-end coverage of the Steel surface itself.
 
 use super::*;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{PickerItem, PickerSession};
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
-use hume_scripting::host::PickerOpts;
+use hume_scripting::host::{PickerBinding, PickerOpts, PickerStep};
 use hume_ui::picker_panel::panel_geometry;
 use steel::rvals::SteelVal;
 
@@ -17,12 +19,21 @@ fn marker(name: &str) -> SteelVal {
     SteelVal::StringV(name.into())
 }
 
-fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: PickerOpts) {
-    let mut session = PickerSession::new(
-        hume_scripting::Callback::for_test(callback),
-        opts,
-        Vec::new(),
-    );
+fn binding(key: KeyEvent, name: &str) -> PickerBinding {
+    PickerBinding {
+        spec: name.to_string(),
+        key,
+        binding: hume_scripting::Callback::for_test(marker(name)),
+    }
+}
+
+fn open_test_session(
+    ed: &mut Editor,
+    items: &[&str],
+    keymap: Vec<PickerBinding>,
+    opts: PickerOpts,
+) {
+    let mut session = PickerSession::new(keymap, opts, Vec::new()).expect("no key is bound twice");
     let picker_items: Vec<PickerItem> = items
         .iter()
         .map(|s| PickerItem {
@@ -35,23 +46,45 @@ fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: 
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
-    open_test_session(ed, items, marker("cb"), PickerOpts::default());
+    open_test_session(ed, items, Vec::new(), PickerOpts::default());
 }
 
-fn open_test_picker_with_callback(ed: &mut Editor, items: &[&str], callback: SteelVal) {
-    open_test_session(ed, items, callback, PickerOpts::default());
+fn open_test_picker_with_on_close(ed: &mut Editor, items: &[&str], on_close: &str) {
+    open_test_session(
+        ed,
+        items,
+        Vec::new(),
+        PickerOpts {
+            on_close: Some(hume_scripting::Callback::for_test(marker(on_close))),
+            ..Default::default()
+        },
+    );
 }
 
 fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
     open_test_session(
         ed,
         items,
-        marker("cb"),
+        Vec::new(),
         PickerOpts {
             prompt: prompt.to_string(),
             ..Default::default()
         },
     );
+}
+
+/// `picker-move!` on the open picker.
+fn move_by(ed: &mut Editor, count: isize, step: PickerStep) {
+    let token = ed.state.input.picker().expect("a picker is open").token();
+    picker::move_picker(&mut ed.state, &ed.view, token, count, step);
+}
+
+fn selected(ed: &Editor) -> usize {
+    ed.state
+        .input
+        .picker()
+        .expect("a picker is open")
+        .selected()
 }
 
 fn payload_str(v: &SteelVal) -> &str {
@@ -85,23 +118,33 @@ fn printables_edit_query_not_the_buffer() {
 // ── Selection movement ──────────────────────────────────────────────────────
 
 #[test]
-fn up_down_and_ctrl_p_n_move_selection() {
+fn moving_by_rows_steps_one_item_per_count() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["a", "b", "c"]);
     frame(&mut ed, 60, 16);
 
-    ed.feed_key(key_down());
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 1);
-    ed.feed_key(key_ctrl('n'));
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 2);
-    ed.feed_key(key_up());
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 1);
-    ed.feed_key(key_ctrl('p'));
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
+    move_by(&mut ed, 1, PickerStep::Row);
+    assert_eq!(selected(&ed), 1);
+    move_by(&mut ed, 1, PickerStep::Row);
+    assert_eq!(selected(&ed), 2);
+    move_by(&mut ed, -2, PickerStep::Row);
+    assert_eq!(selected(&ed), 0);
 }
 
 #[test]
-fn page_keys_move_by_panel_list_rows() {
+fn moving_by_rows_stops_at_both_ends_without_wrapping() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_picker(&mut ed, &["a", "b", "c"]);
+    frame(&mut ed, 60, 16);
+
+    move_by(&mut ed, -1, PickerStep::Row);
+    assert_eq!(selected(&ed), 0);
+    move_by(&mut ed, 10, PickerStep::Row);
+    assert_eq!(selected(&ed), 2);
+}
+
+#[test]
+fn moving_by_pages_steps_the_panel_list_rows() {
     let mut ed = editor_from("-[a]>bc\n");
     let items: Vec<String> = (0..50).map(|i| format!("item{i}")).collect();
     let refs: Vec<&str> = items.iter().map(String::as_str).collect();
@@ -109,10 +152,10 @@ fn page_keys_move_by_panel_list_rows() {
     frame(&mut ed, 60, 16);
 
     let geo = panel_geometry(ed.screen_layout().pane_area()).expect("viable geometry at 60x16");
-    ed.feed_key(key_pagedown());
-    assert_eq!(ed.state.input.picker().unwrap().selected(), geo.list_rows);
-    ed.feed_key(key_pageup());
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
+    move_by(&mut ed, 1, PickerStep::Page);
+    assert_eq!(selected(&ed), geo.list_rows);
+    move_by(&mut ed, -1, PickerStep::Page);
+    assert_eq!(selected(&ed), 0);
 }
 
 /// The panel's list rows on the headless 80x25 terminal: its 80x24 pane
@@ -124,35 +167,32 @@ fn headless_list_rows() -> usize {
 }
 
 #[test]
-fn page_keys_before_first_frame_page_against_the_headless_terminal() {
+fn moving_by_pages_before_the_first_frame_pages_against_the_headless_terminal() {
     let mut ed = editor_from("-[a]>bc\n");
     let items: Vec<String> = (0..50).map(|i| format!("item{i}")).collect();
     let refs: Vec<&str> = items.iter().map(String::as_str).collect();
     open_test_picker(&mut ed, &refs);
 
-    ed.feed_key(key_pagedown());
-    assert_eq!(
-        ed.state.input.picker().unwrap().selected(),
-        headless_list_rows()
-    );
-    ed.feed_key(key_pageup());
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
+    move_by(&mut ed, 1, PickerStep::Page);
+    assert_eq!(selected(&ed), headless_list_rows());
+    move_by(&mut ed, -1, PickerStep::Page);
+    assert_eq!(selected(&ed), 0);
 }
 
 #[test]
-fn page_keys_on_a_terminal_too_small_for_the_panel_are_safe_noops() {
+fn moving_by_pages_on_a_terminal_too_small_for_the_panel_is_a_safe_noop() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["a", "b", "c"]);
     frame(&mut ed, 10, 4);
 
-    ed.feed_key(key_pagedown());
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
-    ed.feed_key(key_ctrl('d'));
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
+    move_by(&mut ed, 1, PickerStep::Page);
+    assert_eq!(selected(&ed), 0);
+    move_by(&mut ed, 1, PickerStep::HalfPage);
+    assert_eq!(selected(&ed), 0);
 }
 
 #[test]
-fn half_page_keys_move_by_half_the_list_rows() {
+fn moving_by_half_pages_steps_half_the_list_rows() {
     let mut ed = editor_from("-[a]>bc\n");
     let items: Vec<String> = (0..50).map(|i| format!("item{i}")).collect();
     let refs: Vec<&str> = items.iter().map(String::as_str).collect();
@@ -160,41 +200,38 @@ fn half_page_keys_move_by_half_the_list_rows() {
     frame(&mut ed, 60, 16);
 
     let geo = panel_geometry(ed.screen_layout().pane_area()).expect("viable geometry at 60x16");
-    ed.feed_key(key_ctrl('d'));
-    assert_eq!(
-        ed.state.input.picker().unwrap().selected(),
-        geo.list_rows / 2
-    );
-    ed.feed_key(key_ctrl('u'));
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
+    move_by(&mut ed, 1, PickerStep::HalfPage);
+    assert_eq!(selected(&ed), geo.list_rows / 2);
+    move_by(&mut ed, -1, PickerStep::HalfPage);
+    assert_eq!(selected(&ed), 0);
 }
 
 #[test]
-fn half_page_keys_before_first_frame_page_against_the_headless_terminal() {
+fn moving_by_half_pages_before_the_first_frame_pages_against_the_headless_terminal() {
     let mut ed = editor_from("-[a]>bc\n");
     let items: Vec<String> = (0..50).map(|i| format!("item{i}")).collect();
     let refs: Vec<&str> = items.iter().map(String::as_str).collect();
     open_test_picker(&mut ed, &refs);
 
-    ed.feed_key(key_ctrl('d'));
-    assert_eq!(
-        ed.state.input.picker().unwrap().selected(),
-        headless_list_rows() / 2
-    );
-    ed.feed_key(key_ctrl('u'));
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
+    move_by(&mut ed, 1, PickerStep::HalfPage);
+    assert_eq!(selected(&ed), headless_list_rows() / 2);
+    move_by(&mut ed, -1, PickerStep::HalfPage);
+    assert_eq!(selected(&ed), 0);
 }
 
 #[test]
-fn half_page_down_saturates_at_last_item_without_wrapping() {
+fn moving_a_picker_through_a_stale_token_is_a_noop() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["a", "b", "c"]);
-    frame(&mut ed, 60, 16);
 
-    ed.feed_key(key_ctrl('d'));
-    ed.feed_key(key_ctrl('d'));
-    ed.feed_key(key_ctrl('d'));
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 2);
+    picker::move_picker(
+        &mut ed.state,
+        &ed.view,
+        hume_core::HostToken::mint(),
+        1,
+        PickerStep::Row,
+    );
+    assert_eq!(selected(&ed), 0);
 }
 
 // ── Backspace ────────────────────────────────────────────────────────────────
@@ -221,113 +258,155 @@ fn backspace_on_empty_keeps_picker_open() {
     assert_eq!(ed.state.input.picker().unwrap().query(), "");
 }
 
-// ── #:actions ────────────────────────────────────────────────────────────────
+// ── Keymap ───────────────────────────────────────────────────────────────────
 
 #[test]
-fn bound_action_key_closes_picker_and_fires_its_own_callback_not_on_select() {
+fn bound_key_queues_its_binding_with_the_token_and_selected_payload() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_session(
         &mut ed,
         &["one", "two"],
-        marker("cb"),
-        PickerOpts {
-            actions: vec![(
-                key_ctrl('t'),
-                hume_scripting::Callback::for_test(marker("split-cb")),
-            )],
-            ..Default::default()
-        },
+        vec![binding(key_ctrl('t'), "ctrl-t")],
+        PickerOpts::default(),
     );
-
-    ed.feed_key(key_ctrl('t'));
-
-    assert!(
-        ed.state.input.picker().is_none(),
-        "a bound action key must close the picker"
-    );
-    assert_eq!(pending_calls(&ed).len(), 1);
-    let (proc, args) = pending_calls(&ed).remove(0);
-    assert_eq!(
-        callback_name(&proc),
-        "split-cb",
-        "the action's own proc must fire, not on-select"
-    );
-    assert_eq!(args.len(), 1);
-    assert_eq!(payload_str(&args[0]), "one", "top-ranked item's payload");
-}
-
-#[test]
-fn unbound_ctrl_key_stays_consumed_and_ignored_when_no_actions_declared() {
-    let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker(&mut ed, &["one"]);
+    let token = ed.state.input.picker().unwrap().token();
 
     ed.feed_key(key_ctrl('t'));
 
     assert!(
         ed.state.input.picker().is_some(),
-        "an unbound action key must not close the picker"
+        "a binding closes the picker only by calling picker-close!"
     );
-    assert_eq!(pending_calls(&ed).len(), 0);
+    assert_eq!(pending_calls(&ed).len(), 1);
+    let (proc, args) = pending_calls(&ed).remove(0);
+    assert_eq!(callback_name(&proc), "ctrl-t");
+    assert_eq!(
+        args,
+        vec![hume_scripting::host::token_to_steel(token), marker("one")],
+        "the token, then the top-ranked item's payload"
+    );
 }
 
 #[test]
-fn actions_entry_for_a_reserved_key_never_overrides_the_built_in_behavior() {
+fn bound_key_with_nothing_matching_hands_its_binding_false() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_session(
         &mut ed,
-        &["one", "two"],
-        marker("cb"),
-        PickerOpts {
-            // Enter and Ctrl-n are already handled by `Editor::picker_input`
-            // before the action-lookup arm ever runs.
-            actions: vec![
-                (
-                    key_enter(),
-                    hume_scripting::Callback::for_test(marker("hijacked-enter")),
-                ),
-                (
-                    key_ctrl('n'),
-                    hume_scripting::Callback::for_test(marker("hijacked-ctrl-n")),
-                ),
-            ],
-            ..Default::default()
-        },
+        &["foo", "bar"],
+        vec![binding(key_enter(), "enter")],
+        PickerOpts::default(),
     );
-
-    ed.feed_key(key_ctrl('n'));
-    assert_eq!(
-        ed.state.input.picker().unwrap().selected(),
-        1,
-        "Ctrl-n must still move the selection, not fire the actions entry"
-    );
+    for ch in "zzz".chars() {
+        ed.feed_key(key(ch));
+    }
+    assert_eq!(ed.state.input.picker().unwrap().matched_len(), 0);
 
     ed.feed_key(key_enter());
-    assert_eq!(pending_calls(&ed).len(), 1);
-    assert_eq!(
-        callback_name(&pending_calls(&ed)[0].0),
-        "cb",
-        "Enter must still fire on-select, not the actions entry"
+    let (_, args) = pending_calls(&ed).remove(0);
+    assert_eq!(args[1], SteelVal::BoolV(false));
+}
+
+#[test]
+fn bound_plain_character_runs_its_binding_instead_of_typing() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_session(
+        &mut ed,
+        &["one"],
+        vec![binding(key('j'), "j")],
+        PickerOpts::default(),
+    );
+
+    ed.feed_key(key('j'));
+
+    assert_eq!(ed.state.input.picker().unwrap().query(), "");
+    assert_eq!(callback_name(&pending_calls(&ed)[0].0), "j");
+}
+
+#[test]
+fn bound_backspace_runs_its_binding_instead_of_deleting() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_session(
+        &mut ed,
+        &["one"],
+        vec![binding(key_backspace(), "backspace")],
+        PickerOpts::default(),
+    );
+    ed.feed_key(key('o'));
+
+    ed.feed_key(key_backspace());
+
+    assert_eq!(ed.state.input.picker().unwrap().query(), "o");
+    assert_eq!(callback_name(&pending_calls(&ed)[0].0), "backspace");
+}
+
+#[test]
+fn a_binding_reaches_its_key_however_the_terminal_reports_case() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_session(
+        &mut ed,
+        &["one"],
+        vec![binding(
+            KeyEvent::new(KeyCode::Char('j'), Modifiers::SHIFT),
+            "J",
+        )],
+        PickerOpts::default(),
+    );
+
+    ed.feed_key(key('J'));
+
+    assert_eq!(ed.state.input.picker().unwrap().query(), "");
+    assert_eq!(callback_name(&pending_calls(&ed)[0].0), "J");
+}
+
+#[test]
+fn two_specs_naming_one_key_refuse_to_open() {
+    let keymap = vec![
+        PickerBinding {
+            spec: "ctrl-n".to_string(),
+            key: key_ctrl('n'),
+            binding: hume_scripting::Callback::for_test(marker("a")),
+        },
+        PickerBinding {
+            spec: "c-n".to_string(),
+            key: key_ctrl('n'),
+            binding: hume_scripting::Callback::for_test(marker("b")),
+        },
+    ];
+    let Err(err) = PickerSession::new(keymap, PickerOpts::default(), Vec::new()) else {
+        panic!("a keymap naming one key twice must not open a picker");
+    };
+    assert!(
+        err.contains("\"ctrl-n\"") && err.contains("\"c-n\""),
+        "the error names both specs, got {err:?}"
     );
 }
 
-// ── Stray keys ───────────────────────────────────────────────────────────────
+// ── Unbound keys ─────────────────────────────────────────────────────────────
 
 #[test]
-fn stray_keys_are_consumed_and_ignored() {
+fn unbound_keys_are_consumed_and_ignored() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker(&mut ed, &["one"]);
+    open_test_picker(&mut ed, &["one", "two"]);
     for stray in [
+        key_enter(),
+        key_esc(),
+        key_down(),
+        key_ctrl('n'),
+        key_ctrl('t'),
         key_left(),
         key_tab(),
         KeyEvent::new(KeyCode::Home, Modifiers::NONE),
     ] {
         ed.feed_key(stray);
     }
-    assert!(
-        ed.state.input.picker().is_some(),
-        "stray keys must not close the picker"
-    );
-    assert_eq!(ed.state.input.picker().unwrap().query(), "");
+    let picker = ed
+        .state
+        .input
+        .picker()
+        .expect("unbound keys never close the picker");
+    assert_eq!(picker.query(), "");
+    assert_eq!(picker.selected(), 0);
+    assert_eq!(pending_calls(&ed).len(), 0);
     assert_eq!(
         ed.doc().text().to_string(),
         "abc\n",
@@ -335,50 +414,28 @@ fn stray_keys_are_consumed_and_ignored() {
     );
 }
 
-// ── Enter / Esc — terminal actions ──────────────────────────────────────────
+// ── Closing fires #:on-close ────────────────────────────────────────────────
 
 #[test]
-fn enter_fires_on_select_with_payload_and_closes() {
+fn close_fires_on_close_once_and_typing_resumes_editing() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker(&mut ed, &["one", "two"]);
-    ed.feed_key(key_enter());
+    open_test_picker_with_on_close(&mut ed, &["one"], "closed");
 
-    assert!(
-        ed.state.input.picker().is_none(),
-        "picker must close on Enter"
-    );
-    assert_eq!(pending_calls(&ed).len(), 1);
-    let (proc, args) = pending_calls(&ed).remove(0);
-    assert_eq!(callback_name(&proc), "cb");
-    assert_eq!(args.len(), 1);
-    assert_eq!(payload_str(&args[0]), "one", "top-ranked item's payload");
-
-    // Keep typing after Enter: the close must not leave the editor in a
-    // half-consistent state for the next keystroke.
-    ed.feed_key(key('i'));
-    ed.feed_key(key('X'));
-    ed.feed_key(key_esc());
-    assert_eq!(ed.doc().text().to_string(), "Xabc\n");
-    assert_eq!(
-        pending_calls(&ed).len(),
-        1,
-        "no second callback should have fired from unrelated typing"
-    );
-}
-
-#[test]
-fn esc_fires_false_and_closes() {
-    let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker(&mut ed, &["one"]);
-    ed.feed_key(key_esc());
+    picker::close_picker(&mut ed.state, &ed.view);
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(pending_calls(&ed).len(), 1);
     let (proc, args) = pending_calls(&ed).remove(0);
-    assert_eq!(callback_name(&proc), "cb");
-    assert_eq!(args, vec![SteelVal::BoolV(false)]);
+    assert_eq!(callback_name(&proc), "closed");
+    assert!(args.is_empty());
 
-    // Typing after the close edits the buffer normally.
+    picker::close_picker(&mut ed.state, &ed.view);
+    assert_eq!(
+        pending_calls(&ed).len(),
+        1,
+        "closing an already-closed picker fires nothing"
+    );
+
     ed.feed_key(key('i'));
     ed.feed_key(key('Y'));
     ed.feed_key(key_esc());
@@ -386,18 +443,14 @@ fn esc_fires_false_and_closes() {
 }
 
 #[test]
-fn enter_with_no_match_dismisses_with_false() {
+fn close_without_on_close_queues_nothing() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker(&mut ed, &["foo", "bar"]);
-    for ch in "zzz".chars() {
-        ed.feed_key(key(ch));
-    }
-    assert_eq!(ed.state.input.picker().unwrap().matched_len(), 0);
+    open_test_picker(&mut ed, &["one"]);
 
-    ed.feed_key(key_enter());
+    picker::close_picker(&mut ed.state, &ed.view);
+
     assert!(ed.state.input.picker().is_none());
-    let (_, args) = pending_calls(&ed).remove(0);
-    assert_eq!(args, vec![SteelVal::BoolV(false)]);
+    assert_eq!(pending_calls(&ed).len(), 0);
 }
 
 // ── any-mode open, clears a live completion session ─────────────────────────
@@ -433,8 +486,8 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
 /// there's no key path for this, since the picker is full-modal) must run
 /// `Insert`'s own teardown on the way out (commit the edit group, clear
 /// `active_session`) via `EditorState::take_layer`, and must still fire the
-/// picker's own `on_select` with `#f` exactly once: not twice, and not
-/// silently dropped by `Insert`'s teardown running first.
+/// picker's own `#:on-close` exactly once: not twice, and not silently
+/// dropped by `Insert`'s teardown running first.
 ///
 /// Acting only on the last removed layer (the picker) would skip `Insert`'s
 /// `tear_down`, leaving `active_session` set and the edit group open.
@@ -444,7 +497,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
     use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker(&mut ed, &["one"]);
+    open_test_picker_with_on_close(&mut ed, &["one"], "closed");
     assert!(ed.state.input.picker().is_some(), "sanity: picker open");
 
     // Lands above the picker the same ungated way a timer would.
@@ -478,31 +531,25 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
     assert_eq!(
         pending_calls(&ed).len(),
         1,
-        "on_select must fire exactly once, not once per removed layer"
+        "#:on-close must fire exactly once, not once per removed layer"
     );
-    let (proc, args) = pending_calls(&ed).remove(0);
-    assert_eq!(callback_name(&proc), "cb");
-    assert_eq!(args, vec![SteelVal::BoolV(false)]);
+    assert_eq!(callback_name(&pending_calls(&ed)[0].0), "closed");
 }
 
 // ── Replacing an open picker ─────────────────────────────────────────────────
 
 #[test]
-fn open_over_open_picker_fires_old_callback_with_false() {
+fn open_over_open_picker_fires_the_old_on_close() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker_with_callback(&mut ed, &["one"], marker("first"));
-    open_test_picker_with_callback(&mut ed, &["two"], marker("second"));
+    open_test_picker_with_on_close(&mut ed, &["one"], "first");
+    open_test_picker_with_on_close(&mut ed, &["two"], "second");
 
     assert_eq!(pending_calls(&ed).len(), 1);
-    let (proc, args) = pending_calls(&ed).remove(0);
-    assert_eq!(callback_name(&proc), "first");
-    assert_eq!(args, vec![SteelVal::BoolV(false)]);
+    assert_eq!(callback_name(&pending_calls(&ed)[0].0), "first");
 
-    ed.feed_key(key_esc());
+    picker::close_picker(&mut ed.state, &ed.view);
     assert_eq!(pending_calls(&ed).len(), 2);
-    let (proc, args) = pending_calls(&ed).remove(1);
-    assert_eq!(callback_name(&proc), "second");
-    assert_eq!(args, vec![SteelVal::BoolV(false)]);
+    assert_eq!(callback_name(&pending_calls(&ed)[1].0), "second");
 }
 
 // ── Token guard (session_for_token) ─────────────────────────────────────────
@@ -539,7 +586,7 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     host.open_picker(
         hume_scripting::host::FocusedHandle::for_test(pane),
         vec![],
-        hume_scripting::Callback::for_test(SteelVal::Void),
+        Vec::new(),
         PickerOpts {
             pending: true,
             ..Default::default()
@@ -583,7 +630,7 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
             "a".to_string(),
             hume_scripting::Rooted::new(SteelVal::StringV("a".into())),
         )],
-        hume_scripting::Callback::for_test(SteelVal::Void),
+        Vec::new(),
         PickerOpts::default(),
     )
     .unwrap();
@@ -624,11 +671,8 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         ),
     );
 
-    let mut session = PickerSession::new(
-        hume_scripting::Callback::for_test(marker("cb")),
-        PickerOpts::default(),
-        Vec::new(),
-    );
+    let mut session = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
+        .expect("an empty keymap repeats no key");
     session.push(vec![PickerItem {
         display: "a".to_string(),
         payload: hume_scripting::Rooted::new(SteelVal::StringV("a".into())),
@@ -647,9 +691,9 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         "the picker, not the menu, drives input while it's open"
     );
 
-    ed.feed_key(key_esc());
+    picker::close_picker(&mut ed.state, &ed.view);
 
-    assert!(ed.state.input.picker().is_none(), "Esc closed the picker");
+    assert!(ed.state.input.picker().is_none(), "the picker closed");
     assert!(ed.state.input.menu().is_some(), "the menu is still there");
     ed.feed_key(key('j'));
     assert_eq!(
@@ -669,10 +713,8 @@ fn typing_rerank_resets_selection_and_scroll_end_to_end() {
     open_test_picker(&mut ed, &refs);
     frame(&mut ed, 60, 16);
 
-    for _ in 0..10 {
-        ed.feed_key(key_down());
-    }
-    assert_ne!(ed.state.input.picker().unwrap().selected(), 0);
+    move_by(&mut ed, 10, PickerStep::Row);
+    assert_ne!(selected(&ed), 0);
 
     ed.feed_key(key('i'));
     assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
@@ -691,7 +733,7 @@ fn close_clears_view_next_frame() {
         "sanity: view populated while open"
     );
 
-    ed.feed_key(key_esc());
+    picker::close_picker(&mut ed.state, &ed.view);
     frame(&mut ed, 60, 16);
     assert!(
         ed.state.views.picker.read().is_none(),
@@ -707,9 +749,7 @@ fn shrinking_terminal_self_heals_scroll() {
     open_test_picker(&mut ed, &refs);
 
     frame(&mut ed, 80, 30);
-    for _ in 0..40 {
-        ed.feed_key(key_down());
-    }
+    move_by(&mut ed, 40, PickerStep::Row);
 
     // Shrinking between frames must not panic, and the next sync must keep
     // `selected_row` valid against the new, smaller window.
@@ -788,9 +828,7 @@ fn snapshot_picker_scrolled_with_selection_highlight() {
     ed.resize_terminal(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    for _ in 0..15 {
-        ed.feed_key(key_down());
-    }
+    move_by(&mut ed, 15, PickerStep::Row);
 
     ed.resize_terminal(40, 12);
     ed.settle();

@@ -109,7 +109,7 @@ fn page_down_in_a_picker_that_evicted_a_docked_popup_pages_by_the_full_pane() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "dock" "" (lambda (pane) (show-popup! pane "{long}" #:anchor 'bottom)))
-               (define-command! "pick" "" (lambda (pane) (picker! pane (list {items}) (lambda (x) (begin)))))
+               (define-command! "pick" "" (lambda (pane) (picker! pane (list {items}) (hash "pagedown" (lambda (token item) (picker-move! token 1 #:by 'page))))))
                (bind-key! 'normal "Z" "pick")"#
         ),
     );

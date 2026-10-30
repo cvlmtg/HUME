@@ -278,8 +278,8 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
         r#"(define-command! "pick-word" ""
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane)))))
+                 (test-picker-keys (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
@@ -335,8 +335,8 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
         r#"(define-command! "pick-word" ""
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane)))))
+                 (test-picker-keys (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
@@ -395,8 +395,8 @@ fn dot_repeat_keeps_a_pick_when_a_foreign_edit_follows_the_bindings_own_edit() {
              (lambda (pane)
                (insert-key! pane "x")
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane)))))
+                 (test-picker-keys (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "edit-then-pick")"#,
     );
@@ -446,9 +446,9 @@ fn dot_repeat_keeps_a_pick_when_a_foreign_edit_follows_the_bindings_own_edit() {
     );
 }
 
-/// A picker dismissed with Esc is recorded as a dismissal: `.` re-runs the
-/// binding with its picker answered `#f`, which does nothing here, between
-/// the keys typed around it.
+/// A picker dismissed with Esc is recorded as a pick through the dismissing
+/// key's binding: `.` re-runs the Insert binding with its picker answered by
+/// that binding, which does nothing here, between the keys typed around it.
 #[test]
 fn dot_repeat_replays_a_dismissed_pick_as_a_dismissal() {
     let tmp = tempfile::tempdir().unwrap();
@@ -459,8 +459,8 @@ fn dot_repeat_replays_a_dismissed_pick_as_a_dismissal() {
         r#"(define-command! "pick-word" ""
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane)))))
+                 (test-picker-keys (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
@@ -486,7 +486,7 @@ fn dot_repeat_replays_a_dismissed_pick_as_a_dismissal() {
             && is_key(&inputs[1], 'y')
             && matches!(&inputs[2], Input::Binding { name, answers, .. }
                 if &**name == "pick-word"
-                    && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: None, .. })]))
+                    && matches!(answers.as_slice(), [Answer::Pick(Pick { action: Some(_), .. })]))
             && is_binding(&inputs[3], "exit-insert"),
         "got {inputs:?}"
     );

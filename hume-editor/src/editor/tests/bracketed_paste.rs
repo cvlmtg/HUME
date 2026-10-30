@@ -191,11 +191,8 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
-    let mut session = PickerSession::new(
-        hume_scripting::Callback::for_test(marker("on-select")),
-        PickerOpts::default(),
-        Vec::new(),
-    );
+    let mut session = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
+        .expect("an empty keymap repeats no key");
     session.push(
         items
             .iter()
@@ -210,15 +207,16 @@ fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
 
 pub(super) fn open_live_test_picker(ed: &mut Editor) {
     let session = PickerSession::new_live(
-        hume_scripting::Callback::for_test(marker("on-select")),
+        Vec::new(),
         LivePickerOpts {
             prompt: String::new(),
             query: String::new(),
             on_query_change: hume_scripting::Callback::for_test(marker("on-query-change")),
             truncate: TruncateEnd::Head,
-            actions: Vec::new(),
+            on_close: None,
         },
-    );
+    )
+    .expect("an empty keymap repeats no key");
     picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 }
 

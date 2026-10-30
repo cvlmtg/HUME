@@ -602,8 +602,8 @@ fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
     );
 }
 
-/// An open picker session must be gone after a reset, and, unlike `Esc`/
-/// `picker-close!`, its `on_select` callback must never fire: it belongs to
+/// An open picker session must be gone after a reset, and, unlike a
+/// `picker-close!`, its `#:on-close` must never fire: it belongs to
 /// the outgoing engine, which is seconds from being dropped (see
 /// `picker::close_picker`'s doc for why `reset_config_state`
 /// bypasses that chokepoint). Checked via `pending_work` staying empty, not
@@ -614,10 +614,16 @@ fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
 fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
     let mut ed = editor_from("-[a]>b\n");
     let mut session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Callback::for_test(steel::rvals::SteelVal::StringV("cb".into())),
-        hume_scripting::host::PickerOpts::default(),
         Vec::new(),
-    );
+        hume_scripting::host::PickerOpts {
+            on_close: Some(hume_scripting::Callback::for_test(
+                steel::rvals::SteelVal::StringV("closed".into()),
+            )),
+            ..Default::default()
+        },
+        Vec::new(),
+    )
+    .expect("an empty keymap repeats no key");
     session.push(vec![crate::editor::input_stack::picker::PickerItem {
         display: "one".to_string(),
         payload: hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV("one".into())),
@@ -637,8 +643,8 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
     );
     assert!(
         ed.state.config.pending_work.is_empty(),
-        "the picker's on_select callback (rooted in the outgoing engine) must \
-         be discarded, not queued for firing"
+        "the picker's #:on-close (rooted in the outgoing engine) must be \
+         discarded, not queued for firing"
     );
 }
 

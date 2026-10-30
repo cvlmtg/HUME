@@ -37,7 +37,7 @@ Steel's library functions and your own `define`s are plain Scheme functions, not
 - A structured value you pass in or get back (a decoration entry, a diagnostic, a request error, a plugin's `#:config`) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. The exceptions:
   - Values decoded from server JSON are JSON handles (see [JSON handles](lsp-api.md#json-handles)).
   - The `lsp-*-params` results (`(hash-ref (lsp-position-params pane) "position")`) and the items `completion-top` returns (source: `(hash-ref item "source")`) have string keys, the wire shape.
-  - Picker items `(display . payload)`, picker `#:actions` `(key-spec . proc)`, and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records.
+  - Picker items `(display . payload)` and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records. A picker's keymap is a hashmap with key-spec string keys.
   - A selection from `buffer-selections` is not a record either: read it with the `selection-*` calls.
 - Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, which every call that closes or changes that widget takes. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget. An opener returns `#f` when the open was dropped before it could happen, and `#f` is a stale token too.
 - Where a call may run depends on what it touches:
@@ -339,14 +339,15 @@ Any plugin can drive a picker with these editor functions, opening one and pushi
 
 | Call | Pane | Effect |
 |------|------|--------|
-| `picker!` | focused | `(picker! pane items on-select #:prompt #:pending #:query #:truncate #:actions)`{.sig} Open a fuzzy-finder panel over a fixed `items` list of `(display . payload)` pairs. Returns a token, or `#f` when a `#:repeatable` command's `.` answers the picker without opening it |
-| `live-picker!` | focused | `(live-picker! pane on-select #:source #:prompt #:query #:debounce-ms #:truncate #:actions)`{.sig} Open a picker whose query runs `#:source` (a function of the picker token and the query) on every keystroke, debounced. Returns a token, or `#f` under `.` as `picker!` does |
+| `picker!` | focused | `(picker! pane items keymap #:prompt #:pending #:query #:truncate #:on-close)`{.sig} Open a fuzzy-finder panel over a fixed `items` list of `(display . payload)` pairs. `keymap` maps each key the picker answers to a `(lambda (token item) ...)`; an unbound plain character types into the query and an unbound `Backspace` deletes from it. `#:on-close` is called once when the picker closes. Returns a token, or `#f` when a `#:repeatable` command's `.` answers the picker without opening it |
+| `live-picker!` | focused | `(live-picker! pane keymap #:source #:prompt #:query #:debounce-ms #:truncate #:on-close)`{.sig} Open a picker whose query runs `#:source` (a function of the picker token and the query) on every keystroke, debounced. `keymap` and `#:on-close` as for `picker!`. Returns a token, or `#f` under `.` as `picker!` does |
 | `picker-command-source` |  | `(picker-command-source argv-for #:cwd #:nul #:ok-exit-codes)`{.sig} A `#:source` for `live-picker!` that runs the subprocess `argv-for` names for the query |
 | `picker-push!` |  | `(picker-push! token items)`{.sig} Append a batch of `(display . payload)` items to an open picker. A `live-picker!` source passes the token it was called with; once the user has typed on, that token no longer feeds the picker and the call returns `#f` |
 | `picker-replace!` |  | `(picker-replace! token items)`{.sig} Replace an open picker's items wholesale |
 | `picker-source-spawn!` |  | `(picker-source-spawn! token cmd args #:cwd #:nul #:ok-exit-codes)`{.sig} Stream a subprocess's stdout lines into an open picker as items |
 | `picker-source-stop!` |  | `(picker-source-stop! token)`{.sig} Kill a picker's still-running spawned source |
-| `picker-close!` |  | `(picker-close! token)`{.sig} Close the picker `token` names; a no-op if that picker has already closed or been replaced |
+| `picker-move!` |  | `(picker-move! token count #:by)`{.sig} Move the selection of the picker `token` names by `count` rows, pages or half pages (`#:by`: `'row`, the default, `'page` or `'half-page`); a negative `count` moves up. A no-op if that picker has already closed or been replaced |
+| `picker-close!` |  | `(picker-close! token)`{.sig} Close the picker `token` names, calling its `#:on-close`; a no-op if that picker has already closed or been replaced |
 
 ## Other UI widgets
 

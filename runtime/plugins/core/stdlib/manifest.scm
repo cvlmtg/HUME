@@ -7,7 +7,7 @@
                "stdlib/report-section" "stdlib/show-report!"
                "stdlib/config-boolean" "stdlib/config-string" "stdlib/config-enum"
                "stdlib/config-integer" "stdlib/config-list"
-               "stdlib/with-tab" "stdlib/with-vsplit" "stdlib/with-split" "stdlib/buffer-actions"
+               "stdlib/with-tab" "stdlib/with-vsplit" "stdlib/with-split" "stdlib/picker-keymap"
                "stdlib/split-words"))
 (declare-plugin! "core:stdlib"
   #:entry "files.scm"

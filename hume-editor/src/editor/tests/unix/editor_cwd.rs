@@ -101,7 +101,7 @@ fn picker_source_spawn_defaults_to_the_editor_cwd() {
         r#"
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
-          (set! tok (picker! pane '() (lambda (x) (void))))))
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (void)))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "pwd" '())))
         "#,

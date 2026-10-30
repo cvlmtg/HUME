@@ -95,7 +95,7 @@ fn a_queued_callback_keeps_its_captured_state_while_the_batch_runs() {
     assert!(log.contains("[warning] alive"), "{log}");
 }
 
-/// An open picker keeps its on-select callback and its items' payloads
+/// An open picker keeps its keymap's bindings and its items' payloads
 /// through a collection that runs while it waits for a choice.
 #[test]
 fn an_open_picker_keeps_its_callback_and_payloads_across_a_collection() {
@@ -108,9 +108,9 @@ fn an_open_picker_keeps_its_callback_and_payloads_across_a_collection() {
             r#"{CHURN}
             (define (open-picker! pane msg)
               (picker! pane (list (cons "one" (hash 'cell (box "payload-alive"))))
-                (lambda (choice)
+                (test-picker-keys (lambda (choice)
                   (log! 'warning (unbox msg))
-                  (log! 'warning (unbox (hash-ref choice 'cell))))))
+                  (log! 'warning (unbox (hash-ref choice 'cell)))))))
             (define-typed-command! "open" ""
               (lambda (pane)
                 (after! 0 churn!)

@@ -157,9 +157,11 @@ pub(in crate::editor) fn resolve(
     let CharRead { then, source } = read;
     match (then, answer) {
         (CharThen::Steel(callback), answer) => {
-            let arg =
-                hume_scripting::Rooted::new(answer.map_or(SteelVal::BoolV(false), SteelVal::CharV));
-            Resolved::Call(state.answered_call(source, Answer::Char(answer), callback, arg))
+            let call = hume_scripting::SteelCall::new(
+                callback,
+                vec![answer.map_or(SteelVal::BoolV(false), SteelVal::CharV)],
+            );
+            Resolved::Call(state.answered_call(source, Answer::Char(answer), call))
         }
         (CharThen::Dispatch(pending), answer) => {
             if let Some(ticket) = &source {

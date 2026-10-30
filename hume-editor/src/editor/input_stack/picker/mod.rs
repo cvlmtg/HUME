@@ -1,29 +1,34 @@
 //! The fuzzy-picker layer, the last of the twelve to get its own file (see
 //! `input_stack/stack.rs`'s own doc). `session.rs` is the Rust-side data
-//! store (query, ranked items, streaming state); this file is the layer
-//! wrapping it: [`PickerLayer`], its `Layer` impl, [`picker_input`]'s
-//! key/mouse handling, its paste handler, and the open/close chokepoints
-//! every opener and Steel builtin goes through.
+//! store (query, ranked items, keymap, streaming state); this file is the
+//! layer wrapping it: [`PickerLayer`], its `Layer` impl, [`picker_input`]'s
+//! key/mouse handling, its paste handler, and the open/close/move
+//! chokepoints every opener and Steel builtin goes through.
 
 mod session;
+
+use std::rc::Rc;
 
 use termina::event::{KeyCode, Modifiers};
 
 use hume_core::HostToken;
 use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::types::EditorMode;
-use hume_scripting::host::token_to_steel;
+use hume_scripting::host::{PickerStep, token_to_steel};
+use hume_scripting::{Rooted, SteelCall};
 use steel::rvals::SteelVal;
 
+use super::super::buffer::store::EditOrigin;
 use super::super::commands::half_page;
 use super::super::error::CommandError;
+use super::super::event::{CallGuard, PendingWork};
 use super::super::keymap::CanonicalKey;
 use super::super::replay::{
-    Answer, InputOpener, PendingAnswer, Pick, Picked, ReplayRefusal, WaitingInput,
+    Answer, AnswerTicket, InputOpener, PendingAnswer, Pick, Picked, PickerKeyRun, ReplayRefusal,
+    WaitingInput,
 };
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
-use super::popup::half_page_key;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
 
 #[cfg(test)]
@@ -56,17 +61,19 @@ impl Layer for PickerLayer {
     /// stack is wherever the key path left it, so there is nothing to gate.
     /// Landing above a menu or drawer simply suspends it: its own
     /// stray-input policy (`input_stack/{menu,drawer}.rs`) hands control
-    /// back to it once the picker retires, same as `Insert` suspending one
-    /// today. Three entry rules, in order: the first two here, the third
+    /// back to it once the picker retires, same as `Insert` suspending one.
+    /// Three entry rules, in order: the first two here, the third
     /// via the trait's default `popup_eviction` (`PopupEviction::Both`),
     /// run automatically by `push_layer` right after this returns:
     ///
     /// - Dismisses any open completion session first. A picker opening
     ///   mid-completion (e.g. `picker!` bound to a key pressed while
     ///   completing) must not leave a stale session behind it.
-    /// - Retires an already-open picker with `#f` before this one lands:
-    ///   the exactly-once callback contract must never have a window where
-    ///   a session can be silently dropped without firing.
+    /// - Retires an already-open picker, firing its `#:on-close`, before
+    ///   this one lands: the exactly-once callback contract must never have
+    ///   a window where a session can be silently dropped without firing.
+    ///   No keymap binding closes it here, so it records no binding's pick
+    ///   even when a binding of it opened this one.
     /// - Clears any open popup: unlike a menu or drawer, which stay open
     ///   underneath and simply stop seeing input, a `Popup` layer left in
     ///   place would be sandwiched between whatever was below it and the
@@ -77,28 +84,22 @@ impl Layer for PickerLayer {
         state.dismiss_completion(view);
         close_picker(state, view);
     }
-    /// Fires `on_select` with `#f` unconditionally, ignoring `why`, unlike
-    /// every other layer's `tear_down`, which never fires a Steel callback
-    /// (teardown *is* cancel, but the callback itself is queued only from
-    /// an explicit accept/cancel arm before the truncate that reaches
-    /// here). The picker's "fires exactly once" contract has no such arm to
-    /// rely on when it's removed incidentally (buried under an `Insert`/
-    /// `Prompt` session that a close-*!`/Rust-internal retirement then
-    /// truncates through), so this is the one `tear_down` that fires,
-    /// making the contract structural rather than dependent on every
-    /// caller routing through `close_picker`/`close_picker_with`. Today
-    /// `why` is always `Removal::Incidental` here (nothing ever names a
-    /// picker as `truncate_layers`/`retire`'s own target), but firing
-    /// regardless of which one it is stays correct either way: reaching
-    /// this at all already means nothing has fired the callback yet. The
-    /// accept path (`Enter`, `picker-close!`) never runs this: it takes the
-    /// layer *by value* via `EditorState::take_layer`, which tears down
-    /// everything above the target but not the target itself, and fires
-    /// its own callback explicitly instead. `truncate_to_base` (reload) is
-    /// the one exit that still drops the callback: `EditorState::truncate_layers`
+    /// Fires `#:on-close` unconditionally, ignoring `why`, unlike every
+    /// other layer's `tear_down`, which never fires a Steel callback. The
+    /// picker's "fires exactly once" contract has no explicit close to
+    /// rely on when it's removed incidentally (buried under an
+    /// `Insert`/`Prompt` session that a close-*!`/Rust-internal retirement
+    /// then truncates through), so this is the one `tear_down` that fires,
+    /// making the contract structural rather than dependent on every caller
+    /// routing through `close_picker`/`close_picker_with`. Reaching this at
+    /// all means nothing has fired the callback yet: `close_picker_with`
+    /// takes the layer *by value* via `EditorState::take_layer`, which tears
+    /// down everything above the target but not the target itself, and
+    /// fires the callback explicitly instead. `truncate_to_base` (reload) is
+    /// the one exit that drops the callback: `EditorState::truncate_layers`
     /// (this method's only caller) never runs during a reload.
     fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        fire_callback(state, &mut self, PickerCallback::OnSelect, None);
+        fire_close(state, &mut self, None);
     }
 }
 
@@ -197,14 +198,17 @@ pub(in crate::editor) fn session_for_feed(
 /// whose [`WaitingInput`] the layer holds.
 ///
 /// During `.` the picker never opens: the recorded [`Answer::Pick`] answers
-/// it, its callback queued to run after the replayed body with what the
-/// recorded [`Picked`] names: the payload of the item with the recorded
-/// text among this picker's items (see [`PickerSession::payload_for`]), or
-/// the recorded payload. It refuses when the next answer is not a pick, when
+/// it, queuing to run after the replayed body what closed it live: the
+/// binding of the recorded key in this picker's keymap, called with `#f`
+/// for its token (every picker builtin ignores it) and the item the
+/// recorded [`Picked`] names (the payload of the item with the recorded
+/// text among this picker's items, see [`PickerSession::payload_for`], or
+/// the recorded payload), then `#:on-close`. A pick no binding made runs
+/// `#:on-close` alone. It refuses when the next answer is not a pick, when
 /// no item has the recorded text, when a reload forgot the payload, or when
-/// the recorded `#:actions` key is not bound here, and runs nothing for a
-/// pick that never resolved live. Returns `Ok(None)` then, naming no open
-/// picker, as `open_menu` does.
+/// the recorded key is not bound here, and runs nothing for a pick that
+/// never resolved live. Returns `Ok(None)` then, naming no open picker, as
+/// `open_menu` does.
 ///
 /// Takes `state`/`view` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
@@ -223,25 +227,30 @@ pub(in crate::editor) fn open_picker(
                     _ => None,
                 },
                 |pick: Pick| {
-                    let proc = match pick.action {
-                        None => session.on_select().clone(),
-                        Some(key) => session
-                            .action_for(key)
-                            .ok_or(ReplayRefusal::UnboundAction)?
-                            .clone(),
-                    };
-                    let arg = match pick.picked {
-                        None => hume_scripting::Rooted::new(SteelVal::BoolV(false)),
-                        Some(Picked::Choice(choice)) => session
-                            .payload_for(&choice)
-                            .ok_or_else(|| choice.missing())?
-                            .clone(),
-                        Some(Picked::Payload(payload)) => payload,
-                        Some(Picked::PayloadForgotten) => {
-                            return Err(ReplayRefusal::ForgottenPayload);
-                        }
-                    };
-                    Ok(PendingAnswer::Call { proc, arg })
+                    let mut calls = Vec::new();
+                    if let Some(key) = pick.action {
+                        let binding = session
+                            .binding_for(key)
+                            .ok_or(ReplayRefusal::UnboundKey)?
+                            .clone();
+                        let item = match pick.picked {
+                            None => steel_false(),
+                            Some(Picked::Choice(choice)) => session
+                                .payload_for(&choice)
+                                .ok_or_else(|| choice.missing())?
+                                .clone(),
+                            Some(Picked::Payload(payload)) => payload,
+                            Some(Picked::PayloadForgotten) => {
+                                return Err(ReplayRefusal::ForgottenPayload);
+                            }
+                        };
+                        calls.push(SteelCall::with_args(
+                            binding,
+                            Rc::from([steel_false(), item]),
+                        ));
+                    }
+                    calls.extend(session.on_close().map(on_close_call));
+                    Ok(PendingAnswer::Calls(calls))
                 },
             )
             .map_err(|refusal| refusal.to_string())?;
@@ -254,52 +263,58 @@ pub(in crate::editor) fn open_picker(
     Ok(Some(token))
 }
 
-/// Which of a picker's callbacks a close fires.
-pub(in crate::editor) enum PickerCallback {
-    OnSelect,
-    /// The `#:actions` `proc` bound to `key`.
-    Action {
-        key: CanonicalKey,
-        proc: hume_scripting::Callback,
-    },
+/// `#f`: a binding's item when nothing matches, and its token during `.`.
+fn steel_false() -> Rooted {
+    Rooted::new(SteelVal::BoolV(false))
 }
 
-/// Fire `callback` for a picker that just closed, with the payload of the
-/// item at `choice` (an index into the session's items) or `#f` when nothing
-/// was chosen: records the pick under the picker's answer ticket, if it has
-/// one, and hands the ticket to the queued call.
-fn fire_callback(
+fn on_close_call(on_close: &hume_scripting::Callback) -> SteelCall {
+    SteelCall::new(on_close.clone(), Vec::new())
+}
+
+/// The one place a closing picker records its answer and queues
+/// `#:on-close`. `closer` is the pick of the keymap binding that closed it
+/// ([`ScopeSlot::closing_binding`](super::super::replay::ScopeSlot::closing_binding)),
+/// `None` when no binding did. The answer records under the picker's
+/// ticket, if it has one; the ticket then goes to `#:on-close`'s call, and
+/// the rest of a closing binding runs in a second hold on the same scope, so
+/// what both do after the close belongs to the change.
+fn fire_close(
     state: &mut super::super::EditorState,
     PickerLayer { session, input }: &mut PickerLayer,
-    callback: PickerCallback,
-    choice: Option<usize>,
+    closer: Option<Pick>,
 ) {
-    let (proc, action) = match callback {
-        PickerCallback::OnSelect => (session.on_select().clone(), None),
-        PickerCallback::Action { key, proc } => (proc, Some(key)),
-    };
-    let (picked, arg) = match choice {
-        Some(i) => {
-            let (picked, payload) = session.picked(i);
-            (Some(picked), payload)
+    let ticket = input.take_answer();
+    let pick = match closer {
+        Some(pick) => {
+            state
+                .recording_scope
+                .picker_key_closed(ticket.as_ref().map(AnswerTicket::reopen_scope));
+            pick
         }
-        None => (None, hume_scripting::Rooted::new(SteelVal::BoolV(false))),
+        None => Pick {
+            action: None,
+            picked: None,
+        },
     };
-    state.queue_answered_call(
-        input.take_answer(),
-        Answer::Pick(Pick { action, picked }),
-        proc,
-        arg,
-    );
+    match session.on_close() {
+        Some(on_close) => {
+            state.queue_answered_call(ticket, Answer::Pick(pick), on_close_call(on_close));
+        }
+        None => {
+            if let Some(ticket) = &ticket {
+                state.record_answer(ticket, Answer::Pick(pick));
+            }
+        }
+    }
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is
-/// open) and fires one callback, `callback`, with `choice` (see
-/// [`fire_callback`]). Takes
-/// the layer *by value* via `EditorState::take_layer` (tearing down
-/// whatever was pushed above it, but not the picker itself) rather than
-/// `truncate_layers`, since `PickerLayer::tear_down` would otherwise fire
-/// its own `#f` callback right before this fires the real one.
+/// open) and fires [`fire_close`] with `closer`. Takes the layer *by value*
+/// via `EditorState::take_layer` (tearing down whatever was pushed above it,
+/// but not the picker itself) rather than `truncate_layers`, since
+/// `PickerLayer::tear_down` would otherwise fire `#:on-close` right before
+/// this does.
 ///
 /// `Editor::reset_config_state` is a second, deliberate exit from this
 /// "fires exactly once" contract: its `reset_input` call drops
@@ -311,109 +326,106 @@ fn fire_callback(
 pub(in crate::editor) fn close_picker_with(
     state: &mut super::super::EditorState,
     view: &EngineView,
-    callback: PickerCallback,
-    choice: Option<usize>,
+    closer: Option<Pick>,
 ) {
     let Some(r) = state.input.ref_of::<PickerLayer>() else {
         return;
     };
     let mut layer = state.take_layer::<PickerLayer>(view, r);
-    fire_callback(state, &mut layer, callback, choice);
+    fire_close(state, &mut layer, closer);
 }
 
-/// `close_picker_with`'s dismissal: fire `on_select` with `#f`.
+/// `close_picker_with` for a close no keymap binding made.
 pub(in crate::editor) fn close_picker(state: &mut super::super::EditorState, view: &EngineView) {
-    close_picker_with(state, view, PickerCallback::OnSelect, None);
+    close_picker_with(state, view, None);
 }
 
-/// Handles one key while the picker is open. Always fully consumes,
-/// unlike the menu (a stray key closes it and falls through) or the
-/// drawer (a stray key falls through untouched), the picker is
-/// full-modal: it owns the entire interaction, so an unrecognized key
-/// (Left/Right/Home/Tab/…) is simply consumed and ignored rather than
-/// leaking through to whatever mode sits underneath. `r` addresses this
-/// layer's own session via [`picker_mut`]/[`queue_query_change`]/
-/// [`close_picker_with_selection`], but not retirement: every retirement
-/// path goes through [`close_picker`]/[`close_picker_with`], which finds
-/// the picker's own ref itself rather than needing this call's.
-///
-/// `on_select` fires exactly once via `.take()`-equivalent truncate +
-/// `queue_steel_call` (never invoked inline), same one-shot discipline
-/// as the menu. `visible_rows` comes from the panel geometry of
-/// `EditorState::screen_layout`, the layout the next frame's
-/// `sync_picker_view` paints at the same terminal size, so a key pages by the
-/// rows that frame shows (on a pane area too small for the panel, geometry
-/// is `None` and paging is a no-op on the store). A mouse event (click, drag, or
-/// wheel) is swallowed the same way: full-modal means the picker owns
-/// the pointer too, not just the keyboard, so a click can't move the
-/// cursor in the buffer underneath it.
-pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
-    let key = match ev {
-        InputEvent::Key(key) => key,
-        InputEvent::Mouse(_) => return,
-    };
-    let screen = ed.state.screen_layout(&ed.view);
-    let visible_rows =
-        hume_ui::picker_panel::panel_geometry(screen.pane_area()).map_or(0, |geo| geo.list_rows);
+/// The rows the picker panel shows in `state`'s current layout, `0` when the
+/// pane area is too small for the panel. What a page step moves by: the
+/// layout the next frame's `sync_picker_view` paints at the same terminal
+/// size.
+fn visible_rows(state: &EditorState, view: &EngineView) -> usize {
+    let screen = state.screen_layout(view);
+    hume_ui::picker_panel::panel_geometry(screen.pane_area()).map_or(0, |geo| geo.list_rows)
+}
 
-    // Every movement key differs only in the delta passed to
-    // `move_selection`, collapsed to one borrow instead of one per key.
-    let half_page_step = half_page(visible_rows) as isize;
-    let step: Option<isize> = half_page_key(&key)
-        .map(|down| {
-            if down {
-                half_page_step
-            } else {
-                -half_page_step
+/// `picker-move!`: moves the selection of the picker `token` names by
+/// `count` steps of `step`, a no-op unless `token` names the open picker
+/// ([`session_for_token`]).
+pub(in crate::editor) fn move_picker(
+    state: &mut super::super::EditorState,
+    view: &EngineView,
+    token: HostToken,
+    count: isize,
+    step: PickerStep,
+) {
+    let rows = visible_rows(state, view);
+    let Some(session) = session_for_token(state, token) else {
+        return;
+    };
+    let rows_per_step = match step {
+        PickerStep::Row => 1,
+        PickerStep::Page => rows,
+        PickerStep::HalfPage => half_page(rows),
+    };
+    session.move_selection(count.saturating_mul(rows_per_step as isize), rows);
+}
+
+/// Handles one key while the picker is open. Always fully consumes, unlike
+/// the menu (a stray key closes it and falls through) or the drawer (a
+/// stray key falls through untouched): the picker is full-modal, owning the
+/// entire interaction, so nothing leaks through to whatever mode sits
+/// underneath. A key the keymap binds queues its binding with the picker's
+/// token and the selected item's payload (`#f` when nothing matches) under
+/// [`CallGuard::PickerKey`], never invoked inline, and does nothing else.
+/// An unbound `Backspace` deletes from the query and an unbound plain
+/// character types into it; any other unbound key is ignored. A mouse event
+/// (click, drag, or wheel) is swallowed the same way: full-modal means the
+/// picker owns the pointer too, so a click can't move the cursor in the
+/// buffer underneath it.
+pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
+    let InputEvent::Key(key) = ev else {
+        return;
+    };
+    let canonical = CanonicalKey::from(key);
+    let session = picker_mut(&mut ed.state, r);
+    if let Some(binding) = session.binding_for(canonical).cloned() {
+        let token = session.token();
+        let (picked, item) = match session.selected_index() {
+            Some(i) => {
+                let (picked, payload) = session.picked(i);
+                (Some(picked), payload)
             }
-        })
-        .or_else(|| match key.code {
-            KeyCode::Down => Some(1),
-            KeyCode::Up => Some(-1),
-            KeyCode::Char('n') if key.modifiers.contains(Modifiers::CONTROL) => Some(1),
-            KeyCode::Char('p') if key.modifiers.contains(Modifiers::CONTROL) => Some(-1),
-            KeyCode::PageDown => Some(visible_rows as isize),
-            KeyCode::PageUp => Some(-(visible_rows as isize)),
-            _ => None,
-        });
-    if let Some(delta) = step {
-        picker_mut(&mut ed.state, r).move_selection(delta, visible_rows);
+            None => (None, steel_false()),
+        };
+        let call = SteelCall::with_args(
+            binding,
+            Rc::from([Rooted::new(token_to_steel(token)), item]),
+        );
+        let run = PickerKeyRun::new(token, canonical, picked);
+        ed.state.push_work(PendingWork::call(
+            call,
+            Some(CallGuard::PickerKey(run)),
+            EditOrigin::User,
+        ));
         return;
     }
-
     match key.code {
         KeyCode::Backspace => {
             // `None` (and so no fire) both on an already-empty query and
             // on a non-live session; see `pop_grapheme`'s doc.
-            let cb = picker_mut(&mut ed.state, r).pop_grapheme();
+            let cb = session.pop_grapheme();
             queue_query_change(&mut ed.state, r, cb);
-        }
-        KeyCode::Enter => {
-            // No match (or nothing pushed yet) behaves like Esc: Enter
-            // is always a terminal action, never a silent no-op.
-            close_picker_with_selection(ed, r, PickerCallback::OnSelect);
-        }
-        KeyCode::Escape => {
-            close_picker(&mut ed.state, &ed.view);
         }
         KeyCode::Char(ch)
             if !key
                 .modifiers
                 .intersects(Modifiers::CONTROL | Modifiers::ALT) =>
         {
-            let cb = picker_mut(&mut ed.state, r).insert_char(ch);
+            let cb = session.insert_char(ch);
             queue_query_change(&mut ed.state, r, cb);
         }
-        _ => {
-            // `#:actions`: tried only here, after every built-in key
-            // above has already had first refusal, so a declared action
-            // can never override movement/Backspace/Enter/Escape/query
-            // input (see `PickerSession::action_for`'s doc).
-            let key = CanonicalKey::from(key);
-            if let Some(proc) = picker_mut(&mut ed.state, r).action_for(key).cloned() {
-                close_picker_with_selection(ed, r, PickerCallback::Action { key, proc });
-            }
-        }
+        _ => {}
     }
 }
 
@@ -469,12 +481,4 @@ fn picker_mut(state: &mut EditorState, r: LayerRef) -> &mut PickerSession {
         .at_mut::<PickerLayer>(r)
         .expect("r names the Picker layer dispatch reached")
         .session
-}
-
-/// Close the picker, firing `callback` with the selected item (`#f` when
-/// nothing matches), so accepting is always a terminal action rather than a
-/// silent no-op.
-fn close_picker_with_selection(ed: &mut Editor, r: LayerRef, callback: PickerCallback) {
-    let choice = picker_mut(&mut ed.state, r).selected_index();
-    close_picker_with(&mut ed.state, &ed.view, callback, choice);
 }

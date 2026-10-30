@@ -49,7 +49,8 @@ pub use settings::{OptionValue, SettingsHost};
 pub use timers::{TimerHandle, TimerHost};
 pub use token::{TrackedFate, TrackedHold, token_to_steel};
 pub use ui::{
-    DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
+    DrawerItems, LivePickerOpts, PickerBinding, PickerFeedMode, PickerOpts, PickerSourceOpts,
+    PickerStep, PopupKind, UiHost,
 };
 
 /// Which keymap a bind or unbind changes: the global one, or the keymap a

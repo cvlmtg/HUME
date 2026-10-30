@@ -34,11 +34,8 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
-    let mut session = PickerSession::new(
-        hume_scripting::Callback::for_test(marker("on-select")),
-        PickerOpts::default(),
-        Vec::new(),
-    );
+    let mut session = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
+        .expect("an empty keymap repeats no key");
     session.push(
         items
             .iter()

@@ -93,13 +93,13 @@ This is `(split-words str (get-buffer-option pane "word-chars"))`, the classific
 
 `cfg` is what `(plugin-config)` returns, and `key` a symbol, like `'signs`. Every error names the calling plugin (`plugin`) and the offending key, so a bad `#:config` value fails at load time naming what to fix. [Configuring a plugin](writing-plugins.md#configuring-a-plugin) covers reading `#:config` in full.
 
-## Picker buffer-placement
+## Picker keymap
 
 | Call | Effect |
 |------|--------|
-| `stdlib/buffer-actions` | `(call! "stdlib/buffer-actions" handler)`{.sig} A `picker!`/`live-picker!` `#:actions` list binding `Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s` to `handler` placed in the current pane, a new tab, a vertical split, and a horizontal split respectively |
+| `stdlib/picker-keymap` | `(call! "stdlib/picker-keymap" handler)`{.sig} A `picker!`/`live-picker!` keymap: `Down`/`Ctrl-n` and `Up`/`Ctrl-p` move the selection, `PageDown`/`PageUp` and `Ctrl-d`/`Ctrl-u` move it a page and half a page, `Esc` closes the picker, `Enter`/`Ctrl-o` close it and call `handler` with the selected item, and `Ctrl-t`/`Ctrl-v`/`Ctrl-s` do the same in a new tab, a vertical split, and a horizontal split |
 | `stdlib/with-tab` | `(call! "stdlib/with-tab" handler)`{.sig} Wraps `handler`: opens a new tab, then calls `handler` with the picker's payload |
 | `stdlib/with-vsplit` | `(call! "stdlib/with-vsplit" handler)`{.sig} Wraps `handler`: splits the focused pane side by side, then calls `handler` with the picker's payload |
 | `stdlib/with-split` | `(call! "stdlib/with-split" handler)`{.sig} Wraps `handler`: splits the focused pane stacked, then calls `handler` with the picker's payload |
 
-`handler` is the same one-argument procedure a picker passes as `on-select` (see [Custom pickers](writing-plugins.md#custom-pickers)'s `#:actions`). Most plugins want `buffer-actions`. `with-tab`/`with-vsplit`/`with-split` are its building blocks, for a custom `#:actions` list with different keys or only some of the four.
+`handler` takes one argument, the selected item's payload, or `#f` when nothing matches. `picker-keymap` returns a hashmap, so a plugin changes or adds a key with `hash-insert` (see [Custom pickers](writing-plugins.md#custom-pickers)). `with-tab`/`with-vsplit`/`with-split` are its building blocks, for a binding of your own that opens the item somewhere else.

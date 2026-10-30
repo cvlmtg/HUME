@@ -272,7 +272,7 @@ macro_rules! builtins {
 // A live session mints a new token for every query and passes it to
 // #:source. picker-push!, picker-replace! and picker-source-spawn! accept
 // only the current one, so an answer to an earlier query is dropped by the
-// editor. picker-close! and picker-source-stop! also accept the token
+// editor. picker-close!, picker-move! and picker-source-stop! also accept the token
 // live-picker! returned.
 //
 // run-inline-output!: %run-inline-output! raises outside an #:inline-output
@@ -566,13 +566,14 @@ builtins! {
     cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);
 
     // Fuzzy-picker widget.
-    cmd "%picker!" => "picker!" ui::picker(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc<1>, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
-    cmd "%live-picker!" => "live-picker!" ui::live_picker(pane: args::FocusedPane, on_select: args::ScriptProc<1>, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
+    cmd "%picker!" => "picker!" ui::picker(pane: args::FocusedPane, items: SteelVal, keymap: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, on_close: SteelVal);
+    cmd "%live-picker!" => "live-picker!" ui::live_picker(pane: args::FocusedPane, keymap: SteelVal, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, on_close: SteelVal);
     cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
     cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
     cmd "%picker-source-spawn!" => "picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
     cmd "picker-source-stop!" ui::picker_source_stop(token: SteelVal);
     cmd "picker-close!" ui::picker_close(token: SteelVal);
+    cmd "%picker-move!" => "picker-move!" ui::picker_move(token: SteelVal, count: SteelVal, by: SteelVal);
     // Backs the #:source and argv-for checks only. See args::is_callable's doc.
     plain "%callable?" => "%callable?" args::is_callable(val: SteelVal, args: SteelVal);
 

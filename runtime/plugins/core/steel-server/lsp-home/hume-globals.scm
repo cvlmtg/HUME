@@ -285,6 +285,7 @@
 (#%register-global "picker!")
 (#%register-global "picker-close!")
 (#%register-global "picker-command-source")
+(#%register-global "picker-move!")
 (#%register-global "picker-push!")
 (#%register-global "picker-replace!")
 (#%register-global "picker-source-spawn!")

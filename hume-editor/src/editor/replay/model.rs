@@ -35,9 +35,9 @@ pub(crate) enum Answer {
     Unanswered,
 }
 
-/// A picker's answer. `action` is the `#:actions` key that closed the
-/// picker, `None` for `on-select`; `picked` is `None` for a dismissal (the
-/// callback got `#f`).
+/// A picker's answer. `action` is the key of the keymap binding that closed
+/// the picker, `None` when no binding did; `picked` is the item that binding
+/// was handed, `None` when nothing matched or no binding closed it.
 #[derive(Debug, Clone)]
 pub(crate) struct Pick {
     pub(in crate::editor) action: Option<CanonicalKey>,

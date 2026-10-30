@@ -61,7 +61,7 @@ pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelE
 /// A key-spec string (`bind-key!`'s own syntax, decoded via
 /// [`parse_key_sequence`]) that must name exactly one chord, not a
 /// sequence. Shared by `insert-key!` (one key, no destination for a
-/// sequence) and `picker!`/`live-picker!`'s `#:actions` (one chord
+/// sequence) and `picker!`/`live-picker!`'s keymap (one chord
 /// dispatched at a time).
 pub(crate) fn single_key_arg(val: SteelVal, ctx_name: &str) -> Result<KeyEvent, SteelErr> {
     let spec = string_arg(val, ctx_name)?;

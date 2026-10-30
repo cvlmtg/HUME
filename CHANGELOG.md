@@ -10,8 +10,10 @@
 - Release archives no longer include `hume-grammar-build`. To build a grammar yourself, get it from [treesitter.hume](https://github.com/cvlmtg/treesitter.hume).
 - `compile-grammar!`, `bundled-language-grammar` and `bundled-grammar-languages` are gone: list HUME's languages with `bundled-languages`.
 - `buffer-display-path`'s `#:relative` takes the directory to be relative to: replace `#:relative #t` with `#:relative (cwd)`.
+- `picker!` and `live-picker!` take a keymap in place of `on-select`, and `#:actions` is gone: a picker answers only the keys its keymap binds. Pass `(call! "stdlib/picker-keymap" on-select)` for the keys pickers had, add keys with `hash-insert`, and move cleanup that ran on `#f` into `#:on-close`.
 
 ### Plugins & scripting
+- A plugin's picker binds every key itself, and new `picker-move!` moves its selection.
 - `core:plum` installs grammars from a folder you built them into before downloading them, with `#:config (hash 'grammar-source "/path")`, for a platform with no prebuilt grammars or for working offline.
 - New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value.
 - New `buffer-search` finds a pattern in a buffer without moving the selection or changing the current search, and new `word-search-pattern` gives the pattern `*` searches for a word.

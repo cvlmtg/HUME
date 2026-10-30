@@ -615,6 +615,162 @@ fn core_stdlib_report_section_command() {
     ");
 }
 
+// ── Picker keymap ─────────────────────────────────────────────────────────────
+
+/// `core:stdlib` loaded and `:pick` run: a picker over `item0`..`item49`
+/// (payloads `0`..`49`) taking `stdlib/picker-keymap`, whose handler logs
+/// the item it gets, or `none` for `#f`.
+fn picker_keymap_editor() -> (Editor, RuntimeDirs, tempfile::TempDir) {
+    let (mut ed, mut host, guard, init_dir) = setup_stdlib_editor();
+    let items = (0..50)
+        .map(|i| format!(r#"(cons "item{i}" {i})"#))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!(
+        r#"(define-typed-command! "pick" ""
+             (lambda (pane)
+               (picker! pane (list {items})
+                 (call! "stdlib/picker-keymap"
+                   (lambda (item) (log! 'info (if item (number->string item) "none")))))))"#
+    );
+    {
+        let mut ih = init_host!(ed);
+        host.eval_source(&source, &mut ih)
+            .expect("define the pick command");
+    }
+    ed.scripting = Some(host);
+    frame(&mut ed, 60, 16);
+    type_cmd(&mut ed, ":pick");
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
+    (ed, guard, init_dir)
+}
+
+fn press(ed: &mut Editor, key: KeyEvent) {
+    ed.feed_key(key);
+    ed.settle();
+}
+
+fn picker_selected(ed: &Editor) -> usize {
+    ed.state
+        .input
+        .picker()
+        .expect("the picker is open")
+        .selected()
+}
+
+#[test]
+fn picker_keymap_moves_by_rows_pages_and_half_pages() {
+    let (mut ed, _guard, _init_dir) = picker_keymap_editor();
+    let rows = hume_ui::picker_panel::panel_geometry(ed.screen_layout().pane_area())
+        .expect("viable geometry at 60x16")
+        .list_rows;
+
+    for (key, expected) in [
+        (key_down(), 1),
+        (key_ctrl('n'), 2),
+        (key_up(), 1),
+        (key_ctrl('p'), 0),
+        (key_pagedown(), rows),
+        (key_pageup(), 0),
+        (key_ctrl('d'), rows / 2),
+        (key_ctrl('u'), 0),
+    ] {
+        press(&mut ed, key);
+        assert_eq!(picker_selected(&ed), expected, "after {key:?}");
+    }
+    assert!(
+        ed.state.status_msg.is_none(),
+        "moving never calls the handler"
+    );
+}
+
+#[test]
+fn picker_keymap_enter_and_ctrl_o_close_and_hand_the_selected_item_over() {
+    for accept in [key_enter(), key_ctrl('o')] {
+        let (mut ed, _guard, _init_dir) = picker_keymap_editor();
+        press(&mut ed, key_down());
+
+        press(&mut ed, accept);
+
+        assert!(ed.state.input.picker().is_none(), "{accept:?} closes it");
+        assert_eq!(ed.state.status_msg.as_deref(), Some("1"), "{accept:?}");
+    }
+}
+
+#[test]
+fn picker_keymap_enter_with_nothing_matching_hands_over_false() {
+    let (mut ed, _guard, _init_dir) = picker_keymap_editor();
+    for ch in "zzz".chars() {
+        press(&mut ed, key(ch));
+    }
+
+    press(&mut ed, key_enter());
+
+    assert!(ed.state.input.picker().is_none());
+    assert_eq!(ed.state.status_msg.as_deref(), Some("none"));
+}
+
+#[test]
+fn picker_keymap_esc_closes_without_calling_the_handler() {
+    let (mut ed, _guard, _init_dir) = picker_keymap_editor();
+
+    press(&mut ed, key_esc());
+
+    assert!(ed.state.input.picker().is_none());
+    assert!(ed.state.status_msg.is_none());
+}
+
+#[test]
+fn picker_keymap_typing_and_backspace_edit_the_query() {
+    let (mut ed, _guard, _init_dir) = picker_keymap_editor();
+
+    press(&mut ed, key('4'));
+    press(&mut ed, key('2'));
+    press(&mut ed, key_backspace());
+
+    let session = ed.state.input.picker().expect("typing never closes it");
+    assert_eq!(session.query(), "4");
+}
+
+#[test]
+fn picker_keymap_ctrl_s_splits_the_pane_then_hands_the_item_over() {
+    let (mut ed, _guard, _init_dir) = picker_keymap_editor();
+    let panes_before = ed.view.panes.len();
+
+    press(&mut ed, key_ctrl('s'));
+
+    assert!(ed.state.input.picker().is_none());
+    assert_eq!(ed.view.panes.len(), panes_before + 1);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("0"));
+}
+
+/// A plugin changes one default key by `hash-insert`ing its own binding
+/// into the map `stdlib/picker-keymap` returns; every other key keeps its
+/// default.
+#[test]
+fn picker_keymap_takes_an_overriding_key_through_hash_insert() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+    let source = r#"(define-typed-command! "pick" ""
+         (lambda (pane)
+           (picker! pane (list (cons "a" "A") (cons "b" "B"))
+             (hash-insert (call! "stdlib/picker-keymap" (lambda (item) (log! 'info item)))
+                          "esc" (lambda (token item) (picker-close! token) (log! 'info "custom esc"))))))"#;
+    {
+        let mut ih = init_host!(ed);
+        host.eval_source(source, &mut ih)
+            .expect("define the pick command");
+    }
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":pick");
+
+    press(&mut ed, key_down());
+    assert_eq!(picker_selected(&ed), 1, "the default Down binding stays");
+    press(&mut ed, key_esc());
+
+    assert!(ed.state.input.picker().is_none());
+    assert_eq!(ed.state.status_msg.as_deref(), Some("custom esc"));
+}
+
 // ── The markdown-heading example in writing-plugins.md ───────────────────────
 
 /// The `markdown-heading` command `writing-plugins.md` shows, with its

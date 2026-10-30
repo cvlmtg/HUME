@@ -1,10 +1,13 @@
 //! The selection-menu layer: `(show-menu! items on-select)`'s raw state.
 
+use std::rc::Rc;
+
 use termina::event::KeyCode;
 
 use hume_core::{HostToken, NonEmpty};
 use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::types::EditorMode;
+use hume_scripting::SteelCall;
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::replay::{Answer, Choice, InputOpener, PendingAnswer, WaitingInput};
@@ -73,10 +76,10 @@ pub(in crate::editor) fn open_menu(
                                 .ok_or_else(|| choice.missing())
                         })
                         .transpose()?;
-                    Ok(PendingAnswer::Call {
-                        proc: callback,
-                        arg: menu_arg(index.map(|i| &items[i].1)),
-                    })
+                    Ok(PendingAnswer::Calls(vec![SteelCall::with_args(
+                        callback,
+                        Rc::from([menu_arg(index.map(|i| &items[i].1))]),
+                    )]))
                 },
             )
             .map_err(|refusal| refusal.to_string())?;
@@ -142,8 +145,10 @@ impl MenuLayer {
         state.queue_answered_call(
             self.input.take_answer(),
             Answer::Menu(picked),
-            self.callback.clone(),
-            menu_arg(choice.map(|i| &self.payloads[i])),
+            SteelCall::with_args(
+                self.callback.clone(),
+                Rc::from([menu_arg(choice.map(|i| &self.payloads[i]))]),
+            ),
         );
     }
 

@@ -58,9 +58,8 @@
                               (lsp/answer-items results)))))
     (if (null? rows)
         (log! 'info "No symbols found")
-        (picker! pane rows lsp/goto-symbol!
-                 #:prompt "symbols: " #:truncate 'tail
-                 #:actions (call! "stdlib/buffer-actions" lsp/goto-symbol!)))))
+        (picker! pane rows (call! "stdlib/picker-keymap" lsp/goto-symbol!)
+                 #:prompt "symbols: " #:truncate 'tail))))
 
 (define-command! "lsp/document-symbols" "Pick a symbol of the current file and jump to it."
   (lambda (pane)
@@ -115,7 +114,6 @@
   (lambda (pane)
     (lsp/with-servers (lsp-servers pane #:feature 'workspace-symbols) "workspace symbols"
       (lambda (servers)
-        (live-picker! pane lsp/goto-symbol!
+        (live-picker! pane (call! "stdlib/picker-keymap" lsp/goto-symbol!)
                       #:prompt "workspace symbols: " #:truncate 'tail
-                      #:source (lsp/workspace-symbol-source pane)
-                      #:actions (call! "stdlib/buffer-actions" lsp/goto-symbol!))))))
+                      #:source (lsp/workspace-symbol-source pane))))))
