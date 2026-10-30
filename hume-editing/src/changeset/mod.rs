@@ -887,15 +887,28 @@ impl ChangeSet {
                     let b_len = op_consuming_len(&b);
                     let min = a_len.min(b_len);
 
-                    // B retains all of A's insert: move the text instead of
-                    // copying it. An Insert session composes every keystroke
-                    // into a group that retains the whole run typed so far.
-                    if min == a_len
-                        && matches!(b, Operation::Retain(_))
-                        && let Operation::Insert(s) = a
+                    // Insert + Retain → Insert (first `min` chars)
+                    //
+                    // B retains A's insert, whole or in part: the retained
+                    // text moves to the output instead of being copied, and
+                    // a partly retained insert is split once at the `min`-th
+                    // char, its tail left as A's remainder. An Insert session
+                    // composes every keystroke into a group that retains the
+                    // whole run typed so far, and every Backspace inside the
+                    // run retains all of it but its last char.
+                    if matches!(b, Operation::Retain(_))
+                        && let Operation::Insert(mut s) = a
                     {
+                        a_cur = if min == a_len {
+                            a_ops.next()
+                        } else {
+                            let (end, _) = s
+                                .char_indices()
+                                .nth(min)
+                                .expect("B retains fewer chars than A inserted");
+                            Some(Operation::Insert(s.split_off(end)))
+                        };
                         push_merge(&mut result, Operation::Insert(s));
-                        a_cur = a_ops.next();
                         b_cur = advance_op(b, min, &mut b_ops);
                         continue;
                     }
@@ -910,18 +923,6 @@ impl ChangeSet {
                         (Operation::Retain(_), Operation::Delete(_)) => {
                             push_merge(&mut result, Operation::Delete(min));
                         }
-                        // Insert + Retain → Insert (first `min` chars)
-                        // (A inserted text that B retains in part; the
-                        // whole-insert case is moved above.)
-                        (Operation::Insert(s), Operation::Retain(_)) => {
-                            // Slice at the `min`-th char boundary rather than
-                            // re-encoding the prefix char by char.
-                            let (end, _) = s
-                                .char_indices()
-                                .nth(min)
-                                .expect("B retains fewer chars than A inserted");
-                            push_merge(&mut result, Operation::Insert(s[..end].to_string()));
-                        }
                         // Insert + Delete → cancel
                         // (A inserted text that B immediately deletes:
                         // the text never existed from the A→C perspective.)
@@ -929,8 +930,9 @@ impl ChangeSet {
                             // No output: they cancel out.
                         }
                         // The outer arms above guarantee A ∈ {Retain, Insert}
-                        // and B ∈ {Retain, Delete}. All four combinations are
-                        // handled; this arm is unreachable in correct usage.
+                        // and B ∈ {Retain, Delete}, and Insert + Retain is
+                        // handled before this match; this arm is unreachable
+                        // in correct usage.
                         _ => unreachable!("compose: unexpected op pair ({a:?}, {b:?})"),
                     }
 
