@@ -99,6 +99,30 @@ impl ViewLabel {
 /// `commands::edit::history_step` all spell the same shape.
 pub(in crate::editor) type HistoryWalkResult = Option<(SelectionSet, ChangeSet, usize)>;
 
+/// The selections an applied edit left, tagged with whether its changeset
+/// moved any text.
+pub(crate) enum Applied {
+    Unchanged(SelectionSet),
+    Changed(SelectionSet),
+}
+
+impl Applied {
+    pub(in crate::editor) fn of(sels: SelectionSet, cs: &ChangeSet) -> Self {
+        if cs.is_identity() {
+            Self::Unchanged(sels)
+        } else {
+            Self::Changed(sels)
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn into_selections(self) -> SelectionSet {
+        match self {
+            Self::Unchanged(sels) | Self::Changed(sels) => sels,
+        }
+    }
+}
+
 /// The part of a buffer's undo state `on-undo-history-changed` reports: the
 /// history's `change_seq` and the revision `buffer-undo-tree` marks `saved?`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -756,8 +780,8 @@ impl Buffer {
     /// Apply an edit and record it in the undo history.
     ///
     /// Takes `sels` (the acting pane's current selections) by value and returns
-    /// the post-edit selections + the forward `ChangeSet` (for the syntax and
-    /// LSP streams); `install` carries every stored position through it.
+    /// the post-edit selections; `install` carries every stored position, the
+    /// syntax tree and the change log through the edit's `ChangeSet`.
     /// For a `target` with no pane, an edit no pane owns, `sels` is only what
     /// the revision records, and every pane's stored selections are carried.
     pub(crate) fn apply_edit(
@@ -766,7 +790,7 @@ impl Buffer {
         stores: &mut PositionStores<'_>,
         sels: SelectionSet,
         cmd: impl FnOnce(EditState) -> Edited,
-    ) -> (SelectionSet, ChangeSet) {
+    ) -> Applied {
         let pre_sels = sels.clone();
         let pre = EditState::bind(&self.text, sels);
         let (post, cs) = self.run_edit(pre, cmd).into_parts();
@@ -775,16 +799,16 @@ impl Buffer {
         // tree with a no-op revision, and a new text generation would fire
         // `on-text-changed` for a mutation that never happened.
         if cs.is_identity() {
-            return (post.into_selections(), cs);
+            return Applied::Unchanged(post.into_selections());
         }
 
         // self.text is still pre-edit here, so it's safe to call invert.
         let inverse_cs = cs.invert(&self.text);
         let post_text = post.text().clone();
         let post_sels = post.into_selections();
-        self.record_revision(cs.clone(), inverse_cs, pre_sels, post_sels.clone());
         self.install(target, stores, post_text, Change::Edit(&cs));
-        (post_sels, cs)
+        self.record_revision(cs, inverse_cs, pre_sels, post_sels.clone());
+        Applied::Changed(post_sels)
     }
 
     /// Apply an edit that belongs to the open edit group, without recording
@@ -823,10 +847,10 @@ impl Buffer {
     /// Always starts from `snapshot`, the group's, so every cycle cleanly
     /// discards the previous paste output (including added lines).
     /// `to_snapshot` maps the live text back to `snapshot`'s, `None` while
-    /// the group has no edits. Returns the new selections, a propagation CS
-    /// mapping the current buffer text to the new text, which `install`
-    /// carries every stored position through, and the CS from `snapshot`'s
-    /// text, the group's new accumulated edits.
+    /// the group has no edits. The edit reaches the live text through a
+    /// propagation CS, which `install` carries every stored position through.
+    /// Returns the new selections and the CS from `snapshot`'s text, the
+    /// group's new accumulated edits.
     pub(in crate::editor) fn apply_edit_regrouped(
         &mut self,
         id: BufferId,
@@ -835,22 +859,20 @@ impl Buffer {
         snapshot: EditState,
         to_snapshot: Option<ChangeSet>,
         cmd: impl FnOnce(EditState) -> Edited,
-    ) -> (SelectionSet, ChangeSet, ChangeSet) {
-        let edited = cmd(snapshot);
-        let new_cs = edited.changes().clone();
+    ) -> (Applied, ChangeSet) {
+        let (result, new_cs) = cmd(snapshot).into_parts();
 
-        // With no edits yet the live text is the snapshot's, so propagation
-        // CS == new_cs.
-        let propagation_cs = match to_snapshot {
-            None => new_cs.clone(),
-            Some(to_snapshot) => to_snapshot.compose(new_cs.clone()),
+        // With no edits the live text has the snapshot's content, so new_cs
+        // is the propagation CS, and the propagation CS is the group's.
+        let (propagation_cs, group_cs) = match to_snapshot {
+            None => (new_cs, None),
+            Some(to_snapshot) => (to_snapshot.compose(new_cs.clone()), Some(new_cs)),
         };
 
         // An identity `propagation_cs` relabels the live text without
         // changing it, so `install` retags the stores and nothing else sees
         // a change.
-        let (post, cs) = edited
-            .rebased(&self.text, propagation_cs)
+        let (post, cs) = Edited::rebase(result, &self.text, propagation_cs)
             .expect("the propagation changeset maps the live text")
             .into_parts();
         if post.text().version() != self.text.version() {
@@ -861,7 +883,8 @@ impl Buffer {
                 Change::Edit(&cs),
             );
         }
-        (post.into_selections(), cs, new_cs)
+        let applied = Applied::of(post.into_selections(), &cs);
+        (applied, group_cs.unwrap_or(cs))
     }
 
     /// Open an edit group. Snapshots the current text with `base`, the

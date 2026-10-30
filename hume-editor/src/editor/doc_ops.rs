@@ -10,7 +10,7 @@
 use hume_core::{BufferId, PaneHandle, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::buffer::{Buffer, HistoryWalkResult};
+use crate::editor::buffer::{Applied, Buffer, HistoryWalkResult};
 use crate::editor::edit_session::{
     EditSession, EditSessionKind, check_no_conflicting_session, commit_paste_group,
 };
@@ -24,41 +24,43 @@ use hume_editing::state::EditState;
 use hume_rope::offset::CharOffset;
 
 /// Shared post-mutation bookkeeping for every text-mutating path: write
-/// `new_sels` back to `target`'s pane, if it has one, and bump the edit
-/// seq. Stored positions (other panes, jump lists, prompt snapshots), the
+/// `applied`'s selections back to `target`'s pane, if it has one, and bump
+/// the edit seq when the text changed. Stored positions (other panes, jump lists, prompt snapshots), the
 /// syntax edit chain and the language servers' change queue are not here: the
 /// `Buffer` mutator already carried them through the change.
 fn finish_edit(
     buffers: &mut BufferStore,
     pane_state: &mut PaneEntries,
     target: PaneHandle,
-    new_sels: SelectionSet,
-    cs: &ChangeSet,
+    applied: Applied,
 ) {
     let buf_id = target.buffer();
-    // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
-    // `install` for it directly, and `commit_edit_group` never records it as
-    // a revision for `undo`/`redo` to later replay, so the text generation did
-    // not move either way. Paste-stamping must not count a no-op as an
-    // edit. Selections are still written: a no-op edit can still move
-    // cursors.
-    if cs.is_identity() {
-        if let Some(pane_id) = target.pane() {
-            pane_state
-                .seeded_mut(pane_id, buf_id)
-                .set_selections(new_sels, buffers.get(buf_id).text());
+    match applied {
+        // An identity changeset moved no bytes: `Buffer::apply_edit*` skipped
+        // `install` for it directly, and `commit_edit_group` never records it
+        // as a revision for `undo`/`redo` to later replay, so the text
+        // generation did not move either way. Paste-stamping must not count a
+        // no-op as an edit. Selections are still written: a no-op edit can
+        // still move cursors.
+        Applied::Unchanged(new_sels) => {
+            if let Some(pane_id) = target.pane() {
+                pane_state
+                    .seeded_mut(pane_id, buf_id)
+                    .set_selections(new_sels, buffers.get(buf_id).text());
+            }
         }
-        return;
+        // A real edit reveals the acting pane even when it didn't move the
+        // primary head (`r` replacing the character under the cursor).
+        // `install` left this pane's selections for the new ones to replace.
+        Applied::Changed(new_sels) => {
+            if let Some(pane_id) = target.pane() {
+                pane_state
+                    .seeded_mut(pane_id, buf_id)
+                    .set_selections_after_edit(new_sels);
+            }
+            buffers.bump_edit_seq();
+        }
     }
-    // A real edit reveals the acting pane even when it didn't move the
-    // primary head (`r` replacing the character under the cursor). `install`
-    // left this pane's selections for the new ones to replace.
-    if let Some(pane_id) = target.pane() {
-        pane_state
-            .seeded_mut(pane_id, buf_id)
-            .set_selections_after_edit(new_sels);
-    }
-    buffers.bump_edit_seq();
 }
 
 /// `Err` when `buf_id`'s text may not change
@@ -143,10 +145,10 @@ pub(in crate::editor) fn apply_doc_edit_on(
     {
         commit_paste_group(buffers, stores.panes, stores.session);
     }
-    let (new_sels, cs) = buffers
+    let applied = buffers
         .get_mut(buf_id)
         .apply_edit(target, stores, sels, cmd);
-    finish_edit(buffers, stores.panes, target, new_sels, &cs);
+    finish_edit(buffers, stores.panes, target, applied);
     Ok(())
 }
 
@@ -183,11 +185,10 @@ pub(in crate::editor) fn apply_changes(
         .first()
         .map_or_else(CharOffset::default, |region| region.old.start);
     let sels = EditState::with_cursor(text.clone(), text.snap(first_change)).into_selections();
-    let (new_sels, cs) =
-        buffers
-            .get_mut(buf_id)
-            .apply_edit(target, stores, sels, edit_from_changes(cs));
-    finish_edit(buffers, stores.panes, target, new_sels, &cs);
+    let applied = buffers
+        .get_mut(buf_id)
+        .apply_edit(target, stores, sels, edit_from_changes(cs));
+    finish_edit(buffers, stores.panes, target, applied);
     Ok(())
 }
 
@@ -237,8 +238,7 @@ fn apply_grouped_from(
         buffers,
         stores.panes,
         PaneHandle::with_pane(buf_id, pane_id),
-        new_sels,
-        &cs,
+        Applied::of(new_sels, &cs),
     );
     let session = stores
         .insert_at_mut(pane_id, buf_id)
@@ -279,7 +279,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
         )
         .group();
     let (snapshot, to_snapshot) = (group.snapshot.clone(), group.inverse());
-    let (new_sels, propagation_cs, new_cs) = buffers.get_mut(buf_id).apply_edit_regrouped(
+    let (applied, new_cs) = buffers.get_mut(buf_id).apply_edit_regrouped(
         buf_id,
         stores,
         pane_id,
@@ -297,8 +297,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
         buffers,
         stores.panes,
         PaneHandle::with_pane(buf_id, pane_id),
-        new_sels,
-        &propagation_cs,
+        applied,
     );
     Ok(())
 }
@@ -361,7 +360,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     else {
         return Ok(0);
     };
-    finish_edit(buffers, stores.panes, target, new_sels, &cs);
+    finish_edit(buffers, stores.panes, target, Applied::of(new_sels, &cs));
     // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly:
     // a normal edit that cancels to identity records no revision at all, so
     // nothing happened). A history walk is different: `current` moved to a

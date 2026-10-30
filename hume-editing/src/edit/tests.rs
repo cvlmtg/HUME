@@ -99,8 +99,7 @@ fn rebasing_lands_the_result_on_the_live_text_under_its_version() {
         .invert(snapshot.text())
         .compose(edited.changes().clone());
 
-    let rebased = edited
-        .rebased(&live, live_to_result)
+    let rebased = Edited::rebase(edited.into_parts().0, &live, live_to_result)
         .expect("the changeset maps the live text");
     assert_eq!(rebased.base(), live.version());
     assert_eq!(rebased.state().text().version(), version);

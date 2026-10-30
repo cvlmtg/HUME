@@ -115,24 +115,25 @@ impl Edited {
         }
     }
 
-    /// This edit's result reached from `live` instead of from the text the
-    /// edit started from: `live_to_result` applied to `live`, the result
-    /// carrying this edit's version and selections. `live` must be of the
-    /// same lineage, and `live_to_result` must reproduce this edit's result.
+    /// `result`, an edit's result state, reached from `live` instead of from
+    /// the text the edit started from: `live_to_result` applied to `live`,
+    /// the result carrying `result`'s version and selections. `live` must be
+    /// of the same lineage, and `live_to_result` must reproduce `result`'s
+    /// text.
     ///
     /// # Errors
     /// [`ApplyError`] if `live_to_result` is not a changeset of `live`.
-    pub fn rebased(
-        self,
+    pub fn rebase(
+        result: EditState,
         live: &BufferText,
         live_to_result: ChangeSet,
     ) -> Result<Edited, ApplyError> {
-        let result = self.state.text().clone();
-        let landed = Transaction::new(live_to_result, self.state.into_selections());
+        let result_text = result.text().clone();
+        let landed = Transaction::new(live_to_result, result.into_selections());
         let state = landed.apply(live)?;
         debug_assert!(
-            *state.text() == result,
-            "rebased: the changeset does not reproduce the edit's result"
+            *state.text() == result_text,
+            "rebase: the changeset does not reproduce the edit's result"
         );
         Ok(Edited {
             state,

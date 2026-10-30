@@ -54,13 +54,15 @@ impl DocHelper {
         self.buf.text()
     }
     fn apply_edit(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
-        let (new_sels, _cs) = self.buf.apply_edit(
-            PaneHandle::with_pane(BufferId::default(), PaneId::default()),
-            &mut DetachedStores::default().stores(),
-            self.sels.clone(),
-            cmd,
-        );
-        self.sels = new_sels;
+        self.sels = self
+            .buf
+            .apply_edit(
+                PaneHandle::with_pane(BufferId::default(), PaneId::default()),
+                &mut DetachedStores::default().stores(),
+                self.sels.clone(),
+                cmd,
+            )
+            .into_selections();
     }
     fn undo(&mut self) {
         if let Some((sels, _cs, _steps)) = self.buf.undo_n(

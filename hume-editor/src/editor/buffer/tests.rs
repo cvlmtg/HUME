@@ -29,13 +29,15 @@ struct DocHelper {
 impl DocHelper {
     fn apply_edit(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
         let sels = self.sels.clone();
-        let (new_sels, _cs) = self.buf.apply_edit(
-            PaneHandle::with_pane(BufferId::default(), PaneId::default()),
-            &mut DetachedStores::default().stores(),
-            sels,
-            cmd,
-        );
-        self.sels = new_sels;
+        self.sels = self
+            .buf
+            .apply_edit(
+                PaneHandle::with_pane(BufferId::default(), PaneId::default()),
+                &mut DetachedStores::default().stores(),
+                sels,
+                cmd,
+            )
+            .into_selections();
     }
 
     fn apply_edit_grouped(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
