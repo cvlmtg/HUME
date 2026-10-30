@@ -6,7 +6,8 @@
 //! preconditions. `scripts/fetch-test-grammars.sh` installs each fixture
 //! into `tests/fixtures/grammars/<name>/` the way PLUM installs a grammar:
 //! `<name>.<ext>`, `queries/`, `manifest.scm` and `licenses/`, from the pinned
-//! treesitter.hume release. It also packs them into a local grammar bundle,
+//! treesitter.hume release. It keeps each fetched archive in
+//! [`fixture_archive_dir`], and packs them into a release-format bundle,
 //! [`fixture_bundle_dir`].
 
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -100,9 +101,9 @@ pub fn require_helix_indent_corpus(name: &str, file: &str) -> PathBuf {
     path
 }
 
-/// The local grammar bundle the fetch script packs from the fixtures:
+/// The grammar bundle the fetch script packs from the fixtures:
 /// `grammars-<platform>.tar` and its `.index`, in the release format, for a
-/// test to install from as PLUM's local grammar source.
+/// test to serve as PLUM's release.
 ///
 /// # Panics
 /// With [`require_fixture_file`]'s message when the fetch script has not
@@ -110,6 +111,19 @@ pub fn require_helix_indent_corpus(name: &str, file: &str) -> PathBuf {
 pub fn fixture_bundle_dir() -> PathBuf {
     let dir = fixtures_root().join("bundle");
     require_fixture_file(&dir, "the local grammar bundle");
+    dir
+}
+
+/// The folder of `<name>.tar.gz` archives the fetch script fetched, laid out
+/// as `hume-grammar-build build` writes one, for a test to install from as
+/// PLUM's local grammar source.
+///
+/// # Panics
+/// With [`require_fixture_file`]'s message when the fetch script has not
+/// fetched them.
+pub fn fixture_archive_dir() -> PathBuf {
+    let dir = fixtures_root().join("members");
+    require_fixture_file(&dir, "the fixture grammar archives");
     dir
 }
 

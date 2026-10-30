@@ -105,13 +105,10 @@
           ((equal? os "windows") (list "certutil" "-hashfile" path "SHA256"))
           (else (list "sha256sum" path)))))
 
-(define (stdlib/non-blank-lines text)
-  (filter (lambda (line) (not (equal? (trim line) "")))
-          (split-many text "\n")))
-
 (define (stdlib/parse-sha256 stdout)
   (if (equal? (current-os!) "windows")
-      (let ((lines (stdlib/non-blank-lines stdout)))
+      (let ((lines (filter (lambda (line) (not (equal? (trim line) "")))
+                           (split-many stdout "\n"))))
         (and (> (length lines) 1)
              (apply string-append (split-whitespace (car (cdr lines))))))
       (let ((tokens (split-whitespace stdout)))
@@ -353,10 +350,6 @@
 (define-command! "stdlib/path-absolute?"
   "Whether the given path names the same place from any working directory."
   stdlib/path-absolute?)
-
-(define-command! "stdlib/non-blank-lines"
-  "The lines of the given text that hold more than whitespace, in order."
-  stdlib/non-blank-lines)
 
 (define-command! "stdlib/download!"
   "Download the given URL to the given file with curl, raising on an HTTP error. An offset and a size after the file fetch only those bytes."

@@ -32,7 +32,6 @@
 | `stdlib/delete-file!` | `(call! "stdlib/delete-file!" path)`{.sig} Delete `path`; idempotent |
 | `stdlib/list-subdirs` | `(call! "stdlib/list-subdirs" dir)`{.sig} Sorted basenames of `dir`'s subdirectories |
 | `stdlib/path-absolute?` | `(call! "stdlib/path-absolute?" path)`{.sig} Whether `path` names the same place from any working directory: `/x`, and on Windows `C:\x` or `\\server\share` |
-| `stdlib/non-blank-lines` | `(call! "stdlib/non-blank-lines" text)`{.sig} The lines of `text` that hold more than whitespace, in order |
 
 `stdlib/delete-dir!` and `stdlib/delete-file!` treat a missing target as no error, unlike `remove-dir!` and the Steel engine's own `delete-file!`. `list-subdirs` skips stray non-directory entries in a directory tree, like `.DS_Store`.
 

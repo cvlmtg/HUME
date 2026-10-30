@@ -9,7 +9,7 @@
 (define *plum-grammar-tag*
   (read-data-file (path-join (plugin-dir) "data" "treesitter-hume-pin.scm")))
 
-;;; The local bundle folder `#:config 'grammar-source` names, or #f for none.
+;;; The folder of grammar archives `#:config 'grammar-source` names, or #f for none.
 (define *plum-grammar-folder*
   (let ((cfg (plugin-config)))
     (and (hash-contains? cfg 'grammar-source)
@@ -41,9 +41,7 @@
         text))))
 
 ;; ── Index ─────────────────────────────────────────────────────────────────────
-;; See README.md's "Grammar install pipeline".
-
-(struct plum-index (folder members))
+;; See README.md's "Grammar source".
 
 (define (plum/index-error reason)
   (error (string-append "plum: the grammar index " reason)))
@@ -58,28 +56,17 @@
         (plum/index-error (string-append "has a malformed line: " line)))
       (list (car fields) offset size (list-ref fields 3)))))
 
-;;; `folder` is the folder the index came from, or #f for the release.
-(define (plum/parse-index text folder)
-  (let* ((lines (call! "stdlib/non-blank-lines" text))
+;;; The release index's `(name offset size sha256)` lines.
+(define (plum/parse-index text)
+  (let* ((lines (filter (lambda (line) (not (equal? (trim line) "")))
+                        (split-many text "\n")))
          (header (if (null? lines) '() (split-whitespace (car lines)))))
     (unless (and (= (length header) 3) (equal? (car header) "treesitter.hume"))
       (plum/index-error "does not start with a treesitter.hume header"))
     (unless (equal? (list-ref header 2) (grammar-platform))
       (plum/index-error (string-append "is for " (list-ref header 2) ", not "
                                        (grammar-platform))))
-    (plum-index folder (map plum/parse-member (cdr lines)))))
-
-;;; The configured folder's index, or #f when no folder is configured.
-(define (plum/read-folder-index)
-  (and *plum-grammar-folder*
-       (plum/parse-index
-         (with-handler
-           (lambda (err)
-             (error (string-append "plum: no grammar index for " (grammar-platform) " in "
-                                   *plum-grammar-folder* ": " (to-string err))))
-           (call-with-input-file (path-join *plum-grammar-folder* (plum/bundle-file "index"))
-                                 read-port-to-string))
-         *plum-grammar-folder*)))
+    (map plum/parse-member (cdr lines))))
 
 (define (plum/read-release-index)
   (plum/parse-index
@@ -88,37 +75,63 @@
         (error (string-append "plum: cannot fetch the treesitter.hume " *plum-grammar-tag*
                               " grammar index for " (grammar-platform) ": "
                               (to-string err))))
-      (plum/download-text (plum/release-url (plum/bundle-file "index"))))
-    #f))
+      (plum/download-text (plum/release-url (plum/bundle-file "index"))))))
 
-(define (plum/index-member index name)
-  (assoc name (plum-index-members index)))
+;;; Calls `use` on `name`'s release archive, downloaded and digest-checked, then deletes it.
+(define (plum/with-release-member! name member use)
+  (let ((dest (path-join (plum/grammar-staging-dir) (string-append name ".tar.gz"))))
+    (with-handler
+      (lambda (err)
+        (call! "stdlib/delete-file!" dest)
+        (raise-error err))
+      (call! "stdlib/download!" (plum/release-url (plum/bundle-file "tar")) dest
+             (list-ref member 1) (list-ref member 2))
+      (call! "stdlib/verify-sha256!" dest (list-ref member 3))
+      (use dest))
+    (call! "stdlib/delete-file!" dest)))
+
+;;; The configured folder, or #f when none is configured. See README.md's "Grammar source".
+(define (plum/checked-folder)
+  (let* ((folder *plum-grammar-folder*)
+         (fail (lambda (reason)
+                 (error (string-append "plum: 'grammar-source " folder " " reason)))))
+    (when folder
+      (unless (is-dir? folder)
+        (fail "is not a directory"))
+      (for-each
+        (lambda (managed)
+          (unless (first-path-outside managed (list folder))
+            (fail (string-append "is inside " managed ", which PLUM manages"))))
+        (list (plum/staging-dir) (grammars-dir)))
+      (let ((archives (map (lambda (name) (string-append name ".tar.gz")) (bundled-languages))))
+        (when (null? (filter (lambda (entry) (member entry archives)) (dir-entry-names folder)))
+          (fail "holds no grammar archive"))))
+    folder))
 
 ;;; See README.md's "Grammar source".
-(define (plum/index-lookup)
-  (let ((folder (plum/read-folder-index))
+(define (plum/source-lookup)
+  (let ((folder (plum/checked-folder))
         (release #f))
     (lambda (name)
-      (if (and folder (plum/index-member folder name))
-          folder
-          (begin
-            (unless release (set! release (plum/read-release-index)))
-            (and (plum/index-member release name) release))))))
+      (let ((archive (and folder (path-join folder (string-append name ".tar.gz")))))
+        (if (and archive (path-exists? archive))
+            (lambda (use) (use archive))
+            (begin
+              (unless release
+                (set! release
+                  (with-handler
+                    (lambda (err)
+                      (if folder
+                          (error (string-append "plum: no " name " grammar in " folder "; "
+                                                (to-string err)))
+                          (raise-error err)))
+                    (plum/read-release-index))))
+              (let ((member (assoc name release)))
+                (and member
+                     (lambda (use) (plum/with-release-member! name member use))))))))))
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 ;; See README.md's "Grammar install pipeline".
-
-;;; Writes `name`'s archive to `dest` and checks it against its index line.
-(define (plum/fetch-member! lookup name dest)
-  (let* ((index (lookup name))
-         (member (plum/index-member index name))
-         (folder (plum-index-folder index))
-         (offset (list-ref member 1))
-         (size (list-ref member 2)))
-    (if folder
-        (copy-file-range! (path-join folder (plum/bundle-file "tar")) offset size dest)
-        (call! "stdlib/download!" (plum/release-url (plum/bundle-file "tar")) dest offset size))
-    (call! "stdlib/verify-sha256!" dest (list-ref member 3))))
 
 (define (plum/check-unpacked! name dir)
   (let* ((manifest (read-data-file (path-join dir "manifest.scm")))
@@ -170,31 +183,28 @@
             (log! 'error failure))))
     (delete! path)))
 
-(define (plum/install-one lookup name)
+;;; Installs `name` from the source `plan`, a `plum/served-plan` result, resolved for it.
+(define (plum/install-one plan name)
   (let* ((stage (path-join (plum/grammar-staging-dir) name))
-         (archive (path-join (plum/grammar-staging-dir) (string-append name ".tar.gz")))
+         (source (cdr (assoc name plan)))
          (older (grammar-installs name))
          (install (plum/new-install-name older))
          (folder (path-join (grammar-dir name) install))
-         (copy (grammar-library-path (plum/grammar-staging-dir) (string-append name "-" install)))
+         (copy (path-join (plum/grammar-staging-dir) (string-append name "-" install)))
          (delete-copy! (lambda ()
                          (plum/delete-older! copy (lambda (path)
-                                                     (call! "stdlib/delete-file!" path))))))
+                                                     (call! "stdlib/delete-dir!" path))))))
     (call! "stdlib/delete-dir!" stage)
     (create-directory! (plum/grammar-staging-dir))
     (with-handler
       (lambda (err)
         (call! "stdlib/delete-dir!" stage)
-        (call! "stdlib/delete-file!" archive)
         (delete-copy!)
         (raise-error err))
-      (plum/fetch-member! lookup name archive)
-      (call! "stdlib/extract-archive!" "tar" archive stage)
-      (call! "stdlib/delete-file!" archive)
+      (source (lambda (archive) (call! "stdlib/extract-archive!" "tar" archive stage)))
       (plum/check-unpacked! name stage)
-      (let ((library (grammar-library-path stage name)))
-        (copy-file-range! library 0 (fs-metadata-len (file-metadata library)) copy)
-        (check-grammar! name stage copy))
+      (copy-directory-recursively! stage copy)
+      (check-grammar! name copy (grammar-library-path copy name))
       (replace-dir! stage folder))
     (delete-copy!)
     (register-installed-grammar! name folder)
@@ -217,10 +227,11 @@
       plan
       (plum/plan-add-all (plum/plan-add plan (car names)) (cdr names))))
 
-;;; See README.md's "Grammar install pipeline".
+;;; `((name . source) ...)` in install order; see README.md's "Grammar install pipeline".
 (define (plum/served-plan lookup names)
-  (let* ((plan (reverse (plum/plan-add-all '() names)))
-         (absent (filter (lambda (name) (not (lookup name))) plan)))
+  (let* ((plan (map (lambda (name) (cons name (lookup name)))
+                    (reverse (plum/plan-add-all '() names))))
+         (absent (map car (filter (lambda (entry) (not (cdr entry))) plan))))
     (unless (null? absent)
       (error (string-append "plum: no " (string-join absent ", ") " grammar in "
                             (if *plum-grammar-folder*
@@ -272,13 +283,13 @@
         (with-handler
           (lambda (err)
             (log! 'error (string-append "PLUM: install failed: " (to-string err))))
-          (let ((lookup (plum/index-lookup)))
+          (let ((plan (plum/served-plan (plum/source-lookup) (list name))))
             (for-each
               (lambda (each)
                 (unless (equal? each name)
                   (log! 'info (string-append "PLUM: installing dependency " each " for " name)))
-                (plum/install-one lookup each))
-              (plum/served-plan lookup (list name))))))))
+                (plum/install-one plan each))
+              (map car plan)))))))
   #:inline-output #t #:complete "plum:grammars")
 
 (define-command! "plum/ensure-grammars"
@@ -294,9 +305,9 @@
     (let ((missing (filter plum/not-installed? grammars)))
       (if (null? missing)
           (log! 'info "PLUM: all requested grammars are installed")
-          (let ((lookup (plum/index-lookup)))
-            (plum/batch-run! "installed grammar" (plum/served-plan lookup missing)
-                             (lambda (name) (plum/install-one lookup name))
+          (let ((plan (plum/served-plan (plum/source-lookup) missing)))
+            (plum/batch-run! "installed grammar" (map car plan)
+                             (lambda (name) (plum/install-one plan name))
                              #:progress print!)))))
   #:inline-output #t)
 

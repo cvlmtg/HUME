@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
 # Fetch the tree-sitter grammar fixtures the test suite loads.
 #
-# Usage: scripts/fetch-test-grammars.sh [bundle-dir]
+# Usage: scripts/fetch-test-grammars.sh [archive-dir]
 #
-# Each fixture is one member of the treesitter.hume release pinned in
+# Each fixture is one archive of the treesitter.hume release pinned in
 # runtime/plugins/core/plum/data/treesitter-hume-pin.scm, for this host's
 # platform: the index line names its byte range in the platform's bundle,
 # one ranged curl fetches it, and its SHA-256 is checked against that line.
-# With a bundle-dir (a `hume-grammar-build build --out` folder), the members
-# are read from that folder's bundle instead of the release.
+# With an archive-dir (a `hume-grammar-build build --out` folder), each
+# archive is that folder's <name>.tar.gz instead. Either way, the archive's
+# manifest must name its grammar and this platform.
 #
-# A member unpacks into tests/fixtures/grammars/<name>/ the same way PLUM
+# An archive unpacks into tests/fixtures/grammars/<name>/ the same way PLUM
 # installs it: <name>.<ext>, queries/, manifest.scm and licenses/. Helix's indent
 # corpus for a few languages is fetched beside it, at the manifest's
-# helix-rev. The fetched members are also packed into a small bundle,
-# tests/fixtures/grammars/bundle/, which PLUM's tests install from as a
-# local grammar source.
+# helix-rev. The archives stay in tests/fixtures/grammars/members/, which
+# holds nothing else: PLUM's tests install from it as a local grammar folder.
+# They are also packed into a small bundle, tests/fixtures/grammars/bundle/,
+# which the tests serve as the release.
 #
-# Idempotent: a fixture whose installed digest matches its index line is
-# left alone, and the release index is downloaded again only when the pin
-# names another tag.
+# Idempotent: a fixture whose installed digest matches its source's is left
+# alone, and the release index is downloaded again only when the pin names
+# another tag.
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -62,24 +64,24 @@ download() {
 }
 
 mkdir -p "$FIXTURES" "$MEMBERS"
+INDEX="$FIXTURES/grammars-$PLATFORM.index"
 if [[ -n "$LOCAL_DIR" ]]; then
-  INDEX="$LOCAL_DIR/grammars-$PLATFORM.index"
+  SOURCE="$LOCAL_DIR"
 else
-  INDEX="$FIXTURES/grammars-$PLATFORM.index"
+  SOURCE="treesitter.hume $TAG"
   cached_tag=""
   [[ -f "$INDEX" ]] && read -r _ cached_tag _ < "$INDEX"
   if [[ "$cached_tag" != "$TAG" ]]; then
     download "$INDEX" "$RELEASE/grammars-$PLATFORM.index"
   fi
-fi
-
-read -r magic index_tag index_platform < "$INDEX"
-if [[ "$magic" != "treesitter.hume" || "$index_platform" != "$PLATFORM" ]]; then
-  echo "error: $INDEX is not a treesitter.hume index for $PLATFORM" >&2
-  exit 1
-fi
-if [[ "$index_tag" != "$TAG" ]]; then
-  echo "warning: the bundle is $index_tag, the pin is $TAG" >&2
+  read -r magic index_tag index_platform < "$INDEX"
+  if [[ "$magic" != "treesitter.hume" || "$index_platform" != "$PLATFORM" ]]; then
+    echo "error: $INDEX is not a treesitter.hume index for $PLATFORM" >&2
+    exit 1
+  fi
+  if [[ "$index_tag" != "$TAG" ]]; then
+    echo "warning: the bundle is $index_tag, the pin is $TAG" >&2
+  fi
 fi
 
 # Prints "<offset> <size> <sha256>" for `name`, or fails naming it.
@@ -93,6 +95,13 @@ index_line() {
   echo "$line"
 }
 
+# Prints the string value of `manifest`'s `(key . "value")` entry, written on
+# its own line as hume-grammar-build writes them, or nothing without one.
+manifest_value() {
+  local manifest="$1" key="$2"
+  sed -n "s/^[[:space:](]*$key[[:space:]]*\.[[:space:]]*\"\([^\"]*\)\"[[:space:])]*\$/\1/p" "$manifest"
+}
+
 # Prints `size` bytes of `file` starting at byte `offset`.
 read_range() {
   local file="$1" offset="$2" size="$3"
@@ -100,11 +109,20 @@ read_range() {
 }
 
 fetch_grammar() {
-  local name="$1" line offset size digest
-  line="$(index_line "$name")"
-  read -r offset size digest <<< "$line"
+  local name="$1" line offset size digest archive
   local target="$FIXTURES/$name"
   local member="$MEMBERS/$name.tar.gz"
+  if [[ -n "$LOCAL_DIR" ]]; then
+    archive="$LOCAL_DIR/$name.tar.gz"
+    if [[ ! -f "$archive" ]]; then
+      echo "error: no $name.tar.gz in $LOCAL_DIR" >&2
+      exit 1
+    fi
+    digest="$(sha256 "$archive")"
+  else
+    line="$(index_line "$name")"
+    read -r offset size digest <<< "$line"
+  fi
 
   if [[ -f "$target/.sha256" && "$(cat "$target/.sha256")" == "$digest" && -f "$member" ]]; then
     echo "  $name: up to date"
@@ -112,19 +130,27 @@ fetch_grammar() {
   fi
 
   if [[ -n "$LOCAL_DIR" ]]; then
-    read_range "$LOCAL_DIR/grammars-$PLATFORM.tar" "$offset" "$size" > "$member"
+    cp "$archive" "$member"
   else
     curl -fsSL -r "$offset-$((offset + size - 1))" -o "$member" "$RELEASE/grammars-$PLATFORM.tar"
-  fi
-  if [[ "$(sha256 "$member")" != "$digest" ]]; then
-    rm -f "$member"
-    echo "error: $name: the fetched bytes do not match the index digest" >&2
-    exit 1
+    if [[ "$(sha256 "$member")" != "$digest" ]]; then
+      rm -f "$member"
+      echo "error: $name: the fetched bytes do not match the index digest" >&2
+      exit 1
+    fi
   fi
 
   rm -rf "$target"
   mkdir -p "$target"
   tar -xzf "$member" -C "$target"
+  local manifest_name manifest_platform
+  manifest_name="$(manifest_value "$target/manifest.scm" name)"
+  manifest_platform="$(manifest_value "$target/manifest.scm" platform)"
+  if [[ "$manifest_name" != "$name" || "$manifest_platform" != "$PLATFORM" ]]; then
+    rm -rf "$target" "$member"
+    echo "error: $name: the archive's manifest names the ${manifest_name:-unnamed} grammar for ${manifest_platform:-no platform}, not $name for $PLATFORM" >&2
+    exit 1
+  fi
   echo "$digest" > "$target/.sha256"
   echo "  $name: installed"
 }
@@ -141,7 +167,7 @@ fetch_helix_indent_corpus() {
     return
   fi
   local rev
-  rev="$(sed -n 's/^ *(helix-rev \. "\([0-9a-f]*\)")*$/\1/p' "$FIXTURES/$name/manifest.scm")"
+  rev="$(manifest_value "$FIXTURES/$name/manifest.scm" helix-rev)"
   if [[ -z "$rev" ]]; then
     echo "error: no helix-rev in $FIXTURES/$name/manifest.scm" >&2
     exit 1
@@ -150,7 +176,7 @@ fetch_helix_indent_corpus() {
   echo "  $name: fetched $(basename "$out")"
 }
 
-# Pack the fetched members into $BUNDLE as an uncompressed ustar archive
+# Pack the fetched archives into $BUNDLE as an uncompressed ustar archive
 # with its index, the same format as a release bundle. Every member name
 # fits one 512-byte header, so a member's data starts one block after its
 # header and the next header follows its data rounded up to a block. Each
@@ -166,11 +192,11 @@ build_bundle() {
   done
   COPYFILE_DISABLE=1 tar --format=ustar -cf "$BUNDLE/grammars-$PLATFORM.tar" -C "$staging" "${files[@]}"
 
-  local index="$BUNDLE/grammars-$PLATFORM.index" pos=0 line size digest check="$staging/check"
+  local index="$BUNDLE/grammars-$PLATFORM.index" pos=0 size digest check="$staging/check"
   echo "treesitter.hume $TAG $PLATFORM" > "$index"
   for name in "${names[@]}"; do
-    line="$(index_line "$name")"
-    read -r _ size digest <<< "$line"
+    size="$(wc -c < "$MEMBERS/$name.tar.gz" | tr -d ' ')"
+    digest="$(sha256 "$MEMBERS/$name.tar.gz")"
     read_range "$BUNDLE/grammars-$PLATFORM.tar" "$((pos + 512))" "$size" > "$check"
     if [[ "$(sha256 "$check")" != "$digest" ]]; then
       echo "error: $name is not at offset $((pos + 512)) of the test bundle" >&2
@@ -186,7 +212,16 @@ build_bundle() {
 # Byte-wise name order, as a release index lists them.
 GRAMMARS=(c html json markdown markdown.inline python rust yaml)
 
-echo "Fetching tree-sitter grammar fixtures ($index_tag, $PLATFORM)..."
+for path in "$MEMBERS"/* "$MEMBERS"/.[!.]*; do
+  [[ -e "$path" ]] || continue
+  entry="$(basename "$path")"
+  if [[ " ${GRAMMARS[*]/%/.tar.gz} " != *" $entry "* ]]; then
+    rm -rf "$path"
+    echo "  members: removed $entry"
+  fi
+done
+
+echo "Fetching tree-sitter grammar fixtures from $SOURCE for $PLATFORM..."
 for name in "${GRAMMARS[@]}"; do
   fetch_grammar "$name"
 done

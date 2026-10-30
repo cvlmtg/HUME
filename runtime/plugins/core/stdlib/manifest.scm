@@ -3,7 +3,7 @@
   #:commands '("stdlib/primary-selection"
                "stdlib/all-single-char?" "stdlib/single-selection?" "stdlib/cursor-char-offset"
                "stdlib/find" "stdlib/concat" "stdlib/write-file!" "stdlib/delete-dir!" "stdlib/delete-file!"
-               "stdlib/list-subdirs" "stdlib/path-absolute?" "stdlib/non-blank-lines" "stdlib/download!" "stdlib/verify-sha256!" "stdlib/find-extractor"
+               "stdlib/list-subdirs" "stdlib/path-absolute?" "stdlib/download!" "stdlib/verify-sha256!" "stdlib/find-extractor"
                "stdlib/extract-archive!"
                "stdlib/git-repo?" "stdlib/git-toplevel" "stdlib/resolve-lang-arg"
                "stdlib/report-section" "stdlib/show-report!"

@@ -64,7 +64,7 @@ needs network access; a bare `cargo test` panics naming the fixture until this h
 been run at least once. The first run downloads the grammars from the pinned
 [treesitter.hume](https://github.com/cvlmtg/treesitter.hume) release into
 `tests/fixtures/grammars/`; later runs reuse them. To work offline or on a platform
-with no release, build a bundle with that repo's `hume-grammar-build build --out <dir>`
+with no release, build the grammars with that repo's `hume-grammar-build build --out <dir>`
 and run `scripts/fetch-test-grammars.sh <dir>`. The suite also
 includes a handful of live network e2e tests (real grammar installs against GitHub),
 so a full run always touches the network.

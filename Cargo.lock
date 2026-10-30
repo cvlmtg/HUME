@@ -945,7 +945,6 @@ dependencies = [
  "insta",
  "num-traits",
  "rustc-hash",
- "same-file",
  "serde_json",
  "slotmap",
  "steel-core",

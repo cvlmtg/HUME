@@ -16,8 +16,6 @@
 - New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value.
 - New `buffer-search` finds a pattern in a buffer without moving the selection or changing the current search, and new `word-search-pattern` gives the pattern `*` searches for a word.
 - New `stdlib/concat` joins a list of lists, much faster than `(apply append …)` over many lists.
-- New `copy-file-range!` copies part of a file.
-- New `stdlib/non-blank-lines` splits text into its lines that hold more than whitespace.
 - New `stdlib/download!` downloads a file, or a byte range of one, with `curl`.
 - New `stdlib/verify-sha256!` checks a file's SHA-256, and new `stdlib/extract-archive!` unpacks a tar or zip archive, refusing one whose symlinks point outside its directory. New `stdlib/find-extractor` finds the program that extracts an archive format.
 

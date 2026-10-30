@@ -20,8 +20,8 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
   commands: `plugin.scm` (the four plugin commands), `grammars.scm` (`#:entry`;
   `plum/ensure-grammars` in `#:commands`, the grammar commands in `#:typed-commands`) and
   `themes.scm` (`#:entry`; the theme commands).
-- **Config:** `'grammar-source`, a folder holding a grammar bundle to install from before
-  the pinned release (see [Grammar source](#grammar-source)).
+- **Config:** `'grammar-source`, a folder of grammar archives to install from before the
+  pinned release (see [Grammar source](#grammar-source)).
 - **Not required for what is already installed.** PLUM is a plugin like any other, so
   leaving it out removes only the management commands below. Installed plugins, grammars
   and themes keep working, including syntax highlighting: registering installed
@@ -154,23 +154,36 @@ is `treesitter.hume <tag> <platform>` and whose other lines are `<language> <off
 Grammars come from two sources, checked per language in this order:
 
 1. The folder `#:config 'grammar-source` names, if any: a `hume-grammar-build build --out
-   <dir>` folder, which holds the same two files. It must be an absolute path
-   (`stdlib/path-absolute?`): `grammars.scm` loads on the first grammar command, so a
-   relative one would depend on where `:cd` had moved by then, and `grammars.scm` fails to
-   load naming the value instead. Its index is read at the start of every
-   install command; a configured folder with no index for this platform fails the command
-   rather than falling through to the release, since that is a wrong path, not an empty one.
+   <dir>` folder, which holds one `<language>.tar.gz` per grammar it built, the same archive
+   a release bundles. It has no index: a language is in the folder when its archive is, and
+   the archive's own manifest is checked as any other, platform included (step 4 of the
+   [Grammar install pipeline](#grammar-install-pipeline)).
+   It must be an absolute path (`stdlib/path-absolute?`): `grammars.scm` loads on the first
+   grammar command, so a relative one would depend on where `:cd` had moved by then, and
+   `grammars.scm` fails to load naming the value instead. It is checked at the start of
+   every install command, and fails the command rather than falling through to the release
+   when it is a wrong path rather than an empty one: when it is not a directory, when it
+   holds no `<language>.tar.gz` for any language HUME knows (such as the parent of the
+   `--out` folder), or when it is inside `<data>/plum-staging/` or `<data>/grammars/`, whose
+   contents installs and `:plum-cleanup-grammars` delete (`first-path-outside`, so a symlink
+   into either counts as inside).
 2. The release `data/treesitter-hume-pin.scm` names, read once when `grammars.scm` loads.
    Its index is downloaded with `curl` into `<data>/plum-staging/grammars/`, and deleted once
-   read, only when a language the folder does not list is asked for, and at most once per
-   command.
+   read, only when the folder holds no archive for a language asked for, and at most once per
+   command. When a folder is configured, a failure to read it names the folder too, since
+   the language was looked for there first.
 
-`plum/index-lookup` makes that choice: a function from a language to the index that serves
-it, or `#f` when neither does. One install path serves both sources; only the two reads
-differ. A member is taken with `copy-file-range!` from the folder's `.tar`, or with one
-ranged `stdlib/download!` from the release's. A language the folder lists comes from the folder even
-when its archive there turns out to be broken: the install fails rather than quietly
-downloading something else.
+`plum/source-lookup` makes that choice: a function from a language to the source that
+serves it, or `#f` when neither does. A source calls a procedure on the archive to unpack:
+the folder's own `<language>.tar.gz`, read where it is and never deleted, or
+`<data>/plum-staging/grammars/<language>.tar.gz`, which one ranged `stdlib/download!` of the
+release's `.tar` writes and whose digest must match. The release source deletes that file
+once the procedure returns or fails, so only it owns a staging archive. One install path
+serves both sources from there. `plum/served-plan` resolves every language of a command's
+plan once, before anything installs, and each install uses the source its plan resolved, so
+a folder that changes during a batch cannot move a language to the other source. A language
+the folder holds comes from the folder even when its archive there turns out to be broken or
+gone: the install fails rather than quietly downloading something else.
 
 ### Grammar pin
 
@@ -192,7 +205,8 @@ not installed, each once.
 
 `:plum-install-grammar` installs the grammar, its dependencies first, and
 `plum/ensure-grammars` installs a batch. Both first check that every grammar of the plan has a
-source, so a grammar no source serves installs nothing; each reads each index at most once.
+source, so a grammar no source serves installs nothing; each reads the release index at most
+once.
 
 Each install of a grammar gets its own folder, `<data>/grammars/<language>/<install>/`, and the
 newest one is the grammar in use (see core's `runtime/scheme/README.md`). An install never
@@ -202,13 +216,15 @@ Windows cannot move or delete a folder whose library is loaded. A new folder per
 a new library path, so a reinstall takes effect in the session that runs it, and the installed
 grammar is replaced only once the new one has loaded:
 
-1. Find the index that serves the language (see [Grammar source](#grammar-source)). Every
-   index's header must name this platform. A language neither source lists raises
+1. Find the source that serves the language (see [Grammar source](#grammar-source)). The
+   release index's header must name this platform. A language neither source holds raises
    `no <language> grammar in <folder> or treesitter.hume <tag> for <platform>`, without the
    folder part when none is configured.
-2. Write the language's archive to `<data>/plum-staging/grammars/<language>.tar.gz`, and
-   check it against the index line's SHA-256 with `stdlib/verify-sha256!`.
-3. Extract it into `<data>/plum-staging/grammars/<language>/` with `stdlib/extract-archive!`.
+2. From the release, write the language's archive to
+   `<data>/plum-staging/grammars/<language>.tar.gz`, and check it against the index line's
+   SHA-256 with `stdlib/verify-sha256!`. An archive in the folder is used where it is.
+3. Extract the archive into `<data>/plum-staging/grammars/<language>/` with
+   `stdlib/extract-archive!`.
 4. Check its `manifest.scm`: `name` is the language, `platform` is this one, and the library
    and `queries/highlights.scm` are there. A `tag` other than the pin is a `'warning`, not a
    failure, so a folder built by another release of the tool still installs. The library's
@@ -216,8 +232,9 @@ grammar is replaced only once the new one has loaded:
 5. Load it with core's `check-grammar!`, which opens the library, checks its ABI and compiles
    its queries without registering anything, so the check is the same from a command, from
    `init.scm` (where registration only queues) and whatever registered the language's grammar
-   first. The library it opens is a copy, `<data>/plum-staging/grammars/<language>-<install>.<ext>`,
-   so no library is loaded from the stage directory, which can still move on every platform.
+   first. It opens a copy of the stage directory, `<data>/plum-staging/grammars/<language>-<install>/`,
+   made with Steel's `copy-directory-recursively!`, so no library is loaded from the stage
+   directory, which can still move on every platform.
    The copy is deleted afterwards, as in step 8.
 6. Move the stage directory to `<data>/grammars/<language>/<install>/` with `replace-dir!`.
    `<install>` is the current time in milliseconds, or one past the newest install when that is

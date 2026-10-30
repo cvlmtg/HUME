@@ -58,13 +58,13 @@ On a platform with no prebuilt grammars, or to install without a network connect
 hume-grammar-build build --out /path/to/hume-grammars rust python markdown markdown.inline
 ```
 
-`--all` builds every grammar instead of the ones you name. Then tell PLUM to look in that folder first:
+It writes one archive per grammar into the folder, and `--all` builds every grammar instead of the ones you name. Then tell PLUM to look in that folder first:
 
 ```scheme
 (load-plugin! "core:plum" #:config (hash 'grammar-source "/path/to/hume-grammars"))
 ```
 
-The path must be absolute, and `~` is not expanded. `:plum-install-grammar` and `plum/ensure-grammars` then install each grammar the folder holds from it, and download the others as usual, so the folder needs only the grammars you built yourself. A grammar from a folder built by a different version of `hume-grammar-build` than the one your HUME expects still installs, with a warning in `:messages`.
+The path must be absolute, and `~` is not expanded. It can't be inside the `plum-staging` or `grammars` folders of HUME's data directory, which PLUM clears. `:plum-install-grammar` and `plum/ensure-grammars` then install each grammar the folder holds from it, and download the others as usual, so the folder needs only the grammars you built yourself. A grammar from a folder built by a different version of `hume-grammar-build` than the one your HUME expects still installs, with a warning in `:messages`.
 
 ## Embedded languages
 

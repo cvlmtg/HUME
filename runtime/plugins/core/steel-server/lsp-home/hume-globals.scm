@@ -88,7 +88,6 @@
 (#%register-global "completion-trigger")
 (#%register-global "configure-language!")
 (#%register-global "configure-statusline!")
-(#%register-global "copy-file-range!")
 (#%register-global "copy-selection-on-next-line")
 (#%register-global "copy-selection-on-prev-line")
 (#%register-global "cwd")

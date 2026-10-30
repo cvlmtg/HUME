@@ -38,7 +38,7 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 | Group | Commands |
 |---|---|
 | [Selections](#selections) | `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
-| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/concat`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs`, `stdlib/path-absolute?`, `stdlib/non-blank-lines` |
+| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/concat`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs`, `stdlib/path-absolute?` |
 | [Downloads, digests and archives](#downloads-digests-and-archives) | `stdlib/download!`, `stdlib/verify-sha256!`, `stdlib/find-extractor`, `stdlib/extract-archive!` |
 | [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
 | [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
@@ -70,8 +70,7 @@ under a path, sorted, and skips stray files that sit alongside a directory tree
 (`.install-lock`, `.DS_Store`). `path-absolute?` follows Rust's `Path::is_absolute`: on
 Windows a path is absolute only with both a drive and a root (`C:\x`, `C:/x`) or as a UNC
 path (`\\server\share`), so `\x` (the current drive's) and `C:x` (relative to drive `C:`'s
-working directory) are not. Elsewhere it is absolute when it starts with `/`. `non-blank-lines` splits text into the lines that hold more than whitespace, for parsing a
-tool's output or an index file.
+working directory) are not. Elsewhere it is absolute when it starts with `/`.
 
 `concat` joins a list of lists into one, in order, with one `foldl` over each list and a
 single `reverse`. Steel's `append` called with many lists (`(apply append lists)`) costs

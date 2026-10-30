@@ -10,8 +10,8 @@
 //! directory swap the budget cannot split, file locks released when the
 //! session ends, and a program lookup on the editor's search path.
 //!
-//! The path arguments of `set-cwd!`, `replace-dir!`, `remove-dir!`, `copy-file-range!`,
-//! the lock pair, `path-entries` and `first-path-outside` are
+//! The path arguments of `set-cwd!`, `replace-dir!`, `remove-dir!`, the lock
+//! pair, `path-entries` and `first-path-outside` are
 //! [`ScriptPath`](super::args::ScriptPath)s, and so is each of
 //! `first-path-outside`'s `paths`.
 //!
@@ -23,7 +23,6 @@
 //! | `set-cwd!`      | `string → void`                | `:cd`: moves the editor's working directory  |
 //! | `replace-dir!`  | `string string → void`         | Moves a directory into another's place, all or nothing |
 //! | `remove-dir!`   | `string → void`                | Deletes a directory tree, budget stopped     |
-//! | `copy-file-range!` | `string int int string → void` | Writes `size` bytes of a file from `offset` to another file |
 //! | `try-lock-file!` | `string → bool`               | Exclusive OS lock, held until `unlock-file!` or the session ends |
 //! | `unlock-file!`  | `string → void`                | Releases a lock this session took            |
 //! | `first-path-outside` | `string list → string \| #f` | The first path that, symlinks resolved, lies outside a directory |
@@ -40,12 +39,10 @@
 //! and HUME registering its own would silently shadow it.
 
 use std::fs::{File, TryLockError};
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use hume_platform::path::AbsolutePath;
 
-use same_file::Handle;
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
@@ -180,73 +177,6 @@ fn swap_dir_in(src: &Path, dest: &Path, backup: &Path) -> std::io::Result<()> {
 pub(crate) fn remove_dir(ctx: &mut SteelCtx, dir: AbsolutePath) -> SteelResult {
     ctx.while_waiting(|| std::fs::remove_dir_all(&dir))?;
     Ok(SteelVal::Void)
-}
-
-/// `(copy-file-range! src offset size dest)`: writes the `size` bytes of `src`
-/// starting at byte `offset` to `dest`, created or truncated, streaming them
-/// rather than holding `size` bytes in memory. Raises when `src` or `dest`
-/// cannot be opened or are the same file under any path, leaving `dest` as
-/// it was, and when `src` holds fewer bytes than that or the copy fails,
-/// leaving no `dest`.
-pub(crate) fn copy_file_range(
-    ctx: &mut SteelCtx,
-    src: AbsolutePath,
-    offset: usize,
-    size: usize,
-    dest: AbsolutePath,
-) -> SteelResult {
-    let mut input = ctx
-        .while_waiting(|| -> std::io::Result<Handle> {
-            let mut input = File::open(&src)?;
-            input.seek(SeekFrom::Start(offset as u64))?;
-            Handle::from_file(input)
-        })
-        .map_err(|e| generic_err(format!("{}: {e}", src.display())))?;
-    // Opened without truncating, so a `dest` that is `src` is still whole
-    // when the comparison below refuses it.
-    let mut output = ctx
-        .while_waiting(|| {
-            std::fs::OpenOptions::new()
-                .create(true)
-                .truncate(false)
-                .write(true)
-                .open(&dest)
-                .and_then(Handle::from_file)
-        })
-        .map_err(|e| generic_err(format!("{}: {e}", dest.display())))?;
-    if input == output {
-        return Err(generic_err(format!(
-            "{} and {} are the same file",
-            src.display(),
-            dest.display()
-        )));
-    }
-    let copied = ctx.while_waiting(|| {
-        output.as_file().set_len(0)?;
-        std::io::copy(
-            &mut input.as_file_mut().take(size as u64),
-            output.as_file_mut(),
-        )
-    });
-    // Closed before the removal below, which Windows refuses on an open file.
-    drop(output);
-    let failure = match copied {
-        Ok(n) if n == size as u64 => return Ok(SteelVal::Void),
-        Ok(n) => format!(
-            "{}: only {n} of {size} bytes from offset {offset}",
-            src.display()
-        ),
-        Err(e) => format!("{} -> {}: {e}", src.display(), dest.display()),
-    };
-    if let Err(e) = std::fs::remove_file(&dest)
-        && e.kind() != std::io::ErrorKind::NotFound
-    {
-        return Err(generic_err(format!(
-            "{failure}; removing {} failed too: {e}",
-            dest.display()
-        )));
-    }
-    Err(generic_err(failure))
 }
 
 fn remove_dir_tree_if_present(dir: &Path) -> std::io::Result<()> {
