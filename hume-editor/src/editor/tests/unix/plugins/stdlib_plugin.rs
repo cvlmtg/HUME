@@ -5,16 +5,37 @@ use hume_scripting::PluginStatus;
 
 // ── core:stdlib — real shipped plugin ─────────────────────────────────────────
 
-/// Stage the real shipped `core:stdlib` plugin into an isolated runtime directory
-/// and eagerly load it via a real `init.scm`, returning everything the caller
-/// needs kept alive plus the host for further inspection or `eval_source`.
+const STDLIB_MANIFEST: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../runtime/plugins/core/stdlib/manifest.scm"
+));
+
+const STDLIB_FILES: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../runtime/plugins/core/stdlib/files.scm"
+));
+
+/// Stage the real shipped `core:stdlib` plugin, manifest and both entries, into
+/// an isolated runtime directory and eagerly load both entries via a real
+/// `init.scm`, returning everything the caller needs kept alive plus the host
+/// for further inspection or `eval_source`.
 fn setup_stdlib_editor() -> (Editor, ScriptingHost, RuntimeDirs, tempfile::TempDir) {
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
+    let plugin_dir = guard.runtime.path().join("plugins/core/stdlib");
+    std::fs::write(plugin_dir.join("manifest.scm"), STDLIB_MANIFEST).unwrap();
+    std::fs::write(plugin_dir.join("files.scm"), STDLIB_FILES).unwrap();
 
     let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin! "core:stdlib")"#).unwrap();
+    std::fs::write(
+        &init_path,
+        format!(
+            "{}\n(%activate-plugin-inline! \"core:stdlib\" \"files.scm\")",
+            hume_scripting::eager_load_scm("core:stdlib", None)
+        ),
+    )
+    .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     ed.state.dirs = guard.dirs();
@@ -28,18 +49,24 @@ fn setup_stdlib_editor() -> (Editor, ScriptingHost, RuntimeDirs, tempfile::TempD
     (ed, host, guard, init_dir)
 }
 
-/// The shipped `core:stdlib` plugin must load eagerly and reach `Loaded`.
+/// Both entries of the shipped `core:stdlib` plugin must load eagerly and
+/// reach `Loaded`.
 #[test]
 fn core_stdlib_plugin_loads_eagerly() {
-    use hume_scripting::attribution::PluginId;
+    use hume_scripting::attribution::{EntryFile, EntryId, PluginId};
 
     let (_ed, host, _guard, _init_dir) = setup_stdlib_editor();
 
     let id = PluginId::parse("core:stdlib").expect("valid plugin name");
     assert_eq!(
-        host.plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
+        host.plugin_status(&EntryId::main(id.clone())),
         Some(PluginStatus::Loaded),
         "core:stdlib must be Loaded after eager load-plugin!"
+    );
+    assert_eq!(
+        host.plugin_status(&EntryId::new(id, EntryFile::parse("files.scm").unwrap())),
+        Some(PluginStatus::Loaded),
+        "core:stdlib's files.scm entry must be Loaded after its inline activation"
     );
 }
 

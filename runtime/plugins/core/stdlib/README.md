@@ -18,9 +18,11 @@ this plugin.
 ```
 
 - **Depends on:** nothing.
-- **Activates on:** the first call to any command below. Its `manifest.scm` has one
-  `declare-plugin!` entry for `plugin.scm` whose `#:commands` list names every one of them.
-  `load-plugin!` registers those stubs and does not run `plugin.scm` until one is called.
+- **Activates on:** the first call to any command below. Its `manifest.scm` declares two
+  entries: `files.scm` for the filesystem, download and archive commands, and `plugin.scm`
+  for the rest. Each entry's `#:commands` list names its own commands. `load-plugin!`
+  registers those stubs and runs neither file until one of its commands is called, so a
+  plugin that never touches files does not load `files.scm`.
 - **Overrides:** declaring it before `load-plugin!` with an explicit
   `#:commands`/`#:events`/`#:languages` list
   that omits a helper a dependent needs leaves that helper with no activation stub; see
@@ -32,20 +34,22 @@ this plugin.
 
 ## Commands
 
-The manual page above has the signatures. This table groups the commands; the sections
-under [How it works](#how-it-works) cover what a contributor needs beyond that.
+The manual page above has the signatures. This table groups the commands and names the
+entry that defines each group; the sections under [How it works](#how-it-works) cover what
+a contributor needs beyond that.
 
-| Group | Commands |
-|---|---|
-| [Selections](#selections) | `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
-| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/concat`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-entries`, `stdlib/list-subdirs`, `stdlib/path-absolute?` |
-| [Downloads, digests and archives](#downloads-digests-and-archives) | `stdlib/download!`, `stdlib/verify-sha256!`, `stdlib/find-extractor`, `stdlib/extract-archive!` |
-| [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
-| [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
-| [Reports](#reports) | `stdlib/report-section`, `stdlib/show-report!` |
-| [Picker buffer-placement](#picker-buffer-placement) | `stdlib/with-tab`, `stdlib/with-vsplit`, `stdlib/with-split`, `stdlib/buffer-actions` |
-| [Word tokenization](#word-tokenization) | `stdlib/split-words` |
-| [Plugin config](#plugin-config) | `stdlib/config-boolean`, `-string`, `-enum`, `-integer`, `-list` |
+| Group | Entry | Commands |
+|---|---|---|
+| [Selections](#selections) | `plugin.scm` | `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
+| [Lists](#lists) | `plugin.scm` | `stdlib/find`, `stdlib/concat` |
+| [Filesystem](#filesystem) | `files.scm` | `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-entries`, `stdlib/list-subdirs`, `stdlib/path-absolute?` |
+| [Downloads, digests and archives](#downloads-digests-and-archives) | `files.scm` | `stdlib/download!`, `stdlib/verify-sha256!`, `stdlib/find-extractor`, `stdlib/extract-archive!` |
+| [Git](#git) | `plugin.scm` | `stdlib/git-repo?`, `stdlib/git-toplevel` |
+| [Command arguments](#command-arguments) | `plugin.scm` | `stdlib/resolve-lang-arg` |
+| [Reports](#reports) | `plugin.scm` | `stdlib/report-section`, `stdlib/show-report!` |
+| [Picker buffer-placement](#picker-buffer-placement) | `plugin.scm` | `stdlib/with-tab`, `stdlib/with-vsplit`, `stdlib/with-split`, `stdlib/buffer-actions` |
+| [Word tokenization](#word-tokenization) | `plugin.scm` | `stdlib/split-words` |
+| [Plugin config](#plugin-config) | `plugin.scm` | `stdlib/config-boolean`, `-string`, `-enum`, `-integer`, `-list` |
 
 ## How it works
 
@@ -60,7 +64,16 @@ payload, an optional match) checks once, at the call site.
 isn't shown, since it is where a selection list is fetched, not where an already-fetched
 list is picked apart.
 
-### Filesystem and list search
+### Lists
+
+`concat` joins a list of lists into one, in order, with one `foldl` over each list and a
+single `reverse`. Steel's `append` called with many lists (`(apply append lists)`) costs
+time that grows with the number of lists times their total length: on 2,000 one-entry
+lists, as `core:git-diff` builds for 2,000 changed lines, it took 16 ms where `concat`
+takes about 0.5 ms. `core:git-diff`, `core:lsp` and `core:plum` join their per-item lists
+with it.
+
+### Filesystem
 
 Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
 `core:lsp-install` call them rather than each carrying a copy. `delete-dir!` and
@@ -74,13 +87,6 @@ that does not exist yet from a wrong path, so a caller that means "empty" checks
 Windows a path is absolute only with both a drive and a root (`C:\x`, `C:/x`) or as a UNC
 path (`\\server\share`), so `\x` (the current drive's) and `C:x` (relative to drive `C:`'s
 working directory) are not. Elsewhere it is absolute when it starts with `/`.
-
-`concat` joins a list of lists into one, in order, with one `foldl` over each list and a
-single `reverse`. Steel's `append` called with many lists (`(apply append lists)`) costs
-time that grows with the number of lists times their total length: on 2,000 one-entry
-lists, as `core:git-diff` builds for 2,000 changed lines, it took 16 ms where `concat`
-takes about 0.5 ms. `core:git-diff`, `core:lsp` and `core:plum` join their per-item lists
-with it.
 
 ### Downloads, digests and archives
 

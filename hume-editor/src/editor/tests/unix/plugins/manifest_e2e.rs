@@ -196,6 +196,59 @@ fn core_stdlib_real_manifest_scm_resolves_via_load_plugin() {
     );
 }
 
+/// `core:stdlib`'s file and archive helpers are their own `files.scm` entry:
+/// calling one activates that entry alone, and calling any other helper
+/// activates the main entry alone.
+#[test]
+fn core_stdlib_file_helpers_activate_only_their_own_entry() {
+    use hume_scripting::attribution::{EntryFile, EntryId, PluginId};
+
+    let runtime_dir = repo_runtime_dir();
+    let id = PluginId::Core("stdlib".to_string());
+    let main = EntryId::main(id.clone());
+    let files = EntryId::new(id, EntryFile::parse("files.scm").unwrap());
+
+    let statuses_after = |call: &str| {
+        let (ed, _dirs) = setup_editor_with_init_scripting(
+            &format!("(load-plugin! \"core:stdlib\")\n{call}"),
+            Some(&runtime_dir),
+        );
+        let errors = error_log(&ed);
+        assert!(
+            errors.is_empty(),
+            "{call} must not log errors; got: {errors:?}"
+        );
+        let host = ed.scripting.as_ref().unwrap();
+        (host.plugin_status(&main), host.plugin_status(&files))
+    };
+
+    let (main_status, files_status) = statuses_after(
+        r#"(unless (call! "stdlib/path-absolute?" "/x")
+             (error "path-absolute? must hold for /x"))"#,
+    );
+    assert!(
+        matches!(main_status, Some(PluginStatus::Declared)),
+        "a file helper must leave the main entry Declared; got {main_status:?}"
+    );
+    assert!(
+        matches!(files_status, Some(PluginStatus::Loaded)),
+        "a file helper must load the files.scm entry; got {files_status:?}"
+    );
+
+    let (main_status, files_status) = statuses_after(
+        r#"(unless (equal? (call! "stdlib/concat" '((1) (2))) '(1 2))
+             (error "concat must join the lists in order"))"#,
+    );
+    assert!(
+        matches!(main_status, Some(PluginStatus::Loaded)),
+        "a list helper must load the main entry; got {main_status:?}"
+    );
+    assert!(
+        matches!(files_status, Some(PluginStatus::Declared)),
+        "a list helper must leave the files.scm entry Declared; got {files_status:?}"
+    );
+}
+
 /// A bare `(load-plugin! "core:stdlib")` leaves it `Declared` (proven
 /// above) with a live `Lazy` stub for every helper its own `manifest.scm`
 /// exports. Loading `core:pickers` next must still succeed: its body-time
