@@ -37,20 +37,21 @@
     (when (path-exists? sdir)
       (for-each
         (lambda (name)
-          (let ((receipt (lsp-install/read-receipt name)))
+          (let ((current (lsp-install/current-install name)))
             (cond
-              ((not receipt)
+              ((not current)
                (log! 'warning (string-append "LSP: interrupted install of " name
-                                          " — run :lsp-install to redo, or delete the directory")))
+                                          " — run :lsp-install to redo, or :lsp-uninstall")))
               ((not (lsp-install/seeded-server? name))
                (log! 'warning (string-append "LSP: orphan server " name
                                           " — not in the seeded catalog, run :lsp-uninstall to remove")))
               (else
-               (lsp-install/register-server!
-                 name
-                 (path-join (lsp-install/server-dir name) (lsp-install/receipt-bin receipt))
-                 (map (lambda (entry)
-                        (cons (car entry) (path-join (lsp-install/server-dir name) (cdr entry))))
-                      (lsp-install/receipt-env-dirs receipt)))))))
+               (let ((folder  (car current))
+                     (receipt (cdr current)))
+                 (lsp-install/register-server!
+                   name
+                   (path-join folder (lsp-install/receipt-bin receipt))
+                   (map (lambda (entry) (cons (car entry) (path-join folder (cdr entry))))
+                        (lsp-install/receipt-env-dirs receipt))))))))
         (call! "stdlib/list-subdirs" sdir))))
   (lsp-install/set-default-lists!))

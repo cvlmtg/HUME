@@ -84,7 +84,7 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install_eager(&mut ed, data_tmp.path());
 
-    let expected_cmd = server_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
+    let expected_cmd = install_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
     assert_eq!(
         ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),
@@ -215,7 +215,7 @@ fn an_unparsable_receipt_is_an_interrupted_install() {
         "2026-07-06",
         "rust-analyzer",
     );
-    let receipt = server_dir(data_tmp.path(), "gopls").join("receipt.scm");
+    let receipt = install_dir(data_tmp.path(), "gopls").join("receipt.scm");
     std::fs::write(&receipt, "(").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
@@ -240,13 +240,26 @@ fn an_unparsable_receipt_is_an_interrupted_install() {
     );
 }
 
+/// An install stopped before its receipt leaves a newer folder the scan
+/// passes over: it registers the committed install and warns about nothing.
+#[test]
+fn the_scan_registers_the_committed_install_beside_a_stopped_one() {
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman");
+    stop_an_install(data_tmp.path(), "marksman");
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install_eager(&mut ed, data_tmp.path());
+
+    let log = ed.state.message_log.format_for_display();
+    assert_installed(data_tmp.path(), &ed, "marksman", "0.0.1", "marksman");
+    assert!(!log.contains("interrupted install"), "{log}");
+}
+
 #[test]
 fn interrupted_install_is_warned_and_not_registered() {
     let data_tmp = tempfile::tempdir().unwrap();
-    let dir = server_dir(data_tmp.path(), "rust-analyzer");
-    std::fs::create_dir_all(&dir).unwrap();
-    // No receipt.scm written: simulates an install that died mid-flight.
-    std::fs::write(dir.join("rust-analyzer"), b"").unwrap();
+    stop_an_install(data_tmp.path(), "rust-analyzer");
 
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install_eager(&mut ed, data_tmp.path());
@@ -392,7 +405,7 @@ fn rescan_registers_the_catalog_server_beside_a_manual_one_of_another_name() {
     );
     type_cmd(&mut ed, ":lsp-install rust-analyzer");
 
-    let expected_cmd = server_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
+    let expected_cmd = install_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
     assert_eq!(
         ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),
@@ -528,7 +541,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
 
-    let expected_cmd = server_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
+    let expected_cmd = install_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
     assert_eq!(
         ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),

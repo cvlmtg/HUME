@@ -28,7 +28,7 @@ fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
         "final argv token must be the module@version spec: {argv:?}"
     );
 
-    let server_dir = server_dir(data_tmp.path(), "gopls");
+    let install_dir = install_dir(data_tmp.path(), "gopls");
     let cmd = ed
         .state
         .lsp
@@ -36,8 +36,8 @@ fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
         .expect("go must be registered after a successful go install");
     assert_eq!(
         Path::new(&cmd),
-        server_dir.join("bin").join("gopls"),
-        "GOBIN must point at the server dir's bin/"
+        install_dir.join("bin").join("gopls"),
+        "GOBIN must point at the install folder's bin/"
     );
 }
 
@@ -98,10 +98,10 @@ fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
     ed.state.dirs.search_path = Some(shim_dir.path().into());
     type_cmd(&mut ed, ":lsp-install python");
 
-    let server_dir = server_dir(data_tmp.path(), "ty");
+    let install_dir = install_dir(data_tmp.path(), "ty");
     assert_eq!(
         read_lines(&venv_args),
-        ["-m", "venv", server_dir.join("venv").to_str().unwrap()]
+        ["-m", "venv", install_dir.join("venv").to_str().unwrap()]
     );
     let pip = read_lines(&pip_args);
     assert_eq!(
@@ -119,7 +119,7 @@ fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
         .lsp
         .registered_command_for_test("ty")
         .expect("python must be registered after a successful pip install");
-    assert_eq!(Path::new(&cmd), server_dir.join("venv/bin/ty"));
+    assert_eq!(Path::new(&cmd), install_dir.join("venv/bin/ty"));
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn gem_layout(bin_name: &str) -> String {
 }
 
 #[test]
-fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
+fn lsp_install_gem_installs_into_the_install_folder_and_registers_gem_env() {
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -276,7 +276,7 @@ fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
     ed.state.dirs.search_path = Some(shim_dir.path().into());
     type_cmd(&mut ed, ":lsp-install ruby");
 
-    let server_dir = server_dir(data_tmp.path(), "ruby-lsp");
+    let install_dir = install_dir(data_tmp.path(), "ruby-lsp");
     let argv = read_lines(&args_file);
     assert_eq!(
         argv[..6],
@@ -284,9 +284,9 @@ fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
             "install",
             "--no-document",
             "--install-dir",
-            server_dir.to_str().unwrap(),
+            install_dir.to_str().unwrap(),
             "--bindir",
-            server_dir.join("bin").to_str().unwrap(),
+            install_dir.join("bin").to_str().unwrap(),
         ],
         "argv: {argv:?}"
     );
@@ -301,7 +301,7 @@ fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
         .lsp
         .registered_command_for_test("ruby-lsp")
         .expect("ruby must be registered after a successful gem install");
-    assert_eq!(Path::new(&cmd), server_dir.join("bin").join("ruby-lsp"));
+    assert_eq!(Path::new(&cmd), install_dir.join("bin").join("ruby-lsp"));
 
     let env = ed
         .state
@@ -315,8 +315,8 @@ fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
             .unwrap_or_else(|| panic!("{key} must be registered for the server: {env:?}"));
         assert_eq!(
             Path::new(&value.1),
-            server_dir,
-            "{key} must be the server dir"
+            install_dir,
+            "{key} must be the install folder"
         );
     }
 }
@@ -394,7 +394,7 @@ fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
     ed.state.dirs.search_path = Some(shim_dir.path().into());
     type_cmd(&mut ed, ":lsp-install c-sharp");
 
-    let server_dir = server_dir(data_tmp.path(), "roslyn-language-server");
+    let install_dir = install_dir(data_tmp.path(), "roslyn-language-server");
     let argv = read_lines(&args_file);
     assert_eq!(
         argv[..5],
@@ -403,7 +403,7 @@ fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
             "install",
             "roslyn-language-server",
             "--tool-path",
-            server_dir.join("bin").to_str().unwrap(),
+            install_dir.join("bin").to_str().unwrap(),
         ],
         "argv: {argv:?}"
     );
@@ -420,7 +420,7 @@ fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
         .expect("c-sharp must be registered after a successful dotnet tool install");
     assert_eq!(
         Path::new(&cmd),
-        server_dir.join("bin").join("roslyn-language-server")
+        install_dir.join("bin").join("roslyn-language-server")
     );
 }
 

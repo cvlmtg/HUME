@@ -1,18 +1,56 @@
 ;;; core:lsp-install/receipts.scm — see README.md.
 
 (require "catalog.scm")
+(require-builtin steel/time)
 
-(provide lsp-install/servers-dir lsp-install/server-dir lsp-install/receipt-path
+(provide lsp-install/servers-dir lsp-install/server-dir
+         lsp-install/current-install lsp-install/new-install-folder
          lsp-install/read-receipt lsp-install/write-receipt!
          lsp-install/receipt-bin lsp-install/receipt-version lsp-install/receipt-env-dirs)
 
 (define (lsp-install/servers-dir) (path-join (data-dir) "servers"))
 (define (lsp-install/server-dir name) (path-join (lsp-install/servers-dir) name))
-(define (lsp-install/receipt-path name) (path-join (lsp-install/server-dir name) "receipt.scm"))
+(define (lsp-install/receipt-path folder) (path-join folder "receipt.scm"))
+
+;; Install folders: see docs/servers.md's "Installing a server".
+
+(define (lsp-install/install-name? entry)
+  (let ((n (string->number entry)))
+    (and (integer? n) (>= n 0) (equal? (number->string n) entry))))
+
+;;; `name`'s install folder names, oldest first.
+(define (lsp-install/installs name)
+  (let ((dir (lsp-install/server-dir name)))
+    (if (path-exists? dir)
+        (sort (filter lsp-install/install-name? (call! "stdlib/list-subdirs" dir))
+              (lambda (a b) (< (string->number a) (string->number b))))
+        '())))
+
+;;; `(folder . receipt)` for `name`'s current install, its newest install folder with a
+;;; readable receipt, or #f.
+(define (lsp-install/current-install name)
+  (let loop ((installs (reverse (lsp-install/installs name))))
+    (and (pair? installs)
+         (let* ((folder  (path-join (lsp-install/server-dir name) (car installs)))
+                (receipt (with-handler (lambda (err) #f)
+                           (read-data-file (lsp-install/receipt-path folder)))))
+           (if receipt
+               (cons folder receipt)
+               (loop (cdr installs)))))))
+
+;;; A path for `name`'s next install folder, numbered after every other.
+(define (lsp-install/new-install-folder name)
+  (let ((installs (lsp-install/installs name))
+        (now      (current-milliseconds)))
+    (path-join (lsp-install/server-dir name)
+               (number->string
+                 (if (null? installs)
+                     now
+                     (max now (+ 1 (string->number (last installs)))))))))
 
 (define (lsp-install/read-receipt name)
-  (with-handler (lambda (err) #f)
-    (read-data-file (lsp-install/receipt-path name))))
+  (let ((current (lsp-install/current-install name)))
+    (and current (cdr current))))
 
 (define (lsp-install/receipt-bin receipt) (lsp-install/ref receipt 'bin))
 (define (lsp-install/receipt-version receipt) (lsp-install/ref receipt 'version))
@@ -24,8 +62,8 @@
 (define (lsp-install/scheme-quote s)
   (string-append "\"" (string-replace (string-replace s "\\" "\\\\") "\"" "\\\"") "\""))
 
-(define (lsp-install/write-receipt! name version bin env-dirs)
-  (call! "stdlib/write-file!" (lsp-install/receipt-path name)
+(define (lsp-install/write-receipt! folder name version bin env-dirs)
+  (call! "stdlib/write-file!" (lsp-install/receipt-path folder)
     (string-append "((name . " (lsp-install/scheme-quote name) ")"
                    " (version . " (lsp-install/scheme-quote version) ")"
                    " (bin . " (lsp-install/scheme-quote bin) ")"

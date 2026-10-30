@@ -43,6 +43,17 @@ fn write_fake_curl_shim(fixture: &Path, args_file: &Path) -> (tempfile::TempDir,
     (shim_dir, path)
 }
 
+/// A `marksman` source whose pinned digest the served asset does not match,
+/// and that served asset.
+fn mismatched_marksman(work: &Path) -> (PathBuf, Vec<SourceFixture>) {
+    let served = work.join("marksman-fake");
+    std::fs::write(&served, b"served bytes").unwrap();
+    let pinned = work.join("pinned-bytes");
+    std::fs::write(&pinned, b"different bytes").unwrap();
+    let sources = github_source("marksman", "marksman-fake", &pinned, "marksman-fake");
+    (served, sources)
+}
+
 #[test]
 fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
     use std::os::unix::fs::PermissionsExt;
@@ -61,8 +72,8 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
     );
     let (data_tmp, ed, _runtime) = install_from_fixture(sources, &archive, "lua");
 
-    let server_dir = server_dir(data_tmp.path(), "lua-language-server");
-    let bin = server_dir.join("pkg/bin/lua-language-server");
+    let install_dir = install_dir(data_tmp.path(), "lua-language-server");
+    let bin = install_dir.join("pkg/bin/lua-language-server");
     assert_eq!(
         std::fs::metadata(&bin)
             .expect("binary must be unpacked")
@@ -72,7 +83,7 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
         0o755
     );
     assert!(
-        !server_dir.join("lls.tar.gz").exists(),
+        !install_dir.join("lls.tar.gz").exists(),
         "the downloaded archive must be deleted after unpacking"
     );
     let cmd = ed
@@ -110,9 +121,9 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
     );
     let (data_tmp, _ed, _runtime) = install_from_fixture(sources, &archive, "lua");
 
-    let server_dir = server_dir(data_tmp.path(), "lua-language-server");
+    let install_dir = install_dir(data_tmp.path(), "lua-language-server");
     for file in &files {
-        let mode = std::fs::metadata(server_dir.join(file))
+        let mode = std::fs::metadata(install_dir.join(file))
             .unwrap_or_else(|e| panic!("{file} must be unpacked: {e}"))
             .permissions()
             .mode();
@@ -131,7 +142,7 @@ fn lsp_install_raw_binary_is_marked_executable_and_kept() {
     let sources = &github_source("marksman", "marksman-fake", &asset, "marksman-fake");
     let (data_tmp, ed, _runtime) = install_from_fixture(sources, &asset, "markdown");
 
-    let bin = server_dir(data_tmp.path(), "marksman").join("marksman-fake");
+    let bin = install_dir(data_tmp.path(), "marksman").join("marksman-fake");
     assert_eq!(
         std::fs::metadata(&bin)
             .expect("the raw download is the binary and must be kept")
@@ -177,7 +188,7 @@ fn lsp_install_replaces_a_manual_registration_of_the_same_name() {
     ed.state.dirs.search_path = Some(path.into());
     type_cmd(&mut ed, ":lsp-install markdown");
 
-    let bin = server_dir(data_tmp.path(), "marksman").join("marksman-fake");
+    let bin = install_dir(data_tmp.path(), "marksman").join("marksman-fake");
     let cmd = ed
         .state
         .lsp
@@ -200,22 +211,24 @@ fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
     fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
     let mut ed = editor_from("-[x]>\n");
     let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
-    let bin = server_dir(data_tmp.path(), "marksman").join("marksman-fake");
+    let installed = install_dir(data_tmp.path(), "marksman");
     ed.state.dirs.search_path = Some(path.into());
 
     type_cmd(&mut ed, ":lsp-install markdown");
     assert_eq!(
-        std::fs::read_to_string(&bin).unwrap(),
-        "#!/bin/sh\n",
-        "the existing install's files stay until the server has stopped"
+        install_folders(data_tmp.path(), "marksman"),
+        [installed.clone()],
+        "the install starts only once the server has stopped"
     );
 
     ed.drain_async_sources();
     ed.settle();
+    let bin = install_dir(data_tmp.path(), "marksman").join("marksman-fake");
     assert_eq!(
         std::fs::read_to_string(&bin).unwrap(),
         "#!/bin/sh\necho new\n"
     );
+    assert_only_install(data_tmp.path(), "marksman");
     assert_eq!(
         ed.state
             .lsp
@@ -261,7 +274,7 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
         Some(url),
         "curl must fetch the url recorded in the row verbatim: {argv}"
     );
-    let bin = server_dir(data_tmp.path(), "terraform-ls").join("terraform-ls");
+    let bin = install_dir(data_tmp.path(), "terraform-ls").join("terraform-ls");
     let cmd = ed
         .state
         .lsp
@@ -368,14 +381,14 @@ fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
 
     let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "rust");
 
-    let server_dir = server_dir(data_tmp.path(), "rust-analyzer");
-    let bin = server_dir.join("rust-analyzer");
+    let install_dir = install_dir(data_tmp.path(), "rust-analyzer");
+    let bin = install_dir.join("rust-analyzer");
     assert_eq!(std::fs::read(&bin).unwrap(), b"#!/bin/sh\necho decoded\n");
     assert_eq!(
         std::fs::metadata(&bin).unwrap().permissions().mode() & 0o777,
         0o755
     );
-    assert!(!server_dir.join("rust-analyzer-fake.gz").exists());
+    assert!(!install_dir.join("rust-analyzer-fake.gz").exists());
     let cmd = ed
         .state
         .lsp
@@ -459,7 +472,7 @@ fn lsp_install_zip_marks_regular_files_executable_and_leaves_link_targets_alone(
 
     let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "hcl");
 
-    let pkg = server_dir(data_tmp.path(), "terraform-ls").join("pkg");
+    let pkg = install_dir(data_tmp.path(), "terraform-ls").join("pkg");
     for name in ["server", "helper"] {
         assert_eq!(
             std::fs::metadata(pkg.join("bin").join(name))
@@ -563,7 +576,7 @@ fn lsp_install_keeps_a_symlink_that_stays_inside_the_server_dir() {
 
     let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
 
-    let run = server_dir(data_tmp.path(), "lua-language-server").join("pkg/bin/run");
+    let run = install_dir(data_tmp.path(), "lua-language-server").join("pkg/bin/run");
     assert!(
         std::fs::symlink_metadata(&run)
             .expect("the link must be unpacked")
@@ -630,16 +643,98 @@ fn lsp_install_missing_binary_after_unpack_fails_loudly() {
     assert_install_left_nothing(data_tmp.path(), &ed, "lua-language-server");
 }
 
+/// A reinstall that fails keeps the installed server: its files, its receipt
+/// and its registration, with nothing left of the failed install.
+#[test]
+fn lsp_install_failed_reinstall_keeps_the_installed_server() {
+    let work = tempfile::tempdir().unwrap();
+    let (served, sources) = mismatched_marksman(work.path());
+    let (_shim, path) = write_fake_curl_shim(&served, &served.with_extension("curl-argv"));
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
+    let mut ed = editor_from("-[x]>\n");
+    let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
+    ed.state.dirs.search_path = Some(path.into());
+
+    type_cmd(&mut ed, ":lsp-install markdown");
+    ed.drain_async_sources();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(log.contains("sha256 mismatch"), "{log}");
+    let bin = install_dir(data_tmp.path(), "marksman").join("marksman-fake");
+    assert_eq!(
+        std::fs::read_to_string(&bin).unwrap(),
+        "#!/bin/sh\n",
+        "{log}"
+    );
+    assert_installed(data_tmp.path(), &ed, "marksman", "0.0.1", "marksman-fake");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("LSP: kept the installed marksman")
+    );
+    assert_only_install(data_tmp.path(), "marksman");
+}
+
+/// A reinstall deletes what an earlier stopped install left, once its own
+/// receipt is written.
+#[test]
+fn lsp_install_reinstall_deletes_a_stopped_install() {
+    let work = tempfile::tempdir().unwrap();
+    let asset = work.path().join("marksman-fake");
+    std::fs::write(&asset, b"#!/bin/sh\necho new\n").unwrap();
+    let sources = github_source("marksman", "marksman-fake", &asset, "marksman-fake");
+    let (_shim, path) = write_fake_curl_shim(&asset, &asset.with_extension("curl-argv"));
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
+    stop_an_install(data_tmp.path(), "marksman");
+    let mut ed = editor_from("-[x]>\n");
+    let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
+    ed.state.dirs.search_path = Some(path.into());
+
+    type_cmd(&mut ed, ":lsp-install markdown");
+    ed.drain_async_sources();
+    ed.settle();
+
+    assert_installed(data_tmp.path(), &ed, "marksman", "9.9.9", "marksman-fake");
+    assert_only_install(data_tmp.path(), "marksman");
+}
+
+/// A reinstall that fails deletes only its own folder: the installed server
+/// stays current and an earlier stopped install's folder waits for the next
+/// install that commits.
+#[test]
+fn lsp_install_failed_reinstall_after_a_stopped_one_keeps_the_installed_server() {
+    let work = tempfile::tempdir().unwrap();
+    let (served, sources) = mismatched_marksman(work.path());
+    let (_shim, path) = write_fake_curl_shim(&served, &served.with_extension("curl-argv"));
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
+    let stopped = stop_an_install(data_tmp.path(), "marksman");
+    let mut ed = editor_from("-[x]>\n");
+    let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
+    ed.state.dirs.search_path = Some(path.into());
+
+    type_cmd(&mut ed, ":lsp-install markdown");
+    ed.drain_async_sources();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(log.contains("sha256 mismatch"), "{log}");
+    assert_installed(data_tmp.path(), &ed, "marksman", "0.0.1", "marksman-fake");
+    assert_eq!(
+        install_folders(data_tmp.path(), "marksman"),
+        [install_dir(data_tmp.path(), "marksman"), stopped],
+        "{log}"
+    );
+}
+
 #[test]
 fn lsp_install_sha256_mismatch_deletes_the_archive_and_fails() {
     let work = tempfile::tempdir().unwrap();
-    let archive = work.path().join("marksman-fake");
-    std::fs::write(&archive, b"served bytes").unwrap();
-    let pinned = work.path().join("pinned-bytes");
-    std::fs::write(&pinned, b"different bytes").unwrap();
-    let sources = github_source("marksman", "marksman-fake", &pinned, "marksman-fake");
+    let (served, sources) = mismatched_marksman(work.path());
 
-    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "markdown");
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &served, "markdown");
 
     let log = ed.state.message_log.format_for_display();
     assert!(

@@ -20,7 +20,6 @@
 
 (define (lsp-install/install-download! name url asset sha bin fmt dir)
   (let ((archive (path-join dir asset)))
-    (create-directory! dir)
     (call! "stdlib/download!" url archive)
     (lsp-install/verify-sha256! archive sha)
     (if (equal? fmt 'raw)
@@ -149,19 +148,39 @@
     (when blocker
       (error (string-append "lsp-install/install-server!: " name ": " blocker)))
     (let ((source (lsp-install/source name))
-          (dir    (lsp-install/server-dir name)))
+          (dir    (lsp-install/server-dir name))
+          (folder (lsp-install/new-install-folder name)))
       (unregister-lsp-server! name)
-      (call! "stdlib/delete-dir!" dir)
       (let ((bin-rel
               (with-handler
                 (lambda (err)
-                  (call! "stdlib/delete-dir!" dir)
+                  (with-handler
+                    (lambda (delete-err)
+                      (log! 'error (string-append "LSP: could not delete the failed install in "
+                                                  folder ": " (to-string delete-err))))
+                    (call! "stdlib/delete-dir!" folder)
+                    (when (and (path-exists? dir) (null? (call! "stdlib/list-entries" dir)))
+                      (call! "stdlib/delete-dir!" dir)))
                   (raise-error err))
-                (let ((installed (lsp-install/run-install! name source row dir)))
-                  (lsp-install/write-receipt! name (lsp-install/ref source 'version)
+                (create-directory! folder)
+                (let ((installed (lsp-install/run-install! name source row folder)))
+                  (lsp-install/write-receipt! folder name (lsp-install/ref source 'version)
                                               (car installed) (cdr installed))
                   (car installed)))))
+        (for-each
+          (lambda (entry)
+            (let ((path (path-join dir entry)))
+              (unless (equal? path folder)
+                (with-handler
+                  (lambda (err)
+                    (log! 'warning (string-append "LSP: " name " is installed, but " path
+                                                  " could not be deleted, the next :lsp-install of "
+                                                  name " tries again: " (to-string err))))
+                  (if (is-dir? path)
+                      (call! "stdlib/delete-dir!" path)
+                      (call! "stdlib/delete-file!" path))))))
+          (call! "stdlib/list-entries" dir))
         (let ((cmd (lsp-install/ref-or (lsp-install/registration name) 'command name)))
           (when (find-program cmd)
             (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "
-                                       (path-join dir bin-rel) " takes precedence"))))))))
+                                       (path-join folder bin-rel) " takes precedence"))))))))

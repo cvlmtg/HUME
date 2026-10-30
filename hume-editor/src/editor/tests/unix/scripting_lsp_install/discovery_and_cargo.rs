@@ -252,14 +252,14 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
         .lines()
         .map(str::to_string)
         .collect();
-    let server_dir = server_dir(data_tmp.path(), "pest-language-server");
+    let install_dir = install_dir(data_tmp.path(), "pest-language-server");
     assert_eq!(
         argv[..5],
         [
             "install",
             "--locked",
             "--root",
-            server_dir.to_str().unwrap(),
+            install_dir.to_str().unwrap(),
             "--"
         ],
         "argv up to the crate spec must match exactly: {argv:?}"
@@ -270,7 +270,7 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
     );
     let seeded_version = argv[5].strip_prefix("pest-language-server@").unwrap();
 
-    let receipt = std::fs::read_to_string(server_dir.join("receipt.scm"))
+    let receipt = std::fs::read_to_string(install_dir.join("receipt.scm"))
         .expect("receipt.scm must be written on success");
     assert!(
         receipt.contains(&format!("(version . \"{seeded_version}\")")),
@@ -284,7 +284,7 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
         .expect("pest must be registered after a successful cargo install");
     assert_eq!(
         Path::new(&cmd),
-        server_dir.join("bin").join("pest-language-server"),
+        install_dir.join("bin").join("pest-language-server"),
         "the registered command must be the absolute bin/ path cargo --root produces"
     );
 }
@@ -310,10 +310,9 @@ fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
         "a cargo install that produces no binary must fail loudly: {log}"
     );
 
-    let server_dir = server_dir(data_tmp.path(), "pest-language-server");
     assert!(
-        !server_dir.join("receipt.scm").exists(),
-        "no receipt must be committed when the post-install binary check fails"
+        !server_dir(data_tmp.path(), "pest-language-server").exists(),
+        "a failed install must leave no server dir"
     );
     assert!(
         ed.state

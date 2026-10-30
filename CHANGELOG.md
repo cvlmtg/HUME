@@ -32,6 +32,7 @@
 - Reinstalling a grammar takes effect at once, without restarting HUME, even while a file of that language is open, and on Windows it no longer fails then.
 - A grammar install that fails or is stopped partway keeps the installed grammar working, also when `plum/ensure-grammars` runs from `init.scm`, and `:plum-cleanup-grammars` clears the files it left.
 - Installing a language server's `.zip` or `.tar` archive on Windows works when HUME runs from Git Bash.
+- A failed or interrupted `:lsp-install` over an installed server keeps the installed version instead of removing it.
 - The `z r` references list keeps every row on the right line and column after an edit that doesn't change the line count.
 
 ## [0.17.0] - 2026-10-28

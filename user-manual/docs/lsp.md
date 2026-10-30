@@ -125,8 +125,8 @@ not `:lsp-uninstall rust`. Tab completes every server with an install directory 
 including an orphan that HUME's catalog doesn't list.
 
 Reinstalling a server that's already running (e.g. to pick up an update) shuts the old client
-down first. If the install fails anyway (usually a locked file on Windows), the message tells
-you to run `:lsp-install` again, which normally succeeds the second time.
+down first. If the reinstall fails, or HUME stops in the middle of it, the installed version
+stays and starts again.
 
 ### Troubleshooting
 

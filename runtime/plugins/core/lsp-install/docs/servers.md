@@ -34,29 +34,39 @@ looks that one up.
 
 ## Installing a server
 
-Installing or reinstalling a server always starts from a clean slate. That makes it the
-repair and upgrade path too, and it covers reinstalling over a running client:
+Each install of a server gets a new folder, `<data>/servers/<name>/<N>/`, named by a number
+after every other install of that server. The receipt inside it is the commit point. A
+server's current install is its newest folder with a readable receipt, so an install that
+failed or was stopped before its receipt is never current, whatever its number, and the
+installed server stays current until a new install commits. The new install is built at
+its final path rather than moved in from elsewhere: a `pip` venv records absolute paths.
+An entry of `servers/<name>/` whose name is not a number is not an install.
+
+Installing over an existing install is the repair and upgrade path too, and it covers
+reinstalling over a running client:
 
 1. Run the blocker check, which includes the required tools.
 2. Unregister the server, which shuts down any running client. When an install
    already exists, the command unregisters first and runs steps 3 to 6 on the next tick, so
-   the client has stopped before its files are touched. That tick runs them through
+   the client has stopped before the install starts. That tick runs them through
    `call!` to `lsp-install/install-server`, an `#:inline-output` command: a timer
    runs outside `:lsp-install`'s own output screen, where running an installer
    would raise.
-3. Purge any existing install; the receipt goes with it.
+3. Create the new install folder.
 4. Download, verify and unpack (`github`, `generic`), or run the kind's package manager
-   (`npm`, `cargo`, `go`, `pip` in a venv, `gem`, `dotnet tool`).
-5. Write the receipt, which is the commit point.
+   (`npm`, `cargo`, `go`, `pip` in a venv, `gem`, `dotnet tool`), into that folder.
+5. Write the receipt, then delete every other entry of `servers/<name>/`: the older
+   install, and folders that stopped installs left. Each delete that fails is a warning,
+   and the next install of that server tries again.
 6. Log a `$PATH` notice if the seeded command also resolves there independently of the
    managed install.
 
-Downloads recreate the install directory right after step 3 purges it, because `curl -o`
-needs the parent to exist and nothing else recreates it in between.
-
-A failure in step 4 or 5 deletes the install directory again before the error is raised,
-so a failed install leaves nothing behind for the scan to find or for a later install to
-build on.
+A failure in step 3 or 4, or in writing the receipt, deletes the new folder, and
+`servers/<name>/` when nothing else is in it, before the error is raised. A delete that fails is logged with the folder's
+path, and the original error is raised either way. The command registers the installed
+servers whether or not the install succeeded, so a kept server starts again, and when the
+install did not succeed and the server has a current install it logs that the installed
+version was kept. `:lsp-uninstall` deletes `servers/<name>/` with every install in it.
 
 ### Choosing the source
 
@@ -111,7 +121,7 @@ server's layout may ship a wrapper script or sibling helpers. The tree is walked
 is neither recursed into nor chmod'd, and a symlinked bin path fails the check above.
 
 Before anything is chmod'd, every symlink in the extracted tree must resolve inside the
-server dir (`first-path-outside`). A dangling one is judged by the path it names, so it
+install folder (`first-path-outside`). A dangling one is judged by the path it names, so it
 counts too. One that points outside fails the install, since a link left behind could
 later be written through. The check runs once `unzip` or `tar` has finished, so it judges
 the links extraction left in the tree. A write through a link during extraction is
@@ -120,7 +130,7 @@ outside its reach, and the tool's own handling of link members is what governs i
 ### Toolchain installs
 
 After the package manager runs, the binary must exist under the kind's bin directory
-(relative to the server dir), or the install fails. `cargo`, `go`, `pip`, `gem` and
+(relative to the install folder), or the install fails. `cargo`, `go`, `pip`, `gem` and
 `dotnet` share one check; `npm` has its own at `node_modules/.bin`. On Windows the
 expected file gets a suffix: `.cmd` for npm (invoked as `npm.cmd`; a `.cmd` or `.bat`
 program runs through `cmd.exe`), `.bat` for gem (invoked as
@@ -130,25 +140,25 @@ the sha256 pin that github assets get: it builds with upstream's published `Carg
 
 ## Receipts and registration
 
-The receipt, `<data>/servers/<name>/receipt.scm`, is pure data:
+The receipt, `receipt.scm` in an install folder, is pure data:
 
 ```scheme
 ((name . "X") (version . "V") (bin . "relative/bin/path") (env-dirs ("KEY" . "subpath")…))
 ```
 
-`env-dirs` values are relative to the server dir. Registration joins them with it and
+`env-dirs` values are relative to the install folder, like `bin`. Registration joins them with it and
 passes the result as `register-lsp-server!`'s `#:env`. Only gem installs write any, since
-their binstub resolves gems through `GEM_HOME` and `GEM_PATH`. The receipt writer's string
-escaping mirrors `scripts/sync_common.py`'s, because receipts are read back by both Scheme
-and that script.
+their binstub resolves gems through `GEM_HOME` and `GEM_PATH`. The receipt writer escapes
+`\` and `"` in its strings, the same rule `scripts/sync_common.py`'s `scheme_str` uses for
+the `data/` files, because `read-data-file` reads receipts back just as it reads those.
 
-The scan in `register.scm` reads `<data>/servers/` and registers every installed server.
-It is passive (no subprocess, no network). It runs at load or lazy activation and after every
-install. It is the only registrar for managed servers. It lists
-subdirectories only, so the lock file is never read as a server. Two cases are logged as
-warnings and skipped: a directory with no readable receipt (an interrupted install) and
-a directory whose name has no `registrations/` file (an orphan, to be removed with
-`:lsp-uninstall`).
+The scan in `register.scm` reads `<data>/servers/` and registers every installed server
+from its current install. It is passive (no subprocess, no network, no lock, nothing
+written to disk). It runs at load or lazy activation and after every install. It is the only
+registrar for managed servers. It lists subdirectories only, so the lock file is never read
+as a server. Two cases are logged as warnings and skipped: a directory with no current
+install (an interrupted first install) and a directory whose name has no `registrations/`
+file (an orphan, to be removed with `:lsp-uninstall`).
 
 Each installed server registers once, under its catalog name, with the command, arguments,
 environment and configuration to launch it and no languages. A name that already has a
@@ -182,9 +192,9 @@ the same server directory at once.
 - Nothing has to recover a lock left behind: the OS releases it when the HUME holding it
   exits, and the eval that took it releases it when it ends. An install the script budget
   stopped runs no cleanup, so the second rule is what frees its lock.
-- The thunk's error is not re-raised: every failure path ends in a plain log line. The function answers `#t` on success and
-  `#f` on any failure, so a lock that could not be taken and a thunk that raised look the
-  same to the caller.
+- The thunk's error is not re-raised: every failure path ends in a plain log line. The
+  function answers `#t` on success and `#f` on any failure, so a lock that could not be
+  taken and a thunk that raised look the same to the caller.
 
 ## Commands
 
@@ -193,7 +203,7 @@ installs that server; anything else is a language, installing its first server, 
 means the buffer's language. A name that is both a server and a language must be its own
 language's first server, so the two readings agree. Completion offers every server with an
 install source, including one that cannot be installed here (`:lsp-install` then reports why),
-and every seeded language. If the receipt's version already matches the
+and every seeded language. If the current install's receipt version already matches the
 seeded one it logs "up to date" and only runs the scan. Otherwise it installs under the
 lock and then runs the scan outside the lock, so a failure in the scan surfaces as its own
 error instead of being reported as a failed install.
@@ -217,7 +227,7 @@ seeded server sorted by name: its name, its languages, and either `installed vX`
 ### Discovery hint
 
 `on-language-set` nudges once per language per session. It fires when the language has a
-seeded server with no blocker, no receipt, and no registration already in place, so a
+seeded server with no blocker, no current install, and no registration already in place, so a
 user's own registration suppresses it. The suggestion is to run `:lsp-install`. The dedup
 marker is set whatever the outcome, so a language that fails any of those tests is not
 re-evaluated. The nudge logs `'warning` because `'info` never reaches `:messages` (see the

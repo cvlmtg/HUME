@@ -45,6 +45,27 @@ fn lsp_uninstall_removes_registration_and_directory() {
     );
 }
 
+/// Uninstalling a server removes every install folder it has, a stopped
+/// install's included.
+#[test]
+fn lsp_uninstall_removes_every_install_folder() {
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(data_tmp.path(), "rust-analyzer", "0.0.1", "rust-analyzer");
+    stop_an_install(data_tmp.path(), "rust-analyzer");
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-uninstall rust-analyzer");
+    ed.drain_async_sources();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !server_dir(data_tmp.path(), "rust-analyzer").exists(),
+        "{log}"
+    );
+}
+
 /// Tab on `:lsp-uninstall`'s argument completes against every server with
 /// an install dir on disk: the same set the command itself accepts,
 /// including an orphan no longer in the seeded catalog (uninstall's own
@@ -81,9 +102,7 @@ fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held(
         "2026-07-06",
         "rust-analyzer",
     );
-    let servers_dir = servers_dir(data_tmp.path());
-    let other = std::fs::File::create(servers_dir.join(".install-lock")).unwrap();
-    other.try_lock().unwrap();
+    let _other = hold_install_lock(data_tmp.path());
 
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -98,7 +117,7 @@ fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held(
         "a live cross-process lock must refuse the delete loudly: {log}"
     );
     assert!(
-        servers_dir.join("rust-analyzer").exists(),
+        server_dir(data_tmp.path(), "rust-analyzer").exists(),
         "the server directory must survive when the lock can't be acquired"
     );
 }

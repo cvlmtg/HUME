@@ -42,7 +42,7 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 |---|---|
 | `lib/catalog.scm` | Reads `language-servers.scm` at load, and a server's `registrations/` or `requirements/` file when asked, from this plugin's `data/` directory with `(plugin-dir)`; field lookup; each language's ordered server list, its first (primary) server, and a server's languages |
 | `lib/source-catalog.scm` | Reads a server's `sources/` file, which only the install pipeline needs |
-| `lib/receipts.scm` | `<data>/servers/<name>/receipt.scm` paths, reading and writing |
+| `lib/receipts.scm` | The install folders in `<data>/servers/<name>/`: which one is current, the next one's name, and reading and writing a receipt |
 | `lib/register.scm` | The scan that turns installed servers into registrations, and the default server list of every catalog language |
 | `lib/blocker.scm` | This platform's requirements row for a server, and the check for what blocks installing it |
 | `lib/install.scm` | The installers, and the per-kind choice between them |

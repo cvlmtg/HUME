@@ -199,30 +199,30 @@ A `registrations/` record omits each default field: `command` when it equals the
   source (`haskell-language-server`, a ghcup build) is the `generic-build` stub.
 - **npm**: `packages` = main package + Mason's `extra_packages`, flattened and canonicalised
   to `name@version` strings passed straight to
-  `npm install --ignore-scripts --prefix servers/<name>/`.
+  `npm install --ignore-scripts --prefix servers/<name>/<N>/`.
   `bin` = script name in `node_modules/.bin`. `version` kept separate for receipt/upgrade
   comparison.
 - **cargo**: crates.io semver installs only. `crate` = the crates.io package name (may
   differ from both the server name and the bin name — `nls` is Mason/crates.io
   `nickel-lang-lsp`, installed binary `nls`), installed via
-  `cargo install --locked <crate>@<version> --root servers/<name>/`. `bin` = binary name;
+  `cargo install --locked <crate>@<version> --root servers/<name>/<N>/`. `bin` = binary name;
   the installed path is `bin/<bin>` (cargo's own `--root` layout). A Mason cargo package
   pinned to a git tag/rev instead of a crates.io version (e.g. `nil`) is not reachable via
   `cargo install crate@version` and is emitted as the `cargo-git` stub kind instead (below)
   — deferred, see `docs/ROADMAP.md`.
 - **golang**: `module` (the purl's module path plus its `#subpath`, when present),
-  installed via `go install -- <module>@<version>` with `GOBIN=servers/<name>/bin`.
+  installed via `go install -- <module>@<version>` with `GOBIN=servers/<name>/<N>/bin`.
 - **pypi**: `package`, `extras` (from the purl's `?extra=` qualifier; any other qualifier
-  skips the server) and `bin`. A venv is created at `servers/<name>/venv`, then
+  skips the server) and `bin`. A venv is created at `servers/<name>/<N>/venv`, then
   `<venv python> -m pip install --disable-pip-version-check -- <package>[<extras>]==<version>`.
   The binary is `venv/bin/<bin>` (`venv/Scripts/<bin>.exe` on Windows).
 - **gem**: `packages` (`name:version` for the main gem, then Mason's `extra_packages`),
-  installed via `gem install --no-document --install-dir servers/<name> --bindir
-  servers/<name>/bin`. RubyGems takes `--` as the start of native-build arguments, so the
+  installed via `gem install --no-document --install-dir servers/<name>/<N> --bindir
+  servers/<name>/<N>/bin`. RubyGems takes `--` as the start of native-build arguments, so the
   list follows the options directly. The binstub finds its gems through `GEM_HOME` and
   `GEM_PATH`; the receipt records them (see Installation layout).
 - **nuget**: `package`, installed via `dotnet tool install <package> --tool-path
-  servers/<name>/bin --version <version>`.
+  servers/<name>/<N>/bin --version <version>`.
 - **`platforms`**: an optional `(platforms target …)` on a package-manager row
   (npm, cargo, golang, pypi, gem, nuget), derived from Mason's `supported_platforms`.
   Absent means every platform. `:lsp-install` refuses a listed-elsewhere host with "not
@@ -268,13 +268,14 @@ A `registrations/` record omits each default field: `command` when it equals the
 └── servers/
     ├── .install-lock            transient — held only during an install/uninstall
     └── rust-analyzer/
-        ├── receipt.scm         written LAST — the install commit point
-        └── rust-analyzer       (or node_modules/… for npm, bin/… for cargo/golang/gem/nuget, venv/… for pypi)
+        └── 1761812345678/      one install folder, numbered after every other
+            ├── receipt.scm     written LAST — the install commit point
+            └── rust-analyzer   (or node_modules/… for npm, bin/… for cargo/golang/gem/nuget, venv/… for pypi)
 ```
 
 - **Per-server dir, no shared `bin/`.** Mason keeps a symlinked `bin/` dir so users can put
   it on `$PATH` for other tools; HUME is the only consumer, so the receipt's `bin-path`
-  (relative to the server dir) is enough. This also sidesteps the whole Windows
+  (relative to the install folder) is enough. This also sidesteps the whole Windows
   symlink/junction/shim question — junctions are directory-only and file symlinks need
   Developer Mode. One less moving part on every platform.
 - **Windows spawn wrinkle**: npm's `node_modules/.bin` entries on Windows are `.cmd` shims,
@@ -290,11 +291,14 @@ A `registrations/` record omits each default field: `command` when it equals the
   misread as an interrupted or orphan server install.
 - **Receipt = commit point.** `receipt.scm` (pure data: name, version, bin path, and
   `env-dirs`, the environment the server needs at run time as `("KEY" . "subpath of the
-  server dir")` pairs — `GEM_HOME`/`GEM_PATH` for gem-kind, empty otherwise) is written
-  as the final install step. A dir without a receipt is an interrupted install: warned
-  about, ignored by the scan, safely redone by `:lsp-install`. No half-installed server is
-  ever registered. (This is a new mechanism, not grammar precedent: grammars have no
-  receipts.) Languages are *not* stored — the
+  install folder")` pairs — `GEM_HOME`/`GEM_PATH` for gem-kind, empty otherwise) is written
+  as the final install step. A server's current install is its newest install folder with
+  a receipt. A folder without one, from an install that failed or was stopped, is never
+  current, and the next install of that server that commits deletes it, so a failed or
+  stopped reinstall leaves the installed server in place. A server with no current install
+  is an interrupted first install: warned about, ignored by the scan, safely redone by
+  `:lsp-install`. No half-installed server is ever registered. Grammar installs use the
+  same model, with their `checked` marker in the receipt's place. Languages are *not* stored — the
   scan derives them from `language-servers.scm`, and an orphan (no `registrations/` file) is never
   registered anyway, so caching them would only go stale.
 - **Integrity**: the installer verifies each downloaded asset against the sha256 recorded
@@ -341,9 +345,11 @@ A `registrations/` record omits each default field: `command` when it equals the
   `:reload-config` re-registration applies on next spawn; `:lsp-install` over a server
   whose client is running (reinstall/upgrade) first shuts that client down — the same
   path `:lsp-uninstall` needs — then installs, registers, and re-attaches open buffers,
-  spawning fresh.
+  spawning fresh. The new install goes in its own folder and the existing one stays
+  current until the new one commits, so a failed or stopped upgrade leaves the installed server
+  registered (see Installation layout).
 - **Binary resolution is managed-first**: the scan registers the command as
-  an *absolute path* (server dir + receipt's `bin-path`), so a managed install always spawns
+  an *absolute path* (install folder + receipt's `bin-path`), so a managed install always spawns
   the pinned binary — no lookup-order logic in the bridge. Bare command names (from manual
   `register-lsp-server!`) resolve via `$PATH` exactly as today; a user who prefers the
   `$PATH` copy overrides with a manual registration under the server's catalog name. `:lsp-install` prints a notice when
@@ -500,6 +506,6 @@ time.
 sibling helper binaries needs all of them executable. The tree is walked with
 `read-dir-iter`, which reports a symlink as a symlink without following it: a symlink entry
 the archive tool extracted (whether it's `bin-path` itself or some other tree entry) is
-neither recursed into nor chmod'd, so a malicious symlink pointing outside the server dir
+neither recursed into nor chmod'd, so a malicious symlink pointing outside the install folder
 can't have its target's permissions mutated, and a symlinked `bin-path` fails the
 post-unpack check.

@@ -8,19 +8,19 @@
 (require "lib/install.scm")
 (require "lib/lock.scm")
 
-(define (lsp-install/install! name had-dir?)
-  (if (lsp-install/with-lock! (string-append "install " name)
-        (lambda ()
-          (log! 'info (string-append "LSP: installing " name "..."))
-          (lsp-install/install-server! name)))
-      (lsp-install/register-installed-servers!)
-      (when had-dir?
-        (log! 'info "LSP: if the server was running it has now been shut down — run :lsp-install again"))))
+(define (lsp-install/install! name)
+  (let ((installed? (lsp-install/with-lock! (string-append "install " name)
+                      (lambda ()
+                        (log! 'info (string-append "LSP: installing " name "..."))
+                        (lsp-install/install-server! name)))))
+    (lsp-install/register-installed-servers!)
+    (when (and (not installed?) (lsp-install/read-receipt name))
+      (log! 'info (string-append "LSP: kept the installed " name)))))
 
 ;;; See docs/servers.md's "Installing a server", step 2.
 (define-command! "lsp-install/install-server"
   "Install the server `name` over its existing install, once its client has stopped."
-  (lambda (name) (lsp-install/install! name #t))
+  lsp-install/install!
   #:inline-output #t)
 
 (define (lsp-install/install-or-report! name)
@@ -35,7 +35,7 @@
       ((path-exists? (lsp-install/server-dir name))
        (unregister-lsp-server! name)
        (after! 0 (lambda () (call! "lsp-install/install-server" name))))
-      (else (lsp-install/install! name #f)))))
+      (else (lsp-install/install! name)))))
 
 (register-completion-source! "lsp:install-targets"
   (lambda (id input cursor)

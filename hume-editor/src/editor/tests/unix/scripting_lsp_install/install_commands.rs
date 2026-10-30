@@ -145,10 +145,7 @@ fn install_lock_is_released_after_a_failed_install() {
 #[test]
 fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     let data_tmp = tempfile::tempdir().unwrap();
-    let servers_dir = servers_dir(data_tmp.path());
-    std::fs::create_dir_all(&servers_dir).unwrap();
-    let other = std::fs::File::create(servers_dir.join(".install-lock")).unwrap();
-    other.try_lock().unwrap();
+    let _other = hold_install_lock(data_tmp.path());
 
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -159,6 +156,35 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     assert!(
         log.contains("already in progress"),
         "a held cross-process lock must refuse the install loudly: {log}"
+    );
+}
+
+/// While another process holds the lock, a refused reinstall registers the
+/// server it unregistered again and says the installed one was kept.
+#[test]
+fn a_refused_reinstall_registers_the_installed_server_again() {
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(data_tmp.path(), "rust-analyzer", "0.0.1", "rust-analyzer");
+    let _other = hold_install_lock(data_tmp.path());
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install(&mut ed, data_tmp.path());
+    type_cmd(&mut ed, ":lsp-install rust");
+    ed.drain_async_sources();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(log.contains("already in progress"), "{log}");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("LSP: kept the installed rust-analyzer")
+    );
+    assert_installed(
+        data_tmp.path(),
+        &ed,
+        "rust-analyzer",
+        "0.0.1",
+        "rust-analyzer",
     );
 }
 
@@ -248,7 +274,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
         Some("LSP: rust-analyzer already installed (v2026-10-05) — up to date"),
         "must report the up-to-date status"
     );
-    let expected_cmd = server_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
+    let expected_cmd = install_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
     assert_eq!(
         ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),

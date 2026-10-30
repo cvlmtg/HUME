@@ -24,16 +24,51 @@ fn servers_dir(data_dir_root: &Path) -> PathBuf {
     canonical_data_dir(data_dir_root).join("servers")
 }
 
-/// `<data_dir>/servers/<name>/`, the install directory of server `name`.
+/// `<data_dir>/servers/<name>/`, which holds server `name`'s install folders.
 fn server_dir(data_dir_root: &Path, name: &str) -> PathBuf {
     servers_dir(data_dir_root).join(name)
 }
 
-/// Write a receipt + a dummy binary file for `name` directly into
-/// `<data_dir>/servers/<name>/`, matching what `lsp-install/install-server!` would
-/// produce, for scan-time tests that don't need a real network install.
+/// The numbered install folders in `servers/<name>/`, oldest first.
+fn install_folders(data_dir_root: &Path, name: &str) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(server_dir(data_dir_root, name)) else {
+        return Vec::new();
+    };
+    let mut numbered: Vec<(u64, PathBuf)> = entries
+        .map(|entry| entry.unwrap().path())
+        .filter_map(|path| {
+            let number = path.file_name()?.to_str()?.parse().ok()?;
+            Some((number, path))
+        })
+        .collect();
+    numbered.sort();
+    numbered.into_iter().map(|(_, path)| path).collect()
+}
+
+/// `name`'s current install: its newest numbered folder holding a receipt.
+fn install_dir(data_dir_root: &Path, name: &str) -> PathBuf {
+    install_folders(data_dir_root, name)
+        .into_iter()
+        .rev()
+        .find(|folder| folder.join("receipt.scm").exists())
+        .unwrap_or_else(|| panic!("{name} has no install folder with a receipt"))
+}
+
+/// Asserts that `servers/<name>/` holds nothing but `name`'s current install.
+fn assert_only_install(data_dir_root: &Path, name: &str) {
+    let entries: Vec<PathBuf> = std::fs::read_dir(server_dir(data_dir_root, name))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(entries, [install_dir(data_dir_root, name)]);
+}
+
+/// Write a receipt + a dummy binary file for `name` directly into the install
+/// folder `<data_dir>/servers/<name>/1/`, matching what
+/// `lsp-install/install-server!` would produce, for scan-time tests that don't
+/// need a real network install.
 fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) {
-    let dir = server_dir(data_dir_root, name);
+    let dir = server_dir(data_dir_root, name).join("1");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("receipt.scm"),
@@ -41,6 +76,55 @@ fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) 
     )
     .unwrap();
     std::fs::write(dir.join(bin), b"#!/bin/sh\n").unwrap();
+}
+
+/// The folder an install of `name` that was stopped before its receipt
+/// leaves: numbered after every other install of `name`, with a partial file
+/// and no receipt.
+fn stop_an_install(data_dir_root: &Path, name: &str) -> PathBuf {
+    let next = install_folders(data_dir_root, name)
+        .last()
+        .map_or(1, |last| {
+            last.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .parse::<u64>()
+                .unwrap()
+                + 1
+        });
+    let folder = server_dir(data_dir_root, name).join(next.to_string());
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("partial"), b"").unwrap();
+    folder
+}
+
+/// Holds `servers/.install-lock` as another HUME's install would, until the
+/// returned file is dropped.
+fn hold_install_lock(data_dir_root: &Path) -> std::fs::File {
+    let servers_dir = servers_dir(data_dir_root);
+    std::fs::create_dir_all(&servers_dir).unwrap();
+    let lock = std::fs::File::create(servers_dir.join(".install-lock")).unwrap();
+    lock.try_lock().unwrap();
+    lock
+}
+
+/// Asserts that `name`'s receipt records `version` and that `name` is
+/// registered with `bin` in its install directory as its command.
+fn assert_installed(data_root: &Path, ed: &Editor, name: &str, version: &str, bin: &str) {
+    let log = ed.state.message_log.format_for_display();
+    let dir = install_dir(data_root, name);
+    let receipt = std::fs::read_to_string(dir.join("receipt.scm"))
+        .unwrap_or_else(|e| panic!("{name} has no receipt: {e}\n{log}"));
+    assert!(
+        receipt.contains(&format!("(version . \"{version}\")")),
+        "{receipt}\n{log}"
+    );
+    assert_eq!(
+        ed.state.lsp.registered_command_for_test(name).as_deref(),
+        dir.join(bin).to_str(),
+        "{log}"
+    );
 }
 
 /// One `sources/<name>.scm` fixture: the server's name and its record.
