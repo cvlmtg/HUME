@@ -1,8 +1,8 @@
 # Unicode Position Model: Bytes, Chars, and Grapheme Clusters
 
-Understanding this hierarchy is essential for HUME's architecture. Three
-different units can describe a "position" in text, and choosing the wrong one
-at the wrong layer causes subtle, hard-to-reproduce bugs.
+Three different units can describe a "position" in text, and choosing the
+wrong one at the wrong layer causes subtle, hard-to-reproduce bugs.
+Understanding this hierarchy is essential for HUME's architecture.
 
 ## Byte offset
 
@@ -22,19 +22,19 @@ characters are **variable-width**: 1 to 4 bytes each.
 | `f`  | `66`    | 2 |
 | `é`  | `C3 A9` | 3, 4 |
 
-`é` occupies bytes 3 **and** 4. Byte offset 4 points into the **middle** of a
-character — it is not a valid character boundary. This is why `s[3..4]` on
+`é` occupies bytes 3 and 4, so byte offset 4 points into the middle of a
+character and is not a valid character boundary. This is why `s[3..4]` on
 `"café"` panics in Rust: slicing through the middle of a multi-byte character
 is refused.
 
 Byte offsets are used internally by Rust's `str` and by the rope library HUME
-stores buffer text in, but they are **never used for buffer positions** in
-HUME. They surface only at narrow interoperability seams, where an external
-system speaks other units: regular-expression matchers and tree-sitter speak
-bytes, and language servers speak line-plus-column positions whose column
-counts UTF-8 bytes or UTF-16 code units — a fourth unit that exists only at
-that wire boundary and is converted to char offsets on arrival. Outside those
-seams, byte offsets are an implementation detail.
+stores buffer text in, but HUME never uses them for buffer positions. They
+surface only at narrow seams where an external system speaks other units:
+regular-expression matchers and tree-sitter speak bytes. Language servers
+speak line-plus-column positions whose column counts UTF-8 bytes or UTF-16
+code units, a fourth unit that exists only at that wire boundary and is
+converted on arrival. Outside those seams, byte offsets are an implementation
+detail.
 
 ## Char offset
 
@@ -47,11 +47,11 @@ regardless of how many bytes each one takes.
  0  1  2  3   ← char offsets
 ```
 
-`é` is a single `char` at offset 3 — no partial-character hazard. This is the
-rope library's native addressing unit, and it is what HUME's text storage and
-its changesets use for positions.
+`é` is a single `char` at offset 3, with no partial-character hazard. This is
+the rope library's native addressing unit, and it is what HUME's text storage
+and its changesets use for positions.
 
-Char offsets make sense for an editor at the storage layer:
+Char offsets suit an editor's storage layer:
 - `insert(at, text)` and `remove(from, to)` can be expressed cleanly.
 - A position means the same thing without knowing the encoding of any
   particular character.
@@ -62,8 +62,8 @@ its combining accent, so a selection does not use one.
 ## Grapheme cluster
 
 A char offset solves the byte problem, but there is a level above it:
-**grapheme clusters** — what a user perceives as a single indivisible
-character, which may be composed of multiple Unicode scalar values.
+**grapheme clusters**, what a user perceives as a single indivisible
+character, which may be composed of several Unicode scalar values.
 
 ```
 "é"  can be:
@@ -76,15 +76,15 @@ character, which may be composed of multiple Unicode scalar values.
 
 Pressing the right-arrow key on `"👨‍👩‍👧"` should advance the cursor past the
 entire emoji in one step, not stop five times. This is the job of the
-grapheme layer: given the buffer, it returns the next or previous **valid
-grapheme boundary**.
+grapheme layer: given the buffer, it returns the next or previous valid
+grapheme boundary.
 
 ## Architectural rule
 
 | Unit | Granularity | Role in HUME |
 |------|-------------|--------------|
 | Byte offset | Raw memory | Internal to the text storage library, and the unit regex matchers and tree-sitter speak at their seams |
-| Char offset | Unicode scalar value (`char`) | Storage, and positions from outside (a language server, a regex match) |
+| Char offset | Unicode scalar value (`char`) | Storage, changesets, and language-server positions once converted |
 | Cluster position | User-perceived character | Selections, cursor movement, motions, text objects |
 
 A char offset can point anywhere, including between a letter and its accent.
@@ -92,8 +92,9 @@ A **cluster position** cannot: it is a separate type, and only the grapheme
 layer can make one, by walking the text's clusters. Everything that decides
 where a selection starts or ends takes and returns cluster positions, so a
 position inside a cluster is not a bug to look for; it cannot be written down.
-A char offset from outside becomes a cluster position in one step that snaps
-it onto the cluster holding it.
+A position from outside becomes a cluster position in one step: a char offset
+snaps onto the cluster holding it, and a regex match's byte range becomes the
+run of whole clusters that covers it.
 
 Edit code needs a second kind of position, a **cluster bound**: either the
 start of a cluster or the end of the text. A cursor can never sit at the end
@@ -109,8 +110,8 @@ not covered.
 
 ## Selections address clusters
 
-A selection's anchor and head are cluster positions: a cursor on `é` (`e` +
-combining accent) sits on the cluster, which covers both chars, because the
+A selection's anchor and head are cluster positions. A cursor on `é` (`e` plus
+a combining accent) sits on the cluster, which covers both chars, because the
 cluster is the smallest thing a cursor can be on.
 
 ```
@@ -133,21 +134,21 @@ a character behind.
 
 A selection is only meaningful for the text it was made on. Each set of
 selections remembers which version of the text it belongs to, and reading it
-means pairing it with that text: pairing it with any other version is a
-bug that panics.
+means pairing it with that text: pairing it with any other version is a bug
+that panics.
 
-An edit is the one place positions for a text that does not exist yet are
-needed: the text it leaves behind can re-form clusters (deleting the base
-letter leaves its accent joining the previous character; deleting one half of
-a flag re-pairs the rest). So an edit describes its resulting selections
-relative to what it changed, and they are resolved onto the clusters of the
-new text in one place. Every position the editor keeps between commands —
-other windows' selections, the jump history, a search prompt's starting
-point — is carried through the same change at the same moment, so none of
-them is ever read against a text it does not belong to.
+An edit is the one place that needs positions in a text that does not exist
+yet. The text it leaves behind can re-form clusters (deleting the base letter
+leaves its accent joining the previous character; deleting one half of a flag
+re-pairs the rest). So an edit describes its resulting selections relative to
+what it changed, and they are resolved onto the clusters of the new text in
+one place. Every position the editor keeps between commands (other panes'
+selections, the jump history, a search prompt's starting point) is carried
+through the same change at the same moment, so none of them is ever read
+against a text it does not belong to.
 
 The grapheme layer also answers a related family of questions for vertical and
 horizontal layout: the display column of a position once tab stops are
 expanded, the position that lands on a given display column, the number of
-graphemes in a range. The same abstraction that gives you "next grapheme
-boundary" gives you tab-aware column arithmetic for free.
+graphemes in a range. The abstraction that gives "next grapheme boundary" also
+gives tab-aware column arithmetic.

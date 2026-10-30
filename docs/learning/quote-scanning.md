@@ -4,10 +4,10 @@
 
 Brackets use distinct open and close characters (`(` vs `)`), which allows a
 depth-tracking scan: increment depth on open, decrement on close, stop at
-depth zero. This correctly handles nesting.
+depth zero. This handles nesting correctly.
 
 Quotes use the *same* character for open and close (`"..."`, `'...'`). There
-is no depth to track, and nesting is ambiguous anyway (most languages don't
+is no depth to track, and nesting is ambiguous anyway (most languages do not
 allow nested same-character quotes). A different algorithm is needed.
 
 ## The parity scan
@@ -21,57 +21,48 @@ Position:  0   1   2   3   4   5   6   7
          odd (open)              even (close)
 ```
 
-Every quote character found on the line alternates between "opening" (odd
-occurrence) and "closing" (even occurrence). When a complete pair is found,
-the algorithm checks whether the cursor falls inside it, on either quote
-included.
+The scan goes left to right. Each quote character it finds alternates
+between "opening" (odd occurrence) and "closing" (even occurrence). When a
+complete pair is found, the scan checks whether the cursor falls inside it,
+on either quote included. If it does, the pair is returned; if not, the pair
+is discarded and the search continues with the next pair.
 
-The algorithm scans left-to-right. Each time it finds the quote character, it
-alternates: the first occurrence becomes a candidate opener, the second becomes
-the closer. If the cursor falls inside that pair, on either quote included,
-the pair is returned. If not, the pair is discarded and the search continues
-for the next pair.
-
-A cursor ON a quote character is handled by the same parity logic: whether
-that quote is the opener or closer depends on how many quotes precede it on
-the line. The scan resolves this automatically.
+A cursor *on* a quote character is handled by the same parity logic: whether
+that quote is the opener or the closer depends on how many quotes precede it
+on the line.
 
 ## Why brackets can span lines but quotes cannot
 
-Bracket text objects walk the entire buffer and track depth — they work
-correctly across lines because `(` and `)` are asymmetric. The scanner can
-always tell which direction it is going. See
-[Matching Pairs](matching-pairs.md) for how that same asymmetry is used to
-jump between a bracket and its partner.
+Bracket text objects walk the whole buffer and track depth. They work across
+lines because `(` and `)` are asymmetric: the scanner can always tell which
+direction it is going. See [Matching Pairs](matching-pairs.md) for how the
+same asymmetry is used to jump between a bracket and its partner.
 
-The parity scan cannot be extended to multiple lines with the same correctness
-guarantee. Consider a file where line 1 has an unmatched `"` (a string that
-continues on the next line, or a comment, or a stray character). The parity
-count is now off by one for every line that follows — every pair assignment
-downstream is inverted, and the text object selects the wrong region or fails
-silently.
+The parity scan cannot be extended to several lines with the same
+guarantee. Suppose line 1 has an unmatched `"` (a string that continues on
+the next line, an apostrophe in a comment, a stray character). The parity
+count is then off by one for every line that follows: every pair assignment
+downstream is inverted, and the text object selects the wrong region.
 
-This applies to all three quote characters, including backticks. The backtick
-text object silently fails on multiline inline code spans in Markdown
-(CommonMark allows `` `foo\nbar` ``).
+So quote text objects are bounded to the cursor's line. This applies to all
+three quote characters, backticks included: a backtick text object does not
+reach across a multiline inline code span in Markdown (CommonMark allows
+`` `foo\nbar` ``). The same scan backs the surround family (`ms"`, `ms'`,
+``ms` ``), so it has the same line bound.
 
-## The planned fix: tree-sitter when available, parity fallback
+A syntax tree removes the ambiguity, because it knows which quote
+characters open a string literal. Resolving quote objects against the tree
+when a grammar is loaded is on the roadmap; today the line-bounded parity
+scan is the only quote text object.
 
-Tree-sitter builds a syntax tree that distinguishes string literals from other
-uses of quote characters (see
-[Tree-sitter: Grammars, Queries, and Plum](tree-sitter-pipeline.md)). The plan
-is for quote text objects, when a tree-sitter grammar is loaded, to query the
-enclosing string *node* in the tree — getting multiline correctness and proper
-handling of escaped quotes for free. That path is not implemented yet; the
-parity scan is still the only quote text object.
+## Empty pairs
 
-When a grammar is loaded in the meantime, the parity scan still wins on the
-common same-line case. When no grammar is loaded (plain text, unsupported
-language), the parity scan is the only option. Either way the limitation is
-documented and visible rather than silently wrong.
+An empty pair (`""`, `''`, ``` `` ```) has no inner range in the
+inclusive-selection model, so `mi"` inside `""` is a no-op rather than a
+zero-width selection.
 
-One further corner worth naming: an empty pair — `""`, `''`, `` `` — has no
-inner range in the inclusive-selection model, so `mi"` inside `""` is a no-op
-rather than producing a zero-width selection. The same parity algorithm backs
-the surround family (`ms"`, `ms'`, `` ms` ``), so they inherit the line-bounded
-limitation too.
+---
+
+*See also: [Matching Pairs](matching-pairs.md) for the depth-tracking scan
+brackets use; [Tree-sitter: Grammars, Queries, and Plum](tree-sitter-pipeline.md)
+for syntax trees.*

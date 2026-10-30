@@ -25,8 +25,11 @@ enum Listener { Hook(name), Completion(name) }
 Two listeners are equal when they are the same kind with the same name. "The
 hook called `sig`" and "the source called `sig`" are different values, with
 no flag for a key, a lookup or a comparison to forget. Deriving an ordering
-gives a deterministic firing order for free: hooks first, then sources, each
-by name.
+lets the listeners gathered from several tables be sorted and de-duplicated
+in one step. Hooks then fire in name order. Completion sources run in the
+order they were registered, because each name is looked up in the registry
+when the character is typed (see "Names, not numbers, across a reset"
+below).
 
 ## An invariant belongs to the constructor
 
@@ -73,10 +76,11 @@ for each random sequence of set / clear operations:
         assert table.fires_on(c) == model.fires_on(c)
 ```
 
-A small alphabet is deliberate: with few characters and few listeners, sets
-overlap and repeat constantly, which is where replace-versus-merge and
-empty-set mistakes hide. The model shares no code with the table, so a mistake
-in one cannot hide behind the same mistake in the other.
+The alphabet is kept small on purpose: with few characters and few
+listeners, sets overlap and repeat constantly, which is where
+replace-versus-merge and empty-set mistakes hide. The model shares no code
+with the table, so a mistake in one cannot hide behind the same mistake in the
+other.
 
 ## Names, not numbers, across a reset
 

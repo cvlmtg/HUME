@@ -4,53 +4,49 @@
 
 Every language in HUME has an identity half and a capability half.
 
-The **identity half** is covered in [Language Identity and Detection](language-identity.md):
-a name, a set of detection rules (globs, extensions, shebangs), and hooks.
-It is always present and always cheap.
+The **identity half** is covered in
+[Language Identity and Detection](language-identity.md): a name, a set of
+detection rules (globs, extensions, shebangs), and hooks. It is always present
+and always cheap.
 
 The **capability half** is what this document is about: a grammar that can
-parse the language into a syntax tree, and a query that can map tree nodes
-to semantic names. A language can be registered with only the identity half —
-the detection and hooks work fine, but there is no syntax highlighting.
-Capability is attached separately: every installed grammar is registered
-automatically at startup, and the `plum` plugin is what installs a grammar
-that isn't there yet.
+parse the language into a syntax tree, and queries that map tree nodes to
+meanings. A language can exist with only its identity half. Detection and
+hooks work, but there is no syntax highlighting. Capability is attached
+separately: every installed grammar is registered at startup, and the `plum`
+plugin installs a grammar that isn't there yet.
 
 This separation is what lets HUME recognize a `.zig` file as Zig (useful for
-the statusline and hooks) even before the user has installed the Zig grammar.
+the statusline and hooks) before the Zig grammar is installed.
 
 ## What a grammar bundle is
 
-When a grammar is installed and registered, HUME loads two things together:
+An installed grammar gives HUME two things that belong together:
 
-1. **A parser** — a native shared library (`.dylib` on macOS, `.so` on Linux,
+1. **A parser**, a native shared library (`.dylib` on macOS, `.so` on Linux,
    `.dll` on Windows) compiled from the grammar's C source. Loading it gives
-   HUME a language handle that tree-sitter can use to parse source text into
-   a concrete syntax tree.
+   HUME a language handle that tree-sitter uses to parse source text into a
+   concrete syntax tree.
 
-2. **A compiled highlight query** — a query compiled against that specific
-   language handle. The query is the bridge between the parse tree and
-   semantic meaning: it matches patterns in the tree and assigns named
-   captures to them.
+2. **A compiled highlight query**, compiled against that language handle. The
+   query is the bridge between the parse tree and meaning: it matches
+   patterns in the tree and assigns named captures to them.
 
-A grammar whose language embeds others carries an optional third piece: an
-**injection query**, which marks regions of the tree as belonging to a
-different language (see [Injections](#injections-embedded-languages) below).
+A grammar whose language embeds others carries an optional third piece, an
+**injection query**, which marks regions of the tree as belonging to another
+language (see [Injections](#injections-embedded-languages) below).
 
-These pieces are kept together — a grammar bundle — because the queries are
-compiled against the language handle inside the shared library. They share a
-lifetime: you cannot use a query compiled for one version of a grammar with a
-parser from a different version.
+These pieces form one bundle because the queries are compiled against the
+language handle inside the shared library. A query compiled for one version
+of a grammar cannot be used with a parser from another version.
 
-The compiled queries are shared across every buffer of that language. Whether
-ten files or a hundred are open, there is exactly one compiled highlight query
-for Rust, one for Python, and so on. Parsing produces distinct syntax trees
-per buffer; the queries used to walk those trees are the same objects.
+The compiled queries are shared by every buffer of that language: each
+buffer gets its own syntax tree, and one compiled query walks them all.
 
 ## Highlight queries
 
-A highlight query is a tree-sitter `.scm` file. It contains patterns that
-match subtrees and annotate them with named captures:
+A highlight query is a tree-sitter `.scm` file. Its patterns match subtrees
+and annotate them with named captures:
 
 ```scheme
 (function_item name: (identifier) @function)
@@ -58,301 +54,263 @@ match subtrees and annotate them with named captures:
 ["fn" "let" "mut"] @keyword
 ```
 
-The capture names — `@function`, `@string`, `@keyword` — are the bridge to
-the theme system. HUME's theme defines colors for these names; the query
-says which tree nodes get which name. HUME uses Helix-compatible queries,
-which means any Helix highlight query works without modification.
+The capture names (`@function`, `@string`, `@keyword`) are the bridge to the
+theme system. The theme defines colors for these names; the query says which
+tree nodes get which name. HUME uses Helix's query files and capture names.
+A Helix query can inherit another language's patterns through an
+`; inherits:` line; HUME does not follow that line itself, and the grammars it
+installs come with the inherited patterns already merged in.
 
-At query-compilation time, capture names are interned into the editor's scope
-registry. The scope registry is the vocabulary of token types that themes
-speak. A theme maps scope names to colors; a query maps AST patterns to scope
-names; together they map parse trees to styled text.
+When a query is compiled, its capture names are added to the editor's scope
+registry, the vocabulary of token types that themes speak. A theme maps scope
+names to colors and a query maps tree patterns to scope names, so together
+they map parse trees to styled text.
 
 ## Injections: embedded languages
 
 One document often contains more than one language. A Markdown file has
-fenced code blocks in Rust or Python; an HTML page has `<script>` tags full
-of JavaScript; a Rust doc comment contains Markdown. The Markdown grammar
-knows *where* a fenced block is, but it cannot parse Rust — its tree just
-says "here is a code block whose info string reads `rust`."
+fenced code blocks in Rust or Python; an HTML page has `<script>` tags full of
+JavaScript; a Rust doc comment contains Markdown. The Markdown grammar knows
+*where* a fenced block is, but it cannot parse Rust. Its tree only says "here
+is a code block whose info string reads `rust`."
 
 **Injection queries** bridge that gap. Like a highlight query, an injection
-query is a `.scm` file of patterns compiled against the host grammar — but
-instead of assigning colors, its captures say "this node's text is another
-language: parse it with that language's grammar." The embedded language is
-sometimes named right in the query (a fixed choice like Markdown's inline
-grammar) and sometimes read out of the document itself (the ` ```rust ` info
-string of a fence).
+query is a `.scm` file of patterns compiled against the host grammar, but its
+captures say "this node's text is another language: parse it with that
+language's grammar." The embedded language is sometimes named in the query
+(a fixed choice, like Markdown's inline grammar) and sometimes read from the
+document (the ` ```rust ` info string of a fence).
 
 ### Layers
 
-With injections, a buffer no longer holds one syntax tree. It holds a **root
-tree** (the buffer's own language) plus a set of **injected layers**: each
-layer is a full parse of another grammar, restricted to the byte ranges the
-injection query marked. Layers can nest — a Markdown fence containing Rust
-containing a doc comment containing Markdown again — so injection resolution
-runs recursively, with a small depth cap to keep pathological documents from
-recursing forever.
+With injections, a buffer holds a **root tree** (the buffer's own language)
+plus a set of **injected layers**. Each layer is a full parse by another
+grammar, restricted to the byte ranges the injection query marked. Layers can
+nest (a Markdown fence containing Rust containing a doc comment containing
+Markdown again), so injections resolve recursively, with a small depth cap so
+a pathological document cannot recurse forever.
 
-Two wrinkles make layers more interesting than "a tree per region":
+Two details make layers more than "a tree per region":
 
 - **Combined layers.** Some embedded languages are scattered across the
-  document in many small spans that only make sense parsed *together*.
-  Markdown's inline grammar (bold, italic, inline code) is the canonical
-  case: every paragraph contributes a span, and they are parsed as one layer
+  document in many small spans that only make sense parsed together.
+  Markdown's inline grammar (bold, italic, inline code) is the common case:
+  every paragraph contributes a span, and all of them are parsed as one layer
   covering many disjoint ranges rather than one layer per paragraph.
-- **Depth priority.** Where layers overlap, the *deeper* layer's highlighting
+- **Depth priority.** Where layers overlap, the deeper layer's highlighting
   wins. Inside a Rust fence, Rust's `@keyword` beats whatever Markdown would
-  have said about those bytes — the most specific parse of a region is the
+  say about those bytes, because the most specific parse of a region is the
   one the user should see.
 
-Missing grammars degrade gracefully: if a fence names a language whose
-grammar isn't installed, that region simply keeps the host language's
-highlighting. Nothing errors; installing the grammar later lights it up.
+Missing grammars degrade gracefully. If a fence names a language whose
+grammar isn't installed, that region keeps the host language's highlighting,
+and installing the grammar later lights it up.
 
-### Incremental root, full-parse layers
+### Incremental parsing, layer by layer
 
-Edits update the root tree incrementally, as before. Injected layers are
-re-resolved and re-parsed from scratch after each root parse instead. This is
-a deliberate trade-off: matching up "which layer from the previous parse is
-the same layer now" across arbitrary edits is complex and error-prone, while
-the regions themselves (a code fence, a script tag) are typically small
-enough that a full parse is cheap. The expensive parse — the whole buffer —
-stays incremental; the small ones are recomputed.
+An edit does not reparse the whole document from scratch. The root tree is
+updated incrementally: tree-sitter reuses every part of the old tree the edit
+did not touch. Injected layers follow the same idea. After the root is
+reparsed, each layer is matched against the layer of the previous parse with
+the same grammar, the same nesting depth and the same ranges (shifted by the
+edit). A matching layer the edit did not touch is kept as it is; one the edit
+did touch is reparsed incrementally from its old tree. A layer with no match,
+such as a fence the user just typed, is parsed fresh.
 
 ## Text objects: selecting and navigating by structure
 
-A highlight query answers "what is this node?" An injection query answers "what language is this
-region?" A third kind of query — a text-object query — answers a different question: "where does the
-function, class, comment, or argument around this cursor begin and end?" It is the same mechanism
-(a `.scm` file of patterns compiled against the grammar) turned toward a different purpose: instead
-of naming nodes for the theme, its captures name whole structural objects for selection and
-navigation to use.
+A highlight query answers "what is this node?" An injection query answers
+"what language is this region?" A third kind, a **text-object query**,
+answers "where does the function, class, comment or argument around this
+cursor begin and end?" It is the same mechanism (a `.scm` file of patterns
+compiled against the grammar) put to a different use: its captures name whole
+structural objects for selection and navigation.
 
 ### One object, several captures
 
-A structural object is not always one node. A function preceded by an attribute or decorator is,
-conceptually, one selectable unit — the attribute plus the function it attaches to — even though the
-grammar represents them as two adjacent nodes. A block comment is a run of several single-line
-comment nodes read as one paragraph. A query pattern can tag more than one node with the same object
-name in a single match, and the object those captures describe is the *span from the earliest node's
-start to the latest node's end* — a hull drawn around every node the pattern singled out, not any one
-node in isolation. This is what lets "select the function" include its attribute without the query
-author having to special-case attributes at every call site.
+A structural object is not always one node. A function preceded by an
+attribute or decorator is one selectable unit, even though the grammar
+represents the two as adjacent nodes. A block comment can be a run of several
+single-line comment nodes. A query pattern can tag several nodes with the same
+object name in one match, and the object is the span from the earliest node's
+start to the latest node's end. This is what lets "select the function"
+include its attribute.
 
-This only makes sense when the tagged nodes are actually next to each other — that is the whole
-premise of reading them as one object. A loosely written pattern can occasionally ask a query engine
-for "one or more of this kind of node, tagged with this same object name," without also pinning down
-that each one has to sit directly beside the last. Nothing stops the engine from satisfying that
-request by picking two nodes that are nowhere near each other — the tag doesn't guarantee adjacency
-by itself. Read naively, that produces an "object" that's really two unrelated things stitched
-together by a shared name, stretching from wherever the first one happens to sit to wherever the
-second does — which can be nearly the whole file. The fix is to check adjacency before trusting a
-multi-node tag: if the tagged nodes sit side by side, hull them as one object as before; if
-they don't, there's no real object there and the match is set aside entirely, rather than reporting a
-"whole file" object no query author ever meant to describe.
+That hull is only meaningful when the tagged nodes sit side by side. A loosely
+written pattern ("one or more nodes of this kind") can match two nodes far
+apart, and hulling those would produce an "object" stretching across most of
+the file. So a multi-node match counts as an object only when its nodes are
+adjacent; otherwise the match is discarded.
 
 ### Selecting: smallest wins
 
-When you ask to select "the enclosing function," there may be several functions whose span contains
-the cursor — an inner closure inside an outer method, say. The rule is simply: the *smallest* span
-that contains the cursor wins. This is exactly the intuition "select the closest enclosing thing," and
-it composes naturally with nesting of any depth without needing a special case for how deep the
-nesting goes.
+When you select "the enclosing function", several functions may contain the
+cursor: an inner closure inside an outer method, say. The smallest span that
+contains the cursor wins. This is the intuition "select the closest enclosing
+thing", and it handles nesting of any depth without a special case.
 
 ### Navigating: nearest start wins
 
-Jumping to the "next" or "previous" object is a different question — not "which object contains the
-cursor" but "which object's boundary is closest in the given direction." Moving forward, that is the
-object whose start comes soonest after the cursor; moving backward, the object whose start comes
-soonest before it. Keying both directions off an object's *start* (rather than, say, its end) means a
-backward jump from inside an object lands on that object's own beginning first, before walking further
-back to an earlier one — matching how a reader would describe "go back to the start of this thing,"
-one step at a time.
+Jumping to the next or previous object asks a different question: not "which
+object contains the cursor" but "which object's boundary is closest in this
+direction". Moving forward, that is the object whose start comes soonest
+after the cursor; moving backward, the one whose start comes soonest before
+it. Keying both directions on the start means a backward jump from inside an
+object lands on that object's own beginning first, then walks back to earlier
+ones.
 
 ### Why layering needs no special handling
 
-A document can hold more than one syntax tree at once (see [Layers](#layers) above) — a Markdown file
-with a fenced Rust block has a Markdown tree and a Rust tree, each queried independently for
-structural objects. A structural object found inside an injected layer's tree always sits at a
-position inside the region that layer covers, which itself sits inside the host document's own
-structure. Combined with "smallest span wins," an object from the more deeply nested layer is
-automatically preferred over anything coarser the host layer might have offered for the same
-position — no separate rule is needed to prefer "the more specific parse." A layer whose language
-defines no structural objects at all simply contributes nothing, and the search continues in whichever
-layer does.
+A Markdown file with a fenced Rust block has a Markdown tree and a Rust tree
+(see [Layers](#layers) above), each queried for structural objects. An object
+found in the Rust layer sits inside the fence, which sits inside the
+Markdown structure, so "smallest span wins" already prefers it over anything
+coarser Markdown offers at the same position. A layer whose language defines
+no structural objects contributes nothing.
 
 ### Why the tree must be current first
 
-A structural query answers in terms of *positions* — where a span starts and ends. If the cursor has
-moved because of an edit since the tree was last built, but the tree itself hasn't been rebuilt yet,
-those positions describe where the code used to be, not where it is now. Ordinary highlighting can
-tolerate a tree that lags an edit by a frame or two — the visual difference is invisible for that
-long. A structural command cannot: it would select the wrong span, at best, and could ask for a
-position that no longer exists in the buffer at all. So a structural command always brings the tree
-up to date with the buffer's current text before it asks its query anything, even if that means doing
-a small amount of parsing work synchronously rather than waiting for the background parser to catch up
-on its own.
+A structural query answers in positions: where a span starts and ends. If the
+buffer was edited since the tree was last built, those positions describe
+where the code was, not where it is. Highlighting can tolerate a tree that
+lags an edit by a frame or two, since nobody sees the difference for that
+long. A structural command cannot: it would select the wrong span, or a
+position past the end of the text. So a structural command brings the tree up
+to date with the buffer before it queries it, parsing on the spot if the
+background parser has not caught up.
 
 ## Plum: the grammar manager
 
-`plum` is HUME's built-in plugin manager. It is written in Scheme and ships
-with the editor — not a separate CLI binary. The name covers two roles:
-plugin management (install, update, list, cleanup for Scheme plugins) and
-grammar management. For grammars specifically, plum provides:
+`plum` is HUME's plugin manager. It is written in Scheme and ships with the
+editor as a core plugin, not a separate program. It manages plugins, themes
+and grammars. For grammars it provides:
 
-- **`:plum-install-grammar`** — installs (or repairs) a named language's
-  grammar, or the current buffer's language's if no name is given, from the
-  pinned release, replacing an installed copy only once the new one is
-  complete.
-- **`plum/ensure-grammars`** — batch-installs the grammars of a list of
-  languages that are not yet installed. Not a command-mode command: called
-  from `init.scm`, e.g. `(call! "plum/ensure-grammars" '("rust" "json"))`.
-- **`:plum-list-grammars`** — shows the installed grammars, and everything
-  else plum keeps: grammars under a name that isn't a language the editor
-  knows, older installs a reinstall could not delete yet, and what stopped
-  installs left.
-- **`:plum-cleanup-grammars`** — deletes all of that, keeping only the current
-  install of each language's grammar.
+- **`:plum-install-grammar`** installs (or repairs) a language's grammar, by
+  default the current buffer's.
+- **`plum/ensure-grammars`** installs the grammars of a list of languages
+  that are not installed yet. It is called from `init.scm`, for example
+  `(call! "plum/ensure-grammars" '("rust" "json"))`, not typed at the prompt.
+- **`:plum-list-grammars`** shows the installed grammars and any leftovers,
+  such as older installs a reinstall could not delete yet.
+- **`:plum-cleanup-grammars`** deletes the leftovers, keeping only the
+  current install of each language's grammar.
 
 HUME compiles no grammar. A separate project builds every grammar for each
-supported platform and publishes them together: one archive per platform,
-holding one small archive per language, plus an index giving each language's
-byte range and checksum. A language's archive holds the shared library, its
-query files, and a manifest naming the library's tree-sitter symbol, its ABI
-version and the platform it was built for. Grammars are installed per
-language, so two languages sharing one grammar (JavaScript and JSX) each get
-their own copy.
+supported platform and publishes them together as a release: one archive per
+platform, holding one small archive per language, plus an index of where each
+language's archive sits and its checksum. Plum downloads only the slice for
+the language it installs and checks it against the index. A language's
+archive holds the shared library, its query files, and a manifest naming the
+library's tree-sitter symbol, the ABI version and the platform it was built
+for. Grammars are installed per language, so two languages sharing one
+grammar (JavaScript and JSX) each get their own copy.
 
-Grammars can also come from a folder on your own machine, holding a bundle
-you built yourself in the same format. Plum looks there first, language by
-language, and downloads only what the folder doesn't have.
+Grammars can also come from a folder on your own machine, the output of the
+grammar builder run locally: one archive per language, no index. Plum looks
+there first, language by language, and downloads only what the folder
+doesn't have.
 
 A loaded shared library stays loaded until the editor exits, and the
 operating system will not load a different file from the same path again
 (Windows won't even let it be deleted). So plum never overwrites a grammar in
-place. Each install of a language gets a new folder of its own, and the newest
-folder is the grammar in use. That is what lets a reinstall take effect at
-once, in the session that ran it.
+place. Each install gets a new folder of its own, and the newest checked
+folder is the grammar in use. That is what lets a reinstall take effect in
+the session that ran it.
 
-When you run `:plum-install-grammar`, plum:
+An install works through the same few ideas in order. Plum installs any
+**companion grammars** first: Markdown's emphasis and inline code live in a
+separate inline grammar that Markdown's injection query expects to find, so
+installing Markdown installs that one too. It unpacks the archive, checks
+that the manifest names the right language and this platform, and moves it
+into a new install folder. It then **loads the library and compiles the
+queries before registering anything**. A grammar the editor can't use, such
+as one built for a tree-sitter ABI version it can't load, is rejected here.
+Only a grammar that loads gets its folder marked as checked, and only a
+checked folder counts as an install, so a rejected grammar never replaces a
+working one. Finally plum registers the grammar with the running editor and
+deletes the language's older installs.
 
-1. Installs any **dependency grammars** first. Some grammars are incomplete
-   without a companion: Markdown's emphasis and inline code live in a separate
-   inline grammar that Markdown's injection query expects to find. Plum knows
-   these pairings and installs the companion transparently.
-2. Reads the index and takes just that language's byte range of the platform
-   archive, from the local folder or the download, then checks it against the
-   index's checksum.
-3. Unpacks it and checks the manifest: the right language, this platform, and
-   the files a grammar needs.
-4. Moves it into a new install folder under the language's folder.
-5. Loads the library there and compiles the queries without registering
-   anything. This is where a grammar the editor can't use, such as one built
-   for a tree-sitter ABI version the editor can't load, is rejected. Only once
-   it loads does Plum mark the folder as checked, and only a checked folder
-   counts as an install, so a rejected grammar never replaces anything.
-6. Registers the shared library and the queries with the running editor.
-7. Deletes the language's older installs, except one whose library this
-   session already loaded on Windows; cleanup clears that one later.
-
-On subsequent starts, HUME scans the data directory for installed grammars and
-registers each one from its newest checked install folder, reading the symbol
-from its manifest.
-No network access on startup, and no scan of every language's data either —
-the walk works from what's actually present on the filesystem, not from what's
-declared. A fresh setup with nothing installed reads nothing.
+On later starts, HUME registers each installed grammar from its newest
+checked folder. Startup needs no network and reads only what is present on
+disk; a fresh setup with nothing installed reads nothing.
 
 Registering a grammar opens nothing. HUME notes where its library and queries
-are, and loads them (opens the library, compiles the queries) the first time
-something needs the grammar: a buffer of that language, or an embedded block
-that names it. Grammars a session never uses cost nothing at startup.
+are, and loads them the first time something needs the grammar: a buffer of
+that language, or an embedded block that names it. Grammars a session never
+uses cost nothing.
 
 Only the main thread loads a grammar, because a loaded grammar joins the
-editor's shared language table. The background parse worker cannot load one
-itself. When an embedded block names a grammar that is registered but not
-loaded, the worker skips the block and reports the language back. The main
-thread loads it, and the buffer resolves its embedded blocks again: every layer
-that is still valid is kept, and only the new ones are parsed. A grammar that
-fails to load is reported once, and counts as absent until it is registered
-again.
+editor's shared language table. When the background parser meets an
+embedded block whose grammar is registered but not loaded, it skips the block
+and reports the language. The main thread loads the grammar, and the buffer
+resolves its embedded blocks again, keeping every layer that is still valid
+and parsing only the new ones. A grammar that fails to load is reported once,
+and counts as absent until it is registered again.
 
 ## Why pinned revisions
 
-Grammar repositories and their highlight queries are pinned to specific
-revisions for reproducibility. The coupling is tight: query patterns match
-named nodes that the grammar defines; if the grammar changes, the query may
-stop matching or match incorrectly. Pinning both to known-good revisions
-ensures that every HUME installation produces the same highlighting behavior.
+Grammars and their queries are pinned for reproducibility: query patterns
+match named nodes the grammar defines, so a changed grammar can make a query
+stop matching or match the wrong thing.
 
 HUME pins one thing: a release of the project that builds its grammars. That
 release fixes each grammar's revision and the Helix revision its queries come
 from, and HUME's own language data is generated from the same Helix revision,
-so grammars, queries and language data always move forward together.
+so grammars, queries and language data move forward together.
 
 ## Late grammar registration
 
-Grammars can arrive after buffers are already open. A user might open a Rust
-file, then install the Rust grammar (`:plum-install-grammar`) in the same
-session. HUME handles this by sweeping open buffers when a grammar is registered.
+Grammars can arrive after buffers are open. A user might open a Rust file,
+then install the Rust grammar with `:plum-install-grammar` in the same
+session.
 
-After a grammar is registered, HUME walks every open buffer. Any buffer whose
-language name matches a grammar that was just registered is re-run through
-syntax setup: the grammar loads, a parse request is queued, and once the worker
-responds the buffer renders with highlighting, no restart required. Buffers
-whose own grammar can inject other languages resolve their embedded blocks
-again and keep the layers they already have, so installing the Rust grammar
-lights up Rust code fences in a Markdown buffer that was already open and
-highlighted.
-
-The same mechanism handles batch registration at startup: because grammar
-registration runs during initialization (potentially after some buffers have
-already been opened by the startup sequence), the sweep guarantees that no
-buffer is left without highlighting due to ordering.
+When a grammar is registered, HUME walks every open buffer. Each buffer whose
+language matches goes through syntax setup again and is highlighted once the
+background parser answers, with no restart. Buffers whose grammar can inject
+other languages resolve their embedded blocks again, so installing the Rust
+grammar lights up Rust code fences in a Markdown buffer that was already
+open. The same sweep covers buffers the startup sequence opened before the
+installed grammars were registered.
 
 ## End-to-end: opening a `.rs` file
 
-Putting it all together, here is what happens when you open `main.rs`:
+Here is what happens when you open `main.rs`:
 
-1. **Path resolution** — the path is resolved and a buffer is created with
-   the file's contents.
+1. **Path resolution.** The path is resolved and a buffer is created with the
+   file's contents.
 
-2. **Detection** — the detection logic runs: no glob matches, the `.rs`
-   extension matches Rust, so the language is identified as `"rust"`.
+2. **Detection.** No glob matches and the `.rs` extension matches Rust, so
+   the language is `"rust"`.
 
-3. **Funnel** — the funnel is called with `"rust"`. It writes the language
-   name to the buffer, looks up Rust's registered grammar (if any), proceeds
-   to syntax setup, and attaches the buffer to the language servers Rust's
-   list names, if any (see the LSP doc).
+3. **The language funnel.** It writes the name to the buffer, sets up syntax
+   parsing if Rust has a grammar, and attaches the buffer to the language
+   servers Rust's list names, if any (see [LSP](lsp.md)).
 
-4. **Syntax setup** — if Rust has a grammar, it loads now unless an earlier
-   file or embedded block already needed it, and a parse request is queued to
-   the background parse worker. Parsing happens
-   off the main thread: the worker parses the root tree, then resolves any
-   injections and parses those layers too, and the finished set is installed
-   on the buffer with the highlighter wired up. A size gate prevents very large
-   files from being parsed at all — the default cap is one mebibyte, and it is
-   enforced not just at open but mid-session: a buffer that grows past the cap
-   has its syntax detached, and one that later shrinks back under the cap is
-   re-attached without a restart.
+4. **Syntax setup.** The Rust grammar loads now unless something already
+   needed it, and the background parser builds the root tree and its
+   injected layers off the main thread. A size limit (one mebibyte by
+   default) keeps very large files from being parsed at all. It applies
+   throughout the session: a buffer that grows past it loses its syntax tree,
+   and one that shrinks back under it gets it back without a restart.
 
-5. **Hook** — `on-language-set` fires with the buffer and `"rust"`.
-   Plugins can react (e.g. configuring indent width, setting options).
+5. **`on-language-set`** fires with the buffer and `"rust"`. Plugins can
+   react, for example by setting indent width.
 
-6. **`on-buffer-open`** — fires next. By this point the language is
-   guaranteed to be set, so `on-buffer-open` handlers can safely branch on
-   language.
+6. **`on-buffer-open`** fires next. The language is already set, so its
+   handlers can branch on it.
 
-7. **Render** — when the buffer is drawn, the renderer's style stage reads
-   the stored syntax trees (once available) — the root tree plus any injected
-   layers — and walks each with its language's shared query to produce
-   per-grapheme style spans, deeper layers winning where they overlap. Those
-   spans are resolved against the active theme to produce the final colors.
+7. **Render.** The renderer's style stage reads the syntax trees once they
+   are available (the root plus any injected layers) and walks each with its
+   language's shared query to produce per-grapheme style spans, deeper layers
+   winning where they overlap. The active theme turns those spans into
+   colors.
 
-The parse trees live on the buffer: the root tree is updated incrementally on
-each edit, while injected layers are re-parsed in full after each root parse.
-The queries and the theme are shared resources read during every render pass.
-Incremental updates are baked once per frame before the renderer runs — into
-every layer's tree, not just the root — so the trees the renderer reads are
-always coordinate-aligned with the buffer text on screen even while a fresh
-reparse is still in flight on the background worker.
+Before each frame, pending edits are applied to every layer's tree, so the
+trees the renderer reads line up with the text on screen even while a fresh
+parse is still running in the background.
+
+---
+
+*See also: [Language Identity and Detection](language-identity.md) for how a
+buffer gets its language; [The Rendering Pipeline](rendering-pipeline.md) for
+where highlighting is applied.*

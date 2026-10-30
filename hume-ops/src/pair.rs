@@ -382,7 +382,8 @@ fn nearest_bracket(sel: SelectionView<'_>) -> Option<(CharOffset, char, char)> {
 /// Resolves against the whole selection, not just the head's own grapheme
 /// cluster: a `w`-motion selection like `") "` leaves the head on the
 /// trailing space rather than the bracket itself (`word-selects-whitespace`
-/// is by design), and `%`-style matching should still find the `)`. The
+/// gives a run with no whitespace before it the whitespace after it), and
+/// `%`-style matching should still find the `)`. The
 /// head's own cluster is always checked first: a bracket char is always
 /// ASCII and never itself combines forward, but a `GC_Prepend` codepoint
 /// immediately before one (e.g. U+0600 ARABIC NUMBER SIGN) joins *into* it,

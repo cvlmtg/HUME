@@ -2,128 +2,99 @@
 
 ## Why "display line" ≠ "buffer line"
 
-A buffer line is one run of characters terminated by a newline — what you'd
+A buffer line is one run of characters ended by a newline: what you would
 call a "line" in a text file. A display line is one horizontal line on
-screen. The two coincide when wrapping is disabled: each buffer line
-occupies exactly one display line. When soft wrap is enabled, a long buffer
-line may be split across two, five, or twenty display lines on screen.
+screen. With wrapping off the two coincide, each buffer line taking one
+display line. With soft wrap on, a long buffer line can take two, five or
+twenty display lines.
 
-HUME treats display lines as the fundamental unit of rendering from the
-start, even when wrapping is off and the two are equivalent. This is an
-investment in avoiding future pain: adding virtual lines (inline
-diagnostics, diff context, decorations) to a renderer that iterates buffer
-lines directly is a significant retrofit. Iterating display lines from the
-beginning makes virtual lines a natural extension rather than a hack.
+HUME treats the display line as the unit of rendering even when wrapping is
+off and the two are the same. A renderer that walks buffer lines has no
+place to put a line that is not in the buffer; one that walks display lines
+gets virtual lines (diagnostics, diff context, annotations) as one more kind
+of display line.
 
 ## The four kinds of display line
 
-Each display line on screen belongs to one of four categories:
-
 | Kind | Description |
 |------|-------------|
-| **Line start** | The first display line of a buffer line — always exists, even for a single-char line |
-| **Wrapped continuation** | A subsequent display line that continues a long buffer line beyond the viewport width |
-| **Virtual** | A display line injected by a provider, not backed by buffer text (e.g. a plugin-injected annotation line) |
+| **Line start** | The first display line of a buffer line; always exists, even for a single-char line |
+| **Wrapped continuation** | A later display line that continues a long buffer line past the viewport width |
+| **Virtual** | A display line injected by a provider, not backed by buffer text (e.g. a plugin's annotation line) |
 | **Filler** | An empty display line below the last buffer line, conventionally shown with a tilde (`~`) |
 
-The renderer processes one buffer line at a time. For each buffer line, it
-generates one "line start" display line and zero or more "wrap
-continuation" display lines, drains any virtual lines anchored to that
-line, and repeats. After the last buffer line, filler display lines fill
-the remaining space.
+Each buffer line owns a block of display lines: the virtual lines anchored
+before it, its line start, its continuations, then the virtual lines
+anchored after it. The renderer walks these blocks in order, and after the
+last buffer line, filler lines fill the remaining space.
 
 ## Soft wrap
 
-When soft wrap is enabled, lines longer than the content area width are split
-at grapheme boundaries. The split point respects word boundaries in "word wrap"
-mode: as the format stage walks the line forward it remembers the most recent
-whitespace position, and when a grapheme would overflow the right edge it
-breaks at that remembered position rather than mid-word. The effect is the
-same as walking back from the right edge; the cost is a single forward pass.
+With soft wrap on, lines longer than the content area are split at grapheme
+boundaries. In *word wrap* mode the split also respects word boundaries: as
+the format stage walks the line it remembers the most recent whitespace, and
+when a grapheme would overflow the right edge it breaks there rather than
+mid-word. The effect is that of walking back from the right edge, at the
+cost of a single forward pass.
 
-A second mode, *indent wrap*, starts each continuation display line at the
-parent line's indentation level, rounded down to whole tab stops — while
-still breaking at word boundaries — so deeply nested arguments stay
-visually nested across the wrap instead of snapping back to column zero.
+*Indent wrap* also breaks at word boundaries, and starts each continuation
+at the line's own indentation, rounded down to whole tab stops, so nested
+code stays visually nested across the wrap instead of snapping back to
+column zero.
 
-Every continuation display line knows which buffer line it belongs to (so
-line-number rendering and selection highlighting still work) and which
-sub-line within that line it is (so double-clicking or the cursor position
-can identify the right character).
+Every continuation knows which buffer line it belongs to (so line numbers
+and selection highlighting still work) and which piece of that line it is
+(so a mouse click or the cursor can find the right character).
 
-Tab characters are expanded to the nearest tab stop *before* the wrap
-calculation, so wide-tab lines behave predictably. That width is fixed at
-the column the tab was first measured against — if wrapping later moves it
-to a continuation display line and renumbers its column from zero, the tab
-keeps its original width rather than re-expanding to whatever a fresh tab
-stop at the new column would give.
+Tabs are expanded to the next tab stop *before* wrapping is computed, so
+lines with wide tabs behave predictably. A tab keeps the width it was first
+measured with: if wrapping moves it onto a continuation, where columns
+restart from zero, it does not re-expand to fit a fresh tab stop there.
 
 ## Visual-line movement (`j` and `k` in wrap mode)
 
-When wrap is off, `j` and `k` move by one buffer line — straightforward. When
-wrap is on, the user expects `j`/`k` to move by one *display line*, which may
-stay on the same buffer line if that line spans multiple display lines. (A
-`j`/`k` with an explicit count — `9j` — moves by buffer lines
-even in wrap mode, so it matches relative line numbers.)
+With wrap off, `j` and `k` move by one buffer line. With wrap on, they move
+by one *display line*, which may stay on the same buffer line if it spans
+several. A `j`/`k` with an explicit count (`9j`) still moves by buffer
+lines, so it matches relative line numbers.
 
-Visual-line movement needs to know the display column of the cursor, not just
-its character offset in the buffer. The goal is "land on the closest character
-in the display line above/below at the same display column" — which requires
-knowing what column the characters in adjacent display lines start at.
-
-To do this without re-rendering the whole frame, the engine's format stage is
-called for the specific buffer line being moved into. The resulting grapheme
-list is then scanned for the grapheme whose display column is closest to the
-target column.
+Visual-line movement needs the cursor's display column, not just its
+character offset: the goal is the character in the display line above or
+below that sits closest to the same column. To find it without re-rendering
+the frame, the engine formats just the buffer line being moved into and
+scans its graphemes for the one nearest the target column.
 
 ### The sticky column
 
-When a user presses `j` three times in a row, the third press should try to
-land at the same column as the first. Without a sticky column, each press would
-calculate the "current column" from the cursor's new position, and the column
-would drift leftward if some intermediate display lines are shorter than the
-original.
+Press `j` three times in a row and the third press should still aim for the
+column of the first. If each press measured the column from where the cursor
+had just landed, the column would drift left every time an intermediate line
+was shorter.
 
-HUME latches the target column on the first `j` or `k` press and holds it
-across consecutive vertical moves. Any horizontal movement (or any non-vertical
-command) resets the latch. This matches how virtually every text editor handles
-vertical movement with short lines.
+HUME latches the target column on the first `j` or `k` and holds it across
+consecutive vertical moves. Any other command resets the latch. A counted
+move like `9j` keeps its column too, even past a short line in the middle of
+the hop.
 
-The same guarantee applies to a counted move like `9j`: the column it started
-with survives even if a narrower line sits somewhere in the middle of the
-nine-line hop, exactly as if `j` had been pressed nine times in a row.
+With wrapping on there is a catch. A continuation display line numbers its
+columns from its own left edge, not from the start of its buffer line. So
+the column a bare `j` latches (moving by display lines) and the column a
+counted move latches (moving by buffer lines) are different numbers for the
+same character. HUME records which kind of column it latched, and a move of
+the other kind measures afresh from the cursor instead of misreading it.
+With wrapping off the two kinds agree, so any mix of plain and counted moves
+keeps its column.
 
-There is one subtlety a counted move has to get right that a single press
-doesn't: while wrapping, a display line's column is measured from that
-display line's own left edge, not from the start of the buffer line it
-belongs to — a continuation display line that starts a few columns in
-renumbers its columns from zero. So the column a bare `j` latches while
-hopping between display lines and the column a counted move latches while
-hopping between buffer lines are two different numbers for the same
-character whenever a line wraps. HUME tracks which of the two a latched
-column was measured in, and only reuses it for a move that counts the same
-way — a move that counts differently re-measures the column from where the
-cursor actually sits rather than misreading the other kind of column as its
-own. With wrapping off a display line and a buffer line are the same thing,
-so the two always agree and a mixed run of plain and counted vertical moves
-keeps its column throughout.
+## Inline decorations and virtual lines
 
-## Connection to LSP and future features
-
-Inline decorations — a mechanism that injects cells *inside* a display line
-at byte offsets rather than as separate display lines — carry both inlay
-hints and the end-of-line diagnostic summary, sitting inline with the code
-they annotate rather than on their own display line. Virtual lines are the
-complementary, whole-display-line-granularity mechanism, available to any
-plugin that wants to anchor an annotation line below a buffer line without
-disrupting the buffer text or changing any line numbers.
-
-The display-line abstraction is also the mechanism by which syntax-highlighted
-folding ("fold this function to one line") would eventually work: a fold
-would suppress all but the "line start" display line of the folded range,
-with one virtual line substituting a summary.
+Inline decorations inject cells *inside* a display line, at byte offsets,
+rather than adding display lines. Inlay hints and the end-of-line diagnostic
+summary are drawn this way, inline with the code they annotate. Virtual
+lines are the whole-line counterpart: any plugin can anchor an annotation
+line before or after a buffer line without changing the buffer text or any
+line number.
 
 ---
 
-*See also: [The Rendering Pipeline](rendering-pipeline.md) for how the display
-line stream is styled and composed into terminal output.*
+*See also: [The Rendering Pipeline](rendering-pipeline.md) for how the
+display line stream is styled and composed into terminal output.*

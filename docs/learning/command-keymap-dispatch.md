@@ -1,10 +1,9 @@
 # The Command/Keymap/Dispatch Architecture
 
 Once a key reaches the main editing surface, HUME's key handling is split
-across four layers, each owning one responsibility. Understanding the split
-— and what each layer does *not* know — is the key to extending the editor
-safely. ("Reaches the main editing surface" matters: a key doesn't always
-get this far — see "Before dispatch", below.)
+across four layers, each owning one responsibility. Understanding the split,
+and what each layer does *not* know, is what makes the editor safe to extend.
+A key does not always get this far: see "Before dispatch" below.
 
 ## The four layers
 
@@ -15,76 +14,70 @@ get this far — see "Before dispatch", below.)
 | **Keymap** | Key sequence → command name | Yes | No |
 | **Dispatch** | Resolve name, call command | No | Yes |
 
-The keymap layer knows about keys but not about what any command does. The
-command layer knows what each command does but not which key triggered it. The
-registry bridges them by name. The dispatch layer glues everything together.
+The keymap knows about keys but not about what any command does. A command
+knows what it does but not which key triggered it. The registry bridges them
+by name, and dispatch glues everything together.
 
 ## Layer 1: The Registry
 
-Every user-facing operation is a named command — a name string paired with a
-function and some metadata. The registry is the single source of truth for what
-commands exist.
+Every user-facing operation is a named command: a name paired with a
+function and some metadata. The registry is the single source of truth for
+what commands exist.
 
 Commands come in a few varieties:
 
-- **Motion** commands move the cursor by returning a new position. They are
-  pure: they take the current buffer and cursor state and return new cursor
-  state, with no side effects.
-- **Selection** commands similarly return a new selection state without
-  modifying the buffer.
-- **Edit** commands return the new text together with its selections, plus a
-  changeset (the description of what changed, used for undo).
-- **Editor-level** commands have access to the full editor state: mode
-  changes, registers, undo groups. Used for operations that don't fit the pure
-  model.
-- **Script-backed** commands are defined in Steel (HUME's scripting language)
-  and stored by name. The command table maps the command name to its handler
-  separately; the command itself carries its name plus metadata, never a
-  pointer to the procedure. Both lookups happen by name at dispatch time.
+- **Motion** and **selection** commands take the text, the current
+  selections, a count and the move/extend mode, and return new selections.
+  They never modify the text.
+- **Edit** commands take the text and its selections and return the new text
+  with its selections, plus a changeset (the description of what changed,
+  used for undo).
+- **Editor-level** commands reach the full editor state: mode changes,
+  registers, undo groups, and the commands that need a character or a
+  pattern from the user (find, replace, search).
+- **Script-backed** commands are defined in Steel (HUME's scripting
+  language). The registry entry holds the procedure itself, along with its
+  name and metadata, so dispatch runs the procedure of the entry it
+  resolved.
 - **Lazy** commands are placeholder stubs registered up front for commands a
-  plugin has declared but not yet loaded. The first dispatch of one triggers
-  the owning plugin's body, which replaces the stub with the real
-  implementation.
+  plugin has declared but not yet loaded. The first dispatch of one runs the
+  owning plugin's body, which replaces the stub with the real command.
 
-The first three variants are pure functions — they cannot touch anything
-outside their inputs. This makes them trivially testable and composable.
+Motion, selection and edit commands are pure functions that cannot touch
+anything outside their inputs, which makes them easy to test and to compose.
 
 ### Extend mode is a runtime parameter, not separate commands
 
 There is no `"extend-left"` or `"extend-select-word"` command. Each base
-command (e.g. `"move-left"`, `"select-word"`) receives a move/extend
-parameter at dispatch time when the user is in extend mode. The command
-branches internally:
+command (`"move-left"`, `"select-word"`) receives a move/extend parameter at
+dispatch time, and branches on it:
 
 - **Move** mode: the anchor collapses to the new cursor position (a fresh
   one-character selection).
-- **Extend** mode: the anchor stays fixed, only the head moves — so the same
-  parameter produces a grow or a shrink depending on which way the head moves
-  relative to the anchor, with no separate command needed for either.
+- **Extend** mode: the anchor stays fixed and only the head moves, so the
+  same parameter grows or shrinks the selection depending on which way the
+  head moves relative to the anchor.
 
-This means adding a new motion requires **one function and one registration**
-— the extend variant comes for free from the parameter.
+Adding a new motion therefore takes one function and one registration: the
+extend variant comes from the parameter.
 
-A command may also register an *alternate body* chosen at dispatch time by a
-buffer option. Word motions ship this way: one command name, with the
-side of whitespace to include chosen per buffer by
-`word-selects-whitespace`.
+The parameter is not the only per-call input a command can read. The word
+motions also receive the buffer's `word-selects-whitespace` setting, so one
+command body selects the whitespace each buffer asks for.
 
 ### The extendable flag
 
 Commands declare at registration time whether they *have* extend semantics.
-The flag is a guard, not a trigger: the Ctrl-key one-shot mechanism
-(described below) only fires for commands that do — a Ctrl-key resolving to
-a command without extend semantics (like undo) is suppressed as a no-op
-rather than run. Bindings that should *always* extend are a separate,
-per-binding declaration (see "Explicit force-extend bindings" below).
+The flag is a guard, not a trigger. The Ctrl-key one-shot (described below)
+only fires for commands that have it: a Ctrl-key resolving to a command
+without extend semantics, like undo, is suppressed as a no-op rather than
+run. Bindings that should *always* extend are a separate, per-binding
+declaration (see "Three ways to get Extend mode" below).
 
-All Steel-defined commands are extendable automatically. Every command's lambda
-receives the pane it was invoked through as its first argument — a value that
-names both the buffer and, for a synchronous keypress or `:` dispatch, the
-pane itself. When Ctrl-key delivers extend to your command, the lambda receives
-`extend = #t` as its third argument (if the lambda declares a third parameter).
-The body can then forward it:
+Every Steel-defined command is extendable. Its procedure receives the pane it
+was invoked through as its first argument, then the count and the extend
+flag, each only if the procedure declares that parameter. The body can
+forward them:
 
 ```scheme
 (define-command! "step-right" "Move right N times, optionally extending."
@@ -92,194 +85,188 @@ The body can then forward it:
     (call! "move-right" pane count extend)))
 ```
 
-Steel commands can also opt in to dot-repeat (`.`) via `#:repeatable #t`. By
-default they are non-repeatable — only the author knows whether re-running the
-full command body at a new cursor position is meaningful. Shell-out commands
-(`#:inline-output #t`) cannot be repeatable; passing both flags is an error.
+Steel commands can also opt in to dot-repeat (`.`) with `#:repeatable #t`.
+They are non-repeatable by default, because only the author knows whether
+re-running the whole body at a new cursor makes sense. Commands that hand
+the terminal to a subprocess (`#:inline-output #t`) cannot be repeatable;
+passing both flags is an error.
 
 ```scheme
-(define-command! "delete-selection" "Delete current selection; repeatable."
-  (lambda (pane) (call! "delete" pane))
+(define-command! "delete-line" "Delete the current line; repeatable."
+  (lambda (pane)
+    (call! "select-line" pane)
+    (call! "delete-selection" pane))
   #:repeatable #t)
 ```
 
 ### Typed commands (`:` commands)
 
-The registry also holds commands invoked from the `:` command line. They share
-the same name namespace as key-bound commands, which prevents collisions and
-gives a single source for future `:help` and command-palette features.
+The registry also holds the commands run from the `:` command line. They
+share one name namespace with key-bound commands, so the two can never
+collide.
 
 ## Layer 2: Commands
 
-The command implementations are plain functions: they take the buffer, the
-current selections, and a count, and return new state. No knowledge of keys,
-modes, or how they were invoked.
+A command implementation is a plain function of the text, its selections,
+and whatever else its kind takes (a count, the move/extend mode, a
+character). It returns the new state, and knows nothing about keys, modes,
+or how it was invoked.
 
 ## Layer 3: The Keymap
 
-The keymap is a trie — a tree structure where each node represents one key in a
-sequence — that maps key sequences to command names. The stored value at each
-leaf is just a name string, not a function pointer.
+The keymap is a trie, a tree in which each node stands for one key of a
+sequence, mapping key sequences to command names. The value stored at a leaf
+is a name, not a function.
 
-This separation is deliberate: the Steel scripting layer rewrites keymap entries
-to support user-defined keymaps. A user remap is just `key → command-name`.
-The trie can be rewritten without touching any execution logic.
+That separation is what lets scripts rewrite the keymap. A user binding is
+`key → command-name`, and the trie can change without touching any
+execution logic.
 
-Three types of trie nodes:
+A node is either:
 
-- **Leaf**: a complete binding → dispatch the named command.
-- **Interior**: more keys needed (e.g. `m` → `i` → `w` for inner-word).
-- **Wait-for-a-character**: the next keypress is consumed as a character
-  argument (used by find, replace, etc.).
+- a **leaf**: a complete binding, which dispatches the named command;
+- an **interior** node: more keys are needed (`m` → `i` → `w` for
+  inner-word).
 
-### Three keymaps
+A command that needs a character, such as find (`f`) or replace (`r`), is an
+ordinary leaf. The command itself asks for the next key when it runs (see
+"Commands that read a character" below), so the trie needs no special node
+for it.
 
-HUME maintains three separate tries:
+### Four keymaps, in layers
+
+HUME keeps one trie per mode:
 
 | Trie | Purpose |
 |------|---------|
 | Normal | Main keymap for Normal mode |
 | Extend | Sparse overrides for Extend mode (checked first) |
 | Insert | Single-key bindings for Insert mode |
+| Command | Single-key bindings for the `:` prompt |
 
-The **extend trie** ships empty by default — flipping anchor and head (Vim's
-visual `o`) is already reachable via `Ctrl-e` in both Normal and
-Extend mode, so no override is needed out of the box. Any key not found in the
-extend trie falls through to the normal trie with extend mode active, which
-applies extend semantics automatically.
+Each trie holds one layer of bindings per origin: HUME's own defaults, then
+plugins, then the user's `init.scm`. The highest layer that knows a sequence
+decides it, and a layer can also unbind a sequence, hiding what the layers
+below it bind. On top of the global keymap, a buffer can have named keymaps
+attached to it, which are looked up first.
 
-This lets Steel customise per-key extend-mode overrides: "when in extend mode
-and the user presses this key, run this specific command instead of the usual
-one." A keybinding plugin that prefers Vim's `o` over `Ctrl-e`, for example,
-can bind `o` in the extend trie to the same flip command.
+The extend trie ships empty, because flipping anchor and head is already
+reachable through `Ctrl-e` in both Normal and Extend mode. Any key not found
+there falls through to the normal trie with extend mode active. A binding in
+the extend trie is a different command for that key in Extend mode: a plugin
+that prefers `o` for the flip binds `o` there to the flip command.
 
 ## Before dispatch: who owns the keyboard
 
-The four layers above describe what happens once a key reaches the main
-editing surface — but a key doesn't always get that far. HUME keeps a
-stack of input handlers, topmost first: the editing surface itself sits at
-the bottom, and above it sit whatever is currently open — a command-line
-prompt, a search field, a selection menu, a fuzzy-finder panel, a
-confirmation question. Each entry on the stack gets first look at every
-key, paste, and mouse event, and chooses one of three things to do with it:
-handle it itself, pass it down to whatever is below, or swallow it outright
-(answer nothing, do nothing, just absorb the event).
+A key does not always reach the editing surface. HUME keeps a stack of
+input handlers, topmost first: the editing surface sits at the bottom, and
+above it sits whatever is open, such as a command-line prompt, a search
+field, a selection menu, a fuzzy-finder panel or a confirmation question.
+Each entry gets the first look at every key, paste and mouse event, and
+either handles it, passes it down, or swallows it.
 
-Precedence follows the order things were opened in, not a fixed ranking —
-whatever is topmost decides, and it's the only thing that decides. This is
-why a stray key typed while an unrelated question is on screen still runs
-its own binding: the question passes the key down once it's done with it.
-It's also why a fuzzy-finder panel owns the keyboard outright the moment
-it's open — it's full-modal, so it never passes anything down at all, no
-matter what else happens to be open underneath it.
+Precedence follows the order things were opened in, not a fixed ranking:
+whatever is topmost decides. That is why a stray key typed while an
+unrelated question is on screen still runs its own binding (the question
+passes it down once it is done with it). It is also why a fuzzy-finder
+panel owns the keyboard the moment it opens: it is full-modal and never
+passes anything down.
 
 ## Layer 4: Dispatch
 
-The dispatcher is the glue. It receives a command name and an extend flag,
-converts those to the appropriate mode parameter, looks up the command in the
-registry, and calls it.
+The dispatcher receives a command name and an extend flag, turns the flag
+into the move/extend parameter, looks the command up in the registry, and
+calls it.
 
-The flow on any keypress that reaches the editing surface:
+The flow on a keypress that reaches the editing surface:
 
 ```
 keypress
   → keymap trie walk     → a command name (e.g. "move-right")
   → dispatcher           → converts extend flag to move/extend mode
   → registry lookup      → the function for "move-right"
-  → call                 → function(buffer, selections, count, mode)
+  → call                 → function(text, selections, count, mode)
 ```
 
 ### Three ways to get Extend mode
 
-**1. Sticky extend mode.** The user presses `e` to enter Extend mode. All
-subsequent commands run with Extend semantics until the mode is exited. The
-extend trie is checked first for per-key overrides. Acting destructively on
-the selection (delete, paste, replace) also exits Extend mode automatically —
-mirroring Vim's visual-mode operators; yank and pure motions leave it active.
+**1. Sticky extend mode.** `e` enters Extend mode, and every command runs
+with extend semantics until the mode is left. The extend trie is checked
+first for per-key overrides. Acting destructively on the selection (delete,
+paste, replace) leaves Extend mode; yank and motions keep it.
 
-**2. Ctrl-key one-shot extend (kitty keyboard protocol).** When kitty protocol
-is active, pressing `Ctrl-l` strips the Control modifier, looks up `l` in the
-normal trie (`"move-right"`), and dispatches with Extend mode. Works only on
-kitty-capable terminals; silently absent on legacy terminals.
+**2. Ctrl-key one-shot extend.** On a terminal with the kitty keyboard
+protocol, `Ctrl-l` strips the Control modifier, looks up `l` in the normal
+trie (`"move-right"`), and dispatches it in extend mode. On a terminal
+without the protocol, an unbound Ctrl-letter does nothing.
 
-**3. Explicit force-extend bindings.** Some keybindings are declared to always
-extend — for example, `Ctrl-x` always accumulates line selections, even without
-sticky extend mode or kitty. This works on any terminal.
-
-To remap a command with its extend behaviour to a different key:
+**3. Force-extend bindings.** A binding can be declared to always extend:
+`Ctrl-x` always accumulates line selections, with or without sticky extend
+mode or kitty. This works on any terminal.
 
 ```scheme
-(bind-key! 'normal "f" "select-line")          ; Move mode
-(bind-key-extend! 'normal "C-f" "select-line") ; always extends (force-extend)
+(bind-key! 'normal "f" "select-line")          ; move mode
+(bind-key-extend! 'normal "C-f" "select-line") ; always extends
 ```
 
-The user only writes the base command name — there is no extend-variant name
-to learn. Note that one-shot extend is automatic only for an *unbound*
-Ctrl-letter (on kitty terminals); binding the key explicitly takes over, so
-a binding that should always extend must say so via `bind-key-extend!`.
+The user only ever writes the base command name. The one-shot is automatic
+only for an *unbound* Ctrl-letter: binding the key explicitly takes over, so
+a binding that should always extend says so with `bind-key-extend!`.
 
-### Counts: distinguishing a bare keypress from an explicit count
+### Counts: a bare keypress versus an explicit count
 
-Typing `3w` should behave differently from typing `w` three times in a row in
-one respect: dot-repeat and a few other bookkeeping paths care whether a count
-was actually typed, not just what number ends up being used. So the dispatcher
-tracks count as "no count was typed" versus "an explicit count of *n* was
-typed" — a bare `w` and an explicit `1w` both move by one word, but they are
-distinguishable to the layers above dispatch.
+Dot-repeat and a few other paths care whether a count was typed, not only
+which number ends up used. The dispatcher therefore tracks "no count was
+typed" separately from "an explicit count of *n*": a bare `w` and `1w` both
+move one word, but the layers above dispatch can tell them apart.
 
-Script-defined commands receive the pane they were invoked through, then count
-and extend, as their first three parameters (if declared), the same
-injection mechanism as the extend flag described above. Since Scheme has no built-in way to say "this argument was
-omitted," dispatch passes a count of zero to mean "no count was typed," and a
-command that forwards its count to another command decodes zero back into
-"no count" before passing it on — so a bare keypress stays a bare keypress
-all the way through a chain of commands calling each other.
+Scheme has no built-in way to say "this argument was omitted", so a script
+command receives a count of zero for "no count was typed". A command that
+forwards its count to another passes the zero along, and the receiver reads
+it back as "no count", so a bare keypress stays bare through a chain of
+commands calling each other.
 
-### Wait-for-a-character bindings: parameterized commands
+### Commands that read a character
 
-Some commands need a character argument: find-forward, find-backward, replace.
-The keymap stores these as *wait-for-a-character* nodes.
-
-When the trie walk hits such a node, the dispatcher saves the command name
-and waits. The next keypress is consumed as the character argument, and then
-the command runs with that character. Extend mode is resolved at the moment the
-character arrives — not at the moment the trigger key is pressed.
+Find-forward, find-backward and replace need a character. When one is
+dispatched without it, the command asks for the next key, and that key is
+read as its character. Everything else about the call, including whether it
+extends, was fixed when the triggering key was pressed. A script can pass
+the character directly instead, and dot-repeat hands back the one recorded.
 
 ## Commands are mode-agnostic
 
-Commands in the registry have no mode affinity. If Steel binds `"flip-selections"`
-to a key in the insert keymap, and the insert handler resolves a leaf, it calls
-the same dispatch path — the selection flips, and the editor stays in Insert
-mode simply because nothing asked to leave it. Whether that binding is
-useful is the user's responsibility. The editor doesn't second-guess it.
+Commands in the registry have no mode affinity. If a script binds
+`"flip-selections"` to a key in the insert keymap, the insert handler runs it
+through the same dispatch path: the selection flips, and the editor stays in
+Insert mode because nothing asked it to leave. Whether that binding is useful
+is the user's call.
 
 ## Insert mode limitations
 
-Insert mode's keymap walk is single-key only. Multi-key sequences and
-wait-for-a-character commands won't work there — insert mode is optimised for typing, not for
-command choreography. Single-key leaf commands bind fine.
+The insert keymap binds single keys only: insert mode is for typing, not for
+key sequences. Any command can sit on such a key, including one that then
+reads a character.
 
 ## Independence of layers
 
-The value of the split is that any layer can change without touching the others:
+Any layer can change without touching the others:
 
-- **New command**: add the function, register it, bind a key. The dispatch
-  layer is unchanged.
-- **Rebind a key**: only touch the keymap.
-- **Change dispatch** (e.g. add macro recording): only touch the dispatcher.
-- **User keymaps via Steel**: rewrite keymap trie entries. The registry and
-  dispatch layer are unaffected.
+- **New command**: add the function, register it, bind a key. Dispatch is
+  unchanged.
+- **Rebind a key**: touch only the keymap.
+- **Change dispatch** (to add macro recording, say): touch only the
+  dispatcher.
+- **User keymaps from scripts**: rewrite trie entries. The registry and
+  dispatch are unaffected.
 
-A change in one layer cannot corrupt another because they communicate only
-through name strings.
+The layers communicate only through names, so a change in one cannot corrupt
+another.
 
-A related invariant is enforced at the dispatch layer: every native command's
-function body must run through one funnel. Each command's function is stored
-wrapped in a type only the funnel can unwrap, so a second call site trying to
-invoke it directly is a compile error, not a runtime check. The funnel is
-where the bookkeeping that surrounds every command — dot-repeat, paste-session
-commits, jump-list updates, extend-mode auto-exit — gets applied. Letting a
-second call site bypass it would mean two paths for the same command, and the
-bookkeeping would silently regress on whichever path skipped the funnel;
-tests that pin the primary effect would stay green either way. Wrapping the
-function this way rules that mistake out at compile time instead.
+Dispatch also enforces one invariant at compile time: every native command's
+function runs through a single funnel. Each function is stored wrapped in a
+type only the funnel can unwrap, so a second call site that tries to invoke
+it directly does not compile. The funnel applies the bookkeeping around every
+command: dot-repeat, paste-session commits, jump-list updates and the
+extend-mode exit. A second path that bypassed it would lose that bookkeeping
+without any test of the command's main effect noticing.

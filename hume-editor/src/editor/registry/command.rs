@@ -426,7 +426,8 @@ impl MappableCommand {
     /// as a one-shot extend via Ctrl-key.
     ///
     /// Steel commands (SteelBacked and Lazy stubs) are always extendable:
-    /// the resolved lambda receives `extend` as its second arg. See
+    /// the resolved lambda receives `extend` as its third arg, after pane
+    /// and count. See
     /// [`NativeCommand::is_extendable`] for native ones.
     pub(in crate::editor) fn is_extendable(&self) -> bool {
         match self {

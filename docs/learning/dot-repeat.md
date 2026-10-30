@@ -25,7 +25,8 @@ it arrives, as what it was: a typed key, a pasted block of text, a bound
 command firing on a key. Nothing is inferred afterward by diffing the
 buffer. A bound command is replayed by running it again, so it can take a
 different branch at the new cursor; that is what makes `.` useful for "add a
-character, then skip past the matching bracket" rather than a dumb macro.
+character, then skip past the matching bracket" rather than a fixed replay
+of its text.
 
 ## Questions get their recorded answers
 
@@ -71,8 +72,8 @@ When a re-run takes a different branch (asks for a character where it
 picked from a list, asks more questions than were answered, can't find the
 picked item, reaches a completion it didn't reach before), replay stops with
 an error rather than guess, or open something with nobody there to answer
-it. Anything unrelated to text, like a binding that saves the file, simply
-runs again.
+it. Anything unrelated to text, like a binding that saves the file, runs
+again.
 
 ---
 

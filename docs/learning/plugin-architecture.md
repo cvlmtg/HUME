@@ -1,11 +1,8 @@
 # Plugin Architecture: Loading, Activation, and Isolation
 
-HUME plugins extend the editor by registering commands and hooks. This document explains
-how plugins are loaded, when their code runs, and how they interact with each other.
-
-For ownership and conflict rules see [Plugin Attribution: Who Owns What](plugin-attribution.md).
-
----
+HUME plugins extend the editor by registering commands and hooks. This
+document explains how plugins are loaded, when their code runs, and how they
+interact with each other.
 
 ## Lazy and eager plugins
 
@@ -16,30 +13,29 @@ A plugin gets into the editor with one call from `init.scm`:
 (load-plugin! "alice/lazy-thing")
 ```
 
-What happens next depends on what the plugin ships, not on how `init.scm` names it.
+What happens next depends on what the plugin ships, not on how `init.scm`
+names it.
 
-**A plugin with a manifest is lazy.** The manifest lists the entry points that should
-wake the plugin: commands, events, languages. The editor records them and leaves the
-plugin's code alone until the first one is exercised. This keeps startup fast: a Rust
-formatting plugin whose commands you might never actually call in a session costs nothing
-until you do. Naming the plugin in `init.scm` never forces it to load early.
+**A plugin with a manifest is lazy.** The manifest lists the entry points
+that should wake the plugin: commands, events, languages. The editor records
+them and leaves the plugin's code alone until one is used. This keeps startup
+fast: a Rust formatting plugin whose commands you never call in a session
+costs nothing.
 
-**A plugin without a manifest is eager.** Its code runs during startup. This suits a
-plugin whose only possible trigger is something its own code sets up — a key binding it
-adds or overrides, an option, a hook — since nothing outside the plugin could ever fire
-first and wake it.
+**A plugin without a manifest is eager.** Its code runs during startup. This
+suits a plugin whose only trigger is something its own code sets up (a key
+binding it adds or overrides, an option, a hook), since nothing outside the
+plugin could fire first and wake it.
 
-A config can also override a manifest. Declaring entry points for an installed plugin
-ahead of its load call replaces the manifest's list, and the plugin stays lazy. A script
-that sits beside `init.scm` can be declared the same way, so it loads lazily without being
-a full plugin.
-
----
+A config can override a manifest. Declaring entry points for an installed
+plugin ahead of its load call replaces the manifest's list, and the plugin
+stays lazy. A script beside `init.scm` can be declared the same way, so it
+loads lazily without being a full plugin.
 
 ## Passing configuration
 
-The load call accepts an optional config value, a hash with symbol keys, that the
-plugin code can read back for itself. It is the only way to pass configuration:
+The load call accepts an optional config, a hash with symbol keys, which the
+plugin's own code reads back. It is the only way to pass configuration:
 
 ```scheme
 (load-plugin! "alice/my-theme" #:config (hash 'variant "dark"))
@@ -54,58 +50,51 @@ plugin code can read back for itself. It is the only way to pass configuration:
     (load-light-palette))
 ```
 
-The config is the calling plugin's own — never another plugin's. The plugin reads it
-wherever its own code runs: its body, at startup for an eager plugin or at activation
-time for a lazy one (the value recorded by the load call is kept until then, even much
-later in the session), and every command, hook and callback it defines. Code that
-belongs to no plugin, such as `init.scm` itself, gets an error, since an empty answer
-would look like "no config passed". A plugin author decides what keys their config
-hash understands and documents them for users.
-
-A plugin that activates before its load call has run sees an empty config, so a custom
-declaration belongs directly above the load call.
-
----
+The config belongs to the plugin it was passed to; no other plugin can read
+it. The plugin reads it wherever its code runs: its body (at startup for an
+eager plugin, at activation for a lazy one, however much later that is), and
+every command, hook and callback it defines. Code that belongs to no plugin,
+such as `init.scm` itself, gets an error, since an empty answer would look
+like "no config passed". A plugin that activates before its load call has run
+sees an empty config, so a custom declaration belongs directly above the load
+call.
 
 ## The manifest and the body
 
-A manifest is a description of what the plugin offers, and nothing else. Reading it does
-not read the plugin's code, so no plugin code runs. It sits in its own small file beside
-the plugin, written by the plugin's author, who chooses the default entry points. A plugin
-can have several entries, each naming a different file of the plugin with its own entry
-points, so a heavy part loads only when the feature that needs it is used.
+A manifest describes what the plugin offers, and nothing else. Reading it
+runs none of the plugin's code. It is a small file beside the plugin, written
+by the plugin's author, who chooses the default entry points. A plugin can
+have several entries, each naming a different file with its own entry points,
+so a heavy part loads only when the feature that needs it is used.
 
-Each entry contains up to four optional lists:
+Each entry has up to four optional lists:
 
 | Keyword | Meaning |
 |---------|---------|
 | `#:commands` | Command names the plugin will register |
 | `#:typed-commands` | Command-line (`:`) command names the plugin will register |
-| `#:events` | Lifecycle hooks that should trigger loading — a list of quoted symbols |
-| `#:languages` | Buffer language names that should trigger loading |
+| `#:events` | Lifecycle hooks that should trigger loading, as quoted symbols |
+| `#:languages` | Buffer languages that should trigger loading |
 
-When one of those entries is exercised for the first time — a listed command is
-dispatched, a listed hook fires, a listed language is set — HUME loads the plugin body.
-The body is evaluated exactly once. It typically calls `define-command!`, `register-hook!`,
-and `bind-key!` to wire everything up; after that, commands and hooks remain active until
-`:reload-config` rebuilds from scratch.
-
----
+When one of those is used for the first time (a listed command is
+dispatched, a listed hook fires, a listed language is set), HUME loads the
+plugin body. The body runs once. It typically calls `define-command!`,
+`register-hook!` and `bind-key!`, and what it sets up stays until
+`:reload-config` rebuilds everything from scratch.
 
 ## Activation entries
 
-A lazy plugin needs at least one activation entry — with none, there is no moment that
-would ever trigger loading. A plugin's manifest supplies its author-chosen defaults. You
-can replace them with your own entries; a directory with neither a manifest nor a main
+A lazy plugin needs at least one activation entry; with none, nothing would
+ever load it. The manifest supplies the author's defaults, and you can
+replace them with your own. A directory with neither a manifest nor a main
 file is an error.
 
-The entry types serve different loading patterns:
-
-**`#:commands`** is the most common. Declare the command names the plugin will register;
-HUME creates placeholder stubs so those names appear in `:` command-line completion
-immediately. The first
-time someone dispatches one, the plugin body runs and replaces the stub with the real
-implementation.
+**`#:commands`** is the most common. HUME registers a placeholder for each
+listed name at startup, so a key can be bound to it and other code can call
+it before the plugin has loaded. The first dispatch runs the plugin body,
+which replaces the placeholder with the real command. A name listed under
+`#:typed-commands` gets the same treatment and also shows up in `:`
+completion right away.
 
 ```scheme
 (declare-plugin! "alice/rust-tools" #:commands '("rust-check" "rust-fmt"))
@@ -114,9 +103,9 @@ implementation.
 ; pressing <space>r the first time loads alice/rust-tools, then runs rust-check
 ```
 
-**`#:events`** defers loading until a lifecycle hook fires. Useful for plugins that
-react to buffer events globally (not just for a specific language). Hook names are
-symbols, the same form `register-hook!` takes — not strings, unlike `#:commands` and
+**`#:events`** defers loading until a lifecycle hook fires, for plugins that
+react to buffer events in every language. Hook names are symbols, the form
+`register-hook!` takes, unlike the strings of `#:commands` and
 `#:languages`:
 
 ```scheme
@@ -125,9 +114,9 @@ symbols, the same form `register-hook!` takes — not strings, unlike `#:command
 ; body runs the first time any buffer is opened
 ```
 
-**`#:languages`** defers loading until the buffer language is set to one of the
-named languages. This is the preferred pattern for language-specific plugins (see
-[Language Identity and Detection](language-identity.md) for how languages are detected):
+**`#:languages`** defers loading until a buffer's language is set to one of
+the named languages. It is the usual pattern for language-specific plugins
+(see [Language Identity and Detection](language-identity.md)):
 
 ```scheme
 (declare-plugin! "alice/rust-tools" #:languages '("rust"))
@@ -135,153 +124,125 @@ named languages. This is the preferred pattern for language-specific plugins (se
 ; body runs the first time a buffer language is set to "rust"
 ```
 
-The special name `"*"` is an any-language wildcard: the body runs the first time a
-buffer's language is set to *anything* — for plugins that work with every language
-rather than a list they could enumerate.
+The name `"*"` matches any language: the body runs the first time a buffer's
+language is set to anything.
 
-Use `#:languages` rather than `#:events '(on-language-set)` when you only care about
-one language. A `on-language-set` event fires for *every* language, so a Rust plugin
-declared that way would load the moment you open a PHP file. `#:languages` names only the
-languages you care about, keeping the plugin dormant until one of them appears.
+Prefer `#:languages` to `#:events '(on-language-set)` when you care about
+particular languages. An `on-language-set` event fires for every language, so
+a Rust plugin declared that way would load the moment you open a PHP file.
 
-The full set of lifecycle hooks, for reference:
+The user manual lists [every lifecycle
+hook](../../user-manual/docs/writing-plugins.md#hooks) with its arguments.
+They cover buffers opening, closing, saving and gaining focus, mode and
+language changes, language servers attaching and sending notifications,
+diagnostics, the viewport, typed trigger characters, completion, settings,
+text changes and the undo history.
 
-| Hook | Fires |
-|------|-------|
-| `on-buffer-open` | A buffer is opened |
-| `on-buffer-close` | A buffer is closed |
-| `on-before-buffer-save` | A buffer is about to be written to disk; the write waits for the handlers |
-| `on-buffer-save` | A buffer has been written to disk |
-| `on-buffer-enter` | The focused buffer changes |
-| `on-focus-gained` | The terminal regains focus |
-| `on-mode-change` | The editor mode changes (e.g. entering insert) |
-| `on-language-set` | A buffer's language is set or cleared |
-| `on-lsp-attach` | A language server attaches to a buffer |
-| `on-lsp-detach` | A language server detaches from a buffer |
-| `on-lsp-notification` | A language server sent a notification the editor doesn't handle itself |
-| `on-diagnostics-changed` | Diagnostics arrived (or cleared) for a buffer |
-| `on-viewport-change` | The visible region settled after a scroll or resize |
-| `on-trigger-char` | A registered trigger character was typed in insert mode |
-| `on-completion-accept` | A completion candidate was accepted |
-| `on-option-change` | A global setting changed (`:set global`, `set-option!`, `:theme`) |
-| `on-text-changed` | A buffer's text changed — edits, undo/redo, and `:e!` reload alike, coalesced into one fire per triggering command rather than one per underlying mutation, with the changed lines as hunks |
+Hooks never fire mid-command. Whatever triggers one (a command, a language
+server, a timer, the terminal regaining focus) queues it, and the editor
+drains the queue at a stable point: after the command finishes, or, for
+background triggers, the next time the editor checks in on its own. A handler
+that triggers another hook (switching buffers inside an `on-buffer-save`
+handler, say) queues that one too, and it drains in the same pass, so a
+cascade never waits for another keypress. Plugins always see the editor
+between edits, never in the middle of one.
 
-Hooks never fire mid-command. Whatever triggers one — a command you ran, a
-language server responding, a timer, the terminal regaining focus — queues
-it, and the editor drains the queue once it reaches a stable point: after
-your command finishes, or, for background triggers, the next time the editor
-checks in on its own. If a handler itself does something that would trigger
-another hook (switching buffers from inside an `on-buffer-save` handler, say),
-that hook queues too and drains in the same pass — you never need an extra
-keypress to see the cascade finish. Plugins always observe the editor in a
-stable state, not mid-edit.
+### A language a plugin defines for itself
 
-One caveat: the named language should already be known to the editor when a buffer is
-opened. If a plugin is the sole definer of its own activation language — registering it
-inside its own body with `define-language!` — automatic detection can never pick that
-language, because detection only matches registered languages. The body needs a buffer in
-that language to trigger activation, but it has not run yet to register it. Only an explicit
-`:set buffer language=` can break the cycle. HUME flags the declaration at startup with a
-warning visible in `:messages`.
+The named language must already exist when a buffer is opened. If a plugin is
+the only definer of its own activation language, registering it inside its
+body with `define-language!`, detection can never pick that language, so no
+buffer ever gets it and the body never runs. Only an explicit
+`:set buffer language=` breaks the cycle, and HUME warns about such a
+declaration at startup in `:messages`.
 
-The fix is to separate identity from behavior: define the language eagerly in `init.scm`
-so its identity exists from startup, then declare the tooling lazily:
+The fix is to separate identity from behaviour: define the language eagerly
+in `init.scm`, then declare the tooling lazily.
 
 ```scheme
 ; init.scm
-(define-language! "mylang" '("ml"))                           ; identity — eager
-(declare-plugin! "alice/mylang-tools" #:languages '("mylang")) ; behavior — lazy
+(define-language! "mylang" '("ml"))                           ; identity, eager
+(declare-plugin! "alice/mylang-tools" #:languages '("mylang")) ; behaviour, lazy
 (load-plugin! "alice/mylang-tools")
 ```
 
-Once the body has run (on the first match), register `on-language-set` *inside the body*
-if you need to respond to every subsequent language change — `#:languages` is a one-shot
-load trigger, not a recurring filter.
+`#:languages` is a one-time load trigger, not a filter. A plugin that needs
+to respond to every later language change registers `on-language-set` inside
+its body:
 
 ```scheme
 ; alice/rust-tools/plugin.scm
-(define-command! "rust-check" "Run cargo check" (lambda () ...))
+(define-command! "rust-check" "Run cargo check" (lambda (pane) ...))
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (when (equal? lang "rust")
-      (call! "rust-check"))))
+      (call! "rust-check" pane))))
 ```
-
----
 
 ## Module isolation
 
-Each plugin body loads as its own isolated module. A plain `define` inside a plugin body
-is private to that module — another plugin cannot reach it by name.
+Each plugin body loads as its own module. A plain `define` inside it is
+private: another plugin cannot reach it by name.
 
-The only surface a plugin exposes to the rest of the editor is what it registers through
-HUME's APIs: commands (`define-command!`), hooks (`register-hook!`), and key bindings
-(`bind-key!`). Private helpers remain private.
+The only surface a plugin exposes is what it registers through HUME: commands
+(`define-command!`), hooks (`register-hook!`) and key bindings (`bind-key!`).
+So there are no library plugins: a plugin cannot export helper functions for
+others to import. Shared logic is exposed as a command that other plugins
+invoke by name.
 
-This means there is no "library plugin" concept in HUME. A plugin cannot export raw
-helper functions for other plugins to import. If shared logic is needed, it can be exposed
-as a command that other plugins invoke by name.
-
-A plugin *can* split its own body across multiple files using `require`. The
-main file pulls in siblings, and private helpers stay private to the
-combined module — `plum` is structured this way, with shared helpers in a
-file each of its parts requires. Its grammar, plugin and theme management
-are separate entries that each load on their own commands. What still cannot cross plugin boundaries is
-reaching into another plugin's private helpers by name.
-
----
+A plugin can split its own body across several files with `require`. The
+main file pulls in the others, and their helpers stay private to the plugin.
+`plum` is built this way: its grammar, plugin and theme management are
+separate entries that each load on their own commands, sharing helpers from
+one common file.
 
 ## Cross-plugin reuse
 
-The only cross-plugin surface is command dispatch. One plugin invokes another by calling
-a registered command by name:
+The only cross-plugin surface is command dispatch. One plugin invokes
+another's command by name:
 
 ```scheme
-; alice/linter/plugin.scm — registers a command
-(define-command! "lint-buffer" "Lint current buffer" (lambda () ...))
+; alice/linter/plugin.scm registers a command
+(define-command! "lint-buffer" "Lint current buffer" (lambda (pane) ...))
 
-; bob/on-save-lint/plugin.scm — calls it
+; bob/on-save-lint/plugin.scm calls it
 (register-hook! 'on-buffer-save
   (lambda (pane)
-    (call! "lint-buffer")))
+    (call! "lint-buffer" pane)))
 ```
 
-`call!` dispatches by command name. If the command belongs to a lazy plugin that hasn't
-activated yet, calling it triggers activation inline before the call proceeds.
+If the command belongs to a lazy plugin that hasn't loaded yet, `call!` loads
+it first and then makes the call.
 
-A key binding, unlike a command, has no activation entry of its own — a plugin's
-`bind-key!` calls only take effect once its body has already run. So it's not enough for
-a lazy plugin to register a command; something has to be able to *reach* that command
-before the plugin's own bindings exist. A plugin that rebinds a key which already does
-something is a sharper case of the same problem: until it activates, that key keeps doing
-whatever it did before, which is often worse than doing nothing. Either way, if a
-plugin's own bindings are the only path to its commands — nothing else can dispatch them,
-no event or language would ever fire first — it ships no manifest, so it loads eagerly.
-
----
+A key binding has no activation entry of its own: a plugin's `bind-key!`
+calls take effect only once its body has run. So a lazy plugin's commands
+must be reachable some other way before its bindings exist. A plugin that
+rebinds a key that already does something is a sharper case: until it loads,
+the key keeps its old meaning. When a plugin's own bindings are the only way
+to reach its commands, it ships no manifest and loads eagerly.
 
 ## Declaring dependencies
 
-Plugins cannot load other plugins from their own body. Every plugin needed —
-including those that exist only to provide commands that other plugins call — must be
-named at the top level of `init.scm`. The order matters: load a dependency
-before the plugin that calls its commands, so the command names exist by the time the
-dependent plugin is activated.
+A plugin cannot load another plugin from its own body. Every plugin needed,
+including one that exists only to provide commands for others, is named at
+the top level of `init.scm`. Order matters: load a dependency before the
+plugin that calls its commands, so the names exist by the time the dependent
+plugin activates.
 
 ```scheme
-; init.scm — load dependencies before dependents
+; init.scm: dependencies before dependents
 (load-plugin! "alice/linter")
 (declare-plugin! "bob/on-save-lint" #:events '(on-buffer-save))
 (load-plugin! "bob/on-save-lint")
 ```
 
-`:plugin-status` (alias `:plugins`) lists every plugin named in `init.scm` with its current state
-and any activation entries still pending. A plugin that is not installed shows as `absent`.
-This is useful for checking whether dependencies are loaded before a dependent plugin activates.
+`:plugin-status` (alias `:plugins`) lists every plugin named in `init.scm`
+with its state and any activation entries still waiting. A plugin that is not
+installed shows as `absent`.
 
 ---
 
-## See also
-
-- [Plugin Attribution: Who Owns What](plugin-attribution.md) — how HUME tracks which
-  plugin registered which command, how conflict detection works, and the load-once model.
+*See also: [Plugin Attribution: Who Owns What](plugin-attribution.md) for
+who owns each command and how conflicts are handled; [Runaway-Script
+Protection](runaway-script-protection.md) for what happens when a plugin body
+fails or hangs.*

@@ -1,7 +1,10 @@
 # HUME — Learning Notes
 
-Concepts that come up while building HUME, explained in enough depth to be
-useful later. Each topic lives in its own file under `docs/learning/`.
+How HUME works inside, one concept at a time: the text model, selections and
+motions, rendering, languages, and plugins. Each page explains an idea and the
+reasoning behind it, without assuming you have the source open. To learn how
+to use the editor, read the [user manual](../user-manual/docs/index.md)
+instead.
 
 ---
 
@@ -71,7 +74,7 @@ text and paste.
 | Plugin Architecture: Loading, Activation, and Isolation | [learning/plugin-architecture.md](learning/plugin-architecture.md) |
 | Plugin Attribution: Who Owns What | [learning/plugin-attribution.md](learning/plugin-attribution.md) |
 | Runaway-Script Protection: The Watchdog Timer | [learning/runaway-script-protection.md](learning/runaway-script-protection.md) |
-| Kill Ring and Smart-p: Two Sources of Paste | [learning/kill-ring-and-smart-p.md](learning/kill-ring-and-smart-p.md) |
+| Registers, the Kill Ring, and Smart-p | [learning/kill-ring-and-smart-p.md](learning/kill-ring-and-smart-p.md) |
 
 ### Vimgolf
 

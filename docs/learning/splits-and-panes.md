@@ -2,132 +2,113 @@
 
 ## Buffer, pane, and view
 
-A **buffer** is the text and its editing history — the thing you'd call "the
-file" in casual conversation. A **pane** is a live view onto exactly one
-buffer: a rectangle of the screen with its own scroll position and its own
-selections. Several panes can point at the same buffer at once — split a
-window and both halves show the same file, but each half can be scrolled to
-a different part of it and have a different cursor.
+A **buffer** is the text and its editing history: what you would call "the
+file" in casual conversation. A **pane** is a live view onto one buffer, a
+rectangle of the screen with its own scroll position and its own selections.
+Several panes can show the same buffer at once. Split a window and both
+halves show the same file, but each can be scrolled to a different part of
+it and have a different cursor.
 
-This separation matters because "where the cursor is" and "what the text
-says" are different kinds of fact. The text belongs to the buffer; the
-cursor and scroll offset belong to whichever pane you're looking at.
+The separation matters because "where the cursor is" and "what the text
+says" are different kinds of fact. The text belongs to the buffer; the cursor
+and the scroll offset belong to the pane you are looking through.
 
 ## What lives on a pane, not the buffer
 
 Each pane owns:
 
-- **Selections** — the pane's own cursor(s). Two panes on the same buffer
-  have completely independent selections; moving the cursor in one never
-  moves it in the other.
-- **Viewport** — scroll position and pane size. A pane also remembers where
-  it last scrolled to in *every* buffer it has shown, so switching a pane
-  back to a buffer it displayed earlier restores the old scroll position
-  instead of resetting to the top.
-- **Wrap-mode override** — whether long lines soft-wrap, and how, normally
-  comes from the file (or the editor-wide default). A pane can optionally
-  pin its own wrap style instead, taking precedence over that: two panes on
-  the same buffer wrap the same way by default, but once one overrides it,
-  they can wrap independently — one pane can show a file wrapped while
-  another, split from it, shows the same file unwrapped. Like scroll
-  position, a pane remembers its override separately for every buffer it has
-  shown — pinning one buffer's wrap style doesn't affect how the pane looks
-  at a different buffer, and switching back to the pinned buffer restores it.
+- **Selections**: the pane's own cursors. Two panes on the same buffer have
+  independent selections, and moving the cursor in one never moves it in the
+  other.
+- **Viewport**: scroll position and pane size. A pane also remembers where
+  it last scrolled to in *every* buffer it has shown, so switching back to a
+  buffer restores the old scroll position instead of jumping to the top.
+- **Wrap-mode override**: whether and how long lines soft-wrap normally
+  comes from the file, or the editor-wide default. A pane can pin its own
+  wrap style instead, so one pane can show a file wrapped while another,
+  split from it, shows it unwrapped. Like the scroll position, the override
+  is remembered per buffer: pinning one buffer's wrap style does not change
+  how the pane shows another, and switching back restores it.
 
-None of this is buffer state, wrap-mode's own default included — a buffer
-holds text, undo history, and its own settings (like its default wrap
-style), but nothing about how any particular pane is currently looking at
-it; a pane holds exactly that "how it's being looked at" half, including
-whichever setting it chooses to override.
+A buffer holds text, undo history and its own settings (its default wrap
+style among them), but nothing about how any pane is looking at it. A pane
+holds that "how it is being looked at" half, including any setting it
+overrides.
 
 ## Keeping panes in sync
 
-If two panes show the same buffer and one of them makes an edit, the other
-pane's selections would go stale the instant the edit lands — a cursor at
-character 40 means something different after ten characters were inserted at
-position 10. Every edit therefore propagates: the editing pane applies its
-edit normally, and every other pane that has ever shown that buffer has its
-selections carried forward through the same edit, so a cursor sitting after
-the insertion point moves along with the text it was next to. A pane that has
-switched to another file still remembers its place in this one, and that place
-follows the edits too. Selections are not the only positions that follow:
-jump lists, marks, prompt snapshots, diagnostics, and the other stored
+If two panes show the same buffer and one of them edits it, the other pane's
+selections would go stale the moment the edit lands: a cursor at character
+40 means something else once ten characters are inserted at position 10. So
+every edit propagates. The editing pane applies its edit, and every other
+pane that has ever shown that buffer has its selections carried through the
+same edit, so a cursor after the insertion point moves along with its text.
+A pane that has switched to another file still remembers its place in this
+one, and that place follows the edits too.
+
+Selections are not the only positions that follow. Jump lists, positions a
+script is tracking, prompt snapshots, diagnostics and the other stored
 positions are carried through the same change at the same moment. See
 [Changesets: Describing Edits as Data](changesets.md) for how an edit maps an
 old position to its new one.
 
 ## Layout: a tree of splits
 
-Panes are arranged in a recursive tree of horizontal and vertical splits, the
-same model used by most terminal multiplexers and modal editors. Splitting a
-pane doesn't just add a rectangle next to it — it replaces that pane in the
-tree with a small subtree of two panes, so splitting one half of an existing
-split nests correctly no matter how many times you've already split.
+Panes are arranged in a tree of horizontal and vertical splits, the model
+most terminal multiplexers and modal editors use. Splitting a pane replaces
+it in the tree with a small subtree of two panes, so splitting one half of
+an existing split nests correctly however many times you have split before.
 
-One pane is always **focused** — it's the one that receives keystrokes.
-Focused and unfocused panes render differently: the unfocused ones are dimmed,
-making it visually obvious at a glance which pane your typing will land in.
+One pane is always **focused**: it receives the keystrokes. Unfocused panes
+are dimmed, so it is obvious at a glance where your typing will land.
 
-Where two panes meet, a thin seam is drawn between them (toggleable via the
-`pane-dividers` setting; dimming works either way), and where seams touch, a
-junction glyph — a T- or cross-shape — connects them cleanly instead of
-leaving a gap or an overlap. The seam segments beside the focused pane are
-accent-coloured, a second focus cue alongside dimming. This is purely a
-rendering detail: the seam and its glyph exist only in the rendered frame,
-not in the buffer or the layout tree's own data.
+Where two panes meet, a thin seam is drawn between them (the
+`pane-dividers` setting turns it off; dimming works either way). Where seams
+meet, a junction glyph (a T or a cross) joins them cleanly. The seam
+segments beside the focused pane are accent-coloured, a second focus cue
+next to dimming. Seams exist only in the rendered frame, not in the buffer
+or in the layout tree.
 
 ## Panes, bands, and overlays
 
 Not everything on screen is a pane. Three kinds of surface share the frame,
-and each behaves differently when the window is resized or when something
+and each behaves differently when the window is resized or something
 temporary needs to appear:
 
-- **Panes** are what this page has described so far — leaves of the split
-  tree, each with its own buffer, cursor, and scroll position. Splitting
-  subdivides them, closing one hands its space to its neighbours, and every
-  pane is reachable by moving focus.
-- **Bands** are full-width strips reserved above or below the pane area — the
-  status line, an optional tab bar, a scrolling list shown at the bottom of
-  the screen. A band is not a pane: it has no buffer and no cursor, and it
-  isn't part of the split tree. Reserving one shrinks every pane exactly as a
-  terminal resize would, so a band never covers content — it makes room for
-  itself instead.
-- **Overlays** float on top of a pane and reserve no space at all — a
-  completion list, a selection menu, a hover popup. Whatever is underneath is
-  covered, not moved, which is why an overlay is for something transient you
-  dismiss rather than something you work inside.
-
-A future addition sits between the first two: a *docked* pane would be a real
-pane — its own cursor, its own motions — but with a fixed size along its
-split axis instead of a share that rebalances when siblings split or close,
-the way an ordinary pane's does.
+- **Panes** are the leaves of the split tree, each with its own buffer,
+  cursor and scroll position. Splitting subdivides them, closing one hands
+  its space to its neighbours, and every pane can take focus.
+- **Bands** are full-width strips reserved above or below the pane area: the
+  status line, an optional tab bar, a scrolling list at the bottom of the
+  screen. A band has no buffer and no cursor, and is not part of the split
+  tree. Reserving one shrinks every pane as a terminal resize would, so a
+  band never covers content; it makes room for itself.
+- **Overlays** float on top of a pane and reserve no space: a completion
+  list, a selection menu, a hover popup. What is underneath is covered, not
+  moved, which is why an overlay suits something transient you dismiss
+  rather than something you work inside.
 
 ## Splitting
 
-Splitting the focused pane creates a new pane next to it — vertically
-(side-by-side, left and right) or horizontally (stacked, top and bottom) —
-viewing the same buffer the original pane was showing. The new pane inherits
-the source pane's current view state (scroll position, and any wrap-mode
-override it had) as its starting point, then diverges independently from
-there as you scroll or re-wrap it.
+Splitting the focused pane creates a new pane next to it, vertically
+(side by side) or horizontally (stacked), showing the same buffer. The new
+pane starts from the source pane's view: its selections, scroll position,
+jump history and any wrap-mode override. From there the two diverge as you
+work in each.
 
-Every split also resizes all panes sharing that split's axis back to equal
-size, so splitting a third time gives three equal thirds rather than halving
-whichever pane you split. A group of stacked panes counts as a single column
-(or a group of side-by-side panes as a single row) when it's measured against
-the panes beside or above it, matching how most terminal multiplexers balance
-a mixed grid. Closing a pane works the same way in reverse: its space is
-handed back equally to the panes that remain, not all to one neighbour.
+Every split resizes the panes along that split's axis back to equal sizes,
+so splitting a third time gives three equal thirds rather than halving the
+pane you split. A group of stacked panes counts as one column (and a group
+of side-by-side panes as one row) when measured against its neighbours, the
+way most terminal multiplexers balance a mixed grid. Closing a pane works
+the same way in reverse: its space is shared equally among the panes that
+remain, not handed to one neighbour.
 
 ---
 
-## See also
-
-- [The Rendering Pipeline](rendering-pipeline.md) — how a single pane's
-  content is turned into styled terminal cells; splitting just means running
-  that pipeline once per pane and arranging the results. Its "Stage 4" section
-  is where the status line, tab bar, and bottom band are composed into the
-  frame alongside the panes.
-- [Changesets: Describing Edits as Data](changesets.md) — the mechanism that
-  keeps a non-editing pane's selections meaningful after another pane edits
-  the shared buffer.
+*See also: [The Rendering Pipeline](rendering-pipeline.md) for how a pane's
+content becomes styled terminal cells (splitting runs that pipeline once per
+pane, and its Stage 4 composes the status line, tab bar and bottom band
+around the panes); [Changesets: Describing Edits as Data](changesets.md) for
+how a non-editing pane's selections stay meaningful after another pane
+edits the shared buffer.*

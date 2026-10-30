@@ -1,256 +1,218 @@
-# Kill Ring and Smart-p: Two Sources of Paste
+# Registers, the Kill Ring, and Smart-p
 
-## The papercut HUME wants to avoid
+## The papercut HUME avoids
 
-In a register model with a single default destination — where every yank,
-delete, and change writes to the same place, and bare paste reads from that
-same place — routine editing constantly overwrites the text the user was
-holding for paste. The user yanks a word, moves to fix something, deletes the
-typo, and the original yank is gone. The workaround is to defensively name a
-register for anything that should survive more than one operation.
+In a register model with a single default destination, every yank, delete,
+and change writes to the same place, and bare paste reads from it. Routine
+editing then keeps overwriting the text the user was holding for paste: yank
+a word, move to fix a typo, delete it, and the yank is gone. The workaround
+is to name a register for anything that should survive more than one
+operation.
 
-This is a well-known friction point with Vim's traditional register model,
-and HUME's first design decision is to not inherit it. HUME's primary capture
-buffer is not a single slot but a **kill ring**: a bounded history of recent
-captures, where a new delete adds an entry rather than overwriting the
-previous one.
+HUME splits the destinations instead. Captures go to a **kill ring**, a short
+history where a new delete adds an entry rather than overwriting the last
+one. A bare yank also goes to the system clipboard, and a bare paste decides
+which of the two to read.
+
+## Registers
+
+Registers have one-character names. Digits hold user storage, which leaves
+letters free for the special registers:
+
+| Register | `"` prefix | Behaviour |
+|----------|:----------:|-----------|
+| `0`–`9` | yes | In-memory storage for text or macros, last write wins. `"5y` and `"5p` use the same slot, so they round-trip. No kill-ring interaction. |
+| `k` | yes | Kill ring. Paste reads the head; yank, delete, and change push onto the ring without touching the clipboard. |
+| `c` | yes | System clipboard. Yank writes the clipboard only (no ring push); paste always reads it. |
+| `b` | yes | Black hole. Writes are discarded; paste reads nothing. |
+| `q` | no | Default macro register: `QQ` records into it, `qq` replays it. |
+| `s` | no | The last search pattern, written by search. |
+
+A register prefix bypasses everything the rest of this page describes about
+bare keys. If smart paste ever reads the wrong source, the prefix is the
+explicit override.
+
+Macros live in the same digit slots as text: `Q5` records into `5` and `q5`
+replays it, and a later `"5y` overwrites the macro. Keeping macros in named
+slots lets two macros coexist without re-recording either.
+
+The digits and the kill ring serve different purposes. The digits are
+deterministic: what `"5y` wrote, `"5p` reads back, whatever happened in
+between, so they suit macros and scripted or careful use. The ring head moves
+with every `d`, `c`, and `y`, so the ring is for reaching back during
+interactive editing, not for storage.
 
 ## How the kill ring works
 
-The kill ring is a fixed-size queue of the last ten yanks, deletes, and
-changes. Newest at the head; once full, the oldest entry falls off. Every
-editing capture pushes a new entry — with two exceptions.
+The kill ring holds the last ten yanks, deletes, and changes, newest at the
+head. Once it is full, the oldest entry falls off. Every capture pushes a new
+entry, with two exceptions.
 
-If the current head is a *pure whitespace* entry (any whitespace characters,
-such as spaces, tabs, or newlines), the new entry overwrites that slot in place rather than taking a fresh one.
-Deleting a space to fix a typo should not cost you a ring slot you
-would never want to cycle back to. The just-deleted whitespace stays
-retrievable until the next push, so the swap itself still works; only
-afterwards is it gone. To keep whitespace durably, yank it into a named
-register (`"0`–`"9`).
+If the head is pure whitespace (spaces, tabs, newlines), the new entry
+overwrites that slot instead of taking a fresh one. Deleting a stray space
+should not cost a ring slot nobody would cycle back to. The whitespace stays
+retrievable until the next push, so a swap still works. To keep whitespace
+durably, yank it into a digit register.
 
-If the new entry matches one already in the ring, it moves to the head
-instead of taking a fresh slot. Two entries match when their text and their
-paste shape (see "Linewise versus charwise paste" below) are both equal.
-Killing the same word twice, such as `mmd` on `foo` in two different places,
-doesn't fill two slots with `foo`; the ring only ever holds one copy, and
-cycling with `[`/`]` never lands you back on an entry you've already seen.
-The same text captured once as whole lines and once as characters is two
-entries, since the two paste differently.
+If the new entry matches one already in the ring, that entry moves to the
+head instead of taking a fresh slot. Two entries match when their text and
+their paste shape (see [Linewise versus charwise
+paste](#linewise-versus-charwise-paste)) are both equal. Killing `foo` in two
+places leaves one `foo` in the ring, so cycling with `[`/`]` never lands on an
+entry already seen. The same text captured once as lines and once as
+characters is two entries, since the two paste differently.
 
-Ring entries are reachable in two ways: by pasting the head with `"kp` or by
-relative position via `[`/`]` cycling (covered below). The ring keeps up to
-ten entries.
-
-**What the kill ring rescues you from:**
-
-- Recovering text that was deleted a moment ago after some other operation
-  interleaved. The deleted text lives at the ring head until something newer
-  pushes it down; it is reachable via `"kp` or by cycling.
-- Reaching one of several recent deletes without having captured each into a
-  named register up front. The ring provides up to ten entries of
-  backward-looking insurance.
-- Assembling a paste from disparate earlier captures by cycling through
-  recent history instead of typing register names.
-
-That alone — without any system-clipboard integration — already fixes the
-papercut: a delete cannot destroy a previous capture, only add a new one to
-the ring.
+The ring rescues text deleted a moment ago after other operations
+interleaved, reaches one of several recent deletes without having named a
+register up front, and lets a paste be assembled from earlier captures by
+cycling. A delete cannot destroy an earlier capture, only add a new one.
 
 ## One-keystroke yank to the system clipboard
 
-The other thing every editor user expects is friction-free export to the OS
-clipboard. Yank in the editor, paste in a browser. If yank-to-clipboard
-required a register prefix every time, it would be a constant tax on a
-workflow that should be free.
-
-So bare yank writes to **both** the system clipboard and the kill ring. Bare
-delete and change write only to the kill ring — the clipboard is never
-touched by routine editing. Together with the previous section, this gives
-two protections at once:
-
-- Cross-application paste is one keystroke.
-- An accidental delete cannot clobber what the user copied from another
-  application a moment ago.
+Copying to another application should cost nothing extra: yank in the
+editor, paste in a browser. So a bare yank writes to **both** the system
+clipboard and the kill ring. A bare delete or change writes only to the
+ring. Cross-application copy is one keystroke, and an accidental delete
+cannot clobber what the user just copied from another application.
 
 ## Smart-p: the heuristic
 
-When the user presses `p` for a bare paste, which source does it read — the
-clipboard, or the ring head?
+A bare `p` has two possible sources: the clipboard or the ring head. HUME
+picks by asking whether anything was edited since the ring last changed.
 
-HUME answers by asking a narrower question: *has anything been edited since
-the ring last changed?* If not, paste reads the ring — the buffer is still in
-the state the capture left it in, so the ring head is still "the thing that
-was just here." If something has been edited since, paste reads the system
-clipboard instead — the user has moved on, and cross-app paste stays the
-default.
+- **Nothing edited since the last `d`, `c`, or `y`**: paste reads the ring
+  head. The buffer is still in the state the capture left, so the head is
+  still "the thing that was just here". Swap idioms work: `d`, move, `p`
+  restores what was killed.
+- **Something edited since**: paste reads the system clipboard. The user has
+  moved on, and cross-application paste stays the default. With no OS
+  clipboard (a headless environment), a fresh paste falls back to the ring
+  head. A repeat press whose clipboard cannot be read does nothing instead,
+  because substituting the ring head would replace the text the previous
+  press just pasted.
 
-- **Nothing edited since the last capture (`d`/`c`/`y`)** → paste reads the
-  kill-ring head. Swap idioms work: `d`, move around, `p` restores what was
-  killed, as long as no edit happened along the way.
-- **Something edited since** → paste reads the system clipboard. If no OS
-  clipboard is available (a headless environment), a fresh paste falls back to
-  the ring head. A repeat press whose clipboard cannot be read does nothing
-  instead, because substituting the ring head would replace the text the
-  previous press just pasted.
+The rule judges the buffer, not the command that ran. A motion changes no
+text, so it never switches the source. Undo and redo change the text, so
+they do. There is no list of "kill-like" commands to maintain, and macro
+replay and dot-repeat need no special case: repeating a delete is itself a
+fresh capture, so a paste right after `.` reads what `.` deleted.
 
-Motions, searches, and undo/redo don't fit either bucket the way a command
-name would — they're judged by what they actually do to the buffer. A motion
-touches nothing, so it never switches the source; undo and redo *are* edits
-(they change what's on screen), so they do switch it. Judging by buffer state
-rather than by which command ran last is what keeps the rule exception-free:
-there is no allow-list of "kill-like" command names to maintain, and macro
-replay and dot-repeat need no special treatment — dot-repeating a delete is
-itself a fresh capture, so a paste right after `.` correctly reads what `.`
-just deleted.
+Repeat presses stack copies: `xd p p p` produces three. Each press reads the
+same source again, and the next section explains why the copies land side by
+side.
 
-**Repeat presses still work like a stack.** `xd p p p` produces three copies.
-Each press re-reads the same source fresh; since nothing has changed the
-ring (or clipboard) between presses, the same value comes back each time —
-and pasting a value that matches what's already selected appends alongside it
-rather than replacing it (see "Repeat vs. swap" below), so the copies stack.
+## Repeat vs. swap
 
-## Repeat vs. swap: smart-paste's one rule, not two mechanisms
+"Paste over a selection replaces it" and "pasting again appends another copy"
+are one rule seen from two starting points: **if the text about to be pasted
+is already what is selected, collapse the selection and paste next to it
+instead of over it.**
 
-Two things can look like separate smart-paste behaviors — "paste over a
-selection replaces it" and "pasting again after a paste appends another
-copy" — but they're the same rule seen from different starting points: **if
-what you're about to paste is already exactly what's selected, collapse the
-selection and paste next to it instead of over it.**
+- The selection is a bare cursor: there is nothing to compare, so the paste
+  lands next to the cursor.
+- The selection holds different text: the paste replaces it. This is the
+  ordinary case of pasting a replacement over a selected word.
+- The selection holds the same text: collapse, then paste next to it. After
+  the first paste the pasted text is selected, and the second press resolves
+  to that same text, so it appends instead of replacing the first copy.
 
-- Selection is a bare cursor → there's nothing to compare against, so paste
-  just lands next to the cursor.
-- Selection holds different text than what's being pasted → replace it. This
-  is the ordinary case: select a word, paste a replacement over it.
-- Selection holds the *same* text that's about to be pasted → collapse first,
-  then paste next to it. This is what makes `p p p` stack: after the first
-  paste, the pasted text is selected, and the second paste's source resolves
-  to that same text again, so it appends rather than clobbering the first
-  copy.
-
-This is smart-paste-only. Plain paste never compares — see "Plain paste
-versus smart paste" below for why.
+Text displaced by a replacing paste is not written back to any register. The
+ring already holds the history of what was selected, so `"kp` or `[`/`]`
+reaches it.
 
 ## Plain paste versus smart paste
 
-Everything above describes *smart* paste — the heuristic bound to the
-default paste keys, in both what it reads (ring vs. clipboard) and how a
-repeat behaves (append vs. replace, per "Repeat vs. swap" above). HUME also
-exposes a *plain* paste with none of that: it always reads the kill-ring
-head, with no clipboard fallback, and it always replaces a non-collapsed
-selection outright — no text comparison, ever. Pasting the same text twice
-over the same selection just replaces it with itself the second time; to
-stack a copy, collapse the selection first (`;`), then paste.
+Smart paste is what the default paste keys run: it chooses ring or
+clipboard, and it applies repeat vs. swap. HUME also has a *plain* paste with
+neither rule. It always reads the ring head and always replaces a selection
+of more than one character, without comparing text. Pasting the same text
+twice over the same selection replaces it with itself; to stack a copy,
+collapse the selection first (`;`).
 
-That "no comparison, ever" is deliberate, not an oversight: plain paste's
-whole reason to exist is predictability for code driving it programmatically
-— a keymap or a plugin script that selects some text and pastes should never
-have to first ask "is this exactly what's already there?" to know what will
-happen. Smart-paste's repeat-vs-swap rule exists because a human pressing `p`
-twice in a row has an intent worth inferring; a script pasting over a
-selection has already stated its intent by choosing that selection, and
-inferring around it would make plain paste unpredictable for the one use
-case it exists for.
+Plain paste exists for code that drives the editor. A keymap or a script
+that selects text and pastes has already stated its intent by choosing the
+selection, and should never need to ask whether the text is already there to
+know what will happen. A person pressing `p` twice has an intent worth
+inferring; a script does not.
 
-Plain paste has no key bound by default; the default keys run the smart
-variant. A bundled alternate keymap plugin rebinds the default paste keys to
-the plain commands instead, pairing them with the system clipboard on
-separate keys — trading Smart-p's single "just paste" key for two dedicated,
-always-predictable ones.
+Plain paste has no default key. A bundled alternate keymap plugin rebinds the
+paste keys to the plain commands and puts the system clipboard on separate
+keys, trading one "just paste" key for two predictable ones.
 
 ## Paste sessions and cycling
 
-When the ring head isn't the entry you wanted, `[` and `]` step through the
-ring without typing a slot name. Cycling in HUME uses a **paste session**
-model:
+When the ring head is not the entry you wanted, `[` and `]` step through the
+ring without typing a register name. Cycling uses a **paste session**:
 
-- The first `p` (or `P`) opens a **paste session**: it snapshots the
-  pre-paste buffer state, pastes the chosen entry, and leaves the session
-  open. The pasted text is selected.
-- While the session is open, `[` replaces the paste with the next-older
-  entry and `]` replaces it with the next-newer one. Each cycle re-pastes
-  from the same pristine snapshot in the same direction as the opening `p`/`P`
-  — so `P [ [` pastes above the cursor just as `P` itself did; `p [ [`
-  pastes after. The previous paste's effect is cleanly discarded — no stray
-  lines accumulate.
-- The entire session (the initial paste plus all cycles) records as **one
-  undo step**. `p` then many `[`/`]` then `u` restores the buffer to its
-  state before the first `p`.
-- The session commits when any command other than `[` or `]` fires. The
-  next `p` opens a fresh session.
+- The first `p` (or `P`) opens a session. It snapshots the buffer, pastes the
+  chosen entry, and selects the pasted text.
+- While the session is open, `[` replaces the paste with the next-older entry
+  and `]` with the next-newer one. Each step re-pastes from the same snapshot
+  in the direction of the opening key, so `P [ [` still pastes above the
+  cursor. No stray lines accumulate.
+- The whole session, the first paste and every step, is **one undo step**.
+  `p`, many `[`/`]`, then `u` restores the buffer to its state before the
+  `p`.
+- Any command other than `[` or `]` closes the session. The next `p` opens a
+  fresh one.
 
-**Stepping clamps at the ends of the ring** rather than wrapping. If you keep
-pressing `[` and reach the oldest entry, further presses do nothing. Clamping
-makes the boundary apparent; wrapping would hide it.
+Stepping **clamps** at both ends of the ring instead of wrapping, so the
+boundary is visible: at the oldest entry, further `[` presses do nothing.
 
-**Cycling can't return to a clipboard paste.** When the session was opened by a
-clipboard paste — bare `p` with no preceding delete or change — the clipboard
-text is the *opener*, not a ring entry. The first `[` steps into the ring at
-its head, or at the entry after it when the head already holds the pasted text
-(the usual case after `y`, which writes both): pasting identical text again
-would make the press look like it did nothing. From there `[` and `]` move
-among ring entries only, and `]` clamps at the ring head. To paste the
-clipboard again, start a fresh paste with the explicit clipboard register
-(`"cp`). This falls out of the model directly: the cycle position is a
-position within the ring's history, and the clipboard lives outside that
-history.
+A `p` right after a paste appends another copy, as repeat vs. swap describes,
+and each such press is its own undo step. After cycling, `p` appends a copy
+of the entry cycled to, not the head, and keeps the cycle position, so a
+following `[` continues from there.
 
-**`[` and `]` without an open session are noops.** To cycle, you must first
-paste with `p` or `P`.
+**Cycling cannot return to a clipboard paste.** When bare `p` read the
+clipboard, the clipboard text opened the session but is not a ring entry.
+The first `[` steps into the ring at its head, or at the entry after it when
+the head already holds the pasted text (the usual case after `y`, which
+writes both). From there `[` and `]` move among ring entries only. To paste
+the clipboard again, use `"cp`.
+
+`[` and `]` without an open session do nothing.
 
 ## Linewise versus charwise paste
 
-Every ring entry remembers the paste shape it was captured with. A selection
-of whole lines (it starts a line and ends on a line break) is captured as
-*linewise*: over a cursor it inserts as new line(s) below the cursor line (`p`)
-or above it (`P`); over an explicit selection it replaces line-by-line and
-reflows what is left. Any other selection is captured as *charwise*: it lands
-inline at the cursor, or replaces the selected span in place.
+Every register entry remembers the paste shape it was captured with:
+
+- A `d` or `y` of whole lines (the selection starts a line and ends on a line
+  break) is *linewise*. Over a cursor it inserts as new lines below (`p`) or
+  above (`P`) the cursor's line. Over a selection it replaces line by line
+  and reflows what is left.
+- Anything else `d` or `y` captures is *charwise*: it lands inline at the
+  cursor, or replaces the selected span.
+- `c` always captures *charwise*. It removes a selection's content but keeps
+  the line break the selection ends on, so it rewrites a line without
+  removing it.
 
 The shape comes from the capture, not from inspecting the text afterwards.
 Text that did not come from a selection, such as the system clipboard or text
-a script wrote, has no remembered shape. It counts as linewise when it ends in
-a newline and charwise otherwise, since that is the only signal it carries.
-No separate `P`-linewise command is needed, and cycling the kill ring moves
-freely between linewise and charwise entries as the cycle position changes.
+a script wrote, has no remembered shape. It counts as linewise when it ends
+in a newline, since that is the only signal it carries. Cycling the ring
+moves freely between linewise and charwise entries.
 
 When a linewise paste replaces a selection that does not start its line, the
-text kept before the selection is pushed onto a line of its own, so the pasted
-lines start a line. When the selection ends right before its line's break, the
+text before the selection moves onto a line of its own, so the pasted lines
+start a line. When the selection ends right before its line's break, the
 paste takes that break too, so no blank line is left behind.
 
-## What `d` and `y` capture
-
-`d` and `y` share one rule for what a selection's text is in a register. A
-selection captures everything it covers, one entry per selection in document
-order. Whole lines are captured as lines. Anything else is captured as
-characters, short of the buffer's structural final line break, which an edit
-never removes. A selection that covers only that final line break captures
-nothing, and `d` removes nothing from it. `c` removes a selection's content
-except the line break it ends on, so it rewrites a line without removing the
-line, and it captures that content as characters.
-
-Because one rule serves both, a yank captures the same text that a delete of
-the same selection would have taken out.
-
-**Consecutive `p` presses append** rather than replacing — see "Repeat vs.
-swap" above for the underlying rule. Each press is its own separate undo
-step, distinct from a `[`/`]` cycle (which folds into the one undo step the
-paste session opened).
-
-**`p` after `[`/`]` appends the cycled entry.** If you cycled to the
-second-oldest entry and then press `p`, the new paste appends a second copy
-of that entry (not the head), and the cycle position is preserved so a
-following `[` continues from there rather than resetting.
+`d` and `y` share one rule for what a selection captures, so a yank holds
+the same text a delete of the same selection would remove. Whole lines are
+captured with their line breaks. Anything else is captured short of the
+buffer's structural final line break, which no edit removes. A selection
+covering only that final break captures nothing, and `d` removes nothing
+from it.
 
 ## Several entries, a different number of cursors
 
-A yank from several selections captures one entry per selection, in document
-order. Pasting it back with as many cursors as entries gives each cursor its
+A yank from several selections captures one entry per selection, in
+document order. Pasting with as many cursors as entries gives each cursor its
 own entry, the first entry to the first cursor. With any other number of
 cursors, every cursor gets all the entries, joined in order and pasted in the
-shape of the last one. A capture with a single entry is the simplest case of
-the same rule: every cursor gets it.
+shape of the last one. A single entry is the simplest case of the same rule:
+every cursor gets it.
 
 Joining adds nothing between entries. Whole lines each end in their own line
 break, so they still paste as lines. Characters run together, so `foo` and
@@ -269,12 +231,12 @@ don't:
 
 Joining on a mismatch follows what users of both editors report:
 
-- **Several entries into one cursor should paste them all.** Getting only the
-  first entry is the complaint that recurs in both trackers ([kakoune#829],
-  [helix#14039]). Both projects answer with a separate command that pastes
-  every entry: Kakoune has `<a-p>`, and the same request for Helix is still
-  open ([helix#1333], [helix PR #13583]). HUME's ordinary paste covers that
-  case without a second key.
+- **Several entries into one cursor should paste them all.** Getting only
+  the first entry is the complaint that recurs in both trackers
+  ([kakoune#829], [helix#14039]). Both projects answer with a separate
+  command that pastes every entry: Kakoune has `<a-p>`, and the same request
+  for Helix is still open ([helix#1333], [helix PR #13583]). HUME's ordinary
+  paste covers that case without a second key.
 - **A wrong count should show.** Repeating or wrapping hands every cursor a
   plausible entry, so a miscount goes unnoticed. A joined paste is visibly
   wrong and one undo away. A Helix user makes the same point in
@@ -283,10 +245,10 @@ Joining on a mismatch follows what users of both editors report:
 - **No one asks for repeating or wrapping.** The author of [helix#7792]
   writes "I can't really think of a situation where I'd want Helix to repeat
   the last selection multiple times", and proposes the rule HUME uses, which
-  they attribute to VS Code and Sublime. Helix's maintainers keep the repeat as
-  intended behaviour ([helix#14039]). None of these threads asks for Kakoune's
-  wrapping. What it enables, such as alternating two entries down a column,
-  turns up in keystroke-golf solutions rather than in requests.
+  they attribute to VS Code and Sublime. Helix's maintainers keep the repeat
+  as intended behaviour ([helix#14039]). None of these threads asks for
+  Kakoune's wrapping. What it enables, such as alternating two entries down a
+  column, turns up in keystroke-golf solutions rather than in requests.
 
 [kakoune#829]: https://github.com/mawww/kakoune/issues/829
 [helix#1333]: https://github.com/helix-editor/helix/issues/1333
@@ -295,67 +257,7 @@ Joining on a mismatch follows what users of both editors report:
 [helix PR #13583]: https://github.com/helix-editor/helix/pull/13583
 [helix discussion #10200]: https://github.com/helix-editor/helix/discussions/10200
 
-## Explicit register prefix is untouched
-
-Everything above describes the *bare* yank, delete, change, and paste keys.
-Prefixing any of them with a register name bypasses the heuristic:
-
-| Prefix | Behaviour |
-|--------|-----------|
-| `"c` | System clipboard: yank writes clipboard only (no ring push); paste always reads clipboard |
-| `"k` | Kill-ring head: paste reads the most-recent ring entry; yank/delete/change push onto the ring without touching the clipboard. Older entries reachable via `[`/`]`. |
-| `"0`–`"9` | Symmetric in-memory storage: `"5y` and `"5p` both use the same named slot, so they round-trip. No kill-ring interaction. The same slot also stores macros recorded with `Q5`/`q5` — last write wins. |
-| `"b` | Black hole: yank discards; paste reads nothing |
-
-The two non-clipboard register namespaces serve different purposes. The kill
-ring (`"k`, `[`/`]`) is for *interactive* use: the ring head is non-deterministic
-— every `d`/`c`/`y` shifts it — so it is reach-back for in-the-moment editing, not
-durable storage. The digit slots (`"0`–`"9`) are for *scripted, surgical, or
-programmable* use: deterministic named slots that round-trip (`"5y` then `"5p`
-returns exactly what was written, regardless of intervening edits); the same slots
-double as macro registers (`Q5`/`q5`).
-
-Smart-p is a default for the bare keys, not a constraint on the register
-system. If the heuristic ever routes to the wrong source, the register
-prefix is the explicit override.
-
-## Comparison with Vim
-
-Vim addresses parts of the same tension, but with different tools. The
-contrast is worth tracing because it shows where HUME's choices come from.
-
-**Single default register.** Vim's unnamed register (`"`) receives most
-yanks and deletes, and bare paste reads it. The classic friction sequence
-is `yiw`, navigate, `dd`, `p`: the `p` pastes the deleted line, not the
-yanked word, because the `dd` clobbered the unnamed register. Vim's partial
-fix is the dedicated yank-only register `"0`, which captures yanks but
-never deletes — so the workaround is `yiw`, navigate, `dd`, `"0p`. The
-papercut is real enough that "use `"0p` after a delete-then-yank" is common
-folklore. In HUME, `"kp` is the explicit kill-ring-head paste, and Smart-p
-handles the common case automatically.
-
-**System clipboard as a separate register.** The OS clipboard sits behind
-`"+` (and `"*` on macOS). By default `y` and `p` ignore it; cross-app paste
-costs a prefix every time (`"+y`, `"+p`). The escape hatch is
-`set clipboard=unnamedplus` in `.vimrc`, which makes the unnamed register
-*be* the clipboard. That gets one-key cross-app paste, but at the cost of
-making every delete clobber the system clipboard — the same single-register
-papercut, propagated outward.
-
-**No first-class history.** Vim has undo and `:earlier`, but no bounded
-ring of recent captures. Recovering "the line I deleted three operations
-ago" requires having yanked it into a named register at the time, or
-walking the undo tree.
-
-HUME's design splits the destinations instead of layering more registers
-on top of one. Bare yank goes to the clipboard *and* the ring; bare delete
-and change go to the ring only; bare paste consults Smart-p to decide
-which source to read. Cross-app paste is one keystroke without
-`unnamedplus`-style trade-offs, deletes never reach the clipboard, and the
-ring keeps the last ten captures alive. The goal overlaps with Vim's; the
-mechanism is different.
-
 ---
 
-*See also: [Edit Operations](edit-operations.md) for the register table and the
-select-then-act model underlying how paste interacts with selections.*
+*See also: [Edit Operations](edit-operations.md) for the select-then-act
+model that paste builds on.*
