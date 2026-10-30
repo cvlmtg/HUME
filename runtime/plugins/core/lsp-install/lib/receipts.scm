@@ -13,16 +13,16 @@
 
 ;; Install folders: see docs/servers.md's "Installing a server".
 
-(define (lsp-install/install-name? entry)
+(define (lsp-install/install-number entry)
   (let ((n (string->number entry)))
-    (and (integer? n) (>= n 0) (equal? (number->string n) entry))))
+    (and (integer? n) (>= n 0) (equal? (number->string n) entry) n)))
 
-;;; `name`'s install folder names, oldest first.
+;;; `name`'s install numbers, oldest first.
 (define (lsp-install/installs name)
   (let ((dir (lsp-install/server-dir name)))
     (if (path-exists? dir)
-        (sort (filter lsp-install/install-name? (call! "stdlib/list-subdirs" dir))
-              (lambda (a b) (< (string->number a) (string->number b))))
+        (sort (filter number? (map lsp-install/install-number (call! "stdlib/list-entries" dir)))
+              <)
         '())))
 
 ;;; `(folder . receipt)` for `name`'s current install, its newest install folder with a
@@ -30,7 +30,7 @@
 (define (lsp-install/current-install name)
   (let loop ((installs (reverse (lsp-install/installs name))))
     (and (pair? installs)
-         (let* ((folder  (path-join (lsp-install/server-dir name) (car installs)))
+         (let* ((folder  (path-join (lsp-install/server-dir name) (number->string (car installs))))
                 (receipt (with-handler (lambda (err) #f)
                            (read-data-file (lsp-install/receipt-path folder)))))
            (if receipt
@@ -42,7 +42,7 @@
   (let ((installs (lsp-install/installs name)))
     (path-join (lsp-install/server-dir name)
                (number->string
-                 (if (null? installs) 1 (+ 1 (string->number (last installs))))))))
+                 (if (null? installs) 1 (+ 1 (last installs)))))))
 
 (define (lsp-install/read-receipt name)
   (let ((current (lsp-install/current-install name)))
@@ -85,7 +85,7 @@
                                                folder ": " (to-string delete-err))))
                  (call! "stdlib/delete-dir!" folder)
                  (when (and (path-exists? dir) (null? (call! "stdlib/list-entries" dir)))
-                   (call! "stdlib/delete-dir!" dir)))
+                   (remove-dir! dir)))
                (raise-error err))
              (create-directory! folder)
              (let ((installed (build folder)))
@@ -101,7 +101,7 @@
                                               " could not be deleted, the next :lsp-install of "
                                               name " tries again: " (to-string err))))
               (if (is-dir? path)
-                  (call! "stdlib/delete-dir!" path)
-                  (call! "stdlib/delete-file!" path))))))
+                  (remove-dir! path)
+                  (delete-file! path))))))
       (call! "stdlib/list-entries" dir))
     (path-join folder (car installed))))
