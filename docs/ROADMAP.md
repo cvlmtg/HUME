@@ -1,10 +1,6 @@
 # HUME — Roadmap
 
-## Roadmap
-
-Items tagged **[breaking]** change existing user-facing behavior or plugin API when they land.
-
-### Editor — new features
+## Editor — new features
 
 - [ ] Persistent sessions — save and restore open buffers, splits/tabs, and cursor positions across restarts. **Decided: the session file also records recorded macros** (the `q` register and friends), since they're otherwise unrecoverable after quit and nothing else in the roadmap covers that gap (see Open questions' macro-register item, which this supersedes for persistence purposes). Whether *other* registers (numbered, `c`, `k`) are part of the session file is still open — see Open questions.
 - [ ] Persistent undo across restarts — undo history is in-memory only today (`user-manual/docs/files-and-buffers.md`'s "Persistence and safety"); lost on quit, no cross-restart undo. Needs an on-disk format for the undo tree and a load path tied to buffer open.
@@ -31,7 +27,7 @@ Items tagged **[breaking]** change existing user-facing behavior or plugin API w
 - [x] `:earlier` / `:later` undo-tree time travel — count + relative-age specs over the redo path; cross-branch jumps and history browsing ship in `core:undotree`, and its side-panel host is `docs/UNDOTREE.md`'s Phase 2.
 - [x] **[breaking]** Fully rebindable picker keys — a picker answers only the keys its keymap binds, `Enter` and `Esc` included, and the plugin that opens it passes that keymap; `core:stdlib`'s `stdlib/picker-keymap` is the one default set, reused whole or with keys overridden.
 
-### Editor — fixes & optimizations
+## Editor — fixes & optimizations
 
 - [ ] Minimum severity for `:messages` — an option naming the lowest severity the message log keeps, e.g. `'warning` to drop every trace entry, alongside `lsp-diagnostics-min-severity`, which filters diagnostics only. Language-server output is most of the volume: `window/logMessage` info/log entries and every stderr line are logged at trace level (`hume-editor/src/editor/lsp/drain.rs`). Undecided: whether a warning dropped under an `'error` floor still counts in `MessageLog::totals`, which `message_logged_this_input` (`hume-editor/src/editor/input.rs`) compares across each input.
 - [ ] `:messages` follows the log — the `[messages]` buffer is a copy of the log taken when `:messages` runs (`typed_messages`, `hume-editor/src/editor/commands/typed_misc.rs`), and `MessageLog::push` never updates it, so a message logged while it is open appears only after running `:messages` again. Undecided: whether the cursor follows new entries when it is on the last one, and whether entries logged while the buffer is visible count as seen.
@@ -43,7 +39,7 @@ Items tagged **[breaking]** change existing user-facing behavior or plugin API w
 - [ ] `:sort --lexicographic` override — for when numeric auto-detection guesses wrong (e.g. `1.10` vs `1.9`). Not worth shipping until it actually bites.
 - [x] Crash-safety net — on panic, a signal exit (`SIGHUP`/`SIGTERM`/…) or a terminal hangup, every dirty buffer is written to `<file>.dump` (scratch buffers to the data dir's `dumps/`), and opening a file that has a dump offers restore/discard/keep. A panic on a non-main thread shows as an error in `:messages` and does not stop the editor; the forced exit after the 3 s signal grace window writes no dump.
 
-### Performance — deferred
+## Performance — deferred
 
 Structural work, an invalidation contract, or a wide signature change — none is a small edit. Nothing here is measured as dominant: the benchmark harness is itself the first item.
 
@@ -65,7 +61,7 @@ Structural work, an invalidation contract, or a wide signature change — none i
 - [ ] Two `ChangeSet` copies left where one edit's inserted text has two live owners: `EditGroup::compose` clones each Insert-session edit into the group because `apply_grouped_from` also returns it (completion accept reads it), and cycling a paste clones the new paste into the propagation `compose` while the group keeps its own. One keystroke's payload in the first case, a repeat paste in the second. Sharing the inserted text (`Operation::Insert(Rc<str>)`) removes both, since `compose` moves ops out of both sides.
 - [ ] Statusline recomputes per frame — the `FilePath` two-pass sizing re-renders any section containing it (the default left section), and `DiagnosticsElement` scans the whole diagnostics store for its counts. Both want caching against a generation, not a mechanical fix.
 
-### Plugins
+## Plugins
 
 - [ ] `core:lsp-install` `cargo-git` install flavor — installs from a pinned git tag instead of crates.io semver; unblocks `nil`.
 - [ ] **[breaking]** Per-buffer plugin exclusion — enable a plugin everywhere except for chosen languages or file patterns, e.g. `core:buffer-words` on for every buffer but `*.min.js`. `declare-plugin!`'s `#:languages` only picks what triggers loading; once active, a plugin acts on every buffer. Exclusion therefore has to be checked per buffer each time the plugin would act, not once at activation. Changes when every plugin's hooks, commands, and completion sources fire.
@@ -77,12 +73,10 @@ Structural work, an invalidation contract, or a wide signature change — none i
 ## Open questions
 
 - **[breaking]** Multiline quote text objects — currently line-bounded (parity scan gives wrong results across unmatched quotes on earlier lines); use tree-sitter to resolve when a grammar is loaded, fall back to line-bounded parity otherwise. `miq`/`maq` results change once a grammar is loaded.
-- **[breaking]** `goto-matching-pair` tag matching (`#` on `<tag>`) is a lexical scan, not tree-sitter-backed (`hume-ops` can't depend on `hume-treesitter`). Decide whether it should resolve the enclosing element node once tree-sitter structural navigation lands — same lexical-vs-tree-sitter tension as the multiline-quote question above. `#` results on tags would change.
-- Plugin-defined languages × lazy loading — a plugin that defines its **own** language must register that identity eagerly; it can't be the sole provider of its own lazy-activation trigger. Deferred to a dedicated brainstorm.
+- **[breaking]** `goto-matching-pair` tag matching (`#` on `<tag>`) is a lexical scan, while the tag objects and navigation (`m i x`/`m a x`, `g x`/`g X`) use the grammar's element object first and fall back to the same scan. In a markup buffer they can disagree (e.g. tags inside `<script>` text). Decide whether `#` should resolve through the element node as well. The element capture spans the whole element, so finding the partner tag needs its child tag nodes or a scan at the span's edge. `#` results on tags would change.
 - `llvm-mir` / `llvm-mir-yaml` grammar mismatch — inherited from Helix; no HUME-specific fix until upstream resolves it.
 - Snap-vs-error policy for future selection setters — a future selection-setting builtin must handle out-of-range or mid-cluster input from Steel: snap to the nearest valid boundary (forgiving, hides bugs) or raise (fail-fast, breaks legitimately-drifted positions). Decide per call site before the first setter lands.
 - `#:keys` activation entry for `declare-plugin!` — would let a lazily declared plugin register its own key bindings as placeholder stubs, the way `#:commands` does today, instead of leaving any plugin whose only entry point is a key it adds or overrides without a manifest, so it loads eagerly (`core:pickers`, `core:vim-keybind`, `core:classic-paste`, `core:helix-surround`). Not pursued yet: the entry would have to restate the body's own `bind-key!` calls in the manifest, a second list to keep in sync, and still couldn't express `unbind-key!` (`core:helix-surround` drops `m w`). Decide based on real usage or user feedback rather than up front.
 - Macro registers through `read-register`/`write-register!` — a macro is `Vec<KeyEvent>`, not text, so today both builtins treat a register holding one as empty (`read-register` answers `#f`; there is no write path for one at all). Persistent sessions (see "Editor — new features") covers cross-restart macro persistence natively, reading the register store directly rather than through Steel, so persistence does not need this. What's left is weaker: Steel introspection (e.g. an `:registers`-listing plugin correctly showing "macro recorded here" instead of lying with empty) or programmatic macro composition. Not worth a wire-format decision until one of those is actually wanted.
 - Session file scope for registers other than macros — persistent sessions will save recorded macros (decided, see "Editor — new features"); whether numbered registers, the clipboard register (`c`), or the kill-ring register (`k`) are also part of the session file is undecided. Decide when the session format is designed.
-- Bare-name stubs for plugin commands — natives already get `(define name (lambda args (%dispatch-command! "name" args)))` at startup, so `(move-left)` works without `call!`; `define-command!`/`declare-plugin!` could emit the same stub from Scheme via `hm.eval-string` (verified: a `define` evaluated that way from inside a `require`d module lands in engine global scope, visible to every later-compiled plugin), making `(my-plugin/cmd …)` callable directly. Leaning no, or at most as sugar that never replaces `call!`: (1) a bare name is resolved at `require` time — a reference to a not-yet-defined stub is a `FreeIdentifier` compile error for the whole module, even inside a lambda that never runs — so plugin load order starts to matter, where `call!` resolves its string at run time and a miss is a logged `#f`; (2) the string namespace is disjoint from Steel globals, while a stub merges them — a forced `<plugin>/` prefix narrows the hazard but doesn't close it, Steel's stdlib has ~116 `/`-containing globals (`call/cc`, `time/sleep-ms`, `channel/recv`, `instant/now`, `any/c`, …), so closing it needs a fail-fast "already bound?" check at stub-define time, not a naming convention; (3) `check_quotable` bans only `"` and `\`, so a name that isn't a valid Steel identifier would need rejecting too. `call!` also covers computed names (`(call! (string-append prefix "/" verb))`), which a stub can't.
 - Crashed language server and newly opened buffers — a buffer opened under the same workspace root as a crashed server attaches to it without a message, and its LSP requests then report the crash until `:lsp-restart`. Decide after real-world use whether opening such a buffer should report the crash again, restart the server automatically (and with what backoff), or keep attaching quietly.
