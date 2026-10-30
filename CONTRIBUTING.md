@@ -20,7 +20,7 @@ Prerequisites:
 | Need | Why |
 |---|---|
 | Rust, current stable | The workspace is edition 2024 (needs 1.85 or newer). Install via [rustup](https://rustup.rs). |
-| A C and C++ compiler | Tree-sitter grammars are compiled from C, and some scanners from C++, for the test fixtures. On Windows, MSVC build tools. |
+| A C compiler | The tree-sitter library HUME links is C. On Windows, MSVC build tools. |
 | Node + npm | Builds the manual and runs the theme editor's own tests. |
 | Bash | The scripts in `scripts/` are bash. On Windows, use Git Bash or WSL. |
 
@@ -28,17 +28,11 @@ Build and run:
 
 ```sh
 cargo build
-cargo hume README.md
+cargo run -- README.md
 ```
-
-`cargo hume` is an alias (`.cargo/config.toml`) for `cargo run -p hume-editor --bin hume --`.
 
 Run from the workspace root — HUME finds its bundled `runtime/` relative to the current
 directory in a dev build. From anywhere else, point `HUME_RUNTIME` at `runtime/`.
-
-Installing a grammar runs `hume-grammar-build` from beside the `hume` executable. The
-`cargo build` above builds both into `target/debug/`; `cargo hume` alone builds only
-`hume`.
 
 Orientation: `docs/CRATES.md` maps the workspace crates, what each owns, and the dependency edges between them. `docs/ROADMAP.md` tracks open questions. `docs/LEARNING.md` explains the concepts behind the editor.
 
@@ -67,8 +61,11 @@ scripts/test-all.sh
 `scripts/test-all.sh` is the whole gate — it reproduces the CI job exactly. It fetches
 the tree-sitter grammar fixtures the suite requires before running the tests, so it
 needs network access; a bare `cargo test` panics naming the fixture until this has
-been run at least once. The first run clones and compiles the grammars into
-`tests/fixtures/grammars/` and takes a while; later runs reuse them. The suite also
+been run at least once. The first run downloads the grammars from the pinned
+[treesitter.hume](https://github.com/cvlmtg/treesitter.hume) release into
+`tests/fixtures/grammars/`; later runs reuse them. To work offline or on a platform
+with no release, build a bundle with that repo's `hume-grammar-build build --out <dir>`
+and run `scripts/fetch-test-grammars.sh <dir>`. The suite also
 includes a handful of live network e2e tests (real grammar installs against GitHub),
 so a full run always touches the network.
 

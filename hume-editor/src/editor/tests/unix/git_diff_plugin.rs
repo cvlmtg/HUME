@@ -72,7 +72,7 @@ fn setup_with_source(
         test_cwd(),
     )
     .unwrap();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
+    let mut host = ScriptingHost::for_testing(&ed.state.dirs);
     let load_git_diff = match config_expr {
         Some(cfg) => hume_scripting::eager_load_scm("core:git-diff", Some(cfg)),
         None => hume_scripting::eager_load_scm("core:git-diff", None),

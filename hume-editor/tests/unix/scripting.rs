@@ -3,7 +3,7 @@ use hume_platform::dirs::Dirs;
 use hume_scripting::*;
 
 fn host_with_data_dir(data: std::path::PathBuf) -> ScriptingHost {
-    ScriptingHost::new(&Dirs {
+    ScriptingHost::for_testing(&Dirs {
         data: Some(data),
         ..Dirs::none()
     })

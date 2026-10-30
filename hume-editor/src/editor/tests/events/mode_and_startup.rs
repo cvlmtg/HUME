@@ -11,7 +11,7 @@ fn on_mode_change_handler_must_take_both_modes() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     let err = host
         .eval_source(
@@ -49,7 +49,7 @@ fn exit_insert_via_esc_fires_on_mode_change() {
     // Two-char buffer; cursor starts at col 0.
     let mut ed = editor_from("-[a]>b\n");
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-mode-change (lambda (old new) (log! 'trace "mode-changed")))"#,
@@ -109,7 +109,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     // leaves the pane 80x24.
     ed.resize_terminal(80, 25);
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right" (focused-pane))))"#,
@@ -156,7 +156,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
 
     let mut ed = editor_from("-[a]>b\n");
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-language-set
@@ -204,7 +204,7 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
 
     let mut ed = editor_from("-[a]>b\n");
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-language-set
@@ -256,7 +256,7 @@ fn queued_hooks_require_explicit_settle() {
     let mut ed = editor_from("-[a]>b\n");
 
     // Install a handler: OnBufferOpen → move-right (observable side effect).
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" (focused-pane))))"#,
@@ -309,7 +309,7 @@ fn on_buffer_open_queued_after_on_language_set() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))
@@ -375,7 +375,7 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     let mut ed = open_headless(Some(file));
     let bid = ed.focused_buffer_id();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))

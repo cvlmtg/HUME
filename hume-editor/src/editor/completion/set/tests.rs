@@ -247,7 +247,7 @@ fn set_completer_double_space_before_value_still_offers_bools() {
 #[test]
 fn set_completer_value_language_from_registry() {
     let (reg, store, dir) = make_ctx_parts();
-    let mut langs = LanguageRegistry::new();
+    let mut langs = LanguageRegistry::for_testing();
     langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
     langs.register_identity("ruby", &["rb"], &[], &[]).unwrap();
     let cwd = AbsolutePath::rooted(dir.path());
@@ -264,7 +264,7 @@ fn set_completer_value_language_only_buffer_scope() {
     // `:set global language=` is invalid; the completer must not offer
     // language names under a non-buffer scope.
     let (reg, store, dir) = make_ctx_parts();
-    let mut langs = LanguageRegistry::new();
+    let mut langs = LanguageRegistry::for_testing();
     langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx_with(&reg, &store, &cwd, &langs);
@@ -275,7 +275,7 @@ fn set_completer_value_language_only_buffer_scope() {
 #[test]
 fn set_completer_value_language_prefix_filters() {
     let (reg, store, dir) = make_ctx_parts();
-    let mut langs = LanguageRegistry::new();
+    let mut langs = LanguageRegistry::for_testing();
     langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
     langs.register_identity("ruby", &["rb"], &[], &[]).unwrap();
     let cwd = AbsolutePath::rooted(dir.path());
@@ -291,7 +291,7 @@ fn set_completer_value_language_includes_an_exact_match() {
     // See `set_completer_scope_includes_an_exact_match`'s doc: a fully-
     // typed language name is prefix-filtered in, dropped later by rank.
     let (reg, store, dir) = make_ctx_parts();
-    let mut langs = LanguageRegistry::new();
+    let mut langs = LanguageRegistry::for_testing();
     langs.register_identity("ru", &[], &[], &[]).unwrap();
     langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let cwd = AbsolutePath::rooted(dir.path());

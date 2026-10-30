@@ -17,7 +17,7 @@ use hume_scripting::ScriptingHost;
 #[test]
 fn failed_command_eval_effects_do_not_leak() {
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     {
         let mut ih = init_host!(ed);
         host.eval_source(

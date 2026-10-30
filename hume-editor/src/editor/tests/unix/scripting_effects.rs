@@ -44,7 +44,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
         dir.path(),
         // `%define-language!` (the raw builtin), not the `define-language!`
         // macro; that macro lives in `runtime/scheme/prelude.scm`, not
-        // loaded by this test's bare `ScriptingHost::new(&Dirs::none())`.
+        // loaded by this test's bare `ScriptingHost::for_testing(&Dirs::none())`.
         r#"(register-lsp-server! "widget" #:command "widget-lsp")
            (set-buffer-option! (car (buffers)) "language" "widget")
            (%define-language! "widget" '("widget") '() '())
@@ -54,7 +54,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
 
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -157,7 +157,7 @@ fn failed_command_delivers_committed_activation_effects() {
     );
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -224,7 +224,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     );
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -328,7 +328,7 @@ fn steel_open_buffer_detects_language() {
         .register_identity("rust", &["rs"], &[], &[])
         .expect("a test identity registers");
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)
@@ -376,7 +376,7 @@ fn steel_open_buffer_detects_a_symlinked_file_by_its_typed_name() {
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .expect("a test identity registers");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)
@@ -418,7 +418,7 @@ fn steel_open_buffer_missing_path_opens_new_file() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)
@@ -479,7 +479,7 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
 
     let mut ed = editor_from("-[a]>bcdef\n");
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)

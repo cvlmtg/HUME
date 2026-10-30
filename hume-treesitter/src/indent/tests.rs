@@ -43,7 +43,7 @@ fn bundle(name: &str, indents: &str) -> Arc<GrammarBundle> {
 
 fn fixture_indents(name: &str) -> String {
     let path = require_helix_query(name, OptionalQuery::Indents.file_name());
-    std::fs::read_to_string(path).expect("read helix-indents.scm")
+    std::fs::read_to_string(path).expect("read indents.scm")
 }
 
 fn fixture_bundle(name: &str) -> Arc<GrammarBundle> {
@@ -790,7 +790,7 @@ fn markdown_with_rust(indents: &str) -> (Arc<GrammarBundle>, Arc<GrammarSnapshot
         "markdown",
         OptionalQuery::Injections.file_name(),
     ))
-    .expect("read helix-injections.scm");
+    .expect("read injections.scm");
     let markdown = make_bundle(
         "markdown",
         "tree_sitter_markdown",
@@ -813,7 +813,7 @@ fn rust_with_macro_layers() -> (Arc<GrammarBundle>, Arc<GrammarSnapshot>) {
         "rust",
         OptionalQuery::Injections.file_name(),
     ))
-    .expect("read helix-injections.scm");
+    .expect("read injections.scm");
     let rust = make_bundle(
         "rust",
         "tree_sitter_rust",

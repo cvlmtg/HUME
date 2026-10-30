@@ -193,7 +193,7 @@ fn init_scm_example_is_valid_source() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RealRuntimeDirs::new();
     let mut ed = open_headless(None);
-    let mut host = ScriptingHost::new(&ed.state.dirs);
+    let mut host = ScriptingHost::for_testing(&ed.state.dirs);
     eval_with_real_host(&mut ed, &mut host, &example, tmp.path());
     drop(guard);
 }

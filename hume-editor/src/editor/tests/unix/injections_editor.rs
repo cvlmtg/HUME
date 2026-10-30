@@ -1,6 +1,6 @@
 use super::*;
 
-/// Core's `register-installed-grammars!` (`runtime/scheme/grammars.scm`)
+/// Core's `%register-installed-grammars!` (`runtime/scheme/grammars.scm`)
 /// already ran before PLUM ever loaded (`init_scripting` evaluates it
 /// unconditionally), walked the empty `<data>/grammars/`, found nothing,
 /// and read no language data at all. This test then loads `core:plum`
@@ -40,21 +40,29 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
     );
 }
 
-/// `:plum-list-grammars` shows the compiled grammars in `[plum-grammars]`,
-/// splitting off the ones compiled under a name that is not a language.
+/// `:plum-list-grammars` shows the installed grammars in `[plum-grammars]`,
+/// and lists apart everything else in the grammars directory: a grammar
+/// installed under a name that is not a language, and leftovers, then what
+/// a stopped install left in PLUM's staging directory.
 /// The files are written after load so core's startup grammar walk never
 /// sees them.
 #[test]
-fn plum_list_grammars_shows_installed_and_orphan_grammars() {
+fn plum_list_grammars_shows_installed_grammars_and_what_is_not_in_use() {
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
     let grammars = data_tmp.path().join("hume/grammars");
     std::fs::create_dir_all(&grammars).unwrap();
     let ext = test_fixtures::grammar_platform_ext();
-    for name in ["rust", "proto"] {
-        std::fs::write(grammars.join(format!("{name}.{ext}")), b"").unwrap();
+    for (name, install) in [("rust", "1"), ("rust", "2"), ("proto", "1")] {
+        let dir = grammars.join(name).join(install);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{name}.{ext}")), b"").unwrap();
     }
+    std::fs::create_dir_all(grammars.join("json.replaced")).unwrap();
+    let staging = data_tmp.path().join("hume/plum-staging/grammars");
+    std::fs::create_dir_all(staging.join("rust")).unwrap();
+    std::fs::write(staging.join("rust.tar.gz"), b"").unwrap();
 
     type_cmd(&mut ed, ":plum-list-grammars");
 
@@ -63,8 +71,14 @@ fn plum_list_grammars_shows_installed_and_orphan_grammars() {
     Installed grammars (1)
       rust
 
-    Orphan grammars (1), remove with :plum-cleanup-grammars
+    Not in use (3), remove with :plum-cleanup-grammars
+      json.replaced
       proto
+      rust/1
+
+    Left by stopped installs (2), clear with :plum-cleanup-grammars
+      rust
+      rust.tar.gz
     ");
 }
 
@@ -177,100 +191,9 @@ fn plum_install_grammar_no_arg_no_language_warns() {
     );
 }
 
-/// Runs `:plum-install-grammar rust` with `git` and `curl` replaced by shims,
-/// `curl_body` being the shell script after the `-o` path is parsed into
-/// `$out`. Returns the editor, the data directory and the shim directory.
-fn install_rust_grammar_with_curl(
-    curl_body: &str,
-) -> (Editor, tempfile::TempDir, tempfile::TempDir) {
-    use std::os::unix::fs::PermissionsExt;
-
-    let shims = tempfile::tempdir().unwrap();
-    for (tool, body) in [
-        (
-            "git",
-            "#!/bin/sh\nPATH=/usr/bin:/bin\n\
-             if [ \"$1\" = clone ]; then for a in \"$@\"; do last=\"$a\"; done; mkdir -p \"$last\"; fi\n"
-                .to_owned(),
-        ),
-        (
-            "curl",
-            format!(
-                "#!/bin/sh\nPATH=/usr/bin:/bin\n\
-                 out=\"\"; prev=\"\"\n\
-                 for a in \"$@\"; do [ \"$prev\" = \"-o\" ] && out=\"$a\"; prev=\"$a\"; done\n\
-                 {curl_body}"
-            ),
-        ),
-    ] {
-        let path = shims.path().join(tool);
-        std::fs::write(&path, body).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-
-    let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
-    ed.state.dirs.search_path = Some(format!("{}:/usr/bin:/bin", shims.path().display()).into());
-    type_cmd(&mut ed, ":plum-install-grammar rust");
-    (ed, data_tmp, shims)
-}
-
-/// The query-fetch temp files left in PLUM's staging directory.
-fn leftover_fetch_files(data_dir: &Path) -> Vec<String> {
-    let staging = canonical_data_dir(data_dir).join("plum-staging");
-    std::fs::read_dir(&staging)
-        .unwrap_or_else(|e| panic!("read {staging:?}: {e}"))
-        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-        .filter(|name| name.starts_with("_fetch_"))
-        .collect()
-}
-
-/// A fetched query that cannot be read back fails that grammar's install,
-/// removes the temp file, and leaves the VM usable for the next command.
-#[test]
-fn plum_install_grammar_unreadable_query_fails_cleanly() {
-    let (mut ed, data_tmp, _shims) =
-        install_rust_grammar_with_curl("printf '\\377\\376' > \"$out\"\n");
-
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        log.contains("rust"),
-        "the unreadable query must fail the install and name the grammar: {log}"
-    );
-    assert_eq!(leftover_fetch_files(data_tmp.path()), Vec::<String>::new());
-
-    type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
-    assert!(
-        ed.state
-            .status_msg
-            .as_deref()
-            .is_some_and(|m| m.contains(r#"no grammar for language "nosuchlang""#)),
-        "a later command must still run: {:?}",
-        ed.state.status_msg
-    );
-}
-
-/// A download that fails after writing part of its output fails the install
-/// and removes the partial temp file.
-#[test]
-fn plum_install_grammar_failed_download_removes_its_temp_file() {
-    let (ed, data_tmp, _shims) =
-        install_rust_grammar_with_curl("printf 'partial' > \"$out\"\nexit 22\n");
-
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        log.contains("curl"),
-        "the failed download must fail the install: {log}"
-    );
-    assert_eq!(leftover_fetch_files(data_tmp.path()), Vec::<String>::new());
-}
-
-/// `:plum-install-grammar nosuchlang`: a language with no bundled grammar
-/// reports the no-grammar message instead of failing deep inside the
-/// install pipeline. This validation runs before the stale-source
-/// `delete-dir` purge in `plum/install-grammar`, so an unknown name deletes
-/// nothing.
+/// `:plum-install-grammar nosuchlang`: a name that is not a language reports
+/// so instead of failing deep inside the install pipeline, before it reads
+/// any index.
 #[test]
 fn plum_install_grammar_unknown_name_warns() {
     let data_tmp = tempfile::tempdir().unwrap();
@@ -283,8 +206,8 @@ fn plum_install_grammar_unknown_name_warns() {
         ed.state
             .status_msg
             .as_deref()
-            .is_some_and(|m| m.contains(r#"no grammar for language "nosuchlang""#)),
-        "expected no-grammar message naming 'nosuchlang', got: {:?}",
+            .is_some_and(|m| m.contains(r#"no language "nosuchlang""#)),
+        "expected a no-language message naming 'nosuchlang', got: {:?}",
         ed.state.status_msg
     );
 }
@@ -303,7 +226,7 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
         ed.state
             .status_msg
             .as_deref()
-            .is_some_and(|m| m.contains(r#"no grammar for language "nosuchlang""#)),
+            .is_some_and(|m| m.contains(r#"no language "nosuchlang""#)),
         "typed arg must win over buffer language 'rust', got: {:?}",
         ed.state.status_msg
     );
@@ -376,111 +299,5 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
         ed.state.status_msg.as_deref(),
         Some("printed"),
         "the command must run past its print"
-    );
-}
-
-/// A non-empty grammar source dir with no compiled grammar beside it must not
-/// break `:plum-install-grammar`: the install builds in a staging clone and
-/// then replaces the whole source dir with it.
-///
-/// Hits the network (real git fetch + curl fetch + compile of the `json`
-/// grammar); requires `git` and `curl` on `PATH`, and a workspace-built
-/// grammar compiler (see `workspace_grammar_build`).
-#[test]
-fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
-    let data_tmp = tempfile::tempdir().unwrap();
-    // `load_plum` makes `<data_tmp>/hume` the editor's data dir.
-    let data_dir = data_tmp.path().join("hume");
-    // A stale, non-empty source dir with no compiled grammar.
-    let src_dir = data_dir.join("grammars/sources/json");
-    std::fs::create_dir_all(&src_dir).unwrap();
-    std::fs::write(src_dir.join("stale.txt"), b"leftover from a failed install").unwrap();
-
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
-
-    type_cmd(&mut ed, ":plum-install-grammar json");
-
-    let ext = test_fixtures::grammar_platform_ext();
-    let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .map(|e| format!("{:?}: {}", e.severity, e.text))
-        .collect();
-    assert!(
-        out_path.exists(),
-        "compiled json grammar must exist after install recovers from a stale \
-         source dir on the first try; log={errors:#?}"
-    );
-    assert!(
-        !src_dir.join("stale.txt").exists(),
-        "the install must replace the stale source dir"
-    );
-    assert!(
-        src_dir.join("highlights.scm").exists(),
-        "the highlights query must land in the new source dir"
-    );
-}
-
-/// `tsx`'s `highlights.scm` declares `; inherits: ecma,_typescript,_jsx`
-/// instead of writing out its own patterns, so `plum/install-grammar` must
-/// resolve that chain (`plum/resolve-query` in `grammars.scm`) so the file
-/// written to disk has real capture patterns, not a dangling directive.
-///
-/// Hits the network (real git clone + compile of the `tsx` grammar, plus
-/// curl fetches of its `highlights.scm` and its `ecma`/`_typescript`/`_jsx`
-/// query dependencies); requires `git` and `curl` on `PATH`, and a
-/// workspace-built grammar compiler (see `workspace_grammar_build`).
-#[test]
-fn plum_install_grammar_resolves_helix_inherits_chain() {
-    let data_tmp = tempfile::tempdir().unwrap();
-    let data_dir = data_tmp.path().join("hume");
-
-    let buf = crate::editor::buffer::Buffer::at_start(hume_editing::text::BufferText::from(
-        "const x: number = 1;\n",
-    ));
-    let mut ed = Editor::for_testing(buf);
-    let bid = ed.focused_buffer_id();
-    load_plum(&mut ed, data_tmp.path());
-    // Real bootstrap loads runtime/scheme/languages.scm (which declares tsx's
-    // identity) before any plugin runs; `load_plum` only loads `core:plum`,
-    // so register the identity here to match that ordering: `register-grammar!`
-    // attaches onto an existing identity, it doesn't create one.
-    ed.state
-        .config
-        .languages
-        .register_identity("tsx", &["tsx"], &[], &[])
-        .unwrap();
-
-    type_cmd(&mut ed, ":plum-install-grammar tsx");
-
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .map(|e| format!("{:?}: {}", e.severity, e.text))
-        .collect();
-
-    let hl_path = data_dir.join("grammars/sources/tsx/highlights.scm");
-    let hl_content = std::fs::read_to_string(&hl_path).unwrap_or_else(|e| {
-        panic!("highlights.scm must exist after install; log={errors:#?}; err={e}")
-    });
-    assert!(
-        !hl_content.trim_start().starts_with("; inherits"),
-        "highlights.scm must be resolved, not left as a dangling inherits stub: {hl_content:?}"
-    );
-    assert!(
-        hl_content.contains('@'),
-        "resolved highlights.scm must contain real tree-sitter capture patterns, got: {hl_content:?}"
-    );
-
-    let lang = ed.state.config.languages.intern("tsx");
-    ed.set_buffer_language(bid, Some(lang));
-    ed.reparse_stale_buffers();
-    assert!(
-        ed.state.buffers.get(bid).syntax.is_some(),
-        "syntax must attach after tsx grammar install; log={errors:#?}"
     );
 }

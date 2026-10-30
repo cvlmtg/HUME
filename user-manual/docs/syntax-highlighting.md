@@ -2,7 +2,7 @@
 
 HUME colors your code with **tree-sitter**: accurate highlighting that stays correct as you type and handles partial or malformed code without choking.
 
-Highlighting is **opt-in per language**. HUME recognizes many languages out of the box but ships no pre-compiled parsers. For a language to light up, you install a **grammar**, a small package tree-sitter uses to parse that language. [PLUM](core-plugins.md#core-plum) handles this for you.
+Highlighting is **opt-in per language**. HUME recognizes many languages out of the box but ships no grammars. For a language to light up, you install its **grammar**, a small prebuilt package tree-sitter uses to parse that language. [PLUM](core-plugins.md#core-plum) downloads it for you.
 
 PLUM is a plugin like any other and doesn't load by itself. Installing, listing, and cleaning
 up grammars all need it loaded in your [`init.scm`](configuration.md) first, along with
@@ -13,24 +13,16 @@ up grammars all need it loaded in your [`init.scm`](configuration.md) first, alo
 (load-plugin! "core:plum")
 ```
 
-Once a grammar is installed, PLUM is out of the picture: HUME registers every compiled
+Once a grammar is installed, PLUM is out of the picture: HUME registers every installed
 grammar itself at startup, so highlighting keeps working even if you later remove PLUM from
 `init.scm`. Each grammar loads the first time a file or an embedded block needs it, so
 installed grammars you don't use cost nothing at startup.
 
 ## Prerequisites
 
-Installing a grammar runs a few external tools. Most are already on your system; if one is missing, the install fails with an error naming it. You need:
+Installing a grammar downloads it with `curl` and unpacks it with `tar`. Both come with macOS, with Windows 10 and later, and with most Linux distributions; if one is missing, the install fails with an error naming it.
 
-- `git`
-- `curl`
-- A C and C++ compiler (`cc` and `c++`, from `gcc` or `clang`), pre-installed on most Linux distributions (on macOS, see below). Some grammars are partly written in C++. Set `CC` or `CXX` to use a specific one.
-
-How you install these depends on your operating system:
-
-- **macOS**: [Homebrew](https://brew.sh) covers `git` and `curl`: `brew install git curl`. The compilers come with Xcode's Command Line Tools (`xcode-select --install`).
-- **Linux**: use your distribution's package manager. `git` and `curl` are usually preinstalled; `gcc` and `g++`, or `clang`, come from your distro's base-devel/build-essential group.
-- **Windows**: [winget](https://learn.microsoft.com/windows/package-manager/winget/) or [Scoop](https://scoop.sh) can install `git` and `curl`. For the compilers, install the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select the "Desktop development with C++" workload), or run HUME under WSL and follow the Linux instructions above. To skip the Build Tools, use `clang`, `gcc`, or [zig](https://ziglang.org/download/) (e.g. `winget install zig.zig`) instead: without the Build Tools, HUME uses whichever of them it finds on `PATH`.
+Prebuilt grammars exist for Linux on x86-64, macOS on Apple silicon, and Windows on x86-64. On any other platform, [install them from a local folder](#install-from-a-local-folder).
 
 ## Install a grammar
 
@@ -50,13 +42,29 @@ You don't need to open a file in that language first: name the language directly
 
 This is the easiest way to get a grammar for a language you only use inside a fenced code block (see [Embedded languages](#embedded-languages) below), or whenever switching buffers to install one is inconvenient.
 
-`:plum-install-grammar` always re-downloads and recompiles from scratch, purging any old source first. Running it again is also how you recover from a broken compile or refresh a grammar after updating HUME.
+`:plum-install-grammar` always downloads the grammar again, and replaces the installed copy only once the new one is complete. Running it again is also how you repair a broken install or update a grammar after updating HUME.
 
-To install several grammars at startup, skipping any already compiled, add this to your `init.scm`:
+To install several grammars at startup, skipping any already installed, add this to your `init.scm`:
 
 ```scheme
 (call! "plum/ensure-grammars" '("rust" "toml" "python"))
 ```
+
+## Install from a local folder
+
+On a platform with no prebuilt grammars, or to install without a network connection, build the grammars yourself with `hume-grammar-build`, from [treesitter.hume](https://github.com/cvlmtg/treesitter.hume) (its README explains how to get it and what it needs):
+
+```sh
+hume-grammar-build build --out /path/to/hume-grammars rust python markdown markdown.inline
+```
+
+`--all` builds every grammar instead of the ones you name. Then tell PLUM to look in that folder first:
+
+```scheme
+(load-plugin! "core:plum" #:config (hash 'grammar-source "/path/to/hume-grammars"))
+```
+
+The path must be absolute, and `~` is not expanded. `:plum-install-grammar` and `plum/ensure-grammars` then install each grammar the folder holds from it, and download the others as usual, so the folder needs only the grammars you built yourself. A grammar from a folder built by a different version of `hume-grammar-build` than the one your HUME expects still installs, with a warning in `:messages`.
 
 ## Embedded languages
 
@@ -72,7 +80,7 @@ If HUME guesses the buffer's language wrong, or can't guess it, override it:
 :set buffer language=python
 ```
 
-Use the exact language name; press `Tab` after `language=` to complete from the languages HUME recognizes. (`:plum-install-grammar` completes only the languages HUME can install a grammar for, a slightly smaller set.) The override lasts for that buffer only.
+Use the exact language name; press `Tab` after `language=` to complete from the languages HUME recognizes. The override lasts for that buffer only.
 
 ## Teach HUME a new language
 
@@ -118,7 +126,7 @@ Built-in languages already come with the roots, identifiers and comments their l
 
 Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its settings stay. Definitions follow the same order as settings: yours beats a plugin's, whichever runs first, and a second one in your `init.scm` is ignored with a note in `:messages`.
 
-Now `my-lang` is detected like any built-in. `:plum-install-grammar` installs grammars only for the languages HUME ships with. For your own language, or a private or experimental tree-sitter grammar, point HUME at the compiled library and a highlight query file by hand:
+Now `my-lang` is detected like any built-in. `:plum-install-grammar` installs grammars only for the languages HUME ships with. For your own language, or a private or experimental tree-sitter grammar, point HUME at the grammar's library and a highlight query file by hand. To build the library from the grammar's source, run `hume-grammar-build compile <grammar-dir> <library>` (see [Install from a local folder](#install-from-a-local-folder) for where to get it):
 
 ```scheme
 (register-grammar! "my-lang"
@@ -129,7 +137,7 @@ Now `my-lang` is detected like any built-in. `:plum-install-grammar` installs gr
 
 The required fields, in order:
 - language name: one you haven't defined with `define-language!` works too, but no file is detected as that language until you define it
-- path to the compiled library
+- path to the grammar's library
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file
 
@@ -184,13 +192,13 @@ A grammar you register, from your `init.scm` or from a command you run, beats on
 :plum-list-grammars
 ```
 
-Opens a read-only buffer listing the grammars compiled on disk, with orphans (compiled under a name HUME ships no grammar for) in a section of their own.
+Opens a read-only buffer listing the installed grammars, with everything else in the grammars folder in a section of its own: grammars installed under a name that isn't a language HUME knows, older copies of a grammar a reinstall couldn't delete yet, and files an earlier version or an interrupted install left. A third section lists what grammar installs that were stopped partway left behind: the files they were downloading or unpacking, and the copies they loaded to check a grammar.
 
 ```
 :plum-cleanup-grammars
 ```
 
-Drops the compiled files for orphan grammars. Run it after a HUME update to reclaim space and avoid stale libraries.
+Removes everything in the second and third sections, keeping each language's installed grammar. On Windows, a grammar copy this session has loaded can't be deleted until HUME exits, so it is reported and removed the next time. Run it after a HUME update to reclaim space and avoid stale libraries.
 
 ## Large files
 
@@ -204,12 +212,12 @@ See [Settings](settings.md) for the full settings reference.
 
 ## Troubleshooting
 
-**The file opens with no colors.** The language has no compiled grammar. Run `:plum-list-grammars`. If the language isn't under **Installed grammars**, run `:plum-install-grammar <name>` (or just `:plum-install-grammar` while that buffer is focused). If `:plum-install-grammar` doesn't offer the language on `Tab`, HUME has no grammar to install for it. Check the language name on the status line and fix a wrong detection with `:set buffer language=<name>`. For a language HUME ships no grammar for, register one by hand (see [Teach HUME a new language](#teach-hume-a-new-language)).
+**The file opens with no colors.** The language has no installed grammar. Run `:plum-list-grammars`. If the language isn't under **Installed grammars**, run `:plum-install-grammar <name>` (or just `:plum-install-grammar` while that buffer is focused). If the install says there is no grammar for the language, HUME has none to install for it. Check the language name on the status line and fix a wrong detection with `:set buffer language=<name>`. For a language HUME ships no grammar for, register one by hand (see [Teach HUME a new language](#teach-hume-a-new-language)).
 
-**`:plum-install-grammar` fails.** The message names the missing piece, usually a tool missing from your `PATH`; check the [prerequisites](#prerequisites). A bad source tree recovers by running `:plum-install-grammar` again.
+**`:plum-install-grammar` fails.** The message names the cause, usually no network connection or a tool missing from your `PATH`; check the [prerequisites](#prerequisites). On a platform with no prebuilt grammars, [install from a local folder](#install-from-a-local-folder). A failed install leaves the installed copy of the grammar, if any, working.
 
 **Detection picks the wrong language.** Override with `:set buffer language=<name>`, or add the file pattern to your `init.scm` with `define-language!`.
 
-**Colors look wrong after a HUME update.** The update may pin a different version of the grammar or its highlighting rules than the one you installed. Run `:plum-cleanup-grammars`, then `:plum-install-grammar` again.
+**Colors look wrong after a HUME update.** The update may expect newer grammars or highlighting rules than the ones you installed. Run `:plum-install-grammar <name>` again for each installed grammar, and `:plum-cleanup-grammars`.
 
 **A fenced code block doesn't highlight, but Markdown emphasis does.** The fenced language's own grammar isn't installed. Markdown's bold/italic/inline-code always come with the Markdown grammar, but a fence's language (` ```rust `, ` ```python `, …) is a separate grammar. Install it by name, e.g. `:plum-install-grammar rust` for a ` ```rust ` fence; you don't need to open a file in that language first.

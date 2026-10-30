@@ -37,7 +37,8 @@ impl Editor {
     /// just produced). Any error from `init.scm` is reported as
     /// `Severity::Error` and shown in the statusline.
     pub(in crate::editor) fn init_scripting(&mut self, snapshot: &mut ReloadSnapshot) {
-        let mut host = hume_scripting::ScriptingHost::new(&self.state.dirs);
+        let mut host =
+            hume_scripting::ScriptingHost::new(&self.state.dirs, &self.state.library_wait);
         // Pre-register every native command name as a callable Steel binding before
         // any user code sees the engine.  This lets `init.scm` call `(move-left)`
         // directly without a FreeIdentifier compile error.  Only native commands

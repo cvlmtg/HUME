@@ -22,7 +22,7 @@ fn write_register_stores_text_for_a_named_register() {
 
     eval_with_real_host(
         &mut ed,
-        &mut ScriptingHost::new(&Dirs::none()),
+        &mut ScriptingHost::for_testing(&Dirs::none()),
         r#"(write-register! "3" (list "hi"))"#,
         tmp.path(),
     );
@@ -38,7 +38,7 @@ fn write_register_multi_value_preserves_order() {
 
     eval_with_real_host(
         &mut ed,
-        &mut ScriptingHost::new(&Dirs::none()),
+        &mut ScriptingHost::for_testing(&Dirs::none()),
         r#"(write-register! "3" (list "a" "b"))"#,
         tmp.path(),
     );
@@ -57,7 +57,7 @@ fn read_register_returns_text_written_from_rust() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
         r#"(equal? (read-register "3") (list "hi"))"#,
     );
@@ -82,7 +82,7 @@ fn write_register_k_pushes_ring_and_stamps_paste() {
 
     eval_with_real_host(
         &mut ed,
-        &mut ScriptingHost::new(&Dirs::none()),
+        &mut ScriptingHost::for_testing(&Dirs::none()),
         r#"(write-register! "k" (list "x"))"#,
         tmp.path(),
     );
@@ -103,7 +103,7 @@ fn read_register_k_reads_ring_head() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
         r#"(write-register! "k" (list "x"))
            (equal? (read-register "k") (list "x"))"#,
@@ -119,7 +119,7 @@ fn write_register_b_discards() {
 
     eval_with_real_host(
         &mut ed,
-        &mut ScriptingHost::new(&Dirs::none()),
+        &mut ScriptingHost::for_testing(&Dirs::none()),
         r#"(write-register! "b" (list "x"))"#,
         tmp.path(),
     );
@@ -137,7 +137,7 @@ fn read_register_b_returns_false() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
         r#"(eq? (read-register "b") #f)"#,
     );
@@ -152,7 +152,7 @@ fn read_register_unwritten_returns_false() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
         r#"(eq? (read-register "9") #f)"#,
     );
@@ -170,7 +170,7 @@ fn read_register_holding_a_macro_returns_false() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
         r#"(eq? (read-register "3") #f)"#,
     );
@@ -191,7 +191,7 @@ fn clipboard_register_round_trips_through_the_mock_clipboard() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
         r#"(write-register! "c" (list "hi"))
            (equal? (read-register "c") (list "hi"))"#,
@@ -214,7 +214,7 @@ fn callable_directly_from_init_scm() {
 
     eval_with_real_host(
         &mut ed,
-        &mut ScriptingHost::new(&Dirs::none()),
+        &mut ScriptingHost::for_testing(&Dirs::none()),
         r#"(write-register! "3" (list "init-value"))"#,
         tmp.path(),
     );

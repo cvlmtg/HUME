@@ -1,6 +1,6 @@
 ;;; runtime/scheme/languages.scm — HUME bundled default language identities.
 ;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
 (define-language! "ada" '("adb" "ads"))
 (define-language! "adl" '("adl"))

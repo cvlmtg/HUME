@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use hume_platform::dirs::{Dirs, GrammarBuild};
+use hume_platform::dirs::Dirs;
 use hume_platform::path::AbsolutePath;
 
 // ── Directory state ──────────────────────────────────────────────────────────
@@ -31,8 +31,6 @@ pub(crate) struct ScriptDirs {
     /// `./file.scm` resolves against it. `None` until `eval_init` sets it, so
     /// it stays unset under `--no-config`.
     pub(crate) init_dir: Option<PathBuf>,
-    /// The grammar compiler `compile-grammar!` runs, or where it was looked for.
-    pub(crate) grammar_build: GrammarBuild,
 }
 
 impl ScriptDirs {
@@ -58,7 +56,6 @@ impl ScriptDirs {
             data_dir_display,
             runtime_dir_display,
             init_dir: None,
-            grammar_build: dirs.grammar_build.clone(),
         }
     }
 }

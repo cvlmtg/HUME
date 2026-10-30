@@ -112,7 +112,7 @@ use self::tui::Tui;
 ///
 /// Grouped into its own struct, rather than left as individual `EditorState`
 /// fields, so `Editor::reset_config_state` resets by *construction*
-/// (`self.state.config = ConfigState::new(kitty_enabled, prior_clock)`) instead of by a
+/// (`self.state.config = ConfigState::new(kitty_enabled, prior_clock, library_wait)`) instead of by a
 /// hand-maintained list of field clears: a field added here is reset the
 /// moment it's added, with no second place to remember. Fields that must
 /// survive a reload (buffers, panes, undo history, registers, running LSP
@@ -198,13 +198,19 @@ impl ConfigState {
     /// `:reload-config`. See [`hume_decorations::DecorationStores::reset`]'s
     /// doc for why this can't just be `Default::default()` like every other
     /// field here.
-    pub(super) fn new(kitty_enabled: bool, prior_clock: u64) -> Self {
+    ///
+    /// `library_wait` is the session's [`EditorState::library_wait`].
+    pub(super) fn new(
+        kitty_enabled: bool,
+        prior_clock: u64,
+        library_wait: &hume_core::OsWait,
+    ) -> Self {
         Self {
             keymap: Keymap::with_defaults(kitty_enabled),
             local_keymaps: LocalKeymaps::default(),
             registry: CommandRegistry::with_defaults(),
             completion_sources: completion::SourceRegistry::with_defaults(),
-            languages: LanguageRegistry::new(),
+            languages: LanguageRegistry::new(library_wait.clone()),
             triggers: rustc_hash::FxHashMap::default(),
             decorations: hume_decorations::DecorationStores::reset(prior_clock),
             statusline_text: rustc_hash::FxHashMap::default(),
@@ -227,6 +233,9 @@ pub(crate) struct EditorState {
     /// resolved once at startup. Every consumer reads them here instead of
     /// the process environment.
     pub(crate) dirs: hume_platform::dirs::Dirs,
+    /// What the language registry opens grammar libraries through. Every
+    /// scripting host this session starts connects its budget to it.
+    pub(crate) library_wait: hume_core::OsWait,
     /// All open buffers. SSOT for buffer content, history, and file metadata.
     pub(crate) buffers: BufferStore,
     /// Each buffer's diagnostics and last insertion, carried with its text.
@@ -469,6 +478,7 @@ impl EditorState {
     pub(in crate::editor) fn base(focus: focus::Focus, cwd: AbsolutePath) -> Self {
         let settings = EditorSettings::default();
         let history_capacity = settings.prompt_history_levels;
+        let library_wait = hume_core::OsWait::default();
         Self {
             dirs: hume_platform::dirs::Dirs::none(),
             buffers: BufferStore::new(),
@@ -476,7 +486,8 @@ impl EditorState {
             lsp: lsp::LspState::new_threaded(Arc::new(|| {})),
             // `kitty_enabled: false` matches: the real probe result isn't known
             // until `set_kitty_support` runs, after `Editor::open`.
-            config: ConfigState::new(false, 0),
+            config: ConfigState::new(false, 0, &library_wait),
+            library_wait,
             input: input_stack::InputStack::new(),
             pending: input_stack::PendingSequence::default(),
             count: hume_core::Count::UNTYPED,

@@ -43,7 +43,7 @@ struct Grammars {
 
 static GRAMMARS: LazyLock<Grammars> = LazyLock::new(|| {
     require_grammars(&["rust", "markdown", "markdown.inline"]);
-    let mut registry = LanguageRegistry::new();
+    let mut registry = LanguageRegistry::for_testing();
     let mut attach = |name: &str, symbol: &str, queries: QueryFiles| {
         registry
             .attach_grammar(

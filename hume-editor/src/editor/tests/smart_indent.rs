@@ -413,7 +413,7 @@ fn enter_in_a_fenced_block_starts_from_the_fences_indent() {
         };
         attach_fixture_grammar_with(&mut ed, name, symbol, &queries);
     }
-    ed.scripting = Some(ScriptingHost::new(&Dirs::none()));
+    ed.scripting = Some(ScriptingHost::for_testing(&Dirs::none()));
     let lang = ed.state.config.languages.intern("markdown");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();

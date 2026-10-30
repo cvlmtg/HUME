@@ -6,7 +6,7 @@ use super::{LanguageRegistry, detect_at};
 /// An absolute glob names a Unix root, which no Windows path starts with.
 #[test]
 fn an_absolute_glob_matches_the_whole_path_only() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("ini", &[], &["/etc/buckconfig"], &[])
         .unwrap();
     assert_eq!(detect_at("/etc/buckconfig", None, &reg), reg.id_of("ini"));

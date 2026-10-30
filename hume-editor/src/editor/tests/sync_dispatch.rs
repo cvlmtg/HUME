@@ -1285,7 +1285,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
 fn procs_recorded_after_define_command() {
     use hume_scripting::host::CommandHost as _;
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(define-command! "ping" "" (lambda () #t))
@@ -1330,7 +1330,7 @@ fn native_call_bang_at_init_top_level_raises_naming_the_command() {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
@@ -1871,7 +1871,7 @@ fn buffer_selections_steel_roundtrip() {
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.register_command_names(&name_refs);
 
     let mut init_host = live_host!(ed);

@@ -157,7 +157,7 @@ fn write_register_rejects_bare_string_value() {
 /// round-trip-via-log idiom as `fs::tests::data_dir_resolves_through_real_registration`.
 #[test]
 fn write_then_read_round_trips_through_real_registration() {
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
+    let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
     let mut backing = RegisterCapableHost::default();
     host.eval_source(
         r#"(write-register! "3" (list "alpha" "beta"))

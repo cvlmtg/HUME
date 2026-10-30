@@ -130,3 +130,14 @@ fn a_wait_while_idle_is_ignored() {
     std::thread::sleep(Duration::from_millis(200));
     assert!(dog.cancel());
 }
+
+/// An `OsWait` that outlives its watchdog runs its wait, with no budget left
+/// to stop.
+#[test]
+fn an_os_wait_runs_its_wait_after_the_watchdog_is_gone() {
+    let dog = EvalWatchdog::new();
+    let wait = hume_core::OsWait::default();
+    dog.connect(&wait);
+    drop(dog);
+    assert_eq!(wait.waiting(|| 7), 7);
+}

@@ -78,9 +78,9 @@ highlighter — every per-language query a layer may need (a `textobjects.scm`, 
   first test's whole body in between. A match failing the contiguity check is dropped whole, never
   trimmed to its contiguous prefix — trimming would still fabricate an object out of content the
   query never grouped (a later, unrelated function tagged as a test because it happened to follow
-  one). Confirmed present on Helix's own `runtime/queries/rust/textobjects.scm` at the pin this
-  repo fetches (`f6f3eb1fe4a7`) and unfixable from here — PLUM downloads queries from that pin with
-  no local-override mechanism — so the check lives at the consumption layer instead.
+  one). Confirmed present on Helix's own `runtime/queries/rust/textobjects.scm` (`f6f3eb1fe4a7`)
+  and unfixable from here — PLUM installs the release's queries with no local-override
+  mechanism — so the check lives at the consumption layer instead.
 - `ObjectSpans` is the owned, sorted, deduplicated list of spans collection produces — owned
   rather than an iterator, since `hume-editor` needs disjoint mutable borrows to apply the
   resulting selection, and N cursors × `count` steps then probe a vector instead of re-running the
@@ -226,7 +226,7 @@ Recorded here so they are not re-proposed:
   a test.
 - *A text/whitespace scan of the gap between two captured nodes, instead of a tree-native
   `next_sibling()` check.* Disproven directly: a comment between an attribute and its function is a
-  grammar `extra` (`tests/fixtures/grammars/rust/src/grammar.json`), which might suggest tree-sitter
+  grammar `extra` (`src/grammar.json`'s `extras` in tree-sitter-rust), which might suggest tree-sitter
   treats it as transparent — but a raw match dump shows the opposite: `function.around`'s own `.`
   anchor does *not* skip it, and already drops the attribute across a comment gap today, before any
   of this fix's code runs. A whitespace scan would have solved a problem the query's own anchor

@@ -16,7 +16,7 @@ fn exists(ed: &mut Editor, tmp: &std::path::Path, setup: &str, names: &[&str]) -
         r#"{setup}
            (define-typed-command! "check" "" (lambda (bid) (log! 'info (to-string (list {calls})))))"#
     );
-    let mut host = hume_scripting::ScriptingHost::new(&Dirs {
+    let mut host = hume_scripting::ScriptingHost::for_testing(&Dirs {
         data: Some(tmp.to_path_buf()),
         ..Dirs::none()
     });

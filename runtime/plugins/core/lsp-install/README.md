@@ -49,7 +49,7 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 | `lib/discovery.scm` | The discovery hint |
 | `commands.scm` | `:lsp-install`, `:lsp-uninstall`, `:lsp-catalog`, the `lsp-install/install-server` command a reinstall defers to, completion source |
 | `lib/lock.scm` | Cross-process install lock |
-| `lib/sha256.scm`, `lib/unpack.scm` | Hashing, unpacking and chmod through system tools |
+| `lib/unpack.scm` | Unpacking and chmod; the digest check and archive extraction are `core:stdlib`'s `stdlib/verify-sha256!` and `stdlib/extract-archive!` |
 | `lib/platform.scm` | This platform's Mason target name, and whether it is Windows |
 | `data/language-servers.scm`, `data/registrations/`, `data/requirements/`, `data/sources/`, `data/mason-pin.scm` | Generated catalogs and the Mason pin, described below |
 
@@ -124,10 +124,11 @@ need, and `sources/` stays unread until something installs.
 
 - `platforms` is `*` for every platform, or a list of the targets below.
 - `fmt` is `tar`, `zip`, `gz` or `raw` for a download, and `#f` for a package-manager
-  install. The tools follow, in the order the check looks for them: the program that unpacks
-  the download (the installer runs the first tool of a tar or zip row), then `curl`; or the
-  one program the package manager runs (the installer runs a pypi row's tool as its
-  interpreter).
+  install. The tools follow, in the order the check looks for them: for a download, a
+  decompressor a Linux `tar` needs (`xz`, `bzip2`) or `gzip` for a `gz` row, then `curl`;
+  or the one program the package manager runs (the installer runs a pypi row's tool as its
+  interpreter). A tar or zip row names no extractor: the check asks `core:stdlib`'s
+  `stdlib/find-extractor` for one before the tools.
 - `missing` is `download` or `package`: which message a platform with no row gets.
 - The generator classifies every download once, so the runtime does no format or tool
   guessing. `sync-lsp-sources.py` already drops downloads that are not installable, which is

@@ -15,7 +15,7 @@ use hume_platform::dirs::Dirs;
 /// and worth pinning.
 #[test]
 fn child_stderr_must_be_captured_before_wait() {
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut null_host = NullHost;
     // Failure path: stdout+stderr+stdin all piped, stdin closed
     // immediately, wait for exit, read stderr on nonzero.
@@ -49,7 +49,7 @@ fn child_stderr_must_be_captured_before_wait() {
 /// where the child starts.
 #[test]
 fn run_capture_covers_success_failure_and_spawn_error() {
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut null_host = NullHost;
     let src = r#"
 (let ([r (run-capture! "echo" (list "hello-world"))])
@@ -77,7 +77,7 @@ fn run_capture_covers_success_failure_and_spawn_error() {
 /// tolerant caller.
 #[test]
 fn native_error_reraised_from_a_handler_reaches_the_enclosing_handler() {
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut inline_host = crate::null_host::RecordingInlineOutputHost::default();
     let src = r#"
         (define (inner-fetch)
@@ -102,7 +102,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
     // Shape: the native-builtin-raising call (run-inline-output!) is NOT
     // wrapped by an inner with-handler at all; it propagates in one hop
     // straight to the outer tolerant handler.
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut inline_host = crate::null_host::RecordingInlineOutputHost::default();
     let src = r#"
         (define (inner-fetch)
@@ -121,7 +121,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
 /// that an outer `with-handler` catches.
 #[test]
 fn dynamic_wind_cleanup_runs_when_an_outer_handler_catches_the_bodys_error() {
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut inline_host = crate::null_host::RecordingInlineOutputHost::default();
     let src = r#"
         (define cleanup-ran #f)

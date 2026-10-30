@@ -1,5 +1,7 @@
 //! Grammar attachment and trigger-char registration.
 
+use hume_core::GrammarSource;
+
 use crate::types::GrammarReg;
 
 /// Grammar attachment and trigger-char registration, accessed through
@@ -13,6 +15,11 @@ pub trait LanguageHost {
     /// registration path. `false`, opening nothing, when a higher origin's
     /// grammar holds the name.
     fn attach_grammar(&mut self, reg: &GrammarReg) -> Result<bool, String>;
+
+    /// Load `source` as `name`'s grammar would load, registering nothing,
+    /// so a grammar that cannot load fails the call in any session and
+    /// whatever origin holds `name`.
+    fn check_grammar(&self, name: &str, source: &GrammarSource) -> Result<(), String>;
 
     /// Whether `language` has a grammar, loaded or yet to load. A grammar
     /// whose load failed does not count.

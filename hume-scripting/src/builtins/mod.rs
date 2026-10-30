@@ -15,7 +15,6 @@ pub(crate) mod dirs;
 pub(crate) mod edits;
 pub(crate) mod errors;
 pub(crate) mod fs;
-pub(crate) mod grammar;
 pub(crate) mod hooks;
 pub(crate) mod ids;
 pub(crate) mod io;
@@ -298,10 +297,9 @@ macro_rules! builtins {
 // %read-language-data: the one reader of `<runtime>/scheme/languages/<name>.scm`
 // (record format: runtime/scheme/README.md), on data-file and read-data-file;
 // an unlisted name, or a missing runtime dir, reads as #f.
-// %bundled-language-config is the editor's view: every entry but `grammar`,
-// as a hash whose keys ScriptingHost::bundled_language's decoder defines and
-// checks. bundled-language-grammar and bundled-grammar-languages are the
-// plugins' view.
+// %bundled-language-config is the editor's view: every entry as a hash whose
+// keys ScriptingHost::bundled_language's decoder defines and checks.
+// bundled-languages lists the names, sorted, for plugins.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -403,11 +401,6 @@ builtins! {
     open "command-plugin" commands::command_plugin(name: String);
     open "%command-callable?" => "command-exists?" commands::command_callable(name: String);
 
-    // Grammar compilation: sandbox-free, full-trust plugin model. A Rust
-    // builtin for the reasons in grammar.rs's module doc;
-    // `grammar-output-path` is plain Scheme.
-    open "compile-grammar!" grammar::compile_grammar(src: String, out: String);
-
     // Inline-output subprocess: process-group-isolated spawn for
     // `#:inline-output` commands, sandbox-free like Steel's own stdlib.
     open  "%run-inline-output!" => "run-inline-output!" process::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal, env_val: SteelVal);
@@ -468,6 +461,7 @@ builtins! {
     config "%define-language!" => "define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal);
     config "%configure-language!" => "configure-language!" syntax::configure_language(name: SteelVal, fields_val: SteelVal);
     open   "%register-grammar!" => "register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, optional_queries: SteelVal);
+    open   "%check-grammar!" => "check-grammar!" syntax::check_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, optional_queries: SteelVal);
     plain  "grammar-optional-queries" syntax::grammar_optional_queries();
 
     // LSP server registration: ranked by whose behalf it is made, last-wins
@@ -619,6 +613,7 @@ builtins! {
     open "set-cwd!" fs::set_cwd(path: args::ScriptPath);
     open "replace-dir!" fs::replace_dir(src: args::ScriptPath, dest: args::ScriptPath);
     open "remove-dir!" fs::remove_dir(dir: args::ScriptPath);
+    open "copy-file-range!" fs::copy_file_range(src: args::ScriptPath, offset: args::Usize, size: args::Usize, dest: args::ScriptPath);
     open "first-path-outside" fs::first_path_outside(dir: args::ScriptPath, paths: SteelVal);
     open "try-lock-file!" fs::try_lock_file(path: args::ScriptPath);
     open "unlock-file!" fs::unlock_file(path: args::ScriptPath);

@@ -9,8 +9,8 @@
 //! owns cleanup on a normal exit. The table is global because the terminator
 //! thread has no other path to children spawned elsewhere.
 //!
-//! Children run to completion in place (`run_capture`, `run_inline_output`,
-//! `grammar_build`) are not tracked and can be orphaned by a force-exit.
+//! Children run to completion in place (`run_capture`, `run_inline_output`)
+//! are not tracked and can be orphaned by a force-exit.
 //! They are short-lived and self-terminating.
 
 use std::process::Child;

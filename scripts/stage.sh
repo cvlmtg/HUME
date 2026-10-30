@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # Stage an archive-ready directory tree under dist/stage/<name>/.
 # Usage: stage.sh <target-triple> <layout>
-#   layout = "unix"    -> bin/hume + libexec/hume/hume-grammar-build
-#                         + share/hume/runtime/<runtime contents>
-#   layout = "windows" -> hume.exe + hume-grammar-build.exe
-#                         + runtime/<runtime contents>
+#   layout = "unix"    -> bin/hume + share/hume/runtime/<runtime contents>
+#   layout = "windows" -> hume.exe + runtime/<runtime contents>
 set -euo pipefail
 
 target="$1"
@@ -19,27 +17,22 @@ name="hume-${version}-${sha}-${target}"
 stage="$root/dist/stage/$name"
 
 exe="hume"
-tool="hume-grammar-build"
 if [[ "$target" == *windows* ]]; then
     exe="hume.exe"
-    tool="hume-grammar-build.exe"
 fi
 bin_src="$root/target/$target/release/$exe"
-tool_src="$root/target/$target/release/$tool"
 
 mkdir -p "$root/dist/stage"
 rm -rf "$stage"
 
 if [[ "$layout" == "unix" ]]; then
-    mkdir -p "$stage/bin" "$stage/libexec/hume" "$stage/share/hume/runtime"
+    mkdir -p "$stage/bin" "$stage/share/hume/runtime"
     cp "$bin_src" "$stage/bin/hume"
-    cp "$tool_src" "$stage/libexec/hume/$tool"
-    chmod 755 "$stage/bin/hume" "$stage/libexec/hume/$tool"
+    chmod 755 "$stage/bin/hume"
     cp -R "$root/runtime/." "$stage/share/hume/runtime/"
 else
     mkdir -p "$stage/runtime"
     cp "$bin_src" "$stage/$exe"
-    cp "$tool_src" "$stage/$tool"
     cp -R "$root/runtime/." "$stage/runtime/"
 fi
 

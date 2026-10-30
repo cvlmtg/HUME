@@ -1,6 +1,6 @@
 //! The data-file reader in `bootstrap.scm`, and the language-data reader
-//! built on it, through `ScriptingHost::bundled_language` and the two grammar
-//! functions plugins call.
+//! built on it, through `ScriptingHost::bundled_language` and
+//! `bundled-languages`.
 
 use crate::ScriptingHost;
 use crate::null_host::NullHost;
@@ -23,7 +23,7 @@ fn runtime_with(files: &[(&str, &str)]) -> tempfile::TempDir {
 }
 
 fn host_for(runtime: Option<&Path>) -> ScriptingHost {
-    ScriptingHost::new(&Dirs {
+    ScriptingHost::for_testing(&Dirs {
         runtime: runtime.map(Path::to_path_buf),
         ..Dirs::none()
     })
@@ -61,7 +61,7 @@ fn strings(items: &[&str]) -> Vec<String> {
 
 #[test]
 fn read_bang_parses_dotted_pairs_raises_on_bad_syntax_and_keeps_no_state() {
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let src = r#"
         (define parsed (hm.read! "((language-id . \"x\") (b (\"/*\" . \"*/\")))"))
         (unless (equal? parsed (list (list (cons 'language-id "x") (list 'b (cons "/*" "*/")))))
@@ -76,13 +76,12 @@ fn read_bang_parses_dotted_pairs_raises_on_bad_syntax_and_keeps_no_state() {
 }
 
 #[test]
-fn the_config_carries_every_field_but_the_grammar() {
+fn the_config_carries_every_field() {
     let lang = read_ok(
         r#"((comment-tokens "//" "///")
  (block-comment-tokens ("/*" . "*/") ("/**" . "*/"))
  (language-id . "typescriptreact")
- (roots "package.json" "tsconfig.json")
- (grammar "https://ts" "abc" "tree_sitter_tsx" "tsx"))"#,
+ (roots "package.json" "tsconfig.json"))"#,
     );
 
     assert_eq!(
@@ -101,10 +100,7 @@ fn the_config_carries_every_field_but_the_grammar() {
 
 #[test]
 fn absent_keys_read_as_empty() {
-    assert_eq!(
-        read_ok(r#"((grammar "u" "r" "s" ""))"#),
-        LanguageFields::default()
-    );
+    assert_eq!(read_ok("()"), LanguageFields::default());
 }
 
 #[test]
@@ -186,7 +182,7 @@ fn a_malformed_file_is_an_error_naming_the_file_and_the_problem() {
             "block-comment-tokens",
         ),
         ("((roots 1))", "roots"),
-        (r#"((grammar "url" "rev" "sym"))"#, "grammar"),
+        (r#"((grammar "url" "rev" "sym" ""))"#, "unknown key grammar"),
         (r#"((language-id "tsx"))"#, "language-id"),
         (r#"((roots "a""#, "lang.scm"),
         ("() ()", "top-level form"),
@@ -218,90 +214,58 @@ fn a_name_that_is_not_a_listed_file_is_no_data() {
 }
 
 #[test]
-fn bundled_language_grammar_names_the_four_source_fields() {
-    eval(
-        &[(
-            "jsx",
-            r#"((grammar "u" "r" "tree_sitter_javascript" "sub"))"#,
-        )],
-        r#"(let ((source (bundled-language-grammar "jsx")))
-             (unless (equal? source (hash 'url "u" 'rev "r"
-                                          'symbol "tree_sitter_javascript" 'subpath "sub"))
-               (error (to-string source))))"#,
-    )
-    .expect("grammar source");
-}
-
-#[test]
-fn bundled_language_grammar_is_false_without_a_file_a_grammar_key_or_a_runtime_dir() {
-    eval(
-        &[("cabal", r#"((comment-tokens "--"))"#)],
-        r#"(when (bundled-language-grammar "cabal") (error "cabal has no grammar"))
-           (when (bundled-language-grammar "cobol") (error "cobol has no file"))"#,
-    )
-    .expect("no grammar");
-    host_for(None)
-        .eval_source(
-            r#"(when (bundled-language-grammar "jsx") (error "no runtime dir"))"#,
-            &mut NullHost,
-        )
-        .expect("no runtime dir");
-}
-
-#[test]
-fn bundled_grammar_languages_lists_only_files_with_a_grammar_sorted() {
+fn bundled_languages_lists_every_language_file_sorted() {
     eval(
         &[
-            ("yaml", r#"((grammar "u" "r" "tree_sitter_yaml" ""))"#),
+            ("yaml", r#"((roots "a"))"#),
             ("cabal", r#"((comment-tokens "--"))"#),
-            (
-                "docker-compose",
-                r#"((grammar "u" "r" "tree_sitter_yaml" ""))"#,
-            ),
+            ("docker-compose", "()"),
         ],
-        r#"(let ((names (bundled-grammar-languages)))
-             (unless (equal? names (list "docker-compose" "yaml"))
+        r#"(let ((names (bundled-languages)))
+             (unless (equal? names (list "cabal" "docker-compose" "yaml"))
                (error (to-string names))))"#,
     )
-    .expect("sorted grammar languages");
+    .expect("sorted language names");
 }
 
 #[test]
-fn bundled_grammar_languages_is_empty_without_a_languages_dir_or_a_runtime_dir() {
+fn bundled_languages_is_empty_without_a_languages_dir_or_a_runtime_dir() {
     let runtime = tempfile::tempdir().expect("create temp runtime dir");
     for dirs_runtime in [Some(runtime.path()), None] {
         host_for(dirs_runtime)
             .eval_source(
-                r#"(unless (null? (bundled-grammar-languages)) (error "expected no languages"))"#,
+                r#"(unless (null? (bundled-languages)) (error "expected no languages"))"#,
                 &mut NullHost,
             )
             .expect("no languages");
     }
 }
 
+/// Listing names reads no file, so a malformed one is listed, not reported.
 #[test]
-fn bundled_grammar_languages_reports_a_malformed_file() {
-    let err = eval(&[("bad", "((roots 1))")], "(bundled-grammar-languages)")
-        .expect_err("a malformed file is an error");
-
-    assert!(err.contains("bad.scm"), "{err}");
+fn bundled_languages_lists_a_malformed_file_without_reading_it() {
+    eval(
+        &[("bad", "((roots 1))")],
+        r#"(unless (equal? (bundled-languages) (list "bad"))
+             (error (to-string (bundled-languages))))"#,
+    )
+    .expect("a malformed file is listed");
 }
 
 #[test]
 fn an_unparsable_file_read_inside_an_outer_handler_leaves_the_vm_usable() {
     eval(
-        &[
-            ("bad", r#"((roots "a""#),
-            ("good", r#"((grammar "u" "r" "s" ""))"#),
-        ],
-        r#"(define caught
-             (with-handler (lambda (err) (to-string err))
-                           (bundled-language-grammar "bad")))
-           (unless (and (string? caught) (string-contains? caught "bad.scm"))
-             (error (string-append "expected an error naming bad.scm: " (to-string caught))))
-           (unless (equal? (bundled-language-grammar "good")
-                           (hash 'url "u" 'rev "r" 'symbol "s" 'subpath ""))
-             (error "a read after the caught error failed"))"#,
+        &[("bad", r#"((roots "a""#), ("good", r#"((roots "b"))"#)],
+        &format!(
+            r#"{LANGUAGES_DIR}
+               (define caught
+                 (with-handler (lambda (err) (to-string err))
+                               (read-data-file (path-join dir "bad.scm"))))
+               (unless (and (string? caught) (string-contains? caught "bad.scm"))
+                 (error (string-append "expected an error naming bad.scm: " (to-string caught))))
+               (unless (equal? (read-data-file (path-join dir "good.scm")) (list (list 'roots "b")))
+                 (error "a read after the caught error failed"))"#
+        ),
     )
     .expect("the VM stays usable after a caught parse error");
 }

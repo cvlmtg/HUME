@@ -247,7 +247,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.state.settings.hook_viewport_debounce_ms = 0;
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -276,7 +276,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
 /// Registers an `on-viewport-change` hook that bumps `indent-width` once per
 /// fire, so a test reads the fire count off the buffer's override.
 fn count_viewport_fires(ed: &mut Editor, dir: &Path) {
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         ed,
         &mut host,
@@ -333,7 +333,7 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     ed.state.buffers.get_mut(bid).language = Some(lang);
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -388,7 +388,7 @@ fn on_trigger_char_does_not_fire_in_normal_mode() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     ed.state.buffers.get_mut(bid).language = Some(lang);
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

@@ -1075,7 +1075,7 @@ fn a_registration_in_a_failed_init_is_never_applied() {
         ),
     )
     .unwrap();
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let err = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)

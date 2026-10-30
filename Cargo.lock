@@ -860,14 +860,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hume-grammar-build"
-version = "0.18.0"
-dependencies = [
- "cc",
- "tempfile",
-]
-
-[[package]]
 name = "hume-grid"
 version = "0.18.0"
 dependencies = [
@@ -953,6 +945,7 @@ dependencies = [
  "insta",
  "num-traits",
  "rustc-hash",
+ "same-file",
  "serde_json",
  "slotmap",
  "steel-core",

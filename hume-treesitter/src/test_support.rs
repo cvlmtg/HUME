@@ -20,7 +20,7 @@ use crate::registry::{
 /// name name the same language.
 pub(crate) fn test_language_id(name: &str) -> LanguageId {
     static NAMES: LazyLock<Mutex<LanguageRegistry>> =
-        LazyLock::new(|| Mutex::new(LanguageRegistry::new()));
+        LazyLock::new(|| Mutex::new(LanguageRegistry::for_testing()));
     NAMES.lock().unwrap_or_else(|e| e.into_inner()).intern(name)
 }
 
@@ -63,12 +63,11 @@ pub(crate) fn make_bundle(
     })
 }
 
-/// The markdown grammar fixture with its own highlights and injections
-/// queries.
+/// The markdown grammar fixture with its highlights and injections queries.
 pub(crate) fn fixture_markdown() -> Arc<GrammarBundle> {
     let highlights = test_fixtures::grammar_query_path("markdown");
-    let injections = highlights.with_file_name(OptionalQuery::Injections.file_name());
-    test_fixtures::require_fixture_file(&injections, "markdown injections.scm");
+    let injections =
+        test_fixtures::require_helix_query("markdown", OptionalQuery::Injections.file_name());
     let read = |path: &std::path::Path| std::fs::read_to_string(path).expect("read markdown query");
     make_bundle(
         "markdown",

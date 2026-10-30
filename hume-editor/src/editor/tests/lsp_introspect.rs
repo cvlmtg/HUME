@@ -183,7 +183,7 @@ fn lsp_servers_names_the_attached_server() {
 fn lsp_server_registered_reflects_registration() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -210,7 +210,7 @@ fn lsp_server_registered_is_false_when_unregistered() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
         r#"(not (lsp-server-registered? "rust-analyzer"))"#,
     );
@@ -224,7 +224,7 @@ fn lsp_server_registered_is_false_when_unregistered() {
 fn buffer_generation_changes_after_an_edit() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -518,7 +518,7 @@ fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
 fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     // Captures the hook's own `(first . end)` payload so the assertion
     // compares two independently-reached values, not the builtin against
     // itself. Both paths share `geometry::pane_visible_range`, so this
@@ -563,7 +563,7 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
         r#"(equal? (hash-ref (viewport-range bid) 'end-line) 3)"#,
     );
@@ -617,7 +617,7 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
         "test setup: the extra buffer must not be focused"
     );
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -704,7 +704,7 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
         "test setup: back on the original tab, hidden_bid's tab now in the background"
     );
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -754,7 +754,7 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
     rig.ed
         .switch_to_buffer_with_jump(FocusedPane::current(&rig.ed.view), other_bid);
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut rig.ed,
         &mut host,
@@ -877,7 +877,7 @@ fn lsp_position_params_is_false_for_an_unattached_buffer() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     // No server attached at all.
-    let host = ScriptingHost::new(&Dirs::none());
+    let host = ScriptingHost::for_testing(&Dirs::none());
     let fired = run_probe(
         &mut ed,
         host,
@@ -1536,7 +1536,7 @@ fn lsp_document_params_is_false_for_a_buffer_with_no_path() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
         "(not (lsp-document-params bid))",
     );

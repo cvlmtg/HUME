@@ -49,11 +49,11 @@ jobs:
           tool: cargo-zigbuild@0.23.4
 
       - name: Build
-        run: cargo ${{ matrix.glibc && 'zigbuild' || 'build' }} --release --locked -p hume-editor -p hume-grammar-build --target ${{ matrix.target }}${{ matrix.glibc && format('.{0}', matrix.glibc) || '' }}
+        run: cargo ${{ matrix.glibc && 'zigbuild' || 'build' }} --release --locked -p hume-editor --target ${{ matrix.target }}${{ matrix.glibc && format('.{0}', matrix.glibc) || '' }}
 
       - name: Check glibc floor
         if: matrix.glibc
-        run: bash scripts/check-glibc-floor.sh ${{ matrix.glibc }} target/${{ matrix.target }}/release/hume target/${{ matrix.target }}/release/hume-grammar-build
+        run: bash scripts/check-glibc-floor.sh ${{ matrix.glibc }} target/${{ matrix.target }}/release/hume
 
       - name: Stage archive
         shell: bash

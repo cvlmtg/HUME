@@ -27,19 +27,21 @@ PLUM installs nothing on its own; the commands below do the work when you run th
 | `:plum-cleanup-plugins` | Remove on-disk plugins that `init.scm` does not name |
 | `:plum-update-plugins` | Bring every installed third-party plugin to its pinned tag, branch or commit, or its latest version (see [Pinning a version](plugins.md#pinning-a-version)) |
 | `:plum-list-plugins` | Show named / installed / orphan / missing plugins |
-| `:plum-install-grammar <lang>` | Install and compile one language's grammar; Tab-completes the languages HUME ships a grammar for |
-| `:plum-list-grammars` | Show the installed grammars, and the orphans left under names HUME ships no grammar for |
-| `:plum-cleanup-grammars` | Remove compiled grammars you no longer need |
+| `:plum-install-grammar <lang>` | Download and install one language's grammar; Tab-completes language names |
+| `:plum-list-grammars` | Show the installed grammars, and what else the grammars folder holds: grammars installed under a name that isn't a language HUME knows, leftover files, and what grammar installs that were stopped partway left |
+| `:plum-cleanup-grammars` | Remove everything in the grammars folder but the installed grammars, and what installs that were stopped partway left behind |
 | `:plum-install-theme <user/repo>` | Install (or reinstall) a theme repo's themes |
 | `:plum-update-themes` | Pull the latest version of every installed theme repo |
 | `:plum-list-themes` | Show installed theme repos and the themes each provides |
 | `:plum-remove-theme <user/repo>` | Remove an installed theme repo; Tab-completes installed slugs |
 
-`plum/ensure-grammars` installs a list of grammars not yet compiled. It takes a list argument, so it is for `init.scm`, not the `:` prompt:
+`plum/ensure-grammars` installs a list of grammars not yet installed. It takes a list argument, so it is for `init.scm`, not the `:` prompt:
 
 ```scheme
 (call! "plum/ensure-grammars" '("rust" "toml"))
 ```
+
+`#:config (hash 'grammar-source "/path/to/folder")` makes PLUM install the grammars a folder you built them into holds from there, and download the rest; see [Install from a local folder](syntax-highlighting.md#install-from-a-local-folder).
 
 Leaving PLUM out only removes these commands. Already-installed plugins, grammars, and themes keep working without it; PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow and [Themes](themes.md#installing-themes) for the theme workflow.
 

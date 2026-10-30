@@ -37,6 +37,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     require_grammars(&["markdown"]);
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
+    ed.view.theme = crate::testing::build_snapshot_theme();
     register_markdown(&mut ed);
     run(
         &mut ed,
@@ -114,6 +115,7 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
     require_grammars(&["markdown"]);
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
+    ed.view.theme = crate::testing::build_snapshot_theme();
     register_markdown(&mut ed);
     run(
         &mut ed,

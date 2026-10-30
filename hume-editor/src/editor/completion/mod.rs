@@ -200,7 +200,7 @@ mod testing {
     pub(in crate::editor::completion) fn empty_langs() -> &'static LanguageRegistry {
         use std::sync::OnceLock;
         static EMPTY: OnceLock<LanguageRegistry> = OnceLock::new();
-        EMPTY.get_or_init(LanguageRegistry::new)
+        EMPTY.get_or_init(LanguageRegistry::for_testing)
     }
 
     pub(in crate::editor::completion) fn ev() -> EngineView {

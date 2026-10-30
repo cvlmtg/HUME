@@ -80,13 +80,14 @@ A generic row is `(target asset url sha bin)`.
   supported on this platform, or no prebuilt asset for it), and a missing required tool.
 - **Required tools.** `npm`, `cargo`, `golang`, `pypi`, `gem` and `nuget` kinds need
   `npm`, `cargo`, `go`, `python3` (`python` on Windows), `gem` and `dotnet` on `$PATH`.
-  A download needs `curl` plus the unpack tools for its format. Each is checked with
-  `find-program` before anything is downloaded, so a missing tool fails naming it.
+  A download needs `curl` plus the unpack tools for its format. Each is checked before
+  anything is downloaded, so a missing tool fails naming it. A tar or zip download's extractor
+  is checked with `core:stdlib`'s `stdlib/find-extractor`, the lookup extraction runs.
 
 ### Verifying and unpacking
 
 Hashing, unpacking and chmod run the platform's own tools through `run-capture!` and
-`run-inline-output!` (`sha256.scm`, `unpack.scm`):
+`run-inline-output!` (`core:stdlib`'s `stdlib/verify-sha256!` and `stdlib/extract-archive!`, then `unpack.scm`):
 
 | Operation | macOS | Linux | Windows |
 |---|---|---|---|

@@ -10,7 +10,7 @@ use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
 use hume_core::{
     BlockCommentTokens, CommentTokens, ConfigOrigin, FirstWins, GrammarSource, LanguageField,
-    LanguageFields, LanguageIdentity, LaterWins, LineCommentTokens, OptionalQuery, Ranked,
+    LanguageFields, LanguageIdentity, LaterWins, LineCommentTokens, OptionalQuery, OsWait, Ranked,
     ShebangInterpreter, WriteOutcome,
 };
 #[cfg(any(test, feature = "test-util"))]
@@ -155,24 +155,35 @@ impl FromIterator<(String, Arc<GrammarBundle>)> for GrammarSnapshot {
     }
 }
 
-/// Opens `source`'s library, checks its ABI, and reads and compiles its
-/// queries. `scope_reg` is touched only once everything else succeeded.
+/// The grammar ABI versions the linked tree-sitter loads, both included.
+const GRAMMAR_ABI: std::ops::RangeInclusive<usize> =
+    tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION..=tree_sitter::LANGUAGE_VERSION;
+
+/// Refuses grammar `name`'s `abi` unless the linked tree-sitter loads it.
+fn require_abi(name: &str, abi: usize) -> Result<(), RegisterError> {
+    if GRAMMAR_ABI.contains(&abi) {
+        Ok(())
+    } else {
+        Err(RegisterError::AbiIncompatible {
+            name: name.to_owned(),
+            abi,
+        })
+    }
+}
+
+/// Opens `source`'s library through `library_wait`, checks its ABI, and
+/// reads and compiles its queries. `scope_reg` is touched only once
+/// everything else succeeded.
 fn compile_source(
     name: &str,
     source: &GrammarSource,
+    library_wait: &OsWait,
     scope_reg: &mut ScopeRegistry,
 ) -> Result<(LoadedGrammar, CompiledQueries), RegisterError> {
-    let grammar =
-        LoadedGrammar::open(&source.path, &source.symbol).map_err(RegisterError::GrammarLoad)?;
-    let abi = grammar.language().abi_version();
-    let supported = tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION..=tree_sitter::LANGUAGE_VERSION;
-    if !supported.contains(&abi) {
-        return Err(RegisterError::AbiIncompatible {
-            name: name.to_owned(),
-            abi,
-            supported,
-        });
-    }
+    let grammar = library_wait
+        .waiting(|| LoadedGrammar::open(&source.path, &source.symbol))
+        .map_err(RegisterError::GrammarLoad)?;
+    require_abi(name, grammar.language().abi_version())?;
     let queries = &source.queries;
     let highlights_src =
         std::fs::read_to_string(queries.highlights()).map_err(RegisterError::HighlightsRead)?;
@@ -309,6 +320,10 @@ pub struct LanguageRegistry {
     /// Grammars whose load failed since the last take, each with its error.
     /// A failed load clears the grammar, so each failure is queued once.
     failed_loads: Vec<(LanguageId, RegisterError)>,
+    /// What each grammar library opens through. The editor's is connected
+    /// to the scripting budget, since macOS checks a library file the first
+    /// time it opens, about 100 ms for a grammar.
+    library_wait: OsWait,
 }
 
 #[derive(Debug)]
@@ -331,13 +346,9 @@ pub enum RegisterError {
         kind: OptionalQuery,
         error: tree_sitter::QueryError,
     },
-    /// Grammar ABI version is outside the range the bundled tree-sitter
-    /// library supports.  Recompile the grammar with a compatible generator.
-    AbiIncompatible {
-        name: String,
-        abi: usize,
-        supported: std::ops::RangeInclusive<usize>,
-    },
+    /// Grammar ABI version is outside the range the linked tree-sitter
+    /// loads.  Recompile the grammar with a compatible generator.
+    AbiIncompatible { name: String, abi: usize },
 }
 
 impl std::fmt::Display for RegisterError {
@@ -353,20 +364,18 @@ impl std::fmt::Display for RegisterError {
             Self::OptionalQueryBuild { kind, error } => {
                 write!(f, "{} compilation failed: {error}", kind.file_name())
             }
-            Self::AbiIncompatible {
-                name,
-                abi,
-                supported,
-            } => write!(
+            Self::AbiIncompatible { name, abi } => write!(
                 f,
-                "grammar '{name}' ABI {abi} not in supported range {supported:?}"
+                "grammar '{name}' ABI {abi} not in supported range {GRAMMAR_ABI:?}"
             ),
         }
     }
 }
 
-impl Default for LanguageRegistry {
-    fn default() -> Self {
+impl LanguageRegistry {
+    /// An empty registry that opens each grammar library through
+    /// `library_wait`.
+    pub fn new(library_wait: OsWait) -> Self {
         Self {
             ids: FxHashMap::default(),
             entries: Vec::new(),
@@ -378,13 +387,14 @@ impl Default for LanguageRegistry {
             grammar_snapshot: Arc::new(GrammarSnapshot::default()),
             bundled_pending: Vec::new(),
             failed_loads: Vec::new(),
+            library_wait,
         }
     }
-}
 
-impl LanguageRegistry {
-    pub fn new() -> Self {
-        Self::default()
+    /// [`Self::new`] with a `library_wait` nothing pauses.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn for_testing() -> Self {
+        Self::new(OsWait::default())
     }
 
     // ── Interner ──────────────────────────────────────────────────────────────
@@ -780,11 +790,18 @@ impl LanguageRegistry {
         if !self.rank_grammar(name, by).is_applied() {
             return Ok(None);
         }
-        let (grammar, queries) = compile_source(name, source, scope_reg)?;
+        let (grammar, queries) = compile_source(name, source, &self.library_wait, scope_reg)?;
         let id = self.intern(name);
         let bundle = new_bundle(id, grammar, queries);
         self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)), by);
         Ok(Some(bundle))
+    }
+
+    /// Opens `source`'s library and compiles its queries as a load of
+    /// `name`'s grammar would, registering nothing. The library stays open,
+    /// as every library this process opens does.
+    pub fn check_grammar(&self, name: &str, source: &GrammarSource) -> Result<(), RegisterError> {
+        compile_source(name, source, &self.library_wait, &mut ScopeRegistry::new()).map(drop)
     }
 
     /// What registering a grammar for `name` from `by` would do, without
@@ -808,7 +825,9 @@ impl LanguageRegistry {
         let entry = self.entry(id);
         let by = entry.grammar.by()?;
         let compiled = match entry.grammar.get()? {
-            GrammarSlot::Registered(source) => compile_source(&entry.name, source, scope_reg),
+            GrammarSlot::Registered(source) => {
+                compile_source(&entry.name, source, &self.library_wait, scope_reg)
+            }
             GrammarSlot::Loaded(bundle) => return Some(Arc::clone(bundle)),
         };
         match compiled {

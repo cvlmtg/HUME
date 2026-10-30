@@ -34,7 +34,7 @@ fn declared_to_loaded_registers_command() {
         r#"(define-command! "test-cmd" "A test command." (lambda () 0))"#,
     );
     let id = plugin_id("core:test");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -67,7 +67,7 @@ fn syntax_error_transitions_to_failed() {
     let dir = TempDir::new().unwrap();
     let path = write_plugin(&dir, "bad.scm", "(((invalid syntax");
     let id = plugin_id("core:bad");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -110,7 +110,7 @@ fn failed_activation_message_names_plugin_and_location() {
     // assertion below.
     let path = write_plugin(&dir, "located.scm", "(define x 1)\n(call-does-not-exist)\n");
     let id = plugin_id("core:located");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -160,7 +160,7 @@ fn failed_activation_message_names_plugin_and_location() {
 #[test]
 fn already_loaded_is_noop() {
     let id = plugin_id("core:loaded");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -181,7 +181,7 @@ fn already_loaded_is_noop() {
 #[test]
 fn already_failed_is_noop() {
     let id = plugin_id("core:failed");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -202,7 +202,7 @@ fn already_failed_is_noop() {
 #[test]
 fn absent_plugin_is_noop() {
     let id = plugin_id("core:absent");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
 
     host.activate_plugin_inline(&id, 10_000, &mut NullHost)
         .unwrap();
@@ -218,7 +218,7 @@ fn absent_plugin_is_noop() {
 #[test]
 fn loading_reentrancy_guard_is_noop() {
     let id = plugin_id("core:cycling");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -241,7 +241,7 @@ fn loading_reentrancy_guard_is_noop() {
 #[test]
 fn path_with_quote_char_transitions_to_failed() {
     let id = plugin_id("core:quoted");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries.lazy_registry.plugins.insert(
         id.clone(),
         PluginState::Declared {
@@ -268,7 +268,7 @@ fn path_with_quote_char_transitions_to_failed() {
 /// sees the same `ctx.registries` as the outer eval.
 #[test]
 fn eval_string_nested_defines_command() {
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     // Eval a snippet that eval-strings a define-command!. The outer eval is
     // in EvalMode::Init, which allows define-command!.
     let program = r#"
@@ -326,7 +326,7 @@ fn begin_lazy_activation_declared_returns_require_string() {
 #[test]
 fn begin_lazy_activation_loading_returns_false() {
     let id = plugin_id("core:cycling");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -354,7 +354,7 @@ fn begin_lazy_activation_loading_returns_false() {
 #[test]
 fn finish_lazy_activation_success_transitions_to_loaded() {
     let id = plugin_id("core:finishing");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -385,7 +385,7 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
 fn finish_lazy_activation_finishes_the_innermost_entry() {
     let outer = plugin_id("core:outer");
     let inner = plugin_id("core:inner");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     for id in [&outer, &inner] {
         host.registries
             .lazy_registry
@@ -413,7 +413,7 @@ fn finish_lazy_activation_finishes_the_innermost_entry() {
 #[test]
 fn finish_lazy_activation_with_no_activation_in_progress_errors() {
     let id = plugin_id("core:idle");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -440,7 +440,7 @@ fn finish_lazy_activation_with_no_activation_in_progress_errors() {
 #[test]
 fn finish_lazy_activation_failure_transitions_to_failed() {
     let id = plugin_id("core:failing");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -478,7 +478,7 @@ fn partial_define_before_failure_is_rolled_back() {
                (error "intentional mid-body error")"#,
     );
     let id = plugin_id("core:partial");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -522,7 +522,7 @@ fn queued_effects_before_failure_are_rolled_back() {
                (error "intentional mid-body error")"#,
     );
     let id = plugin_id("core:effects");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -566,7 +566,7 @@ fn committed_activation_effects_survive_failed_outer_command() {
                (define-command! "b-cmd" "doc" (lambda () 0))"#,
     );
     let id_b = plugin_id("core:b");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -653,7 +653,7 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
     );
     let id_b = plugin_id("core:b");
     let id_c = plugin_id("core:c");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -738,7 +738,7 @@ fn hook_registered_before_failure_is_rolled_back() {
                (error "intentional mid-body error")"#,
     );
     let id = plugin_id("core:hookfail");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -786,7 +786,7 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
     );
     let id_b = plugin_id("core:hb");
     let id_c = plugin_id("core:hc");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -852,7 +852,7 @@ fn registrations_a_called_command_makes_in_a_failing_body_are_rolled_back() {
     );
     let id_a = plugin_id("core:sa");
     let id_b = plugin_id("core:sb");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -906,7 +906,7 @@ fn a_called_command_may_define_the_running_bodys_activation_command() {
     let path_b = write_plugin(&dir, "lazy_b.scm", r#"(call! "a-define-b")"#);
     let id_a = plugin_id("core:da");
     let id_b = plugin_id("core:db");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -993,7 +993,7 @@ fn lazy_plugin_can_define_its_own_activation_command() {
         r#"(define-command! "self-act-cmd" "doc" (lambda () 0))"#,
     );
     let id = plugin_id("core:self-act");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -1051,7 +1051,7 @@ fn budget_stopping_a_body_fails_its_activation_and_closes_it() {
     );
     let id_a = plugin_id("core:a");
     let id_b = plugin_id("core:b");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -1103,7 +1103,7 @@ fn call_of_command_owned_by_newly_failed_plugin_errors() {
     let dir = TempDir::new().unwrap();
     let path = write_plugin(&dir, "broken.scm", r#"(error "broken body")"#);
     let id = plugin_id("core:broken");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -1154,7 +1154,7 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -1203,7 +1203,7 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
     let dir = TempDir::new().unwrap();
     let path = write_plugin(&dir, "badvalue.scm", "(define x 1)");
     let id = plugin_id("core:badvalue");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -1257,7 +1257,7 @@ fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
         .unwrap();
 
     let id = EntryId::main(PluginId::parse("core:deep").unwrap());
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -1349,7 +1349,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
         .unwrap();
 
     let id = EntryId::main(PluginId::parse("core:deep").unwrap());
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.registries.lazy_registry.declare(
         id.clone(),
         path,

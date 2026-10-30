@@ -6,12 +6,20 @@
 - `diff-lines`, `diff-buffer-lines`, `buffer-revision-diff` and `diff-words` no longer return `'deadline-hit`: drop any code that reads it.
 - `on-text-changed` handlers take the changed lines as a second argument: write `(lambda (pane changes) ...)`.
 - `buffer-generation` returns an opaque value instead of an integer: compare two with `equal?`, and give `#:expect-generation` only a value `buffer-generation` returned.
+- Grammars are downloaded prebuilt instead of compiled on your machine, so installing one needs `curl` and `tar` rather than `git` and a C and C++ compiler. Grammars installed by an earlier version are no longer found: run `:plum-cleanup-grammars` to delete them, then install them again with `:plum-install-grammar` or `plum/ensure-grammars`.
+- Release archives no longer include `hume-grammar-build`. To build a grammar yourself, get it from [treesitter.hume](https://github.com/cvlmtg/treesitter.hume).
+- `compile-grammar!`, `bundled-language-grammar` and `bundled-grammar-languages` are gone: list HUME's languages with `bundled-languages`.
 - `buffer-display-path`'s `#:relative` takes the directory to be relative to: replace `#:relative #t` with `#:relative (cwd)`.
 
 ### Plugins & scripting
+- `core:plum` installs grammars from a folder you built them into before downloading them, with `#:config (hash 'grammar-source "/path")`, for a platform with no prebuilt grammars or for working offline.
 - New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value.
 - New `buffer-search` finds a pattern in a buffer without moving the selection or changing the current search, and new `word-search-pattern` gives the pattern `*` searches for a word.
 - New `stdlib/concat` joins a list of lists, much faster than `(apply append …)` over many lists.
+- New `copy-file-range!` copies part of a file.
+- New `stdlib/non-blank-lines` splits text into its lines that hold more than whitespace.
+- New `stdlib/download!` downloads a file, or a byte range of one, with `curl`.
+- New `stdlib/verify-sha256!` checks a file's SHA-256, and new `stdlib/extract-archive!` unpacks a tar or zip archive, refusing one whose symlinks point outside its directory. New `stdlib/find-extractor` finds the program that extracts an archive format.
 
 ### Language servers
 - The workspace symbols picker and the goto and references list show a file inside the working directory by its path relative to it.
@@ -21,6 +29,10 @@
 - `core:buffer-words` updates its index after an edit much faster: it reads only the lines the edit changed instead of the whole buffer, and no longer restarts its scan at every edit.
 
 ### Fixes
+- On macOS, installing several grammars in one command no longer stops at the script time limit.
+- Reinstalling a grammar takes effect at once, without restarting HUME, even while a file of that language is open, and on Windows it no longer fails then.
+- A grammar install that fails or is stopped partway keeps the installed grammar working, also when `plum/ensure-grammars` runs from `init.scm`, and `:plum-cleanup-grammars` clears the files it left.
+- Installing a language server's `.zip` or `.tar` archive on Windows works when HUME runs from Git Bash.
 - The `z r` references list keeps every row on the right line and column after an edit that doesn't change the line count.
 
 ## [0.17.0] - 2026-10-28

@@ -124,7 +124,7 @@ class ParseLanguages(unittest.TestCase):
         }
 
         with contextlib.redirect_stderr(io.StringIO()):
-            langs = sync.parse_languages(doc, {})
+            langs = sync.parse_languages(doc)
 
         self.assertEqual([lang["roots"] for lang in langs], [["go.work", "go.mod"], []])
 
@@ -211,9 +211,9 @@ class Emit(unittest.TestCase):
         )
 
 
-def parse_langs(languages, grammars=None):
+def parse_langs(languages):
     with contextlib.redirect_stderr(io.StringIO()):
-        return sync.parse_languages({"language": languages}, grammars or {})
+        return sync.parse_languages({"language": languages})
 
 
 class CommentTokens(unittest.TestCase):
@@ -314,35 +314,27 @@ class Shebangs(unittest.TestCase):
 
 
 class LanguageGrammar(unittest.TestCase):
-    GRAMMARS = {
-        "javascript": {"url": "https://js", "rev": "r1", "subpath": ""},
-        "markdown_inline": {"url": "https://md", "rev": "r2", "subpath": "tree-sitter-markdown-inline"},
-    }
+    def test_a_language_naming_a_grammar_carries_no_grammar_field(self):
+        (lang,) = parse_langs([{"name": "jsx", "grammar": "javascript"}])
 
-    def grammar_of(self, entry):
-        (lang,) = parse_langs([entry], self.GRAMMARS)
-        return lang["grammar"]
+        self.assertNotIn("grammar", lang)
 
-    def test_a_language_uses_the_grammar_of_its_own_name(self):
-        self.assertEqual(
-            self.grammar_of({"name": "javascript"}),
-            {"url": "https://js", "rev": "r1", "sym": "tree_sitter_javascript", "subpath": ""},
-        )
 
-    def test_a_language_naming_another_grammar_gets_that_grammars_source_and_symbol(self):
-        self.assertEqual(
-            self.grammar_of({"name": "jsx", "grammar": "javascript"}),
-            {"url": "https://js", "rev": "r1", "sym": "tree_sitter_javascript", "subpath": ""},
-        )
+class HelixRev(unittest.TestCase):
+    SHA = "ba40e547426b0f9896c8bdc699a4ab11f2b37dbc"
 
-    def test_the_symbol_replaces_dashes_in_the_grammar_name(self):
-        grammars = {"glimmer-javascript": {"url": "u", "rev": "r", "subpath": ""}}
-        (lang,) = parse_langs([{"name": "gjs", "grammar": "glimmer-javascript"}], grammars)
+    def test_reads_the_full_commit_of_a_grammars_toml(self):
+        text = f'# header\nhelix-rev = "{self.SHA}"\n\n[[language]]\nname = "c"\n'
 
-        self.assertEqual(lang["grammar"]["sym"], "tree_sitter_glimmer_javascript")
+        self.assertEqual(sync.helix_rev_of(text), self.SHA)
 
-    def test_a_language_with_no_git_grammar_has_none(self):
-        self.assertIsNone(self.grammar_of({"name": "cabal"}))
+    def test_a_missing_rev_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            sync.helix_rev_of('[[language]]\nname = "c"\n')
+
+    def test_an_abbreviated_rev_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            sync.helix_rev_of('helix-rev = "ba40e547426b"\n')
 
 
 def parsed_language(**overrides):
@@ -353,7 +345,6 @@ def parsed_language(**overrides):
         "block_comment_tokens": [],
         "language_id": None,
         "roots": [],
-        "grammar": None,
         **overrides,
     }
 
@@ -366,7 +357,6 @@ class EmitLanguageData(unittest.TestCase):
             block_comment_tokens=[("/*", "*/"), ("/**", "*/")],
             language_id="typescriptreact",
             roots=["package.json", "tsconfig.json"],
-            grammar={"url": "https://ts", "rev": "r", "sym": "tree_sitter_tsx", "subpath": "tsx"},
         )
 
         self.assertEqual(
@@ -375,8 +365,7 @@ class EmitLanguageData(unittest.TestCase):
                 '((comment-tokens "//" "///")',
                 ' (block-comment-tokens ("/*" . "*/") ("/**" . "*/"))',
                 ' (language-id . "typescriptreact")',
-                ' (roots "package.json" "tsconfig.json")',
-                ' (grammar "https://ts" "r" "tree_sitter_tsx" "tsx"))',
+                ' (roots "package.json" "tsconfig.json"))',
             ],
         )
 

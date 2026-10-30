@@ -9,7 +9,7 @@ use hume_scripting::ScriptingHost;
 fn after_fires_once_past_its_deadline() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -33,7 +33,7 @@ fn after_fires_once_past_its_deadline() {
 fn a_timer_not_yet_due_does_not_fire() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -57,7 +57,7 @@ fn a_timer_not_yet_due_does_not_fire() {
 fn cancel_timer_before_it_fires_prevents_the_thunk() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -83,7 +83,7 @@ fn cancel_timer_before_it_fires_prevents_the_thunk() {
 fn debounce_collapses_a_rapid_burst_into_one_trailing_call() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -114,7 +114,7 @@ fn debounce_collapses_a_rapid_burst_into_one_trailing_call() {
 fn debounce_shares_one_pending_timer_across_all_keys() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -142,7 +142,7 @@ fn debounce_shares_one_pending_timer_across_all_keys() {
 fn debounce_by_keys_pending_timers_independently() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -176,7 +176,7 @@ fn debounce_by_keys_pending_timers_independently() {
 fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -334,7 +334,7 @@ fn a_queued_thunk_lost_to_the_drain_cap_frees_its_timer() {
 fn settle_until_idle_runs_a_chain_of_timers_to_the_end() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

@@ -19,7 +19,7 @@ fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
+    let mut host = hume_scripting::ScriptingHost::for_testing(&Dirs::none());
     host.register_command_names(&name_refs);
     let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(source, &mut init_host).map(|_| ())

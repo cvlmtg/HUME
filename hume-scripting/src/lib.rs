@@ -174,13 +174,17 @@ impl ScriptingHost {
     /// Create a new scripting host with the Steel standard library and all HUME
     /// builtins loaded.
     ///
-    /// `dirs` supplies the data and runtime directories builtins expose, and
-    /// the grammar compiler, so no builtin reads environment variables on a
-    /// call.
-    pub fn new(dirs: &hume_platform::dirs::Dirs) -> Self {
+    /// `dirs` supplies the data and runtime directories builtins expose, so no
+    /// builtin reads environment variables on a call.
+    ///
+    /// `library_wait` is connected to this host's budget, so a grammar
+    /// library opened through it does not count against a running script.
+    pub fn new(dirs: &hume_platform::dirs::Dirs, library_wait: &hume_core::OsWait) -> Self {
         let dirs = builtins::dirs::ScriptDirs::new(dirs);
         let mut steel = Engine::new();
         builtins::register_all(&mut steel);
+        let watchdog = EvalWatchdog::new();
+        watchdog.connect(library_wait);
         Self {
             steel,
             registries: ScriptingRegistries::default(),
@@ -188,8 +192,14 @@ impl ScriptingHost {
             pending_messages: Vec::new(),
             effects: Vec::new(),
             dirs,
-            watchdog: EvalWatchdog::new(),
+            watchdog,
         }
+    }
+
+    /// [`Self::new`] with a `library_wait` nothing else holds.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn for_testing(dirs: &hume_platform::dirs::Dirs) -> Self {
+        Self::new(dirs, &hume_core::OsWait::default())
     }
 }
 
@@ -263,6 +273,14 @@ impl ScriptingHost {
     /// Data directory for user/third-party plugins.
     pub fn data_dir(&self) -> Option<&Path> {
         self.dirs.data_dir.as_deref()
+    }
+
+    /// A new [`hume_core::OsWait`] connected to this host's budget.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn os_wait(&self) -> hume_core::OsWait {
+        let wait = hume_core::OsWait::default();
+        self.watchdog.connect(&wait);
+        wait
     }
 
     /// Every top-level global and macro name HUME's own layers add on top of

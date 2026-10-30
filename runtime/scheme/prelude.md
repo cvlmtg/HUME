@@ -9,8 +9,9 @@ and inside plugin modules loaded via `(require)`. It also defines one command,
 
 ## The `%` convention
 
-Identifiers prefixed `%` are internal Rust forms. User code should always call the unprefixed
-macro or function the prelude wraps instead: `define-language!` over `%define-language!`,
+Identifiers prefixed `%` are internal: Rust forms the prelude wraps, and helpers private to the
+runtime file that defines them. Neither is listed for the Steel language server. User code
+should always call the unprefixed macro or function instead: `define-language!` over `%define-language!`,
 `configure-language!` over `%configure-language!`, `register-grammar!` over
 `%register-grammar!`.
 

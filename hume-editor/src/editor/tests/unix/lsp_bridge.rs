@@ -264,7 +264,7 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

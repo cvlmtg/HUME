@@ -103,7 +103,7 @@ fn defines_is_false_for_a_pair_the_query_omits() {
 fn real_helix_rust_textobjects_defines_expected_pairs() {
     require_grammars(&["rust"]);
     let path = require_helix_query("rust", OptionalQuery::TextObjects.file_name());
-    let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
+    let source = std::fs::read_to_string(path).expect("read textobjects.scm");
     let q = compile(&source);
     assert!(q.defines(ObjectKind::Function, ObjectSpan::Inside));
     assert!(q.defines(ObjectKind::Function, ObjectSpan::Around));
@@ -199,7 +199,7 @@ fn adjacent_returns_none_at_buffer_edges() {
 fn bundle_with_real_textobjects(name: &str, symbol: &str) -> Arc<GrammarBundle> {
     require_grammars(&[name]);
     let path = require_helix_query(name, OptionalQuery::TextObjects.file_name());
-    let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
+    let source = std::fs::read_to_string(path).expect("read textobjects.scm");
     make_bundle(name, symbol, "", &[(OptionalQuery::TextObjects, &source)])
 }
 
@@ -213,7 +213,7 @@ fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
 fn markdown_bundle_with_helix_injections() -> Arc<GrammarBundle> {
     require_grammars(&["markdown"]);
     let path = require_helix_query("markdown", OptionalQuery::Injections.file_name());
-    let source = std::fs::read_to_string(path).expect("read helix-injections.scm");
+    let source = std::fs::read_to_string(path).expect("read injections.scm");
     make_bundle(
         "markdown",
         "tree_sitter_markdown",
@@ -431,8 +431,8 @@ fn test_around_two_sequential_tests_has_no_spurious_merged_span() {
 }
 
 // Proven with a raw match dump: tree-sitter's `.` anchor does
-// *not* treat a comment (a grammar `extra`, per
-// `tests/fixtures/grammars/rust/src/grammar.json`'s `extras` list) as
+// *not* treat a comment (a grammar `extra`, per tree-sitter-rust's
+// `src/grammar.json` `extras` list) as
 // transparent. `function.around`'s `((attribute_item)* @function.around .
 // (function_item ...) @function.around)` can't bridge the gap a comment
 // creates, so the quantifier backtracks to its zero-attribute alternative:

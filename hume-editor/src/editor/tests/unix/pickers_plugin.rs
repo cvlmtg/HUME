@@ -50,7 +50,7 @@ fn setup_with_config(
     write_core_plugin(guard, "stdlib", STDLIB_PLUGIN);
     let mut ed = editor_from(input);
     ed.state.dirs = guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
+    let mut host = ScriptingHost::for_testing(&ed.state.dirs);
     let load_pickers = match config_expr {
         Some(cfg) => format!("(load-plugin! \"core:pickers\" #:config {cfg})"),
         None => "(load-plugin! \"core:pickers\")".to_string(),

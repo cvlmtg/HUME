@@ -42,25 +42,10 @@ pub struct Dirs {
     pub runtime: Option<PathBuf>,
     /// Where `:tutor` writes its editable copy of the lesson.
     pub tmp: Option<PathBuf>,
-    /// The grammar compiler `hume-grammar-build`; see [`GrammarBuild::beside`]
-    /// for where it is looked for.
-    pub grammar_build: GrammarBuild,
     /// `PATH` as the session started with it: every spawned child gets it, and
     /// a program named without a directory is looked up on it. `None` when
     /// `PATH` is unset, which a child then is too.
     pub search_path: Option<OsString>,
-}
-
-/// Where the grammar compiler was found, or every path looked at for it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum GrammarBuild {
-    Found(PathBuf),
-    Missing {
-        searched: Vec<PathBuf>,
-    },
-    /// The executable's own path is unknown, and every candidate is
-    /// relative to it.
-    ExeUnknown,
 }
 
 /// Why the resolved directories cannot be used.
@@ -132,9 +117,6 @@ impl Dirs {
         let dirs = Self {
             config: config_dir_with(&env).map(pin).transpose()?,
             data: data_dir_with(&env).map(pin).transpose()?,
-            grammar_build: exe
-                .as_deref()
-                .map_or(GrammarBuild::ExeUnknown, GrammarBuild::beside),
             runtime: runtime_dir_with(&env, exe, cwd.clone())
                 .map(pin)
                 .transpose()?,
@@ -161,7 +143,6 @@ impl Dirs {
             data: None,
             runtime: None,
             tmp: None,
-            grammar_build: GrammarBuild::ExeUnknown,
             search_path: None,
         }
     }
@@ -276,34 +257,6 @@ fn runtime_dir_with(
     }
 
     None
-}
-
-impl GrammarBuild {
-    /// Where the grammar compiler is, relative to the executable `exe`:
-    ///
-    /// 1. `../libexec/hume/` relative to the binary: Unix / macOS installed
-    ///    layout, which keeps a helper only HUME runs off `PATH`.
-    /// 2. The binary's own directory: the Windows archive layout, and a cargo
-    ///    build, which puts every workspace binary in one `target/<profile>/`.
-    ///
-    /// The first candidate that exists wins.
-    pub fn beside(exe: &Path) -> Self {
-        let Some(exe_dir) = exe.parent() else {
-            return Self::ExeUnknown;
-        };
-        let file = format!("hume-grammar-build{}", env::consts::EXE_SUFFIX);
-
-        let libexec = exe_dir
-            .parent()
-            .filter(|_| cfg!(not(windows)))
-            .map(|prefix| prefix.join("libexec").join("hume").join(&file));
-        let searched: Vec<_> = libexec.into_iter().chain([exe_dir.join(file)]).collect();
-
-        match searched.iter().find(|tool| tool.exists()) {
-            Some(tool) => Self::Found(tool.clone()),
-            None => Self::Missing { searched },
-        }
-    }
 }
 
 #[cfg(test)]

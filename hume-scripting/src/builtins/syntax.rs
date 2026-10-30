@@ -159,6 +159,62 @@ pub(crate) fn register_grammar(
     highlights_path: SteelVal,
     optional_queries: SteelVal,
 ) -> SteelResult {
+    let reg = GrammarReg {
+        name: string_arg(name, "name")?,
+        source: grammar_source(ctx, grammar_path, symbol, highlights_path, optional_queries)?,
+        origin: ctx.registration_origin(),
+    };
+
+    if ctx.session == crate::context::EvalSession::Init {
+        ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Grammar(reg)));
+        return Ok(SteelVal::Void);
+    }
+
+    // Command mode: attach immediately via host and trigger a buffer sweep.
+    // The host's error names the grammar.
+    let attached = ctx
+        .host
+        .language()
+        .attach_grammar(&reg)
+        .map_err(generic_err)?;
+    if attached {
+        ctx.push_effect(Effect::GrammarSweep(reg.name));
+    }
+    Ok(SteelVal::Void)
+}
+
+/// `(%check-grammar! name grammar-path symbol highlights-path optional-queries)`:
+/// the arguments of `%register-grammar!`. Loads the grammar they name as
+/// `name`'s would load, registering nothing, and raises when it cannot
+/// load: its library does not open, its ABI is out of range, or a query
+/// does not compile. The same in every session, and whatever origin holds
+/// `name`'s grammar.
+pub(crate) fn check_grammar(
+    ctx: &mut SteelCtx,
+    name: SteelVal,
+    grammar_path: SteelVal,
+    symbol: SteelVal,
+    highlights_path: SteelVal,
+    optional_queries: SteelVal,
+) -> SteelResult {
+    let name = string_arg(name, "name")?;
+    let source = grammar_source(ctx, grammar_path, symbol, highlights_path, optional_queries)?;
+    ctx.host
+        .language()
+        .check_grammar(&name, &source)
+        .map_err(generic_err)?;
+    Ok(SteelVal::Void)
+}
+
+/// The grammar `%register-grammar!`'s and `%check-grammar!`'s path, symbol
+/// and query arguments name, each path joined onto `(cwd)`.
+fn grammar_source(
+    ctx: &mut SteelCtx,
+    grammar_path: SteelVal,
+    symbol: SteelVal,
+    highlights_path: SteelVal,
+    optional_queries: SteelVal,
+) -> Result<GrammarSource, SteelErr> {
     let cwd = ctx.host.buffers().cwd();
     let resolve = |val: SteelVal, ctx_name: &str| {
         under_cwd(&path_arg(val, ctx_name)?, &cwd, ctx_name).map(|path| path.to_path_buf())
@@ -181,32 +237,11 @@ pub(crate) fn register_grammar(
             }
         }
     }
-    let reg = GrammarReg {
-        name: string_arg(name, "name")?,
-        source: GrammarSource {
-            path: resolve(grammar_path, "grammar-path")?,
-            symbol: string_arg(symbol, "symbol")?,
-            queries,
-        },
-        origin: ctx.registration_origin(),
-    };
-
-    if ctx.session == crate::context::EvalSession::Init {
-        ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Grammar(reg)));
-        return Ok(SteelVal::Void);
-    }
-
-    // Command mode: attach immediately via host and trigger a buffer sweep.
-    // The host's error names the grammar.
-    let attached = ctx
-        .host
-        .language()
-        .attach_grammar(&reg)
-        .map_err(generic_err)?;
-    if attached {
-        ctx.push_effect(Effect::GrammarSweep(reg.name));
-    }
-    Ok(SteelVal::Void)
+    Ok(GrammarSource {
+        path: resolve(grammar_path, "grammar-path")?,
+        symbol: string_arg(symbol, "symbol")?,
+        queries,
+    })
 }
 
 /// `(grammar-optional-queries)` returns `((key . file-name) ...)` for every

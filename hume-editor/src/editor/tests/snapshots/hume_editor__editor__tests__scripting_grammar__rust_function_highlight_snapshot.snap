@@ -4,7 +4,7 @@ expression: "render_to_styled_string(&mut ed, rect)"
 ---
 <fg=#928374,bg=#282828,italic>// hi</>
 <fg=#fb4934,bg=#282828>fn</><fg=#ebdbb2,bg=#282828> </><fg=#b8bb26,bg=#282828>main</><fg=#fe8019,bg=#282828>()</><fg=#ebdbb2,bg=#282828> </><fg=#fe8019,bg=#282828>{</>
-<fg=#ebdbb2,bg=#282828>    </><fg=#fb4934,bg=#282828>let</><fg=#ebdbb2,bg=#282828> x</><fg=#fe8019,bg=#282828>:</><fg=#ebdbb2,bg=#282828> </><fg=#fabd2f,bg=#282828>u32</><fg=#ebdbb2,bg=#282828> = </><fg=#d3869b,bg=#282828>1</><fg=#fe8019,bg=#282828>;</>
+<fg=#ebdbb2,bg=#282828>    </><fg=#fb4934,bg=#282828>let</><fg=#ebdbb2,bg=#282828> x</><fg=#fe8019,bg=#282828>:</><fg=#ebdbb2,bg=#282828> </><fg=#fabd2f,bg=#282828>u32</><fg=#ebdbb2,bg=#282828> </><fg=#d3869b,bg=#282828>=</><fg=#ebdbb2,bg=#282828> </><fg=#d3869b,bg=#282828>1</><fg=#fe8019,bg=#282828>;</>
 <fg=#fe8019,bg=#3c3836>}</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>

@@ -31,7 +31,7 @@ fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor) {
         .join("runtime");
 
     let dirs = repo_runtime_dirs();
-    let mut host = ScriptingHost::new(&dirs);
+    let mut host = ScriptingHost::for_testing(&dirs);
 
     let mut ed = editor_from("-[a]>b\n");
     let native_names: Vec<&str> = ed.state.config.registry.native_mappable_names().collect();

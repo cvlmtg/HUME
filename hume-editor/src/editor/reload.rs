@@ -176,7 +176,8 @@ impl Editor {
         self.state.buffers.clear_languages_all();
         self.state.buffers.clear_overrides_all();
         let prior_clock = self.state.config.decorations.clock();
-        self.state.config = super::ConfigState::new(self.kitty_enabled, prior_clock);
+        self.state.config =
+            super::ConfigState::new(self.kitty_enabled, prior_clock, &self.state.library_wait);
         // The scripts that held these tokens went with the outgoing engine.
         self.state.panes.tracked.clear();
         // Re-baseline immediately after: the fresh hooks `init_scripting`

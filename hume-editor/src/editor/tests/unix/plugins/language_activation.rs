@@ -169,7 +169,7 @@ fn language_trigger_one_to_many_activates_all() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -337,7 +337,7 @@ fn language_wildcard_and_specific_entry_coexist() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });

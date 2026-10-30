@@ -1,8 +1,7 @@
 ;;; runtime/scheme/languages/typespec.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
 ((comment-tokens "//")
  (block-comment-tokens ("/*" . "*/"))
- (roots "tspconfig.yaml")
- (grammar "https://github.com/happenslol/tree-sitter-typespec" "0ee05546d73d8eb64635ed8125de6f35c77759fe" "tree_sitter_typespec" ""))
+ (roots "tspconfig.yaml"))

@@ -65,13 +65,13 @@ fn run_inline_output_scheme_wrapper_raises_on_nonzero_exit() {
     // raw `%run-inline-output!`.
     use crate::ScriptingHost;
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut inline_host = RecordingInlineOutputHost::default();
     let ok_src = r#"(run-inline-output! "true" '())"#;
     host.eval_source(ok_src, &mut inline_host)
         .expect("run-inline-output! success path must not raise");
 
-    let mut host2 = ScriptingHost::new(&Dirs::none());
+    let mut host2 = ScriptingHost::for_testing(&Dirs::none());
     let mut inline_host2 = RecordingInlineOutputHost::default();
     let fail_src = r#"
         (with-handler
@@ -100,7 +100,7 @@ fn run_inline_output_scheme_wrapper_passes_env() {
              #:env '(("HUME_ENV_PROBE" . "probe-value")))"#,
         out.display()
     );
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut inline_host = RecordingInlineOutputHost::default();
     host.eval_source(&src, &mut inline_host)
         .expect("run-inline-output! with #:env must not raise");

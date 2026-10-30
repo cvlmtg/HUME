@@ -150,37 +150,6 @@ fn resolve_rejects_a_runtime_that_is_the_data_dir() {
     assert_eq!(result, Err(DirsError::RuntimeIsDataDir(data)));
 }
 
-fn grammar_build_file() -> String {
-    format!("hume-grammar-build{}", env::consts::EXE_SUFFIX)
-}
-
-#[test]
-fn grammar_build_is_found_beside_the_exe() {
-    let bin = tempfile::tempdir().unwrap();
-    let tool = bin.path().join(grammar_build_file());
-    std::fs::write(&tool, "").unwrap();
-    let result = GrammarBuild::beside(&bin.path().join("hume"));
-    assert_eq!(result, GrammarBuild::Found(tool));
-}
-
-#[test]
-fn grammar_build_missing_names_the_exe_dir_last() {
-    let bin = tempfile::tempdir().unwrap();
-    let GrammarBuild::Missing { searched } = GrammarBuild::beside(&bin.path().join("hume")) else {
-        panic!("no candidate exists");
-    };
-    assert_eq!(
-        searched.last(),
-        Some(&bin.path().join(grammar_build_file()))
-    );
-}
-
-#[test]
-fn grammar_build_without_an_exe_is_exe_unknown() {
-    let dirs = Dirs::resolve(|_| None, None, None, PathBuf::from("scratch"), None).unwrap();
-    assert_eq!(dirs.grammar_build, GrammarBuild::ExeUnknown);
-}
-
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]

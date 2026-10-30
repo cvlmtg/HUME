@@ -1610,12 +1610,8 @@ like ``:plum-i`` and press ``Tab`` to autocomplete it, and keep pressing
 ``Tab`` to cycle through the matches. Press ``Enter`` to run it, then
 wait for the grammar to finish installing.
 
-This needs ``git``, ``curl``, and a C and C++ compiler on your system.
-How you install them depends on your operating system: on macOS,
-Homebrew (``brew install git curl``) covers the first two, with the
-compilers coming from Xcode's Command Line Tools; on Linux, your
-distribution's package manager (``apt``, ``dnf``, ``pacman``, ...) provides
-them; on Windows, reach for ``winget``, ``Scoop``, or WSL.
+This downloads the grammar with ``curl`` and unpacks it with ``tar``,
+which come with macOS, Windows and most Linux distributions.
 
 When it's done, this tutor is syntax highlighted: it is a reStructuredText
 document, and you just installed the grammar that colours it.

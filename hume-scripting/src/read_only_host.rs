@@ -164,6 +164,9 @@ impl LanguageHost for ReadOnlyHost<'_> {
     fn attach_grammar(&mut self, _reg: &GrammarReg) -> Result<bool, String> {
         Err(self.refuse("attach_grammar"))
     }
+    fn check_grammar(&self, _name: &str, _source: &hume_core::GrammarSource) -> Result<(), String> {
+        Err(self.refuse("check_grammar"))
+    }
     fn has_grammar(&self, language: &str) -> bool {
         self.inner.borrow_mut().language().has_grammar(language)
     }

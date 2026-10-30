@@ -1,5 +1,5 @@
 [workspace]
-members = ["hume-engine", "hume-editor", "hume-platform", "hume-scripting", "hume-editing", "hume-treesitter", "hume-lsp", "test-fixtures", "hume-ops", "hume-rope", "hume-core", "hume-grid", "hume-ui", "hume-decorations", "hume-grammar-build", "arch-lints"]
+members = ["hume-engine", "hume-editor", "hume-platform", "hume-scripting", "hume-editing", "hume-treesitter", "hume-lsp", "test-fixtures", "hume-ops", "hume-rope", "hume-core", "hume-grid", "hume-ui", "hume-decorations", "arch-lints"]
 # Patched third-party crates (see vendor/README.md): dependencies, not members.
 exclude = ["vendor"]
 resolver = "2"

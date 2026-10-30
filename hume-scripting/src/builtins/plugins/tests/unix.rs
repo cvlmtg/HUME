@@ -27,7 +27,7 @@ pub(super) fn host_with_plugin(repo: &str, files: &[(&str, &str)]) -> (TempDir, 
     for (name, src) in files {
         std::fs::write(plugin_dir.join(name), src).unwrap();
     }
-    let host = ScriptingHost::new(&Dirs {
+    let host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -322,7 +322,7 @@ fn plugin_config_survives_lazy_declare_to_activation() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -461,7 +461,7 @@ fn load_plugin_dir_with_neither_manifest_nor_plugin_scm_errors() {
     let dir = TempDir::new().unwrap();
     std::fs::create_dir_all(dir.path().join("plugins").join("user").join("empty")).unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -495,7 +495,7 @@ fn manifest_declaring_different_plugin_name_errors() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -541,7 +541,7 @@ fn manifest_bad_events_names_manifest_scm_and_plugin() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -580,7 +580,7 @@ fn manifest_whose_declare_has_no_triggers_errors_and_is_contained() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -617,7 +617,7 @@ fn manifest_that_never_declares_errors() {
     std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
     std::fs::write(plugin_dir.join("manifest.scm"), b"(define x 1)").unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -658,7 +658,7 @@ fn load_plugin_second_call_is_silent_noop() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });

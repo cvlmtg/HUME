@@ -8,10 +8,7 @@ use super::*;
 use hume_core::{OptionalQuery, QueryFiles};
 
 use hume_scripting::ScriptingHost;
-use test_fixtures::{
-    grammar_parser_path, grammar_query_path, helix_query_path, require_fixture_file,
-    require_grammars, require_helix_query,
-};
+use test_fixtures::{grammar_query_path, helix_query_path, require_grammars, require_helix_query};
 
 /// Give `name` its fixture grammar (source name == attach identity, true
 /// for every real PLUM install; there is no renaming split in production),
@@ -42,13 +39,11 @@ fn give_grammar(
 /// `test_fixtures::require_grammars`/`require_fixture_file`.
 fn require_fixtures() {
     require_grammars(&["markdown", "markdown.inline", "rust"]);
-    let helix_path = grammar_parser_path("markdown").with_file_name("helix-injections.scm");
-    require_fixture_file(&helix_path, "markdown helix-injections.scm");
+    require_helix_query("markdown", "injections.scm");
 }
 
-/// Build an editor with markdown (+ the real Helix-maintained
-/// `injections.scm`, what `:plum-install-grammar` actually fetches, not
-/// the grammar's own bundled query), the `markdown.inline` grammar (the
+/// Build an editor with markdown (+ its `injections.scm`, the one
+/// `:plum-install-grammar` installs), the `markdown.inline` grammar (the
 /// name Helix's injections.scm resolves `(inline)` to, same name as the
 /// fixture directory, no renaming needed), and rust, then attach markdown as
 /// the buffer's language and drain the initial parse.
@@ -119,7 +114,7 @@ fn markdown_editor_with_rust_queries(
         .unwrap();
     give_grammar(&mut ed, "rust", "tree_sitter_rust", rust_helix, registered);
 
-    ed.scripting = Some(ScriptingHost::new(dirs));
+    ed.scripting = Some(ScriptingHost::for_testing(dirs));
     let lang = ed.state.config.languages.intern("markdown");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drains the initial full parse

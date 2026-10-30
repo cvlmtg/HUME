@@ -14,7 +14,7 @@ fn hook_call_is_dispatched() {
     // Build a two-character buffer so move-right has room; cursor at col 0.
     let mut ed = editor_from("-[a]>b\n");
     // Wire up a scripting host with an on-buffer-open handler that calls move-right.
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" (focused-pane))))"#,
@@ -93,7 +93,7 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-diagnostics-changed (lambda (bid) (call! "move-right" (focused-pane))))"#,
@@ -136,7 +136,7 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
 fn fifo_order_preserved_across_call_and_event_items() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
+    let mut host = hume_scripting::ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -197,7 +197,7 @@ fn handler_queued_event_drains_within_the_same_settle_call() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-language-set
@@ -245,7 +245,7 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" (focused-pane))))"#,
@@ -417,7 +417,7 @@ fn wq_fires_on_buffer_save_before_quitting() {
     use hume_scripting::ScriptingHost;
 
     let (mut ed, _tmp) = editor_with_file("-[a]>b\n", "a\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-save (lambda (bid) (log! 'trace "saved")))"#,
@@ -456,7 +456,7 @@ fn headless_step_then_settle_fires_a_queued_hook() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right" (focused-pane))))"#,

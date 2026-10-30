@@ -69,6 +69,7 @@ mod language;
 mod lsp;
 mod non_empty;
 mod origin;
+mod os_wait;
 mod picker;
 mod popup;
 mod setting;
@@ -99,6 +100,7 @@ pub use non_empty::NonEmpty;
 pub use origin::{
     ByOrigin, Claim, ConfigOrigin, FirstWins, LaterWins, Ranked, TiePolicy, WriteOutcome, Written,
 };
+pub use os_wait::OsWait;
 pub use picker::TruncateEnd;
 pub use popup::PopupLayout;
 pub use setting::{BufferIntrinsicOption, LanguageOptionText, OptionInput, StatuslineSections};

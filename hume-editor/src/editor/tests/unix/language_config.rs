@@ -4,9 +4,7 @@
 
 use super::*;
 
-use super::super::scripting_grammar::{
-    grammar_fixture, grammar_warnings, prelude_source, shipped_grammar,
-};
+use super::super::scripting_grammar::{grammar_fixture, grammar_warnings, prelude_source};
 use hume_core::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_treesitter::registry::LanguageId;
 
@@ -413,16 +411,6 @@ fn configuring_a_language_defined_earlier_in_the_same_init_succeeds() {
     let languages = &ed.state.config.languages;
     let mine = languages.id_of("mine").expect("mine must be defined");
     assert_eq!(languages.roots_of(mine), ["mine.toml"]);
-}
-
-/// The shipped data gives a language that borrows another's grammar the
-/// borrowed grammar's source and C symbol.
-#[test]
-fn the_shipped_jsx_file_carries_the_javascript_grammar() {
-    let jsx = shipped_grammar("jsx");
-
-    assert_eq!(jsx.symbol, "tree_sitter_javascript");
-    assert_eq!(jsx, shipped_grammar("javascript"));
 }
 
 #[test]

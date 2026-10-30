@@ -30,7 +30,7 @@ fn cmd_builtins_are_refused_during_init_through_real_registration() {
         .map(|&(name, expr)| (name, expr.to_string()))
         .chain(pane_probes);
     for (name, expr) in probes {
-        let mut host = crate::ScriptingHost::new(&Dirs::none());
+        let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
         let err = host
             .eval_source(&expr, &mut crate::null_host::NullHost)
             .expect_err(&expr);
@@ -45,7 +45,7 @@ fn cmd_builtins_are_refused_during_init_through_real_registration() {
 /// answer during init, where every `cmd` builtin is refused.
 #[test]
 fn text_diffs_answer_during_init_through_real_registration() {
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
+    let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
     host.eval_source(
         r#"(define lines (diff-lines "a\n" "b\n")) (define words (diff-words "a" "b"))"#,
         &mut crate::null_host::NullHost,
@@ -69,7 +69,7 @@ fn text_diffs_answer_during_init_through_real_registration() {
 /// handle names no server.
 #[test]
 fn lsp_label_offsets_to_text_checks_its_offsets_during_init() {
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
+    let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
     let err = host
         .eval_source(
             r#"(lsp-label-offsets->text "ab" (json-parse "[0,1]"))"#,
@@ -170,7 +170,7 @@ fn a_builtin_error_names_the_builtin_a_plugin_calls() {
 
 /// Define a command whose body is `body`, then call it as a command.
 fn call_probe(body: &str) -> Result<Vec<crate::Effect>, crate::EvalError> {
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
+    let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
     let mut store = crate::null_host::CommandStoreHost::default();
     host.eval_source(
         &format!(r#"(define-command! "probe" "doc" (lambda () {body}))"#),
@@ -338,7 +338,7 @@ fn every_source_name_refuses_an_empty_name_through_real_registration() {
         }
         let expr =
             format!("(register-completion-source! {src} (lambda (req) (void)) #:target 'buffer)");
-        let err = crate::ScriptingHost::new(&Dirs::none())
+        let err = crate::ScriptingHost::for_testing(&Dirs::none())
             .eval_source(&expr, &mut crate::null_host::NullHost)
             .expect_err(&expr);
         refused("register-completion-source!", &expr, &err);

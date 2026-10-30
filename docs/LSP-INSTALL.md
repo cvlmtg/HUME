@@ -49,10 +49,10 @@ No upstream format is ever parsed inside the editor.
 
 | Concern | Upstream | Pin | Generated data |
 |---|---|---|---|
-| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/data/registrations/<server>.scm`, `data/language-servers.scm` (and each language's root markers in `runtime/scheme/languages/<name>.scm`) |
+| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | `core:plum`'s `treesitter-hume-pin.scm`, whose release names the Helix commit | `runtime/plugins/core/lsp-install/data/registrations/<server>.scm`, `data/language-servers.scm` (and each language's root markers in `runtime/scheme/languages/<name>.scm`) |
 | **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/plugins/core/lsp-install/data/sources/<server>.scm`, `data/requirements/<server>.scm` |
 
-Each pin has its own generated files: a helix-pin bump touches only registration data, a
+Each pin has its own generated files: a treesitter.hume pin bump touches only Helix-derived data, a
 mason-pin bump only install sources — every diff traceable to one upstream. Join key = server name,
 **via an explicit Helix→Mason name-mapping table** maintained in the sync script: the two
 namespaces differ (Helix `pylsp` is Mason `python-lsp-server`; Helix
@@ -69,7 +69,7 @@ server is guaranteed wired), resolve per-platform assets, and record a sha256 pe
 Scripts align with *pins*, not features (see `scripts/README.md`):
 
 - **`scripts/sync-grammars.py`** (existing, extended): already fetches `languages.toml` at
-  helix-pin and emits `languages.scm` + one `languages/<name>.scm` per language; additionally emits
+  the Helix commit the pinned treesitter.hume release names and emits `languages.scm` + one `languages/<name>.scm` per language; additionally emits
   one `registrations/<server>.scm` per server and `language-servers.scm` from the same parsed TOML. One bump, one run, all helix-derived files
   move in one diff.
 - **`scripts/sync-lsp-sources.py`** (new, standalone): mason-pin → one `sources/<server>.scm`
@@ -116,7 +116,7 @@ saves at load are few and are not the reason for it. Every file is read through 
 bootstrap's `read-data-file`, and a name is looked up only when it is a file in its
 directory (`data-file`).
 
-**Registration catalogs** (from helix-pin) — split by what registration reads, so the
+**Registration catalogs** (from the Helix commit) — split by what registration reads, so the
 scan at activation loads no field only the installer needs. `registrations/` is keyed by
 *server* and holds `args` and `config`: keying it by language would copy a multi-language
 server's `config` blob once per language (typescript-language-server serves four).
@@ -293,14 +293,13 @@ A `registrations/` record omits each default field: `command` when it equals the
   server dir")` pairs — `GEM_HOME`/`GEM_PATH` for gem-kind, empty otherwise) is written
   as the final install step. A dir without a receipt is an interrupted install: warned
   about, ignored by the scan, safely redone by `:lsp-install`. No half-installed server is
-  ever registered. (This is a new mechanism, not grammar precedent — grammars have no
-  receipts; they rely on delete-and-reclone idempotency.) Languages are *not* stored — the
+  ever registered. (This is a new mechanism, not grammar precedent: grammars have no
+  receipts.) Languages are *not* stored — the
   scan derives them from `language-servers.scm`, and an orphan (no `registrations/` file) is never
   registered anyway, so caching them would only go stale.
 - **Integrity**: the installer verifies each downloaded asset against the sha256 recorded
   at sync time. GitHub release assets are not content-addressed (a tag can be re-pushed
-  with different bits), unlike the grammar pipeline's pinned git SHAs — the recorded hash
-  restores that property. npm-kind installs have no equivalent check: integrity rests on
+  with different bits), and the recorded hash restores that property. npm-kind installs have no equivalent check: integrity rests on
   the npm registry's version immutability, and `npm install` runs with `--ignore-scripts`
   so no package lifecycle script executes during install. Accepted tradeoff. cargo-kind
   installs have no sha256 either — integrity rests on crates.io's version immutability
@@ -465,7 +464,7 @@ choice (see below), traded for a hard runtime dependency on these being present:
 |---|---|---|---|
 | sha256 | `shasum -a 256` (ships with the OS) | `sha256sum` (coreutils) | `certutil -hashfile … SHA256` (built in) |
 | `.gz` decode | `gzip -d -f` (ships with the OS) | `gzip -d -f` (ships with the OS) | `gzip -d -f` — requires Git for Windows (or equivalent) on `PATH` |
-| `.zip` extract | `unzip -o` (ships with the OS) | `unzip -o` (not always preinstalled — install the `unzip` package) | `tar -xf` (bsdtar, built into Windows 10+) |
+| `.zip` extract | `unzip -o` (ships with the OS) | `unzip -o` (not always preinstalled — install the `unzip` package) | `tar -xf` with `System32\tar.exe` (bsdtar, built into Windows 10+) |
 | npm-kind installs | `node`/`npm` on `PATH` — required regardless of platform |
 | cargo-kind installs | a Rust toolchain (`cargo` on `PATH`, e.g. via [rustup.rs](https://rustup.rs)) — required regardless of platform; compiles the crate from source, so the first install of a given server can take a few minutes |
 | golang-kind installs | `go` on `PATH` — required regardless of platform |
@@ -473,13 +472,14 @@ choice (see below), traded for a hard runtime dependency on these being present:
 | gem-kind installs | `gem` (`gem.cmd` on Windows) on `PATH` |
 | nuget-kind installs | `dotnet` on `PATH` |
 | exec bit | `chmod 755` | `chmod 755` | none |
-| tar archives | `tar` everywhere. On Linux, `.tar.xz` also needs `xz` and `.tar.bz2` needs `bzip2`; macOS and Windows `tar` decompress both themselves |
+| tar archives | `tar` everywhere, Windows' own `System32\tar.exe` on Windows. On Linux, `.tar.xz` also needs `xz` and `.tar.bz2` needs `bzip2`; macOS and Windows `tar` decompress both themselves |
 
-`git` and `curl` are already required by the grammar pipeline; this adds `unzip` on
+`curl` and `tar` are already required by the grammar pipeline; this adds `unzip` on
 Linux and `gzip` on Windows as the only new hard requirements for github/npm-kind
 installs. cargo-kind installs are opt-in per server and add a Rust toolchain requirement
 only for those. `:lsp-install` checks
-the specific tool an install needs (via `find-program`)
+the specific tool an install needs (via `find-program`, and an archive's extractor via
+`core:stdlib`'s `stdlib/find-extractor`, the lookup extraction runs)
 before downloading anything, so a missing tool fails loudly naming it rather than
 partway through an install. `:lsp-catalog` and the discovery hint run the same check.
 
@@ -490,7 +490,7 @@ developer's `git`/build toolchain — costs no new install step in the common ca
 **Accepted tradeoff — zip-slip protection is delegated to the system tool** (modern
 Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than implemented in
 HUME. The residual risk is bounded by the sync-time sha256 pin: unpacking runs only
-after `lsp-install/verify-sha256!` (`install.scm`, over `sha256.scm`) has confirmed the
+after `lsp-install/verify-sha256!` (`install.scm`, over `core:stdlib`'s `stdlib/verify-sha256!`) has confirmed the
 archive matches the maintainer-vetted, hash-locked asset recorded in its `sources/` file — an attacker would need
 to compromise the pinned upstream release itself, not just something interposed at install
 time.

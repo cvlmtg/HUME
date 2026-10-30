@@ -1,7 +1,6 @@
 ;;; runtime/scheme/languages/clarity.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
 ((comment-tokens ";;")
- (roots "Clarinet.toml")
- (grammar "https://github.com/xlittlerag/tree-sitter-clarity" "1436da3946359fcd7ac2d81917aaa78ef1e01755" "tree_sitter_clarity" ""))
+ (roots "Clarinet.toml"))

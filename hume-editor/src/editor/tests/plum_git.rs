@@ -74,7 +74,7 @@ fn install_plugin_clone(
 fn plum_editor(data_dir: &std::path::Path, init_src: &str) -> Editor {
     let mut ed = editor_from("-[x]>\n");
     ed.tui = crate::editor::tui::Tui::OnHeadless;
-    load_plum_after(&mut ed, data_dir, init_src);
+    load_plum_with(&mut ed, data_dir, init_src, None);
     ed
 }
 

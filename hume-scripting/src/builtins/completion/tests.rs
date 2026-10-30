@@ -173,7 +173,7 @@ fn register_rejects_an_unknown_target() {
 
 #[test]
 fn register_rejects_a_non_callable_proc() {
-    let mut host = crate::ScriptingHost::new(&hume_platform::dirs::Dirs::none());
+    let mut host = crate::ScriptingHost::for_testing(&hume_platform::dirs::Dirs::none());
     let mut store = crate::null_host::CommandStoreHost::default();
     let err = host
         .eval_source(

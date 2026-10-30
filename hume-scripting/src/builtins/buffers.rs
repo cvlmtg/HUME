@@ -115,7 +115,7 @@ pub(crate) fn buffer_display_path(
     relative: SteelVal,
 ) -> SteelResult {
     let buffers = ctx.host.buffers();
-    let base = relative_base_arg(relative, &buffers.cwd())?;
+    let base = relative_base_arg(relative, || buffers.cwd())?;
     match buffers.buffer_display_path(bid, base.as_ref()) {
         Some(p) => p.into_steelval().map_err(generic_err),
         None => Ok(SteelVal::BoolV(false)),

@@ -1,7 +1,7 @@
 // Shared imports and harness helpers used by all test submodules.
 // Each submodule does `use super::*;` to access these.
 
-use hume_platform::dirs::{Dirs, GrammarBuild};
+use hume_platform::dirs::Dirs;
 use hume_platform::path::AbsolutePath;
 use hume_platform::wake::no_op_wake;
 use hume_scripting::host::NativeCall;
@@ -58,7 +58,7 @@ fn attach_steel(ed: &mut Editor, src: &str) {
     let mut host = ed
         .scripting
         .take()
-        .unwrap_or_else(|| hume_scripting::ScriptingHost::new(&Dirs::none()));
+        .unwrap_or_else(|| hume_scripting::ScriptingHost::for_testing(&Dirs::none()));
     host.register_command_names(&name_refs);
     let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(src, &mut init_host)
@@ -1261,15 +1261,6 @@ fn repo_runtime_dir() -> PathBuf {
         .join("runtime")
 }
 
-/// The grammar compiler `Dirs` finds beside the `hume` that cargo builds in
-/// this test binary's `target/<profile>/`. A workspace `cargo build` or
-/// `cargo test` builds it; a `-p hume-editor` run alone does not.
-fn workspace_grammar_build() -> GrammarBuild {
-    let test_exe = std::env::current_exe().unwrap();
-    let profile_dir = test_exe.parent().and_then(std::path::Path::parent).unwrap();
-    GrammarBuild::beside(&profile_dir.join("hume"))
-}
-
 /// No directory resolved, and the test process's own `PATH`: what a session
 /// started from the test process runs programs with.
 fn process_dirs() -> Dirs {
@@ -1327,7 +1318,6 @@ fn load_with_init_in_runtime(
         data: Some(data_dir.join("hume")),
         runtime: Some(runtime_dir.to_path_buf()),
         tmp: None,
-        grammar_build: workspace_grammar_build(),
         search_path: ed.state.dirs.search_path.clone(),
     };
     ed.init_scripting(&mut Default::default());
@@ -1338,8 +1328,13 @@ fn load_with_init_in_runtime(
 
 /// Load the real `core:plum` plugin and its `core:stdlib` dependency, with
 /// `init_src` evaluated first, e.g. the `load-plugin!` lines of the plugins
-/// PLUM is to manage.
-fn load_plum_after(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
+/// PLUM is to manage, and `config` as `core:plum`'s `#:config`.
+fn load_plum_with(
+    ed: &mut Editor,
+    data_dir: &std::path::Path,
+    init_src: &str,
+    config: Option<&str>,
+) {
     load_with_init(
         ed,
         data_dir,
@@ -1347,7 +1342,7 @@ fn load_plum_after(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) 
             "{init_src}\n(load-plugin! \"core:stdlib\")\n{}\n\
              (%activate-plugin-inline! \"core:plum\" \"grammars.scm\")\n\
              (%activate-plugin-inline! \"core:plum\" \"themes.scm\")",
-            hume_scripting::eager_load_scm("core:plum", None)
+            hume_scripting::eager_load_scm("core:plum", config)
         ),
     );
 }
@@ -1422,7 +1417,7 @@ fn run(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
 fn editor_host(ed: &mut Editor) -> hume_scripting::ScriptingHost {
     ed.scripting
         .take()
-        .unwrap_or_else(|| hume_scripting::ScriptingHost::new(&ed.state.dirs))
+        .unwrap_or_else(|| hume_scripting::ScriptingHost::for_testing(&ed.state.dirs))
 }
 
 /// Defines a one-arg Steel command whose body is `body` and binds it to

@@ -17,7 +17,7 @@ fn startup_buffer_fires_on_buffer_enter_on_the_first_settle() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-enter (lambda (bid) (log! 'trace "entered")))"#,
@@ -55,7 +55,7 @@ fn settle_with_no_focus_change_raises_no_further_on_buffer_enter() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-enter (lambda (bid) (log! 'trace "entered")))"#,
@@ -96,7 +96,7 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-enter (lambda (bid) (log! 'trace "entered")))"#,
@@ -150,7 +150,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-enter (lambda (bid) (log! 'trace "entered")))"#,
@@ -220,7 +220,7 @@ fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_ca
 
     let mut ed = editor_from("-[a]>b\n");
     let bid_before = ed.focused_buffer_id();
-    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
+    let mut host = hume_scripting::ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -273,7 +273,7 @@ fn on_focus_gained_fires_from_handle_input_and_settle_with_no_args() {
     use termina::event::Event as TerminalEvent;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-focus-gained (lambda () (log! 'trace "focus-gained")))"#,
@@ -313,7 +313,7 @@ fn on_option_change_fires_key_and_value_after_a_set_global() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-option-change (lambda (key value)
@@ -345,7 +345,7 @@ fn on_option_change_passes_an_enum_value_as_its_name() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-option-change (lambda (key value)

@@ -50,7 +50,7 @@ fn version_builtins_reject_a_wrong_argument_count() {
             "hume-version>=? expected 3 argument, got 4",
         ),
     ] {
-        let mut host = crate::ScriptingHost::new(&hume_platform::dirs::Dirs::none());
+        let mut host = crate::ScriptingHost::for_testing(&hume_platform::dirs::Dirs::none());
         let err = host
             .eval_source(expr, &mut crate::null_host::NullHost)
             .expect_err(expr);

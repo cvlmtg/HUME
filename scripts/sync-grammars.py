@@ -2,11 +2,14 @@
 """Regenerate runtime/scheme/languages.scm, runtime/scheme/languages/*.scm and the
 lsp-install catalog files from helix-editor/helix languages.toml.
 
-Reads the pinned SHA from runtime/scheme/helix-pin.scm, fetches helix's
+Reads the treesitter.hume release tag core:plum pins
+(runtime/plugins/core/plum/data/treesitter-hume-pin.scm), takes the Helix
+commit that release's grammars.toml names (`helix-rev`), so the language data
+and the grammars' queries come from one Helix commit, fetches helix's
 languages.toml at that commit, and rewrites:
   - languages.scm       — (define-language! …) detection data for every [[language]] block
   - languages/<name>.scm — one data file per [[language]] block: comment tokens,
-    language-id, root markers and the source of the grammar the language uses
+    language-id and root markers
   - lsp-install/data/registrations/<server>.scm — one file per server: its command,
     args and config, each omitted when it is the default (the server's name, no
     args, no config), derived from [language-server.*]
@@ -19,6 +22,7 @@ Idempotent: running twice produces byte-identical files.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -46,7 +50,7 @@ except ImportError:
 
 
 REPO = Path(__file__).resolve().parent.parent
-HELIX_PIN_SCM = REPO / "runtime" / "scheme" / "helix-pin.scm"
+TREESITTER_PIN_SCM = REPO / "runtime" / "plugins" / "core" / "plum" / "data" / "treesitter-hume-pin.scm"
 LANGUAGES_SCM = REPO / "runtime" / "scheme" / "languages.scm"
 LANGUAGES_DIR = REPO / "runtime" / "scheme" / "languages"
 LSP_INSTALL_DATA = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data"
@@ -105,32 +109,22 @@ LSP_REGISTRATION_HEADER = """\
 """
 
 
+def helix_rev_of(grammars_toml: str) -> str:
+    """The full Helix commit a treesitter.hume grammars.toml names."""
+    rev = tomllib.loads(grammars_toml).get("helix-rev")
+    if not isinstance(rev, str) or not re.fullmatch(r"[0-9a-f]{40}", rev):
+        sys.exit(f"error: grammars.toml has no full 40-digit helix-rev, got {rev!r}")
+    return rev
+
+
+def fetch_helix_rev(tag: str) -> str:
+    url = f"https://raw.githubusercontent.com/cvlmtg/treesitter.hume/{tag}/grammars.toml"
+    return helix_rev_of(fetch_bytes(url, timeout=30).decode())
+
+
 def fetch_toml(sha: str) -> dict:
     url = f"https://raw.githubusercontent.com/helix-editor/helix/{sha}/languages.toml"
     return tomllib.loads(fetch_bytes(url, timeout=30).decode())
-
-
-def parse_grammars(doc: dict) -> dict[str, dict]:
-    """Return {name: {url, rev, subpath}} for grammars with a git source."""
-    grammars: dict[str, dict] = {}
-    for entry in doc.get("grammar", []):
-        try:
-            name = entry["name"]
-            src = entry.get("source", {})
-        except KeyError as e:
-            sys.exit(f"error: malformed grammar entry in languages.toml: missing key {e}")
-        if not src.get("git"):
-            print(f"  skip grammar '{name}': no source.git", file=sys.stderr)
-            continue
-        try:
-            grammars[name] = {
-                "url": src["git"],
-                "rev": src["rev"],
-                "subpath": src.get("subpath", ""),
-            }
-        except KeyError as e:
-            sys.exit(f"error: malformed grammar '{name}' source in languages.toml: missing key {e}")
-    return grammars
 
 
 def comment_tokens(entry: dict) -> list[str]:
@@ -228,14 +222,11 @@ def checked_shebangs(entry: dict) -> list[str]:
     return corrected
 
 
-def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
+def parse_languages(doc: dict) -> list[dict]:
     """Return one dict per language: detection data (name, extensions, globs,
     shebangs) and per-language data (comment_tokens, block_comment_tokens,
-    language_id, roots, grammar). `grammar` is the source of the grammar the
-    language uses, with its C symbol, or None when that grammar has no git source."""
+    language_id, roots)."""
     langs = []
-    overrides = []
-    no_grammar = []
 
     for entry in doc.get("language", []):
         try:
@@ -257,14 +248,6 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
                         file=sys.stderr,
                     )
         shebangs = checked_shebangs(entry)
-        grammar_name = entry.get("grammar", name)
-        if grammar_name != name:
-            overrides.append(f"{name} -> {grammar_name}")
-        grammar = grammars.get(grammar_name)
-        if grammar is None:
-            no_grammar.append(name)
-        else:
-            grammar = {**grammar, "sym": "tree_sitter_" + grammar_name.replace("-", "_")}
         langs.append(
             {
                 "name": name,
@@ -275,18 +258,8 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
                 "block_comment_tokens": kept_block_comment_tokens(entry),
                 "language_id": entry.get("language-id"),
                 "roots": entry.get("roots", []),
-                "grammar": grammar,
             }
         )
-
-    if overrides:
-        print(f"grammar overrides ({len(overrides)}):", file=sys.stderr)
-        for o in overrides:
-            print(f"  {o}", file=sys.stderr)
-    if no_grammar:
-        print(f"languages without a helix grammar ({len(no_grammar)}):", file=sys.stderr)
-        for n in no_grammar:
-            print(f"  {n}", file=sys.stderr)
 
     return langs
 
@@ -329,10 +302,6 @@ def emit_language_data(lang: dict) -> list[str]:
         entries.append("(language-id . {})".format(scheme_str(lang["language_id"])))
     if lang["roots"]:
         entries.append("(roots {})".format(scheme_str_list(lang["roots"])))
-    grammar = lang["grammar"]
-    if grammar:
-        fields = [grammar["url"], grammar["rev"], grammar["sym"], grammar["subpath"]]
-        entries.append("(grammar {})".format(scheme_str_list(fields)))
     if not entries:
         return ["()"]
     rows = ["(" + entries[0]] + [" " + e for e in entries[1:]]
@@ -404,9 +373,9 @@ def parse_language_servers(
     the language's servers in Helix's order (their order is priority order).
 
     A server with no [language-server.*] command table at all (upstream gap
-    — e.g. haxe -> haxe-language-server at helix-pin 8c41b1160792) is left
+    — e.g. haxe -> haxe-language-server at Helix 8c41b1160792) is left
     out of both, with a report, not fatal: the language simply has no
-    seedable entry for it, same as a language with no grammar.
+    seedable entry for it.
     """
     server_defs = doc.get("language-server", {})
     servers: dict[str, dict] = {}
@@ -527,20 +496,19 @@ def emit_language_servers(
 
 
 def main() -> None:
-    sha = read_pin(HELIX_PIN_SCM)
-    print(f"helix-pin: {sha}", file=sys.stderr)
+    tag = read_pin(TREESITTER_PIN_SCM)
+    sha = fetch_helix_rev(tag)
+    print(f"treesitter.hume {tag}: helix-rev {sha}", file=sys.stderr)
 
     doc = fetch_toml(sha)
-    grammars = parse_grammars(doc)
-    langs = parse_languages(doc, grammars)
+    langs = parse_languages(doc)
     check_file_names("language", (lang["name"] for lang in langs))
     servers, language_lists = parse_language_servers(doc)
     check_file_names("server", servers)
     check_lsp_invariants(servers, langs, language_lists)
 
     print(
-        f"parsed: {len(langs)} languages, {len(grammars)} direct grammars with git source, "
-        f"{len(servers)} language servers",
+        f"parsed: {len(langs)} languages, {len(servers)} language servers",
         file=sys.stderr,
     )
 

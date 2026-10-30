@@ -1,5 +1,5 @@
 ;;; runtime/scheme/languages/log.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
-((grammar "https://github.com/Tudyx/tree-sitter-log" "62cfe307e942af3417171243b599cc7deac5eab9" "tree_sitter_log" ""))
+()

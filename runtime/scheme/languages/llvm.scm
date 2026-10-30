@@ -1,6 +1,5 @@
 ;;; runtime/scheme/languages/llvm.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
-((comment-tokens ";")
- (grammar "https://github.com/benwilliamgraham/tree-sitter-llvm" "c14cb839003348692158b845db9edda201374548" "tree_sitter_llvm" ""))
+((comment-tokens ";"))

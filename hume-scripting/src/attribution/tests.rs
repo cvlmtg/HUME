@@ -296,7 +296,7 @@ fn a_bundled_runtime_file_attributes_to_hume() {
     let init = dir.path().join("init.scm");
     std::fs::write(&init, r#"(define-command! "init-cmd" "" (lambda () #t))"#).unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut editor_host = CommandStoreHost::default();
     host.eval_runtime(&bundled, 10_000, &mut editor_host)
         .expect("the bundled file evaluates");

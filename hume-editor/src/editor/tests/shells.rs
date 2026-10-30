@@ -11,7 +11,7 @@ const CURSOR: char = '‸';
 /// A scripting host that has evaluated `shells.scm`, as startup does.
 fn shells_host() -> ScriptingHost {
     let source = std::fs::read_to_string(repo_runtime_dir().join("scheme/shells.scm")).unwrap();
-    let mut host = ScriptingHost::new(&repo_runtime_dirs());
+    let mut host = ScriptingHost::for_testing(&repo_runtime_dirs());
     host.eval_source(&source, &mut crate::testing::MockHost::new())
         .expect("shells.scm evaluates");
     host
@@ -726,7 +726,7 @@ fn cmd_reads_back_what_it_writes() {
 #[test]
 fn a_name_after_a_variable_naming_a_directory_is_never_glued_onto_it() {
     let s = str::to_owned;
-    let mut host = ScriptingHost::new(&repo_runtime_dirs());
+    let mut host = ScriptingHost::for_testing(&repo_runtime_dirs());
     // Defined before shells.scm loads, so its functions bind this lookup.
     host.eval_source(
         r#"(define (maybe-get-env-var name)

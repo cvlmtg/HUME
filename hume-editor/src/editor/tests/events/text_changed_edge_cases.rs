@@ -11,7 +11,7 @@ fn e_bang_reload_fires_on_text_changed() {
     use hume_scripting::ScriptingHost;
 
     let (mut ed, path) = editor_with_file("-[a]>b\n", "ab\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
@@ -47,7 +47,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).read_only = true;
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
@@ -93,7 +93,7 @@ fn opening_a_buffer_fires_on_buffer_open_not_on_text_changed() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-open (lambda (bid) (log! 'trace "opened")))
@@ -145,7 +145,7 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
     // reach `ed.state.config.commands`.
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
+    let mut host = hume_scripting::ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -189,7 +189,7 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
 
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))
@@ -248,7 +248,7 @@ fn read_only_view_refresh_fires_on_text_changed() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed
@@ -309,7 +309,7 @@ fn identity_edit_fires_no_on_text_changed() {
 
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
@@ -422,7 +422,7 @@ fn insert_then_backspace_records_no_revision() {
     let bid = ed.focused_buffer_id();
     let original = ed.doc().text().to_string();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
@@ -497,7 +497,7 @@ fn identity_reload_fires_no_on_text_changed() {
 
     let (mut ed, _path) = editor_with_file("-[a]>b\n", "ab\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
@@ -542,7 +542,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("hello\n")));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_b);
 
-    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
+    let mut host = hume_scripting::ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

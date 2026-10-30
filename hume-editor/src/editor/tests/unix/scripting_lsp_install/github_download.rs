@@ -9,20 +9,6 @@ use super::*;
 // whose `core:lsp-install` sources name a fabricated asset with its true
 // digest, and a `curl` shim that copies that asset into place.
 
-fn sha256_hex(path: &Path) -> String {
-    let out = std::process::Command::new("shasum")
-        .args(["-a", "256"])
-        .arg(path)
-        .output()
-        .expect("spawn shasum");
-    String::from_utf8(out.stdout)
-        .unwrap()
-        .split_whitespace()
-        .next()
-        .unwrap()
-        .to_string()
-}
-
 /// `name`'s github-kind source record serving `asset` (digest of `fixture`)
 /// for every Unix install target, with `bin` as the binary's path in the
 /// server directory.
@@ -57,21 +43,6 @@ fn write_fake_curl_shim(fixture: &Path, args_file: &Path) -> (tempfile::TempDir,
     (shim_dir, path)
 }
 
-/// `payload`'s contents as a gzip tarball at `archive`.
-fn tar_gz(payload: &Path, archive: &Path) {
-    assert!(
-        std::process::Command::new("tar")
-            .arg("-czf")
-            .arg(archive)
-            .arg("-C")
-            .arg(payload)
-            .arg(".")
-            .status()
-            .unwrap()
-            .success()
-    );
-}
-
 #[test]
 fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
     use std::os::unix::fs::PermissionsExt;
@@ -81,7 +52,7 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
     std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
     std::fs::write(payload.join("pkg/bin/lua-language-server"), b"#!/bin/sh\n").unwrap();
     let archive = work.path().join("lls.tar.gz");
-    tar_gz(&payload, &archive);
+    tar_gz(&payload, &["."], &archive);
     let sources = &github_source(
         "lua-language-server",
         "lls.tar.gz",
@@ -130,7 +101,7 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
         std::fs::write(payload.join(file), b"#!/bin/sh\n").unwrap();
     }
     let archive = work.path().join("lls.tar.gz");
-    tar_gz(&payload, &archive);
+    tar_gz(&payload, &["."], &archive);
     let sources = &github_source(
         "lua-language-server",
         "lls.tar.gz",
@@ -555,7 +526,7 @@ fn lsp_install_refuses_an_archive_whose_symlink_points_outside_the_server_dir() 
     std::fs::write(payload.join("pkg/bin/lua-language-server"), b"#!/bin/sh\n").unwrap();
     std::os::unix::fs::symlink(&outside, payload.join("pkg/escape")).unwrap();
     let archive = work.path().join("lls.tar.gz");
-    tar_gz(&payload, &archive);
+    tar_gz(&payload, &["."], &archive);
     let sources = github_source(
         "lua-language-server",
         "lls.tar.gz",
@@ -567,7 +538,7 @@ fn lsp_install_refuses_an_archive_whose_symlink_points_outside_the_server_dir() 
 
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("symlink pointing outside the server directory") && log.contains("escape"),
+        log.contains("symlink pointing outside") && log.contains("escape"),
         "the install must fail naming the escaping link: {log}"
     );
     assert_left_alone(&outside);
@@ -582,7 +553,7 @@ fn lsp_install_keeps_a_symlink_that_stays_inside_the_server_dir() {
     std::fs::write(payload.join("pkg/bin/lua-language-server"), b"#!/bin/sh\n").unwrap();
     std::os::unix::fs::symlink("lua-language-server", payload.join("pkg/bin/run")).unwrap();
     let archive = work.path().join("lls.tar.gz");
-    tar_gz(&payload, &archive);
+    tar_gz(&payload, &["."], &archive);
     let sources = github_source(
         "lua-language-server",
         "lls.tar.gz",
@@ -616,7 +587,7 @@ fn lsp_install_removes_the_server_dir_when_a_symlink_cannot_be_resolved() {
     std::os::unix::fs::symlink("b", payload.join("pkg/a")).unwrap();
     std::os::unix::fs::symlink("a", payload.join("pkg/b")).unwrap();
     let archive = work.path().join("lls.tar.gz");
-    tar_gz(&payload, &archive);
+    tar_gz(&payload, &["."], &archive);
     let sources = github_source(
         "lua-language-server",
         "lls.tar.gz",
@@ -641,7 +612,7 @@ fn lsp_install_missing_binary_after_unpack_fails_loudly() {
     std::fs::create_dir_all(&payload).unwrap();
     std::fs::write(payload.join("other"), b"x").unwrap();
     let archive = work.path().join("lls.tar.gz");
-    tar_gz(&payload, &archive);
+    tar_gz(&payload, &["."], &archive);
     let sources = github_source(
         "lua-language-server",
         "lls.tar.gz",

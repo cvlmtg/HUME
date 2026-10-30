@@ -4,59 +4,23 @@
 // `../scripting_grammar.rs`.
 //
 // Tests that use the grammar fixture (grammar_fixture()) require the shared
-// library built by `scripts/fetch-test-grammars.sh`. Each calls
+// library fetched by `scripts/fetch-test-grammars.sh`. Each calls
 // require_grammars first, which panics naming the fix if a fixture is
 // missing.
 
 use super::*;
-use hume_grid::Rect;
 use hume_platform::dirs::Dirs;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::super::render_snapshot::render_to_styled_string;
 use super::super::scripting_grammar::{
-    grammar_fixture, grammar_source, grammar_warnings, helix_pin, prelude_source,
-    runtime_scheme_dir,
+    grammar_fixture, grammar_warnings, prelude_source, runtime_scheme_dir,
 };
+use crate::editor::tests::before_save::warning_texts;
 use hume_scripting::ScriptingHost;
 use hume_treesitter::registry::GrammarBundle;
 use test_fixtures::require_grammars;
-
-/// Blobless-clone `url` into `dest` and force-check `rev` out, test-fixture-only.
-fn git_clone_rev_for_test(
-    url: &str,
-    dest: &std::path::Path,
-    rev: &str,
-) -> std::io::Result<std::process::ExitStatus> {
-    let status = std::process::Command::new("git")
-        .args(["clone", "--filter=blob:none", "--", url])
-        .arg(dest)
-        .status()?;
-    if !status.success() {
-        return Ok(status);
-    }
-    std::process::Command::new("git")
-        .arg("-C")
-        .arg(dest)
-        .args(["checkout", "--force", "--end-of-options", rev, "--"])
-        .status()
-}
-
-/// Fetch `url` to `dest` via curl, test-fixture-only. Mirrors
-/// `plum/fetch-raw-query`'s `run-inline-output!` call (the removed
-/// `hume_platform::process::curl_fetch` builtin's shape).
-fn curl_fetch_for_test(
-    url: &str,
-    dest: &std::path::Path,
-) -> std::io::Result<std::process::ExitStatus> {
-    std::process::Command::new("curl")
-        .args(["-fsSL", "-o"])
-        .arg(dest)
-        .args(["--", url])
-        .status()
-}
 
 // ---------------------------------------------------------------------------
 // Steel command-mode test
@@ -86,7 +50,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     );
     std::fs::write(&init_path, prelude_src + "\n" + &body).unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     {
@@ -132,7 +96,7 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
     std::fs::write(&init_path, prelude_src + "\n" + register_grammar_call).unwrap();
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)
@@ -280,10 +244,8 @@ fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() 
 // Startup (call! …) during init
 // ---------------------------------------------------------------------------
 
-/// Passive grammar registration: an init that registers installed grammars
-/// directly (like core's `register-installed-grammars!` in
-/// `runtime/scheme/grammars.scm`) succeeds without error and populates the
-/// pending language regs. A `(call! "unknown-cmd")` in the same init raises,
+/// Passive grammar registration: an init that registers grammars directly
+/// succeeds without error and populates the pending language regs. A `(call! "unknown-cmd")` in the same init raises,
 /// naming the command; caught here, it leaves the registrations in place.
 #[test]
 fn passive_load_registers_grammar_and_an_unknown_call_raises() {
@@ -293,12 +255,11 @@ fn passive_load_registers_grammar_and_an_unknown_call_raises() {
 
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().join("hume");
-    std::fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
     std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
 
-    let grammar_out = data_dir.join("grammars").join(format!("json.{ext}"));
+    let grammar_out = tmp.path().join(format!("json.{ext}"));
     std::fs::copy(&parser, &grammar_out).unwrap();
-    let hl_dest = data_dir.join("grammars/sources/json-hl.scm");
+    let hl_dest = tmp.path().join("json-hl.scm");
     std::fs::copy(&hl, &hl_dest).unwrap();
 
     let init_path = tmp.path().join("init.scm");
@@ -329,7 +290,7 @@ fn passive_load_registers_grammar_and_an_unknown_call_raises() {
     );
     std::fs::write(&init_path, prelude_src + &body).unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(data_dir.clone()),
         ..Dirs::none()
     });
@@ -362,8 +323,7 @@ fn passive_load_registers_grammar_and_an_unknown_call_raises() {
 
 /// Tab on `:plum-install-grammar`'s argument completes against the real
 /// shipped language data (`runtime/scheme/languages/`), not a fixture:
-/// no network, no install, so it needs neither `require_grammars` nor the
-/// e2e tests' own PATH and grammar-compiler setup below. "ag" is unique to "agda"
+/// no network, no install, so it needs no `require_grammars`. "ag" is unique to "agda"
 /// among every declared name (checked at authoring time; re-verified by
 /// this test every run, same discipline as this file's fixture-server
 /// module doc elsewhere in this test tree).
@@ -378,123 +338,6 @@ fn plum_install_grammar_tab_completes_a_declared_name() {
     ed.handle_key(key_tab());
     ed.settle();
     assert_eq!(minibuf_input(&ed), "plum-install-grammar agda");
-}
-
-// ---------------------------------------------------------------------------
-// e2e grammar install (network + an installed grammar compiler required)
-// ---------------------------------------------------------------------------
-
-/// End-to-end: clone → curl → grammar compiler → register-grammar! for JSON.
-/// Requires `git` and `curl` on `PATH`, a workspace-built grammar compiler
-/// (see `workspace_grammar_build`), and network access.
-#[test]
-fn install_real_json_grammar_e2e() {
-    // Read the JSON grammar's url + pinned rev straight from the shipped data
-    // (single source of truth, no hardcoded pins to drift out of sync).
-    let (url, rev) = grammar_source("json");
-    let (url, rev) = (url.as_str(), rev.as_str());
-
-    let tmp = tempfile::tempdir().unwrap();
-    let data_dir = tmp.path().join("hume");
-    std::fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
-    std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
-
-    let src_dir = data_dir.join("grammars/sources/json");
-    let ext = test_fixtures::grammar_platform_ext();
-    let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
-
-    let status = git_clone_rev_for_test(url, &src_dir, rev);
-    match &status {
-        Err(e) => panic!("git_clone_rev failed: {e}"),
-        Ok(s) if !s.success() => panic!("git_clone_rev non-zero exit"),
-        Ok(_) => {}
-    }
-    assert!(src_dir.exists(), "clone must create src dir");
-
-    let tool = match workspace_grammar_build() {
-        GrammarBuild::Found(tool) => tool,
-        missing => panic!("build hume-grammar-build first (cargo build --workspace): {missing:?}"),
-    };
-    let output = hume_platform::process::grammar_build(
-        &tool,
-        &src_dir,
-        &out_path,
-        hume_platform::process::Launch::with_process_path(&src_dir),
-    )
-    .expect("grammar_build must not fail to spawn");
-    assert!(output.status.success(), "grammar compiler failed");
-    assert!(out_path.exists(), "compiled grammar must exist after build");
-
-    let hl_path = src_dir.join("highlights.scm");
-    // Fetch highlights query via curl, using the pinned helix commit.
-    let pin = helix_pin();
-    let hl_url = format!(
-        "https://raw.githubusercontent.com/helix-editor/helix/{pin}/runtime/queries/json/highlights.scm"
-    );
-    let curl_status = curl_fetch_for_test(&hl_url, &hl_path);
-    match &curl_status {
-        Err(e) => panic!("curl_fetch failed: {e}"),
-        Ok(s) if !s.success() => panic!("curl_fetch non-zero exit"),
-        Ok(_) => {}
-    }
-    assert!(hl_path.exists(), "highlights query must exist after curl");
-
-    let mut ed = editor_from("-[{]>\"x\": 1}\n");
-    let bid = ed.focused_buffer_id();
-    let init_path = tmp.path().join("init.scm");
-    // `register-grammar!` is defined in prelude.scm: prepend the real prelude
-    // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
-    let prelude_src = prelude_source();
-    let body = format!(
-        r#"(define-typed-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
-        out_path.display(),
-        hl_path.display(),
-    );
-    std::fs::write(&init_path, prelude_src + &body).unwrap();
-
-    let mut host = ScriptingHost::new(&Dirs {
-        data: Some(data_dir),
-        ..process_dirs()
-    });
-    {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih)
-    }
-    .expect("eval_init");
-    ed.state
-        .config
-        .languages
-        .register_identity("json", &["json"], &[], &[])
-        .unwrap();
-    ed.scripting = Some(host);
-    let lang = ed.state.config.languages.intern("json");
-    ed.set_buffer_language(bid, Some(lang));
-
-    type_cmd(&mut ed, ":attach-json");
-
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .map(|e| format!("{:?}: {}", e.severity, e.text))
-        .collect();
-    assert!(
-        ed.state.config.languages.has_grammar("json"),
-        "grammar must be registered after e2e install; log={errors:#?}",
-    );
-    assert!(
-        ed.state.buffers.get(bid).syntax.is_some(),
-        "syntax must be set after e2e install + sweep; log={errors:#?}",
-    );
-
-    // Pin a stable snapshot theme so default-theme changes don't churn this frame.
-    // Bake after :attach-json has interned the grammar's scopes into the registry.
-    ed.view.theme = crate::testing::build_snapshot_theme();
-    ed.view.theme.bake(&ed.view.registry);
-
-    // Styled-frame snapshot: locks down token colours after the full e2e pipeline.
-    let rect = Rect::new(0, 0, 40, 5);
-    insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
 // ---------------------------------------------------------------------------
@@ -725,17 +568,15 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
 /// not depend on `core:plum` being declared in `init.scm` at all. PLUM is
 /// only needed to *install* a grammar in the first place.
 ///
-/// Stages a real compiled JSON grammar at the exact paths core's
-/// `grammar-output-path`/`grammar-highlights-path` expect, points the
+/// Installs the JSON grammar fixture under `<data>/grammars/`, points the
 /// runtime dir at the repo's real `runtime/` dir (so the real
 /// language data and `grammars.scm` registrar run), and runs
 /// `init_scripting` against an `init.scm` that never mentions PLUM.
 #[test]
 fn grammar_registration_survives_plum_absence() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     // No core:plum anywhere in init.scm.
-    let fixture = StagedGrammarFixture::new("json", &parser, &hl, "");
+    let fixture = StagedGrammarFixture::new("json", "");
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     ed.state.dirs = fixture.dirs();
@@ -794,15 +635,10 @@ fn grammar_registration_survives_plum_absence() {
 #[test]
 fn define_language_override_in_init_keeps_startup_grammar() {
     require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
     // The documented override pattern: redefine an already-grammared
     // language in init.scm to add an extension.
-    let fixture = StagedGrammarFixture::new(
-        "json",
-        &parser,
-        &hl,
-        r#"(define-language! "json" '("json" "jsonc"))"#,
-    );
+    let fixture =
+        StagedGrammarFixture::new("json", r#"(define-language! "json" '("json" "jsonc"))"#);
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     ed.state.dirs = fixture.dirs();
@@ -840,12 +676,48 @@ fn define_language_override_in_init_keeps_startup_grammar() {
 }
 
 // ---------------------------------------------------------------------------
-// Registration is driven by <data>/grammars/, reading only installed
-// languages' data files
+// Registration is driven by <data>/grammars/<name>/<install>/, reading each
+// installed grammar's manifest
 // ---------------------------------------------------------------------------
 
-/// A bundled `json` data file naming a grammar.
-const JSON_DATA: &str = "((grammar \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
+/// A bundled `json` data file, which has no part in grammar registration.
+const JSON_DATA: &str = "()";
+
+/// Lays out an installed `name` grammar under `data/grammars/<name>/1/`, as
+/// PLUM installs one: a library holding `library`, a manifest naming
+/// `symbol`, and each `(file, text)` of `queries` under `queries/`.
+fn install_grammar_files(
+    data: &std::path::Path,
+    name: &str,
+    symbol: &str,
+    library: &[u8],
+    queries: &[(&str, &str)],
+) {
+    let dir = data.join("grammars").join(name).join("1");
+    std::fs::create_dir_all(dir.join("queries")).unwrap();
+    let ext = test_fixtures::grammar_platform_ext();
+    std::fs::write(dir.join(format!("{name}.{ext}")), library).unwrap();
+    std::fs::write(
+        dir.join("manifest.scm"),
+        format!("((name . \"{name}\")\n (symbol . \"{symbol}\"))\n"),
+    )
+    .unwrap();
+    for (file, text) in queries {
+        std::fs::write(dir.join("queries").join(file), text).unwrap();
+    }
+}
+
+/// An installed json grammar whose library cannot load, with an empty
+/// highlights query.
+fn install_bogus_json_grammar(data: &std::path::Path) {
+    install_grammar_files(
+        data,
+        "json",
+        "tree_sitter_json",
+        b"not a real library",
+        &[("highlights.scm", "; empty\n")],
+    );
+}
 
 /// Run `init_scripting` against a temp runtime holding the real `prelude.scm`
 /// and `grammars.scm`, a tiny `languages.scm` and a caller-supplied bundled
@@ -894,139 +766,91 @@ fn init_errors_with_json_data(
     (errors, ed, vec![config_tmp, runtime_tmp, data_tmp])
 }
 
-/// Startup reads a language's data file only when its grammar is installed:
-/// with no `<data>/grammars/` directory there is nothing to register, so a
-/// data file that cannot even be parsed must never be touched.
-///
-/// Uses a syntactically broken `json.scm` as the tripwire: if anything reads
-/// it, `grammars.scm` raises and `init_scripting` logs an error. The last
-/// case (a compiled `json` present ⇒ the same broken file now *is* read)
-/// proves the tripwire works, so the first cases cannot pass vacuously.
+/// Startup takes an installed grammar's symbol from its manifest and reads
+/// no language data file: a `json.scm` that cannot even be parsed is never
+/// touched, and the grammar is registered under the manifest's symbol.
 #[test]
-fn startup_reads_only_installed_languages_data_files() {
-    let broken = "((grammar \"url\" \"rev\"";
+fn startup_registers_from_the_manifest_without_reading_language_data() {
+    let broken = "((roots \"x\"";
 
-    let (errors, ..) = init_errors_with_json_data(broken, |_data| {});
-    assert!(
-        errors.is_empty(),
-        "no <data>/grammars/ ⇒ no data file is read: {errors:?}"
-    );
-
-    // A bare sources/ subdirectory yields no grammar names either, so still no read.
-    let (errors, ..) = init_errors_with_json_data(broken, |data| {
-        std::fs::create_dir_all(data.join("grammars").join("sources")).unwrap();
+    let (errors, ed, _dirs) = init_errors_with_json_data(broken, |data| {
+        install_bogus_json_grammar(data);
     });
-    assert!(
-        errors.is_empty(),
-        "only sources/ present ⇒ still no grammar names, so still no read: {errors:?}"
-    );
 
-    // Tripwire check: a compiled json grammar forces json.scm, which then fails.
-    let ext = test_fixtures::grammar_platform_ext();
-    let (errors, ..) = init_errors_with_json_data(broken, |data| {
-        let grammars = data.join("grammars");
-        std::fs::create_dir_all(&grammars).unwrap();
-        std::fs::write(grammars.join(format!("json.{ext}")), b"not a real library").unwrap();
-    });
-    assert!(
-        errors.iter().any(|e| e.contains("json.scm")),
-        "a compiled grammar must read its data file, surfacing the broken file: {errors:?}"
-    );
+    assert!(errors.is_empty(), "no data file is read: {errors:?}");
+    assert!(warning_texts(&ed).is_empty(), "{:?}", warning_texts(&ed));
+    assert!(ed.state.config.languages.has_grammar("json"));
 }
 
-/// A compiled grammar for a name with no bundled grammar (installed, then
-/// dropped by a HUME update) has no tree-sitter symbol to look up. Walking the
-/// install directory reaches it anyway, so registration must skip it rather
-/// than raise.
-///
-/// `register-installed-grammars!`'s `(when source …)` skips a name
-/// `bundled-language-grammar` returns `#f` for, before `(hash-ref source
-/// 'symbol)` can raise.
+/// An installed grammar under a name that is not a language (installed, then
+/// dropped by a HUME update) is skipped without a message.
 #[test]
-fn orphan_compiled_grammar_is_skipped_not_registered() {
-    let ext = test_fixtures::grammar_platform_ext();
-
+fn orphan_installed_grammar_is_skipped_not_registered() {
     let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
-        let grammars = data.join("grammars");
-        std::fs::create_dir_all(&grammars).unwrap();
-        std::fs::write(
-            grammars.join(format!("no-longer-in-catalog.{ext}")),
+        install_grammar_files(
+            data,
+            "no-longer-a-language",
+            "tree_sitter_x",
             b"not a real library",
-        )
-        .unwrap();
-        // A highlights query too, so only the `bundled-language-grammar`
-        // check stands between this name and the symbol lookup.
-        let src = grammars.join("sources").join("no-longer-in-catalog");
-        std::fs::create_dir_all(&src).unwrap();
-        std::fs::write(src.join("highlights.scm"), "; empty\n").unwrap();
+            &[("highlights.scm", "; empty\n")],
+        );
     });
 
-    assert!(
-        errors.is_empty(),
-        "an orphan compiled grammar must be skipped silently: {errors:?}"
-    );
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(warning_texts(&ed).is_empty(), "{:?}", warning_texts(&ed));
     assert!(
         !ed.state
             .config
             .languages
-            .has_grammar("no-longer-in-catalog"),
-        "an orphan compiled grammar must not be registered"
+            .has_grammar("no-longer-a-language")
     );
 }
 
-/// A language that still has a bundled grammar, with a compiled library on disk
-/// but no `highlights.scm` (e.g. the user cleared `<data>/grammars/sources/`
-/// to reclaim disk), must warn (naming the grammar so `:plum-install-grammar
-/// <name>` is the obvious next step) instead of being dropped as silently as
-/// a genuine orphan. Distinguishes the two cases `register-installed-grammars!`
-/// must tell apart: no bundled grammar (expected-silent) vs. known-but-broken
-/// (repairable, must be surfaced).
+/// An installed grammar of a language, missing its `highlights.scm`, is
+/// repairable, so it warns naming the grammar and the reinstall command
+/// instead of being skipped without a message like an orphan.
 #[test]
-fn known_grammar_missing_highlights_warns_and_is_not_registered() {
-    let ext = test_fixtures::grammar_platform_ext();
-
+fn installed_grammar_missing_highlights_warns_and_is_not_registered() {
     let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
-        let grammars = data.join("grammars");
-        std::fs::create_dir_all(&grammars).unwrap();
-        std::fs::write(grammars.join(format!("json.{ext}")), b"not a real library").unwrap();
-        // No highlights.scm under sources/json/: the test covers its absence.
+        install_grammar_files(data, "json", "tree_sitter_json", b"not a real library", &[]);
     });
 
+    assert!(errors.is_empty(), "a warning, not an error: {errors:?}");
+    let warnings = warning_texts(&ed);
     assert!(
-        errors.is_empty(),
-        "a missing highlights query is a warning, not an error: {errors:?}"
+        warnings.iter().any(|w| w.contains("\"json\"")
+            && w.contains("highlights")
+            && w.contains(":plum-install-grammar json")),
+        "{warnings:?}"
     );
-    assert!(
-        ed.state
-            .message_log
-            .entries()
-            .any(|e| e.severity == Severity::Warning
-                && e.text.contains("json")
-                && e.text.contains("highlights")),
-        "expected a warning naming the grammar and its missing highlights query; messages: {:?}",
-        ed.state
-            .message_log
-            .entries()
-            .map(|e| format!("{:?}: {}", e.severity, e.text))
-            .collect::<Vec<_>>()
-    );
-    assert!(
-        !ed.state.config.languages.has_grammar("json"),
-        "a grammar missing its highlights query must not be registered"
-    );
+    assert!(!ed.state.config.languages.has_grammar("json"));
 }
 
-/// A file matching another platform's shared-library extension (e.g. a `.so`
-/// left behind after a macOS setup migrated from Linux) is not part of this
-/// platform's installed set, so `installed-grammars` must never yield its name
-/// at all: `register-grammar!` must not even be attempted for it.
-///
-/// Startup registration opens nothing, so `has_grammar` reports a
-/// registration attempt even for a file that is not a real library
-/// (`grammar-output-path` re-derives its path with the *platform's*
-/// extension). A skip leaves `json` with no grammar.
+/// An installed grammar with no manifest has no symbol to load, so it warns
+/// naming the grammar and the reinstall command.
 #[test]
-fn wrong_extension_grammar_is_skipped_not_registered() {
+fn installed_grammar_without_a_manifest_warns_and_is_not_registered() {
+    let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
+        install_bogus_json_grammar(data);
+        std::fs::remove_file(data.join("grammars/json/1/manifest.scm")).unwrap();
+    });
+
+    assert!(errors.is_empty(), "{errors:?}");
+    let warnings = warning_texts(&ed);
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("\"json\"") && w.contains(":plum-install-grammar json")),
+        "{warnings:?}"
+    );
+    assert!(!ed.state.config.languages.has_grammar("json"));
+}
+
+/// A grammar directory holding another platform's library (e.g. a `.so` in
+/// a data directory shared with a Linux setup) is not installed here, so it
+/// is neither registered nor warned about.
+#[test]
+fn foreign_platform_grammar_is_skipped_without_a_warning() {
     let wrong_ext = if cfg!(target_os = "macos") {
         "so"
     } else {
@@ -1034,34 +858,19 @@ fn wrong_extension_grammar_is_skipped_not_registered() {
     };
 
     let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
-        let grammars = data.join("grammars");
-        std::fs::create_dir_all(&grammars).unwrap();
-        std::fs::write(
-            grammars.join(format!("json.{wrong_ext}")),
-            b"not a real library",
+        install_bogus_json_grammar(data);
+        let dir = data.join("grammars/json/1");
+        let ext = test_fixtures::grammar_platform_ext();
+        std::fs::rename(
+            dir.join(format!("json.{ext}")),
+            dir.join(format!("json.{wrong_ext}")),
         )
         .unwrap();
-        let src = grammars.join("sources").join("json");
-        std::fs::create_dir_all(&src).unwrap();
-        std::fs::write(src.join("highlights.scm"), "; empty\n").unwrap();
     });
 
-    assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
-    assert!(
-        !ed.state.config.languages.has_grammar("json"),
-        "a foreign-extension file must not be registered"
-    );
-    let warnings: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Warning)
-        .map(|e| e.text.clone())
-        .collect();
-    assert!(
-        warnings.is_empty(),
-        "a foreign-extension file must be skipped without a warning: {warnings:?}"
-    );
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(warning_texts(&ed).is_empty(), "{:?}", warning_texts(&ed));
+    assert!(!ed.state.config.languages.has_grammar("json"));
 }
 
 /// Startup registers an installed grammar without opening its library, so a
@@ -1069,14 +878,8 @@ fn wrong_extension_grammar_is_skipped_not_registered() {
 /// its language needs it, and then says so once.
 #[test]
 fn init_registration_of_a_bogus_library_is_silent_until_a_buffer_needs_it() {
-    let ext = test_fixtures::grammar_platform_ext();
     let (errors, mut ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
-        let grammars = data.join("grammars");
-        std::fs::create_dir_all(&grammars).unwrap();
-        std::fs::write(grammars.join(format!("json.{ext}")), b"not a real library").unwrap();
-        let src = grammars.join("sources").join("json");
-        std::fs::create_dir_all(&src).unwrap();
-        std::fs::write(src.join("highlights.scm"), "; empty\n").unwrap();
+        install_bogus_json_grammar(data);
     });
     assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
     assert!(grammar_warnings(&ed, "json").is_empty());
@@ -1103,7 +906,7 @@ fn runtime_register_grammar_with_a_bad_library_raises() {
         missing.join("highlights.scm").display(),
     );
     std::fs::write(&init_path, prelude_source() + "\n" + &body).unwrap();
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut ed = editor_from("-[a]>b\n");
     {
         let mut ih = init_host!(ed);
@@ -1126,54 +929,58 @@ fn runtime_register_grammar_with_a_bad_library_raises() {
     assert!(!ed.state.config.languages.has_grammar("json"));
 }
 
-/// `installed-grammars` must sort by stem, not by full filename: `"b-x.<ext>"
-/// < "b.<ext>"` (`-` sorts before `.`), but stem order puts `b` ahead of
-/// `b-x`. Neither name has a bundled grammar, so
-/// `register-installed-grammars!` skips both silently. Only the list order
-/// is under test.
+/// `installed-grammar-folders` pairs each grammar directory of a known
+/// language that holds this platform's library with its current install,
+/// sorted by name: a directory with no library, a stray file and a grammar
+/// of no language are left out.
 #[test]
-fn installed_grammars_sorts_by_stem_not_filename() {
-    let ext = test_fixtures::grammar_platform_ext();
-
-    let (errors, mut ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
-        let grammars = data.join("grammars");
-        std::fs::create_dir_all(&grammars).unwrap();
-        std::fs::write(grammars.join(format!("b.{ext}")), b"").unwrap();
-        std::fs::write(grammars.join(format!("b-x.{ext}")), b"").unwrap();
+fn installed_grammar_folders_pair_each_known_library_directory_with_its_install() {
+    let (errors, mut ed, dirs) = init_errors_with_json_data(JSON_DATA, |data| {
+        for name in ["b-x", "b", "orphan"] {
+            install_grammar_files(data, name, "tree_sitter_b", b"", &[]);
+        }
+        std::fs::create_dir_all(data.join("grammars/no-library")).unwrap();
+        std::fs::write(data.join("grammars/.DS_Store"), b"").unwrap();
     });
     assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
+    let languages_dir = dirs[1].path().join("scheme/languages");
+    for name in ["b", "b-x"] {
+        std::fs::write(languages_dir.join(format!("{name}.scm")), "()").unwrap();
+    }
 
     let mut host = ed.scripting.take().expect("init_scripting installs a host");
-    let result = {
+    let listed = {
         let mut ih = init_host!(ed);
-        host.eval_source(r#"(error (string-join (installed-grammars) ","))"#, &mut ih)
+        host.eval_source_for_value(r#"(string-join (map (lambda (p) (string-append (car p) "/" (file-name (cdr p)))) (installed-grammar-folders)) ",")"#, &mut ih)
     };
     ed.scripting = Some(host);
 
-    let err = result.expect_err("the raised list must surface as an eval error");
-    assert!(
-        err.contains("b,b-x"),
-        "installed-grammars must sort stems after stripping the extension: {err:?}"
+    assert_eq!(
+        listed.expect("installed-grammar-folders").to_string(),
+        "\"b/1,b-x/1\""
     );
 }
 
-/// Startup registration reads every optional query file that exists beside
+/// Startup registration reads every optional query file present beside
 /// `highlights.scm`: with `textobjects.scm` and `indents.scm` present the
 /// bundle has text objects and indents and no injections.
 #[test]
-fn register_grammar_from_sources_picks_up_only_the_optional_files_present() {
+fn register_installed_grammar_picks_up_only_the_optional_files_present() {
     require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
-    let ext = test_fixtures::grammar_platform_ext();
 
     let (errors, mut ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
-        let grammars = data.join("grammars");
-        let src = grammars.join("sources").join("json");
-        std::fs::create_dir_all(&src).unwrap();
-        std::fs::copy(&parser, grammars.join(format!("json.{ext}"))).unwrap();
-        std::fs::copy(&hl, src.join("highlights.scm")).unwrap();
-        std::fs::write(src.join("textobjects.scm"), "(pair) @entry.inside\n").unwrap();
-        std::fs::write(src.join("indents.scm"), "(object) @indent\n").unwrap();
+        install_grammar_files(
+            data,
+            "json",
+            "tree_sitter_json",
+            &std::fs::read(&parser).unwrap(),
+            &[
+                ("highlights.scm", &std::fs::read_to_string(&hl).unwrap()),
+                ("textobjects.scm", "(pair) @entry.inside\n"),
+                ("indents.scm", "(object) @indent\n"),
+            ],
+        );
     });
 
     assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
@@ -1226,4 +1033,132 @@ fn bundled_languages_carry_root_markers() {
     assert!(languages.bundled_loaded(gomod));
     assert_eq!(languages.roots_of(go), ["go.work", "go.mod"]);
     assert!(languages.roots_of(gomod).is_empty());
+}
+
+// ── Grammar loads and the command budget ─────────────────────────────────────
+
+/// Well above the scheduling noise of the Scheme each probe runs.
+const GRAMMAR_LOAD_BUDGET_MS: usize = 250;
+
+/// How long each grammar library open takes in these tests, several times
+/// [`GRAMMAR_LOAD_BUDGET_MS`].
+const SLOW_OPEN: Duration = Duration::from_secs(1);
+
+/// An editor showing `text`, whose data dir holds the `installed` fixture
+/// grammars, registered at startup and not yet loaded. The command budget is
+/// [`GRAMMAR_LOAD_BUDGET_MS`] and each library open waits [`SLOW_OPEN`]
+/// inside the scripting host's own budget pause.
+fn editor_with_installed_grammars(data_tmp: &Path, installed: &[&str], text: &str) -> Editor {
+    for name in installed {
+        test_fixtures::install_fixture_grammar(&data_tmp.join("hume/grammars"), name);
+    }
+    let mut ed = editor_from(text);
+    load_plum(&mut ed, data_tmp);
+    ed.state.settings.steel_command_budget_ms = GRAMMAR_LOAD_BUDGET_MS;
+    let budget = ed.scripting.as_ref().expect("scripting is on").os_wait();
+    ed.state.library_wait.connect(move |open| {
+        budget.waiting(|| {
+            std::thread::sleep(SLOW_OPEN);
+            open();
+        })
+    });
+    ed
+}
+
+/// Runs `:probe` and checks it outlasted its budget, which only a library
+/// open through the slow wait makes it do.
+fn run_probe(ed: &mut Editor) {
+    let started = Instant::now();
+    type_cmd(ed, ":probe");
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed > Duration::from_millis(GRAMMAR_LOAD_BUDGET_MS as u64),
+        "the probe took {elapsed:?}, within its budget"
+    );
+}
+
+fn grammar_loaded(ed: &Editor, name: &str) -> bool {
+    let languages = &ed.state.config.languages;
+    languages
+        .id_of(name)
+        .is_some_and(|id| languages.loaded_grammar(id).is_some())
+}
+
+#[test]
+fn registering_a_grammar_from_a_command_does_not_count_its_load() {
+    require_grammars(&["yaml"]);
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_with_installed_grammars(data_tmp.path(), &[], "-[x]>\n");
+    test_fixtures::install_fixture_grammar(
+        &canonical_data_dir(data_tmp.path()).join("grammars"),
+        "yaml",
+    );
+    run(
+        &mut ed,
+        data_tmp.path(),
+        r#"(define-typed-command! "probe" "" (lambda () (register-installed-grammar! "yaml" (%grammar-current-install "yaml"))))"#,
+    );
+
+    run_probe(&mut ed);
+
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+    assert!(grammar_loaded(&ed, "yaml"));
+}
+
+#[test]
+fn a_popup_whose_language_loads_its_grammar_does_not_count_the_load() {
+    require_grammars(&["yaml"]);
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_with_installed_grammars(data_tmp.path(), &["yaml"], "-[x]>\n");
+    assert!(
+        !grammar_loaded(&ed, "yaml"),
+        "premise: registered, not loaded"
+    );
+    run(
+        &mut ed,
+        data_tmp.path(),
+        r#"(define-typed-command! "probe" "" (lambda () (show-popup! (focused-pane) "a: 1" #:lang "yaml")))"#,
+    );
+
+    run_probe(&mut ed);
+
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+    let popup = ed.state.input.popup().expect("the popup is shown");
+    assert!(popup.syntax.is_some());
+}
+
+/// An edit command that `call!` runs loads the grammar of a language the
+/// edit injects: the edit fences the cursor's line as yaml, and toggling its
+/// comment uses yaml's `#`.
+#[test]
+fn an_editor_command_that_loads_an_injected_grammar_does_not_count_the_load() {
+    require_grammars(&["markdown", "markdown.inline", "yaml"]);
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_with_installed_grammars(
+        data_tmp.path(),
+        &["markdown", "markdown.inline", "yaml"],
+        "x\n-[a]>: 1\n",
+    );
+    type_cmd(&mut ed, ":set buffer language=markdown");
+    ed.reparse_stale_buffers();
+    assert!(
+        !grammar_loaded(&ed, "yaml"),
+        "premise: registered, not loaded"
+    );
+    run(
+        &mut ed,
+        data_tmp.path(),
+        r#"(define-typed-command! "probe" ""
+             (lambda ()
+               (edit-text! (focused-pane)
+                           (list (hash 'start-char 0 'end-char 2 'text "```yaml\n")
+                                 (hash 'start-char 7 'end-char 7 'text "```\n")))
+               (call! "toggle-comment" (focused-pane))))"#,
+    );
+
+    run_probe(&mut ed);
+
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+    assert!(grammar_loaded(&ed, "yaml"));
+    assert_eq!(ed.doc().text().to_string(), "```yaml\n# a: 1\n```\n");
 }

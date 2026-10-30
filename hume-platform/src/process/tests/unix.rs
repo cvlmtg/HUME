@@ -206,34 +206,6 @@ fn run_inline_output_child_shares_the_callers_process_group() {
     assert_in_callers_group(&printed);
 }
 
-// ── grammar_build ─────────────────────────────────────────────────────────
-
-/// `compile-grammar!` runs the compiler inside the inline-output frame, so it
-/// must be interruptible by a terminal Ctrl-c the same way.
-#[test]
-fn grammar_build_child_shares_the_callers_process_group() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    // Called as `tool -o OUT SRC`: writes its pgid to OUT.
-    let tool = write_script(
-        dir.path(),
-        "fake-grammar-build",
-        "ps -o pgid= -p $$ > \"$2\"\n",
-        0o755,
-    );
-    let out = dir.path().join("out.txt");
-
-    let output = grammar_build(
-        &tool,
-        dir.path(),
-        &out,
-        Launch::with_process_path(dir.path()),
-    )
-    .expect("spawn the tool");
-    assert!(output.status.success());
-    let printed = std::fs::read(&out).expect("read out.txt");
-    assert_in_callers_group(&printed);
-}
-
 // ── spawn_in_own_group ──────────────────────────────────────────────────────
 
 /// The precondition `tracked::TrackedChild`'s group-directed kill rests on:

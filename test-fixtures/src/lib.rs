@@ -3,11 +3,11 @@
 //! [`testing`] holds the marker-annotated buffer/selection DSL
 //! (`parse_state`/`serialize_state`/`assert_state!`) used by editing-command
 //! tests. Everything below is grammar-fixture paths and fixture-presence
-//! preconditions. Fixtures are installed
-//! by `scripts/fetch-test-grammars.sh` into `tests/fixtures/grammars/<name>/`,
-//! with `queries/` normalized to the fixture root regardless of whether the
-//! upstream grammar repo is a monorepo — callers never need to read a
-//! language's data file for subpaths.
+//! preconditions. `scripts/fetch-test-grammars.sh` installs each fixture
+//! into `tests/fixtures/grammars/<name>/` the way PLUM installs a grammar:
+//! `<name>.<ext>`, `queries/`, `manifest.scm` and `licenses/`, from the pinned
+//! treesitter.hume release. It also packs them into a local grammar bundle,
+//! [`fixture_bundle_dir`].
 
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
@@ -46,7 +46,7 @@ pub fn grammar_platform_ext() -> &'static str {
 pub fn grammar_parser_path(name: &str) -> PathBuf {
     fixtures_root()
         .join(name)
-        .join(format!("parser.{}", grammar_platform_ext()))
+        .join(format!("{name}.{}", grammar_platform_ext()))
 }
 
 /// Absolute path to the highlights query file for `name`.
@@ -54,32 +54,29 @@ pub fn grammar_query_path(name: &str) -> PathBuf {
     fixtures_root().join(name).join("queries/highlights.scm")
 }
 
-/// Where the Helix-maintained query file `file` (e.g. `textobjects.scm`) for
-/// `name` lives, whether or not the fetch script found one. It is
-/// `helix-<file>` beside the grammar. These are fetched by
-/// `scripts/fetch-test-grammars.sh` from the pinned Helix commit and can
-/// differ from the grammar's own bundled queries; PLUM installs the Helix
-/// version. Callers that need the path before presence is known (to name it
-/// in a `require_fixture_file` panic) use this one.
-pub fn helix_query_path_unchecked(name: &str, file: &str) -> PathBuf {
-    fixtures_root().join(name).join(format!("helix-{file}"))
+/// Where the query file `file` (e.g. `textobjects.scm`) for `name` lives,
+/// whether or not the fixture has one: `queries/<file>`, Helix's query at
+/// the release's Helix commit with its inherits resolved, as PLUM installs
+/// it.
+fn helix_query_path_unchecked(name: &str, file: &str) -> PathBuf {
+    fixtures_root().join(name).join("queries").join(file)
 }
 
-/// [`helix_query_path_unchecked`], or `None` if the fetch script found no
-/// such query for `name`.
+/// Where the query file `file` (e.g. `textobjects.scm`) for `name` lives, or
+/// `None` if the fixture has no such query.
 pub fn helix_query_path(name: &str, file: &str) -> Option<PathBuf> {
     let path = helix_query_path_unchecked(name, file);
     path.exists().then_some(path)
 }
 
-/// [`helix_query_path_unchecked`], present.
+/// Where the query file `file` for `name` lives, present.
 ///
 /// # Panics
-/// With [`require_fixture_file`]'s message when the fetch script found no
-/// such query for `name`.
+/// With [`require_fixture_file`]'s message when the fixture has no such
+/// query for `name`.
 pub fn require_helix_query(name: &str, file: &str) -> PathBuf {
     let path = helix_query_path_unchecked(name, file);
-    require_fixture_file(&path, &format!("{name} helix-{file}"));
+    require_fixture_file(&path, &format!("{name} queries/{file}"));
     path
 }
 
@@ -103,6 +100,46 @@ pub fn require_helix_indent_corpus(name: &str, file: &str) -> PathBuf {
     path
 }
 
+/// The local grammar bundle the fetch script packs from the fixtures:
+/// `grammars-<platform>.tar` and its `.index`, in the release format, for a
+/// test to install from as PLUM's local grammar source.
+///
+/// # Panics
+/// With [`require_fixture_file`]'s message when the fetch script has not
+/// built it.
+pub fn fixture_bundle_dir() -> PathBuf {
+    let dir = fixtures_root().join("bundle");
+    require_fixture_file(&dir, "the local grammar bundle");
+    dir
+}
+
+/// Copy `name`'s fixture, as the fetch script unpacked it, to `to`: the
+/// contents of one release archive.
+pub fn copy_fixture_grammar(to: &Path, name: &str) {
+    fn copy_tree(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).expect("create grammar dir");
+        for entry in std::fs::read_dir(from).expect("read fixture dir") {
+            let entry = entry.expect("read fixture entry");
+            let target = to.join(entry.file_name());
+            if entry.file_type().expect("fixture entry type").is_dir() {
+                copy_tree(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), &target).expect("copy fixture file");
+            }
+        }
+    }
+    copy_tree(&fixtures_root().join(name), to);
+}
+
+/// Install `name`'s fixture under `grammars_dir` as PLUM installs a grammar
+/// under `<data>/grammars/`, as the one install `<name>/1/`, and return that
+/// folder. Callers call [`require_grammars`] first.
+pub fn install_fixture_grammar(grammars_dir: &Path, name: &str) -> PathBuf {
+    let dir = grammars_dir.join(name).join("1");
+    copy_fixture_grammar(&dir, name);
+    dir
+}
+
 /// Require `names`' compiled grammar fixtures to be present.
 ///
 /// Panics naming every missing fixture (not just the first) when one or more
@@ -122,8 +159,7 @@ pub fn require_grammars(names: &[&str]) {
 }
 
 /// Same contract as [`require_grammars`], for a single fixture file that
-/// isn't a compiled grammar (e.g. a Helix-maintained or bundled injections
-/// query).
+/// isn't a compiled grammar (e.g. an injections query).
 pub fn require_fixture_file(path: &Path, what: &str) {
     if !path.exists() {
         panic!(

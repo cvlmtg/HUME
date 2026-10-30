@@ -45,7 +45,7 @@ fn print_reaches_the_terminal_from_a_required_module() {
         r#"(define-command! "probe" "doc" (lambda () (print! "")) #:inline-output #t)"#,
     )
     .unwrap();
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut store = CommandStoreHost::default();
     let escaped_path =
         crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");

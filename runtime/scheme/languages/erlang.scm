@@ -1,7 +1,6 @@
 ;;; runtime/scheme/languages/erlang.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
 ((comment-tokens "%%")
- (roots "rebar.config")
- (grammar "https://github.com/the-mikedavis/tree-sitter-erlang" "d85b18e76962d6a3ba131bc5b514d77558e82762" "tree_sitter_erlang" ""))
+ (roots "rebar.config"))

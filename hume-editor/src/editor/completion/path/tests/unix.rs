@@ -13,7 +13,7 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
     let cwd = &AbsolutePath::rooted("/tmp");
-    let langs = LanguageRegistry::new();
+    let langs = LanguageRegistry::for_testing();
     let ctx = CompletionCtx {
         registry: &reg,
         buffers: &store,
@@ -59,7 +59,7 @@ fn path_completer_dollar_var_expands_for_lookup() {
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
     let cwd = &AbsolutePath::rooted("/tmp");
-    let langs = LanguageRegistry::new();
+    let langs = LanguageRegistry::for_testing();
     let ctx = CompletionCtx {
         registry: &reg,
         buffers: &store,
@@ -101,7 +101,7 @@ fn path_completer_dirs_only_mode() {
 
     let canonical = AbsolutePath::canonicalize(dir.path()).unwrap();
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let langs = LanguageRegistry::new();
+    let langs = LanguageRegistry::for_testing();
     let ctx = CompletionCtx {
         registry: &reg,
         buffers: &store,

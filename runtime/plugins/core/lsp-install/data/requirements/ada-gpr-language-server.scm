@@ -2,4 +2,4 @@
 ;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
 ;;; Source: sources/ada-gpr-language-server.scm
 
-((targets (* tar "tar" "curl")) (missing . download))
+((targets (* tar "curl")) (missing . download))

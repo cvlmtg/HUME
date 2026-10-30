@@ -15,7 +15,7 @@ fn typing_one_character_fires_on_text_changed_once() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed
@@ -54,7 +54,7 @@ fn the_hook_receives_the_hunks_since_the_previous_event() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\nc\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed
@@ -102,7 +102,7 @@ fn several_edits_before_one_settle_coalesce_into_one_event() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
@@ -143,7 +143,7 @@ fn undo_fires_but_a_no_op_undo_at_root_does_not() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "changed")))"#,
@@ -192,7 +192,7 @@ fn editor_with_history_hooks(input: &str) -> Editor {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from(input);
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-text-changed (lambda (bid changes) (log! 'trace "text")))

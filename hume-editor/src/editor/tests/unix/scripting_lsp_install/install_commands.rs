@@ -86,7 +86,7 @@ fn lsp_install_no_language_buffer_and_no_arg_warns() {
 }
 
 #[test]
-fn lsp_install_tar_archive_requires_tar_on_path() {
+fn lsp_install_tar_archive_requires_a_tar_extractor() {
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -98,7 +98,7 @@ fn lsp_install_tar_archive_requires_tar_on_path() {
 
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("requires 'tar' on $PATH"),
+        log.contains("requires a program that extracts tar archives, which was not found"),
         "a tar-archive server must require tar before downloading: {log}"
     );
 }

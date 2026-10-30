@@ -6,7 +6,7 @@ formats at runtime. Design rationale for the LSP parts: `docs/LSP-INSTALL.md`.
 
 | Script | Pin | Fetches | Emits |
 |---|---|---|---|
-| `sync-grammars.py` | `runtime/scheme/helix-pin.scm` | `helix-editor/helix` `languages.toml` | `runtime/scheme/languages.scm`, one `runtime/scheme/languages/<name>.scm` per language, one `runtime/plugins/core/lsp-install/data/registrations/<server>.scm` per server, and `data/language-servers.scm` |
+| `sync-grammars.py` | `runtime/plugins/core/plum/data/treesitter-hume-pin.scm` | that `cvlmtg/treesitter.hume` release's `grammars.toml` for its `helix-rev`, then `helix-editor/helix` `languages.toml` at that commit | `runtime/scheme/languages.scm`, one `runtime/scheme/languages/<name>.scm` per language, one `runtime/plugins/core/lsp-install/data/registrations/<server>.scm` per server, and `data/language-servers.scm` |
 | `sync-lsp-sources.py` | `runtime/plugins/core/lsp-install/data/mason-pin.scm` | `mason-org/mason-registry` `registry.json.zip` + every release asset (for sha256) | one `runtime/plugins/core/lsp-install/data/sources/<server>.scm` and one `data/requirements/<server>.scm` per server |
 
 Each one-file-per-name directory (`runtime/scheme/languages/`, and `registrations/`,
@@ -25,13 +25,15 @@ parsing logic is tested against fixtures, without the network, by
 
 Each script runs alone after its own pin bump:
 
-- bump `helix-pin.scm` → run `sync-grammars.py`
+- bump `plum/data/treesitter-hume-pin.scm` → run `sync-grammars.py`. A Helix bump starts in
+  treesitter.hume: its `sync-pins.py --helix <sha>`, a release, then this pin bump, so the
+  language data and the grammars' queries always come from one Helix commit.
 - bump `lsp-install/data/mason-pin.scm` → run `sync-lsp-sources.py`
 
 One exception: `sync-lsp-sources.py` reads the checked-in `registrations/` to filter
 Mason to the servers Helix actually wires — through an explicit Helix→Mason name-mapping
 table (the namespaces differ: Helix `pylsp` is Mason `python-lsp-server`), reporting every
-Helix server left unmatched. So after a helix bump that changes server names, run
+Helix server left unmatched. So after a Helix bump that changes server names, run
 `sync-grammars.py` first, then `sync-lsp-sources.py`.
 
 `sync-lsp-sources.py --requirements-only` rewrites `requirements/` from the checked-in

@@ -3,7 +3,7 @@
 // Steel builtin, and the grammar install pipeline.
 //
 // Tests that use the grammar fixture (grammar_fixture()) require the shared
-// library built by `scripts/fetch-test-grammars.sh`. Each calls
+// library fetched by `scripts/fetch-test-grammars.sh`. Each calls
 // require_grammars first, which panics naming the fix if a fixture is
 // missing.
 
@@ -32,62 +32,6 @@ pub(super) fn runtime_scheme_dir() -> PathBuf {
 /// The shipped `prelude.scm`'s source.
 pub(super) fn prelude_source() -> String {
     std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap()
-}
-
-/// The source fields of a grammar `bundled-language-grammar` returns.
-#[derive(Debug, PartialEq, Eq)]
-pub(super) struct ShippedGrammar {
-    pub(super) url: String,
-    pub(super) rev: String,
-    pub(super) symbol: String,
-    pub(super) subpath: String,
-}
-
-/// The grammar language `name` uses, from its shipped data file, read by
-/// `bundled-language-grammar` the way the editor and `core:plum` read it.
-/// Avoids duplicating pins into the test (they drift otherwise).
-pub(super) fn shipped_grammar(name: &str) -> ShippedGrammar {
-    let mut scripting = hume_scripting::ScriptingHost::new(&repo_runtime_dirs());
-    let source = scripting
-        .eval_source_for_value(
-            &format!("(bundled-language-grammar {name:?})"),
-            &mut crate::testing::MockHost::new(),
-        )
-        .unwrap_or_else(|e| panic!("shipped data for '{name}' must be well-formed: {e}"));
-    let steel::rvals::SteelVal::HashMapV(fields) = &source else {
-        panic!("no shipped grammar for '{name}': {source:?}");
-    };
-    let field = |key: &str| match fields.get(&steel::rvals::SteelVal::SymbolV(key.into())) {
-        Some(steel::rvals::SteelVal::StringV(s)) => s.to_string(),
-        other => panic!("grammar field '{key} must be a string, got {other:?}"),
-    };
-    ShippedGrammar {
-        url: field("url"),
-        rev: field("rev"),
-        symbol: field("symbol"),
-        subpath: field("subpath"),
-    }
-}
-
-/// `(url, rev)` of the grammar language `name` uses; see [`shipped_grammar`].
-pub(super) fn grammar_source(name: &str) -> (String, String) {
-    let ShippedGrammar { url, rev, .. } = shipped_grammar(name);
-    (url, rev)
-}
-
-/// Read the pinned helix commit SHA from `helix-pin.scm` (one quoted literal,
-/// the rest of the file is `;;;` comments).
-pub(super) fn helix_pin() -> String {
-    let s = std::fs::read_to_string(runtime_scheme_dir().join("helix-pin.scm"))
-        .expect("read helix-pin.scm");
-    s.lines()
-        .find(|l| !l.trim_start().starts_with(';') && l.contains('"'))
-        .and_then(|l| {
-            let a = l.find('"')? + 1;
-            let b = l[a..].find('"')? + a;
-            Some(l[a..b].to_string())
-        })
-        .expect("helix-pin.scm must contain a quoted SHA")
 }
 
 pub(super) fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
@@ -852,31 +796,6 @@ fn grammar_swap_parses_with_the_new_grammar() {
             .layers()
             .is_some(),
         "rust parse must produce a tree"
-    );
-}
-
-/// `grammar_source` / `helix_pin` must read real values out of the shipped
-/// runtime data so the e2e installs the actually-pinned revision. Always runs
-/// (no network), so malformed shipped data is caught in normal CI.
-#[test]
-fn shipped_data_reading_extracts_json_pins() {
-    let (url, rev) = grammar_source("json");
-    assert_eq!(url, "https://github.com/tree-sitter/tree-sitter-json");
-    assert_eq!(
-        rev.len(),
-        40,
-        "git rev must be a full 40-char SHA, got: {rev}"
-    );
-    assert!(
-        rev.chars().all(|c| c.is_ascii_hexdigit()),
-        "rev must be hex: {rev}"
-    );
-
-    let pin = helix_pin();
-    assert!(!pin.is_empty(), "helix pin must be non-empty");
-    assert!(
-        pin.chars().all(|c| c.is_ascii_hexdigit()),
-        "helix pin must be hex: {pin}"
     );
 }
 

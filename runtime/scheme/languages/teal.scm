@@ -1,8 +1,7 @@
 ;;; runtime/scheme/languages/teal.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
 ((comment-tokens "--")
  (block-comment-tokens ("--[[" . "--]]"))
- (roots "tlconfig.lua")
- (grammar "https://github.com/euclidianAce/tree-sitter-teal" "3db655924b2ff1c54fdf6371b5425ea6b5dccefe" "tree_sitter_teal" ""))
+ (roots "tlconfig.lua"))

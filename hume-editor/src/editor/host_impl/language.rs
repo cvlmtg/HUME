@@ -21,6 +21,14 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
         Ok(attached)
     }
 
+    fn check_grammar(&self, name: &str, source: &hume_core::GrammarSource) -> Result<(), String> {
+        self.state
+            .config
+            .languages
+            .check_grammar(name, source)
+            .map_err(|e| format!("'{name}': {e}"))
+    }
+
     fn has_grammar(&self, language: &str) -> bool {
         self.state.config.languages.has_grammar(language)
     }

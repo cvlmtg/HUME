@@ -202,23 +202,38 @@ plugin management (install, update, list, cleanup for Scheme plugins) and
 grammar management. For grammars specifically, plum provides:
 
 - **`:plum-install-grammar`** — installs (or repairs) a named language's
-  grammar, or the current buffer's language's if no name is given, always
-  re-cloning and recompiling from a clean slate at the currently pinned
-  revision.
+  grammar, or the current buffer's language's if no name is given, from the
+  pinned release, replacing an installed copy only once the new one is
+  complete.
 - **`plum/ensure-grammars`** — batch-installs the grammars of a list of
-  languages that are not yet compiled. Not a command-mode command: called
+  languages that are not yet installed. Not a command-mode command: called
   from `init.scm`, e.g. `(call! "plum/ensure-grammars" '("rust" "json"))`.
-- **`:plum-list-grammars`** — shows the installed grammars and the orphans
-  among them.
-- **`:plum-cleanup-grammars`** — removes on-disk artifacts for names
-  that ship no grammar.
+- **`:plum-list-grammars`** — shows the installed grammars, and everything
+  else plum keeps: grammars under a name that isn't a language the editor
+  knows, older installs a reinstall could not delete yet, and what stopped
+  installs left.
+- **`:plum-cleanup-grammars`** — deletes all of that, keeping only the current
+  install of each language's grammar.
 
-Each language HUME ships has a small data file of its own, and the grammar
-it uses is one entry in it: the upstream git repository, the revision to
-pin, the tree-sitter symbol name inside the library, and (optionally) a
-subdirectory within the repo. Grammars are installed per language, so two
-languages sharing one grammar (JavaScript and JSX) each get their own
-compiled copy.
+HUME compiles no grammar. A separate project builds every grammar for each
+supported platform and publishes them together: one archive per platform,
+holding one small archive per language, plus an index giving each language's
+byte range and checksum. A language's archive holds the shared library, its
+query files, and a manifest naming the library's tree-sitter symbol, its ABI
+version and the platform it was built for. Grammars are installed per
+language, so two languages sharing one grammar (JavaScript and JSX) each get
+their own copy.
+
+Grammars can also come from a folder on your own machine, holding a bundle
+you built yourself in the same format. Plum looks there first, language by
+language, and downloads only what the folder doesn't have.
+
+A loaded shared library stays loaded until the editor exits, and the
+operating system will not load a different file from the same path again
+(Windows won't even let it be deleted). So plum never overwrites a grammar in
+place. Each install of a language gets a new folder of its own, and the newest
+folder is the grammar in use. That is what lets a reinstall take effect at
+once, in the session that ran it.
 
 When you run `:plum-install-grammar`, plum:
 
@@ -226,24 +241,27 @@ When you run `:plum-install-grammar`, plum:
    without a companion: Markdown's emphasis and inline code live in a separate
    inline grammar that Markdown's injection query expects to find. Plum knows
    these pairings and installs the companion transparently.
-2. Clones the grammar repository at the pinned revision.
-3. Fetches the matching highlight query from Helix's pinned runtime and writes
-   it to the editor's data directory. The injection query is fetched the same
-   way once the library is built, but best-effort: most languages embed
-   nothing and have no injection query, so its absence is normal, not an
-   error.
-4. Compiles the C source to a shared library, also in the data directory.
-5. Registers the shared library and the queries with the running editor. A
-   grammar whose tree-sitter ABI version is incompatible with the editor is
-   rejected here with a clear error rather than crashing the parse worker
-   later.
+2. Reads the index and takes just that language's byte range of the platform
+   archive, from the local folder or the download, then checks it against the
+   index's checksum.
+3. Unpacks it and checks the manifest: the right language, this platform, and
+   the files a grammar needs.
+4. Loads a copy of the library and compiles the queries without registering
+   anything. This is where a grammar the editor can't use, such as one built
+   for a tree-sitter ABI version the editor can't load, is rejected, before it
+   replaces anything.
+5. Moves it into a new install folder under the language's folder, which makes
+   it the newest.
+6. Registers the shared library and the queries with the running editor.
+7. Deletes the language's older installs, except one whose library this
+   session already loaded on Windows; cleanup clears that one later.
 
-On subsequent starts, HUME scans the data directory for compiled grammars and
-registers every one whose library and queries are already on disk. No network
-access on startup, and no scan of every language's data either — the walk works
-from what's actually present on the filesystem, not from what's declared, and
-only reads the data file of a language it actually finds there. A fresh setup
-with nothing installed reads none of them.
+On subsequent starts, HUME scans the data directory for installed grammars and
+registers each one from its newest install folder, reading the symbol from its
+manifest.
+No network access on startup, and no scan of every language's data either —
+the walk works from what's actually present on the filesystem, not from what's
+declared. A fresh setup with nothing installed reads nothing.
 
 Registering a grammar opens nothing. HUME notes where its library and queries
 are, and loads them (opens the library, compiles the queries) the first time
@@ -265,13 +283,12 @@ Grammar repositories and their highlight queries are pinned to specific
 revisions for reproducibility. The coupling is tight: query patterns match
 named nodes that the grammar defines; if the grammar changes, the query may
 stop matching or match incorrectly. Pinning both to known-good revisions
-ensures that every HUME installation shipping the same language data produces
-the same highlighting behavior.
+ensures that every HUME installation produces the same highlighting behavior.
 
-A separate pinned-revision record tracks the Helix revision from which
-queries are fetched. Updating grammars means moving the Helix pin forward and
-re-deriving the languages' grammar revisions from it — the two records move
-together.
+HUME pins one thing: a release of the project that builds its grammars. That
+release fixes each grammar's revision and the Helix revision its queries come
+from, and HUME's own language data is generated from the same Helix revision,
+so grammars, queries and language data always move forward together.
 
 ## Late grammar registration
 

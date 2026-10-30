@@ -6,34 +6,30 @@
 (require "platform.scm")
 (require "blocker.scm")
 (require "register.scm")
-(require "sha256.scm")
 (require "unpack.scm")
 
 (provide lsp-install/install-server!)
 
 (define (lsp-install/verify-sha256! path expected)
-  (let* ((expected-hex (string-downcase
-                          (if (starts-with? expected "sha256:")
-                              (substring expected 7 (string-length expected))
-                              expected)))
-         (actual (lsp-install/sha256-file path)))
-    (unless (equal? actual expected-hex)
-      (error (string-append "lsp-install/verify-sha256!: sha256 mismatch for '" path
-                            "': expected " expected-hex ", got " actual)))))
+  (call! "stdlib/verify-sha256!" path
+         (if (starts-with? expected "sha256:")
+             (substring expected 7 (string-length expected))
+             expected)))
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-(define (lsp-install/install-download! name url asset sha bin fmt unpacker dir)
+(define (lsp-install/install-download! name url asset sha bin fmt dir)
   (let ((archive (path-join dir asset)))
     (create-directory! dir)
-    (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
+    (call! "stdlib/download!" url archive)
     (lsp-install/verify-sha256! archive sha)
     (if (equal? fmt 'raw)
         (lsp-install/mark-executable! (list archive))
         (begin
           (cond
             ((equal? fmt 'gz) (lsp-install/unpack-gz! archive (path-join dir bin)))
-            (else (lsp-install/unpack-archive! unpacker archive dir)))
+            (else (lsp-install/mark-executable!
+                    (call! "stdlib/extract-archive!" (symbol->string fmt) archive dir))))
           (call! "stdlib/delete-file!" archive)))
     (unless (path-exists? (path-join dir bin))
       (error (string-append "lsp-install/install-download!: " name
@@ -134,8 +130,7 @@
   (let ((download (lsp-install/download-row source)))
     (cons (lsp-install/install-download! name (list-ref download 1) (list-ref download 0)
                                          (list-ref download 2) (list-ref download 3)
-                                         (lsp-install/row-fmt row)
-                                         (car (lsp-install/row-tools row)) dir)
+                                         (lsp-install/row-fmt row) dir)
           '())))
 
 (define (lsp-install/package-install! name source row dir)

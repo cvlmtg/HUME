@@ -131,24 +131,18 @@ jobs:
         run: cargo build --all-targets
 
       # ── Grammar test fixtures ──────────────────────────────────────────────
-      # Fixtures are grammar shared libraries (.so/.dylib/.dll) compiled from the
-      # grammar revisions in runtime/scheme/languages/<name>.scm (the shipped SSOT).
-      # A helix-pin bump changes those files and therefore the cache key,
-      # triggering a rebuild, as does a change to the grammar compiler.
-      #
-      # The Build step above builds the grammar compiler (hume-grammar-build)
-      # into target/debug/, where the live-grammar e2e tests find it whatever
-      # the fixture cache state. It finds MSVC itself, so Windows needs no
-      # developer shell.
+      # Fixtures are members of the treesitter.hume release that core:plum's
+      # pin names, for the runner's platform. A pin bump changes the cache key,
+      # and so does a change to the script that fetches them.
 
       - name: Cache grammar fixtures
         id: fixture-cache
         uses: actions/cache@v5
         with:
           path: tests/fixtures/grammars
-          key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/scheme/languages/*.scm','hume-grammar-build/**','!hume-grammar-build/tests/**','!hume-grammar-build/src/**/tests.rs','!hume-grammar-build/src/**/tests/**') }}
+          key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/plugins/core/plum/data/treesitter-hume-pin.scm') }}
 
-      - name: Build grammar fixtures
+      - name: Fetch grammar fixtures
         if: steps.fixture-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash scripts/fetch-test-grammars.sh

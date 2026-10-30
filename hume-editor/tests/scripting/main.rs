@@ -15,7 +15,7 @@ use hume_scripting::EvalWatchdog;
 use hume_scripting::*;
 
 fn host() -> ScriptingHost {
-    ScriptingHost::new(&Dirs::none())
+    ScriptingHost::for_testing(&Dirs::none())
 }
 
 /// Real `runtime/scheme/prelude.scm` source, read fresh per call so these tests

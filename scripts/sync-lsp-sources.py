@@ -20,7 +20,7 @@ selected github asset to compute a sha256. A repeat run reuses the sha256
 already recorded in the checked-in sources/ for any (repo, version,
 asset-file) combination that hasn't changed, so a routine re-sync after an
 unrelated pin bump downloads only the genuinely new or changed assets. Run
-after sync-grammars.py if a helix-pin bump renamed or dropped any LSP
+after sync-grammars.py if a Helix commit change renamed or dropped any LSP
 servers — see scripts/README.md for the run order.
 
 Idempotent: running twice against the same pins produces byte-identical
@@ -741,14 +741,12 @@ def package_tool(kind: str, target: str) -> str:
 
 
 def download_tools(fmt: str, target: str, asset_file: str) -> list[str]:
-    """The programs a download needs on $PATH, in the order the runtime checks
-    them: what unpacks it, then curl. Windows unpacks a zip with tar; a tar
-    compressed with xz or bzip2 needs that tool on Linux."""
+    """The programs a download needs on $PATH beside the one that extracts a
+    tar or zip archive, which the runtime finds from the format: a tar
+    compressed with xz or bzip2 needs that tool on Linux, a gz download needs
+    gzip, and every download needs curl."""
     tools: list[str] = []
-    if fmt == "zip":
-        tools.append("tar" if target == "windows-x64" else "unzip")
-    elif fmt == "tar":
-        tools.append("tar")
+    if fmt == "tar":
         if target == "linux-x64":
             if asset_file.endswith((".tar.xz", ".txz")):
                 tools.append("xz")

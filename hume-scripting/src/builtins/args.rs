@@ -200,13 +200,14 @@ pub(crate) fn cwd_arg(
 }
 
 /// A `#:relative` argument: `#f` is no base, a relative path resolves
-/// against `editor_cwd` as a [`ScriptPath`] does.
+/// against `editor_cwd` as a [`ScriptPath`] does. `editor_cwd` runs only
+/// when a base is given.
 pub(crate) fn relative_base_arg(
     val: SteelVal,
-    editor_cwd: &AbsolutePath,
+    editor_cwd: impl FnOnce() -> AbsolutePath,
 ) -> Result<Option<AbsolutePath>, SteelErr> {
     optional_path_arg(val, "#:relative")?
-        .map(|base| under_cwd(&base, editor_cwd, "#:relative"))
+        .map(|base| under_cwd(&base, &editor_cwd(), "#:relative"))
         .transpose()
 }
 

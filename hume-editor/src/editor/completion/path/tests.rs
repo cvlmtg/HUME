@@ -107,7 +107,7 @@ fn path_completer_multi_segment() {
 fn path_completer_missing_dir_returns_empty() {
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
     let cwd = &AbsolutePath::rooted("/nonexistent/path/that/does/not/exist");
-    let langs = LanguageRegistry::new();
+    let langs = LanguageRegistry::for_testing();
     let ctx = CompletionCtx {
         registry: &reg,
         buffers: &store,

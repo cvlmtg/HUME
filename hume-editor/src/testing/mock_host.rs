@@ -319,21 +319,23 @@ impl LanguageHost for MockHost {
     // reproduction of the OS-specific `io::Error`/dlopen text the real host
     // would show: that text is platform- and locale-dependent and not worth
     // faking byte-for-byte for an existence check.
+    fn check_grammar(&self, name: &str, source: &hume_core::GrammarSource) -> Result<(), String> {
+        if !source.path.exists() {
+            return Err(format!(
+                "'{name}': grammar load failed: failed to open grammar library: {}",
+                source.path.display()
+            ));
+        }
+        if !source.queries.highlights().exists() {
+            return Err(format!(
+                "'{name}': highlights.scm read failed: {}",
+                source.queries.highlights().display()
+            ));
+        }
+        Ok(())
+    }
     fn attach_grammar(&mut self, reg: &hume_scripting::GrammarReg) -> Result<bool, String> {
-        if !reg.source.path.exists() {
-            return Err(format!(
-                "'{}': grammar load failed: failed to open grammar library: {}",
-                reg.name,
-                reg.source.path.display()
-            ));
-        }
-        if !reg.source.queries.highlights().exists() {
-            return Err(format!(
-                "'{}': highlights.scm read failed: {}",
-                reg.name,
-                reg.source.queries.highlights().display()
-            ));
-        }
+        self.check_grammar(&reg.name, &reg.source)?;
         self.grammars.insert(reg.name.clone());
         Ok(true)
     }

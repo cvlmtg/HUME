@@ -22,7 +22,7 @@ fn run_in_command(expr: &str) -> Editor {
 /// and returns its error.
 fn top_level_error(source: &str) -> String {
     let mut ed = editor_from("-[x]>abc\n");
-    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
+    let mut host = hume_scripting::ScriptingHost::for_testing(&Dirs::none());
     let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(source, &mut init_host).expect_err(source)
 }

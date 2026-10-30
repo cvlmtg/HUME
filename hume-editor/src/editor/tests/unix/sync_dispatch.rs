@@ -34,7 +34,7 @@ fn lazy_command_first_dispatch_forwards_extend() {
 
     // Buffer with 2 lines so move-down doesn't go to the structural newline.
     let mut ed = editor_from("-[a]>b\ncd\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });

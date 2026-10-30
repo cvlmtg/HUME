@@ -1,7 +1,6 @@
 ;;; runtime/scheme/languages/python.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
 ((comment-tokens "#")
- (roots "pyproject.toml" "setup.py" "poetry.lock" "pyrightconfig.json")
- (grammar "https://github.com/tree-sitter/tree-sitter-python" "293fdc02038ee2bf0e2e206711b69c90ac0d413f" "tree_sitter_python" ""))
+ (roots "pyproject.toml" "setup.py" "poetry.lock" "pyrightconfig.json"))

@@ -1,7 +1,6 @@
 ;;; runtime/scheme/languages/pascal.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
 ((comment-tokens "//")
- (block-comment-tokens ("{" . "}"))
- (grammar "https://github.com/Isopod/tree-sitter-pascal" "042119eca2e18a60e56317fb06ee3ba5c32cb447" "tree_sitter_pascal" ""))
+ (block-comment-tokens ("{" . "}")))

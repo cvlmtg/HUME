@@ -1,11 +1,14 @@
 use std::cell::Cell;
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
+use hume_core::OsWait;
 use steel::steel_vm::ThreadStateController;
 
 /// Enforces a budget for Steel evals: the time spent running Scheme, with
-/// waits a builtin reports through [`BudgetClock`] left out.
+/// waits a builtin reports through [`BudgetClock`], and grammar library
+/// opens through the [`OsWait`] it is connected to, left out.
 ///
 /// One watchdog thread persists for the lifetime of the `ScriptingHost` and is
 /// re-armed per eval: command dispatch runs on the keystroke hot path, so
@@ -24,7 +27,9 @@ use steel::steel_vm::ThreadStateController;
 /// acknowledges it is disarmed and answers whether the budget expired, so no
 /// late fire from the previous arm can leak into the next eval.
 pub struct EvalWatchdog {
-    tx: Sender<WatchdogMsg>,
+    /// The only strong handle: an [`OsWait`] holds a weak one, so it cannot
+    /// keep a dropped watchdog's channel open.
+    tx: Arc<Sender<WatchdogMsg>>,
     ack_rx: Receiver<bool>,
     thread: Option<std::thread::JoinHandle<()>>,
     /// Caller-side mirror of the thread's armed/idle state, used only to
@@ -42,7 +47,7 @@ enum WatchdogMsg {
         vm: ThreadStateController,
     },
     Cancel,
-    /// A builtin started waiting on the OS at `at`: stop the budget's clock.
+    /// A wait on the OS started at `at`: stop the budget's clock.
     /// The sender stamps the time, so a late wake of this thread cannot
     /// move it.
     Pause {
@@ -70,20 +75,25 @@ impl BudgetClock<'_> {
     /// Runs `wait` with the clock stopped. The clock restarts when `wait`
     /// returns or unwinds.
     pub(crate) fn waiting<R>(&self, wait: impl FnOnce() -> R) -> R {
-        struct Restart<'a>(&'a BudgetClock<'a>);
-        impl Drop for Restart<'_> {
-            fn drop(&mut self) {
-                // Never panic in drop; a failed send means the watchdog
-                // thread is gone.
-                let _ = self.0.tx.send(WatchdogMsg::Resume { at: Instant::now() });
-            }
-        }
-        self.tx
-            .send(WatchdogMsg::Pause { at: Instant::now() })
-            .expect("watchdog thread alive while its clock exists");
-        let _restart = Restart(self);
-        wait()
+        paused(self.tx, wait)
     }
+}
+
+/// Runs `wait` with the clock of the watchdog `tx` sends to stopped,
+/// restarting it when `wait` returns or unwinds.
+fn paused<R>(tx: &Sender<WatchdogMsg>, wait: impl FnOnce() -> R) -> R {
+    struct Restart<'a>(&'a Sender<WatchdogMsg>);
+    impl Drop for Restart<'_> {
+        fn drop(&mut self) {
+            // Never panic in drop; a failed send means the watchdog
+            // thread is gone.
+            let _ = self.0.send(WatchdogMsg::Resume { at: Instant::now() });
+        }
+    }
+    tx.send(WatchdogMsg::Pause { at: Instant::now() })
+        .expect("watchdog thread alive while its clock exists");
+    let _restart = Restart(tx);
+    wait()
 }
 
 impl EvalWatchdog {
@@ -93,7 +103,7 @@ impl EvalWatchdog {
         let (ack_tx, ack_rx) = std::sync::mpsc::channel();
         let thread = std::thread::spawn(move || watchdog_loop(rx, ack_tx));
         Self {
-            tx,
+            tx: Arc::new(tx),
             ack_rx,
             thread: Some(thread),
             armed: Cell::new(false),
@@ -130,6 +140,17 @@ impl EvalWatchdog {
     /// A handle a builtin stops this watchdog's clock with while it waits.
     pub(crate) fn clock(&self) -> BudgetClock<'_> {
         BudgetClock { tx: &self.tx }
+    }
+
+    /// Connects [`Self::clock`]'s pause to `wait`, for code below the
+    /// scripting layer. Once this watchdog is dropped no budget runs, so
+    /// `wait` runs each wait as it is.
+    pub(crate) fn connect(&self, wait: &OsWait) {
+        let tx = Arc::downgrade(&self.tx);
+        wait.connect(move |wait| match tx.upgrade() {
+            Some(tx) => paused(&tx, wait),
+            None => wait(),
+        });
     }
 
     fn send(&self, msg: WatchdogMsg) {

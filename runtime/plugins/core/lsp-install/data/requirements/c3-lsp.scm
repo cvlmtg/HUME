@@ -2,4 +2,4 @@
 ;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
 ;;; Source: sources/c3-lsp.scm
 
-((targets ((darwin-arm64) zip "unzip" "curl") ((linux-x64) tar "tar" "curl") ((windows-x64) zip "tar" "curl")) (missing . download))
+((targets ((darwin-arm64 windows-x64) zip "curl") ((linux-x64) tar "curl")) (missing . download))

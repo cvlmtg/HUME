@@ -2,4 +2,4 @@
 ;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
 ;;; Source: sources/jdtls.scm
 
-((targets ((darwin-arm64 darwin-x64 linux-x64) tar "tar" "curl")) (missing . download))
+((targets ((darwin-arm64 darwin-x64 linux-x64) tar "curl")) (missing . download))

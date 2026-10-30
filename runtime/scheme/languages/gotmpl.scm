@@ -1,7 +1,6 @@
 ;;; runtime/scheme/languages/gotmpl.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
 ((comment-tokens "//")
- (block-comment-tokens ("/*" . "*/"))
- (grammar "https://github.com/ngalaiko/tree-sitter-go-template" "aa71f63de226c5592dfbfc1f29949522d7c95fac" "tree_sitter_gotmpl" ""))
+ (block-comment-tokens ("/*" . "*/")))

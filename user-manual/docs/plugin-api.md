@@ -88,7 +88,7 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 
 [Defining commands](writing-plugins.md#defining-commands), [Calling other commands](writing-plugins.md#calling-other-commands), and [Reading characters](writing-plugins.md#reading-characters) show `define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` with examples.
 
-A script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) stops where it is, and none of its error handlers run. Waiting on the operating system doesn't count: running a program and waiting for it, compiling a grammar, or deleting a directory tree with `remove-dir!`. `time/sleep-ms` does count, as does waiting in Steel's own calls, such as its `wait`.
+A script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) stops where it is, and none of its error handlers run. Waiting on the operating system doesn't count: running a program and waiting for it, or deleting a directory tree with `remove-dir!`. `time/sleep-ms` does count, as does waiting in Steel's own calls, such as its `wait`.
 
 ## Supporting several HUME versions
 
@@ -279,8 +279,7 @@ Valid names are `0`–`9`, `k` (kill-ring head), `c` (system clipboard), and `b`
 |------|--------|
 | `define-language!` | `(define-language! name exts globs shebangs)`{.sig} Define a language, or replace how an existing one is detected. `exts`, `globs`, and `shebangs` default to `'()`. A definition from `init.scm` beats a plugin's in either order; of two from `init.scm`, or two from plugins, the first wins and the later is ignored with a warning |
 | `configure-language!` | `(configure-language! name #:roots #:language-id #:comment-tokens #:block-comment-tokens)`{.sig} Set a defined language's project root markers (a list of file names), the identifier language servers know it by when that differs from `name`, its line comment tokens (a list of strings) and its block comment pairs (a list of `(start . end)` string pairs). A keyword left out leaves its setting as it is.<br><br>Values rank as `define-language!`'s definitions do |
-| `bundled-language-grammar` | `(bundled-language-grammar name)`{.sig} The grammar HUME ships for language `name`, as `(hash 'url 'rev 'symbol 'subpath)`, or `#f` when it ships none |
-| `bundled-grammar-languages` | `(bundled-grammar-languages)`{.sig} Every language HUME ships a grammar for, sorted |
+| `bundled-languages` | `(bundled-languages)`{.sig} Every language HUME ships language data for, sorted |
 | `register-grammar!` | `(register-grammar! name grammar-path symbol highlights-path #:injections #:textobjects #:indents)`{.sig} Register an already-compiled tree-sitter grammar. From `init.scm` it loads the first time a file or an embedded block needs it; from a command it loads at once and raises if it can't. A grammar from `init.scm` or a command the user runs beats a plugin's in either order; of two from the same place, the later replaces the earlier |
 | `language-has-grammar?` | `(language-has-grammar? name)`{.sig} `#t` if `name` has a registered grammar that hasn't failed to load |
 
@@ -418,12 +417,13 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `path-join` | `(path-join seg ...)`{.sig} Join path segments with the OS-native separator |
 | `safe-path-segment?` | `(safe-path-segment? name)`{.sig} `#t` iff `name` is a string safe to use as one path component: not empty, not `.` or `..`, and free of path separators, `:`, `"` and NUL; `#f` for anything else. Use it before joining a user-typed or downloaded name onto a path |
 | `remove-dir!` | `(remove-dir! dir)`{.sig} Delete directory `dir` (relative to the working directory) and everything in it; raises when `dir` doesn't exist |
+| `copy-file-range!` | `(copy-file-range! src offset size dest)`{.sig} Write the `size` bytes of file `src` that start at byte `offset` to file `dest`, creating or replacing it. Both paths are relative to the working directory. Raises, leaving `dest` as it was, when `dest` cannot be opened or is the same file as `src`, under any path, and raises, leaving no `dest`, when `src` ends before those bytes do |
 | `find-program` | `(find-program name)`{.sig} The path of the program `name` runs as, looked up on the `PATH` HUME started with (the one every program it starts gets); `#f` when there is none |
 | `first-path-outside` | `(first-path-outside dir paths)`{.sig} The first of `paths` that lies outside directory `dir` once every symbolic link in both is resolved, returned as you wrote it; `#f` when every path is inside `dir` or is `dir` itself. All are relative to the working directory. A link to a missing file counts as the path it names. Raises when a path can't be resolved, such as a link that points back to itself |
 | `path-entries` | `(path-entries dir prefix)`{.sig} The names in directory `dir` (relative to the working directory) starting with `prefix` (ignoring letter case on Windows), sorted, as `:e` completes them: a directory's name ends in `/` (a link to a directory included), and hidden entries appear only when `prefix` starts with `.`. `'()` when `dir` can't be read |
 | `path-programs` | `(path-programs prefix extensions callback)`{.sig} List, in the background, the programs on `PATH` whose names start with `prefix`. `callback`, `(lambda (names done?) ...)`, is called as `PATH` is read with every name found so far, sorted, and a last time with `done?` `#t`. A `callback` that raises stops the listing. Returns a job for `cancel-async!`. On Windows a program is a file ending in one of `extensions` (`'(".exe")`), named without it |
 | `home-dir` | `(home-dir)`{.sig} The user's home directory, or `#f` when the environment names none |
-| `path->display` | `(path->display path [#:relative dir])`{.sig} `path` as `buffer-display-path` shows a file: absolute with the home directory as `~`, or with `#:relative dir`, relative to `dir` when inside it. A relative `path` or `dir` is taken against the working directory. Compares the paths as written, without following symbolic links |
+| `path->display` | `(path->display path [#:relative dir])`{.sig} `path` as `buffer-display-path` shows a file: absolute with the home directory as `~`, or with `#:relative dir`, relative to `dir` when inside it. A relative `path` or `dir` is taken against the working directory, and a `..` in either is followed on disk, so it raises when the folder before it doesn't exist. The paths are then compared as written, without following symbolic links |
 | `read-data-file` | `(read-data-file path)`{.sig} The one Scheme value written in the file at `path`, with `;` comments allowed around it. Raises, naming the file, when its text doesn't parse or holds more than one value. Use it instead of Steel's `read` for data files: `read` returns end-of-file instead of raising on bad syntax, and leaves the bad text for the next `read` |
 | `data-file` | `(data-file dir name)`{.sig} The path of `name.scm` in `dir` when `dir` holds that file, else `#f`. Only a name spelled like one of `dir`'s files, letter case included, matches: `Rust` does not match `rust.scm` on any platform, and `../x` never reaches outside `dir` |
 | `data-file-names` | `(data-file-names dir)`{.sig} The names of `dir`'s `.scm` files without the suffix, sorted; `'()` when `dir` doesn't exist |
@@ -438,8 +438,3 @@ HUME has one working directory: `(cwd)` reads it, and `(set-cwd! path)` and `:cd
 
 Steel's own file functions resolve a relative path against the same directory. Steel's `change-current-directory!` moves only the directory those functions use, not HUME's; `set-cwd!` moves both.
 
-## Grammar compilation
-
-| Call | Effect |
-|------|--------|
-| `compile-grammar!` | `(compile-grammar! src out)`{.sig} Compile the tree-sitter grammar source at `src` to `out`. Raises on failure with the compiler's error output, except while `init.scm` loads, where it logs a warning instead. The compiler writes nothing to the screen |

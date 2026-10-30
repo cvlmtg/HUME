@@ -257,7 +257,7 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     {
         let mut init_host = init_host!(ed);
         host.eval_source(src, &mut init_host).unwrap();

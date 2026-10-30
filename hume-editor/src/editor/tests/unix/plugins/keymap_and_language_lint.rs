@@ -117,7 +117,7 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });

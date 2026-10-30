@@ -1,8 +1,3 @@
-# `cargo run` at the root can't pick between `hume` and `hume-grammar-build`:
-# `default-run` is a package key and the root manifest is a virtual workspace.
-[alias]
-hume = "run -p hume-editor --bin hume --"
-
 # Uncomment after: brew install sccache
 # [build]
 # rustc-wrapper = "sccache"

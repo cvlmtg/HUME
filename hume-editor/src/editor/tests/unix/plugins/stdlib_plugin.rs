@@ -18,7 +18,7 @@ fn setup_stdlib_editor() -> (Editor, ScriptingHost, RuntimeDirs, tempfile::TempD
 
     let mut ed = editor_from("-[a]>b\n");
     ed.state.dirs = guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
+    let mut host = ScriptingHost::for_testing(&ed.state.dirs);
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)
@@ -247,6 +247,29 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
         result.is_ok(),
         "stdlib/list-subdirs assertions must pass: {result:?}"
     );
+}
+
+#[test]
+fn core_stdlib_path_absolute_holds_only_for_a_rooted_path() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+    let assertions = r#"
+(define (check path expected)
+  (unless (equal? (call! "stdlib/path-absolute?" path) expected)
+    (error (string-append "path-absolute? of " path " must be " (to-string expected)))))
+(check "/" #t)
+(check "/usr/lib" #t)
+(check "lib" #f)
+(check "./lib" #f)
+(check "~/lib" #f)
+(check "" #f)
+"#;
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(assertions, &mut ih)
+    };
+
+    assert!(result.is_ok(), "{result:?}");
 }
 
 /// `stdlib/concat` joins a list of lists in order, one level deep: lists
@@ -732,4 +755,208 @@ fn delete_dir_of_a_missing_directory_is_a_no_op() {
     };
 
     assert!(result.is_ok(), "{result:?}");
+}
+
+/// `stdlib/verify-sha256!` accepts the file's digest in either case and
+/// raises on any other. The expected digest of `abc` is the FIPS 180-2 test
+/// vector, not computed here.
+#[test]
+fn core_stdlib_verify_sha256_compares_case_insensitively() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("abc.txt");
+    std::fs::write(&file, b"abc").unwrap();
+    let path = steel_path(&file);
+
+    let assertions = format!(
+        r#"
+(call! "stdlib/verify-sha256!" {path}
+       "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD")
+(let ((raised (with-handler (lambda (err) (to-string err))
+                (call! "stdlib/verify-sha256!" {path}
+                       "0000000000000000000000000000000000000000000000000000000000000000")
+                #f)))
+  (unless (and raised (string-contains? raised "sha256 mismatch"))
+    (error (string-append "a wrong digest must raise a mismatch, got " (to-string raised)))))
+"#
+    );
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(&assertions, &mut ih)
+    };
+    assert!(result.is_ok(), "{result:?}");
+}
+
+/// Off Windows, `stdlib/find-extractor` finds `tar` for a tar archive and
+/// `unzip` for a zip archive on the search path, and raises for a format it
+/// does not extract.
+#[test]
+fn core_stdlib_find_extractor_resolves_through_the_search_path() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let assertions = r#"
+(for-each
+  (lambda (pair)
+    (let ((found (call! "stdlib/find-extractor" (car pair))))
+      (unless (and (string? found) (equal? found (find-program (cdr pair))))
+        (error (string-append (car pair) " resolved to " (to-string found))))))
+  (list (cons "tar" "tar") (cons "zip" "unzip")))
+(let ((raised (with-handler (lambda (err) (to-string err))
+                (call! "stdlib/find-extractor" "rar")
+                #f)))
+  (unless (and raised (string-contains? raised "rar"))
+    (error (string-append "an unknown format must raise naming it, got " (to-string raised)))))
+"#;
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(assertions, &mut ih)
+    };
+    assert!(result.is_ok(), "{result:?}");
+}
+
+/// `stdlib/find-extractor` is `#f` for both formats when the search path
+/// holds no extractor.
+#[test]
+fn core_stdlib_find_extractor_is_false_with_no_extractor() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+    let empty_path_dir = tempfile::tempdir().unwrap();
+    ed.state.dirs.search_path = Some(empty_path_dir.path().into());
+
+    let assertions = r#"
+(for-each
+  (lambda (format)
+    (let ((found (call! "stdlib/find-extractor" format)))
+      (when found
+        (error (string-append format " resolved to " (to-string found))))))
+  (list "tar" "zip"))
+"#;
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(assertions, &mut ih)
+    };
+    assert!(result.is_ok(), "{result:?}");
+}
+
+/// `stdlib/download!` fetches a whole file or a byte range of one with
+/// `curl`, failing on an HTTP error and never reading the URL as an option,
+/// and refuses a range that is not an offset and a size.
+#[test]
+fn core_stdlib_download_runs_curl_for_a_file_or_a_range() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+    let work = tempfile::tempdir().unwrap();
+    let argv_log = work.path().join("argv");
+    hume_platform::path::test_support::write_script(
+        work.path(),
+        "curl",
+        &format!(
+            "PATH=/usr/bin:/bin\n\
+             printf '%s\\n' \"$@\" END >> '{log}'\n\
+             out=''; prev=''\n\
+             for a in \"$@\"; do [ \"$prev\" = -o ] && out=\"$a\"; prev=\"$a\"; done\n\
+             printf x > \"$out\"\n",
+            log = argv_log.display(),
+        ),
+        0o755,
+    );
+    ed.state.dirs.search_path = Some(format!("{}:/usr/bin:/bin", work.path().display()).into());
+    let whole = work.path().join("whole");
+    let part = work.path().join("part");
+
+    let define_probe = format!(
+        r#"
+(define-typed-command! "probe-download" ""
+  (lambda ()
+    (call! "stdlib/download!" "https://example.invalid/a" {whole})
+    (call! "stdlib/download!" "https://example.invalid/b" {part} 3 4)
+    (let ((raised #f))
+      (with-handler (lambda (err) (set! raised #t))
+        (call! "stdlib/download!" "https://example.invalid/c" {part} 3))
+      (unless raised
+        (error "a range of one number must raise"))))
+  #:inline-output #t)
+"#,
+        whole = steel_path(&whole),
+        part = steel_path(&part),
+    );
+    {
+        let mut ih = init_host!(ed);
+        host.eval_source(&define_probe, &mut ih)
+            .expect("define probe-download command");
+    }
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":probe-download");
+
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+    let whole = whole.display().to_string();
+    let part = part.display().to_string();
+    assert_eq!(
+        std::fs::read_to_string(&argv_log)
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        [
+            "-fsSL",
+            "-o",
+            &whole,
+            "--",
+            "https://example.invalid/a",
+            "END",
+            "-fsSL",
+            "-r",
+            "3-6",
+            "-o",
+            &part,
+            "--",
+            "https://example.invalid/b",
+            "END",
+        ]
+    );
+}
+
+/// `stdlib/extract-archive!` creates the target directory, extracts a
+/// gzip-compressed tar into it, and returns the extracted regular files.
+#[test]
+fn core_stdlib_extract_archive_returns_the_extracted_files() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+    let work = tempfile::tempdir().unwrap();
+    let payload = work.path().join("payload");
+    std::fs::create_dir_all(payload.join("queries")).unwrap();
+    std::fs::write(payload.join("queries/highlights.scm"), b"(x) @y\n").unwrap();
+    std::fs::write(payload.join("manifest.scm"), b"()\n").unwrap();
+    let archive = work.path().join("member.tar.gz");
+    tar_gz(&payload, &["manifest.scm", "queries"], &archive);
+    let dest = work.path().join("out/member");
+
+    let define_probe = format!(
+        r#"
+(define-typed-command! "probe-extract" ""
+  (lambda ()
+    (let ((names (sort (map file-name
+                            (call! "stdlib/extract-archive!" "tar" {archive} {dest}))
+                       string<?)))
+      (unless (equal? names (list "highlights.scm" "manifest.scm"))
+        (error (string-append "extract-archive! returned " (to-string names))))))
+  #:inline-output #t)
+"#,
+        archive = steel_path(&archive),
+        dest = steel_path(&dest),
+    );
+    {
+        let mut ih = init_host!(ed);
+        host.eval_source(&define_probe, &mut ih)
+            .expect("define probe-extract command");
+    }
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":probe-extract");
+
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+    assert_eq!(
+        std::fs::read_to_string(dest.join("queries/highlights.scm")).unwrap(),
+        "(x) @y\n"
+    );
 }

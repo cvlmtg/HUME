@@ -298,10 +298,6 @@
                             (number->string (length forms)))))
     (car forms)))
 
-(define (%language-data-names)
-  (let ((dir (%language-data-dir)))
-    (if dir (data-file-names dir) '())))
-
 (define (%language-data-file name)
   (let ((dir (%language-data-dir)))
     (and dir (data-file dir name))))
@@ -323,9 +319,6 @@
      (and (not (string? body)) "language-id must be (language-id . \"id\")"))
     ((equal? key 'roots)
      (and (not (%language-data-strings? body)) "roots must be strings"))
-    ((equal? key 'grammar)
-     (and (not (and (%language-data-strings? body) (= (length body) 4)))
-          "grammar must be (url rev symbol subpath)"))
     (else (string-append "unknown key " (symbol->string key)))))
 
 (define (%check-language-data path entries)
@@ -348,29 +341,15 @@
   (let ((path (%language-data-file name)))
     (and path (%check-language-data path (read-data-file path)))))
 
-(define (%language-data-ref data key)
-  (let ((entry (assoc key data)))
-    (and entry (cdr entry))))
-
 (define (%bundled-language-config name)
   (let ((data (%read-language-data name)))
     (and data
          (let loop ((rest data) (fields (hash)))
-           (cond
-             ((null? rest) fields)
-             ((equal? (car (car rest)) 'grammar) (loop (cdr rest) fields))
-             (else (loop (cdr rest)
-                         (hash-insert fields (car (car rest)) (cdr (car rest))))))))))
+           (if (null? rest)
+               fields
+               (loop (cdr rest)
+                     (hash-insert fields (car (car rest)) (cdr (car rest)))))))))
 
-(define (%language-grammar-fields name)
-  (let ((data (%read-language-data name)))
-    (and data (%language-data-ref data 'grammar))))
-
-(define (bundled-language-grammar name)
-  (let ((fields (%language-grammar-fields name)))
-    (and fields
-         (hash 'url (list-ref fields 0) 'rev (list-ref fields 1)
-               'symbol (list-ref fields 2) 'subpath (list-ref fields 3)))))
-
-(define (bundled-grammar-languages)
-  (filter %language-grammar-fields (%language-data-names)))
+(define (bundled-languages)
+  (let ((dir (%language-data-dir)))
+    (if dir (data-file-names dir) '())))

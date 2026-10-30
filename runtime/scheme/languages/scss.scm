@@ -1,6 +1,5 @@
 ;;; runtime/scheme/languages/scss.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
-((block-comment-tokens ("/*" . "*/"))
- (grammar "https://github.com/serenadeai/tree-sitter-scss" "c478c6868648eff49eb04a4df90d703dc45b312a" "tree_sitter_scss" ""))
+((block-comment-tokens ("/*" . "*/")))

@@ -590,7 +590,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -658,7 +658,7 @@ fn lazy_stub_collision_lazy_vs_lazy_raises_for_the_second() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });

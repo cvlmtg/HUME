@@ -59,6 +59,36 @@ fn rust_source(queries: QueryFiles) -> GrammarSource {
 }
 
 #[test]
+fn check_grammar_of_a_grammar_that_loads_registers_nothing() {
+    require_grammars(&["rust"]);
+    let reg = LanguageRegistry::for_testing();
+
+    reg.check_grammar(
+        "rust",
+        &rust_source(QueryFiles::new(grammar_query_path("rust"))),
+    )
+    .expect("the rust fixture grammar loads");
+
+    assert!(!reg.has_grammar("rust"));
+}
+
+#[test]
+fn check_grammar_with_highlights_that_do_not_compile_fails() {
+    require_grammars(&["rust"]);
+    let (_dir, hl_path) = write_temp_scm("highlights.scm", "(no_such_node) @keyword");
+    let reg = LanguageRegistry::for_testing();
+
+    let err = reg
+        .check_grammar("rust", &rust_source(QueryFiles::new(hl_path)))
+        .unwrap_err();
+
+    assert!(
+        matches!(err, super::RegisterError::QueryBuild(_)),
+        "{err:?}"
+    );
+}
+
+#[test]
 fn attach_grammar_with_valid_injections_populates_bundle() {
     require_grammars(&["rust"]);
     let hl_path = grammar_query_path("rust");
@@ -67,7 +97,7 @@ fn attach_grammar_with_valid_injections_populates_bundle() {
         r#"((_) @injection.content (#set! injection.language "markdown"))"#,
     );
 
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let bundle = reg
         .attach_grammar(
@@ -102,7 +132,7 @@ fn attach_grammar_without_injections_file_leaves_injections_none() {
     require_grammars(&["rust"]);
     let hl_path = grammar_query_path("rust");
 
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let bundle = reg
         .attach_grammar(
@@ -133,7 +163,7 @@ fn attach_grammar_with_broken_injections_fails_whole_attach() {
         "(this is not valid tree-sitter query syntax",
     );
 
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let scopes_before = scope_reg.len();
     let result = reg.attach_grammar(
@@ -174,7 +204,7 @@ fn attach_grammar_with_valid_textobjects_populates_bundle() {
     let hl_path = grammar_query_path("rust");
     let to_path = require_helix_query("rust", OptionalQuery::TextObjects.file_name());
 
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let bundle = reg
         .attach_grammar(
@@ -206,7 +236,7 @@ fn attach_grammar_without_textobjects_file_leaves_textobjects_none() {
     require_grammars(&["rust"]);
     let hl_path = grammar_query_path("rust");
 
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let bundle = reg
         .attach_grammar(
@@ -235,7 +265,7 @@ fn attach_grammar_with_broken_textobjects_fails_whole_attach() {
         "(this is not valid tree-sitter query syntax",
     );
 
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let result = reg.attach_grammar(
         "rust",
@@ -289,7 +319,7 @@ fn attach_grammar_with_missing_injections_file_fails_with_read_error() {
     let dir = tempfile::tempdir().unwrap();
     let missing = dir.path().join("injections.scm");
 
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let result = reg.attach_grammar(
         "rust",
@@ -314,19 +344,19 @@ fn attach_grammar_with_missing_injections_file_fails_with_read_error() {
 
 #[test]
 fn language_registry_by_ext_lookup_empty() {
-    let reg = LanguageRegistry::new();
+    let reg = LanguageRegistry::for_testing();
     assert!(reg.by_file_name("f.rs").is_none());
 }
 
 #[test]
 fn language_registry_remove_is_idempotent() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     assert!(!reg.remove("rust"));
 }
 
 #[test]
 fn register_identity_then_defined_id_returns_its_id() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
     let id = reg
         .defined_id("toml")
@@ -346,7 +376,7 @@ fn strings(items: &[&str]) -> Vec<String> {
 
 #[test]
 fn roots_of_returns_the_configured_markers() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let id = reg.register_identity("go", &["go"], &[], &[]).unwrap();
     assert_eq!(
         set_roots(&mut reg, id, &["go.work", "go.mod"], ConfigOrigin::User),
@@ -357,14 +387,14 @@ fn roots_of_returns_the_configured_markers() {
 
 #[test]
 fn roots_of_an_interned_language_without_identity_is_empty() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let id = reg.intern("bare");
     assert!(reg.roots_of(id).is_empty());
 }
 
 #[test]
 fn reregistering_an_identity_keeps_its_configured_roots() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let id = reg
         .register_identity_no_rebuild("go", LanguageIdentity::default(), ConfigOrigin::Bundled)
         .0;
@@ -380,7 +410,7 @@ fn reregistering_an_identity_keeps_its_configured_roots() {
 }
 
 fn tsx() -> (LanguageRegistry, LanguageId) {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let id = reg
         .register_identity_no_rebuild("tsx", LanguageIdentity::default(), ConfigOrigin::Bundled)
         .0;
@@ -611,7 +641,7 @@ fn a_plugin_value_after_a_user_value_is_shadowed() {
 
 #[test]
 fn an_empty_bundled_fill_still_marks_the_language_loaded() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let id = reg
         .register_identity_no_rebuild("plain", LanguageIdentity::default(), ConfigOrigin::Bundled)
         .0;
@@ -755,7 +785,7 @@ fn comment_tokens_follow_the_configurer_tiers() {
 fn an_attached_bundle_names_its_language() {
     require_grammars(&["rust"]);
     let hl_path = grammar_query_path("rust");
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     reg.intern("markdown");
 
@@ -774,7 +804,7 @@ fn an_attached_bundle_names_its_language() {
 
 #[test]
 fn register_identity_with_globs_lookup() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
         .unwrap();
     let matches = reg.compiled_globs().matches(Path::new("/x/Makefile"));
@@ -791,7 +821,7 @@ fn register_identity_with_globs_lookup() {
 
 #[test]
 fn remove_clears_glob_and_shebang_entries() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("python", &["py"], &["*.py"], &["python"])
         .unwrap();
     assert!(reg.by_file_name("f.py").is_some());
@@ -819,7 +849,7 @@ fn remove_clears_glob_and_shebang_entries() {
 /// `c` never owned it at the time of re-registration.
 #[test]
 fn deindex_does_not_clobber_another_languages_shared_extension() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("c", &["c", "h"], &[], &[]).unwrap();
     reg.register_identity("cpp", &["cpp", "h"], &[], &[])
         .unwrap();
@@ -854,7 +884,7 @@ fn attached_grammar_survives_identity_re_registration() {
     require_grammars(&["rust"]);
     let hl_path = grammar_query_path("rust");
 
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     reg.attach_grammar(
         "rust",
@@ -899,7 +929,7 @@ fn attached_grammar_survives_identity_re_registration() {
 /// the language's own name.
 #[test]
 fn lsp_language_id_of_falls_back_to_name_when_unset() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let id = reg.id_of("rust").unwrap();
     assert_eq!(reg.lsp_language_id_of(id), "rust");
@@ -909,7 +939,7 @@ fn lsp_language_id_of_falls_back_to_name_when_unset() {
 /// case the override exists for (`tsx` -> `typescriptreact`).
 #[test]
 fn lsp_language_id_of_returns_the_configured_override() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
     assert_eq!(
@@ -923,7 +953,7 @@ fn lsp_language_id_of_returns_the_configured_override() {
 /// `define-language!` replacing the detection data leaves it in place.
 #[test]
 fn identity_re_registration_keeps_the_configured_lsp_language_id() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
     assert_eq!(
@@ -941,7 +971,7 @@ fn identity_re_registration_keeps_the_configured_lsp_language_id() {
 
 #[test]
 fn detect_language_by_extension() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let id = detect_at("/x/foo.rs", None, &reg);
     assert_eq!(id, reg.id_of("rust"));
@@ -952,7 +982,7 @@ fn detect_language_by_extension() {
 
 #[test]
 fn detect_language_by_glob() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
         .unwrap();
     let id = detect_at("/project/Makefile", None, &reg);
@@ -963,7 +993,7 @@ fn detect_language_by_glob() {
 
 #[test]
 fn a_glob_with_a_directory_matches_the_end_of_the_path() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("yaml", &["yaml"], &[], &[]).unwrap();
     reg.register_identity("gha", &[], &[".github/workflows/*.yaml"], &[])
         .unwrap();
@@ -976,7 +1006,7 @@ fn a_glob_with_a_directory_matches_the_end_of_the_path() {
 
 #[test]
 fn a_glob_matches_whole_path_components_only() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("git-config", &[], &[".git/config"], &[])
         .unwrap();
     assert_eq!(
@@ -990,7 +1020,7 @@ fn a_glob_matches_whole_path_components_only() {
 /// as, then by the path the link resolves to.
 #[test]
 fn a_symlinked_file_is_detected_by_either_path() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("git-config", &[], &[".config/git/config"], &[])
         .unwrap();
     reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
@@ -1011,7 +1041,7 @@ fn a_symlinked_file_is_detected_by_either_path() {
 
 #[test]
 fn a_dotted_extension_matches_before_the_last_one() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("map", &["map"], &[], &[]).unwrap();
     reg.register_identity("json", &["json", "js.map"], &[], &[])
         .unwrap();
@@ -1021,7 +1051,7 @@ fn a_dotted_extension_matches_before_the_last_one() {
 
 #[test]
 fn a_dotfiles_leading_dot_does_not_start_an_extension() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("bash", &["bashrc"], &[], &[])
         .unwrap();
     assert_eq!(detect_at("/home/u/.bashrc", None, &reg), None);
@@ -1030,7 +1060,7 @@ fn a_dotfiles_leading_dot_does_not_start_an_extension() {
 
 #[test]
 fn detect_language_glob_beats_extension() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("typescript", &["ts"], &[], &[])
         .unwrap();
     reg.register_identity("tsconfig", &[], &["tsconfig.json", "*.config.json"], &[])
@@ -1045,7 +1075,7 @@ fn detect_language_glob_beats_extension() {
 
 #[test]
 fn detect_language_glob_tiebreak_last_registered_wins() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("generic-json", &[], &["*.json"], &[])
         .unwrap();
     reg.register_identity("strict-json", &[], &["*.json"], &[])
@@ -1055,7 +1085,7 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
         reg.id_of("strict-json"),
     );
 
-    let mut reg2 = LanguageRegistry::new();
+    let mut reg2 = LanguageRegistry::for_testing();
     reg2.register_identity("strict-json", &[], &["*.json"], &[])
         .unwrap();
     reg2.register_identity("generic-json", &[], &["*.json"], &[])
@@ -1068,7 +1098,7 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
 
 #[test]
 fn detect_language_by_shebang() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("python", &["py"], &[], &["python"])
         .unwrap();
     let id = detect_at("/x/script", Some("#!/usr/bin/env python3"), &reg);
@@ -1080,7 +1110,7 @@ fn detect_language_by_shebang() {
 
 #[test]
 fn detect_language_shebang_direct_path() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("bash", &["sh"], &[], &["bash"])
         .unwrap();
     // Extension wins over shebang.
@@ -1110,7 +1140,7 @@ fn the_shebang_is_read_from_the_whole_first_line() {
 
 /// `python` and `lua` registered, as the bundled data names them.
 fn interpreters() -> LanguageRegistry {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("python", &[], &[], &["python"])
         .unwrap();
     reg.register_identity("lua", &[], &[], &["lua"]).unwrap();
@@ -1208,7 +1238,7 @@ fn a_backslash_separated_interpreter_path_detects_by_its_last_name() {
 
 #[test]
 fn a_bare_version_is_no_interpreter_name() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("python", &[], &[], &["python"])
         .unwrap();
     assert_eq!(detect_at("/x/run", Some("#!/usr/bin/3.12"), &reg), None);
@@ -1216,7 +1246,7 @@ fn a_bare_version_is_no_interpreter_name() {
 
 #[test]
 fn detect_language_no_match() {
-    let reg = LanguageRegistry::new();
+    let reg = LanguageRegistry::for_testing();
     assert!(detect_at("/x/foo.xyz", None, &reg).is_none());
     assert!(detect_language(None, &Rope::new(), &reg).is_none());
 }
@@ -1228,7 +1258,7 @@ fn detect_language_no_match() {
 /// later-registered language.
 #[test]
 fn extension_matching_is_case_sensitive() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("c", &["c"], &[], &[]).unwrap();
     reg.register_identity("cpp", &["C"], &[], &[]).unwrap();
     assert_eq!(detect_at("/x/foo.c", None, &reg), reg.id_of("c"),);
@@ -1239,7 +1269,7 @@ fn extension_matching_is_case_sensitive() {
 
 #[test]
 fn register_grammar_opens_nothing() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
 
     let id = reg
         .register_grammar(
@@ -1259,7 +1289,7 @@ fn register_grammar_opens_nothing() {
 #[test]
 fn load_grammar_compiles_once() {
     require_grammars(&["rust"]);
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let id = reg
         .register_grammar(
@@ -1283,7 +1313,7 @@ fn load_grammar_compiles_once() {
 
 #[test]
 fn a_failed_load_is_queued_once_then_is_unavailable() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let id = reg
         .register_grammar(
@@ -1308,7 +1338,7 @@ fn a_failed_load_is_queued_once_then_is_unavailable() {
 #[test]
 fn re_registering_a_failed_grammar_makes_it_available_again() {
     require_grammars(&["rust"]);
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let id = reg
         .register_grammar("rust", GrammarSource::missing("rust"), ConfigOrigin::User)
@@ -1329,7 +1359,7 @@ fn re_registering_a_failed_grammar_makes_it_available_again() {
 #[test]
 fn a_failed_attach_keeps_the_prior_bundle() {
     require_grammars(&["rust"]);
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     let mut scope_reg = ScopeRegistry::new();
     let prior = reg
         .attach_grammar(
@@ -1360,7 +1390,7 @@ fn a_failed_attach_keeps_the_prior_bundle() {
 fn config_gen_is_unique_across_registries() {
     require_grammars(&["rust"]);
     let attach = || {
-        LanguageRegistry::new()
+        LanguageRegistry::for_testing()
             .attach_grammar(
                 "rust",
                 &rust_source(QueryFiles::new(grammar_query_path("rust"))),
@@ -1399,7 +1429,7 @@ fn holds_rust(reg: &mut LanguageRegistry, name: &str) -> bool {
 #[test]
 fn a_plugins_grammar_does_not_replace_the_users() {
     require_grammars(&["rust"]);
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_grammar("rust", rust_grammar(), ConfigOrigin::User);
 
     let shadowed =
@@ -1412,7 +1442,7 @@ fn a_plugins_grammar_does_not_replace_the_users() {
 #[test]
 fn a_users_grammar_replaces_a_plugins_and_a_plugins_replaces_a_bundled_one() {
     require_grammars(&["rust"]);
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_grammar("rust", rust_grammar(), ConfigOrigin::Plugin);
     let replaced = reg.register_grammar("rust", GrammarSource::missing("rust"), ConfigOrigin::User);
     assert_eq!(replaced, reg.id_of("rust"));
@@ -1426,7 +1456,7 @@ fn a_users_grammar_replaces_a_plugins_and_a_plugins_replaces_a_bundled_one() {
 #[test]
 fn a_second_grammar_from_one_origin_replaces_the_first() {
     require_grammars(&["rust"]);
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_grammar("rust", rust_grammar(), ConfigOrigin::User);
 
     let replaced = reg.register_grammar("rust", GrammarSource::missing("rust"), ConfigOrigin::User);
@@ -1438,7 +1468,7 @@ fn a_second_grammar_from_one_origin_replaces_the_first() {
 #[test]
 fn a_loaded_grammar_keeps_the_origin_that_registered_it() {
     require_grammars(&["rust"]);
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_grammar("rust", rust_grammar(), ConfigOrigin::User);
     assert!(holds_rust(&mut reg, "rust"));
 
@@ -1453,7 +1483,7 @@ fn a_loaded_grammar_keeps_the_origin_that_registered_it() {
 #[test]
 fn a_shadowed_attach_compiles_nothing() {
     require_grammars(&["rust"]);
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_grammar("rust", rust_grammar(), ConfigOrigin::User);
 
     let attached = reg
@@ -1488,7 +1518,7 @@ fn define(
 
 #[test]
 fn a_user_definition_replaces_the_bundled_one_and_a_plugins_does_not_replace_it() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     assert_eq!(
         define(&mut reg, "tsx", "tsx", ConfigOrigin::Bundled),
         WriteOutcome::Applied
@@ -1509,7 +1539,7 @@ fn a_user_definition_replaces_the_bundled_one_and_a_plugins_does_not_replace_it(
 
 #[test]
 fn a_second_definition_from_one_tier_is_ignored() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     assert_eq!(
         define(&mut reg, "tsx", "first", ConfigOrigin::Plugin),
         WriteOutcome::Applied
@@ -1526,7 +1556,7 @@ fn a_second_definition_from_one_tier_is_ignored() {
 /// a later definition from any tier then gives it.
 #[test]
 fn a_grammar_defines_its_language_and_leaves_its_detection_to_a_definition() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_grammar(
         "zlang",
         rust_source(QueryFiles::new("unused.scm".into())),
@@ -1547,7 +1577,7 @@ fn a_grammar_defines_its_language_and_leaves_its_detection_to_a_definition() {
 /// no grammar.
 #[test]
 fn remove_takes_away_a_language_only_its_grammar_defined() {
-    let mut reg = LanguageRegistry::new();
+    let mut reg = LanguageRegistry::for_testing();
     reg.register_grammar(
         "zlang",
         rust_source(QueryFiles::new("unused.scm".into())),
@@ -1558,4 +1588,22 @@ fn remove_takes_away_a_language_only_its_grammar_defined() {
 
     assert_eq!(reg.defined_id("zlang"), None);
     assert!(!reg.has_grammar("zlang"));
+}
+
+/// A grammar loads only with an ABI in `GRAMMAR_ABI`, both ends included.
+#[test]
+fn require_abi_accepts_the_supported_range_and_refuses_either_side() {
+    let (min, max) = (*super::GRAMMAR_ABI.start(), *super::GRAMMAR_ABI.end());
+    assert!(super::require_abi("zlang", min).is_ok());
+    assert!(super::require_abi("zlang", max).is_ok());
+    for abi in [min - 1, max + 1] {
+        assert!(
+            matches!(
+                super::require_abi("zlang", abi),
+                Err(super::RegisterError::AbiIncompatible { ref name, abi: got })
+                    if name == "zlang" && got == abi
+            ),
+            "ABI {abi} must be refused"
+        );
+    }
 }

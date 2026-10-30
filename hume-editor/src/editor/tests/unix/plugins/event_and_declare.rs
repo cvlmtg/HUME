@@ -153,7 +153,7 @@ fn event_trigger_one_to_many_activates_all() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -291,7 +291,7 @@ fn declare_plugin_no_triggers_is_hard_error() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, "(declare-plugin! \"user/tp\")").unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -319,7 +319,7 @@ fn load_plugin_absent_top_level_silently_skips() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin! "user/tp")"#).unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -371,7 +371,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -513,7 +513,7 @@ fn nested_activation_multi_file_via_real_editor_host() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -593,7 +593,7 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });

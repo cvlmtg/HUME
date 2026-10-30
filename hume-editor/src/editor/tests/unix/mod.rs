@@ -147,7 +147,7 @@ fn assert_core_plugin_load_fails(dirs: Dirs, init: &str, plugin: &str, expected:
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.dirs = dirs;
-    let mut host = ScriptingHost::new(&ed.state.dirs);
+    let mut host = ScriptingHost::for_testing(&ed.state.dirs);
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)
@@ -460,10 +460,10 @@ fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
 }
 
 /// A config tempdir (holding a caller-chosen `init.scm`), the real repo
-/// `runtime/` dir, and a data tempdir staged with a real compiled grammar at
-/// the exact paths core's `grammar-output-path`/`grammar-highlights-path`
-/// expect, so `init_scripting`'s unconditional `scheme/grammars.scm` eval (see
-/// `scripting/init.rs`) registers it against the real language data.
+/// `runtime/` dir, and a data tempdir with a real grammar fixture installed
+/// under `<data>/grammars/` as PLUM installs one, so `init_scripting`'s
+/// unconditional `scheme/grammars.scm` eval (see `scripting/init.rs`)
+/// registers it.
 ///
 /// Held for the whole test so a later `:reload-config` dispatch can re-enter
 /// `init_scripting` against the same paths after `write_init` swaps in a new
@@ -476,11 +476,10 @@ struct StagedGrammarFixture {
 }
 
 impl StagedGrammarFixture {
-    /// `grammar_name`'s compiled fixture library and `highlights.scm` staged
-    /// under a fresh `<data>/grammars/`; `init_scm` written to a fresh
-    /// `init.scm`. Caller supplies `grammar_name`'s own fixture files;
-    /// callers call `require_grammars` first.
-    fn new(grammar_name: &str, parser: &Path, highlights: &Path, init_scm: &str) -> Self {
+    /// `grammar_name`'s fixture installed under a fresh `<data>/grammars/`;
+    /// `init_scm` written to a fresh `init.scm`. Callers call
+    /// `require_grammars` first.
+    fn new(grammar_name: &str, init_scm: &str) -> Self {
         let config_tmp = tempfile::tempdir().unwrap();
         let config_dir = config_tmp.path().join("hume");
         std::fs::create_dir_all(&config_dir).unwrap();
@@ -488,18 +487,7 @@ impl StagedGrammarFixture {
 
         let data_tmp = tempfile::tempdir().unwrap();
         let data_dir = data_tmp.path().join("hume");
-        let grammars_dir = data_dir.join("grammars");
-        let hl_dir = grammars_dir.join("sources").join(grammar_name);
-        std::fs::create_dir_all(&hl_dir).unwrap();
-        std::fs::copy(
-            parser,
-            grammars_dir.join(format!(
-                "{grammar_name}.{}",
-                test_fixtures::grammar_platform_ext()
-            )),
-        )
-        .unwrap();
-        std::fs::copy(highlights, hl_dir.join("highlights.scm")).unwrap();
+        test_fixtures::install_fixture_grammar(&data_dir.join("grammars"), grammar_name);
 
         Self {
             config_dir,
@@ -538,12 +526,37 @@ fn canonical_data_dir(root: &Path) -> PathBuf {
     root.canonicalize().unwrap().join("hume")
 }
 
-/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency:
-/// `plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file!`/
-/// `stdlib/delete-dir!`/`stdlib/delete-file!` via `call!`): plugin/grammar/
-/// theme management, no LSP awareness at all.
+/// `members` of `dir` as a gzip tarball at `archive`.
+fn tar_gz(dir: &Path, members: &[&str], archive: &Path) {
+    let mut tar = std::process::Command::new("tar");
+    tar.arg("-czf")
+        .arg(archive)
+        .arg("-C")
+        .arg(dir)
+        .args(members);
+    assert!(tar.status().unwrap().success(), "{tar:?}");
+}
+
+/// `path`'s SHA-256, in lowercase hex.
+fn sha256_hex(path: &Path) -> String {
+    let out = std::process::Command::new("shasum")
+        .args(["-a", "256"])
+        .arg(path)
+        .output()
+        .expect("spawn shasum");
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_string()
+}
+
+/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency, which
+/// its commands reach through `call!`): plugin/grammar/theme management, no
+/// LSP awareness at all.
 fn load_plum(ed: &mut Editor, data_dir: &Path) {
-    load_plum_after(ed, data_dir, "");
+    load_plum_with(ed, data_dir, "", None);
 }
 
 /// Load the real `core:lsp-install` plugin only (plus its documented
@@ -623,7 +636,7 @@ fn setup_lazy_editor_on(
     std::fs::write(&init_path, init_body).unwrap();
 
     let mut ed = editor_from(text);
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -683,6 +696,7 @@ mod picker_source_steel;
 mod pickers_plugin;
 mod pipe;
 mod plugins;
+mod plum_grammars;
 mod ranked_writes;
 mod reload_config;
 mod scripting_effects;

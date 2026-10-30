@@ -712,7 +712,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
     seed_frame(&mut ed, 40, 10); // same 40x10 geometry throughout: only which
     // tab is active changes from here on
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -752,7 +752,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
     let file = file_tmp.path().join("second.txt");
     std::fs::write(&file, "hi\n").unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -802,7 +802,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     let bid_a = ed.focused_buffer_id();
     seed_frame(&mut ed, 40, 3); // baseline last_visible_range[pid_a] at top_line 0
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

@@ -238,8 +238,8 @@ line without finishing the text of the current one. With `indent-smart` off it d
   isolate one rule each; the fixture languages' `indents.scm` files cover what they are written for
   (alignment, header scope, opaque strings). Splits sit next to wide, combining and multi-byte
   text and on a rope chunk boundary, so a byte or char read in the wrong unit shows up.
-- **Corpus oracle:** the indent corpus files (Helix's `tests/indent/<file>` at the pin, fetched by
-  `scripts/fetch-test-grammars.sh` as `helix-indent-corpus.<ext>`) are the files the queries are
+- **Corpus oracle:** the indent corpus files (Helix's `tests/indent/<file>` at the grammars'
+  Helix commit, fetched by `scripts/fetch-test-grammars.sh` as `helix-indent-corpus.<ext>`) are the files the queries are
   checked against upstream. Every line that is neither blank nor comment-led must re-indent to its
   own width, and typing a line break at the end of the line before it must give at least that
   width. A line that starts inside an opaque node (a multi-line string) must instead give `None` on

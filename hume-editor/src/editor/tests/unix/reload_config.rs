@@ -9,7 +9,6 @@
 
 use super::*;
 
-use super::super::scripting_grammar::grammar_fixture;
 use crate::cli::ConfigSource;
 use crate::editor::keymap::Keymap;
 use crate::editor::minibuf::history::HistoryKind;
@@ -648,7 +647,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 /// so a buffer whose language fails to re-detect after reload holds no
 /// `Arc<GrammarBundle>` from the discarded registry.
 ///
-/// Uses a real compiled JSON grammar staged under `StagedGrammarFixture`
+/// Uses the JSON grammar fixture installed by `StagedGrammarFixture`
 /// (real runtime directory, so the real language data and
 /// `grammars.scm` registrar run both times) with no `core:plum` in
 /// `init.scm` at all, so the survival is core's doing, not a reload
@@ -656,8 +655,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 #[test]
 fn reload_config_keeps_a_startup_grammar_registered() {
     test_fixtures::require_grammars(&["json"]);
-    let (parser, hl) = grammar_fixture("json");
-    let fixture = StagedGrammarFixture::new("json", &parser, &hl, "");
+    let fixture = StagedGrammarFixture::new("json", "");
 
     let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("data.json");

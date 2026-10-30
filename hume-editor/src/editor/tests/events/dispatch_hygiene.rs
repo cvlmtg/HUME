@@ -19,7 +19,7 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     std::fs::write(&path_b, "world\n").unwrap();
     type_cmd(&mut ed, &format!(":e {}", path_b.display()));
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -92,7 +92,7 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     )));
     let bid = ed.focused_buffer_id();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-diagnostics-changed (lambda (bid) (log! 'trace "diagnostics-fired")))"#,
@@ -143,7 +143,7 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
     let bid = ed.focused_buffer_id();
     let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal);
 
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-viewport-change
@@ -192,7 +192,7 @@ fn a_raising_hook_handler_does_not_drop_the_next_handler_for_the_same_event() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-buffer-save (lambda (bid) (car '())))

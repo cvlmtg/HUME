@@ -49,7 +49,7 @@ fn setup_vim_keybind_editor_with_config(
 
     let mut ed = editor_from(input);
     ed.state.dirs = guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
+    let mut host = ScriptingHost::for_testing(&ed.state.dirs);
     let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)

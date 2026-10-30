@@ -40,9 +40,9 @@ def scheme_list(items: list) -> str:
 def read_pin(path: Path) -> str:
     """Extract the single quoted pin literal from a `*-pin.scm` file.
 
-    Works for both hex SHAs (helix-pin.scm) and non-hex release tags
-    (mason-pin.scm) — the pin is just the first double-quoted string left
-    after stripping `;;` comment lines.
+    Works for any pin literal, such as a release tag (mason-pin.scm,
+    treesitter-hume-pin.scm) — the pin is just the first double-quoted string
+    left after stripping `;;` comment lines.
     """
     text = path.read_text(encoding="utf-8")
     body = re.sub(r";;.*", "", text)

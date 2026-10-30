@@ -100,13 +100,13 @@ fn the_indent_corpus_indents_as_written() {
             corpus.name,
             OptionalQuery::Indents.file_name(),
         ))
-        .expect("read helix-indents.scm");
+        .expect("read indents.scm");
         let injections = corpus.injections.then(|| {
             std::fs::read_to_string(require_helix_query(
                 corpus.name,
                 OptionalQuery::Injections.file_name(),
             ))
-            .expect("read helix-injections.scm")
+            .expect("read injections.scm")
         });
         let mut queries = vec![(OptionalQuery::Indents, indents.as_str())];
         queries.extend(

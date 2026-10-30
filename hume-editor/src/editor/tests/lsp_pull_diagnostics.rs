@@ -416,7 +416,7 @@ fn a_config_reload_pulls_again_from_a_server_it_keeps() {
     let sid = rig.sid("rust-analyzer");
 
     let snapshot = rig.ed.reset_config_state();
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut rig.ed,
         &mut host,

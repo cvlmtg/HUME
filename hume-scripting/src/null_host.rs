@@ -255,6 +255,9 @@ impl LanguageHost for NullHost {
     fn attach_grammar(&mut self, _reg: &GrammarReg) -> Result<bool, String> {
         Err("NullHost: attach_grammar not available".into())
     }
+    fn check_grammar(&self, _name: &str, _source: &hume_core::GrammarSource) -> Result<(), String> {
+        Err("NullHost: check_grammar not available".into())
+    }
     fn has_grammar(&self, _language: &str) -> bool {
         false
     }

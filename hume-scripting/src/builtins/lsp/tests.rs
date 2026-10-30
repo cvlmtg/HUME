@@ -1681,7 +1681,7 @@ fn the_tracking_token_builtins_reject_init_context() {
         "untrack-position!",
         "keep-tracked-position!",
     ] {
-        let mut host = crate::ScriptingHost::new(&Dirs::none());
+        let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
         let mut null_host = crate::null_host::NullHost;
         let err = host
             .eval_source(&format!("({name} #f)"), &mut null_host)

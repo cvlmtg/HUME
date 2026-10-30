@@ -169,7 +169,7 @@ fn register_hook_validates_against_the_host_not_a_compiled_in_table() {
 
 /// A fresh host after `(register-hook! 'event handler)` against [`NullHost`].
 fn register_for(event: &str, handler: &str) -> Result<ScriptingHost, String> {
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     host.eval_source(
         &format!("(register-hook! '{event} {handler})"),
         &mut NullHost,

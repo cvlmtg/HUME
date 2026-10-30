@@ -39,7 +39,7 @@ fn setup(guard: &RuntimeDirs, tmp: &Path, config_expr: Option<&str>) -> Editor {
         test_cwd(),
     )
     .unwrap();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
+    let mut host = ScriptingHost::for_testing(&ed.state.dirs);
     let load_bw = match config_expr {
         Some(cfg) => format!("(load-plugin! \"core:buffer-words\" #:config {cfg})"),
         None => "(load-plugin! \"core:buffer-words\")".to_string(),

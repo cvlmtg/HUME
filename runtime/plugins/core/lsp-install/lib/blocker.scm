@@ -20,7 +20,13 @@
                   (lsp-install/ref fields 'targets))))))
 
 (define (lsp-install/missing-tool row)
-  (call! "stdlib/find" (lambda (tool) (not (find-program tool))) (lsp-install/row-tools row)))
+  (let ((fmt (lsp-install/row-fmt row)))
+    (if (and (member fmt '(tar zip))
+             (not (call! "stdlib/find-extractor" (symbol->string fmt))))
+        (string-append "a program that extracts " (symbol->string fmt) " archives")
+        (let ((tool (call! "stdlib/find" (lambda (tool) (not (find-program tool)))
+                           (lsp-install/row-tools row))))
+          (and tool (string-append "'" tool "' on $PATH"))))))
 
 (define (lsp-install/row-blocker name row)
   (let ((fields (lsp-install/requirement name)))
@@ -35,8 +41,7 @@
            "no prebuilt asset for this platform"
            "not supported on this platform"))
       ((lsp-install/missing-tool row)
-       => (lambda (tool)
-            (string-append "requires '" tool "' on $PATH, which was not found")))
+       => (lambda (missing) (string-append "requires " missing ", which was not found")))
       (else #f))))
 
 (define (lsp-install/install-blocker name)

@@ -164,6 +164,15 @@ fn path_to_display_rejects_a_base_that_is_not_a_path() {
     assert!(eval_result(&source).is_err());
 }
 
+/// A `..` is resolved on disk, so one after a missing directory raises.
+#[test]
+fn path_to_display_of_a_parent_step_after_a_missing_directory_raises() {
+    let tmp = TempDir::new().unwrap();
+    let input = tmp.path().join("gone").join("..").join("a.rs");
+    let source = format!("(path->display {})", literal(&input));
+    assert!(eval_result(&source).is_err());
+}
+
 #[test]
 fn path_to_display_no_args_errors() {
     assert!(eval_result("(path->display)").is_err());
@@ -198,7 +207,7 @@ fn path_separator_resolves_inside_loaded_plugin() {
     )
     .unwrap();
 
-    let mut host = crate::ScriptingHost::new(&Dirs {
+    let mut host = crate::ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -250,7 +259,7 @@ fn data_dir_resolves_through_real_registration() {
     let data_dir = tmp.path().join("hume");
     std::fs::create_dir_all(&data_dir).unwrap();
 
-    let mut host = crate::ScriptingHost::new(&Dirs {
+    let mut host = crate::ScriptingHost::for_testing(&Dirs {
         data: Some(data_dir.clone()),
         ..Dirs::none()
     });
@@ -279,7 +288,7 @@ fn data_dir_resolves_through_real_registration() {
 /// `source`'s value or the error it raises, evaluated by a real
 /// `ScriptingHost` over `NullHost`.
 fn eval_result(source: &str) -> Result<SteelVal, String> {
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
+    let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
     host.eval_source_for_value(source, &mut crate::null_host::NullHost)
 }
 
@@ -523,3 +532,120 @@ fn first_path_outside_returns_the_first_escaping_path_in_list_order() {
 
 #[cfg(unix)]
 mod unix;
+
+// ── copy-file-range! ─────────────────────────────────────────────────────
+
+fn call_copy_file_range(src: &Path, offset: usize, size: usize, dest: &Path) -> SteelResult {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    copy_file_range(
+        &mut ctx,
+        AbsolutePath::rooted(src),
+        offset,
+        size,
+        AbsolutePath::rooted(dest),
+    )
+}
+
+/// A temp dir holding `bundle.tar`, the ten bytes `0123456789`.
+fn ten_byte_bundle() -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("bundle.tar");
+    std::fs::write(&src, b"0123456789").unwrap();
+    (tmp, src)
+}
+
+#[test]
+fn copy_file_range_writes_the_requested_bytes() {
+    let (tmp, src) = ten_byte_bundle();
+    let dest = tmp.path().join("member");
+    std::fs::write(&dest, b"a longer previous content").unwrap();
+
+    call_copy_file_range(&src, 3, 4, &dest).unwrap();
+
+    assert_eq!(std::fs::read(&dest).unwrap(), b"3456");
+}
+
+#[test]
+fn copy_file_range_past_the_end_raises_naming_the_file() {
+    let (tmp, src) = ten_byte_bundle();
+    let dest = tmp.path().join("member");
+
+    let msg = call_copy_file_range(&src, 8, 4, &dest)
+        .unwrap_err()
+        .to_string();
+
+    assert!(msg.contains("bundle.tar"), "{msg}");
+    assert!(!dest.exists(), "a short read must not leave a partial file");
+}
+
+/// An index line can name any size, so a size far past the file must raise
+/// like any other short read rather than reserve that much memory first.
+#[test]
+fn copy_file_range_of_a_size_far_past_the_file_raises() {
+    let (tmp, src) = ten_byte_bundle();
+    let dest = tmp.path().join("member");
+
+    let msg = call_copy_file_range(&src, 0, isize::MAX as usize, &dest)
+        .unwrap_err()
+        .to_string();
+
+    assert!(msg.contains("only 10 of"), "{msg}");
+    assert!(!dest.exists(), "a short read must not leave a partial file");
+}
+
+#[test]
+fn copy_file_range_of_a_missing_file_raises() {
+    let tmp = TempDir::new().unwrap();
+    let missing = tmp.path().join("missing.tar");
+
+    let msg = call_copy_file_range(&missing, 0, 1, &tmp.path().join("member"))
+        .unwrap_err()
+        .to_string();
+
+    assert!(msg.contains("missing.tar"), "{msg}");
+}
+
+/// A `dest` the call cannot open was never written, so it stays as it was.
+#[test]
+fn copy_file_range_into_a_dest_it_cannot_open_keeps_that_file() {
+    let (tmp, src) = ten_byte_bundle();
+    let dest = tmp.path().join("notes.txt");
+    std::fs::write(&dest, b"keep me").unwrap();
+    let mut perms = std::fs::metadata(&dest).unwrap().permissions();
+    perms.set_readonly(true);
+    std::fs::set_permissions(&dest, perms).unwrap();
+
+    call_copy_file_range(&src, 0, 4, &dest).unwrap_err();
+
+    assert_eq!(std::fs::read(&dest).unwrap(), b"keep me");
+}
+
+/// Copying a file onto itself would empty it before reading it, so the call
+/// refuses and leaves it as it was.
+#[test]
+fn copy_file_range_onto_its_own_source_raises_and_keeps_it() {
+    let (_tmp, src) = ten_byte_bundle();
+
+    let msg = call_copy_file_range(&src, 0, 10, &src)
+        .unwrap_err()
+        .to_string();
+
+    assert!(msg.contains("same file"), "{msg}");
+    assert_eq!(std::fs::read(&src).unwrap(), b"0123456789");
+}
+
+/// A hard link names the source under another path, and is refused the same way.
+#[test]
+fn copy_file_range_onto_a_hard_link_of_its_source_raises_and_keeps_it() {
+    let (tmp, src) = ten_byte_bundle();
+    let link = tmp.path().join("link.tar");
+    std::fs::hard_link(&src, &link).unwrap();
+
+    let msg = call_copy_file_range(&src, 0, 10, &link)
+        .unwrap_err()
+        .to_string();
+
+    assert!(msg.contains("same file"), "{msg}");
+    assert_eq!(std::fs::read(&src).unwrap(), b"0123456789");
+}

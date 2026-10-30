@@ -1,6 +1,5 @@
 ;;; runtime/scheme/languages/yuck.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
-((comment-tokens ";")
- (grammar "https://github.com/Philipp-M/tree-sitter-yuck" "6c60112b3b3e739fb1ca4a8ea4bea2b6ffe11318" "tree_sitter_yuck" ""))
+((comment-tokens ";"))

@@ -5,7 +5,7 @@ use hume_platform::dirs::Dirs;
 fn eval_err(src: &str) -> String {
     use crate::ScriptingHost;
     use crate::null_host::CommandStoreHost;
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut editor_host = CommandStoreHost::default();
     host.eval_source(src, &mut editor_host)
         .expect_err("expected the source to error")
@@ -112,7 +112,7 @@ fn declare_plugin_rejects_string_event_names() {
 fn declare_plugin_rejected_events_records_nothing() {
     use crate::ScriptingHost;
     use crate::null_host::CommandStoreHost;
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut editor_host = CommandStoreHost::default();
     host.eval_source(
         r#"(declare-plugin! "user/tp" #:events '(not-a-real-hook))"#,
@@ -152,7 +152,7 @@ fn declare_plugin_malformed_command_name_errors() {
         ("#:typed-commands", r#""b1""#, "b1", "typed command name"),
         ("#:commands", r#""Probe""#, "Probe", "lowercase"),
     ] {
-        let mut host = ScriptingHost::new(&Dirs::none());
+        let mut host = ScriptingHost::for_testing(&Dirs::none());
         let mut editor_host = CommandStoreHost::default();
         let err = host
             .eval_source(
@@ -178,7 +178,7 @@ fn declare_plugin_malformed_command_name_errors() {
 #[test]
 fn declare_plugin_absent_on_disk_attributes_nothing() {
     use crate::{ScriptingHost, null_host::CommandStoreHost};
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut editor_host = CommandStoreHost::default();
     // `core:nonexistent-plugin` cannot exist on disk in any test environment.
     let result = host.eval_source(
@@ -203,7 +203,7 @@ fn declare_plugin_absent_on_disk_attributes_nothing() {
 #[test]
 fn declare_plugin_core_absent_logs_error() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let result = host.eval_source(
         r#"(declare-plugin! "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
         &mut NullHost,
@@ -234,7 +234,7 @@ fn declare_plugin_core_absent_logs_error() {
 #[test]
 fn declare_plugin_user_absent_logs_info() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let result = host.eval_source(
         r#"(declare-plugin! "user/definitely-absent-99" #:commands '("my-cmd-2"))"#,
         &mut NullHost,
@@ -256,7 +256,7 @@ fn declare_plugin_user_absent_logs_info() {
 #[test]
 fn load_plugin_core_absent_logs_error() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let result = host.eval_source(r#"(load-plugin! "core:nonexistent-plugin")"#, &mut NullHost);
     assert!(
         result.is_ok(),
@@ -288,7 +288,7 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::null_host::CommandStoreHost;
 
     let id = EntryId::main(PluginId::parse("core:my-plugin").unwrap());
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     // Simulate declare-plugin! having claimed the name as a `Lazy` stub.
     let mut editor_host = CommandStoreHost::default();
     editor_host
@@ -330,7 +330,7 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::null_host::CommandStoreHost;
 
     let id = EntryId::main(PluginId::parse("core:my-plugin").unwrap());
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     // Simulate declare-plugin! having claimed the name as a typed `Lazy` stub.
     let mut editor_host = CommandStoreHost::default();
     editor_host
@@ -367,7 +367,7 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
 #[test]
 fn plugin_config_outside_plugin_code_raises() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let err = host
         .eval_source("(plugin-config)", &mut NullHost)
         .expect_err("plugin-config outside a plugin's code must raise");
@@ -378,7 +378,7 @@ fn plugin_config_outside_plugin_code_raises() {
 #[test]
 fn load_plugin_refuses_a_string_config_key() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let err = host
         .eval_source(
             r#"(load-plugin! "core:none" #:config (hash 'ok #t "signs" #f))"#,
@@ -394,7 +394,7 @@ fn load_plugin_refuses_a_string_config_key() {
 #[test]
 fn load_plugin_refuses_a_config_that_is_not_a_hash() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let err = host
         .eval_source(
             r#"(load-plugin! "core:none" #:config '(signs #t))"#,
@@ -410,7 +410,7 @@ fn load_plugin_refuses_a_config_that_is_not_a_hash() {
 #[test]
 fn plugin_dir_outside_plugin_code_raises() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let err = host
         .eval_source("(plugin-dir)", &mut NullHost)
         .expect_err("plugin-dir outside a plugin's code must raise");
@@ -439,7 +439,7 @@ fn plugin_dir_inside_plugin_body_is_the_plugins_own_directory() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -458,7 +458,7 @@ fn plugin_dir_inside_plugin_body_is_the_plugins_own_directory() {
 #[test]
 fn declare_plugin_bang_direct_no_trigger_call_errors() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
     let result = host.eval_source(
         r#"(%declare-plugin! "user/direct-zero" "plugin.scm" '() '() '() '())"#,
         &mut NullHost,
@@ -482,7 +482,7 @@ fn load_plugin_absent_dir_soft_logs_and_records_declared_plugins() {
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
@@ -522,7 +522,7 @@ fn declared_ref_after(src: &str, name: &str) -> SteelVal {
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
-    let mut host = ScriptingHost::new(&Dirs {
+    let mut host = ScriptingHost::for_testing(&Dirs {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });

@@ -19,7 +19,7 @@ pub(super) fn submit(ed: &mut Editor, cmd: &str) {
 /// Evaluates `source` against a fresh `ScriptingHost` and returns the error
 /// it raised.
 fn eval_err(ed: &mut Editor, source: &str) -> String {
-    let mut host = hume_scripting::ScriptingHost::new(&ed.state.dirs);
+    let mut host = hume_scripting::ScriptingHost::for_testing(&ed.state.dirs);
     let result = {
         let mut ih = init_host!(ed);
         host.eval_source(source, &mut ih)

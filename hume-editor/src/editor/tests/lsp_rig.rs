@@ -153,7 +153,7 @@ impl LspRig {
             .register_identity(spec.language, &[spec.extension], &[], &[])
             .expect("register test language");
 
-        let mut host = ScriptingHost::new(&ed.state.dirs);
+        let mut host = ScriptingHost::for_testing(&ed.state.dirs);
         eval_with_real_host(&mut ed, &mut host, spec.init, &root);
         ed.scripting = Some(host);
         ed.execute_typed("e", Some(file.to_str().expect("utf-8 path")))

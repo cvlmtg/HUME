@@ -1,7 +1,6 @@
 ;;; runtime/scheme/languages/earthfile.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b0f9896c8bdc699a4ab11f2b37dbc
 
 ((comment-tokens "#")
- (roots "Earthfile")
- (grammar "https://github.com/glehmann/tree-sitter-earthfile" "dbfb970a59cd87b628d087eb8e3fbe19c8e20601" "tree_sitter_earthfile" ""))
+ (roots "Earthfile"))

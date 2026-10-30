@@ -38,7 +38,8 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 | Group | Commands |
 |---|---|
 | [Selections](#selections) | `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
-| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/concat`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` |
+| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/concat`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs`, `stdlib/path-absolute?`, `stdlib/non-blank-lines` |
+| [Downloads, digests and archives](#downloads-digests-and-archives) | `stdlib/download!`, `stdlib/verify-sha256!`, `stdlib/find-extractor`, `stdlib/extract-archive!` |
 | [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
 | [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
 | [Reports](#reports) | `stdlib/report-section`, `stdlib/show-report!` |
@@ -66,7 +67,11 @@ Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
 `delete-file!` are idempotent, unlike `remove-dir!` and Steel's own `delete-file!`:
 a missing target is not an error. `list-subdirs` returns the names of the directories
 under a path, sorted, and skips stray files that sit alongside a directory tree
-(`.install-lock`, `.DS_Store`).
+(`.install-lock`, `.DS_Store`). `path-absolute?` follows Rust's `Path::is_absolute`: on
+Windows a path is absolute only with both a drive and a root (`C:\x`, `C:/x`) or as a UNC
+path (`\\server\share`), so `\x` (the current drive's) and `C:x` (relative to drive `C:`'s
+working directory) are not. Elsewhere it is absolute when it starts with `/`. `non-blank-lines` splits text into the lines that hold more than whitespace, for parsing a
+tool's output or an index file.
 
 `concat` joins a list of lists into one, in order, with one `foldl` over each list and a
 single `reverse`. Steel's `append` called with many lists (`(apply append lists)`) costs
@@ -74,6 +79,27 @@ time that grows with the number of lists times their total length: on 2,000 one-
 lists, as `core:git-diff` builds for 2,000 changed lines, it took 16 ms where `concat`
 takes about 0.5 ms. `core:git-diff`, `core:lsp` and `core:plum` join their per-item lists
 with it.
+
+### Downloads, digests and archives
+
+`core:lsp-install` and `core:plum` download through `download!`, which runs `curl -fsSL`:
+an HTTP error fails the command instead of saving the error page, a redirect (as GitHub's
+release downloads use) is followed, and a `--` before the URL keeps it from being read as an
+option. An offset and a size fetch that byte range with `-r`, for one member of a bundle.
+
+They both verify and unpack downloads, through `verify-sha256!` and `extract-archive!`. Both shell out to the platform's tools rather than adding hashing or archive
+crates; `docs/LSP-INSTALL.md` gives the reasoning. `verify-sha256!` compares the digests
+case-insensitively. `extract-archive!` walks the extracted tree once, refuses a symlink that resolves outside
+the target directory (`first-path-outside`), and returns the regular files, which
+`core:lsp-install` marks executable.
+
+`find-extractor` picks the program for an archive format, and `extract-archive!` runs the
+one it picks, so `core:lsp-install`'s check before a download finds the program the
+extraction runs. Off Windows that is `tar` for a tar archive and `unzip` for a zip archive,
+on the search path. On Windows it is Windows' own bsdtar, `%SystemRoot%\System32\tar.exe`,
+which extracts both; without it, `unzip` on the search path for a zip archive, then the
+search path's `tar`. Under Git Bash that `tar` is GNU tar, which reads a `C:\...` archive path
+as a remote host and cannot extract a `.zip`, so it comes last.
 
 ### Git
 
