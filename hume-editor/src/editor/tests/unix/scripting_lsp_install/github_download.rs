@@ -214,7 +214,7 @@ fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
         install_from_fixture_into(data_tmp, &sources, &asset, "markdown");
     assert_eq!(
         install_folders(data_tmp.path(), "marksman"),
-        [installed.clone()],
+        std::slice::from_ref(&installed),
         "the install starts only once the server has stopped"
     );
 
