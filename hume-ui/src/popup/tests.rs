@@ -45,6 +45,24 @@ fn wrap_text_empty_line_preserved() {
     assert_eq!(wrap_text("a\n\nb", 60), vec!["a", "", "b"]);
 }
 
+#[test]
+fn wrap_text_keeps_leading_indentation() {
+    assert_eq!(
+        wrap_text("{\n    let x = 1;\n}", 60),
+        vec!["{", "    let x = 1;", "}"]
+    );
+}
+
+#[test]
+fn wrap_text_keeps_indentation_on_the_first_row_only() {
+    assert_eq!(wrap_text("  aaa bbb", 6), vec!["  aaa", "bbb"]);
+}
+
+#[test]
+fn wrap_text_hard_breaks_an_indented_word_after_its_indentation() {
+    assert_eq!(wrap_text("    abcdef", 6), vec!["    ab", "cdef"]);
+}
+
 // ── wrap_styled ────────────────────────────────────────────────────────
 
 fn red() -> ResolvedStyle {

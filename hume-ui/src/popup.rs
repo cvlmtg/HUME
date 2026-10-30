@@ -758,7 +758,8 @@ fn coalesce_atoms(atoms: Vec<(&str, ResolvedStyle)>) -> StyledRow {
 /// Word-wrap `runs` (contiguous same-style chunks of source text; `\n` acts
 /// as a paragraph delimiter, and may appear anywhere inside a run) to
 /// `max_width` display columns, breaking on grapheme-cluster boundaries.
-/// Unbounded height: [`PopupContent::wrapped`]'s caller windows the result
+/// A line's leading spaces stay on its first row; continuation rows start
+/// at column 0. Unbounded height: [`PopupContent::wrapped`]'s caller windows the result
 /// (`scroll`) rather than truncating it here; a `Scrollable` popup needs
 /// every row reachable, not just the first screenful.
 ///
@@ -796,8 +797,10 @@ fn wrap_styled(runs: &[(String, ResolvedStyle)], max_width: u16) -> Vec<StyledRo
             let mut current: Vec<(&str, ResolvedStyle)> = Vec::new();
             let mut current_w = 0usize;
             let mut word_start = 0;
+            // The line's leading spaces belong to its first word, so its
+            // indentation stays on its first row.
+            let mut word_end = paragraph.iter().take_while(|(g, _)| *g == " ").count();
             loop {
-                let mut word_end = word_start;
                 while word_end < paragraph.len() && paragraph[word_end].0 != " " {
                     word_end += 1;
                 }
@@ -857,6 +860,7 @@ fn wrap_styled(runs: &[(String, ResolvedStyle)], max_width: u16) -> Vec<StyledRo
                     break;
                 }
                 word_start = word_end + 1; // skip the delimiting space atom
+                word_end = word_start;
             }
             out.push(coalesce_atoms(current));
         }
