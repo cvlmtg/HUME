@@ -1,22 +1,17 @@
 # Syntax Highlighting
 
-HUME colors your code with **tree-sitter**: accurate highlighting that stays correct as you type and handles partial or malformed code without choking.
+HUME colors your code with tree-sitter: accurate highlighting that stays correct as you type and handles partial or malformed code without choking.
 
-Highlighting is **opt-in per language**. HUME recognizes many languages out of the box but ships no grammars. For a language to light up, you install its **grammar**, a small prebuilt package tree-sitter uses to parse that language. [PLUM](core-plugins.md#core-plum) downloads it for you.
+Highlighting is opt-in per language. HUME recognizes many languages out of the box but ships no grammars. For a language to light up, you install its grammar, a small prebuilt package tree-sitter uses to parse that language. [PLUM](core-plugins.md#core-plum) downloads it for you.
 
-PLUM is a plugin like any other and doesn't load by itself. Installing, listing, and cleaning
-up grammars all need it loaded in your [`init.scm`](configuration.md) first, along with
-`core:stdlib`, which its install and cleanup commands depend on:
+Installing, listing, and cleaning up grammars need [PLUM](core-plugins.md#core-plum) loaded in your [`init.scm`](configuration.md), with `core:stdlib` before it:
 
 ```scheme
 (load-plugin! "core:stdlib")
 (load-plugin! "core:plum")
 ```
 
-Once a grammar is installed, PLUM is out of the picture: HUME registers every installed
-grammar itself at startup, so highlighting keeps working even if you later remove PLUM from
-`init.scm`. Each grammar loads the first time a file or an embedded block needs it, so
-installed grammars you don't use cost nothing at startup.
+Once a grammar is installed, PLUM is out of the picture: HUME registers every installed grammar itself at startup, so highlighting keeps working even if you later remove PLUM from `init.scm`. Each grammar loads the first time a file or an embedded block needs it, so installed grammars you don't use cost nothing at startup.
 
 ## Prerequisites
 
@@ -32,7 +27,7 @@ Open a file in the language you want highlighted, then run:
 :plum-install-grammar
 ```
 
-When it finishes, the current buffer is highlighted immediately, and other open buffers in the same language pick it up on the next frame.
+When it finishes, the current buffer is highlighted immediately, and other open buffers in the same language pick it up right away.
 
 You don't need to open a file in that language first: name the language directly. Tab completes the languages that have a grammar:
 
@@ -40,7 +35,7 @@ You don't need to open a file in that language first: name the language directly
 :plum-install-grammar python
 ```
 
-This is the easiest way to get a grammar for a language you only use inside a fenced code block (see [Embedded languages](#embedded-languages) below), or whenever switching buffers to install one is inconvenient.
+This is how to get a grammar for a language you only use inside a fenced code block (see [Embedded languages](#embedded-languages) below).
 
 `:plum-install-grammar` always downloads the grammar again, and replaces the installed copy only once the new one is complete. Running it again is also how you repair a broken install or update a grammar after updating HUME.
 
@@ -70,7 +65,7 @@ The path must be absolute, and `~` is not expanded. It can't be inside the `plum
 
 Some languages embed others: a fenced code block in Markdown, or Markdown's own bold, italic, and inline-code spans. HUME resolves these automatically once the grammars involved are installed, with no extra configuration.
 
-For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar its emphasis and inline-code spans need. A fenced ` ```rust ` block then highlights as Rust once the Rust grammar is installed too, with `:plum-install-grammar rust`. Install one for each language you paste into fences; you don't need to open a file in that language first.
+For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar its emphasis and inline-code spans need. A fenced ` ```rust ` block then highlights as Rust once the Rust grammar is installed too, with `:plum-install-grammar rust`. Install one for each language you use in fences.
 
 ## When detection gets it wrong
 
@@ -100,7 +95,7 @@ You can drop trailing arguments you don't need: `(define-language! "my-lang" '("
 
 Settings beyond detection go through `configure-language!`, which works on any language, built-in or your own. Call it after the `define-language!` that defines the language.
 
-If the language server you'll connect expects a different identifier than `"my-lang"` (TypeScript's language servers, for example, expect `"typescriptreact"` for `.tsx` files), set `#:language-id`. It defaults to the language name:
+If the language server you'll connect expects a different identifier than `"my-lang"`, set `#:language-id`. It defaults to the language name:
 
 ```scheme
 (configure-language! "my-lang" #:language-id "my-language-server-id")
@@ -141,27 +136,7 @@ The required fields, in order:
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file
 
-Three optional keyword arguments can follow, in any order.
-
-If `my-lang` embeds other languages (like Markdown's fenced code blocks), pass its injections query with `#:injections`:
-
-```scheme
-(register-grammar! "my-lang"
-  "/path/to/my_grammar.so"
-  "tree_sitter_my_lang"
-  "/path/to/highlights.scm"
-  #:injections "/path/to/injections.scm")
-```
-
-If it defines structural text objects and navigation (functions, classes, arguments, …), pass its textobjects query with `#:textobjects`, with or without `#:injections`:
-
-```scheme
-(register-grammar! "my-lang"
-  "/path/to/my_grammar.so"
-  "tree_sitter_my_lang"
-  "/path/to/highlights.scm"
-  #:textobjects "/path/to/textobjects.scm")
-```
+Three optional keyword arguments can follow, in any order, each the path to one more query file:
 
 ```scheme
 (register-grammar! "my-lang"
@@ -169,18 +144,13 @@ If it defines structural text objects and navigation (functions, classes, argume
   "tree_sitter_my_lang"
   "/path/to/highlights.scm"
   #:injections "/path/to/injections.scm"
-  #:textobjects "/path/to/textobjects.scm")
-```
-
-If it defines how new lines are indented, pass its indents query with `#:indents`, alone or alongside the others. It uses Helix's `indents.scm` captures; see [Indentation](editing.md#indentation) for what it drives:
-
-```scheme
-(register-grammar! "my-lang"
-  "/path/to/my_grammar.so"
-  "tree_sitter_my_lang"
-  "/path/to/highlights.scm"
+  #:textobjects "/path/to/textobjects.scm"
   #:indents "/path/to/indents.scm")
 ```
+
+- `#:injections`: the language embeds other languages, like Markdown's fenced code blocks.
+- `#:textobjects`: structural text objects and navigation (functions, classes, arguments, …).
+- `#:indents`: how new lines are indented, using Helix's `indents.scm` captures; see [Indentation](editing.md#indentation) for what it drives.
 
 Registered from `init.scm`, a grammar loads the first time a file or an embedded block needs it, and `:messages` reports then if its library or a query file can't be loaded. Registered from a command, it loads right away, and the command fails with the reason.
 
@@ -192,7 +162,7 @@ A grammar you register, from your `init.scm` or from a command you run, beats on
 :plum-list-grammars
 ```
 
-Opens a read-only buffer listing the installed grammars, with everything else in the grammars folder in a section of its own: grammars installed under a name that isn't a language HUME knows, older copies of a grammar a reinstall couldn't delete yet, copies that failed to load and couldn't be deleted yet, and files an earlier version or an interrupted install left. A third section lists what grammar installs that were stopped partway left behind: the files they were downloading or unpacking.
+Opens a read-only buffer listing the installed grammars. A second section lists everything else in the grammars folder: grammars installed under a name HUME doesn't know, older or broken copies that couldn't be deleted yet, and leftover files. A third lists the files that stopped installs left behind.
 
 ```
 :plum-cleanup-grammars
@@ -212,7 +182,7 @@ See [Settings](settings.md) for the full settings reference.
 
 ## Troubleshooting
 
-**The file opens with no colors.** The language has no installed grammar. Run `:plum-list-grammars`. If the language isn't under **Installed grammars**, run `:plum-install-grammar <name>` (or just `:plum-install-grammar` while that buffer is focused). If the install says there is no grammar for the language, HUME has none to install for it. Check the language name on the status line and fix a wrong detection with `:set buffer language=<name>`. For a language HUME ships no grammar for, register one by hand (see [Teach HUME a new language](#teach-hume-a-new-language)).
+**The file opens with no colors.** The language has no installed grammar. Run `:plum-list-grammars`. If the language isn't under **Installed grammars**, run `:plum-install-grammar <name>`, or `:plum-install-grammar` alone while that buffer is focused. If the install says there is no grammar for the language, HUME has none to install for it. Check the language name on the statusline and fix a wrong detection with `:set buffer language=<name>`. For a language HUME ships no grammar for, register one by hand (see [Teach HUME a new language](#teach-hume-a-new-language)).
 
 **`:plum-install-grammar` fails.** The message names the cause, usually no network connection or a tool missing from your `PATH`; check the [prerequisites](#prerequisites). On a platform with no prebuilt grammars, [install from a local folder](#install-from-a-local-folder). A failed install leaves the installed copy of the grammar, if any, working.
 
@@ -220,4 +190,4 @@ See [Settings](settings.md) for the full settings reference.
 
 **Colors look wrong after a HUME update.** The update may expect newer grammars or highlighting rules than the ones you installed. Run `:plum-install-grammar <name>` again for each installed grammar, and `:plum-cleanup-grammars`.
 
-**A fenced code block doesn't highlight, but Markdown emphasis does.** The fenced language's own grammar isn't installed. Markdown's bold/italic/inline-code always come with the Markdown grammar, but a fence's language (` ```rust `, ` ```python `, …) is a separate grammar. Install it by name, e.g. `:plum-install-grammar rust` for a ` ```rust ` fence; you don't need to open a file in that language first.
+**A fenced code block doesn't highlight, but Markdown emphasis does.** The fenced language's own grammar isn't installed. Markdown's bold/italic/inline-code always come with the Markdown grammar, but a fence's language (` ```rust `, ` ```python `, …) is a separate grammar. Install it by name, e.g. `:plum-install-grammar rust` for a ` ```rust ` fence.

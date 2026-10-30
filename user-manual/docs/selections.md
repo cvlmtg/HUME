@@ -21,9 +21,13 @@ A selection has two ends: the **anchor** and the **head**. The head is the movin
 
 ### Extend mode
 
-Press `e` to enter Extend mode. Every motion then moves only the head while the anchor stays put: moving away grows the selection, and moving back toward where you started shrinks it. Press `e` again or `Esc` to return to Normal. The status bar shows `EXT` while Extend mode is active.
+Press `e` to enter Extend mode. Every motion then moves only the head while the anchor stays put: moving away grows the selection, and moving back toward where you started shrinks it. Press `e` again or `Esc` to return to Normal. The statusline shows `EXT` while Extend mode is active.
 
-For a one-shot extend without entering Extend mode, hold `Ctrl` with a motion key under the kitty keyboard protocol (`Ctrl-h`/`Ctrl-j`/`Ctrl-k`/`Ctrl-l`, `Ctrl-w`/`Ctrl-b`, `Ctrl-f`/`Ctrl-t`, `Ctrl-g h`, and so on): that one keypress runs the motion with extend on. Keys with their own `Ctrl` binding keep it (`Ctrl-d`, `Ctrl-u`, `Ctrl-o`, `Ctrl-e`), and `Ctrl` with a key that isn't a motion does nothing. `Ctrl-x` extends the line selection downward on any terminal; its backward twin `Ctrl-Shift-x` needs kitty, since older terminals can't tell the two apart.
+For a one-shot extend without entering Extend mode:
+
+- Under the kitty keyboard protocol, hold `Ctrl` with a motion key (`Ctrl-h`/`Ctrl-j`/`Ctrl-k`/`Ctrl-l`, `Ctrl-w`/`Ctrl-b`, `Ctrl-f`/`Ctrl-t`, `Ctrl-g h`, and so on): that one keypress runs the motion with extend on.
+- Keys with their own `Ctrl` binding keep it (`Ctrl-d`, `Ctrl-u`, `Ctrl-o`, `Ctrl-e`), and `Ctrl` with a key that isn't a motion does nothing.
+- `Ctrl-x` extends the line selection downward on any terminal. Its backward twin `Ctrl-Shift-x` needs kitty, since other terminals can't tell the two apart.
 
 Search has the same one-shot extend: `Ctrl-n` (kitty only) moves the head to the next search match while the anchor stays put, so the selection covers everything from where you started through that match. `Ctrl-Shift-n` does the same backward, extending to the previous match.
 
@@ -31,7 +35,7 @@ Search has the same one-shot extend: `Ctrl-n` (kitty only) moves the head to the
 Extend mode also works with a new `/` or `?` search, not only with `Ctrl-n`/`Ctrl-Shift-n` stepping through an existing one. Press `e`, then search: the anchor stays where you were, and the head jumps to the first match as you type, and again on every `n`/`N` afterward.
 :::
 
-In Extend mode, `w`/`b` and `x`/`X` also shrink in whole units: the opposite key shrinks the selection one word or one line at a time. The word or line where you started stays fully selected whichever way you grow or shrink, and crossing back past it flips the selection's direction instead of cutting it off partway.
+In Extend mode, `w`/`b` and `x`/`X` also shrink in whole units: the opposite key shrinks the selection one word or one line at a time. The word or line where you started stays selected whichever way you grow or shrink, and crossing back past it flips the selection's direction instead of cutting it off partway.
 
 <div class="key-demo">
 <strong>Word selected with <code>w</code>, then <code>e</code> to enter Extend mode</strong><br>
@@ -76,7 +80,7 @@ Text objects select structured regions in one step. They use the `m` prefix: `m 
 
 Closing brackets work as well as opening ones: `m i )` is the same as `m i (`, and likewise for `]`, `}`, and `>`.
 
-`m i a` / `m a a` and the last six rows above (`f`, `t`, `c`, `u`, `v`, `x`) are structure-aware. For a language whose grammar ships a `textobjects.scm` (PLUM installs one alongside highlights where the upstream grammar has one), they select the actual function, class, comment, unit test, value, or tag pair. Wherever the grammar doesn't cover the cursor (a syntax error, a buffer with no grammar at all), `a` and `x` fall back to a lexical scan. Without a grammar, `f`/`t`/`c`/`u`/`v` do nothing, with no message. Where the grammar covers it, a nested list, tuple, or struct literal passed as a call argument is itself the argument; use `m i v` / `m a v` for its members.
+`m i a` / `m a a` and the last six rows above (`f`, `t`, `c`, `u`, `v`, `x`) are structure-aware. When the language's grammar supports it (see [Syntax Highlighting](syntax-highlighting.md)), they select the actual function, class, comment, unit test, value, or tag pair. Wherever the grammar doesn't cover the cursor (a syntax error, a buffer with no grammar at all), `a` and `x` fall back to a lexical scan. Without a grammar, `f`/`t`/`c`/`u`/`v` do nothing, with no message. Where the grammar covers it, a nested list, tuple, or struct literal passed as a call argument is itself the argument; use `m i v` / `m a v` for its members.
 
 `m i x` selects the content without its surrounding whitespace. With the cursor on a tag itself, it selects the content of the enclosing pair.
 
@@ -103,7 +107,7 @@ call(<span class="sel">one, tw<span class="head">o</span></span>)<br>
 call<span class="sel">(one, two<span class="head">)</span></span>
 </div>
 
-`m i i` selects the text you most recently typed before leaving Insert mode, however you entered it (`i`, `a`, `o`, `O`, `A`, `I`, `c`), so you can act on what you just wrote. It follows the inserted text through later edits, and stops working only once that text is deleted or the buffer's text is replaced. There is no `m a i`: an insertion has no delimiters or surrounding structure to select "around".
+`m i i` selects the text you most recently typed before leaving Insert mode, however you entered it (`i`, `a`, `o`, `O`, `A`, `I`, `c`), so you can act on what you wrote. It follows the inserted text through later edits, and stops working once that text is deleted or the buffer's text is replaced. There is no `m a i`.
 
 ## Select all
 
@@ -118,7 +122,7 @@ call<span class="sel">(one, two<span class="head">)</span></span>
 |-----|--------|
 | `;` | Collapse selection to head and exit Extend mode |
 | `Ctrl-;` | Collapse selection to anchor and exit Extend mode (kitty only) |
-| `Ctrl-e` | Swap anchor and head of each selection (any mode; works on legacy terminals too) |
+| `Ctrl-e` | Swap anchor and head of each selection (Normal and Extend mode, any terminal) |
 
 ## Multiple selections
 
@@ -128,12 +132,14 @@ HUME can hold several selections at once. Editing commands act on all of them, e
 |--------|-----|--------|
 | Sift within selection | `s` | Enter a regex pattern; each selection is narrowed to its sub-matches |
 | Split on newlines | `S` | Split multi-line selections into one selection per line |
-| Copy to next line | `C` | Duplicate each selection to the same character columns on the line below, adding a cursor. No text is copied. Each copy sits one selection-height below the last: a one-line selection copies to the next line, a three-line one three lines further down. A count (e.g. `3C`) adds that many copies at once, stopping where the buffer ends. Repeating `C` also stacks cursors line by line for column-style editing. HUME has no rectangular (block) selection. |
+| Copy to next line | `C` | Add a copy of each selection on the line below, at the same columns. No text is copied |
 | Trim whitespace | `_` | Shrink each selection so it starts and ends on non-whitespace; the text is unchanged |
 | Keep primary | `,` | Remove all selections except the primary |
 | Remove primary | `Ctrl-,` | Remove the primary selection, promote next (kitty only) |
 | Cycle primary forward | `)` | Make the next selection the primary |
 | Cycle primary backward | `(` | Make the previous selection the primary |
+
+Each copy `C` adds sits one selection-height below the last: a one-line selection copies to the next line, a three-line one three lines further down. A count (`3C`) adds that many copies at once, stopping where the buffer ends. Pressing `C` repeatedly stacks cursors line by line for column editing. HUME has no rectangular (block) selection.
 
 ### Sift within (`s`)
 

@@ -1,6 +1,6 @@
 # Coming From Helix
 
-HUME shares Helix's core editing model (select-then-act, selections as first-class citizens), so the mental shift is small. The differences are mostly in depth, configurability, and tooling.
+HUME shares Helix's core editing model (select-then-act, selections as first-class citizens), so the mental shift is small. The differences are mostly in how selections grow, in configuration, and in tooling.
 
 ## The first ten minutes with HUME
 
@@ -30,25 +30,25 @@ What each step shows:
 
 ### Saving and quitting
 
-`:w`, `:wq`, `:q!`, `:qa` and `:qa!` work as in Helix. There is no `:x`; `:write-quit` is the long form of `:wq`.
+`:w`, `:qa` and `:qa!` work as in Helix. There is no `:x`; `:write-quit` is the long form of `:wq`.
 
-`:q` on the last pane closes the current buffer, not the editor. If other files are still open, you land on one of them; HUME quits only when nothing is left. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
+`:q` closes the focused pane when the tab has several, and the tab when other tabs are open. On the last pane it closes the current buffer, not the editor: if another file is still open you land on it, and HUME quits only when no other file or unsaved buffer is left. `:q!` and `:wq` close the same way, discarding your changes or saving them first. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
 
-The tutor you just started is the hands-on tour of everything else: carry on from its Introduction. To start over with a clean copy, close it with `:bd!` and run `:tutor` again.
+The tutor you started is the hands-on tour of everything else: carry on from its Introduction. To start over with a clean copy, close it with `:bd!` and run `:tutor` again.
 
 ## Bringing your config over
 
-HUME has no TOML config file. Every setting and keybinding is a call to a Scheme function in [`init.scm`](configuration.md): `(set-option! "name" value)` for options, `(bind-key! 'normal "keys" "command")` for keys. As a real programming language, `init.scm` also has conditionals, loops, and abstraction, which a static TOML file lacks.
+HUME has no TOML config file. Every setting and keybinding is a call to a Scheme function in [`init.scm`](configuration.md): `(set-option! "name" value)` for options, `(bind-key! 'normal "keys" "command")` for keys. `init.scm` is a Scheme program, so it can also use conditionals, loops and functions.
 
 | Setting | Helix `config.toml` | HUME `init.scm` |
 |---|---|---|
 | Theme | `theme = "onedark"` | `(set-option! "theme" "onedark")` |
-| Line numbers | `[editor]`<br>`line-number = "relative"` | `(set-option! "gutter-line-numbers" "relative")` |
+| Line numbers | `[editor]`<br>`line-number = "relative"` | `(set-option! "gutter-line-numbers" "hybrid")`, the default: the cursor line shows its own number. `"relative"` shows 0 there |
 | Scroll padding | `scrolloff = 5` | `(set-option! "scroll-margin" 5)` |
 | Mouse | `mouse = false` | `(set-option! "mouse" #f)` |
-| Soft wrap | `[editor.soft-wrap]`<br>`enable = true` | `(set-option! "wrap-mode" "soft")` |
+| Soft wrap | `[editor.soft-wrap]`<br>`enable = true` | `(set-option! "wrap-mode" "indent")`, the default: breaks between words and keeps the line's indent |
 | Whitespace indicators | `[editor.whitespace]`<br>`render = "all"` | `(set-option! "whitespace-space" "all")`<br>`(set-option! "whitespace-tab" "all")`<br>`(set-option! "whitespace-newline" "all")` |
-| Insert-mode cursor | `[editor.cursor-shape]`<br>`insert = "bar"` | `(set-option! "insert-cursor-shape" "bar")` |
+| Insert-mode cursor | `[editor.cursor-shape]`<br>`insert = "bar"` | `(set-option! "insert-cursor-shape" "bar")`, the default |
 | Auto-pairs | `auto-pairs = false` | `(set-option! "insert-auto-pairs" #f)` |
 | Inlay hints | `[editor.lsp]`<br>`display-inlay-hints = true` | `(load-plugin! "core:lsp" #:config (hash 'inlay-hints #t))` |
 | Statusline | `[editor.statusline]`<br>`left = [...]` | `(configure-statusline! '(...) '(...) '(...))`, see [Statusline](#statusline) |
@@ -66,7 +66,7 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
 
 `bind-key!` takes a command *name* (listed in [Editor Commands](editor-commands.md)), not a key sequence: there's no key-to-key remapping.
 
-## Bringing your themes over
+### Themes
 
 HUME reads Helix's theme format: the same TOML with `[palette]` indirection, the same color forms (hex, a palette name, or one of the sixteen bare terminal color names like `red`), the same modifier names, and the same underline styles. Most Helix themes work unchanged.
 
@@ -85,26 +85,28 @@ HUME's tab bar reads `ui.tabline`, and falls back to Helix's `ui.bufferline` whe
 
 - Select-then-act: motions change the selection; operators act on it
 - Selections are always visible and always cover at least one character
-- `:` command mode prompt, `/` search
+- `:` for typed commands, `/` for search
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME rewrites each line's whole indent in the buffer's `indent-style`; see [Lines and alignment](editing.md#lines-and-alignment)
-- `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`, `m i x`/`m a x` select the enclosing function, class/type, argument, comment, unit test, or tag pair, for any language with a tree-sitter grammar that ships a textobjects query. The letters match Helix's own match-mode textobjects, except unit test (`T`→`u`; see below)
+- `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`, `m i v`/`m a v`, `m i x`/`m a x` select the enclosing function, class/type, argument, comment, unit test, value, or tag pair. The letters match Helix's match-mode text objects, except unit test (`T` → `u`) and value (`e` → `v`). Function, class, comment, unit test and value need a grammar with text-object support; argument and tag pair fall back to a plain-text scan without one. See [Text objects](selections.md#text-objects)
 - Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `indent-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`. `indent-smart` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
+- Syntax highlighting uses Helix's tree-sitter grammars and queries, and the [language servers](lsp.md) each language uses, how they start, their root markers and default settings follow Helix's own defaults
+- Insert mode shows a bar cursor; Normal and Extend mode a block
 
 ## Key differences
 
 ### Plugin system
 
-Helix's Steel plugin system is still an unmerged branch; HUME's ships in every release. HUME's plugins use the same Steel Scheme dialect, but plugins written for Helix's Steel branch won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin.
+HUME's plugins are written in Steel Scheme and ship with every release. Plugins written for Helix's Steel plugin work won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin.
 
 ### Growing selections
 
-Helix grows a selection in select mode (`v`). HUME's equivalent is Extend mode (`e`), where every motion extends until you act or press `Esc`. HUME also has one-shot extends (`Ctrl-w`, `Ctrl-b`, …) that extend for a single keystroke without changing mode. These need the kitty keyboard protocol.
+Helix grows a selection in select mode (`v`). HUME's equivalent is Extend mode (`e`), where every motion extends until you act or press `Esc`. HUME also has one-shot extends (`Ctrl-w`, `Ctrl-b`, …) that extend for a single keystroke without changing mode. They need the kitty keyboard protocol, except `Ctrl-x`, which works on any terminal.
 
 ### Line selection: `x` vs Extend mode (`e`)
 
-Both editors bind `x` to select the current line. The difference is depth:
+Both editors bind `x` to select the current line. They differ on the second press:
 
 | Press | Helix `x` | HUME `x` | HUME `e` then `x` |
 |-------|-----------|----------|-------------------|
@@ -112,36 +114,44 @@ Both editors bind `x` to select the current line. The difference is depth:
 | 2nd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 | 3rd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 
-Helix's `x` is **modal**: once pressed, every further `x` extends the selection line-wise until you cancel.
+Helix's `x` extends when the selection already covers whole lines, so pressing it again keeps growing the selection.
 
-HUME's `x` is **one-shot**: each press re-anchors to the next line. For Helix's repeat-extend behavior, enter **Extend mode** first (`e`), where `x`, like every other motion, extends rather than replaces. `Ctrl-x` is a one-shot extend that doesn't enter Extend mode.
+HUME's `x` re-anchors on each press: it selects the next line on its own. For Helix's growing behavior, enter Extend mode first (`e`), where `x`, like every other motion, extends rather than replaces. `Ctrl-x` extends for one press without entering Extend mode.
 
 `X` is the backward form. In Normal mode, on a whole-line selection, it jumps to the line above. To shrink a line selection grown downward, press `X` in Extend mode, or `Ctrl-Shift-x` (kitty only); each press removes one line. Helix has no key for that.
 
 ### Multiple selections
 
-Both editors share the same foundations (multiple cursors, `;` to collapse, `S` to split into lines), but keybindings and a few operations differ:
+Both editors share the same foundations (multiple cursors, `;` to collapse), but keybindings and a few operations differ:
 
 | Operation | Helix | HUME |
 |-----------|-------|------|
-| Copy selection on line below | `C` | `C` (duplicates each selection to the same column on the next line, adding a multi-cursor: column editing through multi-cursor, not a rectangular visual block) |
-| Copy selection on line above | `Alt-C` | (unbound) |
+| Copy selection on line below | `C` | `C`: duplicates each selection to the same column on the next line, adding a cursor. Column editing works through these cursors; there is no rectangular block selection |
+| Copy selection on line above | `Alt-C` | no default key: bind `copy-selection-on-prev-line` (see below) |
+| Split selections into lines | `Alt-s` | `S` |
+| Split selections on a regex | `S` | *(none)*: `s` keeps the regex matches instead |
 | Remove primary selection | `Alt-,` | `Ctrl-,` (kitty only) |
 | Flip selections | `Alt-;` (Normal and Select mode) | `Ctrl-e` (Normal and Extend mode) |
 | Merge consecutive selections | `Alt-_` (touching selections only); `Alt--` merges all into one span | automatic: selections that share a character merge; touching ones stay separate |
 | Align selections | `&` | `&` |
 | Trim whitespace at edges | `_` | `_` |
 | Sort | `:sort` | `:sort` (different semantics; see below) |
-| Sift within (regex per selection) | `s` | `s` |
-| Select all search matches | no dedicated key; `%` (select whole buffer) then `s` (sift to regex matches) | `m /` |
-| Search selection, auto word-boundary anchors | `*` | *(none)* |
-| Search word under cursor (Vim-style) | *(unbound)* | `*` |
-| Search selection literally, no anchors | `Alt-*` | `Ctrl-/` (kitty only) |
+| Narrow each selection to regex matches | `s` | `s` |
+| Select all search matches | no dedicated key; `%` (select whole buffer) then `s` | `m /` |
+| Search the selection, adding word-boundary anchors | `*` | *(none)* |
+| Search the selection literally | `Alt-*` | `Ctrl-/` (kitty only) |
+| Search the word under the cursor | *(unbound)* | `*` |
+
+To copy selections onto the line above as Helix's `Alt-C` does, bind the command in your `init.scm`:
+
+```scheme
+(bind-key! 'normal "alt-C" "copy-selection-on-prev-line")
+```
 
 ::: warning
-HUME's `*` is Vim-style: it expands to the word (or punctuation run) under the cursor and ignores any existing selection. Helix's `*` searches the literal current selection. HUME's `Ctrl-/` (kitty only) is the closer match to Helix's `Alt-*`.
+HUME's `*` searches the word (or punctuation run) under the cursor, ignoring any existing selection, and selects it. Helix's `*` searches the current selection with word-boundary anchors added, which HUME has no key for. Helix's `Alt-*`, the literal selection search, is HUME's `Ctrl-/` (kitty only).
 
-To give `*` that behavior instead, rebind it in your `init.scm`:
+To put the literal selection search on `*` instead, rebind it in your `init.scm`:
 
 ```scheme
 (bind-key! 'normal "*" "search-selection")
@@ -154,33 +164,31 @@ HUME's `:sort` permutes whole rows, keyed by whatever text you select on each on
 
 ### Statusline
 
-Helix configures its statusline in TOML (`[editor.statusline]`); HUME configures it from Scheme. Both work the same way in practice: you reorder and toggle a fixed set of built-in elements across left/center/right zones:
+Helix configures its statusline in TOML (`[editor.statusline]`); HUME configures it from Scheme, placing elements in left, center and right zones:
 
 ```scheme
 (configure-statusline! '("Mode" "FileName") '("SearchMatches") '("Position"))
 ```
 
-You can also add custom elements from Scheme; see [Statusline](settings.md#custom-elements).
+You can also add custom elements written in Scheme; see [Statusline](settings.md#custom-elements).
 
 ### Bufferline vs tab bar
 
-Helix's `bufferline` (`never` / `always` / `multiple`) is a strip of open **buffers**: pick one and it swaps into the focused split. HUME's bar lists **tab pages** instead. A tab is a saved window layout (its own splits and focused pane), so switching tabs swaps the whole pane arrangement, not a single buffer. Buffers stay global across tabs; reach them with `:ls` / `:b` / `:bn` / `:bp`, not from the bar. See [Tabs](files-and-buffers.md#tabs).
+Helix's `bufferline` (`never` / `always` / `multiple`) is a strip of open buffers. HUME's bar lists tab pages instead: each tab holds its own pane layout, and buffers are shared across tabs, so you reach them with `:ls`, `:b`, `:bn` and `:bp`, not from the bar. See [Tabs](files-and-buffers.md#tabs).
 
-`:set global tabline=never/always/dynamic` controls visibility. `dynamic` (the default) is the analogue of Helix's `multiple`: the bar shows only once a second tab is open. Click a tab to switch to it; the bar scrolls when tabs overflow the width. A Helix theme colors it through `ui.bufferline`; see [Bringing your themes over](#bringing-your-themes-over).
+`:set global tabline=never/always/dynamic` controls visibility. `dynamic` (the default) is the analogue of Helix's `multiple`: the bar shows only once a second tab is open. A Helix theme colors it through `ui.bufferline`; see [Themes](#themes).
 
 ### Surround
 
-Helix uses `ms`, `md`, `mr` for surround. HUME has its own default bindings and a Helix-compatible mode:
+Helix uses `m s`, `m d`, `m r` for surround. HUME has its own default bindings and a Helix-compatible plugin:
 
-| Action | HUME (default) | HUME (helix-surround plugin) |
+| Action | HUME (default) | HUME (`core:helix-surround`) |
 |--------|---------------|------------------------------|
-| Wrap | `mw` + char | `ms` + char |
-| Delete | `ms` + char, then `d` | `md` + char |
-| Replace | `ms` + char, then `r` | `mr` + char |
+| Wrap | `m w` + char | `m s` + char |
+| Delete | `m s` + char, then `d` | `m d` + char |
+| Replace | `m s` + char, then `r` | `m r` + char |
 
-By default there's no dedicated delete or replace key, because you don't need one: `ms` selects the surrounding pair, and the ordinary `d` and `r` act on it. The plugin takes `ms` over for wrapping and removes `mw`.
-
-Enable the Helix-style bindings by loading the built-in plugin:
+By default `m s` selects the surrounding pair, and the ordinary `d` and `r` act on it. The plugin takes `m s` over for wrapping and removes `m w`. Load it from your `init.scm`:
 
 ```scheme
 (load-plugin! "core:helix-surround")
@@ -188,39 +196,26 @@ Enable the Helix-style bindings by loading the built-in plugin:
 
 ### Matching brackets and structural navigation
 
-Helix's match mode binds `m m` to jump to the matching bracket. HUME binds the same idea directly to `#`, with no mode step, and also matches HTML/XML/JSX tag pairs. `%` (select whole buffer) is untouched in either editor.
+Helix's match mode binds `m m` to jump to the matching bracket. HUME binds the same jump to `#`, which also matches HTML/XML/JSX tag pairs. `%` selects the whole buffer in both editors.
 
-Helix's bracket mode also binds `]f`/`[f`, `]t`/`[t`, `]a`/`[a`, `]c`/`[c`, `]T`/`[T`, and `]x`/`[x` by default, jumping straight to the next/previous function, class, argument, comment, unit test, or tag pair. HUME puts the same six kinds, plus `value` for array/tuple/struct entries (which Helix's bracket mode doesn't have), on the `g` prefix instead of a separate bracket mode. Each uses the same letter as its `m i`/`m a` text object, lowercase forward and uppercase backward: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value), `g x`/`g X` (tag pair).
-
-## What we took from Helix
-
-HUME adopts several features from Helix rather than reinventing them:
-
-- **Tree-sitter grammars**: instead of curating its own grammar repository list, HUME follows a Helix commit. Its prebuilt grammars come from the grammar sources and revisions Helix's `languages.toml` names at that commit, with Helix's tree-sitter queries (highlighting, injections, text objects and indentation), and HUME's language extensions and file-glob associations come from the same commit.
-- **Language server registrations**: the same script and pinned Helix commit also sync which servers each language uses and in what order, how each server is started, its project root markers, its default settings, and any per-language feature limits (`only-features`/`except-features`, with Helix's own feature names). [`:lsp-install`](lsp.md#installing-servers) reads this list; `set-language-servers!` overrides it per language (see [Choosing which server a language uses](lsp.md#choosing-which-server-a-language-uses)).
-- **Helix-style surround**: the opt-in `core:helix-surround` plugin remaps surround operations to `ms` (wrap), `md` (delete), and `mr` (replace), matching Helix's keybindings. HUME's default surround follows its own select-then-act model.
-- **Kitty keyboard protocol support**: HUME detects and uses the protocol the same way on Unix and Windows terminals, falling back to legacy key encoding where the protocol isn't available.
-- **Cursor shape**: Insert mode defaults to a thin bar, as Helix does with `insert = "bar"`; Normal and Extend mode are always a block. See `insert-cursor-shape` in [Global options](settings.md#global-options) for the other shapes.
+Helix's bracket mode (`]` or `[` plus an object letter) jumps to the next or previous function, class, argument and so on. HUME puts these jumps on the `g` prefix, with the same letter as each `m i`/`m a` text object, lowercase forward and uppercase backward: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value), `g x`/`g X` (tag pair). See [Structural navigation](moving-around.md#structural-navigation).
 
 ## What Helix has that HUME doesn't
 
-- Duplicating a selection onto the line *above* (`Alt-C`); HUME only binds the downward form (`C`)
-- `*` searching the selection with automatic word-boundary anchors. HUME's `Ctrl-/` matches a selection literally (Helix's `Alt-*`), and HUME's own `*` searches the word under the cursor instead of the selection. See [Search](#multiple-selections)
-- Rainbow bracket highlighting: HUME reads the rest of a theme that defines a top-level `rainbow` array but has no feature to act on it
+- `*` searching the selection with automatic word-boundary anchors. HUME's `Ctrl-/` matches a selection literally (Helix's `Alt-*`), and HUME's own `*` searches the word under the cursor instead of the selection. See [Multiple selections](#multiple-selections)
+- Splitting selections on a regex (`S`)
 - Inserting or appending a command's output (`!`, `Alt-!`), piping selections to a command and ignoring its output (`Alt-|`), and filtering selections by a command's exit status (`$`). HUME's `|` pipes each selection through a command, as Helix's does, and in Insert mode `Ctrl-|` (kitty only) inserts a command's output at each cursor. See [Shell commands](editing.md#shell-commands)
 - Merging every selection into one span across gaps (`Alt--`). HUME merges only selections that share a character, automatically; touching selections stay separate
 - `:x` and `:o`/`:open` as command aliases; use `:wq`/`:write-quit` and `:e` instead
 
 ## What HUME has that Helix doesn't
 
-- A built-in plugin manager ([PLUM](core-plugins.md#core-plum)) shipping in every release, installing plugins from GitHub; Helix's Steel plugin system is still an unmerged branch
-- [Tab pages](files-and-buffers.md#tabs): a saved whole pane layout, distinct from a strip of buffers
-- [Smart paste](copy-and-paste.md#smart-p-paste) with kill ring
-- [Hook system](writing-plugins.md#hooks) (on-buffer-open, on-buffer-save, etc.)
+- A plugin manager ([PLUM](core-plugins.md#core-plum)) that installs Scheme plugins from GitHub
+- [Tab pages](files-and-buffers.md#tabs): each holds a whole pane layout, distinct from a strip of buffers
+- [Smart paste](copy-and-paste.md#smart-paste) with a kill ring
+- [Hooks](writing-plugins.md#hooks) (`on-buffer-open`, `on-buffer-save`, …)
 - [One-shot extends](#growing-selections) that extend a single motion without switching to a select/extend mode
 - Backward line-selection shrinking (`X` in Extend mode, or `Ctrl-Shift-x` with kitty; see [Line selection](#line-selection-x-vs-extend-mode-e))
-- A structural text object and navigation kind for array/tuple/struct values ([`m i v`/`m a v`](selections.md#text-objects), [`g v`/`g V`](moving-around.md#structural-navigation))
-- Tag pair objects and navigation ([`m i x`/`m a x`](selections.md#text-objects), [`g x`/`g X`](moving-around.md#structural-navigation)) that also work in a buffer with no markup grammar
+- Argument and tag pair objects and navigation that also work in a buffer with no grammar ([`m i a`/`m i x`](selections.md#text-objects), [`g a`/`g x`](moving-around.md#structural-navigation))
 - [Custom statusline elements](settings.md#custom-elements) written in Scheme
-- Per-cursor shape and theme coloring for every multi-cursor, not just the primary one (see [Global options](settings.md#global-options))
-- A real programming language for configuration ([`init.scm`](configuration.md)): conditionals, loops, and custom commands, not static TOML
+- Configuration in a programming language ([`init.scm`](configuration.md)): conditionals, loops, and custom commands, not static TOML

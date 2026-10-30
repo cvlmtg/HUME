@@ -4,7 +4,7 @@ HUME ships as one archive: the editor plus the themes, plugins and language defi
 
 ## Download
 
-Grab the latest release from the [**releases page**](https://github.com/cvlmtg/HUME/releases). Most people want the newest tagged version. A [`nightly`](https://github.com/cvlmtg/HUME/releases/tag/nightly) build carries the newest changes, but it may be unstable or contain half-finished features.
+Grab the latest release from the [releases page](https://github.com/cvlmtg/HUME/releases). Most people want the newest tagged version. A [`nightly`](https://github.com/cvlmtg/HUME/releases/tag/nightly) build carries the newest changes, but it may be unstable or contain half-finished features.
 
 | Platform | Archive |
 |---|---|
@@ -101,7 +101,7 @@ cargo build --release
 Run it from the repository root, as above, and HUME picks up the `runtime/` directory there.
 
 ::: warning `cargo install` needs one extra step
-`cargo install --git https://github.com/cvlmtg/HUME hume-editor` installs the binary but **not** the runtime files, so themes, plugins, `:tutor`, and syntax highlighting won't work. Point HUME at a copy of the `runtime/` directory to fix it:
+`cargo install --git https://github.com/cvlmtg/HUME hume-editor` installs the binary but not the runtime files, so themes, plugins, `:tutor`, and syntax highlighting won't work. Point HUME at a copy of the `runtime/` directory to fix it:
 
 ```sh
 export HUME_RUNTIME=/path/to/HUME/runtime
@@ -114,7 +114,7 @@ HUME highlights code with tree-sitter and downloads prebuilt grammars on demand 
 
 ## Terminal compatibility
 
-HUME targets modern terminals. It runs no capability check at launch and degrades quietly instead of refusing to start. It works best in a terminal that supports:
+HUME targets modern terminals, but it starts on any terminal and works with what it finds. It works best in a terminal that supports:
 
 - **24-bit true color.** HUME always sends colors as RGB. Terminals without true color show approximate or wrong colors, but HUME still runs.
 - **Synchronized output.** HUME uses it once per frame to avoid tearing. Terminals that don't recognise it ignore it harmlessly.

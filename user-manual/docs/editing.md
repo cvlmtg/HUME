@@ -1,6 +1,6 @@
 # Editing
 
-Say what you mean, then say what to do with it. Because the selection comes first, you see what an edit will touch before it happens, and the same few action keys work on a character, a word, a block, or forty places at once.
+The selection comes first, so you see what an edit will touch before it happens, and the same few keys act on a character, a word, a block or many places at once.
 
 ## Inserting text
 
@@ -15,11 +15,19 @@ Say what you mean, then say what to do with it. Because the selection comes firs
 
 Press `Esc` or `Ctrl-c` to return to Normal mode. `Ctrl-w` deletes the word before the cursor while you type.
 
-Leaving Insert mode selects the text you just typed, so you can act on it right away: delete it, surround it, search for it. If you typed nothing, the cursor stays where you started. The `insert-select-on-exit` option turns this off (see [Buffer options](settings.md#buffer-options)).
-
-With the typed text selected, pressing `i` again after `Esc` continues before it, not after it, since `i` inserts *before* the selection. Use `a` to continue after it.
+Leaving Insert mode selects the text you typed, so you can act on it right away: delete it, surround it, search for it. If you typed nothing, the cursor stays where you started. The `insert-select-on-exit` option turns this off (see [Buffer options](settings.md#buffer-options)). With the typed text selected, `i` continues before it and `a` after it.
 
 However you entered Insert mode, and even with `insert-select-on-exit` off, `m i i` selects what you last typed once you leave Insert mode. See [Text objects](selections.md#text-objects).
+
+## Auto-pairs
+
+With `insert-auto-pairs` on (the default), typing `(`, `[`, `{`, `"`, `'` or `` ` `` in Insert mode also inserts the matching closing character, with the cursor between the two. This happens only when the cursor sits on whitespace, a line end, the end of the buffer or a closing character, so typing in front of a word inserts only what you typed.
+
+- A quote typed right after a word character, or right after the same quote, is inserted on its own: `don't`, ```` ``` ```` and `"""` come out as typed.
+- Typing a closing character while the cursor sits on that same character moves past it instead of adding another.
+- `Backspace` between an empty pair deletes both characters.
+- `Enter` between a pair of brackets opens an indented block (see [Indentation](#indentation)).
+- Text you paste is never auto-paired.
 
 ## Deleting and changing text
 
@@ -40,9 +48,9 @@ For a line-wise delete, select the line first: `x` then `d`.
 |-----|--------|
 | `r` + char | Replace every selected character with the typed character |
 
-Line endings in the selection are kept, so replacing across several lines doesn't join them. On a single character, `r` is delimiter-aware: replacing one half of a bracket or quote pair updates its partner too.
+Line endings in the selection are kept, so replacing across several lines doesn't join them. `Enter` and `Tab` work as the typed character, replacing with a newline or a tab.
 
-`Enter` and `Tab` work as the typed character, replacing with a newline or a tab.
+On a cursor that sits on a bracket or quote, typing either half of a pair writes the half that matches the side it replaces: `r [` on `)` writes `]`. To change both halves of a pair, select both first: `m s (` then `r [` turns `(…)` into `[…]` (see [Surround](#surround)).
 
 ## Changing case
 
@@ -50,7 +58,7 @@ Line endings in the selection are kept, so replacing across several lines doesn'
 |-----|--------|
 | `G L` | Lowercase the selection |
 | `G U` | Uppercase the selection |
-| `G C` | Capitalize the selection |
+| `G C` | Capitalize each word in the selection |
 
 ## Numbers and dates
 
@@ -95,7 +103,7 @@ When no selection has anything to change, or a result doesn't fit (past the larg
 
 `J` replaces each line break with one space and drops the next line's indentation, so joined code or prose has no gap in the middle. When the next line is empty or only whitespace, no space is added. Joining several lines at once leaves a cursor on each inserted space.
 
-`&` lines up your selections, using the primary selection's line as the starting point. It inserts spaces at the left edge of each selection to reach that column. If another line needs more room, the column widens for all of them, so the primary selection can shift right too. Where a selection already sits too far right, the run of spaces or tabs just before it shrinks instead (never below one). Multi-line selections are left alone.
+`&` lines up your selections, using the primary selection's line as the starting point. It inserts spaces at the left edge of each selection to reach that column. If another line needs more room, the column widens for all of them, so the primary selection can shift right too. Where a selection already sits too far right, the run of spaces or tabs before it shrinks instead (never below one). Multi-line selections are left alone.
 
 Which end of the selection is the anchor decides whether it aligns to the left or the right; `Ctrl-e` swaps anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection).
 
@@ -107,11 +115,11 @@ Blank and whitespace-only lines in the selection are left alone, so they never p
 
 ## Indentation
 
-Enter, `o` and `O` start the new line at the indent the surrounding code calls for: one level deeper inside a block you just opened, level with the code around it otherwise. With `insert-auto-pairs` on, Enter between a pair of brackets opens a block: the cursor lands on an indented line and the closing bracket moves to the line below.
+Enter, `o` and `O` start the new line at the indent the surrounding code calls for: one level deeper after a line that opens a block, level with the code around it otherwise. With `insert-auto-pairs` on, Enter between a pair of brackets opens a block: the cursor lands on an indented line and the closing bracket moves to the line below.
 
 When the first thing you type on a new line closes a block, such as a closing bracket or keyword, the line moves back to the block's indent. A closing word moves back once it is finished: when you type a space or punctuation after it, or press Enter. A line whose indent you changed by hand is left alone.
 
-This uses the language's grammar and its indentation rules, which `:plum-install-grammar <language>` installs. Without them, a new line copies the current line's indent, and nothing moves back as you type. Set `indent-smart` to `#f` to turn automatic indentation off: new lines then start at the left margin.
+This uses the language's grammar and its indentation rules, which [PLUM](syntax-highlighting.md) installs with `:plum-install-grammar <language>`. Without them, a new line copies the current line's indent, and nothing moves back as you type. Set `indent-smart` to `#f` to turn automatic indentation off: new lines then start at the left margin.
 
 New indentation follows the buffer's `indent-width` and `indent-style`, as `>` and `<` do. To indent with spaces in a language, set its `indent-style` to `soft` (see [Buffer options](settings.md#buffer-options)).
 
@@ -121,15 +129,15 @@ New indentation follows the buffer's `indent-width` and `indent-style`, as `>` a
 |-----|--------|
 | `G G` | Comment or uncomment the lines of each selection |
 
-On a cursor, or a selection within one line, `G G` puts a line comment (`//` in Rust) in front of the line's text. In a language with only block comments (`<!-- -->` in HTML), it wraps the line's text instead.
+On a cursor, or a selection within one line, `G G` puts the language's line comment in front of the line's text. In a language with only block comments, it wraps the line's text in one instead.
 
-A selection over several lines is wrapped in one block comment, from its first non-blank character to its last. When that text already holds the end of a block comment (`*/` in Rust), wrapping it would end the comment early, so its lines get line comments instead. In that case, a language with only block comments leaves the text alone and `G G` says why. In a language with only line comments, each line gets one, all at the same column, and blank lines are left alone. `:set comment-prefer-line=true` gives several lines line comments even where the language has block comments.
+A selection over several lines is wrapped in one block comment, from its first non-blank character to its last. If that text already contains the end of a block comment, wrapping it would end the comment early, so its lines get line comments instead; a language with only block comments then leaves the text alone and `G G` says why. In a language with only line comments, each line gets one, all at the same column, and blank lines are left alone. `:set global comment-prefer-line=true` gives several lines line comments even where the language has block comments.
 
 `G G` on a commented line removes the comment, whichever kind it is: a line comment with the space after it, or a block comment's start and end with the space inside each.
 
 With several selections, the primary selection decides, or the first selection with text when the primary's lines are all blank. If its lines are commented, `G G` uncomments every selection. Otherwise it comments every selection, including lines that already have a comment.
 
-The comment follows the language at the cursor: in a Markdown file, a fenced Rust block gets `//` and the text around it gets `<!-- -->`. To change a language's comments, see `configure-language!` in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
+Inside an embedded block, such as a fenced code block in Markdown, the block's own language decides the comment. To change a language's comments, see `configure-language!` in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
 
 ## Shell commands
 
@@ -139,17 +147,7 @@ The comment follows the language at the cursor: in a Markdown file, a fenced Rus
 | `Ctrl-\|` (Insert mode, kitty) | Run a shell command and insert its output at each cursor |
 | `Ctrl-c` | Stop the shell command running in this buffer |
 
-`|` asks for a command and runs it once for each selection, each in its own process, with the selection's text as its input. The output replaces the selection, and the selection then covers the output. `| sort` sorts the lines of each selection; `| jq .` formats a selected JSON value.
-
-Any program that reads text and prints a result works, including AI assistants that can run without a chat window:
-
-::: tip Claude Code
-With [Claude Code](https://claude.com/claude-code), select a paragraph and run `| claude -p "turn this into a bullet list"` to replace it with the list, or `| claude -p "summarize in one sentence"` to replace it with a summary.
-:::
-
-::: tip Apple Foundation Models
-macOS 27 includes `fm`, a command-line tool for Apple's on-device model. Select a paragraph and run `| fm respond -i "summarize in one sentence"` to replace it with a summary.
-:::
+`|` asks for a command and runs it once for each selection, each in its own process, with the selection's text as its input. The output replaces the selection, and the selection then covers the output. `| sort` sorts the lines of each selection; `| jq .` formats a selected JSON value. Any program that reads text and prints a result works.
 
 In Insert mode, `Ctrl-|` runs the command once for each cursor, with no input, and inserts its output where you are typing. You stay in Insert mode. Every cursor gets its own process, so `uuidgen` gives each cursor a different value.
 
@@ -157,32 +155,36 @@ When the selection doesn't end with a line break, one line break at the end of t
 
 If any process fails (it can't start, exits with an error, or prints something that isn't UTF-8 text), nothing changes. The error goes to `:messages`, with what the command printed on its error output. When a command succeeds but prints on its error output, that text goes to `:messages` without an error.
 
-While `|`'s commands run in the background, you can keep working in other buffers and panes, and move around in this one, but this buffer's text can't change. These are refused with "`name` is busy: a pipe is running", naming the buffer:
+A run is one undo step. In Insert mode its output belongs to the insert session's undo step, like the text you type. A run that fails or is stopped leaves `.` repeating whatever it repeated before.
 
-- editing, undo, paste and entering Insert mode
-- reloading the file after it changes on disk
-- changes from plugins and language servers
+Commands run with `sh -c`, in HUME's working directory. Set the `shell` option to use another shell (see [Global options](settings.md#global-options)). A command that asks the terminal for input, such as `fzf` or a `sudo` password prompt, can't get it and waits until you press `Ctrl-c`.
 
-When the commands finish, their output replaces the selections `|` ran on, even if you have moved since or the pane now shows another buffer. A buffer runs one `|` at a time.
+### While a command runs
 
-If the commands take more than a moment, the statusline shows the command and how many of its processes have finished, while you are in that buffer: ``running `sort` 3/10``. `Ctrl-c` in Normal mode stops them and changes nothing.
+`|` runs its commands in the background. You can keep working in other buffers and panes, and move around in this one, but this buffer's text can't change until they finish. A buffer runs one `|` at a time. If the commands take more than a moment, the statusline shows the command and how many of its processes have finished, while you are in that buffer: ``running `sort` 3/10``. `Ctrl-c` in Normal mode stops them and changes nothing. When they finish, their output replaces the selections `|` ran on, even if you have moved since or the pane now shows another buffer.
 
-While they run, closing the buffer, the pane you ran `|` from or its tab, quitting, and `:e` are refused. The message says how to go on: stop the commands with `Ctrl-c`, or add `!` to the command, as in `:q!`, to stop them and go ahead. `:wq` refuses after writing the file, and `Ctrl-p c` refuses too. A failure or a stop is reported with the buffer's name, since you may be somewhere else when it happens.
+::: details What is refused while a command runs
+- Editing, undo, paste and entering Insert mode in that buffer, reloading it after it changes on disk, and changes from plugins and language servers are refused with "`name` is busy: a pipe is running", naming the buffer.
+- Closing the buffer, the pane you ran `|` from or its tab, quitting, and `:e` are refused. The message says how to go on: stop the commands with `Ctrl-c`, or add `!` to the command, as in `:q!`, to stop them and go ahead. `:wq` refuses after writing the file, and `Ctrl-p c` refuses too.
+- A failure or a stop is reported with the buffer's name, since you may be somewhere else when it happens.
+:::
 
-`Ctrl-|` waits for its commands instead. So does `|` while you record a macro, when `.` runs a command again and when a macro runs, because the keys after it need the output. While the editor waits, `Ctrl-c` stops the commands and changes nothing, and other keys you press take effect once the commands finish. When `.` or a macro runs a command again, the statusline doesn't show it, but `Ctrl-c` still stops it. `Ctrl-c` also stops the rest of the `.` and the rest of the macro; a command that fails doesn't.
+`Ctrl-|` waits for its commands instead. So does `|` while you record a macro, and when `.` or a macro runs a command again, because the keys after it need the output. While the editor waits, `Ctrl-c` stops the commands and changes nothing, and other keys you press take effect once the commands finish. When `.` or a macro runs a command again, the statusline doesn't show it, but `Ctrl-c` still stops it, along with the rest of the `.` or the macro. A command that fails doesn't stop the rest.
 
-A run that fails or is stopped leaves `.` repeating whatever it repeated before.
+### The command prompt
 
-A run is one undo step. In Insert mode its output belongs to the insert session's undo step, like the text you type.
-
-The prompt edits like the [command line](default-keys.md#command-line) and keeps its own history: `Up` and `Down` recall earlier commands. `Tab` completes the word under the cursor:
+The prompt edits like the [`:` prompt](default-keys.md#command-mode) and keeps its own history: `Up` and `Down` recall earlier commands. `Tab` completes the word under the cursor:
 
 - a program on your `PATH`, where a command's name goes (at the start of the line, or after `|`, `;`, `&` or `(`)
 - a file path anywhere else, or when the word contains a path separator
 
-It reads and writes the word the way the shell set by the `shell` option does: `sh`, `bash`, `zsh`, `dash`, `ksh`, `ash`, `mksh`, `yash`, `posh`, `busybox`, `fish`, PowerShell (`pwsh`, `powershell`) and `cmd`. A completed name with spaces or other special characters is escaped or quoted for that shell. A word you started in quotes, like `cat "my no`, completes inside them. A completed name closes its quote, a directory's too, and `Tab` again after a closed word completes inside it: `cat "my dir/"` then `Tab` gives `cat "my dir/notes.txt"`. Shell keywords such as `if` and `then`, `NAME=value` before a command, and backticks are not read, so the word after them completes as a path. For any other shell, `Tab` completes nothing and the message line says so the first time; you can teach HUME its rules with [`register-shell-dialect!`](writing-plugins.md#shell-dialects).
+A completed name with spaces or other special characters is escaped or quoted the way the shell set by the `shell` option expects.
 
-Commands run with `sh -c`, in HUME's working directory. Set the `shell` option to use another shell (see [Global options](settings.md#global-options)). A command that asks the terminal for input, such as `fzf` or a `sudo` password prompt, can't get it and waits until you press `Ctrl-c`.
+::: details Shells and quoting
+Completion reads and writes words the way these shells do: `sh`, `bash`, `zsh`, `dash`, `ksh`, `ash`, `mksh`, `yash`, `posh`, `busybox`, `fish`, PowerShell (`pwsh`, `powershell`) and `cmd`. A word you started in quotes, like `cat "my no`, completes inside them. A completed name closes its quote, a directory's too, and `Tab` again after a closed word completes inside it: `cat "my dir/"` then `Tab` gives `cat "my dir/notes.txt"`. Shell keywords such as `if` and `then`, `NAME=value` before a command, and backticks are not read, so the word after them completes as a path.
+
+For any other shell, `Tab` completes nothing and the message line says so the first time. A plugin can teach HUME a shell's rules with [`register-shell-dialect!`](writing-plugins.md#shell-dialects).
+:::
 
 ## Undo and redo
 
@@ -222,15 +224,13 @@ A macro records a sequence of keys into a register and replays it. Register `q` 
 | `q <0-9>` | Replay a numbered register |
 | `<count> q q` | Replay register `q` `<count>` times |
 
-Recording and replay are ignored while a macro is already replaying, and replay while one is recording, so a macro can't record itself or nest. In a read-only buffer a macro still moves the selections, and each edit it makes is refused.
-
-While a macro is recording, the default statusline shows `[recording @q]` on its right, naming the register. It is the `"MacroRecording"` element; see [Statusline](settings.md#statusline) to place it in a custom layout.
+See [Macros](copy-and-paste.md#macros) for how macros share registers with yanked text and how recording behaves.
 
 ## Numeric count
 
 Prefix a command with digits to repeat it. The first digit must be `1`–`9`; `0` counts only after another digit. So `3w` moves forward 3 words and `10j` moves down 10 lines. Counts are capped at 10,000.
 
-`0` on its own does nothing by default: `g h` goes to the start of the line. If you want vim's `0`, the `core:vim-keybind` plugin binds it (see [Core Plugins](core-plugins.md#core-vim-keybind)).
+`0` on its own does nothing by default; `g h` goes to the start of the line. The [`core:vim-keybind`](core-plugins.md#core-vim-keybind) plugin binds `0` to it.
 
 ## Surround
 
@@ -254,6 +254,4 @@ callone, two<br>
 call[one, two]
 </div>
 
-## Helix-style surround
-
-If you prefer Helix's dedicated surround keys, where `m s` wraps, `m d` deletes a pair and `m r` replaces one, load [`core:helix-surround`](core-plugins.md#core-helix-surround).
+To use Helix's surround keys instead, where `m s` wraps, `m d` deletes a pair and `m r` replaces one, load [`core:helix-surround`](core-plugins.md#core-helix-surround).

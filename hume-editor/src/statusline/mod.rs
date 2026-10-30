@@ -37,7 +37,7 @@ const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
 /// runtime; this enum is the wire format for those configurations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatusElement {
-    /// The mode indicator: `"NOR"`, `"INS"`, `"EXT"`, `"CMD"`, `"SRC"`, or `"SEL"`.
+    /// The mode indicator: `"NOR"`, `"INS"`, `"EXT"`, `"CMD"`, `"SRC"`, or `"SIF"`.
     ///
     /// Rendered in the row style, like every other element: the whole row
     /// tints with the mode, not just this label. Contains no padding; the
@@ -106,7 +106,7 @@ pub enum StatusElement {
     /// through Steel's `(diagnostic-counts …)` builtin (that one is for
     /// plugins, not the render path).
     Diagnostics,
-    /// A plugin-defined element, named by `(set-statusline-text! bid source
+    /// A plugin-defined element, named by `(set-statusline-text! pane source
     /// text)`'s `source` argument. Wire name is `steel:<source>`; carries
     /// the name rather than an interned id, which is what costs this enum
     /// its `Copy` derive.

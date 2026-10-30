@@ -1,6 +1,6 @@
 # Editor Commands
 
-These are the editor commands built into HUME. A key runs them and a plugin reaches them with `(call! …)`, but you can't run them by name at the command mode prompt. Typed commands are on the [Command mode](command-mode.md) page. Editor functions such as `insert-key!`, which only a script can call, are on the [Plugin API](plugin-api.md#commands-and-functions) page. A plugin's own commands are listed in its documentation.
+These are the editor commands built into HUME. A key runs them and a plugin reaches them with `(call! …)`, but you can't run them by name at the `:` prompt. Typed commands are on the [Command mode](command-mode.md) page. Editor functions such as `insert-key!`, which only a script can call, are on the [Plugin API](plugin-api.md#commands-and-functions) page. A plugin's own commands are listed in its documentation.
 
 Scheme can call the commands on this page two ways:
 
@@ -11,26 +11,27 @@ Scheme can call the commands on this page two ways:
 (call! "move-left" pane)
 ```
 
-The bare form works only for the commands on this page. `call!` works for any editor command, built in or defined by a script, except `repeat-last-action` and `pipe`. Those two run only from a key: calling them from Scheme raises an error.
+The bare form works for the commands on this page except `insert-register`, which only `call!` and keys reach. `call!` works for any editor command, built in or defined by a script, except `repeat-last-action` and `pipe`. Those two run only from a key: calling them from Scheme raises an error.
 
-Every command needs a `pane` that names a pane. A value with only a buffer (from `(buffers)`, or a buffer-level hook) is refused. Most commands act on the pane `pane` names even when it isn't the focused one, as long as it is still open and still shows the buffer `pane` names. That lets a hook or a timer act on a pane you aren't looking at. A few commands require `pane` to be the focused pane:
+Every command needs a `pane` that names a pane; a value with only a buffer (from `(buffers)`, or a buffer-level hook) is refused. Most commands act on that pane even when it isn't focused, as long as it is still open and still shows the same buffer. These need the focused pane:
 
-- entering insert mode
-- opening a search or command prompt
-- toggling extend mode
-- paste and paste-cycling
-- opening or switching tabs
-- every pane-focus, split and close command
+- entering or leaving Insert mode, including `change`, `open-line-above`/`open-line-below` and `completion-trigger`
+- `command-mode`
+- toggling or leaving Extend mode (`toggle-extend`, `collapse-and-exit-extend`, `collapse-to-anchor-and-exit-extend`)
+- paste and paste cycling
+- `repeat-last-action`
+- switching or opening tabs
+- every pane focus, split, close and rotate command
 
-A `pane` the command can't act on raises an error; the command never falls back to whatever is focused.
+A `pane` the command can't act on raises an error; the command never falls back to whatever is focused. See [Calling other commands](writing-plugins.md#calling-other-commands) for how a plugin uses these.
 
-Nine commands also take a value that a key press asks for. `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add` take a character; `search-forward`, `search-backward` and `sift-within` take a pattern. From a script, that value is an argument, as each entry says; see [Calling other commands](writing-plugins.md#calling-other-commands).
+Some commands also take a value that a key press asks for. `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add` take a character; `search-forward`, `search-backward` and `sift-within` take a pattern. From a script, that value is an argument, as each entry says.
 
-For the keys that run these commands, see the [key reference](default-keys.md) and the per-topic pages.
+For the keys that run these commands, see the [key reference](default-keys.md) and the per-topic pages. A key marked *(kitty)* needs the kitty keyboard protocol; see [Terminal compatibility](installation.md#terminal-compatibility).
 
 ## Motions
 
-Move the cursor/selection. Callable as `(name pane)` or `(call! "name" pane)`.
+Move the cursor or selection.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
@@ -59,10 +60,10 @@ Move the cursor/selection. Callable as `(name pane)` or `(call! "name" pane)`.
 | `goto-prev-test` | `g U` | Select the previous unit test. |
 | `goto-prev-value` | `g V` | Select the previous array/tuple/struct value. |
 | `jump-backward` | `Ctrl-o` | Navigate to the previous position in the jump list. |
-| `jump-forward` | `Ctrl-i` / `Tab` | Navigate to the next position in the jump list. |
+| `jump-forward` | `Ctrl-i` / `Tab` (without kitty) | Navigate to the next position in the jump list. |
 | `move-down` | `j` / `↓` | Move cursors down one visual line (one buffer line with a count). |
-| `move-left` | `h` / `←` | Move cursors one grapheme to the left. |
-| `move-right` | `l` / `→` | Move cursors one grapheme to the right. |
+| `move-left` | `h` / `←` | Move cursors one character to the left. |
+| `move-right` | `l` / `→` | Move cursors one character to the right. |
 | `move-up` | `k` / `↑` | Move cursors up one visual line (one buffer line with a count). |
 | `repeat-find-backward` | `-` | Repeat the last find/till motion backward. |
 | `repeat-find-forward` | `=` | Repeat the last find/till motion forward. |
@@ -72,8 +73,8 @@ Move the cursor/selection. Callable as `(name pane)` or `(call! "name" pane)`.
 | `select-next-word` | `w` | Select the next word. |
 | `select-prev-uppercase-word` | `B` | Select the previous uppercase word (whitespace-delimited). |
 | `select-prev-word` | `b` | Select the previous word. |
-| `till-backward` | `T` + char | Move to just after previous occurrence of a character (exclusive). From `call!`, pass the character as an argument. |
-| `till-forward` | `t` + char | Move to just before next occurrence of a character (exclusive). From `call!`, pass the character as an argument. |
+| `till-backward` | `T` + char | Move to the character after the previous occurrence of a character (exclusive). From `call!`, pass the character as an argument. |
+| `till-forward` | `t` + char | Move to the character before the next occurrence of a character (exclusive). From `call!`, pass the character as an argument. |
 
 ## Selection commands
 
@@ -81,16 +82,16 @@ Create, refine, or manipulate the selection set.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
-| `collapse-and-exit-extend` | `;` | Collapse each selection to its cursor and exit extend mode. |
+| `collapse-and-exit-extend` | `;` | Collapse each selection to its cursor and exit Extend mode. |
 | `collapse-selection` | — | Collapse each selection to a single cursor at the head. |
-| `collapse-to-anchor-and-exit-extend` | `Ctrl-;` | Collapse each selection to its anchor and exit extend mode. |
+| `collapse-to-anchor-and-exit-extend` | `Ctrl-;` *(kitty)* | Collapse each selection to its anchor and exit Extend mode. |
 | `copy-selection-on-next-line` | `C` | Duplicate each selection one selection-height below. |
 | `copy-selection-on-prev-line` | — | Duplicate each selection one selection-height above. |
 | `cycle-primary-backward` | `(` | Cycle the primary selection backward. |
 | `cycle-primary-forward` | `)` | Cycle the primary selection forward. |
 | `flip-selections` | `Ctrl-e` | Swap anchor and head for each selection. |
 | `keep-primary-selection` | `,` | Remove all selections except the primary. |
-| `remove-primary-selection` | `Ctrl-,` | Remove the primary selection, promoting the next. |
+| `remove-primary-selection` | `Ctrl-,` *(kitty)* | Remove the primary selection, promoting the next. |
 | `select-all` | `%` | Select the entire buffer. |
 | `select-last-insertion` | `m i i` | Select the text typed during the most recently completed insert session. |
 | `sift-within` | `s` | Narrow each selection down to its regex matches. From `call!`, the pattern is required. |
@@ -99,49 +100,49 @@ Create, refine, or manipulate the selection set.
 
 ## Text objects
 
-Select a delimited region around the cursor.
+Select a delimited region around the cursor. An object that needs grammar support works only in a language whose grammar provides it; see [Syntax Highlighting](syntax-highlighting.md).
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `around-angle` | `m a <` / `m a >` | Select content including the nearest `<>`. |
-| `around-argument` | `m a a` | Select the argument and its separator comma. Structure-aware: uses the language's `parameter` object when the grammar defines one. |
+| `around-argument` | `m a a` | Select the argument and its separator comma. Uses the grammar when it supports arguments, a plain-text scan otherwise. |
 | `around-backtick` | `` m a ` `` | Select content including the nearest backtick pair. |
 | `around-brace` | `m a {` / `m a }` | Select content including the nearest `{}`. |
 | `around-bracket` | `m a [` / `m a ]` | Select content including the nearest `[]`. |
-| `around-class` | `m a t` | Select the class or type including its header. Requires a grammar with a `textobjects.scm`. |
-| `around-comment` | `m a c` | Select the whole comment block. Requires a grammar with a `textobjects.scm`. |
+| `around-class` | `m a t` | Select the class or type including its header. Needs grammar support. |
+| `around-comment` | `m a c` | Select the whole comment block. Needs grammar support. |
 | `around-double-quote` | `m a "` | Select content including the nearest `"`. |
-| `around-function` | `m a f` | Select the function including its signature (and attributes/decorators). Requires a grammar with a `textobjects.scm`. |
+| `around-function` | `m a f` | Select the function including its signature (and attributes/decorators). Needs grammar support. |
 | `around-line` | `m a l` | Select the line including its newline. |
 | `around-paragraph` | `m a p` | Select the paragraph plus its trailing blank gap. |
 | `around-paren` | `m a (` / `m a )` | Select content including the nearest `()`. |
 | `around-single-quote` | `m a '` | Select content including the nearest `'`. |
-| `around-tag` | `m a x` | Select a pair of tags and their content. Uses the language's element object when the grammar defines one, a lexical scan otherwise. |
-| `around-test` | `m a u` | Select the whole unit test, including its attribute or decorator. Requires a grammar with a `textobjects.scm`. |
+| `around-tag` | `m a x` | Select a pair of tags and their content. Uses the grammar when it supports tags, a plain-text scan otherwise. |
+| `around-test` | `m a u` | Select the whole unit test, including its attribute or decorator. Needs grammar support. |
 | `around-uppercase-word` | `m a W` | Select uppercase word plus one adjacent whitespace run. |
-| `around-value` | `m a v` | Select an array/tuple/struct value plus its separator comma. Requires a grammar with a `textobjects.scm`. |
+| `around-value` | `m a v` | Select an array/tuple/struct value plus its separator comma. Needs grammar support. |
 | `around-word` | `m a w` | Select word plus one adjacent whitespace run. |
 | `inner-angle` | `m i <` / `m i >` | Select content inside the nearest `<>`. |
-| `inner-argument` | `m i a` | Select the argument at the cursor (trimmed). Structure-aware: uses the language's `parameter` object when the grammar defines one. |
+| `inner-argument` | `m i a` | Select the argument at the cursor (trimmed). Uses the grammar when it supports arguments, a plain-text scan otherwise. |
 | `inner-backtick` | `` m i ` `` | Select content inside the nearest backtick pair. |
 | `inner-brace` | `m i {` / `m i }` | Select content inside the nearest `{}`. |
 | `inner-bracket` | `m i [` / `m i ]` | Select content inside the nearest `[]`. |
-| `inner-class` | `m i t` | Select inside a class or type. Requires a grammar with a `textobjects.scm`. |
-| `inner-comment` | `m i c` | Select inside a comment. Requires a grammar with a `textobjects.scm`. |
+| `inner-class` | `m i t` | Select inside a class or type. Needs grammar support. |
+| `inner-comment` | `m i c` | Select inside a comment. Needs grammar support. |
 | `inner-double-quote` | `m i "` | Select content inside the nearest `"`. |
-| `inner-function` | `m i f` | Select inside a function. Requires a grammar with a `textobjects.scm`. |
+| `inner-function` | `m i f` | Select inside a function. Needs grammar support. |
 | `inner-line` | `m i l` | Select inner line content (excluding the newline). |
 | `inner-paragraph` | `m i p` | Select the paragraph's text, excluding any trailing blank gap. |
 | `inner-paren` | `m i (` / `m i )` | Select content inside the nearest `()`. |
 | `inner-single-quote` | `m i '` | Select content inside the nearest `'`. |
-| `inner-tag` | `m i x` | Select the content between a pair of tags. Uses the language's element object when the grammar defines one, a lexical scan otherwise. |
-| `inner-test` | `m i u` | Select inside a unit test function's body. Requires a grammar with a `textobjects.scm`. |
+| `inner-tag` | `m i x` | Select the content between a pair of tags. Uses the grammar when it supports tags, a plain-text scan otherwise. |
+| `inner-test` | `m i u` | Select inside a unit test function's body. Needs grammar support. |
 | `inner-uppercase-word` | `m i W` | Select inner uppercase word (whitespace-delimited). |
-| `inner-value` | `m i v` | Select inside an array/tuple/struct value. Requires a grammar with a `textobjects.scm`. |
+| `inner-value` | `m i v` | Select inside an array/tuple/struct value. Needs grammar support. |
 | `inner-word` | `m i w` | Select inner word. |
-| `select-uppercase-word` | `M M` | Select the uppercase word (WORD) under the cursor. |
+| `select-uppercase-word` | `M M` | Select the uppercase word under the cursor. |
 | `select-word` | `m m` | Select the word under the cursor. |
-| `select-word-nearest-on-line` | — | Select the word under the cursor, or the nearest word on the same visual line when on whitespace; span follows word-selects-whitespace. |
+| `select-word-nearest-on-line` | — | Select the word under the cursor, or the nearest word on the same visual line when on whitespace. The whitespace it adds follows [`word-selects-whitespace`](settings.md#buffer-options). |
 
 ## Surround
 
@@ -166,14 +167,14 @@ Modify buffer text.
 |---------|-------------|--------|
 | `align-selections` | `&` | Align each selection's anchor to the primary selection's anchor column. |
 | `cancel-pipe` | `Ctrl-c` | Stop the shell command `pipe` is running in the buffer and change nothing. Says so when none is running there. |
-| `change` | `c` | Delete selections onto the kill ring, then enter insert mode (one undo group). |
+| `change` | `c` | Delete selections onto the kill ring, then enter Insert mode (one undo step). |
 | `decrement` | `Ctrl-s` | Subtract the count from the number, date or time at each selection. |
 | `decrement-sequence` | `G S` | Subtract n times the count from the number, date or time at the n-th selection. |
 | `delete` | `d` | Delete selections, pushing their text onto the kill ring. |
 | `delete-char-backward` | — | Delete the character before each cursor. |
 | `delete-char-forward` | — | Delete the character (or selection) under the cursor. |
 | `delete-selection` | — | Delete all selections. |
-| `delete-word-backward` | `Ctrl-w` *(insert mode)* | Delete the word before each cursor. |
+| `delete-word-backward` | `Ctrl-w` (Insert mode) | Delete the word before each cursor. |
 | `increment` | `Ctrl-a` | Add the count to the number, date or time at each selection. |
 | `increment-sequence` | `G A` | Add n times the count to the number, date or time at the n-th selection. |
 | `indent` | `>` | Indent every line touched by a selection by one level. |
@@ -181,9 +182,9 @@ Modify buffer text.
 | `make-text-capitalized` | `G C` | Capitalize each word in every selection (Title Case). |
 | `make-text-lowercase` | `G L` | Lowercase the text in each selection. |
 | `make-text-uppercase` | `G U` | Uppercase the text in each selection. |
-| `open-line-above` | `O` | Open a new line above the cursor and enter insert mode. |
-| `open-line-below` | `o` | Open a new line below the cursor and enter insert mode. |
-| `pipe` | `\|`, `Ctrl-\|` *(insert mode)* | Run a shell command once per selection, with the selection as its input, and replace the selection with its output. In insert mode, insert its output at each cursor. Only from a key: calling it from Scheme raises an error. |
+| `open-line-above` | `O` | Open a new line above the cursor and enter Insert mode. |
+| `open-line-below` | `o` | Open a new line below the cursor and enter Insert mode. |
+| `pipe` | `\|` / `Ctrl-\|` (Insert mode, *kitty*) | Run a shell command once per selection, with the selection as its input, and replace the selection with its output. In Insert mode, insert its output at each cursor. Only from a key: calling it from Scheme raises an error. |
 | `replace` | `r` + char | Replace every character in each selection with the next typed character. From `call!`, pass the character as an argument. |
 | `toggle-comment` | `G G` | Comment or uncomment the lines of each selection. |
 | `unindent` | `<` | Unindent every line touched by a selection by one level. |
@@ -194,13 +195,14 @@ Move text between the buffer, the kill ring, and the system clipboard.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
-| `paste-after` | — | Paste register contents after the selection. Bare (no `"<reg>` prefix) reads the kill-ring head, with no clipboard fallback. |
-| `paste-before` | — | Paste register contents before the selection. Bare (no `"<reg>` prefix) reads the kill-ring head, with no clipboard fallback. |
+| `paste-after` | — | Paste register contents after the selection. With no register prefix, reads the kill-ring head, with no clipboard fallback. |
+| `paste-before` | — | Paste register contents before the selection. With no register prefix, reads the kill-ring head, with no clipboard fallback. |
 | `paste-ring-newer` | `]` | Cycle kill ring one step newer and re-paste. |
 | `paste-ring-older` | `[` | Cycle kill ring one step older and re-paste. |
-| `smart-paste-after` | `p` | Paste after the selection: kill-ring head while you have edited nothing since the last capture, clipboard otherwise. |
-| `smart-paste-before` | `P` | Paste before the selection: kill-ring head while you have edited nothing since the last capture, clipboard otherwise. |
+| `smart-paste-after` | `p` | Smart paste after the selection: the kill-ring head if you have edited nothing since you last deleted, changed or yanked text, the clipboard otherwise. |
+| `smart-paste-before` | `P` | Smart paste before the selection, choosing the source as `p` does. |
 | `yank` | `y` | Copy selections to the clipboard and kill ring without deleting. |
+| `insert-register` | `Ctrl-r` (Insert mode, `:` prompt) | Insert the register named by the next key, or the file's path (`f`) or its directory (`p`), relative to the working directory. See [Inserting a register while typing](copy-and-paste.md#inserting-a-register-while-typing). |
 
 ## Undo and repeat
 
@@ -218,31 +220,31 @@ Find text and act on the matches.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
-| `clear-search` | — | Clear search highlights. `Esc` also clears them; bind a key to run this directly. |
-| `search-backward` | `?` | Enter search mode (backward). From `call!`, the pattern is required. |
-| `search-forward` | `/` | Enter search mode (forward). From `call!`, the pattern is required. |
+| `clear-search` | — | Clear search highlights. `Esc` also clears them. |
+| `search-backward` | `?` | Enter Search mode (backward). From `call!`, the pattern is required. |
+| `search-forward` | `/` | Enter Search mode (forward). From `call!`, the pattern is required. |
 | `search-next` | `n` | Jump to the next search match. |
 | `search-prev` | `N` | Jump to the previous search match. |
-| `search-selection` | `Ctrl-/` | Use the primary selection text literally as the search pattern. |
+| `search-selection` | `Ctrl-/` *(kitty)* | Use the primary selection text literally as the search pattern. |
 | `search-word-under-cursor` | `*` | Search the whole word under the cursor. |
 | `select-all-matches` | `m /` | Turn every search match in the buffer into a selection. |
 
 ## Modes
 
-Switch between normal, insert, extend, and the command prompt.
+Switch between Normal, Insert and Extend mode, and open the `:` prompt.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
-| `command-mode` | `:` | Open the command mode prompt. |
-| `completion-trigger` | `Ctrl-Space` | Show completions at the cursor (insert mode). |
-| `exit-insert` | `Esc` / `Ctrl-c` | Return to normal mode from insert mode. |
-| `insert-after` | — | Enter insert mode after the cursor (move one grapheme right). |
-| `insert-at-line-end` | `A` | Enter insert mode after the last character on the line. |
-| `insert-at-line-start` | `I` | Enter insert mode at the first non-blank character on the line. |
-| `insert-at-selection-end` | `a` | Enter insert mode after the end of the selection. |
-| `insert-at-selection-start` | `i` | Enter insert mode at the start of the selection. |
-| `insert-before` | — | Enter insert mode; collapse each selection to its start. |
-| `toggle-extend` | `e` | Toggle sticky extend mode. |
+| `command-mode` | `:` | Open the `:` prompt. |
+| `completion-trigger` | `Ctrl-Space` (Insert mode) | Show completions at the cursor. |
+| `exit-insert` | `Esc` / `Ctrl-c` | Return to Normal mode from Insert mode. |
+| `insert-after` | — | Enter Insert mode after the cursor (one character right). |
+| `insert-at-line-end` | `A` | Enter Insert mode after the last character on the line. |
+| `insert-at-line-start` | `I` | Enter Insert mode at the first non-blank character on the line. |
+| `insert-at-selection-end` | `a` | Enter Insert mode after the end of the selection. |
+| `insert-at-selection-start` | `i` | Enter Insert mode at the start of the selection. |
+| `insert-before` | — | Enter Insert mode; collapse each selection to its start. |
+| `toggle-extend` | `e` | Toggle Extend mode. |
 
 ## Scrolling
 
@@ -265,15 +267,15 @@ Split, focus, and close panes; switch buffers; switch tabs.
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `goto-alternate-buffer` | — | Switch to the most-recently-focused other buffer. |
-| `goto-next-buffer` | — | Switch to the next buffer in open-order. |
+| `goto-next-buffer` | — | Switch to the next buffer, in the order they were opened. |
 | `goto-next-tab` | `Ctrl-p t` | Switch to the next tab in display order. |
-| `goto-prev-buffer` | — | Switch to the previous buffer in open-order. |
+| `goto-prev-buffer` | — | Switch to the previous buffer, in the order they were opened. |
 | `goto-prev-tab` | `Ctrl-p T` | Switch to the previous tab in display order. |
 | `pane-close` | `Ctrl-p c` | Close the focused pane. |
 | `pane-focus-down` | `Ctrl-p j` | Focus the pane below. |
 | `pane-focus-left` | `Ctrl-p h` | Focus the pane to the left. |
-| `pane-focus-next` | `Tab` / `Ctrl-p p` | Focus the next pane. |
-| `pane-focus-prev` | `Shift-Tab` / `Ctrl-p P` | Focus the previous pane. |
+| `pane-focus-next` | `Tab` *(kitty)* / `Ctrl-p p` | Focus the next pane. |
+| `pane-focus-prev` | `Shift-Tab` *(kitty)* / `Ctrl-p P` | Focus the previous pane. |
 | `pane-focus-right` | `Ctrl-p l` | Focus the pane to the right. |
 | `pane-focus-up` | `Ctrl-p k` | Focus the pane above. |
 | `pane-rotate-backward` | `Ctrl-p R` | Rotate the panes in the focused pane's row or column backward (that many places with a count). |

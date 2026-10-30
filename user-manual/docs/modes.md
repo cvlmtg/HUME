@@ -2,7 +2,7 @@
 
 One keyboard, several meanings. `d` deletes only in the mode where `d` means delete, so HUME can put a whole editor's worth of commands on plain letters, with no modifier gymnastics.
 
-The status bar shows the active mode on its right. `Esc` always takes you back to Normal.
+The statusline shows the active mode on its right. `Esc` always takes you back to Normal.
 
 ## Normal mode
 
@@ -22,17 +22,15 @@ In Insert mode, what you type goes straight into the buffer. The cursor becomes 
 
 ## Extend mode
 
-Extend mode works like Normal mode, but every motion *extends* the current selection instead of replacing it. Use it to build a multi-character or multi-line selection before acting on it. Moving back toward where you started shrinks the selection.
+Extend mode works like Normal mode, but every motion *extends* the current selection instead of replacing it, and moving back toward where you started shrinks it. See [Extend mode](selections.md#extend-mode).
 
-**Enter:** `e` (toggles; status bar shows `EXT`)
+**Enter:** `e` (toggles; the statusline shows `EXT`)
 
 **Exit:** `Esc`, `e` again, or `;` (collapse to head) / `Ctrl-;` (collapse to anchor, kitty only)
 
 ## Command mode
 
-Command mode opens a prompt at the bottom of the screen where you type a command name. Keys you bind in `'command` mode work here too; see [Keys in the command line](configuration.md#keys-in-the-command-line).
-
-See [Command mode](command-mode.md) for a full list of commands.
+Command mode opens the `:` prompt at the bottom of the screen, where you type a command such as `:w`. See [Command mode](command-mode.md) for the commands, and [Keys in the command line](configuration.md#keys-in-the-command-line) to bind keys there.
 
 **Enter:** `:`
 
@@ -48,7 +46,7 @@ Search mode opens a prompt for a search pattern. `n` / `N` cycle through matches
 
 ## Sift mode
 
-Sift mode opens a regex prompt (`⫽`) that narrows each selection to its matching sub-ranges. Use it to break a selection into individual tokens.
+Sift mode opens a regex prompt (`⫽`) that narrows each selection to the parts matching the pattern, for example to break a line into words. See [Sift within](selections.md#sift-within-s).
 
 **Enter:** `s`
 
@@ -63,11 +61,11 @@ Some Normal-mode keys wait for a second key before doing anything. Either they o
 | Prefix | Keys | Purpose |
 |--------|------|---------|
 | Goto | `g` + key | Jump to a position in the buffer, or to the next/previous instance of a structural kind. See [Default Keys](default-keys.md) |
-| `G` | `G` + key | Case transforms, and other non-goto commands Vim puts under `g`. See [Default Keys](default-keys.md) |
-| Match | `m` + key | Select text objects and surrounding delimiters. See [Selections](selections.md) |
+| `G` | `G` + key | Change the selected text: case, comments, number sequences. See [Default Keys](default-keys.md) |
+| Match | `m` + key | Select text objects, or select and wrap surrounding delimiters. See [Text objects](selections.md#text-objects) and [Surround](editing.md#surround) |
 | Match WORD | `M M` | Select the WORD under the cursor. See [Selections](selections.md) |
 | View | `z` + key | Scroll the view to a position, or open a fuzzy picker. See [Moving Around](moving-around.md) and [Fuzzy Finder](pickers.md) |
-| Pane | `Ctrl-p` + key | Move focus between panes. See [Default Keys](default-keys.md) |
+| Pane | `Ctrl-p` + key | Manage panes and tabs: move focus, split, close, rotate, switch tabs. See [Default Keys](default-keys.md) |
 | Register | `"` + char | Target a specific register for yank, paste, or delete. See [Copy & Paste](copy-and-paste.md#register-prefix) |
 
 ### Keys that take a character

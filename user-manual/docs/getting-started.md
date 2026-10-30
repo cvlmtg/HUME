@@ -1,6 +1,6 @@
 # Getting Started
 
-Modal editing has a reputation for a steep first hour. It needn't have one: the ideas below take about five minutes and cover most of what you'll do all day.
+The ideas below take about five minutes and cover most of what you'll do all day.
 
 ## First launch
 
@@ -15,19 +15,19 @@ Or run `hume` with no arguments to open a scratch buffer.
 ## The first minute
 
 1. **Learn the keys:** type `:tutor` and press `Enter` to open the interactive tutorial. It is your own copy, so edit it freely.
-2. **Where am I?** The mode label (`NOR`, `INS`, `EXT`, …) sits on the right of the status bar; the file path and cursor position sit on the left.
-3. **Quit:** `:q` closes the current buffer, and quits HUME once it's the last one open. `:q!` discards unsaved changes. `:wq` saves and quits. `:qa` quits everything.
-4. **Turn on the extras (optional):** HUME starts lean: language-server smarts, fuzzy file and buffer pickers, and the plugin manager stay off until you ask for them. Copy the bundled starter config (`share/hume/runtime/init.scm.example` in the macOS/Linux release archive, `runtime/init.scm.example` on Windows or in a source checkout) to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and they're all on from the next launch. See [Configuration](configuration.md#example-init-scm) for what each plugin does.
+2. **Where am I?** The mode label (`NOR`, `INS`, `EXT`, …) sits on the right of the statusline; the file path and cursor position sit on the left.
+3. **Quit:** `:q` closes the focused pane, or its tab when it is the tab's last pane. In the last pane it closes the buffer, and quits HUME when no other file or unsaved buffer is open. `:q!` discards unsaved changes, `:wq` saves first, and `:qa` quits everything.
+4. **Turn on the extras (optional):** HUME starts lean: language servers, fuzzy pickers, live git diff, the undo-history graph and the plugin manager stay off until you ask for them. Copy the bundled starter config (`share/hume/runtime/init.scm.example` in the macOS/Linux release archive, `runtime/init.scm.example` on Windows or in a source checkout) to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and they're all on from the next launch. See [Configuration](configuration.md#example-init-scm) for what each plugin does.
 
 ## The modal idea
 
-HUME has distinct modes, and the current mode decides what each key you press does. There is no "always-on" Insert mode, so the same keys can serve as both navigation and commands.
+HUME has distinct modes, and the current mode decides what each key you press does.
 
 ### How is this different from a normal editor?
 
 In a conventional editor every letter you type lands in the document, so actions have to be chorded shortcuts (`Ctrl-c`, `Cmd-v`, `Ctrl-f`), and many moves need the mouse.
 
-Modal editors invert that. In Normal mode letters are *commands*: `d` deletes, `w` jumps a word, `x` selects a line, and nothing you type reaches the buffer. To write text, switch to Insert mode, type, and press `Esc` to come back. The payoff: almost every edit is a plain keystroke, with no modifiers and no mouse.
+Modal editors invert that. In Normal mode letters are *commands*: `d` deletes, `w` selects the next word, `x` selects a line, and nothing you type reaches the buffer. To write text, switch to Insert mode, type, and press `Esc` to come back. The payoff: almost every edit is a plain keystroke, with no modifiers and no mouse.
 
 ## The three main modes
 
@@ -39,7 +39,7 @@ The modes you'll use most:
 | Insert | `i`, `a`, `o`, `c` from Normal mode | Type text |
 | Extend | `e` from Normal mode | Grow and shrink selections |
 
-You spend most of your time in Normal, dropping into Insert only to type. See [Modes](modes.md) for the full list, including command-line, search, and sift modes.
+You spend most of your time in Normal, dropping into Insert only to type. See [Modes](modes.md) for the others: Command, Search and Sift.
 
 ## Motions
 

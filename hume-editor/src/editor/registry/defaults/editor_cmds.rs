@@ -426,12 +426,7 @@ impl CommandRegistry {
         .extendable()
         .jump()
         .reg(self);
-        ecmd_pane(
-            "clear-search",
-            "Clear search highlights (`:clear-search`).",
-            cmd_clear_search,
-        )
-        .reg(self);
+        ecmd_pane("clear-search", "Clear search highlights.", cmd_clear_search).reg(self);
 
         // ── Editor commands — sift ────────────────────────────────────────────
         ecmd_pane_text(

@@ -2,7 +2,7 @@
 
 Getting the cursor where you want it is most of editing. HUME's motions put the common jumps (a word, a character on this line, a matching bracket, the line you were on a minute ago) one or two keystrokes away.
 
-All movement happens in Normal mode. Motions move the cursor and change the current selection.
+Motions move the cursor and replace the current selection. In Extend mode they grow or shrink it instead; see [Extend mode](selections.md#extend-mode).
 
 ## Basic movement
 
@@ -16,9 +16,9 @@ All movement happens in Normal mode. Motions move the cursor and change the curr
 | `b`/`B` | Select previous word/WORD |
 | `x`/`X` | Select the current line, then the next/previous one on each press (see [Whole lines](selections.md#whole-lines)) |
 
-A `word` breaks at punctuation, so `don't` is three `words`. A `WORD` only breaks at spaces, so `don't` is one `WORD`. Set `word-chars` (see [Buffer options](settings.md#buffer-options)) to widen what counts as a word, e.g. `-` makes `foo-bar` one `word` instead of three.
+A word breaks at punctuation, so `don't` is three words. A WORD breaks only at whitespace, so `don't` is one WORD. Set `word-chars` (see [Buffer options](settings.md#buffer-options)) to widen what counts as a word: adding `-` makes `foo-bar` one word instead of three.
 
-By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word. When none precedes it (the first word of a line, where a leading run would be indentation, or a word right after punctuation), they cover its *trailing* whitespace instead. So deleting a word never leaves a double space behind. Use `:set global word-selects-whitespace=after` (or per buffer) to prefer the whitespace *after* the word, or `=off` to select just the bare word. See [Buffer options](settings.md#buffer-options).
+By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word. When none precedes it (the first word of a line, where a leading run would be indentation, or a word right after punctuation), they cover its *trailing* whitespace instead. So deleting a word never leaves a double space behind. Use `:set global word-selects-whitespace=after` (or per buffer) to prefer the whitespace *after* the word, or `=off` to select only the bare word. See [Buffer options](settings.md#buffer-options).
 
 <div class="key-demo">
 <strong>Cursor on the first character, press <code>w</code></strong><br>
@@ -34,8 +34,8 @@ Search within the current line for a specific character:
 |-----|----------|
 | `f` + char | Jump forward to next occurrence of char (inclusive) |
 | `F` + char | Jump backward to previous occurrence of char (inclusive) |
-| `t` + char | Jump forward to just before next occurrence of char (exclusive) |
-| `T` + char | Jump backward to just after previous occurrence of char (exclusive) |
+| `t` + char | Jump forward to the character before the next occurrence of char (exclusive) |
+| `T` + char | Jump backward to the character after the previous occurrence of char (exclusive) |
 | `=` | Repeat last find forward |
 | `-` | Repeat last find backward |
 
@@ -74,12 +74,12 @@ The idiomatic line movements live under the `g` prefix:
 From an opening bracket or tag, `#` jumps to the closing one, and back again from the closing side.
 
 ::: details Where the cursor needs to be
-For a bracket on a single line, `#` looks at the whole selection, not just where the cursor sits, so it still finds `(` `)` `[` `]` `{` `}` after a selecting motion leaves the cursor just past one. A selection spanning several lines only looks at the character under the cursor, as for a tag. For an HTML/XML/JSX tag, the cursor itself must be inside the tag's own markup (its `<`, its `>`, the name, or an attribute), not just anywhere in the selection. Anywhere else, `#` does nothing. A count has no effect: `#` always jumps to the immediate partner.
+For a bracket, `#` searches a selection that stays on one line, so it still finds `(` `)` `[` `]` `{` `}` when a motion leaves the cursor past one. For a tag, the cursor must be on the tag's own markup: its `<`, its `>`, the name, or an attribute. A count has no effect.
 :::
 
 ## Structural navigation
 
-For a language whose grammar ships a `textobjects.scm` (PLUM installs one alongside highlights where the upstream grammar has one), these commands jump to the next or previous instance of a structural kind and select all of it, with the cursor (head) on its first character:
+When the language's grammar supports it (see [Syntax Highlighting](syntax-highlighting.md)), these commands jump to the next or previous instance of a structural kind and select all of it, with the cursor (head) on its first character:
 
 | Key | Command | Selects |
 |-----|---------|---------|
@@ -111,7 +111,7 @@ Line numbers are 1-based. A number past the end of the file lands on the last li
 | `{` | The previous paragraph |
 | `}` | The next paragraph |
 
-A paragraph is a block of non-empty lines between empty lines. Both keys select the whole paragraph they land on, plus the gap of empty lines below it, if any. The jump is recorded, so `Ctrl-o` brings you back. Pressing `{`/`}` past the first/last paragraph does nothing. See [Text objects](selections.md) for `m i p`, which selects just the paragraph without moving.
+A paragraph is a block of non-empty lines between empty lines. Both keys select the whole paragraph they land on, plus the gap of empty lines below it, if any. The jump is recorded, so `Ctrl-o` brings you back. Pressing `{`/`}` past the first/last paragraph does nothing. See [Text objects](selections.md#text-objects) for `m i p`, which selects the paragraph without moving.
 
 ## Scrolling
 
@@ -142,23 +142,23 @@ As with the motion keys, `k` is up and `j` is down.
 | `?pattern` | Search backward |
 | `n` | Next match |
 | `N` | Previous match |
-| `*` | Search for the whole word under the cursor, ignoring any current selection. Words are wrapped in word boundaries (`\b…\b`); punctuation is searched literally. Does nothing on whitespace or a blank line. With `word-chars` configured, a match can still land inside a longer run sharing the same edge character (e.g. searching `foo-bar` inside `foo-bar-baz` also matches there) |
+| `*` | Select the word under the cursor and search for it as a whole word, ignoring any current selection. Does nothing on whitespace or a blank line |
 | `m /` | Turn every search match in the buffer into a selection |
-| `Ctrl-/` | Use the primary selection's text, literally, as the search pattern, with no word expansion and no boundaries (kitty only). Does nothing when the selection is just a line ending |
+| `Ctrl-/` | Search for the primary selection's text, literally (kitty only). Does nothing when the selection is only a line ending |
 
 ### `m /` precondition
 
-`m /` uses the buffer's live search pattern if one is active, or else the search register `s` (the last pattern submitted to `/` or `?`, or set by `*`). With neither, it does nothing: no error, and the selections stay unchanged. It runs from Normal or Extend mode. See [Register prefix](copy-and-paste.md#register-prefix) for the full list of registers.
+`m /` uses the buffer's live search pattern if one is active, or else the search register `s` (the last pattern submitted to `/` or `?`, or set by `*` or `Ctrl-/`). With neither, it does nothing: no error, and the selections stay unchanged. It runs from Normal or Extend mode. See [Register prefix](copy-and-paste.md#register-prefix) for the full list of registers.
 
 ### Regex syntax
 
 `/`, `?`, `s` (sift-within), and `*` all use [Rust regex](https://docs.rs/regex) syntax. Notable points:
 
-- **Smart case.** A pattern with no uppercase letter matches case-insensitively; one uppercase letter anywhere makes it case-sensitive. This looks at the raw pattern text, so an escape like `\W` or `\S` counts as uppercase and quietly makes the search case-sensitive. Override with `(?i)` or `(?-i)`.
+- **Smart case.** A pattern with no uppercase letter matches case-insensitively; one uppercase letter anywhere makes it case-sensitive. This looks at the raw pattern text, so an escape like `\W` or `\S` counts as uppercase and makes the search case-sensitive. Override with `(?i)` or `(?-i)`.
 - **Anchors.** At `/` and `?`, `^` and `$` match at the start and end of the buffer. At `s` they match at the start and end of each selection; see [Sift within](selections.md#sift-within-s).
 - **Other inline flags**: `(?m)` multiline `^`/`$`, `(?s)` dot-matches-newline, `(?x)` extended (whitespace ignored), `(?U)` swap greedy/non-greedy.
 - **`.` does not match newlines** unless you add `(?s)`.
-- **No backreferences, no lookaround, no possessive quantifiers.** No Vim-style `\c` / `\C` case toggles either; they'd match the literal letters `c` / `C`.
+- **No backreferences, no lookaround, no possessive quantifiers.** `\c` and `\C` are not case toggles: a pattern containing them is invalid.
 - **Invalid patterns** do nothing during live preview: the cursor stays put. Pressing `Enter` on one reports it and leaves your last search as it was. Pressing `Enter` on a pattern that matches nothing shows "no match"; the pattern still becomes the current search.
 
 ### Flags
@@ -176,7 +176,7 @@ A pattern that starts with a `/` of its own (a path, say) is read as plain text,
 
 ## Search and replace
 
-HUME has no `:s/foo/bar/g` substitute command. Replace with multiple selections instead:
+HUME has no substitute command. Replace with multiple selections instead:
 
 1. Search for the pattern with `/foo` (or `*` on a word to match it).
 2. Press `m /` to turn every match in the buffer into a selection.
@@ -195,4 +195,4 @@ HUME keeps a jump list of recent cursor positions.
 | `Ctrl-i` | Jump to next position |
 | `Tab` | Jump to next position (except under the kitty protocol, where `Tab` moves between panes) |
 
-To get back to the buffer you were last in, use `:b #`. `:e #` does the same but only for buffers that have a file on disk.
+To get back to the buffer you were last in, use `:b #`. `:e #` does the same for a buffer that has a file name.
