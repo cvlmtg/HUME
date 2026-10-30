@@ -44,7 +44,7 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 | `:plum-update-plugins` | Check every installed third-party plugin out at its `#:ref`, or its default branch's latest commit |
 | `:plum-list-plugins` | Show the declared, installed, orphan and missing plugin lists in `[plum-plugins]` |
 | `:plum-install-grammar [lang]` | Install or repair a grammar from the grammar source, replacing the installed one only once the new one has loaded. Defaults to the current buffer's language. Tab-completes the language names |
-| `:plum-list-grammars` | Show the installed grammars, what else `<data>/grammars/` holds, and what stopped installs and load checks left in `<data>/plum-staging/grammars/`, in `[plum-grammars]` |
+| `:plum-list-grammars` | Show the installed grammars, what else `<data>/grammars/` holds, and what stopped installs left in `<data>/plum-staging/grammars/`, in `[plum-grammars]` |
 | `:plum-cleanup-grammars` | Delete everything in `<data>/grammars/` but the current install of each language HUME knows, and everything in `<data>/plum-staging/grammars/` |
 | `:plum-install-theme <user/repo>` | Install or reinstall a theme repo's `themes/*.toml` from a GitHub slug |
 | `:plum-update-themes` | Check every installed theme repo out at its default branch's latest commit and re-sync its `.toml` copies |
@@ -54,22 +54,23 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 `plum/ensure-grammars` installs the grammars of any of the given languages that are not yet
 installed. It raises before installing anything if a name is not a language, or if no
 source serves one of the grammars it would install, dependencies included.
+It is a plain editor command, not a `:` command, and takes a list argument, so it belongs
+in `init.scm` (`(call! "plum/ensure-grammars" '("rust" "json"))`), not at the command
+prompt.
 
 `plum/grammar-leftovers` is what the two grammar list and cleanup commands share: every entry
 of `<data>/grammars/` that is not an installed grammar of a language HUME knows, and every
 entry of such a grammar's folder but its current install. That is an orphan (a grammar
 installed under a name that is not a language), an older install a reinstall could not delete,
-and whatever an earlier layout or an interrupted install left: `sources/` clones,
-`<name>.<ext>` libraries at the top level or in a language's folder, `.replaced` backups. Every
+an install folder that was never checked (its load check failed and it could not be deleted,
+or its install was stopped first), and any other entry, such as `sources/` clones, `<name>.<ext>` libraries at the top level or in
+a language's folder, and the `.replaced` backups an interrupted install leaves. Every
 such entry is listed by its path under `<data>/grammars/` and deleted whole.
 `plum/staging-leftovers` lists every entry of `<data>/plum-staging/grammars/`, which the two
-commands show and clear too: stage directories, archives, the index download and load-check
-copies. Grammar commands run one at a time, so nothing there belongs to an install in progress.
-On Windows, an older install or a load-check copy whose library this session loaded cannot be
-deleted until HUME exits, so cleanup reports it as a failure and clears it the next time.
-It is a plain editor command, not a `:` command, and takes a list argument, so it belongs
-in `init.scm` (`(call! "plum/ensure-grammars" '("rust" "json"))`), not at the command
-prompt.
+commands show and clear too: stage directories, archives and the index download. Grammar
+commands run one at a time, so nothing there belongs to an install in progress. On Windows, an
+install folder whose library this session loaded cannot be deleted until HUME exits, so cleanup
+reports it as a failure and clears it the next time.
 
 ## How it works
 
@@ -84,9 +85,9 @@ source:
   [Grammar source](#grammar-source)).
 - **`themes.scm`** (`#:entry`): third-party theme install, update, list and remove (see
   [Theme install](#theme-install)).
-- **`lib/helpers.scm`**: `plum/github-url`, `plum/install-repo!` and `plum/git-sync!`
-  (the one GitHub URL shape, the install every install command shares, and the checkout
-  behind both install and
+- **`lib/helpers.scm`**: `plum/staged-install!` (the stage-then-replace step every
+  install shares), `plum/github-url`, `plum/install-repo!` and `plum/git-sync!` (the one
+  GitHub URL shape, the plugin and theme install, and the checkout behind both install and
   update; see [Pinned plugins](#pinned-plugins)), `plum/batch-run!`, and
   `plum/two-level-repos` (the `<root>/<user>/<repo>/`
   walk behind plugin and theme-repo discovery). Directory listing, filesystem cleanup, list
@@ -129,12 +130,12 @@ HEAD. So every clone is on a detached HEAD, and a local edit that conflicts with
 new checkout fails the update for that plugin. An update also leaves behind commits
 made in the clone and any branch checked out there by hand.
 
-`plum/install-repo!`, behind every PLUM install command, runs `plum/git-sync!` on a fresh
+`plum/install-repo!`, behind every plugin and theme install, runs `plum/git-sync!` on a fresh
 repo: `git init` in `<data>/plum-staging/<parent>/<name>`, `git remote add origin <url>`,
 origin made a promisor remote with `partialclonefilter blob:none` (a blobless clone,
 which downloads only the files of the commits it checks out), `plum/git-sync!`, then
-the caller's `#:build` on the staging clone, if any. Only then does it move the new clone
-into the old one's place with `replace-dir!`, in one step the script budget cannot stop
+the caller's `#:build` on the staging clone, if any. Only then does `plum/staged-install!`
+move the new clone into the old one's place with `replace-dir!`, in one step the script budget cannot stop
 half way. A failed install deletes its staging
 clone and leaves the old clone untouched, then raises the failure's own error.
 `:plum-install-plugins` installs only missing plugins, so a changed pin reaches an
@@ -209,7 +210,7 @@ source, so a grammar no source serves installs nothing; each reads the release i
 once.
 
 Each install of a grammar gets its own folder, `<data>/grammars/<language>/<install>/`, and the
-newest one is the grammar in use (see core's `runtime/scheme/README.md`). An install never
+newest one marked `checked` is the grammar in use (see core's `runtime/scheme/README.md`). An install never
 renames or deletes a folder whose library may be loaded: a loaded library stays loaded until
 HUME exits, Unix's loader hands back the loaded library for a path it has opened before, and
 Windows cannot move or delete a folder whose library is loaded. A new folder per install means
@@ -228,32 +229,35 @@ grammar is replaced only once the new one has loaded:
 4. Check its `manifest.scm`: `name` is the language, `platform` is this one, and the library
    and `queries/highlights.scm` are there. A `tag` other than the pin is a `'warning`, not a
    failure, so a folder built by another release of the tool still installs. The library's
-   ABI is checked once, by loading it in step 5.
-5. Load it with core's `check-grammar!`, which opens the library, checks its ABI and compiles
-   its queries without registering anything, so the check is the same from a command, from
-   `init.scm` (where registration only queues) and whatever registered the language's grammar
-   first. It opens a copy of the stage directory, `<data>/plum-staging/grammars/<language>-<install>/`,
-   made with Steel's `copy-directory-recursively!`, so no library is loaded from the stage
-   directory, which can still move on every platform.
-   The copy is deleted afterwards, as in step 8.
-6. Move the stage directory to `<data>/grammars/<language>/<install>/` with `replace-dir!`.
+   ABI is checked once, by loading it in step 6.
+5. Move the stage directory to `<data>/grammars/<language>/<install>/` with
+   `replace-dir!`. Nothing has loaded from it yet, so it can move on every platform.
    `<install>` is the current time in milliseconds, or one past the newest install when that is
    later, so it sorts after every install before it.
-7. Register the new install for this session with core's `register-installed-grammar!`.
-8. Delete the language's older installs. The new install is already in place, so a delete
+6. Load it there with core's `check-grammar!`, which opens the library, checks its ABI and
+   compiles its queries without registering anything, so the check is the same from a
+   command, from `init.scm` (where registration only queues) and whatever registered the
+   language's grammar first. Once it loads, `mark-grammar-checked!` writes the folder's
+   `checked` marker, which makes it the language's current install.
+7. Register the new install for this session with core's `register-installed-grammar!`. It
+   opens the library at the path the check opened, so the library loads once.
+8. Delete the language's older installs, checked or not. The new install is already in place, so a delete
    that fails is reported and the install goes on: as an error on Linux and macOS, where it
    is a real failure, and as a warning on Windows, which refuses to delete a library HUME has
    loaded and gives the same access-denied error for both. The Windows warning says to
    restart HUME and run `:plum-cleanup-grammars`.
 
-A failure in steps 1 to 6 deletes the staging files and the check copy and raises the
-failure's own error, with the installed grammar as it was. A script budget that stops the
-install at any point leaves the old or the new install as the newest, and both have loaded, so
-the language's grammar is never one that failed its check. Older installs are deleted only once
-the new one is registered, so the session never names a library that is gone. Older installs and check copies
-left behind are leftovers (see [Commands](#commands)).
+A failure in steps 1 to 5 deletes the staging files, and a failure in step 6 deletes the new
+install folder, and the language's folder when nothing else is left in it. Either way the
+failure's own error is raised, with the installed grammar as it was. On Windows, an install
+folder whose check opened its library cannot be deleted; it is reported as in step 8, and it
+has no marker, so it is never the grammar. A script budget that stops the install at any point
+leaves the old or the new install as the newest checked one, so the language's grammar is
+never one that failed its check. Older installs are deleted only once the new one is
+registered, so the session never names a library that is gone. Install folders left behind
+are leftovers (see [Commands](#commands)).
 The archives carry Helix's query files with their `; inherits:` directives already resolved,
-so PLUM writes them as they are.
+so PLUM installs them unchanged.
 
 ### Startup registration is core's job, and passive
 

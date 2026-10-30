@@ -94,7 +94,7 @@ fn run_plum_update_plugins(data_dir: &std::path::Path, init_src: &str) -> Editor
 }
 
 /// Install `origin` where PLUM keeps `testuser/testrepo` under `data_dir`,
-/// through `plum/install-repo!`, the funnel every PLUM install command calls.
+/// through `plum/install-repo!`, the funnel every plugin and theme install calls.
 /// `args` is the Scheme source of the arguments after the URL and the
 /// destination: the ref (a string literal, or `#f`) and any keyword arguments.
 /// Returns the error log.

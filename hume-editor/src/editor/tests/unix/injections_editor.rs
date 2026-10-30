@@ -53,11 +53,10 @@ fn plum_list_grammars_shows_installed_grammars_and_what_is_not_in_use() {
     load_plum(&mut ed, data_tmp.path());
     let grammars = data_tmp.path().join("hume/grammars");
     std::fs::create_dir_all(&grammars).unwrap();
-    let ext = test_fixtures::grammar_platform_ext();
     for (name, install) in [("rust", "1"), ("rust", "2"), ("proto", "1")] {
         let dir = grammars.join(name).join(install);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(format!("{name}.{ext}")), b"").unwrap();
+        std::fs::write(test_fixtures::checked_marker(&dir), b"").unwrap();
     }
     std::fs::create_dir_all(grammars.join("json.replaced")).unwrap();
     let staging = data_tmp.path().join("hume/plum-staging/grammars");

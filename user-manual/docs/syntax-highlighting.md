@@ -192,7 +192,7 @@ A grammar you register, from your `init.scm` or from a command you run, beats on
 :plum-list-grammars
 ```
 
-Opens a read-only buffer listing the installed grammars, with everything else in the grammars folder in a section of its own: grammars installed under a name that isn't a language HUME knows, older copies of a grammar a reinstall couldn't delete yet, and files an earlier version or an interrupted install left. A third section lists what grammar installs that were stopped partway left behind: the files they were downloading or unpacking, and the copies they loaded to check a grammar.
+Opens a read-only buffer listing the installed grammars, with everything else in the grammars folder in a section of its own: grammars installed under a name that isn't a language HUME knows, older copies of a grammar a reinstall couldn't delete yet, copies that failed to load and couldn't be deleted yet, and files an earlier version or an interrupted install left. A third section lists what grammar installs that were stopped partway left behind: the files they were downloading or unpacking.
 
 ```
 :plum-cleanup-grammars

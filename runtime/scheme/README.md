@@ -153,27 +153,31 @@ owns the install layout, which PLUM writes through the same functions.
 - **One directory per install.** `<data>/grammars/<name>/` (`grammar-dir`) holds the
   language's installs, each in a folder named by a number: a release archive unpacked as it
   is, `<name>.<ext>`, `queries/*.scm` (with Helix's query `NOTICE`), `manifest.scm`, and
-  `licenses/` (the grammar's license files, and where its source is).
-  `grammar-library-path`, `%grammar-query-path`, `%grammar-highlights-path` and
-  `%grammar-manifest-path` name the parts of one install folder. `<data>/grammars/` doesn't
+  `licenses/` (the grammar's license files, and where its source is), plus the empty
+  `checked` marker PLUM writes once the grammar has loaded there.
+  `grammar-library-path`, `%grammar-query-path`, `%grammar-highlights-path`,
+  `%grammar-manifest-path` and `%grammar-checked-path` name the parts of one install folder. `<data>/grammars/` doesn't
   exist until something is installed, so a fresh setup settles the whole question with one
   `is-dir?`.
-- **The newest install is the grammar.** `grammar-installs` lists a language's install
-  folders, oldest first, and `%grammar-current-install` is the last of them: the one with the
-  largest number. A library, once loaded, stays loaded until HUME exits and cannot be
-  replaced at its path, so PLUM never reuses or replaces an install folder: each install gets
-  a new one, numbered after the others, and older ones are deleted when they can be. An entry
-  that is not a number, such as a file an earlier layout left, is not an install.
-- **The platform's library is the existence proof.** `grammar-installed-folder` is a
-  language's current install when it holds `<name>.<ext>`, the extension being
-  `platform-dll-extension!`'s (the same `std::env::consts::DLL_EXTENSION` the release build
-  names its libraries with). An install holding another platform's library, as in a data
-  directory shared with a Linux setup, is not installed here and is skipped without a message.
-  `installed-grammar-folders` pairs each installed grammar of a language HUME knows with that
-  folder, from one walk of `<data>/grammars/`, so startup and PLUM's list and cleanup agree on
-  which grammars are in use and work out each install once.
-- **The manifest names the symbol.** Startup reads each installed grammar's `manifest.scm` for
-  its C symbol, and no language data file. `grammar-platform` (`<os>-<arch>`, from
+- **The newest checked install is the grammar.** `grammar-installs` lists a language's
+  install folders, oldest first, checked or not; PLUM names and deletes installs from it. A
+  library, once loaded, stays loaded until HUME exits and cannot be replaced at its path, so
+  PLUM never reuses or replaces an install folder: each install gets a new one, numbered
+  after the others, and older ones are deleted when they can be. An entry that is not a number
+  is not an install.
+- **The marker is the existence proof.** `grammar-installed-folder` is a language's current
+  install: the newest install folder holding `checked`. PLUM moves a new install into its
+  folder before loading it there (`runtime/plugins/core/plum/README.md`'s "Grammar install
+  pipeline"), so a folder whose grammar failed to load, or whose install was stopped, has no
+  marker and is never the grammar, whatever its number. `mark-grammar-checked!` writes the
+  marker. Nothing else about an install is checked here: its files were checked when it was
+  installed, and a file lost since then is reported when the grammar loads. A data directory
+  shared between platforms is not supported. `installed-grammar-folders` pairs each installed
+  grammar of a language HUME knows with that folder, from one walk of `<data>/grammars/`, so
+  startup and PLUM's list and cleanup agree on which grammars are in use and work out each
+  install once.
+- **The manifest names the symbol.** Startup reads each installed grammar's `manifest.scm`
+  (`grammar-manifest`) for its C symbol, and no language data file. `grammar-platform` (`<os>-<arch>`, from
   `current-os!` and `target-arch!`) is the platform string the release and its manifests use.
 - **Registering opens nothing.** A grammar registered here has its library loaded and its
   queries compiled the first time a buffer of its language, or an embedded block naming it,
@@ -181,9 +185,9 @@ owns the install layout, which PLUM writes through the same functions.
   that fails to load is reported then, once, as a warning naming the grammar.
 - **Two failure modes, two responses.** An installed grammar whose name is not a language
   (dropped by a HUME update) is an orphan: skipped without a message, and listed by
-  `:plum-list-grammars`. An installed grammar of a language with no `highlights.scm` or no
-  readable manifest is repairable, so it warns, naming `:plum-install-grammar`, and the other
-  grammars still register.
+  `:plum-list-grammars`. An installed grammar of a language with no readable manifest is
+  repairable, so it warns, naming `:plum-install-grammar`, and the other grammars still
+  register.
 - **`highlights.scm` is required, every other query file is optional.** The optional kinds come
   from the `grammar-optional-queries` builtin, an association list of `(key . file-name)`
   pairs, one per kind the editor can compile. `register-installed-grammar!` registers
@@ -191,10 +195,10 @@ owns the install layout, which PLUM writes through the same functions.
   change here. The archive's other query files (`locals.scm`, `tags.scm`, …) are not read.
 - **`register-installed-grammar!` is the one registration.** Startup and PLUM's install both
   register through it, naming the install folder: startup the language's current install,
-  PLUM the install it has just checked and moved in.
+  PLUM the install it has just moved in and checked.
 - **`check-grammar!` loads without registering.** It takes the same files from an install
-  folder, with the library from a path of its own, and raises when the grammar cannot load.
-  PLUM checks a new install with it before moving it in.
+  folder and raises when the grammar cannot load. PLUM checks a new install with it in the
+  install's own folder, before marking it.
 - **`dir-entry-names` lists a directory.** The sorted names in a directory, none for a path
   that is not one. Grammar discovery and `core:plum`'s grammar commands list through it.
 

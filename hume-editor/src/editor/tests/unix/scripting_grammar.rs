@@ -685,7 +685,8 @@ const JSON_DATA: &str = "()";
 
 /// Lays out an installed `name` grammar under `data/grammars/<name>/1/`, as
 /// PLUM installs one: a library holding `library`, a manifest naming
-/// `symbol`, and each `(file, text)` of `queries` under `queries/`.
+/// `symbol`, each `(file, text)` of `queries` under `queries/`, and the
+/// checked marker.
 fn install_grammar_files(
     data: &std::path::Path,
     name: &str,
@@ -705,6 +706,7 @@ fn install_grammar_files(
     for (file, text) in queries {
         std::fs::write(dir.join("queries").join(file), text).unwrap();
     }
+    std::fs::write(test_fixtures::checked_marker(&dir), b"").unwrap();
 }
 
 /// An installed json grammar whose library cannot load, with an empty
@@ -806,23 +808,33 @@ fn orphan_installed_grammar_is_skipped_not_registered() {
     );
 }
 
-/// An installed grammar of a language, missing its `highlights.scm`, is
-/// repairable, so it warns naming the grammar and the reinstall command
-/// instead of being skipped without a message like an orphan.
+/// An installed grammar that lost its `highlights.scm` after install is
+/// registered at startup like any other, and its load reports the missing
+/// file once, when a buffer of its language needs it.
 #[test]
-fn installed_grammar_missing_highlights_warns_and_is_not_registered() {
-    let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
-        install_grammar_files(data, "json", "tree_sitter_json", b"not a real library", &[]);
+fn installed_grammar_missing_highlights_is_reported_when_a_buffer_needs_it() {
+    require_grammars(&["json"]);
+    let (parser, _) = grammar_fixture("json");
+    let (errors, mut ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
+        install_grammar_files(
+            data,
+            "json",
+            "tree_sitter_json",
+            &std::fs::read(&parser).unwrap(),
+            &[],
+        );
     });
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(warning_texts(&ed).is_empty(), "{:?}", warning_texts(&ed));
+    assert!(ed.state.config.languages.has_grammar("json"));
 
-    assert!(errors.is_empty(), "a warning, not an error: {errors:?}");
-    let warnings = warning_texts(&ed);
-    assert!(
-        warnings.iter().any(|w| w.contains("\"json\"")
-            && w.contains("highlights")
-            && w.contains(":plum-install-grammar json")),
-        "{warnings:?}"
-    );
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language_by_name(bid, Some("json"), hume_core::ConfigOrigin::User);
+    ed.reparse_stale_buffers();
+
+    let warnings = grammar_warnings(&ed, "json");
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("highlights.scm"), "{warnings:?}");
     assert!(!ed.state.config.languages.has_grammar("json"));
 }
 
@@ -843,33 +855,6 @@ fn installed_grammar_without_a_manifest_warns_and_is_not_registered() {
             .any(|w| w.contains("\"json\"") && w.contains(":plum-install-grammar json")),
         "{warnings:?}"
     );
-    assert!(!ed.state.config.languages.has_grammar("json"));
-}
-
-/// A grammar directory holding another platform's library (e.g. a `.so` in
-/// a data directory shared with a Linux setup) is not installed here, so it
-/// is neither registered nor warned about.
-#[test]
-fn foreign_platform_grammar_is_skipped_without_a_warning() {
-    let wrong_ext = if cfg!(target_os = "macos") {
-        "so"
-    } else {
-        "dylib"
-    };
-
-    let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
-        install_bogus_json_grammar(data);
-        let dir = data.join("grammars/json/1");
-        let ext = test_fixtures::grammar_platform_ext();
-        std::fs::rename(
-            dir.join(format!("json.{ext}")),
-            dir.join(format!("json.{wrong_ext}")),
-        )
-        .unwrap();
-    });
-
-    assert!(errors.is_empty(), "{errors:?}");
-    assert!(warning_texts(&ed).is_empty(), "{:?}", warning_texts(&ed));
     assert!(!ed.state.config.languages.has_grammar("json"));
 }
 
@@ -930,21 +915,21 @@ fn runtime_register_grammar_with_a_bad_library_raises() {
 }
 
 /// `installed-grammar-folders` pairs each grammar directory of a known
-/// language that holds this platform's library with its current install,
-/// sorted by name: a directory with no library, a stray file and a grammar
-/// of no language are left out.
+/// language that holds a checked install with its current install, sorted
+/// by name: a directory whose install is not checked, a stray file and a
+/// grammar of no language are left out.
 #[test]
-fn installed_grammar_folders_pair_each_known_library_directory_with_its_install() {
+fn installed_grammar_folders_pair_each_known_checked_directory_with_its_install() {
     let (errors, mut ed, dirs) = init_errors_with_json_data(JSON_DATA, |data| {
         for name in ["b-x", "b", "orphan"] {
             install_grammar_files(data, name, "tree_sitter_b", b"", &[]);
         }
-        std::fs::create_dir_all(data.join("grammars/no-library")).unwrap();
+        std::fs::create_dir_all(data.join("grammars/unchecked/1")).unwrap();
         std::fs::write(data.join("grammars/.DS_Store"), b"").unwrap();
     });
     assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
     let languages_dir = dirs[1].path().join("scheme/languages");
-    for name in ["b", "b-x"] {
+    for name in ["b", "b-x", "unchecked"] {
         std::fs::write(languages_dir.join(format!("{name}.scm")), "()").unwrap();
     }
 
@@ -1050,7 +1035,7 @@ const SLOW_OPEN: Duration = Duration::from_secs(1);
 /// inside the scripting host's own budget pause.
 fn editor_with_installed_grammars(data_tmp: &Path, installed: &[&str], text: &str) -> Editor {
     for name in installed {
-        test_fixtures::install_fixture_grammar(&data_tmp.join("hume/grammars"), name);
+        test_fixtures::install_fixture_grammar(&data_tmp.join("hume/grammars"), name, "1");
     }
     let mut ed = editor_from(text);
     load_plum(&mut ed, data_tmp);
@@ -1092,11 +1077,12 @@ fn registering_a_grammar_from_a_command_does_not_count_its_load() {
     test_fixtures::install_fixture_grammar(
         &canonical_data_dir(data_tmp.path()).join("grammars"),
         "yaml",
+        "1",
     );
     run(
         &mut ed,
         data_tmp.path(),
-        r#"(define-typed-command! "probe" "" (lambda () (register-installed-grammar! "yaml" (%grammar-current-install "yaml"))))"#,
+        r#"(define-typed-command! "probe" "" (lambda () (register-installed-grammar! "yaml" (grammar-installed-folder "yaml"))))"#,
     );
 
     run_probe(&mut ed);

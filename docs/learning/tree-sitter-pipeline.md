@@ -246,19 +246,19 @@ When you run `:plum-install-grammar`, plum:
    index's checksum.
 3. Unpacks it and checks the manifest: the right language, this platform, and
    the files a grammar needs.
-4. Loads a copy of the library and compiles the queries without registering
+4. Moves it into a new install folder under the language's folder.
+5. Loads the library there and compiles the queries without registering
    anything. This is where a grammar the editor can't use, such as one built
-   for a tree-sitter ABI version the editor can't load, is rejected, before it
-   replaces anything.
-5. Moves it into a new install folder under the language's folder, which makes
-   it the newest.
+   for a tree-sitter ABI version the editor can't load, is rejected. Only once
+   it loads does Plum mark the folder as checked, and only a checked folder
+   counts as an install, so a rejected grammar never replaces anything.
 6. Registers the shared library and the queries with the running editor.
 7. Deletes the language's older installs, except one whose library this
    session already loaded on Windows; cleanup clears that one later.
 
 On subsequent starts, HUME scans the data directory for installed grammars and
-registers each one from its newest install folder, reading the symbol from its
-manifest.
+registers each one from its newest checked install folder, reading the symbol
+from its manifest.
 No network access on startup, and no scan of every language's data either —
 the walk works from what's actually present on the filesystem, not from what's
 declared. A fresh setup with nothing installed reads nothing.

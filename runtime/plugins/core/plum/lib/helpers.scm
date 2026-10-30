@@ -1,7 +1,7 @@
 ;;; core:plum/lib/helpers.scm
 
 (provide plum/batch-run! plum/two-level-repos
-         plum/staging-dir plum/github-url plum/install-repo! plum/git-sync!)
+         plum/staging-dir plum/github-url plum/staged-install! plum/install-repo! plum/git-sync!)
 
 ;; ── Two-level repo discovery ──────────────────────────────────────────────────
 
@@ -28,24 +28,31 @@
 (define (plum/staging-dir)
   (path-join (data-dir) "plum-staging"))
 
+;;; Fills the empty directory `stage` with `fill`, given `stage`, then moves it to `dest`,
+;;; replacing `dest` only once `fill` has returned. `stage` is deleted on failure.
+(define (plum/staged-install! stage dest fill)
+  (call! "stdlib/delete-dir!" stage)
+  (create-directory! stage)
+  (with-handler
+    (lambda (err)
+      (call! "stdlib/delete-dir!" stage)
+      (raise-error err))
+    (fill stage)
+    (replace-dir! stage dest)))
+
 ;;; Installs `url` into `dest` at `ref`, replacing `dest` only once the new clone is
 ;;; checked out and `build`, given the clone's directory, has returned.
 ;;; See README.md's "Pinned plugins".
 (define (plum/install-repo! url dest ref #:build [build #f])
-  (let ((stage (path-join (plum/staging-dir) (file-name (parent-name dest)) (file-name dest))))
-    (call! "stdlib/delete-dir!" stage)
-    (create-directory! stage)
-    (with-handler
-      (lambda (err)
-        (call! "stdlib/delete-dir!" stage)
-        (raise-error err))
+  (plum/staged-install!
+    (path-join (plum/staging-dir) (file-name (parent-name dest)) (file-name dest)) dest
+    (lambda (stage)
       (plum/git! stage (list "init" "-q"))
       (plum/git! stage (list "remote" "add" "--" "origin" url))
       (plum/git! stage (list "config" "remote.origin.promisor" "true"))
       (plum/git! stage (list "config" "remote.origin.partialclonefilter" "blob:none"))
       (plum/git-sync! stage ref)
-      (when build (build stage)))
-    (replace-dir! stage dest)))
+      (when build (build stage)))))
 
 ;;; Checks the clone in `dir` out at origin's `ref`, or its default branch for #f.
 ;;; See README.md's "Pinned plugins".

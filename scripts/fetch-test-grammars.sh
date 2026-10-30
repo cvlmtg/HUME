@@ -55,11 +55,13 @@ sha256() {
   fi
 }
 
-# Downloads `url` to `out`, which appears only once the whole file has arrived,
-# so an interrupted download is never mistaken for a cached one.
+# Downloads `url` to `out`, passing any further arguments to curl. `out`
+# appears only once the whole file has arrived, so an interrupted download is
+# never mistaken for a cached one.
 download() {
   local out="$1" url="$2"
-  curl -fsSL -o "$out.part" "$url"
+  shift 2
+  curl -fsSL "$@" -o "$out.part" "$url"
   mv "$out.part" "$out"
 }
 
@@ -132,7 +134,7 @@ fetch_grammar() {
   if [[ -n "$LOCAL_DIR" ]]; then
     cp "$archive" "$member"
   else
-    curl -fsSL -r "$offset-$((offset + size - 1))" -o "$member" "$RELEASE/grammars-$PLATFORM.tar"
+    download "$member" "$RELEASE/grammars-$PLATFORM.tar" -r "$offset-$((offset + size - 1))"
     if [[ "$(sha256 "$member")" != "$digest" ]]; then
       rm -f "$member"
       echo "error: $name: the fetched bytes do not match the index digest" >&2
@@ -180,32 +182,28 @@ fetch_helix_indent_corpus() {
 # with its index, the same format as a release bundle. Every member name
 # fits one 512-byte header, so a member's data starts one block after its
 # header and the next header follows its data rounded up to a block. Each
-# computed range is read back and checked against the member's digest.
+# computed range is read back and compared with the member.
 build_bundle() {
-  local names=("$@") staging="$FIXTURES/.bundle-staging"
-  rm -rf "$staging" "$BUNDLE"
-  mkdir -p "$staging" "$BUNDLE"
-  local files=()
+  local names=("$@") files=()
+  rm -rf "$BUNDLE"
+  mkdir -p "$BUNDLE"
   for name in "${names[@]}"; do
-    cp "$MEMBERS/$name.tar.gz" "$staging/"
     files+=("$name.tar.gz")
   done
-  COPYFILE_DISABLE=1 tar --format=ustar -cf "$BUNDLE/grammars-$PLATFORM.tar" -C "$staging" "${files[@]}"
+  COPYFILE_DISABLE=1 tar --format=ustar -cf "$BUNDLE/grammars-$PLATFORM.tar" -C "$MEMBERS" "${files[@]}"
 
-  local index="$BUNDLE/grammars-$PLATFORM.index" pos=0 size digest check="$staging/check"
+  local index="$BUNDLE/grammars-$PLATFORM.index" pos=0 member size
   echo "treesitter.hume $TAG $PLATFORM" > "$index"
   for name in "${names[@]}"; do
-    size="$(wc -c < "$MEMBERS/$name.tar.gz" | tr -d ' ')"
-    digest="$(sha256 "$MEMBERS/$name.tar.gz")"
-    read_range "$BUNDLE/grammars-$PLATFORM.tar" "$((pos + 512))" "$size" > "$check"
-    if [[ "$(sha256 "$check")" != "$digest" ]]; then
+    member="$MEMBERS/$name.tar.gz"
+    size="$(wc -c < "$member" | tr -d ' ')"
+    if ! cmp -s <(read_range "$BUNDLE/grammars-$PLATFORM.tar" "$((pos + 512))" "$size") "$member"; then
       echo "error: $name is not at offset $((pos + 512)) of the test bundle" >&2
       exit 1
     fi
-    echo "$name $((pos + 512)) $size $digest" >> "$index"
+    echo "$name $((pos + 512)) $size $(sha256 "$member")" >> "$index"
     pos=$((pos + 512 + (size + 511) / 512 * 512))
   done
-  rm -rf "$staging"
   echo "  bundle: ${#names[@]} grammars in $BUNDLE"
 }
 

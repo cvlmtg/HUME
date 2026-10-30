@@ -1335,16 +1335,17 @@ fn load_plum_with(
     init_src: &str,
     config: Option<&str>,
 ) {
-    load_with_init(
-        ed,
-        data_dir,
-        &format!(
-            "{init_src}\n(load-plugin! \"core:stdlib\")\n{}\n\
-             (%activate-plugin-inline! \"core:plum\" \"grammars.scm\")\n\
-             (%activate-plugin-inline! \"core:plum\" \"themes.scm\")",
-            hume_scripting::eager_load_scm("core:plum", config)
-        ),
-    );
+    load_with_init(ed, data_dir, &plum_init_source(init_src, config));
+}
+
+/// The `init.scm` [`load_plum_with`] loads.
+fn plum_init_source(init_src: &str, config: Option<&str>) -> String {
+    format!(
+        "{init_src}\n(load-plugin! \"core:stdlib\")\n{}\n\
+         (%activate-plugin-inline! \"core:plum\" \"grammars.scm\")\n\
+         (%activate-plugin-inline! \"core:plum\" \"themes.scm\")",
+        hume_scripting::eager_load_scm("core:plum", config)
+    )
 }
 
 /// Write `source` as `<tmp>/init.scm`, evaluate it against the real

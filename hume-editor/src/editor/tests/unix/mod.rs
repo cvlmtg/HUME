@@ -487,7 +487,7 @@ impl StagedGrammarFixture {
 
         let data_tmp = tempfile::tempdir().unwrap();
         let data_dir = data_tmp.path().join("hume");
-        test_fixtures::install_fixture_grammar(&data_dir.join("grammars"), grammar_name);
+        test_fixtures::install_fixture_grammar(&data_dir.join("grammars"), grammar_name, "1");
 
         Self {
             config_dir,

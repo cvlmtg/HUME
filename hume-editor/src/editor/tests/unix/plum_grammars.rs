@@ -91,6 +91,18 @@ fn wrong_symbol(manifest: String) -> String {
     )
 }
 
+/// A folder under `work` holding only `name`'s fixture archive.
+fn fixture_archive_folder(work: &Path, name: &str) -> PathBuf {
+    let folder = work.join("folder");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::copy(
+        archive_path(&fixture_archive_dir(), name),
+        archive_path(&folder, name),
+    )
+    .unwrap();
+    folder
+}
+
 /// A folder under `work` holding only `name`'s fixture archive, repacked
 /// with its manifest passed through `edit`.
 fn one_archive_folder(work: &Path, name: &str, edit: impl Fn(String) -> String) -> PathBuf {
@@ -131,6 +143,13 @@ fn plum_from_folder(data_tmp: &Path, folder: &Path) -> Editor {
     ed
 }
 
+/// [`plum_from_folder`], with every grammar `folder` lacks coming from `release`.
+fn plum_from_folder_and_release(data_tmp: &Path, folder: &Path, release: &ReleaseShim) -> Editor {
+    let mut ed = plum_from_folder(data_tmp, folder);
+    release.install(&mut ed);
+    ed
+}
+
 /// An editor with PLUM loaded and no `grammar-source`, so every grammar comes
 /// from `release`.
 fn plum_from_release(data_tmp: &Path, release: &ReleaseShim) -> Editor {
@@ -154,18 +173,17 @@ fn installs(data_tmp: &Path, name: &str) -> Vec<String> {
     installs
 }
 
-/// `name`'s newest install folder.
+/// `name`'s newest install folder that holds the checked marker.
 fn current_install(data_tmp: &Path, name: &str) -> Option<PathBuf> {
     installs(data_tmp, name)
-        .pop()
+        .into_iter()
+        .rev()
         .map(|install| grammar_dir(data_tmp, name).join(install))
+        .find(|dir| test_fixtures::checked_marker(dir).exists())
 }
 
 fn installed(data_tmp: &Path, name: &str) -> bool {
-    current_install(data_tmp, name).is_some_and(|dir| {
-        dir.join(format!("{name}.{}", grammar_platform_ext()))
-            .exists()
-    })
+    current_install(data_tmp, name).is_some()
 }
 
 /// The yaml fixture, renamed in `grammar` as the json grammar: a json
@@ -240,6 +258,20 @@ fn ensure_grammars(ed: &mut Editor, data_tmp: &Path, names: &[&str]) {
 
 fn log(ed: &Editor) -> String {
     ed.state.message_log.format_for_display()
+}
+
+/// Installs json from `folder`, which fails logging `expected` and leaves
+/// no grammar and no staging files.
+fn assert_json_install_refused(folder: &Path, expected: &str) {
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = plum_from_folder(data_tmp.path(), folder);
+
+    type_cmd(&mut ed, ":plum-install-grammar json");
+
+    assert!(log(&ed).contains(expected), "{}", log(&ed));
+    assert!(!grammar_dir(data_tmp.path(), "json").exists());
+    assert!(!ed.state.config.languages.has_grammar("json"));
+    assert_eq!(staging_leftovers(data_tmp.path()), Vec::<String>::new());
 }
 
 #[test]
@@ -391,8 +423,7 @@ fn a_folder_holding_every_name_never_reaches_the_release() {
     require_grammars(&["json", "markdown", "markdown.inline"]);
     let release = ReleaseShim::serving(&fixture_bundle_dir());
     let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &fixture_archive_dir());
-    release.install(&mut ed);
+    let mut ed = plum_from_folder_and_release(data_tmp.path(), &fixture_archive_dir(), &release);
 
     ensure_grammars(&mut ed, data_tmp.path(), &["json", "markdown"]);
 
@@ -409,11 +440,10 @@ fn a_folder_holding_every_name_never_reaches_the_release() {
 fn a_grammar_the_folder_lacks_comes_from_the_release() {
     require_grammars(&["json", "yaml"]);
     let work = tempfile::tempdir().unwrap();
-    let folder = one_archive_folder(work.path(), "json", |manifest| manifest);
+    let folder = fixture_archive_folder(work.path(), "json");
     let release = ReleaseShim::serving(&fixture_bundle_dir());
     let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &folder);
-    release.install(&mut ed);
+    let mut ed = plum_from_folder_and_release(data_tmp.path(), &folder, &release);
 
     ensure_grammars(&mut ed, data_tmp.path(), &["json", "yaml"]);
 
@@ -435,15 +465,14 @@ fn a_grammar_the_folder_lacks_comes_from_the_release() {
 fn a_grammar_planned_from_the_folder_never_comes_from_the_release() {
     require_grammars(&["json", "yaml"]);
     let work = tempfile::tempdir().unwrap();
-    let folder = one_archive_folder(work.path(), "json", |manifest| manifest);
+    let folder = fixture_archive_folder(work.path(), "json");
     let release = ReleaseShim::running(&format!(
         "{}case \"$url\" in *.tar) rm -f '{}' ;; esac\n",
         serve_body(&fixture_bundle_dir()),
         archive_path(&folder, "json").display(),
     ));
     let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &folder);
-    release.install(&mut ed);
+    let mut ed = plum_from_folder_and_release(data_tmp.path(), &folder, &release);
 
     ensure_grammars(&mut ed, data_tmp.path(), &["yaml", "json"]);
 
@@ -465,11 +494,10 @@ fn a_grammar_planned_from_the_folder_never_comes_from_the_release() {
 fn a_name_in_neither_the_folder_nor_the_release_installs_nothing() {
     require_grammars(&["json"]);
     let work = tempfile::tempdir().unwrap();
-    let folder = one_archive_folder(work.path(), "json", |manifest| manifest);
+    let folder = fixture_archive_folder(work.path(), "json");
     let release = ReleaseShim::serving(&fixture_bundle_dir());
     let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &folder);
-    release.install(&mut ed);
+    let mut ed = plum_from_folder_and_release(data_tmp.path(), &folder, &release);
 
     ensure_grammars(&mut ed, data_tmp.path(), &["json", "toml"]);
 
@@ -495,8 +523,7 @@ fn a_grammar_source_that_is_not_a_directory_is_an_error_and_reaches_no_release()
     for source in [work.path().join("missing"), file] {
         let release = ReleaseShim::serving(&fixture_bundle_dir());
         let data_tmp = tempfile::tempdir().unwrap();
-        let mut ed = plum_from_folder(data_tmp.path(), &source);
-        release.install(&mut ed);
+        let mut ed = plum_from_folder_and_release(data_tmp.path(), &source, &release);
 
         type_cmd(&mut ed, ":plum-install-grammar json");
 
@@ -518,8 +545,7 @@ fn a_grammar_source_holding_no_archive_is_an_error_and_reaches_no_release() {
     std::fs::rename(folder_copy(work.path()), parent.join("grammars")).unwrap();
     let release = ReleaseShim::serving(&fixture_bundle_dir());
     let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &parent);
-    release.install(&mut ed);
+    let mut ed = plum_from_folder_and_release(data_tmp.path(), &parent, &release);
 
     type_cmd(&mut ed, ":plum-install-grammar json");
 
@@ -538,11 +564,10 @@ fn a_grammar_source_holding_no_archive_is_an_error_and_reaches_no_release() {
 fn a_grammar_the_folder_lacks_names_the_folder_when_the_release_fails() {
     require_grammars(&["json"]);
     let work = tempfile::tempdir().unwrap();
-    let folder = one_archive_folder(work.path(), "json", |manifest| manifest);
+    let folder = fixture_archive_folder(work.path(), "json");
     let release = ReleaseShim::running("exit 22\n");
     let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &folder);
-    release.install(&mut ed);
+    let mut ed = plum_from_folder_and_release(data_tmp.path(), &folder, &release);
 
     type_cmd(&mut ed, ":plum-install-grammar yaml");
 
@@ -631,18 +656,8 @@ fn an_archive_built_for_another_platform_is_refused() {
             "(platform . \"plan9-mips\")",
         )
     });
-    let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &folder);
 
-    type_cmd(&mut ed, ":plum-install-grammar json");
-
-    assert!(
-        log(&ed).contains("the json grammar is built for plan9-mips"),
-        "{}",
-        log(&ed)
-    );
-    assert!(!grammar_dir(data_tmp.path(), "json").exists());
-    assert_eq!(staging_leftovers(data_tmp.path()), Vec::<String>::new());
+    assert_json_install_refused(&folder, "the json grammar is built for plan9-mips");
 }
 
 /// An archive named for one grammar that holds another installs nothing:
@@ -653,18 +668,8 @@ fn an_archive_holding_another_grammar_is_refused() {
     let work = tempfile::tempdir().unwrap();
     let folder = folder_copy(work.path());
     std::fs::copy(archive_path(&folder, "yaml"), archive_path(&folder, "json")).unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &folder);
 
-    type_cmd(&mut ed, ":plum-install-grammar json");
-
-    assert!(
-        log(&ed).contains("the json grammar archive is the yaml grammar"),
-        "{}",
-        log(&ed)
-    );
-    assert!(!grammar_dir(data_tmp.path(), "json").exists());
-    assert_eq!(staging_leftovers(data_tmp.path()), Vec::<String>::new());
+    assert_json_install_refused(&folder, "the json grammar archive is the yaml grammar");
 }
 
 #[test]
@@ -820,15 +825,8 @@ fn a_grammar_whose_library_cannot_load_installs_nothing() {
     require_grammars(&["json"]);
     let work = tempfile::tempdir().unwrap();
     let folder = one_archive_folder(work.path(), "json", wrong_symbol);
-    let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &folder);
 
-    type_cmd(&mut ed, ":plum-install-grammar json");
-
-    assert!(log(&ed).contains("install failed"), "{}", log(&ed));
-    assert!(!grammar_dir(data_tmp.path(), "json").exists());
-    assert!(!ed.state.config.languages.has_grammar("json"));
-    assert_eq!(staging_leftovers(data_tmp.path()), Vec::<String>::new());
+    assert_json_install_refused(&folder, "install failed");
 }
 
 #[test]
@@ -838,18 +836,8 @@ fn a_manifest_without_a_symbol_is_refused() {
     let folder = one_archive_folder(work.path(), "json", |manifest| {
         manifest.replace(" (symbol . \"tree_sitter_json\")\n", "")
     });
-    let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &folder);
 
-    type_cmd(&mut ed, ":plum-install-grammar json");
-
-    assert!(
-        log(&ed).contains("grammar manifest has no symbol"),
-        "{}",
-        log(&ed)
-    );
-    assert!(!grammar_dir(data_tmp.path(), "json").exists());
-    assert_eq!(staging_leftovers(data_tmp.path()), Vec::<String>::new());
+    assert_json_install_refused(&folder, "grammar manifest has no symbol");
 }
 
 #[test]
@@ -885,8 +873,7 @@ fn a_dependency_in_neither_the_folder_nor_the_release_installs_nothing() {
     edit_index_line(&bundle, "markdown.inline ", |_| String::new());
     let release = ReleaseShim::serving(&bundle);
     let data_tmp = tempfile::tempdir().unwrap();
-    let mut ed = plum_from_folder(data_tmp.path(), &folder);
-    release.install(&mut ed);
+    let mut ed = plum_from_folder_and_release(data_tmp.path(), &folder, &release);
 
     ensure_grammars(&mut ed, data_tmp.path(), &["json", "markdown"]);
 
@@ -982,8 +969,9 @@ fn cleanup_removes_everything_but_the_current_installs() {
     for (name, install) in [("json", "5"), ("json", "40"), ("proto", "1")] {
         let dir = grammars.join(name).join(install);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(format!("{name}.{ext}")), b"").unwrap();
+        std::fs::write(test_fixtures::checked_marker(&dir), b"").unwrap();
     }
+    std::fs::create_dir_all(grammars.join("json/41")).unwrap();
     std::fs::write(grammars.join(format!("json/json.{ext}")), b"").unwrap();
     std::fs::create_dir_all(grammars.join("sources/json")).unwrap();
     std::fs::write(grammars.join("sources/json/grammar.js"), b"").unwrap();
@@ -991,7 +979,6 @@ fn cleanup_removes_everything_but_the_current_installs() {
     let staging = staging_dir(data_tmp.path());
     std::fs::create_dir_all(staging.join("json")).unwrap();
     std::fs::write(staging.join("json.tar.gz"), b"").unwrap();
-    std::fs::write(staging.join(format!("json-7.{ext}")), b"").unwrap();
     std::fs::write(staging.join("index"), b"").unwrap();
 
     type_cmd(&mut ed, ":plum-cleanup-grammars");
@@ -1008,14 +995,41 @@ fn startup_registers_the_newest_install() {
     require_grammars(&["json"]);
     let data_tmp = tempfile::tempdir().unwrap();
     let grammars = canonical_data_dir(data_tmp.path()).join("grammars");
-    let older = test_fixtures::install_fixture_grammar(&grammars, "json");
+    let older = test_fixtures::install_fixture_grammar(&grammars, "json", "1");
     let manifest = older.join("manifest.scm");
     std::fs::write(
         &manifest,
         wrong_symbol(std::fs::read_to_string(&manifest).unwrap()),
     )
     .unwrap();
-    test_fixtures::copy_fixture_grammar(&grammars.join("json/20"), "json");
+    test_fixtures::install_fixture_grammar(&grammars, "json", "20");
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    load_plum(&mut ed, data_tmp.path());
+    type_cmd(&mut ed, ":set buffer language=json");
+    let bid = ed.focused_buffer_id();
+
+    ed.reparse_stale_buffers();
+
+    assert!(ed.state.buffers.get(bid).syntax.is_some(), "{}", log(&ed));
+    assert_eq!(warning_texts(&ed), Vec::<String>::new());
+}
+
+/// A newer install that never passed its load check is not the grammar:
+/// startup registers the newest checked one.
+#[test]
+fn startup_skips_an_unchecked_newer_install() {
+    require_grammars(&["json"]);
+    let data_tmp = tempfile::tempdir().unwrap();
+    let grammars = canonical_data_dir(data_tmp.path()).join("grammars");
+    test_fixtures::install_fixture_grammar(&grammars, "json", "1");
+    let unchecked = grammars.join("json/2");
+    test_fixtures::copy_fixture_grammar(&unchecked, "json");
+    let manifest = unchecked.join("manifest.scm");
+    std::fs::write(
+        &manifest,
+        wrong_symbol(std::fs::read_to_string(&manifest).unwrap()),
+    )
+    .unwrap();
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     load_plum(&mut ed, data_tmp.path());
     type_cmd(&mut ed, ":set buffer language=json");
@@ -1056,10 +1070,8 @@ fn ensure_grammars_from_init_installs_nothing_that_cannot_load() {
         &mut ed,
         data_tmp.path(),
         &format!(
-            "(load-plugin! \"core:stdlib\")\n{}\n\
-             (%activate-plugin-inline! \"core:plum\" \"grammars.scm\")\n\
-             (call! \"plum/ensure-grammars\" '(\"json\"))",
-            hume_scripting::eager_load_scm("core:plum", Some(&config))
+            "{}\n(call! \"plum/ensure-grammars\" '(\"json\"))",
+            plum_init_source("", Some(&config))
         ),
     );
 

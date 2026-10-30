@@ -146,12 +146,19 @@ pub fn copy_fixture_grammar(to: &Path, name: &str) {
 }
 
 /// Install `name`'s fixture under `grammars_dir` as PLUM installs a grammar
-/// under `<data>/grammars/`, as the one install `<name>/1/`, and return that
-/// folder. Callers call [`require_grammars`] first.
-pub fn install_fixture_grammar(grammars_dir: &Path, name: &str) -> PathBuf {
-    let dir = grammars_dir.join(name).join("1");
+/// under `<data>/grammars/`, as the checked install `<name>/<install>/`, and
+/// return that folder. Callers call [`require_grammars`] first.
+pub fn install_fixture_grammar(grammars_dir: &Path, name: &str, install: &str) -> PathBuf {
+    let dir = grammars_dir.join(name).join(install);
     copy_fixture_grammar(&dir, name);
+    std::fs::write(checked_marker(&dir), b"").expect("write the checked marker");
     dir
+}
+
+/// The file whose presence makes the install folder `install` an install:
+/// PLUM writes it once the grammar there has loaded.
+pub fn checked_marker(install: &Path) -> PathBuf {
+    install.join("checked")
 }
 
 /// Require `names`' compiled grammar fixtures to be present.

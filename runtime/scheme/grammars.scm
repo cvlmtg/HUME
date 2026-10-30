@@ -36,6 +36,9 @@
 (define (%grammar-manifest-path dir)
   (path-join dir "manifest.scm"))
 
+(define (%grammar-checked-path dir)
+  (path-join dir "checked"))
+
 ;; ── Installs ──────────────────────────────────────────────────────────────────
 ;; See README.md.
 
@@ -51,16 +54,18 @@
                   (dir-entry-names dir))
           (lambda (a b) (< (string->number a) (string->number b))))))
 
-;;; `name`'s current install folder, or #f when it has none.
-(define (%grammar-current-install name)
-  (let ((installs (grammar-installs name)))
-    (and (pair? installs)
-         (path-join (grammar-dir name) (last installs)))))
-
-;;; `name`'s current install folder when it holds this platform's library, else #f.
+;;; `name`'s current install: its newest install folder marked checked, or #f.
 (define (grammar-installed-folder name)
-  (let ((dir (%grammar-current-install name)))
-    (and dir (path-exists? (grammar-library-path dir name)) dir)))
+  (let loop ((installs (reverse (grammar-installs name))))
+    (and (pair? installs)
+         (let ((folder (path-join (grammar-dir name) (car installs))))
+           (if (path-exists? (%grammar-checked-path folder))
+               folder
+               (loop (cdr installs)))))))
+
+;;; Marks the install folder `dir` as one whose grammar has loaded.
+(define (mark-grammar-checked! dir)
+  (close-output-port (open-output-file (%grammar-checked-path dir) #:exists 'truncate)))
 
 (define (grammar-installed? name)
   (and (grammar-installed-folder name) #t))
@@ -68,12 +73,20 @@
 ;;; `(name . folder)` for each installed grammar of a language HUME knows, sorted by name,
 ;;; `folder` its current install.
 (define (installed-grammar-folders)
-  (let ((languages (bundled-languages)))
-    (filter pair?
-            (map (lambda (name)
-                   (let ((folder (and (member name languages) (grammar-installed-folder name))))
-                     (and folder (cons name folder))))
-                 (dir-entry-names (grammars-dir))))))
+  (let ((entries (dir-entry-names (grammars-dir))))
+    (if (null? entries)
+        '()
+        (let ((languages (bundled-languages)))
+          (filter pair?
+                  (map (lambda (name)
+                         (let ((folder (and (member name languages)
+                                            (grammar-installed-folder name))))
+                           (and folder (cons name folder))))
+                       entries))))))
+
+;;; The parsed `manifest.scm` of the install folder `dir`.
+(define (grammar-manifest dir)
+  (read-data-file (%grammar-manifest-path dir)))
 
 (define (grammar-manifest-ref manifest key)
   (let ((entry (and (list? manifest) (assoc key manifest))))
@@ -95,12 +108,12 @@
                     present))))))
 
 (define (%grammar-symbol dir)
-  (grammar-manifest-ref (read-data-file (%grammar-manifest-path dir)) 'symbol))
+  (grammar-manifest-ref (grammar-manifest dir) 'symbol))
 
-;;; Loads `dir`'s grammar with its library at `library`, registering nothing.
-(define (check-grammar! name dir library)
-  (%check-grammar! name library (%grammar-symbol dir) (%grammar-highlights-path dir)
-                   (%grammar-present-queries dir)))
+;;; Loads the grammar of the install folder `dir`, registering nothing.
+(define (check-grammar! name dir)
+  (%check-grammar! name (grammar-library-path dir name) (%grammar-symbol dir)
+                   (%grammar-highlights-path dir) (%grammar-present-queries dir)))
 
 ;;; Registers the grammar of `name`'s install folder `folder`.
 (define (register-installed-grammar! name folder)
@@ -117,8 +130,6 @@
             (log! 'warning (string-append
                             "grammar \"" name "\" is installed but broken (" (to-string err)
                             ") — run :plum-install-grammar " name " to repair")))
-          (unless (path-exists? (%grammar-highlights-path folder))
-            (error "its highlights query is missing"))
           (register-installed-grammar! name folder))))
     (installed-grammar-folders)))
 
