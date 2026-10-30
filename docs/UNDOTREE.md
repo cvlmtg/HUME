@@ -192,8 +192,6 @@ builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind
 
 ### Phase 2 — the side panel
 
-- [ ] Docked-pane `LayoutTree` variant (see `docs/ROADMAP.md`'s docked-panes
-      item) and scoping `equalize` to skip docked panes
 - [x] Steel builtin to mint a read-only view buffer, the `[messages]` shape
       with an owned-`String` label: `show-read-only-buffer!` (`hume-editor`,
       `hume-scripting`)

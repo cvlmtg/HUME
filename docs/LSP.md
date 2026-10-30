@@ -267,5 +267,5 @@ Test-writing rules that bite here specifically:
 - **Snippet placeholder navigation** — parsing maybe Steel; insert-mode tabstop state machine with multi-cursor selections likely Rust (see open question).
 - **Code lens** — plugin-writable via B2 + B5 stores + `workspace/executeCommand`.
 - **Bounded auto-restart** for crashed servers (policy knob Steel-side).
-- **`workspace/didChangeWatchedFiles`** via a real file watcher (existing ROADMAP Future item) — not implemented in v1; the capability is not advertised.
+- **`workspace/didChangeWatchedFiles`** via a real file watcher — not implemented in v1; the capability is not advertised.
 - **DAP** — entirely separate protocol; out of scope, noted only as the same platform pattern (Rust transport, Steel behavior) applied again.
