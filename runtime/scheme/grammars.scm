@@ -24,7 +24,7 @@
 (define (grammar-query-file file)
   (path-join "queries" file))
 
-(define (grammar-library-path dir name)
+(define (%grammar-library-path dir name)
   (path-join dir (grammar-library-file name)))
 
 (define (%grammar-query-path dir file)
@@ -55,7 +55,7 @@
           (lambda (a b) (< (string->number a) (string->number b))))))
 
 ;;; `name`'s current install: its newest install folder marked checked, or #f.
-(define (grammar-installed-folder name)
+(define (%grammar-installed-folder name)
   (let loop ((installs (reverse (grammar-installs name))))
     (and (pair? installs)
          (let ((folder (path-join (grammar-dir name) (car installs))))
@@ -68,7 +68,7 @@
   (close-output-port (open-output-file (%grammar-checked-path dir) #:exists 'truncate)))
 
 (define (grammar-installed? name)
-  (and (grammar-installed-folder name) #t))
+  (and (%grammar-installed-folder name) #t))
 
 ;;; `(name . folder)` for each installed grammar of a language HUME knows, sorted by name,
 ;;; `folder` its current install.
@@ -80,7 +80,7 @@
           (filter pair?
                   (map (lambda (name)
                          (let ((folder (and (member name languages)
-                                            (grammar-installed-folder name))))
+                                            (%grammar-installed-folder name))))
                            (and folder (cons name folder))))
                        entries))))))
 
@@ -98,7 +98,7 @@
 ;; See README.md.
 
 (define (%grammar-present-queries dir)
-  (let loop ((kinds (grammar-optional-queries)) (present (hash)))
+  (let loop ((kinds (%grammar-optional-queries)) (present (hash)))
     (if (null? kinds)
         present
         (let ((path (%grammar-query-path dir (cdr (car kinds)))))
@@ -112,12 +112,12 @@
 
 ;;; Loads the grammar of the install folder `dir`, registering nothing.
 (define (check-grammar! name dir)
-  (%check-grammar! name (grammar-library-path dir name) (%grammar-symbol dir)
+  (%check-grammar! name (%grammar-library-path dir name) (%grammar-symbol dir)
                    (%grammar-highlights-path dir) (%grammar-present-queries dir)))
 
 ;;; Registers the grammar of `name`'s install folder `folder`.
 (define (register-installed-grammar! name folder)
-  (%register-grammar! name (grammar-library-path folder name) (%grammar-symbol folder)
+  (%register-grammar! name (%grammar-library-path folder name) (%grammar-symbol folder)
                       (%grammar-highlights-path folder) (%grammar-present-queries folder)))
 
 (define (%register-installed-grammars!)

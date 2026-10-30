@@ -462,7 +462,7 @@ builtins! {
     config "%configure-language!" => "configure-language!" syntax::configure_language(name: SteelVal, fields_val: SteelVal);
     open   "%register-grammar!" => "register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, optional_queries: SteelVal);
     open   "%check-grammar!" => "check-grammar!" syntax::check_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, optional_queries: SteelVal);
-    plain  "grammar-optional-queries" syntax::grammar_optional_queries();
+    plain  "%grammar-optional-queries" => "%grammar-optional-queries" syntax::grammar_optional_queries();
 
     // LSP server registration: ranked by whose behalf it is made, last-wins
     // within a rank, queued (like language regs) and applied at the end of

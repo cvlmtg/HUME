@@ -1082,7 +1082,7 @@ fn registering_a_grammar_from_a_command_does_not_count_its_load() {
     run(
         &mut ed,
         data_tmp.path(),
-        r#"(define-typed-command! "probe" "" (lambda () (register-installed-grammar! "yaml" (grammar-installed-folder "yaml"))))"#,
+        r#"(define-typed-command! "probe" "" (lambda () (register-installed-grammar! "yaml" (%grammar-installed-folder "yaml"))))"#,
     );
 
     run_probe(&mut ed);

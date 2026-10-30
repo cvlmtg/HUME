@@ -489,7 +489,7 @@ fn register_grammar_non_path_optional_query_value_errors() {
     assert!(msg.contains("injections"), "{msg}");
 }
 
-/// `grammar-optional-queries` lists every kind as `(key . file-name)`, in
+/// `%grammar-optional-queries` lists every kind as `(key . file-name)`, in
 /// `OptionalQuery::ALL` order.
 #[test]
 fn grammar_optional_queries_lists_every_kind_with_its_file() {

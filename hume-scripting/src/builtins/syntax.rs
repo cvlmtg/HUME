@@ -244,7 +244,7 @@ fn grammar_source(
     })
 }
 
-/// `(grammar-optional-queries)` returns `((key . file-name) ...)` for every
+/// `(%grammar-optional-queries)` returns `((key . file-name) ...)` for every
 /// `OptionalQuery`: the keys `%register-grammar!` accepts and the file each
 /// one is read from.
 pub(crate) fn grammar_optional_queries() -> SteelResult {

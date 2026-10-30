@@ -155,7 +155,7 @@ owns the install layout, which PLUM writes through the same functions.
   is, `<name>.<ext>`, `queries/*.scm` (with Helix's query `NOTICE`), `manifest.scm`, and
   `licenses/` (the grammar's license files, and where its source is), plus the empty
   `checked` marker PLUM writes once the grammar has loaded there.
-  `grammar-library-path`, `%grammar-query-path`, `%grammar-highlights-path`,
+  `%grammar-library-path`, `%grammar-query-path`, `%grammar-highlights-path`,
   `%grammar-manifest-path` and `%grammar-checked-path` name the parts of one install folder. `<data>/grammars/` doesn't
   exist until something is installed, so a fresh setup settles the whole question with one
   `is-dir?`.
@@ -165,7 +165,7 @@ owns the install layout, which PLUM writes through the same functions.
   PLUM never reuses or replaces an install folder: each install gets a new one, numbered
   after the others, and older ones are deleted when they can be. An entry that is not a number
   is not an install.
-- **The marker is the existence proof.** `grammar-installed-folder` is a language's current
+- **The marker is the existence proof.** `%grammar-installed-folder` is a language's current
   install: the newest install folder holding `checked`. PLUM moves a new install into its
   folder before loading it there (`runtime/plugins/core/plum/README.md`'s "Grammar install
   pipeline"), so a folder whose grammar failed to load, or whose install was stopped, has no
@@ -189,7 +189,7 @@ owns the install layout, which PLUM writes through the same functions.
   repairable, so it warns, naming `:plum-install-grammar`, and the other grammars still
   register.
 - **`highlights.scm` is required, every other query file is optional.** The optional kinds come
-  from the `grammar-optional-queries` builtin, an association list of `(key . file-name)`
+  from the `%grammar-optional-queries` builtin, an association list of `(key . file-name)`
   pairs, one per kind the editor can compile. `register-installed-grammar!` registers
   `highlights.scm` plus each of those files present under `queries/`, so a new kind needs no
   change here. The archive's other query files (`locals.scm`, `tags.scm`, …) are not read.
