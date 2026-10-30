@@ -282,7 +282,7 @@
   (lambda (pane arg)
     (let ((name (plum/resolve-grammar-arg pane arg)))
       (when name
-        (log! 'info (string-append "PLUM: installing grammar for " name))
+        (print! (string-append "PLUM: installing grammar for " name))
         (with-handler
           (lambda (err)
             (log! 'error (string-append "PLUM: install failed: " (to-string err))))
@@ -290,9 +290,10 @@
             (lambda (entry)
               (let ((each (car entry)))
                 (unless (equal? each name)
-                  (log! 'info (string-append "PLUM: installing dependency " each " for " name)))
+                  (print! (string-append "PLUM: installing dependency " each " for " name)))
                 (plum/install-one each (cdr entry))))
-            (plum/served-plan (list name)))))))
+            (plum/served-plan (list name)))
+          (print! (string-append "PLUM: installed grammar for " name))))))
   #:inline-output #t #:complete "plum:grammars")
 
 (define-command! "plum/ensure-grammars"

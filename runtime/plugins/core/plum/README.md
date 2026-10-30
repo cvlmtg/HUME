@@ -323,7 +323,9 @@ the run finishes.
 `plum/batch-run!` paints each item's progress line with the `#:progress` reporter its
 caller passes, `print!` for the commands above, because `log!` buffers until the command
 returns and then collapses into one status-line slot, which would lose every per-item line
-but the last while the batch runs. `print!` writes only inside an `#:inline-output`
+but the last while the batch runs. `plum-install-grammar` and `plum-install-theme` print
+their own "installing" and "installed" lines with `print!` for the same reason. A grammar
+download and unpack print nothing else, so without them its screen stays empty. `print!` writes only inside an `#:inline-output`
 command, so `plum-cleanup-plugins` and `plum-cleanup-grammars`, which finish at once, pass
 none and keep their summary `log!` line.
 

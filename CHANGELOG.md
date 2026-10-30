@@ -34,6 +34,7 @@
 - Installing a language server's `.zip` or `.tar` archive on Windows works when HUME runs from Git Bash.
 - A failed or interrupted `:lsp-install` over an installed server keeps the installed version instead of removing it.
 - The `z r` references list keeps every row on the right line and column after an edit that doesn't change the line count.
+- `:plum-install-grammar`, `:plum-install-theme` and `:lsp-install` show what they are installing, and what they installed, on their output screen, which stays in the terminal after you quit.
 
 ## [0.17.0] - 2026-10-28
 

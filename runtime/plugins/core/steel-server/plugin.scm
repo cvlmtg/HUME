@@ -27,7 +27,7 @@
         (begin
           (unless (find-program "cargo")
             (error "steel-server-install: requires 'cargo' on $PATH — install Rust from https://rustup.rs"))
-          (log! 'info "steel-server: running cargo install steel-language-server...")
+          (print! "steel-server: running cargo install steel-language-server...")
           (run-inline-output! "cargo" '("install" "steel-language-server"))
           (unless (find-program "steel-language-server")
             (error "steel-server-install: cargo install succeeded but 'steel-language-server' is not on $PATH — add ~/.cargo/bin to PATH and run :steel-server-install again"))))
