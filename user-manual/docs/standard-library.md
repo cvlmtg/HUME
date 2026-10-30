@@ -30,10 +30,11 @@
 | `stdlib/write-file!` | `(call! "stdlib/write-file!" path content)`{.sig} Write `content` to `path`, creating or truncating it |
 | `stdlib/delete-dir!` | `(call! "stdlib/delete-dir!" dir)`{.sig} Recursively delete `dir`; idempotent |
 | `stdlib/delete-file!` | `(call! "stdlib/delete-file!" path)`{.sig} Delete `path`; idempotent |
+| `stdlib/list-entries` | `(call! "stdlib/list-entries" dir)`{.sig} Sorted basenames of every entry of `dir`, files and directories |
 | `stdlib/list-subdirs` | `(call! "stdlib/list-subdirs" dir)`{.sig} Sorted basenames of `dir`'s subdirectories |
 | `stdlib/path-absolute?` | `(call! "stdlib/path-absolute?" path)`{.sig} Whether `path` names the same place from any working directory: `/x`, and on Windows `C:\x` or `\\server\share` |
 
-`stdlib/delete-dir!` and `stdlib/delete-file!` treat a missing target as no error, unlike `remove-dir!` and the Steel engine's own `delete-file!`. `list-subdirs` skips stray non-directory entries in a directory tree, like `.DS_Store`.
+`stdlib/delete-dir!` and `stdlib/delete-file!` treat a missing target as no error, unlike `remove-dir!` and the Steel engine's own `delete-file!`. `list-subdirs` skips stray non-directory entries in a directory tree, like `.DS_Store`. `list-entries` and `list-subdirs` raise an error when `dir` doesn't exist; check it with `path-exists?` first when a missing directory means there is nothing to list.
 
 ## Downloads
 

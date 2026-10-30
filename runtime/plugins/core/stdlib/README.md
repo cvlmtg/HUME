@@ -38,7 +38,7 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 | Group | Commands |
 |---|---|
 | [Selections](#selections) | `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
-| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/concat`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs`, `stdlib/path-absolute?` |
+| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/concat`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-entries`, `stdlib/list-subdirs`, `stdlib/path-absolute?` |
 | [Downloads, digests and archives](#downloads-digests-and-archives) | `stdlib/download!`, `stdlib/verify-sha256!`, `stdlib/find-extractor`, `stdlib/extract-archive!` |
 | [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
 | [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
@@ -65,9 +65,12 @@ list is picked apart.
 Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
 `core:lsp-install` call them rather than each carrying a copy. `delete-dir!` and
 `delete-file!` are idempotent, unlike `remove-dir!` and Steel's own `delete-file!`:
-a missing target is not an error. `list-subdirs` returns the names of the directories
-under a path, sorted, and skips stray files that sit alongside a directory tree
-(`.install-lock`, `.DS_Store`). `path-absolute?` follows Rust's `Path::is_absolute`: on
+a missing target is not an error. `list-entries` returns the names of every entry of a
+directory, sorted, and `list-subdirs` only those that are directories, skipping stray files
+that sit alongside a directory tree (`.install-lock`, `.DS_Store`). Both raise when the
+directory cannot be read, a missing one included: a general listing cannot tell a directory
+that does not exist yet from a wrong path, so a caller that means "empty" checks
+`path-exists?` first. `path-absolute?` follows Rust's `Path::is_absolute`: on
 Windows a path is absolute only with both a drive and a root (`C:\x`, `C:/x`) or as a UNC
 path (`\\server\share`), so `\x` (the current drive's) and `C:x` (relative to drive `C:`'s
 working directory) are not. Elsewhere it is absolute when it starts with `/`.

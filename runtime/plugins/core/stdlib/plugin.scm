@@ -56,9 +56,12 @@
     (delete-file! path)))
 
 ;;; `is-dir?` drops stray files alongside a directory tree — see README.md's "Filesystem and list search".
+(define (stdlib/list-entries dir)
+  (sort (map file-name (read-dir dir)) string<?))
+
 (define (stdlib/list-subdirs dir)
   (filter (lambda (name) (is-dir? (path-join dir name)))
-          (sort (map file-name (read-dir dir)) string<?)))
+          (stdlib/list-entries dir)))
 
 (define (stdlib/path-absolute? path)
   (if (equal? (current-os!) "windows")
@@ -343,8 +346,12 @@
   "Delete the file at the given path. Idempotent."
   stdlib/delete-file!)
 
+(define-command! "stdlib/list-entries"
+  "Sorted basenames of every entry of the given directory. Raises when the directory cannot be read, a missing one included."
+  stdlib/list-entries)
+
 (define-command! "stdlib/list-subdirs"
-  "Sorted basenames of the given directory's subdirectories."
+  "Sorted basenames of the given directory's subdirectories. Raises when the directory cannot be read, a missing one included."
   stdlib/list-subdirs)
 
 (define-command! "stdlib/path-absolute?"

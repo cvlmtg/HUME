@@ -108,7 +108,7 @@
         (list (plum/staging-dir) (grammars-dir)))
       (let ((archives (map plum/archive-file (bundled-languages))))
         (unless (call! "stdlib/find" (lambda (entry) (member entry archives))
-                       (dir-entry-names folder))
+                       (call! "stdlib/list-entries" folder))
           (fail "holds no grammar archive"))))
     folder))
 
@@ -199,7 +199,7 @@
     (with-handler
       (lambda (err)
         (plum/delete-reporting! folder)
-        (when (null? (dir-entry-names (grammar-dir name)))
+        (when (null? (call! "stdlib/list-entries" (grammar-dir name)))
           (call! "stdlib/delete-dir!" (grammar-dir name)))
         (raise-error err))
       (check-grammar! name folder)
@@ -247,13 +247,18 @@
                       (let ((current (file-name (cdr installed))))
                         (map (lambda (inner) (path-join entry inner))
                              (filter (lambda (inner) (not (equal? inner current)))
-                                     (dir-entry-names (grammar-dir entry)))))
+                                     (call! "stdlib/list-entries" (grammar-dir entry)))))
                       (list entry))))
-              (dir-entry-names (grammars-dir)))))
+              (if (path-exists? (grammars-dir))
+                  (call! "stdlib/list-entries" (grammars-dir))
+                  '()))))
 
 ;;; See README.md's "Commands".
 (define (plum/staging-leftovers)
-  (dir-entry-names (plum/grammar-staging-dir)))
+  (let ((staging (plum/grammar-staging-dir)))
+    (if (path-exists? staging)
+        (call! "stdlib/list-entries" staging)
+        '())))
 
 ;;; A string argument wins; otherwise falls back to the current buffer's language.
 (define (plum/resolve-grammar-arg pane arg)

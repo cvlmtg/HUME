@@ -199,8 +199,9 @@ owns the install layout, which PLUM writes through the same functions.
 - **`check-grammar!` loads without registering.** It takes the same files from an install
   folder and raises when the grammar cannot load. PLUM checks a new install with it in the
   install's own folder, before marking it.
-- **`dir-entry-names` lists a directory.** The sorted names in a directory, none for a path
-  that is not one. Grammar discovery and `core:plum`'s grammar commands list through it.
+- **`%dir-entry-names` lists a directory.** The sorted names in a directory, none for a path
+  that is not one, so a missing `<data>/grammars/` reads as empty. It is this file's own:
+  `grammars.scm` loads before any plugin, and plugins list through `core:stdlib`.
 
 ## The prelude
 

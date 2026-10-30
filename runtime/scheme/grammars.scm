@@ -4,7 +4,7 @@
 ;; ── Layout ────────────────────────────────────────────────────────────────────
 
 ;;; Sorted, and none for a path that is not a directory.
-(define (dir-entry-names dir)
+(define (%dir-entry-names dir)
   (if (is-dir? dir)
       (sort (map file-name (read-dir dir)) string<?)
       '()))
@@ -51,7 +51,7 @@
   (let ((dir (grammar-dir name)))
     (sort (filter (lambda (entry)
                     (and (%grammar-install-name? entry) (is-dir? (path-join dir entry))))
-                  (dir-entry-names dir))
+                  (%dir-entry-names dir))
           (lambda (a b) (< (string->number a) (string->number b))))))
 
 ;;; `name`'s current install: its newest install folder marked checked, or #f.
@@ -73,7 +73,7 @@
 ;;; `(name . folder)` for each installed grammar of a language HUME knows, sorted by name,
 ;;; `folder` its current install.
 (define (installed-grammar-folders)
-  (let ((entries (dir-entry-names (grammars-dir))))
+  (let ((entries (%dir-entry-names (grammars-dir))))
     (if (null? entries)
         '()
         (let ((languages (bundled-languages)))

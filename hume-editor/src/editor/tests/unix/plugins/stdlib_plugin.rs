@@ -249,6 +249,45 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
     );
 }
 
+/// `stdlib/list-entries` returns every entry's basename, files and
+/// directories alike, sorted. Both listings raise for a directory that does
+/// not exist rather than reading it as empty.
+#[test]
+fn core_stdlib_list_entries_lists_everything_and_both_listings_raise_when_missing() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let scan_dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(scan_dir.path().join("beta")).unwrap();
+    std::fs::create_dir_all(scan_dir.path().join("alpha")).unwrap();
+    std::fs::write(scan_dir.path().join("stray.txt"), "not a dir").unwrap();
+    let dir = steel_path(scan_dir.path());
+    let missing = steel_path(&scan_dir.path().join("missing"));
+
+    let assertions = format!(
+        r#"
+(let ([got (call! "stdlib/list-entries" {dir})])
+  (unless (equal? got (list "alpha" "beta" "stray.txt"))
+    (error (string-append "list-entries must return every sorted entry name, got "
+                           (to-string got)))))
+(define (raises? thunk)
+  (with-handler (lambda (err) #t) (thunk) #f))
+(unless (raises? (lambda () (call! "stdlib/list-entries" {missing})))
+  (error "list-entries must raise for a missing directory"))
+(unless (raises? (lambda () (call! "stdlib/list-subdirs" {missing})))
+  (error "list-subdirs must raise for a missing directory"))
+"#
+    );
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(&assertions, &mut ih)
+    };
+    assert!(
+        result.is_ok(),
+        "stdlib listing assertions must pass: {result:?}"
+    );
+}
+
 #[test]
 fn core_stdlib_path_absolute_holds_only_for_a_rooted_path() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();

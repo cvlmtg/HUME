@@ -117,7 +117,6 @@
 (#%register-global "diff-buffer-lines")
 (#%register-global "diff-lines")
 (#%register-global "diff-words")
-(#%register-global "dir-entry-names")
 (#%register-global "drawer-selected-index")
 (#%register-global "edit-text!")
 (#%register-global "exit-insert")
