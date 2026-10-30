@@ -12,9 +12,12 @@ fn dummy_on_select() -> SteelVal {
     SteelVal::BoolV(false)
 }
 
+fn open_with(opts: PickerOpts, items: Vec<PickerItem>) -> PickerSession {
+    PickerSession::new(Vec::new(), opts, items).expect("an empty keymap binds no key twice")
+}
+
 fn open() -> PickerSession {
-    PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
-        .expect("an empty keymap repeats no key")
+    open_with(PickerOpts::default(), Vec::new())
 }
 
 fn open_pending() -> PickerSession {
@@ -22,15 +25,13 @@ fn open_pending() -> PickerSession {
 }
 
 fn open_pending_with(items: Vec<PickerItem>) -> PickerSession {
-    PickerSession::new(
-        Vec::new(),
+    open_with(
         PickerOpts {
             pending: true,
             ..Default::default()
         },
         items,
     )
-    .expect("an empty keymap repeats no key")
 }
 
 fn open_live() -> PickerSession {
@@ -44,7 +45,7 @@ fn open_live() -> PickerSession {
             on_close: None,
         },
     )
-    .expect("an empty keymap repeats no key")
+    .expect("an empty keymap binds no key twice")
 }
 
 fn selected_payload(s: &PickerSession) -> Option<SteelVal> {
@@ -73,15 +74,13 @@ fn new_session_is_empty() {
 
 #[test]
 fn prompt_is_stored_verbatim() {
-    let s = PickerSession::new(
-        Vec::new(),
+    let s = open_with(
         PickerOpts {
             prompt: "files: ".to_string(),
             ..Default::default()
         },
         Vec::new(),
-    )
-    .expect("an empty keymap repeats no key");
+    );
     assert_eq!(s.prompt(), "files: ");
 }
 
@@ -172,15 +171,13 @@ fn set_query_filters_non_matches() {
 
 #[test]
 fn query_prefill_is_visible_and_applied_at_construction() {
-    let mut s = PickerSession::new(
-        Vec::new(),
+    let mut s = open_with(
         PickerOpts {
             query: "f".to_string(),
             ..Default::default()
         },
         Vec::new(),
-    )
-    .expect("an empty keymap repeats no key");
+    );
     assert_eq!(s.query(), "f");
     // Applied through the same `rerank` a later push would use: a
     // batch arriving after open is filtered by the prefilled query

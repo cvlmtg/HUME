@@ -613,7 +613,9 @@ fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
 #[test]
 fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
     let mut ed = editor_from("-[a]>b\n");
-    let mut session = crate::editor::input_stack::picker::PickerSession::new(
+    open_test_session(
+        &mut ed,
+        &["one"],
         Vec::new(),
         hume_scripting::host::PickerOpts {
             on_close: Some(hume_scripting::Callback::for_test(
@@ -621,15 +623,7 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
             )),
             ..Default::default()
         },
-        Vec::new(),
-    )
-    .expect("an empty keymap repeats no key");
-    session.push(vec![crate::editor::input_stack::picker::PickerItem {
-        display: "one".to_string(),
-        payload: hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV("one".into())),
-    }]);
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
-        .expect("no `.` is in progress");
+    );
     assert!(
         ed.state.input.picker().is_some(),
         "sanity: the picker must be open"

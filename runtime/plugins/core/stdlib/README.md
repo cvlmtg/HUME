@@ -145,8 +145,8 @@ whole or `hash-insert`s the keys it wants different. The three `core:pickers` pi
 
 Movement keys call `picker-move!` and leave the picker open. `Esc` only closes it.
 `Enter`, `Ctrl-o`, `Ctrl-t`, `Ctrl-v` and `Ctrl-s` go through `stdlib/picker-accept`, which
-calls `picker-close!` before the handler: only what a binding does after its close is part
-of a `.`-repeatable change, and the handler is what `.` should repeat.
+calls `picker-close!` before the handler: `.` runs the closing binding again in full, so
+nothing may come before the close that `.` should not repeat.
 
 `stdlib/with-tab`, `stdlib/with-vsplit` and `stdlib/with-split` each wrap a handler. Accepting
 an item then does two things:

@@ -554,6 +554,46 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_core::HostToken
         .expect("show-drawer-list! must open, not read as stale")
 }
 
+/// Opens a picker over `items`, each its own payload, with `keymap` and
+/// `opts`, through `picker::open_picker` directly (bypassing Steel).
+fn open_test_session(
+    ed: &mut Editor,
+    items: &[&str],
+    keymap: Vec<hume_scripting::host::PickerBinding>,
+    opts: hume_scripting::host::PickerOpts,
+) {
+    use crate::editor::input_stack::picker;
+    let mut session =
+        picker::PickerSession::new(keymap, opts, Vec::new()).expect("no key is bound twice");
+    session.push(items.iter().map(|s| picker::item(s)).collect());
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
+}
+
+/// [`open_test_session`] with no keymap and default options.
+fn open_test_picker(ed: &mut Editor, items: &[&str]) {
+    open_test_session(ed, items, Vec::new(), Default::default());
+}
+
+/// Opens an empty live picker with no keymap, its query-change callback
+/// the marker `"on-query-change"`, through `picker::open_picker` directly.
+fn open_live_test_picker(ed: &mut Editor) {
+    use crate::editor::input_stack::picker;
+    let session = picker::PickerSession::new_live(
+        Vec::new(),
+        hume_scripting::host::LivePickerOpts {
+            prompt: String::new(),
+            query: String::new(),
+            on_query_change: hume_scripting::Callback::for_test(steel::rvals::SteelVal::StringV(
+                "on-query-change".into(),
+            )),
+            truncate: hume_core::TruncateEnd::Head,
+            on_close: None,
+        },
+    )
+    .expect("an empty keymap binds no key twice");
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
+}
+
 /// A Steel completion source named `name` that answers `items` (Scheme
 /// item literals, e.g. `(list (hash "label" "foo"))`) synchronously,
 /// registered with `#:target 'buffer` plus `extra` keywords. The one shape

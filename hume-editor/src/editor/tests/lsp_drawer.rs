@@ -178,17 +178,10 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
 fn show_drawer_list_drops_silently_when_a_picker_is_open() {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_core::Severity;
-    use hume_scripting::host::{PickerOpts, UiHost};
+    use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let session = crate::editor::input_stack::picker::PickerSession::new(
-        Vec::new(),
-        PickerOpts::default(),
-        Vec::new(),
-    )
-    .expect("an empty keymap repeats no key");
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
-        .expect("no `.` is in progress");
+    open_test_picker(&mut ed, &[]);
 
     let traces_before = ed
         .state

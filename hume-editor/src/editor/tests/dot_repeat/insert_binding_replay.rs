@@ -486,7 +486,7 @@ fn dot_repeat_replays_a_dismissed_pick_as_a_dismissal() {
             && is_key(&inputs[1], 'y')
             && matches!(&inputs[2], Input::Binding { name, answers, .. }
                 if &**name == "pick-word"
-                    && matches!(answers.as_slice(), [Answer::Pick(Pick { action: Some(_), .. })]))
+                    && matches!(answers.as_slice(), [Answer::Pick(Pick { closing_key: Some(_), .. })]))
             && is_binding(&inputs[3], "exit-insert"),
         "got {inputs:?}"
     );

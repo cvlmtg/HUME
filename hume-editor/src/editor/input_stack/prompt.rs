@@ -43,12 +43,7 @@ pub(in crate::editor) fn open_prompt(
                     Answer::Prompt(text) => Some(text.clone()),
                     _ => None,
                 },
-                |text| {
-                    Ok(PendingAnswer::Calls(vec![hume_scripting::SteelCall::new(
-                        callback,
-                        vec![prompt_arg(text)],
-                    )]))
-                },
+                |text| Ok(PendingAnswer::Calls(vec![prompt_call(callback, text)])),
             )
             .map_err(|refusal| refusal.to_string());
     }
@@ -75,20 +70,23 @@ pub(in crate::editor) fn open_prompt(
     Ok(())
 }
 
-/// The argument a prompt's callback gets: the confirmed text, or `#f`.
-fn prompt_arg(text: Option<String>) -> steel::rvals::SteelVal {
-    match text {
+/// The call of a prompt's callback with the confirmed text, or `#f`.
+fn prompt_call(
+    callback: hume_scripting::Callback,
+    text: Option<String>,
+) -> hume_scripting::SteelCall {
+    let arg = match text {
         Some(s) => steel::rvals::SteelVal::StringV(s.into()),
         None => steel::rvals::SteelVal::BoolV(false),
-    }
+    };
+    hume_scripting::SteelCall::new(callback, vec![arg])
 }
 
 impl PromptLayer {
     /// Queue this prompt's callback with `text`, or `#f`, recording it under
     /// its answer ticket, if it has one. Every way a prompt closes ends here.
     fn fire(&mut self, state: &mut EditorState, text: Option<String>) {
-        let call =
-            hume_scripting::SteelCall::new(self.callback.clone(), vec![prompt_arg(text.clone())]);
+        let call = prompt_call(self.callback.clone(), text.clone());
         state.queue_answered_call(self.input.take_answer(), Answer::Prompt(text), call);
     }
 }

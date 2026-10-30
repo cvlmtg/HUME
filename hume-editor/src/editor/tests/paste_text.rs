@@ -146,12 +146,8 @@ fn paste_text_lands_in_a_prompt_like_a_paste() {
 
 #[test]
 fn paste_text_lands_in_the_picker_query_like_a_paste() {
-    let (pasted, scripted) = terminal_paste_then_paste_text(
-        "-[h]>ello\n",
-        "",
-        super::bracketed_paste::open_live_test_picker,
-        "foo\nbar\n",
-    );
+    let (pasted, scripted) =
+        terminal_paste_then_paste_text("-[h]>ello\n", "", open_live_test_picker, "foo\nbar\n");
     assert_eq!(scripted.picker_query.as_deref(), Some("foo bar"));
     assert_eq!(scripted.queued_calls, 1, "one query-change call");
     assert_eq!(scripted, pasted);

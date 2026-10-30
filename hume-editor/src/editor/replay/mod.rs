@@ -145,7 +145,7 @@ impl PickerKeyRun {
     /// `picked` naming the handed item for `.`.
     pub(in crate::editor) fn into_pick(self, picked: impl FnOnce(usize, Rooted) -> Picked) -> Pick {
         Pick {
-            action: Some(self.key),
+            closing_key: Some(self.key),
             picked: self.selected.map(|(index, payload)| picked(index, payload)),
         }
     }
@@ -280,12 +280,12 @@ pub(in crate::editor) fn dispatch_command_line_key(ed: &mut Editor, cmd: Dispatc
 /// whole call: a repeatable command it dispatches starts no change, and a
 /// `picker-close!` it makes on `run`'s picker records `run`'s pick
 /// ([`ScopeSlot::closing_binding`]).
-pub(in crate::editor) fn run_picker_key<R>(
+pub(in crate::editor) fn run_picker_key(
     ed: &mut Editor,
     run: PickerKeyRun,
-    f: impl FnOnce(&mut Editor) -> R,
-) -> R {
-    with_running(ed, Some(Running::PickerKey(run)), f)
+    f: impl FnOnce(&mut Editor),
+) {
+    with_running(ed, Some(Running::PickerKey(run)), f);
 }
 
 /// Dispatches `cmd` at an explicit count of 1, never extending, with

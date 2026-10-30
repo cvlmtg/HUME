@@ -18,10 +18,8 @@ use hume_scripting::host::{PickerStep, token_to_steel};
 use hume_scripting::{Rooted, SteelCall};
 use steel::rvals::SteelVal;
 
-use super::super::buffer::store::EditOrigin;
 use super::super::commands::half_page;
 use super::super::error::CommandError;
-use super::super::event::{CallGuard, PendingWork};
 use super::super::keymap::CanonicalKey;
 use super::super::replay::{
     Answer, AnswerTicket, InputOpener, PendingAnswer, Pick, Picked, PickerKeyRun, ReplayRefusal,
@@ -228,26 +226,25 @@ pub(in crate::editor) fn open_picker(
                 },
                 |pick: Pick| {
                     let mut calls = Vec::new();
-                    if let Some(key) = pick.action {
+                    if let Some(key) = pick.closing_key {
                         let binding = session
                             .binding_for(key)
                             .ok_or(ReplayRefusal::UnboundKey)?
                             .clone();
                         let item = match pick.picked {
-                            None => steel_false(),
-                            Some(Picked::Choice(choice)) => session
-                                .payload_for(&choice)
-                                .ok_or_else(|| choice.missing())?
-                                .clone(),
-                            Some(Picked::Payload(payload)) => payload,
+                            None => None,
+                            Some(Picked::Choice(choice)) => Some(
+                                session
+                                    .payload_for(&choice)
+                                    .ok_or_else(|| choice.missing())?
+                                    .clone(),
+                            ),
+                            Some(Picked::Payload(payload)) => Some(payload),
                             Some(Picked::PayloadForgotten) => {
                                 return Err(ReplayRefusal::ForgottenPayload);
                             }
                         };
-                        calls.push(SteelCall::with_args(
-                            binding,
-                            Rc::from([steel_false(), item]),
-                        ));
+                        calls.push(binding_call(binding, None, item));
                     }
                     calls.extend(session.on_close().map(on_close_call));
                     Ok(PendingAnswer::Calls(calls))
@@ -263,9 +260,16 @@ pub(in crate::editor) fn open_picker(
     Ok(Some(token))
 }
 
-/// `#f`: a binding's item when nothing matches, and its token during `.`.
-fn steel_false() -> Rooted {
-    Rooted::new(SteelVal::BoolV(false))
+/// The call of a keymap binding: `(binding token item)`, with `#f` for a
+/// `None` token (during `.`) or item (nothing matches).
+fn binding_call(
+    binding: hume_scripting::Callback,
+    token: Option<HostToken>,
+    item: Option<Rooted>,
+) -> SteelCall {
+    let steel_false = || Rooted::new(SteelVal::BoolV(false));
+    let token = token.map_or_else(steel_false, |token| Rooted::new(token_to_steel(token)));
+    SteelCall::with_args(binding, Rc::from([token, item.unwrap_or_else(steel_false)]))
 }
 
 fn on_close_call(on_close: &hume_scripting::Callback) -> SteelCall {
@@ -285,18 +289,12 @@ fn fire_close(
     closer: Option<Pick>,
 ) {
     let ticket = input.take_answer();
-    let pick = match closer {
-        Some(pick) => {
-            state
-                .recording_scope
-                .picker_key_closed(ticket.as_ref().map(AnswerTicket::reopen_scope));
-            pick
-        }
-        None => Pick {
-            action: None,
-            picked: None,
-        },
-    };
+    if closer.is_some() {
+        state
+            .recording_scope
+            .picker_key_closed(ticket.as_ref().map(AnswerTicket::reopen_scope));
+    }
+    let pick = closer.unwrap_or_default();
     match session.on_close() {
         Some(on_close) => {
             state.queue_answered_call(ticket, Answer::Pick(pick), on_close_call(on_close));
@@ -324,7 +322,7 @@ fn fire_close(
 /// function would have pushed the callback onto. The outgoing engine that
 /// owns the callback is seconds from being dropped, so firing it would be
 /// observable to nothing.
-pub(in crate::editor) fn close_picker_with(
+fn close_picker_with(
     state: &mut super::super::EditorState,
     view: &EngineView,
     closer: Option<PickerKeyRun>,
@@ -342,13 +340,22 @@ pub(in crate::editor) fn close_picker(state: &mut super::super::EditorState, vie
     close_picker_with(state, view, None);
 }
 
-/// The rows the picker panel shows in `state`'s current layout, `0` when the
-/// pane area is too small for the panel. What a page step moves by: the
-/// layout the next frame's `sync_picker_view` paints at the same terminal
-/// size.
-fn visible_rows(state: &EditorState, view: &EngineView) -> usize {
-    let screen = state.screen_layout(view);
-    hume_ui::picker_panel::panel_geometry(screen.pane_area()).map_or(0, |geo| geo.list_rows)
+/// `picker-close!`: closes the picker `token` names, a no-op unless it
+/// names the open picker ([`session_for_token`]). A close made by a keymap
+/// binding of that picker records the binding's pick
+/// ([`ScopeSlot::closing_binding`](super::super::replay::ScopeSlot::closing_binding));
+/// any other close records none.
+pub(in crate::editor) fn close_picker_by_token(
+    state: &mut super::super::EditorState,
+    view: &EngineView,
+    token: HostToken,
+) {
+    let Some(session) = session_for_token(state, token) else {
+        return;
+    };
+    let picker = session.token();
+    let closer = state.recording_scope.closing_binding(picker);
+    close_picker_with(state, view, closer);
 }
 
 /// `picker-move!`: moves the selection of the picker `token` names by
@@ -364,7 +371,10 @@ pub(in crate::editor) fn move_picker(
     if session_for_token(state, token).is_none() {
         return;
     }
-    let rows = visible_rows(state, view);
+    // What the next frame's `sync_picker_view` paints at the same terminal
+    // size, `0` when the pane area is too small for the panel.
+    let rows = hume_ui::picker_panel::panel_geometry(state.screen_layout(view).pane_area())
+        .map_or(0, |geo| geo.list_rows);
     let session = session_for_token(state, token).expect("checked above, and nothing ran since");
     let rows_per_step = match step {
         PickerStep::Row => 1,
@@ -380,7 +390,8 @@ pub(in crate::editor) fn move_picker(
 /// entire interaction, so nothing leaks through to whatever mode sits
 /// underneath. A key the keymap binds queues its binding with the picker's
 /// token and the selected item's payload (`#f` when nothing matches) under
-/// [`CallGuard::PickerKey`], never invoked inline, and does nothing else.
+/// [`CallGuard::PickerKey`](super::super::event::CallGuard::PickerKey),
+/// never invoked inline, and does nothing else.
 /// An unbound `Backspace` deletes from the query and an unbound plain
 /// character types into it; any other unbound key is ignored. A mouse event
 /// (click, drag, or wheel) is swallowed the same way: full-modal means the
@@ -397,19 +408,10 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         let selected = session
             .selected_index()
             .map(|i| (i, session.payload(i).clone()));
-        let item = selected
-            .as_ref()
-            .map_or_else(steel_false, |(_, payload)| payload.clone());
-        let call = SteelCall::with_args(
-            binding,
-            Rc::from([Rooted::new(token_to_steel(token)), item]),
-        );
-        let run = PickerKeyRun::new(token, canonical, selected);
-        ed.state.push_work(PendingWork::call(
-            call,
-            Some(CallGuard::PickerKey(run)),
-            EditOrigin::User,
-        ));
+        let item = selected.as_ref().map(|(_, payload)| payload.clone());
+        let call = binding_call(binding, Some(token), item);
+        ed.state
+            .queue_picker_key(PickerKeyRun::new(token, canonical, selected), call);
         return;
     }
     match key.code {

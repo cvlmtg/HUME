@@ -243,7 +243,7 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, Rooted)>
 fn row_payload(payload: SteelVal, ctx_name: &str) -> Result<Rooted, SteelErr> {
     // absent-decode-safe: #f here is the reserved no-row sentinel being rejected, not an absent optional
     if matches!(payload, SteelVal::BoolV(false)) {
-        steel::stop!(Generic => "{}: item payload must not be #f (#f is reserved for the dismiss signal)", ctx_name);
+        steel::stop!(Generic => "{}: item payload must not be #f (#f is reserved for no item)", ctx_name);
     }
     Ok(Rooted::new(payload))
 }

@@ -746,8 +746,7 @@ impl PickerSession {
 }
 
 /// One `PickerItem` from a display string, its own payload, shared by this
-/// module's own tests and `tests/unix/picker_source.rs`, which spawns real
-/// child processes and so can't live in this (non-unix-gated) module.
+/// module's own tests and the editor's tests in `editor/tests/`.
 #[cfg(test)]
 pub(in crate::editor) fn item(display: &str) -> PickerItem {
     PickerItem {

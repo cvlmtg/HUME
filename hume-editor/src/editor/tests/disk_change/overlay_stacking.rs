@@ -17,14 +17,7 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
     let bid = ed.focused_buffer_id();
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
-    let session = crate::editor::input_stack::picker::PickerSession::new(
-        Vec::new(),
-        hume_scripting::host::PickerOpts::default(),
-        Vec::new(),
-    )
-    .expect("an empty keymap repeats no key");
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
-        .expect("no `.` is in progress");
+    open_test_picker(&mut ed, &[]);
 
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
@@ -170,14 +163,7 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     assert!(ed.state.input.confirm().is_some(), "sanity: confirm open");
 
-    let session = crate::editor::input_stack::picker::PickerSession::new(
-        Vec::new(),
-        hume_scripting::host::PickerOpts::default(),
-        Vec::new(),
-    )
-    .expect("an empty keymap repeats no key");
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
-        .expect("no `.` is in progress");
+    open_test_picker(&mut ed, &[]);
 
     assert!(ed.state.input.picker().is_some(), "the picker opened");
     assert!(
@@ -235,14 +221,7 @@ fn picker_above_a_retired_confirm_survives_untouched() {
         "setup: confirm open on A"
     );
 
-    let session = crate::editor::input_stack::picker::PickerSession::new(
-        Vec::new(),
-        hume_scripting::host::PickerOpts::default(),
-        Vec::new(),
-    )
-    .expect("an empty keymap repeats no key");
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
-        .expect("no `.` is in progress");
+    open_test_picker(&mut ed, &[]);
     assert!(
         ed.state
             .input

@@ -158,14 +158,7 @@ fn show_popup_scrollable_does_not_land_above_an_open_picker() {
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
 
-    let session = crate::editor::input_stack::picker::PickerSession::new(
-        Vec::new(),
-        hume_scripting::host::PickerOpts::default(),
-        Vec::new(),
-    )
-    .expect("an empty keymap repeats no key");
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
-        .expect("no `.` is in progress");
+    open_test_picker(&mut ed, &[]);
 
     // Direct host call, not a real `:` keystroke: the picker is
     // full-modal and would swallow it before it ever reached Command mode.

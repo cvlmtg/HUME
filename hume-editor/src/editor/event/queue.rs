@@ -154,6 +154,16 @@ impl EditorState {
         }
     }
 
+    /// Queue `call`, a picker keymap binding's call for the key press `run`
+    /// names; see [`CallGuard::PickerKey`].
+    pub(in crate::editor) fn queue_picker_key(&mut self, run: PickerKeyRun, call: SteelCall) {
+        self.push_work(PendingWork::call(
+            call,
+            Some(CallGuard::PickerKey(run)),
+            EditOrigin::User,
+        ));
+    }
+
     /// Queue `call`, the callback of the `ConfigState.async_jobs` entry
     /// `job`; see [`CallGuard::Job`].
     pub(in crate::editor) fn queue_job_callback(&mut self, job: JobHandle, call: SteelCall) {

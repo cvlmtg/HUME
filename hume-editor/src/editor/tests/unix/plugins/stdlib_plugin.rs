@@ -645,11 +645,6 @@ fn picker_keymap_editor() -> (Editor, RuntimeDirs, tempfile::TempDir) {
     (ed, guard, init_dir)
 }
 
-fn press(ed: &mut Editor, key: KeyEvent) {
-    ed.feed_key(key);
-    ed.settle();
-}
-
 fn picker_selected(ed: &Editor) -> usize {
     ed.state
         .input
@@ -675,7 +670,7 @@ fn picker_keymap_moves_by_rows_pages_and_half_pages() {
         (key_ctrl('d'), rows / 2),
         (key_ctrl('u'), 0),
     ] {
-        press(&mut ed, key);
+        ed.feed_event(key);
         assert_eq!(picker_selected(&ed), expected, "after {key:?}");
     }
     assert!(
@@ -688,9 +683,9 @@ fn picker_keymap_moves_by_rows_pages_and_half_pages() {
 fn picker_keymap_enter_and_ctrl_o_close_and_hand_the_selected_item_over() {
     for accept in [key_enter(), key_ctrl('o')] {
         let (mut ed, _guard, _init_dir) = picker_keymap_editor();
-        press(&mut ed, key_down());
+        ed.feed_event(key_down());
 
-        press(&mut ed, accept);
+        ed.feed_event(accept);
 
         assert!(ed.state.input.picker().is_none(), "{accept:?} closes it");
         assert_eq!(ed.state.status_msg.as_deref(), Some("1"), "{accept:?}");
@@ -701,10 +696,10 @@ fn picker_keymap_enter_and_ctrl_o_close_and_hand_the_selected_item_over() {
 fn picker_keymap_enter_with_nothing_matching_hands_over_false() {
     let (mut ed, _guard, _init_dir) = picker_keymap_editor();
     for ch in "zzz".chars() {
-        press(&mut ed, key(ch));
+        ed.feed_event(key(ch));
     }
 
-    press(&mut ed, key_enter());
+    ed.feed_event(key_enter());
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(ed.state.status_msg.as_deref(), Some("none"));
@@ -714,7 +709,7 @@ fn picker_keymap_enter_with_nothing_matching_hands_over_false() {
 fn picker_keymap_esc_closes_without_calling_the_handler() {
     let (mut ed, _guard, _init_dir) = picker_keymap_editor();
 
-    press(&mut ed, key_esc());
+    ed.feed_event(key_esc());
 
     assert!(ed.state.input.picker().is_none());
     assert!(ed.state.status_msg.is_none());
@@ -724,9 +719,9 @@ fn picker_keymap_esc_closes_without_calling_the_handler() {
 fn picker_keymap_typing_and_backspace_edit_the_query() {
     let (mut ed, _guard, _init_dir) = picker_keymap_editor();
 
-    press(&mut ed, key('4'));
-    press(&mut ed, key('2'));
-    press(&mut ed, key_backspace());
+    ed.feed_event(key('4'));
+    ed.feed_event(key('2'));
+    ed.feed_event(key_backspace());
 
     let session = ed.state.input.picker().expect("typing never closes it");
     assert_eq!(session.query(), "4");
@@ -737,7 +732,7 @@ fn picker_keymap_ctrl_s_splits_the_pane_then_hands_the_item_over() {
     let (mut ed, _guard, _init_dir) = picker_keymap_editor();
     let panes_before = ed.view.panes.len();
 
-    press(&mut ed, key_ctrl('s'));
+    ed.feed_event(key_ctrl('s'));
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(ed.view.panes.len(), panes_before + 1);
@@ -763,9 +758,9 @@ fn picker_keymap_takes_an_overriding_key_through_hash_insert() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":pick");
 
-    press(&mut ed, key_down());
+    ed.feed_event(key_down());
     assert_eq!(picker_selected(&ed), 1, "the default Down binding stays");
-    press(&mut ed, key_esc());
+    ed.feed_event(key_esc());
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(ed.state.status_msg.as_deref(), Some("custom esc"));

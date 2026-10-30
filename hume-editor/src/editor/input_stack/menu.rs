@@ -76,9 +76,9 @@ pub(in crate::editor) fn open_menu(
                                 .ok_or_else(|| choice.missing())
                         })
                         .transpose()?;
-                    Ok(PendingAnswer::Calls(vec![SteelCall::with_args(
+                    Ok(PendingAnswer::Calls(vec![menu_call(
                         callback,
-                        Rc::from([menu_arg(index.map(|i| &items[i].1))]),
+                        index.map(|i| &items[i].1),
                     )]))
                 },
             )
@@ -107,11 +107,15 @@ pub(in crate::editor) fn open_menu(
     Ok(Some(token))
 }
 
-/// The argument a menu's callback gets: the chosen row's payload, or `#f`.
-fn menu_arg(payload: Option<&hume_scripting::Rooted>) -> hume_scripting::Rooted {
-    payload
+/// The call of a menu's callback with the chosen row's payload, or `#f`.
+fn menu_call(
+    callback: hume_scripting::Callback,
+    payload: Option<&hume_scripting::Rooted>,
+) -> SteelCall {
+    let arg = payload
         .cloned()
-        .unwrap_or_else(|| hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)))
+        .unwrap_or_else(|| hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)));
+    SteelCall::with_args(callback, Rc::from([arg]))
 }
 
 impl MenuLayer {
@@ -145,10 +149,7 @@ impl MenuLayer {
         state.queue_answered_call(
             self.input.take_answer(),
             Answer::Menu(picked),
-            SteelCall::with_args(
-                self.callback.clone(),
-                Rc::from([menu_arg(choice.map(|i| &self.payloads[i]))]),
-            ),
+            menu_call(self.callback.clone(), choice.map(|i| &self.payloads[i])),
         );
     }
 

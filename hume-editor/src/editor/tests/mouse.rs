@@ -1,10 +1,7 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, DrawerRows, MenuLayer};
-use crate::editor::input_stack::{PickerItem, PickerSession};
 use hume_grid::Rect;
-use hume_scripting::host::PickerOpts;
 use pretty_assertions::assert_eq;
 use steel::rvals::SteelVal;
 use termina::event::{Event as TerminalEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -31,21 +28,6 @@ fn mouse_left_up(x: u16, y: u16) -> TerminalEvent {
 
 fn marker(name: &str) -> SteelVal {
     SteelVal::StringV(name.into())
-}
-
-fn open_test_picker(ed: &mut Editor, items: &[&str]) {
-    let mut session = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
-        .expect("an empty keymap repeats no key");
-    session.push(
-        items
-            .iter()
-            .map(|s| PickerItem {
-                display: s.to_string(),
-                payload: hume_scripting::Rooted::new(SteelVal::StringV((*s).into())),
-            })
-            .collect(),
-    );
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 }
 
 /// `tab`'s start column in the synced tabline view, computed the same way

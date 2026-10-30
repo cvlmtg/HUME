@@ -271,18 +271,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         crate::editor::picker_source::stop_source(self.state, token)
     }
 
-    /// A close made by a keymap binding of the picker it closes records
-    /// that binding's pick ([`ScopeSlot::closing_binding`]); any other close
-    /// records none.
-    ///
-    /// [`ScopeSlot::closing_binding`]: crate::editor::replay::ScopeSlot::closing_binding
     fn picker_close(&mut self, token: HostToken) {
-        let Some(session) = picker::session_for_token(self.state, token) else {
-            return;
-        };
-        let picker = session.token();
-        let closer = self.state.recording_scope.closing_binding(picker);
-        picker::close_picker_with(self.state, self.view, closer);
+        picker::close_picker_by_token(self.state, self.view, token);
     }
 
     fn picker_move(&mut self, token: HostToken, count: isize, step: PickerStep) {

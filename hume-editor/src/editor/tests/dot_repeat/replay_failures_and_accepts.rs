@@ -604,7 +604,7 @@ fn picker_torn_down_by_a_reload_fires_on_close_and_records_a_dismissal() {
     assert!(
         matches!(inputs.as_slice(), [Input::Binding { name, answers, .. }]
             if &**name == "edit-then-pick"
-                && matches!(answers.as_slice(), [Answer::Pick(Pick { action: None, picked: None })])),
+                && matches!(answers.as_slice(), [Answer::Pick(Pick { closing_key: None, picked: None })])),
         "the binding is recorded, its torn-down picker as a dismissal: {inputs:?}"
     );
 }

@@ -5,11 +5,7 @@
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, DrawerRows, MenuLayer};
-use crate::editor::input_stack::{PickerItem, PickerSession};
-use hume_core::TruncateEnd;
-use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use pretty_assertions::assert_eq;
 use steel::rvals::SteelVal;
 
@@ -190,36 +186,6 @@ fn marker(name: &str) -> SteelVal {
     SteelVal::StringV(name.into())
 }
 
-fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
-    let mut session = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
-        .expect("an empty keymap repeats no key");
-    session.push(
-        items
-            .iter()
-            .map(|s| PickerItem {
-                display: s.to_string(),
-                payload: hume_scripting::Rooted::new(SteelVal::StringV((*s).into())),
-            })
-            .collect(),
-    );
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
-}
-
-pub(super) fn open_live_test_picker(ed: &mut Editor) {
-    let session = PickerSession::new_live(
-        Vec::new(),
-        LivePickerOpts {
-            prompt: String::new(),
-            query: String::new(),
-            on_query_change: hume_scripting::Callback::for_test(marker("on-query-change")),
-            truncate: TruncateEnd::Head,
-            on_close: None,
-        },
-    )
-    .expect("an empty keymap repeats no key");
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
-}
-
 #[test]
 fn picker_paste_lands_flattened_in_the_query_and_fires_one_query_change() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -238,7 +204,7 @@ fn picker_paste_into_a_non_live_session_queues_no_callback() {
     // A `picker!` (`PickerMode::Filter`) session has no `on_query_change`:
     // the query still updates and reranks, but nothing is queued to fire.
     let mut ed = editor_from("-[h]>ello\n");
-    open_filter_test_picker(&mut ed, &["foo", "bar"]);
+    open_test_picker(&mut ed, &["foo", "bar"]);
 
     ed.feed_paste("fo");
 

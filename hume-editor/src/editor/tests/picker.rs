@@ -7,8 +7,8 @@
 // `tests/picker_steel.rs` for end-to-end coverage of the Steel surface itself.
 
 use super::*;
+use crate::editor::input_stack::PickerSession;
 use crate::editor::input_stack::picker;
-use crate::editor::input_stack::{PickerItem, PickerSession};
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 use hume_scripting::host::{PickerBinding, PickerOpts, PickerStep};
@@ -25,28 +25,6 @@ fn binding(key: KeyEvent, name: &str) -> PickerBinding {
         key,
         binding: hume_scripting::Callback::for_test(marker(name)),
     }
-}
-
-fn open_test_session(
-    ed: &mut Editor,
-    items: &[&str],
-    keymap: Vec<PickerBinding>,
-    opts: PickerOpts,
-) {
-    let mut session = PickerSession::new(keymap, opts, Vec::new()).expect("no key is bound twice");
-    let picker_items: Vec<PickerItem> = items
-        .iter()
-        .map(|s| PickerItem {
-            display: s.to_string(),
-            payload: hume_scripting::Rooted::new(SteelVal::StringV((*s).into())),
-        })
-        .collect();
-    session.push(picker_items);
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
-}
-
-fn open_test_picker(ed: &mut Editor, items: &[&str]) {
-    open_test_session(ed, items, Vec::new(), PickerOpts::default());
 }
 
 fn open_test_picker_with_on_close(ed: &mut Editor, items: &[&str], on_close: &str) {
@@ -361,16 +339,8 @@ fn a_binding_reaches_its_key_however_the_terminal_reports_case() {
 #[test]
 fn two_specs_naming_one_key_refuse_to_open() {
     let keymap = vec![
-        PickerBinding {
-            spec: "ctrl-n".to_string(),
-            key: key_ctrl('n'),
-            binding: hume_scripting::Callback::for_test(marker("a")),
-        },
-        PickerBinding {
-            spec: "c-n".to_string(),
-            key: key_ctrl('n'),
-            binding: hume_scripting::Callback::for_test(marker("b")),
-        },
+        binding(key_ctrl('n'), "ctrl-n"),
+        binding(key_ctrl('n'), "c-n"),
     ];
     let Err(err) = PickerSession::new(keymap, PickerOpts::default(), Vec::new()) else {
         panic!("a keymap naming one key twice must not open a picker");
@@ -671,13 +641,7 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         ),
     );
 
-    let mut session = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
-        .expect("an empty keymap repeats no key");
-    session.push(vec![PickerItem {
-        display: "a".to_string(),
-        payload: hume_scripting::Rooted::new(SteelVal::StringV("a".into())),
-    }]);
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
+    open_test_picker(&mut ed, &["a"]);
 
     assert!(ed.state.input.picker().is_some(), "the picker opened");
     assert!(

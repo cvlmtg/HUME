@@ -582,7 +582,7 @@ fn picker_bang_rejects_proper_list_items_naming_the_arg() {
     );
 }
 
-// ── #f payload is reserved for the dismiss signal, not a legal item ────────
+// ── #f payload is reserved for no item, not a legal item ───────────────────
 
 #[test]
 fn picker_bang_rejects_hash_f_payload() {
@@ -599,7 +599,7 @@ fn picker_bang_rejects_hash_f_payload() {
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
         msg.contains("reserved"),
-        "error should explain #f is reserved for dismiss, got {msg:?}"
+        "error should explain #f is reserved for no item, got {msg:?}"
     );
 }
 

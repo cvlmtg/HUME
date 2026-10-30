@@ -5,33 +5,9 @@
 
 use super::*;
 
-use crate::editor::input_stack::PickerSession;
 use crate::editor::input_stack::picker::{self, item};
-use hume_core::TruncateEnd;
 use hume_platform::process::line_source::spawn_line_source;
-use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
-
-fn open_bare_picker(ed: &mut Editor) {
-    let session = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
-        .expect("an empty keymap repeats no key");
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
-}
-
-fn open_live_picker(ed: &mut Editor) {
-    let session = PickerSession::new_live(
-        Vec::new(),
-        LivePickerOpts {
-            prompt: String::new(),
-            query: String::new(),
-            on_query_change: hume_scripting::Callback::for_test(SteelVal::BoolV(false)),
-            truncate: TruncateEnd::Head,
-            on_close: None,
-        },
-    )
-    .expect("an empty keymap repeats no key");
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
-}
 
 /// Spawns `sh -c script` and attaches it to the already-open picker with
 /// `ok_exit_codes`: the spawn-and-attach block every `sh`-based test below
@@ -56,7 +32,7 @@ fn attach_sh(ed: &mut Editor, script: &str, ok_exit_codes: Vec<i32>) {
 #[test]
 fn end_to_end_drain_streams_lines_into_the_store() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
 
     attach_sh(&mut ed, "printf 'a\\nb\\nc\\n'", vec![0]);
 
@@ -80,7 +56,7 @@ fn end_to_end_drain_streams_lines_into_the_store() {
 #[test]
 fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
 
     attach_sh(&mut ed, "printf 'a\\000b\\nc\\n'", vec![0]);
 
@@ -106,7 +82,7 @@ fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
 #[test]
 fn coalesced_push_reranks_against_the_live_query() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
     let _ = ed.state.input.picker_mut().unwrap().insert_char('z');
 
     attach_sh(&mut ed, "printf 'abc\\nxyz\\n'", vec![0]);
@@ -127,7 +103,7 @@ fn coalesced_push_reranks_against_the_live_query() {
 #[test]
 fn nonzero_exit_reports_a_status_message_with_stderr() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
 
     attach_sh(&mut ed, "echo boom >&2; exit 2", vec![0]);
 
@@ -142,7 +118,7 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
 #[test]
 fn exit_code_in_the_allowlist_reports_nothing() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
 
     // Exit 1 with nothing on stderr: the shape `rg` uses for "no matches".
     attach_sh(&mut ed, "exit 1", vec![0, 1]);
@@ -160,7 +136,7 @@ fn exit_code_in_the_allowlist_reports_nothing() {
 #[test]
 fn exit_code_outside_the_allowlist_still_reports() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
 
     // Exit 2 (`rg`'s "bad regex") must still surface even with `1`
     // allowlisted for "no matches".
@@ -175,7 +151,7 @@ fn exit_code_outside_the_allowlist_still_reports() {
 #[test]
 fn allowlist_omitting_zero_reports_a_successful_exit() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
 
     // `#:ok-exit-codes` is the complete allowlist, not an addition to
     // `ExitStatus::success` (see `UiHost::picker_source_spawn`'s doc): a
@@ -196,7 +172,7 @@ fn allowlist_omitting_zero_reports_a_successful_exit() {
 #[test]
 fn a_failed_source_with_no_stderr_reports_only_its_exit() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
     attach_sh(&mut ed, "exit 3", vec![0]);
 
     drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
@@ -207,7 +183,7 @@ fn a_failed_source_with_no_stderr_reports_only_its_exit() {
 #[test]
 fn close_picker_kills_the_source_child() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
 
     let args = vec!["30".to_string()];
     let source = spawn_line_source(
@@ -236,7 +212,7 @@ fn close_picker_kills_the_source_child() {
 #[test]
 fn replacing_the_session_kills_the_previous_source_child() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
 
     let args = vec!["30".to_string()];
     let source = spawn_line_source(
@@ -256,9 +232,7 @@ fn replacing_the_session_kills_the_previous_source_child() {
 
     // A fresh `open_picker` call replaces (and, via `close_picker`, drops)
     // whatever session was open, same as a second `picker!` from Steel.
-    let replacement = PickerSession::new(Vec::new(), PickerOpts::default(), Vec::new())
-        .expect("an empty keymap repeats no key");
-    picker::open_picker(&mut ed.state, &ed.view, replacement).expect("no `.` is in progress");
+    open_test_picker(&mut ed, &[]);
 
     assert!(
         !is_alive(pid),
@@ -269,7 +243,7 @@ fn replacing_the_session_kills_the_previous_source_child() {
 #[test]
 fn a_second_attach_source_kills_the_first_source_child() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
 
     let first_args = vec!["30".to_string()];
     let first = spawn_line_source(
@@ -315,7 +289,7 @@ fn a_second_attach_source_kills_the_first_source_child() {
 #[test]
 fn live_session_first_batch_after_attach_replaces_the_previous_rows() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_live_picker(&mut ed);
+    open_live_test_picker(&mut ed);
     {
         let session = ed.state.input.picker_mut().unwrap();
         session.push(vec![item("stale-a"), item("stale-b")]);
@@ -346,7 +320,7 @@ fn live_session_first_batch_after_attach_replaces_the_previous_rows() {
 #[test]
 fn live_session_second_batch_from_the_same_source_appends() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_live_picker(&mut ed);
+    open_live_test_picker(&mut ed);
 
     attach_sh(
         &mut ed,
@@ -386,7 +360,7 @@ fn live_session_second_batch_from_the_same_source_appends() {
 #[test]
 fn filter_session_attach_source_still_appends_not_replaces() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_bare_picker(&mut ed);
+    open_test_picker(&mut ed, &[]);
     ed.state
         .input
         .picker_mut()
@@ -415,7 +389,7 @@ fn filter_session_attach_source_still_appends_not_replaces() {
 #[test]
 fn explicit_replace_while_a_source_is_attached_consumes_supersede_so_the_next_batch_appends() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_live_picker(&mut ed);
+    open_live_test_picker(&mut ed);
 
     attach_sh(&mut ed, "sleep 0.3; printf 'streamed\\n'", vec![0]);
     // Nothing has arrived yet (the child is still sleeping), so an explicit
