@@ -1,10 +1,10 @@
-;;; core:plum/grammars.scm — the grammar install pipeline; see README.md.
+;;; core:plum/grammars.scm — the grammar install pipeline; see docs/grammars.md.
 
 (require "lib/helpers.scm")
 (require-builtin steel/time)
 
 ;; ── Grammar source ────────────────────────────────────────────────────────────
-;; See README.md's "Grammar source".
+;; See docs/grammars.md's "Grammar source".
 
 (define *plum-grammar-tag*
   (read-data-file (path-join (plugin-dir) "data" "treesitter-hume-pin.scm")))
@@ -45,7 +45,7 @@
       result)))
 
 ;; ── Index ─────────────────────────────────────────────────────────────────────
-;; See README.md's "Grammar source".
+;; See docs/grammars.md's "Grammar source".
 
 (define (plum/index-error reason)
   (error (string-append "plum: the grammar index " reason)))
@@ -93,7 +93,7 @@
       (call! "stdlib/verify-sha256!" archive (list-ref member 3))
       (use archive))))
 
-;;; The configured folder, or #f when none is configured. See README.md's "Grammar source".
+;;; The configured folder, or #f when none is configured. See docs/grammars.md's "Grammar source".
 (define (plum/checked-folder)
   (let* ((folder *plum-grammar-folder*)
          (fail (lambda (reason)
@@ -112,7 +112,7 @@
           (fail "holds no grammar archive"))))
     folder))
 
-;;; See README.md's "Grammar source".
+;;; See docs/grammars.md's "Grammar source".
 (define (plum/source-lookup)
   (let ((folder (plum/checked-folder))
         (release #f))
@@ -135,7 +135,7 @@
                      (lambda (use) (plum/with-release-member! name member use))))))))))
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
-;; See README.md's "Grammar install pipeline".
+;; See docs/grammars.md's "Grammar install pipeline".
 
 (define (plum/check-unpacked! name dir)
   (let* ((manifest (grammar-manifest dir))
@@ -158,7 +158,7 @@
                                     (to-string (field 'tag)) "; HUME pins "
                                     *plum-grammar-tag*)))))
 
-;;; Hash: name → (dep-name ...). See README.md's "Grammar dependencies".
+;;; Hash: name → (dep-name ...). See docs/grammars.md's "Grammar dependencies".
 (define *plum-grammar-deps*
   (hash "markdown" (list "markdown.inline")))
 
@@ -175,7 +175,7 @@
           now
           (max now (+ 1 (string->number (last installs))))))))
 
-;;; Deletes the directory `path`, reporting a failure; see README.md's "Grammar install pipeline".
+;;; Deletes the directory `path`, reporting a failure; see docs/grammars.md's "Grammar install pipeline".
 (define (plum/delete-reporting! path)
   (with-handler
     (lambda (err)
@@ -188,7 +188,7 @@
     (call! "stdlib/delete-dir!" path)))
 
 ;;; Installs `name` from `source`, its entry in a `plum/served-plan` result.
-;;; See README.md's "Grammar install pipeline".
+;;; See docs/grammars.md's "Grammar install pipeline".
 (define (plum/install-one name source)
   (let* ((older (grammar-installs name))
          (folder (path-join (grammar-dir name) (plum/new-install-name older))))
@@ -224,7 +224,7 @@
       plan
       (plum/plan-add-all (plum/plan-add plan (car names)) (cdr names))))
 
-;;; `((name . source) ...)` in install order; see README.md's "Grammar install pipeline".
+;;; `((name . source) ...)` in install order; see docs/grammars.md's "Grammar install pipeline".
 (define (plum/served-plan names)
   (let* ((lookup (plum/source-lookup))
          (plan (map (lambda (name) (cons name (lookup name)))
@@ -238,7 +238,7 @@
                             "treesitter.hume " *plum-grammar-tag* " for " (grammar-platform))))
     plan))
 
-;;; Paths relative to `<data>/grammars/`; see README.md's "Commands".
+;;; Paths relative to `<data>/grammars/`; see docs/grammars.md's "Leftovers".
 (define (plum/grammar-leftovers in-use)
   (call! "stdlib/concat"
          (map (lambda (entry)
@@ -253,7 +253,7 @@
                   (call! "stdlib/list-entries" (grammars-dir))
                   '()))))
 
-;;; See README.md's "Commands".
+;;; See docs/grammars.md's "Leftovers".
 (define (plum/staging-leftovers)
   (let ((staging (plum/grammar-staging-dir)))
     (if (path-exists? staging)

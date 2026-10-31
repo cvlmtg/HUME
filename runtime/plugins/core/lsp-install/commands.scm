@@ -18,7 +18,7 @@
     (when (and (not installed?) (lsp-install/read-receipt name))
       (log! 'info (string-append "LSP: kept the installed " name)))))
 
-;;; See docs/servers.md's "Installing a server", step 2.
+;;; See docs/install.md's "Installing a server".
 (define-command! "lsp-install/install-server"
   "Install the server `name` over its existing install, once its client has stopped."
   lsp-install/install!

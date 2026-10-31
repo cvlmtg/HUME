@@ -1,5 +1,5 @@
 ;;; runtime/plugins/core/lsp-install/data/sources/lua-language-server.scm — one LSP server's install source.
-;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
 ;;; Source: mason-org/mason-registry @ 2026-10-06-pricey-wrasse
 
 ((kind . github) (version . "3.19.1") (repo . "LuaLS/lua-language-server") (targets (darwin-arm64 "lua-language-server-3.19.1-darwin-arm64.tar.gz" "sha256:0bc077f4447f076b4c92c14e9fd303f5b569eda2ec74b4dca2b55f75fae2e90c" "libexec/bin/lua-language-server") (darwin-x64 "lua-language-server-3.19.1-darwin-x64.tar.gz" "sha256:eb373c159cbe556711d7cd316315de2dce969bfd54b31edb7eb9cab2937f2cca" "libexec/bin/lua-language-server") (linux-x64 "lua-language-server-3.19.1-linux-x64.tar.gz" "sha256:e9235d2d72ef55bc41cf8c99cda2ed64777682024b4bb81f5dea425060c5cbb8" "libexec/bin/lua-language-server") (windows-x64 "lua-language-server-3.19.1-win32-x64.zip" "sha256:fdb9a59108cf62517813c97fa5549b0e16d1ef0688306bac728b08434db7e4cd" "bin/lua-language-server.exe")))

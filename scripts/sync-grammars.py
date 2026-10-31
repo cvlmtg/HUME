@@ -71,7 +71,7 @@ LANGUAGE_DATA_HEADER = """\
 
 LANGUAGE_SERVERS_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
-;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 
@@ -104,7 +104,7 @@ LSP_FEATURES = (
 
 LSP_REGISTRATION_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/registrations/{name}.scm — one LSP server's registration.
-;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 

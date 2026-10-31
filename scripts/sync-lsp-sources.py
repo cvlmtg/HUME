@@ -64,13 +64,13 @@ LSP_REQUIREMENTS_DIR = LSP_INSTALL_DIR / "requirements"
 
 LSP_SOURCE_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/sources/{name}.scm — one LSP server's install source.
-;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
 ;;; Source: mason-org/mason-registry @ {tag}
 """
 
 LSP_REQUIREMENT_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/requirements/{name}.scm — one LSP server's install requirements.
-;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
 ;;; Source: sources/{name}.scm
 """
 

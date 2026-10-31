@@ -6,7 +6,7 @@
 ;; ── Two-level repo discovery ──────────────────────────────────────────────────
 
 ;;; Walk `root`/<user>/<repo>/ and return "user/repo" strings for every leaf
-;;; containing `marker` — see README.md's "How it works" and "Theme install".
+;;; containing `marker` — see docs/repos.md's "Plugin discovery" and "Layout and discovery".
 (define (plum/two-level-repos root marker)
   (if (not (path-exists? root))
       '()
@@ -20,7 +20,7 @@
                   (call! "stdlib/list-subdirs" root)))))
 
 ;; ── Process spawning ──────────────────────────────────────────────────────────
-;; See README.md's "Output model" and `hume_platform::process::run_inline_output`'s own doc.
+;; See docs/architecture.md's "Output model" and `hume_platform::process::run_inline_output`'s own doc.
 
 (define (plum/github-url slug)
   (string-append "https://github.com/" slug ".git"))
@@ -42,7 +42,7 @@
 
 ;;; Installs `url` into `dest` at `ref`, replacing `dest` only once the new clone is
 ;;; checked out and `build`, given the clone's directory, has returned.
-;;; See README.md's "Pinned plugins".
+;;; See docs/repos.md's "Pinned plugins".
 (define (plum/install-repo! url dest ref #:build [build #f])
   (plum/staged-install!
     (path-join (plum/staging-dir) (file-name (parent-name dest)) (file-name dest)) dest
@@ -55,7 +55,7 @@
       (when build (build stage)))))
 
 ;;; Checks the clone in `dir` out at origin's `ref`, or its default branch for #f.
-;;; See README.md's "Pinned plugins".
+;;; See docs/repos.md's "Pinned plugins".
 (define (plum/git-sync! dir ref)
   (let ((by-name (and ref (not (plum/commit-id? ref 40)))))
     (plum/git! dir (if by-name
@@ -110,7 +110,7 @@
        ok)
       (else
        (let ((name (car names)))
-         ;; See README.md's "Output model".
+         ;; See docs/architecture.md's "Output model".
          (when progress (progress (string-append "PLUM: " verb " " name)))
          (with-handler
            (lambda (err)

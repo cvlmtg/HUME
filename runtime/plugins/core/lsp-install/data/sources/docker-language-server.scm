@@ -1,5 +1,5 @@
 ;;; runtime/plugins/core/lsp-install/data/sources/docker-language-server.scm — one LSP server's install source.
-;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
 ;;; Source: mason-org/mason-registry @ 2026-10-06-pricey-wrasse
 
 ((kind . github) (version . "v0.20.1") (repo . "docker/docker-language-server") (targets (darwin-arm64 "docker-language-server-darwin-arm64-v0.20.1" "sha256:5a9d48fd2b1334d7d20a62faf542e611cca32dc79a478553ad65c27437467fac" "docker-language-server-darwin-arm64-v0.20.1") (darwin-x64 "docker-language-server-darwin-amd64-v0.20.1" "sha256:2dbaec15645e940d1e02092f5b5e10148531a6206225e71faab7bfe71130b457" "docker-language-server-darwin-amd64-v0.20.1") (linux-x64 "docker-language-server-linux-amd64-v0.20.1" "sha256:01907aa5b0eae11e44cffea0a993d08aa155542a9af570295dd1dff39e67692a" "docker-language-server-linux-amd64-v0.20.1") (windows-x64 "docker-language-server-windows-amd64-v0.20.1.exe" "sha256:3c1e5019cbd9779341d39c94589d058434ef295b3a1a0c0e89bdfb7ae4d59e2e" "docker-language-server-windows-amd64-v0.20.1.exe")))

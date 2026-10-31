@@ -151,7 +151,7 @@ A `registrations/` record omits each default field: `command` when it equals the
   naming ("TypeScript") and would need its own mapping — dropped entirely.
 - Field encoding (a record with no fields is `()`, never `#f`, canonical JSON `config` string, delivered both ways
   by `core:lsp-install/lib/register.scm`, decoded once via `(json-parse)` at the one consuming site):
-  see `runtime/plugins/core/lsp-install/README.md`'s record-shape reference. A JSON string sidesteps the fact that plain
+  see `runtime/plugins/core/lsp-install/docs/catalogs.md`'s record-shape reference. A JSON string sidesteps the fact that plain
   sexpr syntax can't tell an empty JSON array from an empty JSON object. See
   [Config delivery & per-server audit](#config-delivery--per-server-audit) for why delivering
   the same blob two ways is correct rather than a mismatch.
@@ -245,7 +245,7 @@ A `registrations/` record omits each default field: `command` when it equals the
 - **Seeded catalog delivers its config correctly**: a `registrations/` record's `config` field is
   delivered as **both** `#:init-options` and `#:settings` by `core:lsp-install/lib/register.scm`,
   as the same blob goes to both — see
-  `runtime/plugins/core/lsp-install/docs/servers.md`.
+  `runtime/plugins/core/lsp-install/docs/architecture.md`'s "Registration scan".
 - **Per-server config audit** (all 17 seeded servers carrying a `config` blob, verified
   against each server's own source): 15 work correctly as delivered. Two —
   `actions-language-server` and `pony-lsp` — need a correction, in both cases tracing to a
@@ -379,7 +379,7 @@ lists) stays in the plugin — Rust never reads them.
   language has a seeded, uninstalled server produces a one-line `:lsp-install` hint via
   the `on-language-set` hook. Only fires while `core:lsp` itself is loaded or active —
   a setup running only `core:plum` (or nothing) gets no LSP hints, matching the rest of
-  the feature (see [Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end)).
+  the feature (see [Placement](#placement-corelsp-install-owns-the-server-lifecycle-corelsp-stays-a-client)).
   "No registered one" is checked with the `lsp-language-servers` builtin (the servers a
   language uses, empty when none is registered). Hinted at most once per language per session, and only when the
   server's install source is a supported kind and it isn't already installed — never a

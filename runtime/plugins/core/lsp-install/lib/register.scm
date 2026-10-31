@@ -18,7 +18,7 @@
                             #:settings config
                             #:env env))))
 
-;; Default lists: see README.md, "Catalogs".
+;; Default lists: see docs/architecture.md, "Registration scan".
 (define (lsp-install/entry->spec entry)
   (if (null? (cdr entry))
       (car entry)

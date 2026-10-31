@@ -1,5 +1,5 @@
 ;;; core:plum/themes.scm — third-party THEME install pipeline. See
-;;; README.md.
+;;; docs/repos.md.
 
 (require "lib/helpers.scm")
 
@@ -8,7 +8,7 @@
 (define (plum/themes-dir)
   (path-join (data-dir) "themes"))
 
-;;; Clones live under a `sources/` subdirectory — see README.md for why.
+;;; Clones live under a `sources/` subdirectory — see docs/repos.md's "Layout and discovery".
 (define (plum/theme-sources-dir)
   (path-join (plum/themes-dir) "sources"))
 
@@ -18,7 +18,7 @@
 ;; ── Slug validation ────────────────────────────────────────────────────────────
 
 ;;; Returns the slug, or #f after reporting a status message — see
-;;; README.md for the malformed-vs-unsafe error-routing distinction.
+;;; docs/repos.md's "Slug validation" for the malformed-vs-unsafe error-routing distinction.
 (define (plum/parse-slug cmd slug)
   (let ((parts (if (string? slug) (split-many slug "/") '())))
     (cond
@@ -48,7 +48,7 @@
       (error (string-append "plum: " slug " has no themes/*.toml — nothing to install")))
     names))
 
-;;; Other installed repos (besides `slug`) that also provide `name` — see README.md's "Theme install".
+;;; Other installed repos (besides `slug`) that also provide `name` — see docs/repos.md's "Name collisions".
 (define (plum/theme-owned-elsewhere name slug)
   (filter (lambda (other) (and (not (equal? other slug))
                                (member name (plum/repo-theme-names other))))
@@ -76,7 +76,7 @@
       names)
     names))
 
-;;; Marker is `.git`, not `themes` — see README.md's "Theme install".
+;;; Marker is `.git`, not `themes` — see docs/repos.md's "Layout and discovery".
 (define (plum/installed-theme-repos)
   (plum/two-level-repos (plum/theme-sources-dir) ".git"))
 

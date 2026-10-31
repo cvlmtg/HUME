@@ -167,10 +167,10 @@ owns the install layout, which PLUM writes through the same functions.
   is not an install.
 - **The marker is the existence proof.** `%grammar-installed-folder` is a language's current
   install: the newest install folder holding `checked`. PLUM moves a new install into its
-  folder before loading it there (`runtime/plugins/core/plum/README.md`'s "Grammar install
-  pipeline"), so a folder whose grammar failed to load, or whose install was stopped, has no
-  marker and is never the grammar, whatever its number. `mark-grammar-checked!` writes the
-  marker. Nothing else about an install is checked here: its files were checked when it was
+  folder before loading it there (`runtime/plugins/core/plum/docs/grammars.md`'s "Grammar
+  install pipeline"), so a folder whose grammar failed to load, or whose install was stopped,
+  has no marker and is never the grammar, whatever its number. `mark-grammar-checked!`
+  writes the marker. Nothing else about an install is checked here: its files were checked when it was
   installed, and a file lost since then is reported when the grammar loads. A data directory
   shared between platforms is not supported. `installed-grammar-folders` pairs each installed
   grammar of a language HUME knows with that folder, from one walk of `<data>/grammars/`, so

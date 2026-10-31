@@ -1,5 +1,5 @@
 ;;; runtime/plugins/core/lsp-install/data/sources/markdown-oxide.scm — one LSP server's install source.
-;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
 ;;; Source: mason-org/mason-registry @ 2026-10-06-pricey-wrasse
 
 ((kind . github) (version . "v0.25.12") (repo . "feel-ix-343/markdown-oxide") (targets (darwin-arm64 "markdown-oxide-v0.25.12-aarch64-apple-darwin.tar.gz" "sha256:fd851fbec60dc7cda5b21c682232e5c6ae6671c726e64bce3fe20013223c5774" "markdown-oxide-v0.25.12-aarch64-apple-darwin/markdown-oxide") (darwin-x64 "markdown-oxide-v0.25.12-x86_64-apple-darwin.tar.gz" "sha256:706faf36ab17de112b9811090ef275e3e27472c2382bccf33880cce48e0a03c7" "markdown-oxide-v0.25.12-x86_64-apple-darwin/markdown-oxide") (linux-x64 "markdown-oxide-v0.25.12-x86_64-unknown-linux-gnu.tar.gz" "sha256:ad4248cf5d3f0e9d9f120b579501c45dad9c46bfcb4ddec36d2cb85d68a58828" "markdown-oxide-v0.25.12-x86_64-unknown-linux-gnu/markdown-oxide") (windows-x64 "markdown-oxide-v0.25.12-x86_64-pc-windows-gnu.zip" "sha256:876c5d448abd44211f14d8d611e91b2152f6e3aec98702da976489891bab8839" "markdown-oxide-v0.25.12-x86_64-pc-windows-gnu/markdown-oxide.exe")))

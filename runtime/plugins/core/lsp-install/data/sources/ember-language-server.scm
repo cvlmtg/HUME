@@ -1,5 +1,5 @@
 ;;; runtime/plugins/core/lsp-install/data/sources/ember-language-server.scm — one LSP server's install source.
-;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
 ;;; Source: mason-org/mason-registry @ 2026-10-06-pricey-wrasse
 
 ((kind . npm) (version . "2.30.9") (packages "@ember-tooling/ember-language-server@2.30.9") (bin . "ember-language-server"))

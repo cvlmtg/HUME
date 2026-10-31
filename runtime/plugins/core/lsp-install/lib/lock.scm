@@ -4,7 +4,7 @@
 
 (provide lsp-install/with-lock!)
 
-;;; See docs/servers.md's "Install lock".
+;;; See docs/architecture.md's "Install lock".
 (define (lsp-install/lock-path)
   (path-join (lsp-install/servers-dir) ".install-lock"))
 

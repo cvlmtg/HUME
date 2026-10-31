@@ -1,5 +1,5 @@
 ;;; runtime/plugins/core/lsp-install/data/sources/tombi.scm — one LSP server's install source.
-;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
 ;;; Source: mason-org/mason-registry @ 2026-10-06-pricey-wrasse
 
 ((kind . github) (version . "v1.7.2") (repo . "tombi-toml/tombi") (targets (darwin-arm64 "tombi-cli-1.7.2-aarch64-apple-darwin.tar.gz" "sha256:478c67124b15960f9911f5fe2b24746c0807a77378dc6d03667b701bd2ed91e2" "tombi-cli-1.7.2-aarch64-apple-darwin/tombi") (darwin-x64 "tombi-cli-1.7.2-x86_64-apple-darwin.tar.gz" "sha256:cdbb5f7ac355a821950493296adf9c47da981bc996d6b4de5e90269bed243e27" "tombi-cli-1.7.2-x86_64-apple-darwin/tombi") (linux-x64 "tombi-cli-1.7.2-x86_64-unknown-linux-musl.tar.gz" "sha256:70d702da0bb92758469c4f85761935b93c8172598b2682d9c89d7ab383a23a4c" "tombi-cli-1.7.2-x86_64-unknown-linux-musl/tombi") (windows-x64 "tombi-cli-1.7.2-x86_64-pc-windows-msvc.zip" "sha256:b5bf95bf49a8624e3fa2e7d3ee64d02fe06a42678731f1ba392abb72e161608a" "tombi.exe")))

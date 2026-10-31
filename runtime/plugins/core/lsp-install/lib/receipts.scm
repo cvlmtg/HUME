@@ -11,7 +11,7 @@
 (define (lsp-install/server-dir name) (path-join (lsp-install/servers-dir) name))
 (define (lsp-install/receipt-path folder) (path-join folder "receipt.scm"))
 
-;; Install folders: see docs/servers.md's "Installing a server".
+;; Install folders: see docs/architecture.md's "Install folders and receipts".
 
 (define (lsp-install/install-number entry)
   (let ((n (string->number entry)))
