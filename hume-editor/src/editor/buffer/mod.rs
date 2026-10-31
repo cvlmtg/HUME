@@ -964,12 +964,11 @@ impl Buffer {
     ) -> HistoryWalkResult {
         let steps = txns.len();
         let txn = Transaction::compose_all(txns)?;
-        let landed = txn
+        let (landed, cs) = txn
             .apply(&self.text)
             .expect("composed history transaction failed: history is corrupt");
         let new_text = landed.text().clone();
         let new_sels = landed.into_selections();
-        let cs = txn.into_changes();
         if new_text.version() != self.text.version() {
             self.install(
                 PaneHandle::with_pane(id, acting),

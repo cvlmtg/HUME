@@ -9,6 +9,8 @@
 //! `edit_session::open_or_retarget`, which applies the same open rule as
 //! `edit_session::open_insert` does for an Insert session.
 
+use std::borrow::Cow;
+
 use hume_core::{BufferId, Count, PaneId, Severity};
 use hume_engine::pipeline::EngineView;
 
@@ -235,7 +237,7 @@ fn resolve_explicit_register(
             // with "Ny writes). Clipboard routes through the OS clipboard.
             let (cow, warn) =
                 register_ops::read_register_text(&state.registers, &mut state.clipboard, c);
-            let values = cow.map(|c| c.to_vec()); // end borrow of state.registers
+            let values = cow.map(Cow::into_owned); // end borrow of state.registers
             match (values, warn) {
                 (Some(values), warn) => {
                     if let Some(w) = warn {
@@ -317,7 +319,7 @@ fn resolve_smart_bare(state: &mut EditorState) -> Result<ResolvedPaste, CommandE
         Some(w) => CommandError::warning(w),
         None => CommandError::transient(empty),
     };
-    match cow.map(|c| c.to_vec()) {
+    match cow.map(Cow::into_owned) {
         Some(values) => {
             if let Some(w) = warn {
                 state.report(Severity::Warning, w);

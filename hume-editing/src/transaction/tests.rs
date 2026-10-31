@@ -33,7 +33,7 @@ fn undoing_lands_the_recorded_selections_on_the_recorded_version() {
         before.clone().into_selections(),
     );
 
-    let undone = undo.apply(&after).expect("the inverse applies");
+    let (undone, _) = undo.apply(&after).expect("the inverse applies");
     assert_eq!(undone.text().version(), before.text().version());
     assert!(undone.text().generation() > after.generation());
     assert_eq!(render(undone.view()), "h-[el]>lo\n");
@@ -56,7 +56,7 @@ fn a_transaction_that_changes_nothing_relabels_the_text_in_place() {
     );
 
     let walk = Transaction::new(identity(&same), before.clone().into_selections());
-    let landed = walk.apply(&same).expect("the identity applies");
+    let (landed, _) = walk.apply(&same).expect("the identity applies");
     assert_eq!(landed.text().version(), before.text().version());
     assert_eq!(landed.text().generation(), same.generation());
     assert_eq!(render(landed.view()), "-[a]>b\n");
@@ -79,7 +79,7 @@ fn composing_keeps_the_last_transactions_selections() {
 
     let composed = Transaction::compose_all(txns).expect("two transactions compose");
     assert_eq!(composed.selection(), &end_state.into_selections());
-    let landed = composed
+    let (landed, _) = composed
         .apply(start.text())
         .expect("the composition applies");
     assert_eq!(render(landed.view()), "!!-[a]>b\n");

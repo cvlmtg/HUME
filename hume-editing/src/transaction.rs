@@ -30,14 +30,19 @@ impl Transaction {
     /// `txns`, each applying to the text the one before it produces, as one
     /// transaction landing on the last one's selections. `None` when `txns`
     /// is empty.
-    pub fn compose_all(txns: Vec<Transaction>) -> Option<Transaction> {
-        let selection = txns.last()?.selection.clone();
-        let changes = ChangeSet::compose_all(txns.into_iter().map(|txn| txn.changes))?;
-        Some(Self::new(changes, selection))
+    pub fn compose_all(mut txns: Vec<Transaction>) -> Option<Transaction> {
+        let last = txns.pop()?;
+        let changes = ChangeSet::compose_all(
+            txns.into_iter()
+                .map(|txn| txn.changes)
+                .chain([last.changes]),
+        )?;
+        Some(Self::new(changes, last.selection))
     }
 
     /// Apply this transaction to `text`: the text it produces, carrying the
-    /// version the selections were recorded for, paired with them.
+    /// version the selections were recorded for, paired with them, and the
+    /// changes that produced it.
     ///
     /// Takes `text` by reference so the original buffer remains available to
     /// the caller on the error path, with no undo needed.
@@ -45,9 +50,9 @@ impl Transaction {
     /// # Errors
     /// [`ApplyError`] if the changeset is invalid for `text` (length
     /// mismatch, or it deletes the structural trailing `\n`).
-    pub fn apply(&self, text: &BufferText) -> Result<EditState, ApplyError> {
+    pub fn apply(self, text: &BufferText) -> Result<(EditState, ChangeSet), ApplyError> {
         let new_text = self.changes.apply_as(text, self.selection.version())?;
-        Ok(EditState::bind(&new_text, self.selection.clone()))
+        Ok((EditState::bind(&new_text, self.selection), self.changes))
     }
 
     /// The selections this transaction lands on.
@@ -58,11 +63,6 @@ impl Transaction {
     /// The changes this transaction applies.
     pub(crate) fn changes(&self) -> &ChangeSet {
         &self.changes
-    }
-
-    /// Consume this transaction and return just the `ChangeSet`.
-    pub fn into_changes(self) -> ChangeSet {
-        self.changes
     }
 }
 

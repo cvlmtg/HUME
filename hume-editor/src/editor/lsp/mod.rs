@@ -70,7 +70,7 @@ pub(in crate::editor::lsp) fn per_encoding<T>(
     cache: &mut Vec<(PositionEncoding, T)>,
     encoding: PositionEncoding,
     make: impl FnOnce() -> T,
-) -> &T {
+) -> &mut T {
     let index = match cache.iter().position(|(cached, _)| *cached == encoding) {
         Some(index) => index,
         None => {
@@ -78,7 +78,7 @@ pub(in crate::editor::lsp) fn per_encoding<T>(
             cache.len() - 1
         }
     };
-    &cache[index].1
+    &mut cache[index].1
 }
 
 /// How a crashed server is named to the user, with the command that

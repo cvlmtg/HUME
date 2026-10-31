@@ -170,18 +170,14 @@ fn build_changeset_from_char_edits(
 /// Applies a pre-built `ChangeSet` to `target`'s buffer as one undo step, through
 /// the same chokepoint every native edit command uses
 /// (`doc_ops::apply_changes`: selection propagation, syntax reparse,
-/// queued LSP `didChange`, all for free). Returns the applied `ChangeSet` so
-/// a caller that needs to map further positions through this exact edit
-/// (completion's resolve path, mapping a *pre*-accept response's positions
-/// forward) can do so without rebuilding it.
+/// queued LSP `didChange`, all for free).
 fn commit_changeset(
     state: &mut EditorState,
     target: PaneHandle,
     cs: ChangeSet,
-) -> Result<ChangeSet, String> {
+) -> Result<(), String> {
     let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_changes(buffers, &mut stores, target, cs.clone()).map_err(|e| e.to_string())?;
-    Ok(cs)
+    doc_ops::apply_changes(buffers, &mut stores, target, cs).map_err(|e| e.to_string())
 }
 
 /// `(apply-text-edits! pane edits #:expect-generation gen)`. `encoding` is
@@ -261,8 +257,10 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
 /// across the batch itself (via [`build_changeset_from_char_edits`])
 /// immediately before mutating.
 /// `Ok(None)` for an empty batch (nothing to commit); `Ok(Some(cs))`
-/// otherwise, so a caller composing this into a larger changeset doesn't need
-/// its own empty-batch branch.
+/// otherwise, so a caller that maps further positions through this exact
+/// edit (completion's resolve path, mapping a *pre*-accept response's
+/// positions forward) or composes it into a larger changeset doesn't need to
+/// rebuild it or branch on an empty batch.
 pub(in crate::editor) fn commit_char_edits(
     state: &mut EditorState,
     panes: &PanePool,
@@ -276,7 +274,8 @@ pub(in crate::editor) fn commit_char_edits(
     let buf = checked_buffer(state, bid, None)?;
     let cs = build_changeset_from_char_edits(buf.text(), char_edits)?;
     let target = shown_through(panes, requester.pane(), bid);
-    Ok(Some(commit_changeset(state, target, cs)?))
+    commit_changeset(state, target, cs.clone())?;
+    Ok(Some(cs))
 }
 
 pub(in crate::editor) struct WorkspaceEditSummary {
@@ -565,13 +564,13 @@ pub(in crate::editor) fn apply_edit_request_response(
     params: &serde_json::Value,
     server_id: hume_lsp::backend::ServerId,
 ) -> Result<serde_json::Value, ResponseError> {
-    let Some(edit_json) = params.get("edit").cloned() else {
+    let Some(edit_json) = params.get("edit") else {
         return Ok(serde_json::json!({
             "applied": false,
             "failureReason": "missing edit",
         }));
     };
-    let we: lsp_types::WorkspaceEdit = match serde_json::from_value(edit_json) {
+    let we: lsp_types::WorkspaceEdit = match serde::Deserialize::deserialize(edit_json) {
         Ok(we) => we,
         Err(e) => {
             return Ok(serde_json::json!({

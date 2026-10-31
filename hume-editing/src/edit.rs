@@ -129,15 +129,15 @@ impl Edited {
         live_to_result: ChangeSet,
     ) -> Result<Edited, ApplyError> {
         let result_text = result.text().clone();
-        let landed = Transaction::new(live_to_result, result.into_selections());
-        let state = landed.apply(live)?;
+        let (state, changes) =
+            Transaction::new(live_to_result, result.into_selections()).apply(live)?;
         debug_assert!(
             *state.text() == result_text,
             "rebase: the changeset does not reproduce the edit's result"
         );
         Ok(Edited {
             state,
-            changes: landed.into_changes(),
+            changes,
             base: live.version(),
         })
     }
