@@ -368,12 +368,12 @@ impl crate::editor::Editor {
         }
 
         for (bid, buf) in self.state.buffers.iter() {
-            let names: Vec<String> = self
+            let names: Vec<&str> = self
                 .state
                 .buffer_positions
                 .lsp
                 .servers(bid)
-                .filter_map(|sid| lsp.instances.get(sid).map(|i| i.name.to_string()))
+                .filter_map(|sid| lsp.instances.get(sid).map(|i| i.name.as_str()))
                 .collect();
             if names.is_empty() {
                 continue;

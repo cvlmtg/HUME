@@ -132,7 +132,6 @@ pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut
     if state.settings.theme == state.shown_theme {
         return;
     }
-    let wanted = state.settings.theme.clone();
     theme::load_default_theme(
         view,
         &mut state.shown_theme,
@@ -140,7 +139,7 @@ pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut
         &mut state.status_msg,
         &mut state.input,
         &state.dirs,
-        &wanted,
+        &state.settings.theme,
     );
     state.settings.theme.clone_from(&state.shown_theme);
 }

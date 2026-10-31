@@ -379,7 +379,7 @@ pub(crate) fn load_plugin(
         return Ok(SteelVal::StringV(require_program.into()));
     }
 
-    let main = EntryId::main(plugin_id.clone());
+    let main = EntryId::main(plugin_id);
     if let Some(path) = entry_path(ctx.dirs, &main).map_err(generic_err)? {
         ctx.registries
             .lazy_registry

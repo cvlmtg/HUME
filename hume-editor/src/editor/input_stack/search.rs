@@ -192,10 +192,12 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 /// by the `HistoryPrev`/`HistoryNext` arms above, which differ only in
 /// `dir`), then refreshes the live preview against the recalled pattern.
 fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
-    let Some(prompt) = ed.state.input.minibuf().map(|m| m.prompt.clone()) else {
-        return;
-    };
-    let Some(kind) = HistoryStore::kind_for_prompt(&prompt) else {
+    let Some(kind) = ed
+        .state
+        .input
+        .minibuf()
+        .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt))
+    else {
         return;
     };
     minibuf::recall_history(ed, kind, dir);

@@ -324,7 +324,7 @@ macro_rules! option_value {
         hume_scripting::host::OptionValue::Str($value.to_text())
     };
     ($value:expr, string) => {
-        hume_scripting::host::OptionValue::Str($value)
+        hume_scripting::host::OptionValue::Str($value.clone())
     };
     ($value:expr, show_newline) => {
         hume_scripting::host::OptionValue::Str(format_show_newline($value).to_string())
@@ -605,15 +605,15 @@ macro_rules! define_settings {
             overrides: Option<&BufferOverrides>,
         ) -> Option<hume_scripting::host::OptionValue> {
             match key {
-                $( $gkey => Some(option_value!(settings.$gname.clone(), $gparser)), )*
+                $( $gkey => Some(option_value!(settings.$gname, $gparser)), )*
                 // `option_value!` is called separately in each branch, not
                 // hoisted after a shared `let value = …`: the `word_chars`
-                // accessor returns `&str` while the global fallback is an
-                // owned `String` clone, so the two branches don't unify to
+                // accessor returns `&str` while the global fallback is the
+                // `String` field itself, so the two branches don't unify to
                 // one type the way every `Copy` buffer setting's do.
                 $( $bkey => match overrides {
                     Some(o) => Some(option_value!(o.$bname(settings), $bparser)),
-                    None => Some(option_value!(settings.$bname.clone(), $bparser)),
+                    None => Some(option_value!(settings.$bname, $bparser)),
                 }, )*
                 $( $skey => {
                     let value = match overrides {

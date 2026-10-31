@@ -153,8 +153,8 @@ pub(super) fn apply_word_select(
     backward: bool,
     motion: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
 ) -> EditState {
-    let text = state.text().clone();
     state.map(|sel| {
+        let text = sel.text();
         let mut current = sel.selection();
         let mut word = None;
         for _ in 0..count {
@@ -163,7 +163,7 @@ pub(super) fn apply_word_select(
             } else {
                 current.head()
             };
-            match motion(&text, origin) {
+            match motion(text, origin) {
                 Some(range) => {
                     current = Selection::covering(range, Facing::Forward);
                     word = Some(range);
@@ -172,7 +172,7 @@ pub(super) fn apply_word_select(
             }
         }
         word.map_or(current, |range| {
-            Selection::covering(expand_in_text(&text, range, whitespace), Facing::Forward)
+            Selection::covering(expand_in_text(text, range, whitespace), Facing::Forward)
         })
     })
 }
@@ -220,19 +220,19 @@ pub(super) fn apply_word_select_extend(
     chars: WordChars<'_>,
     motion: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
 ) -> EditState {
-    let text = state.text().clone();
     state.map(|sel| {
+        let text = sel.text();
         let mut current = sel.selection();
         for _ in 0..count {
             let (anchor, head) = (current.anchor(), current.head());
-            let Some(target) = motion(&text, owning_word_cluster(&text, head, anchor)) else {
+            let Some(target) = motion(text, owning_word_cluster(text, head, anchor)) else {
                 break;
             };
             let unit = whitespace
                 .and_then(|side| {
                     word_unit_at(
-                        &text,
-                        owning_word_cluster(&text, anchor, head),
+                        text,
+                        owning_word_cluster(text, anchor, head),
                         is_boundary,
                         ClusterBound::TEXT_START,
                         text.clusters().text_end(),
@@ -243,15 +243,15 @@ pub(super) fn apply_word_select_extend(
                 // `None` when the anchor sits on whitespace with no adjacent
                 // word (e.g. indentation at the very start of the buffer):
                 // the bare anchor cluster stands in.
-                .unwrap_or_else(|| anchor_unit(&text, anchor, is_boundary, chars));
+                .unwrap_or_else(|| anchor_unit(text, anchor, is_boundary, chars));
             current = if target.start() > unit.last() {
                 Selection::covering(
-                    unit.hull(expand_in_text(&text, target, whitespace)),
+                    unit.hull(expand_in_text(text, target, whitespace)),
                     Facing::Forward,
                 )
             } else if target.last() < unit.start() {
                 Selection::covering(
-                    expand_in_text(&text, target, whitespace).hull(unit),
+                    expand_in_text(text, target, whitespace).hull(unit),
                     Facing::Backward,
                 )
             } else {

@@ -82,7 +82,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         }
         for name in commands {
             registry.register(MappableCommand::Lazy {
-                name: name.clone().into(),
+                name: name.as_str().into(),
                 plugin: plugin.clone(),
             })?;
         }

@@ -662,7 +662,7 @@ fn shorten_path_actually_abbreviates_when_too_wide() {
     // Width measured without the code under test. See `clippy.toml`'s
     // `disallowed-methods` entry.
     #[allow(clippy::disallowed_methods)]
-    let oracle_width = unicode_width::UnicodeWidthStr::width(result.as_str());
+    let oracle_width = unicode_width::UnicodeWidthStr::width(&*result);
     assert!(
         oracle_width <= 15,
         "shortened path {result:?} exceeds budget of 15 cols"

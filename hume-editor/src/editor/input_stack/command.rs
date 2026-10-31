@@ -147,22 +147,12 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         | MiniBufferEvent::BackspaceOnEmpty => {
             ed.state.truncate_layers(&ed.view, r);
         }
-        MiniBufferEvent::Confirm(_) => {
-            // Record into history and extract the input before
-            // truncating: the `Command` layer (and the minibuf it
-            // owns) is gone by the time `execute_command_line` runs, so the
-            // string has to be taken out first, per truncate-before-
-            // execute: the body below runs with the mode layer already
-            // back at `Base`, so a `:cmd` that enters Insert stays in
-            // Insert instead of being stomped back to Normal, and a
-            // body calling `(prompt! …)` pushes `Prompt` on a clean
-            // stack with no special case needed.
-            let raw = ed
-                .state
-                .input
-                .minibuf()
-                .map(|mb| mb.input.clone())
-                .unwrap_or_default();
+        MiniBufferEvent::Confirm(raw) => {
+            // Truncate before executing: the body below runs with the mode
+            // layer already back at `Base`, so a `:cmd` that enters Insert
+            // stays in Insert instead of being stomped back to Normal, and a
+            // body calling `(prompt! …)` pushes `Prompt` on a clean stack
+            // with no special case needed.
             ed.state
                 .history
                 .get_mut(HistoryKind::Command)

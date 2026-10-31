@@ -108,14 +108,14 @@ impl History {
         }
         let first_step = self.cursor.is_none();
         let prefix = if first_step {
-            current.to_owned()
+            current
         } else {
-            self.scratch.clone().unwrap_or_default()
+            self.scratch.as_deref().unwrap_or("")
         };
         let scan_from = self.cursor.unwrap_or(self.entries.len());
         let idx = (0..scan_from)
             .rev()
-            .find(|&idx| self.entries[idx].starts_with(&prefix))?;
+            .find(|&idx| self.entries[idx].starts_with(prefix))?;
         if first_step {
             self.scratch = Some(current.to_owned());
         }
@@ -128,8 +128,8 @@ impl History {
     /// currently navigating.
     pub(in crate::editor) fn next(&mut self) -> Option<String> {
         let i = self.cursor?;
-        let prefix = self.scratch.clone().unwrap_or_default();
-        match ((i + 1)..self.entries.len()).find(|&idx| self.entries[idx].starts_with(&prefix)) {
+        let prefix = self.scratch.as_deref().unwrap_or("");
+        match ((i + 1)..self.entries.len()).find(|&idx| self.entries[idx].starts_with(prefix)) {
             Some(idx) => {
                 self.cursor = Some(idx);
                 Some(self.entries[idx].clone())

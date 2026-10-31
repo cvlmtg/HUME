@@ -406,13 +406,13 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     // string or a wrong-shaped value (`parse_scope_value`'s `Err` arm) falls
     // back to a fully empty style.
     let mut scopes: FxHashMap<String, ResolvedStyle> = FxHashMap::default();
-    for (key, value) in &table {
+    for (key, value) in table {
         // Reserved keys, not scope entries.
-        if is_reserved(key) {
+        if is_reserved(&key) {
             continue;
         }
-        let origin = origins.get(key).map(|p| &**p);
-        let style = match parse_scope_value(key, value, &palette) {
+        let origin = origins.get(&key).map(|p| &**p);
+        let style = match parse_scope_value(&key, &value, &palette) {
             Ok((style, field_warnings)) => {
                 warnings.extend(field_warnings.into_iter().map(|e| attribute(e, origin)));
                 style
@@ -422,7 +422,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
                 ResolvedStyle::default()
             }
         };
-        scopes.insert(key.clone(), style);
+        scopes.insert(key, style);
     }
 
     // `ui.text` (Helix's base-foreground convention) folds into `default`, the

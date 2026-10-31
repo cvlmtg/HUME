@@ -389,7 +389,7 @@ pub(in crate::editor) fn typed_version(
 
 pub(in crate::editor) fn typed_tutor(ed: &mut Editor, fp: FocusedPane) -> Result<(), CommandError> {
     // Resolve the install source. Fail fast on missing runtime or file.
-    let Some(runtime) = ed.state.dirs.runtime.clone() else {
+    let Some(runtime) = ed.state.dirs.runtime.as_deref() else {
         return Err(CommandError::new(
             "runtime directory not found (set HUME_RUNTIME to override)",
         ));

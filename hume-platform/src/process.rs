@@ -12,7 +12,7 @@
 //! progress (`run_inline_output`).
 //!
 //! External tools reject Windows' `\\?\` prefix, so every path handed to a
-//! `Command` here goes through `strip_unc_prefix` first.
+//! `Command` here goes through `strip_unc_prefix_cow` first.
 
 use std::ffi::OsStr;
 use std::io;
@@ -22,7 +22,7 @@ use std::process::{Command, ExitStatus, Stdio};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt as _;
 
-use crate::path::strip_unc_prefix;
+use crate::path::strip_unc_prefix_cow;
 
 /// Shared spawn/pipe machinery underneath [`line_source`] (line-batch
 /// streaming, for the picker's external-command source) and [`job`]
@@ -81,7 +81,7 @@ impl<'a> Launch<'a> {
     }
 }
 
-/// `Command::new(cmd)` with `args`, `launch`'s cwd (via `strip_unc_prefix`, a
+/// `Command::new(cmd)` with `args`, `launch`'s cwd (via `strip_unc_prefix_cow`, a
 /// no-op on non-Windows) and `PATH`, and `GIT_TERMINAL_PROMPT=0` already
 /// applied: the preamble every spawn site in this crate shares. Each caller
 /// layers its own remaining stdio/process-group setup on top.
@@ -100,7 +100,7 @@ where
     command
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .current_dir(strip_unc_prefix(launch.cwd.to_path_buf()));
+        .current_dir(strip_unc_prefix_cow(launch.cwd));
     match launch.search_path {
         Some(path) => command.env("PATH", path),
         None => command.env_remove("PATH"),

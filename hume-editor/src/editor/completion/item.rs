@@ -376,7 +376,11 @@ impl CompletionItem {
     pub(super) fn menu_row(&self, with_detail: bool) -> hume_ui::popup::MenuRow {
         hume_ui::popup::MenuRow {
             main: self.label.clone(),
-            trailing: self.detail.clone().filter(|d| with_detail && !d.is_empty()),
+            trailing: self
+                .detail
+                .as_deref()
+                .filter(|d| with_detail && !d.is_empty())
+                .map(str::to_owned),
         }
     }
 }

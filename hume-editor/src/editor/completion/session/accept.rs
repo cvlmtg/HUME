@@ -182,7 +182,7 @@ impl BufferSession {
                 (
                     start_pos[0],
                     end_pos[0],
-                    te.new_text.clone(),
+                    te.new_text.as_str(),
                     "textEdit range",
                 )
             }
@@ -195,7 +195,7 @@ impl BufferSession {
             None => (
                 *start,
                 head_now.offset(),
-                item.insert_text.clone(),
+                item.insert_text.as_str(),
                 "insertText token",
             ),
         };
@@ -373,7 +373,7 @@ impl BufferSession {
                     s,
                     move |_text, i, head| head.retreat_saturating(per_cursor_back[i]),
                     forward,
-                    &new_text,
+                    new_text,
                 )
             },
         )
@@ -480,5 +480,5 @@ struct AcceptEdits<'a> {
     /// selection index.
     per_cursor_back: Vec<usize>,
     forward: usize,
-    new_text: String,
+    new_text: &'a str,
 }

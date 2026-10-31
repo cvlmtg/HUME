@@ -397,12 +397,13 @@ fn resolve_sites(
             site.span.end_byte < *region.start() || site.span.start_byte > *region.end()
         }) && !dropped.contains(site)
     });
-    let new = if prior.reparsed {
+    let mut sites: Vec<InjectionSite> = carried.cloned().collect();
+    sites.extend(if prior.reparsed {
         query_sites(inj, tree, rope, Some(&regions))
     } else {
-        dropped.clone()
-    };
-    InjectionSites::canonical(carried.cloned().chain(new).collect())
+        dropped
+    });
+    InjectionSites::canonical(sites)
 }
 
 /// One resolved (but not yet parsed) injection: the grammar to parse it

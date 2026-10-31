@@ -612,19 +612,21 @@ impl Editor {
             return;
         }
         let stopped = self.state.lsp_stop_targets(&self.view, target);
-        let mut ended: Vec<(ServerName, PathBuf)> =
-            stopped.iter().map(|(key, _)| key.clone()).collect();
-        if op == ServerOp::Restart {
+        let n = if op == ServerOp::Restart {
+            let mut ended: Vec<(ServerName, PathBuf)> =
+                stopped.into_iter().map(|(key, _)| key).collect();
             for key in self.state.lsp_unstop(target) {
                 if !ended.contains(&key) {
                     ended.push(key);
                 }
             }
             self.state.lsp_reconcile_all(&self.view);
+            ended.len()
         } else {
+            let n = stopped.len();
             self.state.lsp.stopped.extend(stopped);
-        }
-        let n = ended.len();
+            n
+        };
         let text = if n == 0 {
             format!("lsp: no matching server to {}", op.verb())
         } else {

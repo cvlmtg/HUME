@@ -333,14 +333,15 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {
 /// proc nor a lazy stub (unknown commands are implicitly built-in).
 pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     let owner = match ctx.host.commands().defined_command(&name) {
-        Some(defined) => (**defined.owner()).clone(),
+        Some(defined) => defined.owner().to_string(),
         None => ctx
             .host
             .commands()
             .lazy_command_owner(&name)
-            .map_or(Owner::Core, Owner::Plugin),
+            .map_or(Owner::Core, Owner::Plugin)
+            .to_string(),
     };
-    Ok(SteelVal::StringV(owner.to_string().into()))
+    Ok(SteelVal::StringV(owner.into()))
 }
 
 /// `(%command-callable? name)`: whether `(call! name …)` can reach `name`,

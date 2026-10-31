@@ -23,11 +23,12 @@ pub(in crate::statusline) fn render(
 /// Returns the display path for the `FilePath` element: the buffer's
 /// display-ready path string, printed verbatim, falling back to the buffer's
 /// display name (label, or `*scratch*`) for scratch and synthetic buffers.
-pub(in crate::statusline) fn statusline_display_path(editor: &HumeStatusline<'_>) -> String {
+pub(in crate::statusline) fn statusline_display_path<'a>(
+    editor: &'a HumeStatusline<'_>,
+) -> Cow<'a, str> {
     let doc = editor.doc();
     doc.display_path()
-        .map(str::to_owned)
-        .unwrap_or_else(|| doc.display_name())
+        .map_or_else(|| Cow::Owned(doc.display_name()), Cow::Borrowed)
 }
 
 /// Shorten `display` (a `~`-collapsed path string) to fit within `max_display_cols`
@@ -42,7 +43,7 @@ pub(in crate::statusline) fn statusline_display_path(editor: &HumeStatusline<'_>
 pub(in crate::statusline) fn shorten_path_to_width(
     display: &str,
     max_display_cols: usize,
-) -> String {
+) -> Cow<'_, str> {
     shorten_path_to_width_with(display, max_display_cols, is_path_sep)
 }
 
@@ -54,18 +55,18 @@ fn shorten_path_to_width_with(
     display: &str,
     max_display_cols: usize,
     is_sep: fn(char) -> bool,
-) -> String {
+) -> Cow<'_, str> {
     if text_width(display) <= max_display_cols {
-        return display.to_owned();
+        return Cow::Borrowed(display);
     }
     if max_display_cols == 0 {
-        return String::new();
+        return Cow::Borrowed("");
     }
 
     let parts: Vec<&str> = display.split_inclusive(is_sep).collect();
     let n = parts.len();
     if n == 0 {
-        return String::new();
+        return Cow::Borrowed("");
     }
 
     // Build a mutable copy of the components. The last part is the filename;
@@ -81,12 +82,12 @@ fn shorten_path_to_width_with(
             continue;
         }
         // Abbreviate to the first grapheme cluster, keeping the separator.
-        let first = content.graphemes(true).next().unwrap_or("").to_owned();
+        let first = content.graphemes(true).next().unwrap_or("");
         components[i] = format!("{first}{sep}");
 
         let candidate = components.concat();
         if text_width(&candidate) <= max_display_cols {
-            return candidate;
+            return Cow::Owned(candidate);
         }
     }
 
@@ -103,12 +104,12 @@ fn shorten_path_to_width_with(
     if truncated.is_empty() {
         // Not even one grapheme of filename fits; just show the ellipsis.
         if prefix.is_empty() {
-            ELLIPSIS.to_owned()
+            Cow::Borrowed(ELLIPSIS)
         } else {
-            format!("{prefix}{ELLIPSIS}")
+            Cow::Owned(format!("{prefix}{ELLIPSIS}"))
         }
     } else {
-        format!("{prefix}{truncated}{ELLIPSIS}")
+        Cow::Owned(format!("{prefix}{truncated}{ELLIPSIS}"))
     }
 }
 

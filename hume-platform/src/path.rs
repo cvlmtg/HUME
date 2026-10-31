@@ -381,9 +381,9 @@ pub fn strip_unc_prefix(p: PathBuf) -> PathBuf {
     p
 }
 
-/// Borrowing sibling of [`strip_unc_prefix`] for comparison call sites (e.g.
-/// scanning many candidate paths against a needle) that don't need an owned
-/// result. Avoids an allocation per candidate when no verbatim prefix is
+/// Borrowing sibling of [`strip_unc_prefix`] for call sites that only read
+/// the result (scanning many candidate paths against a needle, a `Command`'s
+/// cwd). Avoids an allocation per candidate when no verbatim prefix is
 /// present to strip, which off Windows is every call.
 #[cfg(windows)]
 pub fn strip_unc_prefix_cow(p: &Path) -> Cow<'_, Path> {
