@@ -17,16 +17,10 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 (load-plugin! "core:lsp")
 ```
 
-- **Depends on:** `core:stdlib`, at load time for config validation and at runtime for
-  diagnostics navigation, code actions, locations and the other features.
+- **Depends on:** `core:stdlib`, at load for config validation and at runtime for most
+  commands.
 - **Activates on:** the first buffer with a detected language, or the first of its
-  commands typed. Its `manifest.scm` declares one entry for `plugin.scm` with
-  `#:languages '("*")`, every editor command below in `#:commands` and the typed commands
-  in `#:typed-commands`. An explicit `#:commands`/`#:events`/`#:languages` declared before
-  `load-plugin!` replaces the manifest. A
-  declaration keyed only on `#:events '(on-lsp-attach)` can never activate on its own,
-  since nothing is registered yet for that event to fire on; `#:languages` or a command
-  gives it a real trigger.
+  commands.
 - **User docs:** [Language Servers](https://cvlmtg.github.io/HUME/lsp.html) for the full
   walkthrough, commands, keys and settings, and
   [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-lsp) for the quick
@@ -41,55 +35,35 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 
 ## Commands
 
-| Command | Effect | Default key |
+| Key | Command | Effect |
 |---|---|---|
-| `lsp/hover` | Show hover documentation for the symbol under the cursor | `K` |
-| `lsp/goto-definition` | Go to the definition | `g d` |
-| `lsp/goto-declaration` | Go to the declaration | `g D` |
-| `lsp/goto-type-definition` | Go to the type definition | `g y` |
-| `lsp/goto-implementation` | Go to the implementation | `g i` |
-| `lsp/references` | List references in a drawer | `z r` |
-| `lsp/rename` | Rename the symbol under the cursor | `G R` |
-| `lsp/code-actions` | Show code actions for the cursor or selection | `z a` |
-| `lsp/document-symbols` | Pick a symbol of the current file and jump to it | `z s` |
-| `lsp/workspace-symbols` | Search the symbols of the workspace as you type and jump to one | `z S` |
-| `lsp/goto-next-diagnostic`, `lsp/goto-prev-diagnostic` | Jump to the next or previous diagnostic and show its message | `g n`, `g p` |
-| `lsp/format-source` | Format the buffer or the linewise selections | none |
-| `lsp/format-document` | Format the whole buffer, or the ranges it is given, and call `done`; for `on-before-buffer-save` handlers | none |
-| `:format-source` | `lsp/format-source` from the command line | none |
-| `:diagnostics` | List this buffer's diagnostics in a drawer | none |
-| `:toggle-inlay-hints` | Show or hide inlay hints in the current buffer | none |
-| `:lsp-status` | Show every running server and its state, plus each attached buffer's servers and diagnostic counts, and the servers a stop left stopped | none |
-| `:lsp-stop [name]` | Stop a running server (default: every server on the focused buffer); it stays stopped until restarted, its name is registered again or the config reloads | none |
-| `:lsp-restart [name]` | Stop and respawn a server, or start a stopped one (default: every server on the focused buffer) | none |
+| `K` | `lsp/hover` | Show hover documentation for the symbol under the cursor |
+| `g d` | `lsp/goto-definition` | Go to the definition |
+| `g D` | `lsp/goto-declaration` | Go to the declaration |
+| `g y` | `lsp/goto-type-definition` | Go to the type definition |
+| `g i` | `lsp/goto-implementation` | Go to the implementation |
+| `z r` | `lsp/references` | List references in a drawer |
+| `G R` | `lsp/rename` | Rename the symbol under the cursor |
+| `z a` | `lsp/code-actions` | Show code actions for the cursor or selection |
+| `z s` | `lsp/document-symbols` | Pick a symbol of the current file and jump to it |
+| `z S` | `lsp/workspace-symbols` | Search the symbols of the workspace as you type and jump to one |
+| `g n`, `g p` | `lsp/goto-next-diagnostic`, `lsp/goto-prev-diagnostic` | Jump to the next or previous diagnostic and show its message |
+| | `lsp/format-source` | Format the buffer or the linewise selections |
+| | `lsp/format-document` | Format the whole buffer, or the ranges it is given, and call `done`; for `on-before-buffer-save` handlers |
+| | `:format-source` | `lsp/format-source` from the command line |
+| | `:diagnostics` | List this buffer's diagnostics in a drawer |
+| | `:toggle-inlay-hints` | Show or hide inlay hints in the current buffer |
+| | `:lsp-status` | Show every running server and its state, plus each attached buffer's servers and diagnostic counts, and the servers a stop left stopped |
+| | `:lsp-stop [name]` | Stop a running server (default: every server on the focused buffer); it stays stopped until restarted, its name is registered again or the config reloads |
+| | `:lsp-restart [name]` | Stop and respawn a server, or start a stopped one (default: every server on the focused buffer) |
 
-## Key layout
-
-Requests that name a destination (the four `lsp-goto-*` and diagnostic navigation) live
-under `g`, beside HUME's native line gotos and structural navigation. Requests that
-answer with a panel rather than a jump (the references list and the code-action menu)
-live under `z`, the view prefix, the same shape `core:pickers`' finders use.
-
-| Key | Command | Why here |
-|---|---|---|
-| `g d`/`g D`/`g y`/`g i` | Goto definition/declaration/type-definition/implementation | Names a destination |
-| `g n`/`g p` | Next/previous diagnostic | Names a destination |
-| `z r` | References | Opens a panel |
-| `z a` | Code actions | Opens a panel |
-| `z s`/`z S` | Document/workspace symbols | Opens a picker |
-| `G R` | Rename | `G` is a prefix for edit commands that sit near `g` without being gotos |
-| `K` | Hover | The conventional keyword-lookup key, used often enough that a prefix would cost a keystroke |
-
-None of these collide with a binding in HUME's default keymap, and the `z` keys beside
-them belong to `core:pickers`. Every binding is a two-key sequence or a fresh top-level
-key. A single-key bind over an existing prefix hides the whole subtree under it (see
-`core:vim-keybind`'s README). A user's own binding of any of these keys beats this
-plugin's, even though the plugin binds them when it activates, after `init.scm`.
+All keys are Normal-mode bindings;
+[`docs/architecture.md`](docs/architecture.md#default-keys) says why each sits where it does.
 
 ## Documentation
 
 | Doc | Covers |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | File layout, request pattern, response conventions, `lib/helpers.scm` helpers, the locations drawer, status commands |
+| [`docs/architecture.md`](docs/architecture.md) | File layout, default keys, request pattern, response conventions, `lib/helpers.scm` helpers, the locations drawer, status commands |
 | [`docs/features.md`](docs/features.md) | Request flags, goto and references, symbols, hover, signature help, completion, code actions, formatting, rename |
 | [`docs/decorations.md`](docs/decorations.md) | Diagnostics navigation and drawer, end-of-line summary, gutter signs, inlay hints |

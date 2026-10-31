@@ -20,10 +20,9 @@ and a line tint).
 
 ## State (`state.scm`)
 
-One `(box (hash))` keyed by `(buffer-key pane)`, not by a pane value itself. A command's
-own pane and a hook's pane-less value for the same buffer must resolve to the same entry
-(see the [core plugins index](../../README.md#per-buffer-state)). Each entry is built from
-one `fresh-entry` and holds:
+One `(box (hash))` keyed by `(buffer-key pane)`, the shape under the core plugins index's
+[Per-buffer state](../../README.md#per-buffer-state). Each entry is built from one
+`fresh-entry` and holds:
 
 | Field | Holds |
 |---|---|
@@ -48,7 +47,7 @@ one setter call and one `*-painted` field.
 | Value | Meaning |
 |---|---|
 | a string | The cached `git cat-file` blob; a refresh is a local diff, no process |
-| `#f` | Not yet fetched, or invalidated by a save; the next refresh fetches |
+| `#f` | Not yet fetched, or dropped by `drop-ref-text!` (a save, a buffer enter, an explicit-ref toggle); the next refresh fetches |
 | `'unavailable` | The last fetch failed: a sticky negative cache, so a doomed fetch is not retried on every debounce fire |
 
 ### `entry-set!` and `ensure-entry!`
@@ -59,17 +58,15 @@ Both write to an entry. They differ on a missing one, the two write-path shapes 
 | | On a missing entry | Used by |
 |---|---|---|
 | `entry-set!` | No-ops | A `spawn-async!` callback. A late callback for a buffer closed while its fetch was in flight must not resurrect state for it |
-| `ensure-entry!` | Resurrects one from `fresh-entry` | A toggle command. An explicit-ref or bare toggle must succeed even for a buffer whose `on-buffer-open` never fired (an activation list can override the manifest's `#:events` with a `#:commands`-only list) |
-
-`toggle-flag!` is `ensure-entry!` plus `entry-set!`, with an extra `hash-ref` to return the
-flipped value.
+| `ensure-entry!` | Creates one from `fresh-entry` with both flags off | A toggle command and `add-cover!`. A toggle, or another plugin's `git-diff/render-diff`, must succeed even for a buffer whose `on-buffer-open` never fired (an activation list can override the manifest's `#:events` with a `#:commands`-only list) |
 
 `spawn-job!` starts a `spawn-async!` job in a slot (`"job"`/`"branch-job"`), cancelling the
 slot's current job first. The result callback runs only while its job still owns the slot, so
 a result queued before a cancel or a replacement, or arriving after the buffer closed, is
 dropped. `cancel-job!` cancels a slot's job without firing its callback. `diff.scm` and
 `branch.scm` both go through these two, differing only in the key. `remove-buffer!` cancels
-every slot's live job before it drops the entry, so a new slot needs no change in the close hook.
+the live job of each slot in its own `'("job" "branch-job")` list before it drops the entry,
+so a new slot must be added to that list.
 
 ## Ref handling
 

@@ -3,13 +3,12 @@
 General-purpose standard library for plugin authors: helpers any plugin might need,
 exposed through `call!` so cross-plugin code never has to re-derive them.
 
-Cross-plugin access in HUME is `call!`-only: plugins never `require` each other's
-modules, since that would break the namespace isolation each plugin gets. So this plugin's
-public API is a set of `define-command!`-registered commands rather than a `provide`d
-library. A command name and a Steel binding of the same name live in separate namespaces,
-so the command `"stdlib/git-toplevel"` does not collide with the function it wraps. The prelude
-(convenience macros for `init.scm`, loaded at startup) is a separate layer and not part of
-this plugin.
+Its public API is a set of `define-command!` commands, since plugins reach each other only
+through `call!` (see the index's
+[Depending on `core:stdlib`](../README.md#depending-on-corestdlib)). A command name and a
+Steel binding live in separate namespaces, so the command `"stdlib/git-toplevel"` does not
+collide with the function it wraps. The prelude (convenience macros for `init.scm`) is a
+separate layer, not part of this plugin.
 
 ## Usage
 
@@ -18,19 +17,13 @@ this plugin.
 ```
 
 - **Depends on:** nothing.
-- **Activates on:** the first call to any command below. Its `manifest.scm` declares two
-  entries: `files.scm` for the filesystem, download and archive commands, and `plugin.scm`
-  for the rest. Each entry's `#:commands` list names its own commands. `load-plugin!`
-  registers those stubs and runs neither file until one of its commands is called, so a
-  plugin that never touches files does not load `files.scm`.
-- **Overrides:** declaring it before `load-plugin!` with an explicit
-  `#:commands`/`#:events`/`#:languages` list
-  that omits a helper a dependent needs leaves that helper with no activation stub; see
-  the [core plugins index](../README.md#depending-on-corestdlib).
+- **Activates on:** the first call to one of its commands. `manifest.scm` declares two
+  entries, `files.scm` (filesystem, download and archive commands) and `plugin.scm` (the
+  rest), each with its own `#:commands`, so a plugin that never touches files does not
+  load `files.scm`.
 - **User docs:** [Standard Library](https://cvlmtg.github.io/HUME/standard-library.html)
-  for call signatures, and
-  [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-stdlib) for the
-  dependency-ordering rule every other core plugin follows.
+  for signatures, [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-stdlib)
+  for load order.
 
 ## Commands
 
@@ -70,13 +63,11 @@ list is picked apart.
 single `reverse`. Steel's `append` called with many lists (`(apply append lists)`) costs
 time that grows with the number of lists times their total length: on 2,000 one-entry
 lists, as `core:git-diff` builds for 2,000 changed lines, it took 16 ms where `concat`
-takes about 0.5 ms. `core:git-diff`, `core:lsp` and `core:plum` join their per-item lists
-with it.
+takes about 0.5 ms.
 
 ### Filesystem
 
-Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
-`core:lsp-install` call them rather than each carrying a copy. `delete-dir!` and
+Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `delete-dir!` and
 `delete-file!` are idempotent, unlike `remove-dir!` and Steel's own `delete-file!`:
 a missing target is not an error. `list-entries` returns the names of every entry of a
 directory, sorted, and `list-subdirs` only those that are directories, skipping stray files
@@ -90,20 +81,21 @@ working directory) are not. Elsewhere it is absolute when it starts with `/`.
 
 ### Downloads, digests and archives
 
-`core:lsp-install` and `core:plum` download through `download!`, which runs `curl -fsSL`:
+`download!` runs `curl -fsSL`:
 an HTTP error fails the command instead of saving the error page, a redirect (as GitHub's
 release downloads use) is followed, and a `--` before the URL keeps it from being read as an
 option. An offset and a size fetch that byte range with `-r`, for one member of a bundle.
 
-They both verify and unpack downloads, through `verify-sha256!` and `extract-archive!`. Both shell out to the platform's tools rather than adding hashing or archive
-crates; `docs/LSP-INSTALL.md` gives the reasoning. `verify-sha256!` compares the digests
-case-insensitively. `extract-archive!` walks the extracted tree once, refuses a symlink that resolves outside
-the target directory (`first-path-outside`), and returns the regular files, which
-`core:lsp-install` marks executable.
+`verify-sha256!` and `extract-archive!` shell out to the platform's tools rather than
+adding hashing or archive crates; `docs/LSP-INSTALL.md` gives the reasoning.
+`verify-sha256!` compares the digests case-insensitively. `extract-archive!` walks the
+extracted tree once, refuses a symlink that resolves outside the target directory
+(`first-path-outside`), and returns the regular files, so a caller can mark them
+executable.
 
 `find-extractor` picks the program for an archive format, and `extract-archive!` runs the
-one it picks, so `core:lsp-install`'s check before a download finds the program the
-extraction runs. Off Windows that is `tar` for a tar archive and `unzip` for a zip archive,
+one it picks, so a caller that checks for an extractor before downloading finds the
+program the extraction runs. Off Windows that is `tar` for a tar archive and `unzip` for a zip archive,
 on the search path. On Windows it is Windows' own bsdtar, `%SystemRoot%\System32\tar.exe`,
 which extracts both; without it, `unzip` on the search path for a zip archive, then the
 search path's `tar`. Under Git Bash that `tar` is GNU tar, which reads a `C:\...` archive path
@@ -114,17 +106,16 @@ as a remote host and cannot extract a `.zip`, so it comes last.
 `stdlib/git-repo?` and `stdlib/git-toplevel` answer `#f` when `git` is not on `$PATH` or
 the command exits non-zero. `git-repo?` compares stdout with `true` rather than checking
 only the exit code: inside a bare repo, `rev-parse --is-inside-work-tree` exits 0 and
-prints `false`. `core:pickers` uses both: `git-repo?` to choose `pickers/files`'s source
-and `git-toplevel` to resolve a `pickers/git-modified` selection against the repo root.
+prints `false`.
 
 ### Command arguments
 
-`stdlib/resolve-lang-arg` is called by `:lsp-install [lang]` and, through its grammar
-argument helper, by `:plum-install-grammar [lang]`. Both are 2-arity typed commands, so
-`arg` is the string the user typed after the command name, or `#f` when they typed none;
-`crate::editor::dispatch`'s typed-command marshalling never puts anything else in that
-slot. `resolve-lang-arg` falls back to the current buffer's language when `arg` is not a
-string, and logs `'info` and answers `#f` when the buffer has none.
+`stdlib/resolve-lang-arg` resolves the optional `[lang]` argument of a typed command whose
+lambda takes `(pane arg)`. `arg` is the string the user typed after the command name, or
+`#f` when they typed none; the typed-command dispatch (`run_typed_steel_command`,
+`hume-editor/src/editor/dispatch.rs`) never passes anything else. `resolve-lang-arg` falls
+back to the buffer's language when `arg` is not a string, and logs `'info` and answers `#f`
+when the buffer has none.
 
 ### Reports
 
@@ -133,15 +124,13 @@ status-line slot `log!` writes to. `stdlib/report-section` renders one section: 
 `title (count)` header, followed by `, hint` when the section has items (`hint` may be
 `#f`), then one indented line per item, or `none`. `stdlib/show-report!` joins sections
 with a blank line and shows them with `show-read-only-buffer!`, in the buffer `[name]`.
-`core:plum`'s list commands and `:lsp-catalog` build their output this way.
 
 ### Picker keymap
 
 `stdlib/picker-keymap` is the one default keymap a picker takes: `picker!` and
 `live-picker!` answer no key besides typing and `Backspace` unless their keymap binds it.
 It is a plain hashmap built per call around the plugin's own handler, so a plugin reuses it
-whole or `hash-insert`s the keys it wants different. The three `core:pickers` pickers and
-`core:lsp`'s symbol pickers use it as is.
+whole or `hash-insert`s the keys it wants different.
 
 Movement keys call `picker-move!` and leave the picker open. `Esc` only closes it.
 `Enter`, `Ctrl-o`, `Ctrl-t`, `Ctrl-v` and `Ctrl-s` go through `stdlib/picker-accept`, which
@@ -175,22 +164,19 @@ minimum-size failure:
 `(stdlib/split-words pane str)` is `(split-words str (get-buffer-option pane
 "word-chars"))`. It tokenizes `str` with that buffer's `word-chars`, the same
 classification the `w` and `b` motions and text objects use, without the caller fetching
-`word-chars` itself. `core:buffer-words` calls it once per line. A plugin tokenizing text
-that is not `pane`'s own content calls the builtin `split-words` directly.
+`word-chars` itself. A plugin tokenizing text that is not `pane`'s own content calls the
+builtin `split-words` directly.
 
 ### Plugin config
 
 Every config helper's error names the calling plugin (its first argument) and the offending
 key, so a bad `#:config` value fails at load time with a message that says what to fix.
-`core:git-diff`, `core:pickers`, `core:vim-keybind` and `core:buffer-words` use them for
-their own config. All five build on an internal `stdlib/config-value`, which returns `cfg`'s
-value for `key`, or `default` if absent.
+All five build on an internal `stdlib/config-value`, which returns `cfg`'s value for `key`,
+or `default` if absent.
 
-## Design decisions
+## Implementation notes
 
 - **`stdlib/run-stdout` is internal.** It returns `run-capture!`'s stdout, trimmed, when the
   command exits 0, and `#f` otherwise. Trimming is safe for a single-value probe like the
   git commands; a `-z`-delimited multi-entry blob such as `git status` can start with
   significant whitespace in its first entry.
-- **`stdlib/config-value` is internal.** The five typed helpers are the cross-plugin
-  surface.

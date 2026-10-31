@@ -6,7 +6,7 @@
 (define bw/match (call! "stdlib/config-enum" "core:buffer-words" bw/cfg 'match 'string '(string fuzzy)))
 (define bw/chars-per-tick (call! "stdlib/config-integer" "core:buffer-words" bw/cfg 'chars 8000 1))
 
-;;; Not 0 — see README.md's "Cursor-outward, line-windowed indexing".
+;;; Not 0 — see README.md's "Design decisions".
 (define bw/tick-delay-ms 16)
 
 ;;; See README.md's "Updating after an edit".
@@ -28,7 +28,7 @@
 (define (bw/install! pane entry)
   (set-box! bw/*buffers* (hash-insert (unbox bw/*buffers*) (buffer-key pane) entry)))
 
-;;; Cancels `entry`'s pending tick, if any — see README.md's "Cursor-outward, line-windowed indexing".
+;;; Cancels `entry`'s pending tick, if any — see README.md's "Staleness".
 (define (bw/cancel-timer! entry)
   (let ([timer (hash-ref entry "timer")])
     (when timer (cancel-timer! timer))))
@@ -65,7 +65,7 @@
            (foldl (lambda (w s) (bw/add-word s w)) words (call! "stdlib/split-words" pane line)))
          set lines))
 
-;;; 0-indexed cursor line, or the top of the buffer when no pane shows it — see README.md's "Cursor-outward, line-windowed indexing".
+;;; 0-indexed cursor line, or the top of the buffer when no pane shows it — see README.md's "Anchor line".
 (define (bw/anchor-line pane)
   (let ([panes (buffer-panes pane)])
     (if (null? panes) 0 (buffer-cursor-line (car panes)))))
@@ -112,7 +112,7 @@
                 (let* ([gone (filter (lambda (w) (not (bw/present? pane w))) candidates)]
                        [kept (if (null? gone)
                                  set
-                                 ;; See README.md's "Updating after an edit" for the intersection.
+                                 ;; See README.md's "Implementation notes" for the intersection.
                                  (hashset-difference
                                    set (hashset-intersection set (apply hashset (bw/with-twins gone)))))])
                   (foldl (lambda (w s) (bw/add-word s w)) kept (hashset->list new-words))))))))
@@ -144,7 +144,7 @@
   (hash-insert (hash-insert entry "building" building) "timer" timer))
 
 ;;; Pushes `entry`'s finished word list to the open menu, if any — see README.md's
-;;; "Pushing a finished index to an open menu".
+;;; "Answering a trigger".
 (define (bw/push-finished-answer! pane entry)
   (let ([id (hash-ref entry "live-id")])
     (when id
@@ -197,7 +197,7 @@
                                           (lambda () (bw/walk! pane gen fwd-hi bwd-lo))))))))))))
 
 ;;; Cancels any in-flight walk and restarts it fresh — see README.md's
-;;; "Double-buffered cache" and "Cursor-outward, line-windowed indexing".
+;;; "Staleness".
 (define (bw/reindex! pane)
   (unless (bw/entry pane)
     (when (buffer-live? pane)
@@ -233,7 +233,7 @@
     (bw/forget! pane)
     (bw/reindex! pane)))
 
-;;; See README.md's "Cursor-outward, line-windowed indexing" for the keying.
+;;; See README.md's "Updating after an edit" for the keying.
 (define bw/schedule-refresh!
   (debounce-by 150 bw/refresh! #:key (lambda (p . _) (buffer-key p))))
 
@@ -251,7 +251,7 @@
 
 ;; ── Completion source ─────────────────────────────────────────────────────────
 
-;;; Reads the cache `bw/walk!` builds — see README.md's "Double-buffered cache" and "Matching".
+;;; Reads the cache `bw/walk!` builds — see README.md's "Double-buffered cache" and "Answering a trigger".
 (define (bw/items pane)
   (let ([entry (bw/entry pane)])
     (if (not entry)
@@ -264,12 +264,12 @@
                     (hashset->list words)
                     '())))))))
 
-;;; Whether a walk over `pane`'s buffer is in progress — see README.md's "Pushing a finished index to an open menu".
+;;; Whether a walk over `pane`'s buffer is in progress — see README.md's "Answering a trigger".
 (define (bw/building? pane)
   (let ([entry (bw/entry pane)])
     (and entry (hash-ref entry "building") #t)))
 
-;;; Stashes `id` for `bw/push-finished-answer!` — see README.md's "Pushing a finished index to an open menu".
+;;; Stashes `id` for `bw/push-finished-answer!` — see README.md's "Answering a trigger".
 (define (bw/set-live-id! pane id)
   (let ([entry (bw/entry pane)])
     (when entry

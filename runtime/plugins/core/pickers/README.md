@@ -12,11 +12,10 @@ with no native (Rust) picker definitions.
 
 - **Depends on:** `core:stdlib`, at load time for config validation and when a picker
   opens.
-- **Activates on:** its own key bindings only. It has no `manifest.scm`, so it must be
-  loaded eagerly (see the [core plugins index](../README.md#loading-model)).
+- **Activates on:** `load-plugin!`. Its `bind-key!` calls must run at startup, so it has
+  no `manifest.scm` (see the [core plugins index](../README.md#loading-model)).
 - **User docs:** [Fuzzy Finder](https://cvlmtg.github.io/HUME/pickers.html) and
-  [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-pickers) for keys
-  and config semantics.
+  [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-pickers).
 
 ## Configuration
 
@@ -33,17 +32,18 @@ with no native (Rust) picker definitions.
 | `z m` | `pickers/git-modified` | Fuzzy-pick a file with staged or unstaged git changes and open it |
 
 `pickers/files-picker-with` and `pickers/git-picker-with` are internal commands that the
-two public ones call; see Design decisions.
+two public ones call; see [Design decisions](#design-decisions).
 
-The three keys sit under `z`. A picker opens a panel over the buffer and waits, the same
-shape as `core:lsp`'s references list and code-action menu, also on `z`; `g` is left to
-commands that name a place.
-
-Every picker takes `core:stdlib`'s default [picker keymap](../stdlib/README.md#picker-keymap),
-which also binds `Ctrl-o`, `Ctrl-t`, `Ctrl-v` and `Ctrl-s` to open the selection in the
-current pane, a new tab, a vertical split or a horizontal split.
+The keys sit under `z` because a picker opens a panel and waits, the layout
+[`core:lsp`'s default keys](../lsp/docs/architecture.md#default-keys) explain.
 
 ## How it works
+
+Every picker passes `(call! "stdlib/picker-keymap" handler)` as its keymap, which gives it
+the default movement keys and the `Enter`/`Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s` placements
+(current pane, new tab, vertical split, horizontal split); see `core:stdlib`'s
+[Picker keymap](../stdlib/README.md#picker-keymap). Each handler switches the focused pane
+to the picked buffer with `switch-to-buffer!`.
 
 ### File source
 
@@ -54,6 +54,8 @@ current pane, a new tab, a vertical split or a horizontal split.
 2. Otherwise, if `fd` (or Debian's `fdfind`) is installed: `fd --type f -0`.
 3. Otherwise, an error naming `fd` as the thing to install.
 
+Its handler, `pickers/open-file!`, passes the picked path to `open-buffer!`.
+
 `git ls-files --cached` can list a file that was deleted from disk without `git rm`;
 selecting one surfaces an error when the picker tries to open it.
 
@@ -63,7 +65,8 @@ selecting one surfaces an error when the picker tries to open it.
 (`*scratch*`, etc.) for a pathless one; see the manual's
 [Picking buffers](https://cvlmtg.github.io/HUME/pickers.html#picking-buffers). `(buffers)`
 hands each entry as a [pane-less pane value](../README.md#pane-values-vs-pane-less-values),
-which is used directly as the picker payload.
+which is the picker payload. The handler, `pickers/switch-to-buffer!`, switches to that
+value directly, with no `open-buffer!`.
 
 The switch targets whichever pane is focused when the pick is made (`(focused-pane)`).
 This is an exception to the index's
@@ -99,8 +102,9 @@ tree (exit 0, empty stdout) yields an empty item list and pushes as a no-op.
 #### Opening
 
 Rows are repo-root-relative but `open-buffer!` resolves a relative path against the
-editor's cwd. The handler joins the selected row onto the root resolved at dispatch, so a
-selection opens the right file when `:pwd` is a subdirectory of the repo.
+editor's cwd. The handler joins the selected row onto the root resolved at dispatch before
+`open-buffer!`, so a selection opens the right file when `:pwd` is a subdirectory of the
+repo.
 
 #### Failure and cancellation
 
@@ -112,12 +116,8 @@ job running.
 
 ## Design decisions
 
-- **Accepting a row switches the focused pane.** Every picker's handler wraps `open-buffer!`
-  in `switch-to-buffer!`.
-- **All three pickers pass `(call! "stdlib/picker-keymap" handler)` as their keymap.** That
-  gives each the default movement keys and the `Enter`/`Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s`
-  placements.
-- **`pickers/files` and `pickers/git-modified` each split into a public command and an
-  internal `pickers/*-with` command.** The internal one takes the git/fd probe result (or
-  repo root) as an argument. A test drives each branch (repo or no repo, `fd` present or
-  absent) through `call!` without changing `PATH` or building a git sandbox.
+- **`pickers/files` and `pickers/git-modified` each delegate to an internal
+  `pickers/*-with` command, not probe and open in one body.** The internal one takes the
+  git/fd probe result (or repo root) as an argument, so a test drives each branch (repo or
+  no repo, `fd` present or absent) through `call!` without changing `PATH` or building a
+  git sandbox.

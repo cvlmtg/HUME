@@ -1,10 +1,11 @@
 # core:git-diff
 
 Live, VSCode-style inline git diff. It compares the buffer against a git ref (default
-`HEAD`) as it is edited and renders gutter `+`/`-`/`~` signs, deleted lines as virtual
-lines, added and changed lines with a background tint, and word-level highlights inside
-changed lines. It also keeps a `"steel:git-branch"` statusline element fresh for the
-focused buffer; add that element to your own `configure-statusline!` call to show it.
+`HEAD`) as it is edited and renders gutter `+`/`~` signs with a `▁`/`▔` boundary mark for
+a deletion, deleted lines as virtual lines, added and changed lines with a background tint,
+and word-level highlights inside changed lines. It also keeps a `"steel:git-branch"`
+statusline element fresh for the focused buffer, fetching only while a statusline places
+that element.
 
 ## Usage
 
@@ -16,31 +17,30 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
 
 - **Depends on:** `core:stdlib`, at load time for config validation and at runtime for
   rendering.
-- **Activates on:** the first buffer opened, the first `:toggle-git-signs`/
-  `:toggle-inline-diff` typed, or the first call or key press of any `git-diff/*` command
-  listed below. Its `manifest.scm` has one entry for `plugin.scm` with
-  `#:events '(on-buffer-open)`, the two typed commands and those commands. `'signs` defaults on (cheap, no line-shifting side
-  effects); `'inline` defaults off (it moves virtual lines into the buffer's visual
-  flow).
-- **`'branch-style`** is `'parens` (default, `(main)`) or `'icon` (`⎇ main`).
-- **Branch tracking has no on/off flag; placement is the switch.** It does not fetch until
-  `"steel:git-branch"` appears in your `configure-statusline!` call, and it starts when it
-  does.
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-git-diff)
-  for value semantics and key-binding examples. No default key bindings ship with this
-  plugin.
+- **Activates on:** the first `on-buffer-open`, either typed command, or any `git-diff/*`
+  command below (`manifest.scm`).
+- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-git-diff).
+
+## Configuration
+
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `'signs` | bool | `#t` | Gutter signs start on for a newly opened buffer. On by default: signs are cheap and shift no lines |
+| `'inline` | bool | `#f` | Inline rendering starts on for a newly opened buffer. Off by default: its virtual lines move the buffer's visual flow |
+| `'ref` | string | `"HEAD"` | The ref a buffer diffs against until a toggle command sets a per-buffer one (see [Per-buffer ref](docs/architecture.md#per-buffer-ref)) |
+| `'branch-style` | `'parens` or `'icon` | `'parens` | How `"steel:git-branch"` writes the branch: `(main)` or `⎇ main` |
 
 ## Commands
 
 | Command | Effect |
 |---|---|
-| `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer. Tab-completes branches/tags |
-| `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer. Tab-completes branches/tags |
-| `git-diff/toggle-git-signs` | Mappable twin of `:toggle-git-signs` with no ref: bind it with `bind-key!` |
-| `git-diff/toggle-inline-diff` | Mappable twin of `:toggle-inline-diff` with no ref |
+| `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer. Completes refs (see [Ref completion](docs/architecture.md#ref-completion)) |
+| `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer. Completes refs |
+| `git-diff/toggle-git-signs` | Bindable twin of `:toggle-git-signs`, with no ref |
+| `git-diff/toggle-inline-diff` | Bindable twin of `:toggle-inline-diff`, with no ref |
 | `(call! "git-diff/show-inline-diff" pane ref)` | Turn inline rendering on against `ref` (never off). Same as `:toggle-inline-diff <ref>` |
 | `(call! "git-diff/inline-diff?" pane)` | `#t` when inline rendering is on for the buffer |
-| `(call! "git-diff/render-diff" pane source hunks)` | Draw `hunks` inline under the decoration source `source`. Another plugin's entry point to the renderer, e.g. `core:undotree`'s revision diff. Hides the buffer's own inline diff until the source is released. See [`docs/rendering.md`](docs/rendering.md#rendering-another-plugins-hunks) |
+| `(call! "git-diff/render-diff" pane source hunks)` | Draw another plugin's `hunks` inline under the decoration source `source`, hiding the buffer's own inline diff until the source is released. See [Rendering another plugin's hunks](docs/rendering.md#rendering-another-plugins-hunks) |
 | `(call! "git-diff/release-diff" pane source)` | Clear what `source` drew and show the buffer's own inline diff again |
 
 ## Documentation

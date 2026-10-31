@@ -17,7 +17,8 @@ same path, line and column appear once (`lsp-locations->merged-places`):
    HUME cannot jump to is left out and one warning says how many: its URI is not a file,
    such as `jdt://`, or its line is past the end of the file's open buffer. When that
    leaves nothing, the warning is the whole report. The drawer's refresh leaves such
-   locations out without warning again.
+   locations out without a warning while some rows remain, and closes the drawer with the
+   same warning when none do.
 3. A single location jumps to it, so two servers agreeing on a definition still jump.
 4. Several locations open the [locations drawer](architecture.md#locations-drawer-locationsscm).
 
@@ -119,22 +120,23 @@ truthy `"disabled"` field are dropped from the menu.
 
 Running a chosen action applies its `edit`, then runs its `command`. An action with
 neither is resolved once through `codeAction/resolve` when the server advertises
-`resolveProvider` (the editor sends no resolve request to a server that does not), and logs "Code action has no edit or command" if the resolved action is
-still empty. The resolve step runs at most once, so a server that keeps returning an empty
-action cannot loop. A bare legacy `Command` (a string `command` and no `edit`) is passed to
+`resolveProvider` (the editor sends no resolve request to a server that does not), and
+logs "Code action has no edit or command" if the resolved action is still empty. The
+resolve step runs at most once, so a server that keeps returning an empty action cannot
+loop. A bare legacy `Command` (a string `command` and no `edit`) is passed to
 `workspace/executeCommand` as the whole action object. The edit is applied with
 `#:expect-generation`, so an edit computed against text that has since changed fails
 instead of applying to the wrong text.
 
 ## Formatting
 
-`lsp/format-source` and `:format-source` run the same function, which picks ranges from the
-selections and hands them to `lsp/format-document`'s implementation. `lsp/format-document` takes
-a `done` and optional ranges: with no ranges it formats the whole document, and it calls
-`done` once the edits are applied or the attempt has failed (no path, no server, a server
-error, stale text). It works on a buffer
-no pane shows. Format-on-save is not wired by default; the user manual's "Format on save"
-section has the recipe.
+`lsp/format-source` and `:format-source` run the same function, which picks ranges from
+the selections and hands them to `lsp/format-document`'s implementation.
+`lsp/format-document` takes a `done` and optional ranges: with no ranges it formats the
+whole document, and it calls `done` once the edits are applied or the attempt has failed
+(no path, no server, a server error, stale text). It works on a buffer no pane shows.
+Format-on-save is not wired by default; the user manual's "Format on save" section has the
+recipe.
 
 A buffer with no path logs a message and formats nothing. Formatting the whole buffer
 goes to the first running server with the `format` feature and a
@@ -166,25 +168,25 @@ A server with `rangesSupport` takes every range in one request, so the cap doesn
 
 The per-range fan-out keeps three boxes: requests still in flight, edits collected so far,
 and whether it has aborted. All edits are applied together when the in-flight count
-reaches zero. After an error the count never reaches zero, so no partial format is applied.
-The abort flag only suppresses duplicate error lines when several ranges fail. Responses
-can land in any order.
+reaches zero. Responses can land in any order. The first error sets the abort flag,
+reports that error and calls `done`; every later response, error or success, is then
+ignored, so `done` runs once, one error line is logged and no partial format is applied.
 
 ## Rename
 
 `lsp/rename` prompts with the symbol under the cursor prefilled, captures the buffer's
 generation when the name is accepted, and sends `textDocument/rename`. A null response
 logs "Nothing to rename". Otherwise the workspace edit is applied with
-`#:expect-generation`. A buffer with no server that supports renaming gets a "not supported"
-message before any prompt opens. The request itself names the `rename-symbol` feature, so
-it goes to whichever server supports it when the name is accepted.
+`#:expect-generation`. A buffer with no server that supports renaming gets a "not
+supported" message before any prompt opens. The request itself names the `rename-symbol`
+feature, so it goes to whichever server supports it when the name is accepted.
 
 ## Request flags
 
 | Request | Routed by | `#:require-focus` | `#:allow-stale` | `#:supersede` |
 |---|---|---|---|---|
 | `lsp/hover` | `'hover` | yes | yes | |
-| `lsp-goto-*` (four), every server | `'goto-definition` and siblings | | | |
+| `lsp/goto-*` (four), every server | `'goto-definition` and siblings | | | |
 | `lsp/references`, every server | `'goto-reference` | yes | | |
 | Signature help | `'signature-help` | yes | | |
 | `lsp/document-symbols`, every server | `'document-symbols` | yes | | |

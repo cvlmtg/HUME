@@ -4,6 +4,11 @@ Offers every identifier already in the buffer as an Insert-mode completion. It w
 any buffer, including a scratch buffer or a `.txt` file where `core:lsp` has no server to
 ask.
 
+It defines no commands and binds no keys. It registers a `'buffer` completion source named
+`"buffer-words"`, which answers `Ctrl-Space` (`completion-trigger`) and any trigger
+characters a config gives it with `(set-completion-triggers! language "buffer-words"
+chars)`. It sets no trigger characters itself.
+
 ## Usage
 
 ```scheme
@@ -12,27 +17,25 @@ ask.
 ```
 
 - **Depends on:** `core:stdlib`, at load time for config validation and at runtime for
-  the scan.
-- **Activates on:** `Ctrl-Space` (or a completion source's own trigger char) only. It
-  has no `manifest.scm`, so it must be loaded eagerly (see the
-  [core plugins index](../README.md#loading-model)).
+  word splitting.
+- **Activates on:** `load-plugin!`. It registers hooks and a completion source at load,
+  so it has no `manifest.scm` (see the [core plugins index](../README.md#loading-model)).
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-buffer-words).
 
 ## Configuration
 
-| Key | Default | Meaning |
-|---|---|---|
-| `'match` | `'string` | `'string`: a case-sensitive prefix gate, the vim `i_CTRL-N` feel. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
-| `'chars` | `8000` | Characters fetched and scanned per side (before/after the cursor) on each background indexing tick, and the most an edit's changed lines may hold for the index to be updated without a walk; an integer of at least 1. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `'match` | `'string` \| `'fuzzy` | `'string` | `'string`: a case-sensitive prefix gate, the vim `i_CTRL-N` feel. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
+| `'chars` | integer (≥ 1) | `8000` | Characters fetched and scanned per side (before/after the cursor) on each walk tick, and the most an edit's changed lines may hold for the index to be updated without a walk |
 
 ## How it works
 
-Vim's `i_CTRL-N` rescans the buffer on every invocation, synchronously, in C. This plugin
-scans in interpreted Steel, so it keeps a per-buffer cache instead. A background walk that
-yields back to the editor between ticks builds the cache, and `Ctrl-Space` reads whatever
-that walk has indexed so far. After an edit, the cache is updated from the lines the edit
-changed (see [Updating after an edit](#updating-after-an-edit)); a walk runs again only
-when that can't be done.
+Each buffer has a cached word set. A background walk that yields to the editor between
+ticks builds it, and `Ctrl-Space` reads whatever the walk has indexed so far. After an
+edit the cache is updated from the lines the edit changed, and a walk runs again only when
+that can't be done. The per-buffer entry follows the index's
+[Per-buffer state](../README.md#per-buffer-state) shape.
 
 ```
 cursor line
@@ -47,147 +50,103 @@ cursor line
 
 ### Cursor-outward, line-windowed indexing
 
-A walk builds the cache on `on-buffer-open`, and again whenever a restart is needed (see
-[Updating after an edit](#updating-after-an-edit)). The per-buffer entry has the same shape `core:git-diff` uses for its own state (see
-the [core plugins index](../README.md#per-buffer-state)). Each walk goes outward from the
-cursor's line in both directions, one batch of lines per direction per tick, sized by
-the character budget below, fetched with `(buffer-lines pane #:range …)` and scanned to
-completion in the same tick. A word cannot span two lines, so nothing carries across a
-tick boundary.
-
-Nothing blocks however large the buffer is, and the words nearest the cursor are indexed
-first. An edit during a walk doesn't restart it: the next tick catches up with the edit
-before it reads.
-
-The walk fetches by line. `buffer-lines` seeks into the buffer's rope by line index, so
-fetching a window of lines costs the same wherever the window is. Re-slicing a string at a
-character offset would cost time proportional to the offset on every call. Each tick
-converts only the lines it is about to scan, so memory during a walk is bounded by
-`'chars`, not by buffer size. A single line is read and scanned whole, with no cap; see
-[Known limitations](#known-limitations).
-
-Each tick reschedules itself after a 16ms delay. A zero-delay timer is due the instant it
-is scheduled, which pins the event loop's wake timeout at zero for the whole walk: the
-loop never blocks on input and repaints an unchanged frame once per tick until the walk
-finishes. The short delay lets the loop block between ticks. The walk takes proportionally
-longer in wall-clock time, and nothing waits on it.
+A walk starts on `on-buffer-open` and on every restart (see
+[Updating after an edit](#updating-after-an-edit)). It goes outward from the cursor's line
+in both directions, one window of lines per direction per tick, fetched with
+`(buffer-lines pane #:range …)` and scanned within the same tick. A word cannot span two
+lines, so nothing carries across a tick boundary. Nothing blocks however large the buffer
+is, and the words nearest the cursor are indexed first. Each tick converts only the lines
+it scans, so memory during a walk is bounded by `'chars`, not by buffer size. Each tick
+reschedules the next after `bw/tick-delay-ms`.
 
 #### Character budget
 
-A tick's cost grows with the characters it scans, so the budget counts characters. A line
-count would let a tick over a file of very long lines (a markdown file with one paragraph
-per line) block input several times longer than a tick over ordinary code.
-
 Each side sizes its window before fetching anything, from the offsets where lines start
 (`line->char-offset`, `char-offset->line`) and the buffer's end (`buffer-char-count`). It
-takes the whole lines that fit in the budget, so a window never exceeds it, except that
-each side takes at least one line.
+takes the whole lines that fit in the budget, and at least one line.
 
 #### Anchor line
 
-The anchor is the cursor's line, resolved through `(buffer-panes pane)` first (see the
-[core plugins index](../README.md#pane-values-vs-pane-less-values)).
-`on-buffer-open`/`on-text-changed` hand the hook a pane-less value, and reading the cursor
-needs a pane. A background buffer, one never focused or edited by a script or an LSP
-`applyEdit`, has no cursor to anchor to and walks from the top. The split is line-grained:
-the forward side scans the anchor line from its start, and the backward side starts at the
-line before it.
+The anchor is the cursor's line, read through `(buffer-panes pane)` (see the index's
+[Pane values vs. pane-less values](../README.md#pane-values-vs-pane-less-values)), since
+`on-buffer-open` and `on-text-changed` hand over a pane-less value. A buffer no pane
+shows has no cursor to anchor to and walks from the top. The forward side scans the anchor
+line from its start, and the backward side starts at the line before it.
 
 ### Updating after an edit
 
-The entry keeps `"seen"`, the `buffer-generation` value its set and the walk's positions
-match. Every walk tick and every update advance it. On an edit, that value gives
-`buffer-changes-since` its starting point: everything since, as hunks. Two places use the
-hunks, and both apply them with the same update (`bw/updated-set`):
+The entry's `"seen"` is the `buffer-generation` its sets and walk positions match. Every
+walk tick and every update advance it. On an edit, `buffer-changes-since` from `"seen"`
+gives everything since as hunks, which two places apply with the same update
+(`bw/updated-set`):
 
-- **A walk's next tick.** Before reading, a tick that finds the buffer changed updates the
-  set being built and moves both of its positions through the hunks (`bw/shift-line`).
-  Lines are read by number, so without the move a deletion above the forward side would
-  carry unread lines past it, and an insertion above the backward side would carry unread
-  lines below it; no hunk names those lines. A position under a hunk that spans it moves
-  to that hunk's end (forward side) or start (backward side), since the update has already
-  added the hunk's new lines. Lines read twice cost nothing in a set.
-- **A finished index.** `on-text-changed` schedules a refresh, debounced 150ms per buffer.
-  A debounced call sees only the last of several fires, so it ignores the hook's own hunks
-  and asks for everything since `"seen"`. While a walk runs, the refresh does nothing: the
-  walk's next tick catches up.
+- **A walk's next tick.** A tick that finds the buffer changed updates the set being built
+  and moves both walk positions through the hunks (`bw/shift-line`). Lines are read by
+  number, so without the move a deletion above the forward side would carry unread lines
+  past it, and an insertion above the backward side would carry unread lines below it. A
+  position inside a hunk moves to that hunk's end (forward side) or start (backward side),
+  since the update already added the hunk's new lines.
+- **A finished index.** `on-text-changed` schedules `bw/refresh!`, debounced 150ms with
+  `debounce-by` keyed by `buffer-key` (the index's [Debouncing](../README.md#debouncing)).
+  A debounced call sees only the last of several fires, so it ignores the hook's hunks and
+  asks for everything since `"seen"`. While a walk runs, the refresh does nothing, since
+  the walk's next tick catches up.
 
-The update works from the hunks:
+The update itself:
 
-- **Adding.** The words of every new line join the set as a walk adds them, with their
-  case twins.
-- **Removing.** A word of an old line that the new lines don't contain may be gone, or may
-  still occur elsewhere. `bw/present?` searches the buffer for it with
-  `(buffer-search pane (word-search-pattern pane w))`, the whole-word pattern `*` uses. It
-  searches the twin's all-lowercase form when the word is capitalized. An all-lowercase
-  pattern ignores case, so one search answers for the word and its twin. When nothing
-  matches, both leave the set. Only words already in the set are checked, so a walk that
-  hasn't reached a line doesn't search for its words. Steel's `hashset-difference` returns
-  the symmetric difference, so the words to remove are first intersected with the set:
-  a twin the set never held, such as `ix` for `Ix` when only `ıx` added `Ix`, would
-  otherwise join it.
-- **Rebuilding.** When a word joins or leaves a finished index, the word list `Ctrl-Space`
-  emits is rebuilt from the set. Steel's hashsets copy on change, so this costs time in
-  proportion to the number of distinct words. An edit that adds and removes nothing skips
-  it.
+- **Adding.** Every word of the new lines joins the set, with its case twin.
+- **Removing.** A word of the old lines that the new lines don't contain may be gone, or
+  may still occur elsewhere. `bw/present?` searches for it with
+  `(buffer-search pane (word-search-pattern pane w))`, the whole-word pattern `*` uses,
+  searching the all-lowercase twin when the word is capitalized. An all-lowercase pattern
+  ignores case, so one search answers for the word and its twin, and both leave the set
+  when nothing matches. Only words already in the set are checked, so a walk that hasn't
+  reached a line doesn't search for its words.
+- **Rebuilding.** When a word joins or leaves a finished index, the word list
+  `Ctrl-Space` emits is rebuilt from the set, in time proportional to the number of
+  distinct words. An edit that adds and removes nothing returns the same set and skips it.
 
 The walk restarts from the cursor instead when the update has nothing to start from or
 would block for too long:
 
 - `buffer-changes-since` returns `#f`;
-- the hunks' lines hold more than `'chars` characters, one walk tick's budget;
+- the hunks' lines hold more than `'chars` characters;
 - more than `bw/max-word-checks` (32) words need a search. A search for a word that is gone
-  reads the whole buffer and blocks the editor while it does; a walk yields between ticks.
+  reads the whole buffer and blocks the editor while it does, where a walk yields between
+  ticks.
 
-The other restarts are on `on-buffer-open` and on a global `word-chars` change.
+`on-buffer-open` and a global `word-chars` change also restart it.
 
-### Staleness and cancellation
+### Staleness
 
-#### Generation guard
+Every restart (`bw/reindex!`) cancels the pending tick, bumps the entry's `"gen"` and
+empties the in-progress set, which a restart exists to replace. A tick closes over the
+`"gen"` it started under and does nothing once the entry's has moved on. Cancelling
+already stops the tick, even once it is due, so `"gen"` is a second guard (the index's
+[Stale async work](../README.md#stale-async-work)).
 
-A tick closes over the generation the walk started under (`"gen"`, bumped by every
-restart) and does nothing unless the entry's current generation still matches. This is
-the stale-async guard from the [core plugins index](../README.md#stale-async-work).
-A restart also cancels the pending tick, which stops it even once it is due, so the
-generation is a second guard on a tick, not the only one.
-
-#### Buffer close and reindex
-
-`on-buffer-close` forgets the buffer's entry and cancels its pending tick. `on-buffer-open`
-also forgets the entry before it reindexes. A debounced refresh can fire after the entry is
-gone. With no entry it calls `bw/reindex!`, which creates a fresh entry only while the buffer
-is still open (`buffer-live?`), so a refresh that outlives a close does not recreate state
-for a closed buffer.
-
-#### Restart and bounds
-
-The backward window's upper bound is clamped against the live line count, the same as the
-forward window's. A buffer that shrinks mid-walk (`:e!` onto a shorter file, a large undo,
-an LSP `applyEdit`) would otherwise let the backward side request a range past the new
-end, which `buffer-lines` raises on and does not clamp.
-
-Every restart empties the in-progress word set along with bumping the generation: a
-restart happens because the set can't be brought up to date.
+`on-buffer-close` forgets the entry and cancels its tick, and `on-buffer-open` forgets it
+before it reindexes. A debounced refresh can fire after the entry is gone. It then calls
+`bw/reindex!`, which creates a fresh entry only while `buffer-live?` holds, so a refresh
+that outlives a close does not recreate state for a closed buffer.
 
 ### Double-buffered cache
 
-Each buffer keeps two sets: the last complete index, which `Ctrl-Space` reads, and the
-walk in progress. The in-progress set is rebuilt tick by tick. When a walk finishes it
-becomes the complete index, kept both as the set that later updates change and as a plain
-word list that a trigger can pass straight to `completion-emit!`. Until then the previous
-complete index keeps answering triggers, so a deleted word can linger for up to one
-refresh cycle. Before the first walk completes there is no complete index, and
-a trigger falls back to the in-progress set's word list, so the first `Ctrl-Space` after
-a buffer opens is not empty.
+Each entry keeps two sets: `"set"`, the last complete index, and `"building"`, the walk in
+progress. When a walk finishes, its set becomes the complete index, kept both as a set for
+later updates and as the word list `"words"` that a trigger passes straight to
+`completion-emit!`. Until then the previous complete index keeps answering, so a deleted
+word can linger for up to one refresh cycle. Before the first walk completes, a trigger
+answers from the in-progress set, so the first `Ctrl-Space` after a buffer opens is not
+empty.
 
 ### Case twins
 
-`#:match 'string`'s prefix gate is case-sensitive, so a word cached as written answers
-only a prefix typed in the same case. A buffer holding `Apply` (capitalized because it
-started a sentence) would offer nothing for `app` typed mid-sentence.
-
-`bw/add-word` inserts a plain word's other-case twin alongside it. A word is plain when
-everything after its first letter is already lowercase:
+`'match 'string`'s prefix gate is case-sensitive, so a word cached as written answers only
+a prefix typed in the same case. A buffer holding `Apply` (capitalized because it started
+a sentence) would offer nothing for `app` typed mid-sentence. `bw/add-word` therefore
+inserts a plain word's other-case twin beside it. A word is plain when everything after
+its first letter is already lowercase:
 
 | Original | Twin | Rule |
 |---|---|---|
@@ -198,69 +157,61 @@ everything after its first letter is already lowercase:
 | `MAX_LEN` (ALL-CAPS) | none | Same |
 | `1st` (non-letter first) | none | There is no other case to flip to |
 
-The case-sensitive gate then does the rest: typing `app` matches only the `apply` twin and
-typing `App` matches only `Apply`, the vim `'infercase'` feel, with no sentence-boundary
-detection. Nothing is rewritten. The original word and its twin sit in the index as two
-independent candidates, so a mixed-case identifier keeps its own form.
+The case-sensitive gate does the rest: `app` matches only `apply` and `App` only `Apply`,
+the vim `'infercase'` feel, with no sentence-boundary detection. The word and its twin are
+two independent candidates, so a mixed-case identifier keeps its own form. A code buffer
+also gets twins nobody wrote (`config` adds `Config`); `core:lsp` outranks this source on
+any real score once the user types, so a buffer with an attached server rarely shows them.
+Twins are computed at scan time, so the in-progress fallback carries them too, and they
+are inserted in `'fuzzy` mode as well.
 
-A plain lowercase identifier in a code buffer also gets a capitalized twin that was never
-written (`config` adds `Config`), and the reverse. `core:lsp` outranks `core:buffer-words`
-on any real score once the user types, so a code buffer with an attached server rarely
-shows the extra twin.
+### Answering a trigger
 
-The twin is computed once per word at scan time, so the in-progress fallback (see
-[Double-buffered cache](#double-buffered-cache)) already carries twins for what has been
-walked. In `#:match 'fuzzy` mode the twins are inserted too, so a lowercase fuzzy query can
-match both a word and its Titlecase twin.
+The completion framework re-filters a source's items on every keystroke without calling
+the source again: `'string`'s prefix gate and `'fuzzy`'s score both run in Rust. The
+source therefore emits its whole cached list once per trigger and does not pre-filter in
+Steel. It includes the word under the cursor, since the editor's ranking drops any item
+equal to the live token for every source, recomputed on each keystroke.
 
-### Pushing a finished index to an open menu
-
-A trigger answers only the invocation it was called for, and it does not learn of later
-events. The editor's own re-ranking follows the live cursor on every keystroke without help
-from this plugin. The background walk finishing is different: if `Ctrl-Space` lands on a
-large buffer whose walk is still partial, the open menu would stay at that partial answer.
-
-While a walk is in progress, the completion source answers with `#:more #t`, which keeps the
-request open, and stashes the request id, one per buffer. When the walk promotes its
-in-progress set, it calls `completion-emit!` on that id with the finished list, without
-`#:more`, which closes the request. A request made once the walk has finished gets its whole
-answer at once, and no id is stashed for it, so a later reindex leaves that menu alone. A
-stale id, from a menu that was dismissed or replaced by a later trigger, is dropped without
-effect, and the plugin is not told which.
-
-### Matching
-
-The completion framework re-filters this source's items against what is typed on every
-keystroke, without calling the source again: `#:match 'string`'s prefix gate and
-`#:match 'fuzzy`'s subsequence score both run in Rust. The plugin therefore emits its whole
-cached set once per trigger and does not pre-filter in Steel. The one later part is the push
-described above.
-
-The scan includes the word under the cursor like any other word. The editor's ranking drops
-any item equal to the live token before scoring, for every source. It derives that from the
-live cursor on every keystroke, so typing past an excluded word (`ca` → `cat`) drops `cat`
-at once and backspacing away brings it back.
+A trigger is not told of later events, so a `Ctrl-Space` on a large buffer whose walk is
+still partial would leave the menu at that partial answer. While a walk runs, the source
+answers with `#:more #t`, which keeps the request open, and stashes the request id in
+`"live-id"`. When the walk finishes, `bw/push-finished-answer!` emits the full list on that
+id without `#:more`, which closes the request. A request made after the walk finished gets
+its whole answer at once and stashes no id, so a later reindex leaves that menu alone. A
+stale id, from a menu dismissed or replaced since, is dropped without effect.
 
 ### `word-chars` invalidation
 
-`word-chars` is read on every scan tick and baked into the cached word set for as long as
-that index stands. A change during a scan applies to the lines not yet scanned. A global
-`:set global word-chars=…` reindexes every open buffer through the `on-option-change` hook.
-A buffer-scoped `:set buffer word-chars=…` does not, because that hook is raised only by the
-global write path; see [Known limitations](#known-limitations).
+`word-chars` is read on every scan tick, so a change during a walk applies to the lines not
+yet scanned. A global `:set global word-chars=…` reindexes every open buffer through the
+`on-option-change` hook. A buffer-scoped `:set buffer word-chars=…` does not, because that
+hook is raised only by the global write path; see [Known limitations](#known-limitations).
 
 ### Non-ASCII words
 
-Steel has no Unicode character-category table (no `char-alphabetic?`, no regex), so the
-scan hands each line to `core:stdlib`'s `stdlib/split-words`. That reads the buffer's own
-`word-chars` and runs the native `split-words` builtin, which tokenizes with the same
-classifier the `w`/`b` motions and text objects use (`hume-ops`'s word-motion scan
-primitives, built on grapheme-cluster-safe stepping). A word this plugin offers is what a
-`w` motion would select: `café` (with a combining accent) stays one candidate,
-`l'élément` splits at the curly apostrophe into `l` and `élément`, and `foo—bar` (em dash)
-splits into `foo` and `bar`. `word-chars` applies per buffer as it does for motions, so
-`foo-bar` is one candidate wherever `word-chars` includes `-` (a CSS buffer, say) and two
-words elsewhere.
+Steel has no Unicode character-category table, so the scan hands each line to
+`stdlib/split-words`, which reads the buffer's own `word-chars` and runs the native
+`split-words` builtin: the same classifier the `w`/`b` motions use. A candidate is what a
+`w` motion would select: `café` (combining accent) stays one word, `l'élément` splits at
+the curly apostrophe, `foo—bar` splits at the em dash, and `foo-bar` is one word wherever
+`word-chars` includes `-`.
+
+## Design decisions
+
+- **A cache built by a background walk, not a rescan per trigger as vim's `i_CTRL-N`
+  does**, because the scan runs in interpreted Steel and a full rescan would block input
+  on a large buffer.
+- **A budget in characters, not lines**, because a tick's cost grows with the characters
+  it scans. A line count would let a tick over a file of long lines (a markdown file with
+  one paragraph per line) block input several times longer than a tick over code.
+- **Windows fetched by line index, not sliced from a string at a character offset**,
+  because `buffer-lines` seeks the rope by line, so a window costs the same wherever it
+  is, while re-slicing at an offset costs time proportional to the offset.
+- **A 16ms tick delay, not 0**, because a zero-delay timer is due the instant it is
+  scheduled, which pins the event loop's wake timeout at zero for the whole walk: the loop
+  never blocks on input and repaints an unchanged frame on every tick. The walk takes
+  longer in wall-clock time, and nothing waits on it.
 
 ## Known limitations
 
@@ -274,3 +225,13 @@ words elsewhere.
   walk made. Fixing it needs a Rust-side event this plugin cannot add.
 - **A single line is scanned whole.** A very long line, a minified file for instance, costs
   one tick proportional to its length.
+
+## Implementation notes
+
+- `bw/updated-set` intersects the words to remove with the set before
+  `hashset-difference`, because Steel's `hashset-difference` returns the symmetric
+  difference: a twin the set never held (`ix` for `Ix`, when only `ıx` added `Ix`) would
+  otherwise join it.
+- `bw/walk!` clamps the backward window's upper bound to the live line count, as it does
+  the forward window's. `buffer-lines` raises on a range past the end rather than clamping,
+  and a buffer can shrink between ticks.

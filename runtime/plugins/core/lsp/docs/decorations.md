@@ -4,8 +4,8 @@
 `diagnostics-for-buffer`, which returns a buffer's first 1000 entries by position, and
 turns them into navigation, a drawer, an end-of-line (EOL) summary and gutter signs. Past
 1000 at the `lsp-diagnostics-min-severity` floor, all four stop at the 1000th while
-underlines go on, and the read that cuts them notes it in `:messages` at trace level. `inlay.scm`
-requests inlay hints. Both are covered here.
+underlines go on, and the read that cuts them notes it in `:messages` at trace level.
+`inlay.scm` requests inlay hints. Both are covered here.
 
 ## Diagnostics navigation
 
@@ -16,19 +16,20 @@ The jump also pops the target's full message in a dismiss-on-any-key overlay.
 
 `lsp/diag-jump-to!` passes the diagnostic's own pane to `goto-location!` as the target,
 with the diagnostic's `'start-char` as the `'char-offset`. The invocation pane is always
-`(focused-pane)`. The drawer stays open across a
-buffer switch (see below), so a row picked there must jump into the buffer it was listed
-for, not whichever buffer is focused, and the pane that opened the drawer may show a
-different buffer by then. The `g n`/`g p` popup opens on `(focused-pane)` for the same reason:
-the jump has already navigated there, so that is the pane showing the target.
+`(focused-pane)`. The drawer stays open across a buffer switch (see below), so a row picked
+there must jump into the buffer it was listed for, not whichever buffer is focused, and the
+pane that opened the drawer may show a different buffer by then. The `g n`/`g p` popup
+opens on `(focused-pane)` for the same reason: the jump has already navigated there, so
+that is the pane showing the target.
 
 ## Diagnostics drawer
 
-`:diagnostics` lists the buffer's diagnostics in a drawer, one row per diagnostic:
-a severity glyph, `line:col`, the diagnostic's `source` (the server's own name when it sets none) and the message's first line. Selecting a row jumps the
-same way navigation does, without the popup, since the row already showed the message.
-Unlike a one-shot picker, the drawer's rows track the buffer's diagnostics as they
-change, and this plugin owns refreshing them.
+`:diagnostics` lists the buffer's diagnostics in a drawer, one row per diagnostic: a
+severity glyph, `line:col`, the diagnostic's `source` (the server's own name when it sets
+none) and the message's first line. Selecting a row jumps the same way navigation does,
+without the popup, since the row already showed the message. Unlike a one-shot picker, the
+drawer's rows track the buffer's diagnostics as they change, and this plugin owns
+refreshing them.
 
 - **State.** The drawer-tracking state is either "no drawer open" or one triple: buffer
   key, open token, and the diagnostics currently shown. A single value makes "closed"
@@ -42,10 +43,10 @@ change, and this plugin owns refreshing them.
   reports the drawer gone leaves tracking cleared.
 - **Selection survives a refresh.** The new list is never empty here: an empty list closes
   the drawer first. The selected row moves to the diagnostic with the same message and
-  severity nearest in line to the previous selection (the position is left out of the match because
-  the fix's own edit can shift lines; on equal distance the first wins). With no match it
-  keeps the previous index, clamped into the new list, which lands on the next diagnostic when
-  the selected one was fixed.
+  severity nearest in line to the previous selection (the position is left out of the
+  match because the fix's own edit can shift lines; on equal distance the first wins).
+  With no match it keeps the previous index, clamped into the new list, which lands on the
+  next diagnostic when the selected one was fixed.
 
 ## Refresh path
 
@@ -77,8 +78,8 @@ One entry per line that has diagnostics, set through `set-eol-text!` under sourc
 `"lsp-diagnostics"`. The text is the message's first line from the leftmost diagnostic on
 the line, prefixed with `[n]` when the line has `n > 1` diagnostics. The color comes from
 the most severe one. The two choices are independent: the most severe diagnostic is not
-always the leftmost. `lsp/first-line` splits once at the first newline, which the popup
-and drawer rows also use.
+always the leftmost. `lsp/first-line` splits once at the first newline, which the drawer
+rows also use.
 
 - **Scope.** `<severity>.diagnostic.inline` (for example `error.diagnostic.inline`), a
   HUME-specific scope. It is separate from `diagnostic.<severity>`,
