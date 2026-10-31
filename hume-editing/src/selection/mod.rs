@@ -41,6 +41,29 @@ impl SelectionSet {
         self.version
     }
 
+    /// `selections`, computed for `text`, as a set for it: sorted, with
+    /// selections sharing a cluster merged and the primary relocated to the
+    /// selection holding it.
+    ///
+    /// # Panics
+    /// Panics if `selections` is empty, `primary` is out of range, or a
+    /// selection reaches past the end of `text`.
+    pub fn new(text: &BufferText, selections: Vec<Selection>, primary: usize) -> Self {
+        let set = Self::from_parts(selections, primary, text.version());
+        assert_positions(text, &set);
+        set
+    }
+
+    /// One cursor on the cluster of `text` starting at `at`.
+    pub fn cursor(text: &BufferText, at: ClusterStart) -> Self {
+        Self::new(text, vec![Selection::cursor(at)], 0)
+    }
+
+    /// One cursor on the first cluster of `text`.
+    pub fn at_text_start(text: &BufferText) -> Self {
+        Self::cursor(text, text.clusters().first())
+    }
+
     /// A normalized set: sorted, with selections sharing a cluster merged and
     /// the primary relocated to the selection holding it.
     ///

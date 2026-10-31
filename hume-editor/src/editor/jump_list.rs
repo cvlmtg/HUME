@@ -394,9 +394,11 @@ pub(in crate::editor) fn with_jump<R>(
         JumpRule::IfMoved => current_jump_entry(state, view, t),
         JumpRule::Threshold { .. } => {
             let text = state.buffers.get(pre_bid).text();
-            let primary = t.state(&state.panes.entries, view).view(text).primary();
+            let selections = t.state(&state.panes.entries, view).selections().clone();
             JumpEntry::new(
-                EditState::from_text(text.clone(), vec![primary.selection()], 0).into_selections(),
+                EditState::bind(text, selections)
+                    .keep_primary()
+                    .into_selections(),
                 text,
                 pre_bid,
             )

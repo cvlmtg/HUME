@@ -331,7 +331,7 @@ fn select_matches_multiple_selections() {
     let text = BufferText::from("ab cd ab\n");
     let sel0 = test_fixtures::testing::sel(&text, 0, 1); // "ab"
     let sel1 = test_fixtures::testing::sel(&text, 6, 7); // "ab"
-    let sels = test_fixtures::testing::set(&text, vec![sel0, sel1], 0);
+    let sels = SelectionSet::new(&text, vec![sel0, sel1], 0);
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
     let result =
         sift_matches_within(&test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();

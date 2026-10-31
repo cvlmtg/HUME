@@ -74,17 +74,9 @@ pub fn cursor(text: &BufferText, n: usize) -> Selection {
     Selection::cursor(at(text, n))
 }
 
-/// `selections` as a set for `text`, the one at `primary` primary; sorted and
-/// merged like every set.
-pub fn set(text: &BufferText, selections: Vec<Selection>, primary: usize) -> SelectionSet {
-    EditState::at_text_start(text.clone())
-        .with_selections(selections, primary)
-        .into_selections()
-}
-
 /// One selection as a set for `text`.
 pub fn single(text: &BufferText, selection: Selection) -> SelectionSet {
-    set(text, vec![selection], 0)
+    SelectionSet::new(text, vec![selection], 0)
 }
 
 /// `(BufferText, SelectionSet)` in marker notation: the inverse of

@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
 use hume_rope::offset::CharOffset;
@@ -137,7 +138,7 @@ fn replace_around_cursors_zero_span_matches_insert_str() {
     // agreement here isn't circular against replace_around_cursors's own
     // logic.
     let text = BufferText::from("foo bar\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 0),
@@ -170,8 +171,7 @@ fn replace_around_cursors_forward_past_the_end_does_not_delete_the_structural_ne
     // multi-char terminator cluster. Floor back to that cluster's start
     // instead of ceiling through it and deleting the structural newline.
     let text = BufferText::from("ab\n");
-    let sels =
-        test_fixtures::testing::set(&text, vec![test_fixtures::testing::cursor(&text, 0)], 0);
+    let sels = SelectionSet::new(&text, vec![test_fixtures::testing::cursor(&text, 0)], 0);
     let (new_text, new_sels, _cs) = test_fixtures::testing::parts(replace_around_cursors(
         test_fixtures::testing::state(text, sels),
         0,
@@ -207,7 +207,7 @@ fn replace_span_around_cursors_start_of_receives_each_cursors_own_index_and_head
     // `i` and `head` both reach `start_of` correctly, independent of
     // `replace_around_cursors`'s own (uniform) wrapper.
     let text = BufferText::from("abcdefgh\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 3),
@@ -233,7 +233,7 @@ fn replace_span_around_cursors_word_start_before_stops_each_cursor_at_its_own_bo
     // scan, not a shared count: a shorter word before the second cursor
     // must not retreat into the (unrelated, longer) word before the first.
     let text = BufferText::from("ab c\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 2), // right after "ab"

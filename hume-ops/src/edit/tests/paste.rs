@@ -555,7 +555,7 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
     // retaining "oo". Both pasted "X\n" ranges are selected.
     // parse_state requires at least one selection marker; we ignore the returned sels.
     let (text, _) = test_fixtures::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::sel(&text, 2, 4), // "c\nx": first_line=0, last_line=1

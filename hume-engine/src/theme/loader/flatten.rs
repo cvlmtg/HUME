@@ -97,11 +97,10 @@ fn walk_scope(
         });
     }
 
-    let emit = !style.is_empty() || children.is_empty();
+    if !style.is_empty() || children.is_empty() {
+        out.insert(path.clone(), toml::Value::Table(style));
+    }
     for (k, v) in children {
         walk_scope(out, format!("{path}.{k}"), v, warnings);
-    }
-    if emit {
-        out.insert(path, toml::Value::Table(style));
     }
 }

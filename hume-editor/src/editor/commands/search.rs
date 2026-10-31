@@ -2,7 +2,7 @@ use hume_core::Count;
 use std::sync::Arc;
 
 use super::super::search::SearchPattern;
-use hume_editing::selection::{Facing, Selection};
+use hume_editing::selection::{Facing, Selection, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::word::{CharClass, WordChars, is_word_boundary};
 use hume_engine::pipeline::EngineView;
@@ -252,7 +252,7 @@ pub(in crate::editor) fn cmd_select_all_matches(
         .into_iter()
         .map(|span| Selection::covering(span, Facing::Forward))
         .collect();
-    let selected = EditState::from_text(text.clone(), sels, 0).into_selections();
+    let selected = SelectionSet::new(text, sels, 0);
     set_pane_selections(state, view, t, selected);
     Ok(())
 }

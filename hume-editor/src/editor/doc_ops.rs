@@ -184,7 +184,7 @@ pub(in crate::editor) fn apply_changes(
         .edited_regions()
         .first()
         .map_or_else(CharOffset::default, |region| region.old.start);
-    let sels = EditState::with_cursor(text.clone(), text.snap(first_change)).into_selections();
+    let sels = SelectionSet::cursor(text, text.snap(first_change));
     let applied = buffers
         .get_mut(buf_id)
         .apply_edit(target, stores, sels, edit_from_changes(cs));

@@ -1,5 +1,6 @@
 use super::*;
 use hume_editing::marked::{bound_at, clusters};
+use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_rope::offset::CharOffset;
 
@@ -733,7 +734,7 @@ fn match_scan_advance_all_merges_converging_selections() {
         mode: MotionMode::Move,
         seed: MatchSeed::AtSelection,
     };
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 0),
@@ -763,7 +764,7 @@ fn match_scan_advance_all_none_when_nothing_matches() {
         mode: MotionMode::Move,
         seed: MatchSeed::AtSelection,
     };
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 0),
@@ -792,7 +793,7 @@ fn match_scan_advance_all_wrapped_bit_tracks_only_the_primary() {
         mode: MotionMode::Move,
         seed: MatchSeed::AtSelection,
     };
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 3),

@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
 use hume_rope::offset::CharOffset;
@@ -736,7 +737,7 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_on_the_line_left_last() 
     // cursor lands at char 0, the start of the line left last, not at char 1.
     let text = BufferText::from("ab\nc\n");
     // primary=1 so the last-line selection is the primary; we assert its cursor.
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 1), // on 'b'

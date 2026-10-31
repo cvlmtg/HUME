@@ -1,4 +1,5 @@
 use super::*;
+use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_rope::offset::CharOffset;
 use test_fixtures::assert_state;
@@ -134,7 +135,7 @@ fn surround_quote_no_match() {
 fn surround_multi_cursor_different_pairs() {
     // (a) [b]: cursor on 'a' (pos 1) and 'b' (pos 5).
     let text = BufferText::from("(a) [b]\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 1),
@@ -156,7 +157,7 @@ fn surround_multi_cursor_different_pairs() {
 fn surround_multi_cursor_same_pair_merges() {
     // (hello): two cursors both inside the same parens (pos 1 and 3).
     let text = BufferText::from("(hello)\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 1),

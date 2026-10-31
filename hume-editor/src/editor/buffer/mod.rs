@@ -578,7 +578,7 @@ impl Buffer {
     /// The selections a pane starts with when it first views this buffer: a
     /// cursor on the first cluster.
     pub(in crate::editor) fn initial_sels(&self) -> SelectionSet {
-        EditState::at_text_start(self.text.clone()).into_selections()
+        SelectionSet::at_text_start(&self.text)
     }
 
     /// The name shown in the UI: label for view buffers, basename for named

@@ -257,10 +257,9 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
 /// across the batch itself (via [`build_changeset_from_char_edits`])
 /// immediately before mutating.
 /// `Ok(None)` for an empty batch (nothing to commit); `Ok(Some(cs))`
-/// otherwise, so a caller that maps further positions through this exact
-/// edit (completion's resolve path, mapping a *pre*-accept response's
-/// positions forward) or composes it into a larger changeset doesn't need to
-/// rebuild it or branch on an empty batch.
+/// otherwise, so completion's accept can compose it into the change a later
+/// resolve answer's positions map through without rebuilding it or
+/// branching on an empty batch.
 pub(in crate::editor) fn commit_char_edits(
     state: &mut EditorState,
     panes: &PanePool,

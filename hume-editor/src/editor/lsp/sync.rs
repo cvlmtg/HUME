@@ -47,19 +47,15 @@ impl EditorState {
             return;
         };
         let servers: Vec<ServerId> = self.buffer_positions.lsp.servers(bid).collect();
-        let syncing = |kind: fn(TextDocumentSyncKind) -> bool| {
-            servers
-                .iter()
-                .filter(|&&sid| {
-                    self.lsp
-                        .instances
-                        .get(sid)
-                        .is_some_and(|i| i.client.change_sync().is_some_and(kind))
-                })
-                .count()
-        };
-        let mut full_servers = syncing(|k| k == TextDocumentSyncKind::FULL);
-        let mut incremental_servers = syncing(|k| k != TextDocumentSyncKind::FULL);
+        let mut full_servers = servers
+            .iter()
+            .filter(|&&sid| {
+                self.lsp
+                    .instances
+                    .get(sid)
+                    .is_some_and(|i| i.client.change_sync() == Some(TextDocumentSyncKind::FULL))
+            })
+            .count();
         let mut whole_document: Option<serde_json::Value> = None;
         let mut incremental: Vec<(PositionEncoding, Vec<serde_json::Value>)> = Vec::new();
         for sid in servers {
@@ -91,20 +87,14 @@ impl EditorState {
                     );
                 }
                 Some(_) => {
-                    incremental_servers -= 1;
                     let encoding = client.encoding();
-                    let cached = per_encoding(&mut incremental, encoding, || {
+                    let changes = per_encoding(&mut incremental, encoding, || {
                         incremental_changes(&pending, &uri, encoding)
                     });
-                    let changes = if incremental_servers == 0 {
-                        std::mem::take(cached)
-                    } else {
-                        cached.clone()
-                    };
                     for params in changes {
                         client.send_or_queue(
                             backend,
-                            notification(DidChangeTextDocument::METHOD, params),
+                            notification(DidChangeTextDocument::METHOD, params.clone()),
                         );
                     }
                 }

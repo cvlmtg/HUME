@@ -9,7 +9,6 @@ use rustc_hash::FxHashMap;
 use hume_core::{BufferId, HostToken};
 use hume_editing::edit::TextChange;
 use hume_editing::selection::{EditView, SelectionSet};
-use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
@@ -49,7 +48,7 @@ impl TrackedPositions {
         at: ClusterStart,
     ) -> HostToken {
         let token = HostToken::mint();
-        let cursor = EditState::with_cursor(text.clone(), at).into_selections();
+        let cursor = SelectionSet::cursor(text, at);
         self.entries.insert(
             token,
             Tracked {

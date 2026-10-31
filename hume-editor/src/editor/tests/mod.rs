@@ -191,7 +191,7 @@ pub(in crate::editor) fn sels_at(
         .iter()
         .map(|&(anchor, head)| test_fixtures::testing::sel(text, anchor, head))
         .collect();
-    test_fixtures::testing::set(text, sels, primary)
+    SelectionSet::new(text, sels, primary)
 }
 
 /// Replace the focused pane's selections with `(anchor, head)` char offsets

@@ -83,6 +83,35 @@ fn unsorted_selections_are_sorted() {
 }
 
 #[test]
+fn a_set_made_for_a_text_carries_its_version_and_is_normalized() {
+    let text = parse("-[a]>bcdef\n").text().clone();
+    let sels = vec![
+        Selection::new(start_at(&text, 3), start_at(&text, 4)),
+        Selection::new(start_at(&text, 0), start_at(&text, 1)),
+        Selection::new(start_at(&text, 1), start_at(&text, 2)),
+    ];
+    let set = SelectionSet::new(&text, sels, 0);
+    assert_eq!(set.version(), text.version());
+    assert_eq!(render(EditView::bind(&text, &set)), "-[abc]>-{de}>f\n");
+}
+
+#[test]
+fn a_cursor_set_holds_one_cursor_on_the_given_cluster() {
+    let text = parse("-[a]>bc\n").text().clone();
+    let set = SelectionSet::cursor(&text, start_at(&text, 2));
+    assert_eq!(set.version(), text.version());
+    assert_eq!(render(EditView::bind(&text, &set)), "ab-[c]>\n");
+}
+
+#[test]
+fn a_text_start_set_holds_one_cursor_on_the_first_cluster() {
+    let text = parse("ab-[c]>\n").text().clone();
+    let set = SelectionSet::at_text_start(&text);
+    assert_eq!(set.version(), text.version());
+    assert_eq!(render(EditView::bind(&text, &set)), "-[a]>bc\n");
+}
+
+#[test]
 fn a_merge_that_extends_a_selection_clears_its_sticky_column() {
     let state = parse("-[a]>bcdefghij\n");
     let a = Selection::new(start_at(state.text(), 0), start_at(state.text(), 5))

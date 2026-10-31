@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
@@ -163,7 +164,7 @@ fn align_remove_tab_before_selection() {
     // fit_0 = max(line 0: 1, line 1: 4 − 3 = 1) = 1, matching the primary's
     // own baseline exactly. target[0] stays 1, so the primary never moves.
     let text = BufferText::from(" =\n  \t=\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 1), // primary: '=' col 1
@@ -197,7 +198,7 @@ fn align_tab_in_removable_run_pads_to_exact_target() {
     // more than needed. Deleting the tab and padding 1 space back lands '='
     // exactly on col 3, not one column left of it.
     let text = BufferText::from("aa =\na \t=\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 3), // primary: '=' col 3
@@ -229,7 +230,7 @@ fn align_accounts_for_a_tab_before_the_alignment_point() {
     // grapheme counts. Aligning by display column inserts enough to match
     // column 6, where both actually line up on screen.
     let text = BufferText::from("a\tx = 1\nbb = 2\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 4), // primary: '=' in "a\tx = 1"
@@ -284,7 +285,7 @@ fn align_two_slots_static_text_between() {
     let text = BufferText::from(
         "const foo = 444; // foo\nconst foobar = 6757383; // bar\nconst a = 34; // a\n",
     );
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::cursor(&text, 10), // primary: '=' on line 0

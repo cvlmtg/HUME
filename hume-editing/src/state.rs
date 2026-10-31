@@ -31,13 +31,14 @@ impl EditState {
 
     /// `text` with one cursor on the cluster starting at `at`.
     pub fn with_cursor(text: BufferText, at: ClusterStart) -> Self {
-        Self::from_text(text, vec![Selection::cursor(at)], 0)
+        let selections = SelectionSet::cursor(&text, at);
+        Self { text, selections }
     }
 
     /// `text` with one cursor on its first cluster.
     pub fn at_text_start(text: BufferText) -> Self {
-        let first = text.clusters().first();
-        Self::with_cursor(text, first)
+        let selections = SelectionSet::at_text_start(&text);
+        Self { text, selections }
     }
 
     /// `text` with one selection per `(anchor, head)` pair of cluster
@@ -70,14 +71,11 @@ impl EditState {
         Self { text, selections }
     }
 
-    /// `text` with `selections`, which must have been computed for it,
-    /// sorted and with overlapping ones merged.
-    ///
-    /// # Panics
-    /// Panics if `selections` is empty or `primary` is out of range.
-    pub fn from_text(text: BufferText, selections: Vec<Selection>, primary: usize) -> Self {
-        let selections = SelectionSet::from_parts(selections, primary, text.version());
-        Self::from_set(text, selections)
+    /// `text` with `selections`, which must have been computed for it, as
+    /// [`SelectionSet::new`] makes them a set.
+    pub(crate) fn from_text(text: BufferText, selections: Vec<Selection>, primary: usize) -> Self {
+        let selections = SelectionSet::new(&text, selections, primary);
+        Self { text, selections }
     }
 
     pub fn view(&self) -> EditView<'_> {

@@ -1,4 +1,5 @@
 use super::*;
+use hume_editing::selection::SelectionSet;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
@@ -310,7 +311,7 @@ fn collapse_to_anchor_merges_coincident_anchors() {
     // Two selections with different heads but the same anchor collapse to
     // the same cursor and must be merged.
     let text = hume_editing::text::BufferText::from("hello\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::sel(&text, 0, 2), // anchor=0
@@ -347,7 +348,7 @@ fn collapse_two_selections_same_head_merges() {
     // Two selections with different anchors but the same head collapse to
     // one cursor, so map (which always merges) must reduce the count.
     let text = hume_editing::text::BufferText::from("hello\n");
-    let sels = test_fixtures::testing::set(
+    let sels = SelectionSet::new(
         &text,
         vec![
             test_fixtures::testing::sel(&text, 0, 3), // head at 3

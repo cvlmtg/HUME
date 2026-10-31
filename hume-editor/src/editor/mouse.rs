@@ -29,8 +29,7 @@ use super::cursor;
 use hume_ops::MotionMode;
 
 use super::Editor;
-use hume_editing::selection::{EditView, Selection};
-use hume_editing::state::EditState;
+use hume_editing::selection::{EditView, Selection, SelectionSet};
 
 /// Whether `kind` is a *fresh* user action rather than the tail of a gesture
 /// that began before the current layer existed: a press or a wheel notch is
@@ -111,7 +110,7 @@ impl Editor {
     /// buffer's current text.
     fn select_only(&mut self, sel: Selection) {
         let text = self.doc().text();
-        let only = EditState::from_text(text.clone(), vec![sel], 0).into_selections();
+        let only = SelectionSet::new(text, vec![sel], 0);
         self.set_current_selections(only);
     }
 
