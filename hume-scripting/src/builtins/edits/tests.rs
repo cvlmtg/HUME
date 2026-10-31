@@ -335,7 +335,7 @@ fn edit_text_rejects_an_entry_without_text() {
         ("start-char", SteelVal::IntV(0)),
         ("end-char", SteelVal::IntV(0)),
     ]));
-    assert!(msg.contains("edits: missing 'text"), "got: {msg}");
+    assert!(msg.contains("edits 0: missing 'text"), "got: {msg}");
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn edit_text_rejects_an_unknown_key() {
         ("end", SteelVal::IntV(0)),
         ("text", str_val("")),
     ]));
-    assert!(msg.contains("edits: unknown key 'end"), "got: {msg}");
+    assert!(msg.contains("edits 0: unknown key 'end"), "got: {msg}");
     assert!(!msg.contains("not supported by this host"), "got: {msg}");
 }
 
@@ -357,7 +357,7 @@ fn edit_text_rejects_a_negative_offset() {
         ("text", str_val("")),
     ]));
     assert!(
-        msg.contains("edits 'start-char: expected a non-negative integer"),
+        msg.contains("edits 0 'start-char: expected a non-negative integer"),
         "got: {msg}"
     );
 }
@@ -369,7 +369,10 @@ fn edit_text_rejects_text_that_is_not_a_string() {
         ("end-char", SteelVal::IntV(0)),
         ("text", SteelVal::IntV(1)),
     ]));
-    assert!(msg.contains("edits 'text: expected a string"), "got: {msg}");
+    assert!(
+        msg.contains("edits 0 'text: expected a string"),
+        "got: {msg}"
+    );
 }
 
 /// Every builtin taking `#:expect-generation` names that keyword when its

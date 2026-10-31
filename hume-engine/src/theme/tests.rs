@@ -104,6 +104,57 @@ fn empty_theme_returns_default() {
     assert_eq!(theme.resolve(empty_str), ResolvedStyle::default());
 }
 
+// ── Theme::resolve_layer (a style layered over another) ──────────────
+
+/// A default that sets both colors, so a result that leaked it would show.
+fn colored_default() -> ResolvedStyle {
+    ResolvedStyle {
+        fg: Some(Rgb(1, 2, 3)),
+        bg: Some(Rgb(4, 5, 6)),
+        ..Default::default()
+    }
+}
+
+fn italic() -> ResolvedStyle {
+    ResolvedStyle {
+        modifiers: crate::types::Modifiers::ITALIC,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn resolve_layer_gives_no_style_for_a_scope_the_theme_does_not_style() {
+    let mut reg = ScopeRegistry::new();
+    let id = reg.intern("markup.italic");
+    let mut theme = Theme::new(
+        HashMap::from([("keyword", fg(Rgb(0, 0, 255)))]),
+        colored_default(),
+    );
+    theme.bake(&reg);
+    assert_eq!(theme.resolve_layer(id), ResolvedStyle::default());
+}
+
+#[test]
+fn resolve_layer_follows_the_fallback_chain() {
+    let mut reg = ScopeRegistry::new();
+    let id = reg.intern("markup.italic");
+    let mut theme = Theme::new(HashMap::from([("markup", italic())]), colored_default());
+    theme.bake(&reg);
+    assert_eq!(theme.resolve_layer(id), italic());
+}
+
+#[test]
+fn resolve_still_gives_the_default_for_an_unthemed_scope() {
+    let mut reg = ScopeRegistry::new();
+    let id = reg.intern("markup.italic");
+    let mut theme = Theme::new(
+        HashMap::from([("keyword", fg(Rgb(0, 0, 255)))]),
+        colored_default(),
+    );
+    theme.bake(&reg);
+    assert_eq!(theme.resolve(id), colored_default());
+}
+
 // ── Theme::resolve_by_name (slow path, no bake needed) ───────────────
 
 #[test]

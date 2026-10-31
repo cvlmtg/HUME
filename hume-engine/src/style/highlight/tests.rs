@@ -1,11 +1,16 @@
 use super::*;
 use crate::providers::DecorationSource;
+use crate::test_support::byte_range;
 use crate::theme::ScopeRegistry;
 use crate::types::ScopeId;
 use hume_rope::column::ByteCol;
 
 fn bc(n: usize) -> ByteCol {
     ByteCol::new(n)
+}
+
+fn span(start: usize, end: usize, scope: ScopeId) -> (ExclusiveRange<ByteCol>, ScopeId) {
+    (byte_range(start, end), scope)
 }
 
 fn make_scope_ids(names: &[&'static str]) -> (ScopeRegistry, Vec<ScopeId>) {
@@ -18,7 +23,7 @@ fn make_scope_ids(names: &[&'static str]) -> (ScopeRegistry, Vec<ScopeId>) {
 fn interval_cursor_basic() {
     let (_reg, ids) = make_scope_ids(&["kw", "fn"]);
     let (kw, fn_) = (ids[0], ids[1]);
-    let intervals = vec![(bc(2), bc(5), kw), (bc(7), bc(9), fn_)];
+    let intervals = vec![span(2, 5, kw), span(7, 9, fn_)];
     let mut cursor = IntervalCursor::new(&intervals);
     assert_eq!(cursor.scope_at(bc(0)), None);
     assert_eq!(cursor.scope_at(bc(2)), Some(kw));
@@ -49,14 +54,12 @@ impl DecorationSource for TwoTierSource {
         out: &mut Vec<Decoration>,
     ) {
         out.push(Decoration::Highlight {
-            byte_start: bc(0),
-            byte_end: bc(1),
+            range: byte_range(0, 1),
             scope: self.0,
             tier: HighlightTier::Syntax,
         });
         out.push(Decoration::Highlight {
-            byte_start: bc(2),
-            byte_end: bc(3),
+            range: byte_range(2, 3),
             scope: self.0,
             tier: HighlightTier::Diagnostic,
         });
@@ -83,12 +86,12 @@ fn rebuild_line_decorations_buckets_one_sources_spans_by_tier() {
 
     assert_eq!(
         scratch.tier_bufs.0[HighlightTier::Syntax as usize],
-        vec![(bc(0), bc(1), scope)],
+        vec![span(0, 1, scope)],
         "the Syntax-tier span lands in the Syntax bucket"
     );
     assert_eq!(
         scratch.tier_bufs.0[HighlightTier::Diagnostic as usize],
-        vec![(bc(2), bc(3), scope)],
+        vec![span(2, 3, scope)],
         "the Diagnostic-tier span from the same source lands in a different bucket"
     );
 }
@@ -98,7 +101,7 @@ fn interval_cursor_adjacent_intervals() {
     // (2,5) and (5,8) are adjacent; byte 5 must match the second.
     let (_reg, ids) = make_scope_ids(&["kw", "fn"]);
     let (kw, fn_) = (ids[0], ids[1]);
-    let intervals = vec![(bc(2), bc(5), kw), (bc(5), bc(8), fn_)];
+    let intervals = vec![span(2, 5, kw), span(5, 8, fn_)];
     let mut cursor = IntervalCursor::new(&intervals);
     assert_eq!(cursor.scope_at(bc(4)), Some(kw));
     assert_eq!(cursor.scope_at(bc(5)), Some(fn_));

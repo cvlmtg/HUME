@@ -135,7 +135,9 @@ The wire shape (`{uri, range}` versus `{targetUri, targetRange}`) is decoded by 
   `path->display`, relative to the working directory when inside it. A location in a
   buffer that is not open carries the server's raw wire character offset instead of a
   grapheme column, because counting graphemes would mean reading a file that may never be
-  opened.
+  opened. `lsp/place-row` is the drawer row: the same text, as one `markup.italic` span
+  over the whole row when the place's `'buffer` is `#f`, because its column is the wire
+  character. `lsp/place-display` stays plain text for the workspace-symbols picker.
 - **Where it opens.** The drawer opens on `(focused-pane)`, not the request's invocation
   pane. The goto requests carry no `#:require-focus`, so a slow response still completes
   after the user looked elsewhere, and the drawer appears where the user is.

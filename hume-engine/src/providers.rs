@@ -4,6 +4,8 @@ use std::sync::Arc;
 use bitflags::bitflags;
 use hume_grid::Rect;
 use hume_rope::column::ByteCol;
+use hume_rope::offset::ExclusiveRange;
+use hume_rope::spanned::SpannedText;
 
 use crate::render::Canvas;
 
@@ -42,7 +44,7 @@ pub enum HighlightTier {
 
 /// Per-buffer source of syntax highlight spans, implemented outside the
 /// engine (hume-treesitter's `Syntax`). Same span shape as
-/// `Decoration::Highlight`: `(byte_start, byte_end, scope_id)` relative to
+/// `Decoration::Highlight`: `(range, scope_id)` with byte columns relative to
 /// the line start, sorted, non-overlapping, appended to `out`. Kept as its
 /// own trait rather than folded into `DecorationSource`: parse state is
 /// per-buffer while `DecorationSource` providers are per-pane, and this is
@@ -54,7 +56,7 @@ pub trait SyntaxSpans {
         &self,
         line_idx: hume_rope::line::ContentLine,
         rope: &ropey::Rope,
-        out: &mut Vec<(ByteCol, ByteCol, ScopeId)>,
+        out: &mut Vec<(ExclusiveRange<ByteCol>, ScopeId)>,
     );
 }
 
@@ -168,10 +170,10 @@ impl GutterCell {
 
 /// A virtual (non-buffer) display line injected by a provider.
 ///
-/// Providers supply plain `text` + scoped byte-range `segments` rather than
+/// Providers supply text with scoped byte-range segments rather than
 /// pre-built `Grapheme`s: `display_lines::DisplayLineMap` does the grapheme segmentation and
 /// width/display-column bookkeeping itself, the same as it does for real buffer lines, so
-/// providers can't get that arithmetic wrong. Like a buffer line, `text` wraps
+/// providers can't get that arithmetic wrong. Like a buffer line, the text wraps
 /// under the pane's wrap mode and expands tabs against its tab width; every
 /// display line it wraps into carries this line's `base_scope`.
 #[derive(Clone)]
@@ -182,20 +184,13 @@ pub struct VirtualLine {
     /// wraps included.
     pub side: hume_core::Side,
     pub provider_id: ProviderId,
-    pub text: String,
-    /// `(byte_start, byte_end, scope_id)` offsets into `text`, each naming the
-    /// scope its graphemes should resolve to. Bytes not covered by any
-    /// segment fall back to `base_scope`, then to `ui.virtual_text`. Scopes
-    /// must have been interned via `ScopeRegistry` before the first render
-    /// (same contract as every `DecorationSource`).
-    ///
-    /// Same span shape as `Decoration::Highlight`/`SyntaxSpans`: sorted by
-    /// `byte_start`, non-overlapping. Providers are plugin code, so the
-    /// engine does not trust this. It re-sorts at intake (`DisplayLineMap::block`)
-    /// before resolving scopes with a monotonic cursor, the same posture
-    /// `style::rebuild_line_decorations` takes for highlight spans.
-    pub segments: Vec<(ByteCol, ByteCol, ScopeId)>,
-    /// Scope for bytes no `segments` entry covers, and the display line's
+    /// The text, and the scope each segment of it resolves its graphemes
+    /// to. Bytes not covered by any segment fall back to `base_scope`, then
+    /// to `ui.virtual_text`. Scopes must have been interned via
+    /// `ScopeRegistry` before the first render (same contract as every
+    /// `DecorationSource`).
+    pub content: SpannedText<ScopeId>,
+    /// Scope for bytes no segment covers, and the display line's
     /// background: its `bg` fills the display line's gutter and trailing
     /// cells past the text (the virtual-display-line counterpart of
     /// `Decoration::LineBg`). `None` → the render stage's `ui.virtual_text`
@@ -234,12 +229,11 @@ pub struct InlineInsert {
 /// emit more than one kind (or a kind that varies by line) only implements
 /// one trait.
 pub enum Decoration {
-    /// `(byte_start, byte_end)` relative to the line start, plus the tier
+    /// A byte range relative to the line start, plus the tier
     /// this span layers at. Tier is data here, not a per-provider property,
     /// so one source can emit spans at different tiers.
     Highlight {
-        byte_start: ByteCol,
-        byte_end: ByteCol,
+        range: ExclusiveRange<ByteCol>,
         scope: ScopeId,
         tier: HighlightTier,
     },

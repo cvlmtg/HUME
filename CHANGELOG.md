@@ -12,6 +12,9 @@
 - `buffer-display-path`'s `#:relative` takes the directory to be relative to: replace `#:relative #t` with `#:relative (cwd)`.
 - `picker!` and `live-picker!` take a keymap in place of `on-select`, and `#:actions` is gone: a picker answers only the keys its keymap binds. Pass `(call! "stdlib/picker-keymap" on-select)` for the keys pickers had, add keys with `hash-insert`, and move cleanup that ran on `#f` into `#:on-close`.
 
+### Panes & interface
+- `:ls` shows the buffer you are in in bold and buffers with unsaved changes in the warning color, and `core:undotree` colors its graph and its `@` and `S` markers.
+
 ### Plugins & scripting
 - A plugin's picker binds every key itself, and new `picker-move!` moves its selection.
 - `core:plum` installs grammars from a folder you built them into before downloading them, with `#:config (hash 'grammar-source "/path")`, for a platform with no prebuilt grammars or for working offline.
@@ -21,9 +24,12 @@
 - New `stdlib/download!` downloads a file, or a byte range of one, with `curl`.
 - New `stdlib/list-entries` lists every entry of a directory.
 - New `stdlib/verify-sha256!` checks a file's SHA-256, and new `stdlib/extract-archive!` unpacks a tar or zip archive, refusing one whose symlinks point outside its directory. New `stdlib/find-extractor` finds the program that extracts an archive format.
+- Drawer rows can give theme scopes to parts of their text and to the whole row while it is selected.
+- An error about one entry of a list given to a decoration, drawer, menu or picker function names that entry by its position, as in `lines 1 'segments 0`.
 
 ### Language servers
 - The workspace symbols picker and the goto and references list show a file inside the working directory by its path relative to it.
+- The goto and references list gives a row from a file that is not open, whose column is the server's own count, the `markup.italic` scope, so a theme can set it apart.
 
 ### Performance
 - `core:git-diff` refreshes a file with many changes several times faster, and the `diff-` functions no longer take up to a quarter of a second on a large diff.

@@ -50,29 +50,17 @@ pub struct SignEntry {
 }
 
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text anchored to
-/// `line` (rendered on its `side`), which remaps
-/// through edits as a [`LineAnchored`] kind. `scope` styles bytes `segments` doesn't cover. `hume-editor`'s `host_impl.rs`'s
-/// `set_virtual_lines` resolves the `ui.virtual` fallback itself when the
-/// Steel call passes no scope, so this field is never optional; `segments`
-/// are `(byte_start, byte_end, ScopeId)` ranges into `text`, already
-/// sorted/non-overlapping/in-bounds, guaranteed by the host boundary
-/// (`virtual_line_segments_to_bytes` in `hume-editor`'s `host_impl.rs`), which also converts
-/// the Steel-facing char offsets to these byte offsets (the per-segment
-/// scope name is interned separately, after that call). Kept as a separate
-/// type rather than reusing `hume_scripting::VirtualLineSpec` directly: that
-/// type's `segments` are unvalidated char offsets naming scopes, this one's
-/// are validated byte offsets naming already-interned `ScopeId`s:
-/// different shapes, not merely a field rename.
+/// `line` (rendered on its `side`), which remaps through edits as a
+/// [`LineAnchored`] kind. `content` is the text and the interned scope of
+/// each segment of it; `scope` styles the bytes no segment covers.
+/// `hume-editor`'s `host_impl/decorations.rs`'s `set_virtual_lines`
+/// resolves the `ui.virtual` fallback itself when the Steel call passes no
+/// scope, so this field is never optional.
 pub struct VirtualLineEntry {
     pub line: ContentLine,
-    pub text: String,
+    pub content: hume_rope::spanned::SpannedText<ScopeId>,
     pub side: Side,
     pub scope: ScopeId,
-    pub segments: Vec<(
-        hume_rope::column::ByteCol,
-        hume_rope::column::ByteCol,
-        ScopeId,
-    )>,
 }
 
 /// One `(set-eol-text! …)` entry: `text` appended at the end of `line`,

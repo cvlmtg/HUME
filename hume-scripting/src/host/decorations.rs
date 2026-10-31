@@ -8,6 +8,26 @@ use hume_rope::position_encoding::PositionEncoding;
 
 use crate::types::VirtualLineSpec;
 
+/// Why a decoration setter refused its entries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetError {
+    /// The call as a whole: an unknown buffer, an unregistered sign source.
+    Call(String),
+    /// Entry `index` of the list the call was given.
+    Entry { index: usize, message: String },
+}
+
+/// The message for a caller with no name for the list: a Steel builtin names
+/// the entry by its own argument instead.
+impl std::fmt::Display for SetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Call(message) => f.write_str(message),
+            Self::Entry { index, message } => write!(f, "entry {index}: {message}"),
+        }
+    }
+}
+
 /// Inlay hints, signs, virtual lines, extra highlights, EOL text, statusline
 /// text, and the diagnostic pull/count reads, accessed through
 /// [`EditorHost::decorations`](super::EditorHost::decorations).
@@ -21,7 +41,7 @@ pub trait DecorationHost {
         source: String,
         bid: BufferId,
         hints: Vec<(usize, String, Side)>,
-    ) -> Result<(), String>;
+    ) -> Result<(), SetError>;
 
     /// `(register-sign-source! pane source priority)`: declares `source` a
     /// sign channel at `priority` *for `bid`*, replacing any prior
@@ -49,22 +69,17 @@ pub trait DecorationHost {
         source: String,
         bid: BufferId,
         signs: Vec<(usize, String, String)>,
-    ) -> Result<(), String>;
+    ) -> Result<(), SetError>;
 
     /// `(set-virtual-lines! pane source lines)`: replaces `source`'s virtual
-    /// lines for `bid` wholesale. Each `VirtualLineSpec`'s `segments` are
-    /// **unvalidated** char ranges (the Steel boundary only decodes shape,
-    /// see `VirtualLineSpec`'s doc), so this method is the sole enforcement
-    /// point: it must sort, validate (bounds, ordering, non-overlap), widen
-    /// an edge inside a grapheme cluster of `text` to the whole cluster, and
-    /// convert to byte offsets, `Err`ing with a message naming
-    /// `set-virtual-lines!` on any violation rather than storing bad data.
+    /// lines for `bid` wholesale. `Err` if a `VirtualLineSpec`'s `line` is
+    /// out of range.
     fn set_virtual_lines(
         &mut self,
         source: String,
         bid: BufferId,
         lines: Vec<VirtualLineSpec>,
-    ) -> Result<(), String>;
+    ) -> Result<(), SetError>;
 
     /// `(set-extra-highlights! pane source spans)`: replaces `source`'s
     /// extra highlights for `bid` wholesale. Each entry is `(start, end,
@@ -74,7 +89,7 @@ pub trait DecorationHost {
         source: String,
         bid: BufferId,
         spans: Vec<(usize, usize, String)>,
-    ) -> Result<(), String>;
+    ) -> Result<(), SetError>;
 
     /// `(set-eol-text! pane source lines)`: replaces `source`'s EOL text for
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
@@ -90,7 +105,7 @@ pub trait DecorationHost {
         bid: BufferId,
         lines: Vec<(usize, String, String)>,
         hide_on_insert_line: bool,
-    ) -> Result<(), String>;
+    ) -> Result<(), SetError>;
 
     /// `(set-line-backgrounds! pane source entries)`: replaces `source`'s
     /// line backgrounds for `bid` wholesale. Each entry is `(line, scope)`;
@@ -101,7 +116,7 @@ pub trait DecorationHost {
         source: String,
         bid: BufferId,
         entries: Vec<(usize, String)>,
-    ) -> Result<(), String>;
+    ) -> Result<(), SetError>;
 
     /// `(set-statusline-text! pane source text)`: replaces `source`'s
     /// statusline text for `bid` wholesale; an empty `text` clears it.

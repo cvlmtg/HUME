@@ -11,19 +11,39 @@
 use termina::event::KeyEvent;
 
 use hume_core::{HostToken, NonEmpty, PopupLayout, TruncateEnd};
+use hume_rope::spanned::SpannedText;
 
 use super::FocusedHandle;
+
+/// A drawer row's display as a script gave it: a string, or `(hash 'text
+/// t)` with optional `'spans` naming theme scopes for parts of `t` and an
+/// optional `'selected-scope` that styles the row in place of
+/// `ui.menu.selected` while it is selected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowDisplay {
+    pub content: SpannedText<RowSpanScopes>,
+    pub selected_scope: Option<String>,
+}
+
+/// A drawer span's `'scope`, and its `'selected-scope`, which takes the
+/// place of `'scope` while the row is the selected one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowSpanScopes {
+    pub scope: String,
+    pub selected: Option<String>,
+}
 
 /// A drawer's rows, as `show-drawer-list!`/`update-drawer-list!` received
 /// them.
 #[derive(Debug)]
 pub enum DrawerItems {
-    /// Rows already rendered: each row's text and the payload `on-select`
-    /// gets for it.
-    Rows(NonEmpty<(String, crate::Rooted)>),
+    /// Rows already rendered: each row's display and the payload
+    /// `on-select` gets for it.
+    Rows(NonEmpty<(RowDisplay, crate::Rooted)>),
     /// One opaque key per row, also its payload. Before a frame shows rows
     /// not rendered yet, the editor calls `(render start keys)` with those
-    /// rows' keys, which must return one string per key.
+    /// rows' keys, which must return one display per key, in either of
+    /// [`RowDisplay`]'s forms.
     Keys {
         keys: NonEmpty<crate::Rooted>,
         render: crate::Callback,
@@ -251,8 +271,8 @@ pub trait UiHost {
     fn close_menu(&mut self, token: HostToken) -> Result<(), String>;
 
     /// `(show-drawer-list! items on-select #:selected [0])` opens a scrolling pick-list
-    /// in the bottom chrome band. `items` are the picker's `(display . payload)`
-    /// rows, or render keys (see [`DrawerItems`]). The drawer never interprets
+    /// in the bottom chrome band. `items` are `(display . payload)` rows, or
+    /// render keys (see [`DrawerItems`]). The drawer never interprets
     /// a payload: the jump (if any) is the caller's job, typically
     /// `(goto-location! ...)` inside `on-select`.
     /// `on-select` receives the chosen row's payload and the drawer's token, so an owner can tell
@@ -298,7 +318,7 @@ pub trait UiHost {
     /// expected-normal race: the caller's drawer was closed or replaced, by
     /// `Esc` or by a second `show-drawer-list!`, either of which the caller
     /// learns of via its callback's `#f`, the same shape as `show-menu!`'s
-    /// own self-replace). Never an error.
+    /// own self-replace).
     fn update_drawer_list(
         &mut self,
         token: HostToken,

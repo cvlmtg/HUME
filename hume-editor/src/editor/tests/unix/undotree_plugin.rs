@@ -372,6 +372,67 @@ fn undotree_opens_on_current_revision() {
     assert_eq!(ed.state.input.drawer().unwrap().selected, 0);
 }
 
+const CURRENT: (&str, Option<&str>) = (
+    "diagnostic.warning.message-text",
+    Some("diagnostic.warning.message"),
+);
+const SAVED: (&str, Option<&str>) = (
+    "diagnostic.info.message-text",
+    Some("diagnostic.info.message"),
+);
+
+/// The graph is `markup.bold`. `@` is `diagnostic.warning.message-text` and
+/// `S` is `diagnostic.info.message-text`, each `.message` in place of
+/// `.message-text` while its row is the selected one, and the selected row
+/// takes the `.message` scope of its marker. The rows are those of
+/// `undotree_opens_on_current_revision`: after the leading space, the graph
+/// column is 3 wide, so `@` sits at char 6 and `S` at char 7.
+#[test]
+fn undotree_scopes_the_graph_and_markers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup(tmp.path());
+    two_branches(&mut ed);
+
+    toggle(&mut ed);
+
+    assert_drawer_styles(
+        &mut ed,
+        &[
+            (
+                CURRENT.1,
+                &[(1, 2, "markup.bold", None), (6, 7, CURRENT.0, CURRENT.1)],
+            ),
+            (None, &[(1, 4, "markup.bold", None)]),
+            (
+                SAVED.1,
+                &[(1, 4, "markup.bold", None), (7, 8, SAVED.0, SAVED.1)],
+            ),
+        ],
+    );
+}
+
+/// On a fresh buffer the root row is current and saved: ` o  @S  ##`, with
+/// the two markers in adjacent cells. The selected row takes `@`'s scope.
+#[test]
+fn undotree_scopes_both_markers_on_one_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup(tmp.path());
+
+    toggle(&mut ed);
+
+    assert_drawer_styles(
+        &mut ed,
+        &[(
+            CURRENT.1,
+            &[
+                (1, 2, "markup.bold", None),
+                (4, 5, CURRENT.0, CURRENT.1),
+                (5, 6, SAVED.0, SAVED.1),
+            ],
+        )],
+    );
+}
+
 #[test]
 fn undotree_enter_jumps_and_rerenders_current_marker() {
     let tmp = tempfile::tempdir().unwrap();
@@ -522,10 +583,11 @@ fn diff_vlines(ed: &Editor, bid: BufferId) -> Vec<DiffVline> {
             (
                 e.line.index(),
                 e.side == hume_core::Side::Before,
-                e.text.clone(),
-                e.segments
+                e.content.text().to_string(),
+                e.content
+                    .spans()
                     .iter()
-                    .map(|(start, end, _)| (start.index(), end.index()))
+                    .map(|(range, _)| (range.start.index(), range.end.index()))
                     .collect(),
             )
         })
@@ -878,7 +940,7 @@ fn undotree_follows_buffer_switch() {
     ed.execute_typed("bn", None).unwrap();
     drain_frames_until(&mut ed, |ed| drawer_rows(ed).len() == 1);
 
-    insta::assert_snapshot!(masked_rows(&ed), @"o  @S  ##");
+    insta::assert_snapshot!(masked_rows(&ed), @" o  @S  ##");
 }
 
 #[test]
@@ -890,7 +952,7 @@ fn undotree_typed_command_opens_the_drawer() {
     render(&mut ed);
 
     assert!(drawer_open(&ed));
-    insta::assert_snapshot!(masked_rows(&ed), @"o  @S  ##");
+    insta::assert_snapshot!(masked_rows(&ed), @" o  @S  ##");
 }
 
 #[test]

@@ -463,7 +463,7 @@ impl ScriptingHost {
     }
 
     /// Evaluates `source` and returns its last value, under
-    /// [`call_for_value`](Self::call_for_value)'s read-only rules.
+    /// `read_only_call`'s read-only rules.
     #[cfg(any(test, feature = "test-util"))]
     pub fn eval_source_for_value(
         &mut self,

@@ -177,7 +177,7 @@ fn hash_list_rejects_a_string_key() {
 fn hash_list_reports_a_missing_required_key() {
     let entries: SteelVal = vec![symbol_hash(&[("b", "2")])].into_steelval().unwrap();
     let err = hash_list(entries, "f", &["a", "b"], |entry| entry.required("a")).unwrap_err();
-    assert!(err.to_string().contains("f: missing 'a"), "got: {err}");
+    assert!(err.to_string().contains("f 0: missing 'a"), "got: {err}");
 }
 
 // ── pair_fields / cons_pair ──────────────────────────────────────────────

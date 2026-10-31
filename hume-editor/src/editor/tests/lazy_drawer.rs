@@ -54,7 +54,13 @@ fn visible(len: usize) -> usize {
 /// The drawer view's rows: `None` for a row not rendered yet.
 fn view_rows(ed: &Editor) -> Vec<Option<String>> {
     let guard = ed.state.views.drawer.read();
-    guard.as_ref().expect("drawer must be open").rows.to_vec()
+    guard
+        .as_ref()
+        .expect("drawer must be open")
+        .rows
+        .iter()
+        .map(|row| row.get().map(|row| row.text().to_owned()))
+        .collect()
 }
 
 /// The status line after running the typed command `name`.
@@ -120,6 +126,38 @@ fn scrolling_renders_only_rows_not_rendered_before() {
         rows[scroll..next],
         (scroll..next).map(row).collect::<Vec<_>>()[..]
     );
+}
+
+/// The view holds the model's row list between frames. Rows a scroll
+/// reveals are rendered into that same list.
+#[test]
+fn rendering_more_rows_fills_the_shared_row_list_in_place() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(&mut ed, tmp.path(), "(range 0 30)", "render");
+    frame(&mut ed, WIDTH, HEIGHT);
+    let before = std::sync::Arc::clone(ed.state.input.drawer().unwrap().rows.rows());
+
+    for _ in 0..30 {
+        ed.feed_key(key_ctrl('d'));
+        frame(&mut ed, WIDTH, HEIGHT);
+    }
+    let scroll = ed.state.input.drawer().unwrap().scroll;
+    assert!(
+        requests(&mut ed).len() > 1,
+        "setup: the scroll rendered rows"
+    );
+
+    assert!(std::sync::Arc::ptr_eq(
+        &before,
+        ed.state.input.drawer().unwrap().rows.rows()
+    ));
+    let end = scroll + visible(30);
+    let texts: Vec<_> = before[scroll..end]
+        .iter()
+        .map(|r| r.get().map(|r| r.text().to_owned()))
+        .collect();
+    assert_eq!(texts, (scroll..end).map(row).collect::<Vec<_>>());
 }
 
 #[test]
@@ -259,7 +297,7 @@ fn a_render_proc_returning_too_few_rows_closes_the_drawer() {
 }
 
 #[test]
-fn a_render_proc_returning_a_non_string_closes_the_drawer() {
+fn a_render_proc_returning_numbers_closes_the_drawer() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(
@@ -272,6 +310,95 @@ fn a_render_proc_returning_a_non_string_closes_the_drawer() {
     frame(&mut ed, WIDTH, HEIGHT);
 
     assert_render_failure_closes(&mut ed);
+}
+
+#[test]
+fn a_render_proc_may_return_styled_rows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(
+        &mut ed,
+        tmp.path(),
+        "(range 0 3)",
+        r#"(lambda (start keys)
+             (map (lambda (k)
+                    (let ([text (string-append "row " (number->string k))])
+                      (if (even? k)
+                          (hash 'text text
+                                'spans (list (hash 'start-char 0 'end-char 3 'scope "keyword"
+                                                   'selected-scope "markup.bold"))
+                                'selected-scope "diagnostic.warning.message")
+                          text)))
+                  keys))"#,
+    );
+    frame(&mut ed, WIDTH, HEIGHT);
+    assert_eq!(visible(3), 3, "setup: the band shows every row");
+
+    let styled: ExpectedRow = (
+        Some("diagnostic.warning.message"),
+        &[(0, 3, "keyword", Some("markup.bold"))],
+    );
+    assert_drawer_styles(&mut ed, &[styled, (None, &[]), styled]);
+}
+
+/// A render result that fails to become a row closes the drawer and logs
+/// why.
+fn assert_render_failure_names(ed: &mut Editor, needle: &str) {
+    assert!(has_error(ed, needle), "errors: {:?}", error_log(ed));
+    assert_render_failure_closes(ed);
+}
+
+/// The error names the failing row by its index in the drawer, not in the
+/// rendered window.
+#[test]
+fn a_render_error_for_invalid_spans_names_the_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(
+        &mut ed,
+        tmp.path(),
+        "(range 0 30)",
+        r#"(lambda (start keys)
+             (map (lambda (k)
+                    (if (= k 29)
+                        (hash 'text "x" 'spans (list (hash 'start-char 0 'end-char 9 'scope "keyword")))
+                        "ok"))
+                  keys))"#,
+    );
+    assert!(
+        visible(30) < 30,
+        "setup: the last row renders after a scroll"
+    );
+    frame(&mut ed, WIDTH, HEIGHT);
+    for _ in 0..30 {
+        if ed.state.input.drawer().is_none() {
+            break;
+        }
+        ed.feed_key(key_ctrl('d'));
+        frame(&mut ed, WIDTH, HEIGHT);
+    }
+    frame(&mut ed, WIDTH, HEIGHT);
+
+    assert_render_failure_names(
+        &mut ed,
+        "row 29 'spans 0: end 9 is past the text's char length 1",
+    );
+}
+
+#[test]
+fn a_render_proc_returning_a_row_with_an_unknown_key_closes_the_drawer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(
+        &mut ed,
+        tmp.path(),
+        "(range 0 30)",
+        r#"(lambda (start keys) (map (lambda (k) (hash 'text "x" 'spans '() 'bogus 1)) keys))"#,
+    );
+    frame(&mut ed, WIDTH, HEIGHT);
+    frame(&mut ed, WIDTH, HEIGHT);
+
+    assert_render_failure_names(&mut ed, "unknown key 'bogus");
 }
 
 /// The render proc reads the editor but cannot change it: a write is

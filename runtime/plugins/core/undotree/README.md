@@ -61,22 +61,27 @@ waiting to reach, or `#f` when the column is free. For each revision, newest fir
 3. Point lane `c` at the revision's parent (free for the root), free every merging lane,
    and drop trailing free lanes.
 
-Each row is the graph padded to the widest graph, two spaces, two marker cells, a space,
-and the age right-aligned in a column as wide as the oldest revision's age, and at least 3
-cells: an age in seconds, minutes or hours is at most 3 cells, and an age in days only
-grows with age, so the column fits every row without measuring each one. The first marker
-cell is `@` for the current revision, the second `S` for the saved one (or the revision the
-file was first opened as), and either is blank otherwise. They sit in a column of their own
-so they stay visible next to a wide graph. Here the current revision is 4 and the saved one
+Each row is a space, the graph padded to the widest graph, two spaces, two marker cells, a
+space, and the age right-aligned in a column as wide as the oldest revision's age, and at
+least 3 cells: an age in seconds, minutes or hours is at most 3 cells, and an age in days
+only grows with age, so the column fits every row without measuring each one. The first
+marker cell is `@` for the current revision, the second `S` for the saved one (or the
+revision the file was first opened as), and either is blank otherwise. They sit in a column
+of their own so they stay visible next to a wide graph. Each row is a `(hash 'text 'spans)`
+display: the graph, without its padding, is `markup.bold`, `@` is
+`diagnostic.warning.message-text` and `S` is `diagnostic.info.message-text`, with
+`diagnostic.warning.message` and `diagnostic.info.message` as their `'selected-scope`. The
+row's own `'selected-scope` is `diagnostic.warning.message` when it has `@`, else
+`diagnostic.info.message` when it has `S`. Here the current revision is 4 and the saved one
 is 0:
 
 ```
-o          2m
-| o    @   4m
-| | o      6m
-| | o      7m
-| o-'      9m
-o-'     S 12m
+ o          2m
+ | o    @   4m
+ | | o      6m
+ | | o      7m
+ | o-'      9m
+ o-'     S 12m
 ```
 
 Every row is a revision, so a row always names a revision to jump to.

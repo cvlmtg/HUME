@@ -30,6 +30,7 @@ pub(crate) fn format_virtual_lines(
     let anchor_line = RopeyLine::from(anchor_line);
 
     for vl in virtual_lines {
+        let text = vl.content.text();
         let owner = WrapOwner::Virtual {
             provider_id: vl.provider_id,
             anchor_line,
@@ -37,24 +38,24 @@ pub(crate) fn format_virtual_lines(
         let mut state = WrapState::start(
             owner,
             wrap,
-            || hume_rope::width::indent_depth(&vl.text, tab_width),
+            || hume_rope::width::indent_depth(text, tab_width),
             tab_width,
             &mut out.display_lines,
             out.graphemes.len(),
         );
 
-        // `vl.segments` was sorted at intake, and `grapheme_indices` yields
-        // byte offsets in ascending order, so a single monotonic cursor
-        // resolves every grapheme's scope in O(graphemes + segments).
-        let mut scope_cursor = IntervalCursor::new(&vl.segments);
+        // The segments are sorted, and `grapheme_indices` yields byte
+        // offsets in ascending order, so a single monotonic cursor resolves
+        // every grapheme's scope in O(graphemes + segments).
+        let mut scope_cursor = IntervalCursor::new(vl.content.spans());
         let run = VirtualRun {
-            text: &vl.text,
+            text,
             byte_offset: 0, // no buffer position
             pos: None,
             indent_depth: 0,
         };
         let mut cells = VirtualCells::new(&mut out.texts, &mut out.graphemes, &run, tab_width);
-        for (byte_offset, cluster) in vl.text.grapheme_indices(true) {
+        for (byte_offset, cluster) in text.grapheme_indices(true) {
             let scope = scope_cursor
                 .scope_at(ByteCol::new(byte_offset))
                 .or(vl.base_scope);

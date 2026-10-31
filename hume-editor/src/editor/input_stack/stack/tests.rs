@@ -2,7 +2,6 @@ use super::*;
 use crate::editor::input_stack::PickerLayer;
 use crate::editor::input_stack::command::CommandLayer;
 use crate::editor::input_stack::confirm::{ConfirmAction, ConfirmLayer};
-use crate::editor::input_stack::drawer::{DrawerLayer, DrawerRows};
 use crate::editor::input_stack::menu::MenuLayer;
 use crate::editor::replay::WaitingInput;
 use steel::rvals::SteelVal;
@@ -122,12 +121,9 @@ fn is_settled_for_tolerates_its_own_type_buried_under_a_non_modal_overlay() {
     // of it.
     let mut stack = InputStack::new();
     stack.push(menu("m"));
-    stack.push(DrawerLayer::new(
-        DrawerRows::script(
-            crate::editor::tests::drawer_items(&["d"]),
-            hume_scripting::Callback::for_test(SteelVal::BoolV(false)),
-        ),
-        0,
+    stack.push(crate::editor::tests::plain_drawer(
+        &["d"],
+        SteelVal::BoolV(false),
     ));
     assert!(stack.is_settled_for::<MenuLayer>());
 }

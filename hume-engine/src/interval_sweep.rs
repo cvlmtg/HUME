@@ -1,6 +1,8 @@
 //! Event-sweep flattener for overlapping same-scan-unit spans; see
 //! [`flatten_overlapping_spans`]'s doc for why the wrapper.
 
+use hume_rope::offset::ExclusiveRange;
+
 /// Which span wins when two spans have exactly equal `rank` and overlap;
 /// see [`flatten_overlapping_spans`]. The two current callers
 /// disagree, so this is a real two-case distinction, not a speculative
@@ -18,7 +20,7 @@ pub enum TieBreak {
 
 /// Flattens overlapping `(start, end, rank, scope)` spans (all sharing one
 /// scan unit: one line, one byte range, whatever the caller means by
-/// "overlapping") into the sorted, non-overlapping `(start, end, scope)`
+/// "overlapping") into the sorted, non-overlapping `(range, scope)`
 /// sequence a single rendering layer's contract requires: its own output
 /// must not overlap itself. `P` is the position type. Both current callers
 /// pass `hume_rope::column::ByteCol` (a line-relative byte offset), but
@@ -44,7 +46,7 @@ pub fn flatten_overlapping_spans<P: Ord + Copy + Default, R: Ord + Copy, S: Part
     raw: &mut Vec<(P, P, R, S)>,
     stack: &mut Vec<(R, u32, S)>,
     events: &mut Vec<(P, bool, u32, R, S)>,
-    out: &mut Vec<(P, P, S)>,
+    out: &mut Vec<(ExclusiveRange<P>, S)>,
     tie_break: TieBreak,
 ) {
     debug_assert!(stack.is_empty());
@@ -84,7 +86,7 @@ pub fn flatten_overlapping_spans<P: Ord + Copy + Default, R: Ord + Copy, S: Part
         if let Some(&(_, _, active_scope)) = stack.last()
             && pos < event_pos
         {
-            out.push((pos, event_pos, active_scope));
+            out.push((ExclusiveRange::new(pos, event_pos), active_scope));
         }
         pos = event_pos;
 
@@ -110,8 +112,8 @@ pub fn flatten_overlapping_spans<P: Ord + Copy + Default, R: Ord + Copy, S: Part
     events.clear();
 
     out.dedup_by(|next, prev| {
-        if prev.2 == next.2 && prev.1 == next.0 {
-            prev.1 = next.1; // extend the retained segment
+        if prev.1 == next.1 && prev.0.end == next.0.start {
+            prev.0.end = next.0.end; // extend the retained segment
             true
         } else {
             false

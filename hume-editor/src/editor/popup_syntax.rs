@@ -94,19 +94,12 @@ impl MarkupSyntax {
         let mut spans = Vec::new();
         self.syntax
             .spans_for_line(line_idx, self.text.rope(), &mut spans);
-
-        let mut cursor = 0usize;
-        for &(start, end, scope) in &spans {
-            let (start, end) = (start.index(), end.index());
-            if start > cursor {
-                out.push((line[cursor..start].to_string(), base_style));
-            }
-            out.push((line[start..end].to_string(), theme.resolve(scope)));
-            cursor = end;
-        }
-        if cursor < line.len() {
-            out.push((line[cursor..].to_string(), base_style));
-        }
+        out.extend(hume_rope::spanned::runs(line, &spans).map(|(run, scope)| {
+            (
+                run.to_string(),
+                scope.map_or(base_style, |&s| theme.resolve(s)),
+            )
+        }));
     }
 
     /// Resolve every line of `text` into one flat run sequence for

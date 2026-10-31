@@ -25,6 +25,8 @@ use std::path::{Path, PathBuf};
 use super::*;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
+use hume_rope::spanned::SpannedText;
+use hume_ui::drawer::{DrawerRow, SpanScopes};
 
 /// `"e\u{0301}\u{1D11E}x"`: 'e' + a combining acute accent (one grapheme
 /// cluster, two `char`s, two UTF-16 units) then a musical-symbol astral
@@ -236,6 +238,54 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
          the grapheme column coincide, got {:?}",
         rows[6]
     );
+}
+
+/// An open target's row is plain text, and an unopened target's row, whose
+/// column is the wire `character` 11 shown as `12`, is one `markup.italic`
+/// span over its whole text.
+#[test]
+fn references_drawer_scopes_an_unopened_targets_row_as_markup_italic() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = rig_root(tmp.path());
+    let uri = rust_rig_uri(tmp.path());
+    let (_other_file, other_uri) = write_fixture_file(&dir, "other.rs");
+    let (mut ed, _guard) = setup_refs(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/references",
+            serde_json::json!([loc(&uri, 0, 4), loc(&other_uri, 0, 11)]),
+        );
+    });
+
+    run_references(&mut ed);
+
+    let texts = drawer_rows(&ed);
+    assert_eq!(texts.len(), 2, "{texts:?}");
+    assert!(texts[1].ends_with("other.rs:1:12"), "{texts:?}");
+    let italic = ed
+        .view
+        .registry
+        .get("markup.italic")
+        .expect("the unopened row interned its span's scope");
+    let end = texts[1].chars().count();
+    let expected = vec![
+        std::sync::OnceLock::from(DrawerRow::plain(texts[0].clone())),
+        std::sync::OnceLock::from(DrawerRow::styled(
+            SpannedText::new(
+                texts[1].clone(),
+                vec![(
+                    0,
+                    end,
+                    SpanScopes {
+                        scope: italic,
+                        selected: None,
+                    },
+                )],
+            )
+            .unwrap(),
+        )),
+    ];
+    let guard = ed.state.views.drawer.read();
+    assert_eq!(*guard.as_ref().expect("drawer must be open").rows, expected);
 }
 
 /// A wire `character` past the line's end shows the column goto lands on:

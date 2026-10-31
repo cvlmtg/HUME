@@ -166,7 +166,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         {
             return Ok(None);
         }
-        let drawer = DrawerLayer::new(DrawerRows::script(items, callback), selected);
+        let rows = DrawerRows::script(items, callback, &mut self.view.registry);
+        let drawer = DrawerLayer::new(rows, selected);
         Ok(Some(self.state.open_drawer(self.view, drawer)))
     }
 
@@ -205,8 +206,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         callback: hume_scripting::Callback,
         selected: usize,
     ) -> bool {
-        self.state
-            .set_drawer_items(token, items, callback, selected)
+        let rows = DrawerRows::script(items, callback, &mut self.view.registry);
+        self.state.set_drawer_items(token, rows, selected)
     }
 
     fn drawer_selected_index(&self, token: HostToken) -> Option<usize> {

@@ -22,6 +22,7 @@ use hume_rope::cluster::ClusterStart;
 use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_rope::spanned::SpannedText;
 
 use crate::display_lines::line_store::{FormatKey, PaneLineStore};
 use crate::display_lines::{DisplayLineMap, RenderDisplayLine};
@@ -171,11 +172,10 @@ impl DecorationSource for VirtualLineBlock {
                 // self-reported id with the real one, so there is nothing
                 // here worth parameterising.
                 provider_id: 0,
-                text: match self.text {
+                content: SpannedText::plain(match self.text {
                     BlockText::Same(t) => t.to_string(),
                     BlockText::Ordinal => (i + 1).to_string(),
-                },
-                segments: Vec::new(),
+                }),
                 base_scope: None,
             }));
         }

@@ -860,11 +860,11 @@ fn rust_function_highlight_snapshot() {
         assert!(
             spans
                 .iter()
-                .any(|&(_, _, id)| ed.view.registry.name_of(id).contains("keyword")),
+                .any(|&(_, id)| ed.view.registry.name_of(id).contains("keyword")),
             "expected a 'keyword' scope for `fn`; got: {:?}",
             spans
                 .iter()
-                .map(|&(_, _, id)| ed.view.registry.name_of(id))
+                .map(|&(_, id)| ed.view.registry.name_of(id))
                 .collect::<Vec<_>>(),
         );
     }

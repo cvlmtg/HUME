@@ -1,0 +1,16 @@
+---
+source: hume-editor/src/editor/tests/lsp_drawer.rs
+expression: "render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 12))"
+---
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#ebdbb2,bg=#3c3836>┌──────────────────────────────────────┐</>
+<fg=#ebdbb2,bg=#3c3836>│</><fg=#b8bb26,bg=#3c3836,bold>src/a.rs:1:</><fg=#b8bb26,bg=#3c3836,bold,italic>5</><fg=#b8bb26,bg=#3c3836,bold>                          </><fg=#ebdbb2,bg=#3c3836>│</>
+<fg=#ebdbb2,bg=#3c3836>│src/b.rs:9:</><fg=#fb4934,bg=#3c3836>12</><fg=#ebdbb2,bg=#3c3836>                         │</>
+<fg=#ebdbb2,bg=#3c3836>│012345678901234567890123456789</><fg=#fb4934,bg=#3c3836>01234567</><fg=#ebdbb2,bg=#3c3836>│</>
+<fg=#3c3836,bg=#bdae93,bold>     1:1 *scratch*                </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

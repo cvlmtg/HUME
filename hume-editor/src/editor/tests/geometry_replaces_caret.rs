@@ -112,10 +112,9 @@ fn a_virtual_line_block_above_the_cursor_replaces_the_caret_even_when_the_cursor
         (0..5)
             .map(|_| hume_decorations::VirtualLineEntry {
                 line: hume_rope::line::ContentLine::new(20),
-                text: "V".to_string(),
+                content: hume_rope::spanned::SpannedText::plain("V".to_string()),
                 side: hume_core::Side::Before,
                 scope,
-                segments: Vec::new(),
             })
             .collect(),
     );

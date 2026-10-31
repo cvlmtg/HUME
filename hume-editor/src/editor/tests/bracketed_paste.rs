@@ -5,7 +5,7 @@
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::input_stack::{DrawerLayer, DrawerRows, MenuLayer};
+use crate::editor::input_stack::MenuLayer;
 use pretty_assertions::assert_eq;
 use steel::rvals::SteelVal;
 
@@ -253,16 +253,8 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
 fn drawer_paste_is_swallowed_but_clears_the_status_message() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.status_msg = Some("previous message".to_string());
-    ed.state.push_layer(
-        &ed.view,
-        DrawerLayer::new(
-            DrawerRows::script(
-                drawer_items(&["d0"]),
-                hume_scripting::Callback::for_test(marker("drawer-cb")),
-            ),
-            0,
-        ),
-    );
+    ed.state
+        .push_layer(&ed.view, plain_drawer(&["d0"], marker("drawer-cb")));
 
     ed.feed_paste("xyz");
 

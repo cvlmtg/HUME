@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
+use hume_rope::offset::ExclusiveRange;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor};
 
@@ -186,7 +187,7 @@ pub fn layer_highlights_for_line(
     raw: &mut Vec<(ByteCol, ByteCol, u8, ScopeId)>,
     stack: &mut Vec<(u8, u32, ScopeId)>,
     events: &mut Vec<(ByteCol, bool, u32, u8, ScopeId)>,
-    out: &mut Vec<(ByteCol, ByteCol, ScopeId)>,
+    out: &mut Vec<(ExclusiveRange<ByteCol>, ScopeId)>,
 ) {
     let line_start = rope.line_to_byte(line_idx.index());
     let line_end = hume_rope::lines::next_line_start_byte(rope, line_idx.into());

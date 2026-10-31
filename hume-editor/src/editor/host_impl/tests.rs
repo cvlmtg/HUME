@@ -6,7 +6,7 @@ use hume_scripting::host::{BufferHost, LanguageHost};
 use crate::editor::Editor;
 use crate::editor::tests::{co, init_host};
 
-use super::decorations::{content_line, validate_offset, virtual_line_segments_to_bytes};
+use super::decorations::{content_line, validate_offset};
 
 #[test]
 fn close_buffer_errs_when_id_unknown() {
@@ -57,86 +57,6 @@ fn attach_grammar_errs_for_bad_path() {
         err.contains("'rust': grammar load failed"),
         "unexpected message: {err}"
     );
-}
-
-// ── `virtual_line_segments_to_bytes` — validation moved here from the Steel
-// boundary (`VirtualLineSpec`'s segments are unvalidated char offsets; this
-// function is the sole enforcement point); these replace the tests that used
-// to live at `hume-scripting/src/builtins/decorations/tests.rs`.
-
-fn seg(start: usize, end: usize, scope: &str) -> (usize, usize, String) {
-    (start, end, scope.to_string())
-}
-
-#[test]
-fn virtual_line_segments_to_bytes_sorts_by_start() {
-    // ASCII text, so char and byte offsets coincide. This isolates the sorting
-    // behavior from the conversion.
-    let out = virtual_line_segments_to_bytes("abcdef", vec![seg(4, 6, "b"), seg(0, 2, "a")])
-        .expect("valid segments");
-    assert_eq!(
-        out,
-        vec![seg(0, 2, "a"), seg(4, 6, "b")],
-        "must come out sorted by start regardless of input order"
-    );
-}
-
-#[test]
-fn virtual_line_segments_to_bytes_rejects_start_ge_end() {
-    let err = virtual_line_segments_to_bytes("abcdef", vec![seg(2, 2, "x")]).unwrap_err();
-    assert!(err.contains("start < end"), "got: {err}");
-}
-
-#[test]
-fn virtual_line_segments_to_bytes_rejects_end_past_char_length() {
-    // "ab" is 2 chars; a segment ending at 5 is out of range.
-    let err = virtual_line_segments_to_bytes("ab", vec![seg(0, 5, "x")]).unwrap_err();
-    assert!(err.contains("char length"), "got: {err}");
-}
-
-#[test]
-fn virtual_line_segments_to_bytes_rejects_overlap() {
-    let err =
-        virtual_line_segments_to_bytes("abcdef", vec![seg(0, 3, "a"), seg(2, 5, "b")]).unwrap_err();
-    assert!(err.contains("overlap"), "got: {err}");
-}
-
-#[test]
-fn virtual_line_segments_to_bytes_widens_a_segment_splitting_a_grapheme_cluster() {
-    // "e" (1 byte) + combining acute accent U+0301 (2 bytes) is 2 chars but
-    // one grapheme cluster spanning bytes 0..3, then "x" at byte 3. The
-    // engine (`format_virtual_lines`) resolves scope once per cluster at its
-    // start byte, so a segment edge inside the cluster widens to the whole
-    // cluster: char 1 moves back to byte 0, char 1 as an end moves on to 3.
-    let text = "e\u{301}x";
-    assert_eq!(
-        virtual_line_segments_to_bytes(text, vec![seg(0, 1, "a")]).unwrap(),
-        vec![(0, 3, "a".to_string())]
-    );
-    assert_eq!(
-        virtual_line_segments_to_bytes(text, vec![seg(1, 3, "b")]).unwrap(),
-        vec![(0, 4, "b".to_string())]
-    );
-}
-
-#[test]
-fn virtual_line_segments_to_bytes_widens_across_a_zwj_sequence() {
-    // Man (4 bytes) + ZWJ (3 bytes) + woman (4 bytes): three chars, one
-    // cluster of 11 bytes.
-    let text = "\u{1F468}\u{200D}\u{1F469}";
-    assert_eq!(
-        virtual_line_segments_to_bytes(text, vec![seg(1, 2, "a")]).unwrap(),
-        vec![(0, 11, "a".to_string())]
-    );
-}
-
-#[test]
-fn virtual_line_segments_to_bytes_rejects_two_segments_splitting_one_cluster() {
-    // Each half of "e" + U+0301 widens to the whole cluster, so the two
-    // segments would claim the same character with two scopes.
-    let err = virtual_line_segments_to_bytes("e\u{301}", vec![seg(0, 1, "a"), seg(1, 2, "b")])
-        .unwrap_err();
-    assert!(err.contains("overlap"), "got: {err}");
 }
 
 #[test]
@@ -225,18 +145,4 @@ fn validate_offset_rejects_after_on_the_trailing_newline() {
     let text = hume_editing::text::BufferText::from("abc\n");
     let err = validate_offset(&text, 3, Side::After).unwrap_err();
     assert!(err.contains("trailing"), "got: {err}");
-}
-
-#[test]
-fn virtual_line_segments_to_bytes_converts_multibyte_char_offsets() {
-    // "é" (2 bytes) + "→" (3 bytes) + "x" (1 byte), each its own grapheme
-    // cluster. Char range (0, 2) covers "é→". Independently computed byte
-    // width: 2 + 3 = 5, so the expected byte range is (0, 5), not (0, 2).
-    let out = virtual_line_segments_to_bytes("é→x", vec![seg(0, 2, "prefix")])
-        .expect("valid multi-byte segment");
-    assert_eq!(
-        out,
-        vec![seg(0, 5, "prefix")],
-        "char offsets (0, 2) over \"é→x\" must convert to byte offsets (0, 5)"
-    );
 }

@@ -18,6 +18,7 @@ use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, High
 use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::ExclusiveRange;
 
 /// Shared per-frame highlight data carrying a per-range scope:
 /// `(line_idx, byte_start, byte_end, scope)`, written once per frame and read
@@ -66,8 +67,7 @@ impl DecorationSource for ScopedHighlighter {
                 break;
             }
             out.push(Decoration::Highlight {
-                byte_start,
-                byte_end,
+                range: ExclusiveRange::new(byte_start, byte_end),
                 scope,
                 tier: self.tier,
             });

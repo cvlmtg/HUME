@@ -1,6 +1,6 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::input_stack::{DrawerLayer, DrawerRows, MenuLayer};
+use crate::editor::input_stack::MenuLayer;
 use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 use steel::rvals::SteelVal;
@@ -1000,16 +1000,8 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
 fn click_under_drawer_falls_through_leaving_it_open() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.resize_terminal(80, 25);
-    ed.state.push_layer(
-        &ed.view,
-        DrawerLayer::new(
-            DrawerRows::script(
-                drawer_items(&["d0"]),
-                hume_scripting::Callback::for_test(marker("drawer-cb")),
-            ),
-            0,
-        ),
-    );
+    ed.state
+        .push_layer(&ed.view, plain_drawer(&["d0"], marker("drawer-cb")));
 
     draw(&mut ed);
     ed.handle_input(mouse_left_down(3, 0));
@@ -1031,16 +1023,8 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
             hume_rope::line::ContentLine::new(2),
             0,
         ));
-    ed.state.push_layer(
-        &ed.view,
-        DrawerLayer::new(
-            DrawerRows::script(
-                drawer_items(&["d0"]),
-                hume_scripting::Callback::for_test(marker("drawer-cb")),
-            ),
-            0,
-        ),
-    );
+    ed.state
+        .push_layer(&ed.view, plain_drawer(&["d0"], marker("drawer-cb")));
 
     ed.handle_input(mouse_wheel(false));
 

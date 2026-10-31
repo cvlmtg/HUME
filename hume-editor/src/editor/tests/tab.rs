@@ -162,10 +162,9 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
         bid,
         vec![hume_decorations::VirtualLineEntry {
             line: hume_rope::line::ContentLine::new(0),
-            text: "x".to_string(),
+            content: hume_rope::spanned::SpannedText::plain("x".to_string()),
             side: hume_core::Side::After,
             scope,
-            segments: Vec::new(),
         }],
     );
 

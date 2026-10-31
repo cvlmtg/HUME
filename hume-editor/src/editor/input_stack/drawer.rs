@@ -3,16 +3,19 @@
 //! on-select)` or by `:ls`.
 
 use std::ops::Range;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-use steel::rvals::{IntoSteelVal, SteelVal};
+use steel::rvals::SteelVal;
 use termina::event::{KeyCode, Modifiers};
 
 use hume_core::{BufferId, HostToken, NonEmpty, Severity};
 use hume_engine::pipeline::EngineView;
+use hume_engine::theme::{ScopeRegistry, diagnostic_scopes};
 use hume_engine::types::EditorMode;
+use hume_rope::spanned::SpannedText;
 use hume_scripting::SteelCall;
-use hume_scripting::host::{DrawerItems, token_to_steel};
+use hume_scripting::host::{DrawerItems, RowDisplay, token_to_steel};
+use hume_ui::drawer::{DrawerRow, SpanScopes};
 
 use crate::editor::host_impl::EditorHostImpl;
 
@@ -65,8 +68,12 @@ impl DrawerLayer {
     }
 
     /// The drawer `:ls` opens, on the row of `current`.
-    pub(in crate::editor) fn buffer_list(state: &EditorState, current: BufferId) -> Self {
-        let list = state.buffer_list(current);
+    pub(in crate::editor) fn buffer_list(
+        state: &EditorState,
+        current: BufferId,
+        registry: &mut ScopeRegistry,
+    ) -> Self {
+        let list = state.buffer_list(current, registry);
         let selected = list
             .buffers
             .iter()
@@ -131,19 +138,19 @@ impl DrawerLayer {
     }
 }
 
-/// A drawer's rows and what `Enter` on one does. A row's text is `None`
-/// until rendered. The text is shared with
+/// A drawer's rows and what `Enter` on one does. A row is unset until
+/// rendered, and is rendered at most once per list. The rows are shared with
 /// `hume_ui::drawer::DrawerViewState::rows` (an `Arc::clone`, not a deep
 /// copy): `sync_drawer_view` runs unconditionally every frame while the
 /// drawer is open, and a references batch can carry thousands of rows.
 pub(in crate::editor) enum DrawerRows {
     /// A script's rows. `Enter` on row `i` calls `on_select` with
     /// `payloads[i]` and the drawer's token, and a lazy row is rendered
-    /// from its payload by `render`. The payloads and the text are only
-    /// ever replaced together, so a rendered text never outlives the key it
+    /// from its payload by `render`. The payloads and the rows are only
+    /// ever replaced together, so a rendered row never outlives the key it
     /// was rendered from.
     Script {
-        text: Arc<Vec<Option<String>>>,
+        rows: Arc<[OnceLock<DrawerRow>]>,
         payloads: Vec<hume_scripting::Rooted>,
         render: Option<hume_scripting::Callback>,
         on_select: hume_scripting::Callback,
@@ -151,7 +158,7 @@ pub(in crate::editor) enum DrawerRows {
     /// `:ls`'s rows: row `i` names `buffers[i]`, and `Enter` switches the
     /// focused pane to it.
     Buffers {
-        text: Arc<Vec<Option<String>>>,
+        rows: Arc<[OnceLock<DrawerRow>]>,
         buffers: Vec<BufferId>,
     },
 }
@@ -161,22 +168,27 @@ impl DrawerRows {
     pub(in crate::editor) fn script(
         items: DrawerItems,
         on_select: hume_scripting::Callback,
+        registry: &mut ScopeRegistry,
     ) -> Self {
-        let (text, payloads, render) = match items {
-            DrawerItems::Rows(rows) => {
-                let (text, payloads) = rows
+        let (rows, payloads, render) = match items {
+            DrawerItems::Rows(items) => {
+                let (rows, payloads): (Vec<_>, _) = items
                     .into_vec()
                     .into_iter()
-                    .map(|(display, payload)| (Some(display), payload))
+                    .map(|(display, payload)| {
+                        (OnceLock::from(drawer_row(display, registry)), payload)
+                    })
                     .unzip();
-                (text, payloads, None)
+                (rows.into(), payloads, None)
             }
-            DrawerItems::Keys { keys, render } => {
-                (vec![None; keys.len()], keys.into_vec(), Some(render))
-            }
+            DrawerItems::Keys { keys, render } => (
+                (0..keys.len()).map(|_| OnceLock::new()).collect(),
+                keys.into_vec(),
+                Some(render),
+            ),
         };
         Self::Script {
-            text: Arc::new(text),
+            rows,
             payloads,
             render,
             on_select,
@@ -186,7 +198,12 @@ impl DrawerRows {
     /// The rows of a buffer list.
     fn buffers(list: BufferList) -> Self {
         Self::Buffers {
-            text: Arc::new(list.rows.into_vec().into_iter().map(Some).collect()),
+            rows: list
+                .rows
+                .into_vec()
+                .into_iter()
+                .map(OnceLock::from)
+                .collect(),
             buffers: list.buffers,
         }
     }
@@ -200,7 +217,7 @@ impl DrawerRows {
     }
 
     pub(in crate::editor) fn len(&self) -> usize {
-        self.text().len()
+        self.rows().len()
     }
 
     /// The last row's index. There is one: both constructors take a
@@ -209,21 +226,21 @@ impl DrawerRows {
         self.len() - 1
     }
 
-    pub(in crate::editor) fn text(&self) -> &Arc<Vec<Option<String>>> {
+    pub(in crate::editor) fn rows(&self) -> &Arc<[OnceLock<DrawerRow>]> {
         match self {
-            Self::Script { text, .. } | Self::Buffers { text, .. } => text,
+            Self::Script { rows, .. } | Self::Buffers { rows, .. } => rows,
         }
     }
 
     /// The render call `window` still needs: the first unrendered row in
     /// it, the keys from there through its last unrendered row, and the
-    /// render proc. `None` when every row in `window` has its text.
+    /// render proc. `None` when every row in `window` is rendered.
     fn pending(
         &self,
         window: Range<usize>,
     ) -> Option<(usize, Vec<SteelVal>, hume_scripting::Callback)> {
         let Self::Script {
-            text,
+            rows,
             payloads,
             render: Some(render),
             ..
@@ -231,19 +248,18 @@ impl DrawerRows {
         else {
             return None;
         };
-        let window = window.start.min(text.len())..window.end.min(text.len());
-        let first = window.clone().find(|&i| text[i].is_none())?;
-        let last = window.rev().find(|&i| text[i].is_none())?;
+        let window = window.start.min(rows.len())..window.end.min(rows.len());
+        let first = window.clone().find(|&i| rows[i].get().is_none())?;
+        let last = window.rev().find(|&i| rows[i].get().is_none())?;
         let keys = payloads[first..=last].iter().map(|key| key.value().clone());
         Some((first, keys.collect(), render.clone()))
     }
 
-    /// Stores `rendered` as the text of the rows from `start` on.
-    fn fill(&mut self, start: usize, rendered: Vec<String>) {
-        let (Self::Script { text, .. } | Self::Buffers { text, .. }) = self;
-        let text = Arc::make_mut(text);
-        for (slot, row) in text[start..].iter_mut().zip(rendered) {
-            *slot = Some(row);
+    /// Stores `rendered` as the rows from `start` on. A row an earlier call
+    /// rendered keeps that rendering.
+    fn fill(&self, start: usize, rendered: Vec<DrawerRow>) {
+        for (slot, row) in self.rows()[start..].iter().zip(rendered) {
+            slot.get_or_init(|| row);
         }
     }
 }
@@ -344,7 +360,7 @@ impl EditorState {
             .input
             .drawer()
             .map(|d| hume_ui::drawer::DrawerViewState {
-                rows: Arc::clone(d.rows.text()),
+                rows: Arc::clone(d.rows.rows()),
                 selected: d.selected,
                 scroll: d.scroll,
                 border: self.settings.popup_border,
@@ -364,8 +380,7 @@ impl EditorState {
     pub(in crate::editor) fn set_drawer_items(
         &mut self,
         token: HostToken,
-        items: DrawerItems,
-        callback: hume_scripting::Callback,
+        rows: DrawerRows,
         selected: usize,
     ) -> bool {
         let Some(r) = self.input.drawer_ref_with_token(token) else {
@@ -375,7 +390,7 @@ impl EditorState {
             .input
             .at_mut::<DrawerLayer>(r)
             .expect("drawer_ref_with_token names a live DrawerLayer");
-        drawer.rows = DrawerRows::script(items, callback);
+        drawer.rows = rows;
         drawer.select_clamped(selected);
         self.sync_drawer_view();
         true
@@ -527,7 +542,9 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
             } else {
                 ed.enter_buffer(FocusedPane::current(&ed.view), target);
             }
-            ed.state.refresh_buffer_list_drawer(ed.focused_buffer_id());
+            let focused = ed.focused_buffer_id();
+            ed.state
+                .refresh_buffer_list_drawer(focused, &mut ed.view.registry);
             clamp_drawer_scroll(ed, r);
         }
     }
@@ -535,7 +552,7 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
 
 /// The rows of a buffer-list drawer and the buffers they name, in row order.
 struct BufferList {
-    rows: NonEmpty<String>,
+    rows: NonEmpty<DrawerRow>,
     buffers: Vec<BufferId>,
 }
 
@@ -544,19 +561,23 @@ impl EditorState {
     /// the markers or the focused buffer have moved since it last did. Runs
     /// from `Editor::prepare_frame` every frame, so a row's number is always
     /// the one `:b <n>` resolves.
-    pub(in crate::editor) fn refresh_buffer_list_drawer(&mut self, current: BufferId) {
+    pub(in crate::editor) fn refresh_buffer_list_drawer(
+        &mut self,
+        current: BufferId,
+        registry: &mut ScopeRegistry,
+    ) {
         let Some(drawer) = self.input.drawer() else {
             return;
         };
         let DrawerRows::Buffers {
-            text,
+            rows,
             buffers: listed,
         } = &drawer.rows
         else {
             return;
         };
-        let list = self.buffer_list(current);
-        if *listed == list.buffers && text.iter().flatten().eq(list.rows.iter()) {
+        let list = self.buffer_list(current, registry);
+        if *listed == list.buffers && rows.iter().filter_map(OnceLock::get).eq(list.rows.iter()) {
             return;
         }
         self.input
@@ -567,8 +588,11 @@ impl EditorState {
     }
 
     /// One `:ls` row per open buffer, and the buffers they name, in row
-    /// order. A row's number is the one `:b <n>` resolves.
-    fn buffer_list(&self, current: BufferId) -> BufferList {
+    /// order. A row's number is the one `:b <n>` resolves. An unsaved
+    /// buffer's row is `diagnostic.warning.message-text`, and the whole row
+    /// `diagnostic.warning.message` while selected. The current buffer's row
+    /// is otherwise `markup.bold`.
+    fn buffer_list(&self, current: BufferId, registry: &mut ScopeRegistry) -> BufferList {
         let alternate = self.buffers.second_most_recent();
         let (rows, buffers) = self
             .buffers
@@ -582,11 +606,8 @@ impl EditorState {
                 } else {
                     ' '
                 };
-                let dirty_marker = if self.has_unsaved_changes(id) {
-                    '+'
-                } else {
-                    ' '
-                };
+                let unsaved = self.has_unsaved_changes(id);
+                let dirty_marker = if unsaved { '+' } else { ' ' };
                 let mut row = format!(
                     "{:>4}  {current_marker}{dirty_marker}  {:<32}  {}",
                     i + 1,
@@ -594,6 +615,29 @@ impl EditorState {
                     buf.display_path().unwrap_or_default(),
                 );
                 row.truncate(row.trim_end().len());
+                let whole_row = |row: String, scopes| {
+                    let end = row.chars().count();
+                    DrawerRow::styled(
+                        SpannedText::new(row, vec![(0, end, scopes)])
+                            .expect("a span over a whole non-empty row fits it"),
+                    )
+                };
+                let row = if unsaved {
+                    let selected = registry.intern(diagnostic_scopes::WARNING_MESSAGE);
+                    let scopes = SpanScopes {
+                        scope: registry.intern(diagnostic_scopes::WARNING_MESSAGE_TEXT),
+                        selected: Some(selected),
+                    };
+                    whole_row(row, scopes).with_selected_scope(Some(selected))
+                } else if id == current {
+                    let scopes = SpanScopes {
+                        scope: registry.intern("markup.bold"),
+                        selected: None,
+                    };
+                    whole_row(row, scopes)
+                } else {
+                    DrawerRow::plain(row)
+                };
                 (row, id)
             })
             .unzip();
@@ -641,7 +685,7 @@ fn clamp_drawer_scroll(ed: &mut Editor, r: LayerRef) {
 }
 
 impl Editor {
-    /// Renders the open drawer's visible rows that have no text yet, with
+    /// Renders the open drawer's visible rows not rendered yet, with
     /// one call to its render proc. Runs every frame after the scroll is
     /// clamped to the terminal, so a scroll, a resize or a shrunk list shows
     /// rendered rows in the frame it happens. A failed render closes the
@@ -656,26 +700,21 @@ impl Editor {
         else {
             return;
         };
-        let count = keys.len();
         let Some(scripting) = self.scripting.as_mut() else {
             return;
         };
-        let result = keys
-            .into_steelval()
-            .map_err(|e| e.to_string())
-            .and_then(|keys| {
-                let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
-                scripting.call_for_value(
-                    &render,
-                    vec![SteelVal::IntV(start as isize), keys],
-                    &mut host,
-                )
-            })
-            .and_then(|value| rendered_rows(value, count));
+        let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
+        let result = scripting
+            .render_drawer_rows(&render, start, keys, &mut host)
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|display| drawer_row(display, &mut self.view.registry))
+                    .collect::<Vec<_>>()
+            });
         self.flush_script_messages();
         match result {
             Ok(rows) => {
-                if let Some(drawer) = self.state.input.find_mut::<DrawerLayer>() {
+                if let Some(drawer) = self.state.input.drawer() {
                     drawer.rows.fill(start, rows);
                 }
             }
@@ -689,19 +728,19 @@ impl Editor {
     }
 }
 
-/// A render proc's result as `count` row strings.
-fn rendered_rows(value: SteelVal, count: usize) -> Result<Vec<String>, String> {
-    let expected = || format!("expected a list of {count} strings, got {value}");
-    let SteelVal::ListV(list) = &value else {
-        return Err(expected());
-    };
-    let rows = list
-        .iter()
-        .map(|row| match row {
-            SteelVal::StringV(s) => Some(s.to_string()),
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()
-        .filter(|rows| rows.len() == count);
-    rows.ok_or_else(expected)
+/// A script's row display as a drawer row, its scopes interned in
+/// `registry`. Every row a script gives a drawer, eager or rendered, is
+/// built here.
+fn drawer_row(display: RowDisplay, registry: &mut ScopeRegistry) -> DrawerRow {
+    let content = display.content.map_payload(|scopes| SpanScopes {
+        scope: registry.intern_runtime(&scopes.scope),
+        selected: scopes
+            .selected
+            .map(|selected| registry.intern_runtime(&selected)),
+    });
+    DrawerRow::styled(content).with_selected_scope(
+        display
+            .selected_scope
+            .map(|scope| registry.intern_runtime(&scope)),
+    )
 }

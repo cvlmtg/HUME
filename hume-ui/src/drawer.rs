@@ -12,8 +12,9 @@
 //! `:reload-config` reset) can otherwise leave a stale view painting a
 //! closed drawer for however long it takes the next frame to arrive.
 //!
-//! Rows are pre-formatted display strings: the drawer is a generic list
-//! picker, not a location list; Rust never interprets row content. The
+//! Rows are pre-formatted text, and a row's spans may name theme scopes for
+//! parts of it: the drawer is a generic list picker, not a location list,
+//! and Rust interprets row content only to style it. The
 //! caller's `on-select` callback does the jump itself (e.g. via
 //! `goto-location!`), and may fire more than once: unlike the popup/menu,
 //! the drawer stays open across `Enter` (Helix-style browse).
@@ -24,7 +25,7 @@
 //! pick-list selection.
 
 use hume_grid::Rect;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use hume_engine::lock::SharedSlot;
 
@@ -32,14 +33,87 @@ use hume_engine::providers::ChromeProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
-use hume_engine::types::Scope;
+use hume_engine::types::{ResolvedStyle, Scope, ScopeId};
+use hume_rope::spanned::{self, SpannedText};
+
+/// The scopes that style one span of a drawer row: `scope`, or `selected`
+/// in its place while the row is the selected one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpanScopes {
+    pub scope: ScopeId,
+    pub selected: Option<ScopeId>,
+}
+
+impl SpanScopes {
+    fn for_row(self, is_selected: bool) -> ScopeId {
+        match self.selected {
+            Some(selected) if is_selected => selected,
+            _ => self.scope,
+        }
+    }
+}
+
+/// One drawer row: its text, the parts of it a theme scope styles, and the
+/// scope that styles the whole row in place of `ui.menu.selected` while it
+/// is the selected one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DrawerRow {
+    content: SpannedText<SpanScopes>,
+    selected_scope: Option<ScopeId>,
+}
+
+impl DrawerRow {
+    /// A row with no styled part.
+    pub fn plain(text: String) -> Self {
+        Self::styled(SpannedText::plain(text))
+    }
+
+    /// A row whose spans style parts of its text.
+    pub fn styled(content: SpannedText<SpanScopes>) -> Self {
+        Self {
+            content,
+            selected_scope: None,
+        }
+    }
+
+    /// This row with `scope` styling it in place of `ui.menu.selected` while
+    /// it is the selected row. A theme that leaves `scope` unstyled selects
+    /// the row in its default style.
+    pub fn with_selected_scope(self, scope: Option<ScopeId>) -> Self {
+        Self {
+            selected_scope: scope,
+            ..self
+        }
+    }
+
+    #[cfg(feature = "test-util")]
+    pub fn text(&self) -> &str {
+        self.content.text()
+    }
+
+    /// The whole text as consecutive runs, each with the style it adds over
+    /// the row's own: a span adds the style of its scope for a selected or
+    /// unselected row, and the text between spans adds nothing.
+    fn runs<'a>(
+        &'a self,
+        theme: &'a Theme,
+        is_selected: bool,
+    ) -> impl Iterator<Item = (&'a str, ResolvedStyle)> {
+        spanned::runs(self.content.text(), self.content.spans()).map(move |(run, scopes)| {
+            let style = scopes.map_or_else(ResolvedStyle::default, |scopes| {
+                theme.resolve_layer(scopes.for_row(is_selected))
+            });
+            (run, style)
+        })
+    }
+}
 
 /// Read-side snapshot for `DrawerWidget`: the same shape as
 /// `DrawerLayer` (`hume-editor`'s raw `(show-drawer-list! …)` state) minus
-/// the callback, which the render side never needs. A row is `None` until
-/// its text is rendered, and draws blank.
+/// the callback, which the render side never needs. A row is unset until
+/// it is rendered, and draws blank.
 pub struct DrawerViewState {
-    pub rows: Arc<Vec<Option<String>>>,
+    pub rows: Arc<[OnceLock<DrawerRow>]>,
     pub selected: usize,
     pub scroll: usize,
     /// Whether to draw box-drawing glyphs on the frame's top row and side
@@ -99,7 +173,11 @@ impl ChromeProvider for DrawerWidget {
             .take(inner.height as usize)
             .enumerate()
         {
-            let row_idx = state.scroll + i;
+            let is_selected = state.scroll + i == state.selected;
+            let row_selected_style = item
+                .get()
+                .and_then(|row| row.selected_scope)
+                .map_or(selected_style, |scope| theme.resolve(scope));
             let y = inner.y + i as u16;
             super::menu_box::draw_list_row(
                 canvas,
@@ -107,9 +185,11 @@ impl ChromeProvider for DrawerWidget {
                 y,
                 inner.width,
                 inner.right(),
-                item.as_deref().unwrap_or(""),
-                row_idx == state.selected,
-                selected_style,
+                item.get()
+                    .into_iter()
+                    .flat_map(|row| row.runs(theme, is_selected)),
+                is_selected,
+                row_selected_style,
                 style,
             );
         }

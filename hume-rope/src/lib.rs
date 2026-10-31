@@ -35,6 +35,7 @@ pub mod line;
 pub mod lines;
 pub mod offset;
 pub mod position_encoding;
+pub mod spanned;
 pub mod width;
 
 /// Test-only helpers shared by this crate's test submodules.

@@ -187,15 +187,15 @@ The plugin ships no key. Bind one in your `init.scm`:
 (bind-key! 'normal "z u" "undotree/toggle")
 ```
 
-Each row is one revision: the graph, a marker column, and how long ago it was made. In the marker column, `@` is the revision the buffer is on and `S` the revision your file was last saved at. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from:
+Each row is one revision: the graph, a marker column, and how long ago it was made. In the marker column, `@` is the revision the buffer is on and `S` the revision your file was last saved at. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from. A theme styles the graph with `markup.bold`, `@` with `diagnostic.warning.message-text` and `S` with `diagnostic.info.message-text`. On the selected row, `@` and `S` take `diagnostic.warning.message` and `diagnostic.info.message` instead, and the whole row takes `diagnostic.warning.message` when it has `@`, or `diagnostic.info.message` when it has only `S`:
 
 ```
-o          2m
-| o    @   4m
-| | o      6m
-| | o      7m
-| o-'      9m
-o-'     S 12m
+ o          2m
+ | o    @   4m
+ | | o      6m
+ | | o      7m
+ | o-'      9m
+ o-'     S 12m
 ```
 
 The drawer opens with the highlight on the current revision. `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time; `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.

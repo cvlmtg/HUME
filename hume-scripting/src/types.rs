@@ -3,6 +3,8 @@ use hume_core::{
     TriggerListener,
 };
 
+use hume_rope::spanned::SpannedText;
+
 use crate::command_procs::{MappableProc, TypedProc};
 
 mod lsp;
@@ -124,27 +126,18 @@ pub struct GrammarReg {
 }
 
 /// One `(set-virtual-lines! …)` entry, decoded from its Steel hashmap shape
-/// (`hume-scripting/src/builtins/decorations.rs`'s `virtual_line_specs`),
-/// which only validates shape (arity, types): `segments` here are
-/// **caller-supplied and unvalidated** char ranges, not yet sorted,
-/// bounds-checked, or overlap-checked. `DecorationHost::set_virtual_lines`
-/// (the host boundary) is the sole enforcement point: it sorts, validates
-/// (bounds, ordering, non-overlap), widens edges inside a grapheme cluster to
-/// the whole cluster, and converts to byte offsets before anything
-/// downstream sees them.
+/// (`hume-scripting/src/builtins/decorations.rs`'s `virtual_line_specs`).
+/// `line` is not yet checked against the buffer; the host does that.
 #[derive(Debug, Clone)]
 pub struct VirtualLineSpec {
     pub line: usize,
-    pub text: String,
+    /// The text, and the scope name styling each `'segments` part of it.
+    pub content: SpannedText<String>,
     /// `'side 'before` renders above `line`, the default `'after` below.
     pub side: Side,
-    /// Whole-line base style; chars not covered by `segments` fall back to
+    /// Whole-line base style; chars not covered by a segment fall back to
     /// this (or `ui.virtual` if also absent).
     pub scope: Option<String>,
-    /// `(char_start, char_end, scope_name)` into `text`, styling only the
-    /// covered chars (unvalidated, see the struct doc). The host boundary
-    /// converts these to the byte offsets `VirtualLineEntry` stores.
-    pub segments: Vec<(usize, usize, String)>,
 }
 
 /// One side effect queued by a Steel builtin during an eval: a mutation

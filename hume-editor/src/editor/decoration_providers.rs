@@ -460,7 +460,7 @@ impl Editor {
     /// changed since the pane's last sync, or the pane's buffer changed: a
     /// whole-buffer rebuild (not viewport-filtered, since `DisplayLineMap::block`
     /// needs every anchor regardless of scroll position) with a
-    /// `text`/`segments` clone per entry is costlier to redo unconditionally
+    /// `content` clone per entry is costlier to redo unconditionally
     /// every frame than the other bridges' viewport-filtered passes. The
     /// stamp is per-buffer (not a single store-wide counter): an edit only
     /// bumps the buffer it edited, so typing in one buffer does not force
@@ -476,7 +476,7 @@ impl Editor {
     /// `entry.scope`, already resolved to the `ui.virtual` fallback at the
     /// `set-virtual-lines!` boundary when the Steel call passed none
     /// (`host_impl.rs`), becomes `VirtualLine::base_scope`: the engine
-    /// falls back to it for bytes `segments` doesn't cover, and reads its
+    /// falls back to it for bytes no segment covers, and reads its
     /// `bg` to fill the row past the last grapheme (see
     /// `format_virtual_lines`/`pane_render.rs`'s virtual-display-line `row_bg`).
     /// Always `Some`, never left as the engine's own `None` fallback, so a
@@ -496,19 +496,13 @@ impl Editor {
                 rustc_hash::FxHashMap::default();
             for entry in self.state.config.decorations.virtual_lines_for_buffer(bid) {
                 let line = entry.line;
-                let segments = entry
-                    .segments
-                    .iter()
-                    .map(|(start, end, scope)| (*start, *end, *scope))
-                    .collect();
                 by_line.entry(line).or_default().push(VirtualLine {
                     line,
                     side: entry.side,
                     // Overwritten by the engine at collection time with the
                     // registration-assigned id (see `ProviderSet::add_decoration_source`).
                     provider_id: 0,
-                    text: entry.text.clone(),
-                    segments,
+                    content: entry.content.clone(),
                     base_scope: Some(entry.scope),
                 });
             }
@@ -704,7 +698,7 @@ fn flatten_priority_overlaps(
         out.extend(
             line_out
                 .drain(..)
-                .map(|(start, end, scope)| (line, start, end, scope)),
+                .map(|(range, scope)| (line, range.start, range.end, scope)),
         );
         i = j;
     }

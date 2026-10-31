@@ -123,14 +123,39 @@
 (define (undotree/max-width strings)
   (apply max (map string-length strings)))
 
+(define (undotree/span start end scope)
+  (hash 'start-char start 'end-char end 'scope scope))
+
+(define (undotree/marker-span flag cell scope selected-scope)
+  (if flag
+      (list (hash-insert (undotree/span cell (+ cell 1) scope)
+                         'selected-scope selected-scope))
+      '()))
+
+;;; See README.md's "Graph" for the scopes.
 (define (undotree/format-row node graph age graph-width age-width)
-  (string-append
-   (undotree/pad-right graph graph-width)
-   "  "
-   (if (hash-ref node 'current?) "@" " ")
-   (if (hash-ref node 'saved?) "S" " ")
-   " "
-   (undotree/pad-left age age-width)))
+  (let* ([current? (hash-ref node 'current?)]
+         [saved? (hash-ref node 'saved?)]
+         [row (hash 'text (string-append
+                           " "
+                           (undotree/pad-right graph graph-width)
+                           "  "
+                           (if current? "@" " ")
+                           (if saved? "S" " ")
+                           " "
+                           (undotree/pad-left age age-width))
+                    'spans (append
+                            (list (undotree/span 1 (+ 1 (string-length graph)) "markup.bold"))
+                            (undotree/marker-span current? (+ graph-width 3)
+                                                  "diagnostic.warning.message-text"
+                                                  "diagnostic.warning.message")
+                            (undotree/marker-span saved? (+ graph-width 4)
+                                                  "diagnostic.info.message-text"
+                                                  "diagnostic.info.message")))])
+    (cond
+      [current? (hash-insert row 'selected-scope "diagnostic.warning.message")]
+      [saved? (hash-insert row 'selected-scope "diagnostic.info.message")]
+      [else row])))
 
 (define (undotree/find-row pred rows i)
   (cond

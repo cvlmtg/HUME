@@ -10,18 +10,20 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use hume_core::{NonEmpty, PopupLayout, TruncateEnd};
+use hume_rope::spanned::SpannedText;
 
 use crate::host::{
     DrawerItems, FocusedHandle, LivePickerOpts, PickerBinding, PickerFeedMode, PickerOpts,
-    PickerSourceOpts, PickerStep, PopupKind,
+    PickerSourceOpts, PickerStep, PopupKind, RowDisplay, RowSpanScopes,
 };
 use crate::{Callback, Rooted, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callback_arg, cwd_arg, int_arg, list_items, list_to_i32s, list_to_strings,
-    optional_callback_arg, optional_string_arg, pair_fields, single_key, string_arg,
-    symbol_enum_arg, token_arg, token_or_false, usize_arg,
+    END_CHAR, START_CHAR, bool_arg, callback_arg, cwd_arg, hash_entry, hash_list, int_arg,
+    item_label, list_items, list_to_i32s, list_to_strings, optional_callback_arg,
+    optional_string_arg, pair_fields, single_key, spanned_text, string_arg, symbol_enum_arg,
+    token_arg, token_or_false, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -71,7 +73,7 @@ pub(crate) fn show_menu(
     items: SteelVal,
     on_select: Callback,
 ) -> SteelResult {
-    let items = non_empty(picker_items(items, "items")?, "items")?;
+    let items = non_empty(display_items(items, "items", string_arg)?, "items")?;
     let token = require_cap(ctx.host.ui())?
         .show_menu(pane, items, on_select)
         .map_err(generic_err)?;
@@ -89,7 +91,8 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 
 /// `(%show-drawer-list! pane items on-select selected render)`, behind
 /// `show-drawer-list!`'s `#:selected`/`#:render` keyword wrapper (see
-/// [`drawer_items`] for `render`). `selected` is clamped into `items`.
+/// [`drawer_items`] for the rows and `render`). `selected` is clamped into
+/// `items`. A row whose spans don't fit its text raises.
 /// Returns a token scoping
 /// `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this
 /// drawer, same shape as `picker!`'s own return, or `#f` when the request
@@ -127,7 +130,8 @@ pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 /// place, keeping the browse session; `selected` is clamped into the new
 /// list. Returns whether the update applied: `#f` when no drawer is open
 /// or `token` doesn't match the open drawer's own (an expected-normal race,
-/// never an error, same contract as `picker-replace!`'s stale token).
+/// never an error, same contract as `picker-replace!`'s stale token). A row
+/// whose spans don't fit its text raises, as in `show-drawer-list!`.
 pub(crate) fn update_drawer_list(
     ctx: &mut SteelCtx,
     token: SteelVal,
@@ -144,15 +148,18 @@ pub(crate) fn update_drawer_list(
 }
 
 /// A drawer's `items`: `(display . payload)` pairs when `render` is `#f`,
-/// as a picker's are, otherwise opaque keys rendered on demand by the
-/// `render` proc, each its row's payload.
+/// each display decoded by [`drawer_row_display`], otherwise opaque keys
+/// rendered on demand by the `render` proc, each its row's payload.
 fn drawer_items(
     ctx: &SteelCtx,
     items: SteelVal,
     render: SteelVal,
 ) -> Result<DrawerItems, SteelErr> {
     Ok(match optional_callback_arg(ctx, render, 2, "#:render")? {
-        None => DrawerItems::Rows(non_empty(picker_items(items, "items")?, "items")?),
+        None => DrawerItems::Rows(non_empty(
+            display_items(items, "items", drawer_row_display)?,
+            "items",
+        )?),
         Some(render) => DrawerItems::Keys {
             keys: non_empty(
                 list_items(items, "items")?
@@ -220,21 +227,66 @@ pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: Callback) -> SteelResul
 
 /// Decodes a picker, menu or drawer `items` list: each entry must be a `(display . payload)`
 /// dotted pair; a proper list entry is rejected by `pair_fields`.
-/// `payload` stays an opaque `SteelVal`; Rust
+/// `display` decodes each display. `payload` stays an opaque `SteelVal`; Rust
 /// never interprets it, except to reject `#f`: that value means no row (a
 /// dismissed menu or drawer, a picker binding run with nothing matching),
 /// so a `#f` payload would make a chosen row indistinguishable from none.
-fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, Rooted)>, SteelErr> {
+fn display_items<D>(
+    items: SteelVal,
+    ctx_name: &str,
+    display: impl Fn(SteelVal, &str) -> Result<D, SteelErr>,
+) -> Result<Vec<(D, Rooted)>, SteelErr> {
     list_items(items, ctx_name)?
         .into_iter()
-        .map(|entry| {
-            let (display, payload) = pair_fields(entry, ctx_name, "(display . payload)")?;
-            Ok((
-                string_arg(display, ctx_name)?,
-                row_payload(payload, ctx_name)?,
-            ))
+        .enumerate()
+        .map(|(i, entry)| {
+            let label = item_label(ctx_name, i);
+            let (shown, payload) = pair_fields(entry, &label, "(display . payload)")?;
+            Ok((display(shown, &label)?, row_payload(payload, &label)?))
         })
         .collect()
+}
+
+const ROW_DISPLAY_KEYS: &[&str] = &["text", "spans", "selected-scope"];
+const DRAWER_SPAN_KEYS: &[&str] = &[START_CHAR, END_CHAR, "scope", "selected-scope"];
+
+/// One drawer row's display: a string (or a symbol, read as its name), or
+/// `(hash 'text t)` with optional `'spans spans` and `'selected-scope name`,
+/// each span a `(hash 'start-char s 'end-char e 'scope name)` with an
+/// optional `'selected-scope name`. The same decode for an eager row and for
+/// each row a `#:render` proc returns.
+pub(crate) fn drawer_row_display(val: SteelVal, ctx_name: &str) -> Result<RowDisplay, SteelErr> {
+    match val {
+        SteelVal::HashMapV(_) => {
+            let entry = hash_entry(val, ctx_name, ROW_DISPLAY_KEYS)?;
+            let text = entry.string("text")?;
+            let spans_label = entry.label("spans");
+            let spans = entry
+                .optional("spans")
+                .map(|spans| {
+                    hash_list(spans, &spans_label, DRAWER_SPAN_KEYS, |span| {
+                        let (start, end) = span.char_range()?;
+                        let scopes = RowSpanScopes {
+                            scope: span.string("scope")?,
+                            selected: span.optional_string("selected-scope")?,
+                        };
+                        Ok((start, end, scopes))
+                    })
+                })
+                .transpose()?
+                .unwrap_or_default();
+            Ok(RowDisplay {
+                content: spanned_text(text, spans, &spans_label)?,
+                selected_scope: entry.optional_string("selected-scope")?,
+            })
+        }
+        SteelVal::StringV(_) | SteelVal::SymbolV(_) => Ok(RowDisplay {
+            content: SpannedText::plain(string_arg(val, ctx_name)?),
+            selected_scope: None,
+        }),
+        _ => steel::stop!(TypeMismatch =>
+            "{}: expected a string or (hash 'text t ...)", ctx_name),
+    }
 }
 
 /// What a picker, menu or drawer row hands its callback: anything but `#f`,
@@ -304,7 +356,7 @@ pub(crate) fn picker(
     truncate: SteelVal,
     on_close: SteelVal,
 ) -> SteelResult {
-    let items = picker_items(items, "items")?;
+    let items = display_items(items, "items", string_arg)?;
     let keymap = picker_keymap(ctx, keymap, "keymap")?;
     let prompt = string_arg(prompt, "#:prompt")?;
     let pending = bool_arg(pending, "#:pending")?;
@@ -374,7 +426,7 @@ fn picker_feed_builtin(
     mode: PickerFeedMode,
 ) -> SteelResult {
     let token = token_arg(token, "token")?;
-    let items = picker_items(items, "items")?;
+    let items = display_items(items, "items", string_arg)?;
     let applied = require_cap(ctx.host.ui())?.picker_feed(token, items, mode);
     Ok(SteelVal::BoolV(applied))
 }
@@ -464,3 +516,6 @@ pub(crate) fn picker_move(
     require_cap(ctx.host.ui())?.picker_move(token, count, step);
     Ok(SteelVal::Void)
 }
+
+#[cfg(test)]
+mod tests;

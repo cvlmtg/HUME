@@ -521,7 +521,8 @@ impl Editor {
         // or the drawer's render proc opened or closed, then the band views
         // this frame draws.
         let focused_bid = self.focused_buffer_id();
-        self.state.refresh_buffer_list_drawer(focused_bid);
+        self.state
+            .refresh_buffer_list_drawer(focused_bid, &mut self.view.registry);
         self.state
             .clamp_drawer_scroll_to_terminal(self.view.terminal_area().height);
         self.fill_drawer_window();

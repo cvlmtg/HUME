@@ -1,5 +1,6 @@
 use super::*;
 use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane};
+use hume_rope::spanned::SpannedText;
 use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
 use steel::rvals::IntoSteelVal as _;
@@ -155,7 +156,7 @@ fn set_signs_rejects_a_positional_list_entry() {
     )
     .unwrap_err()
     .to_string();
-    assert!(msg.contains("signs: expected a hashmap"), "got: {msg}");
+    assert!(msg.contains("signs 0: expected a hashmap"), "got: {msg}");
 }
 
 #[test]
@@ -227,6 +228,26 @@ fn set_extra_highlights_without_decoration_host_errors() {
 }
 
 #[test]
+fn set_extra_highlights_rejects_a_selected_scope() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let span = hashmap(vec![
+        ("start-char", SteelVal::IntV(0)),
+        ("end-char", SteelVal::IntV(1)),
+        ("scope", SteelVal::StringV("keyword".into())),
+        ("selected-scope", SteelVal::StringV("markup.bold".into())),
+    ]);
+    let result = set_extra_highlights(
+        &mut ctx,
+        default_bid(),
+        "test".to_string(),
+        list(vec![span]),
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("unknown key 'selected-scope"), "got: {msg}");
+}
+
+#[test]
 fn set_statusline_text_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
@@ -241,12 +262,10 @@ fn set_statusline_text_without_decoration_host_errors() {
 
 // ── `virtual_line_specs` decoder ─────────────────────────────────────────────
 //
-// These call the private decoder directly (`NullHost` has no `DecorationHost`,
-// so a full `set_virtual_lines` round trip can't reach the store from here),
-// same pattern as `picker_items`'s tests in `builtins/ui.rs`. The decoder only
-// checks shape (arity, types) now. Segment bounds/ordering/overlap/grapheme
-// validation moved to the host boundary (`host_impl.rs`'s
-// `virtual_line_segments_to_bytes`), tested there instead.
+// These call the private decoder directly: `NullHost` has no `DecorationHost`,
+// so a full `set_virtual_lines` round trip can't reach the store from here.
+// Segment bounds, ordering, overlap and cluster widening are tested on
+// `hume_rope::spanned::SpannedText::new`.
 
 #[test]
 fn virtual_line_spec_decodes_every_field() {
@@ -264,17 +283,59 @@ fn virtual_line_spec_decodes_every_field() {
     assert_eq!(specs.len(), 1);
     let spec = &specs[0];
     assert_eq!(spec.line, 12);
-    assert_eq!(spec.text, "- let x = 5");
     assert_eq!(spec.side, Side::Before);
     assert_eq!(spec.scope.as_deref(), Some("diff.minus"));
-    // Char offsets, passed through verbatim. This layer does not sort,
-    // bounds-check, or validate them.
     assert_eq!(
-        spec.segments,
-        vec![
-            (0, 1, "diff.minus".to_string()),
-            (2, 5, "keyword".to_string())
-        ]
+        spec.content,
+        SpannedText::new(
+            "- let x = 5".to_string(),
+            vec![
+                (0, 1, "diff.minus".to_string()),
+                (2, 5, "keyword".to_string())
+            ]
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn virtual_line_spec_rejects_a_segment_that_does_not_fit_naming_its_place() {
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("abcdef".into())),
+        ("segments", list(vec![seg(0, 3, "a"), seg(2, 5, "b")])),
+    ]);
+    let err = virtual_line_specs(list(vec![entry]))
+        .expect_err("overlapping segments must not decode")
+        .to_string();
+    assert!(
+        err.contains("lines 0 'segments 1: (2, 5) overlaps (0, 3)"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_shape_error_names_each_list_element_on_its_path() {
+    let fine = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("abc".into())),
+    ]);
+    let bad_scope = hashmap(vec![
+        ("start-char-col", SteelVal::IntV(0)),
+        ("end-char-col", SteelVal::IntV(1)),
+        ("scope", SteelVal::IntV(5)),
+    ]);
+    let bad = hashmap(vec![
+        ("line", SteelVal::IntV(1)),
+        ("text", SteelVal::StringV("abc".into())),
+        ("segments", list(vec![seg(1, 2, "a"), bad_scope])),
+    ]);
+    let err = virtual_line_specs(list(vec![fine, bad]))
+        .expect_err("a non-string scope must not decode")
+        .to_string();
+    assert!(
+        err.contains("lines 1 'segments 1 'scope: expected a string"),
+        "got: {err}"
     );
 }
 
@@ -288,7 +349,7 @@ fn virtual_line_spec_defaults_side_to_after_and_scope_to_none() {
     let spec = &specs[0];
     assert_eq!(spec.side, Side::After, "default side must be 'after");
     assert_eq!(spec.scope, None);
-    assert!(spec.segments.is_empty());
+    assert!(spec.content.spans().is_empty());
 }
 
 #[test]
@@ -427,7 +488,7 @@ fn virtual_line_spec_keeps_a_literal_tab_in_text() {
         ("text", SteelVal::StringV("\tx".into())),
     ]);
     let specs = virtual_line_specs(list(vec![entry])).expect("a tab is accepted");
-    assert_eq!(specs[0].text, "\tx");
+    assert_eq!(specs[0].content.text(), "\tx");
 }
 
 #[test]
@@ -446,7 +507,8 @@ fn virtual_line_spec_keeps_a_control_character_verbatim() {
     ]);
     let specs = virtual_line_specs(list(vec![entry])).expect("accepted, not rejected");
     assert_eq!(
-        specs[0].text, "a\u{7}b",
+        specs[0].content.text(),
+        "a\u{7}b",
         "verbatim, no Steel-side substitution"
     );
 }

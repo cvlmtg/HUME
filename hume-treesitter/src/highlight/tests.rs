@@ -32,7 +32,9 @@ fn run_d(raw: Vec<(usize, usize, ScopeId, u8)>) -> Vec<(usize, usize, ScopeId)> 
         &mut out,
         TieBreak::LastPushed,
     );
-    out
+    out.into_iter()
+        .map(|(range, scope)| (range.start, range.end, scope))
+        .collect()
 }
 
 #[test]
@@ -118,7 +120,7 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
         &mut out,
         TieBreak::LastPushed,
     );
-    assert_eq!(out, vec![(0, 3, s(0))]);
+    assert_eq!(out, vec![(ExclusiveRange::new(0, 3), s(0))]);
 
     out.clear();
     let mut second: Vec<(usize, usize, u8, ScopeId)> = vec![(10, 12, 0, s(1))];
@@ -129,7 +131,7 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
         &mut out,
         TieBreak::LastPushed,
     );
-    assert_eq!(out, vec![(10, 12, s(1))]);
+    assert_eq!(out, vec![(ExclusiveRange::new(10, 12), s(1))]);
 }
 
 #[test]

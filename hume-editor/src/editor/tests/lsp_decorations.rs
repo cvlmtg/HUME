@@ -179,6 +179,10 @@ fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
         log.contains("trailing"),
         "must explain why this offset is rejected: {log:?}"
     );
+    assert!(
+        log.contains("set-inlay-hints!: hints 0: "),
+        "must name the rejected entry: {log:?}"
+    );
 }
 
 /// An out-of-range char offset must error loudly at `set-extra-highlights!`
@@ -228,7 +232,7 @@ fn extra_highlights_error(start: usize, end: usize) -> String {
 fn set_extra_highlights_errors_on_a_reversed_span() {
     let log = extra_highlights_error(5, 3);
     assert!(
-        log.contains("set-extra-highlights!: range 5..3 ends before it starts"),
+        log.contains("set-extra-highlights!: spans 0: range 5..3 ends before it starts"),
         "must name the builtin and the offending span: {log:?}"
     );
 }
@@ -237,14 +241,15 @@ fn set_extra_highlights_errors_on_a_reversed_span() {
 fn set_extra_highlights_errors_on_an_empty_span() {
     let log = extra_highlights_error(3, 3);
     assert!(
-        log.contains("set-extra-highlights!: range 3..3 is empty"),
+        log.contains("set-extra-highlights!: spans 0: range 3..3 is empty"),
         "must name the builtin and the offending span: {log:?}"
     );
 }
 
 /// An out-of-range `line` must error loudly at the boundary shared by
 /// signs/virtual-lines/EOL-text/line-backgrounds, rather than leaving the
-/// entry to never render.
+/// entry to never render, and the error names the entry by its place in the
+/// list.
 #[test]
 fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudly_on_an_out_of_range_line()
  {
@@ -257,13 +262,17 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
         &mut host,
         r#"(define-typed-command! "arm-signs" "" (lambda (bid)
              (register-sign-source! bid "linter" 10)
-             (set-signs! bid "linter" (list (hash 'line 99 'text "!" 'scope "error")))))
+             (set-signs! bid "linter" (list (hash 'line 0 'text "!" 'scope "error")
+                                            (hash 'line 99 'text "!" 'scope "error")))))
            (define-typed-command! "arm-vlines" "" (lambda (bid)
-             (set-virtual-lines! bid "git-diff" (list (hash 'line 99 'text "note")))))
+             (set-virtual-lines! bid "git-diff" (list (hash 'line 0 'text "note")
+                                                      (hash 'line 99 'text "note")))))
            (define-typed-command! "arm-eol" "" (lambda (bid)
-             (set-eol-text! bid "diagnostics" (list (hash 'line 99 'text "msg" 'scope "diagnostic.error")))))
+             (set-eol-text! bid "diagnostics" (list (hash 'line 0 'text "msg" 'scope "diagnostic.error")
+                                                    (hash 'line 99 'text "msg" 'scope "diagnostic.error")))))
            (define-typed-command! "arm-linebg" "" (lambda (bid)
-             (set-line-backgrounds! bid "git-diff" (list (hash 'line 99 'scope "diff.plus")))))"#,
+             (set-line-backgrounds! bid "git-diff" (list (hash 'line 0 'scope "diff.plus")
+                                                         (hash 'line 99 'scope "diff.plus")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -310,13 +319,17 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
     );
 
     let log = ed.state.message_log.format_for_display();
-    assert!(
-        log.contains("set-signs!")
-            && log.contains("set-virtual-lines!")
-            && log.contains("set-eol-text!")
-            && log.contains("set-line-backgrounds!"),
-        "each builtin must report its own out-of-range line loudly: {log:?}"
-    );
+    for expected in [
+        "set-signs!: signs 1: line 99 is out of range",
+        "set-virtual-lines!: lines 1: line 99 is out of range",
+        "set-eol-text!: lines 1: line 99 is out of range",
+        "set-line-backgrounds!: entries 1: line 99 is out of range",
+    ] {
+        assert!(
+            log.contains(expected),
+            "each builtin must name its out-of-range entry: {expected:?} in {log:?}"
+        );
+    }
 }
 
 #[test]
@@ -709,7 +722,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
 
     let vlines = ed.state.config.decorations.virtual_lines_for("linter", bid);
     assert_eq!(vlines.len(), 1);
-    assert_eq!(vlines[0].text, "note: …");
+    assert_eq!(vlines[0].content.text(), "note: …");
 
     let highlights = ed
         .state
@@ -809,16 +822,47 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
         .virtual_lines_for("git-diff", bid);
     assert_eq!(vlines.len(), 1);
     assert_eq!(vlines[0].line, hume_rope::line::ContentLine::new(3));
-    assert_eq!(vlines[0].text, "- let x = 5");
+    assert_eq!(vlines[0].content.text(), "- let x = 5");
     assert_eq!(vlines[0].side, hume_core::Side::Before);
     assert_eq!(scope_name(&ed, vlines[0].scope), "diff.minus");
     assert_eq!(
-        vlines[0].segments,
-        vec![(bc(2), bc(5), scope(&ed, "keyword"))],
-        "'segments' are char columns at the Steel surface; on this ASCII fixture the host \
-         boundary's char\u{2192}byte conversion (validated there, not at the Steel boundary) \
-         is a no-op, so they reach the store unchanged"
+        vlines[0].content.spans(),
+        &[(
+            hume_rope::offset::ExclusiveRange::new(bc(2), bc(5)),
+            scope(&ed, "keyword")
+        )],
+        "'segments' are char columns at the Steel surface; on this ASCII fixture the \
+         char\u{2192}byte conversion is a no-op, so they reach the store unchanged"
     );
+}
+
+/// The error names the entry whose segments don't fit its text, and a
+/// rejected entry's scope never reaches the scope registry.
+#[test]
+fn a_set_virtual_lines_segment_error_names_its_entry_and_interns_none_of_its_scopes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>aaaa\nbbbb\n");
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-virtual-lines! bid "git-diff"
+               (list (hash 'line 0 'text "fine")
+                     (hash 'line 1 'text "abcd" 'scope "zz.rejected"
+                           'segments (list (hash 'start-char-col 0 'end-char-col 2 'scope "keyword")
+                                           (hash 'start-char-col 1 'end-char-col 3 'scope "string")))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("lines 1 'segments 1: (1, 3) overlaps"),
+        "{log:?}"
+    );
+    assert_eq!(ed.view.registry.get("zz.rejected"), None);
 }
 
 #[test]

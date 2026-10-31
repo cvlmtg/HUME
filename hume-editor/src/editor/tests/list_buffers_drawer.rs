@@ -6,19 +6,6 @@ use pretty_assertions::assert_eq;
 use super::*;
 use crate::editor::input_stack::DrawerRows;
 
-/// The drawer's rows, which must all be rendered (a native drawer has no
-/// lazy rows).
-fn rows(ed: &Editor) -> Vec<String> {
-    let guard = ed.state.views.drawer.read();
-    guard
-        .as_ref()
-        .expect("drawer must be open")
-        .rows
-        .iter()
-        .map(|r| r.clone().expect("native rows are rendered up front"))
-        .collect()
-}
-
 fn selected(ed: &Editor) -> usize {
     ed.state
         .input
@@ -73,7 +60,7 @@ fn ls_opens_a_drawer_row_per_buffer_and_no_buffer() {
     ed.execute_typed("ls", None).unwrap();
 
     assert!(drawer_open(&ed));
-    assert_eq!(rows(&ed).len(), count);
+    assert_eq!(drawer_rows(&ed).len(), count);
     assert_eq!(selected(&ed), count - 1, "the focused buffer is selected");
     assert_eq!(ed.state.buffers.iter().count(), count);
     assert_eq!(ed.focused_buffer_id(), focused);
@@ -97,10 +84,53 @@ fn rows_mark_current_alternate_and_dirty() {
     ed.execute_typed("messages", None).unwrap();
     ed.execute_typed("ls", None).unwrap();
 
-    insta::assert_snapshot!(rows(&ed).join("\n"), @"
+    insta::assert_snapshot!(drawer_rows(&ed).join("\n"), @"
        1  #+  *scratch*
        2  %   [messages]
     ");
+}
+
+/// The current buffer's row is `markup.bold`. An unsaved buffer's row is
+/// `diagnostic.warning.message-text`, and while it is the selected row the
+/// whole row, its text included, is `diagnostic.warning.message`. The unsaved
+/// scopes win on the current buffer.
+#[test]
+fn rows_scope_the_current_buffer_bold_and_unsaved_buffers_as_warning() {
+    const UNSAVED_TEXT: &str = "diagnostic.warning.message-text";
+    const UNSAVED: &str = "diagnostic.warning.message";
+    let (p1, _t1) = temp_file("file1\n");
+    let (p2, _t2) = temp_file("file2\n");
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+    ed.execute_typed("e", Some(p1.to_str().unwrap())).unwrap();
+    ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
+    ed.execute_typed("ls", None).unwrap();
+    let len = |ed: &Editor, i: usize| drawer_rows(ed)[i].chars().count();
+
+    let (scratch, current) = (len(&ed, 0), len(&ed, 2));
+    assert_drawer_styles(
+        &mut ed,
+        &[
+            (Some(UNSAVED), &[(0, scratch, UNSAVED_TEXT, Some(UNSAVED))]),
+            (None, &[]),
+            (None, &[(0, current, "markup.bold", None)]),
+        ],
+    );
+
+    ed.handle_key(key('d'));
+    frame(&mut ed);
+
+    let (scratch, current) = (len(&ed, 0), len(&ed, 2));
+    assert_drawer_styles(
+        &mut ed,
+        &[
+            (Some(UNSAVED), &[(0, scratch, UNSAVED_TEXT, Some(UNSAVED))]),
+            (None, &[]),
+            (Some(UNSAVED), &[(0, current, UNSAVED_TEXT, Some(UNSAVED))]),
+        ],
+    );
 }
 
 #[test]
@@ -109,7 +139,7 @@ fn a_buffers_label_shows_in_the_name_column() {
     let fp = FocusedPane::current(&ed.view);
     ed.open_read_only_view(fp, &view_label("custom"), "text\n", None);
     ed.execute_typed("ls", None).unwrap();
-    insta::assert_snapshot!(rows(&ed).join("\n"), @"
+    insta::assert_snapshot!(drawer_rows(&ed).join("\n"), @"
        1  #   *scratch*
        2  %   [custom]
     ");
@@ -156,7 +186,7 @@ fn enter_moves_the_markers_with_the_switch() {
 
     ed.handle_key(key_enter());
 
-    insta::assert_snapshot!(rows(&ed).join("\n"), @"
+    insta::assert_snapshot!(drawer_rows(&ed).join("\n"), @"
        1  %   *scratch*
        2  #   [messages]
     ");
@@ -181,7 +211,7 @@ fn rows_follow_the_buffer_store_after_a_close() {
     frame(&mut ed);
 
     assert_eq!(listed(&ed), store_order(&ed));
-    assert_eq!(rows(&ed).len(), 2);
+    assert_eq!(drawer_rows(&ed).len(), 2);
     assert_eq!(listed(&ed)[selected(&ed)], ed.focused_buffer_id());
 }
 

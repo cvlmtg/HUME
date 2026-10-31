@@ -240,7 +240,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
             y,
             inner.width,
             inner_right,
-            &shown,
+            [(&*shown, ResolvedStyle::default())],
             state.selected_row == Some(i),
             styles.selected,
             styles.text,

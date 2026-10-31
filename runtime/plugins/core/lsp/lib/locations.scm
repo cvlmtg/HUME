@@ -35,6 +35,15 @@
                  (lsp/format-position (hash-ref place 'line)
                                       (hash-ref place 'grapheme-col-or-wire))))
 
+;; The drawer row: `lsp/place-display`, all of it scoped when its column is a wire count.
+(define (lsp/place-row place)
+  (let ((text (lsp/place-display place)))
+    (if (hash-ref place 'buffer)
+        text
+        (hash 'text text
+              'spans (list (hash 'start-char 0 'end-char (string-length text)
+                                 'scope "markup.italic"))))))
+
 ;; The open list's session, or #f: one at a time, since the drawer is one slot.
 (define lsp/*locations* #f)
 
@@ -76,7 +85,7 @@
 ;; maps position params to request params.
 (define (lsp/show-locations! pane tracked places method shape not-found)
   (lsp/end-locations-session!)
-  (let ((drawer (show-drawer-list! (focused-pane) (lsp/payload-rows lsp/place-display places)
+  (let ((drawer (show-drawer-list! (focused-pane) (lsp/payload-rows lsp/place-row places)
                                    lsp/locations-on-select)))
     (when drawer
       (keep-tracked-position! tracked)
@@ -94,7 +103,7 @@
     (if (not selected)
         (lsp/end-locations-session!)
         (let ((idx (min selected (- (length places) 1))))
-          (if (update-drawer-list! drawer (lsp/payload-rows lsp/place-display places)
+          (if (update-drawer-list! drawer (lsp/payload-rows lsp/place-row places)
                                    lsp/locations-on-select idx)
               (set! lsp/*locations*
                     (lsp/with-places session (hash-ref session 'pane) places))

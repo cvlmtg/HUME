@@ -49,7 +49,7 @@ pub(in crate::editor) fn typed_messages(
     // other caller instead of a second, unvalidated construction path.
     EditorHostImpl::new(&mut ed.state, &mut ed.view)
         .set_extra_highlights("messages".to_string(), bid, spans)
-        .map_err(CommandError::new)?;
+        .map_err(|e| CommandError::new(e.to_string()))?;
     Ok(())
 }
 
@@ -63,7 +63,8 @@ pub(in crate::editor) fn typed_list_buffers(
     ed: &mut Editor,
     fp: FocusedPane,
 ) -> Result<(), CommandError> {
-    let drawer = DrawerLayer::buffer_list(&ed.state, fp.bid(&ed.view));
+    let bid = fp.bid(&ed.view);
+    let drawer = DrawerLayer::buffer_list(&ed.state, bid, &mut ed.view.registry);
     ed.state.open_drawer(&ed.view, drawer);
     Ok(())
 }

@@ -262,8 +262,9 @@ pub struct Theme {
     /// `resolve_by_name()`. Never mutated after construction.
     raw: FxHashMap<String, ResolvedStyle>,
     /// Per-[`ScopeId`] resolved styles. Populated by `bake()`.
-    /// `baked[id.0]` is the style for the scope with that id.
-    baked: Vec<ResolvedStyle>,
+    /// `baked[id.0]` is the style for the scope with that id, `None` when no
+    /// name on its fallback chain has an entry.
+    baked: Vec<Option<ResolvedStyle>>,
     /// Default style used when no scope matches.
     pub default: ResolvedStyle,
     /// Pre-resolved styles for hot-path UI scopes. Always valid (computed in
@@ -313,9 +314,9 @@ impl Theme {
     /// re-bake against a specific registry (e.g. tests).
     pub fn bake(&mut self, registry: &ScopeRegistry) {
         self.baked.clear();
-        self.baked.resize(registry.len(), self.default);
+        self.baked.resize(registry.len(), None);
         for i in 0..registry.len() {
-            self.baked[i] = self.resolve_raw(registry.name_of(ScopeId(i as u16)));
+            self.baked[i] = self.lookup(registry.name_of(ScopeId(i as u16)));
         }
         // Re-populate ui in case bake() is called after construction (idempotent).
         self.ui = self.compute_ui();
@@ -342,15 +343,30 @@ impl Theme {
     /// last `bake()` call (a programming error; debug-assert helps catch it).
     #[inline]
     pub fn resolve(&self, id: ScopeId) -> ResolvedStyle {
+        self.baked_style(id).unwrap_or(self.default)
+    }
+
+    /// The style an interned scope adds when layered over another style:
+    /// the same lookup as [`Self::resolve`], but no style at all when no
+    /// name on the scope's fallback chain has an entry, so the style
+    /// underneath shows unchanged. The theme's `default` is a base style,
+    /// and layering it would repaint the colors underneath.
+    #[inline]
+    pub fn resolve_layer(&self, id: ScopeId) -> ResolvedStyle {
+        self.baked_style(id).unwrap_or_default()
+    }
+
+    /// The baked style of an interned scope, `None` when nothing on its
+    /// fallback chain has an entry or when `id` was interned after the last
+    /// `bake()` (a programming error the debug-assert catches).
+    #[inline]
+    fn baked_style(&self, id: ScopeId) -> Option<ResolvedStyle> {
         debug_assert!(
             (id.0 as usize) < self.baked.len(),
             "ScopeId {:?} is out of range: was bake() called after all providers were registered?",
             id
         );
-        self.baked
-            .get(id.0 as usize)
-            .copied()
-            .unwrap_or(self.default)
+        self.baked.get(id.0 as usize).copied().flatten()
     }
 
     /// Resolve a scope name via the dot-notation fallback chain.
@@ -371,9 +387,12 @@ impl Theme {
     ///
     /// `"keyword.function"` tries `"keyword.function"`, then `"keyword"`, then returns `default`.
     pub(crate) fn resolve_raw(&self, s: &str) -> ResolvedStyle {
-        fallback_chain(s)
-            .find_map(|key| self.raw.get(key).copied())
-            .unwrap_or(self.default)
+        self.lookup(s).unwrap_or(self.default)
+    }
+
+    /// The style of the first name on `s`'s fallback chain with an entry.
+    fn lookup(&self, s: &str) -> Option<ResolvedStyle> {
+        fallback_chain(s).find_map(|key| self.raw.get(key).copied())
     }
 
     // ── Private helpers ──────────────────────────────────────────────────

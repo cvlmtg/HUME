@@ -34,7 +34,13 @@ fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
         ("a\u{200B}b".to_string(), style()),
         ("cd".to_string(), style()),
     ];
-    paint_styled_row(&mut canvas, 0, 1, &runs, 20);
+    paint_styled_row(
+        &mut canvas,
+        0,
+        1,
+        runs.iter().map(|(t, s)| (t.as_str(), *s)),
+        20,
+    );
 
     // The placeholder spans the columns reserved for it, and the second run
     // starts in the cell right after it.
@@ -56,7 +62,13 @@ fn styled_runs_stop_at_the_right_edge() {
     ];
     // Edge at 4: "abc" fills 0..3, and 漢 would need cells 3 and 4, so it is
     // dropped, leaving 'z' nowhere to start from either.
-    paint_styled_row(&mut canvas, 0, 1, &runs, 4);
+    paint_styled_row(
+        &mut canvas,
+        0,
+        1,
+        runs.iter().map(|(t, s)| (t.as_str(), *s)),
+        4,
+    );
 
     insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 8, 1)), @"abc");
 }

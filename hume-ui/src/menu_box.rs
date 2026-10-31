@@ -340,10 +340,16 @@ pub(crate) fn draw_menu_box(
         // Highlight bar always wins, even over a styled row: a selected row
         // never needs per-run markdown styling, just the plain highlight.
         if !is_selected && let Some(runs) = styled.and_then(|rows| rows.get(i)) {
-            // The base fill (step 1) already covers the row. Runs are
+            // The box's base fill already covers the row. Runs are
             // contiguous and together span exactly `row_text`, so there are
             // no gaps left for `styles.base` to show through.
-            paint_styled_row(canvas, text_x, y, runs, text_right);
+            paint_styled_row(
+                canvas,
+                text_x,
+                y,
+                runs.iter().map(|(text, style)| (text.as_str(), *style)),
+                text_right,
+            );
         } else {
             draw_list_row(
                 canvas,
@@ -351,7 +357,7 @@ pub(crate) fn draw_menu_box(
                 y,
                 inner.width,
                 text_right,
-                row_text,
+                [(row_text.as_str(), ResolvedStyle::default())],
                 is_selected,
                 styles.selected,
                 styles.base,
@@ -360,37 +366,49 @@ pub(crate) fn draw_menu_box(
     }
 }
 
-/// Paint one row of a scrolling list: a full-width highlight-bar fill plus
-/// its text in `selected_style` when `is_selected`, or just the text in
-/// `base_style` otherwise. Each caller still owns its own row-index bookkeeping
-/// and text truncation, which differ in kind, not just in value, between them.
+/// Paint one row of a scrolling list: a full-width highlight-bar fill when
+/// `is_selected`, then the row's `runs`, each run's style layered over
+/// `selected_style` when `is_selected` or `base_style` otherwise. A plain row
+/// is one run with no style of its own. Each caller still owns its own
+/// row-index bookkeeping and text truncation, which differ in kind, not just
+/// in value, between them.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn draw_list_row(
+pub(crate) fn draw_list_row<'a>(
     canvas: &mut Canvas,
     x: u16,
     y: u16,
     highlight_width: u16,
     right_edge: u16,
-    text: &str,
+    runs: impl IntoIterator<Item = (&'a str, ResolvedStyle)>,
     is_selected: bool,
     selected_style: ResolvedStyle,
     base_style: ResolvedStyle,
 ) {
-    if is_selected {
+    let row_style = if is_selected {
         canvas.fill_rect_bg(Rect::new(x, y, highlight_width, 1), selected_style);
-        canvas.write_text_run(x, y, text, selected_style, right_edge);
+        selected_style
     } else {
-        canvas.write_text_run(x, y, text, base_style, right_edge);
-    }
+        base_style
+    };
+    let runs = runs
+        .into_iter()
+        .map(|(text, over)| (text, row_style.layer(over)));
+    paint_styled_row(canvas, x, y, runs, right_edge);
 }
 
-/// Paint one pre-resolved styled row's runs left-to-right starting at
-/// `(x, y)`: [`draw_menu_box`]'s styled-row branch, factored out for
-/// readability.
-fn paint_styled_row(canvas: &mut Canvas, x: u16, y: u16, runs: &StyledRow, right_edge: u16) {
+/// Paint `runs` left to right from `(x, y)`, each in its own style, stopping
+/// at `right_edge`. Every list row goes through it: [`draw_list_row`]'s rows
+/// and [`draw_menu_box`]'s styled rows.
+fn paint_styled_row<'a>(
+    canvas: &mut Canvas,
+    x: u16,
+    y: u16,
+    runs: impl IntoIterator<Item = (&'a str, ResolvedStyle)>,
+    right_edge: u16,
+) {
     let mut cx = x;
     for (run_text, run_style) in runs {
-        cx = canvas.write_text_run(cx, y, run_text, *run_style, right_edge);
+        cx = canvas.write_text_run(cx, y, run_text, run_style, right_edge);
     }
 }
 

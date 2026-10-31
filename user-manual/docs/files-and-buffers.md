@@ -30,7 +30,7 @@ Turn the prompt off with `:set global file-reload-prompt=false` (or `:set buffer
 
 A **buffer** is an open file (or scratch text). HUME can have several buffers open at once; `:ls`, `:b`, `:bn`, `:bp` and `:bd` manage them (see [Buffers](command-mode.md#buffers)). When two open files share a name, `Tab` completion for `:b` shows their parent directories to tell them apart.
 
-`:ls` opens a list across the bottom of the screen, one row per buffer: its number, `%` for the buffer you are in, `#` for the alternate, `+` for unsaved changes, its name and its path. It works like the [language server lists](lsp.md):
+`:ls` opens a list across the bottom of the screen, one row per buffer: its number, `%` for the buffer you are in, `#` for the alternate, `+` for unsaved changes, its name and its path. The row of a buffer with unsaved changes has the `diagnostic.warning.message-text` scope, and the whole row has `diagnostic.warning.message` when it is the selected row. Otherwise the row of the buffer you are in has `markup.bold`, so a theme can set them apart. It works like the [language server lists](lsp.md):
 
 - `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it.
 - `Enter` switches the focused pane to the highlighted buffer and leaves the list open.

@@ -11,6 +11,7 @@
 use super::*;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::{Rect, Rgb};
+use hume_rope::offset::ExclusiveRange;
 
 /// The synced `VirtualLine`s filed under `line` on the focused pane, after a
 /// `prepare_frame`, the same read `clearing_the_store_removes_the_virtual_line_next_frame`
@@ -164,8 +165,8 @@ fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
     let lines = virtual_lines_at(&ed, 0);
     assert_eq!(lines.len(), 1);
     assert_eq!(
-        lines[0].segments,
-        vec![(bc(2), bc(4), kw)],
+        lines[0].content.spans(),
+        &[(ExclusiveRange::new(bc(2), bc(4)), kw)],
         "'segments passes through sparse; the engine, not the editor, fills gaps from base_scope"
     );
     assert_eq!(
@@ -198,8 +199,8 @@ fn no_segments_yields_an_empty_segment_list() {
     let lines = virtual_lines_at(&ed, 0);
     assert_eq!(lines.len(), 1);
     assert_eq!(
-        lines[0].segments,
-        Vec::new(),
+        lines[0].content.spans(),
+        &[],
         "no 'segments: the whole row falls back to base_scope, nothing to name as a segment"
     );
     assert_eq!(lines[0].base_scope, Some(base));
@@ -398,8 +399,11 @@ fn segments_touching_both_ends_yield_no_zero_length_filler() {
     let lines = virtual_lines_at(&ed, 0);
     assert_eq!(lines.len(), 1);
     assert_eq!(
-        lines[0].segments,
-        vec![(bc(0), bc(3), a), (bc(3), bc(6), b)],
+        lines[0].content.spans(),
+        &[
+            (ExclusiveRange::new(bc(0), bc(3)), a),
+            (ExclusiveRange::new(bc(3), bc(6)), b)
+        ],
         "segments already covering the whole text must produce no zero-length filler"
     );
 }
@@ -415,10 +419,9 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
         bid,
         vec![hume_decorations::VirtualLineEntry {
             line: hume_rope::line::ContentLine::new(0),
-            text: "hint".to_string(),
+            content: hume_rope::spanned::SpannedText::plain("hint".to_string()),
             side: hume_core::Side::After,
             scope,
-            segments: Vec::new(),
         }],
     );
 
@@ -471,10 +474,9 @@ fn same_line_virtual_lines_from_two_sources_order_alphabetically_by_source() {
     let scope = ed.view.registry.intern("ui.virtual");
     let entry = |text: &str| hume_decorations::VirtualLineEntry {
         line: hume_rope::line::ContentLine::new(0),
-        text: text.to_string(),
+        content: hume_rope::spanned::SpannedText::plain(text.to_string()),
         side: hume_core::Side::After,
         scope,
-        segments: Vec::new(),
     };
     ed.state
         .config
@@ -492,7 +494,7 @@ fn same_line_virtual_lines_from_two_sources_order_alphabetically_by_source() {
 
     let texts: Vec<String> = virtual_lines_at(&ed, 0)
         .iter()
-        .map(|v| v.text.clone())
+        .map(|v| v.content.text().to_string())
         .collect();
     assert_eq!(
         texts,

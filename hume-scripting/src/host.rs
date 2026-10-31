@@ -34,7 +34,7 @@ pub use completion::{
     CompletionHost, CompletionSourceTarget, EmittedWord, PendingCompletionSource, PendingTarget,
 };
 pub use cursor::{CursorHost, SelectionInfo};
-pub use decorations::{DecorationHost, DiagnosticCounts, DiagnosticEntry};
+pub use decorations::{DecorationHost, DiagnosticCounts, DiagnosticEntry, SetError};
 pub use diff::DiffHost;
 pub use edits::{CharTextEdit, EditHost, WireTextEdit};
 pub use events::{EventHost, EventShape};
@@ -50,7 +50,7 @@ pub use timers::{TimerHandle, TimerHost};
 pub use token::{TrackedFate, TrackedHold, token_to_steel};
 pub use ui::{
     DrawerItems, LivePickerOpts, PickerBinding, PickerFeedMode, PickerOpts, PickerSourceOpts,
-    PickerStep, PopupKind, UiHost,
+    PickerStep, PopupKind, RowDisplay, RowSpanScopes, UiHost,
 };
 
 /// Which keymap a bind or unbind changes: the global one, or the keymap a

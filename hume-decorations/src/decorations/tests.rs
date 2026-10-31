@@ -296,10 +296,9 @@ fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
 fn virtual_line(line: usize) -> VirtualLineEntry {
     VirtualLineEntry {
         line: cl(line),
-        text: "x".to_string(),
+        content: hume_rope::spanned::SpannedText::plain("x".to_string()),
         side: Side::After,
         scope: ScopeId(0),
-        segments: Vec::new(),
     }
 }
 

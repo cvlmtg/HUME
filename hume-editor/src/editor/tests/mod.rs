@@ -425,8 +425,44 @@ fn drawer_rows(ed: &Editor) -> Vec<String> {
         .expect("drawer must be open")
         .rows
         .iter()
-        .map(|row| row.clone().expect("every row is rendered"))
+        .map(|row| row.get().expect("every row is rendered").text().to_owned())
         .collect()
+}
+
+/// A `(start, end, scope, selected_scope)` char range over a drawer row's text.
+type ExpectedSpan<'a> = (usize, usize, &'a str, Option<&'a str>);
+
+/// A drawer row's own selected scope, and its spans.
+type ExpectedRow<'a> = (Option<&'a str>, &'a [ExpectedSpan<'a>]);
+
+/// Asserts that the open drawer's row `i` carries `rows[i]`'s selected scope
+/// and spans, and no other span.
+fn assert_drawer_styles(ed: &mut Editor, rows: &[ExpectedRow]) {
+    let texts = drawer_rows(ed);
+    assert_eq!(texts.len(), rows.len(), "{texts:?}");
+    let registry = &mut ed.view.registry;
+    let expected: Vec<_> = texts
+        .into_iter()
+        .zip(rows)
+        .map(|(text, &(selected_scope, spans))| {
+            let spans = spans
+                .iter()
+                .map(|&(start, end, scope, selected)| (start, end, (scope, selected)))
+                .collect();
+            let content = hume_rope::spanned::SpannedText::new(text, spans)
+                .expect("expected spans fit their row")
+                .map_payload(|(scope, selected)| hume_ui::drawer::SpanScopes {
+                    scope: registry.intern_runtime(scope),
+                    selected: selected.map(|selected| registry.intern_runtime(selected)),
+                });
+            let row = hume_ui::drawer::DrawerRow::styled(content);
+            std::sync::OnceLock::from(
+                row.with_selected_scope(selected_scope.map(|scope| registry.intern_runtime(scope))),
+            )
+        })
+        .collect();
+    let guard = ed.state.views.drawer.read();
+    assert_eq!(*guard.as_ref().expect("drawer must be open").rows, expected);
 }
 
 /// The `:` line's current input, `""` when no minibuffer is open.
@@ -530,7 +566,31 @@ pub(in crate::editor) fn script_rows(
 
 /// Drawer rows `items`, already rendered, each its own payload.
 pub(in crate::editor) fn drawer_items(items: &[&str]) -> hume_scripting::host::DrawerItems {
-    hume_scripting::host::DrawerItems::Rows(script_rows(items))
+    hume_scripting::host::DrawerItems::Rows(script_rows(items).map(|(text, payload)| {
+        (
+            hume_scripting::host::RowDisplay {
+                content: hume_rope::spanned::SpannedText::plain(text),
+                selected_scope: None,
+            },
+            payload,
+        )
+    }))
+}
+
+/// A drawer layer over plain rows `items`, each its own payload, whose
+/// `Enter` calls `on_select`.
+pub(in crate::editor) fn plain_drawer(
+    items: &[&str],
+    on_select: steel::rvals::SteelVal,
+) -> crate::editor::input_stack::DrawerLayer {
+    crate::editor::input_stack::DrawerLayer::new(
+        crate::editor::input_stack::DrawerRows::script(
+            drawer_items(items),
+            hume_scripting::Callback::for_test(on_select),
+            &mut hume_engine::theme::ScopeRegistry::new(),
+        ),
+        0,
+    )
 }
 
 /// Opens a drawer with `items` through `EditorHostImpl`'s `UiHost` impl

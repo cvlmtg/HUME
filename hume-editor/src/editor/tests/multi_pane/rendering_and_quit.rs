@@ -345,10 +345,9 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
         bid_a,
         vec![VirtualLineEntry {
             line: hume_rope::line::ContentLine::new(0),
-            text: "deleted".to_string(),
+            content: hume_rope::spanned::SpannedText::plain("deleted".to_string()),
             side: hume_core::Side::After,
             scope,
-            segments: Vec::new(),
         }],
     );
 

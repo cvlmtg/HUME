@@ -82,7 +82,9 @@ fn highlights_for_line(
         &mut events,
         &mut out,
     );
-    out
+    out.into_iter()
+        .map(|(range, scope)| (range.start, range.end, scope))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

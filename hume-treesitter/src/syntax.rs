@@ -7,6 +7,7 @@ use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
 use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
+use hume_rope::offset::ExclusiveRange;
 
 use crate::edits::input_edits_from_changeset;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
@@ -630,7 +631,7 @@ impl hume_engine::providers::SyntaxSpans for Syntax {
         &self,
         line_idx: hume_rope::line::ContentLine,
         rope: &ropey::Rope,
-        out: &mut Vec<(ByteCol, ByteCol, ScopeId)>,
+        out: &mut Vec<(ExclusiveRange<ByteCol>, ScopeId)>,
     ) {
         let Some(layers) = self.layers() else {
             return;

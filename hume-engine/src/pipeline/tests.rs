@@ -2,6 +2,7 @@ use hume_grid::{Grid, Rect, Rgb};
 use std::collections::HashMap;
 
 use crate::test_support::{fg, theme_with};
+use hume_rope::spanned::SpannedText;
 
 use super::*;
 
@@ -10,7 +11,6 @@ use crate::display_lines::DisplayLinePos;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine};
 use crate::types::{DisplayLineKind, ResolvedStyle};
-use hume_rope::column::ByteCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
@@ -98,10 +98,10 @@ impl DecorationSource for ScopedVirtualLine {
                 line: ContentLine::new(0),
                 side: hume_core::Side::Before,
                 provider_id: 0,
-                text: "H~".to_string(),
-                // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
-                // none and must fall back to `ui.virtual_text`.
-                segments: vec![(ByteCol::new(0), ByteCol::new(1), self.scope)],
+                // "H" carries the scope; "~" carries none and must fall
+                // back to `ui.virtual_text`.
+                content: SpannedText::new("H~".to_string(), vec![(0, 1, self.scope)])
+                    .expect("the span fits"),
                 base_scope: None,
             }));
         }
@@ -151,12 +151,10 @@ fn virtual_display_line_resolves_grapheme_scope_and_falls_back_to_virtual_text()
     );
 }
 
-/// Emits one `Before(0)` display line whose four graphemes each carry a distinct
-/// scope, with `segments` built in the *reverse* of byte order. The engine
-/// contract (`VirtualLine::segments` doc) promises `DisplayLineMap::block` sorts
-/// this at intake, and `format_virtual_lines`'s cursor scan requires that:
-/// without the sort, a monotonic cursor started against descending-start
-/// input never backs up, so every offset but the last resolves to `None`.
+/// Emits one `Before(0)` display line whose four graphemes each carry a
+/// distinct scope, the segments given in the reverse of text order.
+/// `format_virtual_lines`'s cursor scan never backs up, so it resolves every
+/// grapheme only from segments in text order.
 struct UnsortedScopedVirtualLine {
     scopes: [crate::types::ScopeId; 4],
 }
@@ -171,13 +169,16 @@ impl DecorationSource for UnsortedScopedVirtualLine {
                 line: ContentLine::new(0),
                 side: hume_core::Side::Before,
                 provider_id: 0,
-                text: "ABCD".to_string(),
-                segments: vec![
-                    (ByteCol::new(3), ByteCol::new(4), self.scopes[3]),
-                    (ByteCol::new(2), ByteCol::new(3), self.scopes[2]),
-                    (ByteCol::new(1), ByteCol::new(2), self.scopes[1]),
-                    (ByteCol::new(0), ByteCol::new(1), self.scopes[0]),
-                ],
+                content: SpannedText::new(
+                    "ABCD".to_string(),
+                    vec![
+                        (3, 4, self.scopes[3]),
+                        (2, 3, self.scopes[2]),
+                        (1, 2, self.scopes[1]),
+                        (0, 1, self.scopes[0]),
+                    ],
+                )
+                .expect("the spans fit"),
                 base_scope: None,
             }));
         }
@@ -185,7 +186,7 @@ impl DecorationSource for UnsortedScopedVirtualLine {
 }
 
 #[test]
-fn virtual_display_line_resolves_scopes_from_unsorted_segments() {
+fn virtual_display_line_resolves_scopes_from_segments_given_out_of_order() {
     let mut registry = ScopeRegistry::new();
     let scope_names = ["scope-a", "scope-b", "scope-c", "scope-d"];
     let scopes: [crate::types::ScopeId; 4] =
@@ -253,8 +254,7 @@ impl DecorationSource for FixedVirtualLineSource {
                 line: self.line,
                 side: self.side,
                 provider_id: 0,
-                text: self.text.to_string(),
-                segments: Vec::new(),
+                content: SpannedText::plain(self.text.to_string()),
                 base_scope: None,
             }));
         }
@@ -438,8 +438,7 @@ impl DecorationSource for MultiBeforeLine {
                     line: ContentLine::new(0),
                     side: hume_core::Side::Before,
                     provider_id: 0,
-                    text: (i + 1).to_string(),
-                    segments: Vec::new(),
+                    content: SpannedText::plain((i + 1).to_string()),
                     base_scope: None,
                 }));
             }
@@ -511,8 +510,7 @@ impl DecorationSource for SpoofingVirtualLineSource {
                 line: self.line,
                 side: self.side,
                 provider_id: 9999, // spoofed, must be overwritten by the pipeline
-                text: "V".to_string(),
-                segments: Vec::new(),
+                content: SpannedText::plain("V".to_string()),
                 base_scope: None,
             }));
         }

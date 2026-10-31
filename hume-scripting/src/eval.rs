@@ -520,30 +520,45 @@ impl ScriptingHost {
         (completed, effects)
     }
 
-    /// Calls `callback` with `args`, as its owner, and returns its value:
-    /// the one entry point for a proc whose result the editor uses, such as
-    /// a drawer's row renderer. The proc sees `host` through `ReadOnlyHost`: it may read
-    /// the editor but not change it, queue commands with `call!`, or start a
-    /// declared plugin's activation. Any such attempt fails the call, even
-    /// when the proc caught the error it raised, and whatever it queued is
-    /// dropped. Runs under the
-    /// same watchdog budget as a command.
-    pub fn call_for_value(
+    /// Calls a drawer's `render` proc as `(render start keys)`, as its owner,
+    /// and decodes its result: one row display per key. Runs under
+    /// `read_only_call`'s read-only rules.
+    pub fn render_drawer_rows(
         &mut self,
-        callback: &Callback,
-        args: Vec<SteelVal>,
+        render: &Callback,
+        start: usize,
+        keys: Vec<SteelVal>,
         host: &mut dyn EditorHost,
-    ) -> Result<SteelVal, String> {
-        let proc = callback.proc().value().clone();
-        self.read_only_call(host, callback.provenance().clone(), |steel| {
+    ) -> Result<Vec<crate::host::RowDisplay>, String> {
+        let count = keys.len();
+        let proc = render.proc().value().clone();
+        let args = vec![
+            SteelVal::IntV(start as isize),
+            builtins::args::list_of(keys),
+        ];
+        let value = self.read_only_call(host, render.provenance().clone(), |steel| {
             steel.call_function_with_args(proc, args)
-        })
+        })?;
+        let expected = || format!("expected a list of {count} rows, got {value}");
+        let SteelVal::ListV(list) = &value else {
+            return Err(expected());
+        };
+        if list.len() != count {
+            return Err(expected());
+        }
+        list.iter()
+            .enumerate()
+            .map(|(i, row)| {
+                let label = builtins::args::item_label("row", start + i);
+                builtins::ui::drawer_row_display(row.clone(), &label).map_err(|e| e.to_string())
+            })
+            .collect()
     }
 
     /// `name`'s bundled data, read by `bootstrap.scm`'s
-    /// `%bundled-language-config` under [`call_for_value`](Self::call_for_value)'s
-    /// read-only rules. `None` when there is no runtime directory or no file
-    /// for `name`; a malformed file is an error naming it.
+    /// `%bundled-language-config` under `read_only_call`'s read-only rules.
+    /// `None` when there is no runtime directory or no file for `name`; a
+    /// malformed file is an error naming it.
     pub fn bundled_language(
         &mut self,
         name: &str,
@@ -557,9 +572,13 @@ impl ScriptingHost {
             .map_err(|e| format!("{name}.scm: {e}"))
     }
 
-    /// Runs `call`, credited as `base`, in a session whose host is read-only and
-    /// whose queued commands fail the call; the shared body of
-    /// [`call_for_value`](Self::call_for_value) and
+    /// Runs `call`, credited as `base`, under read-only rules: it sees `host`
+    /// through `ReadOnlyHost`, so it may read the editor but not change it,
+    /// queue commands with `call!`, or start a declared plugin's activation.
+    /// Any such attempt fails the call, even when `call` caught the error it
+    /// raised, and whatever it queued is dropped. Runs under the same
+    /// watchdog budget as a command. The shared body of
+    /// [`render_drawer_rows`](Self::render_drawer_rows) and
     /// [`bundled_language`](Self::bundled_language).
     pub(crate) fn read_only_call(
         &mut self,

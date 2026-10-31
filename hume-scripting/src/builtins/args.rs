@@ -19,6 +19,7 @@ use termina::event::KeyEvent;
 
 use hume_core::{BufferId, HostToken};
 use hume_platform::path::AbsolutePath;
+use hume_rope::spanned::SpannedText;
 
 use crate::Rooted;
 use crate::host::{JobHandle, SupersedeKey, TimerHandle, token_to_steel};
@@ -744,17 +745,40 @@ pub(crate) fn optional_hash_entry<'a>(
     }
 }
 
+/// `"<ctx_name> <index>"`, the label an error names one element of the list
+/// `ctx_name` labels by.
+pub(crate) fn item_label(ctx_name: &str, index: usize) -> String {
+    format!("{ctx_name} {index}")
+}
+
+/// `text` with the payload `spans` decoded from the list `ctx_name` labels,
+/// each a `(start, end, payload)` of char offsets into `text`. A span that
+/// does not fit `text` is an error naming it by its place in that list.
+pub(crate) fn spanned_text<T>(
+    text: String,
+    spans: Vec<(usize, usize, T)>,
+    ctx_name: &str,
+) -> Result<SpannedText<T>, SteelErr> {
+    SpannedText::new(text, spans)
+        .map_err(|e| generic_err(format!("{}: {}", item_label(ctx_name, e.index), e.kind)))
+}
+
 /// Decodes a Steel list of symbol-keyed hashmaps into `Vec<T>`: the shared
-/// skeleton every decoration setter opens with, [`hash_entry`] per element.
-pub(crate) fn hash_list<'a, T>(
+/// skeleton every decoration setter opens with, [`hash_entry`] per element,
+/// each labelled by its [`item_label`].
+pub(crate) fn hash_list<T>(
     val: SteelVal,
-    ctx_name: &'a str,
-    keys: &'a [&'a str],
+    ctx_name: &str,
+    keys: &[&str],
     mut row: impl FnMut(&HashEntry) -> Result<T, SteelErr>,
 ) -> Result<Vec<T>, SteelErr> {
     list_items(val, ctx_name)?
         .into_iter()
-        .map(|entry| row(&hash_entry(entry, ctx_name, keys)?))
+        .enumerate()
+        .map(|(i, entry)| {
+            let label = item_label(ctx_name, i);
+            row(&hash_entry(entry, &label, keys)?)
+        })
         .collect()
 }
 

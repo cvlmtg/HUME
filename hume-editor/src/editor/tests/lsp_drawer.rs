@@ -8,6 +8,14 @@ use std::path::Path;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
+use hume_ui::drawer::DrawerRow;
+
+/// Each row's text, `None` for a row not rendered yet.
+fn row_texts(rows: &[std::sync::OnceLock<DrawerRow>]) -> Vec<Option<&str>> {
+    rows.iter()
+        .map(|row| row.get().map(DrawerRow::text))
+        .collect()
+}
 
 fn arm_three_items(ed: &mut Editor, tmp: &Path) {
     run(
@@ -373,7 +381,7 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
-    let model_items = std::sync::Arc::clone(ed.state.input.drawer().unwrap().rows.text());
+    let model_items = std::sync::Arc::clone(ed.state.input.drawer().unwrap().rows.rows());
     let view_rows = {
         let guard = ed.state.views.drawer.read();
         std::sync::Arc::clone(&guard.as_ref().unwrap().rows)
@@ -403,7 +411,7 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
         !std::sync::Arc::ptr_eq(&view_rows, &view_rows_after),
         "the view must follow a replaced model to its new row list"
     );
-    assert_eq!(*view_rows_after, vec![Some("replaced".to_string())]);
+    assert_eq!(row_texts(&view_rows_after), vec![Some("replaced")]);
 }
 
 #[test]
@@ -476,8 +484,8 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     assert!(!applied, "a foreign token must not apply");
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(
-        **drawer.rows.text(),
-        vec![Some("a".to_string()), Some("b".to_string())],
+        row_texts(drawer.rows.rows()),
+        vec![Some("a"), Some("b")],
         "rows must be untouched by a mismatched-token update"
     );
 }
@@ -748,10 +756,7 @@ fn update_replaces_rows_callback_and_selection_in_place() {
         "update must report it applied"
     );
     let drawer = ed.state.input.drawer().unwrap();
-    assert_eq!(
-        **drawer.rows.text(),
-        vec![Some("x".to_string()), Some("y".to_string())]
-    );
+    assert_eq!(row_texts(drawer.rows.rows()), vec![Some("x"), Some("y")]);
     assert_eq!(
         drawer.selected, 1,
         "caller's selection must be kept, not reset"
@@ -850,11 +855,189 @@ fn update_with_empty_items_raises_and_keeps_the_rows() {
     );
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(
-        **drawer.rows.text(),
-        vec![Some("a".to_string()), Some("b".to_string())],
-        "the old rows must survive a rejected update"
+        row_texts(drawer.rows.rows()),
+        vec![Some("a"), Some("b")],
+        "the rows must survive a rejected update"
     );
     assert_eq!(drawer.selected, 0);
+}
+
+// ── Styled rows ──────────────────────────────────────────────────────────────
+
+#[test]
+fn invalid_spans_on_eager_rows_raise_and_open_nothing() {
+    let cases = [
+        (
+            r#"(list (hash 'start-char 2 'end-char 1 'scope "keyword"))"#,
+            "start < end",
+        ),
+        (
+            r#"(list (hash 'start-char 0 'end-char 9 'scope "keyword"))"#,
+            "char length 3",
+        ),
+        (
+            r#"(list (hash 'start-char 0 'end-char 2 'scope "keyword")
+                     (hash 'start-char 1 'end-char 3 'scope "string"))"#,
+            "overlaps",
+        ),
+        (
+            r#"(list (hash 'start-char 0 'end-char 1 'scope "keyword" 'bogus 1))"#,
+            "unknown key 'bogus",
+        ),
+        (
+            r#"(list (hash 'start-char 0 'end-char 1 'scope 5))"#,
+            "expected a string",
+        ),
+    ];
+    for (spans, needle) in cases {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ed = editor_from("-[x]>abcdefgh\n");
+        run(
+            &mut ed,
+            tmp.path(),
+            &format!(
+                r#"(define-typed-command! "go" "" (lambda (pane)
+                     (show-drawer-list! pane (list (cons (hash 'text "abc" 'spans {spans}) 'a))
+                       (lambda (row tok) (void)))))"#
+            ),
+        );
+        type_cmd(&mut ed, ":go");
+        ed.settle();
+
+        assert!(ed.state.input.drawer().is_none(), "{needle}: opened");
+        assert!(
+            error_log(&ed)
+                .iter()
+                .any(|e| e.contains("show-drawer-list!:") && e.contains(needle)),
+            "{needle}: errors: {:?}",
+            error_log(&ed)
+        );
+    }
+}
+
+/// The error names the row whose spans don't fit, and a rejected row's
+/// scope names never reach the scope registry.
+#[test]
+fn an_invalid_span_error_names_its_row_and_interns_none_of_its_scopes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-drawer-list! pane
+               (list (cons "fine" 'a)
+                     (cons (hash 'text "abc"
+                                 'spans (list (hash 'start-char 0 'end-char 9 'scope "zz.rejected")))
+                           'b))
+               (lambda (row tok) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    assert!(ed.state.input.drawer().is_none(), "opened");
+    assert!(
+        error_log(&ed)
+            .iter()
+            .any(|e| e.contains("items 1 'spans 0: end 9 is past the text's char length 3")),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert_eq!(ed.view.registry.get("zz.rejected"), None);
+}
+
+#[test]
+fn invalid_spans_on_update_raise_and_keep_the_rows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define *tok* #f)
+           (define-typed-command! "go" "" (lambda (pane)
+             (set! *tok* (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a" "b")) (lambda (row tok) (void))))))
+           (define-typed-command! "upd" "" (lambda ()
+             (update-drawer-list! *tok*
+               (list (cons (hash 'text "x" 'spans (list (hash 'start-char 0 'end-char 9 'scope "keyword"))) 'x))
+               (lambda (row tok) (void)) 0)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+
+    type_cmd(&mut ed, ":upd");
+    ed.settle();
+    assert!(
+        error_log(&ed)
+            .iter()
+            .any(|e| e.contains("update-drawer-list!:") && e.contains("char length 1")),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    let drawer = ed.state.input.drawer().unwrap();
+    assert_eq!(
+        row_texts(drawer.rows.rows()),
+        vec![Some("a"), Some("b")],
+        "the rows must survive a rejected update"
+    );
+}
+
+/// A styled row's span takes its scope's style from the theme installed
+/// when the frame is drawn.
+#[test]
+fn a_span_takes_the_new_themes_style_after_a_theme_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    ed.state.dirs = repo_runtime_dirs();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-drawer-list! pane
+               (list (cons "first" 'a)
+                     (cons (hash 'text "a§b" 'spans (list (hash 'start-char 1 'end-char 2 'scope "string"))) 'b))
+               (lambda (row tok) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    let rect = Rect::new(0, 0, 40, 12);
+
+    let span_fg = |ed: &mut Editor| {
+        frame(ed, rect.width, rect.height);
+        let buf = ed.render_to_buf(rect);
+        let cells: Vec<_> = (rect.top()..rect.bottom())
+            .flat_map(|y| (rect.left()..rect.right()).map(move |x| (x, y)))
+            .filter(|&(x, y)| cell(&buf, x, y) == "§")
+            .collect();
+        assert_eq!(cells.len(), 1, "the span char is drawn once");
+        let (x, y) = cells[0];
+        buf.cell(x, y).unwrap().style().fg
+    };
+    let before = span_fg(&mut ed);
+    assert_eq!(
+        before,
+        ed.view
+            .theme
+            .resolve_by_name(hume_engine::types::Scope("string"))
+            .fg,
+        "sanity: the span takes the first theme's string style"
+    );
+
+    let fp = FocusedPane::current(&ed.view);
+    crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"))
+        .expect(":theme gruvbox must succeed");
+    let after = span_fg(&mut ed);
+
+    assert_eq!(
+        after,
+        ed.view
+            .theme
+            .resolve_by_name(hume_engine::types::Scope("string"))
+            .fg
+    );
+    assert_ne!(
+        after, before,
+        "precondition: the two themes' string fg differ"
+    );
 }
 
 // ── Esc: closes + calls back with #f ─────────────────────────────────────────
@@ -1310,4 +1493,41 @@ fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
 #[test]
 fn drawer_without_popup_border_keeps_a_blank_frame() {
     insta::assert_snapshot!(render_two_row_drawer(false));
+}
+
+/// Row 0 (selected) scopes its column `markup.italic`, row 1 scopes its
+/// column `keyword`, and row 2's span runs past the inner right edge.
+#[test]
+fn styled_rows_render_their_spans_over_the_row_style() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    ed.view.theme = crate::testing::build_snapshot_theme();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define long (string-append "0123456789" "0123456789" "0123456789"
+                                       "0123456789" "0123456789" "0123456789"))
+           (define-typed-command! "go" "" (lambda (pane)
+             (show-drawer-list! pane
+               (list (cons (hash 'text "src/a.rs:1:5"
+                                 'spans (list (hash 'start-char 11 'end-char 12 'scope "markup.italic")))
+                           'a)
+                     (cons (hash 'text "src/b.rs:9:12"
+                                 'spans (list (hash 'start-char 11 'end-char 13 'scope "keyword")))
+                           'b)
+                     (cons (hash 'text long
+                                 'spans (list (hash 'start-char 30 'end-char 45 'scope "keyword")))
+                           'c))
+               (lambda (row tok) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let mut ctx = RenderContext::new();
+    ed.resize_terminal(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    insta::assert_snapshot!(render_snapshot::render_to_styled_string(
+        &mut ed,
+        Rect::new(0, 0, 40, 12)
+    ));
 }

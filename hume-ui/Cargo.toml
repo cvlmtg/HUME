@@ -10,6 +10,10 @@ hume-grid = { path = "../hume-grid" }
 hume-rope = { path = "../hume-rope" }
 unicode-segmentation.workspace = true
 
+[features]
+# Exposes `DrawerRow::text` to consumer crates' drawer tests.
+test-util = []
+
 [dev-dependencies]
 insta = "1.47"
 # Independent width oracle for UI-chrome tests: asserts against `unicode-width`

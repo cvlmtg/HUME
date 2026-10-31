@@ -71,5 +71,6 @@ hume-platform = { path = "../hume-platform", features = ["test-util"] }
 hume-ops = { path = "../hume-ops", features = ["test-util"] }
 hume-decorations = { path = "../hume-decorations", features = ["test-util"] }
 hume-engine = { path = "../hume-engine", features = ["test-util"] }
+hume-ui = { path = "../hume-ui", features = ["test-util"] }
 hume-core = { path = "../hume-core", features = ["test-util"] }
 test-fixtures = { path = "../test-fixtures" }

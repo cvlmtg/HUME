@@ -14,7 +14,9 @@ fn run_tb<R: Ord + Copy>(
     let mut events = Vec::new();
     let mut out = Vec::new();
     flatten_overlapping_spans(&mut raw, &mut stack, &mut events, &mut out, tie_break);
-    out
+    out.into_iter()
+        .map(|(range, scope)| (range.start, range.end, scope))
+        .collect()
 }
 
 // ── Depth-ranked (hume-treesitter's convention: higher rank wins as-is) ──
@@ -99,7 +101,7 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
         &mut out,
         TieBreak::LastPushed,
     );
-    assert_eq!(out, vec![(0, 3, 0)]);
+    assert_eq!(out, vec![(ExclusiveRange::new(0, 3), 0)]);
 
     out.clear();
     let mut second: Vec<(usize, usize, u8, u16)> = vec![(10, 12, 0, 1)];
@@ -110,5 +112,5 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
         &mut out,
         TieBreak::LastPushed,
     );
-    assert_eq!(out, vec![(10, 12, 1)]);
+    assert_eq!(out, vec![(ExclusiveRange::new(10, 12), 1)]);
 }

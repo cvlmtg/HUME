@@ -251,14 +251,6 @@ impl<'a> DisplayLineMap<'a> {
         // `Before` display lines ahead of `After` display lines; stable, so
         // provider registration order survives within each group.
         self.virtual_lines.sort_by_key(|vl| vl.side);
-        // Providers are plugin code and the trait makes no ordering promise
-        // enforceable at the boundary. Sort here so `format_virtual_lines`'s
-        // cursor scan (which requires sorted, non-overlapping input) never
-        // has to trust it, same posture as `rebuild_line_decorations` takes
-        // for highlight spans.
-        for vl in &mut self.virtual_lines {
-            vl.segments.sort_by_key(|(start, _, _)| *start);
-        }
 
         let entry = self.store.entry_mut(idx);
         format_virtual_lines(

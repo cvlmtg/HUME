@@ -3,22 +3,23 @@ use crate::providers::{Decoration, DecorationKinds, HighlightTier, ProviderSet, 
 use crate::theme::Theme;
 use crate::types::{ResolvedStyle, ScopeId};
 use hume_rope::column::ByteCol;
+use hume_rope::offset::ExclusiveRange;
 
 // ── Interval cursor ────────────────────────────────────────────────────────────
 
-/// Walks a sorted, non-overlapping slice of `(byte_start, byte_end, ScopeId)`
-/// intervals in order. Queries must be monotonically non-decreasing.
+/// Walks a sorted, non-overlapping slice of `(range, ScopeId)` intervals in
+/// order. Queries must be monotonically non-decreasing.
 ///
 /// `pub(crate)`: also used by `format::format_virtual_lines` to resolve
 /// per-grapheme scopes for virtual lines, the same interval shape as
 /// `Decoration::Highlight`/`SyntaxSpans`.
 pub(crate) struct IntervalCursor<'a> {
-    intervals: &'a [(ByteCol, ByteCol, ScopeId)],
+    intervals: &'a [(ExclusiveRange<ByteCol>, ScopeId)],
     pos: usize,
 }
 
 impl<'a> IntervalCursor<'a> {
-    pub(crate) fn new(intervals: &'a [(ByteCol, ByteCol, ScopeId)]) -> Self {
+    pub(crate) fn new(intervals: &'a [(ExclusiveRange<ByteCol>, ScopeId)]) -> Self {
         Self { intervals, pos: 0 }
     }
 
@@ -26,13 +27,13 @@ impl<'a> IntervalCursor<'a> {
     /// Advances the internal cursor forward; never goes backward.
     pub(crate) fn scope_at(&mut self, byte_offset: ByteCol) -> Option<ScopeId> {
         // Skip intervals that have already ended.
-        while self.pos < self.intervals.len() && self.intervals[self.pos].1 <= byte_offset {
+        while self.pos < self.intervals.len() && self.intervals[self.pos].0.end <= byte_offset {
             self.pos += 1;
         }
         // Check if the current interval covers `byte_offset`.
         if self.pos < self.intervals.len() {
-            let (start, end, id) = self.intervals[self.pos];
-            if start <= byte_offset && byte_offset < end {
+            let (range, id) = self.intervals[self.pos];
+            if range.contains(byte_offset) {
                 return Some(id);
             }
         }
@@ -89,11 +90,11 @@ impl<'a> HighlightStack<'a> {
 /// Scratch buffer holding sorted highlight intervals split by tier.
 /// Owned by `FrameScratch` so capacity is retained across frames.
 ///
-/// Each interval is `(byte_start, byte_end, ScopeId)`; the `ScopeId` maps to
+/// Each interval is `(range, ScopeId)`; the `ScopeId` maps to
 /// a pre-baked [`ResolvedStyle`] via an O(1) `Vec` index in [`Theme::resolve`].
 /// Indexed by `HighlightTier as usize`; see `HighlightStack`.
 #[derive(Default)]
-pub struct TierBufs([Vec<(ByteCol, ByteCol, ScopeId)>; TIER_COUNT]);
+pub struct TierBufs([Vec<(ExclusiveRange<ByteCol>, ScopeId)>; TIER_COUNT]);
 
 impl TierBufs {
     pub fn clear(&mut self) {
@@ -102,13 +103,13 @@ impl TierBufs {
         }
     }
 
-    fn push(&mut self, tier: HighlightTier, interval: (ByteCol, ByteCol, ScopeId)) {
+    fn push(&mut self, tier: HighlightTier, interval: (ExclusiveRange<ByteCol>, ScopeId)) {
         self.0[tier as usize].push(interval);
     }
 
     fn sort_all(&mut self) {
         for buf in &mut self.0 {
-            buf.sort_by_key(|i| i.0);
+            buf.sort_by_key(|(range, _)| range.start);
         }
     }
 }
@@ -150,12 +151,9 @@ pub(crate) fn rebuild_line_decorations(
     let mut tint = None;
     for d in scratch.decorations.drain(..) {
         match d {
-            Decoration::Highlight {
-                byte_start,
-                byte_end,
-                scope,
-                tier,
-            } => scratch.tier_bufs.push(tier, (byte_start, byte_end, scope)),
+            Decoration::Highlight { range, scope, tier } => {
+                scratch.tier_bufs.push(tier, (range, scope))
+            }
             Decoration::LineBg(scope) => tint = Some(scope),
             Decoration::VirtualLine(_) | Decoration::Inline(_) => {
                 // A provider that declared PAINT but emitted a

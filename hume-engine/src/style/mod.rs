@@ -23,7 +23,7 @@ pub struct StyleScratch {
     /// Per-grapheme resolved styles (parallel to the graphemes slice).
     pub styles: Vec<ResolvedStyle>,
     /// Raw spans from the buffer's `SyntaxSpans` source, reused each call.
-    pub syntax_spans: Vec<(ByteCol, ByteCol, ScopeId)>,
+    pub syntax_spans: Vec<(ExclusiveRange<ByteCol>, ScopeId)>,
     /// Raw decorations from the `PAINT`-kind `DecorationSource` providers,
     /// reused across providers.
     pub decorations: Vec<Decoration>,

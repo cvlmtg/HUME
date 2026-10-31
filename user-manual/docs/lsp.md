@@ -210,6 +210,8 @@ That list (the same one `:diagnostics` opens) is a drawer across the bottom of t
 
 The list follows your edits. When the number of lines changes in the file you asked from or in a file it lists, or an edit touches or moves a listed line, HUME asks the language server again about the same symbol once you pause typing, and replaces the rows. If nothing is found any more, the drawer closes with a message.
 
+A column from a file that is not open is the language server's own count, which can differ from HUME's when non-ASCII text comes before it on the line. The list gives the rows from files that are not open the `markup.italic` scope, so a theme can set them apart from the others.
+
 Typing while a completion menu is open narrows it. `Tab` and `Down` move to the next entry, `Shift-Tab` and `Up` to the previous, `Enter` accepts the highlighted one, and `Esc` dismisses the menu. Signature help pops up as you type an argument list for a function the server knows about, and inlay hints appear inline once enabled.
 
 After `g n` or `g p` jumps, a popup shows the full diagnostic message. `Ctrl-u`/`Ctrl-d` scroll it, and any other key, paste or mouse action closes it. Each line with a problem also gets a short summary at its end. While you type in Insert mode, the underline and summary are hidden on the cursor's line, and return when you leave Insert mode or move to another line. Set `lsp-diagnostics-on-insert-line` to `#t` to keep them showing.

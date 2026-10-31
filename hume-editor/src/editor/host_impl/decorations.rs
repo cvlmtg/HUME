@@ -1,21 +1,17 @@
 //! `EditorHostImpl`'s inlay hints, signs, virtual lines, extra highlights,
 //! EOL text, statusline text, and the diagnostic pull/count reads.
 //!
-//! The five position-validation free functions below are `pub(super)` where
-//! `host_impl/tests.rs` (a sibling of this module, not a descendant) needs
-//! them: the same reachable set (`host_impl` and its descendants) they had
-//! as private items directly in `host_impl.rs`, just spelled differently now
-//! that a caller of them lives outside this module.
+//! `content_line` and `validate_offset` are `pub(super)` because
+//! `host_impl/tests.rs`, a sibling of this module, calls them.
 
 use hume_core::{BufferId, DiagSeverity, Side};
-use hume_rope::column::ByteCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
 use crate::statusline::StatusElement;
 
 use super::EditorHostImpl;
-use hume_scripting::host::{DecorationHost, DiagnosticCounts};
+use hume_scripting::host::{DecorationHost, DiagnosticCounts, SetError};
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {
     fn set_inlay_hints(
@@ -23,19 +19,16 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         hints: Vec<(usize, String, Side)>,
-    ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid)?;
-        let entries = hints
-            .into_iter()
-            .map(|(pos, hint_text, side)| {
-                let pos = validate_offset(text, pos, side)?;
-                Ok(hume_decorations::InlayHintEntry {
-                    pos,
-                    text: hint_text,
-                    side,
-                })
+    ) -> Result<(), SetError> {
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = each_entry(hints, |(pos, hint_text, side)| {
+            let pos = validate_offset(text, pos, side)?;
+            Ok(hume_decorations::InlayHintEntry {
+                pos,
+                text: hint_text,
+                side,
             })
-            .collect::<Result<Vec<_>, String>>()?;
+        })?;
         self.state
             .config
             .decorations
@@ -61,7 +54,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         signs: Vec<(usize, String, String)>,
-    ) -> Result<(), String> {
+    ) -> Result<(), SetError> {
         if self
             .state
             .config
@@ -69,22 +62,19 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .sign_slot(bid, &source)
             .is_none()
         {
-            return Err(format!(
+            return Err(SetError::Call(format!(
                 "unregistered sign source {source:?}, call \
                  (register-sign-source! …) first"
-            ));
+            )));
         }
-        let text = buffer_text(self.state, bid)?;
-        let entries = signs
-            .into_iter()
-            .map(|(line, sign_text, scope)| {
-                Ok(hume_decorations::SignEntry {
-                    line: content_line(text, line)?,
-                    text: sign_text.into(),
-                    scope: self.view.registry.intern_runtime(&scope),
-                })
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = each_entry(signs, |(line, sign_text, scope)| {
+            Ok(hume_decorations::SignEntry {
+                line: content_line(text, line)?,
+                text: sign_text.into(),
+                scope: self.view.registry.intern_runtime(&scope),
             })
-            .collect::<Result<Vec<_>, String>>()?;
+        })?;
         self.state
             .config
             .decorations
@@ -97,38 +87,26 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         lines: Vec<hume_scripting::VirtualLineSpec>,
-    ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid)?;
-        let entries = lines
-            .into_iter()
-            .map(|spec| {
-                let line = content_line(text, spec.line)?;
-                let scope = match spec.scope.as_deref() {
-                    Some(name) => self.view.registry.intern_runtime(name),
-                    None => self
-                        .view
-                        .registry
-                        .intern(hume_engine::theme::ui_scopes::VIRTUAL_TEXT),
-                };
-                let segments = virtual_line_segments_to_bytes(&spec.text, spec.segments)?
-                    .into_iter()
-                    .map(|(start, end, name)| {
-                        (
-                            ByteCol::new(start),
-                            ByteCol::new(end),
-                            self.view.registry.intern_runtime(&name),
-                        )
-                    })
-                    .collect();
-                Ok(hume_decorations::VirtualLineEntry {
-                    line,
-                    text: spec.text,
-                    side: spec.side,
-                    scope,
-                    segments,
-                })
+    ) -> Result<(), SetError> {
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = each_entry(lines, |spec| {
+            let line = content_line(text, spec.line)?;
+            let scope = match spec.scope.as_deref() {
+                Some(name) => self.view.registry.intern_runtime(name),
+                None => self
+                    .view
+                    .registry
+                    .intern(hume_engine::theme::ui_scopes::VIRTUAL_TEXT),
+            };
+            Ok(hume_decorations::VirtualLineEntry {
+                line,
+                content: spec
+                    .content
+                    .map_payload(|name| self.view.registry.intern_runtime(&name)),
+                side: spec.side,
+                scope,
             })
-            .collect::<Result<Vec<_>, String>>()?;
+        })?;
         self.state
             .config
             .decorations
@@ -141,26 +119,23 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         spans: Vec<(usize, usize, String)>,
-    ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid)?;
-        let entries = spans
-            .into_iter()
-            .map(|(start, end, scope)| {
-                let fail = |e: String| format!("range {e}");
-                let range = crate::editor::buffer::offsets::checked_char_range(text, start, end)
-                    .map_err(fail)?;
-                if range.is_empty() {
-                    return Err(fail(format!("{start}..{end} is empty")));
-                }
-                // Widened to whole clusters: the renderer paints a cluster at a time.
-                let range = crate::editor::buffer::offsets::widened_to_clusters(text, range);
-                Ok(hume_decorations::ExtraHighlightEntry {
-                    start: range.start,
-                    end: range.end,
-                    scope: self.view.registry.intern_runtime(&scope),
-                })
+    ) -> Result<(), SetError> {
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = each_entry(spans, |(start, end, scope)| {
+            let fail = |e: String| format!("range {e}");
+            let range = crate::editor::buffer::offsets::checked_char_range(text, start, end)
+                .map_err(fail)?;
+            if range.is_empty() {
+                return Err(fail(format!("{start}..{end} is empty")));
+            }
+            // Widened to whole clusters: the renderer paints a cluster at a time.
+            let range = crate::editor::buffer::offsets::widened_to_clusters(text, range);
+            Ok(hume_decorations::ExtraHighlightEntry {
+                start: range.start,
+                end: range.end,
+                scope: self.view.registry.intern_runtime(&scope),
             })
-            .collect::<Result<Vec<_>, String>>()?;
+        })?;
         self.state
             .config
             .decorations
@@ -174,19 +149,16 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         lines: Vec<(usize, String, String)>,
         hide_on_insert_line: bool,
-    ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid)?;
-        let entries = lines
-            .into_iter()
-            .map(|(line, eol_text, scope)| {
-                Ok(hume_decorations::EolTextEntry {
-                    line: content_line(text, line)?,
-                    text: eol_text,
-                    scope: self.view.registry.intern_runtime(&scope),
-                    hide_on_insert_line,
-                })
+    ) -> Result<(), SetError> {
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = each_entry(lines, |(line, eol_text, scope)| {
+            Ok(hume_decorations::EolTextEntry {
+                line: content_line(text, line)?,
+                text: eol_text,
+                scope: self.view.registry.intern_runtime(&scope),
+                hide_on_insert_line,
             })
-            .collect::<Result<Vec<_>, String>>()?;
+        })?;
         self.state
             .config
             .decorations
@@ -199,17 +171,14 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         entries: Vec<(usize, String)>,
-    ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid)?;
-        let entries = entries
-            .into_iter()
-            .map(|(line, scope)| {
-                Ok(hume_decorations::LineBgEntry {
-                    line: content_line(text, line)?,
-                    scope: self.view.registry.intern_runtime(&scope),
-                })
+    ) -> Result<(), SetError> {
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = each_entry(entries, |(line, scope)| {
+            Ok(hume_decorations::LineBgEntry {
+                line: content_line(text, line)?,
+                scope: self.view.registry.intern_runtime(&scope),
             })
-            .collect::<Result<Vec<_>, String>>()?;
+        })?;
         self.state
             .config
             .decorations
@@ -262,63 +231,6 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
     }
 }
 
-/// Converts `segments`' char offsets into `text` to byte offsets, sorting by
-/// `start` and validating in the process: the sole enforcement point for
-/// `set-virtual-lines!`'s segment contract (bounds, ordering, non-overlap).
-/// The Steel boundary (`virtual_line_specs` in `hume-scripting`'s
-/// `builtins/decorations.rs`) only decodes shape. See
-/// `VirtualLineSpec::segments`'s doc.
-///
-/// An edge inside a grapheme cluster widens the segment to the whole
-/// cluster: the engine (`hume-engine/src/format/virtual_lines.rs`'s
-/// `format_virtual_lines`) resolves each virtual grapheme's scope once per
-/// cluster, at the cluster's start byte, so part of a cluster can't be
-/// painted. Two segments that widen into the same cluster overlap and raise:
-/// one character can't take two scopes.
-pub(super) fn virtual_line_segments_to_bytes(
-    text: &str,
-    mut segments: Vec<(usize, usize, String)>,
-) -> Result<Vec<(usize, usize, String)>, String> {
-    segments.sort_by_key(|(start, _, _)| *start);
-
-    let slice = ropey::RopeSlice::from(text);
-    let char_count = slice.len_chars();
-
-    let mut prev_end = 0usize;
-    let mut out = Vec::with_capacity(segments.len());
-    for (start, end, scope) in segments {
-        if start >= end {
-            return Err(format!(
-                "segments: segment ({start}, {end}) must have start < end"
-            ));
-        }
-        if end > char_count {
-            return Err(format!(
-                "segments: segment end {end} is past text's char length {char_count}"
-            ));
-        }
-        // Trusted mint: `start < end <= char_count` is checked above.
-        let chars = hume_rope::cluster::ClusterRange::covering(
-            slice,
-            ExclusiveRange::new(CharOffset::new(start), CharOffset::new(end)),
-        )
-        .expect("a non-empty range within the text covers a cluster")
-        .chars();
-        let start_byte = slice.char_to_byte(chars.start.index());
-        let end_byte = slice.char_to_byte(chars.end.index());
-        if start_byte < prev_end {
-            return Err(format!(
-                "segments: segments must not overlap (segment ({start}, \
-                 {end}) shares a character with the previous one)"
-            ));
-        }
-        prev_end = end_byte;
-        out.push((start_byte, end_byte, scope));
-    }
-
-    Ok(out)
-}
-
 /// The live text for `bid`, or `Err` if `bid` doesn't name
 /// an open buffer. Every decoration setter needs this to validate/convert
 /// its Steel-facing positions. `bid`'s liveness is already checked before
@@ -335,6 +247,19 @@ fn buffer_text(
         .try_get(bid)
         .map(|b| b.text())
         .ok_or_else(|| "unknown buffer".to_owned())
+}
+
+/// `items` mapped by `entry`, a failure naming the item by its place in
+/// `items`.
+fn each_entry<S, T>(
+    items: Vec<S>,
+    mut entry: impl FnMut(S) -> Result<T, String>,
+) -> Result<Vec<T>, SetError> {
+    items
+        .into_iter()
+        .enumerate()
+        .map(|(index, item)| entry(item).map_err(|message| SetError::Entry { index, message }))
+        .collect()
 }
 
 /// `line` as a content line of `text`, or `Err` if it is
