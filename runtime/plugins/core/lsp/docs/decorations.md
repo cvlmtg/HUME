@@ -112,10 +112,15 @@ activated needs no setup; `on-buffer-close` drops the record.
 
 | Trigger | Pane carried | Handling |
 |---|---|---|
-| `on-viewport-change` | Live pane | Refreshed directly |
-| `on-diagnostics-changed` | Buffer only | Resolved with `lsp/resolve-pane`, skipped when no pane shows the buffer |
-| `on-lsp-detach` | Buffer only | Same, except that a buffer no pane shows has its hints cleared |
-| `on-text-changed` | Buffer only | Same. It covers undo, redo and edits that neither scroll nor republish diagnostics, so a hint dropped with its anchor character returns when the edit is undone |
+| `on-viewport-change` | Live pane | Refreshes |
+| `on-diagnostics-changed` | Buffer only | Refreshes |
+| `on-lsp-detach` | Buffer only | Refreshes, or clears the hints of a buffer no pane shows |
+| `on-text-changed` | Buffer only | Refreshes. It covers undo, redo and edits that neither scroll nor republish diagnostics, so a hint dropped with its anchor character returns when the edit is undone |
+
+Every trigger hands the refresh its value as it came. The refresh resolves a pane with
+`lsp/resolve-pane` when its debounce fires, not when it is scheduled: the pane that asked
+may have switched buffer or closed in the meantime, and another pane showing the buffer
+serves instead.
 
 Refreshes are debounced by 200 ms per buffer (keyed, not global), so a diagnostics batch
 touching two buffers cannot have the second buffer's call cancel the first's pending

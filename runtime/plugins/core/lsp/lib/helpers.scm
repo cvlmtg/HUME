@@ -99,8 +99,9 @@
 ;; ── Pane resolution ──────────────────────────────────────────────────────────
 
 (define (lsp/resolve-pane pane)
-  (let ((panes (buffer-panes pane)))
-    (if (null? panes) #f (car panes))))
+  (and (buffer-live? pane)
+       (let ((panes (buffer-panes pane)))
+         (if (null? panes) #f (car panes)))))
 
 ;; ── Viewport ────────────────────────────────────────────────────────────────
 

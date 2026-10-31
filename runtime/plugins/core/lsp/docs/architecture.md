@@ -106,11 +106,13 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
   `set-attachment-completion-triggers!`, and the editor invokes the source directly with
   no hook round trip.
 - **Pane resolution.** `lsp/resolve-pane` is `(car (buffer-panes pane))`, or `#f` when no
-  pane shows the buffer. `buffer-panes` answers the given pane when it still shows its
-  buffer, otherwise the focused pane, then the rest of the active tab, then other tabs (see
-  the [core plugins index](../../README.md#pane-values-vs-pane-less-values)). It serves
-  hooks whose value carries no pane. A caller that already holds a live pane has no reason
-  to call it, since re-resolving can pick a different pane on the same buffer.
+  pane shows the buffer or the buffer has closed, so it never raises. `buffer-panes`
+  answers the given pane when it still shows its buffer, otherwise the focused pane, then
+  the rest of the active tab, then other tabs (see the
+  [core plugins index](../../README.md#pane-values-vs-pane-less-values)). It serves hooks
+  whose value carries no pane, and a debounced call whose pane may have moved on by the time
+  it fires. A caller that holds a live pane in the same evaluation has no reason to call it,
+  since re-resolving can pick a different pane on the same buffer.
 - **Viewport.** `lsp/visible-lines` is the width of `(viewport-range pane)`, which is
   0-based and end-exclusive, so no `+ 1`. `viewport-range` raises for a pane that does not
   show its buffer, so the caller needs a live pane.

@@ -48,14 +48,15 @@
                "range" (hash "start" (hash "line" first "character" 0)
                               "end" (hash "line" end "character" 0))))))
 
-;;; `pane` must already be a real, live pane — see docs/decorations.md's "Inlay hints".
+;;; `pane` is any pane value of the buffer; the pane is resolved when the debounce fires.
 ;; See docs/decorations.md, "Inlay hints".
 (define lsp/refresh-hints
   (debounce-by 200
     (lambda (pane)
-      (let ((range (viewport-range pane)))
-        (when (lsp/inlay-on? pane)
-          (let ((params (lsp/inlay-hint-params pane (hash-ref range 'start-line) (hash-ref range 'end-line))))
+      (let ((pane (lsp/resolve-pane pane)))
+        (when (and pane (lsp/inlay-on? pane))
+          (let* ((range (viewport-range pane))
+                 (params (lsp/inlay-hint-params pane (hash-ref range 'start-line) (hash-ref range 'end-line))))
             (when params
               (lsp-request-all! pane "textDocument/inlayHint" params
                 (lambda (err results)
@@ -72,23 +73,18 @@
                 #:supersede (lsp/inlay-key pane)))))))
     #:key (lambda (p . _) (buffer-key p))))
 
-;;; `pane` need not itself be live — see docs/decorations.md's "Inlay hints".
-(define (lsp/refresh-hints-for-buffer pane)
-  (let ((resolved (lsp/resolve-pane pane)))
-    (when resolved (lsp/refresh-hints resolved))))
-
 (register-hook! 'on-viewport-change
   (lambda (pane range) (lsp/refresh-hints pane)))
 
-(register-hook! 'on-diagnostics-changed lsp/refresh-hints-for-buffer)
+(register-hook! 'on-diagnostics-changed lsp/refresh-hints)
 
 (register-hook! 'on-text-changed
-  (lambda (pane changes) (lsp/refresh-hints-for-buffer pane)))
+  (lambda (pane changes) (lsp/refresh-hints pane)))
 
 (register-hook! 'on-lsp-detach
   (lambda (pane server)
     (if (lsp/resolve-pane pane)
-        (lsp/refresh-hints-for-buffer pane)
+        (lsp/refresh-hints pane)
         (set-inlay-hints! pane "lsp-inlay-hints" '()))))
 
 (register-hook! 'on-buffer-close

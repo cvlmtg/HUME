@@ -811,3 +811,118 @@ fn a_refresh_leaves_another_buffers_request_in_flight() {
     assert_eq!(request_count(&t.requests, "textDocument/inlayHint"), 2);
     assert_eq!(t.ed.state.lsp.delivery_count_for_test(), 2);
 }
+
+/// Queues a viewport-change refresh for the focused pane's buffer and runs
+/// the hook, leaving the 200 ms debounce pending. The focused pane's change
+/// runs last, so the pending call carries that pane even when the frame also
+/// changed another pane's viewport.
+fn queue_refresh_for_focused_buffer(ed: &mut Editor) {
+    fire_viewport_change(ed);
+    ed.settle();
+    let pid = ed.view.focused_pane();
+    ed.queue_viewport_change(pid);
+    ed.settle();
+    assert!(!ed.timers.is_empty(), "test setup: the refresh is pending");
+}
+
+/// Switches the focused pane to a new `other.txt`, a file no server serves.
+fn show_other_file(ed: &mut Editor, tmp: &Path) {
+    let other_file = rig_root(tmp).join("other.txt");
+    std::fs::write(&other_file, "plain text\n").unwrap();
+    ed.execute_typed("e", Some(other_file.to_str().unwrap()))
+        .unwrap();
+}
+
+/// A pane that stops showing its buffer before the refresh fires leaves the
+/// buffer hidden, so the refresh sends nothing and reports nothing.
+#[test]
+fn a_refresh_for_a_buffer_hidden_before_it_fires_sends_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+    });
+    let bid = ed.focused_buffer_id();
+    let (errors, _) = ed.state.message_log.totals();
+
+    queue_refresh_for_focused_buffer(&mut ed);
+    show_other_file(&mut ed, tmp.path());
+    assert_ne!(ed.focused_buffer_id(), bid, "test setup: the pane switched");
+    settle_until_idle(&mut ed);
+
+    assert_eq!(
+        ed.state.message_log.totals().0,
+        errors,
+        "{}",
+        ed.state.message_log.format_for_display()
+    );
+    assert_eq!(request_count(&requests, "textDocument/inlayHint"), 0);
+}
+
+/// When the pane that asked stops showing the buffer but another pane still
+/// shows it, the refresh goes through that pane.
+#[test]
+fn a_refresh_goes_through_another_pane_still_showing_the_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/inlayHint",
+            inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
+        );
+    });
+    let bid = ed.focused_buffer_id();
+    let (errors, _) = ed.state.message_log.totals();
+    open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    );
+
+    queue_refresh_for_focused_buffer(&mut ed);
+    show_other_file(&mut ed, tmp.path());
+    assert_ne!(ed.focused_buffer_id(), bid, "test setup: the pane switched");
+    settle_until_idle(&mut ed);
+
+    assert_eq!(
+        ed.state.message_log.totals().0,
+        errors,
+        "{}",
+        ed.state.message_log.format_for_display()
+    );
+    assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        1
+    );
+}
+
+/// A buffer closed before its refresh fires gets no request and no error.
+#[test]
+fn a_refresh_for_a_buffer_closed_before_it_fires_sends_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+    });
+    let bid = ed.focused_buffer_id();
+    let (errors, _) = ed.state.message_log.totals();
+
+    queue_refresh_for_focused_buffer(&mut ed);
+    ed.execute_typed("bd", None).unwrap();
+    assert!(
+        ed.state.buffers.try_get(bid).is_none(),
+        "test setup: the buffer closed"
+    );
+    settle_until_idle(&mut ed);
+
+    assert_eq!(
+        ed.state.message_log.totals().0,
+        errors,
+        "{}",
+        ed.state.message_log.format_for_display()
+    );
+    assert_eq!(request_count(&requests, "textDocument/inlayHint"), 0);
+}
