@@ -111,8 +111,7 @@ pub(in crate::editor) fn cmd_select_last_insertion(
         .buffer_positions
         .last_inserts
         .get(t.bid(view))
-        .and_then(|last| last.get(buf.text()))
-        .cloned();
+        .and_then(|last| last.get(buf.text()));
     let Some(spans) = fresh else {
         return Err(CommandError::transient("no last insertion"));
     };
@@ -122,8 +121,8 @@ pub(in crate::editor) fn cmd_select_last_insertion(
     // there, matching the entry command's own cursor placement.
     let insertion_primary = spans.len() - 1;
     let insertion_sels: Vec<Selection> = spans
-        .into_iter()
-        .map(|r| Selection::covering(r, Facing::Forward))
+        .iter()
+        .map(|&r| Selection::covering(r, Facing::Forward))
         .collect();
     apply_pane_motion(state, view, t, move |st| match mode {
         MotionMode::Move => st.with_selections(insertion_sels, insertion_primary),

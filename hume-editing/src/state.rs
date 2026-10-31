@@ -70,8 +70,12 @@ impl EditState {
         Self { text, selections }
     }
 
-    /// `text` with `selections`, which must have been computed for it.
-    pub(crate) fn from_text(text: BufferText, selections: Vec<Selection>, primary: usize) -> Self {
+    /// `text` with `selections`, which must have been computed for it,
+    /// sorted and with overlapping ones merged.
+    ///
+    /// # Panics
+    /// Panics if `selections` is empty or `primary` is out of range.
+    pub fn from_text(text: BufferText, selections: Vec<Selection>, primary: usize) -> Self {
         let selections = SelectionSet::from_parts(selections, primary, text.version());
         Self::from_set(text, selections)
     }

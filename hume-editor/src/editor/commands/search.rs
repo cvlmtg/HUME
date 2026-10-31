@@ -252,9 +252,7 @@ pub(in crate::editor) fn cmd_select_all_matches(
         .into_iter()
         .map(|span| Selection::covering(span, Facing::Forward))
         .collect();
-    let selected = EditState::bind(text, pane_selections(state, view, t).clone())
-        .with_selections(sels, 0)
-        .into_selections();
+    let selected = EditState::from_text(text.clone(), sels, 0).into_selections();
     set_pane_selections(state, view, t, selected);
     Ok(())
 }
@@ -277,11 +275,19 @@ pub(in crate::editor) fn cmd_sift_within(
             "sift-within needs a selection wider than one character",
         ));
     }
-    let sels = pane_selections(state, view, t).clone();
-    if let Some(sifted) = reuse.and_then(|r| r.result_for(t.pid(), t.bid(view), &sels, pattern)) {
+    let reused = reuse.and_then(|r| {
+        r.result_for(
+            t.pid(),
+            t.bid(view),
+            pane_selections(state, view, t),
+            pattern,
+        )
+    });
+    if let Some(sifted) = reused {
         set_pane_selections(state, view, t, sifted);
         return Ok(());
     }
+    let sels = pane_selections(state, view, t).clone();
     #[cfg(test)]
     {
         state.sift_scans += 1;

@@ -111,9 +111,7 @@ impl Editor {
     /// buffer's current text.
     fn select_only(&mut self, sel: Selection) {
         let text = self.doc().text();
-        let only = EditState::bind(text, self.current_selections().clone())
-            .with_selections(vec![sel], 0)
-            .into_selections();
+        let only = EditState::from_text(text.clone(), vec![sel], 0).into_selections();
         self.set_current_selections(only);
     }
 
