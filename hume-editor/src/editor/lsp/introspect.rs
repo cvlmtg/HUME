@@ -277,9 +277,10 @@ pub(crate) fn spinner_frame(state: &EditorState) -> usize {
 /// For an open buffer the column is an exact grapheme column measured on its
 /// current (possibly unsaved) text, matching where `goto-location!` lands. For
 /// a target with no open buffer the file is not read (too costly for a row the
-/// user may never select), so the wire `character` is shown verbatim. It
-/// equals the grapheme column unless non-ASCII text precedes it on the line.
-/// This is the only place HUME renders a wire unit.
+/// user may never select), so the column is `PlaceCol::Wire`: the wire
+/// `character`, shown verbatim. It equals the grapheme column unless non-ASCII
+/// text precedes it on the line. This is the only place HUME renders a wire
+/// unit.
 ///
 /// Buffer lookups are cached per distinct path, so many locations in few files
 /// cost one resolve and buffer-store scan per file.
@@ -290,7 +291,7 @@ pub(in crate::editor) fn location_places(
         hume_rope::position_encoding::PositionEncoding,
     )],
 ) -> Result<Vec<hume_scripting::host::LocationPlace>, String> {
-    use hume_scripting::host::{LocationPlace, Place};
+    use hume_scripting::host::{LocationPlace, Place, PlaceCol};
 
     let mut open_buffer_cache: rustc_hash::FxHashMap<std::path::PathBuf, Option<BufferId>> =
         rustc_hash::FxHashMap::default();
@@ -317,24 +318,28 @@ pub(in crate::editor) fn location_places(
                 .and_then(|resolved| state.buffers.find_by_path(&resolved))
         });
 
-        let grapheme_col_or_wire = match open_bid {
-            Some(target_bid) => {
-                let text = state.buffers.get(target_bid).text();
+        let col = match open_bid {
+            Some(buffer) => {
+                let text = state.buffers.get(buffer).text();
                 let Some((line, target)) = super::wire_to_cluster(text, wl.pos, *encoding) else {
                     rows.push(LocationPlace::Skipped);
                     continue;
                 };
-                text.columns().grapheme_col(line, target.offset()).index()
+                PlaceCol::Grapheme {
+                    buffer,
+                    col: text.columns().grapheme_col(line, target.offset()),
+                }
             }
             // No open buffer to measure against. See this function's
-            // doc for why that means the wire unit itself, not a read.
-            None => wl.pos.character,
+            // doc for why that means `PlaceCol::Wire`, not a read.
+            None => PlaceCol::Wire {
+                character: wl.pos.character,
+            },
         };
         rows.push(LocationPlace::Found(Place {
             path: display_path,
             line: wl.pos.line,
-            grapheme_col_or_wire,
-            buffer: open_bid,
+            col,
             location: handle.clone(),
         }));
     }

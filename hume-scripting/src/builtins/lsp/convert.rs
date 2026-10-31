@@ -5,7 +5,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{LocationPlace, Place};
+use crate::host::{LocationPlace, Place, PlaceCol};
 use hume_core::{BufferId, PaneHandle};
 
 use crate::builtins::SteelResult;
@@ -114,17 +114,15 @@ fn decode_places(ctx: &mut SteelCtx, locs: SteelVal) -> Result<Vec<LocationPlace
 }
 
 fn place_hash(place: Place) -> SteelVal {
+    let (col, buffer) = match place.col {
+        PlaceCol::Grapheme { buffer, col } => (col.index(), Some(PaneHandle::buffer_only(buffer))),
+        PlaceCol::Wire { character } => (character, None),
+    };
     symbol_hash([
         ("path", SteelVal::StringV(place.path.into())),
         ("line", SteelVal::IntV(place.line as isize)),
-        (
-            "grapheme-col-or-wire",
-            SteelVal::IntV(place.grapheme_col_or_wire as isize),
-        ),
-        (
-            "buffer",
-            pane_or_false(place.buffer.map(PaneHandle::buffer_only)),
-        ),
+        ("grapheme-col-or-wire", SteelVal::IntV(col as isize)),
+        ("buffer", pane_or_false(buffer)),
         ("location", place.location.into_steel_val()),
     ])
 }
@@ -178,7 +176,7 @@ pub(crate) fn lsp_locations_to_merged_places(ctx: &mut SteelCtx, locs: SteelVal)
     for row in rows {
         match row {
             LocationPlace::Found(place) => {
-                if seen.insert((place.path.clone(), place.line, place.grapheme_col_or_wire)) {
+                if seen.insert((place.path.clone(), place.line, place.col)) {
                     places.push(place_hash(place));
                 }
             }

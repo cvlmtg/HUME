@@ -40,8 +40,8 @@ pub use edits::{CharTextEdit, EditHost, WireTextEdit};
 pub use events::{EventHost, EventShape};
 pub use language::LanguageHost;
 pub use lsp::{
-    LocationPlace, LspHost, Place, PositionParams, RangeParams, RangesParams, SupersedeKey,
-    SupersedeKeys,
+    LocationPlace, LspHost, Place, PlaceCol, PositionParams, RangeParams, RangesParams,
+    SupersedeKey, SupersedeKeys,
 };
 pub use output::{ClaimRefused, OutputHost};
 pub use registers::RegisterHost;

@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use hume_core::{BufferId, HostToken};
+use hume_rope::column::GraphemeCol;
 use hume_rope::position_encoding::PositionEncoding;
 
 use hume_lsp::backend::ServerId;
@@ -206,9 +207,8 @@ pub trait LspHost {
     ///
     /// The column is an exact grapheme column when the target has an open
     /// buffer, and otherwise the location's own wire `character` verbatim. See
-    /// `Place`'s `grapheme_col_or_wire` field doc for why that last case
-    /// is the one sanctioned exception to "never render a wire unit
-    /// directly".
+    /// [`PlaceCol::Wire`] for why that last case is the one sanctioned
+    /// exception to "never render a wire unit directly".
     ///
     /// One entry per input location, in order, and entries are not merged:
     /// whether two locations are the same place is the caller's policy. A
@@ -252,6 +252,19 @@ pub enum LocationPlace {
     Skipped,
 }
 
+/// A [`Place`]'s 0-based column. A measured column always names the open
+/// buffer it was measured on, so a grapheme column without a buffer cannot be
+/// built.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PlaceCol {
+    /// The grapheme column measured on the open buffer's current text.
+    Grapheme { buffer: BufferId, col: GraphemeCol },
+    /// The location's own wire `character`, shown verbatim for a target with
+    /// no open buffer (the file is never read to refine it). The one
+    /// sanctioned wire-unit display in CLAUDE.md's "Line/buffer columns".
+    Wire { character: usize },
+}
+
 /// One `lsp-locations->places` result entry. See
 /// [`LspHost::lsp_location_places`].
 #[derive(Debug, Clone)]
@@ -260,17 +273,8 @@ pub struct Place {
     pub path: String,
     /// 0-based wire line, straight from the location's `range.start.line`.
     pub line: usize,
-    /// 0-based column: a grapheme column when the location's target has an
-    /// open buffer, otherwise the location's own wire `character` verbatim (the display
-    /// companion never reads an unopened target's file to refine this
-    /// number; see `location_places`'s doc, `hume-editor`, for the
-    /// full reasoning and the resulting unit divergence). Named for both
-    /// possible units, not just the common one. See CLAUDE.md's "Line/buffer
-    /// columns" invariant's one sanctioned exception.
-    pub grapheme_col_or_wire: usize,
-    /// The open buffer the location's target is, or `None` when the file is
-    /// not open.
-    pub buffer: Option<BufferId>,
+    /// The column, in the unit its variant names.
+    pub col: PlaceCol,
     /// The location the row was decoded from, for `goto-location!`.
     pub location: crate::json::JsonHandle,
 }

@@ -58,7 +58,7 @@ Servers count columns in different units, so a position in a server's answer mea
 
 ### Locations
 
-Each `lsp-locations->places` entry is `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b 'location loc)`. `'buffer` is the open buffer the location is in, or `#f` when the file is not open; `'location` is the location itself, for `goto-location!`. When the file is open, the column is a character column; otherwise it is the column the server sent, in its own units. An entry is `#f` for a location HUME cannot jump to: a URI that is not a `file://` one, or a line past the end of the file's open buffer.
+Each `lsp-locations->places` entry is `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b 'location loc)`. `'buffer` is the open buffer the location is in, or `#f` when the file is not open; `'location` is the location itself, for `goto-location!`. When the file is open, the column is a grapheme column; otherwise it is the column the server sent, in its own units. An entry is `#f` for a location HUME cannot jump to: a URI that is not a `file://` one, or a line past the end of the file's open buffer.
 
 Two servers naming one place give two entries. `lsp-locations->merged-places` keeps only the first entry for each path, line and column, leaves out the `#f` entries and counts them in `'skipped`. Use it for places to show or jump to when several servers answered.
 
