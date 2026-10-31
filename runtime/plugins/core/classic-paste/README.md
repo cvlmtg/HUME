@@ -12,12 +12,11 @@ heuristic, which picks between the two by whether anything was edited since the 
 ```
 
 - **Depends on:** nothing.
-- **Activates on:** its own key bindings only. It has no `manifest.scm`, so it must be
-  loaded eagerly (see the [core plugins index](../README.md#loading-model)).
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-classic-paste)
-  for the binding scheme.
+- **Activates on:** `load-plugin!`. It exists to bind keys, so it has no `manifest.scm`
+  (see the [core plugins index](../README.md#loading-model)).
+- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-classic-paste).
 
-## Commands
+## Key bindings
 
 All four are bound in Normal mode.
 
@@ -38,7 +37,6 @@ register-prefixed form its docstring names (`"kp`, `"cP`, and so on).
 
 ## Known limitations
 
-`Ctrl-Shift-v` is only delivered as a distinct event under the kitty keyboard protocol.
-On legacy terminals it is typically encoded the same as `Ctrl-v`, or intercepted by the
-terminal emulator as its own paste shortcut, so it may never reach HUME. `Ctrl-v` is
-delivered under both kitty and legacy encodings.
+- **`Ctrl-Shift-v` needs the kitty keyboard protocol.** A legacy terminal encodes it the
+  same as `Ctrl-v`, or the terminal emulator intercepts it as its own paste shortcut, so it
+  may never reach HUME. `Ctrl-v` arrives under both encodings.

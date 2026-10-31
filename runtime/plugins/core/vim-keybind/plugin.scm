@@ -1,6 +1,6 @@
 ;;; core:vim-keybind — depends on core:stdlib. See README.md's "How it works".
 
-;; No #:repeatable needed — see README's dot-repeat note.
+;; No #:repeatable needed — see README.md's "Dot-repeat".
 (define-command! "vim-keybind/change-to-eol"
   "Change from the cursor to the end of the line."
   (lambda (pane) (call! "goto-line-end" pane 1 #t) (call! "change" pane)))
@@ -28,7 +28,7 @@
 (bind-key! 'extend "o" "flip-selections")
 
 ;; ── Alternate buffer ──────────────────────────────────────────────────────────
-;; Portable form of vim's Ctrl-^; see README for legacy-terminal caveat.
+;; Portable form of vim's Ctrl-^ — see README.md's "`Ctrl-6`".
 (bind-key! 'normal "ctrl-6" "goto-alternate-buffer")
 
 ;; ── C / D ─────────────────────────────────────────────────────────────────────

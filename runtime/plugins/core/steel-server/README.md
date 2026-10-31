@@ -2,8 +2,9 @@
 
 Registers [`steel-language-server`](https://github.com/mattwparas/steel/tree/master/crates/steel-language-server),
 a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including HUME's own
-`init.scm` and plugin files. The server is in neither of the two sources `core:lsp-install`'s catalog is generated from, so
-`:lsp-install` cannot offer it. This plugin supplies its own `cargo install` step instead.
+`init.scm` and plugin files. The server is in neither of the two sources
+`core:lsp-install`'s catalog is generated from, so `:lsp-install` cannot offer it. This
+plugin supplies its own `cargo install` step instead.
 
 ## Usage
 
@@ -13,14 +14,9 @@ a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including HUME's own
 (load-plugin! "core:steel-server")
 ```
 
-- **Depends on:** nothing at load time. The plugin only calls `register-lsp-server!`,
-  `lsp-server-registered?`, `configure-language!` and `set-default-language-servers!`, so it
-  loads without `core:lsp`. The editor-side features
-  that make the registered server useful (hover, goto, diagnostics) come from `core:lsp`,
-  which in turn needs `core:stdlib`.
-- **Activates on:** the first Scheme buffer, or `:steel-server-install`, whichever comes
-  first. Its `manifest.scm` has one entry for `plugin.scm` with `#:languages '("scheme")`
-  and `#:typed-commands '("steel-server-install")`.
+- **Depends on:** nothing. It calls only editor functions, no plugin's commands, so it
+  loads without `core:lsp`; the registered server is useful once `core:lsp` is loaded.
+- **Activates on:** the first Scheme buffer, or `:steel-server-install`.
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-steel-server)
   for the install walkthrough.
 
@@ -36,15 +32,17 @@ a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including HUME's own
 
 At load the plugin configures the `scheme` language's root marker as `cog.scm` and sets the
 language's default list to `steel-language-server`. A root set in `init.scm` wins over the
-plugin's whichever runs first, and the plugin's is dropped without a message. When that binary is on `$PATH` it also registers the server under
-that name; otherwise it logs a warning that points at `:steel-server-install`. A registration
-under that name that already exists, such as a manual
-`register-lsp-server! "steel-language-server" …` in `init.scm`, is left alone.
+plugin's whichever runs first, and the plugin's is dropped without a message. When that
+binary is on `$PATH` it also registers the server under that name; otherwise it logs a
+warning that points at `:steel-server-install`. A registration under that name that
+already exists, such as a manual `register-lsp-server! "steel-language-server" …` in
+`init.scm`, is left alone.
 
-`:steel-server-install` logs that the server is already installed when the binary is on
-`$PATH`. Otherwise it needs `cargo` on `$PATH` and fails with a pointer to rustup if not.
-After `cargo install` it checks that the binary is on `$PATH` and fails with a note about
-`~/.cargo/bin` if not. Then it registers the server.
+`:steel-server-install` registers the server once the binary is on `$PATH`, unless a
+registration under that name already exists. When the binary is already there it logs so
+and installs nothing. Otherwise it needs `cargo` on `$PATH` and fails with a pointer to
+rustup if not, and after `cargo install` it fails with a note about `~/.cargo/bin` if the
+binary is still not on `$PATH`.
 
 ### Host globals
 

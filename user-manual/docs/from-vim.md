@@ -113,7 +113,7 @@ Most `:` commands carry over:
 | `:tabnext` / `:tabprevious` | `:tabnext` / `:tabprev` (`:tabn` / `:tabp`) |
 | `Ctrl-w` window prefix | `Ctrl-p` pane prefix |
 | `Ctrl-w r` / `Ctrl-w R` | `Ctrl-p r` / `Ctrl-p R`. Panes split the other way inside the row or column move together instead of being refused |
-| `Ctrl-^` | `:b #`, or `Ctrl-6` with `core:vim-keybind` loaded (kitty only) |
+| `Ctrl-^` | `:b #`, or `Ctrl-6` with `core:vim-keybind` loaded |
 | `:set` | `:set`, with different syntax: `:set global\|buffer\|pane key=value` |
 
 ## Key differences

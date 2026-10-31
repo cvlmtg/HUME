@@ -239,7 +239,7 @@ Configure with `#:config`:
 
 ## core:vim-keybind
 
-Vim keys: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl-6` (alternate buffer, kitty only), and `o` in Extend mode to swap the selection's ends. It doesn't bind `G`, which is HUME's own prefix (`G L`/`G U`/`G C`/`G G`/`G A`/`G S`, plus `G R` with `core:lsp`); `g e` already goes to the last line.
+Vim keys: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl-6` (alternate buffer), and `o` in Extend mode to swap the selection's ends. It doesn't bind `G`, which is HUME's own prefix (`G L`/`G U`/`G C`/`G G`/`G A`/`G S`, plus `G R` with `core:lsp`); `g e` already goes to the last line.
 
 ```scheme
 (load-plugin! "core:stdlib")

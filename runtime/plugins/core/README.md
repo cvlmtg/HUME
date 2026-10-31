@@ -18,7 +18,7 @@ plugin-authoring API (not core-specific), see
 | [`plum`](plum/README.md) | Plugin/theme/grammar installer | lazy | `stdlib` |
 | [`lsp`](lsp/README.md) | Language server client | lazy | `stdlib` |
 | [`lsp-install`](lsp-install/README.md) | Language server installer | lazy | `stdlib` |
-| [`steel-server`](steel-server/README.md) | Registers a Scheme language server | lazy | `lsp` |
+| [`steel-server`](steel-server/README.md) | Registers a Scheme language server | lazy | none (the server is useful once `lsp` is loaded) |
 | [`pickers`](pickers/README.md) | Fuzzy file/buffer/git pickers | eager | `stdlib` |
 | [`git-diff`](git-diff/README.md) | Inline git diff decorations | lazy | `stdlib` |
 | [`undotree`](undotree/README.md) | Undo history graph in the drawer | lazy | none (draws a revision diff when `git-diff` is loaded) |
@@ -41,11 +41,16 @@ until one of those fires. `load-plugin!` never forces such a plugin to load at s
 plugin without a manifest has its `plugin.scm` run during `load-plugin!`. A directory with
 neither file is an error.
 
-A plugin has no `manifest.scm`, and so loads eagerly, when **its own key
-bindings are the only way to reach its commands**. A command with no typed form and no
-hook has nothing a manifest could list as an activation trigger, so a lazy plugin of that
-shape would stay dormant. `buffer-words`, `pickers`, `vim-keybind`,
-`helix-surround`, and `classic-paste` are all this shape.
+A plugin has no `manifest.scm`, and so loads eagerly, when what it adds has to be in
+place before anything could trigger it:
+
+- **Key bindings.** `pickers`, `vim-keybind`, `helix-surround` and `classic-paste` exist to
+  bind keys, and their `bind-key!` calls are in `plugin.scm`, which a lazy plugin does not
+  run until a trigger fires. A `#:commands` trigger needs a key or a `call!` to reach the
+  command first. `vim-keybind` and `helix-surround` mostly bind built-in commands, which a
+  manifest cannot claim as its own.
+- **Hooks and a completion source.** `buffer-words` registers both at load and defines no
+  command.
 
 A config can activate a plugin on a narrower trigger than its manifest's by calling
 `declare-plugin!` with an explicit `#:commands`/`#:events`/`#:languages`/`#:typed-commands`
@@ -117,10 +122,11 @@ after the state it was scheduled against has moved on:
 - **Cancel the work a restart replaces.** `cancel-timer!` and `cancel-async!` stop a
   callback even once it is due, so a restart that cancels the timer or job it replaces
   never sees the old one fire. When the code that restarts the work doesn't hold every
-  timer or job it would have to cancel, give the entry a generation counter instead, bumped every time
-  the operation restarts; a callback closes over the generation it started under and
-  no-ops if the entry's current generation has since moved on. `buffer-words`' `gen`
-  field is an example.
+  timer or job it would have to cancel, give the entry a generation counter instead, bumped
+  every time the operation restarts; a callback closes over the generation it started under
+  and no-ops if the entry's current generation has since moved on. `lsp`'s locations drawer
+  numbers each refresh this way. `buffer-words` keeps a generation beside cancelling its
+  tick, as a second guard.
 
 ### Debouncing
 
@@ -148,12 +154,14 @@ to the user, not by how verbose the plugin author wants to be:
 
 - `'error`: the operation couldn't run (a required tool is missing, a process
   failed to start at all), or a typed argument names nothing the command can act on (an
-  unknown name, a bad ref, an invalid or path-traversal name).
-- `'warning`: something worth a persistent record that the user did not just ask for: an
-  unsafe name from a catalog or remote source, an orphan directory.
-- `'trace`: an expected, common failure that would otherwise fill `:messages` for every
-  buffer that never opted into the feature (e.g. `git cat-file` failing for a buffer with no
-  ref override, which `git-diff` runs for every buffer).
+  unknown name, an invalid or path-traversal name).
+- `'warning`: something worth a persistent record that the user did not just ask for (an
+  unsafe name from a catalog or remote source, an orphan directory), or a failure the plugin
+  cannot tell apart from an expected one (`git-diff`'s fetch for a typed ref, which fails
+  the same way for a bad ref and an untracked file).
+- `'trace`: an expected, common failure, such as `git cat-file` failing for an untracked
+  file, which `git-diff` runs for every buffer. It reaches `:messages` but never flashes in
+  the status line or counts toward the unseen-errors summary.
 - `'info` (via `Severity::Info`) is status-line only and never reaches `:messages`, so it
   suits status that need not outlive the moment it flashed by.
 
@@ -166,25 +174,35 @@ to the user, not by how verbose the plugin author wants to be:
 
 ## Doc conventions for this directory
 
+These READMEs are for contributors reading the plugin's source. What a user types, sees
+and configures is the user manual's job; a README links to it and does not restate it.
+
 A plugin's `.scm` files carry a banner comment and, where useful, a one-line pointer to
-the README section that explains a given piece of code (`;;; see README.md's "X"`),
-never the explanation itself. All prose (design rationale, algorithms, non-obvious
-gotchas) lives in the plugin's README (or its `docs/*.md`, for a plugin split into
-several).
+the doc section that explains a given piece of code (`;;; see README.md's "X"`), never the
+explanation itself. All prose (design rationale, algorithms, non-obvious gotchas) lives in
+the plugin's README, or its `docs/*.md` for a plugin split into several.
 
-Each plugin's own doc follows the same shape; sections 5-7 appear where the plugin has
-something to put in them:
+Each plugin's README follows the same shape, skipping a section it has nothing for:
 
-1. **What it does and why**, in a couple of paragraphs.
-2. **Usage**: a config snippet, then bullets for dependencies, activation, and a link to
-   the user manual for anything end-user-facing.
-3. **Commands**: a table.
-4. **How it works**: concepts and algorithms, one `###` heading per topic.
-5. **Design decisions**: short "X, not Y, because Z" bullets for choices a contributor
+1. **`# core:<name>`**, then what it does and why, in a paragraph or two.
+2. **`## Usage`**: a config snippet, then three bullets, **Depends on**, **Activates on**
+   and **User docs**, in that order.
+3. **`## Configuration`**: a `Key | Type | Default | Effect` table.
+4. **`## Commands`**, or **`## Key bindings`** for a plugin that exists to bind keys: a
+   `Command | Effect` table, with a leading `Key` column (and `Mode` before it when more
+   than one mode is bound) when the plugin binds keys. `stdlib`, whose commands the manual
+   lists one by one, groups them instead (`Group | Entry | Commands`).
+5. **`## How it works`**: concepts and algorithms, one `###` heading per topic.
+6. **`## Design decisions`**: short "X, not Y, because Z" bullets for choices a contributor
    might otherwise second-guess.
-6. **Known limitations**: where any exist.
-7. **Implementation notes**: terse, file-grouped bullets for function-level gotchas that
-   don't fit the narrative above but are still worth knowing before touching that code.
+7. **`## Known limitations`**.
+8. **`## Implementation notes`**: terse bullets for function-level gotchas that don't fit
+   the narrative above but are worth knowing before touching that code.
 
-A split plugin's README covers 1–3 plus a map of its `docs/*.md` files; each of those
-files covers 4–7 for its own area.
+A plugin whose README would outgrow one read splits along its subsystems. Its README keeps
+1-4 and ends with **`## Documentation`**, a `Doc | Covers` table of its `docs/*.md` files.
+`docs/architecture.md` holds the file layout and what the subsystems share; each other
+file covers 5-8 for its own area.
+
+A doc names the code it describes (a function, a hook, a state field) rather than listing
+every plugin that calls it, since such lists go stale with every new caller.
