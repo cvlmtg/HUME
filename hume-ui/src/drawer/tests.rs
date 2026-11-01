@@ -115,7 +115,7 @@ fn render(theme: &Theme, rows: Vec<ListRow>, border: bool, grid: &mut Grid, area
     let widget = DrawerWidget {
         data: SharedSlot::new(Some(DrawerViewState {
             rows: rows.into_iter().map(|row| Some(Arc::new(row))).collect(),
-            selected_row: 0,
+            selected_row: Some(0),
             border,
         })),
     };
@@ -305,4 +305,31 @@ fn text_between_two_spans_is_painted_once_in_the_row_style() {
     assert!(italic(x0 + 1), "first span cell 'b'");
     assert!(!italic(x0 + 2), "gap cell 'c'");
     assert!(italic(x0 + 3), "second span cell 'd'");
+}
+
+#[test]
+fn a_row_not_rendered_yet_paints_only_its_highlight() {
+    let (theme, _) = drawer_theme(None, ResolvedStyle::default());
+    let area = Rect::new(0, 0, 10, 3);
+    let mut grid = Grid::new(10, 3);
+    let widget = DrawerWidget {
+        data: SharedSlot::new(Some(DrawerViewState {
+            rows: vec![None, None],
+            selected_row: Some(0),
+            border: false,
+        })),
+    };
+    widget.render(
+        area,
+        &theme,
+        &mut Canvas::new(&mut grid, theme.ui.invisible, None),
+    );
+
+    let rows = Rect::new(area.x + FRAME_EDGE, area.y + FRAME_EDGE, 8, 2);
+    insta::assert_snapshot!(symbols_in(&grid, rows), @"");
+    let (selected_y, plain_y) = (rows.y, rows.y + 1);
+    for x in rows.x..rows.right() {
+        assert_eq!(grid[(x, selected_y)].style().bg, Some(SELECTED_BG), "x={x}");
+        assert_eq!(grid[(x, plain_y)].style().bg, Some(DRAWER_BG), "x={x}");
+    }
 }

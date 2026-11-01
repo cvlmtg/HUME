@@ -2,6 +2,8 @@
 //! of it a theme scope styles, and the scope that styles the whole row while
 //! it is the selected one.
 
+use std::sync::Arc;
+
 use hume_core::TruncateEnd;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
@@ -72,6 +74,16 @@ impl ListRow {
         }
     }
 
+    /// This row cut to `budget` cells at its `cut` end, as [`Self::fit`]
+    /// cuts it, sharing `self` when it already fits.
+    pub fn fit_shared(self: &Arc<Self>, budget: usize, cut: TruncateEnd) -> Arc<Self> {
+        if hume_rope::width::chrome_width(self.text()) <= budget {
+            Arc::clone(self)
+        } else {
+            Arc::new(Self::clone(self).fit(budget, cut))
+        }
+    }
+
     /// This row followed by `after`, unstyled.
     pub(crate) fn append(self, after: &str) -> Self {
         Self {
@@ -97,18 +109,14 @@ impl ListRow {
     }
 }
 
-/// Paint one list row at `(x, y)`: a `width`-cell highlight bar when
-/// `is_selected`, then the row's runs up to `right_edge`, each layered over
-/// `selected_style` when `is_selected` or `base_style` otherwise. The row's
-/// selected scope replaces `selected_style`. `None` is a row not rendered
-/// yet, which paints only its highlight.
-#[allow(clippy::too_many_arguments)]
+/// Paint one list row over `area`, one cell row tall: a highlight bar
+/// across it when `is_selected`, then the row's runs up to its right edge,
+/// each layered over `selected_style` when `is_selected` or `base_style`
+/// otherwise. The row's selected scope replaces `selected_style`. `None` is
+/// a row not rendered yet, which paints only its highlight.
 pub(crate) fn draw_row(
     canvas: &mut Canvas,
-    x: u16,
-    y: u16,
-    width: u16,
-    right_edge: u16,
+    area: Rect,
     row: Option<&ListRow>,
     theme: &Theme,
     is_selected: bool,
@@ -119,7 +127,7 @@ pub(crate) fn draw_row(
         let selected_style = row
             .and_then(|row| row.selected_scope)
             .map_or(selected_style, |scope| theme.resolve(scope));
-        canvas.fill_rect_bg(Rect::new(x, y, width, 1), selected_style);
+        canvas.fill_rect_bg(area, selected_style);
         selected_style
     } else {
         base_style
@@ -128,5 +136,24 @@ pub(crate) fn draw_row(
         .into_iter()
         .flat_map(|row| row.runs(theme, is_selected))
         .map(|(text, over)| (text, row_style.layer(over)));
-    crate::menu_box::paint_styled_row(canvas, x, y, runs, right_edge);
+    paint_styled_row(canvas, area.x, area.y, runs, area.right());
 }
+
+/// Paint `runs` left to right from `(x, y)`, each in its own style, stopping
+/// at `right_edge`. Every row goes through it: a list's rows ([`draw_row`])
+/// and a popup's lines in [`draw_menu_box`](crate::menu_box::draw_menu_box).
+pub(crate) fn paint_styled_row<'a>(
+    canvas: &mut Canvas,
+    x: u16,
+    y: u16,
+    runs: impl IntoIterator<Item = (&'a str, ResolvedStyle)>,
+    right_edge: u16,
+) {
+    let mut cx = x;
+    for (run_text, run_style) in runs {
+        cx = canvas.write_text_run(cx, y, run_text, run_style, right_edge);
+    }
+}
+
+#[cfg(test)]
+mod tests;

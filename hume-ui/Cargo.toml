@@ -10,5 +10,10 @@ hume-grid = { path = "../hume-grid" }
 hume-rope = { path = "../hume-rope" }
 unicode-segmentation.workspace = true
 
+[features]
+# Exposes `WrappedLines::texts` and `WrappedLines::styled` to hume-editor's
+# popup tests, which read a popup's wrapped lines rather than its frame.
+test-util = []
+
 [dev-dependencies]
 insta = "1.47"

@@ -750,12 +750,14 @@ impl Editor {
             }
         }
         let drawer = self.state.input.drawer().expect("found above");
+        let rows = drawer.rows.window(window, width, drawer.truncate);
+        let selected_row = (!rows.is_empty()).then(|| drawer.selected - drawer.scroll);
         self.state
             .views
             .drawer
             .set(Some(hume_ui::drawer::DrawerViewState {
-                rows: drawer.rows.window(window, width, drawer.truncate),
-                selected_row: drawer.selected - drawer.scroll,
+                rows,
+                selected_row,
                 border: self.state.settings.popup_border,
             }));
     }

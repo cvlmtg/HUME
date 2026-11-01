@@ -86,7 +86,7 @@ fn show_drawer_list_populates_model_and_view() {
     render(&mut ed);
     assert_eq!(
         ed.state.views.drawer.read().as_ref().unwrap().selected_row,
-        0
+        Some(0)
     );
 }
 
@@ -159,7 +159,7 @@ fn show_drawer_list_opens_on_the_selected_row() {
 
     assert_eq!(
         ed.state.views.drawer.read().as_ref().unwrap().selected_row,
-        2
+        Some(2)
     );
 }
 
@@ -172,7 +172,7 @@ fn show_drawer_list_clamps_selected_past_the_end() {
 
     assert_eq!(
         ed.state.views.drawer.read().as_ref().unwrap().selected_row,
-        2
+        Some(2)
     );
 }
 
@@ -780,7 +780,7 @@ fn update_replaces_rows_callback_and_selection_in_place() {
     render(&mut ed);
     assert_eq!(
         ed.state.views.drawer.read().as_ref().unwrap().selected_row,
-        1
+        Some(1)
     );
 
     // The new callback is live: Enter fires it with the kept selection's

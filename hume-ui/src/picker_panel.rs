@@ -114,7 +114,7 @@ impl PanelGeometry {
 
 /// The panel's area inside its frame: the input line, then the list.
 fn inner_area(outer: Rect) -> Rect {
-    outer.inset(1, 1)
+    outer.inset(super::menu_box::FRAME_EDGE, super::menu_box::FRAME_EDGE)
 }
 
 /// Size the panel as a fraction of `pane_area` (width `min(80%, 100 cols)`,
@@ -252,10 +252,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
         let y = inner.y + 1 + i as u16;
         draw_row(
             canvas,
-            inner_x,
-            y,
-            inner.width,
-            inner_right,
+            Rect::new(inner_x, y, inner.width, 1),
             row.as_deref(),
             theme,
             state.selected_row == Some(i),

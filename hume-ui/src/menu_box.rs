@@ -18,41 +18,34 @@ use hume_grid::box_glyphs::{
 };
 use hume_rope::width::chrome_width;
 
-use super::list_row::{ListRow, draw_row};
+use super::list_row::{ListRow, draw_row, paint_styled_row};
 use super::popup::StyledRow;
 
-/// Theme styles a bordered box paints with, grouped into one struct rather
-/// than three positional `ResolvedStyle` arguments on `draw_menu_box`, which needs
-/// `#[allow(clippy::too_many_arguments)]` regardless given its other params
-/// (canvas, rect, rows, selection, scroll, border).
+/// Theme styles a bordered box paints its fill, frame, unstyled rows and
+/// scrollbar thumb with. A menu's selected-row style travels with its rows
+/// in [`BoxRows::List`].
 #[derive(Clone, Copy)]
 pub(crate) struct MenuBoxStyles {
     /// Fill, border, and unstyled rows.
     pub base: ResolvedStyle,
-    /// The highlighted row (menus only; a popup never selects a row).
-    pub selected: ResolvedStyle,
     /// The scrollbar thumb.
     pub scroll: ResolvedStyle,
 }
 
 impl MenuBoxStyles {
-    /// A menu's styles: `ui.menu`, `ui.menu.selected` and `ui.menu.scroll`.
+    /// A menu's styles: `ui.menu` and `ui.menu.scroll`.
     pub(crate) fn menu(theme: &Theme) -> Self {
         let by = |name| theme.resolve_by_name(Scope(name));
         Self {
             base: by(ui_scopes::MENU),
-            selected: by(ui_scopes::MENU_SELECTED),
             scroll: by(ui_scopes::MENU_SCROLL),
         }
     }
 
-    /// A popup's styles: `ui.popup` and `ui.popup.scroll`. A popup never
-    /// selects a row, so its selected style is its base.
+    /// A popup's styles: `ui.popup` and `ui.popup.scroll`.
     pub(crate) fn popup(theme: &Theme) -> Self {
-        let base = theme.resolve_by_name(Scope(ui_scopes::POPUP));
         Self {
-            base,
-            selected: base,
+            base: theme.resolve_by_name(Scope(ui_scopes::POPUP)),
             scroll: theme.resolve_by_name(Scope(ui_scopes::POPUP_SCROLL)),
         }
     }
@@ -72,8 +65,11 @@ pub(crate) const FRAME_CELLS: u16 = 2 * FRAME_EDGE;
 
 /// Widest of an arbitrary run of texts' display widths, or `0` for an empty
 /// run.
-pub(crate) fn widest<'a>(texts: impl Iterator<Item = &'a str>) -> u16 {
-    texts.map(chrome_width).max().unwrap_or(0) as u16
+pub(crate) fn widest(texts: impl Iterator<Item = impl AsRef<str>>) -> u16 {
+    texts
+        .map(|text| chrome_width(text.as_ref()))
+        .max()
+        .unwrap_or(0) as u16
 }
 
 /// Outer row count (including the 1-cell frame's top/bottom) for a box
@@ -269,11 +265,13 @@ pub(crate) enum BoxRows<'a> {
     /// grammar registered): each line is its runs, each in its own absolute
     /// style. No row is selected.
     Styled(&'a [StyledRow]),
-    /// A menu's rows, `selected` (an index into `rows`) highlighted. A row's
-    /// spans name theme scopes, layered over the row's own style.
+    /// A menu's rows, `selected` (an index into `rows`) highlighted in
+    /// `selected_style`. A row's spans name theme scopes, layered over the
+    /// row's own style.
     List {
         rows: &'a [ListRow],
         selected: Option<usize>,
+        selected_style: ResolvedStyle,
         theme: &'a Theme,
     },
 }
@@ -375,37 +373,18 @@ pub(crate) fn draw_menu_box(
             BoxRows::List {
                 rows,
                 selected,
+                selected_style,
                 theme,
             } => draw_row(
                 canvas,
-                text_x,
-                y,
-                inner.width,
-                text_right,
+                Rect::new(text_x, y, inner.width, 1),
                 Some(&rows[i]),
                 theme,
                 selected == Some(i),
-                styles.selected,
+                selected_style,
                 styles.base,
             ),
         }
-    }
-}
-
-/// Paint `runs` left to right from `(x, y)`, each in its own style, stopping
-/// at `right_edge`. Every row goes through it: a list's rows
-/// ([`draw_row`]) and a popup's lines in
-/// [`draw_menu_box`].
-pub(crate) fn paint_styled_row<'a>(
-    canvas: &mut Canvas,
-    x: u16,
-    y: u16,
-    runs: impl IntoIterator<Item = (&'a str, ResolvedStyle)>,
-    right_edge: u16,
-) {
-    let mut cx = x;
-    for (run_text, run_style) in runs {
-        cx = canvas.write_text_run(cx, y, run_text, run_style, right_edge);
     }
 }
 

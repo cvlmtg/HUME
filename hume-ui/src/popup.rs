@@ -21,7 +21,7 @@
 //! `MenuOverlay` and `PopupBandWidget::render` paint the resolved result,
 //! clipped defensively to `pane_rect`.
 
-use hume_engine::types::ResolvedStyle;
+use hume_engine::types::{ResolvedStyle, Scope};
 use hume_grid::Rect;
 use std::cell::{Ref, RefCell};
 use std::sync::Arc;
@@ -30,7 +30,7 @@ use hume_engine::lock::SharedSlot;
 
 use hume_engine::providers::{ChromeProvider, OverlayProvider};
 use hume_engine::render::Canvas;
-use hume_engine::theme::Theme;
+use hume_engine::theme::{Theme, ui_scopes};
 use hume_rope::width::{chrome_cluster_width, chrome_width};
 
 use super::list_row::ListRow;
@@ -120,6 +120,7 @@ impl WrappedLines {
     }
 
     /// Each line's text, a styled line's runs joined.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn texts(&self) -> Vec<String> {
         match self {
             Self::Plain(lines) => lines.clone(),
@@ -128,6 +129,7 @@ impl WrappedLines {
     }
 
     /// Each line's runs, `None` for a plain popup.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn styled(&self) -> Option<&[StyledRow]> {
         match self {
             Self::Plain(_) => None,
@@ -138,12 +140,8 @@ impl WrappedLines {
     /// The widest line's display width.
     fn widest(&self) -> u16 {
         match self {
-            Self::Plain(lines) => super::menu_box::widest(lines.iter().map(String::as_str)),
-            Self::Styled(rows) => rows
-                .iter()
-                .map(|row| chrome_width(&row_text(row)))
-                .max()
-                .unwrap_or(0) as u16,
+            Self::Plain(lines) => super::menu_box::widest(lines.iter()),
+            Self::Styled(rows) => super::menu_box::widest(rows.iter().map(row_text)),
         }
     }
 
@@ -505,12 +503,6 @@ pub fn resolve_band(
 /// One menu row: a primary label, plus an optional plain second part
 /// right-aligned against it (an LSP completion candidate's `detail`, e.g.).
 /// See [`resolve_menu`] for how the two are laid out into one row.
-/// `trailing` is a `String`, not an `Arc<str>`: `compose_menu_row` always
-/// paints into a fresh row regardless, so an `Arc<str>` here would only
-/// ever save a caller's own construction-time clone, and the caller with
-/// the most rows to build (`CompletionItem::menu_row`, one call per parsed
-/// item) never reaches the visible window most of them are built for; see
-/// that method's own doc.
 #[derive(Clone)]
 pub struct MenuRow {
     pub main: ListRow,
@@ -716,6 +708,7 @@ impl OverlayProvider for MenuOverlay {
             BoxRows::List {
                 rows: &state.rows,
                 selected: state.selected,
+                selected_style: theme.resolve_by_name(Scope(ui_scopes::MENU_SELECTED)),
                 theme,
             },
             state.total_rows,

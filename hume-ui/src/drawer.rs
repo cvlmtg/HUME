@@ -8,13 +8,12 @@
 //! frame it happens.
 //!
 //! Rows are the visible window of pre-formatted [`ListRow`]s, already cut to
-//! [`row_width`], whose
-//! spans may name theme scopes for parts of them: the drawer is a generic
-//! list picker, not a location list, and Rust interprets row content only to
-//! style it. The
-//! caller's `on-select` callback does the jump itself (e.g. via
-//! `goto-location!`), and may fire more than once: unlike the popup/menu,
-//! the drawer stays open across `Enter` (Helix-style browse).
+//! [`row_width`], whose spans may name theme scopes for parts of them: the
+//! drawer is a generic list picker, not a location list, and Rust interprets
+//! row content only to style it. The caller's `on-select` callback does the
+//! jump itself (e.g. via `goto-location!`), and may fire more than once:
+//! unlike the popup/menu, the drawer stays open across `Enter` (Helix-style
+//! browse).
 //!
 //! Long-form text (e.g. hover overflow) is not a drawer use case. That's
 //! the docked popup (`show-popup! #:anchor 'bottom`, [`super::popup`]), a
@@ -34,16 +33,15 @@ use hume_engine::types::Scope;
 
 use crate::list_row::{ListRow, draw_row};
 
-/// Read-side snapshot for `DrawerWidget`: the visible window of
-/// `DrawerLayer` (`hume-editor`'s raw `(show-drawer-list! …)` state) minus
-/// the callback, which the render side never needs.
+/// Read-side snapshot for `DrawerWidget`: the rows of `hume-editor`'s
+/// `DrawerLayer` that the band shows this frame, and which one is selected.
 pub struct DrawerViewState {
-    /// The rows from `scroll` on that the band shows, each cut to
-    /// [`row_width`]. A row a render proc has not made yet is `None` and
-    /// draws blank.
+    /// The rows the band shows, top first, each cut to [`row_width`]. A row
+    /// a render proc has not made yet is `None` and draws blank.
     pub rows: Vec<Option<Arc<ListRow>>>,
-    /// The selected row's index in `rows`.
-    pub selected_row: usize,
+    /// The selected row's index in `rows`, `None` when the band shows no
+    /// row.
+    pub selected_row: Option<usize>,
     /// Whether to draw box-drawing glyphs on the frame's top row and side
     /// columns. Fed from the `popup-border` setting.
     pub border: bool,
@@ -105,13 +103,10 @@ impl ChromeProvider for DrawerWidget {
         for (i, item) in state.rows.iter().take(inner.height as usize).enumerate() {
             draw_row(
                 canvas,
-                inner.x,
-                inner.y + i as u16,
-                inner.width,
-                inner.right(),
+                Rect::new(inner.x, inner.y + i as u16, inner.width, 1),
                 item.as_deref(),
                 theme,
-                i == state.selected_row,
+                state.selected_row == Some(i),
                 selected_style,
                 style,
             );

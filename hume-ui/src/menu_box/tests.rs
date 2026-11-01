@@ -21,62 +21,8 @@ fn style() -> ResolvedStyle {
 fn styles() -> MenuBoxStyles {
     MenuBoxStyles {
         base: style(),
-        selected: style(),
         scroll: style(),
     }
-}
-
-#[test]
-fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
-    // A zero-width space draws as nothing, so writing it into the cell
-    // reserved for it would leave the terminal's cursor where it was and
-    // slide the rest of the row one column left. It renders as its codepoint
-    // instead (the same substitution buffer text gets), and the next run
-    // begins after the whole placeholder.
-    let mut buf = Grid::new(20, 3);
-    let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    let runs: StyledRow = vec![
-        ("a\u{200B}b".to_string(), style()),
-        ("cd".to_string(), style()),
-    ];
-    paint_styled_row(
-        &mut canvas,
-        0,
-        1,
-        runs.iter().map(|(t, s)| (t.as_str(), *s)),
-        20,
-    );
-
-    // The placeholder spans the columns reserved for it, and the second run
-    // starts in the cell right after it.
-    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 12, 1)), @"a<200b>bcd");
-}
-
-#[test]
-fn styled_runs_stop_at_the_right_edge() {
-    // Runs are bounded by the caller's edge, not by the terminal buffer's: a
-    // row wider than its box must be clipped at the border rather than
-    // written over it. A cluster that would straddle the edge is dropped
-    // whole, never half-drawn.
-    let mut buf = Grid::new(20, 3);
-    let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    let runs: StyledRow = vec![
-        ("abc".to_string(), style()),
-        ("\u{6F22}z".to_string(), style()),
-    ];
-    // Edge at 4: "abc" fills 0..3, and 漢 would need cells 3 and 4, so it is
-    // dropped, leaving 'z' nowhere to start from either.
-    paint_styled_row(
-        &mut canvas,
-        0,
-        1,
-        runs.iter().map(|(t, s)| (t.as_str(), *s)),
-        4,
-    );
-
-    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 8, 1)), @"abc");
 }
 
 #[test]
@@ -97,6 +43,7 @@ fn a_row_wider_than_the_box_is_clipped_at_the_border() {
         BoxRows::List {
             rows: &list_rows(&long),
             selected: Some(0),
+            selected_style: style(),
             theme: &theme,
         },
         1,
@@ -122,6 +69,7 @@ fn draw_menu_box_border_frame_snapshot() {
         BoxRows::List {
             rows: &list_rows(&rows(2)),
             selected: Some(0),
+            selected_style: style(),
             theme: &theme,
         },
         2,
@@ -150,6 +98,7 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
         BoxRows::List {
             rows: &list_rows(&rows(2)),
             selected: Some(0),
+            selected_style: style(),
             theme: &theme,
         },
         2,
@@ -188,6 +137,7 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
         BoxRows::List {
             rows: &list_rows(&data[range.clone()]),
             selected: Some(9 - range.start),
+            selected_style: style(),
             theme: &theme,
         },
         10,
@@ -393,6 +343,7 @@ fn draw_menu_box_scrolled_menu_shows_scrollbar_thumb() {
         BoxRows::List {
             rows: &list_rows(&data[range.clone()]),
             selected: Some(5 - range.start),
+            selected_style: style(),
             theme: &theme,
         },
         10,
@@ -417,7 +368,7 @@ fn widest_is_the_widest_texts_display_width() {
 
 #[test]
 fn widest_of_an_empty_run_is_zero() {
-    assert_eq!(widest(std::iter::empty()), 0);
+    assert_eq!(widest(std::iter::empty::<&str>()), 0);
 }
 
 // ── band_capacity ──────────────────────────────────────────────────────
@@ -481,6 +432,7 @@ fn draw_menu_box_too_small_outer_does_nothing() {
         BoxRows::List {
             rows: &list_rows(&rows(1)),
             selected: Some(0),
+            selected_style: style(),
             theme: &theme,
         },
         1,
@@ -596,6 +548,7 @@ fn draw_menu_box_clips_extra_rows_at_the_bottom_border() {
         BoxRows::List {
             rows: &list_rows(&rows(5)),
             selected: Some(0),
+            selected_style: style(),
             theme: &theme,
         },
         3,
@@ -690,6 +643,7 @@ fn paint_menu(theme: &Theme, rows: &[ListRow], grid: &mut Grid) {
         BoxRows::List {
             rows,
             selected: Some(0),
+            selected_style: theme.resolve_by_name(Scope(ui_scopes::MENU_SELECTED)),
             theme,
         },
         rows.len(),

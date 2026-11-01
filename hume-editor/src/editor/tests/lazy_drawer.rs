@@ -199,6 +199,37 @@ fn a_taller_terminal_shows_rendered_rows_in_the_same_frame() {
     assert_eq!(rendered(&mut ed), (0..taller).collect::<Vec<_>>());
 }
 
+/// A terminal too short for the band to show a row leaves the scroll where
+/// it was, so moving the selection above it selects no shown row.
+#[test]
+fn a_band_that_shows_no_row_selects_none() {
+    const SHORT: u16 = 5;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(&mut ed, tmp.path(), "(range 0 30)", "render");
+    frame(&mut ed, WIDTH, HEIGHT);
+    for _ in 0..4 {
+        ed.feed_key(key_ctrl('d'));
+        frame(&mut ed, WIDTH, HEIGHT);
+    }
+    assert_eq!(
+        hume_ui::drawer::band_visible_rows(30, SHORT),
+        0,
+        "setup: the band shows no row"
+    );
+    frame(&mut ed, WIDTH, SHORT);
+
+    for _ in 0..visible(30) {
+        ed.feed_key(key_up());
+    }
+    frame(&mut ed, WIDTH, SHORT);
+
+    let guard = ed.state.views.drawer.read();
+    let view = guard.as_ref().expect("the drawer is open");
+    assert!(view.rows.is_empty());
+    assert_eq!(view.selected_row, None);
+}
+
 #[test]
 fn a_width_change_renders_the_visible_rows_again_at_the_new_budget() {
     let tmp = tempfile::tempdir().unwrap();
