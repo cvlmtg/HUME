@@ -521,10 +521,11 @@ impl ScriptingHost {
         if list.len() != places.len() {
             return Err(expected());
         }
+        let mut label = String::new();
         list.iter()
             .zip(&places)
             .map(|(row, &place)| {
-                let label = builtins::args::item_label("row", place);
+                builtins::args::write_item_label(&mut label, "row", place);
                 builtins::ui::row_display(row.clone(), &label)
                     .map(|display| (place, display))
                     .map_err(|e| e.to_string())

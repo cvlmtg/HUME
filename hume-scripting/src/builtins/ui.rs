@@ -21,9 +21,9 @@ use crate::{Callback, Rooted, SteelCtx};
 use super::SteelResult;
 use super::args::{
     END_CHAR, START_CHAR, bool_arg, callback_arg, cwd_arg, hash_entry, hash_list, int_arg,
-    item_label, list_items, list_to_i32s, list_to_strings, optional_callback_arg,
-    optional_string_arg, pair_fields, single_key, spanned_text, string_arg, symbol_enum_arg,
-    token_arg, token_or_false, truncate_end_arg, usize_arg,
+    list_items, list_to_i32s, list_to_strings, optional_callback_arg, optional_string_arg,
+    pair_fields, single_key, spanned_text, string_arg, symbol_enum_arg, token_arg, token_or_false,
+    truncate_end_arg, usize_arg, write_item_label,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -239,11 +239,12 @@ fn display_items<D>(
     ctx_name: &str,
     display: impl Fn(SteelVal, &str) -> Result<D, SteelErr>,
 ) -> Result<Vec<(D, Rooted)>, SteelErr> {
+    let mut label = String::new();
     list_items(items, ctx_name)?
         .into_iter()
         .enumerate()
         .map(|(i, entry)| {
-            let label = item_label(ctx_name, i);
+            write_item_label(&mut label, ctx_name, i);
             let (shown, payload) = pair_fields(entry, &label, "(display . payload)")?;
             Ok((display(shown, &label)?, row_payload(payload, &label)?))
         })
@@ -263,23 +264,23 @@ pub(crate) fn row_display(val: SteelVal, ctx_name: &str) -> Result<RowDisplay, S
         SteelVal::HashMapV(_) => {
             let entry = hash_entry(val, ctx_name, ROW_DISPLAY_KEYS)?;
             let text = entry.string("text")?;
-            let spans_label = entry.label("spans");
-            let spans = entry
-                .optional("spans")
-                .map(|spans| {
-                    hash_list(spans, &spans_label, ROW_SPAN_KEYS, |span| {
+            let content = match entry.optional("spans") {
+                Some(spans) => {
+                    let spans_label = entry.label("spans");
+                    let spans = hash_list(spans, &spans_label, ROW_SPAN_KEYS, |span| {
                         let (start, end) = span.char_range()?;
                         let scopes = RowSpanScopes {
                             scope: span.string("scope")?,
                             selected: span.optional_string("selected-scope")?,
                         };
                         Ok((start, end, scopes))
-                    })
-                })
-                .transpose()?
-                .unwrap_or_default();
+                    })?;
+                    spanned_text(text, spans, &spans_label)?
+                }
+                None => SpannedText::plain(text),
+            };
             Ok(RowDisplay {
-                content: spanned_text(text, spans, &spans_label)?,
+                content,
                 selected_scope: entry.optional_string("selected-scope")?,
             })
         }

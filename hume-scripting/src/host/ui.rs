@@ -381,7 +381,7 @@ pub trait UiHost {
     /// `picker-source-spawn!` (which already implies "still populating" on
     /// its own). Surfaced to the UI as a "results still arriving"
     /// indicator, cleared by the first `push!`/`replace!` that actually
-    /// applies. `query`: see [`PickerOpts`].
+    /// applies. `query`: see [`PickerCommonOpts`].
     ///
     /// `render` (`#:render`), when given, is how a row is shown. Before a
     /// frame shows rows not yet rendered at the panel's current width, the

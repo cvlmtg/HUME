@@ -760,7 +760,18 @@ pub(crate) fn optional_hash_entry<'a>(
 /// `"<ctx_name> <index>"`, the label an error names one element of the list
 /// `ctx_name` labels by.
 pub(crate) fn item_label(ctx_name: &str, index: usize) -> String {
-    format!("{ctx_name} {index}")
+    let mut label = String::new();
+    write_item_label(&mut label, ctx_name, index);
+    label
+}
+
+/// [`item_label`] written over `label`, so a decoder walking a list reuses
+/// one buffer for every element's label.
+pub(crate) fn write_item_label(label: &mut String, ctx_name: &str, index: usize) {
+    use std::fmt::Write;
+
+    label.clear();
+    write!(label, "{ctx_name} {index}").expect("writing to a String cannot fail");
 }
 
 /// `text` with the payload `spans` decoded from the list `ctx_name` labels,
@@ -784,11 +795,12 @@ pub(crate) fn hash_list<T>(
     keys: &[&str],
     mut row: impl FnMut(&HashEntry) -> Result<T, SteelErr>,
 ) -> Result<Vec<T>, SteelErr> {
+    let mut label = String::new();
     list_items(val, ctx_name)?
         .into_iter()
         .enumerate()
         .map(|(i, entry)| {
-            let label = item_label(ctx_name, i);
+            write_item_label(&mut label, ctx_name, i);
             row(&hash_entry(entry, &label, keys)?)
         })
         .collect()
@@ -855,10 +867,11 @@ pub(crate) fn pair_fields(
 /// pair-construction API; the `Pair` type itself is unnameable outside
 /// steel-core).
 ///
-/// `b` must not be a list (including `'()`): steel's `cons` returns a proper
-/// `ListV` rather than a `Pair` when `b` is itself list-shaped, and
-/// `pair_fields` would then reject the round-trip. Every caller's cdr is a
-/// scalar.
+/// A list `b` (including `'()`) makes a proper `ListV` rather than a
+/// `Pair`: steel's `cons` returns one when `b` is itself list-shaped, and
+/// `pair_fields` would then reject the round-trip. That is fine for a value
+/// only a script reads, as `display_item`'s is, where `(cdr row)` is still
+/// `b`.
 pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, SteelErr> {
     steel::primitives::lists::cons(&mut a, &mut b)
 }

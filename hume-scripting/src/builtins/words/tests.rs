@@ -151,6 +151,13 @@ fn string_width_counts_terminal_cells() {
 }
 
 #[test]
+fn string_width_counts_a_tab_as_one_cell_and_a_control_character_as_its_placeholder() {
+    assert_eq!(width_of("a\tb"), SteelVal::IntV(3));
+    // U+0001 paints as `<1>`, three cells.
+    assert_eq!(width_of("a\u{1}"), SteelVal::IntV(4));
+}
+
+#[test]
 fn string_width_raises_on_a_non_string() {
     let err = string_width(SteelVal::IntV(1)).unwrap_err();
     assert!(
@@ -192,6 +199,13 @@ fn string_fit_never_splits_a_cluster() {
     insta::assert_snapshot!(fit("ab👩\u{200d}💻", 2, "head"), @"…");
     insta::assert_snapshot!(fit("x🇮🇹", 2, "head"), @"…");
     insta::assert_snapshot!(fit("🇮🇹x", 2, "tail"), @"…");
+}
+
+#[test]
+fn string_fit_measures_a_tab_and_a_control_character_as_a_row_paints_them() {
+    insta::assert_snapshot!(fit("ab\tcd", 4, "head"), @"…\tcd");
+    // `<1>` needs three cells, so a three-cell keep stops before it.
+    insta::assert_snapshot!(fit("ab\u{1}cd", 4, "tail"), @"ab…");
 }
 
 #[test]
