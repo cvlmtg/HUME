@@ -245,10 +245,10 @@ fn slice_counts_bytes_of_multi_byte_clusters() {
 }
 
 #[test]
-fn prepend_shifts_every_span_by_the_prefix_bytes() {
+fn the_marker_shifts_every_span_by_its_bytes() {
     let spanned = SpannedText::new("ab".to_string(), vec![(1, 2, 'x')])
         .unwrap()
-        .prepend("\u{2026}");
+        .prepend_ellipsis();
     assert_eq!(spanned.text(), "\u{2026}ab");
     assert_eq!(spanned.spans(), &[(bytes(4, 5), 'x')]);
 }
@@ -273,11 +273,46 @@ fn append_widens_the_last_span_over_a_cluster_the_seam_splits() {
 }
 
 #[test]
-fn prepend_widens_the_first_span_over_a_cluster_the_seam_splits() {
-    // A lone mark at the start is its own cluster until "a" comes before it.
+fn a_span_at_a_leading_mark_widens_over_the_marker() {
+    // A lone mark at the start is its own cluster until the marker comes
+    // before it.
     let spanned = SpannedText::new("\u{301}b".to_string(), vec![(0, 1, 's')])
         .unwrap()
-        .prepend("a");
-    assert_eq!(spanned.text(), "a\u{301}b");
-    assert_eq!(spanned.spans(), &[(bytes(0, 3), 's')]);
+        .prepend_ellipsis();
+    assert_eq!(spanned.text(), "\u{2026}\u{301}b");
+    assert_eq!(spanned.spans(), &[(bytes(0, 5), 's')]);
+}
+
+/// Each cluster's start in `text`, then its end.
+fn boundaries(text: &str) -> Vec<usize> {
+    use unicode_segmentation::UnicodeSegmentation;
+
+    text.grapheme_indices(true)
+        .map(|(byte, _)| byte)
+        .chain([text.len()])
+        .collect()
+}
+
+/// The marker before `text` keeps every cluster boundary of `text` past its
+/// first cluster, shifted by the marker's bytes.
+fn assert_marker_keeps_boundaries(text: &str) {
+    let marked = SpannedText::<()>::plain(text.to_string()).prepend_ellipsis();
+    let kept: Vec<usize> = boundaries(text)[1..]
+        .iter()
+        .map(|byte| byte + "\u{2026}".len())
+        .collect();
+    let marked = boundaries(marked.text());
+    assert!(marked.ends_with(&kept), "{marked:?} keeps {kept:?}");
+}
+
+#[test]
+fn the_marker_before_a_flag_keeps_every_boundary_after_it() {
+    // A regional indicator would re-pair every flag after it: "🇮🇹🇫🇷".
+    assert_marker_keeps_boundaries("\u{1F1EE}\u{1F1F9}\u{1F1EB}\u{1F1F7}");
+}
+
+#[test]
+fn the_marker_before_a_joiner_keeps_every_boundary_after_it() {
+    // A pictograph would join the woman after the joiner: "\u{200d}👩".
+    assert_marker_keeps_boundaries("\u{200d}\u{1F469}");
 }

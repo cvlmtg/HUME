@@ -342,23 +342,32 @@ pub const ELLIPSIS: &str = "…";
 /// `const`-evaluable, but the invariant it would report is fixed.
 pub const ELLIPSIS_WIDTH: usize = 1;
 
-/// The byte range of chrome text `s` a `budget`-cell row keeps when `cut`
-/// drops the rest, and whether an [`ELLIPSIS`] marks the dropped end. `None`
-/// when `s` fits. The one cut computation behind [`truncate_marked`] and
-/// [`truncate_spanned`].
+/// How [`truncate_marked`] and [`truncate_spanned`] cut chrome text that
+/// does not fit: the byte range they keep, and the end the [`ELLIPSIS`]
+/// marks, `None` for a cut to zero cells, which keeps nothing and takes no
+/// marker.
+struct Cut {
+    kept: ExclusiveRange<ByteCol>,
+    marker: Option<TruncateEnd>,
+}
+
+/// The cut of `s` to `budget` cells at its `cut` end, `None` when `s` fits:
+/// the one cut computation behind every marked truncation.
 ///
-/// The truncators above are *keep*-oriented (`truncate_suffix_to_width`
-/// keeps the tail) while [`TruncateEnd`] is *cut*-oriented, so the arms
-/// below read inverted: cutting the head keeps (and thus calls)
-/// `truncate_suffix_to_width`.
-fn cut_window(s: &str, budget: usize, cut: TruncateEnd) -> Option<(ExclusiveRange<ByteCol>, bool)> {
+/// [`truncate_suffix_to_width`] and [`truncate_to_width`] name the part
+/// they keep, while [`TruncateEnd`] names the end that is cut, so a head
+/// cut keeps a suffix.
+fn cut_to(s: &str, budget: usize, cut: TruncateEnd) -> Option<Cut> {
     if chrome_width(s) <= budget {
         return None;
     }
     if budget == 0 {
-        return Some((ExclusiveRange::new(ByteCol::new(0), ByteCol::new(0)), false));
+        return Some(Cut {
+            kept: ExclusiveRange::new(ByteCol::new(0), ByteCol::new(0)),
+            marker: None,
+        });
     }
-    let kept = budget.saturating_sub(ELLIPSIS_WIDTH);
+    let kept = budget - ELLIPSIS_WIDTH;
     let (start, end) = match cut {
         TruncateEnd::Head => {
             let (tail, _) = truncate_suffix_to_width(s, kept);
@@ -369,10 +378,10 @@ fn cut_window(s: &str, budget: usize, cut: TruncateEnd) -> Option<(ExclusiveRang
             (0, head.len())
         }
     };
-    Some((
-        ExclusiveRange::new(ByteCol::new(start), ByteCol::new(end)),
-        true,
-    ))
+    Some(Cut {
+        kept: ExclusiveRange::new(ByteCol::new(start), ByteCol::new(end)),
+        marker: Some(cut),
+    })
 }
 
 /// Clip chrome text `s` to `budget` display cells per `cut`, marking the
@@ -386,33 +395,36 @@ fn cut_window(s: &str, budget: usize, cut: TruncateEnd) -> Option<(ExclusiveRang
 /// Borrows `s` unchanged on the (common) no-truncation path instead of
 /// allocating a copy every frame.
 pub fn truncate_marked(s: &str, budget: usize, cut: TruncateEnd) -> std::borrow::Cow<'_, str> {
-    let Some((kept, marked)) = cut_window(s, budget, cut) else {
+    let Some(Cut { kept, marker }) = cut_to(s, budget, cut) else {
         return std::borrow::Cow::Borrowed(s);
     };
     let kept = &s[kept.as_byte_range()];
-    match (marked, cut) {
-        (false, _) => std::borrow::Cow::Borrowed(kept),
-        (true, TruncateEnd::Head) => std::borrow::Cow::Owned(format!("{ELLIPSIS}{kept}")),
-        (true, TruncateEnd::Tail) => std::borrow::Cow::Owned(format!("{kept}{ELLIPSIS}")),
+    match marker {
+        None => std::borrow::Cow::Borrowed(kept),
+        Some(TruncateEnd::Head) => std::borrow::Cow::Owned(format!("{ELLIPSIS}{kept}")),
+        Some(TruncateEnd::Tail) => std::borrow::Cow::Owned(format!("{kept}{ELLIPSIS}")),
     }
 }
 
 /// [`truncate_marked`] for styled text: the kept part keeps the part of
-/// each span inside it, and the marker carries no span, so it paints in the
-/// row's own style. A span wholly in the dropped part is gone.
+/// each span inside it, and a span wholly in the dropped part is gone. The
+/// marker carries no span, so it paints in the row's own style, unless a
+/// head cut keeps a text that starts with a combining mark: the marker and
+/// that mark are then one cluster, and a span starting there widens over
+/// the marker, as [`SpannedText::new`] widens an edge inside a cluster.
 pub fn truncate_spanned<T>(
     content: SpannedText<T>,
     budget: usize,
     cut: TruncateEnd,
 ) -> SpannedText<T> {
-    let Some((kept, marked)) = cut_window(content.text(), budget, cut) else {
+    let Some(Cut { kept, marker }) = cut_to(content.text(), budget, cut) else {
         return content;
     };
     let kept = content.slice(kept);
-    match (marked, cut) {
-        (false, _) => kept,
-        (true, TruncateEnd::Head) => kept.prepend(ELLIPSIS),
-        (true, TruncateEnd::Tail) => kept.append(ELLIPSIS),
+    match marker {
+        None => kept,
+        Some(TruncateEnd::Head) => kept.prepend_ellipsis(),
+        Some(TruncateEnd::Tail) => kept.append(ELLIPSIS),
     }
 }
 

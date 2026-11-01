@@ -508,7 +508,7 @@ fn truncate_marked_cut_head_prefixes_ellipsis_and_keeps_tail() {
         .unwrap_or_else(|| panic!("clipped string must lead with …, got {out:?}"));
     assert!(
         source.ends_with(kept),
-        "the kept part must be a genuine tail of the source string, got {out:?}"
+        "the kept part must be a tail of the source string, got {out:?}"
     );
 }
 
@@ -522,7 +522,7 @@ fn truncate_marked_cut_tail_appends_ellipsis_and_keeps_head() {
         .unwrap_or_else(|| panic!("clipped string must trail with …, got {out:?}"));
     assert!(
         source.starts_with(kept),
-        "the kept part must be a genuine head of the source string, got {out:?}"
+        "the kept part must be a head of the source string, got {out:?}"
     );
 }
 
@@ -536,8 +536,8 @@ fn truncate_marked_never_splits_a_grapheme_cluster() {
     // opens its own (invalid) cluster instead of extending the previous one.
     let source = "cafe\u{0301} bar";
     for cut in [TruncateEnd::Head, TruncateEnd::Tail] {
-        // Every clip width up to the source's own, including one that lands
-        // mid-cluster if the code were byte-counting instead of grapheme-aware.
+        // Every clip width up to the source's own, the ones ending at the
+        // combining accent included.
         for budget in 0..=8 {
             let out = truncate_marked(source, budget, cut);
             assert!(
@@ -619,4 +619,33 @@ fn a_wide_cluster_at_the_cut_is_dropped_whole() {
     let out = truncate_spanned(spanned("a日b", vec![(1, 2, 'w')]), 3, TruncateEnd::Tail);
     insta::assert_snapshot!(out.text(), @"a…");
     assert!(out.spans().is_empty());
+}
+
+#[test]
+fn a_head_cut_to_one_cell_is_the_marker() {
+    let out = truncate_spanned(spanned("abcdef", vec![(4, 6, 'x')]), 1, TruncateEnd::Head);
+    insta::assert_snapshot!(out.text(), @"…");
+    assert!(out.spans().is_empty());
+}
+
+#[test]
+fn a_head_cut_drops_a_wide_cluster_at_the_cut_whole() {
+    // "日" takes two cells: a three-cell budget keeps the marker and "b".
+    let out = truncate_spanned(spanned("a日b", vec![(1, 2, 'w')]), 3, TruncateEnd::Head);
+    insta::assert_snapshot!(out.text(), @"…b");
+    assert!(out.spans().is_empty());
+}
+
+#[test]
+fn a_head_cut_keeping_a_leading_combining_mark_widens_its_span_over_the_marker() {
+    // The tab ends a cluster, so the mark after it stands alone until the
+    // marker comes before it.
+    let budget = chrome_width("\u{301}cd") + ELLIPSIS_WIDTH;
+    let out = truncate_spanned(
+        spanned("ab\t\u{301}cd", vec![(3, 6, 's')]),
+        budget,
+        TruncateEnd::Head,
+    );
+    assert_eq!(out.text(), "…\u{301}cd");
+    assert_eq!(char_spans(&out), vec![(0, 4, 's')]);
 }

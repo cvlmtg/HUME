@@ -6,6 +6,7 @@ use crate::cluster::ClusterRange;
 use crate::column::ByteCol;
 use crate::grapheme::{next_str_boundary, prev_str_boundary};
 use crate::offset::{CharOffset, ExclusiveRange};
+use crate::width::ELLIPSIS;
 
 /// A string and the parts of it that carry a payload: byte ranges sorted by
 /// start, non-overlapping, each starting and ending on a cluster boundary of
@@ -125,13 +126,16 @@ impl<T> SpannedText<T> {
         }
     }
 
-    /// `before` followed by this text, which `before` carries no span over.
-    /// When the first cluster of this text joins the end of `before`, a span
-    /// starting there widens back over the joined cluster, as [`Self::new`]
-    /// widens an edge inside a cluster.
-    pub(crate) fn prepend(mut self, before: &str) -> Self {
-        let seam = before.len();
-        self.text.insert_str(0, before);
+    /// [`ELLIPSIS`] followed by this text, the marker carrying no span. A
+    /// character after the marker joins it only by extending it (a
+    /// combining mark, a spacing mark, a zero-width joiner): U+2026 is not a
+    /// regional indicator, an extended pictograph or a prepend character.
+    /// So only the first cluster of this text can change, and a span
+    /// starting there widens back over the marker, as [`Self::new`] widens
+    /// an edge inside a cluster.
+    pub(crate) fn prepend_ellipsis(mut self) -> Self {
+        let seam = ELLIPSIS.len();
+        self.text.insert_str(0, ELLIPSIS);
         for (range, _) in &mut self.spans {
             *range = ExclusiveRange::new(
                 range.start.advance_saturating(seam),
