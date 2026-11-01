@@ -104,7 +104,7 @@
                  (loop (cons (read-dir-entry-path entry) files) links))
                 (else (loop files links))))))))
 
-;;; See README.md's "Downloads, digests and archives" for the Windows order.
+;;; See README.md's "Downloads, digests and archives" for why Windows uses only this tar.
 (define (stdlib/windows-tar)
   (let ((root (maybe-get-env-var "SystemRoot")))
     (and (Ok? root)
@@ -122,10 +122,7 @@
      (if (equal? format "zip")
          (stdlib/found 'unzip (find-program "unzip"))
          (stdlib/found 'tar (find-program "tar"))))
-    (else
-     (or (stdlib/found 'tar (stdlib/windows-tar))
-         (and (equal? format "zip") (stdlib/found 'unzip (find-program "unzip")))
-         (stdlib/found 'tar (find-program "tar"))))))
+    (else (stdlib/found 'tar (stdlib/windows-tar)))))
 
 (define (stdlib/find-extractor format)
   (let ((extractor (stdlib/extractor format)))

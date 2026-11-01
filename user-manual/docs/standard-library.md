@@ -54,7 +54,7 @@ Unlike `remove-dir!` and Steel's own `delete-file!`, `stdlib/delete-dir!` and `s
 
 `stdlib/download!` and `stdlib/extract-archive!` run their program in the terminal, so call them only from a command defined with `#:inline-output #t` (see [Commands](plugin-api.md#commands)); anywhere else they raise. `verify-sha256!` and `find-extractor` work anywhere.
 
-The digest and the archives use the platform's own tools: `shasum` on macOS, `sha256sum` on Linux and `certutil` on Windows, and `tar` or `unzip`. `tar` reads gzip-compressed archives too. On Windows, a zip archive is extracted with Windows' own `tar`, or with `unzip` or another `tar` on the `PATH` when Windows' is missing.
+The digest and the archives use the platform's own tools: `shasum` on macOS, `sha256sum` on Linux and `certutil` on Windows, and `tar` or `unzip`. `tar` reads gzip-compressed archives too. On Windows, both kinds of archive are extracted with Windows' own `tar`.
 
 ## Git
 

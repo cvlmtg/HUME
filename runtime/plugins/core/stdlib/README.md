@@ -96,10 +96,9 @@ executable.
 `find-extractor` picks the program for an archive format, and `extract-archive!` runs the
 one it picks, so a caller that checks for an extractor before downloading finds the
 program the extraction runs. Off Windows that is `tar` for a tar archive and `unzip` for a zip archive,
-on the search path. On Windows it is Windows' own bsdtar, `%SystemRoot%\System32\tar.exe`,
-which extracts both; without it, `unzip` on the search path for a zip archive, then the
-search path's `tar`. Under Git Bash that `tar` is GNU tar, which reads a `C:\...` archive path
-as a remote host and cannot extract a `.zip`, so it comes last.
+on the search path. On Windows it is only Windows' own bsdtar, `%SystemRoot%\System32\tar.exe`,
+which extracts both and ships with every Windows HUME runs on. The search path's `tar` is no
+fallback: under Git Bash it is GNU tar, which reads a `C:\...` archive path as a remote host.
 
 ### Git
 
