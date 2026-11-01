@@ -226,7 +226,7 @@ fn split_inherits_focused_panes_selection_and_scroll() {
 #[test]
 fn same_buffer_split_inherits_saved_scrolls() {
     use crate::editor::buffer::lifecycle::open_buffer;
-    use hume_engine::pane::ScrollPosition;
+    use hume_engine::pane::Viewport;
 
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.view.focused_pane();
@@ -235,16 +235,12 @@ fn same_buffer_split_inherits_saved_scrolls() {
     // split, then switched away from. This is what populates
     // `saved_scrolls` in real usage (see `Pane::show_buffer`).
     let bid2 = open_buffer(&mut ed.view, &mut ed.state.buffers, Buffer::scratch(), 0);
-    ed.view.panes[pid_a].saved_scrolls.insert(
-        bid2,
-        ScrollPosition {
-            top: hume_engine::display_lines::DisplayLinePos::new(
-                hume_rope::line::ContentLine::new(42),
-                0,
-            ),
-            horizontal_offset: hume_rope::column::DisplayLineCol::new(0),
-        },
-    );
+    let mut scrolled = Viewport::default();
+    scrolled.seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
+        hume_rope::line::ContentLine::new(42),
+        0,
+    ));
+    ed.view.panes[pid_a].saved_scrolls.insert(bid2, scrolled);
 
     ed.execute_typed("split", None).unwrap();
     let pid_b = ed.view.focused_pane();

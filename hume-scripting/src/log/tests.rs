@@ -13,9 +13,9 @@ fn log_msg_valid_severity() {
     )
     .unwrap();
     drop(ctx);
-    assert_eq!(h.pending_messages.len(), 1);
-    assert_eq!(h.pending_messages[0].1, "hello");
-    assert!(matches!(h.pending_messages[0].0, Severity::Info));
+    assert_eq!(h.state.pending_messages.len(), 1);
+    assert_eq!(h.state.pending_messages[0].1, "hello");
+    assert!(matches!(h.state.pending_messages[0].0, Severity::Info));
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn log_msg_decodes_each_severity_symbol() {
         log_msg(&mut ctx, SteelVal::SymbolV(symbol.into()), "m".to_string())
             .unwrap_or_else(|e| panic!("'{symbol}: {e}"));
         drop(ctx);
-        assert_eq!(h.pending_messages.len(), 1, "'{symbol}");
-        assert_eq!(h.pending_messages[0].0, severity, "'{symbol}");
+        assert_eq!(h.state.pending_messages.len(), 1, "'{symbol}");
+        assert_eq!(h.state.pending_messages[0].0, severity, "'{symbol}");
     }
 }

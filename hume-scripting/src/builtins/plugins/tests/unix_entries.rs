@@ -13,7 +13,7 @@ use hume_platform::dirs::Dirs;
 use tempfile::TempDir;
 
 fn state<'a>(host: &'a ScriptingHost, id: &EntryId) -> Option<&'a PluginState> {
-    host.registries.lazy_registry.plugins.get(id)
+    host.state.registries.lazy_registry.plugins.get(id)
 }
 
 const DECLARE_BOTH: &str = r#"
@@ -166,7 +166,8 @@ fn declare_plugin_rejects_config_and_records_nothing() {
     assert!(err.contains("#:config"), "got: {err}");
     assert!(state(&host, &secondary("user/multi", "extra.scm")).is_none());
     assert!(
-        host.registries
+        host.state
+            .registries
             .plugin_records
             .config(&PluginId::parse("user/multi").unwrap())
             .is_none()

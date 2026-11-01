@@ -122,10 +122,10 @@ pub(crate) struct ScriptingRegistries {
     pub(crate) plugin_records: plugin_record::PluginRecords,
 }
 
-/// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
+/// Borrows of [`HostState`] fields needed to populate [`SteelCtx`].
 ///
-/// Built by [`ScriptingHost::steel_and_bundle`] and passed to
-/// [`SteelCtx::new_init`] or [`SteelCtx::new_command`]. Private to this module.
+/// Built by [`HostState::split`] and passed to [`SteelCtx::new_init`] or
+/// [`SteelCtx::new_command`]. Private to this module.
 pub(crate) struct HostBundle<'a> {
     pub(crate) registries: &'a mut ScriptingRegistries,
     attribution: &'a mut AttributionStack,
@@ -135,20 +135,11 @@ pub(crate) struct HostBundle<'a> {
     budget: watchdog::BudgetClock<'a>,
 }
 
-/// The embedded Steel scripting host.
-///
-/// Owns the Steel `Engine` and all persistent scripting state.  Each eval or
-/// command call constructs a `SteelCtx` that borrows the persistent fields
-/// directly.
-///
-/// Constructed once during `Editor::init_scripting()` and held for the
-/// lifetime of the process.
-pub struct ScriptingHost {
-    /// The Scheme VM, always called `steel` (never bare "engine", which refers to the `engine/` crate).
-    steel: Engine,
-    /// The persistent registries borrowed as a unit into `SteelCtx`, disjoint
-    /// from `steel` so the VM and command/hook state can be borrowed
-    /// simultaneously (NLL field-split).
+/// The scripting state that persists across evals, everything a
+/// [`SteelCtx`] borrows. Owned by [`ScriptingHost`] beside the Steel engine,
+/// and by the scripting crate's test harness beside its host.
+pub(crate) struct HostState {
+    /// The persistent registries borrowed as a unit into `SteelCtx`.
     pub(crate) registries: ScriptingRegistries,
     /// The frames of attributed code running: plugin bodies and `call!`ed
     /// commands. Empty between sessions.
@@ -170,6 +161,60 @@ pub struct ScriptingHost {
     watchdog: EvalWatchdog,
 }
 
+impl HostState {
+    fn new(dirs: builtins::dirs::ScriptDirs, watchdog: EvalWatchdog) -> Self {
+        Self {
+            registries: ScriptingRegistries::default(),
+            attribution: AttributionStack::default(),
+            pending_messages: Vec::new(),
+            effects: Vec::new(),
+            dirs,
+            watchdog,
+        }
+    }
+
+    /// Split `self` into the watchdog and the [`HostBundle`] of borrows a
+    /// [`SteelCtx`] is built from. The borrows are disjoint fields, so the
+    /// caller can hold the watchdog while the bundle is lent out.
+    pub(crate) fn split(&mut self) -> (&EvalWatchdog, HostBundle<'_>) {
+        let Self {
+            registries,
+            attribution,
+            pending_messages,
+            effects,
+            dirs,
+            watchdog,
+        } = self;
+        (
+            watchdog,
+            HostBundle {
+                registries,
+                attribution,
+                pending_messages,
+                effects,
+                dirs: &*dirs,
+                budget: watchdog.clock(),
+            },
+        )
+    }
+}
+
+/// The embedded Steel scripting host.
+///
+/// Owns the Steel `Engine` and all persistent scripting state.  Each eval or
+/// command call constructs a `SteelCtx` that borrows the persistent fields
+/// directly.
+///
+/// Constructed once during `Editor::init_scripting()` and held for the
+/// lifetime of the process.
+pub struct ScriptingHost {
+    /// The Scheme VM, always called `steel` (never bare "engine", which refers to the `engine/` crate).
+    steel: Engine,
+    /// Disjoint from `steel`, so the VM and the state a `SteelCtx` borrows
+    /// can be borrowed at once (NLL field-split).
+    state: HostState,
+}
+
 impl ScriptingHost {
     /// Create a new scripting host with the Steel standard library and all HUME
     /// builtins loaded.
@@ -187,12 +232,7 @@ impl ScriptingHost {
         watchdog.connect(library_wait);
         Self {
             steel,
-            registries: ScriptingRegistries::default(),
-            attribution: AttributionStack::default(),
-            pending_messages: Vec::new(),
-            effects: Vec::new(),
-            dirs,
-            watchdog,
+            state: HostState::new(dirs, watchdog),
         }
     }
 
@@ -267,19 +307,19 @@ impl ScriptingHost {
 
     /// Runtime directory for core plugins, themes, and docs.
     pub fn runtime_dir(&self) -> Option<&Path> {
-        self.dirs.runtime_dir.as_deref()
+        self.state.dirs.runtime_dir.as_deref()
     }
 
     /// Data directory for user/third-party plugins.
     pub fn data_dir(&self) -> Option<&Path> {
-        self.dirs.data_dir.as_deref()
+        self.state.dirs.data_dir.as_deref()
     }
 
     /// A new [`hume_core::OsWait`] connected to this host's budget.
     #[cfg(any(test, feature = "test-util"))]
     pub fn os_wait(&self) -> hume_core::OsWait {
         let wait = hume_core::OsWait::default();
-        self.watchdog.connect(&wait);
+        self.state.watchdog.connect(&wait);
         wait
     }
 
@@ -340,36 +380,44 @@ impl ScriptingHost {
 
     /// Drain all accumulated log messages since the last drain.
     pub fn take_pending_messages(&mut self) -> Vec<(Severity, String)> {
-        std::mem::take(&mut self.pending_messages)
+        std::mem::take(&mut self.state.pending_messages)
     }
 
     /// Returns `true` if at least one handler for `name` fires for an event
     /// carrying `key`: an unkeyed handler always does, a keyed one only when
     /// `key` is among its keys.
     pub fn has_hook_handlers(&self, name: &str, key: Option<&str>) -> bool {
-        self.registries.hooks.has_match(name, key)
+        self.state.registries.hooks.has_match(name, key)
     }
 
     /// A snapshot of the language activation entries declared during init (language → plugins).
     pub fn activation_languages(&self) -> rustc_hash::FxHashMap<String, Vec<attribution::EntryId>> {
-        self.registries.lazy_registry.activation_languages.clone()
+        self.state
+            .registries
+            .lazy_registry
+            .activation_languages
+            .clone()
     }
 
     /// Plugin ids that should be activated when the event named `name` fires.
     pub fn activation_event_plugins(&self, name: &str) -> Vec<attribution::EntryId> {
-        self.registries.lazy_registry.event_plugins(name)
+        self.state.registries.lazy_registry.event_plugins(name)
     }
 
     /// Plugin ids that should be activated when `language` is set on a buffer:
     /// those keyed by `language`, then those keyed by the wildcard `"*"`, each
     /// once.
     pub fn activation_language_plugins(&self, language: &str) -> Vec<attribution::EntryId> {
-        self.registries.lazy_registry.language_plugins(language)
+        self.state
+            .registries
+            .lazy_registry
+            .language_plugins(language)
     }
 
     /// Status of a plugin in the lazy registry.
     pub fn plugin_status(&self, id: &attribution::EntryId) -> Option<PluginStatus> {
-        self.registries
+        self.state
+            .registries
             .lazy_registry
             .plugins
             .get(id)
@@ -379,7 +427,8 @@ impl ScriptingHost {
     /// Returns `true` if any plugin in the registry has transitioned to `Loaded`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn has_any_loaded_plugin(&self) -> bool {
-        self.registries
+        self.state
+            .registries
             .lazy_registry
             .plugins
             .values()
@@ -389,7 +438,7 @@ impl ScriptingHost {
     /// All plugin names ever passed to `(load-plugin! …)` or `(declare-plugin! …)`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn declared_plugins(&self) -> Vec<String> {
-        self.registries.plugin_records.plum_names().collect()
+        self.state.registries.plugin_records.plum_names().collect()
     }
 
     /// Format a human-readable plugin status table for `:plugin-status`.
@@ -398,15 +447,16 @@ impl ScriptingHost {
     /// plugin, `is_typed`). This crate doesn't track pending command
     /// activations itself, so the caller supplies its live registry snapshot.
     pub fn lazy_status_string(&self, lazy_cmds: &[(String, attribution::EntryId, bool)]) -> String {
-        self.registries
-            .lazy_registry
-            .format_status(self.registries.plugin_records.entryless_rows(), lazy_cmds)
+        self.state.registries.lazy_registry.format_status(
+            self.state.registries.plugin_records.entryless_rows(),
+            lazy_cmds,
+        )
     }
 
     /// Peek at pending messages without draining.  Only for test assertions.
     #[cfg(any(test, feature = "test-util"))]
     pub fn peek_pending_messages(&self) -> &[(Severity, String)] {
-        &self.pending_messages
+        &self.state.pending_messages
     }
 
     /// Peek at the effect log without draining.  Only for test assertions:
@@ -414,19 +464,19 @@ impl ScriptingHost {
     /// atomic drain (`take_eval_effects`).
     #[cfg(any(test, feature = "test-util"))]
     pub fn effects_for_test(&self) -> Vec<&Effect> {
-        self.effects.iter().map(|e| &e.effect).collect()
+        self.state.effects.iter().map(|e| &e.effect).collect()
     }
 
     /// How many attribution frames are open: bodies and `call!` frames.
     #[cfg(test)]
     pub(crate) fn attribution_depth_for_test(&self) -> usize {
-        self.attribution.len()
+        self.state.attribution.len()
     }
 
     /// Push a fake plugin body onto the attribution stack.
     #[cfg(test)]
     pub(crate) fn push_plugin_for_test(&mut self, id: attribution::EntryId) {
-        self.attribution.push_body(id);
+        self.state.attribution.push_body(id);
     }
 }
 

@@ -14,12 +14,13 @@
 // counting math from the Steel bridge (that path is exercised separately in
 // `lsp_virtual_lines.rs`).
 
-use super::doubles::{InlineHint, VirtualLineBlock};
+use super::doubles::InlineHint;
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
 use hume_core::Side;
 use hume_editing::text::BufferText;
 use hume_engine::pane::WrapMode;
+use hume_engine::test_doubles::VirtualLineBlock;
 use hume_grid::Rect;
 
 /// Two-line buffer ("x\ny\n"), wrapping on, a `Before(0)` block registered
@@ -64,7 +65,7 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // ask `content_pos` with that same settled state, exactly as production
     // code does after `prepare_frame`.
     let pid = ed.view.focused_pane();
-    let mut vp = ed.view.panes[pid].viewport.clone();
+    let mut vp = ed.view.panes[pid].viewport;
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
     let size = ed.pane_size(pid);
@@ -524,7 +525,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     );
     assert_eq!(cell(&rendered, 0, 2), "y", "line 1 follows at row 2");
 
-    let mut vp = ed.view.panes[pid].viewport.clone();
+    let mut vp = ed.view.panes[pid].viewport;
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
     let size = ed.pane_size(pid);

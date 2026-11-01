@@ -5,29 +5,21 @@
 //! for a char offset literal (`co`), for the cluster at a char offset
 //! (`at`), for a painted selection (`painted`) and a pane's selection mirror
 //! (`mirror`, `cursor_mirror`), for a `DisplayLineMap` over a fixed
-//! `FormatKey` (`map`), and for a fake `VIRTUAL_LINE` decoration source
-//! (`VirtualLineBlock`), shared by `display_lines::tests` and
-//! `display_lines::scroll::tests`, which are cousins under `display_lines`
-//! and so can't see each other's own private test doubles.
+//! `FormatKey` (`map`).
 
-use std::cell::Cell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
-use hume_core::Side;
 use hume_grid::Rgb;
 use ropey::Rope;
 
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::ByteCol;
-use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-use hume_rope::spanned::SpannedText;
 
 use crate::display_lines::line_store::{FormatKey, PaneLineStore};
 use crate::display_lines::{DisplayLineMap, RenderDisplayLine};
 use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::{Decoration, DecorationKinds, DecorationSource, ProviderSet, VirtualLine};
+use crate::providers::ProviderSet;
 use crate::theme::Theme;
 use crate::types::{DisplayLine, Grapheme, PaintedSelection, PaintedSelections, ResolvedStyle};
 
@@ -94,92 +86,6 @@ pub(crate) fn map<'a>(
         },
         store,
     )
-}
-
-/// What each of a [`VirtualLineBlock`]'s display lines says.
-pub(crate) enum BlockText {
-    /// Every display line carries the same text, for tests that only count them.
-    Same(&'static str),
-    /// Display lines read "1", "2", …, for tests that assert *which* one of
-    /// a block landed on a given screen line, which identical text cannot show.
-    Ordinal,
-}
-
-/// A VIRTUAL_LINE source emitting `count` display lines on one side of one
-/// line, and nothing for any other line.
-pub(crate) struct VirtualLineBlock {
-    side: Side,
-    line: ContentLine,
-    count: usize,
-    text: BlockText,
-    calls: Option<Rc<Cell<usize>>>,
-}
-
-impl VirtualLineBlock {
-    /// `count` display lines on `side` of `line`, every one texted `text`.
-    pub(crate) fn uniform(side: Side, line: ContentLine, count: usize, text: &'static str) -> Self {
-        Self {
-            side,
-            line,
-            count,
-            text: BlockText::Same(text),
-            calls: None,
-        }
-    }
-
-    /// `count` display lines on `side` of `line`, texted "1", "2", … so a
-    /// test can tell which one of the block it is looking at.
-    pub(crate) fn numbered(side: Side, line: ContentLine, count: usize) -> Self {
-        Self {
-            side,
-            line,
-            count,
-            text: BlockText::Ordinal,
-            calls: None,
-        }
-    }
-
-    /// Count queries: the observable proxy for "did the display-line map
-    /// treat this line as already known rather than re-querying it".
-    ///
-    /// Counts only queries for this double's *own* line. A frame queries every
-    /// line it walks, including whichever one the cursor happens to sit on, so
-    /// an unnarrowed counter measures the walk rather than the caching under
-    /// test.
-    pub(crate) fn counting(mut self, calls: Rc<Cell<usize>>) -> Self {
-        self.calls = Some(calls);
-        self
-    }
-}
-
-impl DecorationSource for VirtualLineBlock {
-    fn kinds(&self) -> DecorationKinds {
-        DecorationKinds::VIRTUAL_LINE
-    }
-
-    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
-        if line_idx != self.line {
-            return;
-        }
-        if let Some(calls) = &self.calls {
-            calls.set(calls.get() + 1);
-        }
-        for i in 0..self.count {
-            out.push(Decoration::VirtualLine(VirtualLine {
-                line: self.line,
-                side: self.side,
-                // Ignored downstream: `DisplayLineMap::block_entry` overwrites a
-                // self-reported id with the real one, so there is nothing
-                // here worth parameterising.
-                provider_id: 0,
-                content: SpannedText::plain(match self.text {
-                    BlockText::Same(t) => t.to_string(),
-                    BlockText::Ordinal => (i + 1).to_string(),
-                }),
-                base_scope: None,
-            }));
-        }
-    }
 }
 
 pub(crate) fn fg(color: Rgb) -> ResolvedStyle {

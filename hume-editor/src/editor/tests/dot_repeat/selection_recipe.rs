@@ -53,8 +53,8 @@ fn dot_repeats_extend_select_delete() {
     // Recipe must be [select-line F, select-line T] (establish + one extend).
     let recipe = &ed.state.last_action().unwrap().selection_recipe;
     assert_eq!(recipe.len(), 2, "recipe must have 2 steps");
-    assert!(!recipe[0].extend, "first step must be Move (establish)");
-    assert!(recipe[1].extend, "second step must be Extend");
+    assert!(!recipe[0].ctx.extend, "first step must be Move (establish)");
+    assert!(recipe[1].ctx.extend, "second step must be Extend");
 
     // `.` replays: x (select "ccc\n") + Ctrl-x (extend to "ccc\nddd\n") + d.
     ed.feed_key(key('.'));

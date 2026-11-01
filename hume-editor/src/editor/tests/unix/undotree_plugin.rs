@@ -7,22 +7,15 @@
 // plugin README, never by calling the renderer.
 
 use super::*;
+use hume_scripting::host::UndoNode;
 
 const RENDER_SCM: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../runtime/plugins/core/undotree/render.scm"
 ));
 
-struct Node {
-    id: usize,
-    parent: Option<usize>,
-    age_secs: u64,
-    current: bool,
-    saved: bool,
-}
-
-fn node(id: usize, parent: Option<usize>, age_secs: u64, current: bool, saved: bool) -> Node {
-    Node {
+fn node(id: usize, parent: Option<usize>, age_secs: u64, current: bool, saved: bool) -> UndoNode {
+    UndoNode {
         id,
         parent,
         age_secs,
@@ -32,7 +25,7 @@ fn node(id: usize, parent: Option<usize>, age_secs: u64, current: bool, saved: b
 }
 
 /// A Scheme list of the `(buffer-undo-tree pane)` hashes for `nodes`.
-fn scheme_nodes(nodes: &[Node]) -> String {
+fn scheme_nodes(nodes: &[UndoNode]) -> String {
     let hashes: Vec<String> = nodes
         .iter()
         .map(|n| {
@@ -50,13 +43,13 @@ fn scheme_nodes(nodes: &[Node]) -> String {
 }
 
 /// The drawer rows `undotree/render` produces for `nodes`, joined by newlines.
-fn rendered_rows(nodes: &[Node]) -> String {
+fn rendered_rows(nodes: &[UndoNode]) -> String {
     rendered_rows_after(&[], nodes)
 }
 
 /// [`rendered_rows`], with `earlier` rendered first, in order, in the same
 /// Steel VM.
-fn rendered_rows_after(earlier: &[&[Node]], nodes: &[Node]) -> String {
+fn rendered_rows_after(earlier: &[&[UndoNode]], nodes: &[UndoNode]) -> String {
     let guard = RuntimeDirs::new();
     let plugin_dir = guard.runtime.path().join("plugins/core/undotree-probe");
     let earlier: Vec<String> = earlier
@@ -128,7 +121,7 @@ fn render_crossing_lane_passes_through_merge_bus() {
 #[test]
 fn render_age_units() {
     let ages = [172_800, 86_400, 86_399, 3_600, 3_599, 60, 59, 0];
-    let nodes: Vec<Node> = ages
+    let nodes: Vec<UndoNode> = ages
         .iter()
         .enumerate()
         .map(|(id, &age)| node(id, id.checked_sub(1), age, id == ages.len() - 1, id == 0))
@@ -187,7 +180,7 @@ fn render_new_parents_redraw_the_graph() {
 fn next_change_secs(ages: &[u64]) -> String {
     let guard = RuntimeDirs::new();
     let plugin_dir = guard.runtime.path().join("plugins/core/undotree-probe");
-    let nodes: Vec<Node> = ages
+    let nodes: Vec<UndoNode> = ages
         .iter()
         .enumerate()
         .map(|(id, &age)| node(id, id.checked_sub(1), age, id == 0, false))
@@ -234,7 +227,7 @@ fn render_reports_the_seconds_to_the_next_age_label_change() {
 
 /// A fork off the root, the newest revision (3) on one branch and the saved
 /// root on the other.
-fn forked() -> Vec<Node> {
+fn forked() -> Vec<UndoNode> {
     vec![
         node(0, None, 40, false, true),
         node(1, Some(0), 30, false, false),
@@ -244,7 +237,7 @@ fn forked() -> Vec<Node> {
 }
 
 /// `forked()` with revision 4 added under the newest, as one more edit does.
-fn forked_with_child() -> Vec<Node> {
+fn forked_with_child() -> Vec<UndoNode> {
     vec![
         node(0, None, 40, false, true),
         node(1, Some(0), 30, false, false),

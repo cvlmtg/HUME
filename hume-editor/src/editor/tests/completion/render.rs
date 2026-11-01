@@ -121,7 +121,10 @@ const DOCUMENTED: &str = r#"(list (hash "label" "foo" "detail" "fn foo()" "docum
 fn doc_box(ed: &Editor) -> Option<(Rect, Vec<String>)> {
     let view = ed.state.views.completion_doc.read();
     let state = view.as_ref()?;
-    Some((state.rect, state.lines[state.visible.clone()].to_vec()))
+    Some((
+        state.rect,
+        state.rows.lines[state.rows.visible.clone()].to_vec(),
+    ))
 }
 
 fn menu_rect(ed: &Editor) -> Rect {
@@ -198,7 +201,7 @@ fn doc_box_content_is_rebuilt_after_a_theme_reload() {
             .completion_doc
             .read()
             .as_ref()
-            .map(|state| std::sync::Arc::clone(&state.lines))
+            .map(|state| std::sync::Arc::clone(&state.rows.lines))
     };
     frame(&mut ed, 60, 16);
     let first = doc_lines(&ed).expect("doc box showing");
@@ -253,7 +256,7 @@ fn menu_shows_detail_when_the_doc_box_has_no_room() {
     frame(&mut ed, 30, 8);
     assert_eq!(doc_box(&ed), None);
     let menu = ed.state.views.completion_menu.read();
-    let lines = &menu.as_ref().expect("menu showing").lines;
+    let lines = &menu.as_ref().expect("menu showing").rows.lines;
     assert!(
         lines.iter().any(|line| line.contains("fn foo()")),
         "menu lines: {lines:?}"
@@ -269,7 +272,7 @@ fn menu_leaves_detail_to_the_doc_box() {
 
     frame(&mut ed, 60, 16);
     let menu = ed.state.views.completion_menu.read();
-    let lines = &menu.as_ref().expect("menu showing").lines;
+    let lines = &menu.as_ref().expect("menu showing").rows.lines;
     assert!(lines.iter().all(|line| !line.contains("fn foo()")));
     let (_, lines) = doc_box(&ed).expect("doc box showing");
     assert_eq!(lines, ["fn foo()", "", "Does foo."]);
@@ -478,7 +481,7 @@ fn doc_box_fences_detail_in_the_buffers_language() {
     let view = ed.state.views.completion_doc.read();
     let state = view.as_ref().expect("doc box showing");
     assert_eq!(
-        state.lines.as_slice(),
+        state.rows.lines.as_slice(),
         ["```rust", "fn foo()", "```", "", "Does foo."]
     );
 }
@@ -501,10 +504,13 @@ fn markdown_documentation_is_highlighted_below_a_fenced_detail() {
     let view = ed.state.views.completion_doc.read();
     let state = view.as_ref().expect("doc box showing");
     assert_eq!(
-        state.lines.as_slice(),
+        state.rows.lines.as_slice(),
         ["```", "fn foo()", "```", "", "# Foo"]
     );
-    assert!(state.styled_rows.is_some(), "markdown content is styled");
+    assert!(
+        state.rows.styled_rows.is_some(),
+        "markdown content is styled"
+    );
 }
 
 // ── The anchor reuses the scroll pass's cached cursor cell ──────────────────

@@ -1,5 +1,5 @@
 use super::*;
-use crate::editor::tests::doubles::{VirtualLineBlock, no_providers, providers_with_before_line};
+use crate::editor::tests::doubles::{no_providers, providers_with_before_line};
 use crate::editor::tests::{cluster_at, co};
 use hume_core::Side;
 use hume_engine::display_lines::DisplayLineMap;
@@ -8,6 +8,7 @@ use hume_engine::display_lines::line_store::{FormatKey, PaneLineStore};
 use hume_engine::pane::{Viewport, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::{ContentWidth, PaneSize};
 use hume_engine::providers::ProviderSet;
+use hume_engine::test_doubles::VirtualLineBlock;
 use ropey::Rope;
 
 /// A viewport scrolled to `top_line`, and the size of the pane it belongs to.

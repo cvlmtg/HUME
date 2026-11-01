@@ -1,6 +1,7 @@
 use hume_grid::{Grid, Rect, Rgb};
 use std::collections::HashMap;
 
+use crate::test_doubles::VirtualLineBlock;
 use crate::test_support::{fg, theme_with};
 use hume_rope::spanned::SpannedText;
 
@@ -235,32 +236,6 @@ fn virtual_display_line_resolves_scopes_from_segments_given_out_of_order() {
 
 // ── top_skip vs virtual lines ─────────────────────────────────────────
 
-/// Emits one virtual line anchored to a fixed line index, only when that
-/// line is in the visible range. Smoke-tests the whole virtual-line path
-/// (`ProviderSet::add_decoration_source` → `render_pane`).
-struct FixedVirtualLineSource {
-    side: hume_core::Side,
-    line: ContentLine,
-    text: &'static str,
-}
-
-impl DecorationSource for FixedVirtualLineSource {
-    fn kinds(&self) -> DecorationKinds {
-        DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
-        if line_idx == self.line {
-            out.push(Decoration::VirtualLine(VirtualLine {
-                line: self.line,
-                side: self.side,
-                provider_id: 0,
-                content: SpannedText::plain(self.text.to_string()),
-                base_scope: None,
-            }));
-        }
-    }
-}
-
 /// Build a pane viewing a rope whose line 0 is "aaaabbbbcccc". Under
 /// `WrapMode::Soft { width: 4 }` this wraps into exactly 3 display lines:
 /// "aaaa", "bbbb", "cccc" (each grapheme is 1 column, so Soft splits at the
@@ -289,7 +264,7 @@ fn render_wrapped_pane_with_virtual_text(
     pane.viewport
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), top_slot as usize));
     pane.providers
-        .add_decoration_source(Box::new(FixedVirtualLineSource { side, line, text }));
+        .add_decoration_source(Box::new(VirtualLineBlock::uniform(side, line, 1, text)));
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, 6);

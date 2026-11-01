@@ -8,7 +8,8 @@ use streaming_iterator::StreamingIterator;
 use crate::edited_bytes::{EditedBytes, push_merging};
 use crate::highlight::RopeProvider;
 
-use crate::parse_worker::{MAX_INJECTION_DEPTH, ParsedInjection, run_parse};
+use crate::layers::SyntaxLayer;
+use crate::parse_worker::{MAX_INJECTION_DEPTH, run_parse};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId, SnapshotGrammar};
 
 /// A compiled `injections.scm` query plus the per-pattern settings needed to
@@ -482,18 +483,7 @@ fn group_sites(
         .collect()
 }
 
-/// An injected layer of the committed layers, edited to the text being
-/// parsed.
-pub(crate) struct PriorInjection {
-    pub(crate) bundle: Arc<GrammarBundle>,
-    pub(crate) depth: u8,
-    pub(crate) tree: tree_sitter::Tree,
-    /// Never empty, as no injected layer's ranges are.
-    pub(crate) ranges: Vec<tree_sitter::Range>,
-    pub(crate) sites: InjectionSites,
-}
-
-impl PriorInjection {
+impl SyntaxLayer {
     fn key(&self) -> (u8, usize) {
         (self.depth, self.ranges[0].start_byte)
     }
@@ -514,16 +504,17 @@ impl PriorInjection {
     }
 }
 
-/// The committed layers' injected layers, sorted by depth, then by the
-/// start byte of their first range.
+/// The committed layers' injected layers, edited to the text being parsed,
+/// sorted by depth, then by the start byte of their first range. No
+/// injected layer's ranges are empty.
 pub(crate) struct PriorInjections {
-    layers: Vec<PriorInjection>,
+    layers: Vec<SyntaxLayer>,
 }
 
-impl FromIterator<PriorInjection> for PriorInjections {
-    fn from_iter<I: IntoIterator<Item = PriorInjection>>(layers: I) -> Self {
-        let mut layers: Vec<PriorInjection> = layers.into_iter().collect();
-        layers.sort_by_key(PriorInjection::key);
+impl FromIterator<SyntaxLayer> for PriorInjections {
+    fn from_iter<I: IntoIterator<Item = SyntaxLayer>>(layers: I) -> Self {
+        let mut layers: Vec<SyntaxLayer> = layers.into_iter().collect();
+        layers.sort_by_key(SyntaxLayer::key);
         Self { layers }
     }
 }
@@ -625,7 +616,7 @@ pub(crate) fn resolve_and_parse_injections(
     depth: u8,
     prior: Option<SitePrior<'_>>,
     unloaded: &mut Vec<LanguageId>,
-) -> (InjectionSites, Vec<ParsedInjection>) {
+) -> (InjectionSites, Vec<SyntaxLayer>) {
     let Some(inj) = bundle
         .injections
         .as_ref()
@@ -666,7 +657,7 @@ pub(crate) fn resolve_and_parse_injections(
             unloaded,
         );
         out.extend(descendants);
-        out.push(ParsedInjection {
+        out.push(SyntaxLayer {
             bundle: group.bundle,
             tree: child_tree,
             ranges: group.ranges,

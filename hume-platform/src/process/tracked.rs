@@ -13,7 +13,6 @@
 //! are not tracked and can be orphaned by a force-exit.
 //! They are short-lived and self-terminating.
 
-use std::process::Child;
 use std::sync::{Arc, Mutex, TryLockError, Weak};
 
 use super::GroupedChild;
@@ -25,7 +24,7 @@ use nix::sys::signal::{Signal, killpg};
 use nix::unistd::{Pid, getpgid};
 
 struct TrackedInner {
-    child: Child,
+    grouped: GroupedChild,
     /// Recorded once at registration rather than re-checked at kill time:
     /// by the time `force_exit` runs the child may already be gone, and
     /// `getpgid` on a dead pid would just report `ESRCH`. This remembers
@@ -33,9 +32,6 @@ struct TrackedInner {
     /// true this instant.
     #[cfg(unix)]
     group_leader: bool,
-    /// The job the child and every process it starts run in.
-    #[cfg(windows)]
-    job: super::job_object::Job,
 }
 
 impl TrackedInner {
@@ -51,7 +47,7 @@ impl TrackedInner {
         // reused, so the job is ended even after the child exited: a
         // process the child started can still be running in it.
         #[cfg(windows)]
-        let job_ended = self.job.terminate().is_ok();
+        let job_ended = self.grouped.job.terminate().is_ok();
         // `Child::kill`'s own pid-reuse guard (checked in the vendored `std`
         // source: it no-ops once the child's exit status has been cached)
         // does not cover the `killpg` path below, which bypasses `Child`
@@ -59,7 +55,7 @@ impl TrackedInner {
         // exit status the same way `Child::kill` does internally, so a
         // child that already exited (and whose pid the kernel may already
         // have reused) is never signalled by pid, group or otherwise.
-        if !matches!(self.child.try_wait(), Ok(None)) {
+        if !matches!(self.grouped.child.try_wait(), Ok(None)) {
             return;
         }
         // Each group kill falls through to the direct kill below on failure:
@@ -67,7 +63,7 @@ impl TrackedInner {
         // `reap()`'s `wait()` blocking forever on it.
         #[cfg(unix)]
         if self.group_leader
-            && let Ok(pid) = i32::try_from(self.child.id())
+            && let Ok(pid) = i32::try_from(self.grouped.child.id())
             && killpg(Pid::from_raw(pid), Signal::SIGKILL).is_ok()
         {
             return;
@@ -76,7 +72,7 @@ impl TrackedInner {
         if job_ended {
             return;
         }
-        let _ = self.child.kill();
+        let _ = self.grouped.child.kill();
     }
 }
 
@@ -164,21 +160,12 @@ impl TrackedChild {
     }
 
     fn in_registry(grouped: GroupedChild, registry: &ChildRegistry) -> Self {
-        #[cfg(unix)]
-        let inner = {
-            let GroupedChild { child } = grouped;
-            let group_leader = i32::try_from(child.id())
+        let inner = TrackedInner {
+            #[cfg(unix)]
+            group_leader: i32::try_from(grouped.child.id())
                 .map(Pid::from_raw)
-                .is_ok_and(|pid| getpgid(Some(pid)) == Ok(pid));
-            TrackedInner {
-                child,
-                group_leader,
-            }
-        };
-        #[cfg(windows)]
-        let inner = {
-            let GroupedChild { child, job } = grouped;
-            TrackedInner { child, job }
+                .is_ok_and(|pid| getpgid(Some(pid)) == Ok(pid)),
+            grouped,
         };
 
         let slot = Arc::new(Mutex::new(inner));
@@ -188,14 +175,14 @@ impl TrackedChild {
 
     /// The child's OS process id.
     pub fn id(&self) -> u32 {
-        lock_recovering(&self.0).child.id()
+        lock_recovering(&self.0).grouped.child.id()
     }
 
     /// Non-blocking wait that does not kill. Mirrors `Child::try_wait`; callers
     /// that need the "still running → kill it" fallback call
     /// [`reap`](Self::reap) themselves on `Ok(None)`.
     pub fn try_wait(&self) -> std::io::Result<Option<std::process::ExitStatus>> {
-        lock_recovering(&self.0).child.try_wait()
+        lock_recovering(&self.0).grouped.child.try_wait()
     }
 
     /// Blocks until the child exits and returns its status. The slot's lock
@@ -224,6 +211,7 @@ impl TrackedChild {
         use windows_sys::Win32::System::Threading::{INFINITE, WaitForSingleObject};
 
         let process = lock_recovering(&self.0)
+            .grouped
             .child
             .as_handle()
             .try_clone_to_owned()?;
@@ -243,7 +231,7 @@ impl TrackedChild {
     pub fn reap(&self) -> Option<std::process::ExitStatus> {
         let mut inner = lock_recovering(&self.0);
         inner.kill();
-        inner.child.wait().ok()
+        inner.grouped.child.wait().ok()
     }
 }
 

@@ -995,4 +995,6 @@ impl Buffer {
 }
 
 #[cfg(test)]
+pub(crate) mod doc_helper;
+#[cfg(test)]
 mod tests;

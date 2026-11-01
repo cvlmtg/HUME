@@ -1470,7 +1470,7 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
         "selection_recipe must not be clobbered by inner (call! \"insert-before\")"
     );
     assert!(
-        !action.selection_recipe[0].extend,
+        !action.selection_recipe[0].ctx.extend,
         "x step must be a Move (establish)"
     );
 }

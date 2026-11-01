@@ -82,12 +82,16 @@ fn register_hook_valid_in_init_mode() {
         assert!(result.is_ok(), "register-hook! must succeed in init mode");
     }
     assert_eq!(
-        h.registries.hooks.handlers_for("on-buffer-save").len(),
+        h.state
+            .registries
+            .hooks
+            .handlers_for("on-buffer-save")
+            .len(),
         1,
         "one handler must be registered for on-buffer-save"
     );
     assert_eq!(
-        *h.registries.hooks.handlers_for("on-buffer-save")[0]
+        *h.state.registries.hooks.handlers_for("on-buffer-save")[0]
             .handler
             .provenance()
             .owner,
@@ -102,7 +106,8 @@ fn register_hook_valid_during_plugin_load() {
     use crate::attribution::{EntryId, PluginId};
     let mut h = SteelCtxTestHarness::new();
     // Simulate being inside a plugin body.
-    h.attribution
+    h.state
+        .attribution
         .push_body(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
     {
         let mut ctx = h.ctx(); // EvalMode::PluginActivation → allowed
@@ -116,9 +121,9 @@ fn register_hook_valid_during_plugin_load() {
             "register-hook! must succeed during plugin load"
         );
     }
-    assert!(h.registries.hooks.has_match("on-buffer-open", None));
+    assert!(h.state.registries.hooks.has_match("on-buffer-open", None));
     assert_eq!(
-        *h.registries.hooks.handlers_for("on-buffer-open")[0]
+        *h.state.registries.hooks.handlers_for("on-buffer-open")[0]
             .handler
             .provenance()
             .owner,
@@ -126,7 +131,7 @@ fn register_hook_valid_during_plugin_load() {
         "a plugin-body registration must be attributed to the currently-executing plugin"
     );
     assert_eq!(
-        h.registries.hooks.handlers_for("on-buffer-open")[0]
+        h.state.registries.hooks.handlers_for("on-buffer-open")[0]
             .handler
             .provenance()
             .behalf,

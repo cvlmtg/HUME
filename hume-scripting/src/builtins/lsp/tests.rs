@@ -43,7 +43,8 @@ fn wire_pos(line: isize, character: isize) -> SteelVal {
 
 /// `Effect::LspServerOp` entries queued so far, in emission order.
 fn lsp_server_ops(h: &SteelCtxTestHarness) -> Vec<&PendingLspServerOp> {
-    h.effects
+    h.state
+        .effects
         .iter()
         .filter_map(|e| match &e.effect {
             Effect::LspServerOp(op) => Some(op),
@@ -723,7 +724,8 @@ fn a_plugin_bodys_lists_rank_as_the_plugins() {
     use crate::attribution::{EntryId, PluginId};
 
     let mut h = SteelCtxTestHarness::new();
-    h.attribution
+    h.state
+        .attribution
         .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     let mut ctx = h.ctx_activation();
     set_list(&mut ctx, list_of(&["ty"])).unwrap();
@@ -1581,7 +1583,7 @@ fn noop_proc(_args: &[SteelVal]) -> SteelResult {
 
 /// The keys the single registered `on-lsp-notification` entry carries.
 fn registered_keys(h: &SteelCtxTestHarness) -> Option<Vec<String>> {
-    let entries = h.registries.hooks.handlers_for("on-lsp-notification");
+    let entries = h.state.registries.hooks.handlers_for("on-lsp-notification");
     assert_eq!(entries.len(), 1, "one entry must be registered, no more");
     entries[0].keys.as_ref().map(|k| k.to_vec())
 }
@@ -1622,7 +1624,12 @@ fn register_lsp_notification_hook_rejects_an_empty_method_list() {
             .expect_err("an empty list must be rejected")
             .to_string();
     assert!(msg.contains("must not be empty"), "got: {msg}");
-    assert!(!h.registries.hooks.has_match("on-lsp-notification", None));
+    assert!(
+        !h.state
+            .registries
+            .hooks
+            .has_match("on-lsp-notification", None)
+    );
 }
 
 #[test]
@@ -1656,7 +1663,7 @@ fn register_lsp_notification_hook_attributes_the_running_plugin() {
     use crate::attribution::{EntryId, PluginId};
     let mut h = SteelCtxTestHarness::new();
     let id = PluginId::parse("core:myplugin").unwrap();
-    h.attribution.push_body(EntryId::main(id.clone()));
+    h.state.attribution.push_body(EntryId::main(id.clone()));
     register_lsp_notification_hook(
         &mut h.ctx(),
         SteelVal::StringV("a/b".into()),
@@ -1664,7 +1671,7 @@ fn register_lsp_notification_hook_attributes_the_running_plugin() {
     )
     .expect("registration during plugin load must succeed");
     assert_eq!(
-        *h.registries.hooks.handlers_for("on-lsp-notification")[0]
+        *h.state.registries.hooks.handlers_for("on-lsp-notification")[0]
             .handler
             .provenance()
             .owner,

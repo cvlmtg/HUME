@@ -45,7 +45,7 @@ use popup::PopupOverlay;
 pub struct OverlayViews {
     pub minibuf_completion: SharedSlot<Option<popup::PopupState>>,
     pub popup: SharedSlot<Option<popup::PopupState>>,
-    pub popup_band: SharedSlot<Option<popup::PopupBandState>>,
+    pub popup_band: SharedSlot<Option<popup::PopupRows>>,
     pub menu: SharedSlot<Option<popup::PopupState>>,
     pub completion_menu: SharedSlot<Option<popup::PopupState>>,
     pub completion_doc: SharedSlot<Option<popup::PopupState>>,

@@ -271,7 +271,7 @@ impl Editor {
             (menu(true), None)
         };
 
-        let doc = if completion_docs && !menu.lines.is_empty() {
+        let doc = if completion_docs && !menu.rows.lines.is_empty() {
             self.resolve_completion_doc(slot)
         } else {
             None

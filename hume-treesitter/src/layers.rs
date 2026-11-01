@@ -3,7 +3,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
 use crate::edited_bytes::EditedBytes;
-use crate::injections::{InjectionSites, PriorInjection};
+use crate::injections::InjectionSites;
 use crate::parse_worker::PriorLayers;
 use crate::registry::{GrammarBundle, LanguageId};
 use crate::textobjects::{ObjectSpans, SpanSelector};
@@ -11,6 +11,7 @@ use crate::textobjects::{ObjectSpans, SpanSelector};
 /// One parsed layer of a buffer's syntax tree: the root grammar, or one
 /// embedded-language injection (a fenced code block, a combined
 /// `markdown.inline` layer, etc.).
+#[derive(Clone)]
 pub struct SyntaxLayer {
     pub tree: tree_sitter::Tree,
     /// The layer's language bundle, `Arc`'d from the `LanguageRegistry`,
@@ -114,16 +115,7 @@ impl SyntaxLayers {
         PriorLayers {
             root: root.tree.clone(),
             root_sites: root.sites.clone(),
-            injected: injected
-                .iter()
-                .map(|layer| PriorInjection {
-                    bundle: Arc::clone(&layer.bundle),
-                    depth: layer.depth,
-                    tree: layer.tree.clone(),
-                    ranges: layer.ranges.clone(),
-                    sites: layer.sites.clone(),
-                })
-                .collect(),
+            injected: injected.iter().cloned().collect(),
             edited: self.edited.clone(),
         }
     }

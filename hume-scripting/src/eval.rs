@@ -61,32 +61,9 @@ impl CtxKind {
 impl ScriptingHost {
     /// Split `self` into the Steel engine, the watchdog, and the [`HostBundle`]
     /// of persistent borrows needed to build a [`SteelCtx`].
-    ///
-    /// The returned borrows are disjoint fields of `self` (NLL field-split), so
-    /// the VM can be run while the bundle is lent to the eval context.
     fn steel_and_bundle(&mut self) -> (&mut Engine, &EvalWatchdog, HostBundle<'_>) {
-        let Self {
-            steel,
-            registries,
-            attribution,
-            pending_messages,
-            effects,
-            dirs,
-            watchdog,
-            ..
-        } = self;
-        (
-            steel,
-            watchdog,
-            HostBundle {
-                registries,
-                attribution,
-                pending_messages,
-                effects,
-                dirs: &*dirs,
-                budget: watchdog.clock(),
-            },
-        )
+        let (watchdog, bundle) = self.state.split();
+        (&mut self.steel, watchdog, bundle)
     }
 
     /// Runs `body` in one session on a `kind` context and takes the effects
@@ -98,7 +75,7 @@ impl ScriptingHost {
         budget_ms: u64,
         body: impl FnOnce(&mut Engine) -> Result<(), SteelErr>,
     ) -> Result<Vec<Effect>, EvalError> {
-        let effects_start = self.effects.len();
+        let effects_start = self.state.effects.len();
         let result = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = kind.build(host, bundle);
@@ -210,7 +187,7 @@ impl ScriptingHost {
         budget_ms: u64,
         host: &mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
-        self.dirs.init_dir = path.parent().map(Path::to_path_buf);
+        self.state.dirs.init_dir = path.parent().map(Path::to_path_buf);
         self.eval_file(path, Owner::User, budget_ms, host)
     }
 
@@ -259,7 +236,7 @@ impl ScriptingHost {
         effects_start: usize,
         result: Result<(), String>,
     ) -> Result<Vec<Effect>, EvalError> {
-        let tail = self.effects.split_off(effects_start);
+        let tail = self.state.effects.split_off(effects_start);
         match result {
             Ok(()) => Ok(tail.into_iter().map(|e| e.effect).collect()),
             Err(message) => Err(EvalError {
@@ -344,6 +321,7 @@ impl ScriptingHost {
         // matches; run_steel_calls runs the batch.
         let mut shared: Option<Rc<[Rooted]>> = None;
         let calls: Vec<SteelCall> = self
+            .state
             .registries
             .hooks
             .matching(name, key)
@@ -368,6 +346,7 @@ impl ScriptingHost {
     pub fn held_handlers(&self, name: &str) -> HeldHandlers {
         HeldHandlers {
             handlers: self
+                .state
                 .registries
                 .hooks
                 .matching(name, None)
@@ -486,7 +465,7 @@ impl ScriptingHost {
         }
 
         let budget_ms = host.settings().steel_command_budget_ms();
-        let effects_start = self.effects.len();
+        let effects_start = self.state.effects.len();
         let mut first_error: Option<String> = None;
 
         for (index, call) in calls.into_iter().enumerate() {

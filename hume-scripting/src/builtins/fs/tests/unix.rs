@@ -46,7 +46,11 @@ fn replace_dir_succeeds_when_the_old_contents_cannot_be_deleted() {
     drop(ctx);
 
     assert_eq!(entries(&dest), ["new"]);
-    let (level, message) = h.pending_messages.last().expect("a warning is logged");
+    let (level, message) = h
+        .state
+        .pending_messages
+        .last()
+        .expect("a warning is logged");
     assert_eq!(*level, Severity::Warning);
     assert!(
         message.contains("repo.replaced"),

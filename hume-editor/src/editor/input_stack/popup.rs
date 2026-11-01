@@ -20,7 +20,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler};
 /// `(show-popup! text)`'s raw, unwrapped content, held on `EditorState`
 /// until `Editor::sync_popup_view` or `EditorState::sync_popup_band_view`
 /// (per `layout`) resolves it into a positioned
-/// `hume_ui::popup::PopupState` or a `PopupBandState`. Never buried: every
+/// `hume_ui::popup::PopupState` or a band's `PopupRows`. Never buried: every
 /// layer's own `Layer::setup` retires it before landing (`PopupLayer`'s own,
 /// for its self-replace contract; `MenuLayer`/`DrawerLayer`/`PickerLayer`,
 /// which evict any open popup outright; a completion layer, which evicts
@@ -191,7 +191,7 @@ impl Editor {
 
 impl EditorState {
     /// Write the current *docked* popup content into the shared
-    /// `PopupBandState` Arc so `PopupBandWidget` can render it during this
+    /// `PopupRows` Arc so `PopupBandWidget` can render it during this
     /// frame, the `PopupLayout::Docked` counterpart of
     /// [`Editor::sync_popup_view`]. Unlike the cursor layout, geometry isn't
     /// resolved here: only content (wrapped lines + scroll clamp), mirroring
@@ -294,7 +294,7 @@ fn popup_rows(ed: &mut Editor) -> Option<(usize, usize)> {
 /// A boxed popup's visible content height and total row count, read from
 /// its resolved state.
 pub(super) fn boxed_popup_rows(state: &hume_ui::popup::PopupState) -> (usize, usize) {
-    (state.inner_height(), state.total_rows)
+    (state.inner_height(), state.rows.total_rows)
 }
 
 /// Whether `key` pages by half a window: `Some(true)` for Ctrl-d,

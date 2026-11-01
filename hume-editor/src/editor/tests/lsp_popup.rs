@@ -22,7 +22,7 @@ fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
         .popup
         .read()
         .as_ref()
-        .map(|s| ((*s.lines).clone(), s.rect.x, s.rect.y))
+        .map(|s| ((*s.rows.lines).clone(), s.rect.x, s.rect.y))
 }
 
 /// The `Arc` handle itself, not a deref-cloned copy, for `Arc::ptr_eq`
@@ -33,7 +33,7 @@ fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<Vec<String>>> {
         .popup
         .read()
         .as_ref()
-        .map(|s| Arc::clone(&s.lines))
+        .map(|s| Arc::clone(&s.rows.lines))
 }
 
 // ── show-popup! / close-popup! ────────────────────────────────────────────────
@@ -622,7 +622,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     );
 }
 
-/// `PopupState::lines` is always the full wrap, `Arc`-shared with
+/// `PopupRows::lines` is always the full wrap, `Arc`-shared with
 /// `PopupContent`'s own cache regardless of scroll position, with a
 /// `visible` range carrying the window into it: a scrolled popup (unlike
 /// `wrap_is_cached_per_width_and_invalidated_only_when_width_changes`'s own
@@ -708,7 +708,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     let max_scroll_before_key = {
         let guard = ed.state.views.popup.read();
         let view = guard.as_ref().expect("popup still open");
-        view.total_rows.saturating_sub(view.inner_height())
+        view.rows.total_rows.saturating_sub(view.inner_height())
     };
     assert!(
         max_scroll_before_key < 30,

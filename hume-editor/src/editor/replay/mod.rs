@@ -1234,15 +1234,7 @@ impl Editor {
                     "a dot-repeat selection-recipe step always names a native command taking no character"
                 )
             };
-            let ran = commands::run_body(
-                &mut self.state,
-                &mut self.view,
-                bound,
-                &CmdCtx {
-                    count: step.count,
-                    extend: step.extend,
-                },
-            );
+            let ran = commands::run_body(&mut self.state, &mut self.view, bound, &step.ctx);
             if !ran {
                 self.state
                     .panes

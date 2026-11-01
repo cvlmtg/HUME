@@ -127,7 +127,7 @@ fn declare_plugin_rejected_events_records_nothing() {
     );
     let id = PluginId::parse("user/tp").unwrap();
     assert!(
-        host.registries.plugin_records.config(&id).is_none(),
+        host.state.registries.plugin_records.config(&id).is_none(),
         "a rejected declaration must not leave a stored config behind"
     );
 }
@@ -511,7 +511,12 @@ fn load_plugin_absent_dir_soft_logs_and_records_declared_plugins() {
     );
     let id = EntryId::main(PluginId::parse("user/definitely-absent-mf").unwrap());
     assert!(
-        !host.registries.lazy_registry.plugins.contains_key(&id),
+        !host
+            .state
+            .registries
+            .lazy_registry
+            .plugins
+            .contains_key(&id),
         "no plugin state should be recorded when the directory is absent"
     );
 }

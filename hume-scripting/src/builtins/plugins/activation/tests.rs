@@ -35,7 +35,8 @@ fn declared_to_loaded_registers_command() {
     );
     let id = plugin_id("core:test");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -53,7 +54,7 @@ fn declared_to_loaded_registers_command() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loaded)
         ),
         "plugin must be in Loaded state after successful activation"
@@ -68,7 +69,8 @@ fn syntax_error_transitions_to_failed() {
     let path = write_plugin(&dir, "bad.scm", "(((invalid syntax");
     let id = plugin_id("core:bad");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -81,7 +83,7 @@ fn syntax_error_transitions_to_failed() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "plugin must be in Failed state after syntax error"
@@ -111,7 +113,8 @@ fn failed_activation_message_names_plugin_and_location() {
     let path = write_plugin(&dir, "located.scm", "(define x 1)\n(call-does-not-exist)\n");
     let id = plugin_id("core:located");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -161,7 +164,8 @@ fn failed_activation_message_names_plugin_and_location() {
 fn already_loaded_is_noop() {
     let id = plugin_id("core:loaded");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loaded);
@@ -171,7 +175,7 @@ fn already_loaded_is_noop() {
 
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loaded)
         ),
         "state must remain Loaded"
@@ -182,7 +186,8 @@ fn already_loaded_is_noop() {
 fn already_failed_is_noop() {
     let id = plugin_id("core:failed");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Failed);
@@ -192,7 +197,7 @@ fn already_failed_is_noop() {
 
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "state must remain Failed"
@@ -208,7 +213,12 @@ fn absent_plugin_is_noop() {
         .unwrap();
 
     assert!(
-        !host.registries.lazy_registry.plugins.contains_key(&id),
+        !host
+            .state
+            .registries
+            .lazy_registry
+            .plugins
+            .contains_key(&id),
         "absent plugin must not appear in registry after no-op"
     );
 }
@@ -219,7 +229,8 @@ fn absent_plugin_is_noop() {
 fn loading_reentrancy_guard_is_noop() {
     let id = plugin_id("core:cycling");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loading);
@@ -229,7 +240,7 @@ fn loading_reentrancy_guard_is_noop() {
 
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
         "state must remain Loading (re-entrancy guard must not overwrite)"
@@ -242,7 +253,7 @@ fn loading_reentrancy_guard_is_noop() {
 fn path_with_quote_char_transitions_to_failed() {
     let id = plugin_id("core:quoted");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries.lazy_registry.plugins.insert(
+    host.state.registries.lazy_registry.plugins.insert(
         id.clone(),
         PluginState::Declared {
             path: std::path::PathBuf::from("/some/path\"with/quote/plugin.scm"),
@@ -254,7 +265,7 @@ fn path_with_quote_char_transitions_to_failed() {
     assert!(result.is_err(), "path with '\"' must be rejected");
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "plugin must be Failed after path-with-quote rejection"
@@ -297,7 +308,8 @@ fn begin_lazy_activation_declared_returns_require_string() {
     );
     let id = plugin_id("core:p");
     let mut h = crate::test_support::SteelCtxTestHarness::new();
-    h.registries
+    h.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -314,12 +326,12 @@ fn begin_lazy_activation_declared_returns_require_string() {
     );
     assert!(
         matches!(
-            h.registries.lazy_registry.plugins.get(&id),
+            h.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
         "Declared plugin must be Loading after %begin-lazy-activation!"
     );
-    assert_eq!(h.attribution.len(), 1, "begin pushed the id");
+    assert_eq!(h.state.attribution.len(), 1, "begin pushed the id");
 }
 
 /// `%begin-lazy-activation!` on a `Loading` plugin returns `#f` (cycle guard).
@@ -327,7 +339,8 @@ fn begin_lazy_activation_declared_returns_require_string() {
 fn begin_lazy_activation_loading_returns_false() {
     let id = plugin_id("core:cycling");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loading);
@@ -342,7 +355,7 @@ fn begin_lazy_activation_loading_returns_false() {
     // State must remain Loading.
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
         "state must remain Loading (cycle guard)"
@@ -355,7 +368,8 @@ fn begin_lazy_activation_loading_returns_false() {
 fn finish_lazy_activation_success_transitions_to_loaded() {
     let id = plugin_id("core:finishing");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loading);
@@ -367,7 +381,7 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
 
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loaded)
         ),
         "plugin must be Loaded after successful finish"
@@ -387,7 +401,8 @@ fn finish_lazy_activation_finishes_the_innermost_entry() {
     let inner = plugin_id("core:inner");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
     for id in [&outer, &inner] {
-        host.registries
+        host.state
+            .registries
             .lazy_registry
             .plugins
             .insert(id.clone(), PluginState::Loading);
@@ -398,11 +413,11 @@ fn finish_lazy_activation_finishes_the_innermost_entry() {
         .unwrap();
 
     assert!(matches!(
-        host.registries.lazy_registry.plugins.get(&inner),
+        host.state.registries.lazy_registry.plugins.get(&inner),
         Some(PluginState::Loaded)
     ));
     assert!(matches!(
-        host.registries.lazy_registry.plugins.get(&outer),
+        host.state.registries.lazy_registry.plugins.get(&outer),
         Some(PluginState::Loading)
     ));
     assert_eq!(host.attribution_depth_for_test(), 1);
@@ -414,7 +429,8 @@ fn finish_lazy_activation_finishes_the_innermost_entry() {
 fn finish_lazy_activation_with_no_activation_in_progress_errors() {
     let id = plugin_id("core:idle");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loading);
@@ -426,7 +442,7 @@ fn finish_lazy_activation_with_no_activation_in_progress_errors() {
         "finish with an empty attribution must raise"
     );
     assert!(matches!(
-        host.registries.lazy_registry.plugins.get(&id),
+        host.state.registries.lazy_registry.plugins.get(&id),
         Some(PluginState::Loading)
     ));
 }
@@ -441,7 +457,8 @@ fn finish_lazy_activation_with_no_activation_in_progress_errors() {
 fn finish_lazy_activation_failure_transitions_to_failed() {
     let id = plugin_id("core:failing");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loading);
@@ -455,7 +472,7 @@ fn finish_lazy_activation_failure_transitions_to_failed() {
 
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "plugin must be Failed after failed finish"
@@ -479,7 +496,8 @@ fn partial_define_before_failure_is_rolled_back() {
     );
     let id = plugin_id("core:partial");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -493,7 +511,7 @@ fn partial_define_before_failure_is_rolled_back() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "plugin must be Failed after mid-body error"
@@ -523,7 +541,8 @@ fn queued_effects_before_failure_are_rolled_back() {
     );
     let id = plugin_id("core:effects");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -567,7 +586,8 @@ fn committed_activation_effects_survive_failed_outer_command() {
     );
     let id_b = plugin_id("core:b");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_b.clone(), PluginState::Declared { path });
@@ -613,7 +633,7 @@ fn committed_activation_effects_survive_failed_outer_command() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id_b),
+            host.state.registries.lazy_registry.plugins.get(&id_b),
             Some(PluginState::Loaded)
         ),
         "B must be Loaded: its activation succeeded before A's own failure"
@@ -654,11 +674,13 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
     let id_b = plugin_id("core:b");
     let id_c = plugin_id("core:c");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_b.clone(), PluginState::Declared { path: path_b });
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_c.clone(), PluginState::Declared { path: path_c });
@@ -687,14 +709,14 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id_b),
+            host.state.registries.lazy_registry.plugins.get(&id_b),
             Some(PluginState::Failed)
         ),
         "B must be Failed"
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id_c),
+            host.state.registries.lazy_registry.plugins.get(&id_c),
             Some(PluginState::Loaded)
         ),
         "C must be Loaded: its activation succeeded before B's own failure"
@@ -739,7 +761,8 @@ fn hook_registered_before_failure_is_rolled_back() {
     );
     let id = plugin_id("core:hookfail");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -752,7 +775,7 @@ fn hook_registered_before_failure_is_rolled_back() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "plugin must be Failed after mid-body error"
@@ -787,11 +810,13 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
     let id_b = plugin_id("core:hb");
     let id_c = plugin_id("core:hc");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_b.clone(), PluginState::Declared { path: path_b });
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_c.clone(), PluginState::Declared { path: path_c });
@@ -810,14 +835,14 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id_b),
+            host.state.registries.lazy_registry.plugins.get(&id_b),
             Some(PluginState::Failed)
         ),
         "B must be Failed"
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id_c),
+            host.state.registries.lazy_registry.plugins.get(&id_c),
             Some(PluginState::Loaded)
         ),
         "C must be Loaded: its activation succeeded before B's own failure"
@@ -853,11 +878,13 @@ fn registrations_a_called_command_makes_in_a_failing_body_are_rolled_back() {
     let id_a = plugin_id("core:sa");
     let id_b = plugin_id("core:sb");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_a.clone(), PluginState::Declared { path: path_a });
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_b.clone(), PluginState::Declared { path: path_b });
@@ -870,7 +897,7 @@ fn registrations_a_called_command_makes_in_a_failing_body_are_rolled_back() {
 
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id_b),
+            host.state.registries.lazy_registry.plugins.get(&id_b),
             Some(PluginState::Failed)
         ),
         "B must be Failed"
@@ -907,11 +934,13 @@ fn a_called_command_may_define_the_running_bodys_activation_command() {
     let id_a = plugin_id("core:da");
     let id_b = plugin_id("core:db");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_a.clone(), PluginState::Declared { path: path_a });
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_b.clone(), PluginState::Declared { path: path_b });
@@ -928,7 +957,7 @@ fn a_called_command_may_define_the_running_bodys_activation_command() {
 
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id_b),
+            host.state.registries.lazy_registry.plugins.get(&id_b),
             Some(PluginState::Loaded)
         ),
         "B must be Loaded; messages: {:?}",
@@ -950,7 +979,8 @@ fn a_called_command_may_define_the_running_bodys_activation_command() {
 fn leaving_a_call_with_a_body_open_above_it_fails_that_body() {
     let id = plugin_id("core:open");
     let mut h = crate::test_support::SteelCtxTestHarness::new();
-    h.registries
+    h.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loading);
@@ -968,7 +998,7 @@ fn leaving_a_call_with_a_body_open_above_it_fails_that_body() {
     assert_eq!(failed, [&id]);
     drop(ctx);
     assert!(matches!(
-        h.registries.lazy_registry.plugins.get(&id),
+        h.state.registries.lazy_registry.plugins.get(&id),
         Some(PluginState::Failed)
     ));
 }
@@ -994,7 +1024,8 @@ fn lazy_plugin_can_define_its_own_activation_command() {
     );
     let id = plugin_id("core:self-act");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -1016,7 +1047,7 @@ fn lazy_plugin_can_define_its_own_activation_command() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loaded)
         ),
         "plugin must be Loaded after activation"
@@ -1052,11 +1083,13 @@ fn budget_stopping_a_body_fails_its_activation_and_closes_it() {
     let id_a = plugin_id("core:a");
     let id_b = plugin_id("core:b");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_a.clone(), PluginState::Declared { path: path_a });
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id_b.clone(), PluginState::Declared { path: path_b });
@@ -1071,19 +1104,23 @@ fn budget_stopping_a_body_fails_its_activation_and_closes_it() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id_a),
+            host.state.registries.lazy_registry.plugins.get(&id_a),
             Some(PluginState::Failed)
         ),
         "A's activation is failed"
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id_b),
+            host.state.registries.lazy_registry.plugins.get(&id_b),
             Some(PluginState::Declared { .. })
         ),
         "B is never reached"
     );
-    assert_eq!(host.attribution.len(), 0, "no activation is left open");
+    assert_eq!(
+        host.state.attribution.len(),
+        0,
+        "no activation is left open"
+    );
 }
 
 // ── `call!` of a command owned by a Failed plugin ──────────────────────────
@@ -1104,7 +1141,8 @@ fn call_of_command_owned_by_newly_failed_plugin_errors() {
     let path = write_plugin(&dir, "broken.scm", r#"(error "broken body")"#);
     let id = plugin_id("core:broken");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -1170,11 +1208,11 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     let id = plugin_id("user/selfdecl");
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "the plugin's own self-declare must be rolled back to Failed, not left Declared; got: {:?}",
-        host.registries.lazy_registry.plugins.get(&id)
+        host.state.registries.lazy_registry.plugins.get(&id)
     );
     assert!(
         editor_host
@@ -1204,7 +1242,8 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
     let path = write_plugin(&dir, "badvalue.scm", "(define x 1)");
     let id = plugin_id("core:badvalue");
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -1229,7 +1268,7 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "an undecodable error value must still fail the plugin, not leave it Loading"
@@ -1258,7 +1297,8 @@ fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
 
     let id = EntryId::main(PluginId::parse("core:deep").unwrap());
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries
+    host.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
@@ -1279,7 +1319,7 @@ fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
     );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "plugin must be marked Failed when depth cap exceeded"
@@ -1295,14 +1335,15 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
     let path = write_plugin(&dir, "ok.scm", "(define x 1)");
     let id = plugin_id("core:ok");
     let mut h = crate::test_support::SteelCtxTestHarness::new();
-    h.registries
+    h.state
+        .registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
     // One below the cap: must still be allowed.
     let dummy = plugin_id("core:dummy");
     for _ in 0..MAX_ACTIVATION_DEPTH - 1 {
-        h.attribution.push_body(dummy.clone());
+        h.state.attribution.push_body(dummy.clone());
     }
 
     let result = begin_lazy_activation(
@@ -1317,7 +1358,7 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
     );
     assert!(
         matches!(
-            h.registries.lazy_registry.plugins.get(&id),
+            h.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
         "plugin must be Loading after successful %begin-lazy-activation!"
@@ -1350,7 +1391,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
 
     let id = EntryId::main(PluginId::parse("core:deep").unwrap());
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    host.registries.lazy_registry.declare(
+    host.state.registries.lazy_registry.declare(
         id.clone(),
         path,
         vec!["on-buffer-save".to_string()],
@@ -1375,7 +1416,8 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
     assert!(result.is_err(), "depth cap must raise; got Ok");
 
     assert!(
-        host.registries
+        host.state
+            .registries
             .lazy_registry
             .activation_events
             .get("on-buffer-save")
@@ -1384,7 +1426,8 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
         "Failed plugin's event-activation entry must be dropped, not leaked"
     );
     assert!(
-        host.registries
+        host.state
+            .registries
             .lazy_registry
             .activation_languages
             .get("rust")
@@ -1414,7 +1457,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
 fn begin_lazy_activation_escapes_backslashes_in_path() {
     let id = plugin_id("core:winpath");
     let mut h = crate::test_support::SteelCtxTestHarness::new();
-    h.registries.lazy_registry.plugins.insert(
+    h.state.registries.lazy_registry.plugins.insert(
         id.clone(),
         PluginState::Declared {
             path: std::path::PathBuf::from(r"C:\Users\x\plugin.scm"),
@@ -1434,7 +1477,7 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
     );
     assert!(
         matches!(
-            h.registries.lazy_registry.plugins.get(&id),
+            h.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
         "plugin must be Loading after %begin-lazy-activation!"

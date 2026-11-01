@@ -13,11 +13,8 @@
 
 use proptest::prelude::*;
 
-use crate::editor::buffer::Buffer;
-use crate::editor::position_stores::DetachedStores;
+use crate::editor::buffer::doc_helper::DocHelper;
 use crate::editor::tests::co;
-use hume_core::{BufferId, PaneHandle, PaneId};
-use hume_editing::edit::Edited;
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
@@ -37,54 +34,6 @@ use hume_ops::text_object::{
     cmd_around_uppercase_word, cmd_around_word, cmd_inner_line, cmd_inner_word,
 };
 use hume_ops::{LineEnd, MotionMode, WhitespaceSide, WordCtx};
-
-// ── DocHelper — thin wrapper keeping sels alongside Buffer ────────────────
-
-struct DocHelper {
-    buf: Buffer,
-    sels: SelectionSet,
-}
-
-impl DocHelper {
-    fn new(text: BufferText, sels: SelectionSet) -> Self {
-        let buf = Buffer::at_start(text);
-        Self { buf, sels }
-    }
-    fn text(&self) -> &BufferText {
-        self.buf.text()
-    }
-    fn apply_edit(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
-        self.sels = self
-            .buf
-            .apply_edit(
-                PaneHandle::with_pane(BufferId::default(), PaneId::default()),
-                &mut DetachedStores::default().stores(),
-                self.sels.clone(),
-                cmd,
-            )
-            .into_selections();
-    }
-    fn undo(&mut self) {
-        if let Some((sels, _cs, _steps)) = self.buf.undo_n(
-            BufferId::default(),
-            &mut DetachedStores::default().stores(),
-            PaneId::default(),
-            1,
-        ) {
-            self.sels = sels;
-        }
-    }
-    fn redo(&mut self) {
-        if let Some((sels, _cs, _steps)) = self.buf.redo_n(
-            BufferId::default(),
-            &mut DetachedStores::default().stores(),
-            PaneId::default(),
-            1,
-        ) {
-            self.sels = sels;
-        }
-    }
-}
 
 // ── Invariant checker ─────────────────────────────────────────────────────
 
@@ -395,11 +344,11 @@ proptest! {
         ops in proptest::collection::vec(arb_edit_op(), 1..=25),
     ) {
         let mut doc = DocHelper::new(text, sels);
-        assert_invariants(doc.text(), &doc.sels);
+        assert_invariants(doc.text(), doc.sels());
 
         for op in &ops {
             apply_edit_op(&mut doc, op);
-            assert_invariants(doc.text(), &doc.sels);
+            assert_invariants(doc.text(), doc.sels());
         }
     }
 
@@ -441,7 +390,7 @@ proptest! {
         apply_edit_op(&mut doc, &op);
         doc.undo();
 
-        prop_assert_eq!(test_fixtures::testing::serialize_state(doc.text(), &doc.sels), original);
+        prop_assert_eq!(test_fixtures::testing::serialize_state(doc.text(), doc.sels()), original);
     }
 
     /// Applying an edit, undoing it, then redoing it must produce the same
@@ -459,12 +408,12 @@ proptest! {
         let mut doc = DocHelper::new(text, sels);
         apply_edit_op(&mut doc, &op);
 
-        let after = test_fixtures::testing::serialize_state(doc.text(), &doc.sels);
+        let after = test_fixtures::testing::serialize_state(doc.text(), doc.sels());
 
         doc.undo();
         doc.redo();
 
-        prop_assert_eq!(test_fixtures::testing::serialize_state(doc.text(), &doc.sels), after);
+        prop_assert_eq!(test_fixtures::testing::serialize_state(doc.text(), doc.sels()), after);
     }
 
     /// Applying N edits then undoing N times must restore the exact
@@ -495,7 +444,7 @@ proptest! {
             doc.undo();
         }
 
-        prop_assert_eq!(test_fixtures::testing::serialize_state(doc.text(), &doc.sels), original);
+        prop_assert_eq!(test_fixtures::testing::serialize_state(doc.text(), doc.sels()), original);
     }
 
     /// Yanking returns the grapheme clusters each selection covers, in
@@ -544,11 +493,11 @@ proptest! {
         ops in proptest::collection::vec(arb_edit_op(), 1..=30),
     ) {
         let mut doc = DocHelper::new(text, sels);
-        assert_invariants(doc.text(), &doc.sels);
+        assert_invariants(doc.text(), doc.sels());
 
         for op in &ops {
             apply_edit_op(&mut doc, op);
-            assert_invariants(doc.text(), &doc.sels);
+            assert_invariants(doc.text(), doc.sels());
         }
     }
 }

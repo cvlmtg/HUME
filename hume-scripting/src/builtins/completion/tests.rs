@@ -8,7 +8,7 @@ fn dummy_proc(_: &[SteelVal]) -> Result<SteelVal, SteelErr> {
 
 /// Effects queued so far, in emission order.
 fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
-    h.effects.iter().map(|e| &e.effect).collect()
+    h.state.effects.iter().map(|e| &e.effect).collect()
 }
 
 fn register(ctx: &mut SteelCtx, target: &str, match_kind: &str, priority: isize) -> SteelResult {

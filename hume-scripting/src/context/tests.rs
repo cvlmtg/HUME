@@ -55,7 +55,8 @@ fn mode_derives_from_session_and_attribution() {
     assert_eq!(h.ctx_init().mode(), EvalMode::Init);
     assert_eq!(h.ctx().mode(), EvalMode::Command);
 
-    h.attribution
+    h.state
+        .attribution
         .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     assert_eq!(h.ctx_init().mode(), EvalMode::PluginLoad);
     assert_eq!(h.ctx_activation().mode(), EvalMode::PluginActivation);
@@ -89,15 +90,15 @@ fn registration_origin_follows_the_body_or_the_sessions_behalf() {
         ConfigOrigin::User
     );
 
-    h.attribution.enter_call(plugin_owner());
+    h.state.attribution.enter_call(plugin_owner());
     assert_eq!(
         h.ctx_as(Provenance::invoked_by_user(plugin_owner()))
             .registration_origin(),
         ConfigOrigin::User
     );
 
-    h.attribution.push_body(plugin.clone());
-    h.attribution.enter_call(Rc::new(Owner::User));
+    h.state.attribution.push_body(plugin.clone());
+    h.state.attribution.enter_call(Rc::new(Owner::User));
     assert_eq!(
         h.ctx_as(Provenance::invoked_by_user(plugin_owner()))
             .registration_origin(),
@@ -116,9 +117,9 @@ fn log_pushes_to_pending_messages() {
         ctx.log(Severity::Info, "hello".into());
         ctx.log(Severity::Warning, "world".into());
     }
-    assert_eq!(h.pending_messages.len(), 2);
-    assert_eq!(h.pending_messages[0].0, Severity::Info);
-    assert_eq!(h.pending_messages[1].0, Severity::Warning);
+    assert_eq!(h.state.pending_messages.len(), 2);
+    assert_eq!(h.state.pending_messages[0].0, Severity::Info);
+    assert_eq!(h.state.pending_messages[1].0, Severity::Warning);
 }
 
 // ── Effect commit/rollback ────────────────────────────────────────────────
@@ -139,11 +140,11 @@ fn pop_effect_marks_success_commits_marked_range() {
         ctx.pop_effect_marks(true);
     }
     assert!(
-        !h.effects[0].committed,
+        !h.state.effects[0].committed,
         "entry pushed before the mark must stay uncommitted"
     );
     assert!(
-        h.effects[1].committed,
+        h.state.effects[1].committed,
         "entry pushed after the mark must be committed on success"
     );
 }
@@ -171,6 +172,7 @@ fn pop_effect_marks_failure_keeps_committed_entries_in_order() {
         ctx.pop_effect_marks(false); // B fails: drops b1/b2, keeps c1/c2
     }
     let names: Vec<&str> = h
+        .state
         .effects
         .iter()
         .map(|e| match &e.effect {
@@ -183,9 +185,9 @@ fn pop_effect_marks_failure_keeps_committed_entries_in_order() {
         vec!["a1", "c1", "c2"],
         "b1/b2 must be dropped, c1/c2 kept in original order, a1 untouched"
     );
-    assert!(!h.effects[0].committed, "a1 was never inside a mark");
+    assert!(!h.state.effects[0].committed, "a1 was never inside a mark");
     assert!(
-        h.effects[1].committed && h.effects[2].committed,
+        h.state.effects[1].committed && h.state.effects[2].committed,
         "c1/c2 stay committed"
     );
 }

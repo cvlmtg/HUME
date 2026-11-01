@@ -13,6 +13,7 @@ use crate::edited_bytes::EditedBytes;
 use crate::injections::{
     InjectionContext, InjectionSites, PriorInjections, SitePrior, resolve_and_parse_injections,
 };
+use crate::layers::SyntaxLayer;
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
 use hume_editing::text::BufferText;
 
@@ -78,23 +79,10 @@ pub struct ParsedLayers {
     pub root: tree_sitter::Tree,
     /// The root tree's injection sites.
     pub root_sites: InjectionSites,
-    pub injected: Vec<ParsedInjection>,
+    pub injected: Vec<SyntaxLayer>,
     /// Languages a site named whose grammar `langs` had registered but not
     /// loaded, so no layer of theirs is among `injected`.
     pub unloaded: Vec<LanguageId>,
-}
-
-/// One resolved and parsed injection layer.
-pub struct ParsedInjection {
-    /// The injected layer's grammar bundle; becomes the installed
-    /// `SyntaxLayer`'s own `bundle` field.
-    pub bundle: Arc<GrammarBundle>,
-    pub tree: tree_sitter::Tree,
-    /// Absolute byte ranges this layer was parsed over, sorted by start.
-    pub ranges: Vec<tree_sitter::Range>,
-    pub depth: u8,
-    /// The layer's own injection sites.
-    pub sites: InjectionSites,
 }
 
 pub struct ParseDone {

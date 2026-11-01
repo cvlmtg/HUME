@@ -3,8 +3,6 @@
 
 use std::rc::Rc;
 
-use hume_core::Count;
-
 use crate::editor::EditorState;
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::registry::{CmdMeta, SelectionTracking};
@@ -19,10 +17,8 @@ use crate::editor::registry::{CmdMeta, SelectionTracking};
 pub(crate) struct SelectionStep {
     /// Command name (e.g. `"select-line"`, `"surround-paren"`).
     pub command: Rc<str>,
-    /// Count prefix originally used.
-    pub count: Count,
-    /// `true` if this step ran in Extend mode (grew the existing selection).
-    pub extend: bool,
+    /// The count and mode the step first ran with.
+    pub(in crate::editor) ctx: CmdCtx,
 }
 
 /// The recipe state an outer Steel command's body started from, held across
@@ -96,8 +92,7 @@ impl EditorState {
         }
         self.selection_recipe.push(SelectionStep {
             command: name.clone(),
-            count: ctx.count,
-            extend: ctx.extend,
+            ctx: ctx.clone(),
         });
     }
 

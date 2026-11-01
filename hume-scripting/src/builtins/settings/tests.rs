@@ -232,6 +232,7 @@ fn set_buffer_option_language_queues_every_write_with_its_origin() {
     }
     drop(ctx);
     let writes: Vec<(Option<&str>, hume_core::ConfigOrigin)> = h
+        .state
         .effects
         .iter()
         .filter_map(|q| match &q.effect {
@@ -565,7 +566,8 @@ fn option_writes_carry_the_callers_origin() {
             .expect("buffer write");
     };
     write(&mut h.ctx_with_host(&mut host));
-    h.attribution
+    h.state
+        .attribution
         .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     write(&mut h.ctx_with_host(&mut host));
 
@@ -603,7 +605,11 @@ fn set_option_refuses_a_buffer_intrinsic_key() {
             "{}: got {msg}",
             opt.name()
         );
-        assert!(h.effects.is_empty(), "{}: nothing is queued", opt.name());
+        assert!(
+            h.state.effects.is_empty(),
+            "{}: nothing is queued",
+            opt.name()
+        );
         assert!(
             host.origins.is_empty() && host.calls.is_empty() && host.line_endings.is_empty(),
             "{}: nothing reaches the host",

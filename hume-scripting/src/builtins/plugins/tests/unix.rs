@@ -171,6 +171,7 @@ fn declare_plugin_typed_collision_raises_and_claims_nothing() {
     );
     assert!(
         !host
+            .state
             .registries
             .lazy_registry
             .plugins
@@ -268,7 +269,8 @@ fn declaring_a_loaded_entry_again_raises() {
     )
     .expect("activation");
     assert!(matches!(
-        host.registries
+        host.state
+            .registries
             .lazy_registry
             .plugins
             .get(&main_entry("user/tp")),
@@ -376,7 +378,7 @@ fn load_plugin_evaluates_manifest_scm() {
     let id = main_entry("user/mftest");
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            host.state.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Declared { .. })
         ),
         "manifest's own declare-plugin! must register the plugin as Declared"
@@ -441,7 +443,7 @@ fn load_plugin_without_manifest_loads_eagerly() {
 
     let id = main_entry("user/nomf");
     assert!(matches!(
-        host.registries.lazy_registry.plugins.get(&id),
+        host.state.registries.lazy_registry.plugins.get(&id),
         Some(PluginState::Loaded)
     ));
     assert!(
@@ -517,7 +519,12 @@ fn manifest_declaring_different_plugin_name_errors() {
 
     let evil_id = EntryId::main(PluginId::parse("user/somebody-else").unwrap());
     assert!(
-        !host.registries.lazy_registry.plugins.contains_key(&evil_id),
+        !host
+            .state
+            .registries
+            .lazy_registry
+            .plugins
+            .contains_key(&evil_id),
         "the smuggled-in plugin id must not be registered"
     );
 }

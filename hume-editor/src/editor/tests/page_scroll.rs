@@ -1,7 +1,7 @@
-use super::doubles::VirtualLineBlock;
 use super::*;
 use crate::editor::commands::half_page;
 use hume_core::Side;
+use hume_engine::test_doubles::VirtualLineBlock;
 use pretty_assertions::assert_eq;
 
 // ── Page scroll ───────────────────────────────────────────────────────────────

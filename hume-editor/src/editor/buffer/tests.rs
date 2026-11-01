@@ -1,10 +1,10 @@
 use std::path::Path;
 
+use super::doc_helper::DocHelper;
 use super::*;
 use crate::editor::position_stores::DetachedStores;
 use crate::editor::tests::co;
 use hume_core::ConfigOrigin;
-use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
 use hume_ops::edit::yank_selections;
 use hume_ops::edit::{
@@ -15,154 +15,13 @@ use hume_ops::register::Piece;
 use pretty_assertions::assert_eq;
 use test_fixtures::testing::{parse_state, serialize_state};
 
-// ── DocHelper ─────────────────────────────────────────────────────────────
-//
-// Thin test wrapper that keeps a `SelectionSet` alongside the `Buffer` so
-// tests get an ergonomic API instead of passing sels at every call site.
-
-struct DocHelper {
-    buf: Buffer,
-    sels: SelectionSet,
-    edit_group: Option<EditGroup>,
-}
-
-impl DocHelper {
-    fn apply_edit(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
-        let sels = self.sels.clone();
-        self.sels = self
-            .buf
-            .apply_edit(
-                PaneHandle::with_pane(BufferId::default(), PaneId::default()),
-                &mut DetachedStores::default().stores(),
-                sels,
-                cmd,
-            )
-            .into_selections();
-    }
-
-    fn apply_edit_grouped(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
-        let sels = self.sels.clone();
-        let group = self
-            .edit_group
-            .as_mut()
-            .expect("apply_edit_grouped called without an open group");
-        let (new_sels, cs) = self.buf.apply_edit_grouped(
-            BufferId::default(),
-            &mut DetachedStores::default().stores(),
-            PaneId::default(),
-            sels,
-            cmd,
-        );
-        group.compose(&cs);
-        self.sels = new_sels;
-    }
-
-    fn begin_edit_group(&mut self) {
-        let pre_sels = self.sels.clone();
-        self.edit_group = Some(self.buf.begin_edit_group(pre_sels.clone(), pre_sels));
-    }
-
-    fn commit_edit_group(&mut self) {
-        let post_sels = self.sels.clone();
-        let group = self
-            .edit_group
-            .take()
-            .expect("commit_edit_group called without an open group");
-        self.buf.commit_edit_group(group, post_sels);
-    }
-
-    fn undo(&mut self) {
-        self.undo_n(1);
-    }
-
-    fn redo(&mut self) {
-        self.redo_n(1);
-    }
-
-    /// Returns the number of steps actually taken (short of `count` at the
-    /// root).
-    fn undo_n(&mut self, count: usize) -> usize {
-        let Some((new_sels, _cs, steps)) = self.buf.undo_n(
-            BufferId::default(),
-            &mut DetachedStores::default().stores(),
-            PaneId::default(),
-            count,
-        ) else {
-            return 0;
-        };
-        self.sels = new_sels;
-        steps
-    }
-
-    /// Returns the number of steps actually taken (short of `count` at the
-    /// tip).
-    fn redo_n(&mut self, count: usize) -> usize {
-        let Some((new_sels, _cs, steps)) = self.buf.redo_n(
-            BufferId::default(),
-            &mut DetachedStores::default().stores(),
-            PaneId::default(),
-            count,
-        ) else {
-            return 0;
-        };
-        self.sels = new_sels;
-        steps
-    }
-
-    fn goto_revision(&mut self, target: hume_editing::history::RevisionId) {
-        if let Some((new_sels, _cs, _steps)) = self.buf.goto_revision(
-            BufferId::default(),
-            &mut DetachedStores::default().stores(),
-            PaneId::default(),
-            target,
-        ) {
-            self.sels = new_sels;
-        }
-    }
-
-    /// Reload the buffer text in place, preserving history. The current
-    /// selections are carried through the reload like any pane's, and the
-    /// history revision records them before and after.
-    fn reload_from(&mut self, new_text: BufferText) {
-        let (mut stores, pane, id) = DetachedStores::with_pane(&self.buf, self.sels.clone());
-        self.buf
-            .replace_text_recorded(id, &mut stores.stores(), new_text, pane);
-        self.buf.mark_saved();
-        self.sels = stores.selections(pane, id);
-    }
-
-    fn text(&self) -> &BufferText {
-        self.buf.text()
-    }
-    fn sels(&self) -> &SelectionSet {
-        &self.sels
-    }
-    fn revision_dirty(&self) -> bool {
-        self.buf.revision_dirty()
-    }
-    fn mark_saved(&mut self) {
-        self.buf.mark_saved();
-    }
-    fn can_undo(&self) -> bool {
-        self.buf.can_undo()
-    }
-    fn set_undo_levels(&mut self, levels: usize) {
-        self.buf.set_undo_levels(levels);
-    }
-}
-
 fn state(d: &DocHelper) -> String {
     serialize_state(d.text(), d.sels())
 }
 
 fn doc(input: &str) -> DocHelper {
     let (text, sels) = parse_state(input);
-    let buf = Buffer::at_start(text);
-    DocHelper {
-        buf,
-        sels,
-        edit_group: None,
-    }
+    DocHelper::new(text, sels)
 }
 
 // ── insert_char ───────────────────────────────────────────────────────────
@@ -735,7 +594,7 @@ fn identical_content_reload_adopts_the_disk_line_ending() {
     d.buf
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
     let mutated =
         d.buf
             .replace_text_recorded(id, &mut stores.stores(), BufferText::from("hello\n"), pane);
@@ -764,7 +623,7 @@ fn replacing_the_text_lets_any_origin_set_the_line_ending_again() {
     d.buf
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
     d.buf
         .replace_text_recorded(id, &mut stores.stores(), BufferText::from("hello\n"), pane);
 
@@ -792,7 +651,7 @@ fn a_read_only_buffer_refuses_a_line_ending_change() {
 fn a_read_only_buffer_still_adopts_the_disk_line_ending_on_reload() {
     let mut d = doc("-[h]>ello\n");
     d.buf.read_only = true;
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
     let mutated = d.buf.replace_text_recorded(
         id,
         &mut stores.stores(),
@@ -1156,13 +1015,13 @@ fn reload_inverse_is_fine_grained() {
 #[test]
 fn an_edit_leaves_the_acting_panes_selections_to_its_caller() {
     let mut d = doc("-[a]>bc\n");
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
     let before = stores.selections(pane, id);
 
     d.buf.apply_edit(
         PaneHandle::with_pane(id, pane),
         &mut stores.stores(),
-        d.sels.clone(),
+        d.sels().clone(),
         |s| insert_char(s, 'x'),
     );
 
@@ -1172,12 +1031,12 @@ fn an_edit_leaves_the_acting_panes_selections_to_its_caller() {
 #[test]
 fn an_edit_carries_the_selections_of_every_other_pane() {
     let mut d = doc("-[a]>bc\n");
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
 
     d.buf.apply_edit(
         PaneHandle::with_pane(id, PaneId::default()),
         &mut stores.stores(),
-        d.sels.clone(),
+        d.sels().clone(),
         |s| insert_char(s, 'x'),
     );
 

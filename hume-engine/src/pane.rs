@@ -24,7 +24,7 @@ use ropey::Rope;
 /// `DisplayLinePos` address independently of it. `DisplayLinePos::slot` is a
 /// raw `usize`, unnarrowed: nothing needs a slot past a display-line count
 /// no real terminal or document reaches.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Viewport {
     pub(crate) top: DisplayLinePos,
     /// Horizontal scroll in columns (0 when soft-wrap is on). A document
@@ -125,20 +125,6 @@ impl ViewGeometry {
 }
 
 // ---------------------------------------------------------------------------
-// Scroll position  (per-pane, per-buffer scroll memory)
-// ---------------------------------------------------------------------------
-
-/// Saved scroll position for one (pane, buffer) pair.
-///
-/// Stored in `Pane::saved_scrolls` so each pane remembers where it was in a
-/// buffer when it switches away. Restored by `Pane::show_buffer` on switch-back.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct ScrollPosition {
-    pub top: DisplayLinePos,
-    pub horizontal_offset: DisplayLineCol,
-}
-
-// ---------------------------------------------------------------------------
 // Wrap mode
 // ---------------------------------------------------------------------------
 
@@ -175,8 +161,8 @@ pub const DEFAULT_WRAP_STYLE: WrapMode = WrapMode::Indent { width: 0 };
 /// pane's *view of that buffer*, not the pane itself: switching to another
 /// buffer resolves through that buffer's own override/global chain (letting
 /// e.g. a per-language `on-language-set` default take effect), and switching
-/// back restores this pane's pin for it, the same lifetime `ScrollPosition`
-/// already has via `saved_scrolls`.
+/// back restores this pane's pin for it, the same lifetime a saved
+/// `Viewport` has in `saved_scrolls`.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct WrapOverride {
     /// `None` means no override: the effective mode falls back to the
@@ -331,7 +317,7 @@ pub struct Pane {
     pub viewport: Viewport,
     /// Per-buffer scroll memory: where this pane was when it last viewed each buffer.
     /// Saved and restored by `Pane::show_buffer`.
-    pub saved_scrolls: SecondaryMap<BufferId, ScrollPosition>,
+    pub saved_scrolls: SecondaryMap<BufferId, Viewport>,
     /// All active selections as the renderer paints them. `None` until the
     /// host writes the first frame's mirror.
     pub selections: Option<PaintedSelections>,
@@ -392,7 +378,7 @@ impl Pane {
             line_store: _, // per-frame scratch; a new pane starts empty and
                            // `EngineView::begin_frame` rewinds it every frame anyway
         } = src;
-        self.viewport = viewport.clone();
+        self.viewport = *viewport;
         self.saved_scrolls = saved_scrolls.clone();
         self.wraps = wraps.clone();
     }
@@ -426,17 +412,13 @@ impl Pane {
     /// `Viewport::top_at` read, whichever pass gets there first, to
     /// self-heal a stale address.
     pub(crate) fn show_buffer(&mut self, target: BufferId, last_content_line: ContentLine) {
-        self.saved_scrolls.insert(
-            self.buffer_id,
-            ScrollPosition {
-                top: self.viewport.top,
-                horizontal_offset: self.viewport.horizontal_offset,
-            },
-        );
+        self.saved_scrolls.insert(self.buffer_id, self.viewport);
         self.buffer_id = target;
-        let sp = self.saved_scrolls.get(target).copied().unwrap_or_default();
-        self.viewport.top = DisplayLinePos::new(sp.top.line.min(last_content_line), sp.top.slot);
-        self.viewport.horizontal_offset = sp.horizontal_offset;
+        let saved = self.saved_scrolls.get(target).copied().unwrap_or_default();
+        self.viewport = Viewport {
+            top: DisplayLinePos::new(saved.top.line.min(last_content_line), saved.top.slot),
+            ..saved
+        };
     }
 
     /// Drop the saved scroll and wrap-mode override entries for `id` (called

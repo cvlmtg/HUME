@@ -13,7 +13,8 @@ fn empty_list() -> SteelVal {
 
 /// `Effect::LanguageReg` entries queued so far, in emission order.
 fn lang_regs(h: &SteelCtxTestHarness) -> Vec<&PendingLanguageReg> {
-    h.effects
+    h.state
+        .effects
         .iter()
         .filter_map(|e| match &e.effect {
             Effect::LanguageReg(reg) => Some(reg),
@@ -228,7 +229,8 @@ fn configure_language_records_its_origin() {
     let mut h = SteelCtxTestHarness::new();
     configure(&mut h.ctx_init(), "go", vec![("language-id", str_val("a"))])
         .expect("init top level must decode");
-    h.attribution
+    h.state
+        .attribution
         .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     configure(&mut h.ctx_init(), "go", vec![("language-id", str_val("b"))])
         .expect("eager plugin load must decode");
@@ -342,7 +344,8 @@ fn register_grammar_records_its_origin() {
     };
     let mut h = SteelCtxTestHarness::new();
     register(&mut h.ctx_init());
-    h.attribution
+    h.state
+        .attribution
         .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     register(&mut h.ctx_init());
 

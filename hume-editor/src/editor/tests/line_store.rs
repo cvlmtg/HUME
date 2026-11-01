@@ -5,10 +5,11 @@
 
 use std::rc::Rc;
 
-use super::doubles::{FormatProbe, InlineHint, VirtualLineBlock};
+use super::doubles::{FormatProbe, InlineHint};
 use super::*;
 use hume_core::Side;
 use hume_engine::pipeline::RenderContext;
+use hume_engine::test_doubles::VirtualLineBlock;
 use hume_grid::{Grid, Rect};
 
 /// 50 single-char lines, unwrapped. Built on `Editor::open` (not

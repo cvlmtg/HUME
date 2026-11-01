@@ -4,7 +4,7 @@ use crate::test_support::{SteelCtxTestHarness, sym};
 
 /// Effects queued so far, in emission order.
 fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
-    h.effects.iter().map(|e| &e.effect).collect()
+    h.state.effects.iter().map(|e| &e.effect).collect()
 }
 
 // ── Global binds are init-only, named keymaps are not ─────────────────────
@@ -407,7 +407,8 @@ fn unbind_key_queues_unbind_effect() {
 fn bind_key_permitted_during_plugin_load() {
     use crate::attribution::{EntryId, PluginId};
     let mut h = SteelCtxTestHarness::new();
-    h.attribution
+    h.state
+        .attribution
         .push_body(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
     {
         let mut ctx = h.ctx(); // EvalMode::PluginActivation → allowed
@@ -502,7 +503,8 @@ fn binds_and_unbinds_record_their_origin() {
             .expect("a global unbind queues during init");
     };
     queue(&mut h.ctx_init());
-    h.attribution
+    h.state
+        .attribution
         .push_body(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
     queue(&mut h.ctx_init());
 

@@ -38,7 +38,7 @@ fn injected(
     bundle: &GrammarBundle,
     rope: &ropey::Rope,
     langs: &GrammarSnapshot,
-) -> Vec<ParsedInjection> {
+) -> Vec<SyntaxLayer> {
     injected_reporting(parser, tree, bundle, rope, langs).0
 }
 
@@ -50,7 +50,7 @@ fn injected_reporting(
     bundle: &GrammarBundle,
     rope: &ropey::Rope,
     langs: &GrammarSnapshot,
-) -> (Vec<ParsedInjection>, Vec<LanguageId>) {
+) -> (Vec<SyntaxLayer>, Vec<LanguageId>) {
     let cancel = AtomicBool::new(false);
     let cx = InjectionContext {
         rope,
@@ -401,7 +401,7 @@ fn reuse_prior(rust: &Arc<GrammarBundle>) -> PriorInjections {
     parser.set_language(rust.grammar.language()).unwrap();
     parser.set_included_ranges(&[reuse_range()]).unwrap();
     let tree = parser.parse(REUSE_SOURCE, None).expect("parse");
-    PriorInjections::from_iter([PriorInjection {
+    PriorInjections::from_iter([SyntaxLayer {
         bundle: Arc::clone(rust),
         depth: 1,
         tree,

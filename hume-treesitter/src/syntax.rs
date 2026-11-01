@@ -513,15 +513,7 @@ impl Syntax {
                     depth: 0,
                     sites: parsed.root_sites,
                 });
-                for injected in parsed.injected {
-                    layers.push(SyntaxLayer {
-                        tree: injected.tree,
-                        bundle: injected.bundle,
-                        ranges: injected.ranges,
-                        depth: injected.depth,
-                        sites: injected.sites,
-                    });
-                }
+                layers.extend(parsed.injected);
                 self.committed = Some(Committed {
                     layers: SyntaxLayers::new(layers),
                     at: LayersAt::Parsed(generation),

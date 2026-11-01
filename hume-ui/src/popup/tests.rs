@@ -274,7 +274,7 @@ fn resolve_menu_right_aligns_trailing_when_it_fits() {
     let state = menu(&rows, 0, rect(0, 0, 200, 50));
     // main padded to the widest main ("kitty_support", 13), a 2-cell gap,
     // then trailing right-aligned to the widest trailing (4).
-    insta::assert_snapshot!(state.lines.join("\n"), @r"
+    insta::assert_snapshot!(state.rows.lines.join("\n"), @r"
     kitty_support  bool
     kind           Kind
     ");
@@ -291,7 +291,7 @@ fn resolve_menu_truncates_trailing_when_the_pane_is_too_narrow() {
     // max_inner = pane.width - 2 = 10; main_col = 7 ("assert!"); trail_col
     // = min(19, 10 - 7 - 2) = 1, just enough for the ellipsis marker.
     let state = menu(&rows, 0, rect(0, 0, 12, 50));
-    insta::assert_snapshot!(state.lines.join("\n"), @"assert!  …");
+    insta::assert_snapshot!(state.rows.lines.join("\n"), @"assert!  …");
 }
 
 /// When there's no room left for a trailing column at all (`trail_col`
@@ -305,7 +305,7 @@ fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
     }];
     // max_inner = pane.width - 2 = 2, all consumed by `main` alone.
     let state = menu(&rows, 0, rect(0, 0, 4, 50));
-    insta::assert_snapshot!(state.lines.join("\n"), @"ab");
+    insta::assert_snapshot!(state.rows.lines.join("\n"), @"ab");
 }
 
 /// A session narrowed to zero matches must not panic computing `selected`
@@ -315,7 +315,7 @@ fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
 #[test]
 fn resolve_menu_on_an_empty_list_does_not_panic() {
     let state = menu(&[], 0, rect(0, 0, 40, 20));
-    assert!(state.lines.is_empty());
+    assert!(state.rows.lines.is_empty());
     assert_eq!(state.selected, None);
 }
 
@@ -394,7 +394,7 @@ fn side_popup_wraps_to_the_room_beside_the_box() {
         state.rect.width
     );
     assert!(
-        state.total_rows > 1,
+        state.rows.total_rows > 1,
         "the text wraps instead of overflowing"
     );
 }
@@ -412,5 +412,5 @@ fn side_popup_height_stops_at_the_pane_bottom() {
     let state = side(&text, rect(0, 8, 20, 4), rect(0, 0, 80, 12)).expect("room on the right");
     assert_eq!(state.rect.y, 8);
     assert_eq!(state.rect.bottom(), 12);
-    assert_eq!(state.visible, 0..2);
+    assert_eq!(state.rows.visible, 0..2);
 }
