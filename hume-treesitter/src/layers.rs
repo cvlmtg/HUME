@@ -3,7 +3,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
 use crate::edited_bytes::EditedBytes;
-use crate::injections::InjectionSites;
+use crate::injections::{InjectionSites, PriorInjections};
 use crate::parse_worker::PriorLayers;
 use crate::registry::{GrammarBundle, LanguageId};
 use crate::textobjects::{ObjectSpans, SpanSelector};
@@ -111,11 +111,11 @@ impl SyntaxLayers {
     /// # Panics
     /// If there are no layers: `layers[0]` is the root.
     pub(crate) fn prior(&self) -> PriorLayers {
-        let (root, injected) = self.layers.split_first().expect("layers[0] is the root");
+        let root = self.layers.first().expect("layers[0] is the root");
         PriorLayers {
             root: root.tree.clone(),
             root_sites: root.sites.clone(),
-            injected: injected.iter().cloned().collect(),
+            injected: PriorInjections::of(self),
             edited: self.edited.clone(),
         }
     }

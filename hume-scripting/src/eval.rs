@@ -15,7 +15,6 @@ use crate::context::SteelCtx;
 use crate::host::{EditorHost, token_to_steel};
 use crate::read_only_host::ReadOnlyHost;
 use crate::types::{Effect, EvalError};
-use crate::watchdog::EvalWatchdog;
 use crate::{Callback, HostBundle, Rooted, ScriptingHost, SteelCall, attribution, builtins};
 use hume_core::{HostToken, Severity};
 
@@ -59,13 +58,6 @@ impl CtxKind {
 }
 
 impl ScriptingHost {
-    /// Split `self` into the Steel engine, the watchdog, and the [`HostBundle`]
-    /// of persistent borrows needed to build a [`SteelCtx`].
-    fn steel_and_bundle(&mut self) -> (&mut Engine, &EvalWatchdog, HostBundle<'_>) {
-        let (watchdog, bundle) = self.state.split();
-        (&mut self.steel, watchdog, bundle)
-    }
-
     /// Runs `body` in one session on a `kind` context and takes the effects
     /// it queued, by [`Self::take_eval_effects`]'s contract.
     fn run_session(
@@ -77,8 +69,9 @@ impl ScriptingHost {
     ) -> Result<Vec<Effect>, EvalError> {
         let effects_start = self.state.effects.len();
         let result = {
-            let (steel, watchdog, bundle) = self.steel_and_bundle();
+            let (watchdog, bundle) = self.state.split();
             let mut steel_ctx = kind.build(host, bundle);
+            let steel = &mut self.steel;
             run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, body)
                 .map_err(|e| e.message)
         };
@@ -469,8 +462,9 @@ impl ScriptingHost {
         let mut first_error: Option<String> = None;
 
         for (index, call) in calls.into_iter().enumerate() {
-            let (steel, watchdog, bundle) = self.steel_and_bundle();
+            let (watchdog, bundle) = self.state.split();
             let mut steel_ctx = SteelCtx::new_command(host, bundle, call.provenance().clone());
+            let steel = &mut self.steel;
             let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 let args = call.args().iter().map(|arg| arg.value().clone()).collect();
                 steel

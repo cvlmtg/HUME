@@ -92,7 +92,7 @@ impl EditorState {
         }
         self.selection_recipe.push(SelectionStep {
             command: name.clone(),
-            ctx: ctx.clone(),
+            ctx: *ctx,
         });
     }
 

@@ -396,31 +396,6 @@ fn after_virtual_line_renders_below_skipped_display_lines() {
     );
 }
 
-/// Emits `self.0` distinct `Before(0)` virtual display lines, texted "1".."9":
-/// a virtual block taller than a small viewport, to prove every display
-/// line in it is individually reachable by scrolling, not just the display
-/// lines nearest the edge.
-struct MultiBeforeLine(usize);
-
-impl DecorationSource for MultiBeforeLine {
-    fn kinds(&self) -> DecorationKinds {
-        DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
-        if line_idx == ContentLine::new(0) {
-            for i in 0..self.0 {
-                out.push(Decoration::VirtualLine(VirtualLine {
-                    line: ContentLine::new(0),
-                    side: hume_core::Side::Before,
-                    provider_id: 0,
-                    content: SpannedText::plain((i + 1).to_string()),
-                    base_scope: None,
-                }));
-            }
-        }
-    }
-}
-
 /// Line 0 is "x" (one unwrapped display line) with `n` `Before(0)` virtual
 /// display lines stacked above it, viewed through a viewport `height` rows
 /// tall.
@@ -433,7 +408,11 @@ fn render_pane_with_n_before_lines(top_slot: u16, n: usize, height: u16) -> Grid
     pane.viewport
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), top_slot as usize));
     pane.providers
-        .add_decoration_source(Box::new(MultiBeforeLine(n)));
+        .add_decoration_source(Box::new(VirtualLineBlock::numbered(
+            hume_core::Side::Before,
+            ContentLine::new(0),
+            n,
+        )));
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, height);

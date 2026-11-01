@@ -124,8 +124,8 @@ pub(crate) struct ScriptingRegistries {
 
 /// Borrows of [`HostState`] fields needed to populate [`SteelCtx`].
 ///
-/// Built by [`HostState::split`] and passed to [`SteelCtx::new_init`] or
-/// [`SteelCtx::new_command`]. Private to this module.
+/// Built by [`HostState::split`] and passed to [`SteelCtx::new_init`],
+/// [`SteelCtx::new_activation`] or [`SteelCtx::new_command`].
 pub(crate) struct HostBundle<'a> {
     pub(crate) registries: &'a mut ScriptingRegistries,
     attribution: &'a mut AttributionStack,

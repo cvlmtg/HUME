@@ -15,7 +15,7 @@ use hume_core::Count;
 
 /// Per-dispatch context assembled by the key handler and passed through
 /// [`Editor::dispatch`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(in crate::editor) struct CmdCtx {
     /// Numeric count prefix. [`Count::UNTYPED`] means "no count was typed":
     /// a bare keyboard press, which visual-move commands read as one visual

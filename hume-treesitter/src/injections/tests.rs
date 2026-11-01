@@ -395,19 +395,30 @@ fn reuse_range() -> tree_sitter::Range {
     }
 }
 
-/// The committed rust layer of [`REUSE_SOURCE`] at depth 1.
+/// The injected layers of [`REUSE_SOURCE`] committed under a rust root:
+/// one rust layer at depth 1.
 fn reuse_prior(rust: &Arc<GrammarBundle>) -> PriorInjections {
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(rust.grammar.language()).unwrap();
+    let root = parser.parse(REUSE_SOURCE, None).expect("parse");
     parser.set_included_ranges(&[reuse_range()]).unwrap();
     let tree = parser.parse(REUSE_SOURCE, None).expect("parse");
-    PriorInjections::from_iter([SyntaxLayer {
-        bundle: Arc::clone(rust),
-        depth: 1,
-        tree,
-        ranges: vec![reuse_range()],
-        sites: InjectionSites::default(),
-    }])
+    PriorInjections::of(&SyntaxLayers::new(vec![
+        SyntaxLayer {
+            bundle: Arc::clone(rust),
+            depth: 0,
+            tree: root,
+            ranges: Vec::new(),
+            sites: InjectionSites::default(),
+        },
+        SyntaxLayer {
+            bundle: Arc::clone(rust),
+            depth: 1,
+            tree,
+            ranges: vec![reuse_range()],
+            sites: InjectionSites::default(),
+        },
+    ]))
 }
 
 /// The bytes an insertion of `len` bytes at `at` edits.

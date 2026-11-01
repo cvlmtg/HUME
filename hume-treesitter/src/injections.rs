@@ -8,7 +8,7 @@ use streaming_iterator::StreamingIterator;
 use crate::edited_bytes::{EditedBytes, push_merging};
 use crate::highlight::RopeProvider;
 
-use crate::layers::SyntaxLayer;
+use crate::layers::{SyntaxLayer, SyntaxLayers};
 use crate::parse_worker::{MAX_INJECTION_DEPTH, run_parse};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId, SnapshotGrammar};
 
@@ -511,14 +511,6 @@ pub(crate) struct PriorInjections {
     layers: Vec<SyntaxLayer>,
 }
 
-impl FromIterator<SyntaxLayer> for PriorInjections {
-    fn from_iter<I: IntoIterator<Item = SyntaxLayer>>(layers: I) -> Self {
-        let mut layers: Vec<SyntaxLayer> = layers.into_iter().collect();
-        layers.sort_by_key(SyntaxLayer::key);
-        Self { layers }
-    }
-}
-
 /// How a layer about to be parsed uses the committed layers.
 enum Reuse<'p> {
     /// Install the prior layer's tree as it is, unparsed.
@@ -530,6 +522,20 @@ enum Reuse<'p> {
 }
 
 impl PriorInjections {
+    /// Every layer of `committed` but the root.
+    ///
+    /// # Panics
+    /// If `committed` has no layers: `layers[0]` is the root.
+    pub(crate) fn of(committed: &SyntaxLayers) -> Self {
+        let (_root, injected) = committed
+            .layers
+            .split_first()
+            .expect("layers[0] is the root");
+        let mut layers = injected.to_vec();
+        layers.sort_by_key(SyntaxLayer::key);
+        Self { layers }
+    }
+
     /// The prior layer of the same bundle, compared by identity, at the
     /// same depth and over the same ranges, bytes and points alike, is
     /// installed unchanged when `edited` does not touch its ranges and

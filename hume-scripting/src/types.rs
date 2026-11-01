@@ -148,7 +148,7 @@ pub struct VirtualLineSpec {
 /// [`super::ScriptingHost::fire_hook`], [`super::ScriptingHost::run_steel_calls`],
 /// [`super::ScriptingHost::eval_init`], [`super::ScriptingHost::activate_plugin_inline`])
 /// returns the effects it queued, in the exact order Steel builtins pushed
-/// them (`SteelCtx::effects`, backed by the persistent `ScriptingHost::effects`
+/// them (`SteelCtx::effects`, backed by the persistent `HostState::effects`
 /// log). The editor applies them in that same order: a single ordered log,
 /// not five separate channels with a hardcoded apply order.
 #[derive(Debug)]
@@ -239,7 +239,7 @@ pub enum Effect {
     },
 }
 
-/// One entry in the shared effect log (`ScriptingHost::effects`).
+/// One entry in the shared effect log (`HostState::effects`).
 #[derive(Debug)]
 pub(crate) struct QueuedEffect {
     pub(crate) effect: Effect,

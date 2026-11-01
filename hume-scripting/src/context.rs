@@ -15,8 +15,8 @@ use hume_core::Severity;
 /// Context struct borrowed into the Steel engine for the duration of each eval
 /// or command call via Steel's `with_mut_reference` API.
 ///
-/// All persistent scripting state (hooks, attribution, etc.) is held directly
-/// on [`super::ScriptingHost`] and borrowed here by reference.  Transient
+/// All persistent scripting state (hooks, attribution, etc.) is held on
+/// [`super::HostState`] and borrowed here by reference.  Transient
 /// per-eval state (accumulators, mode flags) is owned.
 ///
 /// Editor-domain state is accessed through [`EditorHost`], which is implemented
@@ -33,7 +33,7 @@ pub(crate) struct SteelCtx<'a> {
     /// `cmd` kind in `builtins!`'s registration table and never called; the
     /// init-only method (`host.settings().set_global_option`) is always safe.
     pub(crate) host: &'a mut dyn EditorHost,
-    // ── Persistent state borrowed from ScriptingHost ──────────────────────────
+    // ── Persistent state borrowed from HostState ──────────────────────────────
     /// The frames of attributed code running: plugin bodies and `call!`ed
     /// commands. See [`Self::owner`].
     pub(crate) attribution: &'a mut AttributionStack,
@@ -44,7 +44,7 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) pending_messages: &'a mut Vec<(Severity, String)>,
     /// Side effects queued by Steel builtins this eval (and any eval this one
     /// is nested inside), in the exact order they were pushed. Persistent on
-    /// `ScriptingHost`, borrowed here; each eval entry point drains its own
+    /// `HostState`, borrowed here; each eval entry point drains its own
     /// contribution back out (see `types::Effect`, `push_effect`).
     pub(crate) effects: &'a mut Vec<QueuedEffect>,
     /// Data/runtime directories (raw + display form), computed once by
