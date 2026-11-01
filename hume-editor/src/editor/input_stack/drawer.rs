@@ -456,8 +456,7 @@ impl EditorState {
 
 impl super::stack::FiresFalseOnReplace for DrawerLayer {
     fn close_firing_false(self: Box<Self>, state: &mut EditorState) {
-        let call = self.callback_call(SteelVal::BoolV(false));
-        if let Some(call) = call {
+        if let Some(call) = self.callback_call(SteelVal::BoolV(false)) {
             state.queue_steel_call(call);
         }
     }

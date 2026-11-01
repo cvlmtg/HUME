@@ -12,10 +12,10 @@
 //! workspace crate's `src/` (derived from the root `Cargo.toml`'s `members`
 //! list, so a renamed or newly added crate can't silently fall out of scope),
 //! excluding `args.rs` itself, for a line that *reads* `SteelVal::BoolV(false)`
-//! (a match arm with `=>` following it on the line, or a `matches!`/`if let` test)
-//! rather than *constructs* one as a return value (`Ok(SteelVal::BoolV(false))`,
-//! `None => SteelVal::BoolV(false)`, both clean: the marker appears before any
-//! `=>` on the line, not after).
+//! (a match arm with `=>` following it on the line, a `matches!` test, or the
+//! pattern of a `let`, `if let` or `while let`) rather than *constructs* one
+//! (`Ok(SteelVal::BoolV(false))`, `None => SteelVal::BoolV(false)`, or an
+//! argument on the value side of a `let`'s `=`).
 //!
 //! **What is not scanned**: test code (`collect_source_rs` skips any `tests/`
 //! directory and any `tests.rs`) and this `lints/` directory. `args.rs` is
@@ -31,17 +31,32 @@ const OPT_OUT_MARKER: &str = "// absent-decode-safe:";
 const MARKER_PATTERN: &str = "BoolV(false)";
 
 /// Whether `code` (one comment-stripped source line) reads the absent-marker
-/// pattern rather than merely constructing one as a return value. A `=>`
-/// after the marker means it's the pattern side of a match arm; `matches!`/
-/// `if let` are the two other shapes a read can take. The same test the scan
-/// below applies, factored out so it can be exercised directly on synthetic
-/// lines no file contains.
+/// pattern rather than merely constructing one. A `=>` after the marker means
+/// it's the pattern side of a match arm. In a `let` binding (`if let` and
+/// `while let` included) the marker reads only between the `let` and its
+/// ` = `; past the ` = ` it is part of the value. A `matches!` test reads it.
+/// The same test the scan below applies, factored out so it can be exercised
+/// directly on synthetic lines no file contains.
 fn reads_absent_marker(code: &str) -> bool {
-    if code.contains("matches!") || code.contains("if let") {
-        return code.contains(MARKER_PATTERN);
+    let Some(marker) = code.find(MARKER_PATTERN) else {
+        return false;
+    };
+    if code.contains("matches!") {
+        return true;
     }
-    code.find(MARKER_PATTERN)
-        .is_some_and(|idx| code[idx..].contains("=>"))
+    let binding = code.match_indices("let ").map(|(i, _)| i).find(|&i| {
+        code[..i]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric() && c != '_')
+    });
+    if let Some(binding) = binding {
+        let pattern_end = code[binding..]
+            .find(" = ")
+            .map_or(code.len(), |end| binding + end);
+        return (binding..pattern_end).contains(&marker);
+    }
+    code[marker..].contains("=>")
 }
 
 #[test]
@@ -51,6 +66,7 @@ fn reads_absent_marker_distinguishes_read_from_construct() {
         "SteelVal::BoolV(false) => None,",
         "if matches!(payload, SteelVal::BoolV(false)) {",
         "if let SteelVal::BoolV(false) = val {",
+        "while let SteelVal::BoolV(false) = val {",
     ] {
         assert!(reads_absent_marker(read), "`{read}` reads the marker");
     }
@@ -59,6 +75,8 @@ fn reads_absent_marker_distinguishes_read_from_construct() {
         "None => SteelVal::BoolV(false),",
         "return Ok(SteelVal::BoolV(false));",
         "Ok(SteelVal::BoolV(false))",
+        "if let Some(call) = self.callback_call(SteelVal::BoolV(false)) {",
+        "let route = route_arg(feature, SteelVal::BoolV(false))?;",
     ] {
         assert!(
             !reads_absent_marker(construct),
