@@ -104,6 +104,18 @@ HUME's plugins are written in Steel Scheme and ship with every release. Plugins 
 
 Helix grows a selection in select mode (`v`). HUME's equivalent is Extend mode (`e`), where every motion extends until you act or press `Esc`. HUME also has one-shot extends (`Ctrl-w`, `Ctrl-b`, …) that extend for a single keystroke without changing mode. They need the kitty keyboard protocol, except `Ctrl-x`, which works on any terminal.
 
+### Word motions and whitespace
+
+Helix's `w` selects from the cursor up to the start of the next word, so the selection ends with the whitespace after a word. HUME's `w` selects the next whole word together with the whitespace before it, so deleting it never leaves a double space. `b`, `W` and `B` follow the same rule.
+
+To take the whitespace after the word instead, as Helix does, set `word-selects-whitespace` to `after`:
+
+```scheme
+(set-option! "word-selects-whitespace" "after")
+```
+
+`w` still selects a whole word: with the cursor inside `foo`, Helix's `w` selects the rest of `foo`, while HUME's selects the next word. `off` selects the bare word with no whitespace. See [Buffer options](settings.md#buffer-options).
+
 ### Line selection: `x` vs Extend mode (`e`)
 
 Both editors bind `x` to select the current line. They differ on the second press:

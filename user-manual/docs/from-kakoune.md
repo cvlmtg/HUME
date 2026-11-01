@@ -109,6 +109,18 @@ The `Ctrl` one-shots and `Ctrl-,` need the kitty keyboard protocol, except `Ctrl
 
 Bare `K` (no modifier) is not an extend in HUME: it shows LSP hover docs for the symbol under the cursor (with `core:lsp` loaded).
 
+### Word motions and whitespace
+
+Kakoune's `w` selects from the cursor up to the start of the next word, so the selection ends with the whitespace after a word. HUME's `w` selects the next whole word together with the whitespace before it, so deleting it never leaves a double space. `b`, `W` and `B` follow the same rule.
+
+To take the whitespace after the word instead, as Kakoune does, set `word-selects-whitespace` to `after`:
+
+```scheme
+(set-option! "word-selects-whitespace" "after")
+```
+
+`w` still selects a whole word: with the cursor inside `foo`, Kakoune's `w` selects the rest of `foo`, while HUME's selects the next word. `off` selects the bare word with no whitespace. See [Buffer options](settings.md#buffer-options).
+
 ### Line selection
 
 Kakoune's `x` expands the selection to cover full lines and keeps growing it on every press, and `<a-x>` trims a selection back to whole-line boundaries.
