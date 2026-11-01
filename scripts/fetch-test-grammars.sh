@@ -144,7 +144,9 @@ fetch_grammar() {
 
   rm -rf "$target"
   mkdir -p "$target"
-  tar -xzf "$member" -C "$target"
+  # Git Bash's tar reads a `D:/...` archive name as a remote host, so the
+  # archive goes through a redirect.
+  tar -xzf - -C "$target" < "$member"
   local manifest_name manifest_platform
   manifest_name="$(manifest_value "$target/manifest.scm" name)"
   manifest_platform="$(manifest_value "$target/manifest.scm" platform)"
@@ -190,7 +192,8 @@ build_bundle() {
   for name in "${names[@]}"; do
     files+=("$name.tar.gz")
   done
-  COPYFILE_DISABLE=1 tar --format=ustar -cf "$BUNDLE/grammars-$PLATFORM.tar" -C "$MEMBERS" "${files[@]}"
+  # A redirect, as in fetch_grammar.
+  COPYFILE_DISABLE=1 tar --format=ustar -cf - -C "$MEMBERS" "${files[@]}" > "$BUNDLE/grammars-$PLATFORM.tar"
 
   local index="$BUNDLE/grammars-$PLATFORM.index" pos=0 member size
   echo "treesitter.hume $TAG $PLATFORM" > "$index"
