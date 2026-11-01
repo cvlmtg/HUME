@@ -610,55 +610,59 @@ impl PickerSession {
         self.items.len()
     }
 
-    /// The `items` indices of up to `rows` ranked items starting at
+    /// The `items` indices of up to `list_rows` ranked items starting at
     /// `scroll`: the window the picker panel paints. The selected row's
     /// on-screen position is `selected - scroll`.
-    fn visible(&self, rows: usize) -> impl Iterator<Item = usize> + '_ {
+    fn visible(&self, list_rows: usize) -> impl Iterator<Item = usize> + '_ {
         self.filtered
             .iter()
             .skip(self.scroll)
-            .take(rows)
+            .take(list_rows)
             .map(|&idx| idx as usize)
     }
 
-    /// Display strings of the window of `rows`, in ranked order.
+    /// Display strings of the window of `list_rows`, in ranked order.
     #[cfg(test)]
-    pub(in crate::editor) fn window(&self, rows: usize) -> impl Iterator<Item = &str> + '_ {
-        self.visible(rows)
+    pub(in crate::editor) fn window(&self, list_rows: usize) -> impl Iterator<Item = &str> + '_ {
+        self.visible(list_rows)
             .map(|idx| self.items[idx].display.as_str())
     }
 
-    /// The call that makes the rows in the window of `rows` that `#:render`
-    /// has not made `budget` cells wide, in on-screen order. `None` for a
-    /// picker without `#:render`, or when it made every one.
-    pub(in crate::editor) fn unrendered(&self, rows: usize, budget: usize) -> Option<RenderCall> {
+    /// The call that makes the rows in the window of `list_rows` that
+    /// `#:render` has not made `budget` cells wide, in on-screen order.
+    /// `None` for a picker without `#:render`, or when it made every one.
+    pub(in crate::editor) fn unrendered(
+        &self,
+        list_rows: usize,
+        budget: usize,
+    ) -> Option<RenderCall> {
         self.rendered
             .as_ref()?
-            .unrendered(self.visible(rows), budget, |i| {
+            .unrendered(self.visible(list_rows), budget, |i| {
                 let item = &self.items[i];
                 display_item(&item.display, item.payload.value().clone())
             })
     }
 
-    /// Stores `rows`, each the row `#:render` made `budget` cells wide for
-    /// the item at its index in `items`, after [`Self::unrendered`] asked
-    /// for them.
-    pub(in crate::editor) fn fill(&mut self, rows: Vec<(usize, ListRow)>, budget: usize) {
+    /// The rows `#:render` made, for [`Editor::render_rows_into`] to store the
+    /// rows [`Self::unrendered`] asked for.
+    ///
+    /// [`Editor::render_rows_into`]: crate::editor::Editor::render_rows_into
+    pub(in crate::editor) fn rendered_mut(&mut self) -> &mut RenderedRows {
         self.rendered
             .as_mut()
             .expect("only a picker with #:render asks for rows")
-            .fill(rows, budget);
     }
 
-    /// The rows of the window of `rows`, `budget` cells wide. With
+    /// The rows of the window of `list_rows`, `budget` cells wide. With
     /// `#:render`, each is the row it made at that width, `None` until it
     /// has; without, each is the item's display, cut for this call.
     pub(in crate::editor) fn window_rows(
         &self,
-        rows: usize,
+        list_rows: usize,
         budget: usize,
     ) -> Vec<Option<Arc<ListRow>>> {
-        self.visible(rows)
+        self.visible(list_rows)
             .map(|idx| match &self.rendered {
                 Some(rendered) => rendered.at(idx, budget).cloned(),
                 None => Some(Arc::new(
@@ -666,14 +670,6 @@ impl PickerSession {
                 )),
             })
             .collect()
-    }
-
-    /// How many rows `#:render` made.
-    #[cfg(test)]
-    pub(in crate::editor) fn rendered_count(&self) -> usize {
-        self.rendered
-            .as_ref()
-            .map_or(0, |rendered| rendered.made().flatten().count())
     }
 
     /// The index in `items` of the selected item, or `None` when nothing

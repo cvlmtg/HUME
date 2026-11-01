@@ -320,18 +320,21 @@ fn eager_string_rows_need_no_render_proc() {
     );
 }
 
-/// A failing render closes the drawer, delivers `#f` to `on-select`, and
-/// logs the failure.
-fn assert_render_failure_closes(ed: &mut Editor) {
+/// A failing render closes the drawer and logs the failure, naming
+/// `needle`, in the frame it fails in. The `#f` it queues for `on-select`
+/// wakes the loop at once, and the next settle delivers it.
+fn assert_render_failure_closes(ed: &mut Editor, needle: &str) {
     assert!(ed.state.input.drawer().is_none(), "the drawer closed");
-    assert_eq!(shown(ed, "selections"), "#f;");
     assert!(
-        ed.state
-            .message_log
-            .entries()
-            .any(|e| e.text.contains("drawer render error")),
-        "the failure is logged"
+        error_log(ed)
+            .iter()
+            .any(|e| e.contains("drawer render error") && e.contains(needle)),
+        "errors: {:?}",
+        error_log(ed)
     );
+    assert_eq!(ed.wake_timeout(), Some(std::time::Duration::ZERO));
+    ed.settle();
+    assert_eq!(shown(ed, "selections"), "#f;");
 }
 
 #[test]
@@ -345,9 +348,8 @@ fn a_raising_render_proc_closes_the_drawer() {
         r#"(lambda (rows budget) (error "boom"))"#,
     );
     frame(&mut ed, WIDTH, HEIGHT);
-    frame(&mut ed, WIDTH, HEIGHT);
 
-    assert_render_failure_closes(&mut ed);
+    assert_render_failure_closes(&mut ed, "boom");
 }
 
 #[test]
@@ -361,9 +363,8 @@ fn a_render_proc_returning_too_few_rows_closes_the_drawer() {
         r#"(lambda (rows budget) (list "only one"))"#,
     );
     frame(&mut ed, WIDTH, HEIGHT);
-    frame(&mut ed, WIDTH, HEIGHT);
 
-    assert_render_failure_closes(&mut ed);
+    assert_render_failure_closes(&mut ed, "expected a list of");
 }
 
 #[test]
@@ -395,9 +396,8 @@ fn a_render_proc_returning_numbers_closes_the_drawer() {
         "(lambda (rows budget) rows)",
     );
     frame(&mut ed, WIDTH, HEIGHT);
-    frame(&mut ed, WIDTH, HEIGHT);
 
-    assert_render_failure_closes(&mut ed);
+    assert_render_failure_closes(&mut ed, "expected a string");
 }
 
 #[test]
@@ -429,13 +429,6 @@ fn a_render_proc_may_return_styled_rows() {
     assert_drawer_styles(&mut ed, &[styled, (None, &[]), styled]);
 }
 
-/// A render result that fails to become a row closes the drawer and logs
-/// why.
-fn assert_render_failure_names(ed: &mut Editor, needle: &str) {
-    assert!(has_error(ed, needle), "errors: {:?}", error_log(ed));
-    assert_render_failure_closes(ed);
-}
-
 /// The error names the failing row by its index in the drawer, not in the
 /// rendered window.
 #[test]
@@ -465,9 +458,8 @@ fn a_render_error_for_invalid_spans_names_the_row() {
         ed.feed_key(key_ctrl('d'));
         frame(&mut ed, WIDTH, HEIGHT);
     }
-    frame(&mut ed, WIDTH, HEIGHT);
 
-    assert_render_failure_names(
+    assert_render_failure_closes(
         &mut ed,
         "row 29 'spans 0: end 9 is past the text's char length 1",
     );
@@ -484,9 +476,8 @@ fn a_render_proc_returning_a_row_with_an_unknown_key_closes_the_drawer() {
         r#"(lambda (rows budget) (map (lambda (k) (hash 'text "x" 'spans '() 'bogus 1)) rows))"#,
     );
     frame(&mut ed, WIDTH, HEIGHT);
-    frame(&mut ed, WIDTH, HEIGHT);
 
-    assert_render_failure_names(&mut ed, "unknown key 'bogus");
+    assert_render_failure_closes(&mut ed, "unknown key 'bogus");
 }
 
 /// The render proc reads the editor but cannot change it: a write is
@@ -505,9 +496,8 @@ fn a_render_proc_that_changes_the_editor_closes_the_drawer() {
              (map (lambda (k) "row") rows))"#,
     );
     frame(&mut ed, WIDTH, HEIGHT);
-    frame(&mut ed, WIDTH, HEIGHT);
 
-    assert_render_failure_closes(&mut ed);
+    assert_render_failure_closes(&mut ed, "cannot be changed while rendering");
     assert_eq!(
         shown(&mut ed, "indent-width"),
         "4",
@@ -562,44 +552,57 @@ fn update_drawer_list_keeps_the_opening_truncate() {
     insta::assert_snapshot!(updated_long_row(Some(render)), @"…876543210");
 }
 
-/// Where the open drawer stores the rows its render proc made, `None` for a
-/// drawer with no render proc.
-fn rendered_store(ed: &Editor) -> Option<*const ()> {
-    ed.state
-        .input
-        .drawer()
-        .expect("drawer must be open")
-        .rows
-        .rendered()
-        .map(|rendered| rendered.store())
+#[test]
+fn update_drawer_list_switches_between_given_and_rendered_rows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(&mut ed, tmp.path(), "(range 0 2)", "render");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "to-given" "" (lambda (pane)
+  (update-drawer-list! drawer (list (cons "given a" 0) (cons "given b" 1)) on-select 0)))
+(define-typed-command! "to-rendered" "" (lambda (pane)
+  (update-drawer-list! drawer (range 10 12) on-select 0 #:render render)))"#,
+    );
+    frame(&mut ed, WIDTH, HEIGHT);
+    assert_eq!(view_rows(&ed), vec![row(0), row(1)]);
+
+    type_cmd(&mut ed, ":to-given");
+    frame(&mut ed, WIDTH, HEIGHT);
+    let given = |text: &str| Some(text.to_owned());
+    assert_eq!(view_rows(&ed), vec![given("given a"), given("given b")]);
+
+    type_cmd(&mut ed, ":to-rendered");
+    frame(&mut ed, WIDTH, HEIGHT);
+    assert_eq!(view_rows(&ed), vec![row(10), row(11)]);
+    assert_eq!(rendered(&mut ed), vec![0, 1, 10, 11]);
 }
 
 #[test]
-fn a_rendered_drawer_allocates_its_rows_once() {
+fn a_scrolled_drawer_renders_each_row_once_until_the_width_changes() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(&mut ed, tmp.path(), "(range 0 30)", "render");
-    let first = rendered_store(&ed).expect("a rendered drawer stores its rows");
     frame(&mut ed, WIDTH, HEIGHT);
 
     for _ in 0..30 {
         ed.feed_key(key_ctrl('d'));
         frame(&mut ed, WIDTH, HEIGHT);
     }
+    let mut keys = rendered(&mut ed);
+    keys.sort_unstable();
+    assert_eq!(keys, (0..30).collect::<Vec<_>>(), "each row renders once");
     let scrolled = requests(&mut ed).len();
-    assert!(scrolled > 1, "setup: the scroll rendered rows");
     frame(&mut ed, WIDTH + 10, HEIGHT);
 
-    assert_eq!(
-        requests(&mut ed).len(),
-        scrolled + 1,
-        "setup: the width change rendered rows"
-    );
-    assert_eq!(rendered_store(&ed), Some(first));
+    let requests = requests(&mut ed);
+    assert_eq!(requests.len(), scrolled + 1);
+    assert_eq!(requests[scrolled], (visible(30), ROW_WIDTH + 10));
 }
 
 #[test]
-fn a_drawer_given_its_rows_stores_no_rendered_rows() {
+fn a_drawer_given_its_rows_shows_them_after_a_scroll() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(
@@ -609,8 +612,17 @@ fn a_drawer_given_its_rows_stores_no_rendered_rows() {
         "#f",
     );
     frame(&mut ed, WIDTH, HEIGHT);
-    ed.feed_key(key_ctrl('d'));
-    frame(&mut ed, WIDTH, HEIGHT);
+    for _ in 0..4 {
+        ed.feed_key(key_ctrl('d'));
+        frame(&mut ed, WIDTH, HEIGHT);
+    }
 
-    assert_eq!(rendered_store(&ed), None);
+    let scroll = ed.state.input.drawer().expect("the drawer is open").scroll;
+    assert!(scroll > 0, "setup: the drawer scrolled");
+    assert_eq!(
+        view_rows(&ed),
+        (scroll..scroll + visible(30))
+            .map(|k| Some(k.to_string()))
+            .collect::<Vec<_>>()
+    );
 }

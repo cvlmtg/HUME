@@ -12,6 +12,8 @@ use steel::rvals::SteelVal;
 use crate::editor::Editor;
 use crate::editor::host_impl::EditorHostImpl;
 
+use super::stack::Layer;
+
 /// A script's row display as a list row, its scopes interned in `registry`.
 /// Every row a script gives a drawer, menu or picker, eager or rendered, is
 /// built here.
@@ -32,9 +34,9 @@ pub(in crate::editor) fn list_row(display: RowDisplay, registry: &mut ScopeRegis
 /// One call to a list's `#:render` proc: each row's item and its place in
 /// the list the script gave.
 pub(in crate::editor) struct RenderCall {
-    pub(in crate::editor) render: hume_scripting::Callback,
+    render: hume_scripting::Callback,
     // steel-val-transient: built for one render call and moved into it.
-    pub(in crate::editor) items: Vec<(usize, SteelVal)>,
+    items: Vec<(usize, SteelVal)>,
 }
 
 /// A list's `#:render` proc and the rows it has made, by their place in
@@ -92,7 +94,7 @@ impl RenderedRows {
     }
 
     /// Stores `rows`, each made `budget` cells wide for the row at its place.
-    pub(in crate::editor) fn fill(&mut self, rows: Vec<(usize, ListRow)>, budget: usize) {
+    fn fill(&mut self, rows: Vec<(usize, ListRow)>, budget: usize) {
         for (place, row) in rows {
             if place >= self.rows.len() {
                 self.rows.resize_with(place + 1, || None);
@@ -116,32 +118,28 @@ impl RenderedRows {
             .iter()
             .map(|rendered| rendered.as_ref().map(|rendered| &*rendered.row))
     }
-
-    /// Where the rows are stored, to tell whether a list reallocated them.
-    #[cfg(test)]
-    pub(in crate::editor) fn store(&self) -> *const () {
-        self.rows.as_ptr().cast()
-    }
 }
 
 impl Editor {
-    /// The rows `call` renders, each cut to `budget` cells at its `cut` end
-    /// and paired with its place in the list. A render proc that fails,
-    /// returns anything but one row display per item, or has no scripting
-    /// host to call it is the error; the caller closes its list on it.
-    pub(in crate::editor) fn rendered_rows(
+    /// Renders `call`'s rows, each cut to `budget` cells at its `cut` end,
+    /// and stores them in the [`RenderedRows`] that `rendered` reaches in
+    /// the open `L` list. A render proc that fails, returns anything but one
+    /// row display per item, or has no scripting host to call it is the
+    /// error; the caller closes its list on it.
+    pub(in crate::editor) fn render_rows_into<L: Layer>(
         &mut self,
         call: RenderCall,
         budget: usize,
         cut: TruncateEnd,
-    ) -> Result<Vec<(usize, ListRow)>, String> {
+        rendered: impl FnOnce(&mut L) -> &mut RenderedRows,
+    ) -> Result<(), String> {
         let Some(scripting) = self.scripting.as_mut() else {
             return Err("scripting is not available".to_owned());
         };
         let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
         let result = scripting.render_rows(&call.render, call.items, budget, &mut host);
         self.flush_script_messages();
-        Ok(result?
+        let rows = result?
             .into_iter()
             .map(|(place, display)| {
                 (
@@ -149,6 +147,13 @@ impl Editor {
                     list_row(display, &mut self.view.registry).fit(budget, cut),
                 )
             })
-            .collect())
+            .collect();
+        let list = self
+            .state
+            .input
+            .find_mut::<L>()
+            .expect("a render cannot close its list");
+        rendered(list).fill(rows, budget);
+        Ok(())
     }
 }

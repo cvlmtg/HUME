@@ -166,15 +166,22 @@ impl MenuLayer {
         );
     }
 
-    /// A menu pushed directly, for a test of the stack's own behavior. Its
-    /// rows carry no span, so no registry has to know their scopes.
+    /// A menu of plain `items`, each its own payload, pushed directly for a
+    /// test of the stack's own behavior.
     #[cfg(test)]
-    pub(in crate::editor) fn for_test(
-        items: NonEmpty<(RowDisplay, hume_scripting::Rooted)>,
-        callback: hume_scripting::Callback,
-    ) -> Self {
-        let mut registry = ScopeRegistry::new();
-        let rows = menu_rows(items, &mut registry);
+    pub(in crate::editor) fn for_test(items: &[&str], callback: hume_scripting::Callback) -> Self {
+        let rows = items
+            .iter()
+            .map(|item| {
+                let row = hume_ui::popup::MenuRow::plain(hume_ui::list_row::ListRow::plain(
+                    (*item).to_owned(),
+                ));
+                let payload =
+                    hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV((*item).into()));
+                (row, payload)
+            })
+            .collect();
+        let rows = NonEmpty::new(rows).expect("a test menu has items");
         Self::new(WaitingInput::for_test(), rows, callback)
     }
 

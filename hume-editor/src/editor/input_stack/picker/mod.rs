@@ -12,10 +12,11 @@ use std::rc::Rc;
 use termina::event::{KeyCode, Modifiers};
 
 use hume_core::{HostToken, Severity};
-use hume_engine::pipeline::{EngineView, ScreenLayout};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_scripting::host::{PickerStep, token_to_steel};
 use hume_scripting::{Rooted, SteelCall};
+use hume_ui::picker_panel::PanelGeometry;
 use steel::rvals::SteelVal;
 
 use super::super::commands::half_page;
@@ -102,28 +103,36 @@ impl Layer for PickerLayer {
 }
 
 impl Editor {
+    /// Prepares the open picker's visible window for this frame: calls
+    /// `PickerSession::move_selection(0, geo.list_rows)`, a pure
+    /// scroll-clamp against the *current* geometry, so a terminal resize
+    /// between the last keystroke and this frame self-heals here rather
+    /// than leaving a stale scroll offset from a taller frame, then renders
+    /// the window's rows its `#:render` has not made at the panel's width
+    /// ([`Self::fill_picker_window`]). Runs in `prepare_frame` before any
+    /// overlay view syncs: a failed render closes the picker and every
+    /// layer above it. `geo` is the frame's panel geometry, `None` when the
+    /// panes have no room for the panel.
+    pub(in crate::editor) fn prepare_picker_window(&mut self, geo: Option<&PanelGeometry>) {
+        let Some(geo) = geo else {
+            return;
+        };
+        if let Some(session) = self.state.input.picker_mut() {
+            session.move_selection(0, geo.list_rows);
+            self.fill_picker_window(geo.list_rows, geo.list_width());
+        }
+    }
+
     /// Write the open picker session into the shared `PickerViewState` Arc
     /// so `PickerOverlay` can paint it this frame. Synced with the other
     /// overlays in `prepare_frame`, but, unlike the cursor-anchored ones, it
-    /// centers in the panes region, so it needs no cursor cell.
-    ///
-    /// Takes `&mut self`: before snapshotting the visible window, it calls
-    /// `PickerSession::move_selection(0, geo.list_rows)`. A delta-0 move is
-    /// a pure scroll-clamp against the *current* geometry, so a terminal
-    /// resize between the last keystroke and this frame self-heals here
-    /// rather than leaving a stale scroll offset from a taller frame. It
-    /// then renders the window's rows its `#:render` has not made at the
-    /// panel's width ([`Self::fill_picker_window`]).
-    pub(in crate::editor) fn sync_picker_view(&mut self, screen: &ScreenLayout) {
+    /// centers in the panes region, so it needs no cursor cell. Reads the
+    /// window [`Self::prepare_picker_window`] prepared, in the same `geo`.
+    pub(in crate::editor) fn sync_picker_view(&mut self, geo: Option<&PanelGeometry>) {
         if self.state.input.picker().is_none() && self.state.views.picker.read().is_none() {
             return;
         }
 
-        let geo = hume_ui::picker_panel::panel_geometry(screen.pane_area());
-        if let (Some(session), Some(geo)) = (self.state.input.picker_mut(), &geo) {
-            session.move_selection(0, geo.list_rows);
-            self.fill_picker_window(geo.list_rows, geo.list_width());
-        }
         let resolved = match (self.state.input.picker(), geo) {
             (Some(session), Some(geo)) => {
                 let rows = session.window_rows(geo.list_rows, geo.list_width());
@@ -148,32 +157,28 @@ impl Editor {
         self.state.views.picker.set(resolved);
     }
 
-    /// Renders the open picker's rows in the window of `rows` its
+    /// Renders the open picker's rows in the window of `list_rows` its
     /// `#:render` has not made `budget` cells wide, through one call to it,
     /// each cut to `budget` at the `#:truncate` end. A picker without
-    /// `#:render` renders nothing. A failed render closes the picker, firing
-    /// `#:on-close`, and reports the error.
-    fn fill_picker_window(&mut self, rows: usize, budget: usize) {
+    /// `#:render` renders nothing. A failed render closes the picker,
+    /// queuing `#:on-close` for the next settle, and reports the error.
+    fn fill_picker_window(&mut self, list_rows: usize, budget: usize) {
         let session = self
             .state
             .input
             .picker()
             .expect("the caller found a picker");
-        let Some(call) = session.unrendered(rows, budget) else {
+        let Some(call) = session.unrendered(list_rows, budget) else {
             return;
         };
         let cut = session.truncate();
-        match self.rendered_rows(call, budget, cut) {
-            Ok(rendered) => self
-                .state
-                .input
-                .picker_mut()
-                .expect("a render cannot close the picker")
-                .fill(rendered, budget),
-            Err(message) => {
-                close_picker(&mut self.state, &self.view);
-                self.report(Severity::Error, format!("picker render error: {message}"));
-            }
+        if let Err(message) =
+            self.render_rows_into(call, budget, cut, |picker: &mut PickerLayer| {
+                picker.session.rendered_mut()
+            })
+        {
+            close_picker(&mut self.state, &self.view);
+            self.report(Severity::Error, format!("picker render error: {message}"));
         }
     }
 }

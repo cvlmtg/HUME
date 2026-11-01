@@ -45,7 +45,14 @@ impl Editor {
     /// source has a wake instant) is `None`: the wait primitive blocks
     /// until real input or a background-thread wake, so the editor never
     /// busy-polls at rest.
+    ///
+    /// Work queued since the last settle is `Duration::ZERO`: a frame can
+    /// queue some (a list whose `#:render` failed closes and queues its
+    /// callback), and only the next pass's `settle` runs it.
     pub(in crate::editor) fn wake_timeout(&self) -> Option<Duration> {
+        if !self.state.config.pending_work.is_empty() {
+            return Some(Duration::ZERO);
+        }
         let now = Instant::now();
         self.async_sources()
             .iter()

@@ -162,7 +162,7 @@ pub(in crate::editor) enum DrawerRows {
     /// `:ls`'s rows: row `i` names `buffers[i]`, and `Enter` switches the
     /// focused pane to it.
     Buffers {
-        rows: Vec<ListRow>,
+        rows: Vec<Arc<ListRow>>,
         buffers: Vec<BufferId>,
     },
 }
@@ -170,7 +170,7 @@ pub(in crate::editor) enum DrawerRows {
 /// How a script's drawer makes the rows it shows.
 pub(in crate::editor) enum ScriptRows {
     /// The rows the script gave, one per payload.
-    Given(Vec<ListRow>),
+    Given(Vec<Arc<ListRow>>),
     /// Rows a render proc makes from their payloads, the script's keys.
     Rendered(RenderedRows),
 }
@@ -187,7 +187,7 @@ impl DrawerRows {
                 let (rows, payloads) = items
                     .into_vec()
                     .into_iter()
-                    .map(|(display, payload)| (list_row(display, registry), payload))
+                    .map(|(display, payload)| (Arc::new(list_row(display, registry)), payload))
                     .unzip();
                 (ScriptRows::Given(rows), payloads)
             }
@@ -208,7 +208,7 @@ impl DrawerRows {
 
     fn buffers(list: BufferList) -> Self {
         Self::Buffers {
-            rows: list.rows.into_vec(),
+            rows: list.rows.into_vec().into_iter().map(Arc::new).collect(),
             buffers: list.buffers,
         }
     }
@@ -243,7 +243,7 @@ impl DrawerRows {
                 rows: ScriptRows::Given(rows),
                 ..
             }
-            | Self::Buffers { rows, .. } => rows.iter().map(Some).collect(),
+            | Self::Buffers { rows, .. } => rows.iter().map(|row| Some(&**row)).collect(),
             Self::Script {
                 rows: ScriptRows::Rendered(rendered),
                 ..
@@ -251,23 +251,10 @@ impl DrawerRows {
         }
     }
 
-    /// The rows the render proc made; `None` for a drawer with no render
-    /// proc.
-    #[cfg(test)]
-    pub(in crate::editor) fn rendered(&self) -> Option<&RenderedRows> {
-        match self {
-            Self::Script {
-                rows: ScriptRows::Rendered(rendered),
-                ..
-            } => Some(rendered),
-            _ => None,
-        }
-    }
-
     /// The call that makes the rows in `window` the render proc has not
-    /// made `width` cells wide. `None` for a drawer with no render proc, or
+    /// made `budget` cells wide. `None` for a drawer with no render proc, or
     /// when it made every row in `window`.
-    fn unrendered(&self, window: Range<usize>, width: usize) -> Option<RenderCall> {
+    fn unrendered(&self, window: Range<usize>, budget: usize) -> Option<RenderCall> {
         let Self::Script {
             rows: ScriptRows::Rendered(rendered),
             payloads,
@@ -276,15 +263,12 @@ impl DrawerRows {
         else {
             return None;
         };
-        let len = payloads.len();
-        rendered.unrendered(window.start.min(len)..window.end.min(len), width, |i| {
-            payloads[i].value().clone()
-        })
+        rendered.unrendered(window, budget, |i| payloads[i].value().clone())
     }
 
-    /// Stores `rows`, each the row the render proc made `width` cells wide
-    /// for the row at its index, after [`Self::unrendered`] asked for them.
-    fn fill(&mut self, rows: Vec<(usize, ListRow)>, width: usize) {
+    /// The rows the render proc made, for [`Editor::render_rows_into`] to
+    /// store the rows [`Self::unrendered`] asked for.
+    fn rendered_mut(&mut self) -> &mut RenderedRows {
         let Self::Script {
             rows: ScriptRows::Rendered(rendered),
             ..
@@ -292,19 +276,18 @@ impl DrawerRows {
         else {
             unreachable!("only a rendered list asks for rows");
         };
-        rendered.fill(rows, width);
+        rendered
     }
 
-    /// The rows in `window`, `width` cells wide: a row given or listed cut
-    /// at its `truncate` end for this call, a rendered row as the render
-    /// proc made it at `width`, `None` until it has.
+    /// The rows in `window`, `budget` cells wide: a row given or listed cut
+    /// at its `truncate` end, shared when it fits, a rendered row as the
+    /// render proc made it at `budget`, `None` until it has.
     fn window(
         &self,
         window: Range<usize>,
-        width: usize,
+        budget: usize,
         truncate: TruncateEnd,
     ) -> Vec<Option<Arc<ListRow>>> {
-        let window = window.start.min(self.len())..window.end.min(self.len());
         match self {
             Self::Script {
                 rows: ScriptRows::Given(rows),
@@ -312,12 +295,12 @@ impl DrawerRows {
             }
             | Self::Buffers { rows, .. } => rows[window]
                 .iter()
-                .map(|row| Some(Arc::new(row.clone().fit(width, truncate))))
+                .map(|row| Some(row.fit_shared(budget, truncate)))
                 .collect(),
             Self::Script {
                 rows: ScriptRows::Rendered(rendered),
                 ..
-            } => window.map(|i| rendered.at(i, width).cloned()).collect(),
+            } => window.map(|i| rendered.at(i, budget).cloned()).collect(),
         }
     }
 }
@@ -602,7 +585,7 @@ impl EditorState {
             return;
         };
         let list = self.buffer_list(current, registry);
-        if *listed == list.buffers && rows.iter().eq(list.rows.iter()) {
+        if *listed == list.buffers && rows.iter().map(|row| &**row).eq(list.rows.iter()) {
             return;
         }
         self.input
@@ -715,42 +698,37 @@ impl Editor {
     /// with no drawer open. Runs every frame after the scroll is clamped to
     /// the terminal and before anything paints, so a scroll, a resize or a
     /// shrunk list shows its rows in the frame it happens. A failed render
-    /// closes the drawer, delivering `#f` to `on-select`, and reports the
-    /// error.
+    /// closes the drawer, queuing `#f` for `on-select`, which the next
+    /// settle delivers, and reports the error.
     pub(in crate::editor) fn sync_drawer_view(&mut self) {
         let terminal = self.view.terminal_area();
-        let width = hume_ui::drawer::row_width(terminal.width);
+        let budget = hume_ui::drawer::row_width(terminal.width);
         let Some(drawer) = self.state.input.find_mut::<DrawerLayer>() else {
             self.state.views.drawer.set(None);
             return;
         };
         let visible = drawer.visible_rows(&self.state.buffers, terminal.height);
         let window = drawer.scroll..drawer.scroll + visible;
-        if let Some(call) = drawer.rows.unrendered(window.clone(), width) {
+        if let Some(call) = drawer.rows.unrendered(window.clone(), budget) {
             let cut = drawer.truncate;
-            match self.rendered_rows(call, width, cut) {
-                Ok(rows) => self
+            if let Err(message) =
+                self.render_rows_into(call, budget, cut, |drawer: &mut DrawerLayer| {
+                    drawer.rows.rendered_mut()
+                })
+            {
+                let r = self
                     .state
                     .input
-                    .find_mut::<DrawerLayer>()
-                    .expect("a render cannot close the drawer")
-                    .rows
-                    .fill(rows, width),
-                Err(message) => {
-                    let r = self
-                        .state
-                        .input
-                        .ref_of::<DrawerLayer>()
-                        .expect("a render cannot close the drawer");
-                    self.state.take_firing_false::<DrawerLayer>(&self.view, r);
-                    self.state.views.drawer.set(None);
-                    self.report(Severity::Error, format!("drawer render error: {message}"));
-                    return;
-                }
+                    .ref_of::<DrawerLayer>()
+                    .expect("a render cannot close the drawer");
+                self.state.take_firing_false::<DrawerLayer>(&self.view, r);
+                self.state.views.drawer.set(None);
+                self.report(Severity::Error, format!("drawer render error: {message}"));
+                return;
             }
         }
         let drawer = self.state.input.drawer().expect("found above");
-        let rows = drawer.rows.window(window, width, drawer.truncate);
+        let rows = drawer.rows.window(window, budget, drawer.truncate);
         let selected_row = (!rows.is_empty()).then(|| drawer.selected - drawer.scroll);
         self.state
             .views

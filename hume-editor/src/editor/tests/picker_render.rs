@@ -175,6 +175,26 @@ fn a_resize_renders_the_visible_rows_again_at_the_new_budget() {
 }
 
 #[test]
+fn a_taller_panel_renders_its_newly_visible_rows_in_the_same_frame() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(&mut ed, tmp.path(), "(items 0 50)", "#:render render");
+    frame(&mut ed, WIDTH, HEIGHT);
+    let (short, budget) = panel(&ed);
+
+    frame(&mut ed, WIDTH, HEIGHT * 2);
+
+    let (tall, tall_budget) = panel(&ed);
+    assert!(tall > short && tall < 50, "setup: the panel grew taller");
+    assert_eq!(tall_budget, budget, "setup: the panel kept its width");
+    assert_eq!(view_rows(&ed), (0..tall).map(row).collect::<Vec<_>>());
+    assert_eq!(
+        requests(&mut ed),
+        vec![(short, budget), (tall - short, budget)]
+    );
+}
+
+#[test]
 fn typing_renders_only_rows_not_rendered_before() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
@@ -329,11 +349,11 @@ fn render_rows_take_spans_and_a_selected_scope() {
     );
 }
 
-/// A failing render closes the picker, fires `#:on-close` once, and logs
-/// the failure, naming `needle`.
+/// A failing render closes the picker and logs the failure, naming
+/// `needle`, in the frame it fails in. The `#:on-close` it queues wakes the
+/// loop at once, and the next settle fires it once.
 fn assert_render_failure_closes(ed: &mut Editor, needle: &str) {
     assert!(ed.state.input.picker().is_none(), "the picker closed");
-    assert_eq!(shown(ed, "closes"), "1");
     assert!(
         error_log(ed)
             .iter()
@@ -341,6 +361,9 @@ fn assert_render_failure_closes(ed: &mut Editor, needle: &str) {
         "errors: {:?}",
         error_log(ed)
     );
+    assert_eq!(ed.wake_timeout(), Some(std::time::Duration::ZERO));
+    ed.settle();
+    assert_eq!(shown(ed, "closes"), "1");
 }
 
 fn failing_render(proc: &str, needle: &str) {
@@ -352,7 +375,6 @@ fn failing_render(proc: &str, needle: &str) {
         "(items 0 30)",
         &format!("#:render {proc}"),
     );
-    frame(&mut ed, WIDTH, HEIGHT);
     frame(&mut ed, WIDTH, HEIGHT);
 
     assert_render_failure_closes(&mut ed, needle);
@@ -405,7 +427,6 @@ fn a_render_error_for_invalid_spans_names_the_row() {
         ed.feed_key(key(ch));
     }
     frame(&mut ed, WIDTH, HEIGHT);
-    frame(&mut ed, WIDTH, HEIGHT);
 
     assert_render_failure_closes(
         &mut ed,
@@ -431,10 +452,48 @@ fn a_render_proc_that_changes_the_editor_closes_the_picker() {
     let before = shown(&mut ed, "indent-width");
     assert_ne!(before, "8", "setup: the write would change the option");
     frame(&mut ed, WIDTH, HEIGHT);
+
+    assert_render_failure_closes(&mut ed, "cannot be changed while rendering");
+    assert_eq!(shown(&mut ed, "indent-width"), before);
+}
+
+/// A failed render closes the picker and every layer above it in the frame
+/// it fails in, so no overlay synced earlier in that frame shows a layer
+/// that is gone.
+#[test]
+fn a_failed_render_leaves_no_view_of_a_layer_above_the_picker() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(
+        &mut ed,
+        tmp.path(),
+        "(items 0 2)",
+        r#"#:render (lambda (rows budget)
+             (map (lambda (row)
+                    (if (equal? (car row) "item500") (error "boom") (car row)))
+                  rows))"#,
+    );
+    frame(&mut ed, WIDTH, HEIGHT);
+    ed.state.push_layer(
+        &ed.view,
+        crate::editor::input_stack::MenuLayer::for_test(
+            &["m0"],
+            hume_scripting::Callback::for_test(steel::rvals::SteelVal::StringV("menu-cb".into())),
+        ),
+    );
+    frame(&mut ed, WIDTH, HEIGHT);
+    assert!(
+        ed.state.views.menu.read().is_some(),
+        "setup: the menu shows"
+    );
+
+    ed.execute_keymap_command("push-more", Count::UNTYPED, false);
+    ed.settle();
     frame(&mut ed, WIDTH, HEIGHT);
 
-    assert_render_failure_closes(&mut ed, "");
-    assert_eq!(shown(&mut ed, "indent-width"), before);
+    assert!(ed.state.input.picker().is_none(), "the picker closed");
+    assert!(ed.state.input.menu().is_none(), "the menu above it closed");
+    assert!(ed.state.views.menu.read().is_none(), "no menu shows");
 }
 
 #[test]
@@ -507,7 +566,7 @@ fn snapshot_picker_with_rendered_styles() {
 }
 
 #[test]
-fn a_plain_picker_keeps_no_row_per_item() {
+fn a_plain_picker_shows_each_items_display_after_a_scroll() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(&mut ed, tmp.path(), "(items 0 50)", "");
@@ -519,8 +578,6 @@ fn a_plain_picker_keeps_no_row_per_item() {
         frame(&mut ed, WIDTH, HEIGHT);
     }
 
-    let session = ed.state.input.picker().expect("the picker is open");
-    assert_eq!(session.rendered_count(), 0);
     assert_eq!(
         view_rows(&ed),
         (4..list_rows + 4)

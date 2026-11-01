@@ -612,12 +612,15 @@ impl Editor {
         self.update_line_bg_providers(&panes);
 
         // Overlays resolve their geometry now, so render only paints. The
-        // cursor-anchored ones need the scroll result above.
+        // cursor-anchored ones need the scroll result above. The picker's
+        // rows render first: a failed render closes layers these views show.
+        let picker_geometry = hume_ui::picker_panel::panel_geometry(screen.pane_area());
+        self.prepare_picker_window(picker_geometry.as_ref());
         self.sync_minibuf_completion_view(&screen);
         self.sync_popup_view(&screen, ctx.cursor_content_pos);
         self.sync_menu_view(&screen, ctx.cursor_content_pos);
         self.sync_completion_menu_view(&screen, ctx.cursor_content_pos);
-        self.sync_picker_view(&screen);
+        self.sync_picker_view(picker_geometry.as_ref());
 
         // Bake scopes interned during this frame (extra highlights, inline
         // diagnostics, a new grammar's captures) before render resolves them.

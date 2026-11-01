@@ -8,7 +8,7 @@ use steel::rvals::SteelVal;
 
 fn menu(label: &str) -> MenuLayer {
     MenuLayer::for_test(
-        crate::editor::tests::script_rows(&[label]),
+        &[label],
         hume_scripting::Callback::for_test(SteelVal::BoolV(false)),
     )
 }

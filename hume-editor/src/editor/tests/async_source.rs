@@ -148,9 +148,13 @@ mod next_wake_covers_client_state {
     /// widening that constant's visibility just for test comparisons.
     const SPINNER_INTERVAL: Duration = Duration::from_millis(100);
 
-    /// One `rust-analyzer` instance, `Running` with nothing in flight.
+    /// One `rust-analyzer` instance, `Running` with nothing in flight and
+    /// the `on-lsp-attach` its start queued run, so a wake reads only the
+    /// client's own state.
     fn running_rig(tmp: &std::path::Path) -> LspRig {
-        LspRig::rust(tmp, "-[w]>ord\n", serde_json::json!({ "capabilities": {} }))
+        let mut rig = LspRig::rust(tmp, "-[w]>ord\n", serde_json::json!({ "capabilities": {} }));
+        rig.ed.drain_pending_work();
+        rig
     }
 
     #[test]
@@ -218,6 +222,7 @@ mod next_wake_covers_client_state {
             RigSpec::rust("-[w]>ord\n").with_init(init),
             backend,
         );
+        rig.ed.drain_pending_work();
         let sid_near = rig.sid("near");
         let sid_far = rig.sid("far");
 
