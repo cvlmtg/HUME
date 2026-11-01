@@ -54,6 +54,11 @@ Read the full user manual [here](https://cvlmtg.github.io/HUME/), or type `:tuto
 
 Coming from another modal editor? See [Helix](https://cvlmtg.github.io/HUME/from-helix.html), [Kakoune](https://cvlmtg.github.io/HUME/from-kakoune.html), or [Vim](https://cvlmtg.github.io/HUME/from-vim.html).
 
+## Credits
+
+- [Helix](https://helix-editor.com): the language definitions, the language servers each language uses and their default settings, and the tree-sitter queries behind syntax highlighting, indentation and text objects.
+- [Mason](https://github.com/mason-org/mason-registry): the registry `:lsp-install` uses to download and install language servers.
+
 ## License
 
 [MIT](LICENSE)

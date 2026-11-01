@@ -39,3 +39,8 @@ The question every modal editor must answer up front: **to quit, press `Esc`, th
 - Coming from Helix? See [Coming From Helix](from-helix.md).
 - Coming from Kakoune? See [Coming From Kakoune](from-kakoune.md).
 - Looking for a specific key? Jump to the [Default Keys](default-keys.md).
+
+## Credits
+
+- [Helix](https://helix-editor.com): the language definitions, the language servers each language uses and their default settings, and the tree-sitter queries behind syntax highlighting, indentation and text objects.
+- [Mason](https://github.com/mason-org/mason-registry): the registry `:lsp-install` uses to download and install language servers.

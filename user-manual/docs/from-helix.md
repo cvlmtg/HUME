@@ -91,7 +91,7 @@ HUME's tab bar reads `ui.tabline`, and falls back to Helix's `ui.bufferline` whe
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME rewrites each line's whole indent in the buffer's `indent-style`; see [Lines and alignment](editing.md#lines-and-alignment)
 - `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`, `m i v`/`m a v`, `m i x`/`m a x` select the enclosing function, class/type, argument, comment, unit test, value, or tag pair. The letters match Helix's match-mode text objects, except unit test (`T` → `u`) and value (`e` → `v`). Function, class, comment, unit test and value need a grammar with text-object support; argument and tag pair fall back to a plain-text scan without one. See [Text objects](selections.md#text-objects)
 - Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `indent-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`. `indent-smart` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
-- Syntax highlighting uses Helix's tree-sitter grammars and queries, and the [language servers](lsp.md) each language uses, how they start, their root markers and default settings follow Helix's own defaults
+- Syntax highlighting uses the same tree-sitter grammars as Helix, with Helix's queries, and the [language servers](lsp.md) each language uses, how they start, their root markers and default settings follow Helix's own defaults
 - Insert mode shows a bar cursor; Normal and Extend mode a block
 
 ## Key differences
