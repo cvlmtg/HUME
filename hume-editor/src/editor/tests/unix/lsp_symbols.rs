@@ -93,6 +93,27 @@ fn nested_document_symbols_list_flattened_with_their_container() {
 }
 
 #[test]
+fn symbol_rows_style_the_kind_and_dim_the_detail() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _requests) = document_setup(tmp.path(), nested_reply());
+
+    call_and_pump(&mut ed, "lsp/document-symbols");
+    frame(&mut ed, 60, 20);
+
+    assert_picker_styles(
+        &mut ed,
+        &[
+            (None, &[(6, 14, "type", None)][..]),
+            (
+                None,
+                &[(5, 13, "type", None), (15, 19, "comment", None)][..],
+            ),
+            (None, &[(5, 11, "type", None)][..]),
+        ],
+    );
+}
+
+#[test]
 fn accepting_a_nested_symbol_jumps_to_its_selection_range() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = document_setup(tmp.path(), nested_reply());

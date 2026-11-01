@@ -38,11 +38,11 @@ fn open_live() -> PickerSession {
     PickerSession::new_live(
         Vec::new(),
         LivePickerOpts {
-            prompt: String::new(),
-            query: String::new(),
+            common: PickerCommonOpts {
+                truncate: TruncateEnd::Head,
+                ..Default::default()
+            },
             on_query_change: hume_scripting::Callback::for_test(dummy_on_select()),
-            truncate: TruncateEnd::Head,
-            on_close: None,
         },
     )
     .expect("an empty keymap binds no key twice")
@@ -76,7 +76,10 @@ fn new_session_is_empty() {
 fn prompt_is_stored_verbatim() {
     let s = open_with(
         PickerOpts {
-            prompt: "files: ".to_string(),
+            common: PickerCommonOpts {
+                prompt: "files: ".to_string(),
+                ..Default::default()
+            },
             ..Default::default()
         },
         Vec::new(),
@@ -173,7 +176,10 @@ fn set_query_filters_non_matches() {
 fn query_prefill_is_visible_and_applied_at_construction() {
     let mut s = open_with(
         PickerOpts {
-            query: "f".to_string(),
+            common: PickerCommonOpts {
+                query: "f".to_string(),
+                ..Default::default()
+            },
             ..Default::default()
         },
         Vec::new(),

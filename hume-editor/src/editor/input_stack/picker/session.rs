@@ -7,20 +7,25 @@
 //! reset-on-rerank patterns.
 
 use std::cmp::Reverse;
+use std::sync::Arc;
 
 use hume_core::{HostToken, TruncateEnd};
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::{LivePickerOpts, PickerBinding, PickerOpts};
+use hume_scripting::host::{
+    LivePickerOpts, PickerBinding, PickerCommonOpts, PickerOpts, display_item,
+};
 use hume_scripting::{Callback, Rooted};
+use hume_ui::list_row::ListRow;
 
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::keymap::CanonicalKey;
 use super::super::super::replay::{Choice, Picked};
+use super::super::list_row::{RenderCall, RenderedRows};
 
-/// One row in a picker: a display string shown to the user and an opaque
-/// payload handed to a keymap binding verbatim. Rust never interprets
-/// `payload`, mirroring the drawer's "rows are pre-formatted display
-/// strings" contract.
+/// One row in a picker: a display string matched against the query and an
+/// opaque payload handed to a keymap binding verbatim. Rust never
+/// interprets `payload`. The panel shows `display`, or with `#:render` the
+/// row it made, which may differ from it.
 pub(in crate::editor) struct PickerItem {
     pub(in crate::editor) display: String,
     pub(in crate::editor) payload: Rooted,
@@ -58,7 +63,7 @@ struct AttachedSource {
 /// Whether the query drives the local fuzzy filter (`picker!`) or an
 /// external source (`live-picker!`). Its `Live`-ness is read directly
 /// wherever "is this session live" matters: no separate bool duplicating
-/// it, and no `Option` whose `None` arm silently means something structural.
+/// it, and no `Option` whose `None` arm stands for a mode without naming it.
 enum PickerMode {
     Filter,
     /// `insert_char`/`pop_grapheme` fire `on_query_change` with the new
@@ -123,9 +128,12 @@ pub(in crate::editor) struct PickerSession {
     /// Empty by default: an empty prompt renders identically to no prompt
     /// at all.
     prompt: String,
-    /// Which end of an over-long row the panel clips (`#:truncate`); see
+    /// Which end of an over-long row is cut (`#:truncate`); see
     /// [`TruncateEnd`].
     truncate: TruncateEnd,
+    /// `#:render`, how a row is shown (see `UiHost::open_picker`'s doc),
+    /// and the rows it made, by their index in `items`.
+    rendered: Option<RenderedRows>,
     /// Identifies this session to Steel. [`super::session_for_token`] and
     /// [`super::session_for_feed`] are the guards every token-scoped picker
     /// mutation checks before reaching a `&mut PickerSession` at all.
@@ -183,15 +191,7 @@ impl PickerSession {
         } else {
             Population::Complete
         };
-        let mut session = Self::build(
-            keymap,
-            opts.on_close,
-            opts.prompt,
-            opts.query,
-            opts.truncate,
-            population,
-            PickerMode::Filter,
-        )?;
+        let mut session = Self::build(keymap, opts.common, population, PickerMode::Filter)?;
         if !items.is_empty() {
             session.append(items);
         }
@@ -211,10 +211,7 @@ impl PickerSession {
     ) -> Result<Self, String> {
         Self::build(
             keymap,
-            opts.on_close,
-            opts.prompt,
-            opts.query,
-            opts.truncate,
+            opts.common,
             Population::Complete,
             PickerMode::Live {
                 on_query_change: opts.on_query_change,
@@ -224,10 +221,7 @@ impl PickerSession {
 
     fn build(
         keymap: Vec<PickerBinding>,
-        on_close: Option<Callback>,
-        prompt: String,
-        query: String,
-        truncate: TruncateEnd,
+        common: PickerCommonOpts,
         population: Population,
         mode: PickerMode,
     ) -> Result<Self, String> {
@@ -248,6 +242,13 @@ impl PickerSession {
             .zip(keymap)
             .map(|(key, entry)| (key, entry.binding))
             .collect();
+        let PickerCommonOpts {
+            prompt,
+            query,
+            truncate,
+            render,
+            on_close,
+        } = common;
         let token = HostToken::mint();
         Ok(Self {
             items: Vec::new(),
@@ -260,6 +261,7 @@ impl PickerSession {
             on_close,
             prompt,
             truncate,
+            rendered: render.map(|render| RenderedRows::new(render, 0)),
             token,
             feed_token: token,
             items_from_opener: !mode.is_live() && matches!(population, Population::Complete),
@@ -376,6 +378,9 @@ impl PickerSession {
         self.batch_arrived();
         self.requery_armed = false;
         self.items = items;
+        if let Some(rendered) = &mut self.rendered {
+            rendered.clear();
+        }
         self.rerank();
     }
 
@@ -388,7 +393,7 @@ impl PickerSession {
     /// allowlist for *this* source, e.g. `rg`'s exit `1` ("no matches").
     ///
     /// `supersedes_rows` is set only for a live session (`self.mode.is_live()`):
-    /// its rows always belong to exactly one query, so the next source's
+    /// its rows always belong to one query, so the next source's
     /// first batch should replace them. A `picker!` session driving
     /// `picker-source-spawn!` itself may legitimately spawn a second source
     /// to *add* rows to an already-seeded list, so it keeps `push`'s
@@ -501,7 +506,7 @@ impl PickerSession {
     /// to fire it (or firing it after a mutator that shouldn't, like
     /// `set_query`) a type error instead of a silent desync between the
     /// visible query and a live source.
-    #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
+    #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
     pub(in crate::editor) fn insert_char(&mut self, ch: char) -> Option<Callback> {
         self.query.push(ch);
         self.rerank();
@@ -512,7 +517,7 @@ impl PickerSession {
     /// paste appends its whole (already flattened to one line) text in a
     /// single mutation, one `rerank`, and at most one `on_query_change`
     /// callback, rather than one of each per pasted character.
-    #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
+    #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
     pub(in crate::editor) fn insert_str(&mut self, s: &str) -> Option<Callback> {
         self.query.push_str(s);
         self.rerank();
@@ -525,7 +530,7 @@ impl PickerSession {
     /// query is already empty (in addition to a non-live session, same as
     /// [`insert_char`](Self::insert_char)). The query didn't change, so
     /// there is nothing to notify either way.
-    #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
+    #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
     pub(in crate::editor) fn pop_grapheme(&mut self) -> Option<Callback> {
         if self.query.is_empty() {
             return None;
@@ -605,15 +610,70 @@ impl PickerSession {
         self.items.len()
     }
 
-    /// Display strings of up to `rows` items starting at `scroll`, in ranked
-    /// order: the window the picker panel paints. The selected row's
+    /// The `items` indices of up to `rows` ranked items starting at
+    /// `scroll`: the window the picker panel paints. The selected row's
     /// on-screen position is `selected - scroll`.
-    pub(in crate::editor) fn window(&self, rows: usize) -> impl Iterator<Item = &str> + '_ {
+    fn visible(&self, rows: usize) -> impl Iterator<Item = usize> + '_ {
         self.filtered
             .iter()
             .skip(self.scroll)
             .take(rows)
-            .map(|&idx| self.items[idx as usize].display.as_str())
+            .map(|&idx| idx as usize)
+    }
+
+    /// Display strings of the window of `rows`, in ranked order.
+    #[cfg(test)]
+    pub(in crate::editor) fn window(&self, rows: usize) -> impl Iterator<Item = &str> + '_ {
+        self.visible(rows)
+            .map(|idx| self.items[idx].display.as_str())
+    }
+
+    /// The call that makes the rows in the window of `rows` that `#:render`
+    /// has not made `budget` cells wide, in on-screen order. `None` for a
+    /// picker without `#:render`, or when it made every one.
+    pub(in crate::editor) fn unrendered(&self, rows: usize, budget: usize) -> Option<RenderCall> {
+        self.rendered
+            .as_ref()?
+            .unrendered(self.visible(rows), budget, |i| {
+                let item = &self.items[i];
+                display_item(&item.display, item.payload.value().clone())
+            })
+    }
+
+    /// Stores `rows`, each the row `#:render` made `budget` cells wide for
+    /// the item at its index in `items`, after [`Self::unrendered`] asked
+    /// for them.
+    pub(in crate::editor) fn fill(&mut self, rows: Vec<(usize, ListRow)>, budget: usize) {
+        self.rendered
+            .as_mut()
+            .expect("only a picker with #:render asks for rows")
+            .fill(rows, budget);
+    }
+
+    /// The rows of the window of `rows`, `budget` cells wide. With
+    /// `#:render`, each is the row it made at that width, `None` until it
+    /// has; without, each is the item's display, cut for this call.
+    pub(in crate::editor) fn window_rows(
+        &self,
+        rows: usize,
+        budget: usize,
+    ) -> Vec<Option<Arc<ListRow>>> {
+        self.visible(rows)
+            .map(|idx| match &self.rendered {
+                Some(rendered) => rendered.at(idx, budget).cloned(),
+                None => Some(Arc::new(
+                    ListRow::plain(self.items[idx].display.clone()).fit(budget, self.truncate),
+                )),
+            })
+            .collect()
+    }
+
+    /// How many rows `#:render` made.
+    #[cfg(test)]
+    pub(in crate::editor) fn rendered_count(&self) -> usize {
+        self.rendered
+            .as_ref()
+            .map_or(0, |rendered| rendered.made().flatten().count())
     }
 
     /// The index in `items` of the selected item, or `None` when nothing

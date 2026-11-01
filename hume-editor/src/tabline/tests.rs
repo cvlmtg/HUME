@@ -1,5 +1,5 @@
 use super::*;
-use hume_ui::width::{ELLIPSIS, text_width};
+use hume_rope::width::{ELLIPSIS, chrome_width};
 
 fn entry(label: &str) -> TabEntry {
     TabEntry::new(TabId::default(), label.to_string())
@@ -88,7 +88,7 @@ fn fit_label_pads_normally_when_the_label_fits_its_extent() {
 #[test]
 fn fit_label_truncates_with_an_ellipsis_when_it_does_not_fit() {
     let label = fit_label("a_very_long_buffer_name.rs", 10);
-    assert_eq!(text_width(&label), 10);
+    assert_eq!(chrome_width(&label), 10);
     assert!(label.ends_with(&format!("{ELLIPSIS} ")));
     assert!(label.starts_with(' '));
 }

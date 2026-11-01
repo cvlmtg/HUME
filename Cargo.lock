@@ -926,6 +926,7 @@ version = "0.18.0"
 dependencies = [
  "criterion",
  "hume-core",
+ "insta",
  "pretty_assertions",
  "ropey",
  "test-fixtures",
@@ -987,7 +988,6 @@ dependencies = [
  "hume-rope",
  "insta",
  "unicode-segmentation",
- "unicode-width 0.2.2",
 ]
 
 [[package]]

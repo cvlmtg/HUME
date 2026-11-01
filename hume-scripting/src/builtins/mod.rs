@@ -430,6 +430,8 @@ builtins! {
     // Context-free text transforms: no host/buffer needed.
     plain "split-words" words::split_words(line: SteelVal, word_chars: SteelVal);
     plain "string-common-prefix" words::string_common_prefix(strings: SteelVal);
+    plain "string-fit" words::string_fit(s: SteelVal, cells: SteelVal, side: SteelVal);
+    plain "string-width" words::string_width(s: SteelVal);
 
     // Multi-buffer read-only builtins
     cmd "focused-pane" buffers::focused_pane();
@@ -560,14 +562,14 @@ builtins! {
     cmd "close-menu!" ui::close_menu(token: SteelVal);
 
     // Bottom drawer.
-    cmd "%show-drawer-list!" => "show-drawer-list!" ui::show_drawer_list(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc<2>, selected: SteelVal, render: SteelVal);
+    cmd "%show-drawer-list!" => "show-drawer-list!" ui::show_drawer_list(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc<2>, selected: SteelVal, truncate: SteelVal, render: SteelVal);
     cmd "close-drawer!" ui::close_drawer(token: SteelVal);
     cmd "%update-drawer-list!" => "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: args::ScriptProc<2>, selected: SteelVal, render: SteelVal);
     cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);
 
     // Fuzzy-picker widget.
-    cmd "%picker!" => "picker!" ui::picker(pane: args::FocusedPane, items: SteelVal, keymap: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, on_close: SteelVal);
-    cmd "%live-picker!" => "live-picker!" ui::live_picker(pane: args::FocusedPane, keymap: SteelVal, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, on_close: SteelVal);
+    cmd "%picker!" => "picker!" ui::picker(pane: args::FocusedPane, items: SteelVal, keymap: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, render: SteelVal, on_close: SteelVal);
+    cmd "%live-picker!" => "live-picker!" ui::live_picker(pane: args::FocusedPane, keymap: SteelVal, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, render: SteelVal, on_close: SteelVal);
     cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
     cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
     cmd "%picker-source-spawn!" => "picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);

@@ -6,7 +6,7 @@ use hume_platform::path::is_path_sep;
 
 use crate::statusline::HumeStatusline;
 use crate::statusline::colors::EditorColors;
-use hume_ui::width::{ELLIPSIS, ELLIPSIS_WIDTH, text_width, truncate_text};
+use hume_rope::width::{ELLIPSIS, ELLIPSIS_WIDTH, chrome_width, truncate_to_width};
 
 /// The `FilePath` element does not implement [`super::StatuslineElement`]:
 /// its content isn't read from `Editor` directly, but computed externally by
@@ -56,7 +56,7 @@ fn shorten_path_to_width_with(
     max_display_cols: usize,
     is_sep: fn(char) -> bool,
 ) -> Cow<'_, str> {
-    if text_width(display) <= max_display_cols {
+    if chrome_width(display) <= max_display_cols {
         return Cow::Borrowed(display);
     }
     if max_display_cols == 0 {
@@ -86,7 +86,7 @@ fn shorten_path_to_width_with(
         components[i] = format!("{first}{sep}");
 
         let candidate = components.concat();
-        if text_width(&candidate) <= max_display_cols {
+        if chrome_width(&candidate) <= max_display_cols {
             return Cow::Owned(candidate);
         }
     }
@@ -95,11 +95,11 @@ fn shorten_path_to_width_with(
     let prefix = components[..n.saturating_sub(1)].concat();
     // Available columns for the filename (after prefix + ellipsis). The
     // prefix already carries its own trailing separator, if any.
-    let prefix_w = text_width(&prefix);
+    let prefix_w = chrome_width(&prefix);
     let available = max_display_cols.saturating_sub(prefix_w + ELLIPSIS_WIDTH);
 
     let filename = &components[n - 1];
-    let (truncated, _) = truncate_text(filename, available);
+    let (truncated, _) = truncate_to_width(filename, available);
 
     if truncated.is_empty() {
         // Not even one grapheme of filename fits; just show the ellipsis.

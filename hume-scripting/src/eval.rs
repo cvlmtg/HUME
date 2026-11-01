@@ -493,37 +493,41 @@ impl ScriptingHost {
         (completed, effects)
     }
 
-    /// Calls a drawer's `render` proc as `(render start keys)`, as its owner,
-    /// and decodes its result: one row display per key. Runs under
-    /// `read_only_call`'s read-only rules.
-    pub fn render_drawer_rows(
+    /// Calls a list's `render` proc as `(render rows budget)`, as its owner:
+    /// `rows` are the items of the rows to show, in order, each with its
+    /// place in the list the script gave, and `budget` the cells one row
+    /// gets. Decodes its result: one row display per row, paired with its
+    /// place, which also names the row in an error.
+    pub fn render_rows(
         &mut self,
         render: &Callback,
-        start: usize,
-        keys: Vec<SteelVal>,
+        rows: Vec<(usize, SteelVal)>,
+        budget: usize,
         host: &mut dyn EditorHost,
-    ) -> Result<Vec<crate::host::RowDisplay>, String> {
-        let count = keys.len();
-        let proc = render.proc().value().clone();
+    ) -> Result<Vec<(usize, crate::host::RowDisplay)>, String> {
+        let (places, items): (Vec<_>, Vec<_>) = rows.into_iter().unzip();
         let args = vec![
-            SteelVal::IntV(start as isize),
-            builtins::args::list_of(keys),
+            builtins::args::list_of(items),
+            SteelVal::IntV(budget as isize),
         ];
+        let proc = render.proc().value().clone();
         let value = self.read_only_call(host, render.provenance().clone(), |steel| {
             steel.call_function_with_args(proc, args)
         })?;
-        let expected = || format!("expected a list of {count} rows, got {value}");
+        let expected = || format!("expected a list of {} rows, got {value}", places.len());
         let SteelVal::ListV(list) = &value else {
             return Err(expected());
         };
-        if list.len() != count {
+        if list.len() != places.len() {
             return Err(expected());
         }
         list.iter()
-            .enumerate()
-            .map(|(i, row)| {
-                let label = builtins::args::item_label("row", start + i);
-                builtins::ui::drawer_row_display(row.clone(), &label).map_err(|e| e.to_string())
+            .zip(&places)
+            .map(|(row, &place)| {
+                let label = builtins::args::item_label("row", place);
+                builtins::ui::row_display(row.clone(), &label)
+                    .map(|display| (place, display))
+                    .map_err(|e| e.to_string())
             })
             .collect()
     }
@@ -551,7 +555,7 @@ impl ScriptingHost {
     /// Any such attempt fails the call, even when `call` caught the error it
     /// raised, and whatever it queued is dropped. Runs under the same
     /// watchdog budget as a command. The shared body of
-    /// [`render_drawer_rows`](Self::render_drawer_rows) and
+    /// [`render_rows`](Self::render_rows) and
     /// [`bundled_language`](Self::bundled_language).
     pub(crate) fn read_only_call(
         &mut self,

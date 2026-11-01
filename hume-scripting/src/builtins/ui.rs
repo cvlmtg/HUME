@@ -9,12 +9,12 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use hume_core::{NonEmpty, PopupLayout, TruncateEnd};
+use hume_core::{NonEmpty, PopupLayout};
 use hume_rope::spanned::SpannedText;
 
 use crate::host::{
-    DrawerItems, FocusedHandle, LivePickerOpts, PickerBinding, PickerFeedMode, PickerOpts,
-    PickerSourceOpts, PickerStep, PopupKind, RowDisplay, RowSpanScopes,
+    DrawerItems, FocusedHandle, LivePickerOpts, PickerBinding, PickerCommonOpts, PickerFeedMode,
+    PickerOpts, PickerSourceOpts, PickerStep, PopupKind, RowDisplay, RowSpanScopes,
 };
 use crate::{Callback, Rooted, SteelCtx};
 
@@ -23,7 +23,7 @@ use super::args::{
     END_CHAR, START_CHAR, bool_arg, callback_arg, cwd_arg, hash_entry, hash_list, int_arg,
     item_label, list_items, list_to_i32s, list_to_strings, optional_callback_arg,
     optional_string_arg, pair_fields, single_key, spanned_text, string_arg, symbol_enum_arg,
-    token_arg, token_or_false, usize_arg,
+    token_arg, token_or_false, truncate_end_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -73,7 +73,7 @@ pub(crate) fn show_menu(
     items: SteelVal,
     on_select: Callback,
 ) -> SteelResult {
-    let items = non_empty(display_items(items, "items", string_arg)?, "items")?;
+    let items = non_empty(display_items(items, "items", row_display)?, "items")?;
     let token = require_cap(ctx.host.ui())?
         .show_menu(pane, items, on_select)
         .map_err(generic_err)?;
@@ -89,10 +89,11 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(%show-drawer-list! pane items on-select selected render)`, behind
-/// `show-drawer-list!`'s `#:selected`/`#:render` keyword wrapper (see
-/// [`drawer_items`] for the rows and `render`). `selected` is clamped into
-/// `items`. A row whose spans don't fit its text raises.
+/// `(%show-drawer-list! pane items on-select selected truncate render)`,
+/// behind `show-drawer-list!`'s `#:selected`/`#:truncate`/`#:render` keyword
+/// wrapper (see [`drawer_items`] for the rows and `render`). `selected` is
+/// clamped into `items`; `truncate` is the end of an over-long row the
+/// drawer cuts. A row whose spans don't fit its text raises.
 /// Returns a token scoping
 /// `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this
 /// drawer, same shape as `picker!`'s own return, or `#f` when the request
@@ -105,12 +106,14 @@ pub(crate) fn show_drawer_list(
     items: SteelVal,
     on_select: Callback,
     selected: SteelVal,
+    truncate: SteelVal,
     render: SteelVal,
 ) -> SteelResult {
     let items = drawer_items(ctx, items, render)?;
     let selected = usize_arg(selected, "selected")?;
+    let truncate = truncate_end_arg(truncate, "#:truncate")?;
     let token = require_cap(ctx.host.ui())?
-        .show_drawer_list(pane, items, on_select, selected)
+        .show_drawer_list(pane, items, on_select, selected, truncate)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }
@@ -126,9 +129,9 @@ pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 
 /// `(%update-drawer-list! token items on-select selected render)`, behind
 /// `update-drawer-list!`'s `#:render` keyword wrapper (see [`drawer_items`]
-/// for `render`). Replaces the open drawer's rows in
-/// place, keeping the browse session; `selected` is clamped into the new
-/// list. Returns whether the update applied: `#f` when no drawer is open
+/// for `render`). Replaces the open drawer's rows in place, keeping the
+/// browse session and the `#:truncate` end it opened with; `selected` is
+/// clamped into the new list. Returns whether the update applied: `#f` when no drawer is open
 /// or `token` doesn't match the open drawer's own (an expected-normal race,
 /// never an error, same contract as `picker-replace!`'s stale token). A row
 /// whose spans don't fit its text raises, as in `show-drawer-list!`.
@@ -148,7 +151,7 @@ pub(crate) fn update_drawer_list(
 }
 
 /// A drawer's `items`: `(display . payload)` pairs when `render` is `#f`,
-/// each display decoded by [`drawer_row_display`], otherwise opaque keys
+/// each display decoded by [`row_display`], otherwise opaque keys
 /// rendered on demand by the `render` proc, each its row's payload.
 fn drawer_items(
     ctx: &SteelCtx,
@@ -157,7 +160,7 @@ fn drawer_items(
 ) -> Result<DrawerItems, SteelErr> {
     Ok(match optional_callback_arg(ctx, render, 2, "#:render")? {
         None => DrawerItems::Rows(non_empty(
-            display_items(items, "items", drawer_row_display)?,
+            display_items(items, "items", row_display)?,
             "items",
         )?),
         Some(render) => DrawerItems::Keys {
@@ -194,7 +197,7 @@ pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx, token: SteelVal) -> Stee
 }
 
 /// `(%prompt! label prefill on-confirm)`: the `prompt!` Scheme wrapper
-/// supplies `#:prefill`'s default. `on-confirm` fires exactly once, later
+/// supplies `#:prefill`'s default. `on-confirm` fires once, later
 /// (queued, never inline), with the confirmed text, or `#f` on cancel.
 pub(crate) fn prompt(
     ctx: &mut SteelCtx,
@@ -248,14 +251,14 @@ fn display_items<D>(
 }
 
 const ROW_DISPLAY_KEYS: &[&str] = &["text", "spans", "selected-scope"];
-const DRAWER_SPAN_KEYS: &[&str] = &[START_CHAR, END_CHAR, "scope", "selected-scope"];
+const ROW_SPAN_KEYS: &[&str] = &[START_CHAR, END_CHAR, "scope", "selected-scope"];
 
-/// One drawer row's display: a string (or a symbol, read as its name), or
+/// One list row's display (a drawer row, a menu row, a row a picker's
+/// `#:render` returns): a string (or a symbol, read as its name), or
 /// `(hash 'text t)` with optional `'spans spans` and `'selected-scope name`,
 /// each span a `(hash 'start-char s 'end-char e 'scope name)` with an
-/// optional `'selected-scope name`. The same decode for an eager row and for
-/// each row a `#:render` proc returns.
-pub(crate) fn drawer_row_display(val: SteelVal, ctx_name: &str) -> Result<RowDisplay, SteelErr> {
+/// optional `'selected-scope name`.
+pub(crate) fn row_display(val: SteelVal, ctx_name: &str) -> Result<RowDisplay, SteelErr> {
     match val {
         SteelVal::HashMapV(_) => {
             let entry = hash_entry(val, ctx_name, ROW_DISPLAY_KEYS)?;
@@ -264,7 +267,7 @@ pub(crate) fn drawer_row_display(val: SteelVal, ctx_name: &str) -> Result<RowDis
             let spans = entry
                 .optional("spans")
                 .map(|spans| {
-                    hash_list(spans, &spans_label, DRAWER_SPAN_KEYS, |span| {
+                    hash_list(spans, &spans_label, ROW_SPAN_KEYS, |span| {
                         let (start, end) = span.char_range()?;
                         let scopes = RowSpanScopes {
                             scope: span.string("scope")?,
@@ -301,8 +304,8 @@ fn row_payload(payload: SteelVal, ctx_name: &str) -> Result<Rooted, SteelErr> {
 }
 
 /// Decodes `picker!`'s/`live-picker!`'s `keymap`: a hashmap from key spec
-/// to a procedure of two arguments (the picker's token and the selected
-/// item). Each spec must parse (via [`single_key`]) to exactly one
+/// to a procedure of two arguments (the selected item and the picker's
+/// token). Each spec must parse (via [`single_key`]) to one
 /// `KeyEvent`: the picker dispatches one chord at a time, so a multi-key
 /// spec like `"z f"` binding only its first key would be a trap. Two specs
 /// naming the same key are caught by the editor, which owns key identity.
@@ -326,18 +329,7 @@ fn picker_keymap(
         .collect()
 }
 
-/// Decodes `picker!`'s/`live-picker!`'s `#:truncate` symbol: `'head`
-/// (default, drop the front) or `'tail` (drop the back). Shared so the two
-/// builtins can't drift on the accepted spelling or the error message.
-fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelErr> {
-    symbol_enum_arg(
-        string_arg(val, ctx_name)?.as_str(),
-        ctx_name,
-        &TruncateEnd::NAMED,
-    )
-}
-
-/// `(%picker! items keymap prompt pending query truncate on-close)`: the
+/// `(%picker! items keymap prompt pending query truncate render on-close)`: the
 /// `picker!` Scheme wrapper supplies the keyword defaults. Returns the new
 /// session's token.
 // Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
@@ -354,29 +346,21 @@ pub(crate) fn picker(
     pending: SteelVal,
     query: SteelVal,
     truncate: SteelVal,
+    render: SteelVal,
     on_close: SteelVal,
 ) -> SteelResult {
     let items = display_items(items, "items", string_arg)?;
     let keymap = picker_keymap(ctx, keymap, "keymap")?;
-    let prompt = string_arg(prompt, "#:prompt")?;
     let pending = bool_arg(pending, "#:pending")?;
-    let query = string_arg(query, "#:query")?;
-    let truncate = truncate_end_arg(truncate, "#:truncate")?;
-    let on_close = optional_callback_arg(ctx, on_close, 0, "#:on-close")?;
-    let opts = PickerOpts {
-        prompt,
-        pending,
-        query,
-        truncate,
-        on_close,
-    };
+    let common = picker_common_opts(ctx, prompt, query, truncate, render, on_close)?;
+    let opts = PickerOpts { common, pending };
     let token = require_cap(ctx.host.ui())?
         .open_picker(pane, items, keymap, opts)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }
 
-/// `(%live-picker! keymap prompt query on-query-change truncate on-close)`:
+/// `(%live-picker! keymap prompt query on-query-change truncate render on-close)`:
 /// the `live-picker!` Scheme wrapper supplies the keyword defaults and
 /// composes `on-query-change` itself (stop-then-debounce around the
 /// caller's `#:source`); this layer only decodes it as a required
@@ -395,25 +379,38 @@ pub(crate) fn live_picker(
     query: SteelVal,
     on_query_change: SteelVal,
     truncate: SteelVal,
+    render: SteelVal,
     on_close: SteelVal,
 ) -> SteelResult {
     let keymap = picker_keymap(ctx, keymap, "keymap")?;
-    let prompt = string_arg(prompt, "#:prompt")?;
-    let query = string_arg(query, "#:query")?;
     let on_query_change = callback_arg(ctx, on_query_change, 2, "on-query-change")?;
-    let truncate = truncate_end_arg(truncate, "#:truncate")?;
-    let on_close = optional_callback_arg(ctx, on_close, 0, "#:on-close")?;
+    let common = picker_common_opts(ctx, prompt, query, truncate, render, on_close)?;
     let opts = LivePickerOpts {
-        prompt,
-        query,
+        common,
         on_query_change,
-        truncate,
-        on_close,
     };
     let token = require_cap(ctx.host.ui())?
         .open_live_picker(pane, keymap, opts)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
+}
+
+/// The keywords `picker!` and `live-picker!` share, decoded.
+fn picker_common_opts(
+    ctx: &SteelCtx,
+    prompt: SteelVal,
+    query: SteelVal,
+    truncate: SteelVal,
+    render: SteelVal,
+    on_close: SteelVal,
+) -> Result<PickerCommonOpts, SteelErr> {
+    Ok(PickerCommonOpts {
+        prompt: string_arg(prompt, "#:prompt")?,
+        query: string_arg(query, "#:query")?,
+        truncate: truncate_end_arg(truncate, "#:truncate")?,
+        render: optional_callback_arg(ctx, render, 2, "#:render")?,
+        on_close: optional_callback_arg(ctx, on_close, 0, "#:on-close")?,
+    })
 }
 
 /// Shared body of `picker-push!`/`picker-replace!`: identical shape, differing

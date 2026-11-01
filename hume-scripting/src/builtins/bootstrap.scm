@@ -198,16 +198,17 @@
 (define (show-popup! pane text #:anchor [anchor 'cursor] #:kind [kind 'sticky] #:lang [lang #f])
   (%show-popup! pane text anchor kind lang))
 
-(define (show-drawer-list! pane items on-select #:selected [selected 0] #:render [render #f])
-  (%show-drawer-list! pane items on-select selected render))
+(define (show-drawer-list! pane items on-select #:selected [selected 0] #:truncate [truncate 'tail]
+                                                #:render [render #f])
+  (%show-drawer-list! pane items on-select selected truncate render))
 
 (define (update-drawer-list! token items on-select selected #:render [render #f])
   (%update-drawer-list! token items on-select selected render))
 
 (define (picker! pane items keymap #:prompt [prompt ""] #:pending [pending #f]
                                     #:query [query ""] #:truncate [truncate 'head]
-                                    #:on-close [on-close #f])
-  (%picker! pane items keymap prompt pending query truncate on-close))
+                                    #:render [render #f] #:on-close [on-close #f])
+  (%picker! pane items keymap prompt pending query truncate render on-close))
 
 (define (picker-move! token count #:by [by 'row])
   (%picker-move! token count by))
@@ -236,6 +237,7 @@
                        #:prompt [prompt ""] #:query [query ""]
                        #:debounce-ms [debounce-ms 150]
                        #:truncate [truncate 'head]
+                       #:render [render #f]
                        #:on-close [on-close #f])
   (unless (%callable? source 2)
     (error "live-picker!: #:source must be a procedure of two arguments (the picker token and the query)"))
@@ -250,7 +252,7 @@
                   (lambda (token q)
                     (picker-source-stop! token)
                     (requery token q))
-                  truncate on-close)])
+                  truncate render on-close)])
     (unless (equal? query "")
       (source token query))
     token))

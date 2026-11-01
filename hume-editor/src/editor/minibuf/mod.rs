@@ -1,6 +1,6 @@
 pub(in crate::editor) mod history;
 
-use hume_ui::width::text_width;
+use hume_rope::width::chrome_width;
 
 use self::history::{HistoryDir, HistoryKind};
 use super::input_stack::{InputEvent, LayerRef, PastedText};
@@ -106,9 +106,9 @@ impl MiniBuffer {
     /// `area.x` to get the absolute screen column.
     pub(in crate::editor) fn cursor_x_at(&self, byte_offset: usize) -> u16 {
         let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
-        let prompt_w = text_width(&self.prompt) as u16;
+        let prompt_w = chrome_width(&self.prompt) as u16;
         let safe_offset = byte_offset.min(self.input.len());
-        let input_w = text_width(&self.input[..safe_offset]) as u16;
+        let input_w = chrome_width(&self.input[..safe_offset]) as u16;
         pad + prompt_w + input_w
     }
 

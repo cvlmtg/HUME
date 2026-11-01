@@ -99,6 +99,17 @@ code (`M `, `A `, ` M`, `??`, …) followed by the path, relative to the repo ro
 fragment, the whole output for a clean tree. The parser filters empty fragments, so a clean
 tree (exit 0, empty stdout) yields an empty item list and pushes as a no-op.
 
+#### Rows
+
+The picker's `#:render`, `pickers/render-git-rows`, keeps each row's status visible and
+colors it. Each status letter gets its own span: `A` and `?` take `diff.plus`, `D` and `U`
+`diff.minus`, any other letter `diff.delta`, and a blank column none. The index (staged)
+letter and the worktree letter are colored apart, as `git status` shows them.
+
+A row wider than the panel keeps its three status columns and drops the front of the path
+behind `…` with `string-fit`, which never splits a character. Below four cells there is no
+room for both, and the picker's own head cut takes over.
+
 #### Opening
 
 Rows are repo-root-relative but `open-buffer!` resolves a relative path against the

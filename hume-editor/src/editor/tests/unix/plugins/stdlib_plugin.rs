@@ -749,7 +749,7 @@ fn picker_keymap_takes_an_overriding_key_through_hash_insert() {
          (lambda (pane)
            (picker! pane (list (cons "a" "A") (cons "b" "B"))
              (hash-insert (call! "stdlib/picker-keymap" (lambda (item) (log! 'info item)))
-                          "esc" (lambda (token item) (picker-close! token) (log! 'info "custom esc"))))))"#;
+                          "esc" (lambda (item token) (picker-close! token) (log! 'info "custom esc"))))))"#;
     {
         let mut ih = init_host!(ed);
         host.eval_source(source, &mut ih)

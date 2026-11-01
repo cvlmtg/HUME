@@ -55,7 +55,7 @@ impl Layer for CommandLayer {
 
 impl Editor {
     /// Write the open minibuffer completion session into the shared
-    /// `PopupState` Arc: same widget as [`Self::sync_menu_view`]/
+    /// `MenuState` slot: same widget as [`Self::sync_menu_view`]/
     /// [`Self::sync_completion_menu_view`] (unwrapped rows, selected-row
     /// styling), but anchored at the command line in the statusline row
     /// rather than a buffer cursor, over any bottom band. `Minibuf`-target
@@ -73,7 +73,7 @@ impl Editor {
             return;
         }
         let area = screen.area_above_statusline();
-        let view = (|| -> Option<hume_ui::popup::PopupState> {
+        let view = (|| -> Option<hume_ui::popup::MenuState> {
             let session = self.state.input.minibuf_completion()?;
             let anchor_byte = session.menu_anchor_byte()?;
             let selected = session.selected();

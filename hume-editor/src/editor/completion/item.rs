@@ -370,12 +370,12 @@ impl CompletionItem {
     /// needs `kind`. Column layout/alignment is `resolve_menu`'s job
     /// (`hume_ui::popup`), not this store's. Called fresh every frame the
     /// menu is open (`SlotSet::rows_in`), but only for the
-    /// handful of rows in the visible window, and a `String` clone per row per
-    /// frame there is cheaper than paying an `Arc<str>` conversion for
+    /// handful of rows in the visible window, and a clone per row per frame
+    /// there is cheaper than paying an `Arc<str>` conversion for
     /// every parsed item, most of which are never scrolled into view.
     pub(super) fn menu_row(&self, with_detail: bool) -> hume_ui::popup::MenuRow {
         hume_ui::popup::MenuRow {
-            main: self.label.clone(),
+            main: hume_ui::list_row::ListRow::plain(self.label.clone()),
             trailing: self
                 .detail
                 .as_deref()

@@ -385,6 +385,8 @@
 (#%register-global "split-words")
 (#%register-global "stems-with-suffix")
 (#%register-global "string-common-prefix")
+(#%register-global "string-fit")
+(#%register-global "string-width")
 (#%register-global "surround-add")
 (#%register-global "surround-angle")
 (#%register-global "surround-backtick")

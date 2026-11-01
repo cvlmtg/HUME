@@ -29,7 +29,7 @@ use hume_engine::theme::Theme;
 pub(crate) struct TabEntry {
     pub(crate) id: TabId,
     pub(crate) label: String,
-    /// `text_width(&label)`, measured once here rather than by every
+    /// `chrome_width(&label)`, measured once here rather than by every
     /// `pack_into`/`fit_label` call that reads this entry: a candidate
     /// scroll value or a re-render costs a re-walk of `ranges`/`tabs`
     /// otherwise, not a re-walk of each label's own graphemes.
@@ -38,7 +38,7 @@ pub(crate) struct TabEntry {
 
 impl TabEntry {
     pub(crate) fn new(id: TabId, label: String) -> Self {
-        let label_width = hume_ui::width::text_width(&label) as u16;
+        let label_width = hume_rope::width::chrome_width(&label) as u16;
         Self {
             id,
             label,
@@ -115,7 +115,7 @@ fn fit_label(label: &str, extent_w: u16) -> String {
     let budget = extent_w.saturating_sub(2);
     format!(
         " {} ",
-        hume_ui::width::truncate_marked(label, budget as usize, TruncateEnd::Tail)
+        hume_rope::width::truncate_marked(label, budget as usize, TruncateEnd::Tail)
     )
 }
 

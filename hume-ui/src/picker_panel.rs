@@ -6,27 +6,31 @@
 //! independent of item count) with a two-zone layout (input row + list) and
 //! an edge-anchored scroll model owned by `PickerSession`. `menu_box`'s
 //! selected-row window centers the selection instead, a different and
-//! conflicting scroll model. The only thing shared is the border-drawing
-//! routine itself, `super::menu_box::draw_box_border`.
+//! conflicting scroll model. What it shares with the other lists is the
+//! border (`super::menu_box::draw_box_border`) and its rows: a
+//! [`ListRow`] each, cut by the write side and painted by `draw_row`, as
+//! the drawer's and a menu's are.
 //!
 //! Write side (`Editor::sync_picker_view`) resolves geometry once per
 //! frame against the current panes region and writes a [`PickerViewState`]
 //! snapshot; `PickerOverlay` only paints it, the same split as
 //! `super::popup::PopupOverlay`.
 //!
+use std::sync::Arc;
+
 use hume_engine::types::ResolvedStyle;
 use hume_grid::Rect;
 
 use hume_engine::lock::SharedSlot;
 
-use hume_core::TruncateEnd;
 use hume_engine::providers::OverlayProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
+use hume_rope::width::{chrome_width, truncate_suffix_to_width, truncate_to_width};
 
-use super::width::{text_width, truncate_marked, truncate_text, truncate_text_tail};
+use super::list_row::{ListRow, draw_row};
 
 /// Maximum panel width/height in terminal cells, before the pane-fraction
 /// clamp. Mirrors `MAX_POPUP_WIDTH`'s role for the popup widget.
@@ -41,8 +45,8 @@ const MIN_PANEL_WIDTH: u16 = 3;
 const MIN_PANEL_HEIGHT: u16 = 4;
 
 /// Rows the border and input line always claim: the top border, the input
-/// row, and the bottom border. Subtracted from the outer height exactly
-/// once, in `panel_geometry`, to produce `PanelGeometry::list_rows`, so the
+/// row, and the bottom border. Subtracted from the outer height once, in
+/// `panel_geometry`, to produce `PanelGeometry::list_rows`, so the
 /// row budget a keystroke pages against and the one a frame paints
 /// (`PickerViewState::list_rows`, carried from the same call) are the same
 /// number rather than two derivations that have to agree.
@@ -52,17 +56,19 @@ const CHROME_ROWS: u16 = 3;
 /// the write side (`Editor::sync_picker_view`); the overlay only paints.
 pub struct PickerViewState {
     /// Label painted before the query on the input row, e.g. `"files: "`.
-    /// Empty by default, in which case the input row renders exactly as it
-    /// did before prompts existed. Not yet width-clipped (a paint-time
-    /// concern, same as `query`).
+    /// Empty by default, which takes no cells: the query starts at the
+    /// row's left edge. Not yet width-clipped (a paint-time concern, same as
+    /// `query`).
     pub prompt: String,
     /// Raw query text (not yet tail-truncated; that's a paint-time
     /// concern, so this snapshot stays a dumb value, not pre-formatted UI).
     pub query: String,
-    /// Display strings of the current scroll window, in ranked order
-    /// (`PickerSession::window`'s output), already scrolled; the widget
-    /// never re-windows.
-    pub rows: Vec<String>,
+    /// The rows of the current scroll window, in ranked order, already
+    /// scrolled and cut to the list width; the widget never re-windows. A
+    /// `#:render` row is shared with the item it shows, and is `None`, which
+    /// paints blank, until rendered; any other row is the item's display,
+    /// cut for this frame.
+    pub rows: Vec<Option<Arc<ListRow>>>,
     /// On-screen index into `rows` of the selected row (`selected - scroll`
     /// from the store); `None` when `rows` is empty.
     pub selected_row: Option<usize>,
@@ -85,9 +91,6 @@ pub struct PickerViewState {
     pub list_rows: usize,
     /// Fed from the `popup-border` setting, same as popup/menu/drawer.
     pub border: bool,
-    /// Which end of an over-long row this session clips: `#:truncate`,
-    /// `PickerSession::truncate()`.
-    pub truncate: TruncateEnd,
 }
 
 /// Resolved panel geometry: the single source of truth shared by the write
@@ -99,6 +102,19 @@ pub struct PanelGeometry {
     pub rect: Rect,
     /// Inner list capacity: outer height minus `CHROME_ROWS`.
     pub list_rows: usize,
+}
+
+impl PanelGeometry {
+    /// Cells one list row gets: the inner width `draw_picker_panel` paints
+    /// rows into, whether or not the border is drawn.
+    pub fn list_width(&self) -> usize {
+        inner_area(self.rect).width as usize
+    }
+}
+
+/// The panel's area inside its frame: the input line, then the list.
+fn inner_area(outer: Rect) -> Rect {
+    outer.inset(1, 1)
 }
 
 /// Size the panel as a fraction of `pane_area` (width `min(80%, 100 cols)`,
@@ -162,6 +178,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     canvas: &mut Canvas,
     state: &PickerViewState,
     styles: PickerStyles,
+    theme: &Theme,
 ) {
     let outer = state.rect;
     if outer.width < MIN_PANEL_WIDTH || outer.height < MIN_PANEL_HEIGHT {
@@ -178,7 +195,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
         super::menu_box::draw_box_border(canvas, outer, styles.text);
     }
 
-    let inner = outer.inset(1, 1);
+    let inner = inner_area(outer);
     let inner_x = inner.x;
     let inner_width = inner.width as usize;
     // One bound for every text write below: the panel's inner right edge.
@@ -192,7 +209,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     } else {
         format!("{}/{}", state.matched, state.total)
     };
-    let counts_width = text_width(&counts);
+    let counts_width = chrome_width(&counts);
 
     // Clip the prompt itself only in the pathological case where it alone
     // exceeds the inner width. The common case (empty or a short label)
@@ -200,7 +217,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     // prompt at all. The readable prefix matters more than the tail for a
     // fixed label, so this keeps the *head* (unlike the query's own
     // tail-truncation below).
-    let (prompt_shown, prompt_width) = truncate_text(&state.prompt, inner_width);
+    let (prompt_shown, prompt_width) = truncate_to_width(&state.prompt, inner_width);
     if prompt_width > 0 {
         canvas.write_text_run(inner_x, input_y, prompt_shown, styles.text, inner_right);
     }
@@ -216,7 +233,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     // Remove leading graphemes until the query fits `query_budget`, keeping
     // the *tail*, so the cursor cell (always at the end of the query, per
     // the store's append/pop-at-end-only editing model) stays visible.
-    let (query_tail, query_width) = truncate_text_tail(&state.query, query_budget);
+    let (query_tail, query_width) = truncate_suffix_to_width(&state.query, query_budget);
 
     let query_x = inner_x + prompt_width as u16;
     canvas.write_text_run(query_x, input_y, query_tail, styles.text, inner_right);
@@ -229,18 +246,18 @@ pub(in crate::picker_panel) fn draw_picker_panel(
         canvas.write_text_run(counts_x, input_y, &counts, styles.text, inner_right);
     }
 
-    for (i, row_text) in state.rows.iter().take(state.list_rows).enumerate() {
+    for (i, row) in state.rows.iter().take(state.list_rows).enumerate() {
         // Row 0 of `inner` is the input line (`input_y`); the list starts on
         // the row below it.
         let y = inner.y + 1 + i as u16;
-        let shown = truncate_marked(row_text, inner_width, state.truncate);
-        super::menu_box::draw_list_row(
+        draw_row(
             canvas,
             inner_x,
             y,
             inner.width,
             inner_right,
-            [(&*shown, ResolvedStyle::default())],
+            row.as_deref(),
+            theme,
             state.selected_row == Some(i),
             styles.selected,
             styles.text,
@@ -267,7 +284,7 @@ impl OverlayProvider for PickerOverlay {
         };
 
         let styles = picker_styles(theme);
-        draw_picker_panel(canvas, state, styles);
+        draw_picker_panel(canvas, state, styles, theme);
     }
 }
 

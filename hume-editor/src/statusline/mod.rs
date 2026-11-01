@@ -9,8 +9,8 @@ use hume_engine::render::Canvas;
 use crate::editor::EditorState;
 use colors::EditorColors;
 use hume_core::BufferId;
+use hume_rope::width::chrome_width;
 use hume_scripting::host::DiagnosticCounts;
-use hume_ui::width::text_width;
 
 pub(crate) mod colors;
 mod elements;
@@ -293,7 +293,7 @@ fn pad_right(
 fn section_width(spans: &[(Cow<'static, str>, ResolvedStyle)]) -> u16 {
     spans
         .iter()
-        .map(|(t, _)| text_width(t.as_ref()) as u16)
+        .map(|(t, _)| chrome_width(t.as_ref()) as u16)
         .sum()
 }
 

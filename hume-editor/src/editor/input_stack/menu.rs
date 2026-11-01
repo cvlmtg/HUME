@@ -6,13 +6,16 @@ use termina::event::KeyCode;
 
 use hume_core::{HostToken, NonEmpty};
 use hume_engine::pipeline::{EngineView, ScreenLayout};
+use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::EditorMode;
 use hume_scripting::SteelCall;
+use hume_scripting::host::RowDisplay;
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::replay::{Answer, Choice, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState};
 use super::base::BaseLayer;
+use super::list_row::list_row;
 use super::paste::ignore_paste;
 use super::placement::{focused_cursor, popup_placement};
 use super::stack::{
@@ -21,7 +24,7 @@ use super::stack::{
 
 /// `(show-menu! items on-select)`'s raw content, held on `EditorState`
 /// until the next frame's `Editor::sync_menu_view` resolves it into a
-/// positioned `hume_ui::popup::PopupState` with `selected` set. `callback`
+/// positioned `hume_ui::popup::MenuState` with `selected` set. `callback`
 /// fires at most once, on a selection or a dismissal and never on
 /// `close-menu!`, then the whole model is dropped.
 ///
@@ -44,9 +47,10 @@ pub(in crate::editor) struct MenuLayer {
     input: WaitingInput,
 }
 
-/// `show-menu!`'s funnel: opens a menu over `items`, `(label, payload)`
+/// `show-menu!`'s funnel: opens a menu over `items`, `(display, payload)`
 /// rows, whose `callback` gets the chosen row's payload, or `#f`, and
-/// returns its token. `Ok(None)` when the request is stale (see
+/// returns its token. Each display's scopes are interned in `view`'s
+/// registry. `Ok(None)` when the request is stale (see
 /// `EditorState::async_opener_stale`).
 ///
 /// During `.` the menu never opens: the recorded [`Answer::Menu`] answers
@@ -57,8 +61,8 @@ pub(in crate::editor) struct MenuLayer {
 /// naming no open menu.
 pub(in crate::editor) fn open_menu(
     state: &mut EditorState,
-    view: &EngineView,
-    items: NonEmpty<(String, hume_scripting::Rooted)>,
+    view: &mut EngineView,
+    items: NonEmpty<(RowDisplay, hume_scripting::Rooted)>,
     callback: hume_scripting::Callback,
 ) -> Result<Option<HostToken>, String> {
     if let Some(replay) = state.dot_replay.as_mut() {
@@ -72,7 +76,7 @@ pub(in crate::editor) fn open_menu(
                     let index = choice
                         .map(|choice| {
                             choice
-                                .find(&items, |(label, _)| label.as_str())
+                                .find(&items, |(display, _)| display.content.text())
                                 .ok_or_else(|| choice.missing())
                         })
                         .transpose()?;
@@ -101,10 +105,22 @@ pub(in crate::editor) fn open_menu(
     if let Some(r) = state.input.ref_of::<MenuLayer>() {
         state.take_firing_false::<MenuLayer>(view, r);
     }
-    let menu = MenuLayer::new(input, items, callback);
+    let menu = MenuLayer::new(input, menu_rows(items, &mut view.registry), callback);
     let token = menu.token();
     state.push_layer(view, menu);
     Ok(Some(token))
+}
+
+/// A menu's rows from a script's `(display . payload)` items, their scopes
+/// interned in `registry`.
+fn menu_rows(
+    items: NonEmpty<(RowDisplay, hume_scripting::Rooted)>,
+    registry: &mut ScopeRegistry,
+) -> NonEmpty<(hume_ui::popup::MenuRow, hume_scripting::Rooted)> {
+    items.map(|(display, payload)| {
+        let row = hume_ui::popup::MenuRow::plain(list_row(display, registry));
+        (row, payload)
+    })
 }
 
 /// The call of a menu's callback with the chosen row's payload, or `#f`.
@@ -119,17 +135,14 @@ fn menu_call(
 }
 
 impl MenuLayer {
-    /// A fresh menu over single-column `items`, selection at row 0, with a
-    /// freshly minted token (the only minting site, same as
-    /// `DrawerLayer::new`).
+    /// A fresh menu over `items`, selection at row 0, with a freshly minted
+    /// token (the only minting site, same as `DrawerLayer::new`).
     fn new(
         input: WaitingInput,
-        items: NonEmpty<(String, hume_scripting::Rooted)>,
+        items: NonEmpty<(hume_ui::popup::MenuRow, hume_scripting::Rooted)>,
         callback: hume_scripting::Callback,
     ) -> Self {
-        let (rows, payloads) = items
-            .map(|(label, payload)| (hume_ui::popup::MenuRow::plain(label), payload))
-            .unzip();
+        let (rows, payloads) = items.unzip();
         Self {
             rows,
             payloads,
@@ -145,7 +158,7 @@ impl MenuLayer {
     /// answer ticket, if it has one. Every way a menu closes with a callback ends
     /// here.
     fn fire(&mut self, state: &mut EditorState, choice: Option<usize>) {
-        let picked = choice.map(|i| Choice::of(&self.rows, i, |row| &row.main));
+        let picked = choice.map(|i| Choice::of(&self.rows, i, |row| row.main.text()));
         state.queue_answered_call(
             self.input.take_answer(),
             Answer::Menu(picked),
@@ -153,13 +166,16 @@ impl MenuLayer {
         );
     }
 
-    /// A menu pushed directly, for a test of the stack's own behavior.
+    /// A menu pushed directly, for a test of the stack's own behavior. Its
+    /// rows carry no span, so no registry has to know their scopes.
     #[cfg(test)]
     pub(in crate::editor) fn for_test(
-        items: NonEmpty<(String, hume_scripting::Rooted)>,
+        items: NonEmpty<(RowDisplay, hume_scripting::Rooted)>,
         callback: hume_scripting::Callback,
     ) -> Self {
-        Self::new(WaitingInput::for_test(), items, callback)
+        let mut registry = ScopeRegistry::new();
+        let rows = menu_rows(items, &mut registry);
+        Self::new(WaitingInput::for_test(), rows, callback)
     }
 
     /// The rows the menu shows.
@@ -194,7 +210,7 @@ impl Layer for MenuLayer {
         None
     }
     // No `setup`/`popup_eviction` override: the trait's own default
-    // (`PopupEviction::Both`) is exactly right: a `Menu` can land directly
+    // (`PopupEviction::Both`) is right: a `Menu` can land directly
     // above a `Popup` (non-modal, so `is_settled_for` doesn't treat it as
     // the stack having moved), and `push_layer` evicts it on the way in,
     // keeping `PopupLayer`'s "never buried" invariant true. A prior `Menu`
@@ -240,8 +256,8 @@ impl super::stack::FiresFalseOnReplace for MenuLayer {
 }
 
 impl Editor {
-    /// Write the current menu content into the shared `PopupState` Arc so
-    /// `PopupOverlay` can render it during this frame, with the same geometry rules
+    /// Write the current menu content into the shared `MenuState` slot so
+    /// `MenuOverlay` can render it during this frame, with the same geometry rules
     /// as [`Self::sync_popup_view`], but items are shown one-per-line as-is
     /// (no word-wrap: menu entries are short labels, not prose) and
     /// `selected` marks the highlighted row. `screen` and `cursor_cell` are
@@ -288,7 +304,7 @@ impl Editor {
 }
 
 /// Named sugar over the generic lookup; `stack.rs` stays
-/// agnostic. Read-only: every handler-side mutation now addresses its own
+/// agnostic. Read-only: every handler-side mutation addresses its own
 /// dispatched-to layer via `at_mut::<MenuLayer>(r)` instead, so there is no
 /// `menu_mut()` sibling.
 impl super::stack::InputStack {
@@ -299,7 +315,7 @@ impl super::stack::InputStack {
 
 /// Handles one key while a selection menu is open. Movement is handled
 /// in place; `Enter`/`Esc`/a stray key all retire the layer and fire the
-/// callback exactly once (one-shot `.take()`-equivalent discipline via
+/// callback once (one-shot `.take()`-equivalent discipline via
 /// `truncate`): `queue_steel_call` never invokes it inline, matching
 /// every other Rust→Steel callback in this codebase. A stray key both
 /// closes the menu (with a `#f` callback) *and* falls through to normal

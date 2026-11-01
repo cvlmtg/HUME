@@ -13,9 +13,11 @@
 //! `Layer` impl, handlers, render sync, lookup helpers) lives in its own file
 //! with a `mod` line below. `placement.rs` (overlay placement shared by `popup`,
 //! `menu`, `completion`), `snapshot.rs` (pre-entry selection capture shared
-//! by `search`/`sift`) and `paste.rs` (the paste action every layer's paste
-//! handler serves) are helpers, not layers.
+//! by `search`/`sift`), `paste.rs` (the paste action every layer's paste
+//! handler serves) and `list_row.rs` (a script's row display as a list row)
+//! are helpers, not layers.
 
+mod list_row;
 mod paste;
 mod placement;
 mod snapshot;

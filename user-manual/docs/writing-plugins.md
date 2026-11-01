@@ -561,7 +561,7 @@ The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widg
 
 `items` is a list of `(display . payload)` pairs. `display` is the string shown and matched against. `payload` is anything you like (a path, a number, a hash) except `#f`, which means "nothing matches"; HUME never looks inside it.
 
-`keymap` is every key the picker answers besides typing. It's a hash from a key, written as `bind-key!` writes one (`"ctrl-v"`, `"alt-o"`, `"f5"`, never a sequence like `"z f"`), to a procedure of two arguments: the picker's token and the selected item's payload, or `#f` when nothing matches. A key the keymap doesn't bind does nothing, except a plain character, which types into the query, and `Backspace`, which deletes from it; bind either one to change that. `picker!` raises when two keys in the keymap are the same key, such as `"ctrl-n"` and `"c-n"`.
+`keymap` is every key the picker answers besides typing. It's a hash from a key, written as `bind-key!` writes one (`"ctrl-v"`, `"alt-o"`, `"f5"`, never a sequence like `"z f"`), to a procedure of two arguments: the selected item's payload, or `#f` when nothing matches, and the picker's token. A key the keymap doesn't bind does nothing, except a plain character, which types into the query, and `Backspace`, which deletes from it; bind either one to change that. `picker!` raises when two keys in the keymap are the same key, such as `"ctrl-n"` and `"c-n"`.
 
 A binding never closes the picker by itself: it calls `(picker-close! token)`. To move the selection it calls `(picker-move! token count #:by 'row)`. `#:by` is `'row` (the default), `'page` or `'half-page`, and a negative `count` moves up.
 
@@ -576,7 +576,7 @@ To change or add a key, set it in that map:
 ```scheme
 (picker! pane items
   (hash-insert (call! "stdlib/picker-keymap" open-item!)
-               "ctrl-y" (lambda (token item) (picker-close! token) (copy-path! item)))
+               "ctrl-y" (lambda (item token) (picker-close! token) (copy-path! item)))
   #:prompt "files: ")
 ```
 
@@ -612,6 +612,25 @@ A row too wide for the panel is clipped to fit, with `…` at the dropped end. `
 - `'head` (default) drops the front and keeps the tail: right for a file path, whose file name sits at the end.
 - `'tail` drops the back and keeps the head: right for a row whose distinguishing part sits at the front, like a grep match's `path:line:col:` prefix before the line preview.
 
+To show rows differently from the text the query matches, pass `#:render`, a procedure of two arguments. Before the panel shows rows it hasn't drawn at its current width, it calls `(render rows budget)`: `rows` are those rows' `(display . payload)` items, top to bottom, and `budget` is how many terminal cells one row gets. It returns one [row display](plugin-api.md#row-display) per item, a string or a hash with spans, which can change the text as well as style it. Streamed rows go through it too, so a row can show a status letter in color or a path with its directory dimmed without parsing every line up front.
+
+Each row is drawn once for a given width, so `render` runs again only for rows scrolled into view, rows that arrive later, or every visible row after the panel changes width. The query still matches each item's display, `.` repeats a pick by it, and a binding still gets the payload. Use `string-width` and `string-fit` to fit a row to `budget`; a row still wider than `budget` is cut at the `#:truncate` end, as a row without `render` is. This keeps a status prefix and drops the front of a long path:
+
+```scheme
+(define (render-status-rows rows budget)
+  (map (lambda (row)
+         (let* ([entry (car row)]
+                [path (substring entry 3 (string-length entry))])
+           (hash 'text (if (<= (string-width entry) budget)
+                           entry
+                           (string-append (substring entry 0 3)
+                                          (string-fit path (max 0 (- budget 3)) 'head)))
+                 'spans (list (hash 'start-char 0 'end-char 2 'scope "diff.delta")))))
+       rows))
+```
+
+`render` can read buffers, selections and settings but not change the editor, as a drawer's can't. An attempt to change the editor, an error, or a result that isn't one row display per item closes the picker, calls `#:on-close`, and shows the error.
+
 A spawned source's nonzero exit is reported as an error. For a command where some nonzero exits are a normal outcome (`rg` exits `1` for "no matches"), pass `#:ok-exit-codes`. The list replaces the usual "zero is success" rule instead of adding to it, so include `0`. Give `rg` an explicit path, since without one it searches its empty input:
 
 ```scheme
@@ -637,7 +656,7 @@ A picker whose query should re-run an external command with the new pattern on e
                 #:truncate 'tail))
 ```
 
-`live-picker!` takes a keymap and accepts `#:truncate` and `#:on-close` as `picker!` does (see [Custom pickers](#custom-pickers) above). `#:truncate 'tail` keeps the `path:line:col` start of `rg --vimgrep`'s rows. `stdlib/picker-keymap`'s `Ctrl-t`, `Ctrl-v` and `Ctrl-s` open a match in a new tab or split instead of the current pane.
+`live-picker!` takes a keymap and accepts `#:truncate`, `#:render` and `#:on-close` as `picker!` does (see [Custom pickers](#custom-pickers) above). `#:truncate 'tail` keeps the `path:line:col` start of `rg --vimgrep`'s rows. `stdlib/picker-keymap`'s `Ctrl-t`, `Ctrl-v` and `Ctrl-s` open a match in a new tab or split instead of the current pane.
 
 [grep.hume](https://github.com/cvlmtg/grep.hume) is this same idea, finished, with `grep/parse` included.
 

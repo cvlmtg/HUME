@@ -43,6 +43,65 @@ fn show_menu_refuses_a_false_payload_and_opens_nothing() {
 }
 
 #[test]
+fn show_menu_rows_take_spans_and_a_selected_scope() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-menu! pane
+               (list (cons (hash 'text "Rename" 'selected-scope "markup.bold"
+                                 'spans (list (hash 'start-char 0 'end-char 1 'scope "keyword"
+                                                    'selected-scope "string")))
+                           'rename)
+                     (cons "Inline" 'inline))
+               (lambda (choice) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    assert!(error_log(&ed).is_empty(), "errors: {:?}", error_log(&ed));
+    assert_menu_styles(
+        &mut ed,
+        &[
+            (
+                Some("markup.bold"),
+                &[(0, 1, "keyword", Some("string"))][..],
+            ),
+            (None, &[]),
+        ],
+    );
+}
+
+#[test]
+fn show_menu_raises_on_a_span_past_its_text_and_opens_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-menu! pane
+               (list (cons (hash 'text "ab" 'spans (list (hash 'start-char 0 'end-char 5 'scope "keyword")))
+                           'a))
+               (lambda (choice) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    assert!(
+        has_error(
+            &ed,
+            "items 0 'spans 0: end 5 is past the text's char length 2"
+        ),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert!(ed.state.input.menu().is_none());
+}
+
+#[test]
 fn show_menu_with_empty_items_raises_and_opens_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");

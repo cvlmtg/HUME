@@ -187,7 +187,7 @@ fn a_drawer_render_cannot_activate_a_plugin_and_leaves_it_declared() {
         r#"(declare-plugin! "user/tp" #:commands '("fmt-row"))
            (define-typed-command! "go" "" (lambda (pane)
              (show-drawer-list! pane (list 1 2 3) (lambda (i tok) (begin))
-               #:render (lambda (start keys) (map (lambda (k) (call! "fmt-row")) keys)))))"#,
+               #:render (lambda (rows budget) (map (lambda (k) (call! "fmt-row")) rows)))))"#,
         r#"(define-command! "fmt-row" "" (lambda () "row"))"#,
     );
     let tp = EntryId::main(PluginId::User {

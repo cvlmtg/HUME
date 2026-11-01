@@ -175,18 +175,19 @@
          [graph-width (cdr layout)]
          [age-width (max 3 (string-length
                             (undotree/format-age (hash-ref (car nodes) 'age-secs))))]
-         [current (undotree/find-row (lambda (node) (hash-ref node 'current?)) newest-first 0)])
+         [current (undotree/find-row (lambda (node) (hash-ref node 'current?)) newest-first 0)]
+         [row-of (let loop ([nodes newest-first] [i 0] [acc (hash)])
+                   (if (null? nodes)
+                       acc
+                       (loop (cdr nodes) (+ i 1) (hash-insert acc (hash-ref (car nodes) 'id) i))))])
     (hash 'nodes newest-first
-          'render (lambda (start keys)
-                    (let loop ([keys keys] [i start] [acc '()])
-                      (if (null? keys)
-                          (reverse acc)
-                          (loop (cdr keys) (+ i 1)
-                                (cons (undotree/format-row
-                                       (car keys) (vector-ref graphs i)
-                                       (undotree/format-age (hash-ref (car keys) 'age-secs))
-                                       graph-width age-width)
-                                      acc)))))
+          'render (lambda (rows budget)
+                    (map (lambda (node)
+                           (undotree/format-row
+                            node (vector-ref graphs (hash-ref row-of (hash-ref node 'id)))
+                            (undotree/format-age (hash-ref node 'age-secs))
+                            graph-width age-width))
+                         rows))
           'current (car current)
           'current-node (cdr current)
           'next-change-secs (apply min (map (lambda (node)

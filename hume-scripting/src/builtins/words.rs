@@ -1,6 +1,8 @@
 //! `(split-words line word-chars)`: native word tokenization for Steel
 //! plugins. `(string-common-prefix strings)`: the grapheme-cluster common
-//! prefix, for the same reason, below.
+//! prefix, for the same reason, below. `(string-width s)`: the terminal
+//! cells a string takes, and `(string-fit s cells side)`: the string cut to
+//! them.
 //!
 //! Reuses `hume-editing`'s `word_runs`, built on the same
 //! grapheme-cluster/combining-mark-safe stepping and `WordChars::classify`
@@ -20,7 +22,7 @@ use hume_editing::word::{WordChars, word_runs};
 use steel::rvals::SteelVal;
 
 use super::SteelResult;
-use super::args::{list_to_strings, string_arg, string_list};
+use super::args::{list_to_strings, string_arg, string_list, truncate_end_arg, usize_arg};
 use super::errors::generic_err;
 
 /// `(split-words line word-chars)` -> list of word strings, in order.
@@ -55,6 +57,26 @@ pub(crate) fn string_common_prefix(strings: SteelVal) -> SteelResult {
         })
     });
     Ok(SteelVal::StringV(common.into()))
+}
+
+/// `(string-width s)` -> the terminal cells `s` takes as a list row shows
+/// it, by the measurement the drawer, menus and pickers paint with. A
+/// picker's `#:render` fits its rows to a budget with it.
+pub(crate) fn string_width(s: SteelVal) -> SteelResult {
+    let s = string_arg(s, "s")?;
+    let width = hume_rope::width::chrome_width(&s);
+    Ok(SteelVal::IntV(width as isize))
+}
+
+/// `(string-fit s cells side)` -> `s` cut to `cells` terminal cells at its
+/// `side` end (`'head` or `'tail`) behind a `…`, or `s` itself when it fits:
+/// the cut a picker's `#:truncate` makes, never splitting a cluster.
+pub(crate) fn string_fit(s: SteelVal, cells: SteelVal, side: SteelVal) -> SteelResult {
+    let s = string_arg(s, "s")?;
+    let cells = usize_arg(cells, "cells")?;
+    let side = truncate_end_arg(side, "side")?;
+    let fitted = hume_rope::width::truncate_marked(&s, cells, side);
+    Ok(SteelVal::StringV(fitted.as_ref().into()))
 }
 
 #[cfg(test)]

@@ -1328,7 +1328,7 @@ fn the_doc_box_shows_resolved_docs_once_the_reply_lands() {
     let doc_lines = |ed: &Editor| {
         let view = ed.state.views.completion_doc.read();
         let state = view.as_ref().expect("doc box showing");
-        state.rows.lines[state.rows.visible.clone()].to_vec()
+        state.rows.lines.texts()[state.rows.visible.clone()].to_vec()
     };
     ed.feed_key(key('i'));
     ed.settle();

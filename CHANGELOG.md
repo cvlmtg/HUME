@@ -10,10 +10,12 @@
 - Release archives no longer include `hume-grammar-build`. To build a grammar yourself, get it from [treesitter.hume](https://github.com/cvlmtg/treesitter.hume).
 - `compile-grammar!`, `bundled-language-grammar` and `bundled-grammar-languages` are gone: list HUME's languages with `bundled-languages`.
 - `buffer-display-path`'s `#:relative` takes the directory to be relative to: replace `#:relative #t` with `#:relative (cwd)`.
+- A drawer's `#:render` is called as `(render rows budget)`, as a picker's is: drop the `start` argument, and find what a row needs from its item.
 - `picker!` and `live-picker!` take a keymap in place of `on-select`, and `#:actions` is gone: a picker answers only the keys its keymap binds. Pass `(call! "stdlib/picker-keymap" on-select)` for the keys pickers had, add keys with `hash-insert`, and move cleanup that ran on `#f` into `#:on-close`.
 
 ### Panes & interface
 - `:ls` shows the buffer you are in in bold and buffers with unsaved changes in the warning color, and `core:undotree` colors its graph and its `@` and `S` markers.
+- `z m` colors each file's status, and keeps it visible when the path is too long for the picker.
 
 ### Plugins & scripting
 - A plugin's picker binds every key itself, and new `picker-move!` moves its selection.
@@ -25,10 +27,15 @@
 - New `stdlib/list-entries` lists every entry of a directory.
 - New `stdlib/verify-sha256!` checks a file's SHA-256, and new `stdlib/extract-archive!` unpacks a tar or zip archive, refusing one whose symlinks point outside its directory. New `stdlib/find-extractor` finds the program that extracts an archive format.
 - Drawer rows can give theme scopes to parts of their text and to the whole row while it is selected.
+- Menu rows can give theme scopes to parts of their text and to the whole row while it is selected, as drawer rows can.
+- `picker!` and `live-picker!` take `#:render`, which styles or rewrites each row as it is shown, and new `string-width` gives how many terminal cells a string takes.
+- A drawer row too wide for the drawer ends in `…` instead of being clipped, and `show-drawer-list!` takes `#:truncate` to pick the end that is cut.
+- New `string-fit` cuts a string to a number of terminal cells behind a `…`, as pickers and the drawer cut their rows.
 - An error about one entry of a list given to a decoration, drawer, menu or picker function names that entry by its position, as in `lines 1 'segments 0`.
 
 ### Language servers
 - The workspace symbols picker and the goto and references list show a file inside the working directory by its path relative to it.
+- The symbol pickers color each symbol's kind and dim its detail.
 - The goto and references list gives a row from a file that is not open, whose column is the server's own count, the `markup.italic` scope, so a theme can set it apart.
 
 ### Performance

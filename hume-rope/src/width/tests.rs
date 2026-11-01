@@ -1,4 +1,7 @@
 use super::*;
+use crate::column::ByteCol;
+use crate::spanned::SpannedText;
+use hume_core::TruncateEnd;
 use pretty_assertions::assert_eq;
 
 // ── tab_advance ──────────────────────────────────────────────────────────
@@ -332,31 +335,31 @@ fn indent_levels_zero_tab_width_counts_columns() {
 
 #[test]
 fn truncate_to_width_whole_string_fits() {
-    assert_eq!(truncate_to_width("ab", 5, 4), ("ab", 2));
+    assert_eq!(truncate_to_width("ab", 5), ("ab", 2));
 }
 
 #[test]
 fn truncate_to_width_exact_budget() {
-    assert_eq!(truncate_to_width("abcd", 4, 4), ("abcd", 4));
+    assert_eq!(truncate_to_width("abcd", 4), ("abcd", 4));
 }
 
 #[test]
 fn truncate_to_width_drops_a_whole_wide_cluster_that_would_overshoot() {
     // Each 漢 is 2 columns; budget 3 can only fit the first one (2 cols),
     // not half of the second.
-    assert_eq!(truncate_to_width("\u{6F22}\u{6F22}", 3, 4), ("\u{6F22}", 2));
+    assert_eq!(truncate_to_width("\u{6F22}\u{6F22}", 3), ("\u{6F22}", 2));
 }
 
 #[test]
-fn truncate_to_width_tab_expands_against_real_stops() {
-    // "a\tb" at tw=4: a(1)->1, tab from col 1 advances 3 (to col 4) -> "a\t"
-    // is 4 columns, exactly the budget; 'b' would overshoot to 5.
-    assert_eq!(truncate_to_width("a\tb", 4, 4), ("a\t", 4));
+fn truncate_to_width_counts_a_tab_as_one_cell() {
+    // Chrome has no tab stops: a(1) + tab(1) + b(1) is 3 cells.
+    assert_eq!(truncate_to_width("a\tb", 4), ("a\tb", 3));
+    assert_eq!(truncate_to_width("a\tb", 2), ("a\t", 2));
 }
 
 #[test]
 fn truncate_to_width_zero_budget_is_empty() {
-    assert_eq!(truncate_to_width("abc", 0, 4), ("", 0));
+    assert_eq!(truncate_to_width("abc", 0), ("", 0));
 }
 
 #[test]
@@ -364,15 +367,15 @@ fn truncate_to_width_drops_a_whole_placeholder_that_would_overshoot() {
     // 'a' (1 col) fits budget 4, but the zero-width space's `<200b>`
     // placeholder needs 6 more (1+6=7 > 4). Dropped whole, same rule a
     // wide grapheme follows, never split into "<20".
-    assert_eq!(truncate_to_width("a\u{200b}", 4, 4), ("a", 1));
+    assert_eq!(truncate_to_width("a\u{200b}", 4), ("a", 1));
 }
 
 #[test]
 fn truncate_to_width_never_splits_a_decomposed_cluster() {
     // "e" + combining acute is one grapheme cluster measuring 1 column;
     // budget 0 drops it whole rather than keeping the bare 'e'.
-    assert_eq!(truncate_to_width("e\u{0301}", 0, 4), ("", 0));
-    assert_eq!(truncate_to_width("e\u{0301}", 1, 4), ("e\u{0301}", 1));
+    assert_eq!(truncate_to_width("e\u{0301}", 0), ("", 0));
+    assert_eq!(truncate_to_width("e\u{0301}", 1), ("e\u{0301}", 1));
 }
 
 // ── truncate_suffix_to_width ─────────────────────────────────────────────
@@ -429,6 +432,24 @@ fn grapheme_width_of_single_cluster_samples() {
 }
 
 #[test]
+fn chrome_width_measures_from_column_zero_with_one_cell_tabs() {
+    use test_fixtures::unicode::*;
+    assert_eq!(chrome_width("a\tb"), 3);
+    assert_eq!(chrome_width(CJK), 2);
+    assert_eq!(chrome_width(&format!("{ZWJ_FAMILY}{COMBINING}")), 3);
+    assert_eq!(chrome_width(""), 0);
+}
+
+#[test]
+fn chrome_cluster_width_of_single_clusters() {
+    use test_fixtures::unicode::*;
+    assert_eq!(chrome_cluster_width("\t"), 1);
+    assert_eq!(chrome_cluster_width(CJK), 2);
+    assert_eq!(chrome_cluster_width(COMBINING), 1);
+    assert_eq!(chrome_cluster_width(FLAG_IT), 2);
+}
+
+#[test]
 fn str_width_sums_clusters_not_chars() {
     use test_fixtures::unicode::*;
     assert_eq!(str_width(&format!("{COMBINING}x"), 0, 4), 2);
@@ -453,9 +474,9 @@ fn truncate_suffix_to_width_never_splits_a_cluster() {
 fn truncate_to_width_never_splits_a_cluster() {
     use test_fixtures::unicode::*;
     let s = format!("{COMBINING}bc");
-    assert_eq!(truncate_to_width(&s, 2, 4), (&s[..s.len() - 1], 2));
+    assert_eq!(truncate_to_width(&s, 2), (&s[..s.len() - 1], 2));
     let s = format!("{ZWJ_FAMILY}b");
-    assert_eq!(truncate_to_width(&s, 1, 4), ("", 0));
+    assert_eq!(truncate_to_width(&s, 1), ("", 0));
 }
 
 /// A space carrying a combining mark is one blank cluster, as
@@ -463,4 +484,139 @@ fn truncate_to_width_never_splits_a_cluster() {
 #[test]
 fn indent_depth_measures_a_space_with_a_combining_mark_as_one_blank_cluster() {
     assert_eq!(indent_depth(" \u{301}\tx", 4), 1);
+}
+
+// ── truncate_marked ─────────────────────────────────────────────────────
+
+#[test]
+fn truncate_marked_leaves_short_strings_unchanged() {
+    assert_eq!(truncate_marked("hello", 8, TruncateEnd::Head), "hello");
+    assert_eq!(
+        truncate_marked("hello", 5, TruncateEnd::Head),
+        "hello",
+        "exact fit needs no marker"
+    );
+}
+
+#[test]
+fn truncate_marked_cut_head_prefixes_ellipsis_and_keeps_tail() {
+    let source = "hume-ui/src/picker_panel.rs";
+    let out = truncate_marked(source, 12, TruncateEnd::Head);
+    assert_eq!(oracle_width(out.as_ref()), 12);
+    let kept = out
+        .strip_prefix('…')
+        .unwrap_or_else(|| panic!("clipped string must lead with …, got {out:?}"));
+    assert!(
+        source.ends_with(kept),
+        "the kept part must be a genuine tail of the source string, got {out:?}"
+    );
+}
+
+#[test]
+fn truncate_marked_cut_tail_appends_ellipsis_and_keeps_head() {
+    let source = "src/editor/picker.rs:412:9:  fn push(&mut self)";
+    let out = truncate_marked(source, 12, TruncateEnd::Tail);
+    assert_eq!(oracle_width(out.as_ref()), 12);
+    let kept = out
+        .strip_suffix('…')
+        .unwrap_or_else(|| panic!("clipped string must trail with …, got {out:?}"));
+    assert!(
+        source.starts_with(kept),
+        "the kept part must be a genuine head of the source string, got {out:?}"
+    );
+}
+
+#[test]
+fn truncate_marked_never_splits_a_grapheme_cluster() {
+    use unicode_segmentation::UnicodeSegmentation;
+
+    // "é" here is e + combining acute (U+0065 U+0301). A cut landing inside
+    // this cluster would emit a bare combining mark with no base character
+    // ahead of it, which re-segmenting the output would catch: a bare mark
+    // opens its own (invalid) cluster instead of extending the previous one.
+    let source = "cafe\u{0301} bar";
+    for cut in [TruncateEnd::Head, TruncateEnd::Tail] {
+        // Every clip width up to the source's own, including one that lands
+        // mid-cluster if the code were byte-counting instead of grapheme-aware.
+        for budget in 0..=8 {
+            let out = truncate_marked(source, budget, cut);
+            assert!(
+                out.graphemes(true).all(|g| g != "\u{0301}"),
+                "cut={cut:?} budget={budget}: combining accent split from its base, got {out:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn truncate_marked_zero_budget_is_empty() {
+    assert_eq!(truncate_marked("anything", 0, TruncateEnd::Head), "");
+    assert_eq!(truncate_marked("anything", 0, TruncateEnd::Tail), "");
+}
+
+/// Measures width without going through the code under test.
+fn oracle_width(s: &str) -> usize {
+    unicode_width::UnicodeWidthStr::width(s)
+}
+
+// ── truncate_spanned ────────────────────────────────────────────────────
+
+fn spanned(text: &str, spans: Vec<(usize, usize, char)>) -> SpannedText<char> {
+    SpannedText::new(text.to_string(), spans).expect("spans fit their text")
+}
+
+/// Each span as `(start char, end char, payload)` of the text it is in.
+fn char_spans(out: &SpannedText<char>) -> Vec<(usize, usize, char)> {
+    let chars = |byte: ByteCol| out.text()[..byte.index()].chars().count();
+    out.spans()
+        .iter()
+        .map(|(range, payload)| (chars(range.start), chars(range.end), *payload))
+        .collect()
+}
+
+#[test]
+fn a_row_that_fits_comes_back_unchanged() {
+    let row = spanned("abcdef", vec![(1, 3, 'x')]);
+    assert_eq!(truncate_spanned(row.clone(), 6, TruncateEnd::Head), row);
+    assert_eq!(truncate_spanned(row.clone(), 6, TruncateEnd::Tail), row);
+}
+
+#[test]
+fn a_head_cut_keeps_the_surviving_part_of_a_span_after_the_marker() {
+    let out = truncate_spanned(
+        spanned("abcdefgh", vec![(0, 2, 'a'), (3, 6, 'b')]),
+        5,
+        TruncateEnd::Head,
+    );
+    insta::assert_snapshot!(out.text(), @"…efgh");
+    assert_eq!(char_spans(&out), vec![(1, 3, 'b')]);
+}
+
+#[test]
+fn a_tail_cut_clips_a_span_at_the_kept_end_and_leaves_the_marker_unstyled() {
+    let out = truncate_spanned(
+        spanned("abcdefgh", vec![(2, 6, 'b'), (7, 8, 'c')]),
+        5,
+        TruncateEnd::Tail,
+    );
+    insta::assert_snapshot!(out.text(), @"abcd…");
+    assert_eq!(char_spans(&out), vec![(2, 4, 'b')]);
+}
+
+#[test]
+fn a_zero_budget_is_an_empty_row_and_a_budget_of_one_is_the_marker() {
+    let row = spanned("abcdef", vec![(0, 6, 'x')]);
+    let empty = truncate_spanned(row.clone(), 0, TruncateEnd::Head);
+    assert_eq!((empty.text(), empty.spans().len()), ("", 0));
+    let marker = truncate_spanned(row, 1, TruncateEnd::Tail);
+    insta::assert_snapshot!(marker.text(), @"…");
+    assert!(marker.spans().is_empty());
+}
+
+#[test]
+fn a_wide_cluster_at_the_cut_is_dropped_whole() {
+    // "日" takes two cells: a three-cell budget keeps "a" and the marker.
+    let out = truncate_spanned(spanned("a日b", vec![(1, 2, 'w')]), 3, TruncateEnd::Tail);
+    insta::assert_snapshot!(out.text(), @"a…");
+    assert!(out.spans().is_empty());
 }

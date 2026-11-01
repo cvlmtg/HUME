@@ -33,13 +33,19 @@ drawer's rows and the symbol pickers all jump through `lsp/jump-to!`, which warn
 `symbols.scm` serves `lsp/document-symbols` and `lsp/workspace-symbols`. Both list their
 rows as `name  kind  detail` and jump to the accepted row in `(focused-pane)`.
 
+A row's payload is an `lsp/symbol-row`: its jump target, and the char lengths of its name
+and kind. The pickers' `#:render`, `lsp/render-symbol-rows`, reads those lengths to give
+the kind the `type` scope and the detail the `comment` scope, rather than splitting the
+label on its separators, which a name or detail may contain. It leaves the text as it is,
+so `#:truncate 'tail` still cuts a long row.
+
 `lsp/document-symbols` asks every server offering `documentSymbolProvider` and shows one
 `picker!` over every server's answers. A `DocumentSymbol[]` answer is walked pre-order, a
 symbol's detail being its parent's name and its jump target its `selectionRange`. A
 `SymbolInformation[]` answer keeps its own `location` and uses `containerName` as the
-detail. Since a `DocumentSymbol` carries no `uri`, its row holds the buffer's uri and the
-`selectionRange`, and `lsp-location` pairs them only for the row that is accepted, which
-keeps the server's position encoding. No symbol at all logs "No symbols found".
+detail. Since a `DocumentSymbol` carries no `uri`, its row's target is the buffer's uri
+and the `selectionRange` as a pair, and `lsp-location` pairs them only for the row that is
+accepted, which keeps the server's position encoding. No symbol at all logs "No symbols found".
 
 `lsp/workspace-symbols` opens an empty `live-picker!`. Each query, once the debounce
 window passes, sends `workspace/symbol` to every server offering the feature with

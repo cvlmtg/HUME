@@ -44,7 +44,7 @@ visits every child before its parent. It returns
 | Key | Holds |
 |---|---|
 | `'nodes` | The input hashes newest first, one per row. The plugin hands them to the drawer as its row keys |
-| `'render` | A `(render start nodes)` procedure that formats the rows from index `start` for those hashes. The plugin hands it to the drawer as its `#:render`, so only the rows the drawer shows are formatted |
+| `'render` | A `(render nodes budget)` procedure that formats the rows of those hashes, each at the graph row its id names. The plugin hands it to the drawer as its `#:render`, so only the rows the drawer shows are formatted |
 | `'current` | The index of the current revision's row |
 | `'current-node` | That revision's input hash |
 | `'next-change-secs` | Seconds until the first age label changes, which arms the age timer (see [Refresh](#refresh)) |

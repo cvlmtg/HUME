@@ -1,8 +1,14 @@
 use super::super::symbols_in;
 use super::*;
-use hume_engine::theme::Theme;
-use hume_engine::types::ResolvedStyle;
+use crate::list_row::SpanScopes;
+use hume_engine::theme::{ScopeRegistry, Theme};
+use hume_engine::types::{Modifiers, ResolvedStyle, ScopeId};
 use hume_grid::{Grid, Rect};
+use hume_rope::spanned::SpannedText;
+
+fn list_rows(texts: &[String]) -> Vec<ListRow> {
+    texts.iter().cloned().map(ListRow::plain).collect()
+}
 
 fn rows(n: usize) -> Vec<String> {
     (0..n).map(|i| format!("item{i}")).collect()
@@ -88,13 +94,15 @@ fn a_row_wider_than_the_box_is_clipped_at_the_border() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &long,
-        Some(0),
+        BoxRows::List {
+            rows: &list_rows(&long),
+            selected: Some(0),
+            theme: &theme,
+        },
         1,
         0,
         true,
         styles(),
-        None,
     );
 
     // The row fills the inner width and stops; the border stands and the
@@ -111,13 +119,15 @@ fn draw_menu_box_border_frame_snapshot() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &rows(2),
-        Some(0),
+        BoxRows::List {
+            rows: &list_rows(&rows(2)),
+            selected: Some(0),
+            theme: &theme,
+        },
         2,
         0,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -137,13 +147,15 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &rows(2),
-        Some(0),
+        BoxRows::List {
+            rows: &list_rows(&rows(2)),
+            selected: Some(0),
+            theme: &theme,
+        },
         2,
         0,
         false,
         styles(),
-        None,
     );
 
     // Corners stay background-filled space, never a box-drawing glyph.
@@ -173,13 +185,15 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &data[range.clone()],
-        Some(9 - range.start),
+        BoxRows::List {
+            rows: &list_rows(&data[range.clone()]),
+            selected: Some(9 - range.start),
+            theme: &theme,
+        },
         10,
         range.start,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -207,13 +221,11 @@ fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &data[range.clone()],
-        None,
+        BoxRows::Plain(&data[range.clone()]),
         10,
         range.start,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -237,13 +249,11 @@ fn draw_menu_box_shows_scrollbar_thumb_at_top_when_scrolled_to_top() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &data[range.clone()],
-        None,
+        BoxRows::Plain(&data[range.clone()]),
         10,
         range.start,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -267,13 +277,11 @@ fn draw_menu_box_shows_scrollbar_thumb_in_the_middle_when_scrolled_to_the_middle
     draw_menu_box(
         &mut canvas,
         outer,
-        &data[range.clone()],
-        None,
+        BoxRows::Plain(&data[range.clone()]),
         10,
         range.start,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -297,13 +305,11 @@ fn draw_menu_box_shows_scrollbar_thumb_at_bottom_when_scrolled_to_bottom() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &data[range.clone()],
-        None,
+        BoxRows::Plain(&data[range.clone()]),
         10,
         range.start,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -330,13 +336,11 @@ fn draw_menu_box_single_row_window_shows_a_solid_thumb() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &data[range.clone()],
-        None,
+        BoxRows::Plain(&data[range.clone()]),
         10,
         range.start,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -356,13 +360,11 @@ fn draw_menu_box_no_overflow_shows_no_scrollbar() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &rows(2),
-        None,
+        BoxRows::Plain(&rows(2)),
         2,
         0,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -388,13 +390,15 @@ fn draw_menu_box_scrolled_menu_shows_scrollbar_thumb() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &data[range.clone()],
-        Some(5 - range.start),
+        BoxRows::List {
+            rows: &list_rows(&data[range.clone()]),
+            selected: Some(5 - range.start),
+            theme: &theme,
+        },
         10,
         range.start,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
@@ -474,13 +478,15 @@ fn draw_menu_box_too_small_outer_does_nothing() {
     draw_menu_box(
         &mut canvas,
         Rect::new(0, 0, 2, 2),
-        &rows(1),
-        Some(0),
+        BoxRows::List {
+            rows: &list_rows(&rows(1)),
+            selected: Some(0),
+            theme: &theme,
+        },
         1,
         0,
         true,
         styles(),
-        None,
     );
     assert_eq!(buf, before, "sub-3x3 outer must not panic or paint");
 }
@@ -587,13 +593,15 @@ fn draw_menu_box_clips_extra_rows_at_the_bottom_border() {
     draw_menu_box(
         &mut canvas,
         outer,
-        &rows(5),
-        Some(0),
+        BoxRows::List {
+            rows: &list_rows(&rows(5)),
+            selected: Some(0),
+            theme: &theme,
+        },
         3,
         0,
         true,
         styles(),
-        None,
     );
 
     insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 0, 12, 9)), @"
@@ -625,4 +633,105 @@ fn outer_rows_clamps_a_huge_row_count_instead_of_wrapping() {
 #[test]
 fn outer_rows_stays_under_the_cap_for_a_small_row_count() {
     assert_eq!(outer_rows(3, MAX_MENU_ROWS), 3 + 2);
+}
+
+const MENU_FG: hume_grid::Rgb = hume_grid::Rgb(1, 2, 3);
+const MENU_BG: hume_grid::Rgb = hume_grid::Rgb(4, 5, 6);
+const MENU_SELECTED_BG: hume_grid::Rgb = hume_grid::Rgb(7, 8, 9);
+const ROW_BG: hume_grid::Rgb = hume_grid::Rgb(10, 11, 12);
+
+/// A theme styling the menu, its selected row, `"span"` as italic and
+/// `"row"` in its own background, with the ids of the last two.
+fn menu_theme() -> (Theme, ScopeId, ScopeId) {
+    let colors = |fg, bg| ResolvedStyle {
+        fg: Some(fg),
+        bg: Some(bg),
+        ..Default::default()
+    };
+    let styles = std::collections::HashMap::from([
+        ("ui.menu", colors(MENU_FG, MENU_BG)),
+        (
+            "ui.menu.selected",
+            ResolvedStyle {
+                bg: Some(MENU_SELECTED_BG),
+                ..Default::default()
+            },
+        ),
+        (
+            "span",
+            ResolvedStyle {
+                modifiers: Modifiers::ITALIC,
+                ..Default::default()
+            },
+        ),
+        (
+            "row",
+            ResolvedStyle {
+                bg: Some(ROW_BG),
+                ..Default::default()
+            },
+        ),
+    ]);
+    let mut registry = ScopeRegistry::new();
+    let span = registry.intern("span");
+    let row = registry.intern("row");
+    let mut theme = Theme::new(styles, ResolvedStyle::default());
+    theme.bake(&registry);
+    (theme, span, row)
+}
+
+/// Paints `rows` as a menu in the box `Rect::new(0, 0, 10, rows + 2)`, row 0
+/// selected, in `theme`'s menu styles.
+fn paint_menu(theme: &Theme, rows: &[ListRow], grid: &mut Grid) {
+    let mut canvas = Canvas::new(grid, theme.ui.invisible, None);
+    draw_menu_box(
+        &mut canvas,
+        Rect::new(0, 0, 10, rows.len() as u16 + 2),
+        BoxRows::List {
+            rows,
+            selected: Some(0),
+            theme,
+        },
+        rows.len(),
+        0,
+        false,
+        MenuBoxStyles::menu(theme),
+    );
+}
+
+#[test]
+fn a_menu_rows_span_layers_over_the_selected_style() {
+    let (theme, span, _) = menu_theme();
+    let scopes = SpanScopes {
+        scope: span,
+        selected: None,
+    };
+    let row = ListRow::styled(SpannedText::new("abcd".to_string(), vec![(1, 3, scopes)]).unwrap());
+    let mut grid = Grid::new(10, 4);
+    paint_menu(&theme, &[row.clone(), row], &mut grid);
+
+    let italic = |x: u16, y: u16| grid[(x, y)].style().modifiers.contains(Modifiers::ITALIC);
+    for x in [2, 3] {
+        assert_eq!(grid[(x, 1)].style().bg, Some(MENU_SELECTED_BG), "x={x}");
+        assert!(italic(x, 1), "selected span italic at x={x}");
+        assert!(italic(x, 2), "span italic at x={x}");
+    }
+    assert!(!italic(1, 1) && !italic(4, 1), "outside the span");
+}
+
+#[test]
+fn a_menu_rows_selected_scope_replaces_ui_menu_selected() {
+    let (theme, _, row_scope) = menu_theme();
+    let row = ListRow::plain("ab".into()).with_selected_scope(Some(row_scope));
+    let mut grid = Grid::new(10, 4);
+    paint_menu(&theme, &[row.clone(), row], &mut grid);
+
+    for x in [1, 2, 5] {
+        assert_eq!(
+            grid[(x, 1)].style().bg,
+            Some(ROW_BG),
+            "selected bg at x={x}"
+        );
+        assert_eq!(grid[(x, 2)].style().bg, Some(MENU_BG), "bg at x={x}");
+    }
 }

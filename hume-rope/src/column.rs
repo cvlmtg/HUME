@@ -234,9 +234,10 @@ impl ByteCol {
     /// onto its start column (e.g. a bracket match's end byte from its
     /// start byte plus the matched char's UTF-8 length). Saturates rather
     /// than overflowing, matching every other `advance_saturating` in this
-    /// module (`DisplayLineCol`/`BufferLineCol`'s shared one). The two real
-    /// callers this type has for advancing at all (a tree-sitter edit's end
-    /// position, a bracket match's end byte) never come close to
+    /// module (`DisplayLineCol`/`BufferLineCol`'s shared one). The callers
+    /// this type has for advancing at all (a tree-sitter edit's end
+    /// position, a bracket match's end byte, a span moved past prepended
+    /// text) never come close to
     /// `usize::MAX`, so this stays this narrow rather than gaining
     /// `cells_since`/`shift_saturating`'s full arithmetic surface.
     pub fn advance_saturating(self, bytes: usize) -> Self {

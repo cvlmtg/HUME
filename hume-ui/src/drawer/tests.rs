@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::Arc;
 
 use hume_engine::lock::SharedSlot;
 use hume_engine::providers::ChromeProvider;
@@ -11,7 +11,8 @@ use hume_rope::spanned::SpannedText;
 
 use super::super::menu_box::FRAME_EDGE;
 use super::super::symbols_in;
-use super::{DrawerRow, DrawerViewState, DrawerWidget, SpanScopes, band_height, band_visible_rows};
+use super::{DrawerViewState, DrawerWidget, band_height, band_visible_rows};
+use crate::list_row::{ListRow, SpanScopes};
 
 #[test]
 fn band_height_is_capped_by_the_ceiling() {
@@ -99,8 +100,8 @@ fn drawer_theme(span_style: Option<ResolvedStyle>, default: ResolvedStyle) -> (T
 
 /// Scopes that style a span the same on every row.
 /// A row of `text` whose `spans` (char offsets) are styled by `scopes`.
-fn styled_row(text: &str, spans: Vec<(usize, usize, SpanScopes)>) -> DrawerRow {
-    DrawerRow::styled(SpannedText::new(text.to_string(), spans).expect("spans fit their row"))
+fn styled_row(text: &str, spans: Vec<(usize, usize, SpanScopes)>) -> ListRow {
+    ListRow::styled(SpannedText::new(text.to_string(), spans).expect("spans fit their row"))
 }
 
 fn any_row(scope: ScopeId) -> SpanScopes {
@@ -110,12 +111,11 @@ fn any_row(scope: ScopeId) -> SpanScopes {
     }
 }
 
-fn render(theme: &Theme, rows: Vec<DrawerRow>, border: bool, grid: &mut Grid, area: Rect) {
+fn render(theme: &Theme, rows: Vec<ListRow>, border: bool, grid: &mut Grid, area: Rect) {
     let widget = DrawerWidget {
         data: SharedSlot::new(Some(DrawerViewState {
-            rows: rows.into_iter().map(OnceLock::from).collect(),
-            selected: 0,
-            scroll: 0,
+            rows: rows.into_iter().map(|row| Some(Arc::new(row))).collect(),
+            selected_row: 0,
             border,
         })),
     };
@@ -207,7 +207,7 @@ fn a_span_with_a_selected_scope_takes_it_on_the_selected_row_only() {
 #[test]
 fn a_rows_selected_scope_replaces_the_selected_style_on_that_row_only() {
     let (theme, Ids { row: row_id, .. }) = drawer_theme(Some(italic()), ResolvedStyle::default());
-    let row = || DrawerRow::plain("ab".into()).with_selected_scope(Some(row_id));
+    let row = || ListRow::plain("ab".into()).with_selected_scope(Some(row_id));
     let area = Rect::new(0, 0, 10, 3);
     let mut grid = Grid::new(10, 3);
     render(&theme, vec![row(), row()], false, &mut grid, area);
@@ -240,7 +240,7 @@ fn a_rows_selected_scope_replaces_the_selected_style_on_that_row_only() {
 fn a_rows_selected_scope_the_theme_does_not_style_selects_in_the_default_style() {
     let default = colors(Rgb(50, 0, 0), Rgb(60, 0, 0));
     let (theme, Ids { span: unstyled, .. }) = drawer_theme(None, default);
-    let row = DrawerRow::plain("ab".into()).with_selected_scope(Some(unstyled));
+    let row = ListRow::plain("ab".into()).with_selected_scope(Some(unstyled));
     let area = Rect::new(0, 0, 10, 2);
     let mut grid = Grid::new(10, 2);
     render(&theme, vec![row], false, &mut grid, area);

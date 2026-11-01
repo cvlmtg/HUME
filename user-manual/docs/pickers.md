@@ -25,7 +25,7 @@ A file deleted from disk without `git rm` still appears in the list, and fails t
 
 ## Picking modified files
 
-`z m` opens a picker over every file with staged or unstaged changes, as `git status` reports them. Each row shows the path and its two-letter status (`M ` staged, ` M` unstaged, `??` untracked, and so on). Selecting a row opens that file, whichever subdirectory `:pwd` points at.
+`z m` opens a picker over every file with staged or unstaged changes, as `git status` reports them. Each row shows the path and its two-letter status (`M ` staged, ` M` unstaged, `??` untracked, and so on). The status letters are colored, and a path too long for the panel loses its start rather than its status. Selecting a row opens that file, whichever subdirectory `:pwd` points at.
 
 Outside a git repository, `z m` reports an error instead of opening a picker. In a clean tree, the picker opens with no rows.
 

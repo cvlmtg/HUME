@@ -136,3 +136,87 @@ fn common_prefix_raises_on_a_non_string_element() {
         "got: {err}"
     );
 }
+
+fn width_of(s: &str) -> SteelVal {
+    string_width(s.into_steelval().unwrap()).unwrap()
+}
+
+#[test]
+fn string_width_counts_terminal_cells() {
+    assert_eq!(width_of("abc"), SteelVal::IntV(3));
+    assert_eq!(width_of("日"), SteelVal::IntV(2));
+    assert_eq!(width_of("e\u{301}"), SteelVal::IntV(1));
+    assert_eq!(width_of("👩\u{200d}💻"), SteelVal::IntV(2));
+    assert_eq!(width_of(""), SteelVal::IntV(0));
+}
+
+#[test]
+fn string_width_raises_on_a_non_string() {
+    let err = string_width(SteelVal::IntV(1)).unwrap_err();
+    assert!(
+        err.to_string().contains("s: expected a string"),
+        "got: {err}"
+    );
+}
+
+fn fit(s: &str, cells: isize, side: &str) -> String {
+    let out = string_fit(
+        s.into_steelval().unwrap(),
+        SteelVal::IntV(cells),
+        SteelVal::SymbolV(side.into()),
+    )
+    .unwrap();
+    let SteelVal::StringV(out) = out else {
+        panic!("expected a string, got {out:?}");
+    };
+    out.to_string()
+}
+
+#[test]
+fn string_fit_leaves_a_string_that_fits_unchanged() {
+    assert_eq!(fit("abcdef", 6, "head"), "abcdef");
+    assert_eq!(fit("abcdef", 9, "tail"), "abcdef");
+}
+
+#[test]
+fn string_fit_cuts_the_named_side_behind_an_ellipsis() {
+    insta::assert_snapshot!(fit("src/editor/picker.rs", 10, "head"), @"…picker.rs");
+    insta::assert_snapshot!(fit("src/editor/picker.rs", 10, "tail"), @"src/edito…");
+}
+
+#[test]
+fn string_fit_never_splits_a_cluster() {
+    // A ZWJ sequence and a flag each take two cells as one cluster: a
+    // one-cell keep drops them whole instead of keeping their last part.
+    insta::assert_snapshot!(fit("ab👩\u{200d}💻", 3, "head"), @"…👩‍💻");
+    insta::assert_snapshot!(fit("ab👩\u{200d}💻", 2, "head"), @"…");
+    insta::assert_snapshot!(fit("x🇮🇹", 2, "head"), @"…");
+    insta::assert_snapshot!(fit("🇮🇹x", 2, "tail"), @"…");
+}
+
+#[test]
+fn string_fit_of_zero_cells_is_empty() {
+    assert_eq!(fit("abc", 0, "head"), "");
+}
+
+#[test]
+fn string_fit_raises_on_a_bad_side_or_a_negative_width() {
+    let err = string_fit(
+        "abc".into_steelval().unwrap(),
+        SteelVal::IntV(2),
+        SteelVal::SymbolV("middle".into()),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("side"), "got: {err}");
+    let err = string_fit(
+        "abc".into_steelval().unwrap(),
+        SteelVal::IntV(-1),
+        SteelVal::SymbolV("head".into()),
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("cells: expected a non-negative integer"),
+        "got: {err}"
+    );
+}

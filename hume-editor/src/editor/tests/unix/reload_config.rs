@@ -1041,7 +1041,7 @@ fn a_collection_after_reload_traces_nothing_from_the_old_engine() {
                (spawn-async! "sleep" '("10")
                  (let ((cell (box 1))) (lambda (result) (unbox cell))))
                (picker! pane (list (cons "one" (hash 'cell (box 1))))
-                 (hash "enter" (let ((cell (box 1))) (lambda (token choice) (unbox cell)))))))"#,
+                 (hash "enter" (let ((cell (box 1))) (lambda (choice token) (unbox cell)))))))"#,
     );
     let mut ed = editor_from("-[a]>b\n");
     ed.state.dirs = fixture.dirs();

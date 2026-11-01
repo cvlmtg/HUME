@@ -1,8 +1,11 @@
-//! Shared box-drawing + row rendering for `PopupOverlay` and `PickerOverlay`.
+//! Shared box-drawing + row rendering for `PopupOverlay`, `MenuOverlay`,
+//! `PickerOverlay` and `DrawerWidget`.
 //! Placement (bottom-anchored minibuffer completion, cursor-anchored popup/
-//! menu, full-modal picker) is resolved per write side, each against a
-//! different anchor; once a position and outer size are settled, painting the
-//! frame, scroll window, and rows is identical. That shared part lives here.
+//! menu, full-modal picker, the drawer's bottom band) is resolved per write
+//! side, each against a different anchor; once a position and outer size are
+//! settled, painting the frame, scroll window, and rows is identical. That
+//! shared part lives here, along with the band arithmetic the drawer and the
+//! docked popup share.
 
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
@@ -13,9 +16,10 @@ use hume_grid::Rect;
 use hume_grid::box_glyphs::{
     BOTTOM_LEFT, BOTTOM_RIGHT, HORIZONTAL, THICK_VERTICAL, TOP_LEFT, TOP_RIGHT, VERTICAL,
 };
+use hume_rope::width::chrome_width;
 
+use super::list_row::{ListRow, draw_row};
 use super::popup::StyledRow;
-use super::width::text_width;
 
 /// Theme styles a bordered box paints with, grouped into one struct rather
 /// than three positional `ResolvedStyle` arguments on `draw_menu_box`, which needs
@@ -25,39 +29,31 @@ use super::width::text_width;
 pub(crate) struct MenuBoxStyles {
     /// Fill, border, and unstyled rows.
     pub base: ResolvedStyle,
-    /// The highlighted row (menus only; plain popups never set `selected`).
+    /// The highlighted row (menus only; a popup never selects a row).
     pub selected: ResolvedStyle,
     /// The scrollbar thumb.
     pub scroll: ResolvedStyle,
 }
 
 impl MenuBoxStyles {
-    /// Resolve all three styles from one root scope (`"ui.popup"` or
-    /// `"ui.menu"`: the single place that pairs each root with its
-    /// `.selected`/`.scroll` leaves, so the three every popup/menu overlay
-    /// paints with can't drift out of sync with each other. Leaf names are
-    /// paired here rather than built with `format!` because `Scope` requires
-    /// a `&'static str`, which a runtime-joined `String` can't provide.
-    ///
-    /// A root with no `.selected` leaf (`"ui.popup"`, since hover popups never
-    /// highlight a row) falls back to `base`, matching what an undefined
-    /// theme scope would already resolve to via `Theme::resolve_by_name`'s
-    /// own dot-notation chain.
-    pub(crate) fn resolve(theme: &Theme, scope: &'static str) -> Self {
-        let (selected_scope, scroll_scope): (Option<&'static str>, &'static str) = match scope {
-            ui_scopes::MENU => (Some(ui_scopes::MENU_SELECTED), ui_scopes::MENU_SCROLL),
-            ui_scopes::POPUP => (None, ui_scopes::POPUP_SCROLL),
-            _ => (None, scope),
-        };
-        let base = theme.resolve_by_name(Scope(scope));
-        let selected = selected_scope
-            .map(|s| theme.resolve_by_name(Scope(s)))
-            .unwrap_or(base);
-        let scroll = theme.resolve_by_name(Scope(scroll_scope));
+    /// A menu's styles: `ui.menu`, `ui.menu.selected` and `ui.menu.scroll`.
+    pub(crate) fn menu(theme: &Theme) -> Self {
+        let by = |name| theme.resolve_by_name(Scope(name));
+        Self {
+            base: by(ui_scopes::MENU),
+            selected: by(ui_scopes::MENU_SELECTED),
+            scroll: by(ui_scopes::MENU_SCROLL),
+        }
+    }
+
+    /// A popup's styles: `ui.popup` and `ui.popup.scroll`. A popup never
+    /// selects a row, so its selected style is its base.
+    pub(crate) fn popup(theme: &Theme) -> Self {
+        let base = theme.resolve_by_name(Scope(ui_scopes::POPUP));
         Self {
             base,
-            selected,
-            scroll,
+            selected: base,
+            scroll: theme.resolve_by_name(Scope(ui_scopes::POPUP_SCROLL)),
         }
     }
 }
@@ -77,7 +73,7 @@ pub(crate) const FRAME_CELLS: u16 = 2 * FRAME_EDGE;
 /// Widest of an arbitrary run of texts' display widths, or `0` for an empty
 /// run.
 pub(crate) fn widest<'a>(texts: impl Iterator<Item = &'a str>) -> u16 {
-    texts.map(text_width).max().unwrap_or(0) as u16
+    texts.map(chrome_width).max().unwrap_or(0) as u16
 }
 
 /// Outer row count (including the 1-cell frame's top/bottom) for a box
@@ -126,12 +122,19 @@ fn band_ceiling(terminal_height: u16) -> u16 {
 ///
 /// Adds in `usize` and clamps once, rather than `content_rows as u16 +
 /// chrome_rows`: a `+ chrome_rows` on a `u16`-truncated row count can wrap
-/// (debug-panic, or silently paint an empty band in release) for a
+/// (debug-panic, or paint an empty band with no error in release) for a
 /// references drawer at or above 65535 rows.
 pub(crate) fn band_capacity(content_rows: usize, chrome_rows: u16, terminal_height: u16) -> u16 {
     content_rows
         .saturating_add(chrome_rows as usize)
         .min(band_ceiling(terminal_height) as usize) as u16
+}
+
+/// Cells inside a bottom band's side frame on a terminal `terminal_width`
+/// cells wide: the band spans the terminal. Shared by the drawer's rows and
+/// the docked popup's wrap width.
+pub(crate) fn band_inner_width(terminal_width: u16) -> u16 {
+    terminal_width.saturating_sub(FRAME_CELLS)
 }
 
 /// Rows a bottom band shows at once, given `content_rows` rows and
@@ -151,8 +154,7 @@ pub(crate) fn band_visible_rows(
 /// window never runs past the end. Resolved on the write side, not at paint time:
 /// a menu passes `selected.saturating_sub(max_height / 2)` to keep the
 /// selected row anchored near the window's center; a plain popup passes its
-/// own `scroll` directly, so the window start is exactly the scroll
-/// position.
+/// own `scroll` directly, so the window starts at the scroll position.
 pub(crate) fn window_range(
     total: usize,
     desired_start: usize,
@@ -235,8 +237,8 @@ pub(crate) fn draw_open_box_border(canvas: &mut Canvas, outer: Rect, style: Reso
 /// (a full track conveys no position at all), except at `view == 1`, where
 /// there's no shorter length to clamp to and the single-cell track is always
 /// a full-length thumb. `start` places the thumb so it sits flush against the
-/// top edge exactly when `scroll == 0` and flush against the bottom edge
-/// exactly when `scroll == max_scroll`; floor division alone reaches the
+/// top edge when, and only when, `scroll == 0` and flush against the bottom
+/// edge when, and only when, `scroll == max_scroll`; floor division alone reaches the
 /// bottom edge but not the top (a `scroll` of 1 out of a large `max_scroll`
 /// floors to 0), so a scrolled-at-all window is nudged one cell off the top
 /// to keep the two edges symmetric. That nudge can push `start` past `slack`
@@ -258,38 +260,53 @@ fn scrollbar_thumb(view: usize, total: usize, scroll: usize) -> Option<(usize, u
     Some((start.min(slack), len))
 }
 
+/// The rows a framed box paints, already windowed to what is visible.
+pub(crate) enum BoxRows<'a> {
+    /// A popup's wrapped text, each line in the box's base style. No row is
+    /// selected.
+    Plain(&'a [String]),
+    /// A styled popup's wrapped text (a markdown popup with a `markdown`
+    /// grammar registered): each line is its runs, each in its own absolute
+    /// style. No row is selected.
+    Styled(&'a [StyledRow]),
+    /// A menu's rows, `selected` (an index into `rows`) highlighted. A row's
+    /// spans name theme scopes, layered over the row's own style.
+    List {
+        rows: &'a [ListRow],
+        selected: Option<usize>,
+        theme: &'a Theme,
+    },
+}
+
+impl BoxRows<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Plain(lines) => lines.len(),
+            Self::Styled(lines) => lines.len(),
+            Self::List { rows, .. } => rows.len(),
+        }
+    }
+}
+
 /// Paint a menu/popup box into `outer` (the full footprint, including the
 /// 1-cell frame). `rows` arrives *already windowed* to what's visible: the
 /// write side resolves the window, this only paints it; `total_rows` and
 /// `scroll` (the window's own start within the full, unwindowed list) exist
 /// here solely to size and place the scrollbar thumb.
 ///
-/// `selected`: the highlighted row, already window-relative (an index into
-/// `rows`, not into the full list), or `None` for a plain popup, which never
-/// highlights a row.
-///
 /// `border`: when `true`, overdraws the 1-cell frame with box-drawing
 /// glyphs; when `false`, the frame stays a plain background-filled margin
 /// (still 1 cell wide; only the glyphs are suppressed).
-///
-/// `styled`: per-row style runs, same length (and same window) as `rows`, for a
-/// markdown popup with a `markdown` grammar registered. `None` for every
-/// other caller (plain popups, menus), which paint each row in one style.
-/// Ignored for a row that has `selected == Some(i)`: the highlight bar
-/// always wins.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_menu_box(
     canvas: &mut Canvas,
     outer: Rect,
-    rows: &[String],
-    selected: Option<usize>,
+    rows: BoxRows<'_>,
     total_rows: usize,
     scroll: usize,
     border: bool,
     styles: MenuBoxStyles,
-    styled: Option<&[StyledRow]>,
 ) {
-    if rows.is_empty() || outer.height < 3 || outer.width < 3 {
+    if rows.len() == 0 || outer.height < 3 || outer.width < 3 {
         return;
     }
 
@@ -327,79 +344,59 @@ pub(crate) fn draw_menu_box(
     // then clamped to the pane, so a row wider than the pane would otherwise
     // be written straight over the right border and past it. Bounding every
     // row write at the inner edge is what keeps the box a box, horizontally.
-    // The `.take` below is that same guarantee for the vertical axis: the
+    // The `.min` below is that same guarantee for the vertical axis: the
     // write side is trusted to hand in a pre-windowed slice, but this is the
     // one place that could still catch a caller that gets it wrong. One row
     // too many would otherwise overwrite the bottom border, then paint
     // straight past the box.
     let text_right = inner.right();
-    for (i, row_text) in rows.iter().enumerate().take(inner.height as usize) {
+    for i in 0..rows.len().min(inner.height as usize) {
         let y = inner.y + i as u16;
-        let is_selected = selected == Some(i);
-
-        // Highlight bar always wins, even over a styled row: a selected row
-        // never needs per-run markdown styling, just the plain highlight.
-        if !is_selected && let Some(runs) = styled.and_then(|rows| rows.get(i)) {
-            // The box's base fill already covers the row. Runs are
-            // contiguous and together span exactly `row_text`, so there are
-            // no gaps left for `styles.base` to show through.
-            paint_styled_row(
+        match rows {
+            BoxRows::Styled(lines) => {
+                // The box's base fill already covers the row. Runs are
+                // contiguous and together span the whole line, so there are
+                // no gaps left for `styles.base` to show through.
+                paint_styled_row(
+                    canvas,
+                    text_x,
+                    y,
+                    lines[i].iter().map(|(text, style)| (text.as_str(), *style)),
+                    text_right,
+                );
+            }
+            BoxRows::Plain(lines) => paint_styled_row(
                 canvas,
                 text_x,
                 y,
-                runs.iter().map(|(text, style)| (text.as_str(), *style)),
+                [(lines[i].as_str(), styles.base)],
                 text_right,
-            );
-        } else {
-            draw_list_row(
+            ),
+            BoxRows::List {
+                rows,
+                selected,
+                theme,
+            } => draw_row(
                 canvas,
                 text_x,
                 y,
                 inner.width,
                 text_right,
-                [(row_text.as_str(), ResolvedStyle::default())],
-                is_selected,
+                Some(&rows[i]),
+                theme,
+                selected == Some(i),
                 styles.selected,
                 styles.base,
-            );
+            ),
         }
     }
 }
 
-/// Paint one row of a scrolling list: a full-width highlight-bar fill when
-/// `is_selected`, then the row's `runs`, each run's style layered over
-/// `selected_style` when `is_selected` or `base_style` otherwise. A plain row
-/// is one run with no style of its own. Each caller still owns its own
-/// row-index bookkeeping and text truncation, which differ in kind, not just
-/// in value, between them.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn draw_list_row<'a>(
-    canvas: &mut Canvas,
-    x: u16,
-    y: u16,
-    highlight_width: u16,
-    right_edge: u16,
-    runs: impl IntoIterator<Item = (&'a str, ResolvedStyle)>,
-    is_selected: bool,
-    selected_style: ResolvedStyle,
-    base_style: ResolvedStyle,
-) {
-    let row_style = if is_selected {
-        canvas.fill_rect_bg(Rect::new(x, y, highlight_width, 1), selected_style);
-        selected_style
-    } else {
-        base_style
-    };
-    let runs = runs
-        .into_iter()
-        .map(|(text, over)| (text, row_style.layer(over)));
-    paint_styled_row(canvas, x, y, runs, right_edge);
-}
-
 /// Paint `runs` left to right from `(x, y)`, each in its own style, stopping
-/// at `right_edge`. Every list row goes through it: [`draw_list_row`]'s rows
-/// and [`draw_menu_box`]'s styled rows.
-fn paint_styled_row<'a>(
+/// at `right_edge`. Every row goes through it: a list's rows
+/// ([`draw_row`](crate::list_row::draw_row)) and a popup's lines in
+/// [`draw_menu_box`].
+pub(crate) fn paint_styled_row<'a>(
     canvas: &mut Canvas,
     x: u16,
     y: u16,

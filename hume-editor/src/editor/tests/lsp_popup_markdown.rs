@@ -18,7 +18,7 @@ fn styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
         .popup
         .read()
         .as_ref()
-        .and_then(|s| s.rows.styled_rows.as_deref().cloned())
+        .and_then(|s| s.rows.lines.styled().map(<[_]>::to_vec))
 }
 
 /// The docked (`#:anchor 'bottom`) counterpart of [`styled_rows`]. Reads
@@ -29,7 +29,7 @@ fn band_styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
         .popup_band
         .read()
         .as_ref()
-        .and_then(|s| s.styled_rows.as_deref().cloned())
+        .and_then(|s| s.lines.styled().map(<[_]>::to_vec))
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
 #[test]
 fn markdown_popup_paints_per_run_styles() {
     // Appearance lock for the `draw_menu_box` styled-runs branch (the
-    // data-level test above only checks `PopupRows::styled_rows`, not that
+    // data-level test above only checks `WrappedLines::styled`, not that
     // painting actually applies per-run styles to the terminal buffer).
     require_grammars(&["markdown"]);
     let tmp = tempfile::tempdir().unwrap();
@@ -236,7 +236,16 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
         styled_rows(&ed).is_none(),
         "grammar-absent fallback must not populate styled_rows"
     );
-    let lines = (*ed.state.views.popup.read().as_ref().unwrap().rows.lines).clone();
+    let lines = ed
+        .state
+        .views
+        .popup
+        .read()
+        .as_ref()
+        .unwrap()
+        .rows
+        .lines
+        .texts();
     assert_eq!(
         lines,
         vec!["# heading".to_string()],

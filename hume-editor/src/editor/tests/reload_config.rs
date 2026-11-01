@@ -443,10 +443,10 @@ fn reset_cancels_pending_steel_timers() {
 
 /// `reset_config_state`'s `reset_input` call drops the drawer
 /// layer directly (not through `close-drawer!`, which would queue a callback
-/// the reset already drops), with no paired view sync at that call site.
-/// `prepare_frame` syncs the drawer view every frame, like popup/menu/picker,
-/// so the view still learns the model changed. This drives one frame after
-/// the reset and confirms the view catches up.
+/// the reset already drops). `prepare_frame` resolves the drawer view every
+/// frame, like popup/menu/picker, so the view still learns the model
+/// changed. This drives one frame after the reset and confirms the view
+/// catches up.
 #[test]
 fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -460,11 +460,16 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
         drawer_items(&["one", "two"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         0,
+        hume_core::TruncateEnd::Tail,
     )
     .unwrap();
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.resize_terminal(40, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert!(
         ed.state.views.drawer.read().is_some(),
-        "sanity: the view must be populated on open"
+        "sanity: the view must be populated after a frame"
     );
 
     ed.reset_config_state();
@@ -473,8 +478,6 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
         "sanity: the model must be cleared by the reset"
     );
 
-    let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.resize_terminal(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -618,9 +621,12 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
         &["one"],
         Vec::new(),
         hume_scripting::host::PickerOpts {
-            on_close: Some(hume_scripting::Callback::for_test(
-                steel::rvals::SteelVal::StringV("closed".into()),
-            )),
+            common: hume_scripting::host::PickerCommonOpts {
+                on_close: Some(hume_scripting::Callback::for_test(
+                    steel::rvals::SteelVal::StringV("closed".into()),
+                )),
+                ..Default::default()
+            },
             ..Default::default()
         },
     );

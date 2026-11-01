@@ -11,7 +11,7 @@ use crate::editor::input_stack::PickerSession;
 use crate::editor::input_stack::picker;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
-use hume_scripting::host::{PickerBinding, PickerOpts, PickerStep};
+use hume_scripting::host::{PickerBinding, PickerCommonOpts, PickerOpts, PickerStep};
 use hume_ui::picker_panel::panel_geometry;
 use steel::rvals::SteelVal;
 
@@ -33,7 +33,10 @@ fn open_test_picker_with_on_close(ed: &mut Editor, items: &[&str], on_close: &st
         items,
         Vec::new(),
         PickerOpts {
-            on_close: Some(hume_scripting::Callback::for_test(marker(on_close))),
+            common: PickerCommonOpts {
+                on_close: Some(hume_scripting::Callback::for_test(marker(on_close))),
+                ..Default::default()
+            },
             ..Default::default()
         },
     );
@@ -45,7 +48,10 @@ fn open_test_picker_with_prompt(ed: &mut Editor, items: &[&str], prompt: &str) {
         items,
         Vec::new(),
         PickerOpts {
-            prompt: prompt.to_string(),
+            common: PickerCommonOpts {
+                prompt: prompt.to_string(),
+                ..Default::default()
+            },
             ..Default::default()
         },
     );
@@ -239,7 +245,7 @@ fn backspace_on_empty_keeps_picker_open() {
 // ── Keymap ───────────────────────────────────────────────────────────────────
 
 #[test]
-fn bound_key_queues_its_binding_with_the_token_and_selected_payload() {
+fn bound_key_queues_its_binding_with_the_selected_payload_and_the_token() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_session(
         &mut ed,
@@ -260,8 +266,8 @@ fn bound_key_queues_its_binding_with_the_token_and_selected_payload() {
     assert_eq!(callback_name(&proc), "ctrl-t");
     assert_eq!(
         args,
-        vec![hume_scripting::host::token_to_steel(token), marker("one")],
-        "the token, then the top-ranked item's payload"
+        vec![marker("one"), hume_scripting::host::token_to_steel(token)],
+        "the top-ranked item's payload, then the token"
     );
 }
 
@@ -281,7 +287,7 @@ fn bound_key_with_nothing_matching_hands_its_binding_false() {
 
     ed.feed_key(key_enter());
     let (_, args) = pending_calls(&ed).remove(0);
-    assert_eq!(args[1], SteelVal::BoolV(false));
+    assert_eq!(args[0], SteelVal::BoolV(false));
 }
 
 #[test]

@@ -103,7 +103,7 @@ Every "how many terminal columns does this text occupy" computation goes through
 
 **Drawing** — write through `Canvas` (`write_text_run`/`fill_glyph_run`/`write_cell`/`fill_rect_bg`/`fill_row_bg`, `hume_grid::Canvas`, re-exported as `hume_engine::render::Canvas`), never `hume-grid`'s own `Grid::set_glyph`/`fill_span` — those are `pub(crate)` to `hume-grid`, so a call from anywhere else is a compile error. `write_text_run` is the one to read: it walks by `grapheme_width`, so measurement and drawing can't drift; it takes a `right_edge` so a field sized with `str_width` can't bleed through a pane, lane, or box border; and it explains why an unrenderable or control cluster draws as its codepoint placeholder rather than a blank. Full rationale lives on `write_text_run`'s own doc comment (`hume-grid/src/canvas.rs`) — every other mention, this one included, is a pointer, not a second copy.
 
-**Enforced** — `clippy.toml`'s `disallowed-methods` bans `unicode_width`'s own methods workspace-wide; `hume-rope/src/width.rs` itself and three independent-oracle test assertions (`hume-ui`, `hume-editor`) carry `#[allow(clippy::disallowed_methods)]`.
+**Enforced** — `clippy.toml`'s `disallowed-methods` bans `unicode_width`'s own methods workspace-wide; `hume-rope/src/width.rs` itself, its tests included, and two independent-oracle test assertions in `hume-editor` carry `#[allow(clippy::disallowed_methods)]`.
 
 ### Line/buffer columns
 
@@ -136,7 +136,7 @@ Three words, three meanings, never interchanged.
 |---|---|---|
 | **Buffer line** | a `\n`-delimited line of the rope | `RopeyLine`/`ContentLine` (above) |
 | **Display line** | one visual line a buffer line occupies once soft wrap, provider-injected virtual lines, and tilde filler are accounted for | `hume-engine`'s `DisplayLine`/`DisplayLineKind`/`DisplayLineMap` (`display_lines.rs`, `types.rs`), `DisplayLinePos` (`display_lines/pos.rs`) — the single flattened view every render/scroll/cursor/mouse/movement consumer walks |
-| **Row** | a terminal or pane cell row (the *y* axis) | `screen_row`/`start_screen_row`, `hume_grid::Grid::row`/`RowRun`/`Canvas::fill_row_bg`, and every widget's own rows (`list_rows`/`selected_row`/`styled_rows`) |
+| **Row** | a terminal or pane cell row (the *y* axis) | `screen_row`/`start_screen_row`, `hume_grid::Grid::row`/`RowRun`/`Canvas::fill_row_bg`, and every widget's own rows (`list_rows`/`selected_row`) |
 
 The three coincide only by accident (an unwrapped, undecorated line's one display line happens to land on one terminal row) and the types never assume it. A terminal/pane cell row stays a bare `u16`/`usize` named `row`/`*_row` (see preamble's `x`-family) — never a display-line type; a display-line *count* or *address* (`DisplayLineMap::advance_saturating`'s `delta`, `DisplayLinePos`) is never spelled `row`.
 

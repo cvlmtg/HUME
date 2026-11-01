@@ -122,7 +122,7 @@ impl<'a> Canvas<'a> {
     /// field with `str_width` and then drew it by walking clusters a second,
     /// different way could reserve columns nothing was drawn in, or draw
     /// wider than it reserved. Here the advance returned is exactly
-    /// `str_width(text, 0, 1)`, because that is the same per-cluster width
+    /// `chrome_width(text)`, because that is the same per-cluster width
     /// this walks by: measurement and drawing cannot drift, since they are
     /// one model. Chrome has no tab
     /// stops of its own, so a tab measures and draws as exactly one cell (a
@@ -243,7 +243,7 @@ impl<'a> Canvas<'a> {
         right_edge: u16,
     ) -> u16 {
         debug_assert_eq!(
-            hume_rope::width::grapheme_width(glyph, 0, hume_rope::width::CHROME_TAB_WIDTH),
+            hume_rope::width::chrome_cluster_width(glyph),
             1,
             "fill_glyph_run repeats `glyph` at width 1 per cell; a wider cluster needs write_text_run"
         );

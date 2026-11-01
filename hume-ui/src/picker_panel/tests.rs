@@ -5,16 +5,13 @@ use std::collections::HashMap;
 
 use super::super::symbols_in;
 use super::*;
+use crate::list_row::SpanScopes;
+use hume_engine::theme::ScopeRegistry;
+use hume_engine::types::{Modifiers, ScopeId};
+use hume_rope::spanned::SpannedText;
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
     Rect::new(x, y, w, h)
-}
-
-/// Measures width without going through the code under test. See
-/// `clippy.toml`'s `disallowed-methods` entry.
-#[allow(clippy::disallowed_methods)]
-fn oracle_width(s: &str) -> usize {
-    unicode_width::UnicodeWidthStr::width(s)
 }
 
 fn style() -> ResolvedStyle {
@@ -39,7 +36,10 @@ fn state(
     PickerViewState {
         prompt: String::new(),
         query: query.to_string(),
-        rows: rows.iter().map(|s| s.to_string()).collect(),
+        rows: rows
+            .iter()
+            .map(|s| Some(Arc::new(ListRow::plain(s.to_string()))))
+            .collect(),
         selected_row,
         matched: rows.len(),
         total: rows.len(),
@@ -47,7 +47,6 @@ fn state(
         rect: geo.rect,
         list_rows: geo.list_rows,
         border: true,
-        truncate: TruncateEnd::Head,
     }
 }
 
@@ -99,9 +98,8 @@ fn geometry_none_when_width_below_minimum() {
 
 #[test]
 fn draw_picker_panel_clips_overlong_row_to_inner_width() {
-    // A row wider than the panel (e.g. a deep file path from `zf`) must be
-    // clipped to inner_width, keeping its tail behind a … marker, instead of
-    // bleeding past the right border.
+    // Rows arrive already cut to the list width. One that is still wider
+    // must stop at the inner edge rather than bleed past the right border.
     let mut buf = Grid::new(40, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
@@ -110,7 +108,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
         list_rows: 1,
     };
     let s = state("", &["hume-ui/src/picker_panel.rs"], None, &geo);
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     // Right border must still be an unbroken │ column, not overrun text.
     let right = geo.rect.x + geo.rect.width - 1;
@@ -119,113 +117,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
         "│",
         "right border must survive an overlong row"
     );
-    let painted = symbols_in(&buf, geo.rect);
-    assert!(
-        painted.contains("…_panel.rs"),
-        "clipped row must lead with … and keep the tail (basename), got:\n{painted}"
-    );
-}
-
-#[test]
-fn draw_picker_panel_truncate_tail_clips_overlong_row_keeping_head() {
-    // A grep-style row (path in front, line preview trailing) with
-    // `#:truncate 'tail` must clip the *end*, not the path: the mirror of
-    // the head-cut test above.
-    let mut buf = Grid::new(40, 20);
-    let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    let geo = PanelGeometry {
-        rect: rect(0, 0, 23, 4), // inner_width = 21: exactly "src/editor/picker.rs" (20) + …
-        list_rows: 1,
-    };
-    let mut s = state(
-        "",
-        &["src/editor/picker.rs:412:9:  fn push(&mut self)"],
-        None,
-        &geo,
-    );
-    s.truncate = TruncateEnd::Tail;
-    draw_picker_panel(&mut canvas, &s, styles());
-
-    let right = geo.rect.x + geo.rect.width - 1;
-    assert_eq!(
-        buf[(right, 2)].text(),
-        "│",
-        "right border must survive an overlong row"
-    );
-    let painted = symbols_in(&buf, geo.rect);
-    assert!(
-        painted.contains("src/editor/picker.rs…"),
-        "clipped row must trail with … and keep the head (path), got:\n{painted}"
-    );
-}
-
-// ── truncate_marked ─────────────────────────────────────────────────────
-
-#[test]
-fn truncate_marked_leaves_short_strings_unchanged() {
-    assert_eq!(truncate_marked("hello", 8, TruncateEnd::Head), "hello");
-    assert_eq!(
-        truncate_marked("hello", 5, TruncateEnd::Head),
-        "hello",
-        "exact fit needs no marker"
-    );
-}
-
-#[test]
-fn truncate_marked_cut_head_prefixes_ellipsis_and_keeps_tail() {
-    let source = "hume-ui/src/picker_panel.rs";
-    let out = truncate_marked(source, 12, TruncateEnd::Head);
-    assert_eq!(oracle_width(out.as_ref()), 12);
-    let kept = out
-        .strip_prefix('…')
-        .unwrap_or_else(|| panic!("clipped string must lead with …, got {out:?}"));
-    assert!(
-        source.ends_with(kept),
-        "the kept part must be a genuine tail of the source string, got {out:?}"
-    );
-}
-
-#[test]
-fn truncate_marked_cut_tail_appends_ellipsis_and_keeps_head() {
-    let source = "src/editor/picker.rs:412:9:  fn push(&mut self)";
-    let out = truncate_marked(source, 12, TruncateEnd::Tail);
-    assert_eq!(oracle_width(out.as_ref()), 12);
-    let kept = out
-        .strip_suffix('…')
-        .unwrap_or_else(|| panic!("clipped string must trail with …, got {out:?}"));
-    assert!(
-        source.starts_with(kept),
-        "the kept part must be a genuine head of the source string, got {out:?}"
-    );
-}
-
-#[test]
-fn truncate_marked_never_splits_a_grapheme_cluster() {
-    use unicode_segmentation::UnicodeSegmentation;
-
-    // "é" here is e + combining acute (U+0065 U+0301). A cut landing inside
-    // this cluster would emit a bare combining mark with no base character
-    // ahead of it, which re-segmenting the output would catch: a bare mark
-    // opens its own (invalid) cluster instead of extending the previous one.
-    let source = "cafe\u{0301} bar";
-    for cut in [TruncateEnd::Head, TruncateEnd::Tail] {
-        // Every clip width up to the source's own, including one that lands
-        // mid-cluster if the code were byte-counting instead of grapheme-aware.
-        for budget in 0..=8 {
-            let out = truncate_marked(source, budget, cut);
-            assert!(
-                out.graphemes(true).all(|g| g != "\u{0301}"),
-                "cut={cut:?} budget={budget}: combining accent split from its base, got {out:?}"
-            );
-        }
-    }
-}
-
-#[test]
-fn truncate_marked_zero_budget_is_empty() {
-    assert_eq!(truncate_marked("anything", 0, TruncateEnd::Head), "");
-    assert_eq!(truncate_marked("anything", 0, TruncateEnd::Tail), "");
+    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 2, 12, 1)), @"│hume-ui/sr│");
 }
 
 // ── draw_picker_panel ───────────────────────────────────────────────────
@@ -240,7 +132,7 @@ fn draw_picker_panel_border_input_and_rows_snapshot() {
         list_rows: 3,
     };
     let s = state("ab", &["item0", "item1"], Some(0), &geo);
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     insta::assert_snapshot!(symbols_in(&buf, geo.rect), @r"
     ┌────────┐
@@ -263,7 +155,7 @@ fn draw_picker_panel_no_border_leaves_plain_margin() {
     };
     let mut s = state("ab", &["item0"], Some(0), &geo);
     s.border = false;
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     insta::assert_snapshot!(symbols_in(&buf, geo.rect), @r"
 
@@ -294,6 +186,7 @@ fn draw_picker_panel_highlights_selected_row_full_width() {
             selected: selected_style,
             ..styles()
         },
+        &theme,
     );
 
     // Row 1 ("item1") is the selected row: its whole inner width (cols
@@ -329,7 +222,7 @@ fn draw_picker_panel_does_not_rewindow_rows() {
         None,
         &geo,
     );
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     let painted = symbols_in(&buf, geo.rect);
     assert!(painted.contains("item2"), "last row within capacity");
@@ -350,7 +243,7 @@ fn draw_picker_panel_pending_marks_the_counter_snapshot() {
     };
     let mut s = state("ab", &[], None, &geo);
     s.pending = true;
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     insta::assert_snapshot!(symbols_in(&buf, geo.rect), @r"
     ┌────────────┐
@@ -374,7 +267,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     let mut s = state("q", &[], None, &geo_wide);
     s.matched = 3;
     s.total = 42;
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
     assert!(symbols_in(&buf, geo_wide.rect).contains("3/42"));
 
     let geo_narrow = PanelGeometry {
@@ -386,7 +279,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     let mut s2 = state("q", &[], None, &geo_narrow);
     s2.matched = 3;
     s2.total = 42;
-    draw_picker_panel(&mut canvas2, &s2, styles());
+    draw_picker_panel(&mut canvas2, &s2, styles(), &theme);
     assert!(
         !symbols_in(&buf2, geo_narrow.rect).contains("3/42"),
         "counts must be dropped rather than overlap the query/cursor"
@@ -403,7 +296,7 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
         list_rows: 1,
     };
     let s = state("abcdefghij", &[], None, &geo); // matched = total = 0
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     let inner_x = geo.rect.x + 1;
     let row: String = (inner_x..inner_x + 8)
@@ -428,7 +321,7 @@ fn draw_picker_panel_renders_prompt_before_query() {
     };
     let mut s = state("ab", &[], None, &geo); // matched = total = 0
     s.prompt = "f: ".to_string();
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     let inner_x = geo.rect.x + 1;
     let row: String = (inner_x..inner_x + 10)
@@ -454,7 +347,7 @@ fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
 
     // Must not panic even though the prompt alone exceeds inner_width, and
     // must leave the query with zero budget rather than overflow the row.
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     let inner_x = geo.rect.x + 1;
     let row: String = (inner_x..inner_x + 5)
@@ -476,7 +369,7 @@ fn draw_picker_panel_empty_state_is_blank_with_zero_counts() {
         list_rows: 3,
     };
     let s = state("", &[], None, &geo);
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
     let painted = symbols_in(&buf, geo.rect);
     assert!(painted.contains("0/0"));
 }
@@ -492,7 +385,7 @@ fn draw_picker_panel_degenerate_rect_does_not_panic_or_paint() {
         list_rows: 0,
     };
     let s = state("q", &["item0"], Some(0), &geo);
-    draw_picker_panel(&mut canvas, &s, styles());
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
     assert_eq!(buf, before, "sub-3x4 outer must not panic or paint");
 }
 
@@ -580,7 +473,7 @@ fn draw_picker_panel_reversed_cursor_swaps_against_the_panels_own_text_color() {
             ..Default::default()
         },
     };
-    draw_picker_panel(&mut canvas, &s, styles);
+    draw_picker_panel(&mut canvas, &s, styles, &theme);
 
     // Query cursor: row 1, right after the empty query at the inner left edge.
     let cursor_cell = buf[(geo.rect.x + 1, geo.rect.y + 1)].style();
@@ -591,4 +484,55 @@ fn draw_picker_panel_reversed_cursor_swaps_against_the_panels_own_text_color() {
             .modifiers
             .contains(hume_engine::types::Modifiers::REVERSED)
     );
+}
+
+#[test]
+fn a_rendered_rows_span_layers_over_ui_text_focus() {
+    let mut registry = ScopeRegistry::new();
+    let span: ScopeId = registry.intern("span");
+    let focus_bg = Rgb(9, 9, 9);
+    let mut theme = Theme::new(
+        HashMap::from([(
+            "span",
+            ResolvedStyle {
+                modifiers: Modifiers::ITALIC,
+                ..Default::default()
+            },
+        )]),
+        ResolvedStyle::default(),
+    );
+    theme.bake(&registry);
+    let mut buf = Grid::new(20, 20);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let geo = PanelGeometry {
+        rect: rect(0, 0, 10, 5),
+        list_rows: 2,
+    };
+    let scopes = SpanScopes {
+        scope: span,
+        selected: None,
+    };
+    let row = ListRow::styled(SpannedText::new("abcd".to_string(), vec![(1, 3, scopes)]).unwrap());
+    let mut s = state("", &[], Some(0), &geo);
+    s.rows = vec![Some(Arc::new(row))];
+    draw_picker_panel(
+        &mut canvas,
+        &s,
+        PickerStyles {
+            selected: ResolvedStyle {
+                bg: Some(focus_bg),
+                ..Default::default()
+            },
+            ..styles()
+        },
+        &theme,
+    );
+
+    // The list's first row sits below the input row, inside the frame.
+    let italic = |x: u16| buf[(x, 2)].style().modifiers.contains(Modifiers::ITALIC);
+    for x in [2, 3] {
+        assert_eq!(buf[(x, 2)].style().bg, Some(focus_bg), "x={x}");
+        assert!(italic(x), "span italic at x={x}");
+    }
+    assert!(!italic(1) && !italic(4), "outside the span");
 }

@@ -26,7 +26,7 @@ use super::*;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
 use hume_rope::spanned::SpannedText;
-use hume_ui::drawer::{DrawerRow, SpanScopes};
+use hume_ui::list_row::{ListRow, SpanScopes};
 
 /// `"e\u{0301}\u{1D11E}x"`: 'e' + a combining acute accent (one grapheme
 /// cluster, two `char`s, two UTF-16 units) then a musical-symbol astral
@@ -268,8 +268,8 @@ fn references_drawer_scopes_an_unopened_targets_row_as_markup_italic() {
         .expect("the unopened row interned its span's scope");
     let end = texts[1].chars().count();
     let expected = vec![
-        std::sync::OnceLock::from(DrawerRow::plain(texts[0].clone())),
-        std::sync::OnceLock::from(DrawerRow::styled(
+        ListRow::plain(texts[0].clone()),
+        ListRow::styled(
             SpannedText::new(
                 texts[1].clone(),
                 vec![(
@@ -282,10 +282,9 @@ fn references_drawer_scopes_an_unopened_targets_row_as_markup_italic() {
                 )],
             )
             .unwrap(),
-        )),
+        ),
     ];
-    let guard = ed.state.views.drawer.read();
-    assert_eq!(*guard.as_ref().expect("drawer must be open").rows, expected);
+    assert_eq!(listed_drawer_rows(&ed), expected);
 }
 
 /// A wire `character` past the line's end shows the column goto lands on:

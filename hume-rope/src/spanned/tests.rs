@@ -212,3 +212,72 @@ fn span_error_kind_display_names_no_noun() {
         "(1, 3) overlaps (0, 2): they share a character"
     );
 }
+
+#[test]
+fn slice_drops_spans_outside_it_and_clips_and_shifts_the_rest() {
+    let spanned = SpannedText::new(
+        "abcdefghij".to_string(),
+        vec![(0, 2, 'a'), (3, 6, 'b'), (8, 10, 'c')],
+    )
+    .unwrap()
+    .slice(bytes(4, 9));
+    assert_eq!(spanned.text(), "efghi");
+    assert_eq!(spanned.spans(), &[(bytes(0, 2), 'b'), (bytes(4, 5), 'c')]);
+}
+
+#[test]
+fn slice_shifts_a_span_inside_it_whole() {
+    let spanned = SpannedText::new("abcdef".to_string(), vec![(2, 4, 'x')])
+        .unwrap()
+        .slice(bytes(1, 6));
+    assert_eq!(spanned.text(), "bcdef");
+    assert_eq!(spanned.spans(), &[(bytes(1, 3), 'x')]);
+}
+
+#[test]
+fn slice_counts_bytes_of_multi_byte_clusters() {
+    // "e\u{301}" is two chars and three bytes; the span covers the whole text.
+    let spanned = SpannedText::new("e\u{301}xe\u{301}".to_string(), vec![(0, 5, 's')])
+        .unwrap()
+        .slice(bytes(3, 7));
+    assert_eq!(spanned.text(), "xe\u{301}");
+    assert_eq!(spanned.spans(), &[(bytes(0, 4), 's')]);
+}
+
+#[test]
+fn prepend_shifts_every_span_by_the_prefix_bytes() {
+    let spanned = SpannedText::new("ab".to_string(), vec![(1, 2, 'x')])
+        .unwrap()
+        .prepend("\u{2026}");
+    assert_eq!(spanned.text(), "\u{2026}ab");
+    assert_eq!(spanned.spans(), &[(bytes(4, 5), 'x')]);
+}
+
+#[test]
+fn append_keeps_every_span() {
+    let spanned = SpannedText::new("ab".to_string(), vec![(0, 1, 'x')])
+        .unwrap()
+        .append("  c");
+    assert_eq!(spanned.text(), "ab  c");
+    assert_eq!(spanned.spans(), &[(bytes(0, 1), 'x')]);
+}
+
+#[test]
+fn append_widens_the_last_span_over_a_cluster_the_seam_splits() {
+    // "\u{301}" extends the "x" before it: the span over "x" covers both.
+    let spanned = SpannedText::new("ax".to_string(), vec![(1, 2, 's')])
+        .unwrap()
+        .append("\u{301}");
+    assert_eq!(spanned.text(), "ax\u{301}");
+    assert_eq!(spanned.spans(), &[(bytes(1, 4), 's')]);
+}
+
+#[test]
+fn prepend_widens_the_first_span_over_a_cluster_the_seam_splits() {
+    // A lone mark at the start is its own cluster until "a" comes before it.
+    let spanned = SpannedText::new("\u{301}b".to_string(), vec![(0, 1, 's')])
+        .unwrap()
+        .prepend("a");
+    assert_eq!(spanned.text(), "a\u{301}b");
+    assert_eq!(spanned.spans(), &[(bytes(0, 3), 's')]);
+}

@@ -74,12 +74,12 @@
   (stdlib/with-pane-command "pane-split" handler))
 
 (define (stdlib/picker-accept handler)
-  (lambda (token item)
+  (lambda (item token)
     (picker-close! token)
     (handler item)))
 
 (define (stdlib/picker-mover count by)
-  (lambda (token item)
+  (lambda (item token)
     (picker-move! token count #:by by)))
 
 ;;; See README.md's "Picker keymap".
@@ -92,7 +92,7 @@
         "pageup" (stdlib/picker-mover -1 'page)
         "ctrl-d" (stdlib/picker-mover 1 'half-page)
         "ctrl-u" (stdlib/picker-mover -1 'half-page)
-        "esc" (lambda (token item) (picker-close! token))
+        "esc" (lambda (item token) (picker-close! token))
         "enter" (stdlib/picker-accept handler)
         "ctrl-o" (stdlib/picker-accept handler)
         "ctrl-t" (stdlib/picker-accept (stdlib/with-tab handler))

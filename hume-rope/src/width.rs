@@ -1,7 +1,7 @@
 //! Display-column arithmetic: the single source of truth for "how many
 //! terminal cells does this text occupy". A caller measuring or drawing display width goes through
 //! this module rather than re-deriving its own tab/placeholder rules.
-//! Two independent conventions can silently disagree at the exact cells
+//! Two independent conventions can disagree, with no error, at the cells
 //! where a tab stop or an unrenderable cluster falls.
 //!
 //! Distinct from grapheme *indexing* (`crate::grapheme`, which counts
@@ -13,14 +13,17 @@
 // `grapheme_width`/`str_width` happens right here, once.
 #![allow(clippy::disallowed_methods)]
 
+use hume_core::TruncateEnd;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-/// The `tab_width` every caller measuring UI chrome text (a popup, a picker,
-/// a menu, the statusline, the minibuffer) passes: chrome has no tab stops
-/// of its own, so a tab there is pinned to exactly one cell, same as any
-/// other character. Named so that convention is stated once rather than
-/// repeated as a bare `1` at every chrome measurement/draw call site.
+use crate::column::ByteCol;
+use crate::offset::ExclusiveRange;
+use crate::spanned::SpannedText;
+
+/// The `tab_width` UI chrome text is measured at (see the chrome functions
+/// below): chrome has no tab stops of its own, so a tab there is pinned to
+/// one cell, same as any other character.
 pub const CHROME_TAB_WIDTH: u8 = 1;
 
 /// Columns a `\t` at display column `display_col` occupies: the distance to
@@ -35,7 +38,7 @@ pub fn tab_advance(display_col: usize, tw: u8) -> usize {
 
 /// Largest tab stop of width `tw` strictly before `display_col`: the
 /// dedent-on-Backspace sibling of [`tab_advance`]. A `display_col` already
-/// sitting exactly on a stop still steps back to the *previous* one (never a
+/// sitting on a stop still steps back to the *previous* one (never a
 /// no-op), matching how `tab_advance` never advances by zero. `0` for
 /// `display_col == 0` or anything within the first stop. `tw < 1` is clamped
 /// to 1.
@@ -147,7 +150,7 @@ pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: u8) -> usize
 /// The second group is `Default_Ignorable_Code_Point`, which is why it also
 /// covers the bidi overrides behind Trojan Source (CVE-2021-42574), the
 /// reason these are shown as their codepoint rather than as a blank: a
-/// U+202E that renders like a space is exactly the attack.
+/// U+202E that renders like a space is the attack.
 pub fn needs_placeholder(cluster: &str) -> bool {
     placeholder_at_width(cluster, cluster.width())
 }
@@ -263,14 +266,34 @@ pub fn indent_levels(width: u32, tab_width: u8) -> u32 {
     width / indent_stop(1, tab_width)
 }
 
-/// Longest prefix of `s` whose display width fits within `max_display_width`
-/// display columns, and that prefix's width. Never splits a grapheme
-/// cluster: one that would overshoot the budget is dropped whole, so the
-/// returned width can be strictly less than `max_display_width`.
-pub fn truncate_to_width(s: &str, max_display_width: usize, tab_width: u8) -> (&str, usize) {
+// ── Chrome text ──────────────────────────────────────────────────────────
+//
+// UI chrome (popups, pickers, menus, the drawer, the statusline, the
+// minibuffer, a gutter cell) is text with no tab-width context of its own,
+// unlike a buffer line or a decoration's virtual line: it is measured from
+// display column 0 at [`CHROME_TAB_WIDTH`], both inert for any non-tab
+// cluster. The functions below fix that convention, so no caller spells it.
+
+/// Display width of chrome text `s`.
+pub fn chrome_width(s: &str) -> usize {
+    str_width(s, 0, CHROME_TAB_WIDTH)
+}
+
+/// Display width of one grapheme cluster `g` of chrome text.
+pub fn chrome_cluster_width(g: &str) -> usize {
+    grapheme_width(g, 0, CHROME_TAB_WIDTH)
+}
+
+/// Longest prefix of chrome text `s` whose display width fits within
+/// `max_display_width` display columns, and that prefix's width. Never
+/// splits a grapheme cluster: one that would overshoot the budget is dropped
+/// whole, so the returned width can be strictly less than
+/// `max_display_width`. Returns the width alongside the text so a caller
+/// that needs both (to place whatever comes after) doesn't re-measure it.
+pub fn truncate_to_width(s: &str, max_display_width: usize) -> (&str, usize) {
     let mut display_col = 0usize;
     for (byte_idx, g) in s.grapheme_indices(true) {
-        let w = grapheme_width(g, display_col, tab_width);
+        let w = grapheme_width(g, display_col, CHROME_TAB_WIDTH);
         if display_col + w > max_display_width {
             return (&s[..byte_idx], display_col);
         }
@@ -291,7 +314,7 @@ pub fn truncate_to_width(s: &str, max_display_width: usize, tab_width: u8) -> (&
 /// true expansion depends on what precedes it on screen, which a suffix
 /// alone can't know; this doesn't attempt to model that, which is why the
 /// convention is fixed rather than a parameter a caller could pass some
-/// other width to and get a silently wrong answer.
+/// other width to and get a wrong answer with no error.
 pub fn truncate_suffix_to_width(s: &str, max_display_width: usize) -> (&str, usize) {
     let mut display_col = 0usize;
     let mut start = s.len();
@@ -304,6 +327,93 @@ pub fn truncate_suffix_to_width(s: &str, max_display_width: usize) -> (&str, usi
         start = byte_idx;
     }
     (&s[start..], display_col)
+}
+
+/// The truncation marker every chrome truncator (a list row's cut,
+/// the statusline's dir/filename shortener) prefixes or appends when it
+/// drops text. One glyph, one place its width is asserted, so the two
+/// truncators can't disagree on how many cells it reserves.
+pub const ELLIPSIS: &str = "…";
+
+/// [`ELLIPSIS`]'s display width, always 1: U+2026 HORIZONTAL ELLIPSIS is a
+/// single narrow, non-combining Unicode scalar, not a cluster
+/// [`chrome_width`] could ever measure differently. A `const` rather than a
+/// call to `chrome_width(ELLIPSIS)` since that measurement isn't itself
+/// `const`-evaluable, but the invariant it would report is fixed.
+pub const ELLIPSIS_WIDTH: usize = 1;
+
+/// The byte range of chrome text `s` a `budget`-cell row keeps when `cut`
+/// drops the rest, and whether an [`ELLIPSIS`] marks the dropped end. `None`
+/// when `s` fits. The one cut computation behind [`truncate_marked`] and
+/// [`truncate_spanned`].
+///
+/// The truncators above are *keep*-oriented (`truncate_suffix_to_width`
+/// keeps the tail) while [`TruncateEnd`] is *cut*-oriented, so the arms
+/// below read inverted: cutting the head keeps (and thus calls)
+/// `truncate_suffix_to_width`.
+fn cut_window(s: &str, budget: usize, cut: TruncateEnd) -> Option<(ExclusiveRange<ByteCol>, bool)> {
+    if chrome_width(s) <= budget {
+        return None;
+    }
+    if budget == 0 {
+        return Some((ExclusiveRange::new(ByteCol::new(0), ByteCol::new(0)), false));
+    }
+    let kept = budget.saturating_sub(ELLIPSIS_WIDTH);
+    let (start, end) = match cut {
+        TruncateEnd::Head => {
+            let (tail, _) = truncate_suffix_to_width(s, kept);
+            (s.len() - tail.len(), s.len())
+        }
+        TruncateEnd::Tail => {
+            let (head, _) = truncate_to_width(s, kept);
+            (0, head.len())
+        }
+    };
+    Some((
+        ExclusiveRange::new(ByteCol::new(start), ByteCol::new(end)),
+        true,
+    ))
+}
+
+/// Clip chrome text `s` to `budget` display cells per `cut`, marking the
+/// dropped end with `…`, for text whose distinguishing part can sit at
+/// either end depending on what the caller shows (tab labels, a menu's
+/// trailing column, a script's `string-fit`). Kept distinct from a query
+/// row's own tail-truncation (a direct [`truncate_suffix_to_width`] call)
+/// because that text must never gain a marker: user-editable text, whose
+/// bare tail (no `…`) is intentional there.
+///
+/// Borrows `s` unchanged on the (common) no-truncation path instead of
+/// allocating a copy every frame.
+pub fn truncate_marked(s: &str, budget: usize, cut: TruncateEnd) -> std::borrow::Cow<'_, str> {
+    let Some((kept, marked)) = cut_window(s, budget, cut) else {
+        return std::borrow::Cow::Borrowed(s);
+    };
+    let kept = &s[kept.as_byte_range()];
+    match (marked, cut) {
+        (false, _) => std::borrow::Cow::Borrowed(kept),
+        (true, TruncateEnd::Head) => std::borrow::Cow::Owned(format!("{ELLIPSIS}{kept}")),
+        (true, TruncateEnd::Tail) => std::borrow::Cow::Owned(format!("{kept}{ELLIPSIS}")),
+    }
+}
+
+/// [`truncate_marked`] for styled text: the kept part keeps the part of
+/// each span inside it, and the marker carries no span, so it paints in the
+/// row's own style. A span wholly in the dropped part is gone.
+pub fn truncate_spanned<T>(
+    content: SpannedText<T>,
+    budget: usize,
+    cut: TruncateEnd,
+) -> SpannedText<T> {
+    let Some((kept, marked)) = cut_window(content.text(), budget, cut) else {
+        return content;
+    };
+    let kept = content.slice(kept);
+    match (marked, cut) {
+        (false, _) => kept,
+        (true, TruncateEnd::Head) => kept.prepend(ELLIPSIS),
+        (true, TruncateEnd::Tail) => kept.append(ELLIPSIS),
+    }
 }
 
 #[cfg(test)]

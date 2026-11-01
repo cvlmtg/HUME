@@ -133,6 +133,27 @@ fn rows_scope_the_current_buffer_bold_and_unsaved_buffers_as_warning() {
     );
 }
 
+/// A row wider than the drawer is cut at its tail, so its number and
+/// markers stay.
+#[test]
+fn a_row_wider_than_the_drawer_is_cut_at_its_tail() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("ls", None).unwrap();
+    ed.resize_terminal(12, 24);
+    frame(&mut ed);
+
+    let row = {
+        let guard = ed.state.views.drawer.read();
+        let rows = &guard.as_ref().expect("drawer must be open").rows;
+        rows[0]
+            .as_ref()
+            .expect("the row is shown")
+            .text()
+            .to_owned()
+    };
+    insta::assert_snapshot!(format!("{row:?}"), @r#""   1  %  …""#);
+}
+
 #[test]
 fn a_buffers_label_shows_in_the_name_column() {
     let mut ed = editor_from("-[h]>ello\n");

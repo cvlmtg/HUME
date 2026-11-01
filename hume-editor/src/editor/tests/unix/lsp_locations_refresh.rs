@@ -75,7 +75,7 @@ fn insert_line_above_the_cursor_line(ed: &mut Editor) {
 }
 
 fn drawer_is_open(ed: &Editor) -> bool {
-    ed.state.views.drawer.read().is_some()
+    ed.state.input.drawer().is_some()
 }
 
 #[test]
@@ -343,10 +343,8 @@ fn a_drawer_replaced_by_another_list_is_not_refreshed() {
 
 fn selected_row(ed: &Editor) -> usize {
     ed.state
-        .views
-        .drawer
-        .read()
-        .as_ref()
+        .input
+        .drawer()
         .expect("drawer must be open")
         .selected
 }

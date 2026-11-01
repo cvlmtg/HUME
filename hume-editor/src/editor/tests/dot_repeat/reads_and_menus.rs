@@ -377,6 +377,24 @@ fn dot_repeats_a_commands_menu_choice() {
     assert_eq!(ed.doc().text().to_string(), "tello\ntorld\n");
 }
 
+/// `.` matches a styled menu row by its text, as it does a plain one.
+#[test]
+fn dot_repeats_a_styled_menu_choice_by_its_text() {
+    let mut ed = record_rd(
+        r#"(show-menu! pane (list (cons "one" #\o)
+                                 (cons (hash 'text "two" 'spans
+                                             (list (hash 'start-char 0 'end-char 1 'scope "keyword")))
+                                       #\t))
+             (lambda (c) (when c (call! "replace" pane c))))"#,
+        &[key('j'), key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "tello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(ed.state.input.menu().is_none(), "`.` must not open a menu");
+    assert_eq!(ed.doc().text().to_string(), "tello\ntorld\n");
+}
+
 /// A menu `close-menu!` closed before it was answered: `.` opens nothing
 /// for it and runs no callback, and the rest of the command repeats.
 #[test]

@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use termina::event::{KeyCode, Modifiers};
 
-use hume_core::HostToken;
+use hume_core::{HostToken, Severity};
 use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::types::EditorMode;
 use hume_scripting::host::{PickerStep, token_to_steel};
@@ -68,7 +68,7 @@ impl Layer for PickerLayer {
     ///   mid-completion (e.g. `picker!` bound to a key pressed while
     ///   completing) must not leave a stale session behind it.
     /// - Retires an already-open picker, firing its `#:on-close`, before
-    ///   this one lands: the exactly-once callback contract leaves no window
+    ///   this one lands: the fire-once callback contract leaves no window
     ///   in which a session is dropped without firing.
     ///   No keymap binding closes it here, so it records no binding's pick
     ///   even when a binding of it opened this one.
@@ -84,7 +84,7 @@ impl Layer for PickerLayer {
     }
     /// Fires `#:on-close` unconditionally, ignoring `why`, unlike every
     /// other layer's `tear_down`, which never fires a Steel callback. The
-    /// picker's "fires exactly once" contract has no explicit close to
+    /// picker's "fires once" contract has no explicit close to
     /// rely on when it's removed incidentally (buried under an
     /// `Insert`/`Prompt` session that a close-*!`/Rust-internal retirement
     /// then truncates through), so this is the one `tear_down` that fires,
@@ -111,17 +111,22 @@ impl Editor {
     /// `PickerSession::move_selection(0, geo.list_rows)`. A delta-0 move is
     /// a pure scroll-clamp against the *current* geometry, so a terminal
     /// resize between the last keystroke and this frame self-heals here
-    /// rather than leaving a stale scroll offset from a taller frame.
+    /// rather than leaving a stale scroll offset from a taller frame. It
+    /// then renders the window's rows its `#:render` has not made at the
+    /// panel's width ([`Self::fill_picker_window`]).
     pub(in crate::editor) fn sync_picker_view(&mut self, screen: &ScreenLayout) {
         if self.state.input.picker().is_none() && self.state.views.picker.read().is_none() {
             return;
         }
 
         let geo = hume_ui::picker_panel::panel_geometry(screen.pane_area());
-        let resolved = match (self.state.input.picker_mut(), geo) {
+        if let (Some(session), Some(geo)) = (self.state.input.picker_mut(), &geo) {
+            session.move_selection(0, geo.list_rows);
+            self.fill_picker_window(geo.list_rows, geo.list_width());
+        }
+        let resolved = match (self.state.input.picker(), geo) {
             (Some(session), Some(geo)) => {
-                session.move_selection(0, geo.list_rows);
-                let rows: Vec<String> = session.window(geo.list_rows).map(str::to_string).collect();
+                let rows = session.window_rows(geo.list_rows, geo.list_width());
                 let selected_row =
                     (!rows.is_empty()).then(|| session.selected() - session.scroll());
                 Some(hume_ui::picker_panel::PickerViewState {
@@ -135,13 +140,41 @@ impl Editor {
                     rect: geo.rect,
                     list_rows: geo.list_rows,
                     border: self.state.settings.popup_border,
-                    truncate: session.truncate(),
                 })
             }
             _ => None,
         };
 
         self.state.views.picker.set(resolved);
+    }
+
+    /// Renders the open picker's rows in the window of `rows` its
+    /// `#:render` has not made `budget` cells wide, through one call to it,
+    /// each cut to `budget` at the `#:truncate` end. A picker without
+    /// `#:render` renders nothing. A failed render closes the picker, firing
+    /// `#:on-close`, and reports the error.
+    fn fill_picker_window(&mut self, rows: usize, budget: usize) {
+        let session = self
+            .state
+            .input
+            .picker()
+            .expect("the caller found a picker");
+        let Some(call) = session.unrendered(rows, budget) else {
+            return;
+        };
+        let cut = session.truncate();
+        match self.rendered_rows(call, budget, cut) {
+            Ok(rendered) => self
+                .state
+                .input
+                .picker_mut()
+                .expect("a render cannot close the picker")
+                .fill(rendered, budget),
+            Err(message) => {
+                close_picker(&mut self.state, &self.view);
+                self.report(Severity::Error, format!("picker render error: {message}"));
+            }
+        }
     }
 }
 
@@ -260,8 +293,9 @@ pub(in crate::editor) fn open_picker(
     Ok(Some(token))
 }
 
-/// The call of a keymap binding: `(binding token item)`, with `#f` for a
-/// `None` token (during `.`) or item (nothing matches).
+/// The call of a keymap binding: `(binding item token)`, with `#f` for a
+/// `None` item (nothing matches) or token (during `.`): the row first, as a
+/// drawer's or menu's callback gets it.
 fn binding_call(
     binding: hume_scripting::Callback,
     token: Option<HostToken>,
@@ -269,7 +303,7 @@ fn binding_call(
 ) -> SteelCall {
     let steel_false = || Rooted::new(SteelVal::BoolV(false));
     let token = token.map_or_else(steel_false, |token| Rooted::new(token_to_steel(token)));
-    SteelCall::with_args(binding, Rc::from([token, item.unwrap_or_else(steel_false)]))
+    SteelCall::with_args(binding, Rc::from([item.unwrap_or_else(steel_false), token]))
 }
 
 fn on_close_call(on_close: &hume_scripting::Callback) -> SteelCall {
@@ -315,8 +349,8 @@ fn fire_close(
 /// `PickerLayer::tear_down` would otherwise fire `#:on-close` right before
 /// this does.
 ///
-/// `Editor::reset_config_state` is a second, deliberate exit from this
-/// "fires exactly once" contract: its `reset_input` call drops
+/// `Editor::reset_config_state` is a second exit from this "fires once"
+/// contract: its `reset_input` call drops
 /// a still-open picker layer directly (never calling this function, and
 /// running no teardown at all) along with the `pending_work` queue this
 /// function would have pushed the callback onto. The outgoing engine that
@@ -388,8 +422,8 @@ pub(in crate::editor) fn move_picker(
 /// the menu (a stray key closes it and falls through) or the drawer (a
 /// stray key falls through untouched): the picker is full-modal, owning the
 /// entire interaction, so nothing leaks through to whatever mode sits
-/// underneath. A key the keymap binds queues its binding with the picker's
-/// token and the selected item's payload (`#f` when nothing matches) under
+/// underneath. A key the keymap binds queues its binding with the selected
+/// item's payload (`#f` when nothing matches) and the picker's token under
 /// [`CallGuard::PickerKey`](super::super::event::CallGuard::PickerKey),
 /// never invoked inline, and does nothing else.
 /// An unbound `Backspace` deletes from the query and an unbound plain

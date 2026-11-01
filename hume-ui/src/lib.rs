@@ -13,18 +13,17 @@
 #![deny(rustdoc::private_intra_doc_links)]
 
 pub mod drawer;
+pub mod list_row;
 pub mod menu_box;
 pub mod picker_panel;
 pub mod popup;
-pub mod width;
 
 use hume_engine::lock::SharedSlot;
 use hume_engine::pipeline::BOTTOM_BANDS;
 use hume_engine::providers::{ChromeProvider, OverlayProvider};
-use hume_engine::theme::ui_scopes;
 
 use picker_panel::PickerOverlay;
-use popup::PopupOverlay;
+use popup::{MenuOverlay, PopupOverlay};
 
 /// Every overlay view shared between the editor's per-frame write side and
 /// the engine's render side. One owner, so a new overlay is one field
@@ -32,10 +31,11 @@ use popup::PopupOverlay;
 /// open`, `EditorState`, and [`OverlayViews::overlays`].
 /// Bundling as one struct with distinctly-named fields (not loose
 /// same-typed `Arc` parameters) is what stops two different slots (same
-/// `SharedSlot<Option<PopupState>>` type for `minibuf_completion`/`popup`/
-/// `menu`/`completion_menu`) from being wired to each other by mistake: a
-/// `views.popup` at a construction site can't silently become `views.menu`
-/// the way two positional `Arc` arguments of the same type could swap.
+/// `SharedSlot<Option<MenuState>>` type for `minibuf_completion`/`menu`/
+/// `completion_menu`) from being wired to each other by mistake: a
+/// `views.menu` at a construction site can't turn into
+/// `views.completion_menu` the way two positional `Arc` arguments of the
+/// same type could swap.
 ///
 /// Fields are `pub`, not behind a getter/setter pair: every field is a
 /// [`SharedSlot`], whose own `read()`/`set()` already carry the poison
@@ -43,11 +43,11 @@ use popup::PopupOverlay;
 /// pair here would have been a pass-through with nothing left to add.
 #[derive(Default)]
 pub struct OverlayViews {
-    pub minibuf_completion: SharedSlot<Option<popup::PopupState>>,
+    pub minibuf_completion: SharedSlot<Option<popup::MenuState>>,
     pub popup: SharedSlot<Option<popup::PopupState>>,
     pub popup_band: SharedSlot<Option<popup::PopupRows>>,
-    pub menu: SharedSlot<Option<popup::PopupState>>,
-    pub completion_menu: SharedSlot<Option<popup::PopupState>>,
+    pub menu: SharedSlot<Option<popup::MenuState>>,
+    pub completion_menu: SharedSlot<Option<popup::MenuState>>,
     pub completion_doc: SharedSlot<Option<popup::PopupState>>,
     pub drawer: SharedSlot<Option<drawer::DrawerViewState>>,
     pub picker: SharedSlot<Option<picker_panel::PickerViewState>>,
@@ -99,25 +99,20 @@ impl OverlayViews {
     /// order on `InputStack`, decided per event) always agree.
     pub fn overlays(&self) -> Vec<Box<dyn OverlayProvider>> {
         vec![
-            Box::new(PopupOverlay {
+            Box::new(MenuOverlay {
                 data: self.minibuf_completion.clone(),
-                scope: ui_scopes::MENU,
             }),
             Box::new(PopupOverlay {
                 data: self.popup.clone(),
-                scope: ui_scopes::POPUP,
             }),
-            Box::new(PopupOverlay {
+            Box::new(MenuOverlay {
                 data: self.menu.clone(),
-                scope: ui_scopes::MENU,
             }),
-            Box::new(PopupOverlay {
+            Box::new(MenuOverlay {
                 data: self.completion_menu.clone(),
-                scope: ui_scopes::MENU,
             }),
             Box::new(PopupOverlay {
                 data: self.completion_doc.clone(),
-                scope: ui_scopes::POPUP,
             }),
             Box::new(PickerOverlay {
                 data: self.picker.clone(),

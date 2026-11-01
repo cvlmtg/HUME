@@ -22,12 +22,12 @@ fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
         .popup
         .read()
         .as_ref()
-        .map(|s| ((*s.rows.lines).clone(), s.rect.x, s.rect.y))
+        .map(|s| (s.rows.lines.texts(), s.rect.x, s.rect.y))
 }
 
 /// The `Arc` handle itself, not a deref-cloned copy, for `Arc::ptr_eq`
 /// identity checks that pin `PopupLayer::content`'s per-`max_width` cache.
-fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<Vec<String>>> {
+fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<hume_ui::popup::WrappedLines>> {
     ed.state
         .views
         .popup
@@ -191,7 +191,7 @@ fn popup_band_lines(ed: &Editor) -> Option<Vec<String>> {
         .popup_band
         .read()
         .as_ref()
-        .map(|s| (*s.lines).clone())
+        .map(|s| s.lines.texts())
 }
 
 #[test]

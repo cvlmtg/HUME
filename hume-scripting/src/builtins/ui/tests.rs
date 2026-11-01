@@ -1,6 +1,6 @@
 use steel::rvals::SteelVal;
 
-use super::drawer_row_display;
+use super::row_display;
 use crate::builtins::args::{list_of, symbol_hash};
 use crate::host::{RowDisplay, RowSpanScopes};
 use hume_rope::spanned::SpannedText;
@@ -22,7 +22,7 @@ fn styled(text: &str, spans: Vec<SteelVal>) -> SteelVal {
 }
 
 fn decode_err(val: SteelVal) -> String {
-    drawer_row_display(val, "row")
+    row_display(val, "row")
         .expect_err("the display must not decode")
         .to_string()
 }
@@ -30,7 +30,7 @@ fn decode_err(val: SteelVal) -> String {
 #[test]
 fn a_string_display_has_no_spans() {
     assert_eq!(
-        drawer_row_display(string("a"), "row").unwrap(),
+        row_display(string("a"), "row").unwrap(),
         RowDisplay {
             content: SpannedText::plain("a".to_string()),
             selected_scope: None,
@@ -41,7 +41,7 @@ fn a_string_display_has_no_spans() {
 #[test]
 fn a_symbol_display_reads_as_its_name() {
     assert_eq!(
-        drawer_row_display(SteelVal::SymbolV("abc".into()), "row").unwrap(),
+        row_display(SteelVal::SymbolV("abc".into()), "row").unwrap(),
         RowDisplay {
             content: SpannedText::plain("abc".to_string()),
             selected_scope: None,
@@ -53,7 +53,7 @@ fn a_symbol_display_reads_as_its_name() {
 fn a_styled_display_decodes_text_and_spans() {
     let val = styled("abc", vec![span(1, 3, string("markup.italic"))]);
     assert_eq!(
-        drawer_row_display(val, "row").unwrap(),
+        row_display(val, "row").unwrap(),
         RowDisplay {
             content: SpannedText::new(
                 "abc".to_string(),
@@ -81,7 +81,7 @@ fn a_span_decodes_its_selected_scope() {
         ("selected-scope", SteelVal::SymbolV("markup.bold".into())),
     ]);
     assert_eq!(
-        drawer_row_display(styled("abc", vec![span]), "row").unwrap(),
+        row_display(styled("abc", vec![span]), "row").unwrap(),
         RowDisplay {
             content: SpannedText::new(
                 "abc".to_string(),
@@ -108,7 +108,7 @@ fn a_styled_display_decodes_its_selected_scope() {
         ("selected-scope", string("diagnostic.warning.message")),
     ]);
     assert_eq!(
-        drawer_row_display(val, "row").unwrap(),
+        row_display(val, "row").unwrap(),
         RowDisplay {
             content: SpannedText::plain("abc".to_string()),
             selected_scope: Some("diagnostic.warning.message".to_string()),
@@ -163,7 +163,7 @@ fn a_styled_display_without_spans_has_none() {
         ("selected-scope", string("diagnostic.warning.message")),
     ]);
     assert_eq!(
-        drawer_row_display(val, "row").unwrap(),
+        row_display(val, "row").unwrap(),
         RowDisplay {
             content: SpannedText::plain("abc".to_string()),
             selected_scope: Some("diagnostic.warning.message".to_string()),

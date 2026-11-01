@@ -516,16 +516,16 @@ impl Editor {
         self.resync_cwd();
         self.flush_osc52();
 
-        // The drawer's model (the `:ls` rows, the scroll clamp, the text of
-        // its newly visible rows), then the layout, for a band a settled drain
-        // or the drawer's render proc opened or closed, then the band views
-        // this frame draws.
+        // The drawer's model (the `:ls` rows, the scroll clamp) and its view,
+        // with the text of its newly visible rows, then the layout, for a band
+        // a settled drain or the drawer's render proc opened or closed, then
+        // the other band views this frame draws.
         let focused_bid = self.focused_buffer_id();
         self.state
             .refresh_buffer_list_drawer(focused_bid, &mut self.view.registry);
         self.state
             .clamp_drawer_scroll_to_terminal(self.view.terminal_area().height);
-        self.fill_drawer_window();
+        self.sync_drawer_view();
         let screen = self.state.screen_layout(&self.view);
         self.state.sync_band_views(&mut self.view, &screen);
 
@@ -708,10 +708,9 @@ impl EditorState {
         }
     }
 
-    /// Bring the band views (drawer, docked popup, tab bar) up to their
-    /// models for this frame to paint, the tab bar at its place in `screen`.
+    /// Bring the band views (docked popup, tab bar) up to their models for
+    /// this frame to paint, the tab bar at its place in `screen`.
     fn sync_band_views(&mut self, view: &mut EngineView, screen: &ScreenLayout) {
-        self.sync_drawer_view();
         self.sync_popup_band_view(view);
         self.sync_tabline_view(view, screen);
     }

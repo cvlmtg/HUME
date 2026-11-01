@@ -8,12 +8,14 @@ use std::path::Path;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
-use hume_ui::drawer::DrawerRow;
+use hume_ui::list_row::ListRow;
 
 /// Each row's text, `None` for a row not rendered yet.
-fn row_texts(rows: &[std::sync::OnceLock<DrawerRow>]) -> Vec<Option<&str>> {
-    rows.iter()
-        .map(|row| row.get().map(DrawerRow::text))
+/// Each row's text as the drawer lists it, `None` for a row not rendered.
+fn row_texts(rows: &crate::editor::input_stack::DrawerRows) -> Vec<Option<&str>> {
+    rows.listed()
+        .into_iter()
+        .map(|row| row.map(ListRow::text))
         .collect()
 }
 
@@ -81,7 +83,11 @@ fn show_drawer_list_populates_model_and_view() {
 
     assert!(ed.state.input.drawer().is_some());
     assert_eq!(drawer_rows(&ed), vec!["one.rs:1", "two.rs:2", "three.rs:3"]);
-    assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 0);
+    render(&mut ed);
+    assert_eq!(
+        ed.state.views.drawer.read().as_ref().unwrap().selected_row,
+        0
+    );
 }
 
 fn open_with_selected(ed: &mut Editor, tmp: &Path, rows: usize, selected: usize) {
@@ -97,13 +103,64 @@ fn open_with_selected(ed: &mut Editor, tmp: &Path, rows: usize, selected: usize)
     type_cmd(ed, ":go");
 }
 
+/// The text of each row the drawer view paints, `None` for a row not
+/// rendered yet.
+fn view_texts(ed: &Editor) -> Vec<Option<String>> {
+    let guard = ed.state.views.drawer.read();
+    guard
+        .as_ref()
+        .expect("drawer must be showing")
+        .rows
+        .iter()
+        .map(|row| row.as_ref().map(|row| row.text().to_owned()))
+        .collect()
+}
+
+#[test]
+fn the_drawer_view_holds_only_its_visible_window() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    open_with_selected(&mut ed, tmp.path(), 30, 0);
+    frame(&mut ed, 40, 12);
+    let visible = hume_ui::drawer::band_visible_rows(30, 12);
+    assert!(visible < 30, "setup: the band cannot show every row");
+    let window = |from: usize| -> Vec<Option<String>> {
+        (from..from + visible)
+            .map(|i| Some(i.to_string()))
+            .collect()
+    };
+    assert_eq!(view_texts(&ed), window(0));
+
+    for _ in 0..30 {
+        ed.feed_key(key_ctrl('d'));
+        frame(&mut ed, 40, 12);
+    }
+    let scroll = ed.state.input.drawer().expect("the drawer is open").scroll;
+    assert!(scroll > 0, "setup: Ctrl-d scrolled the drawer");
+    assert_eq!(view_texts(&ed), window(scroll));
+
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "refresh" "" (lambda (pane)
+             (show-drawer-list! pane (list (cons "replaced" 0)) (lambda (row tok) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":refresh");
+    frame(&mut ed, 40, 12);
+    assert_eq!(view_texts(&ed), vec![Some("replaced".to_owned())]);
+}
+
 #[test]
 fn show_drawer_list_opens_on_the_selected_row() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     open_with_selected(&mut ed, tmp.path(), 3, 2);
+    render(&mut ed);
 
-    assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 2);
+    assert_eq!(
+        ed.state.views.drawer.read().as_ref().unwrap().selected_row,
+        2
+    );
 }
 
 #[test]
@@ -111,8 +168,12 @@ fn show_drawer_list_clamps_selected_past_the_end() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     open_with_selected(&mut ed, tmp.path(), 3, 9);
+    render(&mut ed);
 
-    assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 2);
+    assert_eq!(
+        ed.state.views.drawer.read().as_ref().unwrap().selected_row,
+        2
+    );
 }
 
 #[test]
@@ -167,6 +228,7 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
         drawer_items(&["one"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
         0,
+        hume_core::TruncateEnd::Tail,
     )
     .expect("show-drawer-list! must succeed");
 
@@ -205,6 +267,7 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
         drawer_items(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         0,
+        hume_core::TruncateEnd::Tail,
     );
     assert!(
         result.is_ok(),
@@ -297,6 +360,7 @@ fn show_drawer_list_from_insert_warns_instead_of_opening() {
         drawer_items(&["a"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         0,
+        hume_core::TruncateEnd::Tail,
     );
     assert!(
         result.is_ok(),
@@ -363,55 +427,6 @@ fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
         "all 3 items fit inside a 40x12 terminal's band, so scroll must be \
          pulled back to 0, not left pointing past the list"
     );
-}
-
-/// `sync_drawer_view` runs unconditionally every frame while the drawer is
-/// open (the self-healing backstop this module's header comment describes),
-/// so its row list must be shared (`Arc::clone`) rather than deep-copied:
-/// a references batch can carry thousands of rows, and a plain `Vec::clone`
-/// there would reallocate all of them every frame for as long as the drawer
-/// stays open.
-///
-/// The test relies on `DrawerLayer::items` and `DrawerViewState::rows` both
-/// holding an `Arc`. With a bare `Vec<String>` there would be nothing for
-/// `Arc::ptr_eq` to compare, and it would not compile.
-#[test]
-fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[x]>abcdefgh\n");
-    arm_three_items(&mut ed, tmp.path());
-
-    let model_items = std::sync::Arc::clone(ed.state.input.drawer().unwrap().rows.rows());
-    let view_rows = {
-        let guard = ed.state.views.drawer.read();
-        std::sync::Arc::clone(&guard.as_ref().unwrap().rows)
-    };
-    assert!(
-        std::sync::Arc::ptr_eq(&model_items, &view_rows),
-        "the view's row list must be the same allocation as the model's, \
-         not an independent copy"
-    );
-
-    // A fresh `show-drawer-list!` call replaces the model's `Arc` wholesale;
-    // the next sync must follow it to a *different* allocation, not keep
-    // pointing at the first one.
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define-typed-command! "refresh" "" (lambda (pane)
-             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "replaced"))
-               (lambda (row tok) (void)))))"#,
-    );
-    type_cmd(&mut ed, ":refresh");
-    let view_rows_after = {
-        let guard = ed.state.views.drawer.read();
-        std::sync::Arc::clone(&guard.as_ref().unwrap().rows)
-    };
-    assert!(
-        !std::sync::Arc::ptr_eq(&view_rows, &view_rows_after),
-        "the view must follow a replaced model to its new row list"
-    );
-    assert_eq!(row_texts(&view_rows_after), vec![Some("replaced")]);
 }
 
 #[test]
@@ -484,7 +499,7 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     assert!(!applied, "a foreign token must not apply");
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(
-        row_texts(drawer.rows.rows()),
+        row_texts(&drawer.rows),
         vec![Some("a"), Some("b")],
         "rows must be untouched by a mismatched-token update"
     );
@@ -756,13 +771,17 @@ fn update_replaces_rows_callback_and_selection_in_place() {
         "update must report it applied"
     );
     let drawer = ed.state.input.drawer().unwrap();
-    assert_eq!(row_texts(drawer.rows.rows()), vec![Some("x"), Some("y")]);
+    assert_eq!(row_texts(&drawer.rows), vec![Some("x"), Some("y")]);
     assert_eq!(
         drawer.selected, 1,
         "caller's selection must be kept, not reset"
     );
     assert_eq!(drawer_rows(&ed), vec!["x", "y"]);
-    assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 1);
+    render(&mut ed);
+    assert_eq!(
+        ed.state.views.drawer.read().as_ref().unwrap().selected_row,
+        1
+    );
 
     // The new callback is live: Enter fires it with the kept selection's
     // payload, and the drawer stays open.
@@ -830,6 +849,28 @@ fn show_with_empty_items_raises_and_opens_nothing() {
 }
 
 #[test]
+fn show_with_an_unknown_truncate_end_raises_and_opens_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-drawer-list! pane (list (cons "a" 'a)) (lambda (row tok) (void))
+                                #:truncate 'middle)))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    assert!(
+        has_error(&ed, "show-drawer-list!: #:truncate"),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert!(ed.state.input.drawer().is_none());
+}
+
+#[test]
 fn update_with_empty_items_raises_and_keeps_the_rows() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
@@ -855,7 +896,7 @@ fn update_with_empty_items_raises_and_keeps_the_rows() {
     );
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(
-        row_texts(drawer.rows.rows()),
+        row_texts(&drawer.rows),
         vec![Some("a"), Some("b")],
         "the rows must survive a rejected update"
     );
@@ -976,7 +1017,7 @@ fn invalid_spans_on_update_raise_and_keep_the_rows() {
     );
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(
-        row_texts(drawer.rows.rows()),
+        row_texts(&drawer.rows),
         vec![Some("a"), Some("b")],
         "the rows must survive a rejected update"
     );
@@ -1496,7 +1537,8 @@ fn drawer_without_popup_border_keeps_a_blank_frame() {
 }
 
 /// Row 0 (selected) scopes its column `markup.italic`, row 1 scopes its
-/// column `keyword`, and row 2's span runs past the inner right edge.
+/// column `keyword`, and row 2 is cut at the inner right edge: its span
+/// stops at the cut and the `…` takes the row's own style.
 #[test]
 fn styled_rows_render_their_spans_over_the_row_style() {
     let tmp = tempfile::tempdir().unwrap();

@@ -4,6 +4,7 @@ use ropey::RopeSlice;
 
 use crate::cluster::ClusterRange;
 use crate::column::ByteCol;
+use crate::grapheme::{next_str_boundary, prev_str_boundary};
 use crate::offset::{CharOffset, ExclusiveRange};
 
 /// A string and the parts of it that carry a payload: byte ranges sorted by
@@ -95,6 +96,72 @@ impl<T> SpannedText<T> {
         }
     }
 
+    /// The part of the text in `kept`, a byte range starting and ending on
+    /// cluster boundaries. Each span is clipped to `kept` and moves with the
+    /// text, and a span left empty is dropped.
+    pub(crate) fn slice(mut self, kept: ExclusiveRange<ByteCol>) -> Self {
+        let (start, end) = (kept.start.index(), kept.end.index());
+        debug_assert!(self.text.is_char_boundary(start) && self.text.is_char_boundary(end));
+        self.text.truncate(end);
+        self.text.drain(..start);
+        let spans = self
+            .spans
+            .into_iter()
+            .filter_map(|(range, payload)| {
+                let span_start = range.start.index().max(start);
+                let span_end = range.end.index().min(end);
+                (span_start < span_end).then(|| {
+                    let range = ExclusiveRange::new(
+                        ByteCol::new(span_start - start),
+                        ByteCol::new(span_end - start),
+                    );
+                    (range, payload)
+                })
+            })
+            .collect();
+        Self {
+            text: self.text,
+            spans,
+        }
+    }
+
+    /// `before` followed by this text, which `before` carries no span over.
+    /// When the first cluster of this text joins the end of `before`, a span
+    /// starting there widens back over the joined cluster, as [`Self::new`]
+    /// widens an edge inside a cluster.
+    pub(crate) fn prepend(mut self, before: &str) -> Self {
+        let seam = before.len();
+        self.text.insert_str(0, before);
+        for (range, _) in &mut self.spans {
+            *range = ExclusiveRange::new(
+                range.start.advance_saturating(seam),
+                range.end.advance_saturating(seam),
+            );
+        }
+        if let Some((range, _)) = self.spans.first_mut()
+            && range.start.index() == seam
+            && let Some(cluster) = cluster_across(&self.text, seam)
+        {
+            range.start = cluster.start;
+        }
+        self
+    }
+
+    /// This text followed by `after`, which carries no span. When `after`
+    /// extends the last cluster of this text, a span ending there widens over
+    /// the joined cluster, as [`Self::new`] widens an edge inside a cluster.
+    pub fn append(mut self, after: &str) -> Self {
+        let seam = self.text.len();
+        self.text.push_str(after);
+        if let Some((range, _)) = self.spans.last_mut()
+            && range.end.index() == seam
+            && let Some(cluster) = cluster_across(&self.text, seam)
+        {
+            range.end = cluster.end;
+        }
+        self
+    }
+
     pub fn text(&self) -> &str {
         &self.text
     }
@@ -102,6 +169,15 @@ impl<T> SpannedText<T> {
     pub fn spans(&self) -> &[(ExclusiveRange<ByteCol>, T)] {
         &self.spans
     }
+}
+
+/// The cluster of `text` that starts before byte `seam` and ends after it,
+/// `None` when `seam` is a cluster boundary.
+fn cluster_across(text: &str, seam: usize) -> Option<ExclusiveRange<ByteCol>> {
+    let start = prev_str_boundary(text, seam);
+    let end = next_str_boundary(text, start);
+    (start < seam && end > seam)
+        .then(|| ExclusiveRange::new(ByteCol::new(start), ByteCol::new(end)))
 }
 
 /// `text` as consecutive runs: each span's text with its payload, and each

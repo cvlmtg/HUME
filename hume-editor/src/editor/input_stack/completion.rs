@@ -190,8 +190,8 @@ impl Layer for MinibufCompletionLayer {
 }
 
 impl Editor {
-    /// Write the Insert-mode completion menu into the shared `PopupState`
-    /// Arc: same widget as [`Self::sync_menu_view`] (unwrapped rows,
+    /// Write the Insert-mode completion menu into the shared `MenuState`
+    /// slot: same widget as [`Self::sync_menu_view`] (unwrapped rows,
     /// selected-row styling), but anchored at the leftmost contributing
     /// token's start rather than the live cursor (which drifts as the user
     /// types further into the token). `Buffer`-target only; a
@@ -230,7 +230,7 @@ impl Editor {
         screen: &ScreenLayout,
         cursor_cell: Option<(u16, u16)>,
     ) -> Option<(
-        hume_ui::popup::PopupState,
+        hume_ui::popup::MenuState,
         Option<hume_ui::popup::PopupState>,
     )> {
         // The menu anchor is ranked against one text and reads as absent
@@ -271,7 +271,7 @@ impl Editor {
             (menu(true), None)
         };
 
-        let doc = if completion_docs && !menu.rows.lines.is_empty() {
+        let doc = if completion_docs && !menu.rows.is_empty() {
             self.resolve_completion_doc(slot)
         } else {
             None

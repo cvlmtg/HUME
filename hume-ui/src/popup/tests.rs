@@ -1,6 +1,8 @@
 use super::*;
-use hume_engine::types::ResolvedStyle;
+use crate::list_row::SpanScopes;
+use hume_engine::types::{ResolvedStyle, ScopeId};
 use hume_grid::{Rect, Rgb};
+use hume_rope::spanned::SpannedText;
 
 // ── wrap_text ──────────────────────────────────────────────────────────
 //
@@ -10,8 +12,7 @@ use hume_grid::{Rect, Rgb};
 // case coverage (word boundaries, hard breaks, explicit newlines) without a
 // production wrapper.
 fn wrap_text(text: &str, max_width: u16) -> Vec<String> {
-    let runs = [(text.to_string(), ResolvedStyle::default())];
-    wrap_styled(&runs, max_width)
+    wrap_styled([(text, ResolvedStyle::default())], max_width)
         .into_iter()
         .map(|row| row.into_iter().map(|(s, _)| s).collect())
         .collect()
@@ -74,11 +75,8 @@ fn red() -> ResolvedStyle {
 
 #[test]
 fn wrap_styled_preserves_a_style_boundary_within_one_row() {
-    let runs = [
-        ("hello ".to_string(), ResolvedStyle::default()),
-        ("world".to_string(), red()),
-    ];
-    let rows = wrap_styled(&runs, 60);
+    let runs = [("hello ", ResolvedStyle::default()), ("world", red())];
+    let rows = wrap_styled(runs, 60);
     assert_eq!(rows.len(), 1, "both words fit on one row");
     assert_eq!(
         rows[0],
@@ -98,11 +96,8 @@ fn wrap_styled_splits_a_style_change_across_two_wrapped_rows() {
     // (the too-narrow-for-both-words case `wrap_text_breaks_on_word_boundary`
     // already covers for plain text). Here "bbbb" carries a different style,
     // which must survive onto its own row's run list untouched.
-    let runs = [
-        ("aaaa ".to_string(), ResolvedStyle::default()),
-        ("bbbb".to_string(), red()),
-    ];
-    let rows = wrap_styled(&runs, 4);
+    let runs = [("aaaa ", ResolvedStyle::default()), ("bbbb", red())];
+    let rows = wrap_styled(runs, 4);
     assert_eq!(rows.len(), 2);
     assert_eq!(
         rows[0],
@@ -209,9 +204,19 @@ fn placement(pane: Rect) -> PopupPlacement {
 
 /// The two-phase call every production menu makes: resolve the window from
 /// counts, slice the list to it, resolve from that slice alone.
-fn menu(rows: &[MenuRow], selected: usize, pane: Rect) -> PopupState {
+fn menu(rows: &[MenuRow], selected: usize, pane: Rect) -> MenuState {
     let window = menu_window(rows.len(), Some(selected), pane);
     resolve_menu(&rows[window.range.clone()], window, placement(pane), true)
+}
+
+/// The composed rows' texts, one per line.
+fn texts(state: &MenuState) -> String {
+    state
+        .rows
+        .iter()
+        .map(ListRow::text)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// A candidate scrolled out of the visible window must never widen the
@@ -220,8 +225,10 @@ fn menu(rows: &[MenuRow], selected: usize, pane: Rect) -> PopupState {
 /// row 0 below is never even handed to the resolver.
 #[test]
 fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
-    let mut rows: Vec<MenuRow> = (0..15).map(|i| MenuRow::plain(format!("r{i}"))).collect();
-    rows[0] = MenuRow::plain("x".repeat(100));
+    let mut rows: Vec<MenuRow> = (0..15)
+        .map(|i| MenuRow::plain(ListRow::plain(format!("r{i}"))))
+        .collect();
+    rows[0] = MenuRow::plain(ListRow::plain("x".repeat(100)));
 
     // selected = 14 (the last row) centers the window well past the wide
     // row 0: window_range(15, 14 - 10/2 = 9, 10) clamps to [5, 15).
@@ -248,9 +255,11 @@ fn menu_window_with_no_selection_starts_at_the_top_and_highlights_nothing() {
 /// in debug builds rather than silently measured.
 #[test]
 #[cfg(debug_assertions)]
-#[should_panic(expected = "must be exactly the window's own slice")]
+#[should_panic(expected = "must be the window's own slice")]
 fn resolve_menu_rejects_rows_that_are_not_the_windows_slice() {
-    let rows: Vec<MenuRow> = (0..15).map(|i| MenuRow::plain(format!("r{i}"))).collect();
+    let rows: Vec<MenuRow> = (0..15)
+        .map(|i| MenuRow::plain(ListRow::plain(format!("r{i}"))))
+        .collect();
     let pane = rect(0, 0, 200, 50);
     let window = menu_window(rows.len(), Some(0), pane);
     resolve_menu(&rows, window, placement(pane), true);
@@ -263,18 +272,18 @@ fn resolve_menu_rejects_rows_that_are_not_the_windows_slice() {
 fn resolve_menu_right_aligns_trailing_when_it_fits() {
     let rows = vec![
         MenuRow {
-            main: "kitty_support".into(),
+            main: ListRow::plain("kitty_support".into()),
             trailing: Some("bool".into()),
         },
         MenuRow {
-            main: "kind".into(),
+            main: ListRow::plain("kind".into()),
             trailing: Some("Kind".into()),
         },
     ];
     let state = menu(&rows, 0, rect(0, 0, 200, 50));
     // main padded to the widest main ("kitty_support", 13), a 2-cell gap,
     // then trailing right-aligned to the widest trailing (4).
-    insta::assert_snapshot!(state.rows.lines.join("\n"), @r"
+    insta::assert_snapshot!(texts(&state), @r"
     kitty_support  bool
     kind           Kind
     ");
@@ -285,13 +294,13 @@ fn resolve_menu_right_aligns_trailing_when_it_fits() {
 #[test]
 fn resolve_menu_truncates_trailing_when_the_pane_is_too_narrow() {
     let rows = vec![MenuRow {
-        main: "assert!".into(),
+        main: ListRow::plain("assert!".into()),
         trailing: Some("macro_rules! assert".into()),
     }];
     // max_inner = pane.width - 2 = 10; main_col = 7 ("assert!"); trail_col
     // = min(19, 10 - 7 - 2) = 1, just enough for the ellipsis marker.
     let state = menu(&rows, 0, rect(0, 0, 12, 50));
-    insta::assert_snapshot!(state.rows.lines.join("\n"), @"assert!  …");
+    insta::assert_snapshot!(texts(&state), @"assert!  …");
 }
 
 /// When there's no room left for a trailing column at all (`trail_col`
@@ -300,12 +309,34 @@ fn resolve_menu_truncates_trailing_when_the_pane_is_too_narrow() {
 #[test]
 fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
     let rows = vec![MenuRow {
-        main: "ab".into(),
+        main: ListRow::plain("ab".into()),
         trailing: Some("xy".into()),
     }];
     // max_inner = pane.width - 2 = 2, all consumed by `main` alone.
     let state = menu(&rows, 0, rect(0, 0, 4, 50));
-    insta::assert_snapshot!(state.rows.lines.join("\n"), @"ab");
+    insta::assert_snapshot!(texts(&state), @"ab");
+}
+
+/// A styled main column cut to a narrow pane keeps the part of its span the
+/// cut leaves, and the trailing column joins it unstyled.
+#[test]
+fn resolve_menu_cuts_a_styled_main_column_keeping_its_span_on_what_survives() {
+    let scope = ScopeId(7);
+    let scopes = SpanScopes {
+        scope,
+        selected: None,
+    };
+    let main = SpannedText::new("abcdefgh".to_string(), vec![(2, 8, scopes)]).unwrap();
+    let rows = vec![MenuRow {
+        main: ListRow::styled(main),
+        trailing: Some("xy".into()),
+    }];
+    // max_inner = 8; trailing needs 2 + the 2-cell gap, so `main` gets the
+    // whole width first and the trailing column none.
+    let state = menu(&rows, 0, rect(0, 0, 8, 50));
+    insta::assert_snapshot!(texts(&state), @"abcde…");
+    let expected = SpannedText::new("abcde…".to_string(), vec![(2, 5, scopes)]).unwrap();
+    assert_eq!(state.rows, vec![ListRow::styled(expected)]);
 }
 
 /// A session narrowed to zero matches must not panic computing `selected`
@@ -315,7 +346,7 @@ fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
 #[test]
 fn resolve_menu_on_an_empty_list_does_not_panic() {
     let state = menu(&[], 0, rect(0, 0, 40, 20));
-    assert!(state.rows.lines.is_empty());
+    assert!(state.rows.is_empty());
     assert_eq!(state.selected, None);
 }
 

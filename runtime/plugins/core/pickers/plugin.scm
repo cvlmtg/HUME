@@ -54,6 +54,27 @@
   (map (lambda (entry) (cons entry (substring entry 3 (string-length entry))))
        (filter (lambda (s) (not (equal? s ""))) (split-many output pickers/nul))))
 
+;;; See README.md's "Rows".
+(define (pickers/status-scope c)
+  (cond [(memv c '(#\A #\?)) "diff.plus"]
+        [(memv c '(#\D #\U)) "diff.minus"]
+        [(char=? c #\space) #f]
+        [else "diff.delta"]))
+
+(define (pickers/status-span i c)
+  (let ([scope (pickers/status-scope c)])
+    (if scope (list (hash 'start-char i 'end-char (+ i 1) 'scope scope)) '())))
+
+(define (pickers/git-row row budget)
+  (let ([entry (car row)])
+    (hash 'text (string-append (substring entry 0 3)
+                               (string-fit (cdr row) (max 0 (- budget 3)) 'head))
+          'spans (append (pickers/status-span 0 (string-ref entry 0))
+                         (pickers/status-span 1 (string-ref entry 1))))))
+
+(define (pickers/render-git-rows rows budget)
+  (map (lambda (row) (pickers/git-row row budget)) rows))
+
 (define (pickers/open-git-picker! pane root)
   (let* ([job-id #f]
          [handler (lambda (path)
@@ -63,6 +84,7 @@
                          (call! "stdlib/picker-keymap" handler)
                          #:prompt "git: "
                          #:pending #t
+                         #:render pickers/render-git-rows
                          #:on-close (lambda () (cancel-async! job-id)))])
     (set! job-id
       (spawn-async! "git"

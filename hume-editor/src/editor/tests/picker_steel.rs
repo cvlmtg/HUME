@@ -138,12 +138,12 @@ fn live_picker_bang_truncate_tail_reaches_the_session() {
 // ── keymap ───────────────────────────────────────────────────────────────
 
 #[test]
-fn a_binding_gets_the_token_and_selected_item_and_leaves_the_picker_open() {
+fn a_binding_gets_the_selected_item_and_the_token_and_leaves_the_picker_open() {
     let (mut ed, _tmp) = editor_with(
         r#"(define tok #f)
            (define-typed-command! "go" "" (lambda (pane)
              (set! tok (picker! pane (list (cons "one" "p1"))
-               (hash "ctrl-t" (lambda (token item)
+               (hash "ctrl-t" (lambda (item token)
                  (log! 'info (to-string (equal? token tok) item))))))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -163,7 +163,7 @@ fn a_binding_closes_the_picker_with_picker_close() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (picker! pane (list (cons "one" "p1"))
-               (hash "ctrl-t" (lambda (token item)
+               (hash "ctrl-t" (lambda (item token)
                  (picker-close! token)
                  (log! 'info (to-string item)))))))"#,
     );
@@ -181,8 +181,8 @@ fn picker_move_moves_the_selection_by_rows_through_a_binding() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (picker! pane (list (cons "a" 1) (cons "b" 2) (cons "c" 3))
-               (hash "j" (lambda (token item) (picker-move! token 2))
-                     "k" (lambda (token item) (picker-move! token -1 #:by 'row))))))"#,
+               (hash "j" (lambda (item token) (picker-move! token 2))
+                     "k" (lambda (item token) (picker-move! token -1 #:by 'row))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -204,7 +204,7 @@ fn picker_move_rejects_an_unknown_step() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (picker! pane (list (cons "a" 1))
-               (hash "j" (lambda (token item) (picker-move! token 1 #:by 'line))))))"#,
+               (hash "j" (lambda (item token) (picker-move! token 1 #:by 'line))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -226,7 +226,7 @@ fn keymap_accepts_the_short_modifier_form() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (picker! pane (list (cons "one" "p1"))
-               (hash "c-v" (lambda (token item) (log! 'info (to-string item)))))))"#,
+               (hash "c-v" (lambda (item token) (log! 'info (to-string item)))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -252,7 +252,7 @@ fn keymap_error(keymap: &str) -> String {
 
 #[test]
 fn keymap_must_be_a_hashmap() {
-    let msg = keymap_error(r#"(list (cons "ctrl-t" (lambda (token item) 1)))"#);
+    let msg = keymap_error(r#"(list (cons "ctrl-t" (lambda (item token) 1)))"#);
     assert!(
         msg.contains("keymap"),
         "error names the keymap, got {msg:?}"
@@ -270,7 +270,7 @@ fn keymap_rejects_a_non_callable_binding() {
 
 #[test]
 fn keymap_rejects_a_multi_key_spec() {
-    let msg = keymap_error(r#"(hash "z f" (lambda (token item) 1))"#);
+    let msg = keymap_error(r#"(hash "z f" (lambda (item token) 1))"#);
     assert!(
         msg.contains("exactly one key"),
         "error should explain the one-chord requirement, got {msg:?}"
@@ -280,7 +280,7 @@ fn keymap_rejects_a_multi_key_spec() {
 #[test]
 fn keymap_rejects_two_specs_naming_the_same_key() {
     let msg =
-        keymap_error(r#"(hash "ctrl-n" (lambda (token item) 1) "c-n" (lambda (token item) 2))"#);
+        keymap_error(r#"(hash "ctrl-n" (lambda (item token) 1) "c-n" (lambda (item token) 2))"#);
     assert!(
         msg.contains("\"ctrl-n\"") && msg.contains("\"c-n\""),
         "error names both specs, got {msg:?}"
@@ -329,7 +329,7 @@ fn on_close_fires_once_after_the_closing_binding() {
            (define (note! x) (set! seen (cons x seen)) (log! 'info (to-string (reverse seen))))
            (define-typed-command! "go" "" (lambda (pane)
              (picker! pane (list (cons "one" "p1"))
-               (hash "enter" (lambda (token item) (picker-close! token) (picker-close! token) (note! item)))
+               (hash "enter" (lambda (item token) (picker-close! token) (picker-close! token) (note! item)))
                #:on-close (lambda () (note! 'closed)))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -736,7 +736,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
 #[test]
 fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::{PickerFeedMode, PickerOpts, UiHost};
+    use hume_scripting::host::{PickerCommonOpts, PickerFeedMode, PickerOpts, UiHost};
 
     let mut ed = editor_from("-[a]>bc\n");
 
@@ -751,7 +751,10 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
             )],
             Vec::new(),
             PickerOpts {
-                on_close: Some(hume_scripting::Callback::for_test(SteelVal::Void)),
+                common: PickerCommonOpts {
+                    on_close: Some(hume_scripting::Callback::for_test(SteelVal::Void)),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         )

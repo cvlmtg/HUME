@@ -159,14 +159,10 @@ fn compose_gutter(
             // the text actually ends.
             //
             // A gutter cell is a glyph in a fixed-width lane with no tab
-            // stops of its own, the same convention `hume-editor`'s chrome
-            // measurements use, hence the shared constant rather than a bare
-            // `1`. For every non-tab cluster the parameter is inert.
-            let (text, text_width) = hume_rope::width::truncate_to_width(
-                text,
-                usable_per_cell as usize,
-                hume_rope::width::CHROME_TAB_WIDTH,
-            );
+            // stops of its own: chrome text, measured as the rest of the
+            // chrome is.
+            let (text, text_width) =
+                hume_rope::width::truncate_to_width(text, usable_per_cell as usize);
             let text_width = text_width as u16;
             let pad = usable_per_cell.saturating_sub(text_width);
             // `fill_glyph_run`, not a `write_cell` loop: the space glyph is a

@@ -17,7 +17,7 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
 use termina::event::KeyEvent;
 
-use hume_core::{BufferId, HostToken};
+use hume_core::{BufferId, HostToken, TruncateEnd};
 use hume_platform::path::AbsolutePath;
 use hume_rope::spanned::SpannedText;
 
@@ -234,6 +234,18 @@ pub(crate) fn usize_arg(val: SteelVal, ctx_name: &str) -> Result<usize, SteelErr
         SteelVal::IntV(n) if n >= 0 => Ok(n as usize),
         _ => steel::stop!(TypeMismatch => "{}: expected a non-negative integer", ctx_name),
     }
+}
+
+/// A [`TruncateEnd`] symbol, `'head` (drop the front) or `'tail` (drop the
+/// back): a picker's or drawer's `#:truncate`, `string-fit`'s `side`. One
+/// decoder, so every caller accepts the same spelling and raises the same
+/// error.
+pub(crate) fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelErr> {
+    symbol_enum_arg(
+        string_arg(val, ctx_name)?.as_str(),
+        ctx_name,
+        &TruncateEnd::NAMED,
+    )
 }
 
 /// A non-negative-integer argument that may be `#f` (absent).

@@ -48,6 +48,42 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
 }
 
 #[test]
+fn streamed_rows_go_through_render() {
+    let (mut ed, _tmp) = editor_with(
+        r#"
+        (define tok #f)
+        (define-typed-command! "go" "" (lambda (pane)
+          (set! tok (picker! pane '() (test-picker-keys (lambda (x) (log! 'info (to-string x))))
+                             #:render (lambda (rows budget)
+                                        (map (lambda (row) (string-append "<" (cdr row) ">")) rows))))))
+        (define-command! "spawn-it" "" (lambda ()
+          (picker-source-spawn! tok "sh" (list "-c" "printf 'a\nb\n'"))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    call(&mut ed, "spawn-it");
+
+    drain_until_picker_total(&mut ed, 2);
+    let mut ctx = RenderContext::new();
+    ed.resize_terminal(40, 12);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let rows: Vec<_> = ed
+        .state
+        .views
+        .picker
+        .read()
+        .as_ref()
+        .expect("picker showing")
+        .rows
+        .iter()
+        .map(|row| row.as_ref().map(|row| row.text().to_owned()))
+        .collect();
+    assert_eq!(rows, [Some("<a>".to_string()), Some("<b>".to_string())]);
+}
+
+#[test]
 fn nul_delimited_source_splits_on_nul() {
     let (mut ed, _tmp) = editor_with(
         r#"

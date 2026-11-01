@@ -465,6 +465,85 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
     );
 }
 
+#[test]
+fn git_modified_rows_keep_and_color_their_status() {
+    let guard = RuntimeDirs::new();
+    let sandbox = Sandbox::new();
+    git_init(sandbox.raw());
+    std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
+    git(sandbox.raw(), &["add", "a.txt"]);
+    git(sandbox.raw(), &["commit", "-q", "-m", "init"]);
+    std::fs::write(sandbox.raw().join("a.txt"), "hello\nworld\n").unwrap();
+    let long = "deeply/nested/directory/with/a/long/name.txt";
+    std::fs::create_dir_all(sandbox.raw().join("deeply/nested/directory/with/a/long")).unwrap();
+    std::fs::write(sandbox.raw().join(long), "").unwrap();
+    git(sandbox.raw(), &["add", long]);
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
+        .unwrap();
+    ed.feed_key(key('z'));
+    ed.feed_key(key('m'));
+    drain_until_picker_total(&mut ed, 2);
+    frame(&mut ed, 30, 12);
+
+    let rows: Vec<String> = ed
+        .state
+        .views
+        .picker
+        .read()
+        .as_ref()
+        .expect("picker showing")
+        .rows
+        .iter()
+        .map(|row| row.as_ref().expect("rendered").text().to_owned())
+        .collect();
+    insta::assert_snapshot!(rows.join("\n"), @r"
+     M a.txt
+    A  …th/a/long/name.txt
+    ");
+    assert_picker_styles(
+        &mut ed,
+        &[
+            (None, &[(1, 2, "diff.delta", None)][..]),
+            (None, &[(0, 1, "diff.plus", None)][..]),
+        ],
+    );
+}
+
+/// A path cut at the front never keeps part of a character: the flag two
+/// cells wide just past the cut is dropped whole.
+#[test]
+fn git_modified_rows_never_split_a_character_at_the_cut() {
+    let guard = RuntimeDirs::new();
+    let sandbox = Sandbox::new();
+    git_init(sandbox.raw());
+    let path = "dir/\u{1F1EE}\u{1F1F9}0123456789abc.txt";
+    std::fs::create_dir_all(sandbox.raw().join("dir")).unwrap();
+    std::fs::write(sandbox.raw().join(path), "").unwrap();
+    git(sandbox.raw(), &["add", path]);
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
+        .unwrap();
+    ed.feed_key(key('z'));
+    ed.feed_key(key('m'));
+    drain_until_picker_total(&mut ed, 1);
+    frame(&mut ed, 30, 12);
+
+    let guard = ed.state.views.picker.read();
+    let row = guard.as_ref().expect("picker showing").rows[0]
+        .as_ref()
+        .expect("rendered")
+        .text()
+        .to_owned();
+    insta::assert_snapshot!(row, @"A  …0123456789abc.txt");
+}
+
 // `PickerSession::seed` only clears `pending`
 // when the seed is non-empty. `git status` hasn't run yet when this picker
 // opens, so `picker!` seeds it with an empty list. If `seed` cleared

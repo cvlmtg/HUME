@@ -7,10 +7,10 @@ use crate::editor::input_stack::{
 };
 use crate::editor::input_stack::{menu, picker, prompt};
 use crate::editor::syntax::GrammarLoads;
-use hume_core::{HostToken, NonEmpty, Severity};
+use hume_core::{HostToken, NonEmpty, Severity, TruncateEnd};
 use hume_scripting::host::{
     DrawerItems, FocusedHandle, LivePickerOpts, PickerBinding, PickerFeedMode, PickerOpts,
-    PickerSourceOpts, PickerStep, PopupKind, UiHost,
+    PickerSourceOpts, PickerStep, PopupKind, RowDisplay, UiHost,
 };
 
 impl<'a> UiHost for EditorHostImpl<'a> {
@@ -125,7 +125,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn show_menu(
         &mut self,
         pane: FocusedHandle,
-        items: NonEmpty<(String, hume_scripting::Rooted)>,
+        items: NonEmpty<(RowDisplay, hume_scripting::Rooted)>,
         callback: hume_scripting::Callback,
     ) -> Result<Option<HostToken>, String> {
         self.focused(pane)?;
@@ -152,6 +152,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: DrawerItems,
         callback: hume_scripting::Callback,
         selected: usize,
+        truncate: TruncateEnd,
     ) -> Result<Option<HostToken>, String> {
         self.focused(pane)?;
         // Async staleness; see `EditorState::async_opener_stale`'s own doc.
@@ -167,7 +168,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             return Ok(None);
         }
         let rows = DrawerRows::script(items, callback, &mut self.view.registry);
-        let drawer = DrawerLayer::new(rows, selected);
+        let drawer = DrawerLayer::new(rows, truncate, selected);
         Ok(Some(self.state.open_drawer(self.view, drawer)))
     }
 
@@ -187,7 +188,6 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if let Some(r) = self.state.input.drawer_ref_with_token(token) {
             self.state.excise_layer(self.view, r);
         }
-        self.state.sync_drawer_view();
         Ok(())
     }
 
@@ -196,7 +196,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// `clamp_drawer_scroll_to_terminal` pass instead (see its own doc), so
     /// this needs no terminal geometry of its own. A buried drawer refreshes
     /// the same way: browse-while-editing is its normal state, and the model
-    /// is what `sync_drawer_view` mirrors, not its stack position. `token`
+    /// is what `Editor::sync_drawer_view` mirrors, not its stack position. `token`
     /// must match the open drawer's own; see `set_drawer_items`'s own doc
     /// for the no-op contract on a mismatch.
     fn update_drawer_list(

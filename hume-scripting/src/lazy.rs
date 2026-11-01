@@ -236,9 +236,7 @@ impl LazyRegistry {
         // that pipeline's unit.
         let id_width = rows
             .iter()
-            .map(|(id, _, _)| {
-                hume_rope::width::str_width(id, 0, hume_rope::width::CHROME_TAB_WIDTH)
-            })
+            .map(|(id, _, _)| hume_rope::width::chrome_width(id))
             .max()
             .expect("rows non-empty")
             .max(6);
@@ -331,7 +329,7 @@ impl LazyRegistry {
 ///
 /// [`format_status`]: LazyRegistry::format_status
 fn pad_to_display_width(s: &str, width: usize) -> String {
-    let w = hume_rope::width::str_width(s, 0, hume_rope::width::CHROME_TAB_WIDTH);
+    let w = hume_rope::width::chrome_width(s);
     format!("{s}{}", " ".repeat(width.saturating_sub(w)))
 }
 

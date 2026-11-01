@@ -415,33 +415,45 @@ fn custom_text(ed: &Editor, name: &str) -> String {
     text.into_owned()
 }
 
-/// The open drawer's rows. Every drawer assertion reads through this
-/// instead of reaching into `views.drawer` by hand. A lazy drawer's rows
-/// are rendered by a frame (`frame`/`render`), so read them after one.
+/// The open drawer's rows as it lists them, before they are cut to the
+/// band's width. Every drawer assertion reads through this instead of
+/// reaching into the drawer by hand. A lazy drawer's rows are rendered by a
+/// frame (`frame`/`render`), so read them after one.
 fn drawer_rows(ed: &Editor) -> Vec<String> {
-    let guard = ed.state.views.drawer.read();
-    guard
-        .as_ref()
-        .expect("drawer must be open")
-        .rows
-        .iter()
-        .map(|row| row.get().expect("every row is rendered").text().to_owned())
+    listed_drawer_rows(ed)
+        .into_iter()
+        .map(|row| row.text().to_owned())
         .collect()
 }
 
-/// A `(start, end, scope, selected_scope)` char range over a drawer row's text.
+/// [`drawer_rows`]' rows themselves.
+fn listed_drawer_rows(ed: &Editor) -> Vec<hume_ui::list_row::ListRow> {
+    ed.state
+        .input
+        .drawer()
+        .expect("drawer must be open")
+        .rows
+        .listed()
+        .into_iter()
+        .map(|row| row.expect("every row is rendered").clone())
+        .collect()
+}
+
+/// A `(start, end, scope, selected_scope)` char range over a list row's text.
 type ExpectedSpan<'a> = (usize, usize, &'a str, Option<&'a str>);
 
-/// A drawer row's own selected scope, and its spans.
+/// A list row's own selected scope, and its spans.
 type ExpectedRow<'a> = (Option<&'a str>, &'a [ExpectedSpan<'a>]);
 
-/// Asserts that the open drawer's row `i` carries `rows[i]`'s selected scope
-/// and spans, and no other span.
-fn assert_drawer_styles(ed: &mut Editor, rows: &[ExpectedRow]) {
-    let texts = drawer_rows(ed);
+/// List rows with `texts` and `rows[i]`'s selected scope and spans, their
+/// scopes interned in `registry`.
+fn expected_rows(
+    registry: &mut hume_engine::theme::ScopeRegistry,
+    texts: Vec<String>,
+    rows: &[ExpectedRow],
+) -> Vec<hume_ui::list_row::ListRow> {
     assert_eq!(texts.len(), rows.len(), "{texts:?}");
-    let registry = &mut ed.view.registry;
-    let expected: Vec<_> = texts
+    texts
         .into_iter()
         .zip(rows)
         .map(|(text, &(selected_scope, spans))| {
@@ -451,18 +463,49 @@ fn assert_drawer_styles(ed: &mut Editor, rows: &[ExpectedRow]) {
                 .collect();
             let content = hume_rope::spanned::SpannedText::new(text, spans)
                 .expect("expected spans fit their row")
-                .map_payload(|(scope, selected)| hume_ui::drawer::SpanScopes {
+                .map_payload(|(scope, selected)| hume_ui::list_row::SpanScopes {
                     scope: registry.intern_runtime(scope),
                     selected: selected.map(|selected| registry.intern_runtime(selected)),
                 });
-            let row = hume_ui::drawer::DrawerRow::styled(content);
-            std::sync::OnceLock::from(
-                row.with_selected_scope(selected_scope.map(|scope| registry.intern_runtime(scope))),
-            )
+            hume_ui::list_row::ListRow::styled(content)
+                .with_selected_scope(selected_scope.map(|scope| registry.intern_runtime(scope)))
         })
-        .collect();
-    let guard = ed.state.views.drawer.read();
-    assert_eq!(*guard.as_ref().expect("drawer must be open").rows, expected);
+        .collect()
+}
+
+/// Asserts that the open drawer's row `i` carries `rows[i]`'s selected scope
+/// and spans, and no other span.
+fn assert_drawer_styles(ed: &mut Editor, rows: &[ExpectedRow]) {
+    let listed = listed_drawer_rows(ed);
+    let texts = listed.iter().map(|row| row.text().to_owned()).collect();
+    assert_eq!(listed, expected_rows(&mut ed.view.registry, texts, rows));
+}
+
+/// Asserts that the open menu's row `i` carries `rows[i]`'s selected scope
+/// and spans, and no other span.
+fn assert_menu_styles(ed: &mut Editor, rows: &[ExpectedRow]) {
+    let menu = ed.state.input.menu().expect("menu must be open");
+    let shown: Vec<_> = menu.rows().iter().map(|row| row.main.clone()).collect();
+    let texts = shown.iter().map(|row| row.text().to_owned()).collect();
+    assert_eq!(shown, expected_rows(&mut ed.view.registry, texts, rows));
+}
+
+/// Asserts that the picker view's row `i` carries `rows[i]`'s selected scope
+/// and spans, and no other span.
+fn assert_picker_styles(ed: &mut Editor, rows: &[ExpectedRow]) {
+    let shown: Vec<_> = {
+        let guard = ed.state.views.picker.read();
+        let state = guard.as_ref().expect("picker must be showing");
+        state
+            .rows
+            .iter()
+            .map(|row| {
+                hume_ui::list_row::ListRow::clone(row.as_ref().expect("every row is rendered"))
+            })
+            .collect()
+    };
+    let texts = shown.iter().map(|row| row.text().to_owned()).collect();
+    assert_eq!(shown, expected_rows(&mut ed.view.registry, texts, rows));
 }
 
 /// The `:` line's current input, `""` when no minibuffer is open.
@@ -548,17 +591,19 @@ fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsPara
     }
 }
 
-/// Menu or drawer rows `items`, each its own payload.
+/// Menu or drawer rows `items`, plain, each its own payload.
 pub(in crate::editor) fn script_rows(
     items: &[&str],
-) -> hume_core::NonEmpty<(String, hume_scripting::Rooted)> {
+) -> hume_core::NonEmpty<(hume_scripting::host::RowDisplay, hume_scripting::Rooted)> {
     let rows = items
         .iter()
         .map(|s| {
-            (
-                s.to_string(),
-                hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV((*s).into())),
-            )
+            let display = hume_scripting::host::RowDisplay {
+                content: hume_rope::spanned::SpannedText::plain(s.to_string()),
+                selected_scope: None,
+            };
+            let payload = hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV((*s).into()));
+            (display, payload)
         })
         .collect();
     hume_core::NonEmpty::new(rows).expect("a test list has items")
@@ -566,15 +611,7 @@ pub(in crate::editor) fn script_rows(
 
 /// Drawer rows `items`, already rendered, each its own payload.
 pub(in crate::editor) fn drawer_items(items: &[&str]) -> hume_scripting::host::DrawerItems {
-    hume_scripting::host::DrawerItems::Rows(script_rows(items).map(|(text, payload)| {
-        (
-            hume_scripting::host::RowDisplay {
-                content: hume_rope::spanned::SpannedText::plain(text),
-                selected_scope: None,
-            },
-            payload,
-        )
-    }))
+    hume_scripting::host::DrawerItems::Rows(script_rows(items))
 }
 
 /// A drawer layer over plain rows `items`, each its own payload, whose
@@ -583,14 +620,13 @@ pub(in crate::editor) fn plain_drawer(
     items: &[&str],
     on_select: steel::rvals::SteelVal,
 ) -> crate::editor::input_stack::DrawerLayer {
-    crate::editor::input_stack::DrawerLayer::new(
-        crate::editor::input_stack::DrawerRows::script(
-            drawer_items(items),
-            hume_scripting::Callback::for_test(on_select),
-            &mut hume_engine::theme::ScopeRegistry::new(),
-        ),
-        0,
-    )
+    use crate::editor::input_stack::{DrawerLayer, DrawerRows};
+    let rows = DrawerRows::script(
+        drawer_items(items),
+        hume_scripting::Callback::for_test(on_select),
+        &mut hume_engine::theme::ScopeRegistry::new(),
+    );
+    DrawerLayer::new(rows, hume_core::TruncateEnd::Tail, 0)
 }
 
 /// Opens a drawer with `items` through `EditorHostImpl`'s `UiHost` impl
@@ -609,6 +645,7 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_core::HostToken
             drawer_items(items),
             hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
             0,
+            hume_core::TruncateEnd::Tail,
         )
         .unwrap()
         .expect("show-drawer-list! must open, not read as stale")
@@ -641,13 +678,13 @@ fn open_live_test_picker(ed: &mut Editor) {
     let session = picker::PickerSession::new_live(
         Vec::new(),
         hume_scripting::host::LivePickerOpts {
-            prompt: String::new(),
-            query: String::new(),
+            common: hume_scripting::host::PickerCommonOpts {
+                truncate: hume_core::TruncateEnd::Head,
+                ..Default::default()
+            },
             on_query_change: hume_scripting::Callback::for_test(steel::rvals::SteelVal::StringV(
                 "on-query-change".into(),
             )),
-            truncate: hume_core::TruncateEnd::Head,
-            on_close: None,
         },
     )
     .expect("an empty keymap binds no key twice");
@@ -1455,7 +1492,7 @@ fn plum_init_source(init_src: &str, config: Option<&str>) -> String {
 /// `on-select` with the selected item, `esc` closes it and calls `on-select`
 /// with `#f`, and `down`/`up` move the selection one row. One line, so
 /// prepending it moves no line of the source after it.
-const TEST_PICKER_KEYS: &str = r#"(define (test-picker-keys on-select) (hash "enter" (lambda (token item) (picker-close! token) (on-select item)) "esc" (lambda (token item) (picker-close! token) (on-select #f)) "down" (lambda (token item) (picker-move! token 1)) "up" (lambda (token item) (picker-move! token -1))))"#;
+const TEST_PICKER_KEYS: &str = r#"(define (test-picker-keys on-select) (hash "enter" (lambda (item token) (picker-close! token) (on-select item)) "esc" (lambda (item token) (picker-close! token) (on-select #f)) "down" (lambda (item token) (picker-move! token 1)) "up" (lambda (item token) (picker-move! token -1))))"#;
 
 /// Write `source` as `<tmp>/init.scm`, evaluate it against the real
 /// `EditorHostImpl`, and apply the effects it queued: the harness mirror of
@@ -1826,6 +1863,7 @@ mod paste;
 mod paste_text;
 mod per_pane_jumps;
 mod picker;
+mod picker_render;
 mod picker_source_steel;
 mod picker_steel;
 mod pipe;
