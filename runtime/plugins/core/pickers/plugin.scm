@@ -67,8 +67,10 @@
 
 (define (pickers/git-row row budget)
   (let ([entry (car row)])
-    (hash 'text (string-append (substring entry 0 3)
-                               (string-fit (cdr row) (max 0 (- budget 3)) 'head))
+    (hash 'text (if (< budget 4)
+                    entry
+                    (string-append (substring entry 0 3)
+                                   (string-fit (cdr row) (- budget 3) 'head)))
           'spans (append (pickers/status-span 0 (string-ref entry 0))
                          (pickers/status-span 1 (string-ref entry 1))))))
 
@@ -128,7 +130,8 @@
 (define (pickers/buffer-row row current)
   (let* ([text (car row)]
          [end (string-length text)])
-    (cond [(buffer-dirty? (cdr row))
+    (cond [(not (buffer-live? (cdr row))) text]
+          [(buffer-dirty? (cdr row))
            (hash 'text text
                  'spans (list (hash 'start-char 0 'end-char end
                                     'scope "diagnostic.warning.message-text"

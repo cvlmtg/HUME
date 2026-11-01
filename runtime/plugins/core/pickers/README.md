@@ -78,6 +78,8 @@ Rows take `:ls`'s scopes through the picker's `#:render`, `pickers/buffer-row`. 
 with unsaved changes (`buffer-dirty?`) is `diagnostic.warning.message-text`, and the whole
 row `diagnostic.warning.message` while selected. Otherwise the buffer the picker opened
 from, matched by `buffer-key`, is `markup.bold`. The row text stays the item's display.
+A buffer closed while the picker is open (`buffer-live?` is `#f`) keeps a plain row,
+since `buffer-dirty?` raises for it.
 
 ### Git-modified files
 

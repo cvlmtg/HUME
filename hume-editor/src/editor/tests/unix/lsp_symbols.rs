@@ -113,6 +113,27 @@ fn symbol_rows_style_the_kind_and_dim_the_detail() {
     );
 }
 
+/// A name with a combining mark takes more bytes than characters: the kind
+/// span starts after the name's characters.
+#[test]
+fn symbol_rows_place_their_spans_by_character() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _requests) = document_setup(
+        tmp.path(),
+        serde_json::json!([
+            {
+                "name": "cafe\u{301}", "kind": 12,
+                "range": range(0, 0, 11), "selectionRange": range(0, 3, 7)
+            }
+        ]),
+    );
+
+    call_and_pump(&mut ed, "lsp/document-symbols");
+    frame(&mut ed, 60, 20);
+
+    assert_picker_styles(&mut ed, &[(None, &[(7, 15, "type", None)][..])]);
+}
+
 #[test]
 fn accepting_a_nested_symbol_jumps_to_its_selection_range() {
     let tmp = tempfile::tempdir().unwrap();

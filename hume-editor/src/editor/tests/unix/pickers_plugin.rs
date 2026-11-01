@@ -544,6 +544,37 @@ fn git_modified_rows_never_split_a_character_at_the_cut() {
     insta::assert_snapshot!(row, @"A  …0123456789abc.txt");
 }
 
+/// A row three cells wide has no room for the status and a marked path,
+/// so the picker's own head cut takes over and marks what it drops.
+#[test]
+fn git_modified_rows_below_four_cells_take_the_pickers_own_cut() {
+    let guard = RuntimeDirs::new();
+    let sandbox = Sandbox::new();
+    git_init(sandbox.raw());
+    std::fs::write(sandbox.raw().join("a.txt"), "").unwrap();
+    git(sandbox.raw(), &["add", "a.txt"]);
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
+        .unwrap();
+    ed.feed_key(key('z'));
+    ed.feed_key(key('m'));
+    drain_until_picker_total(&mut ed, 1);
+    frame(&mut ed, 7, 12);
+
+    let guard = ed.state.views.picker.read();
+    let state = guard.as_ref().expect("picker showing");
+    assert_eq!(
+        state.rect.inset(1, 1).width,
+        3,
+        "setup: a row gets three cells"
+    );
+    let row = state.rows[0].as_ref().expect("rendered").text().to_owned();
+    insta::assert_snapshot!(row, @"…xt");
+}
+
 // `PickerSession::seed` only clears `pending`
 // when the seed is non-empty. `git status` hasn't run yet when this picker
 // opens, so `picker!` seeds it with an empty list. If `seed` cleared
@@ -1058,6 +1089,54 @@ fn buffers_picker_rows_scope_the_current_buffer_bold_and_unsaved_buffers_as_warn
             (Some(UNSAVED), &[(0, current, UNSAVED_TEXT, Some(UNSAVED))]),
         ],
     );
+}
+
+/// A buffer closed while the picker is open keeps its row, which still
+/// renders when it comes into view.
+#[test]
+fn buffers_picker_renders_the_row_of_a_buffer_closed_while_it_is_open() {
+    let guard = RuntimeDirs::new();
+    let sandbox = Sandbox::new();
+    std::fs::write(sandbox.raw().join("one.txt"), "one\n").unwrap();
+    std::fs::write(sandbox.raw().join("two.txt"), "two\n").unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(
+        &guard,
+        tmp.path(),
+        "-[h]>ello\n",
+        r#"(define (close-one!)
+  (for-each (lambda (b) (when (equal? (buffer-name b) "one.txt") (close-buffer! b)))
+            (buffers)))
+(define-typed-command! "close-one-later" "" (lambda (pane) (after! 0 close-one!)))"#,
+    );
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
+        .unwrap();
+    type_cmd(&mut ed, ":e one.txt");
+    type_cmd(&mut ed, ":e two.txt");
+    type_cmd(&mut ed, ":close-one-later");
+    ed.feed_key(key('z'));
+    ed.feed_key(key('b'));
+    settle_until_idle(&mut ed);
+    assert!(
+        !ed.state
+            .buffers
+            .iter()
+            .any(|(_, buf)| buf.display_name() == "one.txt"),
+        "setup: one.txt closed while the picker is open"
+    );
+
+    frame(&mut ed, 240, 12);
+
+    assert!(
+        ed.state.input.picker().is_some(),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    let guard = ed.state.views.picker.read();
+    let rows = &guard.as_ref().expect("picker showing").rows;
+    assert!(rows.iter().all(Option::is_some), "every row rendered");
 }
 
 #[test]
