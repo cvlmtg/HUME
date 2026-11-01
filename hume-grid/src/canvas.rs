@@ -121,18 +121,18 @@ impl<'a> Canvas<'a> {
     /// re-derive it (see this crate's own doc), so a caller that sized a
     /// field with `str_width` and then drew it by walking clusters a second,
     /// different way could reserve columns nothing was drawn in, or draw
-    /// wider than it reserved. Here the advance returned is exactly
+    /// wider than it reserved. Here the advance returned is
     /// `chrome_width(text)`, because that is the same per-cluster width
     /// this walks by: measurement and drawing cannot drift, since they are
     /// one model. Chrome has no tab
-    /// stops of its own, so a tab measures and draws as exactly one cell (a
+    /// stops of its own, so a tab measures and draws as one cell (a
     /// plain space) rather than advancing to the next multiple of some tab
     /// width. Any other cluster the terminal must not be shown as itself (a
     /// control character, or one measuring zero columns) draws as its
     /// codepoint placeholder instead, the same substitution buffer text gets
     /// from `hume-engine`'s `format::grapheme_display`. `grapheme_width`
-    /// already sized the run for that placeholder, so it spans exactly the
-    /// columns reserved for it. The placeholder is drawn as the codepoint
+    /// already sized the run for that placeholder, so it spans the columns
+    /// reserved for it. The placeholder is drawn as the codepoint
     /// rather than as a blank: a bidi override that renders like
     /// a space is the Trojan Source attack, so the cluster has to stay
     /// visibly present rather than disappear. That placeholder is drawn in

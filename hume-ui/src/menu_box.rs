@@ -171,8 +171,9 @@ pub(crate) fn window_range(
 /// This alone doesn't bound `scroll` to the list's own length. A caller
 /// whose list just shrank under an unrelated `scroll` (a diagnostics refresh
 /// dropping most of the rows) needs that bound applied separately, at read
-/// time; see `EditorState::clamp_drawer_scroll_to_terminal`'s own doc for
-/// why the two are split rather than folded into one function here.
+/// time, as `EditorState::clamp_drawer_scroll_to_terminal` does once a
+/// frame: a terminal resize shrinks the window without any write to the
+/// list.
 pub fn clamp_scroll_to_window(selected: usize, scroll: usize, visible_rows: usize) -> usize {
     if visible_rows == 0 {
         return scroll;
@@ -338,15 +339,14 @@ pub(crate) fn draw_menu_box(
     }
 
     let text_x = inner.x;
-    // Rows arrive untruncated: `outer` was sized to the widest of them but
-    // then clamped to the pane, so a row wider than the pane would otherwise
-    // be written straight over the right border and past it. Bounding every
-    // row write at the inner edge is what keeps the box a box, horizontally.
-    // The `.min` below is that same guarantee for the vertical axis: the
-    // write side is trusted to hand in a pre-windowed slice, but this is the
-    // one place that could still catch a caller that gets it wrong. One row
-    // too many would otherwise overwrite the bottom border, then paint
-    // straight past the box.
+    // The write side sizes every row to the box: `resolve_menu` cuts a
+    // menu's rows to the inner width, and a popup's text wraps to the width
+    // it was laid out for. Bounding every row write at the inner edge is the
+    // backstop for a row sized wrong, which would otherwise paint over the
+    // right border and past it. The `.min` below is the same backstop for
+    // the vertical axis: the write side hands in a pre-windowed slice, and
+    // one row too many would otherwise overwrite the bottom border, then
+    // paint past the box.
     let text_right = inner.right();
     for i in 0..rows.len().min(inner.height as usize) {
         let y = inner.y + i as u16;

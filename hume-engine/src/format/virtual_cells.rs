@@ -169,18 +169,16 @@ impl<'a> VirtualCells<'a> {
         let width = classified.width() as u8;
 
         // A cluster the terminal must not be shown as itself renders as its
-        // codepoint, exactly as buffer text does (`grapheme_display`), and
-        // occupies the columns `classify` sized for that placeholder. A tab
-        // keeps its stop expansion, drawn blank like a buffer line's tab
-        // with the indicator off: decoration providers have no per-line
-        // whitespace setting to key off.
+        // codepoint, as buffer text does (`grapheme_display`), and occupies
+        // the columns `classify` sized for that placeholder. A tab keeps its
+        // stop expansion, drawn blank like a buffer line's tab with the
+        // indicator off: decoration providers have no per-line whitespace
+        // setting to key off.
         //
-        // `set-virtual-lines!` already substitutes control characters at the
-        // Steel boundary to keep its caller's `'segments` offsets aligned,
-        // but inline-insert text does not go through that path (an LSP
-        // server's `InlayHint.label` reaches here verbatim), so the
-        // guarantee is enforced at this chokepoint rather than at each
-        // producer.
+        // No producer substitutes control characters first:
+        // `set-virtual-lines!` keeps them verbatim, and an LSP server's
+        // `InlayHint.label` reaches here as sent. This is the one place the
+        // substitution happens for every virtual-cell source.
         let content = match classified {
             Cluster::Tab { .. } => CellContent::TabFill,
             Cluster::Placeholder(p) => {

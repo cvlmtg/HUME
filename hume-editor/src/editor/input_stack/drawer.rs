@@ -414,17 +414,10 @@ impl EditorState {
     /// Clamps the open drawer's `scroll` to `len.saturating_sub(visible)`,
     /// the last window that still has content in it, against the current
     /// terminal geometry. Called from `Editor::prepare_frame` every frame,
-    /// before the drawer's rows are rendered and its view synced, the same
-    /// "re-derive from the live model every frame, regardless of what
-    /// changed" shape `Editor::sync_drawer_view` itself has, rather than at
-    /// each mutation site: a list shrinking (`set_drawer_items`) and a
-    /// terminal resize (no drawer mutation at all) both need this same
-    /// bound, and a resize is the one trigger no *write*-side clamp could
-    /// ever catch, since nothing about the drawer changes when it happens.
-    /// One read-time clamp catches both, instead of `clamp_scroll_to_window`
-    /// carrying a `len` parameter every caller has to supply. It also keeps
-    /// `set_drawer_items` from needing `EditorState` to see the terminal
-    /// height at all.
+    /// before the drawer's rows are rendered and its view synced, rather
+    /// than at each mutation site: a list shrinking (`set_drawer_items`) and
+    /// a terminal resize both need this bound, and a resize changes nothing
+    /// about the drawer, so no write-side clamp sees it.
     pub(in crate::editor) fn clamp_drawer_scroll_to_terminal(&mut self, terminal_height: u16) {
         let Some(drawer) = self.input.find_mut::<DrawerLayer>() else {
             return;

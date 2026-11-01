@@ -146,7 +146,7 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
     // `push_virtual_cells` substitutes it with its codepoint placeholder,
     // the same chokepoint every other text source goes through. A
     // char-for-char blank here would be a second, weaker copy of that
-    // policy, and one that hides exactly what the codepoint substitution
+    // policy, and one that hides what the codepoint substitution
     // exists to surface (a bidi override rendering like a space, say).
     // Leaving `text` untouched also keeps a caller's `'segments` offsets
     // (fitted to it below) aligned with it.
