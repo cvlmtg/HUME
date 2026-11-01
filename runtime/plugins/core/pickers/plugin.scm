@@ -124,12 +124,30 @@
 (define (pickers/switch-to-buffer! target)
   (when target (switch-to-buffer! (focused-pane) target)))
 
+;;; See README.md's "Buffers".
+(define (pickers/buffer-row row current)
+  (let* ([text (car row)]
+         [end (string-length text)])
+    (cond [(buffer-dirty? (cdr row))
+           (hash 'text text
+                 'spans (list (hash 'start-char 0 'end-char end
+                                    'scope "diagnostic.warning.message-text"
+                                    'selected-scope "diagnostic.warning.message"))
+                 'selected-scope "diagnostic.warning.message")]
+          [(equal? (buffer-key (cdr row)) current)
+           (hash 'text text
+                 'spans (list (hash 'start-char 0 'end-char end 'scope "markup.bold")))]
+          [else text])))
+
 (define-command! "pickers/buffers"
   "Fuzzy-pick an open buffer and switch to it."
   (lambda (pane)
-    (picker! pane (map pickers/buffer-item (buffers))
-             (call! "stdlib/picker-keymap" pickers/switch-to-buffer!)
-             #:prompt "buffers: ")))
+    (let ([current (buffer-key pane)])
+      (picker! pane (map pickers/buffer-item (buffers))
+               (call! "stdlib/picker-keymap" pickers/switch-to-buffer!)
+               #:prompt "buffers: "
+               #:render (lambda (rows budget)
+                          (map (lambda (row) (pickers/buffer-row row current)) rows))))))
 
 ;; ── Keybindings ───────────────────────────────────────────────────────────────
 

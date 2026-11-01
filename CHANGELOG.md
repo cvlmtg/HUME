@@ -14,7 +14,7 @@
 - `picker!` and `live-picker!` take a keymap in place of `on-select`, and `#:actions` is gone: a picker answers only the keys its keymap binds. Pass `(call! "stdlib/picker-keymap" on-select)` for the keys pickers had, add keys with `hash-insert`, and move cleanup that ran on `#f` into `#:on-close`.
 
 ### Panes & interface
-- `:ls` shows the buffer you are in in bold and buffers with unsaved changes in the warning color, and `core:undotree` colors its graph and its `@` and `S` markers.
+- `:ls` and `z b` show the buffer you are in in bold and buffers with unsaved changes in the warning color, and `core:undotree` colors its graph and its `@` and `S` markers.
 - `z m` colors each file's status, and keeps it visible when the path is too long for the picker.
 
 ### Plugins & scripting

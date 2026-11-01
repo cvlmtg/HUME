@@ -991,6 +991,75 @@ fn buffers_picker_lists_switches_and_disambiguates() {
     assert!(path.ends_with("a/mod.rs"), "got {path:?}");
 }
 
+/// Rows take `:ls`'s scopes: an unsaved buffer's whole row is
+/// `diagnostic.warning.message-text`, and `diagnostic.warning.message` while
+/// selected, and the current buffer's row is otherwise `markup.bold`.
+#[test]
+fn buffers_picker_rows_scope_the_current_buffer_bold_and_unsaved_buffers_as_warning() {
+    const UNSAVED_TEXT: &str = "diagnostic.warning.message-text";
+    const UNSAVED: &str = "diagnostic.warning.message";
+    let guard = RuntimeDirs::new();
+    let sandbox = Sandbox::new();
+    std::fs::write(sandbox.raw().join("one.txt"), "one\n").unwrap();
+    std::fs::write(sandbox.raw().join("two.txt"), "two\n").unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
+        .unwrap();
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+    type_cmd(&mut ed, ":e one.txt");
+    type_cmd(&mut ed, ":e two.txt");
+    let row_len = |ed: &Editor, i: usize| {
+        ed.state
+            .views
+            .picker
+            .read()
+            .as_ref()
+            .expect("picker showing")
+            .rows[i]
+            .as_ref()
+            .expect("rendered")
+            .text()
+            .chars()
+            .count()
+    };
+
+    ed.feed_key(key('z'));
+    ed.feed_key(key('b'));
+    frame(&mut ed, 240, 12);
+    let (scratch, current) = (row_len(&ed, 0), row_len(&ed, 2));
+    assert_picker_styles(
+        &mut ed,
+        &[
+            (Some(UNSAVED), &[(0, scratch, UNSAVED_TEXT, Some(UNSAVED))]),
+            (None, &[]),
+            (None, &[(0, current, "markup.bold", None)]),
+        ],
+    );
+
+    ed.feed_key(key_esc());
+    ed.settle();
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+    ed.feed_key(key('z'));
+    ed.feed_key(key('b'));
+    frame(&mut ed, 240, 12);
+    let (scratch, current) = (row_len(&ed, 0), row_len(&ed, 2));
+    assert_picker_styles(
+        &mut ed,
+        &[
+            (Some(UNSAVED), &[(0, scratch, UNSAVED_TEXT, Some(UNSAVED))]),
+            (None, &[]),
+            (Some(UNSAVED), &[(0, current, UNSAVED_TEXT, Some(UNSAVED))]),
+        ],
+    );
+}
+
 #[test]
 fn buffers_picker_esc_is_a_no_op() {
     let guard = RuntimeDirs::new();

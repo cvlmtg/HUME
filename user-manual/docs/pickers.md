@@ -21,7 +21,7 @@ A file deleted from disk without `git rm` still appears in the list, and fails t
 
 ## Picking buffers
 
-`z b` opens a picker over every open buffer. Each row shows the full path, so two open files with the same name stay distinct.
+`z b` opens a picker over every open buffer. Each row shows the full path, so two open files with the same name stay distinct. As in `:ls`, the buffer you are in shows in bold and buffers with unsaved changes in the warning color.
 
 ## Picking modified files
 
