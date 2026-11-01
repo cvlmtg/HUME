@@ -1,6 +1,6 @@
 // Editor-level tests for the tree-sitter grammar wiring that load Steel
 // plugins or run `init_scripting` end-to-end. The platform-neutral half
-// (and the shared runtime-data/fixture helpers) lives in
+// (and the shared runtime-data helpers) lives in
 // `../scripting_grammar.rs`.
 //
 // Tests that use the grammar fixture (grammar_fixture()) require the shared
@@ -14,13 +14,15 @@ use hume_platform::dirs::Dirs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::super::scripting_grammar::{
-    grammar_fixture, grammar_warnings, prelude_source, runtime_scheme_dir,
-};
+use super::super::scripting_grammar::{grammar_warnings, prelude_source, runtime_scheme_dir};
 use crate::editor::tests::before_save::warning_texts;
 use hume_scripting::ScriptingHost;
 use hume_treesitter::registry::GrammarBundle;
-use test_fixtures::require_grammars;
+use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
+
+pub(super) fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
+    (grammar_parser_path(name), grammar_query_path(name))
+}
 
 // ---------------------------------------------------------------------------
 // Steel command-mode test

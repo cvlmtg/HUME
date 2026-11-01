@@ -268,6 +268,12 @@ use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 use hume_scripting::ScriptingHost;
 
+impl RigSpec<'_> {
+    pub(in crate::editor) fn with_dirs(self, dirs: Dirs) -> Self {
+        Self { dirs, ..self }
+    }
+}
+
 /// [`RUST_ANALYZER`], then `core:stdlib` and the real `core:lsp` plugin
 /// loaded with `config` as its `#:config`: the init of every rig driving
 /// `core:lsp`.

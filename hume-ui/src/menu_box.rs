@@ -394,7 +394,7 @@ pub(crate) fn draw_menu_box(
 
 /// Paint `runs` left to right from `(x, y)`, each in its own style, stopping
 /// at `right_edge`. Every row goes through it: a list's rows
-/// ([`draw_row`](crate::list_row::draw_row)) and a popup's lines in
+/// ([`draw_row`]) and a popup's lines in
 /// [`draw_menu_box`].
 pub(crate) fn paint_styled_row<'a>(
     canvas: &mut Canvas,

@@ -1,9 +1,7 @@
 use super::*;
 use crate::null_host::RecordingInlineOutputHost;
 use crate::test_support::SteelCtxTestHarness;
-use std::fs;
 use steel::rerrs::SteelErr;
-use tempfile::TempDir;
 
 // ── run_inline_output (%run-inline-output!) ─────────────────────────────
 

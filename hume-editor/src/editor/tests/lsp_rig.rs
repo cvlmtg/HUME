@@ -97,10 +97,6 @@ impl<'a> RigSpec<'a> {
     pub(in crate::editor) fn with_init(self, init: &'a str) -> Self {
         Self { init, ..self }
     }
-
-    pub(in crate::editor) fn with_dirs(self, dirs: Dirs) -> Self {
-        Self { dirs, ..self }
-    }
 }
 
 pub(in crate::editor) struct LspRig {

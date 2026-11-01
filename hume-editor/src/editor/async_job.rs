@@ -39,7 +39,7 @@ pub(in crate::editor) enum AsyncWork {
     Names(Snapshots<Arc<[Arc<str>]>>),
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 impl PendingJob {
     pub(in crate::editor) fn process(&self) -> &SpawnedJob {
         match self {

@@ -41,14 +41,6 @@ fn viewport_top(ed: &Editor) -> (hume_rope::line::ContentLine, usize) {
     (ed.viewport().top().line, ed.viewport().top().slot)
 }
 
-fn key_page_down() -> KeyEvent {
-    KeyEvent::new(KeyCode::PageDown, Modifiers::NONE)
-}
-
-fn key_page_up() -> KeyEvent {
-    KeyEvent::new(KeyCode::PageUp, Modifiers::NONE)
-}
-
 /// Ctrl-d (half-page-down) moves cursor down by half the viewport height (12 lines).
 #[test]
 fn half_page_down_moves_half_viewport() {
@@ -85,7 +77,7 @@ fn half_page_up_moves_half_viewport() {
 #[test]
 fn page_down_moves_full_viewport() {
     let mut ed = page_test_editor();
-    ed.handle_key(key_page_down());
+    ed.handle_key(key_pagedown());
     // page = 24 lines → line 24 → char 48
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -102,9 +94,9 @@ fn page_down_moves_full_viewport() {
 fn page_up_moves_full_viewport() {
     let mut ed = page_test_editor();
     // Place cursor at line 24 first.
-    ed.handle_key(key_page_down());
+    ed.handle_key(key_pagedown());
     assert_eq!(ed.current_view().primary().head().offset(), co(48));
-    ed.handle_key(key_page_up());
+    ed.handle_key(key_pageup());
     assert_eq!(
         ed.current_view().primary().head().offset(),
         co(0),
@@ -206,7 +198,7 @@ fn wheel_and_half_page_down_agree() {
 fn page_scroll_stops_at_max_scroll_top() {
     let mut ed = page_test_editor();
     for _ in 0..5 {
-        ed.handle_key(key_page_down());
+        ed.handle_key(key_pagedown());
     }
     assert_eq!(
         ed.viewport().top().line,
@@ -229,7 +221,7 @@ fn page_down_in_a_zero_height_pane_moves_neither_cursor_nor_view() {
     ed.resize_terminal(80, 1);
     let head_before = ed.current_view().primary().head().offset();
 
-    ed.handle_key(key_page_down());
+    ed.handle_key(key_pagedown());
 
     assert_eq!(ed.current_view().primary().head().offset(), head_before);
     assert_eq!(

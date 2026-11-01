@@ -2,7 +2,7 @@
 // reparse_stale_buffers, sweep_buffers_for_grammars, the register-grammar!
 // Steel builtin, and the grammar install pipeline.
 //
-// Tests that use the grammar fixture (grammar_fixture()) require the shared
+// Tests that use the grammar fixture require the shared
 // library fetched by `scripts/fetch-test-grammars.sh`. Each calls
 // require_grammars first, which panics naming the fix if a fixture is
 // missing.
@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use super::before_save::warning_texts;
 use super::render_snapshot::render_to_styled_string;
-use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
+use test_fixtures::require_grammars;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -32,10 +32,6 @@ pub(super) fn runtime_scheme_dir() -> PathBuf {
 /// The shipped `prelude.scm`'s source.
 pub(super) fn prelude_source() -> String {
     std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap()
-}
-
-pub(super) fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
-    (grammar_parser_path(name), grammar_query_path(name))
 }
 
 // ---------------------------------------------------------------------------

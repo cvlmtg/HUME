@@ -3,6 +3,8 @@
 
 use super::*;
 use hume_platform::dirs::Dirs;
+use std::fs;
+use tempfile::TempDir;
 
 #[test]
 fn run_inline_output_succeeds_on_exit_zero_and_raises_naming_any_other_exit() {

@@ -455,6 +455,7 @@ impl EditorHost for CommandStoreHost {
 
 impl CommandStoreHost {
     /// A store holding `natives` as built-in commands.
+    #[cfg(unix)]
     pub(crate) fn with_natives(natives: &[&str]) -> Self {
         Self {
             natives: natives.iter().map(|n| fold(n).into_owned()).collect(),

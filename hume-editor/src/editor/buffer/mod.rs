@@ -543,7 +543,7 @@ impl Buffer {
     /// Unbinds the buffer from its file or label and keeps the rest of its
     /// state, for a test that needs a pathless buffer in a state only a file
     /// buffer reaches.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(in crate::editor) fn forget_file(&mut self) {
         self.origin = Origin::Scratch;
     }

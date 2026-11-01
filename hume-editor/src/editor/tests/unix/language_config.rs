@@ -4,7 +4,8 @@
 
 use super::*;
 
-use super::super::scripting_grammar::{grammar_fixture, grammar_warnings, prelude_source};
+use super::super::scripting_grammar::{grammar_warnings, prelude_source};
+use super::scripting_grammar::grammar_fixture;
 use hume_core::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_treesitter::registry::LanguageId;
 

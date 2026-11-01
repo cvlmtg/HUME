@@ -123,7 +123,7 @@ impl WrappedLines {
     pub fn texts(&self) -> Vec<String> {
         match self {
             Self::Plain(lines) => lines.clone(),
-            Self::Styled(rows) => rows.iter().map(|row| row_text(row)).collect(),
+            Self::Styled(rows) => rows.iter().map(row_text).collect(),
         }
     }
 
