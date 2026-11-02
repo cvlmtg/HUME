@@ -46,12 +46,18 @@ has nothing to match when replay answers it, so its pick is remembered by
 the value it handed back.
 
 A question can stay open across keystrokes: its place among the answers is
-reserved when it opens and filled when it closes. It belongs to the change
-only if a repeatable command's code asked it: the command itself, code its
-answers set running, or a key bound in the editing session whose command is
-repeatable. A question anything else asks while a change is recorded (a key
-bound to a command that isn't repeatable, a hook, a timer) can't be answered
-on replay, so it ends the change there.
+reserved when it opens and filled when it closes.
+
+A question belongs to the change only if a repeatable command's code asked
+it:
+
+- the command itself;
+- code its answers set running;
+- a key bound in the editing session whose command is repeatable.
+
+A question anything else asks while a change is recorded (a key bound to a
+command that isn't repeatable, a hook, a timer) can't be answered on replay,
+so it ends the change there.
 
 A list in the drawer is for moving around, not editing, so a pick from it is
 never recorded.

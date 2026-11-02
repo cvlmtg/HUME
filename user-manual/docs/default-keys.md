@@ -265,7 +265,7 @@ While a completion menu is open, typing narrows it and these keys drive it; any 
 | `Esc` | Close the menu, stay in Insert mode |
 | `Ctrl-d` / `Ctrl-u` | Scroll the documentation box down / up |
 
-A box beside the menu shows the highlighted entry's details and documentation, when it has any. The box needs room to the right or left of the menu. Without that room, or with `:set global completion-docs=false`, the details show in the menu instead.
+A box to the right or left of the menu shows the highlighted entry's details and documentation, when it has any. When there's no room for the box, or with `:set global completion-docs=false`, the details show in the menu instead.
 
 Binding one of these keys in Insert mode replaces its behaviour. A plugin command can still fall back to it; see [Editing & navigation](plugin-api.md#editing-navigation).
 

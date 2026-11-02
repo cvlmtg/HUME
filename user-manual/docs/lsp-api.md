@@ -46,7 +46,13 @@ The editor functions a plugin uses to register, configure and talk to language s
 
 A registration only says how to start a server: a language uses it once that language's server list names it. The later registration of a name wins, except that a plugin's own code (its body and hooks) never replaces or removes one made in `init.scm` or by a command you run, whatever the order. Registering a name again after unregistering it in the same run of your code starts a fresh server.
 
-A server list's `entries` are server names or `(hash 'name n 'only-features '(...))` / `(hash 'name n 'except-features '(...))`, with the feature names [Language Servers](lsp.md#choosing-which-server-a-language-uses) lists. A list from `init.scm` or a command you run beats a plugin's, whatever the order; of two lists from the same place, the later replaces the earlier. A `set-default-language-servers!` list applies only while nobody has set a `set-language-servers!` list. `#f` clears only the caller's own list, so the next lower one applies again. Both raise on an unknown feature, on both filters in one entry, or on a name listed twice.
+A server list's `entries` are server names or `(hash 'name n 'only-features '(...))` / `(hash 'name n 'except-features '(...))`, with the feature names [Language Servers](lsp.md#choosing-which-server-a-language-uses) lists. Both calls raise on an unknown feature, on both filters in one entry, or on a name listed twice.
+
+When several lists are set for a language:
+
+- A list from `init.scm` or a command you run beats a plugin's, whatever the order; of two lists from the same place, the later replaces the earlier.
+- A `set-default-language-servers!` list applies only while nobody has set a `set-language-servers!` list.
+- `#f` clears only the caller's own list, so the next lower one applies again.
 
 Registrations and lists apply once the code that made them finishes, but `lsp-server-registered?` and `lsp-language-servers` already see the ones made earlier in the same run.
 
@@ -107,9 +113,12 @@ Any plugin can call `lsp-request!`, not only `core:lsp`'s commands, to reach a s
                 (else (show-popup! pane (json-ref res "expansion"))))))))))
 ```
 
-The pattern has four steps: check with `lsp-route` that a server can take the request, send a request built from `lsp-position-params` or `lsp-primary-range-params`, transform the server's response, and hand the result to a UI or store function (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`, `apply-workspace-edit!`, …).
+The pattern has four steps:
 
-Checking the route first tells the user why nothing happened, such as "no LSP server attached to this buffer" or "rust-analyzer still starting".
+1. Check with `lsp-route` that a server can take the request. This lets you tell the user why nothing happened, such as "no LSP server attached to this buffer" or "rust-analyzer still starting".
+2. Send a request built from `lsp-position-params` or `lsp-primary-range-params`.
+3. Transform the server's response.
+4. Hand the result to a UI or store function (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`, `apply-workspace-edit!`, …).
 
 `err` and `res` are never both set. `res` is a JSON handle: read a field with `json-ref`/`json-contains?`/`json-list`, not `hash-ref`. A `null` response arrives as void, not `#f`.
 
@@ -123,13 +132,20 @@ Checking the route first tells the user why nothing happened, such as "no LSP se
 
 ### Choosing the server
 
-With several servers, the request goes to the first in the language's server order that is running and can answer it. A standard method such as `textDocument/hover` or `textDocument/formatting` is tied to its feature, named as in `set-language-servers!` (`'hover`, `'goto-definition`, `'format`, …). A server whose entry leaves that feature out, or that does not advertise it, is skipped. For any other method, name the feature with `#:feature`; giving it for a standard method is an error. `(lsp-route pane #:method "textDocument/hover")` gives the servers such a request would reach, or the reason it would reach none. The server is chosen when the request is sent.
+With several servers, the request goes to the first in the language's server order that is running and can answer it. The server is chosen when the request is sent.
+
+A standard method such as `textDocument/hover` or `textDocument/formatting` is tied to its feature, named as in `set-language-servers!` (`'hover`, `'goto-definition`, `'format`, …). A server whose entry leaves that feature out, or that does not advertise it, is skipped. For any other method, name the feature with `#:feature`; giving it for a standard method is an error.
+
+`(lsp-route pane #:method "textDocument/hover")` gives the servers such a request would reach, or the reason it would reach none.
 
 To reach one server in particular, such as the one an earlier answer came from, get its value from `(lsp-servers pane)` and pass `#:to server`. `(lsp-server-name server)` gives its name, `(lsp-capabilities server)` its capabilities, and `(lsp-capability server #:feature 'completion)` what it advertises for one feature.
 
 ### Asking every server
 
-`lsp-request-all!` sends the request to every server the method and `#:feature` allow, and calls back once all have answered. `results` holds one `(hash 'server s 'err e 'result r)` per server, in the buffer's server order. `params` is one hash for all servers, or a non-empty list of `(server . params)` pairs, each server once, giving each its own; the method and `#:feature` still decide which of them get it. It takes the same keywords as `lsp-request!` except `#:to`.
+`lsp-request-all!` sends the request to every server the method and `#:feature` allow, and calls back once all have answered. It takes the same keywords as `lsp-request!` except `#:to`.
+
+- `params` is one hash for all servers, or a non-empty list of `(server . params)` pairs, each server once, giving each its own; the method and `#:feature` still decide which of them get it.
+- `results` holds one `(hash 'server s 'err e 'result r)` per server, in the buffer's server order.
 
 ### Keywords
 

@@ -36,13 +36,14 @@ the installed copy again, since an install unregisters the name first.
 ## Install folders and receipts
 
 Each install of a server gets a new folder, `<data>/servers/<name>/<N>/`, numbered after
-every other install of that server. The receipt inside it, `receipt.scm`, is the commit
-point. A server's current install is its newest folder with a readable receipt, so an
-install that failed or was stopped before its receipt is never current, whatever its
-number, and the installed server stays current until a new install commits. The new install
-is built at its final path rather than moved in from elsewhere, because a `pip` venv
-records absolute paths. An entry of `servers/<name>/` whose name is not a number is not an
-install.
+every other install of that server. An entry of `servers/<name>/` whose name is not a
+number is not an install. The new install is built at its final path rather than moved in
+from elsewhere, because a `pip` venv records absolute paths.
+
+The receipt inside the folder, `receipt.scm`, is the commit point. A server's current
+install is its newest folder with a readable receipt, so an install that failed or was
+stopped before its receipt is never current, whatever its number, and the installed server
+stays current until a new install commits.
 
 The receipt is pure data:
 
@@ -60,13 +61,18 @@ reads those.
 ## Registration scan
 
 `lsp-install/register-installed-servers!` (`register.scm`) reads `<data>/servers/` and
-registers every installed server from its current install. It is passive: no subprocess, no
-network, no lock, nothing written to disk. It runs when `plugin.scm` loads, after every
-install attempt, and when `:lsp-install` finds a server up to date, and it is the only
-registrar for managed servers. It lists subdirectories only, so the lock file is never read
-as a server. Two cases are logged as warnings and skipped: a directory with no current
-install (an interrupted first install) and a directory whose name has no `registrations/`
-file (an orphan, removed with `:lsp-uninstall`).
+registers every installed server from its current install. It is the only registrar for
+managed servers, and it is passive: no subprocess, no network, no lock, nothing written to
+disk. It runs:
+
+- when `plugin.scm` loads,
+- after every install attempt,
+- when `:lsp-install` finds a server up to date.
+
+It lists subdirectories only, so the lock file is never read as a server. Two cases are
+logged as warnings and skipped: a directory with no current install (an interrupted first
+install) and a directory whose name has no `registrations/` file (an orphan, removed with
+`:lsp-uninstall`).
 
 A name that already has a registration is skipped, which lets a rescan leave a user's own
 `register-lsp-server!` under that name alone. `lsp-server-registered?` reads through the
@@ -80,13 +86,16 @@ server registers, and delivered as both `#:init-options` and `#:settings`. A rec
 
 After the registrations, the scan hands every language in `language-servers.scm` its whole
 list, filters included, through `set-default-language-servers!`, whether or not any server
-in it is installed. A name that is not registered matches nothing until it registers, and
-the Rust side attaches every already-open buffer of the language when it does. A default
-applies only while no `set-language-servers!` list is set for the language, even when the
-scan runs from `:lsp-install` on the user's behalf, so a list the user set wins and may name
-any registered server. A server the user registered by hand serves a language only when a
-list names it. The last write to a language's default list wins, so only one plugin should
-write defaults for a language.
+in it is installed.
+
+- A name that is not registered matches nothing until it registers, and the Rust side
+  attaches every already-open buffer of the language when it does.
+- A default applies only while no `set-language-servers!` list is set for the language,
+  even when the scan runs from `:lsp-install` on the user's behalf. A list the user set
+  wins and may name any registered server.
+- A server the user registered by hand serves a language only when a list names it.
+- The last write to a language's default list wins, so only one plugin should write
+  defaults for a language.
 
 ## Install lock
 

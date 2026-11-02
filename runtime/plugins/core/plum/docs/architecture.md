@@ -28,8 +28,16 @@ source.
 | `plum/github-url` | The one GitHub URL shape |
 | `plum/install-repo!` | The plugin and theme install (see [`repos.md`](repos.md#pinned-plugins)) |
 | `plum/git-sync!` | The checkout behind both install and update (see [`repos.md`](repos.md#pinned-plugins)) |
-| `plum/batch-run!` | Runs a command's items one by one, collecting failures rather than aborting, and returns how many succeeded. It then logs a summary built with its `verb` argument and each failure, or the caller's `#:none` message when there are no items. `#:skip`, given an item and the items that failed so far, returns why to skip it, or `#f`; a skipped item counts as failed. `#:progress` names the line printed as each item starts (see [Output model](#output-model)) |
+| `plum/batch-run!` | Runs a command's items one by one, collecting failures rather than aborting (see below) |
 | `plum/two-level-repos` | The `<root>/<user>/<repo>/` walk behind plugin and theme-repo discovery |
+
+`plum/batch-run!` returns how many items succeeded. It then logs a summary built with its
+`verb` argument and each failure, or the caller's `#:none` message when there are no items.
+Its keyword arguments:
+
+- `#:skip`, given an item and the items that failed so far, returns why to skip it, or `#f`.
+  A skipped item counts as failed.
+- `#:progress` names the line printed as each item starts (see [Output model](#output-model)).
 
 Directory listing, filesystem cleanup, list search, downloads, digests and archive
 extraction come from `core:stdlib` through `call!`.
@@ -51,15 +59,18 @@ the editor on a keypress once the run finishes.
 
 While one of these commands runs, the user is watching the terminal screen it switched to,
 not HUME's. `log!` reports to HUME's statusline and `:messages`, which the user sees only
-once back in the editor, so a line meant for the run's own screen goes through `print!`.
-`plum/batch-run!` prints `PLUM: <progress> <item>` as each item starts, when its caller
-passes `#:progress`, as the commands above do, and logs its summary and each failure for
-the user to read back in the editor. A grammar download and unpack print nothing else, so
-fetching the release index prints its own line, and `plum-install-grammar` prints an
-"installed" line only when its whole plan installed. `plum-install-theme` prints its own
-"installing" and "installed" lines. `print!`
-writes only inside an `#:inline-output` command, so `plum-cleanup-plugins` and
-`plum-cleanup-grammars`, which finish at once and never leave the editor, pass no
+once back in the editor, so a line meant for the run's own screen goes through `print!`:
+
+- `plum/batch-run!` prints `PLUM: <progress> <item>` as each item starts, when its caller
+  passes `#:progress`, as the commands above do. It logs its summary and each failure for the
+  user to read back in the editor.
+- A grammar download and unpack print nothing else, so fetching the release index prints its
+  own line, and `plum-install-grammar` prints an "installed" line only when its whole plan
+  installed.
+- `plum-install-theme` prints its own "installing" and "installed" lines.
+
+`print!` writes only inside an `#:inline-output` command. `plum-cleanup-plugins` and
+`plum-cleanup-grammars` finish at once and never leave the editor, so they pass no
 `#:progress` and report only through their summary `log!` line.
 
 The list commands (`plum-list-plugins`, `plum-list-grammars`, `plum-list-themes`) build

@@ -73,16 +73,19 @@ editor's copy is the source of truth, and the editor reports every change.
 
 `textDocument/didOpen` sends the full text once. After that,
 `textDocument/didChange` follows the sync form the server asked for during
-the handshake. Most servers ask for *incremental* sync: small
-range-and-replacement events rather than the whole file again. Each event in
-a batch is addressed against the document as it stands after the previous
-events in that batch, not against the original text (worked through below).
-A server that asks for *full* sync gets no ranges at all: every edit since
-the last flush is collapsed into one event carrying the whole document,
-because a ranged event would put its copy out of step from the first edit. A
-server that asks for no sync gets no `didChange` at all. Every message
-carries a version number, so an answer computed for an older version can be
-recognized and discarded.
+the handshake:
+
+- **Incremental**, what most servers ask for: small range-and-replacement
+  events rather than the whole file again. Each event in a batch is addressed
+  against the document as the previous events in that batch left it, not
+  against the original text (worked through below).
+- **Full**: every edit since the last flush is collapsed into one event
+  carrying the whole document, with no ranges, because a ranged event would
+  put the server's copy out of step from the first edit.
+- **None**: no `didChange` at all.
+
+Every message carries a version number, so an answer computed for an older
+version can be recognized and discarded.
 
 ## Translating edits, in both directions
 
@@ -132,10 +135,10 @@ them whenever it has them, and the editor shows the latest set from each
 server. Some servers only answer when asked. HUME asks a server that offers
 such answers and has not pushed anything yet: once per version of the text,
 again after a save, and again when the server says its diagnostics changed.
-HUME
-shows diagnostics as gutter signs, underlines, an end-of-line summary and an
-error and warning count in the statusline; `g n` / `g p` jump between them
-and `:diagnostics` lists them all.
+
+HUME shows diagnostics as gutter signs, underlines, an end-of-line summary
+and an error and warning count in the statusline; `g n` / `g p` jump between
+them and `:diagnostics` lists them all.
 
 Everything else is *pulled*: the editor asks, the server answers once.
 
@@ -173,7 +176,9 @@ HUME's core doesn't know what "hover" or "rename" *is*. It provides a general
 LSP platform: spawn servers, speak the wire protocol, keep documents in sync,
 store and remap diagnostics, and filter completion candidates as the user
 types. These are fast primitives that run on every keystroke or every
-message. Every feature the user sees (what hover shows, how goto results are
+message.
+
+Every feature the user sees (what hover shows, how goto results are
 presented, what rename's prompt looks like, how code actions are offered) is
 ordinary plugin code, following the same activation and hook model as any
 other plugin (see [Plugin Architecture](plugin-architecture.md)). A feature
@@ -183,19 +188,18 @@ response, call a UI primitive.
 Keeping the core feature-blind means a new feature, or a variation on an
 existing one, is a plugin change rather than a recompile. It also means the
 built-in features have no access that a user's config or a third-party
-plugin lacks. Only the work that runs on every keystroke (parsing the wire,
-keeping the server's copy current, filtering completion candidates) lives in
-the core; everything else lives where it is cheap to change.
+plugin lacks.
 
 A server is registered by hand or through the bundled install catalog
 (`:lsp-install`), and registering it only says how to start it. Each language
 has a list of the servers it uses, and a buffer attaches to every server on
-its language's list. HUME runs one instance per server and workspace root,
-finding the root by walking up from the file to the nearest directory holding
-a marker the *language* names (`Cargo.toml` for Rust, say), or using the
-working directory when there is none. Two languages that share a server, such
-as TypeScript and TSX, share its instance whenever their files resolve to the
-same root.
+its language's list.
+
+HUME runs one instance per server and workspace root. It finds the root by
+walking up from the file to the nearest directory holding a marker the
+*language* names (`Cargo.toml` for Rust, say), or uses the working directory
+when there is none. Two languages that share a server, such as TypeScript
+and TSX, share its instance whenever their files resolve to the same root.
 
 Putting the language's list in charge, rather than the registration, is what
 lets one language use several servers: a server for the code itself and a
@@ -213,15 +217,18 @@ its deadline, sends it, and later runs the callback with the answer. The
 plugin never blocks waiting. Two hooks, `on-lsp-attach` and `on-lsp-detach`,
 fire when a server starts or stops serving a buffer.
 
-Three options keep stale answers from doing damage. If the document has moved
-on by the time a response arrives, the callback can be skipped instead of
-acting on positions that point at other text. A plugin can ask the core to
-track a position through edits, so the request asks about where the symbol is
-now and the callback acts on the right place. And a plugin can supersede its
-own previous request instead of piling both up, which is how completion
-avoids a backlog when further typing forces a fresh request. (The common case
-needs no request at all: the core re-filters the candidates it already has as
-the user types.)
+Three options keep stale answers from doing damage:
+
+- **Skip if stale.** If the document has moved on by the time a response
+  arrives, the callback is skipped instead of acting on positions that point
+  at other text.
+- **Track a position.** The core carries a position through edits, so the
+  request asks about where the symbol is now and the callback acts on the
+  right place.
+- **Supersede.** A new request replaces the plugin's previous one instead of
+  piling up behind it. This is how completion avoids a backlog when further
+  typing forces a fresh request. (The common case needs no request at all:
+  the core re-filters the candidates it already has as the user types.)
 
 Traffic the server starts reaches plugins in different ways:
 
@@ -246,10 +253,11 @@ wrong. When an edit in a listed file could move a listed line (it changes the
 line count, touches a listed line, or adds or removes lines above one), the
 LSP plugin marks the list stale and, once typing pauses, asks the server
 again. The request's own position was tracked through the edits, so the new
-question is about the symbol where it is now. An open completion menu, by
-contrast, needs no new request: it stays open when text elsewhere in the
-buffer changes, and still accepts at the cursor, because the position it is
-anchored to is carried through the change.
+question is about the symbol where it is now.
+
+An open completion menu, by contrast, needs no new request: it stays open
+when text elsewhere in the buffer changes, and still accepts at the cursor,
+because the position it is anchored to is carried through the change.
 
 ## End-to-end: opening a Rust file
 

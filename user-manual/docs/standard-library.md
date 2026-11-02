@@ -118,4 +118,6 @@ The keymap's keys:
 - `Enter`/`Ctrl-o` close it and call `handler` with the selected item.
 - `Ctrl-t`, `Ctrl-v` and `Ctrl-s` do the same in a new tab, a vertical split and a horizontal split.
 
-`handler` takes one argument, the selected item's payload, or `#f` when nothing matches. `picker-keymap` returns a hash, so a plugin changes or adds a key with `hash-insert` (see [Custom pickers](writing-plugins.md#custom-pickers)). `with-tab`/`with-vsplit`/`with-split` are its building blocks, for a binding of your own that opens the item somewhere else. With a `#f` payload they open nothing and still call `handler`. When the focused pane is too small to split, `with-vsplit` and `with-split` leave it as it is and don't call `handler`.
+`handler` takes one argument, the selected item's payload, or `#f` when nothing matches. `picker-keymap` returns a hash, so a plugin changes or adds a key with `hash-insert` (see [Custom pickers](writing-plugins.md#custom-pickers)).
+
+`with-tab`/`with-vsplit`/`with-split` are its building blocks, for a binding of your own that opens the item somewhere else. With a `#f` payload they open nothing and still call `handler`. When the focused pane is too small to split, `with-vsplit` and `with-split` leave it as it is and don't call `handler`.

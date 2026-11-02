@@ -14,13 +14,14 @@ diagnostic starting strictly after the cursor, or the last starting strictly bef
 and wrap around when none qualifies. A cursor inside a diagnostic therefore moves past it.
 The jump also pops the target's full message in a dismiss-on-any-key overlay.
 
-`lsp/diag-jump-to!` passes the diagnostic's own pane to `goto-location!` as the target,
-with the diagnostic's `'start-char` as the `'char-offset`. The invocation pane is always
-`(focused-pane)`. The drawer stays open across a buffer switch (see below), so a row picked
-there must jump into the buffer it was listed for, not whichever buffer is focused, and the
-pane that opened the drawer may show a different buffer by then. The `g n`/`g p` popup
-opens on `(focused-pane)` for the same reason: the jump has already navigated there, so
-that is the pane showing the target.
+`lsp/diag-jump-to!` passes `goto-location!` the diagnostic's own pane as the target, with
+its `'start-char` as the `'char-offset`, and `(focused-pane)` as the invocation pane. The
+drawer stays open across a buffer switch, so a row picked there must jump into the buffer
+it was listed for, not whichever buffer is focused, and the pane that opened the drawer may
+show a different buffer by then.
+
+The `g n`/`g p` popup also opens on `(focused-pane)`: the jump has already navigated there,
+so that is the pane showing the target.
 
 ## Diagnostics drawer
 
@@ -115,23 +116,25 @@ activated needs no setup; `on-buffer-close` drops the record.
 | `on-lsp-detach` | Buffer only | Refreshes, or clears the hints of a buffer no pane shows |
 | `on-text-changed` | Buffer only | Refreshes. It covers undo, redo and edits that do not scroll, so a hint dropped with its anchor character returns when the edit is undone |
 
-Every trigger hands the refresh its value as it came, and a trigger for a buffer whose
-hints are off, or that no pane shows, schedules nothing: showing the buffer changes a
-viewport, which refreshes it. The refresh resolves a pane again with `lsp/resolve-pane` when
-its debounce fires, not when it is scheduled: the pane that asked may have switched buffer
-or closed in the meantime, and another pane showing the buffer serves instead.
-`lsp/resolve-pane` is `(car (buffer-panes pane))`, or `#f` when no pane shows the buffer
-or the buffer has closed, so it never raises. `buffer-panes` answers the given pane when
-it still shows its buffer, otherwise the focused pane, then the rest of the active tab,
-then other tabs (see the
-[core plugins index](../../README.md#pane-values-vs-pane-less-values)).
+Every trigger hands the refresh its value as it came. A trigger for a buffer whose hints
+are off, or that no pane shows, schedules nothing: showing the buffer changes a viewport,
+which refreshes it.
 
 Refreshes are debounced by 200 ms per buffer (keyed, not global), so a server's refresh
 reaching two buffers cannot have the second buffer's call cancel the first's pending
-refresh. A refresh whose request is sent while the same buffer's previous one is still
-unanswered cancels it, so a slow server is never left with a queue of stale requests. A refresh asks every server of the buffer that offers inlay hints and merges their
-hints into one set. It sends nothing when the buffer's hints are off or no pane shows the buffer by the time
-the debounce fires, and clears the buffer's hints when no server offers them.
+refresh. When the debounce fires, the refresh:
+
+1. Resolves a pane again with `lsp/resolve-pane`, since the pane that asked may have
+   switched buffer or closed in the meantime and another pane showing the buffer serves
+   instead. `lsp/resolve-pane` is `(car (buffer-panes pane))`, or `#f` when no pane shows
+   the buffer or the buffer has closed, so it never raises. `buffer-panes` answers the
+   given pane when it still shows its buffer, otherwise the focused pane, then the rest of
+   the active tab, then other tabs (see the
+   [core plugins index](../../README.md#pane-values-vs-pane-less-values)).
+2. Sends nothing when the buffer's hints are off or no pane shows the buffer.
+3. Otherwise asks every server of the buffer that offers inlay hints, and merges their
+   hints into one set. Sending cancels the same buffer's previous request if it is still
+   unanswered, so a slow server is never left with a queue of stale requests.
 
 On the response:
 
@@ -146,7 +149,6 @@ On the response:
   says there are none.
 
 Toggling a buffer off clears this plugin's hint source for it, and toggling it on
-refreshes it. Other buffers are untouched. Detaching a server refreshes that buffer, so the
-other servers' hints stay; a buffer no pane shows has its hints cleared instead, and they
-return when it is shown again. The hint store is per source, so another plugin's hints are
-unaffected.
+refreshes it. Other buffers are untouched. A detach refreshes the buffer, so the other
+servers' hints stay; the hints of a buffer no pane shows return when it is shown again. The
+hint store is per source, so another plugin's hints are unaffected.

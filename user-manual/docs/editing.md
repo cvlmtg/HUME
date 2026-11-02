@@ -69,7 +69,13 @@ On a cursor that sits on a bracket or quote, typing either half of a pair writes
 | `G A` | Add the count to the first selection's number or date, twice the count to the second's, and so on |
 | `G S` | Subtract in the same way as `G A` |
 
-A cursor changes the number or date it is on, or else the first one after it on the same line. A wider selection changes the one at its start, or else the first one inside it. The new value is selected (for a date or time, the part that changed), so pressing the key again keeps changing it. Selections with nothing to change are left alone.
+Which number or date changes:
+
+- A cursor changes the one it is on, or else the first one after it on the same line.
+- A wider selection changes the one at its start, or else the first one inside it.
+- Selections with nothing to change are left alone.
+
+The new value is selected (for a date or time, the part that changed), so pressing the key again keeps changing it.
 
 `G A` numbers a list: select the lines, split them into one selection each with `S`, and three lines of `0` become `1`, `2` and `3`. Selections with nothing to change don't count towards the sequence.
 
@@ -103,14 +109,21 @@ When no selection has anything to change, or a result doesn't fit (past the larg
 
 `J` replaces each line break with one space and drops the next line's indentation, so joined code or prose has no gap in the middle. When the next line is empty or only whitespace, no space is added. Joining several lines at once leaves a cursor on each inserted space.
 
-`&` lines up your selections, using the primary selection's line as the starting point. It inserts spaces at the left edge of each selection to reach that column. If another line needs more room, the column widens for all of them, so the primary selection can shift right too. Where a selection already sits too far right, the run of spaces or tabs before it shrinks instead (never below one). Multi-line selections are left alone.
+`&` lines up your selections in one column, using the primary selection's line as the starting point:
+
+- It inserts spaces at the left edge of each selection to reach that column.
+- If another line needs more room, the column widens for all of them, so the primary selection can shift right too.
+- Where a selection already sits too far right, the run of spaces or tabs before it shrinks instead (never below one).
+- Multi-line selections are left alone.
 
 Which end of the selection is the anchor decides whether it aligns to the left or the right; `Ctrl-e` swaps anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection).
 
 `>`/`<` shift every line touched by a selection by one indent level, using the buffer's `indent-width` and `indent-style` (see [Buffer options](settings.md#buffer-options)). A count shifts by that many levels at once (`3>`).
 
 ::: details Blank lines, mixed indentation and narrow indents
-Blank and whitespace-only lines in the selection are left alone, so they never pick up trailing whitespace. Each touched line's whole indent is rewritten at the new width in the current `indent-style`, so `<` right after `>` restores the previous indent width. A mixed tabs-and-spaces indent comes back rewritten in `indent-style`, not character for character. `<` on an indent narrower than one level moves the line to the left margin instead of going negative, so a following `>` lands on a full level, not where the first `<` started.
+- Blank and whitespace-only lines in the selection are left alone, so they never pick up trailing whitespace.
+- Each touched line's whole indent is rewritten at the new width in the current `indent-style`, so `<` right after `>` restores the previous indent width. A mixed tabs-and-spaces indent comes back rewritten in `indent-style`, not character for character.
+- `<` on an indent narrower than one level moves the line to the left margin instead of going negative, so a following `>` lands on a full level, not where the first `<` started.
 :::
 
 ## Indentation
@@ -131,13 +144,19 @@ New indentation follows the buffer's `indent-width` and `indent-style`, as `>` a
 
 On a cursor, or a selection within one line, `G G` puts the language's line comment in front of the line's text. In a language with only block comments, it wraps the line's text in one instead.
 
-A selection over several lines is wrapped in one block comment, from its first non-blank character to its last. If that text already contains the end of a block comment, wrapping it would end the comment early, so its lines get line comments instead; a language with only block comments then leaves the text alone and `G G` says why. In a language with only line comments, each line gets one, all at the same column, and blank lines are left alone. `:set global comment-prefer-line=true` gives several lines line comments even where the language has block comments.
+A selection over several lines is wrapped in one block comment, from its first non-blank character to its last. Its lines get line comments instead:
+
+- in a language with only line comments;
+- with `:set global comment-prefer-line=true`, even where the language has block comments;
+- when the text already contains the end of a block comment, since wrapping it would end the comment early. A language with only block comments then leaves the text alone and `G G` says why.
+
+Line comments on several lines all start at the same column, and blank lines are left alone.
 
 `G G` on a commented line removes the comment, whichever kind it is: a line comment with the space after it, or a block comment's start and end with the space inside each.
 
 With several selections, the primary selection decides, or the first selection with text when the primary's lines are all blank. If its lines are commented, `G G` uncomments every selection. Otherwise it comments every selection, including lines that already have a comment.
 
-Inside an embedded block, such as a fenced code block in Markdown, the block's own language decides the comment. To change a language's comments, see `configure-language!` in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
+Inside an embedded block, such as a fenced code block in Markdown, the block's own language decides the comment. To change a language's comments, see `configure-language!` in [Language settings](syntax-highlighting.md#language-settings).
 
 ## Shell commands
 
@@ -161,7 +180,12 @@ Commands run with `sh -c`, in HUME's working directory. Set the `shell` option t
 
 ### While a command runs
 
-`|` runs its commands in the background. You can keep working in other buffers and panes, and move around in this one, but this buffer's text can't change until they finish. A buffer runs one `|` at a time. If the commands take more than a moment, the statusline shows the command and how many of its processes have finished, while you are in that buffer: ``running `sort` 3/10``. `Ctrl-c` in Normal mode stops them and changes nothing. When they finish, their output replaces the selections `|` ran on, even if you have moved since or the pane now shows another buffer.
+`|` runs its commands in the background. You can keep working in other buffers and panes, and move around in this one, but this buffer's text can't change until they finish.
+
+- A buffer runs one `|` at a time.
+- If the commands take more than a moment, the statusline shows the command and how many of its processes have finished, while you are in that buffer: ``running `sort` 3/10``.
+- `Ctrl-c` in Normal mode stops them and changes nothing.
+- When they finish, their output replaces the selections `|` ran on, even if you have moved since or the pane now shows another buffer.
 
 ::: details What is refused while a command runs
 - Editing, undo, paste and entering Insert mode in that buffer, reloading it after it changes on disk, and changes from plugins and language servers are refused with "`name` is busy: a pipe is running", naming the buffer.
@@ -169,7 +193,9 @@ Commands run with `sh -c`, in HUME's working directory. Set the `shell` option t
 - A failure or a stop is reported with the buffer's name, since you may be somewhere else when it happens.
 :::
 
-`Ctrl-|` waits for its commands instead. So does `|` while you record a macro, and when `.` or a macro runs a command again, because the keys after it need the output. While the editor waits, `Ctrl-c` stops the commands and changes nothing, and other keys you press take effect once the commands finish. When `.` or a macro runs a command again, the statusline doesn't show it, but `Ctrl-c` still stops it, along with the rest of the `.` or the macro. A command that fails doesn't stop the rest.
+`Ctrl-|` waits for its commands instead. So does `|` while you record a macro, and when `.` or a macro runs a command again, because the keys after it need the output.
+
+While the editor waits, `Ctrl-c` stops the commands and changes nothing, and other keys you press take effect once the commands finish. A command run again by `.` or a macro doesn't show on the statusline, but `Ctrl-c` still stops it, along with the rest of the `.` or the macro. A command that fails doesn't stop the rest.
 
 ### The command prompt
 
@@ -181,7 +207,11 @@ The prompt edits like the [`:` prompt](default-keys.md#command-mode) and keeps i
 A completed name with spaces or other special characters is escaped or quoted the way the shell set by the `shell` option expects.
 
 ::: details Shells and quoting
-Completion reads and writes words the way these shells do: `sh`, `bash`, `zsh`, `dash`, `ksh`, `ash`, `mksh`, `yash`, `posh`, `busybox`, `fish`, PowerShell (`pwsh`, `powershell`) and `cmd`. A word you started in quotes, like `cat "my no`, completes inside them. A completed name closes its quote, a directory's too, and `Tab` again after a closed word completes inside it: `cat "my dir/"` then `Tab` gives `cat "my dir/notes.txt"`. Shell keywords such as `if` and `then`, `NAME=value` before a command, and backticks are not read, so the word after them completes as a path.
+Completion reads and writes words the way these shells do: `sh`, `bash`, `zsh`, `dash`, `ksh`, `ash`, `mksh`, `yash`, `posh`, `busybox`, `fish`, PowerShell (`pwsh`, `powershell`) and `cmd`.
+
+A word you started in quotes, like `cat "my no`, completes inside them. A completed name closes its quote, a directory's too, and `Tab` again after a closed word completes inside it: `cat "my dir/"` then `Tab` gives `cat "my dir/notes.txt"`.
+
+Shell keywords such as `if` and `then`, `NAME=value` before a command, and backticks are not read, so the word after them completes as a path.
 
 For any other shell, `Tab` completes nothing and the message line says so the first time. A plugin can teach HUME a shell's rules with [`register-shell-dialect!`](writing-plugins.md#shell-dialects).
 :::

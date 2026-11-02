@@ -24,19 +24,26 @@ an existing install is the repair and upgrade path too.
 
 A failure in step 3 or 4, or in writing the receipt, deletes the new folder, and
 `servers/<name>/` when nothing else is in it, before the error is raised. A delete that
-fails is logged with the folder's path, and the original error is raised either way. The
-command registers the installed servers whether or not the install succeeded, so a kept
-server starts again, and when the install did not succeed and the server has a current
-install it logs that the installed version was kept.
+fails is logged with the folder's path, and the original error is raised either way.
 
-A first install runs these steps from `:lsp-install` itself. A reinstall over a running
-client cannot: the client has to stop before the install touches its files. When the
-server has a current install, `:lsp-install` unregisters it at once, with no blocker check,
-and runs the steps on the next tick through `call!` to `lsp-install/install-server`, an
-`#:inline-output` command: a timer runs outside `:lsp-install`'s own output screen, where
-running an installer would raise. Step 2 then repeats the unregister. A reinstall that
-step 1 blocks has therefore already unregistered the server, and the scan that follows
-every attempt registers the kept install again.
+The command registers the installed servers whether or not the install succeeded, so a kept
+server starts again. When the install did not succeed and the server has a current install,
+it logs that the installed version was kept.
+
+### Reinstalling over a running client
+
+A first install runs these steps from `:lsp-install` itself. A reinstall cannot: the
+client has to stop before the install touches its files. When the server has a current
+install, `:lsp-install`:
+
+1. Unregisters it at once, with no blocker check.
+2. Runs the steps on the next tick through `call!` to `lsp-install/install-server`, an
+   `#:inline-output` command. A timer runs outside `:lsp-install`'s own output screen,
+   where running an installer would raise.
+
+The install's own unregister step then runs again. A reinstall that the blocker check
+stops has therefore already unregistered the server, and the scan that follows every
+attempt registers the kept install again.
 
 ### Choosing the source
 
@@ -103,49 +110,74 @@ is what governs it.
 
 After the package manager runs, the binary must exist under the kind's bin directory
 (relative to the install folder), or the install fails. Every kind shares one check,
-`lsp-install/managed-bin!`, which takes the bin directory: `node_modules/.bin` for npm,
-`venv/Scripts` (Windows) or `venv/bin` for pip, and `bin` for the others. On Windows the
-expected file gets a suffix: `.cmd` for npm (invoked as `npm.cmd`; a `.cmd` or `.bat`
-program runs through `cmd.exe`), `.bat` for gem (invoked as `gem.cmd`), and `.exe` for the
-others. The cargo path passes `--locked`, the closest analog to the sha256 pin that github
-assets get: it builds with upstream's published `Cargo.lock`.
+`lsp-install/managed-bin!`, which takes the bin directory and the suffix the expected file
+gets on Windows:
+
+| Kind | Bin directory | Windows suffix |
+|---|---|---|
+| npm | `node_modules/.bin` | `.cmd` |
+| pip | `venv/bin` (`venv/Scripts` on Windows) | `.exe` |
+| gem | `bin` | `.bat` |
+| cargo, go, dotnet | `bin` | `.exe` |
+
+On Windows npm and gem themselves are invoked as `npm.cmd` and `gem.cmd`, since a `.cmd`
+or `.bat` program runs through `cmd.exe`.
+
+The cargo path passes `--locked`, the closest analog to the sha256 pin that github assets
+get: it builds with upstream's published `Cargo.lock`.
 
 ## Commands
 
-**`:lsp-install`** takes a seeded server name or a language. A name that is a seeded server
-installs that server; anything else is a language, installing its first server, and no
-argument means the buffer's language. A name that is both a server and a language must be
-its own language's first server, so the two readings agree. Completion offers every server
-with an install source, including one that cannot be installed here (`:lsp-install` then
-reports why), and every seeded language. If the current install's receipt version already
-matches the seeded one it logs "up to date" and only runs the scan. Otherwise it installs
-under the lock, as under [Installing a server](#installing-a-server), and then runs the
-scan outside the lock, so a failure in the scan surfaces as its own error instead of being
-reported as a failed install.
+### `:lsp-install`
 
-**`:lsp-uninstall`** takes a user-typed server name straight into a path join, so it first
-validates it with `safe-path-segment?`. `:lsp-install` needs no such check, since the
-catalog lookup (`data-file`) rejects a name that is not a safe segment. An invalid name
-logs `'error`, as any typed argument the command can't act on does, so a path-traversal
-attempt such as `"../plugins"` stays in `:messages` (see the index's
-[Log severity](../../README.md#log-severity)). The command unregisters the server, then
-removes its directory. An orphan (on disk, with no `registrations/` file) skips the
-unregister step. The removal is deferred with `after! 0` so the unregister has shut down
-any running client before the lock is taken. Its completion lists every server with a
-directory on disk, seeded or orphan, because the on-disk check decides what there is to
-remove.
+Takes a seeded server name or a language. A name that is a seeded server installs that
+server; anything else is a language, installing its first server, and no argument means the
+buffer's language. A name that is both a server and a language must be its own language's
+first server, so the two readings agree.
 
-**`:lsp-catalog`** shows one `stdlib/report-section` in `[lsp-catalog]`, with one line per
-seeded server sorted by name: its name, its languages, and either `installed vX`,
+Completion offers every server with an install source, including one that cannot be
+installed here (`:lsp-install` then reports why), and every seeded language.
+
+If the current install's receipt version already matches the seeded one it logs "up to
+date" and only runs the scan. Otherwise it installs under the lock, as under
+[Installing a server](#installing-a-server), and then runs the scan outside the lock, so a
+failure in the scan surfaces as its own error instead of being reported as a failed
+install.
+
+### `:lsp-uninstall`
+
+Takes a user-typed server name straight into a path join, so it first validates it with
+`safe-path-segment?`. `:lsp-install` needs no such check, since the catalog lookup
+(`data-file`) rejects a name that is not a safe segment. An invalid name logs `'error`, as
+any typed argument the command can't act on does, so a path-traversal attempt such as
+`"../plugins"` stays in `:messages` (see the index's
+[Log severity](../../README.md#log-severity)).
+
+The command unregisters the server, then removes its directory. An orphan (on disk, with
+no `registrations/` file) skips the unregister step. The removal is deferred with
+`after! 0` so the unregister has shut down any running client before the lock is taken.
+
+Its completion lists every server with a directory on disk, seeded or orphan, because the
+on-disk check decides what there is to remove.
+
+### `:lsp-catalog`
+
+Shows one `stdlib/report-section` in `[lsp-catalog]`, with one line per seeded server
+sorted by name: its name, its languages, and either `installed vX`,
 `installed vX — update available (vY)`, the install blocker, or `not installed`.
 
 ### Discovery hint
 
-`on-language-set` nudges once per language per session. It fires when the language's first
-server has no blocker and no current install, and the language's server list
-(`lsp-language-servers`, which keeps only registered servers) is empty. A server the user
-registered by hand therefore suppresses it only when that list names the server. The
-suggestion is to run `:lsp-install`. The dedup marker is set whatever the outcome, so a
-language that fails any of those tests is not re-evaluated. The nudge logs `'warning`
-because `'info` never reaches `:messages` (see the index's
-[Log severity](../../README.md#log-severity)), and a missed nudge should stay reviewable.
+`on-language-set` suggests running `:lsp-install`, once per language per session. It fires
+when:
+
+- the language's first server has no blocker,
+- that server has no current install, and
+- the language's server list (`lsp-language-servers`, which keeps only registered servers)
+  is empty, so a server the user registered by hand suppresses it only when that list
+  names the server.
+
+The dedup marker is set whatever the outcome, so a language that fails any of those tests
+is not re-evaluated. The nudge logs `'warning` because `'info` never reaches `:messages`
+(see the index's [Log severity](../../README.md#log-severity)), and a missed nudge should
+stay reviewable.

@@ -24,6 +24,9 @@ no meaningful "outside", like last-insertion, has only an inner form):
   parentheses and their contents; `maw` selects the word plus one adjacent
   whitespace run.
 
+Both locate the same extent (the bracket pair, the word's boundaries) and
+differ only in how much of it they select.
+
 ## HUME's prefix: `mi` and `ma`
 
 HUME reaches text objects through the `m` prefix (mnemonic: **m**atch), as
@@ -31,13 +34,15 @@ Helix does: `miw`, `ma(`. This leaves `i` and `a` free for their primary use,
 entering insert before or after the selection, and gives every "name a text
 region" command one entry point.
 
-The `m` root holds a small family beyond `mi`/`ma`. `ms` followed by a
-delimiter character (`ms(`, `ms[`, `ms{`, `ms<`, `ms"`, `ms'`, ``ms` ``)
-selects the two delimiter characters as cursors, the building block for
-surround editing, where you then act on both delimiters at once (replace
-them, delete them, change them as a pair). `mw` plus a delimiter wraps the
-current selection in that pair. `mm` and `MM` select the word/WORD under the
-cursor directly; they are `maw`/`maW` under a shorter name (see below).
+The `m` root holds a small family beyond `mi`/`ma`:
+
+- `ms` followed by a delimiter character (`ms(`, `ms[`, `ms{`, `ms<`, `ms"`,
+  `ms'`, ``ms` ``) selects the two delimiter characters as cursors. This is
+  the building block for surround editing: you then act on both delimiters
+  at once (replace them, delete them, change them as a pair).
+- `mw` plus a delimiter wraps the current selection in that pair.
+- `mm` and `MM` select the word/WORD under the cursor directly; they are
+  `maw`/`maW` under a shorter name (see below).
 
 ## The whitespace rule for `maw`/`maW`
 
@@ -75,14 +80,6 @@ before it under `after`, falling back to the word on the other side when
 there is none. The space under the cursor is never selected for its own
 sake. It is part of the selection when it is that word's chosen whitespace
 run, and a newline or a line's indentation under the cursor never is.
-
-## In practice
-
-Inner and around locate the same extent (the bracket pair, the word's
-boundaries) and differ in what they select: inner stops just inside the
-delimiters, around includes them. For a word, around is not a fixed-width
-grab. It grows the word by a scan over the adjacent whitespace, as described
-above.
 
 ---
 

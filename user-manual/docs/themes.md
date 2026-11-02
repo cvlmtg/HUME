@@ -26,11 +26,13 @@ HUME ships 35 themes. `sand` is the default.
 | Solarized | `solarized_dark`, `solarized_light` |
 | Tokyo Night | `tokyonight_day`, `tokyonight_moon`, `tokyonight_night`, `tokyonight_storm` |
 
-To change a bundled theme, copy its file into the `themes/` subdirectory of your config directory and edit the copy there: a theme in your config directory wins over a bundled one of the same name. HUME falls back to a built-in theme when no `sand` theme is found or when the theme set in `init.scm` fails to load.
+HUME falls back to a built-in theme when no `sand` theme is found or when the theme set in `init.scm` fails to load.
 
 ## Where themes live
 
-Hand-authored themes go in the `themes/` subdirectory of your HUME config directory, alongside `init.scm`. A theme installed by a tool goes in the `themes/` subdirectory of your HUME data directory instead (see [File locations](configuration.md#file-locations)); a config-dir theme of the same name wins.
+Hand-authored themes go in the `themes/` subdirectory of your HUME config directory, alongside `init.scm`. A theme installed by a tool goes in the `themes/` subdirectory of your HUME data directory instead (see [File locations](configuration.md#file-locations)).
+
+A theme in your config directory wins over an installed or bundled one of the same name. To change a bundled theme, copy its file into your config directory's `themes/` and edit the copy there.
 
 ## Theme files
 
@@ -64,7 +66,7 @@ To install a third-party theme repository, run `:plum-install-theme <user/repo>`
 
 When two installed repositories ship a theme with the same name, the one you installed or updated last provides it. Removing that repository keeps the theme, from another installed repository that ships it.
 
-A theme editor is available online: a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
+To edit themes visually, download the [theme editor](https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html), a single HTML file you open in a browser. It exports themes as TOML.
 
 ## Theme scopes
 
@@ -79,7 +81,7 @@ These have no Helix equivalent:
 - `ui.window.focused`: seam divider segments next to the focused pane, falling back to `ui.window`
 - `ui.drawer`: background and border of the bottom drawer, the list panel that shows diagnostics, references and similar lists
 - `ui.tabline` / `ui.tabline.active`: the tab bar's row and its active tab. An unset `.active` falls back to the base `ui.tabline` style, unlike the statusline separator below
-- `ui.statusline.search` / `.command` / `.sift`: one more mode-tinted statusline scope per HUME mode Helix doesn't have, alongside Helix's own `ui.statusline.normal`/`.insert`/`.select` (`.select` colors Extend mode, HUME's name for what Helix calls Select mode; `.sift` colors Sift mode, the `s` regex prompt)
+- `ui.statusline.search` / `.command` / `.sift`: the statusline tint for Search, Command and [Sift](modes.md#sift-mode) mode, which Helix doesn't have. Helix's own `ui.statusline.normal`/`.insert`/`.select` work too; `.select` colors Extend mode, HUME's name for Helix's Select mode
 - `ui.virtual.invisible`: the `<200b>`-style stand-in for a character the terminal must not be shown as itself (see [Buffer options](settings.md#buffer-options))
 - `diff.plus.line` / `diff.minus.line` / `diff.delta.line`: the whole-line background tint `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also colors the text of a deleted line). Left undefined, they paint nothing: an unmodified Helix theme colors the gutter marker (through `diff.plus`, `diff.minus` and `diff.delta`) but paints no line tint
 - `diff.plus.word` / `diff.minus.word`: word-level highlight inside a changed line (`core:git-diff`'s inline diff), inside the line-level `.line` tint above

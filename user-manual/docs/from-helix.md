@@ -89,7 +89,7 @@ HUME's tab bar reads `ui.tabline`, and falls back to Helix's `ui.bufferline` whe
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME rewrites each line's whole indent in the buffer's `indent-style`; see [Lines and alignment](editing.md#lines-and-alignment)
-- `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`, `m i v`/`m a v`, `m i x`/`m a x` select the enclosing function, class/type, argument, comment, unit test, value, or tag pair. The letters match Helix's match-mode text objects, except unit test (`T` → `u`) and value (`e` → `v`). Function, class, comment, unit test and value need a grammar with text-object support; argument and tag pair fall back to a plain-text scan without one. See [Text objects](selections.md#text-objects)
+- `m i` or `m a` followed by `f`, `t`, `a`, `c`, `u`, `v` or `x` selects the enclosing function, class/type, argument, comment, unit test, value, or tag pair. The letters match Helix's match-mode text objects, except unit test (`T` → `u`) and value (`e` → `v`). Function, class, comment, unit test and value need a grammar with text-object support; argument and tag pair fall back to a plain-text scan without one. See [Text objects](selections.md#text-objects)
 - Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `indent-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`. `indent-smart` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
 - Syntax highlighting uses the same tree-sitter grammars as Helix, with Helix's queries, and the [language servers](lsp.md) each language uses, how they start, their root markers and default settings follow Helix's own defaults
 - Insert mode shows a bar cursor; Normal and Extend mode a block
@@ -126,9 +126,7 @@ Both editors bind `x` to select the current line. They differ on the second pres
 | 2nd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 | 3rd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 
-Helix's `x` extends when the selection already covers whole lines, so pressing it again keeps growing the selection.
-
-HUME's `x` re-anchors on each press: it selects the next line on its own. For Helix's growing behavior, enter Extend mode first (`e`), where `x`, like every other motion, extends rather than replaces. `Ctrl-x` extends for one press without entering Extend mode.
+For Helix's growing behavior, enter Extend mode first (`e`), where `x`, like every other motion, extends rather than replaces. `Ctrl-x` extends for one press without entering Extend mode.
 
 `X` is the backward form. In Normal mode, on a whole-line selection, it jumps to the line above. To shrink a line selection grown downward, press `X` in Extend mode, or `Ctrl-Shift-x` (kitty only); each press removes one line. Helix has no key for that.
 
@@ -161,9 +159,7 @@ To copy selections onto the line above as Helix's `Alt-C` does, bind the command
 ```
 
 ::: warning
-HUME's `*` searches the word (or punctuation run) under the cursor, ignoring any existing selection, and selects it. Helix's `*` searches the current selection with word-boundary anchors added, which HUME has no key for. Helix's `Alt-*`, the literal selection search, is HUME's `Ctrl-/` (kitty only).
-
-To put the literal selection search on `*` instead, rebind it in your `init.scm`:
+HUME's `*` ignores any existing selection: it searches the word (or punctuation run) under the cursor and selects it. To put the literal selection search on `*` instead, rebind it in your `init.scm`:
 
 ```scheme
 (bind-key! 'normal "*" "search-selection")
@@ -214,10 +210,10 @@ Helix's bracket mode (`]` or `[` plus an object letter) jumps to the next or pre
 
 ## What Helix has that HUME doesn't
 
-- `*` searching the selection with automatic word-boundary anchors. HUME's `Ctrl-/` matches a selection literally (Helix's `Alt-*`), and HUME's own `*` searches the word under the cursor instead of the selection. See [Multiple selections](#multiple-selections)
+- `*` searching the selection with automatic word-boundary anchors (see [Multiple selections](#multiple-selections))
 - Splitting selections on a regex (`S`)
 - Inserting or appending a command's output (`!`, `Alt-!`), piping selections to a command and ignoring its output (`Alt-|`), and filtering selections by a command's exit status (`$`). HUME's `|` pipes each selection through a command, as Helix's does, and in Insert mode `Ctrl-|` (kitty only) inserts a command's output at each cursor. See [Shell commands](editing.md#shell-commands)
-- Merging every selection into one span across gaps (`Alt--`). HUME merges only selections that share a character, automatically; touching selections stay separate
+- Merging every selection into one span across gaps (`Alt--`)
 - `:x` and `:o`/`:open` as command aliases; use `:wq`/`:write-quit` and `:e` instead
 
 ## What HUME has that Helix doesn't

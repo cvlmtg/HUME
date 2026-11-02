@@ -85,11 +85,12 @@ picks by asking whether anything was edited since the ring last changed.
   still "the thing that was just here". Swap idioms work: `d`, move, `p`
   restores what was killed.
 - **Something edited since**: paste reads the system clipboard. The user has
-  moved on, and cross-application paste stays the default. With no OS
-  clipboard (a headless environment), a fresh paste falls back to the ring
-  head. A repeat press whose clipboard cannot be read does nothing instead,
-  because substituting the ring head would replace the text the previous
-  press just pasted.
+  moved on, and cross-application paste stays the default.
+
+With no OS clipboard (a headless environment), a fresh paste falls back to
+the ring head. A repeat press whose clipboard cannot be read does nothing
+instead, because substituting the ring head would replace the text the
+previous press just pasted.
 
 The rule judges the buffer, not the command that ran. A motion changes no
 text, so it never switches the source. Undo and redo change the text, so

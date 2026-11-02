@@ -48,20 +48,25 @@ symbol's detail being its parent's name and its jump target its `selectionRange`
 `SymbolInformation[]` answer keeps its own `location` and uses `containerName` as the
 detail. Since a `DocumentSymbol` carries no `uri`, its row's target is the pane and the
 `selectionRange` as a pair, which `lsp-range->char-range` turns into the place to jump to
-only for the row that is accepted, in the server's position encoding. No symbol at all logs "No symbols found".
+only for the row that is accepted, in the server's position encoding. No symbol at all logs
+"No symbols found".
 
 `lsp/workspace-symbols` opens an empty `live-picker!`. Each query, once the debounce
-window passes, sends `workspace/symbol` to every server offering the feature with
-one `#:supersede` key, so a newer query replaces one still in flight. Every
-answer replaces the rows with every server's symbols, and an error or an answer with nothing
-in it replaces them with none, so the picker stops refreshing whatever the outcome. An
-answer that arrives after the user typed on is dropped, since its token is for the earlier
-query. An empty query clears the rows. The detail is the symbol's
-`path:line:col`, the path relative to the working directory when inside it. A symbol
-whose `location` has no `range` is left out, since the client does not advertise
-`workspaceSymbol/resolve` and such a symbol names no place to jump to.
-A symbol HUME cannot jump to, such as one in a `jdt://` file or on a line past the
-end of an open file, is left out.
+window passes, sends `workspace/symbol` to every server offering the feature with one
+`#:supersede` key, so a newer query replaces one still in flight. An empty query clears the
+rows.
+
+Every answer replaces the rows with every server's symbols, and an error or an answer with
+nothing in it replaces them with none, so the picker stops refreshing whatever the outcome.
+An answer that arrives after the user typed on is dropped, since its token is for the
+earlier query.
+
+The detail is the symbol's `path:line:col`, the path relative to the working directory when
+inside it. A symbol HUME cannot jump to is left out:
+
+- one whose `location` has no `range`, since the client does not advertise
+  `workspaceSymbol/resolve`;
+- one in a `jdt://` file or on a line past the end of an open file.
 
 ## Hover
 
@@ -72,8 +77,8 @@ a code block so the popup's markdown injection can highlight it, and a
 `MarkupContent` with `kind: "plaintext"`.
 
 The popup floats near the cursor while all of its wrapped text fits there and docks at
-the bottom otherwise (`show-popup!`'s `#:anchor 'fit`). Each `lsp/hover` closes the previous hover popup
-before sending its request. An empty response logs "No hover info".
+the bottom otherwise (`show-popup!`'s `#:anchor 'fit`). Each `lsp/hover` closes the
+previous hover popup before sending its request. An empty response logs "No hover info".
 
 ## Signature help
 
@@ -122,20 +127,22 @@ asynchronous. The menu lists every server's actions in server order; when more t
 server offered some, each title ends with its server's name. A chosen action's resolve
 and command go back to the server that offered it.
 
-Each server's `context.diagnostics` echoes the raw wire `Diagnostic` objects in the
-primary selection's range, read with the request's own range, that this server published (the `'raw` field of the
-diagnostics store entries whose `'server` is it), and `triggerKind` is `1`. Actions with a
-truthy `"disabled"` field are dropped from the menu.
+Each server's `context.diagnostics` echoes the raw wire `Diagnostic` objects that this
+server published in the primary selection's range, read with the request's own range (the
+`'raw` field of the diagnostics store entries whose `'server` is it). `triggerKind` is `1`.
+Actions with a truthy `"disabled"` field are dropped from the menu.
 
-Running a chosen action applies its `edit`, then runs its `command`. An action with
-neither is resolved once through `codeAction/resolve` when the server advertises
-`resolveProvider` (the editor sends no resolve request to a server that does not), and
-logs "Code action has no edit or command" if the resolved action is still empty. The
-resolve step runs at most once, so a server that keeps returning an empty action cannot
-loop. A bare legacy `Command` (a string `command` and no `edit`) is passed to
-`workspace/executeCommand` as the whole action object. The edit is applied with
-`#:expect-generation`, so an edit computed against text that has since changed fails
-instead of applying to the wrong text.
+Running a chosen action applies its `edit`, then runs its `command`:
+
+- The edit is applied with `#:expect-generation`, so an edit computed against text that
+  has since changed fails instead of applying to the wrong text.
+- A bare legacy `Command` (a string `command` and no `edit`) is passed to
+  `workspace/executeCommand` as the whole action object.
+- An action with neither is resolved once through `codeAction/resolve` when the server
+  advertises `resolveProvider` (the editor sends no resolve request to a server that does
+  not). If the resolved action is still empty it logs "Code action has no edit or
+  command"; resolving at most once means a server that keeps returning an empty action
+  cannot loop.
 
 ## Formatting
 
@@ -149,12 +156,12 @@ recipe.
 
 A buffer no server can format, a buffer with no file among them, logs why and formats
 nothing; `lsp/format-document` stays silent about it, since it runs from save hooks.
-Formatting the whole buffer
-goes to the first running server with the `format` feature and a
-`documentFormattingProvider`; when there is none, the error names why. Formatting ranges
-goes to the first server with a `documentRangeFormattingProvider`, and every range of one
-command goes to that same server, so the edits joined below all come from one server. No
-such server logs a message and formats nothing.
+
+- **Whole buffer**: goes to the first running server with the `format` feature and a
+  `documentFormattingProvider`; when there is none, the error names why.
+- **Ranges**: go to the first server with a `documentRangeFormattingProvider`, every range
+  of one command to that same server, so the edits joined below all come from one server.
+  No such server logs a message and formats nothing.
 
 ### Selection classification
 
@@ -166,16 +173,14 @@ such server logs a message and formats nothing.
 
 ### Range requests
 
-Every range goes to the first server advertising range formatting, so the joined edits all
-come from one server.
-
 Several disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP 3.18)
-when that server advertises `rangesSupport`. Otherwise each range is its own
-`textDocument/rangeFormatting` request, and more than the `format-max-ranges` config value
-ranges log a message and format nothing, the same refusal a mixed selection gets. The cap
-keeps a stray select-all-matches with hundreds of cursors from bursting hundreds of
-requests at the server, and refusing beats narrowing to one selection without a word.
-A server with `rangesSupport` takes every range in one request, so the cap doesn't apply.
+when the range-formatting server advertises `rangesSupport`, with no cap on their number.
+
+Otherwise each range is its own `textDocument/rangeFormatting` request, and more than the
+`format-max-ranges` config value ranges log a message and format nothing, the same refusal
+a mixed selection gets. The cap keeps a stray select-all-matches with hundreds of cursors
+from bursting hundreds of requests at the server, and refusing beats narrowing to one
+selection without a word.
 
 The per-range fan-out keeps three boxes: requests still in flight, edits collected so far,
 and whether it has aborted. All edits are applied together when the in-flight count
@@ -211,18 +216,19 @@ feature, so it goes to whichever server supports it when the name is accepted.
 | Inlay hints, every server | `'inlay-hints` | | | one key |
 | Locations drawer refresh | the drawer's own feature | | yes | one key |
 
-"Routed by" is what picks the server among a buffer's servers when the request is sent:
-a feature name sends it to the first running server whose list entry admits that feature
-and that advertises it, or to every such server where the row says so, and `#:to` sends
-it to one server chosen earlier.
+"Routed by" is what picks the server among a buffer's servers when the request is sent; see
+[Choosing a server](architecture.md#response-conventions). A row marked "every server"
+uses `lsp-request-all!`.
 
-`#:require-focus` drops the callback unless the invoking pane is still the focused pane
-and still shows the same buffer when the response arrives. It fits requests whose result
-is a popup or menu anchored to that pane. `#:allow-stale` runs the callback even if the
-buffer has changed since the request was sent. It fits requests whose result is checked
-another way: edits carry `#:expect-generation`, and the locations refresh re-requests at
-the tracked position. The goto commands use neither, so a navigation the user asked for
-completes even if they looked elsewhere while waiting. `#:supersede` cancels the
-pending request under the same key for the same buffer. Each key comes from
-`lsp-supersede-key`, minted once at the plugin's top level, so no other caller can cancel
-these requests.
+- **`#:require-focus`** drops the callback unless the invoking pane is still the focused
+  pane and still shows the same buffer when the response arrives. It fits requests whose
+  result is a popup or menu anchored to that pane.
+- **`#:allow-stale`** runs the callback even if the buffer has changed since the request
+  was sent. It fits requests whose result is checked another way: edits carry
+  `#:expect-generation`, and the locations refresh re-requests at the tracked position.
+- **`#:supersede`** cancels the pending request under the same key for the same buffer.
+  Each key comes from `lsp-supersede-key`, minted once at the plugin's top level, so no
+  other caller can cancel these requests.
+
+The goto commands use neither `#:require-focus` nor `#:allow-stale`, so a navigation the
+user asked for completes even if they looked elsewhere while waiting.

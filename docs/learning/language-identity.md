@@ -32,10 +32,6 @@ order and stops at the first match:
    so `Makefile` matches in any directory and `.github/workflows/*.yaml`
    matches only under that directory. This tier exists for files with a
    meaningful name but no extension, or whose extension alone is ambiguous.
-   When two languages' patterns match the same file, the language defined
-   last wins. Which definition of one language counts is decided by who made
-   it, not when: the user's beats a plugin's, and a plugin's beats the
-   built-in one.
 
 2. **Extensions.** If no glob matches, the file extension is looked up (`.rs`
    is Rust, `.py` is Python, and so on). This handles the common case: most
@@ -47,6 +43,11 @@ order and stops at the first match:
    `configure`. A language lists interpreter names, and a version after the
    name (`python3`, `lua5.4`) still finds the language listing `python` or
    `lua`, unless some language lists that exact version.
+
+When two languages' glob patterns match the same file, the language defined
+last wins. Which definition of one language counts is decided by who made
+it, not when: the user's beats a plugin's, and a plugin's beats the built-in
+one.
 
 If no tier matches, the buffer has no language. That is a valid state: plain
 text files, scratch buffers and binary files have none.
@@ -82,9 +83,7 @@ where HUME says `"tsx"`). That is the one place the name and the wire
 identity may differ; every other subsystem reads the name.
 
 With one funnel, no code path can change the language and forget to update
-syntax state or notify plugins. The language, plugin activation, syntax
-state, hook notification and server attachment always move together, because
-there is only one way to change the language.
+syntax state, activate plugins, notify hooks or attach servers.
 
 ## The `on-language-set` hook
 

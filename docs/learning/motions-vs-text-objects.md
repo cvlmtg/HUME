@@ -19,15 +19,18 @@ fixed and only the head moves, growing the selection.
 
 A text object bypasses the motion mode in move mode only: it returns a
 complete run of characters and the framework creates a fresh selection from
-start to end, discarding the previous anchor. In extend mode the matched
-range is *united* with the current selection instead. The new start is the
-earlier of the two starts, the new end the later of the two ends, and the
-existing direction is preserved. A result is always a run of whole character
-clusters, so a union never leaves half a character outside. The extend
-variant also retries outward: when the first match is a subset of what is
-already selected, it resumes the search from one past the current end, so
-repeated extend-mode bracket and quote objects climb to the enclosing pair
-rather than re-reporting the inner one.
+start to end, discarding the previous anchor.
+
+In extend mode the matched range is *united* with the current selection
+instead. The new start is the earlier of the two starts, the new end the
+later of the two ends, and the existing direction is preserved. A result is
+always a run of whole character clusters, so a union never leaves half a
+character outside.
+
+The extend variant also retries outward: when the first match is a subset of
+what is already selected, it resumes the search from one past the current
+end, so repeated extend-mode bracket and quote objects climb to the
+enclosing pair rather than re-reporting the inner one.
 
 ## Four patterns
 
@@ -70,11 +73,9 @@ multi-cursor. It looks at one selection and returns one result. The
 framework around it iterates over all selections and merges any that
 converge.
 
-A motion's search answers a coordinate question ("where does the cursor
-go?") and returns a position. A text object's search returns a run of
-characters, or nothing if no match exists at the current position. On "no
-match", the existing selection is preserved: pressing inner-bracket when not
-inside any brackets is a no-op.
+A text object's search returns nothing if no match exists at the current
+position, and the existing selection is preserved: pressing inner-bracket
+when not inside any brackets is a no-op.
 
 ## Auto-merge after every motion or text object
 

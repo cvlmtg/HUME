@@ -60,13 +60,15 @@ the edit as data, which enables three things.
 ## Position mapping
 
 A position that sits right where text is inserted is ambiguous: it could
-stay before the new text or move past it. An association parameter (before or
-after) picks the side. Both are used. Cursors ride the *after* side, so they
-sit past newly inserted text instead of staying at the insertion site.
-Positions that must stay glued to the text before them, such as a range's end
-or an anchor pinned to existing text, ask for *before*. Mapping a whole range
-uses both at once: its start maps after and its end maps before, so an
-insertion at either edge lands outside the range rather than growing it.
+stay before the new text or move past it. An association parameter picks the
+side, and both sides are used:
+
+- **After**: cursors, so they sit past newly inserted text instead of staying
+  at the insertion site.
+- **Before**: positions that must stay glued to the text before them, such as
+  a range's end or an anchor pinned to existing text.
+- **Both at once**: a whole range maps its start after and its end before, so
+  an insertion at either edge lands outside the range rather than growing it.
 
 Position mapping is how selections follow an edit they did not make. When one
 pane edits a buffer that other panes also show, the other panes' selections
@@ -93,14 +95,17 @@ version gives nothing. A value that is not carried through a change therefore
 reads as absent after the change, and no code can use it by accident.
 
 A command's own result does not need mapping. An edit says where its
-selections land in terms of the text it produces (a cursor after the inserted
-text, the run an insertion became), or it carries an old selection through the
-edit and picks a side of any insertion at its ends.
+selections land in one of two ways:
 
-Indent shows the second case. Rewriting a line's indent is a replace: old
-whitespace out, new whitespace in. A selection at the line's start is
-ambiguous, because it could stay pinned to the line start or land past the new
-indent. The edit writes the new indent before removing the old one, so a
+- in terms of the text it produces: a cursor after the inserted text, the run
+  an insertion became;
+- by carrying an old selection through the edit, picking a side of any
+  insertion at its ends.
+
+Indent shows the second case. Rewriting a line's indent replaces the old
+whitespace with new, and a selection at the line's start is ambiguous: it
+could stay pinned to the line start or land past the new indent. The edit
+writes the new indent before removing the old one, so a
 position at the line start meets the insertion first and the answer becomes a
 plain choice of side. The start of a whole-line selection sticks before and
 stays put; every other position there sticks after and rides past the new
@@ -113,7 +118,7 @@ A changeset is put together front to back by a builder with two cursors:
 - consumed position: how far it has read in the old document
 - produced position: how far it has written in the new document
 
-This dual tracking replaces manual delta accumulation. After each insert, the
+With both tracked, no code accumulates deltas by hand. After each insert, the
 produced position tells you where a cursor should land in the result.
 
 ```text
@@ -162,10 +167,9 @@ new text, when the edit finishes. A handle belongs to the one edit that made
 it, so a position from one edit cannot be resolved against another.
 
 Operations only name whole character clusters, so an edit cannot split an
-accented letter or an emoji sequence. The structural trailing newline survives
-every edit by one rule: text inserted at the very end of the buffer gets a
-newline of its own, and when nothing is inserted there, every deletion stops
-before the structural newline. See [Buffer Invariants](buffer-invariants.md).
+accented letter or an emoji sequence. The structural trailing newline
+survives every edit by one rule; see
+[Buffer Invariants](buffer-invariants.md#one-rule-for-the-final-newline).
 
 ## Transactions: changesets with cursor state
 

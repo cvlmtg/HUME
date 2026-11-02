@@ -31,13 +31,14 @@ Two verbs, matching the two kinds of command described in [Command mode](command
     ...))
 ```
 
-`define-command!` registers an editor command: bind it to a key or run it with `call!`. The `:` prompt never reaches it. `define-typed-command!` registers a typed command, reachable only as `:typed-command-name`, never from a key or `call!`. Both take a name and a one-line description first.
+`define-command!` registers an editor command: bind it to a key or run it with `call!`. The `:` prompt never reaches it. `define-typed-command!` registers a typed command, reachable only as `:typed-command-name`, never from a key or `call!`.
 
-Start every `define-command!` name of a plugin with one shared prefix and `/`, such as `git-diff/toggle-inline-diff`, so plugins never collide: `define-command!`, `define-typed-command!` and `declare-plugin!` raise for a name already taken. The prefix is usually the plugin's name, but only has to be unique. Typed command names take no prefix. The examples on this page use `my-plugin/`.
+Command names follow these rules:
 
-Command names ignore case: `:Hello`, `:HELLO` and `:hello` run the same command, and two names that differ only in case collide. An editor command name must be lowercase: `define-command!` and `#:commands` raise for any other. A typed command name may use any case, and `:` Tab completion fills in the spelling it was defined with.
-
-A typed command name starts with a letter, `-` or `_` and continues with letters, digits, `-` or `_`. `b` followed only by digits is taken, since `:b2` switches to buffer 2. `define-typed-command!` and `#:typed-commands` raise for any other name.
+- Start every `define-command!` name of a plugin with one shared prefix and `/`, such as `git-diff/toggle-inline-diff`, so plugins never collide. The prefix is usually the plugin's name, but only has to be unique. Typed command names take no prefix. The examples on this page use `my-plugin/`.
+- Names ignore case: `:Hello`, `:HELLO` and `:hello` run the same command. `define-command!`, `define-typed-command!` and `declare-plugin!` raise for a name already taken, and two names that differ only in case collide.
+- An editor command name must be lowercase: `define-command!` and `#:commands` raise for any other. A typed command name may use any case, and `:` Tab completion fills in the spelling it was defined with.
+- A typed command name starts with a letter, `-` or `_` and continues with letters, digits, `-` or `_`. `b` followed only by digits is taken, since `:b2` switches to buffer 2. `define-typed-command!` and `#:typed-commands` raise for any other name.
 
 A command's lambda declares the leading arguments it wants, `pane` always first:
 
@@ -46,11 +47,14 @@ A command's lambda declares the leading arguments it wants, `pane` always first:
 
 Declare only as many leading arguments as the command uses: one that only touches selections takes `(pane)`, not `(pane count extend)`.
 
-A command that writes to the terminal (an installer, a git operation) takes `#:inline-output #t`, with either verb. The first time the command prints something, the editor's screen gives way to its output. A run that prints nothing (an up-to-date check, a validation error) never shows an empty screen. Once something is printed, HUME waits for a key press before returning to the editor.
+A command that writes to the terminal (an installer, a git operation) takes `#:inline-output #t`, with either verb:
 
-This holds however the command is reached: a key binding, `:`, or, for an editor command, `call!` from another command's body, a hook or a timer. A command `call!`'d from inside another `#:inline-output` command shares its output screen and key press prompt.
+- The first time the command prints something, the editor's screen gives way to its output. A run that prints nothing (an up-to-date check, a validation error) never shows an empty screen.
+- Once something is printed, HUME waits for a key press before returning to the editor.
+- While the output is on screen, `Ctrl-c` interrupts the running program and never quits HUME.
+- This holds however the command is reached: a key binding, `:`, or, for an editor command, `call!` from another command's body, a hook or a timer. A command `call!`'d from inside another `#:inline-output` command shares its output screen and key press prompt.
 
-Inside such a command, `print!` writes a line and `run-inline-output!` runs a program whose output reaches the terminal. Both raise outside such a command, `init.scm` included. While the output is on screen, `Ctrl-c` interrupts the running program and never quits HUME. [Filesystem and processes](#filesystem-and-processes) covers the other ways to run a program:
+Inside such a command, `print!` writes a line and `run-inline-output!` runs a program whose output reaches the terminal. Both raise outside such a command, `init.scm` included.
 
 ```scheme
 (define-command! "my-plugin/fetch-config"
@@ -61,6 +65,8 @@ Inside such a command, `print!` writes a line and `run-inline-output!` runs a pr
                                      (path-join (data-dir) "config"))))
   #:inline-output #t)
 ```
+
+[Filesystem and processes](#filesystem-and-processes) covers the other ways to run a program.
 
 An editor command that `.` should repeat takes `#:repeatable #t`; see [Dot-repeat](#dot-repeat).
 
@@ -301,7 +307,11 @@ A plugin reacts to editor events by registering a hook handler with `register-ho
     (log! 'info (string-append "saved " (buffer-name pane)))))
 ```
 
-`register-hook!` raises for a lambda that can't take its hook's arguments. Every `pane` below is the same opaque value as a command's leading parameter (see [Defining commands](#defining-commands)): pass it straight to any editor function that takes one. Most hooks are about a buffer with no pane of its own, and their value carries no particular pane. For `on-buffer-enter`, `on-viewport-change`, `on-trigger-char`, and `on-completion-accept`, it names the pane the event happened in. For `on-before-buffer-save`, it names the pane the save was asked from (see below).
+`register-hook!` raises for a lambda that can't take its hook's arguments. Every `pane` below is the same opaque value as a command's leading parameter (see [Defining commands](#defining-commands)): pass it straight to any editor function that takes one. Which pane it names depends on the hook:
+
+- `on-buffer-enter`, `on-viewport-change`, `on-trigger-char` and `on-completion-accept`: the pane the event happened in.
+- `on-before-buffer-save`: the pane the save was asked from (see below).
+- Every other hook is about a buffer with no pane of its own, and its value carries no particular pane.
 
 | Hook | Fires when | Lambda args |
 |------|------------|-------------|
@@ -332,7 +342,9 @@ A plugin reacts to editor events by registering a hook handler with `register-ho
 - A handler that raises an error is reported and counts as finished.
 - If a handler hasn't finished after `hook-before-save-timeout-ms`, the file is written anyway and a warning says so.
 
-Closing the buffer while its save waits drops the save; `:reload-config` lets it go ahead. `:wa` reports what it saved and skipped once all its saves are done, and a failed save stops the ones still waiting. `pane` is the pane the save was asked from if it shows the buffer when the handlers run, otherwise a value with no pane (`:wa` on a hidden buffer, or a pane that has switched buffers). [Format on save](lsp.md#format-on-save) is an example.
+Closing the buffer while its save waits drops the save; `:reload-config` lets it go ahead. `:wa` reports what it saved and skipped once all its saves are done, and a failed save stops the ones still waiting.
+
+`pane` is the pane the save was asked from if it shows the buffer when the handlers run, otherwise a value with no pane (`:wa` on a hidden buffer, or a pane that has switched buffers). [Format on save](lsp.md#format-on-save) is an example.
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within one command fires neither.
 
@@ -570,7 +582,9 @@ The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widg
 
 `items` is a list of `(display . payload)` pairs. `display` is the string shown and matched against. `payload` is anything you like (a path, a number, a hash) except `#f`, which means "nothing matches"; HUME never looks inside it.
 
-`keymap` is every key the picker answers besides typing. It's a hash from a key, written as `bind-key!` writes one (`"ctrl-v"`, `"alt-o"`, `"f5"`, never a sequence like `"z f"`), to a procedure of two arguments: the selected item's payload, or `#f` when nothing matches, and the picker's token. A key the keymap doesn't bind does nothing, except a plain character, which types into the query, and `Backspace`, which deletes from it; bind either one to change that. `picker!` raises when two keys in the keymap are the same key, such as `"ctrl-n"` and `"c-n"`.
+`keymap` is every key the picker answers besides typing. It's a hash from a key, written as `bind-key!` writes one (`"ctrl-v"`, `"alt-o"`, `"f5"`, never a sequence like `"z f"`), to a procedure of two arguments: the selected item's payload, or `#f` when nothing matches, and the picker's token.
+
+A key the keymap doesn't bind does nothing, except a plain character, which types into the query, and `Backspace`, which deletes from it; bind either one to change that. `picker!` raises when two keys in the keymap are the same key, such as `"ctrl-n"` and `"c-n"`.
 
 A binding never closes the picker by itself: it calls `(picker-close! token)`. To move the selection it calls `(picker-move! token count #:by 'row)`. `#:by` is `'row` (the default), `'page` or `'half-page`, and a negative `count` moves up.
 
@@ -621,9 +635,17 @@ A row too wide for the panel is clipped to fit, with `…` at the dropped end. `
 - `'head` (default) drops the front and keeps the tail: right for a file path, whose file name sits at the end.
 - `'tail` drops the back and keeps the head: right for a row whose distinguishing part sits at the front, like a grep match's `path:line:col:` prefix before the line preview.
 
-To show rows differently from the text the query matches, pass `#:render`, a procedure of three arguments. Before the panel shows rows it hasn't drawn, it calls `(render rows budget query)`: `rows` are those rows' `(display . payload)` items, top to bottom, `budget` is how many terminal cells one row gets, and `query` is the query the rows answer, to highlight what they matched. It returns one [row display](plugin-api.md#row-display) per item, a string or a hash with spans, which can change the text as well as style it. Streamed rows go through it too, so a row can show a status letter in color or a path with its directory dimmed without parsing every line up front.
+To show rows differently from the text the query matches, pass `#:render`, a procedure of three arguments. Before the panel shows rows it hasn't drawn, it calls `(render rows budget query)`:
 
-Each row is drawn once for a given width and query, so `render` runs again only for rows scrolled into view, rows that arrive later, or every visible row after the panel changes width or the query changes. The query still matches each item's display, `.` repeats a pick by it, and a binding still gets the payload. Use `string-width` and `string-fit` to fit a row to `budget`; a row still wider than `budget` is cut at the `#:truncate` end, as a row without `render` is. This keeps a status prefix and drops the front of a long path:
+- `rows`: those rows' `(display . payload)` items, top to bottom.
+- `budget`: how many terminal cells one row gets.
+- `query`: the query the rows answer, to highlight what they matched.
+
+It returns one [row display](plugin-api.md#row-display) per item, a string or a hash with spans, which can change the text as well as style it. Streamed rows go through it too, so a row can show a status letter in color or a path with its directory dimmed without parsing every line up front. The query still matches each item's display, `.` repeats a pick by it, and a binding still gets the payload.
+
+Each row is drawn once for a given width and query, so `render` runs again only for rows scrolled into view, rows that arrive later, or every visible row after the panel changes width or the query changes.
+
+Use `string-width` and `string-fit` to fit a row to `budget`; a row still wider than `budget` is cut at the `#:truncate` end, as a row without `render` is. This keeps a status prefix and drops the front of a long path:
 
 ```scheme
 (define (render-status-rows rows budget query)

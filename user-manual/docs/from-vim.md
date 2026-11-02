@@ -46,7 +46,12 @@ What each step shows:
 - **`Esc` keeps what you typed selected.** After the change, `play` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 - **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring, with no `"+` prefix. `p` pastes your last yank or delete while you haven't edited since, and the clipboard once you have. See [Copy & Paste](copy-and-paste.md).
 
-A few more keys you'll want early. `d` on its own deletes the character under the cursor (Vim's `x`), since the cursor is already a one-character selection. `g h` and `g l` go to the start and end of the line, `g g` and `g e` to the first and last line. `/`, `n` and `N` search as in Vim, selecting each match.
+A few more keys you'll want early:
+
+- `d` on its own deletes the character under the cursor (Vim's `x`), since the cursor is already a one-character selection.
+- `g h` and `g l` go to the start and end of the line, `g s` to its first non-blank character (Vim's `^`).
+- `g g` and `g e` go to the first and last line.
+- `/`, `n` and `N` search as in Vim, selecting each match.
 
 ### Saving and quitting
 
@@ -153,8 +158,6 @@ These keys exist in both editors but do different things, so they are the most l
 | `K` | Look up keyword (external `keywordprg`, e.g. `man`) | Show hover docs for the symbol under the cursor (with `core:lsp`) | *(none)*: this is the closest equivalent; no external program |
 | `gt`&nbsp;/&nbsp;`gT` | Next / previous tab | Next / previous class or type | `Ctrl-p t` / `Ctrl-p T` |
 
-`f`, `F`, `t`, `T` behave as in Vim, and `{` / `}` are paragraph motions in both. Only the *repeat* keys moved: `;` and `,` are taken, so use `=` and `-`.
-
 `>` and `<` indent and unindent directly, select-then-act style, with no operator-pending step and no doubled key: `>` alone does what Vim's `>>` does. A count indents by that many levels (`3>`), not that many lines: select the lines first to indent several. See [Lines and alignment](editing.md#lines-and-alignment) for how the new indent is written.
 
 ### Text objects
@@ -170,7 +173,9 @@ Vim's `iw` / `aw` family lives behind the `m` prefix, and, as everywhere else, y
 | `dap` | `m a p` then `d` |
 | `dat` | `m a x` then `d` |
 
-The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `{`, `<`), the quote pairs (`"`, `'`, `` ` ``), argument (`a`), tag pair (`x`), line (`l`), and paragraph (`p`), each with an `i` (inner) and `a` (around) form. HUME has no sentence object. `m i i` selects the text you typed during your last insert. With a grammar that supports them, HUME also has function, class, comment, unit test and value objects, with no plugin to install, and a `g` jump to the next or previous of each kind. See [Text objects](selections.md#text-objects) and [Structural navigation](moving-around.md#structural-navigation).
+The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `{`, `<`), the quote pairs (`"`, `'`, `` ` ``), argument (`a`), tag pair (`x`), line (`l`), and paragraph (`p`), each with an `i` (inner) and `a` (around) form. HUME has no sentence object.
+
+`m i i` selects the text you typed during your last insert. With a grammar that supports them, HUME also has function, class, comment, unit test and value objects, with no plugin to install, and a `g` jump to the next or previous of each kind. See [Text objects](selections.md#text-objects) and [Structural navigation](moving-around.md#structural-navigation).
 
 ### Search and replace
 
@@ -185,7 +190,9 @@ c          change them all at once
 new<Esc>   type the replacement
 ```
 
-That replaces Vim's `:%s/old/new/g`. To scope it to a region, select the region first and skip the `%`. To replace only some matches, drop the unwanted ones before pressing `c`: `(` / `)` makes a selection primary, `Ctrl-,` removes the primary, and `,` keeps only the primary. `Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")`.
+That replaces Vim's `:%s/old/new/g`. To scope it to a region, select the region first and skip the `%`.
+
+To replace only some matches, drop the unwanted ones before pressing `c`: `(` / `)` makes a selection primary, `Ctrl-,` removes the primary, and `,` keeps only the primary. `Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")`.
 
 `m /` is the other route: search with `/pattern` first, then `m /` turns every match in the buffer into a selection.
 
@@ -233,7 +240,14 @@ Vim puts a count before a command (`3dw`). HUME also takes a count prefix (`1`â€
 
 ### Line motion
 
-Beyond the `g` keys above, `g s` goes to the first non-blank character (Vim's `^`). Vim's `0` / `$` / `^` are not bound by default. To get them back with their Vim meaning, along with `C` / `D` (change / delete to end of line) and `Ctrl-6`, load `(load-plugin! "core:stdlib")` then `(load-plugin! "core:vim-keybind")` in your [`init.scm`](configuration.md). `G` is the edit prefix (`G L` / `G U` / `G C`, `G G` to toggle comments, plus `G R` with `core:lsp`), and `core:vim-keybind` does not restore Vim's meaning for it. `g e` reaches the last line either way.
+Vim's `0` / `$` / `^` are not bound by default; HUME uses the `g` keys above. To get them back with their Vim meaning, along with `C` / `D` (change / delete to end of line) and `Ctrl-6`, load `core:vim-keybind` after `core:stdlib` in your [`init.scm`](configuration.md):
+
+```scheme
+(load-plugin! "core:stdlib")
+(load-plugin! "core:vim-keybind")
+```
+
+`G` is the edit prefix (`G L` / `G U` / `G C`, `G G` to toggle comments, plus `G R` with `core:lsp`), and `core:vim-keybind` does not restore Vim's meaning for it. `g e` reaches the last line either way.
 
 | Vim | HUME (native) | HUME (`core:vim-keybind`) |
 |-----|----------------|---------------------------|
@@ -243,9 +257,9 @@ Beyond the `g` keys above, `g s` goes to the first non-blank character (Vim's `^
 
 ### Tabs
 
-Tab pages carry over. `:tabnew`, `:tabclose`, `:tabnext`, `:tabprev` (and Vim's own abbreviations `:tabe`, `:tabc`, `:tabn`, `:tabp`) are spelled and behave the same, including Vim's placement rules: `:tabnew` opens right after the current tab, and `:tabclose` lands on the neighbor to the right (or the left, if there is none). `tabline` is HUME's `showtabline`, with `dynamic` / `always` / `never` standing in for `1` / `2` / `0`. See [Tabs](files-and-buffers.md#tabs).
+The tab commands [listed above](#what-s-the-same) behave as in Vim, including its placement rules: `:tabnew` opens right after the current tab, and `:tabclose` lands on the neighbor to the right (or the left, if there is none). `tabline` is HUME's `showtabline`, with `dynamic` / `always` / `never` standing in for `1` / `2` / `0`. See [Tabs](files-and-buffers.md#tabs).
 
-The keys moved, though. `gt` / `gT` are not bound: `g` is HUME's goto prefix, and `g t` / `g T` jump between classes/types (see the muscle-memory table above). Cycle tabs with `Ctrl-p t` / `Ctrl-p T`, under the `Ctrl-p` prefix that stands in for Vim's `Ctrl-w`. The commands to bind are `goto-next-tab` / `goto-prev-tab`.
+The keys moved: `g t` / `g T` jump between classes or types (see [Muscle-memory traps](#muscle-memory-traps)). Cycle tabs with `Ctrl-p t` / `Ctrl-p T`; the commands to bind are `goto-next-tab` / `goto-prev-tab`.
 
 ## What Vim has that HUME doesn't
 

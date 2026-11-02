@@ -199,11 +199,12 @@ HUME compiles no grammar. A separate project builds every grammar for each
 supported platform and publishes them together as a release: one archive per
 platform, holding one small archive per language, plus an index of where each
 language's archive sits and its checksum. Plum downloads only the slice for
-the language it installs and checks it against the index. A language's
-archive holds the shared library, its query files, and a manifest naming the
-library's tree-sitter symbol, the ABI version and the platform it was built
-for. Grammars are installed per language, so two languages sharing one
-grammar (JavaScript and JSX) each get their own copy.
+the language it installs and checks it against the index.
+
+A language's archive holds the shared library, its query files, and a
+manifest naming the library's tree-sitter symbol, the ABI version and the
+platform it was built for. Grammars are installed per language, so two
+languages sharing one grammar (JavaScript and JSX) each get their own copy.
 
 Grammars can also come from a folder on your own machine, the output of the
 grammar builder run locally: one archive per language, no index. Plum looks
@@ -217,18 +218,20 @@ place. Each install gets a new folder of its own, and the newest checked
 folder is the grammar in use. That is what lets a reinstall take effect in
 the session that ran it.
 
-An install works through the same few ideas in order. Plum installs any
-**companion grammars** first: Markdown's emphasis and inline code live in a
-separate inline grammar that Markdown's injection query expects to find, so
-installing Markdown installs that one too. It unpacks the archive, checks
-that the manifest names the right language and this platform, and moves it
-into a new install folder. It then **loads the library and compiles the
-queries before registering anything**. A grammar the editor can't use, such
-as one built for a tree-sitter ABI version it can't load, is rejected here.
-Only a grammar that loads gets its folder marked as checked, and only a
-checked folder counts as an install, so a rejected grammar never replaces a
-working one. Finally plum registers the grammar with the running editor and
-deletes the language's older installs.
+An install runs these steps in order:
+
+1. **Companion grammars first.** Markdown's emphasis and inline code live in
+   a separate inline grammar that Markdown's injection query expects to find,
+   so installing Markdown installs that one too.
+2. **Unpack.** Plum unpacks the archive, checks that the manifest names the
+   right language and this platform, and moves it into a new install folder.
+3. **Load before registering.** Plum loads the library and compiles the
+   queries. A grammar the editor can't use, such as one built for a
+   tree-sitter ABI version it can't load, is rejected here. Only a grammar
+   that loads gets its folder marked as checked, and only a checked folder
+   counts as an install, so a rejected grammar never replaces a working one.
+4. **Register and clean up.** Plum registers the grammar with the running
+   editor and deletes the language's older installs.
 
 On later starts, HUME registers each installed grammar from its newest
 checked folder. Startup needs no network and reads only what is present on

@@ -44,8 +44,13 @@ Steel's library functions and your own `define`s are plain Scheme functions, not
   - Calls that read or change a live buffer, pane, selection, or widget raise at the top level of `init.scm` and in a plugin body loaded at startup, since nothing is on screen yet. So do calls that start background work that calls you back later (`after!`, `spawn-async!`, `path-programs`) and the calls that stop it (`cancel-timer!`, `cancel-async!`). Call them from a command, hook, timer, or callback.
   - Registrations (`bind-key!` and its variants without `#:keymap`, `define-command!`, `define-typed-command!`, `register-hook!`, `register-lsp-notification-hook!`, `register-completion-source!`, `define-language!`, `configure-language!`) raise inside a command, hook, timer, or callback. Call them at the top level of `init.scm` or in a plugin body.
   - `load-plugin!` works only at the top level of `init.scm`. `declare-plugin!` works there and in a plugin's own `manifest.scm`.
-- A procedure you hand over to be called later (a hook handler, a callback, an `on-select`, a `#:render`) must take the arguments its call's entry lists, and the call that takes it raises at once when it can't. A lambda with a fitting rest parameter is accepted, as is an editor function, except as an `on-before-buffer-save` handler, which must be a lambda of one or two parameters and no rest parameter. A command's procedure is checked when the command runs, not by `define-command!`.
-- Settings, key bindings, language definitions and grammars rank by whose behalf they are made: the user's beat a plugin's, and a plugin's beat HUME's own. Code acts for the user in `init.scm`, at `:set`, and in any command run from a key or the `:` prompt, including one a plugin defined, along with the hooks, timers and callbacks that code sets up. A plugin's body acts for the plugin, as do the hooks, timers and callbacks the body sets up. The entries below say which of two values from the same rank wins.
+- A procedure you hand over to be called later (a hook handler, a callback, an `on-select`, a `#:render`) must take the arguments its call's entry lists, and the call that takes it raises at once when it can't.
+  - A lambda with a fitting rest parameter is accepted, as is an editor function.
+  - An `on-before-buffer-save` handler is the exception: it must be a lambda of one or two parameters and no rest parameter.
+  - A command's procedure is checked when the command runs, not by `define-command!`.
+- Settings, key bindings, language definitions and grammars rank by whose behalf they are made: the user's beat a plugin's, and a plugin's beat HUME's own. The entries below say which of two values from the same rank wins.
+  - Code acts for the user in `init.scm`, at `:set`, and in any command run from a key or the `:` prompt, including one a plugin defined, along with the hooks, timers and callbacks that code sets up.
+  - A plugin's body acts for the plugin, as do the hooks, timers and callbacks the body sets up.
 - A value from a fixed set of names (a mode, a hook name, a log level, an enum option's value) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
 ## Settings & statusline
@@ -129,7 +134,13 @@ Don't compare `'commit` values: hashes have no order.
 - an installed plugin that has no file for the entry;
 - in a `manifest.scm`, a declaration of any plugin but the manifest's own.
 
-`load-plugin!` raises for a local `./file.scm` name (declare it with `declare-plugin!` instead), for a `#:config` that is not a hash with symbol keys, for `#:ref` on a `core:` plugin, for a call from a `manifest.scm`, and for an installed plugin directory holding neither `manifest.scm` nor `plugin.scm`.
+`load-plugin!` raises for:
+
+- a local `./file.scm` name (declare it with `declare-plugin!` instead);
+- a `#:config` that is not a hash with symbol keys;
+- `#:ref` on a `core:` plugin;
+- a call from a `manifest.scm`;
+- an installed plugin directory holding neither `manifest.scm` nor `plugin.scm`.
 
 For the full picture (load timing, `#:config` semantics, dependency checks), see [Plugins](plugins.md), especially [How plugins are loaded](plugins.md#how-plugins-are-loaded), and [Depending on another plugin](writing-plugins.md#depending-on-another-plugin).
 
@@ -193,7 +204,7 @@ Only `buffer-key`, `buffer-live?`, `pane-live?`, `diagnostic-counts`, and `diagn
 | `buffer-display-path` |  | `(buffer-display-path pane [#:relative dir])`{.sig} A path for display (absolute, home directory as `~`), or `#f` for an unsaved buffer. With `#:relative dir`, relative to `dir` when the file is inside it, such as `#:relative (cwd)` for the working directory. For printing only, never for file access |
 | `buffer-name` |  | `(buffer-name pane)`{.sig} The display name: a view buffer's label (such as `[messages]`), else the filename, else `"*scratch*"` |
 | `buffer-dirty?` |  | `(buffer-dirty? pane)`{.sig} `#t` if the buffer has unsaved edits |
-| `buffer-text` |  | `(buffer-text pane [#:range range])`{.sig} The buffer's live content as a string, unsaved edits included. It always ends with a line break, and its line endings are always `\n`, whatever the file uses. `range` is `(hash 'start-char s 'end-char e)`, end-exclusive, and returns only those characters, line breaks inside it included; a range missing either end, ending past the buffer, or ending before it starts raises instead of being clamped |
+| `buffer-text` |  | `(buffer-text pane [#:range range])`{.sig} The buffer's live content as a string, unsaved edits included. It always ends with a line break, and its line endings are always `\n`, whatever the file uses.<br><br>`range` is `(hash 'start-char s 'end-char e)`, end-exclusive, and returns only those characters, line breaks inside it included; a range missing either end, ending past the buffer, or ending before it starts raises instead of being clamped |
 | `buffer-lines` |  | `(buffer-lines pane [#:range range])`{.sig} The content as a list of lines, each with its ending stripped. `range` is `(hash 'start-line s 'end-line e)`, end-exclusive, the shape `viewport-range` returns; a range missing either end, ending past the last line, or starting after it ends raises instead of being clamped |
 | `buffer-line-count` |  | `(buffer-line-count pane)`{.sig} The number of lines `buffer-lines` returns, without building the list |
 | `buffer-char-count` |  | `(buffer-char-count pane)`{.sig} The length in characters, the final line break included: the largest offset `char-offset->line` accepts |
@@ -376,7 +387,7 @@ Any plugin can drive a picker with these editor functions, opening one and pushi
 
 | Call | Pane | Effect |
 |------|------|--------|
-| `picker!` | focused | `(picker! pane items keymap [#:prompt text] [#:pending bool] [#:query text] [#:truncate side] [#:render proc] [#:on-close thunk])`{.sig} Open a fuzzy-finder panel over a fixed `items` list of `(display . payload)` pairs. `keymap` maps each key the picker answers to a `(lambda (item token) ...)`; an unbound plain character types into the query and an unbound `Backspace` deletes from it. `#:pending #t` marks the panel as "results still arriving" until the first `picker-push!` or `picker-replace!`. `#:truncate` is `'head` (default) or `'tail`, the end of an over-long row that is cut. `#:render` styles or rewrites each row as it is shown; see [Custom pickers](writing-plugins.md#custom-pickers). `#:on-close` is called once when the picker closes. Returns a token, or `#f` when a `#:repeatable` command's `.` answers the picker without opening it |
+| `picker!` | focused | `(picker! pane items keymap [#:prompt text] [#:pending bool] [#:query text] [#:truncate side] [#:render proc] [#:on-close thunk])`{.sig} Open a fuzzy-finder panel over a fixed `items` list of `(display . payload)` pairs. `keymap` maps each key the picker answers to a `(lambda (item token) ...)`; an unbound plain character types into the query and an unbound `Backspace` deletes from it.<br><br>`#:pending #t` marks the panel as "results still arriving" until the first `picker-push!` or `picker-replace!`. `#:truncate` is `'head` (default) or `'tail`, the end of an over-long row that is cut. `#:render` styles or rewrites each row as it is shown; see [Custom pickers](writing-plugins.md#custom-pickers). `#:on-close` is called once when the picker closes.<br><br>Returns a token, or `#f` when a `#:repeatable` command's `.` answers the picker without opening it |
 | `live-picker!` | focused | `(live-picker! pane keymap #:source proc [#:prompt text] [#:query text] [#:debounce-ms ms] [#:truncate side] [#:render proc] [#:on-close thunk])`{.sig} Open a picker whose query runs `proc`, a function of the picker token and the query, on every keystroke, after `ms` milliseconds without typing (default 150). `keymap`, `#:truncate`, `#:render` and `#:on-close` as for `picker!`. Returns a token, or `#f` under `.` as `picker!` does |
 | `picker-command-source` |  | `(picker-command-source argv-for [#:cwd dir] [#:nul bool] [#:ok-exit-codes codes])`{.sig} A `#:source` for `live-picker!` that runs the subprocess `argv-for` names for the query |
 | `picker-push!` |  | `(picker-push! token items)`{.sig} Append a batch of `(display . payload)` items to an open picker. Returns `#t`, or `#f` for a stale token. A `live-picker!` source passes the token it was called with; once the user has typed on, that token stops feeding the picker |
@@ -402,7 +413,18 @@ Any plugin can drive a picker with these editor functions, opening one and pushi
 
 ### Row display
 
-A menu row, a drawer row and a row a picker's `#:render` returns are each given as a row display: a string (or a symbol, read as its name), or a hash: `(hash 'text t)` with an optional `'spans spans` to style parts of `t` and an optional `'selected-scope name` for the selected row. Each span is `(hash 'start-char s 'end-char e 'scope name)`: char offsets into `t`, end-exclusive, and a theme scope `name`, a string or a symbol. Add `'selected-scope name` to style the span with another scope while its row is the selected one; without it, `'scope` styles the span on every row. A span edge inside a character widens the span to the whole character. A span that is empty, runs past the text, or shares a character with another raises. The row's own `'selected-scope name` styles the whole row with `name` in place of the list's selected-row style (`ui.menu.selected` in a menu or the drawer, `ui.text.focus` in a picker) while it is selected; a theme that leaves `name` unstyled shows that row in its default style when selected. Its spans still style their text on top.
+A menu row, a drawer row and a row a picker's `#:render` returns are each given as a row display, one of:
+
+- a string, or a symbol, read as its name;
+- a hash: `(hash 'text t)` with an optional `'spans spans` to style parts of `t` and an optional `'selected-scope name` for the selected row.
+
+Each span is `(hash 'start-char s 'end-char e 'scope name)`: char offsets into `t`, end-exclusive, and a theme scope `name`, a string or a symbol.
+
+- Add `'selected-scope name` to style the span with another scope while its row is the selected one; without it, `'scope` styles the span on every row.
+- A span edge inside a character widens the span to the whole character.
+- A span that is empty, runs past the text, or shares a character with another raises.
+
+The row's own `'selected-scope name` styles the whole row with `name` in place of the list's selected-row style (`ui.menu.selected` in a menu or the drawer, `ui.text.focus` in a picker) while it is selected. A theme that leaves `name` unstyled shows that row in its default style when selected. Its spans still style their text on top.
 
 ### The drawer
 
@@ -410,7 +432,9 @@ A menu row, a drawer row and a row a picker's `#:render` returns are each given 
 
 A row too wide for the drawer is cut to fit, with `…` at the dropped end. `#:truncate` picks the end: `'tail` (default) drops the back and keeps the start, and `'head` drops the front and keeps the end.
 
-With `#:render`, `items` can be any values but `#f`, one per row, each its row's payload. Before showing rows it hasn't drawn at its current width, the drawer calls `(render rows budget)`: `rows` are the items of those rows, top to bottom, and `budget` is how many terminal cells one row gets. `render` returns one [row display](#row-display) for each. Each row is drawn once for a given width, so `render` runs again only for rows scrolled into view, every visible row after the drawer changes width, or after `update-drawer-list!`. A row still wider than `budget` is cut at the `#:truncate` end.
+With `#:render`, `items` can be any values but `#f`, one per row, each its row's payload. Before showing rows it hasn't drawn at its current width, the drawer calls `(render rows budget)`: `rows` are the items of those rows, top to bottom, and `budget` is how many terminal cells one row gets. `render` returns one [row display](#row-display) for each.
+
+Each row is drawn once for a given width, so `render` runs again only for rows scrolled into view, every visible row after the drawer changes width, or after `update-drawer-list!`. A row still wider than `budget` is cut at the `#:truncate` end.
 
 `render` can read buffers, selections and settings but not change the editor; calls that need language servers, diagnostics, completion, timers or background processes raise. An attempt to change the editor, an error, or a result that isn't one row display per item (a row whose spans don't fit its text included) closes the drawer, calls `callback` with `#f`, and shows the error.
 
@@ -446,7 +470,10 @@ A program that writes more than 64 MiB to stdout gets the answer of one that cou
 
 `spawn-async!`, `run-inline-output!`, `run-capture!` and `picker-source-spawn!` start the program in HUME's working directory, or in `dir` (a relative `dir` is joined onto the working directory), and look it up on the `PATH` HUME started with. They deny git a credential prompt, so a private repository fails instead of waiting for a password.
 
-A script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) stops where it is, and none of its error handlers run. HUME's own waits don't count: running a program and waiting for it, deleting or replacing a directory tree (`remove-dir!`, `replace-dir!`), resolving paths with `first-path-outside`, and opening a grammar. `time/sleep-ms` does count, as does waiting in Steel's own calls, such as its `wait`.
+A script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) stops where it is, and none of its error handlers run.
+
+- HUME's own waits don't count: running a program and waiting for it, deleting or replacing a directory tree (`remove-dir!`, `replace-dir!`), resolving paths with `first-path-outside`, and opening a grammar.
+- `time/sleep-ms` does count, as does waiting in Steel's own calls, such as its `wait`.
 
 [Filesystem and processes](writing-plugins.md#filesystem-and-processes) has examples.
 

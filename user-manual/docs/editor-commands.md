@@ -1,6 +1,14 @@
 # Editor Commands
 
-These are the editor commands built into HUME. A key runs them and a plugin reaches them with `(call! …)`, but you can't run them by name at the `:` prompt. Typed commands are on the [Command mode](command-mode.md) page. Editor functions such as `insert-key!`, which only a script can call, are on the [Plugin API](plugin-api.md#commands-and-functions) page. A plugin's own commands are listed in its documentation.
+These are the editor commands built into HUME. A key runs them and a plugin reaches them with `(call! …)`, but you can't run them by name at the `:` prompt. Other callables are documented elsewhere:
+
+- typed commands: [Command mode](command-mode.md)
+- editor functions such as `insert-key!`, which only a script can call: [Plugin API](plugin-api.md#commands-and-functions)
+- a plugin's own commands: that plugin's documentation
+
+For the keys that run these commands, see the [key reference](default-keys.md) and the per-topic pages. A key marked *(kitty)* needs the kitty keyboard protocol; see [Terminal compatibility](installation.md#terminal-compatibility).
+
+## Calling from Scheme
 
 Scheme can call the commands on this page two ways:
 
@@ -11,7 +19,8 @@ Scheme can call the commands on this page two ways:
 (call! "move-left" pane)
 ```
 
-The bare form works for the commands on this page except `insert-register`, which only `call!` and keys reach. `call!` works for any editor command, built in or defined by a script, except `repeat-last-action` and `pipe`. Those two run only from a key: calling them from Scheme raises an error.
+- The bare form works for the commands on this page except `insert-register`, which only `call!` and keys reach.
+- `call!` works for any editor command, built in or defined by a script, except `repeat-last-action` and `pipe`. Those two run only from a key: calling them from Scheme raises an error.
 
 Every command needs a `pane` that names a pane; a value with only a buffer (from `(buffers)`, or a buffer-level hook) is refused. Most commands act on that pane even when it isn't focused, as long as it is still open and still shows the same buffer. These need the focused pane:
 
@@ -25,9 +34,10 @@ Every command needs a `pane` that names a pane; a value with only a buffer (from
 
 A `pane` the command can't act on raises an error; the command never falls back to whatever is focused. See [Calling other commands](writing-plugins.md#calling-other-commands) for how a plugin uses these.
 
-Some commands also take a value that a key press asks for. `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add` take a character; `search-forward`, `search-backward` and `sift-within` take a pattern. From a script, that value is an argument, as each entry says.
+Some commands also take a value that a key press asks for. From a script, that value is an argument, as each entry says:
 
-For the keys that run these commands, see the [key reference](default-keys.md) and the per-topic pages. A key marked *(kitty)* needs the kitty keyboard protocol; see [Terminal compatibility](installation.md#terminal-compatibility).
+- a character: `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`
+- a pattern: `search-forward`, `search-backward` and `sift-within`
 
 ## Motions
 

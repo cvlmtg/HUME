@@ -30,19 +30,22 @@ plugin supplies its own `cargo install` step instead.
 
 ### Registration
 
-At load the plugin configures the `scheme` language's root marker as `cog.scm` and sets the
-language's default list to `steel-language-server`. A root set in `init.scm` wins over the
-plugin's whichever runs first, and the plugin's is dropped without a message. When that
-binary is on `$PATH` it also registers the server under that name; otherwise it logs a
-warning that points at `:steel-server-install`. A registration under that name that
-already exists, such as a manual `register-lsp-server! "steel-language-server" …` in
-`init.scm`, is left alone.
+At load the plugin:
 
-`:steel-server-install` registers the server once the binary is on `$PATH`, unless a
-registration under that name already exists. When the binary is already there it logs so
-and installs nothing. Otherwise it needs `cargo` on `$PATH` and fails with a pointer to
-rustup if not, and after `cargo install` it fails with a note about `~/.cargo/bin` if the
-binary is still not on `$PATH`.
+- configures the `scheme` language's root marker as `cog.scm`. A root set in `init.scm` wins
+  over the plugin's whichever runs first, and the plugin's is dropped without a message.
+- sets the language's default list to `steel-language-server`.
+- registers the server under that name when the binary is on `$PATH`, and otherwise logs a
+  warning that points at `:steel-server-install`.
+
+`:steel-server-install` installs the binary unless it is already on `$PATH`, in which case
+it logs so and installs nothing. Installing needs `cargo` on `$PATH` and fails with a
+pointer to rustup if not. After `cargo install`, it fails with a note about `~/.cargo/bin`
+if the binary is still not on `$PATH`. Once the binary is there, the command registers the
+server.
+
+Neither registration replaces one that already exists under that name, such as a manual
+`register-lsp-server! "steel-language-server" …` in `init.scm`.
 
 ### Host globals
 

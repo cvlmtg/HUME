@@ -7,7 +7,9 @@ Every command in this manual is one of two kinds, each reachable only its own wa
 - **Typed commands**: everything on this page. Reached only from the `:` prompt. Each takes a text argument, a `!`, both or neither, as its entry shows, and refuses one it doesn't take.
 - **Editor commands**: everything in the [Editor Commands](editor-commands.md) reference. Reached only from a key or a plugin (including your `init.scm`), never by name at the `:` prompt.
 
-Most typed commands have a short alias; the tables list both. Command names ignore case. A name ends at the first character that is not a letter, digit, `-` or `_`, so put a space before an argument: `:e 1.txt`, not `:e1.txt`. `:b2` is the one exception: `:b` followed only by digits switches to that buffer.
+Most typed commands have a short alias; the tables list both. Command names ignore case.
+
+A name ends at the first character that is not a letter, digit, `-` or `_`, so put a space before an argument: `:e 1.txt`, not `:e1.txt`. `:b2` is the one exception: `:b` followed only by digits switches to that buffer.
 
 Press `Tab` at any point to complete names and, where it makes sense, arguments. When several candidates match, the first `Tab` completes the text they share and opens the candidate list; another `Tab` picks the first candidate and `Shift-Tab` the last. `:set global command-completion=first-candidate` makes the first `Tab` fill in the first candidate at once instead.
 

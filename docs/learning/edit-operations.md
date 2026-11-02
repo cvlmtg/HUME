@@ -40,9 +40,11 @@ each pressing delete-word-backward in insert mode: each deletes back to the
 word's start, so one range contains the other. The builder merges
 overlapping deletions into their union, so the shared characters are removed
 once. A position strictly inside a deleted range ends up at the point where
-the deletion happened. The selections an edit leaves behind are resolved
-once, against the new text, and selections that end up sharing a character
-merge. See [Changesets](changesets.md).
+the deletion happened.
+
+The selections an edit leaves behind are resolved once, against the new
+text, and selections that end up sharing a character merge. See
+[Changesets](changesets.md).
 
 ## Primary vs secondary selections
 

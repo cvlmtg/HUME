@@ -19,7 +19,9 @@ Add a `load-plugin!` call to your [`init.scm`](configuration.md).
 [cvlmtg/grep.hume](https://github.com/cvlmtg/grep.hume) adds one `g /` keybind to open a picker with a live `rg` (or `grep`) search behind it, re-running the search as you type.
 :::
 
-`core:stdlib` is grep.hume's own dependency, not something every plugin needs; check each plugin's docs for what it requires. Then run `:plum-install-plugins` to clone it from GitHub, and `:reload-config` to load it. PLUM never installs anything on its own.
+Run `:plum-install-plugins` to clone the plugin from GitHub, then `:reload-config` to load it. PLUM never installs anything on its own.
+
+`core:stdlib` is grep.hume's own dependency, not something every plugin needs; check each plugin's docs for what it requires.
 
 See [How plugins are loaded](#how-plugins-are-loaded) for when a plugin's code runs.
 
@@ -40,7 +42,13 @@ PLUM installs a plugin's latest commit. To stay on a release, follow a branch ot
 (load-plugin! "cvlmtg/grep.hume" #:ref "v1.0.0")
 ```
 
-`:plum-install-plugins` checks a new plugin out at that ref, and `:plum-update-plugins` moves an installed one onto it. After changing or removing a `#:ref`, run `:reload-config`, then `:plum-update-plugins`, then `:reload-config` again to load the new version. A plugin pinned to a tag or a commit stays on it; a plugin pinned to a branch gets that branch's latest commit.
+`:plum-install-plugins` checks a new plugin out at that ref, and `:plum-update-plugins` moves an installed one onto it. A plugin pinned to a tag or a commit stays on it; a plugin pinned to a branch gets that branch's latest commit.
+
+After changing or removing a `#:ref`:
+
+1. Run `:reload-config`.
+2. Run `:plum-update-plugins`.
+3. Run `:reload-config` again to load the new version.
 
 A commit id can be the short form `git log --oneline` shows, as long as the commit is on one of the plugin's branches or tags. A full commit id also works for a commit on none of them, if the plugin's host still has it. If PLUM can't find the ref, installing or updating that plugin fails with a message naming it, and an installed plugin stays as it was.
 

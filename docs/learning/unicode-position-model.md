@@ -2,7 +2,6 @@
 
 Three different units can describe a "position" in text, and choosing the
 wrong one at the wrong layer causes subtle, hard-to-reproduce bugs.
-Understanding this hierarchy is essential for HUME's architecture.
 
 ## Byte offset
 
@@ -28,13 +27,13 @@ character and is not a valid character boundary. This is why `s[3..4]` on
 is refused.
 
 Byte offsets are used internally by Rust's `str` and by the rope library HUME
-stores buffer text in, but HUME never uses them for buffer positions. They
-surface only at narrow seams where an external system speaks other units:
-regular-expression matchers and tree-sitter speak bytes. Language servers
-speak line-plus-column positions whose column counts UTF-8 bytes or UTF-16
-code units, a fourth unit that exists only at that wire boundary and is
-converted on arrival. Outside those seams, byte offsets are an implementation
-detail.
+stores buffer text in, but HUME never uses them for buffer positions. Other
+units surface only at narrow seams where an external system speaks them:
+
+- regular-expression matchers and tree-sitter speak bytes;
+- language servers speak line-plus-column positions whose column counts
+  UTF-8 bytes or UTF-16 code units, a fourth unit that exists only at that
+  wire boundary and is converted on arrival.
 
 ## Char offset
 
@@ -92,21 +91,23 @@ A **cluster position** cannot: it is a separate type, and only the grapheme
 layer can make one, by walking the text's clusters. Everything that decides
 where a selection starts or ends takes and returns cluster positions, so a
 position inside a cluster is not a bug to look for; it cannot be written down.
+
 A position from outside becomes a cluster position in one step: a char offset
 snaps onto the cluster holding it, and a regex match's byte range becomes the
 run of whole clusters that covers it.
 
-Edit code needs a second kind of position, a **cluster bound**: either the
-start of a cluster or the end of the text. A cursor can never sit at the end
-of the text, since the structural newline is always there to sit on, but an
-edit can: inserting at the very end, or deleting up to it, names the place
-after the last cluster. A cluster bound is the end of a half-open range, and
-every cluster start is one.
+Two more types complete the set:
 
-A run of whole clusters is its own type too. It knows its first cluster, its
-last cluster and where it ends (the start of the next one), so there is no
-question of whether "the end" means the last thing covered or the first thing
-not covered.
+- A **cluster bound** is either the start of a cluster or the end of the
+  text. Edit code needs it: a cursor can never sit at the end of the text,
+  since the structural newline is always there to sit on, but inserting at
+  the very end or deleting up to it names the place after the last cluster.
+  A cluster bound is the end of a half-open range, and every cluster start is
+  one.
+- A **run of whole clusters** knows its first cluster, its last cluster and
+  where it ends (the start of the next one), so there is no question of
+  whether "the end" means the last thing covered or the first thing not
+  covered.
 
 ## Selections address clusters
 
@@ -126,11 +127,9 @@ A selection answers two different questions:
 - the **head** is where the cursor is drawn and where the next motion starts;
 - the **extent** is the clusters it covers.
 
-A command that deletes, yanks, or replaces a selection needs the extent, and
-it asks the selection for it rather than working it out from the head. Doing
-the arithmetic in each command is a convention, and conventions get
-forgotten; with the extent read from the model, `d` and `y` cannot leave half
-a character behind.
+A command that deletes, yanks, or replaces a selection asks the selection for
+its extent rather than working it out from the head. With no per-command
+arithmetic to get wrong, `d` and `y` cannot leave half a character behind.
 
 A selection is only meaningful for the text it was made on. Each set of
 selections remembers which version of the text it belongs to, and reading it
@@ -138,17 +137,18 @@ means pairing it with that text: pairing it with any other version is a bug
 that panics.
 
 An edit is the one place that needs positions in a text that does not exist
-yet. The text it leaves behind can re-form clusters (deleting the base letter
-leaves its accent joining the previous character; deleting one half of a flag
-re-pairs the rest). So an edit describes its resulting selections relative to
-what it changed, and they are resolved onto the clusters of the new text in
-one place. Every position the editor keeps between commands (other panes'
-selections, the jump history, a search prompt's starting point) is carried
-through the same change at the same moment, so none of them is ever read
-against a text it does not belong to.
+yet, and the text it leaves behind can re-form clusters: deleting the base
+letter leaves its accent joining the previous character, and deleting one
+half of a flag re-pairs the rest. So an edit describes its resulting
+selections relative to what it changed, and they are resolved onto the
+clusters of the new text in one place.
 
-The grapheme layer also answers a related family of questions for vertical and
-horizontal layout: the display column of a position once tab stops are
-expanded, the position that lands on a given display column, the number of
-graphemes in a range. The abstraction that gives "next grapheme boundary" also
-gives tab-aware column arithmetic.
+Every position the editor keeps between commands (other panes' selections,
+the jump history, a search prompt's starting point) is carried through the
+same change at the same moment, so none of them is ever read against a text
+it does not belong to. See [Changesets](changesets.md#position-mapping).
+
+The grapheme layer also answers the column questions vertical and horizontal
+layout ask: the display column of a position once tab stops are expanded,
+the position that lands on a given display column, the number of graphemes
+in a range.

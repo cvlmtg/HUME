@@ -150,11 +150,12 @@ decides it, and a layer can also unbind a sequence, hiding what the layers
 below it bind. On top of the global keymap, a buffer can have named keymaps
 attached to it, which are looked up first.
 
-The extend trie ships empty, because flipping anchor and head is already
-reachable through `Ctrl-e` in both Normal and Extend mode. Any key not found
-there falls through to the normal trie with extend mode active. A binding in
-the extend trie is a different command for that key in Extend mode: a plugin
-that prefers `o` for the flip binds `o` there to the flip command.
+The extend trie ships empty. Any key not found there falls through to the
+normal trie with extend mode active. A binding in the extend trie gives that
+key a different command in Extend mode. Flipping anchor and head, for
+example, needs no extend-only key because `Ctrl-e` does it in both Normal and
+Extend mode; a plugin that prefers `o` for the flip binds `o` there to the
+flip command.
 
 ## Before dispatch: who owns the keyboard
 

@@ -4,7 +4,7 @@ Every editing command acts on the current selection. There is no cursor without 
 
 ## How selections work
 
-A selection has two ends: the **anchor** and the **head**. The head is the moving end; the anchor stays fixed until you reset the selection. The selection always covers at least one character.
+A selection has two ends: the **anchor** and the **head**. The head is the moving end; the anchor stays fixed until you reset the selection.
 
 ## Building a selection
 
@@ -27,7 +27,7 @@ For a one-shot extend without entering Extend mode:
 
 - Under the kitty keyboard protocol, hold `Ctrl` with a motion key (`Ctrl-h`/`Ctrl-j`/`Ctrl-k`/`Ctrl-l`, `Ctrl-w`/`Ctrl-b`, `Ctrl-f`/`Ctrl-t`, `Ctrl-g h`, and so on): that one keypress runs the motion with extend on.
 - Keys with their own `Ctrl` binding keep it (`Ctrl-d`, `Ctrl-u`, `Ctrl-o`, `Ctrl-e`), and `Ctrl` with a key that isn't a motion does nothing.
-- `Ctrl-x` extends the line selection downward on any terminal. Its backward twin `Ctrl-Shift-x` needs kitty, since other terminals can't tell the two apart.
+- `Ctrl-x` extends the line selection downward (see [Whole lines](#whole-lines)) on any terminal. Its backward twin `Ctrl-Shift-x` needs kitty, since other terminals can't tell the two apart.
 
 Search has the same one-shot extend: `Ctrl-n` (kitty only) moves the head to the next search match while the anchor stays put, so the selection covers everything from where you started through that match. `Ctrl-Shift-n` does the same backward, extending to the previous match.
 
@@ -51,7 +51,7 @@ Lorem<span class="sel">&nbsp;ipsum dolor si<span class="head">t</span></span><br
 Lorem<span class="sel">&nbsp;ipsum dolo<span class="head">r</span></span> sit
 </div>
 
-The anchor stays on `Lorem`'s trailing whitespace throughout: `w` grows the head forward one word at a time, and `b` shrinks it back the same way.
+The anchor stays on the space after `Lorem` throughout.
 
 ### Text objects
 
@@ -80,7 +80,11 @@ Text objects select structured regions in one step. They use the `m` prefix: `m 
 
 Closing brackets work as well as opening ones: `m i )` is the same as `m i (`, and likewise for `]`, `}`, and `>`.
 
-`m i a` / `m a a` and the last six rows above (`f`, `t`, `c`, `u`, `v`, `x`) are structure-aware. When the language's grammar supports it (see [Syntax Highlighting](syntax-highlighting.md)), they select the actual function, class, comment, unit test, value, or tag pair. Wherever the grammar doesn't cover the cursor (a syntax error, a buffer with no grammar at all), `a` and `x` fall back to a lexical scan. Without a grammar, `f`/`t`/`c`/`u`/`v` do nothing, with no message. Where the grammar covers it, a nested list, tuple, or struct literal passed as a call argument is itself the argument; use `m i v` / `m a v` for its members.
+`m i a` / `m a a` and the last six rows above (`f`, `t`, `c`, `u`, `v`, `x`) are structure-aware. When the language's grammar supports it (see [Syntax Highlighting](syntax-highlighting.md)), they select the actual function, class, comment, unit test, value, or tag pair.
+
+- Wherever the grammar doesn't cover the cursor (a syntax error, a buffer with no grammar at all), `a` and `x` fall back to a lexical scan.
+- Without a grammar, `f`/`t`/`c`/`u`/`v` do nothing, with no message.
+- Where the grammar covers it, a nested list, tuple, or struct literal passed as a call argument is itself the argument; use `m i v` / `m a v` for its members.
 
 `m i x` selects the content without its surrounding whitespace. With the cursor on a tag itself, it selects the content of the enclosing pair.
 
@@ -149,6 +153,11 @@ Press `s` to enter Sift mode, type a regex pattern and press `Enter`. Each selec
 2. Press `s` and type `\w+` to select each word individually
 3. Press `d` to delete all words at once
 
-The pattern sees each selection's text on its own, without a line break the selection ends on: the same text `c` would change. So `^` and `$` match at the start and end of the selection, not of the line or the buffer, and `\b` treats the selection's edges as the edges of the text. Add `(?m)` to make `^` and `$` also match at the start and end of each line inside the selection. On `## Title` selected with `x`, `^#+` selects `##` and `Title$` selects `Title`. A line break the selection ends on is never matched, so a selection covering only an empty line has nothing to sift.
+The pattern sees each selection's text on its own, without a line break the selection ends on: the same text `c` would change.
+
+- `^` and `$` match at the start and end of the selection, not of the line or the buffer. On `## Title` selected with `x`, `^#+` selects `##` and `Title$` selects `Title`.
+- Add `(?m)` to make `^` and `$` also match at the start and end of each line inside the selection.
+- `\b` treats the selection's edges as the edges of the text.
+- A line break the selection ends on is never matched, so a selection covering only an empty line has nothing to sift.
 
 `s` needs at least one selection wider than a single character; on a bare single-character cursor it does nothing. Pressing `Enter` on an invalid pattern, or one with no match, reports it and leaves the selections as they were. See [Regex syntax](moving-around.md#regex-syntax) for the pattern flavor and case-sensitivity rules.

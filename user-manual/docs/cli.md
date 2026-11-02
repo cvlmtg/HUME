@@ -14,7 +14,11 @@ hume [OPTIONS] [FILE...]
 |----------|-------------|
 | `FILE...` | One or more files to open, each optionally suffixed with `:LINE` or `:LINE:COLUMN` to place the cursor there, e.g. `src/main.rs:42:5`. With no arguments, HUME opens a scratch buffer named `*scratch*`. |
 
-Line and column are 1-based, matching the `line:col` the statusline shows, and a `0` in either is a startup error. A path that exists on disk as typed always opens as-is, so a file named `notes:2024` is never split; only a path that doesn't exist has a trailing position taken off. You can paste a `file:line:col` from a compiler, linter or `grep` straight onto the command line. The position applies to the pane HUME starts with.
+You can paste a `file:line:col` from a compiler, linter or `grep` straight onto the command line.
+
+- Line and column are 1-based, matching the `line:col` the statusline shows. A `0` in either is a startup error.
+- A path that exists on disk as typed always opens as-is, so a file named `notes:2024` is never split. Only a path that doesn't exist has a trailing position taken off.
+- The position applies to the pane HUME starts with.
 
 ## Options
 

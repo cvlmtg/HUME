@@ -94,12 +94,14 @@ itself; it takes effect the next time an edit is recorded.
 
 The buffer remembers the identifier of the revision that was current when the
 file was last saved. The text matches the file when the current revision is
-that saved one. A separate `dirty: bool` flag could not do the same job: undo
-back to the save point would have to restore the flag's old value, and so would
-every jump across branches and every reload that records nothing. Comparing
-revision identifiers makes the question structural. The buffer is clean at one
-position in the tree, and every way of moving through the tree already updates
-the current position.
+that saved one.
+
+A separate `dirty: bool` flag could not do the same job: undo back to the save
+point would have to restore the flag's old value, and so would every jump
+across branches and every reload that records nothing. Comparing revision
+identifiers makes the question structural. The buffer is clean at one position
+in the tree, and every way of moving through the tree already updates the
+current position.
 
 Two other things also make a buffer unsaved, because neither is a revision: a
 line ending different from the one last saved, and edits in an open insert or

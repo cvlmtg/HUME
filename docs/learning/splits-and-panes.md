@@ -30,21 +30,21 @@ Each pane owns:
   is remembered per buffer: pinning one buffer's wrap style does not change
   how the pane shows another, and switching back restores it.
 
-A buffer holds text, undo history and its own settings (its default wrap
-style among them), but nothing about how any pane is looking at it. A pane
-holds that "how it is being looked at" half, including any setting it
-overrides.
+The buffer keeps the text, the undo history and its own settings (its
+default wrap style among them), and nothing about how any pane is looking at
+it.
 
 ## Keeping panes in sync
 
-If two panes show the same buffer and one of them edits it, the other pane's
-selections would go stale the moment the edit lands: a cursor at character
-40 means something else once ten characters are inserted at position 10. So
-every edit propagates. The editing pane applies its edit, and every other
-pane that has ever shown that buffer has its selections carried through the
-same edit, so a cursor after the insertion point moves along with its text.
-A pane that has switched to another file still remembers its place in this
-one, and that place follows the edits too.
+When one pane edits a buffer that another pane also shows, the other pane's
+selections would go stale: a cursor at character 40 means something else
+once ten characters are inserted at position 10.
+
+So every edit propagates. Every other pane that has ever shown the buffer
+has its selections carried through the same edit, and a cursor after the
+insertion point moves along with its text. That includes a pane that has
+since switched to another file: its remembered place in this one follows the
+edits too.
 
 Selections are not the only positions that follow. Jump lists, positions a
 script is tracking, prompt snapshots, diagnostics and the other stored
@@ -100,9 +100,10 @@ Every split resizes the panes along that split's axis back to equal sizes,
 so splitting a third time gives three equal thirds rather than halving the
 pane you split. A group of stacked panes counts as one column (and a group
 of side-by-side panes as one row) when measured against its neighbours, the
-way most terminal multiplexers balance a mixed grid. Closing a pane works
-the same way in reverse: its space is shared equally among the panes that
-remain, not handed to one neighbour.
+way most terminal multiplexers balance a mixed grid.
+
+Closing a pane works the same way in reverse: its space is shared equally
+among the panes that remain, not handed to one neighbour.
 
 ---
 

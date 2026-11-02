@@ -66,10 +66,10 @@ a small set:
   off;
 - a **placeholder**: a stand-in for a character the terminal must never be
   shown as itself, either a control character it would act on or an
-  invisible one that would vanish. A bidi override is the dangerous case,
-  since rendered as itself it can look like a harmless space. It is drawn as
-  its codepoint in angle brackets, so nothing hides in a line that looks
-  empty, and unlike the indicator it is always on;
+  invisible one that would vanish. It is drawn as its codepoint in angle
+  brackets, so nothing hides in a line that looks empty. A bidi override is
+  the dangerous case: rendered as itself, it can look like a harmless space.
+  Unlike the indicator, the placeholder is always on;
 - a **width continuation**: the empty second cell of a 2-wide character,
   which inherits its neighbour's style;
 - a **virtual** cell: text injected by a provider that is not backed by
@@ -140,13 +140,15 @@ Because the walk itself decides what is visible, no separate estimate of
 "how many lines fit" can disagree with what is drawn.
 
 Work is measured and kept one buffer line at a time, so what a frame holds
-is proportional to what is on screen, not to the size of the file. The
-editor measures lines before drawing them, which is how it decides where the
-viewport lands, and keeps the result, so the drawing step finds that work
-already done. A line it only measured costs almost nothing. The memory
-behind a drawn line is reused by the next frame, and only a line far wider
-than anything ordinary gives its memory back at the end of the frame, so one
-runaway line cannot hold on to it for the rest of the session.
+is proportional to what is on screen, not to the size of the file.
+
+The editor measures lines before drawing them, to decide where the viewport
+lands, and keeps the result, so the drawing step finds that work already
+done. A line it only measured costs almost nothing.
+
+The memory behind a drawn line is reused by the next frame. Only a line far
+wider than anything ordinary gives its memory back at the end of the frame,
+so one runaway line cannot hold on to it for the rest of the session.
 
 ## Scope-based theming
 
@@ -169,9 +171,8 @@ The rendering layer is self-contained: it knows nothing about the editor's
 top-level state, file loading or modes. It reads a buffer's text through a
 closure that lends it the rope for the duration of the call, and reads
 syntax highlighting the same way. It never owns a buffer and never depends
-on editor types; it only borrows the text and syntax data for the frame.
-That keeps rendering testable in isolation and avoids a circular dependency
-between the editor and the renderer.
+on editor types. That keeps rendering testable in isolation and avoids a
+circular dependency between the editor and the renderer.
 
 Per-frame data that crosses the boundary (search highlights, bracket match
 positions, LSP diagnostics) is written by the editor into a per-pane slot

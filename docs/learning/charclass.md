@@ -21,17 +21,14 @@ first character, so a cluster never changes class partway through:
 | Space | inter-word whitespace | space, tab, no-break and ideographic spaces |
 | Eol | end-of-line | `\n` |
 
-The Word class follows Unicode's notion of "alphanumeric", so accented
-letters like `é` and Han characters like `文` classify as Word just as `a`
-does. Space covers the characters that act as spacing, including the
-no-break and ideographic spaces. Every other unusual whitespace character
-(form feed, thin space, …) is classed as Punctuation, so the cursor stops on
-it rather than skipping over something invisible.
+The Word class follows Unicode's notion of "alphanumeric", so `é` and `文`
+are Word just as `a` is. Whitespace outside the Space class (form feed, thin
+space, …) is classed as Punctuation, so the cursor stops on it rather than
+skipping over something invisible.
 
-For `word` boundaries, any adjacent class change is a boundary:
-`Word`→`Punctuation`, `Punctuation`→`Space`, and so on. For `WORD`
-boundaries, the only merge is Word+Punctuation. Every other class change
-still counts, including `Space`↔`Eol`, which is how a whitespace scan still
+For `word` boundaries, any adjacent class change is a boundary. For `WORD`
+boundaries, Word and Punctuation merge, and every other class change still
+counts, including `Space`↔`Eol`, which is how a whitespace scan still
 notices line ends.
 
 The same word-finding logic powers both `w` and `W` (and the inner-word text

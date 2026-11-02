@@ -61,7 +61,9 @@ It writes one archive per grammar into the folder, and `--all` builds every gram
 (load-plugin! "core:plum" #:config (hash 'grammar-source "/path/to/hume-grammars"))
 ```
 
-The path must be absolute, and `~` is not expanded. It can't be inside the `plum-staging` or `grammars` folders of HUME's data directory, which PLUM clears. `:plum-install-grammar` and `plum/ensure-grammars` then install each grammar the folder holds from it, and download the others as usual, so the folder needs only the grammars you built yourself. A grammar from a folder built by a different version of `hume-grammar-build` than the one your HUME expects still installs, with a warning in `:messages`.
+The path must be absolute, and `~` is not expanded. It can't be inside the `plum-staging` or `grammars` folders of HUME's data directory, which PLUM clears.
+
+`:plum-install-grammar` and `plum/ensure-grammars` then install each grammar the folder holds from it, and download the others as usual, so the folder needs only the grammars you built yourself. A grammar from a folder built by a different version of `hume-grammar-build` than the one your HUME expects still installs, with a warning in `:messages`.
 
 ## Embedded languages
 
@@ -93,7 +95,11 @@ The arguments, in order, are:
 - a list of glob patterns, matched against the end of the file's path: `"Makefile"` matches a file with that name in any directory, and `".github/workflows/*.yaml"` matches a file in such a directory. A pattern that starts with `/` matches the whole path. A file opened through a symbolic link is matched by the path you opened, then by the path the link leads to
 - a list of interpreter names, matched against the program a file's first line runs: `"python"` matches `#!/usr/bin/python3` and `#!/usr/bin/env python3.12`. A version after the name is ignored, unless a language names that version itself. A name with a space or a `/` raises an error.
 
-You can drop trailing arguments you don't need: `(define-language! "my-lang" '("myl"))` is fine.
+You can drop trailing arguments you don't need: `(define-language! "my-lang" '("myl"))` is fine. Now `my-lang` is detected like any built-in.
+
+Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its [settings](#language-settings) stay. A definition in your `init.scm` beats a plugin's, whichever runs first, and a second one in your `init.scm` is ignored with a note in `:messages`.
+
+### Language settings
 
 Settings beyond detection go through `configure-language!`, which works on any language, built-in or your own. Call it after the `define-language!` that defines the language.
 
@@ -119,11 +125,13 @@ A language with no roots uses the directory HUME was started in.
   #:block-comment-tokens '(("{-" . "-}")))
 ```
 
-Built-in languages already come with the roots, identifiers and comments their language servers and `G G` expect; `configure-language!` replaces them. A setting from your `init.scm` beats one from a plugin, whichever runs first. Setting the same thing twice in your `init.scm` keeps the first value and notes the second in `:messages`.
+Built-in languages already come with the roots, identifiers and comments their language servers and `G G` expect; `configure-language!` replaces them.
 
-Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its settings stay. Definitions follow the same order as settings: yours beats a plugin's, whichever runs first, and a second one in your `init.scm` is ignored with a note in `:messages`.
+A setting from your `init.scm` beats one from a plugin, whichever runs first. Setting the same thing twice in your `init.scm` keeps the first value and notes the second in `:messages`.
 
-Now `my-lang` is detected like any built-in. `:plum-install-grammar` installs grammars only for the languages HUME ships with. For your own language, or a private or experimental tree-sitter grammar, point HUME at the grammar's library and a highlight query file by hand. To build the library from the grammar's source, run `hume-grammar-build compile <grammar-dir> <library>` (see [Install from a local folder](#install-from-a-local-folder) for where to get it):
+### Registering a grammar by hand
+
+`:plum-install-grammar` installs grammars only for the languages HUME ships with. For your own language, or a private or experimental tree-sitter grammar, point HUME at the grammar's library and a highlight query file by hand. To build the library from the grammar's source, run `hume-grammar-build compile <grammar-dir> <library>` (see [Install from a local folder](#install-from-a-local-folder) for where to get it):
 
 ```scheme
 (register-grammar! "my-lang"
@@ -184,7 +192,9 @@ See [Settings](settings.md) for the full settings reference.
 
 ## Troubleshooting
 
-**The file opens with no colors.** The language has no installed grammar. Run `:plum-list-grammars`. If the language isn't under **Installed grammars**, run `:plum-install-grammar <name>`, or `:plum-install-grammar` alone while that buffer is focused. If the install says there is no grammar for the language, HUME has none to install for it. Check the language name on the statusline and fix a wrong detection with `:set buffer language=<name>`. For a language HUME ships no grammar for, register one by hand (see [Teach HUME a new language](#teach-hume-a-new-language)).
+**The file opens with no colors.** The language has no installed grammar. Run `:plum-list-grammars`. If the language isn't under **Installed grammars**, run `:plum-install-grammar <name>`, or `:plum-install-grammar` alone while that buffer is focused.
+
+If the install says there is no grammar for the language, HUME has none to install for it. Check the language name on the statusline and fix a wrong detection with `:set buffer language=<name>`. For a language HUME ships no grammar for, [register one by hand](#registering-a-grammar-by-hand).
 
 **`:plum-install-grammar` fails.** The message names the cause, usually no network connection or a tool missing from your `PATH`; check the [prerequisites](#prerequisites). On a platform with no prebuilt grammars, [install from a local folder](#install-from-a-local-folder). A failed install leaves the installed copy of the grammar, if any, working.
 
@@ -192,4 +202,4 @@ See [Settings](settings.md) for the full settings reference.
 
 **Colors look wrong after a HUME update.** The update may expect newer grammars or highlighting rules than the ones you installed. Run `:plum-install-grammar <name>` again for each installed grammar, and `:plum-cleanup-grammars`.
 
-**A fenced code block doesn't highlight, but Markdown emphasis does.** The fenced language's own grammar isn't installed. Markdown's bold/italic/inline-code always come with the Markdown grammar, but a fence's language (` ```rust `, ` ```python `, …) is a separate grammar. Install it by name, e.g. `:plum-install-grammar rust` for a ` ```rust ` fence.
+**A fenced code block doesn't highlight, but Markdown emphasis does.** The fence's language is a separate grammar that isn't installed (see [Embedded languages](#embedded-languages)). Install it by name, e.g. `:plum-install-grammar rust` for a ` ```rust ` fence.

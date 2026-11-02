@@ -26,7 +26,7 @@ chars)`. It sets no trigger characters itself.
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `'match` | `'string` \| `'fuzzy` | `'string` | `'string`: a case-sensitive prefix gate, the vim `i_CTRL-N` feel. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
+| `'match` | `'string` \| `'fuzzy` | `'string` | `'string`: a case-sensitive prefix gate. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
 | `'chars` | integer (≥ 1) | `8000` | Characters fetched and scanned per side (before/after the cursor) on each walk tick, and the most an edit's changed lines may hold for the index to be updated without a walk |
 
 ## How it works
@@ -54,10 +54,13 @@ A walk starts on `on-buffer-open` and on every restart (see
 [Updating after an edit](#updating-after-an-edit)). It goes outward from the cursor's line
 in both directions, one window of lines per direction per tick, fetched with
 `(buffer-lines pane #:range …)` and scanned within the same tick. A word cannot span two
-lines, so nothing carries across a tick boundary. Nothing blocks however large the buffer
-is, and the words nearest the cursor are indexed first. Each tick converts only the lines
-it scans, so memory during a walk is bounded by `'chars`, not by buffer size. Each tick
-reschedules the next after `bw/tick-delay-ms`.
+lines, so nothing carries across a tick boundary. Each tick reschedules the next after
+`bw/tick-delay-ms`. As a result:
+
+- Nothing blocks however large the buffer is, and the words nearest the cursor are indexed
+  first.
+- Each tick converts only the lines it scans, so memory during a walk is bounded by
+  `'chars`, not by buffer size.
 
 #### Character budget
 
@@ -157,12 +160,14 @@ its first letter is already lowercase:
 | `1st` (non-letter first) | none | There is no other case to flip to |
 
 The case-sensitive gate does the rest: `app` matches only `apply` and `App` only `Apply`,
-the vim `'infercase'` feel, with no sentence-boundary detection. The word and its twin are
-two independent candidates, so a mixed-case identifier keeps its own form. A code buffer
-also gets twins nobody wrote (`config` adds `Config`); `core:lsp` outranks this source on
-any real score once the user types, so a buffer with an attached server rarely shows them.
-Twins are computed at scan time, so the in-progress fallback carries them too, and they
-are inserted in `'fuzzy` mode as well.
+so the completion follows the case typed, with no sentence-boundary detection. The word
+and its twin are two independent candidates, so a mixed-case identifier keeps its own
+form.
+
+A code buffer also gets twins nobody wrote (`config` adds `Config`); `core:lsp` outranks
+this source on any real score once the user types, so a buffer with an attached server
+rarely shows them. Twins are computed at scan time, so the in-progress fallback carries
+them too, and they are inserted in `'fuzzy` mode as well.
 
 ### Answering a trigger
 
@@ -190,18 +195,19 @@ hook is raised only by the global write path; see [Known limitations](#known-lim
 ### Non-ASCII words
 
 Steel has no Unicode character-category table, so the scan joins a window's lines with
-line breaks and hands them to `stdlib/split-words` in one call, which reads the buffer's
-own `word-chars` and runs the native `split-words` builtin: the same classifier the
-`w`/`b` motions use. A line break is never a word character, so no word spans two lines.
-A candidate is what a `w` motion would select: `café` (combining accent) stays one word, `l'élément` splits at
-the curly apostrophe, `foo—bar` splits at the em dash, and `foo-bar` is one word wherever
-`word-chars` includes `-`.
+line breaks and hands them to `stdlib/split-words` in one call. That command reads the
+buffer's own `word-chars` and runs the native `split-words` builtin, the same classifier
+the `w`/`b` motions use. A line break is never a word character, so no word spans two
+lines.
+
+A candidate is what a `w` motion would select: `café` (combining accent) stays one word,
+`l'élément` splits at the curly apostrophe, `foo—bar` splits at the em dash, and `foo-bar`
+is one word wherever `word-chars` includes `-`.
 
 ## Design decisions
 
-- **A cache built by a background walk, not a rescan per trigger as vim's `i_CTRL-N`
-  does**, because the scan runs in interpreted Steel and a full rescan would block input
-  on a large buffer.
+- **A cache built by a background walk, not a rescan per trigger**, because the scan runs
+  in interpreted Steel and a full rescan would block input on a large buffer.
 - **A budget in characters, not lines**, because a tick's cost grows with the characters
   it scans. A line count would let a tick over a file of long lines (a markdown file with
   one paragraph per line) block input several times longer than a tick over code.

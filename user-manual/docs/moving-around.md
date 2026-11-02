@@ -18,7 +18,9 @@ Motions move the cursor and replace the current selection. In Extend mode they g
 
 A word breaks at punctuation, so `don't` is three words. A WORD breaks only at whitespace, so `don't` is one WORD. Set `word-chars` (see [Buffer options](settings.md#buffer-options)) to widen what counts as a word: adding `-` makes `foo-bar` one word instead of three.
 
-By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word. When none precedes it (the first word of a line, where a leading run would be indentation, or a word right after punctuation), they cover its *trailing* whitespace instead. So deleting a word never leaves a double space behind. Use `:set global word-selects-whitespace=after` (or per buffer) to prefer the whitespace *after* the word, or `=off` to select only the bare word. See [Buffer options](settings.md#buffer-options).
+By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word. When none precedes it (the first word of a line, where a leading run would be indentation, or a word right after punctuation), they cover its *trailing* whitespace instead. So deleting a word never leaves a double space behind.
+
+Use `:set global word-selects-whitespace=after` (or per buffer) to prefer the whitespace *after* the word, or `=off` to select only the bare word. See [Buffer options](settings.md#buffer-options).
 
 <div class="key-demo">
 <strong>Cursor on the first character, press <code>w</code></strong><br>
@@ -91,7 +93,11 @@ When the language's grammar supports it (see [Syntax Highlighting](syntax-highli
 | `g v` / `g V` | `goto-next-value` / `goto-prev-value` | The next/previous array/tuple/struct value |
 | `g x` / `g X` | `goto-next-tag` / `goto-prev-tag` | The next/previous tag pair |
 
-Lowercase jumps forward, uppercase backward, and each kind uses the same letter as its [text object](selections.md) key. They stop at either end of the buffer instead of wrapping. Each one records a jump-list entry, so `Ctrl-o` returns to where you jumped from. Without a matching grammar, `g x`/`g X` find tags with a lexical scan, and the others do nothing, with no message.
+Lowercase jumps forward, uppercase backward, and each kind uses the same letter as its [text object](selections.md#text-objects) key.
+
+- They stop at either end of the buffer instead of wrapping.
+- Each one records a jump-list entry, so `Ctrl-o` returns to where you jumped from.
+- Without a matching grammar, `g x`/`g X` find tags with a lexical scan, and the others do nothing, with no message.
 
 ## Jump to a line by number
 
@@ -111,7 +117,9 @@ Line numbers are 1-based. A number past the end of the file lands on the last li
 | `{` | The previous paragraph |
 | `}` | The next paragraph |
 
-A paragraph is a block of non-empty lines between empty lines. Both keys select the whole paragraph they land on, plus the gap of empty lines below it, if any. The jump is recorded, so `Ctrl-o` brings you back. Pressing `{`/`}` past the first/last paragraph does nothing. See [Text objects](selections.md#text-objects) for `m i p`, which selects the paragraph without moving.
+A paragraph is a block of non-empty lines between empty lines. Both keys select the whole paragraph they land on, plus the gap of empty lines below it, if any. Pressing `{`/`}` past the first/last paragraph does nothing.
+
+The jump is recorded, so `Ctrl-o` brings you back. To select the paragraph without moving, use `m i p` (see [Text objects](selections.md#text-objects)).
 
 ## Scrolling
 
@@ -131,8 +139,6 @@ Press `z` then a second key to reposition the view; the cursor itself stays put:
 | `z k` | Scroll cursor to top of screen |
 | `z z` | Center view on cursor |
 | `z j` | Scroll cursor to bottom of screen |
-
-As with the motion keys, `k` is up and `j` is down.
 
 ## Search navigation
 
@@ -172,7 +178,7 @@ Start a pattern typed at `/`, `?`, or `s` with one or more of these letters foll
 
 Flags combine in any order: `mv/.rs` moves every selection to its own next literal `.rs`. `n` and `N` keep repeating with whichever flags were last used, until you search again.
 
-A pattern that starts with a `/` of its own (a path, say) is read as plain text, not as an empty flag prefix: `/usr/bin` searches for `/usr/bin`. Only text starting with `m` and/or `v` followed by `/` is read as flags. To search for such text literally, prefix it with `v/`: `v/m/s` searches for the literal text `m/s`.
+Only `m` and/or `v` followed by `/` is read as flags. A pattern that starts with a `/` of its own (a path, say) is plain text: `/usr/bin` searches for `/usr/bin`. To search literally for text that looks like flags, prefix it with `v/`: `v/m/s` searches for `m/s`.
 
 ## Search and replace
 

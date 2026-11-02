@@ -13,15 +13,16 @@ Every buffer in HUME satisfies three invariants at all times:
 2. **Non-empty**: at least one character exists. This follows from the
    trailing newline, but several algorithms assume it, so it is worth naming.
 
-3. **No raw carriage returns**: whatever line-ending convention a file, a
-   paste, or a language server's edit used on the way in, the buffer itself
-   only holds plain `\n`. A Windows-style pair and an old-Mac-style lone
-   carriage return both collapse to `\n` before the text becomes buffer
-   content, so every line-splitting algorithm in the editor has one terminator
-   to look for. A separate per-buffer setting holds the line ending a save
-   writes: it starts as the file's own convention, and changing it converts the
-   file on the next save. That setting describes the file on disk, never what
-   the buffer holds in memory.
+3. **No raw carriage returns**: the buffer only holds plain `\n`, whatever
+   line-ending convention a file, a paste, or a language server's edit used
+   on the way in. A Windows-style `\r\n` and an old-Mac-style lone `\r` both
+   collapse to `\n` before the text becomes buffer content, so every
+   line-splitting algorithm in the editor has one terminator to look for.
+
+   The line ending a save writes is a separate per-buffer setting. It starts
+   as the file's own convention, and changing it converts the file on the
+   next save. It describes the file on disk, never what the buffer holds in
+   memory.
 
 Every selection also satisfies:
 
@@ -37,9 +38,8 @@ Every selection also satisfies:
    share one are merged into one.
 
 6. **A version tag**: a set of selections carries the version of the text it
-   was computed for, and can only be read against that text. Pairing a set
-   with another text is a bug in whoever paired them, and it panics instead of
-   acting on the wrong text.
+   was computed for, and can only be read against that text (see
+   [Pairing a set of selections with its text](#pairing-a-set-of-selections-with-its-text)).
 
 ## One rule for the final newline
 
@@ -77,14 +77,18 @@ There are two kinds of call sites:
 
 - **The trust boundary**: a script can submit a raw edit directly, most
   commonly for a language-server rename or formatting pass. That path is
-  validated up front. Is the buffer writable? Are the ranges well-formed and
-  non-overlapping? If the script named the buffer generation it computed the
-  edit against, does the buffer still have that generation? Only then is a
-  changeset built, under the final-newline rule. The editor derives the
-  resulting cursor positions itself by mapping the existing selections through
-  the edit, so no untrusted selection ever enters. Most plugin code never
-  touches even that path; it runs named editor commands instead, each of which
-  constructs its edit internally.
+  validated up front:
+
+  - Is the buffer writable?
+  - Are the ranges well-formed and non-overlapping?
+  - If the script named the buffer generation it computed the edit against,
+    does the buffer still have that generation?
+
+  Only then is a changeset built, under the final-newline rule. The editor
+  derives the resulting cursor positions itself by mapping the existing
+  selections through the edit, so no untrusted selection ever enters. Most
+  plugin code never touches even that path; it runs named editor commands
+  instead, each of which constructs its edit internally.
 
 History replay needs no validation of its own. Every undo and redo replays
 changesets the editor itself recorded, so a replay that fails means the history
@@ -112,15 +116,15 @@ newline and the in-bounds invariants can be checked by looking at one
 position, but a stray `\r` could be anywhere in an arbitrarily large buffer,
 so confirming its absence means scanning every character.
 
-Instead of validating that property on every edit, HUME makes a violation
-impossible to construct. There are two places where text from outside the
-editor becomes buffer content, and both convert line endings to `\n` before
-the text goes anywhere else. Every piece of code downstream of those two
-points can assume the property holds, the same way it assumes the trailing
-newline holds. The difference is how the guarantee is produced: at a narrow
-choke point where the text is built, rather than by checking a value that
-already exists. A debug-only assertion still confirms the invariant, to catch
-a bug in the editor itself; it plays no part in maintaining the guarantee.
+Instead, HUME makes a violation impossible to construct. Text from outside
+the editor becomes buffer content in two places, and both convert line
+endings to `\n` before the text goes anywhere else. Code downstream of those
+two points assumes the property holds, as it assumes the trailing newline
+does, but the guarantee comes from a narrow choke point where the text is
+built rather than from checking a value that already exists.
+
+A debug-only assertion still confirms the invariant, to catch a bug in the
+editor itself; it plays no part in maintaining the guarantee.
 
 ## Reverting on failure without explicit cleanup
 

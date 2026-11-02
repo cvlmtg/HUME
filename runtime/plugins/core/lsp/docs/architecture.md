@@ -25,13 +25,17 @@ Installing servers is `core:lsp-install`'s job.
 
 ## Default keys
 
-`plugin.scm` binds every key in Normal mode. Requests that name a destination (the four
-`lsp/goto-*` commands and diagnostic navigation) live under `g`, beside HUME's native line
-gotos and structural navigation. Requests that answer with a panel rather than a jump
-(references, code actions and the two symbol pickers) live under `z`, the view prefix, the
-same shape `core:pickers`' finders use. Rename is `G R`: `G` is a prefix for edit commands
-that sit near `g` without being gotos. Hover is `K`, the conventional keyword-lookup key,
-used often enough that a prefix would cost a keystroke.
+`plugin.scm` binds every key in Normal mode.
+
+- **`g`**: requests that name a destination (the four `lsp/goto-*` commands and diagnostic
+  navigation), beside HUME's native line gotos and structural navigation.
+- **`z`**, the view prefix: requests that answer with a panel rather than a jump
+  (references, code actions and the two symbol pickers), the same shape `core:pickers`'
+  finders use.
+- **`G R`**: rename. `G` is a prefix for edit commands that sit near `g` without being
+  gotos.
+- **`K`**: hover, the conventional keyword-lookup key, used often enough that a prefix
+  would cost a keystroke.
 
 None of these collide with a binding in HUME's default keymap, and the `z` keys beside
 them belong to `core:pickers`. Every binding is a two-key sequence or a fresh top-level
@@ -64,16 +68,17 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
   about the setup) and `'stopped` (the server stopped or crashed first, which is reported on
   its own), at `'error` for every other kind.
 - **Choosing a server.** A request for a standard method (`textDocument/hover`, …) is tied
-  to that method's feature. `lsp-request!` sends it to the first running server attached
-  to the buffer whose list entry admits the feature and whose capabilities advertise it,
-  and `lsp-request-all!` to every such server. `#:feature` names the feature of a method
-  the editor does not know. When none qualifies, the callback's `err` says why ("hover is
-  not supported by rust-analyzer", "… still starting"). A request triggered without the
-  user asking (completion, signature help, inlay hints) passes `#:unavailable 'empty` and
-  gets an empty answer, not an error, when no server qualifies. A code action's resolve
-  and execute requests go `#:to` the `'server` of the `lsp-request-all!` entry the action
-  came from. Range formatting picks its server with `lsp-route` and sends every range
-  `#:to` it.
+  to that method's feature, and `#:feature` names the feature of a method the editor does
+  not know. A server qualifies when it runs, is attached to the buffer, its list entry
+  admits the feature and its capabilities advertise it. `lsp-request!` sends to the first
+  qualifying server, `lsp-request-all!` to every one.
+  - When none qualifies, the callback's `err` says why ("hover is not supported by
+    rust-analyzer", "… still starting").
+  - A request triggered without the user asking (completion, signature help, inlay hints)
+    passes `#:unavailable 'empty` and gets an empty answer instead of that error.
+  - `#:to` sends to one server chosen earlier. A code action's resolve and execute
+    requests go `#:to` the `'server` of the `lsp-request-all!` entry the action came from.
+    Range formatting picks its server with `lsp-route` and sends every range `#:to` it.
 - **Capability fields.** `lsp/cap-field` and `lsp/cap-flag?` read a field off one
   server's `(lsp-capability server #:feature f)` (or `#:method m`), which is `#f`, the
   bare `#t` or an options object (for example a range-formatting provider's
@@ -83,36 +88,43 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
 
 ## Shared helpers (`lib/helpers.scm`)
 
-- **Multi-server answers.** `lsp/answered` keeps the entries of an `lsp-request-all!`
-  answer that are neither an error nor null, in server order. `lsp/answers` is their
-  results, and `lsp/answer-items` concatenates every server's array answer into one list.
-  `lsp/report-answer-errors!` reports each entry's error through `lsp/report-error!`, so
-  one failing server never hides the others' answers. `lsp/on-answers` builds an
-  `lsp-request-all!` callback that reports the request's error, or each server's error
-  before handing the answer on, so no caller reports one level and forgets the other.
-  `lsp/none-answered?` is true when the answer has entries and every one is an error,
-  which tells a failure apart from an empty answer, so a caller can keep what it already
-  shows.
+### Multi-server answers
+
+These read an `lsp-request-all!` answer.
+
+| Helper | Does |
+|---|---|
+| `lsp/answered` | Keeps the entries that are neither an error nor null, in server order |
+| `lsp/answers` | The results of those entries |
+| `lsp/answer-items` | Concatenates every server's array answer into one list |
+| `lsp/report-answer-errors!` | Reports each entry's error through `lsp/report-error!`, so one failing server never hides the others' answers |
+| `lsp/on-answers` | Builds a callback that reports the request's error, or each server's error before handing the answer on, so no caller reports one level and forgets the other |
+| `lsp/none-answered?` | True when the answer has entries and every one is an error. It tells a failure apart from an empty answer, so a caller can keep what it already shows |
+
+### Other helpers
+
 - **Guards.** Every command the user runs checks its route first. Most start with
-  `lsp/with-servers`, which calls its body with the servers a request of a feature or
-  method would reach, from `lsp-route`, or reports the route's `'unavailable` error
+  `lsp/with-servers`, which calls its body with the servers `lsp-route` says a request of
+  a feature or method would reach. Otherwise it reports the route's `'unavailable` error
   through `lsp/report-error!`, so the message names the server that is starting, crashed
   or lacks the feature. Formatting makes the same check inside `lsp/format-document!`,
   which reads the ranges only once it passes. A buffer with no file has no server, so it
   reports "no LSP server attached to this buffer". Completion, signature help and inlay
-  hints, which run without the user asking, send their requests with
-  `#:unavailable 'empty` and stay silent.
+  hints have no guard: they stay silent through `#:unavailable 'empty`.
 - **Trigger characters.** `lsp/setup-trigger-chars!` registers an `on-lsp-attach` handler
-  for a feature. For every server that attaches it reads the `triggerCharacters` that
-  server advertises for the feature's capability, adds the feature's own extra characters,
-  and registers the set for that buffer's attachment to the server; the editor ignores the
-  set when the server's list entry excludes the feature or the server does not advertise
-  it. The set goes when the buffer detaches, or when a list change fires `on-lsp-attach`
-  again. A feature with a handler (signature help) registers through
-  `set-attachment-hook-triggers!` and also gets an `on-trigger-char` dispatcher that
-  filters on its source name. A feature without one (completion) registers through
-  `set-attachment-completion-triggers!`, and the editor invokes the source directly with
-  no hook round trip.
+  for a feature. For every server that attaches, it takes the `triggerCharacters` the
+  server advertises for the feature's capability, adds the feature's own extra
+  characters, and registers the set for that buffer's attachment to the server.
+  - The editor ignores the set when the server's list entry excludes the feature or the
+    server does not advertise it.
+  - The set goes when the buffer detaches, or when a list change fires `on-lsp-attach`
+    again.
+  - A feature with a handler (signature help) registers through
+    `set-attachment-hook-triggers!` and also gets an `on-trigger-char` dispatcher that
+    filters on its source name.
+  - A feature without one (completion) registers through
+    `set-attachment-completion-triggers!`, and the editor invokes the source directly
+    with no hook round trip.
 - **Drawer refresh.** `lsp/refresh-drawer-list!` swaps an open drawer's rows in place and
   moves its selection to the row its `pick-row` gives for the old `(item . index)`
   selection, or returns `#f` when that drawer has closed or another replaced it.
@@ -150,19 +162,26 @@ The wire shape (`{uri, range}` versus `{targetUri, targetRange}`) is decoded by 
   so the editor forgets it once the callback has run unless the drawer opened and called
   `keep-tracked-position!`.
 - **Refresh.** The rows hold the server's positions, which edits make wrong. An
-  `on-text-changed` hook in a listed buffer marks the rows stale when the line count
-  differs from the stored one, when a hunk covers a row's line, when a hunk that adds or
-  removes lines starts at or above one, or when the hook carries no hunks. The line-count
-  test also catches a new reference typed below every row. While the rows are stale, every
-  change in a listed buffer counts, since the stored lines belong to an older text than
-  the one the hunks start from. Each change that counts calls a 300 ms debounced refresh,
-  which repeats the request at `tracked-position-params` with `#:allow-stale #t` under the
-  drawer's one `#:supersede` key and swaps the rows, keeping the selected index clamped
-  into the new list. The swap stores fresh counts and lines and clears the stale mark. An
-  answer with no location HUME can jump to closes the drawer, with the skipped-locations
-  warning or the original request's "nothing found" message. An error, or an answer in
-  which every server failed, keeps the rows and leaves them stale so the next edit asks
-  again. A closed or replaced drawer ends the session.
+  `on-text-changed` hook in a listed buffer marks the rows stale when:
+  - the line count differs from the stored one (which also catches a new reference typed
+    below every row),
+  - a hunk covers a row's line,
+  - a hunk that adds or removes lines starts at or above a row's line, or
+  - the hook carries no hunks.
+
+  While the rows are stale, every change in a listed buffer counts, since the stored lines
+  belong to an older text than the one the hunks start from. Each change that counts calls
+  a 300 ms debounced refresh. It repeats the request at `tracked-position-params` with
+  `#:allow-stale #t` under the drawer's one `#:supersede` key, and its answer decides the
+  rest:
+  - Locations: the rows are swapped, the selected index is clamped into the new list, the
+    fresh counts and lines are stored and the stale mark is cleared.
+  - No location HUME can jump to: the drawer closes with the skipped-locations warning or
+    the original request's "nothing found" message.
+  - An error, or every server failed: the rows stay, still stale, so the next edit asks
+    again.
+
+  A closed or replaced drawer ends the session.
 - **Stale callbacks.** The row callback and each refresh response match the session by its
   drawer token, so the `#f` an outgoing drawer receives when another list replaces it ends
   only its own session. Each refresh also carries a sequence number, and a response for an

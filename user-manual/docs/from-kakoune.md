@@ -34,7 +34,9 @@ Shift does not extend a selection: `W`, `H`, `J`, `K`, `L` do something else her
 
 ### Saving and quitting
 
-`:w` and `:w!` work as in Kakoune. Kakoune's `:q` leaves the client; HUME's closes the focused pane when the tab has several, and the tab when other tabs are open. On the last pane it closes the current buffer: if another file is still open you land on it, and HUME quits only when no other file or unsaved buffer is left. `:q!` and `:wq` close the same way, discarding your changes or saving them first. `:qa` leaves in one step. Kakoune's `:db` is `:bd`. See [Quitting](files-and-buffers.md#quitting).
+`:w` and `:w!` work as in Kakoune, and Kakoune's `:db` is `:bd`.
+
+Kakoune's `:q` leaves the client; HUME's closes the focused pane when the tab has several, and the tab when other tabs are open. On the last pane it closes the current buffer: if another file is still open you land on it, and HUME quits only when no other file or unsaved buffer is left. `:q!` and `:wq` close the same way, discarding your changes or saving them first. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
 
 The tutor you started is the hands-on tour of everything else: carry on from its Introduction. To start over with a clean copy, close it with `:bd!` and run `:tutor` again.
 
@@ -166,7 +168,7 @@ The search keys overlap heavily in spelling and barely at all in meaning.
 | `<a-*>` | Set the search pattern from the selection, verbatim | `Ctrl-/` (kitty only) |
 
 ::: warning
-Two traps. `?` opens a backward search in HUME, not an extend like Kakoune's. And `N` has no equivalent: use `m /` to select every match at once instead, then narrow with `(`/`)` and `Ctrl-,` (`,` keeps only the primary). `Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")` for Kakoune's own `<a-,>`.
+Two traps. `?` opens a backward search in HUME, not an extend. And in place of `N`, select every match with `m /`, then narrow with `(`/`)` and `Ctrl-,` (`,` keeps only the primary). `Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")` for Kakoune's own `<a-,>`.
 :::
 
 ### Text objects
@@ -182,7 +184,9 @@ Kakoune reaches objects with `<a-i>` and `<a-a>`; HUME puts them behind an `m` p
 
 `[`/`]`/`{`/`}` are all bound elsewhere in HUME: kill-ring cycling and paragraph motions.
 
-The objects are word (`w`), WORD (`W`), the bracket and quote pairs, argument (`a`), line (`l`) and paragraph (`p`). HUME adds `m i i`, which selects the text you typed during your last insert, and `m w` + a delimiter, which wraps each selection in a pair. With a grammar that supports them, HUME also has function, class, comment, unit test and value objects, and a `g` jump to the next or previous of each kind. See [Text objects](selections.md#text-objects) and [Structural navigation](moving-around.md#structural-navigation).
+The objects are word (`w`), WORD (`W`), the bracket and quote pairs, argument (`a`), line (`l`) and paragraph (`p`).
+
+HUME adds `m i i`, which selects the text you typed during your last insert, and `m w` + a delimiter, which wraps each selection in a pair. With a grammar that supports them, HUME also has function, class, comment, unit test and value objects, and a `g` jump to the next or previous of each kind. See [Text objects](selections.md#text-objects) and [Structural navigation](moving-around.md#structural-navigation).
 
 ### Registers, paste, and the clipboard
 

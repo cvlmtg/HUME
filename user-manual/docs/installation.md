@@ -72,7 +72,9 @@ xattr -dr com.apple.quarantine hume-*
 
 Extract the `.zip`, then run `hume.exe` from inside the extracted folder, or add that folder to your `PATH`.
 
-Keep the whole extracted folder intact. HUME finds its runtime files (themes, plugins, language definitions) relative to the `hume` binary:
+### Keep the folder intact
+
+On every platform, keep the whole extracted folder intact. HUME finds its runtime files (themes, plugins, language definitions) relative to the `hume` binary:
 
 - macOS/Linux: `../share/hume/runtime/` next to `bin/hume`.
 - Windows: `runtime/` next to `hume.exe`.

@@ -206,15 +206,30 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 
 Jumping to a definition, declaration, type, implementation or reference in another file opens that file as a buffer; `Ctrl-o` jumps back. A goto with more than one match opens a list to pick from instead of jumping, and `z r` always opens the list, even for a single hit.
 
-That list (the same one `:diagnostics` opens) is a drawer across the bottom of the screen. `Ctrl-d`/`Ctrl-u` move half the drawer's height, `Down`/`Up` move one row, `Enter` jumps to the highlighted row, and `Esc` closes it. Every other key, including `j`/`k`, reaches the buffer underneath. The drawer stays open while you edit, so you can browse a long references list and edit without losing your place in either.
+### The list drawer
+
+The goto and references list (the same one `:diagnostics` opens) is a drawer across the bottom of the screen:
+
+- `Down`/`Up` move one row, and `Ctrl-d`/`Ctrl-u` half the drawer's height.
+- `Enter` jumps to the highlighted row.
+- `Esc` closes it.
+- Every other key, including `j`/`k`, reaches the buffer underneath.
+
+The drawer stays open while you edit, so you can browse a long references list and edit without losing your place in either.
 
 The list follows your edits. When the number of lines changes in the file you asked from or in a file it lists, or an edit touches or moves a listed line, HUME asks the language server again about the same symbol once you pause typing, and replaces the rows. If nothing is found any more, the drawer closes with a message.
 
 A column from a file that is not open is the language server's own count, which can differ from HUME's when non-ASCII text comes before it on the line. The list gives the rows from files that are not open the `markup.italic` scope, so a theme can set them apart from the others.
 
+### Completion and hints
+
 Typing while a completion menu is open narrows it. `Tab` and `Down` move to the next entry, `Shift-Tab` and `Up` to the previous, `Enter` accepts the highlighted one, and `Esc` dismisses the menu. Signature help pops up as you type an argument list for a function the server knows about, and inlay hints appear inline once enabled.
 
-After `g n` or `g p` jumps, a popup shows the full diagnostic message. `Ctrl-u`/`Ctrl-d` scroll it, and any other key, paste or mouse action closes it. Each line with a problem also gets a short summary at its end. While you type in Insert mode, the underline and summary are hidden on the cursor's line, and return when you leave Insert mode or move to another line. Set `lsp-diagnostics-on-insert-line` to `#t` to keep them showing.
+### Diagnostics
+
+After `g n` or `g p` jumps, a popup shows the full diagnostic message. `Ctrl-u`/`Ctrl-d` scroll it, and any other key, paste or mouse action closes it.
+
+Each line with a problem also gets a short summary at its end. While you type in Insert mode, the underline and summary are hidden on the cursor's line, and return when you leave Insert mode or move to another line. Set `lsp-diagnostics-on-insert-line` to `#t` to keep them showing.
 
 A server that reports diagnostics only when asked is asked when the file opens, after its text changes, and when you save.
 
@@ -260,7 +275,7 @@ Commands for a server that's already running. To install, browse the catalog, or
 | `:lsp-stop [name]` | Stop a server (default: every server on the focused buffer); with a name, every running copy of that server. It stays stopped, even for new buffers and server-list changes, until `:lsp-restart`, `:reload-config` or a new `register-lsp-server!` of its name |
 | `:lsp-restart [name]` | Stop and restart a server, or start one that was stopped (default: every server on the focused buffer) |
 
-A server stops by itself once no open buffer uses it: after you close its last buffer, or when a server list, or a buffer's language, no longer includes it. Opening a matching file starts it again. A server that crashed stays down for its buffers until you run `:lsp-restart`.
+A server stops by itself once no open buffer uses it: after you close its last buffer, or when a change to a server list or a buffer's language leaves it out. Opening a matching file starts it again. A server that crashed stays down for its buffers until you run `:lsp-restart`.
 
 Server output and protocol errors show in `:messages`.
 

@@ -33,7 +33,7 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?`/`\|` prompt history |
 | `scroll-jump-align` | `top` \| `center` \| `off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` still respects `scroll-margin` |
 | `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor |
-| `shell` | word list | `sh -c` | The program and leading arguments that run a shell command typed after `\|`. The command is passed as the last argument. Separate words with spaces; put a word that contains spaces in double quotes. From Scheme it is a list of strings: `(set-option! "shell" '("fish" "-c"))`. `Tab` on the `\|` prompt follows this shell's quoting (see [Shell commands](editing.md#shell-commands)) |
+| `shell` | word list | `sh -c` | The program and leading arguments that run a shell command typed after `\|`, which is passed as the last argument. With `:set`, separate words with spaces and double-quote a word that contains spaces. From Scheme, pass a list of strings: `(set-option! "shell" '("fish" "-c"))`. `Tab` on the `\|` prompt follows this shell's quoting (see [Shell commands](editing.md#shell-commands)) |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections of comma-separated element names. Set it with `configure-statusline!`. From Scheme, `get-option` returns it as `(hash 'left 'center 'right)`, each a list of element names, and `set-option!` takes that hash |
 | `statusline-mode-colors` | bool | `true` | Tint the whole statusline with the current mode's color; off shows the [theme](themes.md)'s base `ui.statusline` color in every mode |
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max time (ms) a script command, hook or callback may spend running Scheme before it is stopped. Time spent waiting on the system for it, such as for a program it runs, doesn't count. A stopped script runs none of its error handlers |
@@ -45,14 +45,12 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 
 ## Buffer options
 
-Each of these options, except `language` and `line-ending`, has a global default and a per-buffer override, which wins when present. A buffer without an override follows the global default, including buffers already open when you change it.
+Each of these options has a global default and a per-buffer override, which wins when present. A buffer without an override follows the global default, including buffers already open when you change it.
 
 - Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`.
-- Override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! pane "option" value)`.
+- Override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! pane "option" value)`. To override per language, do it from the `on-language-set` hook (see [From `init.scm`](configuration.md#from-init-scm)).
 
-See [From `init.scm`](configuration.md#from-init-scm) for setting per-language overrides from the `on-language-set` hook.
-
-`language` and `line-ending` have no global default:
+`language` and `line-ending` are the exceptions, with no global default:
 
 - `language` is auto-detected per buffer, and setting it overrides the detection for that buffer. `:set buffer language=` with nothing after the `=` (or `""` from a script) clears it.
 - `line-ending` is read from the file when it opens (new buffers use `lf`) and can only be set per buffer. Reloading the file from disk takes its line ending again.
@@ -106,7 +104,7 @@ Characters the terminal cannot show (control characters, and invisible ones such
 
 Three layers control text wrap: a global default, a per-buffer override and a per-pane pin. A command also toggles it per pane.
 
-- `wrap-mode` is a **buffer option** (see [Buffer options](#buffer-options)). Set a global default with `:set global wrap-mode=<value>` or `set-option!`, or override one buffer with `:set buffer wrap-mode=<value>` or `(set-buffer-option! pane "wrap-mode" value)`. To wrap by file type (markdown but not source code, say), set it per language from an `on-language-set` hook (see [From `init.scm`](configuration.md#from-init-scm)).
+- `wrap-mode` is a **buffer option**: a global default and per-buffer overrides, set as described under [Buffer options](#buffer-options). To wrap by file type (markdown but not source code, say), set it per language from an `on-language-set` hook (see [From `init.scm`](configuration.md#from-init-scm)).
 - `:set pane wrap-mode=<value>` pins the style for the current pane and the buffer it's showing, above both the buffer and global setting, without affecting other panes on the same buffer.
 - `:wrap` (alias of `:toggle-soft-wrap`) **toggles** wrapping on or off for the current pane and buffer.
 
@@ -181,9 +179,11 @@ To add your own element, place `"steel:<name>"` with any `<name>` you choose. `<
 (register-hook! 'on-buffer-enter refresh-line-count!)
 ```
 
-`core:git-diff` ships a `"steel:git-branch"` element built this way (see [Core Plugins → core:git-diff](core-plugins.md#core-git-diff)); add it to your own `configure-statusline!` call.
+`set-statusline-text!` takes a pane, the element name, and the text to show; an empty string clears it. Each buffer keeps its own value per name, and a placed element shows only the focused buffer's. A buffer with nothing pushed yet shows nothing there.
 
-`set-statusline-text!` takes a pane, the element name, and the text to show; an empty string clears it. Each buffer keeps its own value per name, and a placed element shows only the focused buffer's. A buffer with nothing pushed yet shows nothing there, like any other element with no content. Placing the element and pushing its text are independent: either can come first, and neither errors if the other hasn't happened yet.
+Placing the element and pushing its text are independent: either can come first, and neither errors if the other hasn't happened yet.
+
+`core:git-diff` ships a `"steel:git-branch"` element built this way (see [Core Plugins → core:git-diff](core-plugins.md#core-git-diff)); add it to your own `configure-statusline!` call.
 
 ## Language detection
 

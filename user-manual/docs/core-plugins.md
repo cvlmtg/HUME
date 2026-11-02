@@ -125,11 +125,12 @@ Requires `core:stdlib` loaded first.
 | `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer |
 | `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer |
 
-Both take an optional git ref, e.g. `:toggle-inline-diff HEAD~2`, and Tab-complete branches and tags from the current buffer's repo. Giving a ref always turns that rendering on and points it at that ref, and the ref sticks across a later bare toggle off and on. The two commands share the ref. A file git doesn't track (untracked, new, or outside a repo) shows no diff. A commit or checkout made outside HUME shows when you switch back to the buffer or HUME regains focus.
+- Both take an optional git ref, e.g. `:toggle-inline-diff HEAD~2`, and Tab-complete branches and tags from the current buffer's repo.
+- Giving a ref always turns that rendering on and points it at that ref. The two commands share the ref, and it sticks across a later bare toggle off and on.
+- A file git doesn't track (untracked, new, or outside a repo) shows no diff.
+- A commit or checkout made outside HUME shows when you switch back to the buffer or HUME regains focus.
 
-The plugin also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer, e.g. `(main)`, or `⎇ main` with `'branch-style` set to `'icon` (see below). Add it to your own `configure-statusline!` call (see [Statusline → Custom elements](settings.md#custom-elements)). It updates when you switch to a buffer, when you save it and when HUME regains focus, and is empty for a buffer outside any repo.
-
-Both commands are typed commands, run from the `:` prompt, with no keys bound by default. Each has an editor-command twin, without the ref argument, that you can bind to a key:
+Both are typed commands, with no keys bound by default. Each has an editor-command twin, without the ref argument, that you can bind to a key:
 
 ```scheme
 (bind-key! 'normal "space i" "git-diff/toggle-inline-diff")
@@ -153,6 +154,8 @@ Configure with `#:config`:
 
 Inline rendering's background tint and word highlights need your theme to define colors for them; HUME's bundled themes do.
 
+The plugin also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer. Add it to your own `configure-statusline!` call (see [Statusline → Custom elements](settings.md#custom-elements)). It updates when you switch to a buffer, when you save it and when HUME regains focus, and is empty for a buffer outside any repo.
+
 ### Drawing a diff from a script
 
 A command of your own can check and turn on the inline diff, or draw diffs of its own the way `core:git-diff` draws them:
@@ -164,7 +167,10 @@ A command of your own can check and turn on the inline diff, or draw diffs of it
 | `(call! "git-diff/render-diff" pane source hunks)` | Draw `hunks` in the buffer as an inline diff |
 | `(call! "git-diff/release-diff" pane source)` | Clear what `source` drew and bring the buffer's own inline diff back |
 
-`hunks` is the `'hunks` list that `diff-buffer-lines` or `buffer-revision-diff` returns (see [Diffing](plugin-api.md#diffing)). `source` is a name of your plugin's own, so its drawing never mixes with `core:git-diff`'s. Each `render-diff` call replaces what `source` drew for that buffer, and an empty list draws nothing. While a source draws, the buffer's own inline diff is hidden so changed lines don't show twice; the gutter signs stay.
+- `hunks` is the `'hunks` list that `diff-buffer-lines` or `buffer-revision-diff` returns (see [Diffing](plugin-api.md#diffing)).
+- `source` is a name of your plugin's own, so its drawing never mixes with `core:git-diff`'s.
+
+Each `render-diff` call replaces what `source` drew for that buffer, and an empty list draws nothing. While a source draws, the buffer's own inline diff is hidden so changed lines don't show twice; the gutter signs stay.
 
 ## core:undotree
 
@@ -187,7 +193,7 @@ The plugin ships no key. Bind one in your `init.scm`:
 (bind-key! 'normal "z u" "undotree/toggle")
 ```
 
-Each row is one revision: the graph, a marker column, and how long ago it was made. In the marker column, `@` is the revision the buffer is on and `S` the revision your file was last saved at. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from. A theme styles the graph with `markup.bold`, `@` with `diagnostic.warning.message-text` and `S` with `diagnostic.info.message-text`. On the selected row, `@` and `S` take `diagnostic.warning.message` and `diagnostic.info.message` instead, and the whole row takes `diagnostic.warning.message` when it has `@`, or `diagnostic.info.message` when it has only `S`:
+Each row is one revision: the graph, a marker column, and how long ago it was made. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from. In the marker column, `@` is the revision the buffer is on and `S` the revision your file was last saved at:
 
 ```
  o          2m
@@ -198,7 +204,16 @@ Each row is one revision: the graph, a marker column, and how long ago it was ma
  o-'     S 12m
 ```
 
-The drawer opens with the highlight on the current revision. `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time; `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
+A theme styles the drawer with these scopes:
+
+| Part | Scope | On the selected row |
+|---|---|---|
+| The graph | `markup.bold` | |
+| `@` | `diagnostic.warning.message-text` | `diagnostic.warning.message` |
+| `S` | `diagnostic.info.message-text` | `diagnostic.info.message` |
+| The whole row | | `diagnostic.warning.message` when it has `@`, or `diagnostic.info.message` when it has only `S` |
+
+The drawer opens with the highlight on the current revision. `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md#the-list-drawer). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time; `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
 
 With `core:git-diff` loaded, the buffer also shows what the revision you are on changed, drawn the way `core:git-diff`'s inline diff draws a diff against a git ref:
 
@@ -208,7 +223,14 @@ With `core:git-diff` loaded, the buffer also shows what the revision you are on 
 
 The diff follows every jump and edit while the drawer is open. The root revision shows nothing, and closing the drawer clears it. The diff does not depend on whether `core:git-diff`'s own inline diff is switched on. Without `core:git-diff` the drawer works the same, and opening it shows a message saying to load the plugin.
 
-The drawer follows the buffer: it redraws after an edit, an undo or a redo, and switches to the new buffer when you switch buffers. While it is open, the ages stay current. Opening another drawer, such as the references list, replaces it. A read-only buffer can't be jumped, and `Enter` there reports an error. The history lives in memory only, so it starts fresh each time you open a file.
+While the drawer is open:
+
+- It follows the buffer: it redraws after an edit, an undo or a redo, and switches to the new buffer when you switch buffers.
+- The ages stay current.
+- Opening another drawer, such as the references list, replaces it.
+- In a read-only buffer, `Enter` reports an error instead of jumping.
+
+The history lives in memory only, so it starts fresh each time you open a file.
 
 ## core:buffer-words
 

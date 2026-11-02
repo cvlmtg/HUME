@@ -19,34 +19,42 @@ with `-`, which no tag or branch name can, and for a ref on a `core:` plugin.
 
 ### `plum/git-sync!`
 
-`plum/git-sync!` puts a clone on a ref. Without a pin it fetches `HEAD`, the remote's
-default branch, and for a full 40-digit commit id it fetches that commit alone, whether or
-not a branch or tag reaches it. Any other pin is a tag, a branch or an abbreviated commit
-id, and `git fetch` cannot resolve an abbreviated id on the remote, so it fetches every
-branch and tag (`git fetch --force --prune --tags origin`) and resolves the ref locally,
-taking the first of `refs/tags/<ref>`, `refs/remotes/origin/<ref>` and, for 4 or more hex
-digits, the commit id itself that `git rev-parse --verify` accepts. A ref that resolves to
-nothing (missing upstream, an ambiguous short id, or a short id of a commit no branch or
-tag reaches, which the fetch never brings in) raises an error naming it. A tag or branch
-named with 40 hex digits is read as a commit id.
+`plum/git-sync!` puts a clone on a ref. What it fetches depends on the pin:
+
+- **No pin:** `HEAD`, the remote's default branch.
+- **A full 40-digit commit id:** that commit alone, whether or not a branch or tag reaches
+  it. A tag or branch named with 40 hex digits is read as a commit id.
+- **Any other pin** (a tag, a branch or an abbreviated commit id): `git fetch` cannot resolve
+  an abbreviated id on the remote, so it fetches every branch and tag (`git fetch --force
+  --prune --tags origin`) and resolves the ref locally. It takes the first of
+  `refs/tags/<ref>`, `refs/remotes/origin/<ref>` and, for 4 or more hex digits, the commit
+  id itself that `git rev-parse --verify` accepts.
+
+A ref that resolves to nothing raises an error naming it: a missing upstream, an ambiguous
+short id, or a short id of a commit no branch or tag reaches, which the fetch never brings
+in.
 
 Either way it ends with `git checkout --detach`, which moves a clone between any two
 states: onto a tag, from one tag to another, from a tag to a branch, and off a tag once the
 pin is removed, where `git pull` would refuse a detached HEAD. So every clone is on a
-detached HEAD, and a local edit that conflicts with the new checkout fails the update for
-that plugin. An update also leaves behind commits made in the clone and any branch checked
-out there by hand.
+detached HEAD. A local edit that conflicts with the new checkout fails the update for that
+plugin, and an update leaves behind commits made in the clone and any branch checked out
+there by hand.
 
 ### `plum/install-repo!`
 
-`plum/install-repo!`, behind every plugin and theme install, runs `plum/git-sync!` on a
-fresh repo: `git init` in `<data>/plum-staging/<parent>/<name>`, `git remote add origin
-<url>`, origin made a promisor remote with `partialclonefilter blob:none` (a blobless
-clone, which downloads only the files of the commits it checks out), `plum/git-sync!`,
-then the caller's `#:build` on the staging clone, if any. Only then does
-`plum/staged-install!` move the new clone into the old one's place with `replace-dir!`, in
-one step the script budget cannot stop half way. A failed install deletes its staging
-clone and leaves the old clone untouched, then raises the failure's own error.
+`plum/install-repo!`, behind every plugin and theme install, builds a fresh repo in
+`<data>/plum-staging/<parent>/<name>`:
+
+1. `git init`, then `git remote add origin <url>`.
+2. Make origin a promisor remote with `partialclonefilter blob:none`: a blobless clone,
+   which downloads only the files of the commits it checks out.
+3. `plum/git-sync!`.
+4. Run the caller's `#:build` on the staging clone, if any.
+
+Only then does `plum/staged-install!` move the new clone into the old one's place with
+`replace-dir!`, in one step the script budget cannot stop half way. A failed install deletes
+its staging clone, leaves the old clone untouched, and raises the failure's own error.
 
 `:plum-install-plugins` installs only missing plugins, so a changed pin reaches an
 installed plugin through `:plum-update-plugins`.
@@ -87,10 +95,12 @@ whenever it is about to write a name another installed repo also provides.
 
 The repo an install or update syncs writes its own names. A name a repo stops providing,
 because `:plum-remove-theme` removes the repo or an update drops the name, is settled by
-`plum/drop-theme-names!` from the clones alone. The copy in place stays when another
-installed repo ships the same text, so the repo that provides the name keeps it. Otherwise
-the first other installed repo in slug order that ships the name provides it, and the
-`.toml` is deleted only when none does.
+`plum/drop-theme-names!` from the clones alone:
+
+- The copy in place stays when another installed repo ships the same text, so the repo that
+  provides the name keeps it.
+- Otherwise the first other installed repo in slug order that ships the name provides it.
+- The `.toml` is deleted only when no other installed repo ships the name.
 
 ### Reinstall
 

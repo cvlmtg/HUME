@@ -30,11 +30,13 @@ Turn the prompt off with `:set global file-reload-prompt=false` (or `:set buffer
 
 A **buffer** is an open file (or scratch text). HUME can have several buffers open at once; `:ls`, `:b`, `:bn`, `:bp` and `:bd` manage them (see [Buffers](command-mode.md#buffers)). When two open files share a name, `Tab` completion for `:b` shows their parent directories to tell them apart.
 
-`:ls` opens a list across the bottom of the screen, one row per buffer: its number, `%` for the buffer you are in, `#` for the alternate, `+` for unsaved changes, its name and its path. The row of a buffer with unsaved changes has the `diagnostic.warning.message-text` scope, and the whole row has `diagnostic.warning.message` when it is the selected row. Otherwise the row of the buffer you are in has `markup.bold`, so a theme can set them apart. It works like the [language server lists](lsp.md):
+`:ls` opens a list across the bottom of the screen, one row per buffer: its number, `%` for the buffer you are in, `#` for the alternate, `+` for unsaved changes, its name and its path. It works like the [language server lists](lsp.md#the-list-drawer):
 
 - `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it.
 - `Enter` switches the focused pane to the highlighted buffer and leaves the list open.
 - `Esc` closes it.
+
+A theme can set rows apart. The row of a buffer with unsaved changes has the `diagnostic.warning.message-text` scope, and the whole row has `diagnostic.warning.message` when it is the selected row. Otherwise the row of the buffer you are in has `markup.bold`.
 
 To fuzzy-search files and buffers by typing a few characters instead, see [Fuzzy Finder](pickers.md).
 
@@ -112,7 +114,12 @@ Files you open are always editable, whatever their permissions on disk. A write 
 
 If HUME panics, receives a signal such as `SIGTERM` or `SIGHUP`, or loses its terminal (you closed the window), it writes every buffer with unsaved changes to a dump file. It prints each path on stderr, if there's still a terminal to print to.
 
-A buffer for `foo.txt` is dumped next to it as `foo.txt.dump`, with its line endings intact. Two cases have nowhere to put a dump beside the file: an unsaved scratch buffer, and a file whose folder can't be written to. These go to the `dumps` folder of HUME's data directory (`~/.local/share/hume/dumps`, or `$XDG_DATA_HOME/hume/dumps`; `%LOCALAPPDATA%\hume\dumps` on Windows) as `scratch-<pid>-<n>.dump` (`<file>-<pid>-<n>.dump` for a file). HUME doesn't offer those dumps back; open the file and copy what you need out of it. On Linux and macOS a dump is readable only by you; on Windows it gets the folder's permissions, like any new file there.
+Where the dump goes:
+
+- A buffer for `foo.txt` is dumped next to it as `foo.txt.dump`, with its line endings intact.
+- An unsaved scratch buffer, or a file whose folder can't be written to, has nowhere to put a dump beside the file. These go to the `dumps` folder of HUME's data directory (`~/.local/share/hume/dumps`, or `$XDG_DATA_HOME/hume/dumps`; `%LOCALAPPDATA%\hume\dumps` on Windows) as `scratch-<pid>-<n>.dump` (`<file>-<pid>-<n>.dump` for a file). HUME doesn't offer those dumps back; open the file and copy what you need out of it.
+
+On Linux and macOS a dump is readable only by you; on Windows it gets the folder's permissions, like any new file there.
 
 No dump is written:
 

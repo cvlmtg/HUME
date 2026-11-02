@@ -67,24 +67,29 @@ takes about 0.5 ms.
 
 ### Filesystem
 
-Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `delete-dir!` and
-`delete-file!` are idempotent, unlike `remove-dir!` and Steel's own `delete-file!`:
-a missing target is not an error. `list-entries` returns the names of every entry of a
-directory, sorted, and `list-subdirs` only those that are directories, skipping stray files
-that sit alongside a directory tree (`.install-lock`, `.DS_Store`). Both raise when the
-directory cannot be read, a missing one included: a general listing cannot tell a directory
-that does not exist yet from a wrong path, so a caller that means "empty" checks
-`path-exists?` first. `path-absolute?` follows Rust's `Path::is_absolute`: on
-Windows a path is absolute only with both a drive and a root (`C:\x`, `C:/x`) or as a UNC
-path (`\\server\share`), so `\x` (the current drive's) and `C:x` (relative to drive `C:`'s
-working directory) are not. Elsewhere it is absolute when it starts with `/`.
+Thin wrappers over Steel's `steel/filesystem` and `steel/ports`.
+
+- `delete-dir!` and `delete-file!` are idempotent, unlike `remove-dir!` and Steel's own
+  `delete-file!`: a missing target is not an error.
+- `list-entries` returns the names of every entry of a directory, sorted. `list-subdirs`
+  returns only those that are directories, skipping stray files that sit alongside a
+  directory tree (`.install-lock`, `.DS_Store`). Both raise when the directory cannot be
+  read, a missing one included: a general listing cannot tell a directory that does not
+  exist yet from a wrong path, so a caller that means "empty" checks `path-exists?` first.
+- `path-absolute?` follows Rust's `Path::is_absolute`. On Windows a path is absolute only
+  with both a drive and a root (`C:\x`, `C:/x`) or as a UNC path (`\\server\share`), so `\x`
+  (the current drive's) and `C:x` (relative to drive `C:`'s working directory) are not.
+  Elsewhere it is absolute when it starts with `/`.
 
 ### Downloads, digests and archives
 
 `download!` runs `curl -fsSL`:
-an HTTP error fails the command instead of saving the error page, a redirect (as GitHub's
-release downloads use) is followed, and a `--` before the URL keeps it from being read as an
-option. An offset and a size fetch that byte range with `-r`, for one member of a bundle.
+
+- an HTTP error fails the command instead of saving the error page;
+- a redirect, as GitHub's release downloads use, is followed;
+- a `--` before the URL keeps it from being read as an option.
+
+An offset and a size fetch that byte range with `-r`, for one member of a bundle.
 
 `verify-sha256!` and `extract-archive!` shell out to the platform's tools rather than
 adding hashing or archive crates; `docs/LSP-INSTALL.md` gives the reasoning.
@@ -95,10 +100,12 @@ executable.
 
 `find-extractor` picks the program for an archive format, and `extract-archive!` runs the
 one it picks, so a caller that checks for an extractor before downloading finds the
-program the extraction runs. Off Windows that is `tar` for a tar archive and `unzip` for a zip archive,
-on the search path. On Windows it is only Windows' own bsdtar, `%SystemRoot%\System32\tar.exe`,
-which extracts both and ships with every Windows HUME runs on. The search path's `tar` is no
-fallback: under Git Bash it is GNU tar, which reads a `C:\...` archive path as a remote host.
+program the extraction runs:
+
+- Off Windows: `tar` for a tar archive and `unzip` for a zip archive, on the search path.
+- On Windows: only Windows' own bsdtar, `%SystemRoot%\System32\tar.exe`, which extracts both
+  and ships with every Windows HUME runs on. The search path's `tar` is no fallback: under
+  Git Bash it is GNU tar, which reads a `C:\...` archive path as a remote host.
 
 ### Git
 

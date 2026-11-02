@@ -1,12 +1,13 @@
 # core:git-diff — Architecture
 
-The plugin is orchestration: state, debounce, git process management and decoration
-construction over one native builtin, `diff-buffer-lines` (line diff against a ref blob,
-each hunk carrying its changed-word spans). Signs and inline rendering share
-one hunk store and one fetch/diff pipeline: the repo probe, ref fetch, line diff, debounce,
-ref-cache invalidation and the reconcile step that skips no-op repaints. They differ
-only in the decoration construction (a `set-signs!` call, versus virtual lines, word spans
-and a line tint).
+The plugin is orchestration (state, debounce, git process management and decoration
+construction) over one native builtin, `diff-buffer-lines`: a line diff against a ref blob,
+each hunk carrying its changed-word spans.
+
+Signs and inline rendering share one hunk store and one fetch/diff pipeline: the repo
+probe, ref fetch, line diff, debounce, ref-cache invalidation and the reconcile step that
+skips no-op repaints. They differ only in the decorations they build: a `set-signs!` call,
+versus virtual lines, word spans and a line tint.
 
 ## File layout
 
@@ -37,10 +38,10 @@ One `(box (hash))` keyed by `(buffer-key pane)`, the shape under the core plugin
 ### One hunk set
 
 Every renderer in `render.scm` is a pure function over the one hunk set a refresh passes
-to `apply-hunks!`. The plugin does not store it. A rendering that is off or covered shows
-nothing. `diff.scm` compares each rendering's target (what it would draw from the hunks, or `'()`)
-with its `*-painted` field and paints only on a difference. A new rendering is one function,
-one setter call and one `*-painted` field.
+to `apply-hunks!`. The plugin does not store it. `diff.scm` paints a rendering only when
+its target differs from its `*-painted` field (see
+[Applying hunks](pipeline.md#applying-hunks)). A new rendering is one function, one setter
+call and one `*-painted` field.
 
 ### `"ref-text"` states
 
@@ -53,25 +54,28 @@ one setter call and one `*-painted` field.
 ### Tracking a buffer
 
 Every live entry point (each hook, each command) first calls `plugin.scm`'s `track!`, which
-creates the buffer's entry with the `'signs`/`'inline` config defaults when it has none. A
-buffer whose `on-buffer-open` never fired, because an activation list overrode the
-manifest's `#:events` with a `#:commands`-only list, is tracked at its first enter, edit,
-save or command, with the same flags a buffer opened later gets. A toggle that is what
-creates the entry turns its own rendering on rather than flipping the default, since
-nothing was drawn for the buffer before.
+creates the buffer's entry with the `'signs`/`'inline` config defaults when it has none.
 
-So a missing entry means the buffer closed. `entry-set!` raises on one, and the paths that
-can run after a close check first: `refresh!` and `refresh-branch!` when a debounce timer
-fires, and `spawn-job!`'s callback through the slot it owns (see
-[Closed buffers](pipeline.md#closed-buffers)). `entry-get` reads `#f` from a missing entry,
-which is what those checks test.
+- A buffer whose `on-buffer-open` never fired, because an activation list overrode the
+  manifest's `#:events` with a `#:commands`-only list, is tracked at its first enter,
+  edit, save or command, with the same flags a buffer opened later gets.
+- A toggle that is what creates the entry turns its own rendering on rather than flipping
+  the default, since nothing was drawn for the buffer before.
+
+So a missing entry means the buffer closed. `entry-set!` raises on one, and `entry-get`
+reads `#f` from one. The paths that can run after a close test `entry-get` first:
+`refresh!` and `refresh-branch!` when a debounce timer fires, and `spawn-job!`'s callback
+through the slot it owns (see [Closed buffers](pipeline.md#closed-buffers)).
+
+### Job slots
 
 `spawn-job!` starts a `spawn-async!` job in a slot (`"diff"`/`"branch"`), cancelling the
-slot's current job first. The result callback runs only while its job still owns the slot, so
-a result queued before a cancel or a replacement, or arriving after the buffer closed, is
-dropped. `cancel-job!` cancels a slot's job without firing its callback. `diff.scm` and
-`branch.scm` both go through these two, differing only in the key. `remove-buffer!` cancels
-every job in `"jobs"` before it drops the entry.
+slot's current job first. The result callback runs only while its job still owns the slot,
+so a result queued before a cancel or a replacement, or arriving after the buffer closed,
+is dropped. `cancel-job!` cancels a slot's job without firing its callback.
+
+`diff.scm` and `branch.scm` both go through these two, differing only in the key.
+`remove-buffer!` cancels every job in `"jobs"` before it drops the entry.
 
 ## Ref handling
 
@@ -79,12 +83,13 @@ every job in `"jobs"` before it drops the entry.
 
 Both commands share one per-buffer `"ref"` override. `buffer-ref` (`state.scm`) resolves
 it: the per-buffer override when set, else the config `'ref` default. A refresh resolves it
-when it runs, not when a hook scheduled it. The shared body
-`run-toggle!` handles both commands:
+when it runs, not when a hook scheduled it. The shared body `run-toggle!` handles both
+commands:
 
-- With a ref argument it ensures the entry exists, turns that rendering on, stores the ref,
-  drops `"ref-text"` and any fetch in flight (`drop-ref-text!`) and force-refreshes. A ref always turns the
-  rendering on and always re-fetches, even if it is already on at the same ref.
+- With a ref argument it ensures the entry exists, turns that rendering on, stores the
+  ref, drops `"ref-text"` and any fetch in flight (`drop-ref-text!`) and force-refreshes.
+  A ref always turns the rendering on and always re-fetches, even if it is already on at
+  the same ref.
 - With no argument it flips the flag. Turning it on force-refreshes; turning it off
   reconciles, which clears that rendering.
 

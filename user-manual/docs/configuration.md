@@ -66,7 +66,7 @@ Set an option with the `:set` command for runtime changes, or with `set-option!`
 
 For a buffer option (see [Buffer options](settings.md#buffer-options)), `:set global` takes effect at once in every buffer without its own override, not only newly opened ones. `wrap-mode` also accepts `:set pane`, which pins one pane's wrap style above both the buffer and global setting (see [Text wrap](settings.md#text-wrap)).
 
-`:set` changes last for the current session only. For persistent configuration, use `init.scm` (below).
+`:set` changes last for the current session only.
 
 ### From `init.scm`
 
@@ -74,9 +74,19 @@ For a buffer option (see [Buffer options](settings.md#buffer-options)), `:set gl
 (set-option! "option-name" value)
 ```
 
-Sets the global default. The value has the type `get-option` returns for that option: a boolean, an integer, a string, or, for a word-list option such as `shell`, a list of strings (`'("sh" "-c")`). Any other type raises an error, so write `4`, not `"4"`. A named value, such as `"soft"` or `"word:80"`, is a string. `set-option!` works anywhere Scheme code runs: `init.scm`, a plugin body, or a command or hook body.
+Sets the global default. `set-option!` works anywhere Scheme code runs: `init.scm`, a plugin body, or a command or hook body.
 
-A value you set, in your `init.scm`, a hook it registers or with `:set`, beats a plugin's value for the same option, whichever comes first. A plugin's later `set-option!` is ignored and noted in `:messages` at trace level. Per-buffer overrides rank the same way among themselves, and a buffer override still beats the global value, whoever set either.
+The value has the type `get-option` returns for that option, and any other type raises an error:
+
+- a boolean, an integer (write `4`, not `"4"`), or a string
+- a string for a named value, such as `"soft"` or `"word:80"`
+- a list of strings for a word-list option such as `shell`: `'("sh" "-c")`
+
+When you and a plugin set the same option:
+
+- A value you set, in your `init.scm`, a hook it registers or with `:set`, beats the plugin's, whichever comes first. A plugin's later `set-option!` is ignored and noted in `:messages` at trace level.
+- Per-buffer overrides rank the same way among themselves.
+- A buffer override beats the global value, whoever set either.
 
 ```scheme
 (set-option! "gutter-line-numbers" "absolute")
@@ -169,13 +179,22 @@ Add `#:keymap` and a name to put a binding in a keymap of its own instead of the
         (detach-keymap! pane "markdown-keys"))))
 ```
 
-`bind-key!`, `bind-key-extend!` and `unbind-key!` take `#:keymap` after their other arguments, as in `(unbind-key! 'normal "ctrl-k" #:keymap "markdown-keys")`; the plural forms take it right after the mode. The hook detaches the keymap when a buffer's language changes away from Markdown. Detaching removes only that keymap, so other keymaps attached to the buffer, a plugin's for instance, keep working.
+The hook detaches the keymap when a buffer's language changes away from Markdown. Detaching removes only that keymap, so other keymaps attached to the buffer, a plugin's for instance, keep working.
 
-In a buffer, HUME looks keys up in its attached keymaps, most recently attached first, then in the global bindings. Attaching a keymap that is already attached keeps its place. The first keymap that has the keys, as a binding or as the start of a longer one, decides: binding `g` in a keymap hides the global `g g`, while `G H` in a keymap and the global `G G` both work. In Extend mode, each keymap's `'extend` bindings are tried before its `'normal` ones, and both before the next keymap.
+`bind-key!`, `bind-key-extend!` and `unbind-key!` take `#:keymap` after their other arguments, as in `(unbind-key! 'normal "ctrl-k" #:keymap "markdown-keys")`. The plural forms take it right after the mode.
 
-Bind into a name before you attach it: attaching or detaching a name nothing has been bound into does nothing and logs a warning in `:messages`.
+How HUME looks up keys in a buffer:
 
-Global bindings belong in `init.scm` or a plugin body, but `#:keymap` bindings and attaching work from commands and hooks too. Keymap names are shared by every plugin, so a plugin's keymap names start with the plugin's own, like `"my-plugin/keys"`. `:reload-config` clears every keymap along with the other bindings, and a hook like the one above attaches its keymap again when it runs.
+- Its attached keymaps come first, most recently attached first, then the global bindings. Attaching a keymap that is already attached keeps its place.
+- The first keymap that has the keys, as a binding or as the start of a longer one, decides. Binding `g` in a keymap hides the global `g g`, while `G H` in a keymap and the global `G G` both work.
+- In Extend mode, each keymap's `'extend` bindings are tried before its `'normal` ones, and both before the next keymap.
+
+Other rules:
+
+- Bind into a name before you attach it. Attaching or detaching a name nothing has been bound into does nothing and logs a warning in `:messages`.
+- Global bindings belong in `init.scm` or a plugin body, but `#:keymap` bindings and attaching work from commands and hooks too.
+- Keymap names are shared by every plugin, so a plugin's keymap names start with the plugin's own, like `"my-plugin/keys"`.
+- `:reload-config` clears every keymap along with the other bindings. A hook like the one above attaches its keymap again when it runs.
 
 ### Falling back to a key's normal Insert-mode behaviour
 
@@ -185,7 +204,13 @@ Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [
 
 ### Keys in the command line
 
-A `'command` binding applies in the `:` prompt and in prompts plugins open, not in search or sift. It replaces the prompt's own use of that key, except that an open candidate list keeps the keys it picks candidates with. Running a command this way doesn't change what `.` repeats. `Ctrl-r`, which inserts a register or the current file's path, is bound this way by default (see [Inserting a register while typing](copy-and-paste.md#inserting-a-register-while-typing)). For example, `Ctrl-g` inserting the working directory:
+A `'command` binding applies in the `:` prompt and in prompts plugins open, not in search or sift.
+
+- It replaces the prompt's own use of that key, except that an open candidate list keeps the keys it picks candidates with.
+- Running a command this way doesn't change what `.` repeats.
+- `Ctrl-r`, which inserts a register or the current file's path, is bound this way by default (see [Inserting a register while typing](copy-and-paste.md#inserting-a-register-while-typing)).
+
+For example, `Ctrl-g` inserting the working directory:
 
 ```scheme
 (define-command! "insert-cwd" "Insert the working directory."

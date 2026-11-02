@@ -18,8 +18,7 @@ Pressing `l` invokes the motion framework in move mode, with a count of 1,
 and a one-step move-right search.
 
 **Step 1: the search.** Move-right computes the next grapheme boundary from
-position 0, returning 1. It knows nothing about anchors or multi-cursor; it
-is a coordinate calculation.
+position 0, returning 1.
 
 **Step 2: apply move mode.** The framework collapses anchor and head to the
 new position:
@@ -38,10 +37,8 @@ only the head:
 extend → anchor = 2 (unchanged), head = 3
 ```
 
-The selection grew from `'l'` to cover both `'l'` characters while the anchor
-stayed put. Pressing `h` from here would move the head back toward the
-anchor, shrinking the selection: the same computation, walked in the other
-direction.
+The selection grew from `'l'` to cover both `'l'` characters. Pressing `h`
+from here would move the head back toward the anchor and shrink it again.
 
 ## The two modes
 
@@ -49,9 +46,6 @@ direction.
 |------|--------|------|-------------|
 | move   | the new head   | the new head | Plain cursor move: `h`, `j`, `k`, `l` |
 | extend | the old anchor | the new head | Grow or shrink selection: sticky extend mode (toggled by `e`), one-shot Ctrl-letter on kitty-capable terminals |
-
-Move mode always produces a collapsed single-character selection (anchor ==
-head). Extend mode keeps the existing anchor, only moving the head.
 
 ## Why separate the search from the mode
 
@@ -66,25 +60,16 @@ itself. This means:
 - The same move-right search powers both `l` in move mode and `l` in extend
   mode, with no separate command.
 
-The framework branches on the mode when constructing the resulting
-selection:
-
-```text
-move   → anchor = new head, head = new head    (collapsed single-char)
-extend → anchor = old anchor, head = new head  (anchor stays, head moves)
-```
-
-Every position in these rules is the start of a character cluster, and a
-selection end covers the whole cluster that starts there. A head moved onto
+Every anchor and head is the start of a character cluster, and a selection
+end covers the whole cluster that starts there. A head moved onto
 an accented letter therefore covers the letter and its accent together.
 
 A few anchor-manipulation commands sit beside this framework without being a
-new mode. Overshooting a target is corrected by walking the head back: the
-same motion, reversed, shrinks the selection. `Ctrl-e` flips which end of
-the selection is the head and which is the anchor, for when you would rather
-grow or shrink from the *other* end. `Ctrl-;` (on kitty-capable terminals)
-collapses the selection onto its anchor, discarding the head. All of these
-reuse the positions the existing selection already carries.
+new mode. `Ctrl-e` flips which end of the selection is the head and which
+is the anchor, for when you would rather grow or shrink from the *other*
+end. `Ctrl-;` (on kitty-capable terminals) collapses the selection onto its
+anchor, discarding the head. Both reuse the positions the existing selection
+already carries.
 
 ---
 

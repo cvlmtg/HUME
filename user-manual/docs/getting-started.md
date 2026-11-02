@@ -17,7 +17,7 @@ Or run `hume` with no arguments to open a scratch buffer.
 1. **Learn the keys:** type `:tutor` and press `Enter` to open the interactive tutorial. It is your own copy, so edit it freely.
 2. **Where am I?** The mode label (`NOR`, `INS`, `EXT`, …) sits on the right of the statusline; the file path and cursor position sit on the left.
 3. **Quit:** `:q` closes the focused pane, or its tab when it is the tab's last pane. In the last pane it closes the buffer, and quits HUME when no other file or unsaved buffer is open. `:q!` discards unsaved changes, `:wq` saves first, and `:qa` quits everything.
-4. **Turn on the extras (optional):** HUME starts lean: language servers, fuzzy pickers, live git diff, the undo-history graph and the plugin manager stay off until you ask for them. Copy the bundled starter config (`share/hume/runtime/init.scm.example` in the macOS/Linux release archive, `runtime/init.scm.example` on Windows or in a source checkout) to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and they're all on from the next launch. See [Configuration](configuration.md#example-init-scm) for what each plugin does.
+4. **Turn on the extras (optional):** HUME starts lean: language servers, fuzzy pickers, live git diff, the undo-history graph and the plugin manager stay off until you ask for them. Copy the bundled [starter config](configuration.md#example-init-scm) to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and they're all on from the next launch. The linked section says where to find it and what each plugin does.
 
 ## The modal idea
 

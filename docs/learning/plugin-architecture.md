@@ -53,11 +53,14 @@ plugin's own code reads back. It is the only way to pass configuration:
 The config belongs to the plugin it was passed to; no other plugin can read
 it. The plugin reads it wherever its code runs: its body (at startup for an
 eager plugin, at activation for a lazy one, however much later that is), and
-every command, hook and callback it defines. Code that belongs to no plugin,
-such as `init.scm` itself, gets an error, since an empty answer would look
-like "no config passed". A plugin that activates before its load call has run
-sees an empty config, so a custom declaration belongs directly above the load
-call.
+every command, hook and callback it defines.
+
+Two edge cases:
+
+- Code that belongs to no plugin, such as `init.scm` itself, gets an error,
+  since an empty answer would look like "no config passed".
+- A plugin that activates before its load call has run sees an empty config,
+  so a custom declaration belongs directly above the load call.
 
 ## The manifest and the body
 
@@ -138,14 +141,15 @@ language changes, language servers attaching and sending notifications,
 diagnostics, the viewport, typed trigger characters, completion, settings,
 text changes and the undo history.
 
-Hooks never fire mid-command. Whatever triggers one (a command, a language
-server, a timer, the terminal regaining focus) queues it, and the editor
-drains the queue at a stable point: after the command finishes, or, for
-background triggers, the next time the editor checks in on its own. A handler
-that triggers another hook (switching buffers inside an `on-buffer-save`
-handler, say) queues that one too, and it drains in the same pass, so a
-cascade never waits for another keypress. Plugins always see the editor
-between edits, never in the middle of one.
+Hooks never fire mid-command, so plugins always see the editor between edits.
+Whatever triggers a hook (a command, a language server, a timer, the terminal
+regaining focus) queues it, and the editor drains the queue at a stable
+point: after the command finishes, or, for background triggers, the next time
+the editor checks in on its own.
+
+A handler that triggers another hook (switching buffers inside an
+`on-buffer-save` handler, say) queues that one too, and it drains in the same
+pass, so a cascade never waits for another keypress.
 
 ### A language a plugin defines for itself
 
@@ -198,8 +202,7 @@ one common file.
 
 ## Cross-plugin reuse
 
-The only cross-plugin surface is command dispatch. One plugin invokes
-another's command by name:
+One plugin invokes another's command by name:
 
 ```scheme
 ; alice/linter/plugin.scm registers a command
@@ -215,11 +218,11 @@ If the command belongs to a lazy plugin that hasn't loaded yet, `call!` loads
 it first and then makes the call.
 
 A key binding has no activation entry of its own: a plugin's `bind-key!`
-calls take effect only once its body has run. So a lazy plugin's commands
-must be reachable some other way before its bindings exist. A plugin that
-rebinds a key that already does something is a sharper case: until it loads,
-the key keeps its old meaning. When a plugin's own bindings are the only way
-to reach its commands, it ships no manifest and loads eagerly.
+calls take effect only once its body has run. Until then, a lazy plugin's
+commands must be reachable some other way, and a key the plugin rebinds keeps
+its old meaning. A plugin whose own bindings are the only way to reach its
+commands ships no manifest and loads eagerly (see
+[Lazy and eager plugins](#lazy-and-eager-plugins)).
 
 ## Declaring dependencies
 

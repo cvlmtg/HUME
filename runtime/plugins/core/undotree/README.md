@@ -62,19 +62,29 @@ waiting to reach, or `#f` when the column is free. For each revision, newest fir
 3. Point lane `c` at the revision's parent (free for the root), free every merging lane,
    and drop trailing free lanes.
 
-Each row is a space, the graph padded to the widest graph, two spaces, two marker cells, a
-space, and the age right-aligned in a column as wide as the oldest revision's age, and at
-least 3 cells: an age in seconds, minutes or hours is at most 3 cells, and an age in days
-only grows with age, so the column fits every row without measuring each one. The first
-marker cell is `@` for the current revision, the second `S` for the saved one (or the
-revision the file was first opened as), and either is blank otherwise. They sit in a column
-of their own so they stay visible next to a wide graph. Each row is a `(hash 'text 'spans)`
-display: the graph, without its padding, is `markup.bold`, `@` is
-`diagnostic.warning.message-text` and `S` is `diagnostic.info.message-text`, with
-`diagnostic.warning.message` and `diagnostic.info.message` as their `'selected-scope`. The
-row's own `'selected-scope` is `diagnostic.warning.message` when it has `@`, else
-`diagnostic.info.message` when it has `S`. Here the current revision is 4 and the saved one
-is 0:
+Each row is, left to right:
+
+- a space;
+- the graph, padded to the widest graph;
+- two spaces;
+- two marker cells: `@` for the current revision, then `S` for the saved one (or the
+  revision the file was first opened as), each blank otherwise. They sit in a column of
+  their own so they stay visible next to a wide graph;
+- a space;
+- the age, right-aligned in a column as wide as the oldest revision's age and at least 3
+  cells. An age in seconds, minutes or hours is at most 3 cells, and an age in days only
+  grows with age, so the column fits every row without measuring each one.
+
+Rows are `(hash 'text 'spans)` displays, styled with these scopes:
+
+| Part | Scope | `'selected-scope` |
+|---|---|---|
+| The graph, without its padding | `markup.bold` | |
+| `@` | `diagnostic.warning.message-text` | `diagnostic.warning.message` |
+| `S` | `diagnostic.info.message-text` | `diagnostic.info.message` |
+| The row | | `diagnostic.warning.message` when it has `@`, else `diagnostic.info.message` when it has `S` |
+
+Here the current revision is 4 and the saved one is 0:
 
 ```
  o          2m
@@ -87,21 +97,21 @@ is 0:
 
 Every row is a revision, so a row always names a revision to jump to.
 
-The graph depends only on each revision's id and parent. `undotree/render` keeps the graph
-rows of its last call, as a vector oldest first, with the width of the widest, each id's
-index into that vector, and the list of `(id . parent)` pairs, newest first, they were drawn
-for. The next call reuses all three when its list is `equal?` to that one. An undo, redo or
-jump moves only the markers, so it skips the lane walk; the markers and ages are formatted
-on every render.
+The graph depends only on each revision's id and parent, so `undotree/render` keeps the
+layout of its last call: the graph rows as a vector oldest first, the width of the widest,
+and each id's index into that vector. Its key is the list of `(id . parent)` pairs, newest
+first, the rows were drawn for. The key is the whole input to the lane walk, so there is
+nothing to invalidate. The next call compares its own list with the key:
 
-An edit adds one revision under the newest, and then the previous rows still hold: the
-previous newest revision started with no lanes, and with the new one waiting for it it
-takes column 0 with the same row and the same lanes after it. So when the new list is the
-previous one plus a newest revision whose parent is the previous newest, the rows are the
-previous rows with `o` added at the newest end, at the same width, the new id indexes that
-row, and the walk is skipped. Any other new
-list, such as an edit after an undo, is laid out from scratch. The key is the whole input to
-the lane walk, so there is nothing to invalidate.
+- **Equal.** It reuses the layout. An undo, redo or jump moves only the markers, so it
+  skips the lane walk; the markers and ages are formatted on every render.
+- **The key plus a newest revision whose parent is the previous newest**, which is what an
+  edit on the newest revision adds. The previous rows still hold: the previous newest
+  revision started with no lanes, and with the new one waiting for it, it takes column 0
+  with the same row and the same lanes after it. The new rows are the previous ones with
+  `o` added at the newest end, at the same width, the new id indexes that row, and the walk
+  is skipped.
+- **Anything else**, such as an edit after an undo. The graph is laid out from scratch.
 
 With `undo-levels` set, recording a revision past the cap trims the tree from the root end.
 It drops a whole branch off the root that does not lead to the current revision, or, when
@@ -122,11 +132,12 @@ minute, `Nm` under an hour, `Nh` under a day, else `Nd`. These are the units `:e
 One session at a time, since the drawer is one slot: a hash of the drawer token, the pane
 the tree was last read from, the revision diff last drawn, and the age timer. Every refresh
 reads the focused pane and replaces the hash in one step, before it draws the diff, so an
-error from the renderer leaves a session that matches the drawer.
-Esc, or another feature opening its own drawer, delivers `#f` to the callback. The callback
-also receives the token of the drawer that fired. The session ends only when that is its
-own drawer, so the `#f` of a drawer this session replaced does nothing. Enter acts on the
-rows its drawer was last given.
+error from the diff renderer leaves a session that matches the drawer.
+
+Esc, or another feature opening its own drawer, delivers `#f` to the callback, along with
+the token of the drawer that fired. The session ends only when that is its own drawer, so
+the `#f` of a drawer this session replaced does nothing. Enter acts on the rows its drawer
+was last given.
 
 Enter calls `goto-revision!` and leaves the drawer open. `goto-revision!` raises for a
 read-only buffer, and the error reaches the user as any Steel error does; the session stays
@@ -182,10 +193,11 @@ succeeded. Wherever the rows are re-rendered (after a jump, on a history change,
 timer, when the session retargets) the diff is redrawn only when the buffer or its current
 revision differs from that, since a revision's text never changes. So the age timer never
 redraws it, and a renderer that raised is not asked again until the revision changes. Its
-error is reported and the drawer stays open. Retargeting to another buffer first clears the
-diff of the buffer it leaves. Ending the session clears it too, for a buffer that is still
-open. A session that never drew, because `core:git-diff` was not loaded, has nothing to
-clear.
+error is reported and the drawer stays open.
+
+Retargeting to another buffer first clears the diff of the buffer it leaves. Ending the
+session clears it too, for a buffer that is still open. A session that never drew, because
+`core:git-diff` was not loaded, has nothing to clear.
 
 ## Known limitations
 
