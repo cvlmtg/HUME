@@ -63,6 +63,25 @@ fn setup_with_source(
     config_expr: Option<&str>,
     extra: &str,
 ) -> (Editor, RealRuntimeDirs) {
+    let load_git_diff = match config_expr {
+        Some(cfg) => hume_scripting::eager_load_scm("core:git-diff", Some(cfg)),
+        None => hume_scripting::eager_load_scm("core:git-diff", None),
+    };
+    setup_with_init(tmp, &format!("{load_git_diff}\n{extra}"))
+}
+
+/// `core:git-diff` declared lazily with only its two typed commands as triggers,
+/// so a buffer opened before the first of them runs never sees `on-buffer-open`.
+fn setup_lazy_on_typed_commands(tmp: &Path) -> (Editor, RealRuntimeDirs) {
+    setup_with_init(
+        tmp,
+        r#"(declare-plugin! "core:git-diff" #:typed-commands '("toggle-git-signs" "toggle-inline-diff"))
+           (load-plugin! "core:git-diff")"#,
+    )
+}
+
+/// An editor whose `init.scm` loads `core:stdlib`, then evaluates `source`.
+fn setup_with_init(tmp: &Path, source: &str) -> (Editor, RealRuntimeDirs) {
     let guard = RealRuntimeDirs::new();
     let mut ed = Editor::open(
         None,
@@ -73,13 +92,9 @@ fn setup_with_source(
     )
     .unwrap();
     let mut host = ScriptingHost::for_testing(&ed.state.dirs);
-    let load_git_diff = match config_expr {
-        Some(cfg) => hume_scripting::eager_load_scm("core:git-diff", Some(cfg)),
-        None => hume_scripting::eager_load_scm("core:git-diff", None),
-    };
     // core:git-diff's config validation depends on core:stdlib (see
     // plugin.scm's header); load it first, same as the shipped init.scm.example.
-    let load = format!("(load-plugin! \"core:stdlib\")\n{load_git_diff}\n{extra}");
+    let load = format!("(load-plugin! \"core:stdlib\")\n{source}");
     eval_with_real_host(&mut ed, &mut host, &load, tmp);
     ed.scripting = Some(host);
     (ed, guard)
@@ -1224,6 +1239,42 @@ fn explicit_bad_ref_logs_warning_status_message() {
 }
 
 #[test]
+fn a_bad_explicit_ref_warns_only_for_the_command_that_gave_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+    let repo = tempfile::tempdir().unwrap();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "one\n", "v1");
+    commit_file(repo.path(), "o.txt", "o\n", "v2");
+    let path = repo.path().join("f.txt");
+    open(&mut ed, &path);
+    let fetch_failures = |ed: &Editor| -> Vec<Severity> {
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.text.contains("`git cat-file` failed"))
+            .map(|e| e.severity)
+            .collect()
+    };
+
+    settle_until_idle(&mut ed);
+
+    type_cmd(&mut ed, ":toggle-git-signs not-a-real-ref-xyz");
+    drain_until(&mut ed, |ed| !fetch_failures(ed).is_empty());
+    assert_eq!(fetch_failures(&ed), vec![Severity::Warning]);
+
+    open(&mut ed, &repo.path().join("o.txt"));
+    ed.settle();
+    open(&mut ed, &path);
+    drain_until(&mut ed, |ed| fetch_failures(ed).len() == 2);
+    assert_eq!(
+        fetch_failures(&ed),
+        vec![Severity::Warning, Severity::Trace],
+        "the refetch a buffer enter starts is not an answer to a command"
+    );
+}
+
+#[test]
 fn buffer_save_invalidates_cached_ref_and_refetches() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
@@ -1570,6 +1621,61 @@ fn dirty_six_line_repo() -> tempfile::TempDir {
     commit_file(repo.path(), "f.txt", "a\nb\nc\nd\ne\nf\n", "v1");
     std::fs::write(repo.path().join("f.txt"), "a\nb\nc\nd\nE\nf\n").unwrap();
     repo
+}
+
+#[test]
+fn a_buffer_opened_before_the_plugin_loads_diffs_with_the_config_defaults() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_lazy_on_typed_commands(tmp.path());
+    let repo = dirty_six_line_repo();
+    commit_file(repo.path(), "o.txt", "o\n", "v2");
+    let path = repo.path().join("f.txt");
+    let bid = open(&mut ed, &path);
+    ed.settle();
+
+    open(&mut ed, &repo.path().join("o.txt"));
+    type_cmd(&mut ed, ":toggle-inline-diff");
+    ed.settle();
+    open(&mut ed, &path);
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+    assert_eq!(
+        signs(&ed, bid),
+        vec![(4, "~".to_string(), "diff.delta".to_string())]
+    );
+    assert!(vlines(&ed, bid).is_empty(), "'inline defaults to off");
+}
+
+#[test]
+fn the_first_inline_toggle_on_an_untracked_buffer_keeps_the_signs_default() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_lazy_on_typed_commands(tmp.path());
+    let repo = dirty_six_line_repo();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+    ed.settle();
+
+    type_cmd(&mut ed, ":toggle-inline-diff");
+    drain_until(&mut ed, |ed| !vlines(ed, bid).is_empty());
+    assert_eq!(
+        signs(&ed, bid),
+        vec![(4, "~".to_string(), "diff.delta".to_string())],
+        "'signs defaults to on"
+    );
+}
+
+#[test]
+fn the_first_signs_toggle_on_an_untracked_buffer_turns_signs_on() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_lazy_on_typed_commands(tmp.path());
+    let repo = dirty_six_line_repo();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+    ed.settle();
+
+    type_cmd(&mut ed, ":toggle-git-signs");
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("git-diff: signs on (HEAD)")
+    );
 }
 
 #[test]

@@ -1,6 +1,6 @@
 ;;; core:git-diff — state.scm. See docs/architecture.md.
 
-(provide git-diff/init-buffer! git-diff/remove-buffer!
+(provide git-diff/remove-buffer!
          git-diff/buffer-entry git-diff/entry-get git-diff/entry-set! git-diff/ensure-entry!
          git-diff/buffer-ref git-diff/toggle-flag! git-diff/slot-job git-diff/cancel-job! git-diff/spawn-job!
          git-diff/add-cover! git-diff/remove-cover!)
@@ -26,26 +26,23 @@
   (set-box! git-diff/*buffers*
             (hash-insert (unbox git-diff/*buffers*) (buffer-key pane) entry)))
 
-(define (git-diff/init-buffer! pane signs? inline?)
-  (git-diff/put-entry! pane (git-diff/fresh-entry signs? inline?)))
-
 ;;; Cancels the entry's in-flight jobs without firing their callbacks, then drops it.
 (define (git-diff/remove-buffer! pane)
   (let ([jobs (git-diff/entry-get pane "jobs")])
     (when jobs (for-each cancel-async! (hash-values->list jobs))))
   (set-box! git-diff/*buffers* (hash-remove (unbox git-diff/*buffers*) (buffer-key pane))))
 
-;;; No-op when `pane`'s buffer has no tracked entry — see docs/architecture.md.
+;;; Raises when `pane`'s buffer has no entry — see docs/architecture.md.
 (define (git-diff/entry-set! pane key value)
   (let ([entry (git-diff/buffer-entry pane)])
-    (when entry
-      (git-diff/put-entry! pane (hash-insert entry key value)))))
+    (unless entry
+      (error (string-append "core:git-diff: no state for the buffer to set \"" key "\" in")))
+    (git-diff/put-entry! pane (hash-insert entry key value))))
 
-;;; Unlike `entry-set!`, resurrects a missing entry rather than no-opping —
-;;; see docs/architecture.md.
-(define (git-diff/ensure-entry! pane)
-  (unless (git-diff/buffer-entry pane)
-    (git-diff/put-entry! pane (git-diff/fresh-entry #f #f))))
+;;; Creates `pane`'s entry with these flags when it has none; #t when it did.
+(define (git-diff/ensure-entry! pane signs? inline?)
+  (and (not (git-diff/buffer-entry pane))
+       (begin (git-diff/put-entry! pane (git-diff/fresh-entry signs? inline?)) #t)))
 
 ;;; The buffer's own ref, else `default`.
 (define (git-diff/buffer-ref pane default)
@@ -53,23 +50,20 @@
 
 ;;; Flips `key` (one of "signs?"/"inline?") and returns the new value.
 (define (git-diff/toggle-flag! pane key)
-  (git-diff/ensure-entry! pane)
   (let ([new? (not (git-diff/entry-get pane key))])
     (git-diff/entry-set! pane key new?)
     new?))
 
 ;;; See docs/rendering.md's "Rendering another plugin's hunks".
 (define (git-diff/add-cover! pane source)
-  (git-diff/ensure-entry! pane)
   (let ([covers (git-diff/entry-get pane "covered-by")])
     (unless (member source covers)
       (git-diff/entry-set! pane "covered-by" (cons source covers)))))
 
 (define (git-diff/remove-cover! pane source)
-  (let ([covers (git-diff/entry-get pane "covered-by")])
-    (when covers
-      (git-diff/entry-set! pane "covered-by"
-                           (filter (lambda (s) (not (equal? s source))) covers)))))
+  (git-diff/entry-set! pane "covered-by"
+                       (filter (lambda (s) (not (equal? s source)))
+                               (git-diff/entry-get pane "covered-by"))))
 
 ;;; The job in slot `key`, or #f.
 (define (git-diff/slot-job pane key)
@@ -79,8 +73,7 @@
 ;;; Puts `job` in slot `key`, or empties the slot when `job` is #f.
 (define (git-diff/set-slot! pane key job)
   (let ([jobs (git-diff/entry-get pane "jobs")])
-    (when jobs
-      (git-diff/entry-set! pane "jobs" (if job (hash-insert jobs key job) (hash-remove jobs key))))))
+    (git-diff/entry-set! pane "jobs" (if job (hash-insert jobs key job) (hash-remove jobs key)))))
 
 ;;; Cancels the job in slot `key` without firing its callback — see docs/architecture.md.
 (define (git-diff/cancel-job! pane key)

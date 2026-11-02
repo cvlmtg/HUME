@@ -49,15 +49,21 @@ one setter call and one `*-painted` field.
 | `#f` | Not yet fetched, or dropped by `drop-ref-text!` (a save, a buffer enter, an explicit-ref toggle); the next refresh fetches |
 | `'unavailable` | The last fetch failed: a sticky negative cache, so a doomed fetch is not retried on every debounce fire |
 
-### `entry-set!` and `ensure-entry!`
+### Tracking a buffer
 
-Both write to an entry. They differ on a missing one, the two write-path shapes from the
-[core plugins index](../../README.md#stale-async-work):
+Every live entry point (each hook, each command) first calls `plugin.scm`'s `track!`, which
+creates the buffer's entry with the `'signs`/`'inline` config defaults when it has none. A
+buffer whose `on-buffer-open` never fired, because an activation list overrode the
+manifest's `#:events` with a `#:commands`-only list, is tracked at its first enter, edit,
+save or command, with the same flags a buffer opened later gets. A toggle that is what
+creates the entry turns its own rendering on rather than flipping the default, since
+nothing was drawn for the buffer before.
 
-| | On a missing entry | Used by |
-|---|---|---|
-| `entry-set!` | No-ops | A `spawn-async!` callback. A late callback for a buffer closed while its fetch was in flight must not resurrect state for it |
-| `ensure-entry!` | Creates one from `fresh-entry` with both flags off | A toggle command and `add-cover!`. A toggle, or another plugin's `git-diff/render-diff`, must succeed even for a buffer whose `on-buffer-open` never fired (an activation list can override the manifest's `#:events` with a `#:commands`-only list) |
+So a missing entry means the buffer closed. `entry-set!` raises on one, and the paths that
+can run after a close check first: `refresh!` and `refresh-branch!` when a debounce timer
+fires, and `spawn-job!`'s callback through the slot it owns (see
+[Closed buffers](pipeline.md#closed-buffers)). `entry-get` reads `#f` from a missing entry,
+which is what those checks test.
 
 `spawn-job!` starts a `spawn-async!` job in a slot (`"diff"`/`"branch"`), cancelling the
 slot's current job first. The result callback runs only while its job still owns the slot, so

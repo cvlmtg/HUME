@@ -33,7 +33,7 @@ handle-fetch-result! ──▶ diff-buffer-lines                       │
 
 | Hook | Action |
 |---|---|
-| `on-buffer-open` | Init state, schedule a refresh |
+| `on-buffer-open` | Track the buffer, schedule a refresh |
 | `on-buffer-enter` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
 | `on-text-changed` | Schedule a refresh |
 | `on-buffer-save` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
@@ -69,11 +69,14 @@ so a result is dropped when the entry is gone or the slot holds another job (or 
 
 #### Severity routing
 
-| Exit code | Severity | Why |
-|---|---|---|
-| `#f` (none) | `'error` | `git` could not run: an environment fault, not a fact about this file |
-| any other nonzero, with a runtime ref override set | `'warning` | A direct answer to a command the user just typed |
-| any other nonzero, no override | `'trace` | Untracked file, brand-new file, buffer outside any repo, bad `ref` config. These cannot be told apart without parsing `stderr` further; the line is visible in `:messages` for diagnosis and otherwise quiet |
+The severity of a failure is chosen when the fetch starts and travels with it: `refresh!`
+takes it and passes it to `handle-fetch-result!`.
+
+| Exit code | Fetch started by | Severity | Why |
+|---|---|---|---|
+| `#f` (none) | anything | `'error` | `git` could not run: an environment fault, not a fact about this file |
+| any other nonzero | a toggle, with a runtime ref override set | `'warning` | A direct answer to a command the user just typed |
+| any other nonzero | anything else | `'trace` | Untracked file, brand-new file, buffer outside any repo, bad `ref` config, or a background refetch against an override already reported. These cannot be told apart without parsing `stderr` further; the line is visible in `:messages` for diagnosis and otherwise quiet |
 
 Either way `"ref-text"` becomes `'unavailable`, not `#f`. `#f` means "not fetched yet", and
 `refresh!` would respawn a `git cat-file` that fails the same way on every debounced keystroke.
@@ -164,10 +167,10 @@ Branch tracking runs for every buffer the hooks fire on, not only those opted in
 
 ## Closed buffers
 
-`buffer-path`, the statusline setter and `diff-buffer-lines` raise for a closed buffer where
-this plugin's own state writes no-op. `refresh-branch!` and `refresh!` therefore check that
+`buffer-path`, the statusline setter, `diff-buffer-lines` and the plugin's own
+`entry-set!` raise for a closed buffer. `refresh-branch!` and `refresh!` therefore check that
 the buffer's entry exists before they call one of them, and `spawn-job!` runs a result
-callback only while the entry exists. That check is reliable, even in a debounce timer or a
+callback only while its job still owns its slot, which needs the entry. That check is reliable, even in a debounce timer or a
 `spawn-async!` callback that fires after the buffer closes, because `on-buffer-close`
 removes the entry synchronously before either can run: a missing entry means the buffer is
 gone.

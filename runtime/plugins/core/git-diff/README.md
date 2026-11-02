@@ -25,8 +25,8 @@ that element.
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `'signs` | bool | `#t` | Gutter signs start on for a newly opened buffer. On by default: signs are cheap and shift no lines |
-| `'inline` | bool | `#f` | Inline rendering starts on for a newly opened buffer. Off by default: its virtual lines move the buffer's visual flow |
+| `'signs` | bool | `#t` | Gutter signs start on for every buffer. On by default: signs are cheap and shift no lines |
+| `'inline` | bool | `#f` | Inline rendering starts on for every buffer. Off by default: its virtual lines move the buffer's visual flow |
 | `'ref` | string | `"HEAD"` | The ref a buffer diffs against until a toggle command sets a per-buffer one (see [Per-buffer ref](docs/architecture.md#per-buffer-ref)) |
 | `'branch-style` | `'parens` or `'icon` | `'parens` | How `"steel:git-branch"` writes the branch: `(main)` or `⎇ main` |
 

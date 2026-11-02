@@ -15,13 +15,19 @@
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
+;;; Every live entry point calls this first; #t when the buffer was untracked —
+;;; see docs/architecture.md's "Tracking a buffer".
+(define (git-diff/track! pane)
+  (git-diff/ensure-entry! pane git-diff/signs-default git-diff/inline-default))
+
 (register-hook! 'on-buffer-open
   (lambda (pane)
-    (git-diff/init-buffer! pane git-diff/signs-default git-diff/inline-default)
+    (git-diff/track! pane)
     (git-diff/schedule-refresh! pane git-diff/ref)))
 
 ;;; Refetches the ref blob and the branch — see docs/pipeline.md's "Hooks".
 (define (git-diff/resync-with-git! pane)
+  (git-diff/track! pane)
   (git-diff/invalidate-ref! pane git-diff/ref)
   (git-diff/schedule-branch-refresh! pane git-diff/branch-style))
 
@@ -31,10 +37,14 @@
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "statusline")
-      (git-diff/schedule-branch-refresh! (focused-pane) git-diff/branch-style))))
+      (let ([pane (focused-pane)])
+        (git-diff/track! pane)
+        (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))))
 
 (register-hook! 'on-text-changed
-  (lambda (pane changes) (git-diff/schedule-refresh! pane git-diff/ref)))
+  (lambda (pane changes)
+    (git-diff/track! pane)
+    (git-diff/schedule-refresh! pane git-diff/ref)))
 
 (register-hook! 'on-buffer-save git-diff/resync-with-git!)
 
@@ -45,14 +55,16 @@
 (define (git-diff/draw-for-source! pane source hunks)
   (when (equal? source git-diff/*source*)
     (error (string-append "git-diff/render-diff: the source \"" source "\" is core:git-diff's own")))
+  (git-diff/track! pane)
   (git-diff/render-diff! pane source hunks)
   (git-diff/add-cover! pane source)
   (git-diff/hide-renderings! pane))
 
 (define (git-diff/release-source! pane source)
+  (git-diff/track! pane)
   (git-diff/render-diff! pane source '())
   (git-diff/remove-cover! pane source)
-  (git-diff/refresh! pane git-diff/ref))
+  (git-diff/refresh! pane git-diff/ref 'trace))
 
 (define-command! "git-diff/render-diff"
   "Draw hunks inline in a buffer: deleted lines as virtual lines, word highlights and a line tint. Arguments: pane, a decoration source name, the `'hunks` list `diff-buffer-lines` and `buffer-revision-diff` return. The source keeps the drawing apart from every other source's; an empty list draws nothing. Until `git-diff/release-diff` releases the source, the buffer's own inline git diff is hidden; its gutter signs stay."
@@ -82,16 +94,19 @@
 
 ;;; Shared body for both toggles below — see docs/architecture.md's "Ref handling".
 (define (git-diff/run-toggle! pane key label arg)
-  (let ([enabled?
-         (if (string? arg)
-             (begin (git-diff/ensure-entry! pane)
-                    (git-diff/entry-set! pane key #t)
-                    (git-diff/entry-set! pane "ref" arg)
-                    (git-diff/drop-ref-text! pane)
-                    #t)
-             (git-diff/toggle-flag! pane key))])
+  (let* ([untracked? (git-diff/track! pane)]
+         [enabled?
+          (cond
+            [(string? arg)
+             (git-diff/entry-set! pane key #t)
+             (git-diff/entry-set! pane "ref" arg)
+             (git-diff/drop-ref-text! pane)
+             #t]
+            [untracked? (git-diff/entry-set! pane key #t) #t]
+            [else (git-diff/toggle-flag! pane key)])])
     (if enabled?
-        (git-diff/force-refresh! pane git-diff/ref)
+        (git-diff/force-refresh! pane git-diff/ref
+                                 (if (git-diff/entry-get pane "ref") 'warning 'trace))
         (git-diff/hide-renderings! pane))
     (log! 'info (if enabled?
                     (string-append "git-diff: " label " on (" (git-diff/buffer-ref pane git-diff/ref) ")")
@@ -120,7 +135,9 @@
 
 (define-command! "git-diff/inline-diff?"
   "Whether inline git diff is on for a buffer. Argument: pane. Returns #t or #f."
-  (lambda (pane) (git-diff/entry-get pane "inline?")))
+  (lambda (pane)
+    (git-diff/track! pane)
+    (git-diff/entry-get pane "inline?")))
 
 (define-typed-command! "toggle-git-signs"
   (string-append git-diff/toggle-signs-doc " Optional argument: a git ref to diff against, e.g. :toggle-git-signs HEAD~2 (default: the `ref` config value, shared with toggle-inline-diff).")

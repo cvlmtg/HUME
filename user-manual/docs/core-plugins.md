@@ -146,8 +146,8 @@ Configure with `#:config`:
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `'signs` | bool | `#t` | Whether gutter signs start on for a newly opened buffer |
-| `'inline` | bool | `#f` | Whether inline rendering starts on for a newly opened buffer |
+| `'signs` | bool | `#t` | Whether gutter signs start on for each buffer |
+| `'inline` | bool | `#f` | Whether inline rendering starts on for each buffer |
 | `'ref` | string | `"HEAD"` | The default git ref a buffer diffs against, until overridden per-buffer via the toggle commands |
 | `'branch-style` | `'parens` or `'icon` | `'parens` | How the `"steel:git-branch"` statusline element writes the branch: `(main)` or `⎇ main` |
 

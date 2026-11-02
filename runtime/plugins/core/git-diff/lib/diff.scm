@@ -42,8 +42,9 @@
       (unless (git-diff/inline-visible? entry)
         (git-diff/reconcile-inline! entry pane '())))))
 
-;;; `spawn-async!` callback for `refresh!`'s `git cat-file` — see docs/pipeline.md.
-(define (git-diff/handle-fetch-result! pane result)
+;;; `spawn-async!` callback for `refresh!`'s `git cat-file`; a failure logs at
+;;; `failure-severity` — see docs/pipeline.md's "Severity routing".
+(define (git-diff/handle-fetch-result! pane failure-severity result)
   (let ([exit-code (hash-ref result 'exit)]
         [stdout (hash-ref result 'stdout)])
     (if (equal? exit-code 0)
@@ -51,9 +52,7 @@
           (git-diff/entry-set! pane "ref-text" stdout)
           (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane stdout) 'hunks)))
         (begin
-          (log! (cond [(not exit-code) 'error]
-                      [(git-diff/entry-get pane "ref") 'warning]
-                      [else 'trace])
+          (log! (if exit-code failure-severity 'error)
                 (string-append "git-diff: `git cat-file` failed: "
                                (trim (hash-ref result 'stderr))))
           (git-diff/entry-set! pane "ref-text" 'unavailable)
@@ -61,7 +60,7 @@
 
 ;;; Immediate (non-debounced) refresh — `schedule-refresh!` is the debounced entry point.
 ;;; A buffer without its own ref diffs against `default-ref`.
-(define (git-diff/refresh! pane default-ref)
+(define (git-diff/refresh! pane default-ref failure-severity)
   (let ([entry (git-diff/buffer-entry pane)])
     (when (and entry (or (hash-ref entry "signs?") (hash-ref entry "inline?")))
       (let ([path (buffer-path pane)])
@@ -76,13 +75,14 @@
                                           (string-append (git-diff/buffer-ref pane default-ref)
                                                          ":./" (file-name path)))
                                     (parent-name path)
-                                    (lambda (result) (git-diff/handle-fetch-result! pane result)))])))))))
+                                    (lambda (result)
+                                      (git-diff/handle-fetch-result! pane failure-severity result)))])))))))
 
 ;;; Forces a fetch even through a sticky `'unavailable` cache — see docs/pipeline.md.
-(define (git-diff/force-refresh! pane default-ref)
+(define (git-diff/force-refresh! pane default-ref failure-severity)
   (unless (string? (git-diff/entry-get pane "ref-text"))
     (git-diff/entry-set! pane "ref-text" #f))
-  (git-diff/refresh! pane default-ref))
+  (git-diff/refresh! pane default-ref failure-severity))
 
 ;;; Drops the cached blob and cancels any fetch in flight without firing its callback.
 (define (git-diff/drop-ref-text! pane)
@@ -96,4 +96,5 @@
 
 ;;; `debounce-by`, keyed per buffer, at 150ms — see docs/pipeline.md.
 (define git-diff/schedule-refresh!
-  (debounce-by 150 git-diff/refresh! #:key (lambda (p . _) (buffer-key p))))
+  (debounce-by 150 (lambda (pane default-ref) (git-diff/refresh! pane default-ref 'trace))
+               #:key (lambda (p . _) (buffer-key p))))
