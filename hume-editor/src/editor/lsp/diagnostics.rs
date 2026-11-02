@@ -630,11 +630,9 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             crate::editor::buffer::offsets::checked_char_range(text, start, end)
                 .map_err(|e| format!("#:range {e}"))?
         }
-        Some(DiagnosticRange::Request(range)) => {
-            super::bridge::check_doc_span(text, bid, range.buffer, range.version)
-                .map_err(|e| format!("#:range {e}"))?;
-            ExclusiveRange::new(range.start, range.end)
-        }
+        Some(DiagnosticRange::Request(range)) => range
+            .chars_in(bid, text)
+            .map_err(|e| format!("#:range {e}"))?,
     };
 
     let matched = state

@@ -18,7 +18,7 @@
 //! something readable without revealing internal structure.
 
 use hume_core::{BufferId, PaneHandle};
-use hume_editing::text::TextVersion;
+use hume_editing::text::{BufferText, TextVersion};
 use slotmap::Key as _;
 use steel::{
     gc::ShareableMut as _,
@@ -26,7 +26,8 @@ use steel::{
 };
 
 use hume_lsp::backend::ServerId;
-use hume_rope::offset::CharOffset;
+use hume_rope::cluster::ClusterRange;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::host::{JobHandle, SupersedeKey, TimerHandle};
 use hume_core::ServerName;
@@ -170,34 +171,119 @@ steel_value!(pub(crate) fn into_steel_val for BufferGeneration => |g| format!(
     g.generation
 ));
 
+/// A document's URI in a request's params, filled in only when the request
+/// is serialized: the URI the buffer's servers opened it under. A buffer
+/// with no file has one too; no server takes a request for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DocUri {
+    buffer: BufferId,
+}
+
+impl DocUri {
+    pub fn new(bid: BufferId) -> Self {
+        Self { buffer: bid }
+    }
+
+    /// `Ok` when the URI names `bid`.
+    pub fn check_names(&self, bid: BufferId) -> Result<(), String> {
+        if self.buffer == bid {
+            Ok(())
+        } else {
+            Err("document belongs to another buffer".to_string())
+        }
+    }
+
+    pub fn from_steel_val(val: &SteelVal) -> Option<Self> {
+        downcast(val)
+    }
+}
+
+steel_value!(pub fn into_steel_val for DocUri => |d| format!(
+    "#<doc-uri buffer={}>",
+    d.buffer.data().as_ffi()
+));
+
 /// A buffer position in a request's params, encoded as a wire `Position`
 /// only when the request is serialized for a server, in that server's
-/// position encoding. `offset` is a char offset into the text of `buffer`
-/// that was at `version` when the value was built; it means nothing for any
-/// other version.
+/// position encoding. The offset is read only through [`Self::offset_in`],
+/// against the buffer and text it was taken from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DocPos {
-    pub buffer: BufferId,
-    pub version: TextVersion,
-    pub offset: CharOffset,
+    buffer: BufferId,
+    version: TextVersion,
+    offset: CharOffset,
 }
 
 /// The [`DocPos`] counterpart for a wire `Range`: half-open `start..end`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DocRange {
-    pub buffer: BufferId,
-    pub version: TextVersion,
-    pub start: CharOffset,
-    pub end: CharOffset,
+    buffer: BufferId,
+    version: TextVersion,
+    start: CharOffset,
+    end: CharOffset,
+}
+
+/// `Ok` when a value taken from `buffer` at `version` addresses `bid`'s
+/// `text`.
+fn check_taken_from(
+    buffer: BufferId,
+    version: TextVersion,
+    bid: BufferId,
+    text: &BufferText,
+) -> Result<(), String> {
+    if buffer != bid {
+        Err("position belongs to another buffer".to_string())
+    } else if version != text.version() {
+        Err("position is from an earlier version of the buffer".to_string())
+    } else {
+        Ok(())
+    }
 }
 
 impl DocPos {
+    /// `offset` in `text`, the live text of `bid`.
+    pub fn new(bid: BufferId, text: &BufferText, offset: CharOffset) -> Self {
+        Self {
+            buffer: bid,
+            version: text.version(),
+            offset,
+        }
+    }
+
+    /// The offset, or `Err` unless `text`, the live text of `bid`, is the
+    /// text it was taken from.
+    pub fn offset_in(&self, bid: BufferId, text: &BufferText) -> Result<CharOffset, String> {
+        check_taken_from(self.buffer, self.version, bid, text).map(|()| self.offset)
+    }
+
     pub fn from_steel_val(val: &SteelVal) -> Option<Self> {
         downcast(val)
     }
 }
 
 impl DocRange {
+    /// `range` in `text`, the live text of `bid`.
+    pub fn new(bid: BufferId, text: &BufferText, range: ClusterRange) -> Self {
+        let chars = range.chars();
+        Self {
+            buffer: bid,
+            version: text.version(),
+            start: chars.start,
+            end: chars.end,
+        }
+    }
+
+    /// The char range, or `Err` unless `text`, the live text of `bid`, is
+    /// the text it was taken from.
+    pub fn chars_in(
+        &self,
+        bid: BufferId,
+        text: &BufferText,
+    ) -> Result<ExclusiveRange<CharOffset>, String> {
+        check_taken_from(self.buffer, self.version, bid, text)
+            .map(|()| ExclusiveRange::new(self.start, self.end))
+    }
+
     pub fn from_steel_val(val: &SteelVal) -> Option<Self> {
         downcast(val)
     }

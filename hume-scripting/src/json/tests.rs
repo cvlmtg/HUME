@@ -358,14 +358,15 @@ fn indexed_child_inherits_the_parent_tag() {
     assert_eq!(child.position_encoding("test"), Ok(PositionEncoding::Utf8));
 }
 
-fn doc_pos_val(offset: usize) -> SteelVal {
+/// A buffer and its text, for `DocPos` values to name.
+fn doc_buffer() -> (hume_core::BufferId, hume_editing::text::BufferText) {
     let buffer = slotmap::SlotMap::<hume_core::BufferId, ()>::with_key().insert(());
-    crate::DocPos {
-        buffer,
-        version: hume_editing::text::BufferText::from("a\n").version(),
-        offset: hume_rope::offset::CharOffset::new(offset),
-    }
-    .into_steel_val()
+    (buffer, hume_editing::text::BufferText::from("0123456789\n"))
+}
+
+fn doc_pos_val(offset: usize) -> SteelVal {
+    let (buffer, text) = doc_buffer();
+    crate::DocPos::new(buffer, &text, hume_rope::offset::CharOffset::new(offset)).into_steel_val()
 }
 
 #[test]
@@ -407,8 +408,15 @@ fn steel_to_params_rejects_an_unsupported_value_inside_a_position_holder() {
 
 #[test]
 fn render_encodes_each_position_in_place() {
-    let first = DocSpan::Pos(crate::DocPos::from_steel_val(&doc_pos_val(3)).unwrap());
-    let second = DocSpan::Pos(crate::DocPos::from_steel_val(&doc_pos_val(9)).unwrap());
+    let (buffer, text) = doc_buffer();
+    let pos = |offset| {
+        DocSpan::Pos(crate::DocPos::new(
+            buffer,
+            &text,
+            hume_rope::offset::CharOffset::new(offset),
+        ))
+    };
+    let (first, second) = (pos(3), pos(9));
     let params = Params::Array(vec![
         Params::Json(serde_json::json!("x")),
         Params::Doc(first),
@@ -420,8 +428,9 @@ fn render_encodes_each_position_in_place() {
             let DocSpan::Pos(pos) = span else {
                 unreachable!("the test holds positions only")
             };
-            seen.push(pos.offset.index());
-            Ok(serde_json::json!({ "offset": pos.offset.index() }))
+            let offset = pos.offset_in(buffer, &text)?.index();
+            seen.push(offset);
+            Ok(serde_json::json!({ "offset": offset }))
         })
         .unwrap();
     assert_eq!(

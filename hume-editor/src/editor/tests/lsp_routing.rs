@@ -813,7 +813,10 @@ fn doc_pos_for_another_buffer_fills_the_slot_with_an_error() {
     rig.ed.drain_lsp();
 
     rig.probe(&format!(
-        r#"(lsp-request! pane "custom/at" (tracked-position-params *tok*) {LOG_ONE})"#
+        r#"(lsp-request! pane "custom/at"
+             (hash-insert (lsp-document-params pane)
+                          "position" (hash-ref (tracked-position-params *tok*) "position"))
+             {LOG_ONE})"#
     ));
 
     assert_eq!(
@@ -821,6 +824,55 @@ fn doc_pos_for_another_buffer_fills_the_slot_with_an_error() {
         vec!["err:lsp-request! params: position belongs to another buffer".to_string()]
     );
     assert!(rig.requests_to(RA, "custom/at").is_empty());
+}
+
+#[test]
+fn doc_uri_for_another_buffer_fills_the_slot_with_an_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |b| b.respond_to("custom/at", serde_json::json!(null)),
+        ),
+    );
+    rig.eval("(define *doc* #f)");
+    rig.probe("(set! *doc* (lsp-document-params pane))");
+    rig.show_other_file();
+    rig.ed.drain_lsp();
+
+    rig.probe(&format!(
+        r#"(lsp-request! pane "custom/at" *doc* {LOG_ONE})"#
+    ));
+
+    assert_eq!(
+        rig.warnings(),
+        vec!["err:lsp-request! params: document belongs to another buffer".to_string()]
+    );
+    assert!(rig.requests_to(RA, "custom/at").is_empty());
+}
+
+#[test]
+fn doc_uri_serializes_as_the_uri_the_server_opened() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |b| b.respond_to("custom/at", serde_json::json!(null)),
+        ),
+    );
+
+    rig.probe(&format!(
+        r#"(lsp-request! pane "custom/at" (lsp-document-params pane) {LOG_ONE})"#
+    ));
+
+    assert_eq!(
+        rig.requests_to(RA, "custom/at")[0]["textDocument"]["uri"],
+        serde_json::json!(rig.uri())
+    );
 }
 
 /// A supersede key names one request per buffer: the same key used for

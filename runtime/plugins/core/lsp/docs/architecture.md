@@ -98,11 +98,10 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
   method would reach, from `lsp-route`, or reports the route's `'unavailable` error
   through `lsp/report-error!`, so the message names the server that is starting, crashed
   or lacks the feature. Formatting makes the same check inside `lsp/format-document!`,
-  which reads the ranges only once it passes. The code after the check reads the
-  params builtins without checking for `#f`: a server attaches only to a buffer with a
-  file, so a buffer with none reports "no LSP server attached to this buffer" before any
-  params are read. Completion, signature help and inlay hints, which run without the user
-  asking, check their params themselves and stay silent.
+  which reads the ranges only once it passes. A buffer with no file has no server, so it
+  reports "no LSP server attached to this buffer". Completion, signature help and inlay
+  hints, which run without the user asking, send their requests with
+  `#:unavailable 'empty` and stay silent.
 - **Trigger characters.** `lsp/setup-trigger-chars!` registers an `on-lsp-attach` handler
   for a feature. For every server that attaches it reads the `triggerCharacters` that
   server advertises for the feature's capability, adds the feature's own extra characters,

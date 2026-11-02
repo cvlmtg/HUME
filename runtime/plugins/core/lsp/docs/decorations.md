@@ -130,9 +130,8 @@ Refreshes are debounced by 200 ms per buffer (keyed, not global), so a server's 
 reaching two buffers cannot have the second buffer's call cancel the first's pending
 refresh. A refresh whose request is sent while the same buffer's previous one is still
 unanswered cancels it, so a slow server is never left with a queue of stale requests. A refresh asks every server of the buffer that offers inlay hints and merges their
-hints into one set. It sends nothing when the buffer's hints are off or the request params cannot be
-built because the buffer is hidden by the time the debounce fires, and clears the buffer's
-hints when no server offers them.
+hints into one set. It sends nothing when the buffer's hints are off or no pane shows the buffer by the time
+the debounce fires, and clears the buffer's hints when no server offers them.
 
 On the response:
 

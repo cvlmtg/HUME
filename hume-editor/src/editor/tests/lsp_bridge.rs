@@ -663,10 +663,8 @@ fn lsp_request_against_a_crashed_server_names_it_and_the_restart_command() {
     );
 }
 
-/// `(lsp-position-params bid)`/`(lsp-primary-range-params bid)` return `#f`
-/// for a buffer with no file, and a caller may pass that result straight
-/// through as `params`. Without a check, `#f` would reach the wire as JSON
-/// `params: false` instead of erroring at the boundary.
+/// `#f` as `params` raises at the call: without the check it would reach
+/// the wire as JSON `params: false`.
 #[test]
 fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
     let tmp = tempfile::tempdir().unwrap();

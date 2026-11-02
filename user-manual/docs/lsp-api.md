@@ -24,14 +24,14 @@ The editor functions a plugin uses to register, configure and talk to language s
 | `lsp-capabilities` |  | `(lsp-capabilities server)`{.sig} A JSON handle onto `server`'s `ServerCapabilities`, or `#f` while it is starting or after `lsp-stop!`. A crashed server keeps its last capabilities |
 | `lsp-capability` |  | `(lsp-capability server #:feature f)`{.sig} `(lsp-capability server #:method m)`{.sig} What `server` advertises for the feature, or for the capability the method needs: `#t`, a JSON handle onto the provider's options (its `"triggerCharacters"`, say), or `#f`, under the same conditions as `lsp-capabilities`. Give one of the two keywords |
 | `lsp-server-status` |  | `(lsp-server-status)`{.sig} A list with one hash per server instance, in any state, with keys `'name`, `'languages`, `'root`, `'state` (`'starting`, `'running`, `'crashed` or `'dead`) and `'pending` |
-| `lsp-document-params` |  | `(lsp-document-params pane)`{.sig} `{"textDocument" {"uri"}}` for the buffer `pane` names, or `#f` if the buffer has no file. Needs no pane, so a value from `(buffers)` works |
-| `lsp-position-params` | shown | `(lsp-position-params pane)`{.sig} `{"textDocument" {"uri"} "position" p}` for the primary cursor in `pane`'s own pane, or `#f` if the buffer has no file. Pass it to `lsp-request!` before the buffer changes: a position taken before an edit is refused with an `'unsent` error. See [Positions](#positions) |
+| `lsp-document-params` |  | `(lsp-document-params pane)`{.sig} `{"textDocument" {"uri"}}` for the buffer `pane` names. Needs no pane, so a value from `(buffers)` works. See [Positions](#positions) |
+| `lsp-position-params` | shown | `(lsp-position-params pane)`{.sig} `{"textDocument" {"uri"} "position" p}` for the primary cursor in `pane`'s own pane. Pass it to `lsp-request!` before the buffer changes: a position taken before an edit is refused with an `'unsent` error. See [Positions](#positions) |
 | `track-position!` | shown | `(track-position! pane)`{.sig} Remember the primary cursor in `pane`'s own pane through every edit, and return a token for it |
-| `tracked-position-params` |  | `(tracked-position-params token)`{.sig} The `lsp-position-params` shape for where the remembered position is now. `#f` when `token` is `#f` or released, when its buffer closed or was replaced, or when the buffer has no file |
+| `tracked-position-params` |  | `(tracked-position-params token)`{.sig} The `lsp-position-params` shape for where the remembered position is now. `#f` when `token` is `#f` or released, or when its buffer closed or was replaced |
 | `untrack-position!` |  | `(untrack-position! token)`{.sig} Forget the position; a released token is a no-op |
 | `keep-tracked-position!` |  | `(keep-tracked-position! token)`{.sig} Keep a position handed to `lsp-request!` with `#:tracked` after its callback; forget it later with `untrack-position!`. A released token is a no-op |
 | `lsp-primary-range-params` | shown | `(lsp-primary-range-params pane)`{.sig} Same shape, with a `"range"` for the primary selection alone |
-| `lsp-linewise-ranges-params` | shown | `(lsp-linewise-ranges-params pane)`{.sig} `{"textDocument" {"uri"} "ranges" [...]}`: one range per linewise selection in `pane`'s own pane (a run of touching selections becomes one). `"ranges"` is empty if none are linewise. `#f` only when `lsp-primary-range-params` would return `#f` |
+| `lsp-linewise-ranges-params` | shown | `(lsp-linewise-ranges-params pane)`{.sig} `{"textDocument" {"uri"} "ranges" [...]}`: one range per linewise selection in `pane`'s own pane (a run of touching selections becomes one). `"ranges"` is empty if none are linewise |
 | `lsp-position->char-offset` |  | `(lsp-position->char-offset pane position)`{.sig} The buffer's char offset for a `{"line" "character"}` position from a server's answer, or `#f` when it lands past the buffer's last line, at or past the end of the text |
 | `lsp-range->char-range` |  | `(lsp-range->char-range pane range)`{.sig} `(hash 'start-char s 'end-char e)` for a `{"start" ... "end" ...}` range from a server's answer. A column past the end of its line clamps to it, and an end may sit at the end of the document, `(line count, 0)`. `#f` when a position is on a line past the end of the document |
 | `lsp-label-offsets->text` |  | `(lsp-label-offsets->text label offsets)`{.sig} The slice of `label` that a `ParameterInformation`-style `(start end)` offset pair from a server's answer names |
@@ -55,6 +55,7 @@ Registrations and lists apply once the code that made them finishes, but `lsp-se
 Servers count columns in different units, so a position in a server's answer means something only to the server that sent it. HUME keeps track of which server sent each position:
 
 - To send a position, take it from `lsp-position-params`, `tracked-position-params`, `lsp-primary-range-params` or `lsp-linewise-ranges-params`. Each server receives it in its own units. Add your own keys to the params hash, but don't build positions yourself.
+- The `"uri"` in these params is a value of its own, not a string: each server receives the URI it opened the buffer under. A buffer with no file has params too; no server takes a request for it, so the request gets an `'unavailable` error.
 - To use a position from an answer, convert it with `lsp-position->char-offset`, `lsp-range->char-range`, `lsp-label-offsets->text` or `lsp-location`. They take positions from a server's answer only: `lsp-position->char-offset`, `lsp-range->char-range` and `lsp-location` raise for anything else, such as a range you built yourself.
 
 ### Locations
@@ -108,7 +109,7 @@ Any plugin can call `lsp-request!`, not only `core:lsp`'s commands, to reach a s
 
 The pattern has four steps: check with `lsp-route` that a server can take the request, send a request built from `lsp-position-params` or `lsp-primary-range-params`, transform the server's response, and hand the result to a UI or store function (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`, `apply-workspace-edit!`, …).
 
-Checking the route first tells the user why nothing happened, such as "no LSP server attached to this buffer" or "rust-analyzer still starting". It also makes the params safe to use: a server attaches only to a buffer with a file, so once `lsp-route` finds one, `lsp-position-params` never returns `#f`.
+Checking the route first tells the user why nothing happened, such as "no LSP server attached to this buffer" or "rust-analyzer still starting".
 
 `err` and `res` are never both set. `res` is a JSON handle: read a field with `json-ref`/`json-contains?`/`json-list`, not `hash-ref`. A `null` response arrives as void, not `#f`.
 

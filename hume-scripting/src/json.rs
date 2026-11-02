@@ -75,13 +75,13 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
     }
 }
 
-/// Why a value holding a position has no plain JSON form.
-pub(crate) const POSITION_NOT_JSON: &str =
-    "a position value can only be sent through lsp-request!, lsp-request-all! or lsp-notify!";
+/// Why a value holding a document or position has no plain JSON form.
+pub(crate) const POSITION_NOT_JSON: &str = "a document or position value can only be sent through lsp-request!, lsp-request-all! or lsp-notify!";
 
 /// Converts a `SteelVal` into request [`Params`]: the equivalent
-/// `serde_json::Value`, except a [`crate::DocPos`]/[`crate::DocRange`] stays a
-/// position for the server it is sent to, whose encoding it needs. Fails on
+/// `serde_json::Value`, except a [`crate::DocUri`], [`crate::DocPos`] or
+/// [`crate::DocRange`] stays opaque until it is serialized for the server it
+/// is sent to. Fails on
 /// values with no JSON representation (functions, ports, custom types other
 /// than [`JsonHandle`], …). The error names the offending kind rather than
 /// producing `null`.
@@ -132,6 +132,8 @@ pub fn steel_to_params(v: &SteelVal) -> Result<Params, String> {
         SteelVal::Custom(_) => {
             if let Some(h) = downcast_json_handle(v) {
                 json(h.value().clone())
+            } else if let Some(doc) = crate::DocUri::from_steel_val(v) {
+                Ok(Params::Doc(DocSpan::Uri(doc)))
             } else if let Some(pos) = crate::DocPos::from_steel_val(v) {
                 Ok(Params::Doc(DocSpan::Pos(pos)))
             } else if let Some(range) = crate::DocRange::from_steel_val(v) {

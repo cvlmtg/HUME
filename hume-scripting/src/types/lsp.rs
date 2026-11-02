@@ -166,18 +166,20 @@ pub fn lsp_err_value(kind: LspErrKind, message: String, code: Option<i64>) -> St
 /// A request's params: one value every routed server receives, or one
 /// value per named server (`lsp-request-all!` with `(server . params)`
 /// pairs, each server kept whole so its result names it even after it
-/// stopped). A `DocPos`/`DocRange` inside stays unencoded until the request
-/// is serialized for each server, in that server's position encoding.
+/// stopped). A [`DocSpan`] inside stays unencoded until the request is
+/// serialized for each server.
 #[derive(Debug)]
 pub enum RequestParams {
     Shared(Params),
     PerServer(Vec<(crate::ServerRef, Params)>),
 }
 
-/// A buffer position or range in request params, which each server receives
-/// in its own position encoding.
+/// A document's URI, or a buffer position or range, in request params: the
+/// URI is filled in when the request is serialized, and each server
+/// receives a position in its own encoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocSpan {
+    Uri(crate::DocUri),
     Pos(crate::DocPos),
     Range(crate::DocRange),
 }

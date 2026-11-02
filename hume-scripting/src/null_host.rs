@@ -650,11 +650,8 @@ impl LspHost for EmptyLspHost {
     fn lsp_language_lists(&self, _language: &str) -> hume_core::LanguageLists {
         hume_core::LanguageLists::default()
     }
-    fn lsp_position_params(&self, _pane: ShownHandle) -> Result<Option<PositionParams>, String> {
-        Ok(None)
-    }
-    fn lsp_document_uri(&self, _id: BufferId) -> Option<String> {
-        None
+    fn lsp_position_params(&self, _pane: ShownHandle) -> Result<PositionParams, String> {
+        Err("EmptyLspHost: lsp_position_params not available".into())
     }
     fn track_position(&mut self, _pane: ShownHandle) -> Result<HostToken, String> {
         Err("EmptyLspHost: track_position not available".into())
@@ -667,14 +664,11 @@ impl LspHost for EmptyLspHost {
     fn hold_tracked_position(&self, _token: HostToken) -> Option<TrackedHold> {
         None
     }
-    fn lsp_primary_range_params(&self, _pane: ShownHandle) -> Result<Option<RangeParams>, String> {
-        Ok(None)
+    fn lsp_primary_range_params(&self, _pane: ShownHandle) -> Result<RangeParams, String> {
+        Err("EmptyLspHost: lsp_primary_range_params not available".into())
     }
-    fn lsp_linewise_ranges_params(
-        &self,
-        _pane: ShownHandle,
-    ) -> Result<Option<RangesParams>, String> {
-        Ok(None)
+    fn lsp_linewise_ranges_params(&self, _pane: ShownHandle) -> Result<RangesParams, String> {
+        Err("EmptyLspHost: lsp_linewise_ranges_params not available".into())
     }
     fn lsp_wire_range_to_chars(
         &self,

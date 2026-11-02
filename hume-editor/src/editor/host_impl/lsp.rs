@@ -60,13 +60,9 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::language_lists(&self.state.lsp, language)
     }
 
-    fn lsp_position_params(&self, pane: ShownHandle) -> Result<Option<PositionParams>, String> {
+    fn lsp_position_params(&self, pane: ShownHandle) -> Result<PositionParams, String> {
         let t = self.shown(pane)?;
         Ok(params::position_params(self.state, self.view, t))
-    }
-
-    fn lsp_document_uri(&self, id: BufferId) -> Option<String> {
-        params::document_uri(self.state, id)
     }
 
     fn track_position(&mut self, pane: ShownHandle) -> Result<HostToken, String> {
@@ -102,15 +98,12 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         self.state.panes.tracked.hold(token)
     }
 
-    fn lsp_primary_range_params(&self, pane: ShownHandle) -> Result<Option<RangeParams>, String> {
+    fn lsp_primary_range_params(&self, pane: ShownHandle) -> Result<RangeParams, String> {
         let t = self.shown(pane)?;
         Ok(params::primary_range_params(self.state, self.view, t))
     }
 
-    fn lsp_linewise_ranges_params(
-        &self,
-        pane: ShownHandle,
-    ) -> Result<Option<RangesParams>, String> {
+    fn lsp_linewise_ranges_params(&self, pane: ShownHandle) -> Result<RangesParams, String> {
         let t = self.shown(pane)?;
         Ok(params::linewise_ranges_params(self.state, self.view, t))
     }

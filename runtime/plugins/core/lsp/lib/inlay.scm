@@ -34,11 +34,9 @@
     (and offset (hash 'char-offset offset 'text text 'side 'before))))
 
 (define (lsp/inlay-hint-params pane range)
-  (let ((params (lsp-document-params pane)))
-    (and params
-         (hash-insert params "range"
-           (hash "start" (hash "line" (hash-ref range 'start-line) "character" 0)
-                 "end" (hash "line" (hash-ref range 'end-line) "character" 0))))))
+  (hash-insert (lsp-document-params pane) "range"
+    (hash "start" (hash "line" (hash-ref range 'start-line) "character" 0)
+          "end" (hash "line" (hash-ref range 'end-line) "character" 0))))
 
 ;; A pane showing `pane`'s buffer, or #f when none does or the buffer has closed.
 (define (lsp/resolve-pane pane)
@@ -53,19 +51,18 @@
     (lambda (pane)
       (let ((pane (lsp/resolve-pane pane)))
         (when (and pane (lsp/inlay-on? pane))
-          (let ((params (lsp/inlay-hint-params pane (viewport-range pane))))
-            (when params
-              (lsp-request-all! pane "textDocument/inlayHint" params
-                (lambda (err results)
-                  (lsp/report-answer-errors! "inlay hints" results)
-                  ;; See docs/decorations.md, "Inlay hints", on the response.
-                  (unless (or (not (lsp/inlay-on? pane)) (lsp/none-answered? results))
-                    (set-inlay-hints! pane lsp/inlay-source
-                      (filter (lambda (e) e)
-                              (map (lambda (h) (lsp/hint->store-entry pane h))
-                                   (lsp/answer-items results))))))
-                #:unavailable 'empty
-                #:supersede lsp/inlay-key))))))
+          (lsp-request-all! pane "textDocument/inlayHint"
+            (lsp/inlay-hint-params pane (viewport-range pane))
+            (lambda (err results)
+              (lsp/report-answer-errors! "inlay hints" results)
+              ;; See docs/decorations.md, "Inlay hints", on the response.
+              (unless (or (not (lsp/inlay-on? pane)) (lsp/none-answered? results))
+                (set-inlay-hints! pane lsp/inlay-source
+                  (filter (lambda (e) e)
+                          (map (lambda (h) (lsp/hint->store-entry pane h))
+                               (lsp/answer-items results))))))
+            #:unavailable 'empty
+            #:supersede lsp/inlay-key))))
     #:key (lambda (p . _) (buffer-key p))))
 
 (define (lsp/refresh-hints pane)

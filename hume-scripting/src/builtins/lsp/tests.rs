@@ -1138,16 +1138,14 @@ fn lsp_request_all_rejects_a_server_listed_twice() {
 }
 
 #[test]
-fn position_params_hash_carries_a_doc_pos() {
-    let pos = crate::DocPos {
-        buffer: default_bid(),
-        version: hume_editing::text::BufferText::from("a\n").version(),
-        offset: hume_rope::offset::CharOffset::new(4),
-    };
-    let params = position_params_value(crate::host::PositionParams {
-        uri: "file:///a.rs".to_string(),
-        pos,
-    });
+fn position_params_hash_carries_a_doc_uri_and_a_doc_pos() {
+    let doc = crate::DocUri::new(default_bid());
+    let pos = crate::DocPos::new(
+        default_bid(),
+        &hume_editing::text::BufferText::from("a\n"),
+        hume_rope::offset::CharOffset::new(1),
+    );
+    let params = position_params_value(crate::host::PositionParams { doc, pos });
     let SteelVal::HashMapV(map) = params else {
         panic!("expected a hash");
     };
@@ -1160,7 +1158,10 @@ fn position_params_hash_carries_a_doc_pos() {
         .expect("a textDocument key");
     assert_eq!(
         crate::json::steel_to_params(document).unwrap(),
-        crate::Params::Json(serde_json::json!({ "uri": "file:///a.rs" }))
+        crate::Params::Object(vec![(
+            "uri".to_string(),
+            crate::Params::Doc(crate::DocSpan::Uri(doc))
+        )])
     );
 }
 

@@ -872,19 +872,27 @@ fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
     );
 }
 
+/// A buffer with no file has params like any other. No server attaches to
+/// it, so a request sent with them gets the route's `'unavailable` error.
 #[test]
-fn lsp_position_params_is_false_for_a_buffer_with_no_path() {
+fn lsp_position_params_answers_for_a_buffer_with_no_path() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    // No file, so no server attaches either.
-    let host = ScriptingHost::for_testing(&Dirs::none());
-    let fired = run_probe(
+    install_source(
         &mut ed,
-        host,
+        ScriptingHost::for_testing(&Dirs::none()),
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (lsp-request! bid "textDocument/hover" (lsp-position-params bid)
+               (lambda (err res)
+                 (when (equal? (hash-ref err 'kind) 'unavailable)
+                   (call! "move-right" bid))))))"#,
         tmp.path(),
-        r#"(equal? (lsp-position-params bid) #f)"#,
     );
-    assert!(fired, "no attached server must yield #f, not an error");
+
+    type_cmd(&mut ed, ":probe");
+    ed.settle();
+
+    assert_eq!(state(&ed), "a-[b]>cdef\n");
 }
 
 #[test]
@@ -1530,7 +1538,7 @@ fn lsp_document_params_names_the_document_for_a_value_with_no_pane() {
 }
 
 #[test]
-fn lsp_document_params_is_false_for_a_buffer_with_no_path() {
+fn lsp_document_params_names_a_buffer_with_no_path() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
 
@@ -1538,7 +1546,7 @@ fn lsp_document_params_is_false_for_a_buffer_with_no_path() {
         &mut ed,
         ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
-        "(not (lsp-document-params bid))",
+        r#"(hash-contains? (hash-ref (lsp-document-params bid) "textDocument") "uri")"#,
     );
     assert!(fired);
 }

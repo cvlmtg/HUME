@@ -8,15 +8,12 @@
 
 (register-completion-source! "lsp"
   (lambda (id pane prefix)
-    (let ((params (lsp-position-params pane)))
-      (if params
-          (lsp-request-all! pane "textDocument/completion" params
-            (lambda (err results)
-              (lsp/report-answer-errors! "completion" results)
-              (completion-emit! id (lsp/answers results)))
-            #:unavailable 'empty
-            #:supersede lsp/completion-key)
-          (completion-emit! id '()))))
+    (lsp-request-all! pane "textDocument/completion" (lsp-position-params pane)
+      (lambda (err results)
+        (lsp/report-answer-errors! "completion" results)
+        (completion-emit! id (lsp/answers results)))
+      #:unavailable 'empty
+      #:supersede lsp/completion-key))
   #:target 'buffer #:priority 10 #:resolve #t)
 
 ;; ── Trigger chars ─────────────────────────────────────────────────────────────

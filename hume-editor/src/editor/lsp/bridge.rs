@@ -10,12 +10,11 @@ use std::time::{Duration, Instant};
 use rustc_hash::FxHashMap;
 
 use hume_core::{BufferId, Severity};
-use hume_editing::text::{BufferText, TextVersion};
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_lsp::backend::ServerId;
 use hume_lsp::client::{Outcome, RequestMeta};
 use hume_lsp::codec::RequestId;
-use hume_rope::offset::ExclusiveRange;
 use hume_rope::position_encoding::{PositionEncoding, char_range_to_wire_range, char_to_wire};
 use hume_scripting::host::{SupersedeKey, SupersedeKeys, TrackedHold};
 use hume_scripting::json::{WireOrigin, to_steel_handle};
@@ -464,14 +463,22 @@ impl EditorState {
         params: &Params,
         routed: &[Routed],
     ) -> Vec<Result<serde_json::Value, String>> {
-        let text = self.buffers.get(bid).text();
+        let doc = BufferDoc {
+            bid,
+            text: self.buffers.get(bid).text(),
+            uri: self
+                .buffer_positions
+                .lsp
+                .opened_as(bid)
+                .map(|opened| opened.uri.as_str()),
+        };
         let mut by_encoding: Vec<(PositionEncoding, Result<serde_json::Value, String>)> =
             Vec::new();
         routed
             .iter()
             .map(|r| {
                 per_encoding(&mut by_encoding, r.encoding, || {
-                    serialize_params(text, bid, r.encoding, params)
+                    serialize_params(&doc, r.encoding, params)
                 })
                 .clone()
             })
@@ -686,42 +693,38 @@ impl Member {
     }
 }
 
-/// `Ok` when a position or range taken from `buffer` at `version` still
-/// addresses `bid`'s `text`: the check every script-held position passes
-/// before the editor reads it.
-pub(super) fn check_doc_span(
-    text: &BufferText,
+/// The buffer a request is sent for, as its params are serialized: its
+/// live text, and the URI its servers opened it under.
+struct BufferDoc<'a> {
     bid: BufferId,
-    buffer: BufferId,
-    version: TextVersion,
-) -> Result<(), String> {
-    if buffer != bid {
-        Err("position belongs to another buffer".to_string())
-    } else if version != text.version() {
-        Err("position is from an earlier version of the buffer".to_string())
-    } else {
-        Ok(())
-    }
+    text: &'a BufferText,
+    uri: Option<&'a str>,
 }
 
-/// `params` as the JSON `encoding`'s server receives: every position and
-/// range in it becomes a wire position or range in `encoding`. A position
-/// must belong to `bid` and have been taken at its current text version.
+/// `params` as the JSON `encoding`'s server receives: every document
+/// becomes `doc`'s URI, and every position and range a wire position or
+/// range in `encoding`. Each must belong to `doc`'s buffer, and a position
+/// must have been taken at its current text version.
 fn serialize_params(
-    text: &BufferText,
-    bid: BufferId,
+    doc: &BufferDoc<'_>,
     encoding: PositionEncoding,
     params: &Params,
 ) -> Result<serde_json::Value, String> {
-    let check = |buffer, version| check_doc_span(text, bid, buffer, version);
+    let (bid, text) = (doc.bid, doc.text);
     params.render(&mut |span| match span {
-        DocSpan::Pos(pos) => check(pos.buffer, pos.version).map(|()| {
-            hume_lsp::position::to_json_position(char_to_wire(text.rope(), pos.offset, encoding))
+        DocSpan::Uri(uri) => {
+            uri.check_names(bid)?;
+            doc.uri
+                .map(|uri| serde_json::Value::String(uri.to_string()))
+                .ok_or_else(|| "the buffer is not open on a server".to_string())
+        }
+        DocSpan::Pos(pos) => pos.offset_in(bid, text).map(|offset| {
+            hume_lsp::position::to_json_position(char_to_wire(text.rope(), offset, encoding))
         }),
-        DocSpan::Range(range) => check(range.buffer, range.version).map(|()| {
+        DocSpan::Range(range) => range.chars_in(bid, text).map(|chars| {
             hume_lsp::position::to_json_range(char_range_to_wire_range(
                 text.rope(),
-                ExclusiveRange::new(range.start, range.end),
+                chars,
                 encoding,
             ))
         }),

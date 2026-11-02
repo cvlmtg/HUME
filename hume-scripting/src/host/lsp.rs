@@ -10,29 +10,29 @@ use hume_lsp::backend::ServerId;
 
 use super::ShownHandle;
 use super::token::TrackedHold;
-use crate::builtins::ids::{DocPos, DocRange, ServerRef};
+use crate::builtins::ids::{DocPos, DocRange, DocUri, ServerRef};
 use crate::types::CapabilityQuery;
 use hume_core::{Claim, LanguageLists, LspFeature, ServerName, ServerRegistrationTie};
 
-/// A position request's params before encoding: the document URI and a
-/// position each server receives in its own encoding.
+/// A position request's params before encoding: the document and a
+/// position, both filled in for each server as the request is sent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PositionParams {
-    pub uri: String,
+    pub doc: DocUri,
     pub pos: DocPos,
 }
 
 /// [`PositionParams`] for one range.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RangeParams {
-    pub uri: String,
+    pub doc: DocUri,
     pub range: DocRange,
 }
 
 /// [`PositionParams`] for several ranges.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RangesParams {
-    pub uri: String,
+    pub doc: DocUri,
     pub ranges: Vec<DocRange>,
 }
 
@@ -120,13 +120,8 @@ pub trait LspHost {
     /// ([`hume_core::LanguageLists::plan`]).
     fn lsp_language_lists(&self, language: &str) -> LanguageLists;
 
-    /// The document URI and primary cursor head of `pane`'s pane.
-    /// `Ok(None)` if the buffer has no path.
-    fn lsp_position_params(&self, pane: ShownHandle) -> Result<Option<PositionParams>, String>;
-
-    /// The document URI of buffer `id`. `None` for a closed buffer or one
-    /// with no path.
-    fn lsp_document_uri(&self, id: BufferId) -> Option<String>;
+    /// The document and primary cursor head of `pane`'s pane.
+    fn lsp_position_params(&self, pane: ShownHandle) -> Result<PositionParams, String>;
 
     /// `(track-position! pane)`: remembers the primary cursor head in
     /// `pane`'s pane, carried through every edit, and returns the token
@@ -135,9 +130,8 @@ pub trait LspHost {
 
     /// `(tracked-position-params token)`: the
     /// [`lsp_position_params`](Self::lsp_position_params) shape for where the
-    /// tracked position is now. `None` for a released or unknown token, a
-    /// closed buffer or one whose text was replaced, or a buffer with no
-    /// path; never an error.
+    /// tracked position is now. `None` for a released or unknown token, or
+    /// a closed buffer or one whose text was replaced; never an error.
     fn tracked_position_params(&self, token: HostToken) -> Option<PositionParams>;
 
     /// `(untrack-position! token)`: releases the position. A released or
@@ -157,17 +151,14 @@ pub trait LspHost {
 
     /// Same as [`lsp_position_params`](Self::lsp_position_params) but the
     /// range the primary selection covers.
-    fn lsp_primary_range_params(&self, pane: ShownHandle) -> Result<Option<RangeParams>, String>;
+    fn lsp_primary_range_params(&self, pane: ShownHandle) -> Result<RangeParams, String>;
 
     /// One range per *linewise* selection in `pane`'s pane, coalescing
     /// any run of selections that touch end-to-end into a single range (an
     /// LSP range is naturally contiguous, so a touching run needs no
     /// splitting). A non-linewise selection is skipped, not an error:
     /// `ranges` is empty when none of the selections are linewise.
-    /// `Ok(None)` (as opposed to an empty `ranges`) only for a buffer with
-    /// no path.
-    fn lsp_linewise_ranges_params(&self, pane: ShownHandle)
-    -> Result<Option<RangesParams>, String>;
+    fn lsp_linewise_ranges_params(&self, pane: ShownHandle) -> Result<RangesParams, String>;
 
     /// A wire `[start, end)` range → char offsets, decoded in `encoding`.
     /// Backs `lsp-range->char-range`. `encoding` comes from the caller's own

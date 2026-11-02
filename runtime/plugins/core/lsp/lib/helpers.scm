@@ -26,7 +26,7 @@
 ;; Jumps the focused pane to `location`, a `goto-location!` target, and logs
 ;; when the place it names no longer exists.
 (define (lsp/jump-to! location)
-  (unless (goto-location! (focused-pane) location)
+  (unless (and location (goto-location! (focused-pane) location))
     (log! 'warning "lsp: the location no longer exists")))
 
 (define (lsp/payload-rows row-text items)

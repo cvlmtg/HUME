@@ -25,10 +25,14 @@
                              ""))
           (lsp/symbol-row target (string-length name) (string-length kind-name)))))
 
+(define (lsp/range-location pane range)
+  (let ((chars (lsp-range->char-range pane range)))
+    (and chars (hash 'target pane 'char-offset (hash-ref chars 'start-char)))))
+
 (define (lsp/goto-symbol! row)
   (when row
     (let ((target (lsp/symbol-row-target row)))
-      (lsp/jump-to! (if (pair? target) (lsp-location (car target) (cdr target)) target)))))
+      (lsp/jump-to! (if (pair? target) (lsp/range-location (car target) (cdr target)) target)))))
 
 (define (lsp/symbol-span start end scope)
   (hash 'start-char start 'end-char end 'scope scope 'selected-scope "ui.text.focus"))
@@ -49,28 +53,28 @@
 
 ;; Conses the rows of a `DocumentSymbol` and its descendants onto `acc`, so
 ;; `acc` ends up in reverse pre-order. Each row carries its parent's name.
-(define (lsp/push-document-symbol-rows uri sym container acc)
+(define (lsp/push-document-symbol-rows pane sym container acc)
   (let* ((name (json-ref sym "name"))
          (children (json-ref-or sym #f "children"))
          (acc (cons (lsp/symbol-item name (json-ref sym "kind") container
-                                     (cons uri (json-ref sym "selectionRange")))
+                                     (cons pane (json-ref sym "selectionRange")))
                     acc)))
     (if children
-        (foldl (lambda (child acc) (lsp/push-document-symbol-rows uri child name acc))
+        (foldl (lambda (child acc) (lsp/push-document-symbol-rows pane child name acc))
                acc
                (json-list children))
         acc)))
 
-(define (lsp/push-document-rows uri sym acc)
+(define (lsp/push-document-rows pane sym acc)
   (if (json-contains? sym "location")
       (cons (lsp/symbol-item (json-ref sym "name") (json-ref sym "kind")
                              (json-ref-or sym #f "containerName")
                              (json-ref sym "location"))
             acc)
-      (lsp/push-document-symbol-rows uri sym #f acc)))
+      (lsp/push-document-symbol-rows pane sym #f acc)))
 
-(define (lsp/show-document-symbols! pane uri results)
-  (let ((rows (reverse (foldl (lambda (sym acc) (lsp/push-document-rows uri sym acc))
+(define (lsp/show-document-symbols! pane results)
+  (let ((rows (reverse (foldl (lambda (sym acc) (lsp/push-document-rows pane sym acc))
                               '()
                               (lsp/answer-items results)))))
     (if (null? rows)
@@ -82,12 +86,10 @@
   (lambda (pane)
     (lsp/with-servers pane "document symbols"
       (lambda (servers)
-        (let* ((params (lsp-document-params pane))
-               (uri (hash-ref (hash-ref params "textDocument") "uri")))
-          (lsp-request-all! pane "textDocument/documentSymbol" params
-            (lsp/on-answers "document symbols"
-              (lambda (results) (lsp/show-document-symbols! pane uri results)))
-            #:require-focus #t)))
+        (lsp-request-all! pane "textDocument/documentSymbol" (lsp-document-params pane)
+          (lsp/on-answers "document symbols"
+            (lambda (results) (lsp/show-document-symbols! pane results)))
+          #:require-focus #t))
       #:feature 'document-symbols)))
 
 ;; ── Workspace symbols ────────────────────────────────────────────────────────

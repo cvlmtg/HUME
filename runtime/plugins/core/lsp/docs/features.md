@@ -26,7 +26,8 @@ same path, line and column appear once (`lsp-locations->merged-places`):
 used" expects a list. Its request adds `context.includeDeclaration`. Every jump lands on
 `(focused-pane)`, so it goes where the user is when the response arrives. Goto, the
 drawer's rows and the symbol pickers all jump through `lsp/jump-to!`, which warns when
-`goto-location!` answers `#f` because the line has gone from its file.
+the line has gone from its file: `goto-location!` answers `#f`, or a document symbol's
+range is past the end of the buffer, so its location is `#f`.
 
 ## Symbols
 
@@ -45,9 +46,9 @@ cuts a long row.
 `picker!` over every server's answers. A `DocumentSymbol[]` answer is walked pre-order, a
 symbol's detail being its parent's name and its jump target its `selectionRange`. A
 `SymbolInformation[]` answer keeps its own `location` and uses `containerName` as the
-detail. Since a `DocumentSymbol` carries no `uri`, its row's target is the buffer's uri
-and the `selectionRange` as a pair, and `lsp-location` pairs them only for the row that is
-accepted, which keeps the server's position encoding. No symbol at all logs "No symbols found".
+detail. Since a `DocumentSymbol` carries no `uri`, its row's target is the pane and the
+`selectionRange` as a pair, which `lsp-range->char-range` turns into the place to jump to
+only for the row that is accepted, in the server's position encoding. No symbol at all logs "No symbols found".
 
 `lsp/workspace-symbols` opens an empty `live-picker!`. Each query, once the debounce
 window passes, sends `workspace/symbol` to every server offering the feature with
