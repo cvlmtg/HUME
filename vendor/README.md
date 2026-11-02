@@ -106,6 +106,18 @@ HUME's `error-text`. A message that wraps a caught error's text in a new `error`
 again. Messages HUME shows the user carry those escapes; `install_theme_rejects_unsafe_slugs`
 (`hume-editor`) asserts the escaped form.
 
+**`split-once` returns `#t` when the separator is absent.** `split-once`
+(`src/primitives/strings.rs`) converts its `Option` result through `From<Option<T>> for
+SteelVal` (`src/primitives.rs`), which maps `None` to `#t`; the `IntoSteelVal` impl beside it
+maps `None` to `#f`. Its docstring's `(split-once "" "&") ;; => '("")` is wrong too. HUME's
+one caller, `core:lsp`'s `lsp/first-line`, checks the result with `pair?` before taking it
+apart.
+
+**`bytes->string/utf8` panics on an `end` past the bytevector.** `bytes->string/utf8` (alias
+`utf8->string`, `src/primitives/bytevectors.rs`) rejects a negative `start` or `end` and an
+`end` below `start`, but checks neither against the bytevector's length, so
+`(bytes->string/utf8 (bytes 65) 0 5)` panics in the slice instead of raising a Steel error.
+
 ## steel-parser 0.8.3
 
 Upstream: [mattwparas/steel](https://github.com/mattwparas/steel), `crates/steel-parser` at
