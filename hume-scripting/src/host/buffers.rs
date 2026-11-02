@@ -149,9 +149,14 @@ pub trait BufferHost {
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<UndoNode>>;
 
     /// `(buffer-text bid)`: the buffer's full live (dirty) in-memory
-    /// content, always ending with the structural trailing `\n`. `None` if
-    /// `id` is unknown.
-    fn buffer_text(&self, id: BufferId) -> Option<String>;
+    /// content, always ending with the structural trailing `\n`, or with
+    /// `range` its chars `start..end`. `None` if `id` is unknown; `Err`
+    /// naming the offending end when `range` does not fit the text.
+    fn buffer_text(
+        &self,
+        id: BufferId,
+        range: Option<(usize, usize)>,
+    ) -> Option<Result<String, String>>;
 
     /// `(buffer-line-count bid)`: number of *content* lines in `id`'s live
     /// text. Every HUME buffer ends with a structural `\n`, which ropey

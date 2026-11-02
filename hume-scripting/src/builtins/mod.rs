@@ -446,7 +446,7 @@ builtins! {
     cmd "%buffer-display-path" => "buffer-display-path" buffers::buffer_display_path(pane: args::LiveBuffer, relative: SteelVal);
     cmd "buffer-name" buffers::buffer_name(pane: args::LiveBuffer);
     cmd "buffer-dirty?" buffers::buffer_dirty(pane: args::LiveBuffer);
-    cmd "buffer-text" buffers::buffer_text(pane: args::LiveBuffer);
+    cmd "%buffer-text" => "buffer-text" buffers::buffer_text(pane: args::LiveBuffer, range: SteelVal);
     cmd "buffer-line-count" buffers::buffer_line_count(pane: args::LiveBuffer);
     cmd "buffer-char-count" buffers::buffer_char_count(pane: args::LiveBuffer);
     cmd "%buffer-lines" => "buffer-lines" buffers::buffer_lines(pane: args::LiveBuffer, range: SteelVal);

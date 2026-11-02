@@ -11,8 +11,8 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, LINE_RANGE_KEYS, bool_arg, char_range_value, line_range_value, list_of, not_live_err,
-    optional_hash_entry, relative_base_arg, symbol_hash,
+    ArgPane, CHAR_RANGE_KEYS, LINE_RANGE_KEYS, bool_arg, char_range_value, line_range_value,
+    list_of, not_live_err, optional_hash_entry, relative_base_arg, symbol_hash,
 };
 use super::errors::generic_err;
 use super::ids::{BufferGeneration, SteelBufferKey, SteelPane};
@@ -242,13 +242,21 @@ pub(crate) fn buffer_undo_tree(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult
     })))
 }
 
-/// `(buffer-text pane)` → the buffer's full live (dirty) content, string,
-/// trailing `\n` included.
-pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
+/// `(%buffer-text pane range)`: Rust half of the bootstrap-wrapped
+/// `(buffer-text pane #:range ..)`. The buffer's full live (dirty) content,
+/// trailing `\n` included, or with `range` (a char range value, see
+/// [`char_range_value`]) its chars in `[start-char, end-char)`, 0-based,
+/// end-exclusive. Raises rather than clamping on a missing end, an end past
+/// the buffer's length, or `end-char` before `start-char`.
+pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -> SteelResult {
+    let range = optional_hash_entry(range, "#:range", CHAR_RANGE_KEYS)?
+        .map(|range| range.char_range())
+        .transpose()?;
     ctx.host
         .buffers()
-        .buffer_text(bid)
+        .buffer_text(bid, range)
         .ok_or_else(|| not_live_err("pane", bid))?
+        .map_err(generic_err)?
         .into_steelval()
         .map_err(generic_err)
 }

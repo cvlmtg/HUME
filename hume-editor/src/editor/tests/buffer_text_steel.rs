@@ -233,6 +233,82 @@ fn buffer_lines_start_past_end_raises() {
     );
 }
 
+/// `buffer-text`'s `#:range` is a 0-based, end-exclusive char range, line
+/// breaks inside it included.
+#[test]
+fn buffer_text_reads_a_char_range() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\ndef\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::for_testing(&Dirs::none()),
+        tmp.path(),
+        r#"(equal? (buffer-text bid #:range (hash 'start-char 1 'end-char 5)) "bc\nd")"#,
+    );
+    assert!(fired, "buffer-text must read the chars #:range names");
+}
+
+/// The error-severity message-log entries after `(buffer-text bid #:range
+/// range)` runs from a typed command over `abc\n`.
+fn buffer_text_range_errors(range: &str) -> Vec<String> {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            r#"(define-typed-command! "probe" "" (lambda (bid)
+                 (buffer-text bid #:range {range})))"#
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":probe");
+
+    ed.state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect()
+}
+
+/// A char range ending past the text raises rather than clamping.
+#[test]
+fn buffer_text_range_past_the_end_raises() {
+    let errors = buffer_text_range_errors("(hash 'start-char 1 'end-char 9)");
+    assert!(
+        errors.iter().any(|e| e.contains("buffer-text")
+            && e.contains("#:range end: offset 9 is past the end of the buffer (4 chars)")),
+        "got: {errors:?}"
+    );
+}
+
+#[test]
+fn buffer_text_range_ending_before_it_starts_raises() {
+    let errors = buffer_text_range_errors("(hash 'start-char 3 'end-char 1)");
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("buffer-text") && e.contains("#:range 3..1 ends before it starts")),
+        "got: {errors:?}"
+    );
+}
+
+#[test]
+fn buffer_text_range_missing_an_end_raises() {
+    let errors = buffer_text_range_errors("(hash 'start-char 1)");
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("buffer-text: #:range") && e.contains("missing 'end-char")),
+        "got: {errors:?}"
+    );
+}
+
 /// The user manual's `(viewport-range bid)` + `buffer-lines` recipe
 /// (`user-manual/docs/writing-plugins.md`) must not raise on the common case of a
 /// buffer shorter than the pane, where the viewport's `end` sits at one past

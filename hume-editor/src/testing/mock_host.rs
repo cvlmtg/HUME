@@ -222,7 +222,11 @@ impl BufferHost for MockHost {
     fn word_search_pattern(&self, _id: BufferId, _word: &str) -> Option<String> {
         None
     }
-    fn buffer_text(&self, _id: BufferId) -> Option<String> {
+    fn buffer_text(
+        &self,
+        _id: BufferId,
+        _range: Option<(usize, usize)>,
+    ) -> Option<Result<String, String>> {
         None
     }
     fn buffer_line_count(&self, _id: BufferId) -> Option<usize> {

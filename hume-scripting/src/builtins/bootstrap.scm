@@ -142,6 +142,9 @@
 (define (set-eol-text! pane source lines #:hide-on-insert-line [hide #f])
   (%set-eol-text! pane source lines hide))
 
+(define (buffer-text pane #:range [range #f])
+  (%buffer-text pane range))
+
 (define (buffer-lines pane #:range [range #f])
   (%buffer-lines pane range))
 

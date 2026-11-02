@@ -145,15 +145,23 @@ To work with one selection (the primary one, say), pick it out and read it with 
       (log! 'info (to-string (char-offset->line pane (selection-head primary)))))))
 ```
 
+A selection's start and end are a range `buffer-text` takes, to read the text it covers (see [Reading buffer text](#reading-buffer-text)).
+
 See [Standard Library](standard-library.md#selections) for the full list of selection helpers.
 
 ## Reading buffer text
 
 ```scheme
 (buffer-text pane)
+(buffer-text pane #:range (hash 'start-char start 'end-char end))
 ```
 
-Returns a buffer's live content as a string, unsaved edits included, not what's on disk. The string always ends with a newline, and its line endings are always `\n`, even for a file saved with `\r\n`.
+Returns a buffer's live content as a string, unsaved edits included, not what's on disk. The string always ends with a newline, and its line endings are always `\n`, even for a file saved with `\r\n`. With `#:range`, it returns only the characters from `start` up to, not including, `end`, line breaks included. This reads the text a selection covers:
+
+```scheme
+(buffer-text pane #:range (hash 'start-char (selection-start-char sel)
+                                'end-char (selection-end-char sel)))
+```
 
 ```scheme
 (buffer-lines pane)

@@ -305,8 +305,12 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<UndoNode>> {
         self.inner.borrow_mut().buffers().buffer_undo_tree(id)
     }
-    fn buffer_text(&self, id: BufferId) -> Option<String> {
-        self.inner.borrow_mut().buffers().buffer_text(id)
+    fn buffer_text(
+        &self,
+        id: BufferId,
+        range: Option<(usize, usize)>,
+    ) -> Option<Result<String, String>> {
+        self.inner.borrow_mut().buffers().buffer_text(id, range)
     }
     fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
         self.inner.borrow_mut().buffers().buffer_line_count(id)

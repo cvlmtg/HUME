@@ -405,8 +405,12 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<crate::host::UndoNode>> {
         self.inner.buffer_undo_tree(id)
     }
-    fn buffer_text(&self, id: BufferId) -> Option<String> {
-        self.inner.buffer_text(id)
+    fn buffer_text(
+        &self,
+        id: BufferId,
+        range: Option<(usize, usize)>,
+    ) -> Option<Result<String, String>> {
+        self.inner.buffer_text(id, range)
     }
     fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
         self.inner.buffer_line_count(id)

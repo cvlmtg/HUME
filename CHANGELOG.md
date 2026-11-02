@@ -25,6 +25,7 @@
 - A plugin's picker binds every key itself, and new `picker-move!` moves its selection.
 - `core:plum` installs grammars from a folder you built them into before downloading them, with `#:config (hash 'grammar-source "/path")`, for a platform with no prebuilt grammars or for working offline.
 - New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value.
+- `buffer-text` takes `#:range` to read part of a buffer, such as a selection's text.
 - New `buffer-search` finds a pattern in a buffer without moving the selection or changing the current search, and new `word-search-pattern` gives the pattern `*` searches for a word.
 - New `stdlib/concat` joins a list of lists, much faster than `(apply append …)` over many lists.
 - New `error-text` gives the message of an error a handler caught, without its kind.

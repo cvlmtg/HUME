@@ -9,6 +9,7 @@ use hume_rope::offset::ExclusiveRange;
 
 use super::EditorHostImpl;
 use crate::editor::buffer::lifecycle::CloseBufferRefused;
+use crate::editor::buffer::offsets::checked_char_range;
 use crate::editor::buffer::{TextRefusal, ViewLabel};
 use crate::editor::commands::{CommandPane, FocusedPane, effective_word_chars, word_search_input};
 use crate::editor::search::SearchPattern;
@@ -213,8 +214,18 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         ))
     }
 
-    fn buffer_text(&self, id: BufferId) -> Option<String> {
-        Some(self.buffer(id)?.text().to_string())
+    fn buffer_text(
+        &self,
+        id: BufferId,
+        range: Option<(usize, usize)>,
+    ) -> Option<Result<String, String>> {
+        let text = self.buffer(id)?.text();
+        Some(match range {
+            None => Ok(text.to_string()),
+            Some((start, end)) => checked_char_range(text, start, end)
+                .map(|range| text.slice(range).to_string())
+                .map_err(|e| format!("#:range {e}")),
+        })
     }
 
     fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
