@@ -6,7 +6,8 @@ upstream license files and the changes listed here. `vendor/` is excluded from t
 so the workspace's clippy, fmt and doc gates do not run over upstream code.
 
 To drop a patch, delete its directory and its `[patch.crates-io]` line once an upstream
-release carries the fix.
+release carries the fix. Each entry's upstream status refers to steel's `master` at `498eacf`
+(2026-11-02).
 
 ## steel-core 0.8.3
 
@@ -24,14 +25,14 @@ re-raising the error, abandons the inner `reset` with its meta-continuation stil
 Upstream, the outer handler's `shift` then calls that stale one and jumps into a continuation
 that has left the stack, panicking with "Failed to find an open continuation on the stack".
 Each `with-handler` here saves the meta-continuation its `reset` installed and puts it back
-first thing in the handler.
+first thing in the handler. Proposed upstream in [#730].
 
 **The compiler prints nothing to stdout.** Upstream's `println!` in
 `LowerRestArguments::handle_plist_get_positional_arg_list` (`src/compiler/passes/analysis.rs`)
 fires on every compile of a lambda with an optional or keyword argument before a rest
 argument, and `CodeGenerator::visit_let` (`src/compiler/code_gen.rs`) prints each let-bound
 variable that is both captured and mutated. Both are deleted: stdout is the editor's terminal
-display.
+display. Upstream `master` deletes the first (`bded6b6`); the second is proposed in [#729].
 
 **The analysis pass marks a tail call's last-usage arguments by name lookup.** Upstream's
 `AnalysisPass::visit_list` (`src/compiler/passes/analysis.rs`) walks every name in the scope
@@ -39,7 +40,8 @@ map at each tail call to find the variables an argument used last, and that map 
 name bound anywhere in the program being compiled. The cost grows with tail calls times
 distinct names, and it was the compiler's largest hotspot at startup. `visit_atom` only sets
 `last_used` on the binding of the atom's own name, so looking up each atom argument's name
-finds the same bindings. Timings are under Benchmarks below.
+finds the same bindings. Timings are under Benchmarks below. Upstream `master` makes the same
+change ([#675]).
 
 **Constant evaluation stops once a pass changes nothing.** Upstream's
 `apply_const_evaluation` (`src/compiler/compiler.rs`) runs `ConstantEvaluatorManager::run`
@@ -52,7 +54,10 @@ manager stops after its second run when that run changed nothing; the second run
 happens, since the first binds the constants a form defined later can fold into an earlier
 one. The folded output is the same as upstream's three runs for every compile in HUME's
 startup (618 compiles) and the `hume-scripting` test suite (11,073): both schedules ran on the
-same input and their results compared equal. Timings are under Benchmarks below.
+same input and their results compared equal. Timings are under Benchmarks below. Upstream
+`master` stops the manager after a run that reports no change ([#675]), but without the four
+rewrites reporting it or the forced second run, so it can stop before folding a constant
+defined after its use. The rest of this patch is proposed in [#732].
 
 ### Benchmarks
 
@@ -95,7 +100,7 @@ at a time with `append_mut`, so `(apply append lists)` costs time that grows wit
 of lists times their total length. On 2,000 one-element lists it took 16 ms, where a
 `foldl`/`cons` loop and one `reverse` took 0.55 ms (measured 2026-10-28, `opt-level=3`).
 `apply` itself is not the cost: 23 µs for 2,000 arguments. HUME's core plugins join lists
-with `core:stdlib`'s `stdlib/concat` instead.
+with `core:stdlib`'s `stdlib/concat` instead. Reported upstream in [#728].
 
 ### Known wrong, not patched
 
@@ -104,19 +109,21 @@ message from each argument's printed form with the outer quotes trimmed, so a `"
 inside a string argument comes back backslash-escaped from `error-object-message`, and from
 HUME's `error-text`. A message that wraps a caught error's text in a new `error` escapes it
 again. Messages HUME shows the user carry those escapes; `install_theme_rejects_unsafe_slugs`
-(`hume-editor`) asserts the escaped form.
+(`hume-editor`) asserts the escaped form. Reported upstream in [#727], along with the space
+`error` puts before every argument, the first included.
 
 **`split-once` returns `#t` when the separator is absent.** `split-once`
 (`src/primitives/strings.rs`) converts its `Option` result through `From<Option<T>> for
 SteelVal` (`src/primitives.rs`), which maps `None` to `#t`; the `IntoSteelVal` impl beside it
 maps `None` to `#f`. Its docstring's `(split-once "" "&") ;; => '("")` is wrong too. HUME's
 one caller, `core:lsp`'s `lsp/first-line`, checks the result with `pair?` before taking it
-apart.
+apart. Reported upstream in [#725].
 
 **`bytes->string/utf8` panics on an `end` past the bytevector.** `bytes->string/utf8` (alias
 `utf8->string`, `src/primitives/bytevectors.rs`) rejects a negative `start` or `end` and an
 `end` below `start`, but checks neither against the bytevector's length, so
 `(bytes->string/utf8 (bytes 65) 0 5)` panics in the slice instead of raising a Steel error.
+Reported upstream in [#726].
 
 ## steel-parser 0.8.3
 
@@ -129,3 +136,14 @@ cloned. Engines compiling on several threads at once all write that one atomic, 
 cache-line contention made the test suite's Steel-heavy tests take several times their
 single-threaded CPU. Each thread now reserves 4096 ids at a time. Ids stay unique, and
 strictly increasing within a thread, which is all an engine (confined to one thread) sees.
+Proposed upstream in [#731].
+
+[#675]: https://github.com/mattwparas/steel/pull/675
+[#725]: https://github.com/mattwparas/steel/issues/725
+[#726]: https://github.com/mattwparas/steel/issues/726
+[#727]: https://github.com/mattwparas/steel/issues/727
+[#728]: https://github.com/mattwparas/steel/issues/728
+[#729]: https://github.com/mattwparas/steel/pull/729
+[#730]: https://github.com/mattwparas/steel/pull/730
+[#731]: https://github.com/mattwparas/steel/pull/731
+[#732]: https://github.com/mattwparas/steel/pull/732
