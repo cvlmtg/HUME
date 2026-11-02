@@ -9,18 +9,8 @@ use hume_scripting::ScriptingHost;
 // Loads the *real* runtime/plugins/core/pickers/plugin.scm (via
 // `include_str!`) into an isolated runtime dir, then evaluates an
 // init.scm that eagerly loads it, exercising the actual shipped file.
-//
-// Coverage note: the git-repo detection branch is proven only via full
-// integration in a real git repo (`files_picker_...` below): `pickers/files`
-// itself dispatches straight to `pickers/files-picker-with` with
-// `stdlib/git-repo?`'s live result, so there's no seam here to force the `#t`
-// case hermetically. `stdlib/git-repo?`'s own `#f` case (not a repo) *is*
-// covered hermetically, in `core:stdlib`'s own tests (`plugins.rs`); it's a
-// registered command there, unlike this file's local `fd`-detection probe
-// (`pickers/fd-binary`). The two non-git branches (fd found / fd absent) are
-// covered hermetically below via the `pickers/files-picker-with` internal
-// command, which *is* a registered command and so dispatchable by name via
-// `call!` regardless of which Steel environment defined it.
+// The files picker's non-git branches run with an editor search path that
+// holds no `git`, so the test decides which programs exist.
 
 const PICKERS_PLUGIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -28,9 +18,7 @@ const PICKERS_PLUGIN: &str = include_str!(concat!(
 ));
 
 /// Load the real `core:pickers` plugin, plus `extra_source` appended to the
-/// same init.scm (evaluated after the plugin, so `call!`-dispatchable
-/// commands the plugin registered are reachable by name (see the module
-/// doc comment on why plain, non-command helpers are not used this way).
+/// same init.scm (evaluated after the plugin).
 fn setup(guard: &RuntimeDirs, tmp: &Path, input: &str, extra_source: &str) -> Editor {
     setup_with_config(guard, tmp, input, None, extra_source)
 }
@@ -359,14 +347,15 @@ fn files_picker_esc_dismisses_cleanly() {
     );
 }
 
-// ── Files picker — non-git branches (hermetic, via the internal seam) ─────────
+// ── Files picker — non-git branches (no `git` on the search path) ─────────────
 
 #[test]
-fn files_picker_fd_branch_spawns_given_binary() {
+fn files_picker_without_git_lists_fd_output() {
     let guard = RuntimeDirs::new();
     let tmp = tempfile::tempdir().unwrap();
 
-    let fake_fd = tmp.path().join("fake-fd");
+    let bin = tempfile::tempdir().unwrap();
+    let fake_fd = bin.path().join("fd");
     std::fs::write(&fake_fd, "#!/bin/sh\nprintf 'one.txt\\0two.txt'\n").unwrap();
     std::fs::set_permissions(&fake_fd, std::fs::Permissions::from_mode(0o755)).unwrap();
 
@@ -374,17 +363,13 @@ fn files_picker_fd_branch_spawns_given_binary() {
     std::fs::write(sandbox.raw().join("one.txt"), "").unwrap();
     std::fs::write(sandbox.raw().join("two.txt"), "").unwrap();
 
-    let extra = format!(
-        r#"(define-command! "test-fd-branch" "" (lambda (pane)
-             (call! "pickers/files-picker-with" pane #f "{}")))"#,
-        fake_fd.display()
-    );
-    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", &extra);
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.state.dirs.search_path = Some(bin.path().into());
     ed.state
         .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
         .unwrap();
 
-    call(&mut ed, "test-fd-branch");
+    call(&mut ed, "pickers/files");
     drain_until_picker_total(&mut ed, 2);
     let picker = ed.state.input.picker().expect("picker open");
     assert_eq!(
@@ -400,15 +385,15 @@ fn files_picker_fd_branch_spawns_given_binary() {
 }
 
 #[test]
-fn files_picker_error_path_names_fd() {
+fn files_picker_without_git_or_fd_names_fd() {
     let guard = RuntimeDirs::new();
     let tmp = tempfile::tempdir().unwrap();
-    let extra = r#"(define-command! "test-error-branch" "" (lambda (pane)
-                     (call! "pickers/files-picker-with" pane #f #f)))"#;
-    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
+    let empty_bin = tempfile::tempdir().unwrap();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.state.dirs.search_path = Some(empty_bin.path().into());
 
     ed.state.status_msg = None;
-    call(&mut ed, "test-error-branch");
+    call(&mut ed, "pickers/files");
 
     let msg = ed
         .state
@@ -575,12 +560,6 @@ fn git_modified_rows_below_four_cells_take_the_pickers_own_cut() {
     insta::assert_snapshot!(row, @"…xt");
 }
 
-// `PickerSession::seed` only clears `pending`
-// when the seed is non-empty. `git status` hasn't run yet when this picker
-// opens, so `picker!` seeds it with an empty list. If `seed` cleared
-// `pending` unconditionally, this session would read as "already populated"
-// from frame one, and `is_pending()` would be `#f` before `git status` has
-// returned anything.
 #[test]
 fn git_modified_picker_is_pending_until_git_status_returns() {
     let guard = RuntimeDirs::new();
@@ -851,12 +830,10 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
-    // total_len() stays 0 whether the async `git status` callback has run
-    // yet or not, so it can't be the drain predicate here. Wait for the
-    // job to leave the registry instead, so the assertion below proves the
-    // callback actually ran and produced zero rows, not just that nothing
-    // has happened yet.
-    drain_until(&mut ed, |ed| ed.state.config.async_jobs.is_empty());
+    // total_len() stays 0 whether `git status` has finished or not, so wait
+    // for the source to detach: the assertion below then proves it ran and
+    // produced zero rows.
+    drain_until(&mut ed, source_detached);
 
     let picker = ed
         .state
@@ -869,13 +846,15 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
 #[test]
 fn git_modified_picker_not_a_repo_names_git() {
     let guard = RuntimeDirs::new();
+    let sandbox = Sandbox::new();
     let tmp = tempfile::tempdir().unwrap();
-    let extra = r#"(define-command! "test-git-not-a-repo" "" (lambda (pane)
-                     (call! "pickers/git-picker-with" pane #f)))"#;
-    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
+        .unwrap();
 
     ed.state.status_msg = None;
-    call(&mut ed, "test-git-not-a-repo");
+    call(&mut ed, "pickers/git-modified");
 
     let msg = ed
         .state
@@ -887,24 +866,22 @@ fn git_modified_picker_not_a_repo_names_git() {
 }
 
 #[test]
-fn git_modified_picker_git_status_failure_does_not_say_clean() {
+fn git_modified_picker_git_status_failure_reports_gits_error() {
     let guard = RuntimeDirs::new();
-    // Not a repo, no `git init`. The seam's `root` argument is only used by
-    // the accepting handler's `path-join`, never to select `git status`'s cwd, so a
-    // truthy-but-bogus root bypasses the not-a-repo check while `git status`
-    // itself still runs (and fails) against this non-repo cwd: the failure
-    // branch `pickers/open-git-picker!` must not fold into "clean".
+    // A corrupt index: `git rev-parse` still finds the repo root, and
+    // `git status` fails reading the index.
     let sandbox = Sandbox::new();
+    git_init(sandbox.raw());
+    std::fs::write(sandbox.raw().join(".git/index"), "not an index").unwrap();
+
     let tmp = tempfile::tempdir().unwrap();
-    let extra = r#"(define-command! "test-git-status-fails" "" (lambda (pane)
-                     (call! "pickers/git-picker-with" pane "/nonexistent-root")))"#;
-    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.state
         .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
         .unwrap();
 
     ed.state.status_msg = None;
-    call(&mut ed, "test-git-status-fails");
+    call(&mut ed, "pickers/git-modified");
     drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
 
     let msg = ed
@@ -913,15 +890,16 @@ fn git_modified_picker_git_status_failure_does_not_say_clean() {
         .clone()
         .expect("error must surface as a status message");
     assert!(
-        !msg.contains("clean"),
-        "a failed `git status` must not be reported as a clean working tree; got: {msg}"
-    );
-    assert!(
-        msg.contains("fatal") || msg.contains("git repository"),
-        "the log message must carry git's own diagnostic (stderr), not just a \
+        msg.contains("fatal"),
+        "the message must carry git's own diagnostic (stderr), not just a \
          generic failure line; got: {msg}"
     );
-    assert!(ed.state.input.picker().is_none());
+    let picker = ed
+        .state
+        .input
+        .picker()
+        .expect("a failed source leaves the picker open");
+    assert_eq!(picker.total_len(), 0);
 }
 
 #[test]
@@ -940,11 +918,9 @@ fn git_modified_picker_esc_dismisses_cleanly() {
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
-    assert!(ed.state.input.picker().is_some());
-    assert_eq!(
-        ed.state.config.async_jobs.len(),
-        1,
-        "the `git status` job must be tracked while the picker is open"
+    assert!(
+        ed.state.input.picker().expect("picker open").has_source(),
+        "`git status` must be attached to the picker while it is open"
     );
 
     ed.feed_key(key_esc());
@@ -952,14 +928,8 @@ fn git_modified_picker_esc_dismisses_cleanly() {
 
     assert!(ed.state.input.picker().is_none());
     assert!(
-        ed.state.config.async_jobs.is_empty(),
-        "dismissing the picker must cancel the outstanding `git status` job, \
-         not leave it running to completion for nothing"
-    );
-    assert!(
         ed.state.status_msg.is_none(),
-        "cancelling must not raise: a `job-id` still `#f` when `#:on-close` \
-         fires would surface as a status message here"
+        "closing the picker must not report the stopped `git status` as a failure"
     );
     assert_eq!(
         ed.focused_buffer_id(),

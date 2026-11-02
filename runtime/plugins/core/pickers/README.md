@@ -21,7 +21,7 @@ with no native (Rust) picker definitions.
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `'untracked` | boolean | `#t` | `#t` passes `--untracked-files=all` to `git status`, which walks every untracked directory. `#f` passes `no`, which skips the walk and populates sooner. |
+| `'untracked` | boolean | `#t` | `#t` passes `--untracked-files=all` to `git status`, which walks every untracked directory and can be slow on a large un-ignored one. `#f` passes `no`, which skips the walk and populates sooner. The editor does not block either way. |
 
 ## Commands
 
@@ -31,19 +31,20 @@ with no native (Rust) picker definitions.
 | `z b` | `pickers/buffers` | Fuzzy-pick an open buffer and switch to it |
 | `z m` | `pickers/git-modified` | Fuzzy-pick a file with staged or unstaged git changes and open it |
 
-`pickers/files-picker-with` and `pickers/git-picker-with` are internal commands that the
-two public ones call; see [Design decisions](#design-decisions).
-
 The keys sit under `z` because a picker opens a panel and waits, the layout
 [`core:lsp`'s default keys](../lsp/docs/architecture.md#default-keys) explain.
 
 ## How it works
 
-Every picker passes `(call! "stdlib/picker-keymap" handler)` as its keymap, which gives it
-the default movement keys and the `Enter`/`Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s` placements
-(current pane, new tab, vertical split, horizontal split); see `core:stdlib`'s
-[Picker keymap](../stdlib/README.md#picker-keymap). Each handler switches the focused pane
-to the picked buffer with `switch-to-buffer!`.
+Every picker takes `core:stdlib`'s [Picker keymap](../stdlib/README.md#picker-keymap)
+around a handler that switches `(focused-pane)` to the picked buffer. Reading focus is that
+keymap's contract: a placement key focuses the pane it creates before the handler runs. The
+index's [capture the target](../README.md#capture-the-target-dont-re-read-focus) pattern
+does not apply, since a binding runs before the next key is read.
+
+`z f` and `z m` fill their picker from a command's NUL-separated output through
+`picker-source-spawn!`, which shows the picker as pending until the command exits, stops
+the command when the picker closes, and reports a failed exit with the command's stderr.
 
 ### File source
 
@@ -54,8 +55,6 @@ to the picked buffer with `switch-to-buffer!`.
 2. Otherwise, if `fd` (or Debian's `fdfind`) is installed: `fd --type f -0`.
 3. Otherwise, an error naming `fd` as the thing to install.
 
-Its handler, `pickers/open-file!`, passes the picked path to `open-buffer!`.
-
 `git ls-files --cached` can list a file that was deleted from disk without `git rm`;
 selecting one surfaces an error when the picker tries to open it.
 
@@ -63,22 +62,13 @@ selecting one surfaces an error when the picker tries to open it.
 
 `pickers/buffers` shows `buffer-display-path`, falling back to the buffer's name
 (`*scratch*`, etc.) for a pathless one; see the manual's
-[Picking buffers](https://cvlmtg.github.io/HUME/pickers.html#picking-buffers). `(buffers)`
-hands each entry as a [pane-less pane value](../README.md#pane-values-vs-pane-less-values),
-which is the picker payload. The handler, `pickers/switch-to-buffer!`, switches to that
-value directly, with no `open-buffer!`.
+[Picking buffers](https://cvlmtg.github.io/HUME/pickers.html#picking-buffers). Each item's
+payload is the [pane-less pane value](../README.md#pane-values-vs-pane-less-values)
+`(buffers)` hands, which the handler switches to directly.
 
-The switch targets whichever pane is focused when the pick is made (`(focused-pane)`).
-This is an exception to the index's
-[capture the target](../README.md#capture-the-target-dont-re-read-focus) pattern: the
-`Enter` or `Ctrl-o` binding runs before the next key is read, so the picker's origin pane
-and the focused pane are the same.
-
-Rows take `:ls`'s scopes through the picker's `#:render`, `pickers/buffer-row`. A buffer
-with unsaved changes (`buffer-dirty?`) is `diagnostic.warning.message-text`, and the whole
-row `diagnostic.warning.message` while selected. Otherwise the buffer the picker opened
-from, matched by `buffer-key`, is `markup.bold`. The row text stays the item's display.
-A buffer closed while the picker is open (`buffer-live?` is `#f`) keeps a plain row,
+Rows take `:ls`'s scopes through the picker's `#:render`: an unsaved buffer takes the
+warning scopes, otherwise the buffer the picker opened from, matched by `buffer-key`, is
+bold. A buffer closed while the picker is open (`buffer-live?` is `#f`) keeps a plain row,
 since `buffer-dirty?` raises for it.
 
 ### Git-modified files
@@ -88,32 +78,21 @@ raises an error before a picker opens when the cwd is outside any git repository
 
 #### Source
 
-`git status --porcelain -z --no-renames --untracked-files=<mode>` runs in the background
-through `spawn-async!`, not the line-streaming source `pickers/files` uses, since this
-picker needs the whole output parsed at once. The picker opens empty and marked pending,
-then populates in one batch when `git status` completes. Each row is the two-letter status
-code (`M `, `A `, ` M`, `??`, …) followed by the path, relative to the repo root.
+`git status --porcelain -z --no-renames --untracked-files=<mode>` fills the picker. Each
+item is one entry: the two-letter status code (`M `, `A `, ` M`, `??`, …), a space, and
+the path relative to the repo root.
 
 | Flag | Why |
 |---|---|
 | `-z` | Avoids git's C-quoting of paths with whitespace or non-ASCII |
-| `--no-renames` | Gives one field per entry; a rename otherwise prints as two NUL-separated fields under `-z` and parses as an extra row |
-| `--untracked-files=<mode>` | `all` (default) walks every untracked directory fully and can be slow on a large un-ignored directory; `no` skips the walk. The editor does not block either way |
-
-#### Parsing
-
-`-z` terminates every entry including the last, so splitting on NUL leaves a trailing `""`
-fragment, the whole output for a clean tree. The parser filters empty fragments, so a clean
-tree (exit 0, empty stdout) yields an empty item list and pushes as a no-op.
+| `--no-renames` | Gives one field per entry; a rename otherwise prints as two NUL-separated fields under `-z` and lists its old path as an extra row |
 
 #### Rows
 
-The picker's `#:render`, `pickers/render-git-rows`, keeps each row's status visible and
-colors it. Each status letter gets its own span: `A` and `?` take `diff.plus`, `D` and `U`
-`diff.minus`, any other letter `diff.delta`, and a blank column none. The index (staged)
-letter and the worktree letter are colored apart, as `git status` shows them. On the
-selected row a letter takes `ui.text.focus`, the row's own selected style, since a theme's
-diff colors can match that row's background.
+The picker's `#:render` keeps each row's status visible and colors it. Each status letter
+gets its own span, so the index (staged) letter and the worktree letter are colored apart,
+as `git status` shows them. On the selected row a letter takes `ui.text.focus`, the row's
+own selected style, since a theme's diff colors can match that row's background.
 
 A row wider than the panel keeps its three status columns and drops the front of the path
 behind `…` with `string-fit`, which never splits a character. Below four cells there is no
@@ -122,22 +101,6 @@ room for both, and the picker's own head cut takes over.
 #### Opening
 
 Rows are repo-root-relative but `open-buffer!` resolves a relative path against the
-editor's cwd. The handler joins the selected row onto the root resolved at dispatch before
-`open-buffer!`, so a selection opens the right file when `:pwd` is a subdirectory of the
-repo.
-
-#### Failure and cancellation
-
-A `git status` failure logs `'error` and calls `picker-close!` with this picker's token.
-That is a no-op if the picker has already closed or been replaced, so a slow failure
-cannot tear down a picker the user opened since. The picker's `#:on-close` cancels the
-`git status` job, so closing it before the status arrives, however it closes, leaves no
-job running.
-
-## Design decisions
-
-- **`pickers/files` and `pickers/git-modified` each delegate to an internal
-  `pickers/*-with` command, not probe and open in one body.** The internal one takes the
-  git/fd probe result (or repo root) as an argument, so a test drives each branch (repo or
-  no repo, `fd` present or absent) through `call!` without changing `PATH` or building a
-  git sandbox.
+editor's cwd. The handler joins the selected row's path onto the root resolved at dispatch
+before `open-buffer!`, so a selection opens the right file when `:pwd` is a subdirectory
+of the repo.

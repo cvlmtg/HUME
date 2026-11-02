@@ -615,8 +615,7 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     std::fs::write(&small, "hi\n").unwrap();
     let path = steel_path(&small);
 
-    // Mirrors runtime/plugins/core/pickers/plugin.scm's files-picker handler:
-    // `(switch-to-buffer! (open-buffer! path))` run from a picker callback.
+    // A picker handler that opens a file and switches to it.
     run(
         &mut ed,
         tmp.path(),
