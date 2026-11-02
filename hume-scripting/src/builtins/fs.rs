@@ -27,7 +27,7 @@
 //! | `unlock-file!`  | `string → void`                | Releases a lock this session took            |
 //! | `first-path-outside` | `string list → string \| #f` | The first path that, symlinks resolved, lies outside a directory |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
-//! | `path->display` | `string → string`               | Relative to `#:relative` inside it, else UNC-strip + `~`-collapse; reads the filesystem only for a `..` |
+//! | `path->display` | `string → string`               | Relative to `#:relative` inside it, else UNC-strip + `~`-collapse; reads the filesystem only for a `..` on Unix |
 //! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
 //! | `path-entries`  | `string string → list`         | What a typed path completes to, as `:e` lists it |
 //! | `path-programs` | `string list proc → job`       | Lists the search path's programs by name prefix in the background |
@@ -379,8 +379,9 @@ pub(crate) fn safe_path_segment(args: &[SteelVal]) -> SteelResult {
 /// With `base`, `path` relative to it when inside it. Otherwise, or outside
 /// `base`, the display form: Windows `\\?\` stripped, home collapsed to `~`.
 /// Both are made absolute as every script path is: a relative one is taken
-/// against `(cwd)`, and a `..` is resolved on disk, raising when the
-/// directory before it cannot be. The results are then compared as written,
+/// against `(cwd)`, and a `..` is resolved as the OS resolves it: on disk on
+/// Unix, raising when the directory before it cannot be, and by name on
+/// Windows. The results are then compared as written,
 /// so a symlink is not followed.
 pub(crate) fn path_to_display(
     ctx: &mut SteelCtx,

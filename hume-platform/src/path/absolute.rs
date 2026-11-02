@@ -126,8 +126,9 @@ fn dangling_target(path: &Path) -> io::Result<PathBuf> {
 #[cfg(any(test, feature = "test-util"))]
 impl AbsolutePath {
     /// `path`, an absolute path or a root-anchored one such as `/tmp/a.rs`,
-    /// as an absolute path. On Windows a root-anchored path with no drive is
-    /// placed on drive `C:`.
+    /// as an absolute path, written as [`Self::from_path`] writes it (on
+    /// Windows, with `\` separators). On Windows a root-anchored path with no
+    /// drive is placed on drive `C:`.
     pub fn rooted(path: impl AsRef<Path>) -> Self {
         let path = path.as_ref();
         let path = if cfg!(windows) && !path.is_absolute() {
@@ -138,7 +139,7 @@ impl AbsolutePath {
             path.to_path_buf()
         };
         assert!(path.is_absolute(), "{path:?} is not root-anchored");
-        Self::stripped(path)
+        Self::stripped(path.components().collect())
     }
 }
 

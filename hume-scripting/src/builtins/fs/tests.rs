@@ -164,15 +164,6 @@ fn path_to_display_rejects_a_base_that_is_not_a_path() {
     assert!(eval_result(&source).is_err());
 }
 
-/// A `..` is resolved on disk, so one after a missing directory raises.
-#[test]
-fn path_to_display_of_a_parent_step_after_a_missing_directory_raises() {
-    let tmp = TempDir::new().unwrap();
-    let input = tmp.path().join("gone").join("..").join("a.rs");
-    let source = format!("(path->display {})", literal(&input));
-    assert!(eval_result(&source).is_err());
-}
-
 #[test]
 fn path_to_display_no_args_errors() {
     assert!(eval_result("(path->display)").is_err());

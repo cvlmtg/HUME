@@ -98,3 +98,13 @@ fn first_path_outside_raises_for_a_symlink_cycle_naming_the_path() {
         "the error names the builtin and the path: {err}"
     );
 }
+
+/// On Unix a `..` is resolved on disk, so one after a missing directory
+/// raises.
+#[test]
+fn path_to_display_of_a_parent_step_after_a_missing_directory_raises() {
+    let tmp = TempDir::new().unwrap();
+    let input = tmp.path().join("gone").join("..").join("a.rs");
+    let source = format!("(path->display {})", literal(&input));
+    assert!(eval_result(&source).is_err());
+}
