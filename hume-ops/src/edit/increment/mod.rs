@@ -101,7 +101,7 @@ pub fn plan_increment(
             }
         };
         let texts = amount
-            .and_then(|amount| target.literal.stepped(&target.asked, amount))
+            .and_then(|amount| target.literal.stepped(target.asked, amount))
             .ok_or(IncrementRefusal::OutOfRange)?;
         pieces.extend(target.parts.into_iter().zip(texts));
     }
@@ -178,7 +178,7 @@ impl Literal {
     /// Where each part lies, as indices into a literal `len` clusters long.
     fn parts(&self, len: usize) -> Vec<Range<usize>> {
         match self {
-            Self::Number(_) => std::iter::once(0..len).collect(),
+            Self::Number(_) => vec![0..len],
             Self::Moment(moment) => moment.parts().collect(),
         }
     }
@@ -194,7 +194,7 @@ impl Literal {
 
     /// The text of each part once the literal is moved by `amount` at the
     /// parts `asked` for.
-    fn stepped(&self, asked: &[usize], amount: i128) -> Option<Vec<String>> {
+    fn stepped(&self, asked: Vec<usize>, amount: i128) -> Option<Vec<String>> {
         match self {
             Self::Number(number) => number.stepped(amount).map(|text| vec![text]),
             Self::Moment(moment) => moment.stepped(asked, amount),

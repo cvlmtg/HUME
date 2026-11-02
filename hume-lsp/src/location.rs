@@ -42,15 +42,10 @@ pub fn decode_location(loc: &serde_json::Value) -> Result<WireLocation, String> 
                 .or_else(|| loc.get("targetRange")),
         )
     } else {
-        (
-            loc.get("uri").ok_or_else(|| "missing uri".to_string())?,
-            loc.get("range"),
-        )
+        (loc.get("uri").ok_or("missing uri")?, loc.get("range"))
     };
-    let uri = uri
-        .as_str()
-        .ok_or_else(|| "uri must be a string".to_string())?;
-    let range = range.ok_or_else(|| "missing range".to_string())?;
+    let uri = uri.as_str().ok_or("uri must be a string")?;
+    let range = range.ok_or("missing range")?;
     let pos = crate::position::decode_range_end(range, "start")?;
     let uri = lsp_types::Uri::from_str(uri).map_err(|_| format!("bad uri {uri:?}"))?;
     Ok(WireLocation { uri, pos })

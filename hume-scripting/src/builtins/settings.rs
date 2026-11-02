@@ -61,18 +61,18 @@ impl Takes {
 /// settings layer takes: the text `:set` would carry, a list's words, or the
 /// statusline's sections. A value of any other type raises before what it
 /// holds is read, a symbol for a named value included.
-fn decode_option_value(value: &SteelVal, key: &str, takes: Takes) -> Result<OptionInput, SteelErr> {
+fn decode_option_value(value: SteelVal, key: &str, takes: Takes) -> Result<OptionInput, SteelErr> {
     match (value, takes) {
         (SteelVal::BoolV(b), Takes::Bool) => Ok(OptionInput::Text(b.to_string())),
         (SteelVal::IntV(n), Takes::Int) => Ok(OptionInput::Text(n.to_string())),
         (SteelVal::StringV(s), Takes::Text) => Ok(OptionInput::Text(s.to_string())),
-        (SteelVal::ListV(_), Takes::Words) => {
-            list_to_strings(value.clone(), "value").map(OptionInput::Words)
+        (value @ SteelVal::ListV(_), Takes::Words) => {
+            list_to_strings(value, "value").map(OptionInput::Words)
         }
-        (SteelVal::HashMapV(_), Takes::Sections) => {
-            decode_sections(value.clone()).map(OptionInput::Sections)
+        (value @ SteelVal::HashMapV(_), Takes::Sections) => {
+            decode_sections(value).map(OptionInput::Sections)
         }
-        _ => Err(type_mismatch(key, takes, value)),
+        (value, takes) => Err(type_mismatch(key, takes, &value)),
     }
 }
 
@@ -133,7 +133,7 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
         return Err(per_buffer_err(opt, "set-buffer-option!"));
     }
     let takes = Takes::of(ctx, &key)?;
-    let value = decode_option_value(&value, &key, takes)?;
+    let value = decode_option_value(value, &key, takes)?;
 
     let origin = ctx.registration_origin();
     ctx.host
@@ -180,7 +180,7 @@ pub(crate) fn set_buffer_option(
             });
         }
         Some(BufferIntrinsicOption::LineEnding) => {
-            let value = decode_option_value(&value, &key, Takes::Text)?;
+            let value = decode_option_value(value, &key, Takes::Text)?;
             ctx.host
                 .settings()
                 .set_buffer_line_ending(bid, value, origin)
@@ -188,7 +188,7 @@ pub(crate) fn set_buffer_option(
         }
         None => {
             let takes = Takes::of(ctx, &key)?;
-            let value = decode_option_value(&value, &key, takes)?;
+            let value = decode_option_value(value, &key, takes)?;
             ctx.host
                 .settings()
                 .set_buffer_option(&key, value, bid, origin)

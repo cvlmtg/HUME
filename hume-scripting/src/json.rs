@@ -40,8 +40,7 @@ pub fn json_to_steel(v: &serde_json::Value) -> SteelVal {
         serde_json::Value::Number(n) => number_to_steel(n),
         serde_json::Value::String(s) => SteelVal::StringV(s.as_str().into()),
         serde_json::Value::Array(items) => {
-            let items: Vec<SteelVal> = items.iter().map(json_to_steel).collect();
-            SteelVal::ListV(items.into())
+            SteelVal::ListV(items.iter().map(json_to_steel).collect())
         }
         serde_json::Value::Object(map) => {
             let mut hm = SteelHashMap::new();
@@ -277,19 +276,15 @@ fn miss_reason(current: &serde_json::Value, seg: &Seg, so_far: &[Seg]) -> String
 /// Renders a path the way `json-ref`'s error text names it: `$` for the
 /// root, then `.key` / `[index]` per step, e.g. `$.items[2].label`.
 fn path_repr(segs: &[Seg]) -> String {
+    use std::fmt::Write;
+
     let mut s = String::from("$");
     for seg in segs {
         match seg {
-            Seg::Key(k) => {
-                s.push('.');
-                s.push_str(k);
-            }
-            Seg::Index(i) => {
-                s.push('[');
-                s.push_str(&i.to_string());
-                s.push(']');
-            }
+            Seg::Key(k) => write!(s, ".{k}"),
+            Seg::Index(i) => write!(s, "[{i}]"),
         }
+        .expect("writing to a String cannot fail");
     }
     s
 }

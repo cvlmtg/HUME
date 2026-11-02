@@ -289,17 +289,19 @@ impl ScriptingHost {
     /// before any `eval_init`, so init.scm/plugins can use bare command names
     /// without a `FreeIdentifier` compile error.
     pub fn register_command_names(&mut self, names: &[&str]) {
+        use std::fmt::Write;
+
         if names.is_empty() {
             return;
         }
         // Build one compound source string: one define per command.
         let mut source = String::with_capacity(names.len() * 64);
         for &name in names {
-            source.push_str("(define ");
-            source.push_str(name);
-            source.push_str(" (lambda args (%dispatch-command! \"");
-            source.push_str(name);
-            source.push_str("\" args)))\n");
+            writeln!(
+                source,
+                "(define {name} (lambda args (%dispatch-command! \"{name}\" args)))"
+            )
+            .expect("writing to a String cannot fail");
         }
         self.steel
             .compile_and_run_raw_program(source)

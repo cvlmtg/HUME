@@ -187,9 +187,8 @@ impl Moment {
     /// The text of each of [`Self::parts`] once the fields at `parts` are
     /// moved by `amount`, largest field first, so a month step clamps the day
     /// before a day step moves it.
-    pub(super) fn stepped(&self, parts: &[usize], amount: i128) -> Option<Vec<String>> {
+    pub(super) fn stepped(&self, mut parts: Vec<usize>, amount: i128) -> Option<Vec<String>> {
         let layout = self.layout();
-        let mut parts = parts.to_vec();
         parts.sort_unstable();
         parts.dedup();
         let at = parts

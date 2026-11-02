@@ -131,18 +131,13 @@ impl ServerHandle {
     /// channels), but stderr is log-only, so its ordering relative to
     /// protocol traffic is cosmetic.
     pub fn try_recv_all(&self) -> Vec<InboundEvent> {
-        let mut out = Vec::new();
-        if let Some(rx) = &self.rx_events {
-            while let Ok(ev) = rx.try_recv() {
-                out.push(ev);
-            }
-        }
-        if let Some(rx) = &self.rx_stderr {
-            while let Ok(line) = rx.try_recv() {
-                out.push(InboundEvent::Stderr(line));
-            }
-        }
-        out
+        let events = self.rx_events.iter().flat_map(|rx| rx.try_iter());
+        let stderr = self
+            .rx_stderr
+            .iter()
+            .flat_map(|rx| rx.try_iter())
+            .map(InboundEvent::Stderr);
+        events.chain(stderr).collect()
     }
 }
 

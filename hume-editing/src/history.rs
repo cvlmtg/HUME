@@ -398,28 +398,14 @@ impl History {
     ///
     /// Fold with `ChangeSet::compose_all` to apply once.
     pub fn undo_n(&mut self, count: usize) -> Vec<Transaction> {
-        let mut txns = Vec::new();
-        for _ in 0..count {
-            match self.undo() {
-                Some(txn) => txns.push(txn),
-                None => break,
-            }
-        }
-        txns
+        (0..count).map_while(|_| self.undo()).collect()
     }
 
     /// Redo up to `count` steps forward along the redo chain (each revision's
     /// redo child); loops [`Self::redo`]. See [`Self::undo_n`] for the caller-side
     /// composition contract.
     pub fn redo_n(&mut self, count: usize) -> Vec<Transaction> {
-        let mut txns = Vec::new();
-        for _ in 0..count {
-            match self.redo() {
-                Some(txn) => txns.push(txn),
-                None => break,
-            }
-        }
-        txns
+        (0..count).map_while(|_| self.redo()).collect()
     }
 
     /// True if there is at least one revision above the current position.

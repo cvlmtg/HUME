@@ -186,6 +186,11 @@ impl EditState {
     pub fn into_selections(self) -> SelectionSet {
         self.selections
     }
+
+    /// The text and the selections, for a caller that keeps both.
+    pub fn into_parts(self) -> (BufferText, SelectionSet) {
+        (self.text, self.selections)
+    }
 }
 
 #[cfg(test)]

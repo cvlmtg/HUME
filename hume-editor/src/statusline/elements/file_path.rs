@@ -63,15 +63,13 @@ fn shorten_path_to_width_with(
         return Cow::Borrowed("");
     }
 
-    let parts: Vec<&str> = display.split_inclusive(is_sep).collect();
-    let n = parts.len();
+    // The last component is the filename; abbreviate the leading dirs (all
+    // but the last) one by one.
+    let mut components: Vec<String> = display.split_inclusive(is_sep).map(str::to_owned).collect();
+    let n = components.len();
     if n == 0 {
         return Cow::Borrowed("");
     }
-
-    // Build a mutable copy of the components. The last part is the filename;
-    // abbreviate the leading dirs (all but the last) one by one.
-    let mut components: Vec<String> = parts.iter().map(|s| s.to_string()).collect();
 
     for i in 0..n.saturating_sub(1) {
         let (content, sep) = split_trailing_sep(&components[i], is_sep);

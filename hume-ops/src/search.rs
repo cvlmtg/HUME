@@ -41,15 +41,13 @@ pub enum SearchDirection {
 /// prompt input to a `Regex`. Every producer of a `SearchPattern` goes
 /// through it rather than calling this directly.
 fn compile_search_regex(pattern: &str) -> Option<Regex> {
-    let effective;
-    let pat = if pattern.chars().any(|c| c.is_uppercase()) {
-        pattern
+    let regex = if pattern.chars().any(|c| c.is_uppercase()) {
+        Regex::new(pattern)
     } else {
         // Prepend (?i); an explicit (?-i) later in the pattern will override.
-        effective = format!("(?i){pattern}");
-        &effective
+        Regex::new(&format!("(?i){pattern}"))
     };
-    Regex::new(pat).ok()
+    regex.ok()
 }
 
 // ── search input flags ────────────────────────────────────────────────────────
@@ -150,14 +148,11 @@ pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
     if pattern.is_empty() {
         return None;
     }
-    let owned;
-    let effective = if flags.verbatim {
-        owned = escape_regex(pattern);
-        &owned
+    let regex = if flags.verbatim {
+        compile_search_regex(&escape_regex(pattern))
     } else {
-        pattern
-    };
-    let regex = compile_search_regex(effective)?;
+        compile_search_regex(pattern)
+    }?;
     Some((flags, regex))
 }
 

@@ -20,12 +20,7 @@ impl StatuslineElement for MiniBufElement {
 
     fn format(data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
         match data {
-            Some((prompt, input)) => {
-                let mut text = String::with_capacity(prompt.len() + input.len());
-                text.push_str(&prompt);
-                text.push_str(&input);
-                (Cow::Owned(text), colors.statusline)
-            }
+            Some((prompt, input)) => (Cow::Owned(prompt + &input), colors.statusline),
             None => (Cow::Borrowed(""), colors.statusline),
         }
     }

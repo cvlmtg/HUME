@@ -14,9 +14,9 @@ use hume_core::{AnswerEnd, BufferId, FirstTab, MatchKind, NamedPrefix, TriggerLi
 
 use super::SteelResult;
 use super::args::{
-    CHAR_RANGE_KEYS, bool_arg, chars_arg, int_arg, json_arg, list_items, optional_callback_arg,
-    optional_hash_entry, optional_string_arg, server_arg, string_arg, symbol_enum_arg, token_arg,
-    usize_arg,
+    CHAR_RANGE_KEYS, bool_arg, chars_arg, int_arg, json_arg, list_items, list_of,
+    optional_callback_arg, optional_hash_entry, optional_string_arg, server_arg, string_arg,
+    symbol_enum_arg, token_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 use super::lsp::required_feature_arg;
@@ -254,8 +254,7 @@ pub(crate) fn completion_emit(
 pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
     let n = usize_arg(n, "n")?;
     let items = require_cap(ctx.host.completions())?.completion_top(n);
-    let list: Vec<SteelVal> = items.iter().map(json_to_steel).collect();
-    Ok(SteelVal::ListV(list.into()))
+    Ok(list_of(items.iter().map(json_to_steel)))
 }
 
 /// `(completion-accept! idx)`: `idx` indexes the ranked/filtered list

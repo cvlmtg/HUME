@@ -1,4 +1,5 @@
 use rustc_hash::FxHashMap;
+use std::borrow::Cow;
 use std::ops::{Range, RangeInclusive};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -154,11 +155,10 @@ fn normalize_ranges(mut ranges: Vec<tree_sitter::Range>) -> Vec<tree_sitter::Ran
     out
 }
 
-/// Read a small node's text directly from the rope. Only used for
-/// `@injection.language` capture nodes (a few bytes: a fenced code block's
-/// info string), so a one-off allocation here is not a hot-path concern:
-/// this whole function runs once per parse, not per render frame.
-fn node_text(node: tree_sitter::Node, rope: &ropey::Rope) -> String {
+/// Read a small node's text directly from the rope, borrowed when it sits in
+/// one chunk. Only used for `@injection.language` capture nodes (a few
+/// bytes: a fenced code block's info string).
+fn node_text<'r>(node: tree_sitter::Node, rope: &'r ropey::Rope) -> Cow<'r, str> {
     rope.byte_slice(node.start_byte()..node.end_byte()).into()
 }
 

@@ -120,7 +120,7 @@ impl GutterColumn for SignColumn {
         for sign in self.source.signs_for_line(content_line, ctx) {
             if let Some(cell) = cells.get_mut(sign.slot as usize) {
                 *cell = GutterCell {
-                    content: GutterCellContent::Shared(Arc::clone(&sign.text)),
+                    content: GutterCellContent::Shared(sign.text),
                     scope: sign.scope,
                 };
             }

@@ -324,7 +324,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // yet set but the bootstrap only uses `define`, so no builtins are
     // called at this point.
     steel
-        .compile_and_run_raw_program(BOOTSTRAP.to_owned())
+        .compile_and_run_raw_program(BOOTSTRAP)
         .expect("HUME scripting bootstrap failed: this is a bug");
 }
 

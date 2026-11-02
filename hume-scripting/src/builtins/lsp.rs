@@ -413,9 +413,7 @@ pub(crate) fn lsp_capability(
         (Some(feature), None) => CapabilityQuery::Feature(feature),
         (None, Some(method)) => CapabilityQuery::Method(method),
         _ => {
-            return Err(generic_err(
-                "give exactly one of #:feature and #:method".to_string(),
-            ));
+            return Err(generic_err("give exactly one of #:feature and #:method"));
         }
     };
     Ok(require_cap(ctx.host.lsp())?
@@ -427,7 +425,7 @@ pub(crate) fn lsp_capability(
 
 /// `(lsp-server-status)` → list of `(hash 'name 'languages 'root 'state 'pending)`.
 pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
-    let entries: Vec<SteelVal> = require_cap(ctx.host.lsp())?
+    let entries = require_cap(ctx.host.lsp())?
         .lsp_server_status()
         .into_iter()
         .map(|e| {
@@ -446,9 +444,8 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
                 ("state", SteelVal::SymbolV(e.state.name().into())),
                 ("pending", SteelVal::IntV(e.pending as isize)),
             ])
-        })
-        .collect();
-    Ok(SteelVal::ListV(entries.into()))
+        });
+    Ok(list_of(entries))
 }
 
 /// `(lsp-supersede-key)`: a new `#:supersede` key, equal only to itself.

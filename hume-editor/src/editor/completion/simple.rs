@@ -52,8 +52,7 @@ pub(super) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionIte
     // Count how many open buffers share each basename (for disambiguation).
     let mut name_count: rustc_hash::FxHashMap<String, usize> = rustc_hash::FxHashMap::default();
     for (_, buf) in ctx.buffers.iter() {
-        let (base, _) = entry_for(buf);
-        *name_count.entry(base).or_insert(0) += 1;
+        *name_count.entry(buf.display_name()).or_insert(0) += 1;
     }
 
     ctx.buffers

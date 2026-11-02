@@ -298,7 +298,7 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
                     .doc()
                     .path()
                     .ok_or_else(|| CommandError::transient("No file name"))?;
-                out.push_str(&path.display().to_string());
+                out.push_str(&path.to_string_lossy());
             }
             "#" => {
                 let alt_id = ed
@@ -310,7 +310,7 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
                     ed.state.buffers.get(alt_id).path().ok_or_else(|| {
                         CommandError::transient("Alternate buffer has no file name")
                     })?;
-                out.push_str(&alt_path.display().to_string());
+                out.push_str(&alt_path.to_string_lossy());
             }
             other => out.push_str(other),
         }

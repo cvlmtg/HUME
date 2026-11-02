@@ -64,8 +64,7 @@ pub(super) fn find_theme_file(
             Ok(source) => {
                 // Canonicalize after read: residual race only affects cycle-key
                 // accuracy, not file content. Not a security prefix check.
-                let canonical =
-                    std::fs::canonicalize(&candidate).unwrap_or_else(|_| candidate.clone());
+                let canonical = std::fs::canonicalize(&candidate).unwrap_or(candidate);
                 if visited.insert(canonical.clone()) {
                     return Ok((source, canonical));
                 }

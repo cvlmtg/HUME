@@ -205,13 +205,12 @@ fn update_live_sift(state: &mut EditorState, r: LayerRef) {
     }
     match sift_within(state.buffers.get(bid).text(), from.clone(), &pattern) {
         Ok(new_state) => {
-            let text = new_state.text().clone();
             let sifted = new_state.into_selections();
             state
                 .panes
                 .entries
                 .seeded_mut(pane, bid)
-                .set_selections(sifted.clone(), &text);
+                .set_selections(sifted.clone(), state.buffers.get(bid).text());
             if let Some(sift) = state.input.at_mut::<SiftLayer>(r) {
                 sift.preview = Some(SiftPreview {
                     pattern,
@@ -243,7 +242,7 @@ pub(in crate::editor) fn sift_within(
     raw: &str,
 ) -> Result<EditState, SiftFailure> {
     let (_, regex) = compile_search_input(raw).ok_or(SiftFailure::Invalid)?;
-    sift_matches_within(&EditState::bind(text, sels), &regex).ok_or(SiftFailure::NoMatch)
+    sift_matches_within(EditState::bind(text, sels), &regex).ok_or(SiftFailure::NoMatch)
 }
 
 // ── Snapshot restore helpers ────────────────────────────────────────────────

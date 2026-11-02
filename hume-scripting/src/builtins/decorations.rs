@@ -15,7 +15,7 @@ use crate::types::VirtualLineSpec;
 use super::SteelResult;
 use super::args::{
     ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry, START_CHAR,
-    START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg, item_label, not_live_err,
+    START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg, item_label, list_of, not_live_err,
     optional_hash_entry, optional_symbol_arg, spanned_text, string_arg, symbol_arg,
     symbol_enum_arg, symbol_hash,
 };
@@ -390,8 +390,7 @@ pub(crate) fn diagnostics_for_buffer(
     let entries = require_cap(ctx.host.decorations())?
         .diagnostics_for_buffer(id, floor, range)
         .map_err(generic_err)?;
-    let list: Vec<SteelVal> = entries.into_iter().map(diagnostic_entry_to_steel).collect();
-    Ok(SteelVal::ListV(list.into()))
+    Ok(list_of(entries.into_iter().map(diagnostic_entry_to_steel)))
 }
 
 /// `DiagnosticEntry` -> a symbol-keyed Steel hashmap, field-by-field native

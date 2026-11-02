@@ -796,8 +796,7 @@ impl Buffer {
 
         // self.text is still pre-edit here, so it's safe to call invert.
         let inverse_cs = cs.invert(&self.text);
-        let post_text = post.text().clone();
-        let post_sels = post.into_selections();
+        let (post_text, post_sels) = post.into_parts();
         self.install(target, stores, post_text, Change::Edit(&cs));
         self.record_revision(cs, inverse_cs, pre_sels, post_sels.clone());
         Applied::Changed(post_sels)
@@ -817,8 +816,7 @@ impl Buffer {
         let (post, cs) = self
             .run_edit(EditState::bind(&self.text, sels), cmd)
             .into_parts();
-        let new_text = post.text().clone();
-        let new_sels = post.into_selections();
+        let (new_text, new_sels) = post.into_parts();
 
         // An identity `cs` moved no bytes, but a new text generation would
         // fire `on-text-changed` for one.
@@ -959,8 +957,7 @@ impl Buffer {
         let (landed, cs) = txn
             .apply(&self.text)
             .expect("composed history transaction failed: history is corrupt");
-        let new_text = landed.text().clone();
-        let new_sels = landed.into_selections();
+        let (new_text, new_sels) = landed.into_parts();
         if new_text.version() != self.text.version() {
             self.install(
                 PaneHandle::with_pane(id, acting),

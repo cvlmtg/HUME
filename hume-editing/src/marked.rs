@@ -178,7 +178,6 @@ fn close_char(facing: Facing) -> char {
 
 /// `view` in marker notation: the inverse of [`parse`].
 pub fn render(view: EditView<'_>) -> String {
-    let text = view.text().to_string();
     let len = view.text().len_chars();
     let mut markers: Vec<Vec<&'static str>> = vec![Vec::new(); len + 1];
     let several = view.len() > 1;
@@ -194,8 +193,8 @@ pub fn render(view: EditView<'_>) -> String {
         markers[range.end().offset().index()].push(close);
     }
 
-    let mut out = String::with_capacity(text.len() + view.len() * 4);
-    let mut chars = text.chars();
+    let mut out = String::with_capacity(view.text().len_bytes() + view.len() * 4);
+    let mut chars = view.text().rope().chars();
     for at in markers {
         for marker in at {
             out.push_str(marker);

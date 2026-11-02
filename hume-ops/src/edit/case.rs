@@ -1,6 +1,8 @@
 //! `make-text-lowercase`/`-uppercase`/`-capitalized`: case transforms
 //! applied to each selection as a whole string.
 
+use std::borrow::Cow;
+
 use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
 use unicode_segmentation::UnicodeSegmentation;
@@ -33,7 +35,7 @@ fn transform_case(state: EditState, kind: CaseTransform) -> Edited {
         .view()
         .iter()
         .map(|sel| {
-            let selected = String::from(sel.slice());
+            let selected = Cow::from(sel.slice());
             match kind {
                 CaseTransform::Lower => selected.to_lowercase(),
                 CaseTransform::Upper => selected.to_uppercase(),

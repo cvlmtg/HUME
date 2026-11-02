@@ -309,12 +309,11 @@ pub(in crate::editor) fn preview_search(
     let Some(moved) = moved else {
         return Ok(false);
     };
-    let text = moved.text().clone();
     state
         .panes
         .entries
         .seeded_mut(pane, bid)
-        .set_selections(moved.into_selections(), &text);
+        .set_selections(moved.into_selections(), buf.text());
     Ok(true)
 }
 

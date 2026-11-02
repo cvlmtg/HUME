@@ -507,15 +507,15 @@ impl EditorState {
             );
             return false;
         };
-        let rope = self.buffers.get(bid).text().rope().clone();
+        let rope = self.buffers.get(bid).text().rope();
 
         let stored: Vec<StoredDiag> = diagnostics
             .into_iter()
             .map(|WireDiagnostic { diagnostic: d, raw }| {
                 let raw = Arc::new(raw);
-                let range = hume_lsp::position::lsp_range_to_chars(&rope, &d.range, encoding);
+                let range = hume_lsp::position::lsp_range_to_chars(rope, &d.range, encoding);
                 let range = if range.start == range.end {
-                    widen_zero_length(&rope, range.start)
+                    widen_zero_length(rope, range.start)
                 } else {
                     range
                 };

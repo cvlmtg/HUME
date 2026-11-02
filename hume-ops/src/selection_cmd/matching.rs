@@ -70,7 +70,7 @@ pub fn cmd_split_selection_on_newlines(
 ///
 /// Returns `None` when no matches are found in any selection; the caller
 /// should keep the original selections unchanged.
-pub fn sift_matches_within(state: &EditState, regex: &Regex) -> Option<EditState> {
+pub fn sift_matches_within(state: EditState, regex: &Regex) -> Option<EditState> {
     let mut matches: Vec<Vec<Selection>> = state
         .view()
         .iter()
@@ -85,11 +85,7 @@ pub fn sift_matches_within(state: &EditState, regex: &Regex) -> Option<EditState
     if matches.iter().all(Vec::is_empty) {
         return None;
     }
-    Some(
-        state
-            .clone()
-            .flat_map(|sel| std::mem::take(&mut matches[sel.index()])),
-    )
+    Some(state.flat_map(|sel| std::mem::take(&mut matches[sel.index()])))
 }
 
 // ── Trim whitespace ───────────────────────────────────────────────────────────

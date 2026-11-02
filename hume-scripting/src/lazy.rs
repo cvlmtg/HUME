@@ -194,6 +194,8 @@ impl LazyRegistry {
         plugin_rows: impl IntoIterator<Item = (&'a PluginId, &'static str)>,
         lazy_cmds: &[(String, EntryId, bool)],
     ) -> String {
+        use std::fmt::Write;
+
         let mut rows: Vec<(String, &'static str, String)> = self
             .plugins
             .iter()
@@ -248,12 +250,14 @@ impl LazyRegistry {
             "activations",
         );
         for (id, state, activations) in &rows {
-            out.push_str(&format!(
-                "{}  {:<8}  {}\n",
+            writeln!(
+                out,
+                "{}  {:<8}  {}",
                 pad_to_display_width(id, id_width),
                 state,
                 activations,
-            ));
+            )
+            .expect("writing to a String cannot fail");
         }
         out
     }

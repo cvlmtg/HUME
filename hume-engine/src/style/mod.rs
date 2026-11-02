@@ -4,7 +4,7 @@ pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_line_decorations;
 
 use hume_rope::cluster::ClusterStart;
-use hume_rope::column::{ByteCol, DisplayLineCol};
+use hume_rope::column::DisplayLineCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::providers::Decoration;
@@ -22,8 +22,6 @@ use crate::types::{DisplayLine, EditorMode, Grapheme, PaintedSelections, Resolve
 pub struct StyleScratch {
     /// Per-grapheme resolved styles (parallel to the graphemes slice).
     pub styles: Vec<ResolvedStyle>,
-    /// Raw spans from the buffer's `SyntaxSpans` source, reused each call.
-    pub syntax_spans: Vec<(ExclusiveRange<ByteCol>, ScopeId)>,
     /// Raw decorations from the `PAINT`-kind `DecorationSource` providers,
     /// reused across providers.
     pub decorations: Vec<Decoration>,
@@ -43,7 +41,6 @@ impl StyleScratch {
     pub fn new() -> Self {
         Self {
             styles: Vec::with_capacity(512),
-            syntax_spans: Vec::with_capacity(256),
             decorations: Vec::with_capacity(256),
             tier_bufs: TierBufs::default(),
             sel_spans: Vec::new(),
@@ -56,7 +53,6 @@ impl StyleScratch {
     /// Reset all buffers to empty, retaining allocated capacity.
     pub fn clear(&mut self) {
         self.styles.clear();
-        self.syntax_spans.clear();
         self.decorations.clear();
         self.tier_bufs.clear();
         self.sel_spans.clear();

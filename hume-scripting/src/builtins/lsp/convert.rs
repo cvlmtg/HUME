@@ -9,7 +9,7 @@ use crate::host::{LocationPlace, Place, PlaceCol};
 use hume_core::{BufferId, PaneHandle};
 
 use crate::builtins::SteelResult;
-use crate::builtins::args::{char_range_value, list_items, string_arg, symbol_hash};
+use crate::builtins::args::{char_range_value, list_items, list_of, string_arg, symbol_hash};
 use crate::builtins::errors::{generic_err, require_cap};
 use crate::builtins::ids::pane_or_false;
 use crate::builtins::wire::{tagged_json_arg, wire_position, wire_range};
@@ -150,14 +150,10 @@ fn place_hash(place: Place) -> SteelVal {
 /// entry.
 pub(crate) fn lsp_locations_to_places(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
     let rows = decode_places(ctx, locs)?;
-    let entries: Vec<SteelVal> = rows
-        .into_iter()
-        .map(|row| match row {
-            LocationPlace::Found(place) => place_hash(place),
-            LocationPlace::Skipped => SteelVal::BoolV(false),
-        })
-        .collect();
-    Ok(SteelVal::ListV(entries.into()))
+    Ok(list_of(rows.into_iter().map(|row| match row {
+        LocationPlace::Found(place) => place_hash(place),
+        LocationPlace::Skipped => SteelVal::BoolV(false),
+    })))
 }
 
 /// `(lsp-locations->merged-places locs)` → `(hash 'places l 'skipped n)`:

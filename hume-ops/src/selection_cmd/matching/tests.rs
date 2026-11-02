@@ -295,7 +295,7 @@ fn select_matches_basic() {
     let (text, sels) = parse_state("-[aababab]>\n");
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
     let result =
-        sift_matches_within(&test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
+        sift_matches_within(test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
     // Expect 3 selections: (1,2), (3,4), (5,6)
     assert_eq!(result.view().len(), 3);
     assert_eq!(
@@ -311,7 +311,7 @@ fn select_matches_basic() {
 fn select_matches_no_hits_returns_none() {
     let (text, sels) = parse_state("-[hello]>\n");
     let regex = regex_cursor::engines::meta::Regex::new("xyz").unwrap();
-    assert!(sift_matches_within(&test_fixtures::testing::state(text, sels), &regex).is_none());
+    assert!(sift_matches_within(test_fixtures::testing::state(text, sels), &regex).is_none());
 }
 
 #[test]
@@ -322,7 +322,7 @@ fn select_matches_bounded_to_selection() {
     let text = BufferText::from("abcdab\n");
     let sels = test_fixtures::testing::single(&text, test_fixtures::testing::sel(&text, 2, 3));
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
-    assert!(sift_matches_within(&test_fixtures::testing::state(text, sels), &regex).is_none());
+    assert!(sift_matches_within(test_fixtures::testing::state(text, sels), &regex).is_none());
 }
 
 #[test]
@@ -334,7 +334,7 @@ fn select_matches_multiple_selections() {
     let sels = SelectionSet::new(&text, vec![sel0, sel1], 0);
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
     let result =
-        sift_matches_within(&test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
+        sift_matches_within(test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
     assert_eq!(result.view().len(), 2);
 }
 
@@ -345,7 +345,7 @@ fn select_matches_backward_selection() {
     let sels = test_fixtures::testing::single(&text, test_fixtures::testing::sel(&text, 6, 0)); // backward
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
     let result =
-        sift_matches_within(&test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
+        sift_matches_within(test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
     assert_eq!(result.view().len(), 3);
     assert_eq!(
         (
@@ -362,7 +362,7 @@ fn select_matches_single_char_match() {
     let (text, sels) = parse_state("-[abc]>\n");
     let regex = regex_cursor::engines::meta::Regex::new("b").unwrap();
     let result =
-        sift_matches_within(&test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
+        sift_matches_within(test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
     assert_eq!(result.view().len(), 1);
     let view = result.view();
     let sel = view.primary();
@@ -379,7 +379,7 @@ fn select_matches_combining_grapheme() {
     let sels = test_fixtures::testing::single(&text, test_fixtures::testing::sel(&text, 0, 3));
     let regex = regex_cursor::engines::meta::Regex::new("\u{0065}\u{0301}").unwrap();
     let result =
-        sift_matches_within(&test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
+        sift_matches_within(test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
     assert_eq!(result.view().len(), 1);
     assert_eq!(
         (
@@ -395,7 +395,7 @@ fn select_matches_combining_grapheme() {
 fn sift(pattern: &str) -> impl FnOnce((BufferText, SelectionSet)) -> EditState {
     let regex = regex_cursor::engines::meta::Regex::new(pattern).unwrap();
     move |(text, sels)| {
-        sift_matches_within(&test_fixtures::testing::state(text, sels), &regex)
+        sift_matches_within(test_fixtures::testing::state(text, sels), &regex)
             .expect("the pattern matches")
     }
 }
@@ -423,7 +423,7 @@ fn sift_leaves_out_the_line_break_a_selection_ends_on() {
 fn sift_finds_nothing_in_a_selection_of_only_a_line_break() {
     let (text, sels) = parse_state("a\n-[\n]>b\n");
     let regex = regex_cursor::engines::meta::Regex::new("\n").unwrap();
-    assert!(sift_matches_within(&test_fixtures::testing::state(text, sels), &regex).is_none());
+    assert!(sift_matches_within(test_fixtures::testing::state(text, sels), &regex).is_none());
 }
 
 #[test]
@@ -471,7 +471,7 @@ fn sift_widens_a_match_on_a_bare_combining_mark_to_its_cluster() {
     let sels = test_fixtures::testing::single(&text, test_fixtures::testing::sel(&text, 0, 3));
     let regex = regex_cursor::engines::meta::Regex::new("\u{301}").unwrap();
     let result =
-        sift_matches_within(&test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
+        sift_matches_within(test_fixtures::testing::state(text.clone(), sels), &regex).unwrap();
     assert_eq!(
         (
             result.view().primary().anchor().offset(),

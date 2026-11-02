@@ -16,12 +16,6 @@ pub(crate) fn input_edits_from_changeset(
     cs: &ChangeSet,
     rope: &ropey::Rope,
 ) -> Vec<tree_sitter::InputEdit> {
-    let mut edits: Vec<tree_sitter::InputEdit> = cs
-        .edited_regions()
-        .into_iter()
-        .map(|r| make_input_edit(r.old.start.index(), r.old.end.index(), &r.inserted, rope))
-        .collect();
-
     // All edits are computed in pre-edit coordinate space (the old rope).
     // `tree.edit()` mutates coordinates in-place: applying a left edit first shifts
     // every subsequent byte position, so a right edit specified in original coords
@@ -29,8 +23,11 @@ pub(crate) fn input_edits_from_changeset(
     // rightmost edit is applied first: its coordinates are never invalidated by
     // anything to its left, and vice versa, so all edits remain valid in the
     // pre-edit coordinate space at apply time.
-    edits.reverse();
-    edits
+    cs.edited_regions()
+        .into_iter()
+        .rev()
+        .map(|r| make_input_edit(r.old.start.index(), r.old.end.index(), &r.inserted, rope))
+        .collect()
 }
 
 /// Build a single `InputEdit` from char-indexed old/new positions and the inserted text.

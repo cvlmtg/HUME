@@ -103,8 +103,12 @@ impl TierBufs {
         }
     }
 
+    fn tier_mut(&mut self, tier: HighlightTier) -> &mut Vec<(ExclusiveRange<ByteCol>, ScopeId)> {
+        &mut self.0[tier as usize]
+    }
+
     fn push(&mut self, tier: HighlightTier, interval: (ExclusiveRange<ByteCol>, ScopeId)) {
-        self.0[tier as usize].push(interval);
+        self.tier_mut(tier).push(interval);
     }
 
     fn sort_all(&mut self) {
@@ -132,13 +136,12 @@ pub(crate) fn rebuild_line_decorations(
     scratch: &mut StyleScratch,
 ) -> Option<ScopeId> {
     scratch.tier_bufs.clear();
-    scratch.syntax_spans.clear();
     if let Some(syntax) = syntax {
-        syntax.spans_for_line(line_idx, rope, &mut scratch.syntax_spans);
-        for &interval in scratch.syntax_spans.iter() {
-            scratch.tier_bufs.push(HighlightTier::Syntax, interval);
-        }
-        scratch.syntax_spans.clear();
+        syntax.spans_for_line(
+            line_idx,
+            rope,
+            scratch.tier_bufs.tier_mut(HighlightTier::Syntax),
+        );
     }
     scratch.decorations.clear();
     for (_, provider) in providers.decoration_sources(DecorationKinds::PAINT) {

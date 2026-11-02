@@ -399,11 +399,10 @@ pub fn init(
 /// the shell as usable as possible. The first error encountered is returned;
 /// a second is silently discarded.
 pub fn restore(term: &SharedTerm) -> io::Result<()> {
-    let mut term = term.clone();
-    let launch_cwd_url = term.launch_cwd_url.clone();
+    let mut out = term.clone();
     run_all([
-        write_unwind_escapes(&mut term, launch_cwd_url.as_deref()),
-        term.enter_cooked_mode(),
+        write_unwind_escapes(&mut out, term.launch_cwd_url.as_deref()),
+        out.enter_cooked_mode(),
     ])
 }
 

@@ -28,9 +28,9 @@ pub fn strip_snippet(text: &str) -> String {
                 .position(|&c| c == '}')
                 .map(|p| i + 2 + p);
             let body_end = close.unwrap_or(n);
-            let body: String = chars[i + 2..body_end].iter().collect();
-            if let Some(colon) = body.find(':') {
-                out.push_str(&body[colon + 1..]);
+            let body = &chars[i + 2..body_end];
+            if let Some(colon) = body.iter().position(|&c| c == ':') {
+                out.extend(&body[colon + 1..]);
             }
             i = close.map_or(n, |c| c + 1);
         } else if chars[i] == '$' && i + 1 < n && chars[i + 1].is_ascii_digit() {

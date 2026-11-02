@@ -829,7 +829,7 @@ pub(crate) fn hash_list<T>(
 /// encode counterpart to `list_items`, for a builtin returning a list rather
 /// than decoding one.
 pub(crate) fn list_of(items: impl IntoIterator<Item = SteelVal>) -> SteelVal {
-    SteelVal::ListV(items.into_iter().collect::<Vec<_>>().into())
+    SteelVal::ListV(items.into_iter().collect())
 }
 
 /// A Steel list of strings: `list_of`'s common case, for a builtin whose

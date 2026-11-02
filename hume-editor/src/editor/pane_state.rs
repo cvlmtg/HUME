@@ -239,7 +239,8 @@ pub(in crate::editor) fn write_cursor(
     pos: ClusterStart,
 ) {
     let text = buffers.get(bid).text();
-    ensure(pane_state, buffers, panes, pid, bid).store(EditState::with_cursor(text.clone(), pos));
+    ensure(pane_state, buffers, panes, pid, bid)
+        .set_selections(SelectionSet::cursor(text, pos), text);
 }
 
 /// Resolves a 0-based `(line, grapheme_col)` to its cluster, clamping the

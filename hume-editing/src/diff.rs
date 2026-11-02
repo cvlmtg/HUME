@@ -212,7 +212,7 @@ pub fn diff_words(old: &str, new: &str) -> Vec<WordHunk> {
     )
     .into_iter()
     .map(|LineHunk { old, new, kind }| {
-        let joined = |side: &[&str], range: &Range<usize>| side[range.clone()].join("");
+        let joined = |side: &[&str], range: &Range<usize>| side[range.clone()].concat();
         let kind = match kind {
             LineHunkKind::Equal => WordHunkKind::Equal,
             LineHunkKind::Delete => WordHunkKind::Delete(joined(&tokens.old, &old)),

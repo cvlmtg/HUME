@@ -237,10 +237,10 @@ pub(crate) fn lsp_language_servers(ctx: &mut SteelCtx, language: SteelVal) -> St
             lists.set(*tier, *origin, entries.clone());
         }
     }
-    let mut entries: Vec<ListEntry> = Vec::new();
+    let mut entries: Vec<&ListEntry> = Vec::new();
     for entry in lists.plan(|_| true) {
         if super::registered_now(ctx, &entry.name)? {
-            entries.push(entry.clone());
+            entries.push(entry);
         }
     }
     let features =

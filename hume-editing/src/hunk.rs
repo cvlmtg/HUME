@@ -175,9 +175,7 @@ fn group_hunk(
     let (mut old_ranges, mut new_ranges) = (Vec::new(), Vec::new());
     for region in regions {
         old_chars += region.old.start.chars_since(cursor);
-        slice(cursor, region.old.start)
-            .chunks()
-            .for_each(|c| old_text.push_str(c));
+        old_text.extend(slice(cursor, region.old.start).chunks());
         let inserted_chars = region.inserted.chars().count();
         old_ranges.push(old_chars..old_chars + inserted_chars);
         old_chars += inserted_chars;
@@ -185,9 +183,7 @@ fn group_hunk(
         new_ranges.push(region.old.start.chars_since(start)..region.old.end.chars_since(start));
         cursor = region.old.end;
     }
-    slice(cursor, stop)
-        .chunks()
-        .for_each(|c| old_text.push_str(c));
+    old_text.extend(slice(cursor, stop).chunks());
 
     let old_lines: Vec<&str> = split_lines(&old_text);
     let new_lines: Vec<&str> = split_lines(&new_text);

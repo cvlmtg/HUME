@@ -12,7 +12,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use super::SteelResult;
 use super::args::{
     ArgPane, CHAR_RANGE_KEYS, LINE_RANGE_KEYS, bool_arg, char_range_value, line_range_value,
-    list_of, not_live_err, optional_hash_entry, relative_base_arg, symbol_hash,
+    list_of, not_live_err, optional_hash_entry, relative_base_arg, string_list, symbol_hash,
 };
 use super::errors::generic_err;
 use super::ids::{BufferGeneration, SteelBufferKey, SteelPane};
@@ -39,27 +39,25 @@ pub(crate) fn focused_pane(ctx: &mut SteelCtx) -> SteelResult {
 /// `(buffers)` → list of every open buffer, as `(bid . #f)`-paned handles
 /// (no pane of its own) in open-order.
 pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
-    let list: Vec<SteelVal> = ctx
+    let list = ctx
         .host
         .buffers()
         .buffer_ids()
         .into_iter()
-        .map(|id| SteelPane(PaneHandle::buffer_only(id)).into_steel_val())
-        .collect();
-    list.into_steelval().map_err(generic_err)
+        .map(|id| SteelPane(PaneHandle::buffer_only(id)).into_steel_val());
+    Ok(list_of(list))
 }
 
 /// `(panes)` → list of every open pane, across every tab, including panes
 /// in inactive tabs, not just the ones currently on screen.
 pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
-    let list: Vec<SteelVal> = ctx
+    let list = ctx
         .host
         .buffers()
         .panes()
         .into_iter()
-        .map(|h| SteelPane(h).into_steel_val())
-        .collect();
-    list.into_steelval().map_err(generic_err)
+        .map(|h| SteelPane(h).into_steel_val());
+    Ok(list_of(list))
 }
 
 /// `(buffer-panes pane)` → list of every pane showing `pane`'s buffer,
@@ -67,14 +65,13 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
 /// `(car (buffer-panes pane))` is the caller's own choice of a pane on the
 /// buffer.
 pub(crate) fn buffer_panes(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
-    let list: Vec<SteelVal> = ctx
+    let list = ctx
         .host
         .buffers()
         .buffer_panes(bid)
         .into_iter()
-        .map(|h| SteelPane(h).into_steel_val())
-        .collect();
-    list.into_steelval().map_err(generic_err)
+        .map(|h| SteelPane(h).into_steel_val());
+    Ok(list_of(list))
 }
 
 /// `(buffer-key pane)` → an opaque, hashable, `equal?`-comparable key naming
@@ -325,7 +322,7 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -
         .buffers()
         .buffer_lines(bid, range)
         .ok_or_else(invalid_id)?;
-    lines.into_steelval().map_err(generic_err)
+    Ok(string_list(lines))
 }
 
 // ── Mutating builtins ─────────────────────────────────────────────────────────

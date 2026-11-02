@@ -239,7 +239,7 @@ fn removed_piece(removed: Option<RopeSlice<'_>>, linewise: bool) -> Piece {
 /// The register entry for `removed`, pasting as `shape`; empty when nothing
 /// was removed.
 fn piece(removed: Option<RopeSlice<'_>>, shape: Shape) -> Piece {
-    Piece::new(removed.map_or_else(String::new, |r| r.to_string()), shape)
+    Piece::new(removed.map(String::from).unwrap_or_default(), shape)
 }
 
 /// What `d` would put in the register for each selection, in document order,

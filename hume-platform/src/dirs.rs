@@ -117,7 +117,7 @@ impl Dirs {
         let dirs = Self {
             config: config_dir_with(&env).map(pin).transpose()?,
             data: data_dir_with(&env).map(pin).transpose()?,
-            runtime: runtime_dir_with(&env, exe, cwd.clone())
+            runtime: runtime_dir_with(&env, exe, cwd.as_deref())
                 .map(pin)
                 .transpose()?,
             tmp: Some(pin(tmp)?),
@@ -229,7 +229,7 @@ fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 fn runtime_dir_with(
     env: impl Fn(&str) -> Option<String>,
     exe: Option<PathBuf>,
-    cwd: Option<PathBuf>,
+    cwd: Option<&Path>,
 ) -> Option<PathBuf> {
     if let Some(rt) = env("HUME_RUNTIME") {
         return Some(PathBuf::from(rt));

@@ -111,16 +111,14 @@ pub fn uri_to_path(uri: &lsp_types::Uri) -> Result<PathBuf, UriError> {
                 "segment {decoded:?} decodes to contain a path separator"
             )));
         }
-        segments.push(decoded.into_owned());
+        segments.push(decoded);
     }
 
     // UNC form: "file://server/share/foo": reconstruct "\\server\share\foo"
     // rather than falling through to the leading-slash form below.
     #[cfg(windows)]
     if let Some(host) = unc_host {
-        let mut path = format!(r"\\{host}\");
-        path.push_str(&segments.join("\\"));
-        return Ok(PathBuf::from(path));
+        return Ok(PathBuf::from(format!(r"\\{host}\{}", segments.join("\\"))));
     }
 
     // Windows drive-letter form: "file:///C:/foo" (or the colon escaped as
@@ -130,17 +128,10 @@ pub fn uri_to_path(uri: &lsp_types::Uri) -> Result<PathBuf, UriError> {
     if let Some(first) = segments.first()
         && is_drive_letter_segment(first)
     {
-        let mut path = first.clone();
-        for seg in &segments[1..] {
-            path.push('\\');
-            path.push_str(seg);
-        }
-        return Ok(PathBuf::from(path));
+        return Ok(PathBuf::from(segments.join("\\")));
     }
 
-    let mut path = String::from("/");
-    path.push_str(&segments.join("/"));
-    Ok(PathBuf::from(path))
+    Ok(PathBuf::from(format!("/{}", segments.join("/"))))
 }
 
 /// `Ok(None)` for no authority, or an empty/`localhost` one. Windows:

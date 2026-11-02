@@ -146,17 +146,19 @@ fn recover_progress(params: &serde_json::Value) -> Option<lsp_types::ProgressPar
 /// missing or not an integer: `MessageType` is a transparent `i32` newtype,
 /// so any integer parses; only the type tag itself is ever the problem.
 /// `message` staying missing/non-string is unrecoverable (it's the payload)
-/// and still falls through.
+/// and still falls through. An integer `type` means the tag was not the
+/// problem, so that shape returns `None` without cloning `params`.
 fn recover_message<T>(params: &serde_json::Value, default_type: lsp_types::MessageType) -> Option<T>
 where
     T: for<'de> serde::Deserialize<'de>,
 {
-    let mut patched = params.clone();
-    let obj = patched.as_object_mut()?;
-    let type_ok = obj.get("type").is_some_and(|t| t.is_i64() || t.is_u64());
-    if !type_ok {
-        obj.insert("type".into(), serde_json::to_value(default_type).ok()?);
+    if params.get("type").is_some_and(|t| t.is_i64() || t.is_u64()) {
+        return None;
     }
+    let mut patched = params.clone();
+    patched
+        .as_object_mut()?
+        .insert("type".into(), serde_json::to_value(default_type).ok()?);
     T::deserialize(&patched).ok()
 }
 

@@ -45,7 +45,7 @@ impl ShellCommand {
         let program = words
             .next()
             .filter(|program| !program.is_empty())
-            .ok_or_else(|| "needs a program to run".to_string())?;
+            .ok_or("needs a program to run")?;
         Ok(Self {
             program,
             args: words.collect(),

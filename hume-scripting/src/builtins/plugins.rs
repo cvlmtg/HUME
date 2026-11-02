@@ -10,7 +10,7 @@
 
 use hume_core::Severity;
 use steel::rerrs::SteelErr;
-use steel::rvals::{IntoSteelVal, SteelVal};
+use steel::rvals::SteelVal;
 
 use crate::{
     Rooted, SteelCtx,
@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::SteelResult;
-use super::args::{list_items, list_to_strings, optional_string_arg, symbol_hash};
+use super::args::{list_items, list_to_strings, optional_string_arg, string_list, symbol_hash};
 use super::errors::generic_err;
 use crate::host::check_lazy_claim;
 use paths::{
@@ -421,28 +421,21 @@ fn entry_file_arg(entry: SteelVal) -> Result<Option<EntryFile>, SteelErr> {
 /// Derived from `LazyRegistry` so lazy plugins correctly read as not-yet-loaded
 /// until their body has been evaluated.
 pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
-    let vals: Vec<SteelVal> = ctx
+    let names = ctx
         .registries
         .lazy_registry
         .plugins
         .iter()
         .filter(|(id, state)| id.file.is_main() && matches!(state, PluginState::Loaded))
-        .map(|(id, _)| SteelVal::StringV(id.plugin.to_string().into()))
-        .collect();
-    vals.into_steelval().map_err(generic_err)
+        .map(|(id, _)| id.plugin.to_string());
+    Ok(string_list(names))
 }
 
 /// `(declared-plugins)`: return a Steel list of every declared plugin name,
 /// `core:*` included.  PLUM filters out `core:*` itself where install policy
 /// requires it (core plugins are bundled, never installed by PLUM).
 pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
-    let vals: Vec<SteelVal> = ctx
-        .registries
-        .plugin_records
-        .plum_names()
-        .map(|s| SteelVal::StringV(s.into()))
-        .collect();
-    vals.into_steelval().map_err(generic_err)
+    Ok(string_list(ctx.registries.plugin_records.plum_names()))
 }
 
 /// `(declared-plugin-ref name)`: the `#:ref` the last `load-plugin!` of

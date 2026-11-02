@@ -21,14 +21,14 @@
 //!   using the `ScriptingHost`'s one persistent watchdog.
 
 use steel::rerrs::SteelErr;
-use steel::rvals::{IntoSteelVal, SteelVal};
+use steel::rvals::SteelVal;
 
 use super::entry_file_arg;
 use super::paths::require_program_for_path;
 use crate::SteelCtx;
 use crate::attribution::{EntryFile, EntryId, PluginId};
 use crate::builtins::SteelResult;
-use crate::builtins::args::optional_steel_error_arg;
+use crate::builtins::args::{optional_steel_error_arg, string_list};
 use crate::builtins::errors::generic_err;
 use crate::lazy::PluginState;
 use crate::plugin_record::Resolution;
@@ -152,14 +152,14 @@ pub(crate) fn finish_lazy_activation(ctx: &mut SteelCtx, error: SteelVal) -> Ste
     if let Some(err) = error {
         fail_activation_body(ctx, id, err);
     } else {
-        ctx.registries
-            .lazy_registry
-            .plugins
-            .insert(id.clone(), PluginState::Loaded);
         ctx.registries.lazy_registry.drop_activations_for(&id);
         // Drop any `Lazy` stub the plugin didn't replace via `define-command!`:
         // dead weight now that the plugin is Loaded and won't re-run its body.
         ctx.host.commands().unregister_lazy_stubs_of(&id);
+        ctx.registries
+            .lazy_registry
+            .plugins
+            .insert(id, PluginState::Loaded);
     }
 
     Ok(SteelVal::Void)
@@ -212,13 +212,11 @@ pub(crate) fn abandon_open_activations(ctx: &mut SteelCtx, depth: usize, reason:
 /// a permanent side effect for a call that could never succeed.
 pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResult {
     match ctx.host.commands().lazy_mappable_command_owner(&name) {
-        Some(id) => vec![
+        Some(id) => Ok(string_list([
             id.plugin.to_string(),
             id.file.as_str().to_string(),
             id.to_string(),
-        ]
-        .into_steelval()
-        .map_err(generic_err),
+        ])),
         None => Ok(SteelVal::BoolV(false)),
     }
 }

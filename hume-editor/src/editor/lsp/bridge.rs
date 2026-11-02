@@ -378,13 +378,13 @@ impl EditorState {
         let did = self.lsp.deliveries.next_id();
         let deadline =
             Instant::now() + Duration::from_millis(self.settings.lsp_request_timeout_ms as u64);
-        let mut slots = Vec::with_capacity(members.len());
-        for member in members {
-            slots.push(match member {
+        let slots: Vec<Slot> = members
+            .into_iter()
+            .map(|member| match member {
                 Member::Send(routed, json) => self.send_slot(&spec.method, routed, json, deadline),
                 Member::Failed(server, error) => Slot::failed(server, error),
-            });
-        }
+            })
+            .collect();
         let complete = !slots.iter().any(Slot::waiting);
         self.lsp.deliveries.map.insert(
             did,

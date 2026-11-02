@@ -209,9 +209,8 @@ fn parse_raw_recursive(
 
     match raw.table.get("inherits").and_then(|v| v.as_str()) {
         Some(parent_name) => {
-            let parent_name = parent_name.to_owned();
             let parent_raw =
-                load_raw_recursive(&parent_name, search_paths, visited, depth + 1, path)?;
+                load_raw_recursive(parent_name, search_paths, visited, depth + 1, path)?;
             Ok(merge_raw_themes(parent_raw, raw))
         }
         None => Ok(raw),
@@ -296,17 +295,13 @@ fn merge_raw_themes(parent: RawTheme, child: RawTheme) -> RawTheme {
     // either side, so both `Value::Table` matches below are infallible.
     let merged_palette = match (table.remove("palette"), child_table.remove("palette")) {
         (Some(toml::Value::Table(mut p)), Some(toml::Value::Table(c))) => {
-            for (k, v) in c {
-                p.insert(k, v);
-            }
+            p.extend(c);
             Some(toml::Value::Table(p))
         }
         (p, c) => c.or(p),
     };
 
-    for (key, value) in child_table {
-        table.insert(key, value);
-    }
+    table.extend(child_table);
     if let Some(palette) = merged_palette {
         table.insert("palette".to_owned(), palette);
     }
@@ -350,7 +345,7 @@ fn merge_raw_themes(parent: RawTheme, child: RawTheme) -> RawTheme {
 /// collected as a warning the same way, just earlier (see `RawTheme::warnings`).
 fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     let RawTheme {
-        table,
+        mut table,
         origins,
         palette_origins,
         mut warnings,
@@ -366,33 +361,33 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     // through to an ANSI/hex match instead of getting its own cascading
     // warning from `resolve_color` below.
     let mut palette: FxHashMap<String, Option<Rgb>> = FxHashMap::default();
-    if let Some(pal_table) = table.get("palette").and_then(|v| v.as_table()) {
+    if let Some(toml::Value::Table(pal_table)) = table.remove("palette") {
         for (k, v) in pal_table {
-            let origin = palette_origins.get(k).map(|p| &**p);
-            let hex = match v.as_str() {
-                Some(s) => s,
+            let origin = palette_origins.get(&k).map(|p| &**p);
+            let color = match v.as_str() {
                 None => {
-                    warnings.push(attribute(bad_style_field("palette", k, "a string"), origin));
-                    palette.insert(k.clone(), None);
-                    continue;
-                }
-            };
-            match parse_hex_color(hex) {
-                Ok(color) => {
-                    palette.insert(k.clone(), Some(color));
-                }
-                Err(_) => {
                     warnings.push(attribute(
-                        ThemeError::BadColor {
-                            key: format!("palette.{k}"),
-                            field: None,
-                            value: hex.to_owned(),
-                        },
+                        bad_style_field("palette", &k, "a string"),
                         origin,
                     ));
-                    palette.insert(k.clone(), None);
+                    None
                 }
-            }
+                Some(hex) => match parse_hex_color(hex) {
+                    Ok(color) => Some(color),
+                    Err(_) => {
+                        warnings.push(attribute(
+                            ThemeError::BadColor {
+                                key: format!("palette.{k}"),
+                                field: None,
+                                value: hex.to_owned(),
+                            },
+                            origin,
+                        ));
+                        None
+                    }
+                },
+            };
+            palette.insert(k, color);
         }
     }
 

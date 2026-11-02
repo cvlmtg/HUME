@@ -1,5 +1,7 @@
 //! Character/string insertion, auto-indent on Enter/`o`/`O`, and Tab.
 
+use std::borrow::Cow;
+
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
 use hume_editing::indent::BreakIndent;
@@ -403,7 +405,7 @@ fn spaces_to_stops(state: EditState, tab_width: u8) -> Edited {
         let col = match prev {
             Some((prev_line, prev_at, prev_col)) if prev_line == line => {
                 let between = text.slice(ExclusiveRange::new(prev_at, at.offset()));
-                prev_col + str_width(&between.to_string(), prev_col, tab_width)
+                prev_col + str_width(&Cow::from(between), prev_col, tab_width)
             }
             _ => text
                 .columns()

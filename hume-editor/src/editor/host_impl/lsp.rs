@@ -68,13 +68,13 @@ impl<'a> LspHost for EditorHostImpl<'a> {
     fn track_position(&mut self, pane: ShownHandle) -> Result<HostToken, String> {
         let t = self.shown(pane)?;
         let bid = t.bid(self.view);
-        let text = self.state.buffers.get(bid).text().clone();
+        let text = self.state.buffers.get(bid).text();
         let head = t
             .state(&self.state.panes.entries, self.view)
-            .view(&text)
+            .view(text)
             .primary()
             .head();
-        Ok(self.state.panes.tracked.track(bid, &text, head))
+        Ok(self.state.panes.tracked.track(bid, text, head))
     }
 
     fn tracked_position_params(&self, token: HostToken) -> Option<PositionParams> {

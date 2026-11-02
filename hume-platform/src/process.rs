@@ -206,11 +206,16 @@ fn spawn_failed(command: &Command, e: io::Error) -> io::Error {
 /// The message for `program` failing: its exit, when it had one, and its
 /// stderr, when it wrote any.
 pub fn failure_message(program: &str, status: Option<ExitStatus>, stderr: &str) -> String {
+    use std::fmt::Write;
+
     let mut message = format!("{program} failed");
-    match status.map(|status| status.code()) {
-        Some(Some(code)) => message.push_str(&format!(" (exit code {code})")),
-        Some(None) => message.push_str(" (killed by signal)"),
-        None => {}
+    if let Some(status) = status {
+        match status.code() {
+            Some(code) => {
+                write!(message, " (exit code {code})").expect("writing to a String cannot fail");
+            }
+            None => message.push_str(" (killed by signal)"),
+        }
     }
     let stderr = stderr.trim();
     if !stderr.is_empty() {

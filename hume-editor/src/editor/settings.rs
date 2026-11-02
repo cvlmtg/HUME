@@ -339,8 +339,8 @@ macro_rules! option_value {
 
 /// Dispatch from a parser-kind token to a `BufferOverrides` accessor.
 ///
-/// Every buffer setting but `word-chars` is `Copy`, so cloning it to resolve
-/// buffer-override-or-global is free, and the default arm does that. `word_chars`
+/// Every buffer setting but `word-chars` is `Copy`, so the default arm
+/// resolves buffer-override-or-global by copying. `word_chars`
 /// is the one `String`-typed buffer setting; borrowing instead of cloning is
 /// what lets [`hume_editing::word::WordChars`] stay borrowed-and-`Copy` per
 /// its own doc, rather than every caller paying a heap clone per keystroke.
@@ -354,7 +354,7 @@ macro_rules! buffer_accessor {
     ($bname:ident, $btype:ty, $bparser:ident) => {
         /// Effective value: buffer override → global default.
         pub(in crate::editor) fn $bname(&self, global: &EditorSettings) -> $btype {
-            self.$bname.clone().unwrap_or_else(|| global.$bname.clone())
+            self.$bname.unwrap_or(global.$bname)
         }
     };
 }

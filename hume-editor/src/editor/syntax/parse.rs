@@ -61,9 +61,9 @@ impl Editor {
             return;
         };
 
-        let text = self.state.buffers.get(bid).text().clone();
+        let text = self.state.buffers.get(bid).text();
         let langs = self.state.config.languages.grammar_snapshot();
-        let (syn, req) = Syntax::attach(bundle, bid, &text, &langs);
+        let (syn, req) = Syntax::attach(bundle, bid, text, &langs);
         self.state.buffers.get_mut(bid).syntax = Some(syn);
         if let Some(req) = req {
             self.parse_worker.post(req);
