@@ -17,6 +17,7 @@ use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, LineEnding};
 use hume_editing::transaction::Transaction;
 use hume_platform::path::AbsolutePath;
+use hume_rope::cluster::ClusterRange;
 
 mod disk;
 mod dump;
@@ -973,6 +974,22 @@ impl Buffer {
     /// The current buffer contents.
     pub(crate) fn text(&self) -> &BufferText {
         &self.text
+    }
+
+    /// The text beside its syntax tree, which reads it while it changes.
+    /// `None` without a language.
+    pub(in crate::editor) fn text_and_syntax_mut(&mut self) -> Option<(&BufferText, &mut Syntax)> {
+        let syntax = self.syntax.as_mut()?;
+        Some((&self.text, syntax))
+    }
+
+    /// Store `matches` of `pattern` as found in the current text.
+    pub(in crate::editor) fn set_search_matches(
+        &mut self,
+        pattern: String,
+        matches: Vec<ClusterRange>,
+    ) {
+        self.search_matches.set(pattern, matches, &self.text);
     }
 
     /// The bytes a save writes: the text with the buffer's own line endings.

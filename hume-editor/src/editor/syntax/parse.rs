@@ -226,7 +226,7 @@ impl Editor {
             }
 
             // frame_tick is a no-op once parsed_gen == generation, so check that
-            // before paying for the text clone and grammar-snapshot Arc bump.
+            // before paying for the grammar-snapshot Arc bump.
             //
             // Checks `parsed_gen`, not `Syntax::is_current`: this asks
             // "should another request be posted for this generation?", and a
@@ -243,16 +243,14 @@ impl Editor {
                 continue;
             }
 
-            let text = self.state.buffers.get(bid).text().clone();
             let langs = self.state.config.languages.grammar_snapshot();
-            let syn = self
+            let (text, syn) = self
                 .state
                 .buffers
                 .get_mut(bid)
-                .syntax
-                .as_mut()
+                .text_and_syntax_mut()
                 .expect("syntax is_some checked above");
-            let outcome = syn.frame_tick(bid, &text, &langs);
+            let outcome = syn.frame_tick(bid, text, &langs);
 
             if let Some(brk) = outcome.chain_break {
                 report_chain_break(&mut self.state, bid, &brk);
@@ -347,15 +345,13 @@ pub(in crate::editor) fn ensure_syntax_current(
         return;
     }
 
-    let text = buf.text().clone();
     let loads = GrammarLoads::new(&mut state.config.languages, scopes);
-    let syn = state
+    let (text, syn) = state
         .buffers
         .get_mut(bid)
-        .syntax
-        .as_mut()
+        .text_and_syntax_mut()
         .expect("syntax is_some checked above");
-    let chain_break = syn.ensure_current(&text, loads);
+    let chain_break = syn.ensure_current(text, loads);
     if let Some(brk) = chain_break {
         report_chain_break(state, bid, &brk);
     }

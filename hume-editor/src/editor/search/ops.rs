@@ -71,14 +71,8 @@ pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: B
     let pattern_str = sp.pattern_str.clone();
     // sp last used above; NLL ends the buf.search_pattern borrow here.
 
-    let matches = {
-        let text = buf.text();
-        find_all_matches(text, &regex)
-    };
-    // text borrow ended, so buf.search_matches can now be written.
-
-    let text = buf.text().clone();
-    buf.search_matches.set(pattern_str, matches, &text);
+    let matches = find_all_matches(buf.text(), &regex);
+    buf.set_search_matches(pattern_str, matches);
     #[cfg(test)]
     {
         buf.search_scans += 1;
