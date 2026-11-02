@@ -119,11 +119,10 @@ would block for too long:
 
 ### Staleness
 
-Every restart (`bw/reindex!`) cancels the pending tick, bumps the entry's `"gen"` and
-empties the in-progress set, which a restart exists to replace. A tick closes over the
-`"gen"` it started under and does nothing once the entry's has moved on. Cancelling
-already stops the tick, even once it is due, so `"gen"` is a second guard (the index's
-[Stale async work](../README.md#stale-async-work)).
+Every restart (`bw/reindex!`) cancels the pending tick and empties the in-progress set,
+which a restart exists to replace. The entry's `"timer"` is the walk's only pending tick,
+and cancelling stops it even once it is due, so a replaced walk never runs again (the
+index's [Stale async work](../README.md#stale-async-work)).
 
 `on-buffer-close` forgets the entry and cancels its tick, and `on-buffer-open` forgets it
 before it reindexes. A debounced refresh can fire after the entry is gone. It then calls
@@ -190,10 +189,11 @@ hook is raised only by the global write path; see [Known limitations](#known-lim
 
 ### Non-ASCII words
 
-Steel has no Unicode character-category table, so the scan hands each line to
-`stdlib/split-words`, which reads the buffer's own `word-chars` and runs the native
-`split-words` builtin: the same classifier the `w`/`b` motions use. A candidate is what a
-`w` motion would select: `café` (combining accent) stays one word, `l'élément` splits at
+Steel has no Unicode character-category table, so the scan joins a window's lines with
+line breaks and hands them to `stdlib/split-words` in one call, which reads the buffer's
+own `word-chars` and runs the native `split-words` builtin: the same classifier the
+`w`/`b` motions use. A line break is never a word character, so no word spans two lines.
+A candidate is what a `w` motion would select: `café` (combining accent) stays one word, `l'élément` splits at
 the curly apostrophe, `foo—bar` splits at the em dash, and `foo-bar` is one word wherever
 `word-chars` includes `-`.
 

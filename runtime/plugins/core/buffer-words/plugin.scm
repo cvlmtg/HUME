@@ -18,12 +18,10 @@
 
 ;;; SSOT for a buffer's starting shape — see README.md's "Double-buffered cache".
 (define (bw/fresh-entry)
-  (hash "words" #f "set" #f "seen" #f "building" #f "timer" #f "gen" 0 "live-id" #f))
+  (hash "words" #f "set" #f "seen" #f "building" #f "timer" #f "live-id" #f))
 
 (define (bw/entry pane)
-  (let ([table (unbox bw/*buffers*)]
-        [key (buffer-key pane)])
-    (and (hash-contains? table key) (hash-ref table key))))
+  (hash-try-get (unbox bw/*buffers*) (buffer-key pane)))
 
 (define (bw/install! pane entry)
   (set-box! bw/*buffers* (hash-insert (unbox bw/*buffers*) (buffer-key pane) entry)))
@@ -59,11 +57,18 @@
             (hashset-insert (hashset-insert set w) twin)
             (hashset-insert set w)))))
 
-;;; Folds every word in `lines` into `set` — see README.md's "Non-ASCII words".
-(define (bw/add-lines set pane lines)
-  (foldl (lambda (line words)
-           (foldl (lambda (w s) (bw/add-word s w)) words (call! "stdlib/split-words" pane line)))
-         set lines))
+(define (bw/add-words set words)
+  (foldl (lambda (w s) (bw/add-word s w)) set words))
+
+;;; Every word of `lines`, split in one call — see README.md's "Non-ASCII words".
+(define (bw/split-lines pane lines)
+  (call! "stdlib/split-words" pane (string-join lines "\n")))
+
+;;; Every word of lines `lo` (inclusive) to `hi` (exclusive).
+(define (bw/window-words pane lo hi)
+  (if (< lo hi)
+      (bw/split-lines pane (buffer-lines pane #:range (hash 'start-line lo 'end-line hi)))
+      '()))
 
 ;;; 0-indexed cursor line, or the top of the buffer when no pane shows it — see README.md's "Anchor line".
 (define (bw/anchor-line pane)
@@ -78,11 +83,6 @@
 
 (define (bw/line-chars lines)
   (foldl (lambda (line n) (+ n (string-length line))) 0 lines))
-
-;;; The distinct words of `lines`, as a hashset.
-(define (bw/words-in pane lines)
-  (apply hashset
-         (call! "stdlib/concat" (map (lambda (line) (call! "stdlib/split-words" pane line)) lines))))
 
 ;;; `words` plus each one's case twin — see README.md's "Case twins".
 (define (bw/with-twins words)
@@ -101,21 +101,23 @@
 ;;; `set` updated for `changes`: `set` itself when no word joins or leaves,
 ;;; `#f` when a restarted walk costs less — see README.md's "Updating after an edit".
 (define (bw/updated-set set pane changes)
-  (let ([old-lines (bw/hunk-lines changes 'old-lines)]
-        [new-lines (bw/hunk-lines changes 'new-lines)])
-    (and (<= (+ (bw/line-chars old-lines) (bw/line-chars new-lines)) bw/chars-per-tick)
-         (let* ([new-words (bw/words-in pane new-lines)]
-                [candidates (filter (lambda (w) (and (hashset-contains? set w)
-                                                     (not (hashset-contains? new-words w))))
-                                    (hashset->list (bw/words-in pane old-lines)))])
-           (and (<= (length candidates) bw/max-word-checks)
-                (let* ([gone (filter (lambda (w) (not (bw/present? pane w))) candidates)]
-                       [kept (if (null? gone)
-                                 set
-                                 ;; See README.md's "Implementation notes" for the intersection.
-                                 (hashset-difference
-                                   set (hashset-intersection set (apply hashset (bw/with-twins gone)))))])
-                  (foldl (lambda (w s) (bw/add-word s w)) kept (hashset->list new-words))))))))
+  (if (null? changes)
+      set
+      (let ([old-lines (bw/hunk-lines changes 'old-lines)]
+            [new-lines (bw/hunk-lines changes 'new-lines)])
+        (and (<= (+ (bw/line-chars old-lines) (bw/line-chars new-lines)) bw/chars-per-tick)
+             (let* ([new-words (list->hashset (bw/split-lines pane new-lines))]
+                    [candidates (filter (lambda (w) (and (hashset-contains? set w)
+                                                         (not (hashset-contains? new-words w))))
+                                        (hashset->list (list->hashset (bw/split-lines pane old-lines))))])
+               (and (<= (length candidates) bw/max-word-checks)
+                    (let* ([gone (filter (lambda (w) (not (bw/present? pane w))) candidates)]
+                           [kept (if (null? gone)
+                                     set
+                                     ;; See README.md's "Implementation notes" for the intersection.
+                                     (hashset-difference
+                                       set (hashset-intersection set (apply hashset (bw/with-twins gone)))))])
+                      (bw/add-words kept (hashset->list new-words)))))))))
 
 ;;; Walk position `p`, a line of the text before `changes`, in the text after
 ;;; them. `side` is 'forward or 'backward, the end of a hunk spanning `p` it
@@ -140,9 +142,6 @@
       "building" #f)
     "timer" #f))
 
-(define (bw/continue-entry entry building timer)
-  (hash-insert (hash-insert entry "building" building) "timer" timer))
-
 ;;; Pushes `entry`'s finished word list to the open menu, if any — see README.md's
 ;;; "Answering a trigger".
 (define (bw/push-finished-answer! pane entry)
@@ -151,80 +150,74 @@
       (completion-emit! id (hash-ref entry "words"))
       (bw/install! pane (hash-insert entry "live-id" #f)))))
 
-;;; End line (exclusive) of the forward window from `line` (< `total`) — see README.md's "Character budget".
+;;; End line (exclusive) of the forward window from `line` — see README.md's "Character budget".
 (define (bw/forward-end pane line total len)
-  (let ([target (+ (line->char-offset pane line) bw/chars-per-tick)])
-    (if (>= target len)
-        total
-        (max (+ line 1) (char-offset->line pane target)))))
+  (if (>= line total)
+      total
+      (let ([target (+ (line->char-offset pane line) bw/chars-per-tick)])
+        (if (>= target len)
+            total
+            (max (+ line 1) (char-offset->line pane target))))))
 
-;;; Start line of the backward window ending before `hi` (> 0) — see README.md's "Character budget".
+;;; Start line of the backward window ending before `hi` — see README.md's "Character budget".
 (define (bw/backward-start pane hi total len)
-  (let ([target (- (if (< hi total) (line->char-offset pane hi) len) bw/chars-per-tick)])
-    (if (<= target 0)
-        0
-        (min (- hi 1) (+ (char-offset->line pane (- target 1)) 1)))))
+  (if (<= hi 0)
+      0
+      (let ([target (- (if (< hi total) (line->char-offset pane hi) len) bw/chars-per-tick)])
+        (if (<= target 0)
+            0
+            (min (- hi 1) (+ (char-offset->line pane (- target 1)) 1))))))
 
 ;;; One walk tick, caught up with any edit since the last one — see README.md's
 ;;; "Cursor-outward, line-windowed indexing" and "Updating after an edit".
-(define (bw/walk! pane gen fwd-from bwd-from)
-  (let ([entry (bw/entry pane)])
-    (when (and entry (= (hash-ref entry "gen") gen))
-      (let* ([now (buffer-generation pane)]
-             [changes (buffer-changes-since pane (hash-ref entry "seen"))]
-             [caught-up (and changes
-                             (bw/updated-set (or (hash-ref entry "building") (hashset)) pane changes))])
-        (if (not caught-up)
-            (bw/reindex! pane)
-            (let* ([fwd-line (bw/shift-line changes fwd-from 'forward)]
-                   [bwd-line (bw/shift-line changes bwd-from 'backward)]
-                   [total (buffer-line-count pane)]
-                   [len (buffer-char-count pane)]
-                   [fwd-hi (if (< fwd-line total) (bw/forward-end pane fwd-line total len) total)]
-                   [fwd-lines (if (< fwd-line fwd-hi) (buffer-lines pane #:range (hash 'start-line fwd-line 'end-line fwd-hi)) '())]
-                   [bwd-hi (min bwd-line total)]
-                   [bwd-lo (if (> bwd-hi 0) (bw/backward-start pane bwd-hi total len) 0)]
-                   [bwd-lines (if (< bwd-lo bwd-hi) (buffer-lines pane #:range (hash 'start-line bwd-lo 'end-line bwd-hi)) '())]
-                   [building (bw/add-lines (bw/add-lines caught-up pane fwd-lines) pane bwd-lines)]
-                   [current (hash-insert entry "seen" now)])
-              (if (and (>= fwd-hi total) (<= bwd-lo 0))
-                  (let ([finished (bw/finish-entry current building)])
-                    (bw/install! pane finished)
-                    (bw/push-finished-answer! pane finished))
-                  (bw/install! pane
-                    (bw/continue-entry current building
-                                        (after! bw/tick-delay-ms
-                                          (lambda () (bw/walk! pane gen fwd-hi bwd-lo))))))))))))
+(define (bw/walk! pane fwd-from bwd-from)
+  (let* ([entry (bw/entry pane)]
+         [now (buffer-generation pane)]
+         [changes (buffer-changes-since pane (hash-ref entry "seen"))]
+         [caught-up (and changes (bw/updated-set (hash-ref entry "building") pane changes))])
+    (if (not caught-up)
+        (bw/reindex! pane)
+        (let* ([fwd-line (bw/shift-line changes fwd-from 'forward)]
+               [total (buffer-line-count pane)]
+               [len (buffer-char-count pane)]
+               [fwd-hi (bw/forward-end pane fwd-line total len)]
+               [bwd-hi (min (bw/shift-line changes bwd-from 'backward) total)]
+               [bwd-lo (bw/backward-start pane bwd-hi total len)]
+               [building (bw/add-words (bw/add-words caught-up (bw/window-words pane fwd-line fwd-hi))
+                                       (bw/window-words pane bwd-lo bwd-hi))]
+               [current (hash-insert entry "seen" now)])
+          (if (and (>= fwd-hi total) (<= bwd-lo 0))
+              (let ([finished (bw/finish-entry current building)])
+                (bw/install! pane finished)
+                (bw/push-finished-answer! pane finished))
+              (bw/install! pane
+                (hash-insert (hash-insert current "building" building)
+                             "timer" (after! bw/tick-delay-ms
+                                       (lambda () (bw/walk! pane fwd-hi bwd-lo))))))))))
 
 ;;; Cancels any in-flight walk and restarts it fresh — see README.md's
 ;;; "Staleness".
 (define (bw/reindex! pane)
-  (unless (bw/entry pane)
-    (when (buffer-live? pane)
-      (bw/install! pane (bw/fresh-entry))))
-  (let ([entry (bw/entry pane)])
+  (let ([entry (or (bw/entry pane) (and (buffer-live? pane) (bw/fresh-entry)))])
     (when entry
       (bw/cancel-timer! entry)
-      (let* ([anchor (bw/anchor-line pane)]
-             [gen (+ (hash-ref entry "gen") 1)])
+      (let ([anchor (bw/anchor-line pane)])
         (bw/install! pane
-          (hash-insert (hash-insert (hash-insert entry "gen" gen) "building" #f)
-                       "seen" (buffer-generation pane)))
-        (bw/walk! pane gen anchor anchor)))))
+          (hash-insert (hash-insert entry "building" (hashset)) "seen" (buffer-generation pane)))
+        (bw/walk! pane anchor anchor)))))
 
 ;;; Brings `pane`'s complete index up to date after edits; a running walk
 ;;; catches up on its own — see README.md's "Updating after an edit".
 (define (bw/refresh! pane)
   (let ([entry (bw/entry pane)])
     (unless (and entry (hash-ref entry "building"))
-      (let* ([seen (and entry (hash-ref entry "seen"))]
-             [changes (and seen (buffer-changes-since pane seen))]
+      (let* ([changes (and entry (buffer-changes-since pane (hash-ref entry "seen")))]
              [set (and changes (hash-ref entry "set"))]
-             [updated (and changes (bw/updated-set set pane changes))]
-             [current (and updated (hash-insert entry "seen" (buffer-generation pane)))])
-        (cond [(not updated) (bw/reindex! pane)]
-              [(eq? updated set) (bw/install! pane current)]
-              [else (bw/install! pane (bw/finish-entry current updated))])))))
+             [updated (and changes (bw/updated-set set pane changes))])
+        (if (not updated)
+            (bw/reindex! pane)
+            (let ([current (hash-insert entry "seen" (buffer-generation pane))])
+              (bw/install! pane (if (eq? updated set) current (bw/finish-entry current updated)))))))))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -251,33 +244,17 @@
 
 ;; ── Completion source ─────────────────────────────────────────────────────────
 
-;;; Reads the cache `bw/walk!` builds — see README.md's "Double-buffered cache" and "Answering a trigger".
-(define (bw/items pane)
-  (let ([entry (bw/entry pane)])
-    (if (not entry)
-        '()
-        (let ([ready (hash-ref entry "words")])
-          (if ready
-              ready
-              (let ([words (hash-ref entry "building")])
-                (if words
-                    (hashset->list words)
-                    '())))))))
-
-;;; Whether a walk over `pane`'s buffer is in progress — see README.md's "Answering a trigger".
-(define (bw/building? pane)
-  (let ([entry (bw/entry pane)])
-    (and entry (hash-ref entry "building") #t)))
-
-;;; Stashes `id` for `bw/push-finished-answer!` — see README.md's "Answering a trigger".
-(define (bw/set-live-id! pane id)
-  (let ([entry (bw/entry pane)])
-    (when entry
-      (bw/install! pane (hash-insert entry "live-id" id)))))
-
+;;; Answers from the cache `bw/walk!` builds, stashing `id` for `bw/push-finished-answer!`
+;;; while a walk runs — see README.md's "Double-buffered cache" and "Answering a trigger".
 (register-completion-source! "buffer-words"
   (lambda (id pane prefix)
-    (let ([building? (bw/building? pane)])
-      (bw/set-live-id! pane (and building? id))
-      (completion-emit! id (bw/items pane) #:more building?)))
+    (let* ([entry (bw/entry pane)]
+           [building (and entry (hash-ref entry "building"))])
+      (when entry
+        (bw/install! pane (hash-insert entry "live-id" (and building id))))
+      (completion-emit! id
+                        (or (and entry (hash-ref entry "words"))
+                            (and building (hashset->list building))
+                            '())
+                        #:more (and building #t))))
   #:target 'buffer #:match bw/match)

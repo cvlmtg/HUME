@@ -125,8 +125,7 @@ after the state it was scheduled against has moved on:
   timer or job it would have to cancel, give the entry a generation counter instead, bumped
   every time the operation restarts; a callback closes over the generation it started under
   and no-ops if the entry's current generation has since moved on. `lsp`'s locations drawer
-  numbers each refresh this way. `buffer-words` keeps a generation beside cancelling its
-  tick, as a second guard.
+  numbers each refresh this way.
 
 ### Debouncing
 

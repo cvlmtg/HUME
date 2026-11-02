@@ -589,8 +589,8 @@ fn reindex_via_option_change(ed: &mut Editor) {
 
 /// A walk cancelled mid-way through a large buffer must not leave its
 /// partial `"building"` set to survive into the fresh walk that replaces
-/// it: `bw/reindex!` clears `"building"` in the same install that bumps
-/// `"gen"`, so a word deleted just before the reindex can't resurface from
+/// it: `bw/reindex!` empties `"building"` in the same install that restarts
+/// the walk, so a word deleted just before the reindex can't resurface from
 /// a partial scan the cancelled walk already folded it into. The restart
 /// comes in the same settle that observes the deletion.
 #[test]
@@ -873,15 +873,10 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
 
 /// Restarting the walk while an earlier walk is still mid-flight doesn't
 /// lose coverage at either end: the restarted walk starts from an empty word
-/// set and still covers the whole buffer, with the `"gen"` guard keeping the
-/// cancelled walk's ticks from interfering (README.md's "Staleness and
-/// cancellation").
-///
-/// This does not reproduce the orphaned-tick race that guard covers: a tick
-/// already dequeued off the timer wheel, firing after a fresh `bw/reindex!`
-/// has installed a new generation. That needs `drain_due_timers` to pop the
-/// walk's pending tick in the same batch as the event that restarts it, in
-/// that order, which a wall-clock-driven test can't force.
+/// set and still covers the whole buffer, and the cancelled walk's ticks
+/// never run (README.md's "Staleness"). A tick already due when the restart
+/// cancels it is `cancel_timer_drops_a_thunk_already_queued`'s case
+/// (`timers.rs`).
 #[test]
 fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     let tmp = tempfile::tempdir().unwrap();
