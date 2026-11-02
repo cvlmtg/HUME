@@ -40,7 +40,7 @@ These must be respected from the first line of code — retrofitting them later 
 
 Most are enforced by a family of domain types (`CharOffset`, `RopeyLine`/`ContentLine`, the five column types) with a private field and no `Add`/`Sub`/`AddAssign` impl: a raw `x + 1` doesn't type-check, and a function typed for one domain can't be handed another's value. Each entry below states only its own mints, arithmetic, and exceptions, not that boilerplate again. `.index()`/`.get()` is each type's own escape hatch into a foreign coordinate system (ropey, tree-sitter, LSP wire positions) with no domain of its own; a terminal/pane cell coordinate uses the `x`-family (`screen_x`/`content_x`/`pane_x`) instead of a column type.
 
-See `CONTRIBUTING.md`'s "strongest tool that fits" bullet for why some invariants stop at the type system, some are a `clippy::disallowed_methods` entry instead (workspace-wide, enforced by `cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods -D clippy::unwrap_used` via `scripts/test-all.sh`/CI, which runs it on `ubuntu-latest` and `windows-latest`), and some are an `arch-lints/` scanner.
+See `CONTRIBUTING.md`'s "strongest tool that fits" bullet for why some invariants stop at the type system, some are a `clippy::disallowed_methods` entry instead (workspace-wide, enforced by `cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods -D clippy::unwrap_used` via `scripts/test-all.sh`/CI, which runs it on `ubuntu-latest`, `macos-latest` and `windows-latest`), and some are an `arch-lints/` scanner.
 
 ### Selections
 
