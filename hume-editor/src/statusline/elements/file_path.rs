@@ -65,7 +65,8 @@ fn shorten_path_to_width_with(
 
     // The last component is the filename; abbreviate the leading dirs (all
     // but the last) one by one.
-    let mut components: Vec<String> = display.split_inclusive(is_sep).map(str::to_owned).collect();
+    let mut components: Vec<Cow<'_, str>> =
+        display.split_inclusive(is_sep).map(Cow::Borrowed).collect();
     let n = components.len();
     if n == 0 {
         return Cow::Borrowed("");
@@ -81,7 +82,7 @@ fn shorten_path_to_width_with(
         }
         // Abbreviate to the first grapheme cluster, keeping the separator.
         let first = content.graphemes(true).next().unwrap_or("");
-        components[i] = format!("{first}{sep}");
+        components[i] = Cow::Owned(format!("{first}{sep}"));
 
         let candidate = components.concat();
         if chrome_width(&candidate) <= max_display_cols {

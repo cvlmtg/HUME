@@ -35,7 +35,7 @@ impl IntoTestResult for Edited {
 /// Motions, text objects and selection commands on the typed model.
 impl IntoTestResult for EditState {
     fn into_test_result(self) -> (BufferText, SelectionSet) {
-        (self.text().clone(), self.into_selections())
+        self.into_parts()
     }
 }
 
@@ -47,7 +47,8 @@ pub fn state(text: BufferText, sels: SelectionSet) -> EditState {
 /// An edit's new text, selections and changeset.
 pub fn parts(edited: Edited) -> (BufferText, SelectionSet, ChangeSet) {
     let (state, cs) = edited.into_parts();
-    (state.text().clone(), state.into_selections(), cs)
+    let (text, sels) = state.into_parts();
+    (text, sels, cs)
 }
 
 // ── State parsing ─────────────────────────────────────────────────────────────
@@ -55,8 +56,7 @@ pub fn parts(edited: Edited) -> (BufferText, SelectionSet, ChangeSet) {
 /// Parse a marker-annotated string into `(BufferText, SelectionSet)`. See
 /// [`hume_editing::marked::parse`] for the notation and what panics.
 pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
-    let state = hume_editing::marked::parse(input);
-    (state.text().clone(), state.into_selections())
+    hume_editing::marked::parse(input).into_parts()
 }
 
 // ── Typed positions from char offsets ─────────────────────────────────────────

@@ -209,13 +209,12 @@ pub fn failure_message(program: &str, status: Option<ExitStatus>, stderr: &str) 
     use std::fmt::Write;
 
     let mut message = format!("{program} failed");
-    if let Some(status) = status {
-        match status.code() {
-            Some(code) => {
-                write!(message, " (exit code {code})").expect("writing to a String cannot fail");
-            }
-            None => message.push_str(" (killed by signal)"),
+    match status.map(|status| status.code()) {
+        Some(Some(code)) => {
+            write!(message, " (exit code {code})").expect("writing to a String cannot fail");
         }
+        Some(None) => message.push_str(" (killed by signal)"),
+        None => {}
     }
     let stderr = stderr.trim();
     if !stderr.is_empty() {

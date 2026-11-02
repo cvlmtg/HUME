@@ -40,7 +40,7 @@ pub fn json_to_steel(v: &serde_json::Value) -> SteelVal {
         serde_json::Value::Number(n) => number_to_steel(n),
         serde_json::Value::String(s) => SteelVal::StringV(s.as_str().into()),
         serde_json::Value::Array(items) => {
-            SteelVal::ListV(items.iter().map(json_to_steel).collect())
+            crate::builtins::args::list_of(items.iter().map(json_to_steel))
         }
         serde_json::Value::Object(map) => {
             let mut hm = SteelHashMap::new();

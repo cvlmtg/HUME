@@ -117,7 +117,7 @@ impl Dirs {
         let dirs = Self {
             config: config_dir_with(&env).map(pin).transpose()?,
             data: data_dir_with(&env).map(pin).transpose()?,
-            runtime: runtime_dir_with(&env, exe, cwd.as_deref())
+            runtime: runtime_dir_with(&env, exe.as_deref(), cwd.as_deref())
                 .map(pin)
                 .transpose()?,
             tmp: Some(pin(tmp)?),
@@ -228,14 +228,14 @@ fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 /// Every candidate except (1) is existence-checked; returns `None` if none exist.
 fn runtime_dir_with(
     env: impl Fn(&str) -> Option<String>,
-    exe: Option<PathBuf>,
+    exe: Option<&Path>,
     cwd: Option<&Path>,
 ) -> Option<PathBuf> {
     if let Some(rt) = env("HUME_RUNTIME") {
         return Some(PathBuf::from(rt));
     }
 
-    if let Some(exe_dir) = exe.as_deref().and_then(Path::parent) {
+    if let Some(exe_dir) = exe.and_then(Path::parent) {
         #[cfg(not(windows))]
         if let Some(share_runtime) = exe_dir
             .parent()

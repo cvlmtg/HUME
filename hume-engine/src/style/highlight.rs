@@ -107,10 +107,6 @@ impl TierBufs {
         &mut self.0[tier as usize]
     }
 
-    fn push(&mut self, tier: HighlightTier, interval: (ExclusiveRange<ByteCol>, ScopeId)) {
-        self.tier_mut(tier).push(interval);
-    }
-
     fn sort_all(&mut self) {
         for buf in &mut self.0 {
             buf.sort_by_key(|(range, _)| range.start);
@@ -155,7 +151,7 @@ pub(crate) fn rebuild_line_decorations(
     for d in scratch.decorations.drain(..) {
         match d {
             Decoration::Highlight { range, scope, tier } => {
-                scratch.tier_bufs.push(tier, (range, scope))
+                scratch.tier_bufs.tier_mut(tier).push((range, scope))
             }
             Decoration::LineBg(scope) => tint = Some(scope),
             Decoration::VirtualLine(_) | Decoration::Inline(_) => {

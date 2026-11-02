@@ -296,7 +296,7 @@ pub(in crate::editor) fn cmd_sift_within(
         SiftFailure::Invalid => invalid_pattern(pattern),
         SiftFailure::NoMatch => CommandError::transient("no match"),
     })?;
-    set_pane_selections(state, view, t, sifted.into_selections());
+    set_pane_selections(state, view, t, sifted);
     Ok(())
 }
 

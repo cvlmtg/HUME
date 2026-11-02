@@ -158,7 +158,7 @@ fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
     let mut events = Vec::new();
     while std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(50));
-        events = handle.try_recv_all();
+        events = handle.try_recv_all().collect::<Vec<_>>();
         if events.iter().any(|e| matches!(e, InboundEvent::Stderr(_))) {
             break;
         }

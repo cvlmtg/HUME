@@ -34,17 +34,18 @@ use hume_rope::cluster::ClusterStart;
 /// buffer's initial selections.
 pub(crate) struct PaneBufferState {
     /// This pane's selections for this buffer. Private: every write goes
-    /// through [`PaneBufferState::set_selections`], [`PaneBufferState::store`]
-    /// or [`PaneBufferState::carry_selections`]; the first two raise
-    /// [`PaneBufferState::reveal_pending`] (see that field's own doc).
+    /// through [`PaneBufferState::set_selections`],
+    /// [`PaneBufferState::set_selections_after_edit`] or
+    /// [`PaneBufferState::carry_selections`]; the first two raise
+    /// [`PaneBufferState::reveal_pending`].
     selections: SelectionSet,
     /// Per-pane cursor through the buffer's shared match list.
     pub search_cursor: SearchCursor,
     /// A fact worth re-settling the viewport for happened since the last
     /// frame handled one, raised at the source, not inferred from state.
     ///
-    /// Two writers: the selection funnel [`PaneBufferState::set_selections`]/
-    /// [`PaneBufferState::store`] (set whenever a write actually moves *this
+    /// Two writers: the selection funnel [`PaneBufferState::set_selections`]
+    /// (set whenever a write actually moves *this
     /// pane's own* primary head; a `commands::scroll_view` that couldn't
     /// carry a selection past a virtual block, say, leaves this `false` for
     /// that write), and `doc_ops::finish_edit`, set for every real edit this
@@ -117,14 +118,6 @@ impl PaneBufferState {
     /// input to a command.
     pub(in crate::editor) fn state(&self, text: &BufferText) -> EditState {
         EditState::bind(text, self.selections.clone())
-    }
-
-    /// Store a command's resulting selections, raising
-    /// [`PaneBufferState::reveal_pending`] iff the primary head moved.
-    pub(in crate::editor) fn store(&mut self, state: EditState) {
-        let moved = state.view().primary().head() != self.view(state.text()).primary().head();
-        self.reveal_pending |= moved;
-        self.selections = state.into_selections();
     }
 
     /// Replace the selections outright with `new`, a set for `text`, the

@@ -68,10 +68,9 @@ impl Edited {
 
     /// `changes` applied to `state`'s text, its selections carried through.
     pub fn from_changes(state: EditState, changes: ChangeSet) -> Result<Self, ApplyError> {
-        let text = changes.apply(state.text())?;
-        let before = state.text().clone();
+        let (before, mut selections) = state.into_parts();
+        let text = changes.apply(&before)?;
         let base = before.version();
-        let mut selections = state.into_selections();
         selections.translate(&TextChange::new(&before, &text, &changes));
         Ok(Self {
             state: EditState::from_set(text, selections),
@@ -128,9 +127,8 @@ impl Edited {
         live: &BufferText,
         live_to_result: ChangeSet,
     ) -> Result<Edited, ApplyError> {
-        let result_text = result.text().clone();
-        let (state, changes) =
-            Transaction::new(live_to_result, result.into_selections()).apply(live)?;
+        let (result_text, result_sels) = result.into_parts();
+        let (state, changes) = Transaction::new(live_to_result, result_sels).apply(live)?;
         debug_assert!(
             *state.text() == result_text,
             "rebase: the changeset does not reproduce the edit's result"

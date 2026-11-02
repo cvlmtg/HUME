@@ -29,7 +29,7 @@ fn runtime_dir_hume_runtime_wins_over_exe_and_cwd() {
             "HUME_RUNTIME" => Some(override_str.clone()),
             _ => None,
         },
-        Some(exe_tmp.path().join("hume")),
+        Some(&exe_tmp.path().join("hume")),
         Some(cwd_tmp.path()),
     );
     assert_eq!(result, Some(override_tmp.path().to_path_buf()));
@@ -41,7 +41,7 @@ fn runtime_dir_falls_back_to_exe_relative_runtime() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir(tmp.path().join("runtime")).unwrap();
 
-    let result = runtime_dir_with(|_| None, Some(tmp.path().join("hume")), None);
+    let result = runtime_dir_with(|_| None, Some(&tmp.path().join("hume")), None);
     assert_eq!(result, Some(tmp.path().join("runtime")));
 }
 
@@ -55,7 +55,7 @@ fn runtime_dir_falls_back_to_cwd_relative_runtime() {
 
     let result = runtime_dir_with(
         |_| None,
-        Some(exe_tmp.path().join("hume")),
+        Some(&exe_tmp.path().join("hume")),
         Some(cwd_tmp.path()),
     );
     assert_eq!(result, Some(cwd_tmp.path().join("runtime")));
@@ -68,7 +68,7 @@ fn runtime_dir_none_when_no_candidate_exists() {
 
     let result = runtime_dir_with(
         |_| None,
-        Some(exe_tmp.path().join("hume")),
+        Some(&exe_tmp.path().join("hume")),
         Some(cwd_tmp.path()),
     );
     assert_eq!(result, None);

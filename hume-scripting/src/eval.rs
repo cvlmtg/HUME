@@ -380,7 +380,7 @@ impl ScriptingHost {
             }
         };
         let helper = Rooted::new(helper);
-        let args_list = Rooted::new(SteelVal::ListV(args.iter().collect()));
+        let args_list = Rooted::new(builtins::args::list_of(args.iter().cloned()));
         let args: Rc<[Rooted]> = args.iter().cloned().map(Rooted::new).collect();
         let mut holds = holds.into_iter();
         let mut held_at: Vec<Option<HostToken>> = Vec::with_capacity(handlers.handlers.len());

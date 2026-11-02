@@ -79,7 +79,7 @@ fn runtime_dir_prefers_installed_share_layout_over_exe_relative_runtime() {
     let share_runtime = prefix.path().join("share").join("hume").join("runtime");
     std::fs::create_dir_all(&share_runtime).unwrap();
 
-    let result = runtime_dir_with(|_| None, Some(bin_dir.join("hume")), None);
+    let result = runtime_dir_with(|_| None, Some(&bin_dir.join("hume")), None);
     assert_eq!(result, Some(share_runtime));
 }
 
@@ -91,7 +91,7 @@ fn runtime_dir_skips_a_share_hume_without_a_runtime_subdir() {
     std::fs::create_dir(&bin_dir).unwrap();
     std::fs::create_dir_all(prefix.path().join("share").join("hume").join("plugins")).unwrap();
 
-    let result = runtime_dir_with(|_| None, Some(bin_dir.join("hume")), None);
+    let result = runtime_dir_with(|_| None, Some(&bin_dir.join("hume")), None);
     assert_eq!(result, None);
 }
 

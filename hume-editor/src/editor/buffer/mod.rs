@@ -865,15 +865,16 @@ impl Buffer {
         let (post, cs) = Edited::rebase(result, &self.text, propagation_cs)
             .expect("the propagation changeset maps the live text")
             .into_parts();
-        if post.text().version() != self.text.version() {
+        let (post_text, post_sels) = post.into_parts();
+        if post_text.version() != self.text.version() {
             self.install(
                 PaneHandle::with_pane(id, acting),
                 stores,
-                post.text().clone(),
+                post_text,
                 Change::Edit(&cs),
             );
         }
-        let applied = Applied::of(post.into_selections(), &cs);
+        let applied = Applied::of(post_sels, &cs);
         (applied, group_cs.unwrap_or(cs))
     }
 

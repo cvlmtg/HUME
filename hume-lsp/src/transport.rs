@@ -125,19 +125,19 @@ impl ServerHandle {
         }
     }
 
-    /// Drains all events that have arrived since the last call: every
+    /// Drains, as it is consumed, all events that have arrived: every
     /// protocol message/EOF first, then every stderr line. Not strict
     /// arrival order across the two source threads (they're on separate
     /// channels), but stderr is log-only, so its ordering relative to
     /// protocol traffic is cosmetic.
-    pub fn try_recv_all(&self) -> Vec<InboundEvent> {
+    pub fn try_recv_all(&self) -> impl Iterator<Item = InboundEvent> + '_ {
         let events = self.rx_events.iter().flat_map(|rx| rx.try_iter());
         let stderr = self
             .rx_stderr
             .iter()
             .flat_map(|rx| rx.try_iter())
             .map(InboundEvent::Stderr);
-        events.chain(stderr).collect()
+        events.chain(stderr)
     }
 }
 

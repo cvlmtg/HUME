@@ -394,7 +394,7 @@ pub(super) fn set_primary_selection(
     let text = state.buffers.get(t.bid(view)).text();
     let pbs = t.state_mut(&mut state.panes.entries, view);
     let replaced = pbs.state(text).replace_primary(new_sel);
-    pbs.store(replaced);
+    pbs.set_selections(replaced.into_selections(), text);
 }
 
 mod collect;

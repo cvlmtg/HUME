@@ -203,14 +203,14 @@ fn update_live_sift(state: &mut EditorState, r: LayerRef) {
     {
         state.sift_scans += 1;
     }
-    match sift_within(state.buffers.get(bid).text(), from.clone(), &pattern) {
-        Ok(new_state) => {
-            let sifted = new_state.into_selections();
+    let text = state.buffers.get(bid).text();
+    match sift_within(text, from.clone(), &pattern) {
+        Ok(sifted) => {
             state
                 .panes
                 .entries
                 .seeded_mut(pane, bid)
-                .set_selections(sifted.clone(), state.buffers.get(bid).text());
+                .set_selections(sifted.clone(), text);
             if let Some(sift) = state.input.at_mut::<SiftLayer>(r) {
                 sift.preview = Some(SiftPreview {
                     pattern,
@@ -240,9 +240,11 @@ pub(in crate::editor) fn sift_within(
     text: &BufferText,
     sels: SelectionSet,
     raw: &str,
-) -> Result<EditState, SiftFailure> {
+) -> Result<SelectionSet, SiftFailure> {
     let (_, regex) = compile_search_input(raw).ok_or(SiftFailure::Invalid)?;
-    sift_matches_within(EditState::bind(text, sels), &regex).ok_or(SiftFailure::NoMatch)
+    sift_matches_within(EditState::bind(text, sels), &regex)
+        .map(EditState::into_selections)
+        .ok_or(SiftFailure::NoMatch)
 }
 
 // ── Snapshot restore helpers ────────────────────────────────────────────────

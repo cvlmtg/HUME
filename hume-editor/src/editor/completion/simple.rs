@@ -39,16 +39,6 @@ pub(in crate::editor) const BUFFER_NAME_SOURCE: &str = "buffer-name";
 /// suffix is appended to the label (e.g. `foo.rs  (~/a/)`) so the user can
 /// distinguish them in the popup without accepting the wrong one.
 pub(super) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
-    // (display-basename, full-path insert text).
-    let entry_for = |buf: &crate::editor::buffer::Buffer| -> (String, String) {
-        let base = buf.display_name();
-        let insert_text = buf
-            .path()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|| base.clone());
-        (base, insert_text)
-    };
-
     // Count how many open buffers share each basename (for disambiguation).
     let mut name_count: rustc_hash::FxHashMap<String, usize> = rustc_hash::FxHashMap::default();
     for (_, buf) in ctx.buffers.iter() {
@@ -58,7 +48,11 @@ pub(super) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionIte
     ctx.buffers
         .iter()
         .map(|(_, buf)| {
-            let (base, insert_text) = entry_for(buf);
+            let base = buf.display_name();
+            let insert_text = buf
+                .path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| base.clone());
             let label = if *name_count.get(&base).expect("base was counted above") >= 2 {
                 // Two or more buffers share this basename: show parent dir,
                 // taken from the display-ready path (already `~`-collapsed).

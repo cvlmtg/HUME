@@ -81,7 +81,7 @@ impl LspBackend for ThreadedLspBackend {
     fn drain(&mut self) -> Vec<(ServerId, InboundEvent)> {
         self.servers
             .iter()
-            .flat_map(|(&id, handle)| handle.try_recv_all().into_iter().map(move |ev| (id, ev)))
+            .flat_map(|(&id, handle)| handle.try_recv_all().map(move |ev| (id, ev)))
             .collect()
     }
 

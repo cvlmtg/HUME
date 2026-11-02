@@ -481,7 +481,7 @@ fn sift_matches_selects_each_corpus_sample_whole() {
         let regex = regex_cursor::engines::meta::Regex::new(&regex_syntax::escape(s)).unwrap();
         let sifted =
             sift_matches_within(test_fixtures::testing::state(text, sels), &regex).unwrap();
-        let (text, result) = (sifted.text().clone(), sifted.into_selections());
+        let (text, result) = sifted.into_parts();
         let (expected_text, expected) = parse_state(&format!("y\n-[{s}]>\nz\n"));
         assert_eq!(
             test_fixtures::testing::serialize_state(&text, &result),
