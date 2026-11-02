@@ -43,7 +43,7 @@ impl EditorState {
         if pending.is_empty() {
             return;
         }
-        let Some(uri) = self.lsp_opened_uri(bid) else {
+        let Some(uri) = self.buffer_positions.lsp.opened_uri(bid) else {
             return;
         };
         let servers: Vec<ServerId> = self.buffer_positions.lsp.servers(bid).collect();
@@ -89,7 +89,7 @@ impl EditorState {
                 Some(_) => {
                     let encoding = client.encoding();
                     let changes = per_encoding(&mut incremental, encoding, || {
-                        incremental_changes(&pending, &uri, encoding)
+                        incremental_changes(&pending, uri, encoding)
                     });
                     for params in changes {
                         client.send_or_queue(
@@ -105,16 +105,13 @@ impl EditorState {
     /// `textDocument/didSave` to every server attached to `bid`. Never
     /// includes text: `didSave.includeText` is never advertised.
     pub(in crate::editor) fn lsp_did_save(&mut self, bid: BufferId) {
-        let Some(uri) = self.lsp_opened_uri(bid) else {
+        let Some(uri) = self.buffer_positions.lsp.opened_uri(bid) else {
             return;
         };
+        let params = serde_json::json!({ "textDocument": { "uri": uri } });
         let servers: Vec<ServerId> = self.buffer_positions.lsp.servers(bid).collect();
         for sid in servers {
-            self.lsp_send_doc_notification(
-                sid,
-                DidSaveTextDocument::METHOD,
-                serde_json::json!({ "textDocument": { "uri": uri } }),
-            );
+            self.lsp_send_doc_notification(sid, DidSaveTextDocument::METHOD, params.clone());
         }
     }
 
@@ -142,14 +139,11 @@ impl EditorState {
     /// `textDocument/didClose` to `sid` alone. A crashed or dead server's
     /// client drops it.
     pub(in crate::editor::lsp) fn lsp_did_close_to(&mut self, bid: BufferId, sid: ServerId) {
-        let Some(uri) = self.lsp_opened_uri(bid) else {
+        let Some(uri) = self.buffer_positions.lsp.opened_uri(bid) else {
             return;
         };
-        self.lsp_send_doc_notification(
-            sid,
-            DidCloseTextDocument::METHOD,
-            serde_json::json!({ "textDocument": { "uri": uri } }),
-        );
+        let params = serde_json::json!({ "textDocument": { "uri": uri } });
+        self.lsp_send_doc_notification(sid, DidCloseTextDocument::METHOD, params);
     }
 
     pub(in crate::editor::lsp) fn lsp_send_doc_notification(
@@ -161,15 +155,6 @@ impl EditorState {
         if let Some((client, backend)) = self.lsp.client_and_backend(sid) {
             client.send_or_queue(backend, notification(method, params));
         }
-    }
-
-    /// The URI `bid`'s servers opened it under, or `None` when it has no
-    /// attachment.
-    fn lsp_opened_uri(&self, bid: BufferId) -> Option<String> {
-        self.buffer_positions
-            .lsp
-            .opened_as(bid)
-            .map(|opened| opened.uri.clone())
     }
 
     /// `bid`'s document URI from its current path, or `None` for a buffer

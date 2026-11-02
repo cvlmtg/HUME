@@ -266,6 +266,12 @@ impl LspDocuments {
         self.docs.get(bid).map(|doc| &doc.opened)
     }
 
+    /// The URI `bid`'s servers opened it under, or `None` when it has no
+    /// attachment.
+    pub(in crate::editor::lsp) fn opened_uri(&self, bid: BufferId) -> Option<&str> {
+        self.opened_as(bid).map(|opened| opened.uri.as_str())
+    }
+
     /// Every buffer with changes not yet sent.
     pub(in crate::editor::lsp) fn with_pending(&self) -> Vec<BufferId> {
         self.docs

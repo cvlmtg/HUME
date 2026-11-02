@@ -75,10 +75,10 @@ impl EditorState {
         self.buffer_positions
             .lsp
             .set_pulled_at(bid, sid, Some(version));
-        let Some(opened) = self.buffer_positions.lsp.opened_as(bid) else {
+        let Some(uri) = self.buffer_positions.lsp.opened_uri(bid) else {
             return;
         };
-        let mut params = serde_json::json!({ "textDocument": { "uri": opened.uri } });
+        let mut params = serde_json::json!({ "textDocument": { "uri": uri } });
         let identifier = provider_of(
             &self.lsp,
             sid,

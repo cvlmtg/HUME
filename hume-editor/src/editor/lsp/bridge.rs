@@ -466,11 +466,7 @@ impl EditorState {
         let doc = BufferDoc {
             bid,
             text: self.buffers.get(bid).text(),
-            uri: self
-                .buffer_positions
-                .lsp
-                .opened_as(bid)
-                .map(|opened| opened.uri.as_str()),
+            uri: self.buffer_positions.lsp.opened_uri(bid),
         };
         let mut by_encoding: Vec<(PositionEncoding, Result<serde_json::Value, String>)> =
             Vec::new();
