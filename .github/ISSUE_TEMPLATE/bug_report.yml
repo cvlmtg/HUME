@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in HUME does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The shorter the reproduction, the faster it gets fixed.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The file you opened and the shortest key sequence that shows the problem.
+      placeholder: |
+        1. `hume --no-config example.rs`
+        2. Press `w d`
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: no-config
+    attributes:
+      label: Does it happen with `hume --no-config`?
+      description: Starting with `--no-config` skips your `init.scm` and plugins.
+      options:
+        - "Yes"
+        - "No, only with my config"
+        - "Not tried"
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Minimal config
+      description: If it needs your config, the smallest `init.scm` that still shows the problem.
+      render: scheme
+  - type: textarea
+    id: messages
+    attributes:
+      label: Messages
+      description: Any warnings or errors from `:messages`.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: HUME version
+      description: The output of `hume --version`.
+      placeholder: hume x.y.z-abcdef0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15.4, Ubuntu 24.04, Windows 11 (Git Bash)
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal emulator and version
+      placeholder: WezTerm 20240203, kitty 0.39, Windows Terminal 1.21
+    validations:
+      required: true

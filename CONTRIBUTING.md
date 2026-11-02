@@ -2,7 +2,7 @@
 
 HUME is a curiosity-driven project. That shapes what contributions fit:
 
-- **Bug reports are always welcome.** Include your OS, terminal emulator, HUME version (`hume --version`), and a minimal config plus the shortest key sequence that reproduces the problem.
+- **Bug reports are always welcome.** Open one with the [bug report form](https://github.com/cvlmtg/HUME/issues/new?template=bug_report.yml). Include your OS, terminal emulator, HUME version (`hume --version`), and a minimal config plus the shortest key sequence that reproduces the problem.
 - **Small, focused fixes** can go straight to a pull request.
 - **Plugins and configuration** are written in Steel, not Rust. If your idea can live in
   `runtime/scheme/`, that is the better place for it.
@@ -11,7 +11,7 @@ HUME is a curiosity-driven project. That shapes what contributions fit:
   other: the invariants, tests and code standards below apply unchanged, and you answer
   for every line of it. Point your agent at `CLAUDE.md`, which holds the rules it needs.
 
-By contributing you agree that your work is licensed under the [MIT License](LICENSE).
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). By contributing you agree that your work is licensed under the [MIT License](LICENSE).
 
 ## Getting set up
 
@@ -140,4 +140,4 @@ The published site has two channels: `nightly` rebuilds from `main` on every mer
 
 ## Security
 
-Please do not open a public issue for a security problem. Use GitHub's **Report a vulnerability** button on the repository's Security tab, which opens a private advisory.
+Please do not open a public issue for a security problem. [SECURITY.md](SECURITY.md) explains how to report one privately.

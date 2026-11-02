@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: User manual
+    url: https://cvlmtg.github.io/HUME/
+    about: How to use and configure HUME, and how to write plugins.
+  - name: Security vulnerability
+    url: https://github.com/cvlmtg/HUME/security/advisories/new
+    about: Report a security problem privately. Do not open a public issue.
