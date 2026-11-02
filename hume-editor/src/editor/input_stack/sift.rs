@@ -242,7 +242,7 @@ pub(in crate::editor) fn sift_within(
     raw: &str,
 ) -> Result<SelectionSet, SiftFailure> {
     let (_, regex) = compile_search_input(raw).ok_or(SiftFailure::Invalid)?;
-    sift_matches_within(EditState::bind(text, sels), &regex)
+    sift_matches_within(EditState::bind(text.clone(), sels), &regex)
         .map(EditState::into_selections)
         .ok_or(SiftFailure::NoMatch)
 }

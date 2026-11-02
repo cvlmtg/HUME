@@ -171,7 +171,7 @@ fn search_jump(
         seed: MatchSeed::PastSelection,
     };
 
-    let current = EditState::bind(scan.text, pane_selections(state, view, t).clone());
+    let current = EditState::bind(scan.text.clone(), pane_selections(state, view, t).clone());
     if multi {
         let Some((new_state, primary_wrapped)) = scan.advance_all(current, count) else {
             return Err(CommandError::transient("no match"));

@@ -41,7 +41,7 @@ impl IntoTestResult for EditState {
 
 /// `sels` paired with `text`, the input an edit command takes.
 pub fn state(text: BufferText, sels: SelectionSet) -> EditState {
-    EditState::bind(&text, sels)
+    EditState::bind(text, sels)
 }
 
 /// An edit's new text, selections and changeset.

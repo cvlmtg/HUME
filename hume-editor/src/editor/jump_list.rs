@@ -396,7 +396,7 @@ pub(in crate::editor) fn with_jump<R>(
             let text = state.buffers.get(pre_bid).text();
             let selections = t.state(&state.panes.entries, view).selections().clone();
             JumpEntry::new(
-                EditState::bind(text, selections)
+                EditState::bind(text.clone(), selections)
                     .keep_primary()
                     .into_selections(),
                 text,

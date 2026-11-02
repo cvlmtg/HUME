@@ -173,7 +173,7 @@ fn translate(state: &EditState, cs: &ChangeSet) -> EditState {
     let mut set = state.clone().into_selections();
     set.translate(&crate::edit::TextChange::new(state.text(), &post, cs));
     assert_eq!(set.version(), post.version());
-    EditState::bind(&post, set)
+    EditState::bind(post, set)
 }
 
 #[test]

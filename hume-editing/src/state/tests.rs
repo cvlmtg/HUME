@@ -11,8 +11,8 @@ fn shown(state: &EditState) -> String {
 #[test]
 fn bind_pairs_a_set_with_its_own_text() {
     let state = parse("a-[b]>c\n");
-    let (text, set) = (state.text().clone(), state.clone().into_selections());
-    let rebound = EditState::bind(&text, set);
+    let (text, set) = state.into_parts();
+    let rebound = EditState::bind(text, set);
     assert_eq!(shown(&rebound), "a-[b]>c\n");
     assert_eq!(rebound.view().check(), Ok(()));
 }

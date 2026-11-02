@@ -384,7 +384,7 @@ pub(in crate::editor) fn apply_doc_motion(
 ) {
     let text = buffers.get(buf_id).text();
     let sels = pane_state.seeded(pane_id, buf_id).selections().clone();
-    let new_sels = f(EditState::bind(text, sels)).into_selections();
+    let new_sels = f(EditState::bind(text.clone(), sels)).into_selections();
     pane_state
         .seeded_mut(pane_id, buf_id)
         .set_selections(new_sels, text);

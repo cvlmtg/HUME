@@ -178,28 +178,28 @@ fn constants_have_expected_values() {
 fn yank_single_cursor() {
     // Cursor on 'h': yank captures just 'h'.
     let (text, sels) = parse_state("-[h]>ello\n");
-    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec!["h"]);
+    assert_eq!(yank_selections(&EditState::bind(text, sels)), vec!["h"]);
 }
 
 #[test]
 fn yank_multi_char_selection() {
     // Selection covers "hell".
     let (text, sels) = parse_state("-[hell]>o\n");
-    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec!["hell"]);
+    assert_eq!(yank_selections(&EditState::bind(text, sels)), vec!["hell"]);
 }
 
 #[test]
 fn yank_backward_selection_same_text() {
     // Direction doesn't change the yanked text: it's always start()..=end().
     let (text, sels) = parse_state("<[hell]-o\n");
-    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec!["hell"]);
+    assert_eq!(yank_selections(&EditState::bind(text, sels)), vec!["hell"]);
 }
 
 #[test]
 fn yank_multi_cursor_document_order() {
     // Two cursors: one on 'h', one on 'o'. Returned in document order.
     let (text, sels) = parse_state("-{h}>ell-[o]>\n");
-    let yanked = yank_selections(&EditState::bind(&text, sels));
+    let yanked = yank_selections(&EditState::bind(text, sels));
     assert_eq!(yanked, vec!["h", "o"]);
 }
 
@@ -208,7 +208,7 @@ fn yank_full_line_including_newline() {
     // Selection covers "hello\n": result ends with '\n' (linewise heuristic).
     let (text, sels) = parse_state("-[hello\n]>");
     assert_eq!(
-        yank_selections(&EditState::bind(&text, sels)),
+        yank_selections(&EditState::bind(text, sels)),
         vec!["hello\n"]
     );
 }
@@ -220,7 +220,7 @@ fn yank_grapheme_cluster() {
     // complete grapheme "é".
     let (text, sels) = parse_state("-[e\u{0301}]>x\n");
     assert_eq!(
-        yank_selections(&EditState::bind(&text, sels)),
+        yank_selections(&EditState::bind(text, sels)),
         vec!["e\u{0301}"]
     );
 }
@@ -230,26 +230,26 @@ fn yank_on_structural_newline() {
     // A cursor on the final '\n' of a line with text: `d` would remove
     // nothing, so there is nothing to yank.
     let (text, sels) = parse_state("hello-[\n]>");
-    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec![""]);
+    assert_eq!(yank_selections(&EditState::bind(text, sels)), vec![""]);
 }
 
 #[test]
 fn yank_empty_buffer() {
     let (text, sels) = parse_state("-[\n]>");
-    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec![""]);
+    assert_eq!(yank_selections(&EditState::bind(text, sels)), vec![""]);
 }
 
 #[test]
 fn yank_of_a_selection_ending_on_the_final_newline_leaves_it_out() {
     let (text, sels) = parse_state("hell-[o\n]>");
-    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec!["o"]);
+    assert_eq!(yank_selections(&EditState::bind(text, sels)), vec!["o"]);
 }
 
 // ── Piece and Shape ───────────────────────────────────────────────────────
 
 fn shapes(input: &str) -> Vec<Shape> {
     let (text, sels) = parse_state(input);
-    yank_selections(&EditState::bind(&text, sels))
+    yank_selections(&EditState::bind(text, sels))
         .iter()
         .map(Piece::shape)
         .collect()
@@ -677,7 +677,7 @@ fn macro_and_search_registers_not_valid_for_prefix() {
 #[test]
 fn yank_leaves_the_text_version_for_the_next_edit() {
     let (text, sels) = parse_state("-[h]>ello\n");
-    let state = EditState::bind(&text, sels);
+    let state = EditState::bind(text.clone(), sels);
     yank_selections(&state);
     let (after, _) = crate::edit::insert_str(state, "x").into_parts();
     assert_eq!(after.text().generation(), text.generation() + 1);

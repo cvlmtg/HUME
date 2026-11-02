@@ -117,7 +117,7 @@ impl PaneBufferState {
     /// The selections paired with `text`, the buffer's current text, as the
     /// input to a command.
     pub(in crate::editor) fn state(&self, text: &BufferText) -> EditState {
-        EditState::bind(text, self.selections.clone())
+        EditState::bind(text.clone(), self.selections.clone())
     }
 
     /// Replace the selections outright with `new`, a set for `text`, the

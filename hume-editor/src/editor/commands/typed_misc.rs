@@ -544,7 +544,7 @@ pub(in crate::editor) fn typed_sort(
     // still record an undo revision and mark the buffer dirty.
     let result = sort_lines(
         hume_editing::state::EditState::bind(
-            super::doc(&ed.state, &ed.view, t).text(),
+            super::doc(&ed.state, &ed.view, t).text().clone(),
             super::pane_selections(&ed.state, &ed.view, t).clone(),
         ),
         opts,

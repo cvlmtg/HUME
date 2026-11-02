@@ -53,7 +53,7 @@ fn yank_returns_the_sample() {
     for s in ALL {
         let (text, sels) = parse_state(&format!("x\n-[{s}]>b\n"));
         assert_eq!(
-            yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone())),
+            yank_selections(&hume_editing::state::EditState::bind(text, sels)),
             vec![s.to_string()]
         );
     }

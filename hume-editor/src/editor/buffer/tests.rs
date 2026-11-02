@@ -762,7 +762,7 @@ fn grouped_edit_makes_dirty() {
 fn yank_paste_undo() {
     let mut d = doc("-[hell]>o\n");
     let yanked = yank_selections(&hume_editing::state::EditState::bind(
-        d.text(),
+        d.text().clone(),
         d.sels().clone(),
     ));
     d.apply_edit(|s| paste_after(s, &yanked));

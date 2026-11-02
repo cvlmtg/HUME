@@ -52,7 +52,7 @@ impl Transaction {
     /// mismatch, or it deletes the structural trailing `\n`).
     pub fn apply(self, text: &BufferText) -> Result<(EditState, ChangeSet), ApplyError> {
         let new_text = self.changes.apply_as(text, self.selection.version())?;
-        Ok((EditState::bind(&new_text, self.selection), self.changes))
+        Ok((EditState::bind(new_text, self.selection), self.changes))
     }
 
     /// The selections this transaction lands on.

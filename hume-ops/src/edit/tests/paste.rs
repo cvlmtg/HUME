@@ -582,14 +582,16 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
 #[test]
 fn yank_then_paste_after_round_trip() {
     let (text, sels) = test_fixtures::testing::parse_state("-[h]>ello\n");
-    let yanked = yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
+    let yanked = yank_selections(&hume_editing::state::EditState::bind(text, sels));
     assert_eq!(yanked, vec!["h"], "yank captures the cursor char");
 
     assert_state!(
         "-[h]>ello\n",
         |(text, sels): (BufferText, SelectionSet)| {
-            let values =
-                yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
+            let values = yank_selections(&hume_editing::state::EditState::bind(
+                text.clone(),
+                sels.clone(),
+            ));
             paste_after(test_fixtures::testing::state(text, sels), &values)
         },
         "h-[h]>ello\n"
@@ -599,14 +601,16 @@ fn yank_then_paste_after_round_trip() {
 #[test]
 fn yank_multi_cursor_then_paste_after_n_to_n() {
     let (text, sels) = test_fixtures::testing::parse_state("-{h}>ell-[o]>\n");
-    let yanked = yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
+    let yanked = yank_selections(&hume_editing::state::EditState::bind(text, sels));
     assert_eq!(yanked, vec!["h", "o"]);
 
     assert_state!(
         "-{h}>ell-[o]>\n",
         |(text, sels): (BufferText, SelectionSet)| {
-            let values =
-                yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
+            let values = yank_selections(&hume_editing::state::EditState::bind(
+                text.clone(),
+                sels.clone(),
+            ));
             paste_after(test_fixtures::testing::state(text, sels), &values)
         },
         "h-{h}>ello-[o]>\n"

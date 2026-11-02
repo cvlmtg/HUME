@@ -21,12 +21,9 @@ impl EditState {
     ///
     /// # Panics
     /// Panics if the set was tagged for another text.
-    pub fn bind(text: &BufferText, selections: SelectionSet) -> Self {
-        assert_fits(text, &selections);
-        Self {
-            text: text.clone(),
-            selections,
-        }
+    pub fn bind(text: BufferText, selections: SelectionSet) -> Self {
+        assert_fits(&text, &selections);
+        Self { text, selections }
     }
 
     /// `text` with one cursor on the cluster starting at `at`.

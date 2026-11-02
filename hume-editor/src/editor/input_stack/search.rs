@@ -298,7 +298,7 @@ pub(in crate::editor) fn preview_search(
         seed: MatchSeed::AtSelection,
     };
 
-    let current = EditState::bind(buf.text(), sels);
+    let current = EditState::bind(buf.text().clone(), sels);
     let moved = if multi {
         scan.advance_all(current, 1)
             .map(|(new_state, _wrapped)| new_state)

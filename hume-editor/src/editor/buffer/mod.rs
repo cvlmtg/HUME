@@ -784,7 +784,7 @@ impl Buffer {
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> Applied {
         let pre_sels = sels.clone();
-        let pre = EditState::bind(&self.text, sels);
+        let pre = EditState::bind(self.text.clone(), sels);
         let (post, cs) = self.run_edit(pre, cmd).into_parts();
 
         // An identity `cs` moved no bytes: recording it would litter the undo
@@ -814,7 +814,7 @@ impl Buffer {
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> (SelectionSet, ChangeSet) {
         let (post, cs) = self
-            .run_edit(EditState::bind(&self.text, sels), cmd)
+            .run_edit(EditState::bind(self.text.clone(), sels), cmd)
             .into_parts();
         let (new_text, new_sels) = post.into_parts();
 
@@ -893,8 +893,8 @@ impl Buffer {
         undo: SelectionSet,
     ) -> EditGroup {
         EditGroup {
-            snapshot: EditState::bind(&self.text, base),
-            undo_sels: EditState::bind(&self.text, undo).into_selections(),
+            snapshot: EditState::bind(self.text.clone(), base),
+            undo_sels: EditState::bind(self.text.clone(), undo).into_selections(),
             cs: None,
         }
     }
@@ -922,7 +922,7 @@ impl Buffer {
             return;
         };
         let pre_sels = group.undo_sels;
-        let post_sels = EditState::bind(&self.text, post_sels).into_selections();
+        let post_sels = EditState::bind(self.text.clone(), post_sels).into_selections();
         self.record_revision(cs, inverse_cs, pre_sels, post_sels);
     }
 

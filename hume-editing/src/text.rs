@@ -115,9 +115,9 @@ fn normalize_line_endings_detecting(text: &str) -> (Cow<'_, str>, LineEnding) {
 /// and converts char offsets to grapheme boundaries on the fly.
 ///
 /// Why an immutable-style API? `insert` and `remove` return a *new* `BufferText`
-/// instead of mutating in place. Ropey clones are O(log n) in time and space
-/// because the rope's B-tree nodes are reference-counted and shared between
-/// the old and new version ("structural sharing"). This makes cloning cheap
+/// instead of mutating in place. A ropey clone is one reference-count bump,
+/// and an edit copies only the O(log n) B-tree nodes on its path, sharing the
+/// rest with the old version ("structural sharing"). This makes cloning cheap
 /// when needed, though the primary undo mechanism is changeset inversion
 /// (see `ChangeSet::invert`), not buffer snapshots.
 #[derive(Debug, Clone)]

@@ -299,7 +299,7 @@ fn apply_pure_op(
     op: &PureOp,
     mode: MotionMode,
 ) -> SelectionSet {
-    let st = EditState::bind(text, sels);
+    let st = EditState::bind(text.clone(), sels);
     let result = match op {
         PureOp::MoveRight => cmd_move_right(st, 1, mode),
         PureOp::MoveLeft => cmd_move_left(st, 1, mode),
@@ -480,7 +480,7 @@ proptest! {
                     .collect()
             })
             .collect();
-        prop_assert_eq!(yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone())), expected);
+        prop_assert_eq!(yank_selections(&hume_editing::state::EditState::bind(text, sels)), expected);
     }
 
     /// Interleaved edits and undos must never violate invariants at any
