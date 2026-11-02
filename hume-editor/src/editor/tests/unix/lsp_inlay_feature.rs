@@ -104,7 +104,7 @@ fn setup_two_servers(
         .ed
         .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&file_b))
         .expect("main.py opens as a buffer");
-    // Both buffers must be *shown*: `lsp/refresh-hints` skips a hidden bid.
+    // Both buffers must be *shown*: `lsp/request-hints` skips a hidden bid.
     let pane_b = open_pane_in_layout(
         &mut rig.ed.state,
         &mut rig.ed.view,

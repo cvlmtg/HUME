@@ -299,10 +299,10 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     );
 }
 
-/// `lsp/visible-lines` is `viewport-range`'s exclusive width with no `+ 1`:
+/// `lsp/show-hover` takes `viewport-range`'s exclusive width with no `+ 1`:
 /// `viewport-range` is already end-exclusive, so adding an
 /// inclusive-range `+ 1` would overcount by one line and shift
-/// the ⅓ popup/drawer threshold (`lsp/show-hover`) by one. The default
+/// the ⅓ popup/drawer threshold by one. The default
 /// 24-row pane can't tell the two formulas apart (`⌊24/3⌋ == ⌊25/3⌋ == 8`,
 /// see `tall_content_docks_instead_of_using_the_drawer` below); a 23-row
 /// pane can (`⌊23/3⌋ == 7`, `⌊24/3⌋ == 8`).

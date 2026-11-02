@@ -5,12 +5,9 @@
 (provide lsp/show-locations! lsp/answer-locations lsp/place-display
          lsp/report-not-found! lsp/report-skipped!)
 
-;; A goto or references result as a list of locations, '() for none.
+;; A non-null goto or references result as a list of locations.
 (define (lsp/response-locations res)
-  (cond
-    ((void? res) '())
-    ((json-array? res) (json-list res))
-    (else (list res))))
+  (if (json-array? res) (json-list res) (list res)))
 
 ;; Logs `message` when the answer held no locations. Locations with no place
 ;; to jump to are reported by `lsp/report-skipped!`.
@@ -24,10 +21,8 @@
                                (if (= count 1) " location" " locations")
                                " HUME cannot jump to"))))
 
-;; Every location in an `lsp-request-all!` answer, in server order, each
-;; server's error reported.
-(define (lsp/answer-locations what results)
-  (lsp/report-answer-errors! what results)
+;; Every location in an `lsp-request-all!` answer, in server order.
+(define (lsp/answer-locations results)
   (call! "stdlib/concat" (map lsp/response-locations (lsp/answers results))))
 
 (define (lsp/place-display place)
@@ -76,7 +71,9 @@
           (if buffer
               (let ((key (buffer-key buffer)))
                 (loop (cdr places)
-                      (hash-insert counts key (buffer-line-count buffer))
+                      (if (hash-contains? counts key)
+                          counts
+                          (hash-insert counts key (buffer-line-count buffer)))
                       (hash-insert lines key (cons (hash-ref (car places) 'line)
                                                    (or (hash-try-get lines key) '())))))
               (loop (cdr places) counts lines))))))
@@ -98,35 +95,28 @@
 ;; ── Refresh ──
 
 (define (lsp/swap-locations! session places)
-  (let* ((drawer (hash-ref session 'drawer))
-         (selected (drawer-selected-index drawer)))
-    (if (not selected)
-        (lsp/end-locations-session!)
-        (let ((idx (min selected (- (length places) 1))))
-          (if (update-drawer-list! drawer (lsp/payload-rows lsp/place-row places)
-                                   lsp/locations-on-select idx)
-              (set! lsp/*locations*
-                    (lsp/with-places session (hash-ref session 'pane) places))
-              (lsp/end-locations-session!))))))
+  (if (lsp/refresh-drawer-list! (hash-ref session 'drawer) lsp/place-row places
+                                lsp/locations-on-select (lambda (selected) selected))
+      (set! lsp/*locations* (lsp/with-places session (hash-ref session 'pane) places))
+      (lsp/end-locations-session!)))
 
 (define (lsp/apply-locations! drawer seq err results)
   (let ((session lsp/*locations*))
     (when (and session (equal? (hash-ref session 'drawer) drawer) (= (hash-ref session 'seq) seq))
-      (cond
-        (err (lsp/report-error! "locations" err))
-        ;; No server answered: the rows shown are still the best known.
-        ((lsp/none-answered? results)
-         (lsp/report-answer-errors! "locations" results))
-        (else
-         (let* ((locations (lsp/answer-locations "locations" results))
-                (merged (lsp-locations->merged-places locations))
-                (places (hash-ref merged 'places)))
-           (if (null? places)
-               (begin
-                 (lsp/close-locations!)
-                 (lsp/report-skipped! "locations" (hash-ref merged 'skipped))
-                 (lsp/report-not-found! locations (hash-ref session 'not-found)))
-               (lsp/swap-locations! session places))))))))
+      ((lsp/on-answers "locations"
+         (lambda (results)
+           ;; No server answered: the rows shown are still the best known.
+           (unless (lsp/none-answered? results)
+             (let* ((locations (lsp/answer-locations results))
+                    (merged (lsp-locations->merged-places locations))
+                    (places (hash-ref merged 'places)))
+               (if (null? places)
+                   (begin
+                     (lsp/close-locations!)
+                     (lsp/report-skipped! "locations" (hash-ref merged 'skipped))
+                     (lsp/report-not-found! locations (hash-ref session 'not-found)))
+                   (lsp/swap-locations! session places))))))
+       err results))))
 
 (define lsp/locations-key (lsp-supersede-key))
 

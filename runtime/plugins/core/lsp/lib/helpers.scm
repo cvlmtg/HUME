@@ -2,10 +2,9 @@
 ;;; docs/architecture.md.
 
 (provide lsp/report-error! lsp/answered lsp/answers lsp/answer-items lsp/none-answered? lsp/report-answer-errors!
-         lsp/with-params
-         lsp/visible-lines lsp/resolve-pane
-         lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
-         lsp/with-servers lsp/report-unsupported lsp/jump-to! lsp/payload-rows)
+         lsp/on-answers lsp/with-params
+         lsp/setup-trigger-chars! lsp/format-position lsp/cap-flag?
+         lsp/with-servers lsp/report-unsupported lsp/jump-to! lsp/payload-rows lsp/refresh-drawer-list!)
 
 ;; ── Capabilities ────────────────────────────────────────────────────────────
 
@@ -33,14 +32,23 @@
       (lsp/report-unsupported what)
       (proceed servers)))
 
-;; Jumps to `location`, a Location from a server answer, and logs when the
-;; place it names no longer exists.
+;; Jumps the focused pane to `location`, a `goto-location!` target, and logs
+;; when the place it names no longer exists.
 (define (lsp/jump-to! location)
   (unless (goto-location! (focused-pane) location)
     (log! 'warning "lsp: the location no longer exists")))
 
 (define (lsp/payload-rows row-text items)
   (map (lambda (item) (cons (row-text item) item)) items))
+
+;; Replaces the rows of the drawer `token` names with `items`, moving its
+;; selection to `(pick-index selected)`. Returns #f when that drawer has
+;; closed or another has replaced it.
+(define (lsp/refresh-drawer-list! token row-text items on-select pick-index)
+  (let ((selected (drawer-selected-index token)))
+    (and selected
+         (update-drawer-list! token (lsp/payload-rows row-text items) on-select
+                              (pick-index selected)))))
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 
@@ -87,27 +95,25 @@
 (define (lsp/answer-items results)
   (call! "stdlib/concat" (map json-list (lsp/answers results))))
 
-;; Whether no server in an `lsp-request-all!` answer gave a result, errors aside.
+;; Whether an `lsp-request-all!` answer has entries and every one is an error.
 (define (lsp/none-answered? results)
-  (null? (filter (lambda (r) (not (hash-ref r 'err))) results)))
+  (and (pair? results)
+       (not (call! "stdlib/find" (lambda (r) (not (hash-ref r 'err))) results))))
 
 ;; Reports each server's error in an `lsp-request-all!` answer.
 (define (lsp/report-answer-errors! what results)
   (for-each (lambda (r) (when (hash-ref r 'err) (lsp/report-error! what (hash-ref r 'err))))
             results))
 
-;; ── Pane resolution ──────────────────────────────────────────────────────────
-
-(define (lsp/resolve-pane pane)
-  (and (buffer-live? pane)
-       (let ((panes (buffer-panes pane)))
-         (if (null? panes) #f (car panes)))))
-
-;; ── Viewport ────────────────────────────────────────────────────────────────
-
-(define (lsp/visible-lines pane)
-  (let ((range (viewport-range pane)))
-    (- (hash-ref range 'end-line) (hash-ref range 'start-line))))
+;; An `lsp-request-all!` callback: reports the request's error, or reports
+;; each server's error and calls `(proceed results)`.
+(define (lsp/on-answers what proceed)
+  (lambda (err results)
+    (if err
+        (lsp/report-error! what err)
+        (begin
+          (lsp/report-answer-errors! what results)
+          (proceed results)))))
 
 ;; ── Position formatting ─────────────────────────────────────────────────────
 

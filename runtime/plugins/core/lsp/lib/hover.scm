@@ -20,8 +20,7 @@
 
 (define (lsp/hover-lang contents)
   (if (and (json-object? contents)
-           (json-contains? contents "kind")
-           (equal? (json-ref contents "kind") "plaintext"))
+           (equal? (json-ref-or contents #f "kind") "plaintext"))
       #f
       "markdown"))
 
@@ -29,18 +28,17 @@
 
 (define lsp/*hover-popup* #f)
 
+;; `viewport-range` is end-exclusive, so its width needs no `+ 1`.
 (define (lsp/show-hover pane text lang)
-  (let* ((threshold (quotient (lsp/visible-lines pane) 3))
-         (lines (split-many text "\n")))
+  (let* ((range (viewport-range pane))
+         (threshold (quotient (- (hash-ref range 'end-line) (hash-ref range 'start-line)) 3)))
     (set! lsp/*hover-popup*
-      (if (<= (length lines) threshold)
-          (show-popup! pane text #:kind 'scrollable #:lang lang)
-          (show-popup! pane text #:kind 'scrollable #:lang lang #:anchor 'bottom)))))
+      (show-popup! pane text #:kind 'scrollable #:lang lang
+                   #:anchor (if (<= (length (split-many text "\n")) threshold) 'cursor 'bottom)))))
 
 (define (lsp/close-hover!)
-  (when lsp/*hover-popup*
-    (close-popup! lsp/*hover-popup*)
-    (set! lsp/*hover-popup* #f)))
+  (close-popup! lsp/*hover-popup*)
+  (set! lsp/*hover-popup* #f))
 
 ;; ── Command ─────────────────────────────────────────────────────────────────
 

@@ -12,7 +12,6 @@
       (if params
           (lsp-request-all! pane "textDocument/completion" params
             (lambda (err results)
-              (when err (lsp/report-error! "completion" err))
               (lsp/report-answer-errors! "completion" results)
               (completion-emit! id (lsp/answers results)))
             #:unavailable 'empty

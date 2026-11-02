@@ -50,27 +50,25 @@ refreshing them.
 
 ## Refresh path
 
-Three hooks keep every decoration current, and each fetches the diagnostics once and uses
+Two hooks keep every decoration current, and each fetches the diagnostics once and uses
 the result for both the decorations and the drawer:
 
 | Hook | Effect |
 |---|---|
 | `on-diagnostics-changed` | Refreshes the EOL summary, signs and drawer for that buffer |
 | `on-option-change` for `lsp-diagnostics-min-severity` or `lsp-diagnostics-on-insert-line` | Refreshes every buffer. The store applies a new floor only when it is read, so without this each buffer would keep the previous cut until its next diagnostics change |
-| `on-lsp-detach` | Refreshes the summary, signs and drawer from what the buffer's other servers published; the detached server's diagnostics are already gone |
 
 ## Grouping and severity
 
-The EOL summary and the signs share two helpers.
-
 - **Severity.** Each diagnostic carries a `'severity-rank` field, authored once in Rust
-  (`0` for error up to `3` for hint). `lsp/most-severe` folds over it keeping the minimum,
-  so the comparison lives in one place and no sort is needed to find the worst.
-- **Run-length grouping.** `lsp/group-by` groups adjacent items with equal keys. The EOL
+  (`0` for error up to `3` for hint). The worst diagnostic is the one with the lowest
+  rank, so no sort is needed to find it.
+- **EOL grouping.** `lsp/group-by` groups adjacent items with equal keys. The EOL
   summary groups by line, relying on the store returning diagnostics start-ascending so
-  same-line entries are contiguous. The signs first expand each diagnostic into one
-  `(line . diagnostic)` pair per line it touches, accumulate all pairs, sort them by line,
-  and group by line.
+  same-line entries are contiguous, and `lsp/most-severe` picks each line's worst.
+- **Sign lines.** The signs keep one table from line to the worst diagnostic touching it,
+  filled by walking every line each diagnostic covers. The sign store sorts entries by
+  line itself, so the table's order does not matter.
 
 ## End-of-line summary
 
@@ -95,8 +93,7 @@ rows also use.
 ## Gutter signs
 
 Signs are set with `set-signs!` under the same source, glyph `●`. Every refresh
-registers the source for the buffer with `register-sign-source!` at priority `10`, as
-does the detach handler before it clears. A diagnostic spanning several lines gets a sign
+registers the source for the buffer with `register-sign-source!` at priority `10`. A diagnostic spanning several lines gets a sign
 on each line from its `'start-line` up to, not including, its `'end-line`, and the most severe
 diagnostic on a line wins. The sign's scope is the bare severity name (`error`, `warning`,
 `info`, `hint`) rather than the summary's `.diagnostic.inline` form, because the gutter
@@ -117,10 +114,15 @@ activated needs no setup; `on-buffer-close` drops the record.
 | `on-lsp-detach` | Buffer only | Refreshes, or clears the hints of a buffer no pane shows |
 | `on-text-changed` | Buffer only | Refreshes. It covers undo, redo and edits that neither scroll nor republish diagnostics, so a hint dropped with its anchor character returns when the edit is undone |
 
-Every trigger hands the refresh its value as it came. The refresh resolves a pane with
-`lsp/resolve-pane` when its debounce fires, not when it is scheduled: the pane that asked
-may have switched buffer or closed in the meantime, and another pane showing the buffer
-serves instead.
+Every trigger hands the refresh its value as it came, and a trigger for a buffer whose
+hints are off schedules nothing. The refresh resolves a pane with `lsp/resolve-pane` when
+its debounce fires, not when it is scheduled: the pane that asked may have switched buffer
+or closed in the meantime, and another pane showing the buffer serves instead.
+`lsp/resolve-pane` is `(car (buffer-panes pane))`, or `#f` when no pane shows the buffer
+or the buffer has closed, so it never raises. `buffer-panes` answers the given pane when
+it still shows its buffer, otherwise the focused pane, then the rest of the active tab,
+then other tabs (see the
+[core plugins index](../../README.md#pane-values-vs-pane-less-values)).
 
 Refreshes are debounced by 200 ms per buffer (keyed, not global), so a diagnostics batch
 touching two buffers cannot have the second buffer's call cancel the first's pending

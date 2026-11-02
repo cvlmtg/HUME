@@ -3,33 +3,31 @@
 (require "helpers.scm")
 (require "locations.scm")
 
-;; ── Response handling ────────────────────────────────────────────────────────
-;; Shared by all four goto-family methods and `lsp/references` below.
-
-;; See docs/features.md, "Goto and references".
-(define (lsp/goto-response err results pane tracked method
-                           #:shape [shape (lambda (params) params)]
-                           #:always-drawer? [always-drawer? #f]
-                           #:what [what "goto"]
-                           #:not-found-msg [not-found-msg "No definition found"])
-  (if err
-      (lsp/report-error! what err)
-      (let* ((locations (lsp/answer-locations what results))
-             (merged (lsp-locations->merged-places locations))
-             (places (hash-ref merged 'places)))
-        (lsp/report-skipped! what (hash-ref merged 'skipped))
-        (cond
-          ((null? places) (lsp/report-not-found! locations not-found-msg))
-          ((and (not always-drawer?) (null? (cdr places)))
-           (lsp/jump-to! (hash-ref (car places) 'location)))
-          (else (lsp/show-locations! pane tracked places method shape not-found-msg))))))
-
-(define (lsp/goto-request pane method)
-  (lsp/with-params (lsp-position-params pane) "goto"
+;; Shared by all four goto-family methods and `lsp/references` below. `shape`
+;; maps position params to the request's params. See docs/features.md, "Goto
+;; and references".
+(define (lsp/goto-request pane method
+                          #:shape [shape (lambda (params) params)]
+                          #:always-drawer? [always-drawer? #f]
+                          #:what [what "goto"]
+                          #:not-found-msg [not-found-msg "No definition found"]
+                          #:require-focus [require-focus #f])
+  (lsp/with-params (lsp-position-params pane) what
     (lambda (params)
       (let ((tracked (track-position! pane)))
-        (lsp-request-all! pane method params
-          (lambda (err results) (lsp/goto-response err results pane tracked method))
+        (lsp-request-all! pane method (shape params)
+          (lsp/on-answers what
+            (lambda (results)
+              (let* ((locations (lsp/answer-locations results))
+                     (merged (lsp-locations->merged-places locations))
+                     (places (hash-ref merged 'places)))
+                (lsp/report-skipped! what (hash-ref merged 'skipped))
+                (cond
+                  ((null? places) (lsp/report-not-found! locations not-found-msg))
+                  ((and (not always-drawer?) (null? (cdr places)))
+                   (lsp/jump-to! (hash-ref (car places) 'location)))
+                  (else (lsp/show-locations! pane tracked places method shape not-found-msg))))))
+          #:require-focus require-focus
           #:tracked tracked)))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
@@ -53,16 +51,9 @@
 
 (define-command! "lsp/references" "List references to the symbol under the cursor."
   (lambda (pane)
-    (lsp/with-params (lsp-position-params pane) "references"
-      (lambda (params)
-        (let ((tracked (track-position! pane)))
-          (lsp-request-all! pane "textDocument/references"
-            (lsp/references-params params)
-            (lambda (err results)
-              (lsp/goto-response err results pane tracked "textDocument/references"
-                                 #:shape lsp/references-params
-                                 #:always-drawer? #t
-                                 #:what "references"
-                                 #:not-found-msg "No references found"))
-            #:require-focus #t
-            #:tracked tracked))))))
+    (lsp/goto-request pane "textDocument/references"
+                      #:shape lsp/references-params
+                      #:always-drawer? #t
+                      #:what "references"
+                      #:not-found-msg "No references found"
+                      #:require-focus #t)))

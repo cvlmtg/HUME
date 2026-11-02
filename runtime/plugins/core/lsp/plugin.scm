@@ -1,6 +1,5 @@
 ;;; core:lsp — plugin.scm (see docs/architecture.md).
 
-(require "lib/helpers.scm")
 (require "lib/status.scm")
 (require "lib/hover.scm")
 (require "lib/goto.scm")

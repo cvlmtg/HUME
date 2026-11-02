@@ -107,7 +107,7 @@ fn debounce_collapses_a_rapid_burst_into_one_trailing_call() {
 
 /// The bug `debounce-by` exists to fix: `debounce` shares one pending timer
 /// across every call regardless of args, so a call keyed `"b"` cancels a
-/// still-pending call keyed `"a"` (this is exactly `lsp/refresh-hints`'
+/// still-pending call keyed `"a"` (this is exactly `lsp/request-hints`'
 /// production shape: two attached buffers, each firing `on-diagnostics-
 /// changed` independently, sharing one `debounce`-wrapped handler).
 #[test]

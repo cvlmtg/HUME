@@ -24,9 +24,8 @@
 (define lsp/*sighelp-popup* #f)
 
 (define (lsp/close-sighelp!)
-  (when lsp/*sighelp-popup*
-    (close-popup! lsp/*sighelp-popup*)
-    (set! lsp/*sighelp-popup* #f)))
+  (close-popup! lsp/*sighelp-popup*)
+  (set! lsp/*sighelp-popup* #f))
 
 (define (lsp/show-sighelp pane res)
   (let ((sigs (json-list (json-ref res "signatures"))))

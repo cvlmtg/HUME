@@ -9,7 +9,7 @@ Installing servers is `core:lsp-install`'s job.
 |---|---|---|
 | `plugin.scm` | Requires, default key bindings | [Default keys](#default-keys) |
 | `manifest.scm` | Lazy-activation triggers | [README](../README.md#usage) |
-| `lib/helpers.scm` | Capability guards, error reporting, multi-server answers, trigger characters, pane and viewport helpers | this file |
+| `lib/helpers.scm` | Capability guards, error reporting, multi-server answers, trigger characters, drawer refresh | this file |
 | `lib/locations.scm` | Locations drawer and its refresh session | this file |
 | `lib/status.scm` | `:lsp-status`, `:lsp-stop`, `:lsp-restart` | this file |
 | `lib/diagnostics.scm` | Diagnostics navigation and drawer, EOL summary, gutter signs | `decorations.md` |
@@ -87,9 +87,12 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
   answer that are neither an error nor null, in server order. `lsp/answers` is their
   results, and `lsp/answer-items` concatenates every server's array answer into one list.
   `lsp/report-answer-errors!` reports each entry's error through `lsp/report-error!`, so
-  one failing server never hides the others' answers. `lsp/none-answered?` is true when
-  every entry is an error, which tells a failure apart from an empty answer, so a caller
-  can keep what it already shows.
+  one failing server never hides the others' answers. `lsp/on-answers` builds an
+  `lsp-request-all!` callback that reports the request's error, or each server's error
+  before handing the answer on, so no caller reports one level and forgets the other.
+  `lsp/none-answered?` is true when the answer has entries and every one is an error,
+  which tells a failure apart from an empty answer, so a caller can keep what it already
+  shows.
 - **Guards.** `lsp/with-params` calls its body with a pane's `lsp-position-params` or
   `lsp-document-params`, or logs "lsp <what>: this buffer has no file" when they are `#f`.
   `lsp/with-servers` calls its body with a non-empty server list, or logs through
@@ -105,17 +108,9 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
   filters on its source name. A feature without one (completion) registers through
   `set-attachment-completion-triggers!`, and the editor invokes the source directly with
   no hook round trip.
-- **Pane resolution.** `lsp/resolve-pane` is `(car (buffer-panes pane))`, or `#f` when no
-  pane shows the buffer or the buffer has closed, so it never raises. `buffer-panes`
-  answers the given pane when it still shows its buffer, otherwise the focused pane, then
-  the rest of the active tab, then other tabs (see the
-  [core plugins index](../../README.md#pane-values-vs-pane-less-values)). It serves hooks
-  whose value carries no pane, and a debounced call whose pane may have moved on by the time
-  it fires. A caller that holds a live pane in the same evaluation has no reason to call it,
-  since re-resolving can pick a different pane on the same buffer.
-- **Viewport.** `lsp/visible-lines` is the width of `(viewport-range pane)`, which is
-  0-based and end-exclusive, so no `+ 1`. `viewport-range` raises for a pane that does not
-  show its buffer, so the caller needs a live pane.
+- **Drawer refresh.** `lsp/refresh-drawer-list!` swaps an open drawer's rows in place and
+  moves its selection, or returns `#f` when that drawer has closed or another replaced it.
+  The diagnostics drawer and the locations drawer both refresh through it.
 - **Position formatting.** `lsp/format-position` renders a 0-based line and column as
   1-based `line:col`, so a position reads the same in every drawer.
 - **Payload rows.** `lsp/payload-rows` pairs each item with its display text, the
@@ -125,8 +120,8 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
 ## Locations drawer (`locations.scm`)
 
 Goto and references open a drawer of locations when a response holds more than one
-(references always). `lsp/response-locations` normalizes a response to a list: void gives
-`'()`, an array gives its elements, and a single `Location` gives a one-element list.
+(references always). `lsp/response-locations` normalizes a non-null response to a list: an
+array gives its elements, and a single `Location` gives a one-element list.
 The wire shape (`{uri, range}` versus `{targetUri, targetRange}`) is decoded by the
 `lsp-locations->places` and `lsp-locations->merged-places` builtins, shared with
 `goto-location!`, so this plugin never reads a location's wire fields.

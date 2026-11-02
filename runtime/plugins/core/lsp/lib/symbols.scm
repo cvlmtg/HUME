@@ -47,11 +47,6 @@
 
 ;; ── Document symbols ─────────────────────────────────────────────────────────
 
-(define (lsp/information-row sym)
-  (lsp/symbol-item (json-ref sym "name") (json-ref sym "kind")
-                   (json-ref-or sym #f "containerName")
-                   (json-ref sym "location")))
-
 ;; Conses the rows of a `DocumentSymbol` and its descendants onto `acc`, so
 ;; `acc` ends up in reverse pre-order. Each row carries its parent's name.
 (define (lsp/push-document-symbol-rows uri sym container acc)
@@ -68,7 +63,10 @@
 
 (define (lsp/push-document-rows uri sym acc)
   (if (json-contains? sym "location")
-      (cons (lsp/information-row sym) acc)
+      (cons (lsp/symbol-item (json-ref sym "name") (json-ref sym "kind")
+                             (json-ref-or sym #f "containerName")
+                             (json-ref sym "location"))
+            acc)
       (lsp/push-document-symbol-rows uri sym #f acc)))
 
 (define (lsp/show-document-symbols! pane uri results)
@@ -88,12 +86,8 @@
           (lambda (params)
             (let ((uri (hash-ref (hash-ref params "textDocument") "uri")))
               (lsp-request-all! pane "textDocument/documentSymbol" params
-                (lambda (err results)
-                  (if err
-                      (lsp/report-error! "document symbols" err)
-                      (begin
-                        (lsp/report-answer-errors! "document symbols" results)
-                        (lsp/show-document-symbols! pane uri results))))
+                (lsp/on-answers "document symbols"
+                  (lambda (results) (lsp/show-document-symbols! pane uri results)))
                 #:require-focus #t))))))))
 
 ;; ── Workspace symbols ────────────────────────────────────────────────────────
