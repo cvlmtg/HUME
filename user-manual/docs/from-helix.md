@@ -73,7 +73,7 @@ HUME reads Helix's theme format: the same TOML with `[palette]` indirection, the
 - **Your own themes:** copy them from `~/.config/helix/themes/` to `~/.config/hume/themes/` (`%APPDATA%\hume\themes\` on Windows). `inherits` works too. HUME bundles many of Helix's popular themes (`onedark`, `catppuccin_mocha`, `gruvbox`, `nord`, …), so a theme built on one of them still finds its parent.
 - **Published themes:** run `:plum-install-theme <user/repo>` and [PLUM](core-plugins.md#core-plum) fetches the theme repo from GitHub, the same way it installs plugins.
 
-Type `:theme ` and press Tab to try one for the session, then set it as your default in your [`init.scm`](configuration.md#example-init-scm). Here's [Everforest](https://github.com/cvlmtg/everforest.hume), the first third-party theme for HUME, ported as-is from Helix:
+Type `:theme ` and press Tab to try one for the session, then set it as your default in your [`init.scm`](configuration.md#example-init-scm). Here's [Everforest](https://github.com/cvlmtg/everforest.hume), a theme ported as-is from Helix:
 
 ```scheme
 (set-option! "theme" "everforest_dark")
@@ -98,7 +98,7 @@ HUME's tab bar reads `ui.tabline`, and falls back to Helix's `ui.bufferline` whe
 
 ### Plugin system
 
-HUME's plugins are written in Steel Scheme and ship with every release. Plugins written for Helix's Steel plugin work won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin.
+HUME's plugins are written in Steel Scheme, and the core plugins ship with every release. Plugins written for Helix's Steel plugin work won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker plugin.
 
 ### Growing selections
 
@@ -224,6 +224,6 @@ Helix's bracket mode (`]` or `[` plus an object letter) jumps to the next or pre
 - [Hooks](writing-plugins.md#hooks) (`on-buffer-open`, `on-buffer-save`, …)
 - [One-shot extends](#growing-selections) that extend a single motion without switching to a select/extend mode
 - Backward line-selection shrinking (`X` in Extend mode, or `Ctrl-Shift-x` with kitty; see [Line selection](#line-selection-x-vs-extend-mode-e))
-- Argument and tag pair objects and navigation that also work in a buffer with no grammar ([`m i a`/`m i x`](selections.md#text-objects), [`g a`/`g x`](moving-around.md#structural-navigation))
+- Argument and tag pair objects that also work in a buffer with no grammar ([`m i a`/`m i x`](selections.md#text-objects)), and tag navigation that does too ([`g x`](moving-around.md#structural-navigation))
 - [Custom statusline elements](settings.md#custom-elements) written in Scheme
 - Configuration in a programming language ([`init.scm`](configuration.md)): conditionals, loops, and custom commands, not static TOML

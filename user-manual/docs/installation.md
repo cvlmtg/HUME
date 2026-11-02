@@ -87,7 +87,7 @@ A binary moved out on its own can't find them.
 hume --version
 ```
 
-prints something like `hume x.y.z-f460770`. The same string is available inside the editor with `:version`.
+prints something like `hume x.y.z` (a nightly or source build adds its commit, as in `hume x.y.z-f460770`). The same string is available inside the editor with `:version`.
 
 ## Building from source
 

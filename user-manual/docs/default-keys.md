@@ -389,7 +389,7 @@ Any other key dismisses the question and then works as usual.
 
 ## Keys added by core plugins
 
-These keys exist once you load the plugin; no core plugin loads on its own. See [Core Plugins](core-plugins.md).
+These keys exist once the plugin has loaded: `core:lsp`'s the first time a buffer gets a language, every other plugin's at startup. No core plugin loads unless your `init.scm` loads it. See [Core Plugins](core-plugins.md).
 
 | Plugin | Key | Action |
 |--------|-----|--------|

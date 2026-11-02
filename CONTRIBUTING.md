@@ -19,7 +19,7 @@ Prerequisites:
 
 | Need | Why |
 |---|---|
-| Rust, current stable | The workspace is edition 2024 (needs 1.85 or newer). Install via [rustup](https://rustup.rs). |
+| Rust, current stable | The workspace is edition 2024 and uses let chains, so it needs 1.88 or newer. Install via [rustup](https://rustup.rs). |
 | A C compiler | The tree-sitter library HUME links is C. On Windows, MSVC build tools. |
 | Node + npm | Builds the manual and runs the theme editor's own tests. |
 | Bash | The scripts in `scripts/` are bash. On Windows, use Git Bash or WSL. |

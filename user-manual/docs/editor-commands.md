@@ -19,7 +19,7 @@ Scheme can call the commands on this page two ways:
 (call! "move-left" pane)
 ```
 
-- The bare form works for the commands on this page except `insert-register`, which only `call!` and keys reach.
+- The bare form works for the commands on this page except `insert-register`, which only `call!` and keys reach, and the two below.
 - `call!` works for any editor command, built in or defined by a script, except `repeat-last-action` and `pipe`. Those two run only from a key: calling them from Scheme raises an error.
 
 Every command needs a `pane` that names a pane; a value with only a buffer (from `(buffers)`, or a buffer-level hook) is refused. Most commands act on that pane even when it isn't focused, as long as it is still open and still shows the same buffer. These need the focused pane:
@@ -78,7 +78,7 @@ Move the cursor or selection.
 | `repeat-find-backward` | `-` | Repeat the last find/till motion backward. |
 | `repeat-find-forward` | `=` | Repeat the last find/till motion forward. |
 | `select-line` | `x` / `Ctrl-x` | Select the full current line (forward). |
-| `select-line-backward` | `X` / `Ctrl-Shift-x` | Select the full current line (backward). |
+| `select-line-backward` | `X` / `Ctrl-Shift-x` *(kitty)* | Select the full current line (backward). |
 | `select-next-uppercase-word` | `W` | Select the next uppercase word (whitespace-delimited). |
 | `select-next-word` | `w` | Select the next word. |
 | `select-prev-uppercase-word` | `B` | Select the previous uppercase word (whitespace-delimited). |

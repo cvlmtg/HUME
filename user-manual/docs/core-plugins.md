@@ -8,7 +8,7 @@ Bring a plugin in with `load-plugin!`:
 (load-plugin! "core:plum")
 ```
 
-Most core plugins wait until you first use them, such as when you run one of their commands or open a file in a language they handle. The ones that add keys, and `core:buffer-words`, load at startup. See [How plugins are loaded](plugins.md#how-plugins-are-loaded).
+Most core plugins wait until you first use them, such as when you run one of their commands or open a file in a language they handle. `core:buffer-words` and the ones that add keys load at startup, except `core:lsp`, which loads the first time a buffer gets a language. See [How plugins are loaded](plugins.md#how-plugins-are-loaded).
 
 ## core:plum
 

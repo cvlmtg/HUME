@@ -29,7 +29,7 @@ You can paste a `file:line:col` from a compiler, linter or `grep` straight onto 
 | `--config <FILE>` | Load configuration from `FILE` instead of the default `init.scm`. Themes and the data directory still resolve from the standard directories (see [Configuration](configuration.md#file-locations)). `FILE` must exist and be readable. A relative `FILE` is resolved at startup, and `:reload-config` re-reads that same path, even after a `:cd`. Not valid with `--no-config`. |
 | `--no-config` | Skip `init.scm`: no plugins, no keybindings or settings from your config. Language detection and syntax highlighting still work. Useful to rule out your config while tracking down a bug. `:reload-config` refuses to run for the rest of the session. Not valid with `--config`. |
 | `-h`, `--help` | Print help and exit. |
-| `-V`, `--version` | Print the HUME version (e.g. `hume x.y.z-f460770`) and exit. `:version` shows the same string inside the editor. |
+| `-V`, `--version` | Print the HUME version (e.g. `hume x.y.z`) and exit. `:version` shows the same string inside the editor. |
 
 ## Headless mode
 

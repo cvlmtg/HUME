@@ -44,7 +44,7 @@ Steel's library functions and your own `define`s are plain Scheme functions, not
   - Calls that read or change a live buffer, pane, selection, or widget raise at the top level of `init.scm` and in a plugin body loaded at startup, since nothing is on screen yet. So do calls that start background work that calls you back later (`after!`, `spawn-async!`, `path-programs`) and the calls that stop it (`cancel-timer!`, `cancel-async!`). Call them from a command, hook, timer, or callback.
   - Registrations (`bind-key!` and its variants without `#:keymap`, `define-command!`, `define-typed-command!`, `register-hook!`, `register-lsp-notification-hook!`, `register-completion-source!`, `define-language!`, `configure-language!`) raise inside a command, hook, timer, or callback. Call them at the top level of `init.scm` or in a plugin body.
   - `load-plugin!` works only at the top level of `init.scm`. `declare-plugin!` works there and in a plugin's own `manifest.scm`.
-- A procedure you hand over to be called later (a hook handler, a callback, an `on-select`, a `#:render`) must take the arguments its call's entry lists, and the call that takes it raises at once when it can't.
+- A procedure you hand over to be called later (a hook handler, a callback, a `#:render`) must take the arguments its call's entry lists, and the call that takes it raises at once when it can't.
   - A lambda with a fitting rest parameter is accepted, as is an editor function.
   - An `on-before-buffer-save` handler is the exception: it must be a lambda of one or two parameters and no rest parameter.
   - A command's procedure is checked when the command runs, not by `define-command!`.
