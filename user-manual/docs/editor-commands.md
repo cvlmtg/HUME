@@ -71,10 +71,10 @@ Move the cursor or selection.
 | `goto-prev-value` | `g V` | Select the previous array/tuple/struct value. |
 | `jump-backward` | `Ctrl-o` | Navigate to the previous position in the jump list. |
 | `jump-forward` | `Ctrl-i` / `Tab` (without kitty) | Navigate to the next position in the jump list. |
-| `move-down` | `j` / `↓` | Move cursors down one visual line (one buffer line with a count). |
+| `move-down` | `j` / `↓` | Move cursors down one visual line; with a count, that many buffer lines. |
 | `move-left` | `h` / `←` | Move cursors one character to the left. |
 | `move-right` | `l` / `→` | Move cursors one character to the right. |
-| `move-up` | `k` / `↑` | Move cursors up one visual line (one buffer line with a count). |
+| `move-up` | `k` / `↑` | Move cursors up one visual line; with a count, that many buffer lines. |
 | `repeat-find-backward` | `-` | Repeat the last find/till motion backward. |
 | `repeat-find-forward` | `=` | Repeat the last find/till motion forward. |
 | `select-line` | `x` / `Ctrl-x` | Select the full current line (forward). |

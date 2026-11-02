@@ -34,8 +34,8 @@ first grammar command, so a relative path would depend on where `:cd` had moved 
 
 An install command checks the folder when it builds its plan (`plum/served-plan`), so
 `plum/ensure-grammars` does not check it when every grammar it is given is installed. The
-check fails the command, rather than falling through to the release, when the folder is a
-wrong path rather than an empty one:
+check fails the command, rather than falling through to the release, when the folder looks
+like a wrong path rather than one that lacks only the languages asked for:
 
 - it is not a directory;
 - it holds no `<language>.tar.gz` for any language HUME knows, such as the parent of the

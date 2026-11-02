@@ -184,7 +184,7 @@ Kakoune reaches objects with `<a-i>` and `<a-a>`; HUME puts them behind an `m` p
 
 `[`/`]`/`{`/`}` are all bound elsewhere in HUME: kill-ring cycling and paragraph motions.
 
-The objects are word (`w`), WORD (`W`), the bracket and quote pairs, argument (`a`), line (`l`) and paragraph (`p`).
+The objects are word (`w`), WORD (`W`), the bracket and quote pairs, argument (`a`), tag pair (`x`), line (`l`) and paragraph (`p`).
 
 HUME adds `m i i`, which selects the text you typed during your last insert, and `m w` + a delimiter, which wraps each selection in a pair. With a grammar that supports them, HUME also has function, class, comment, unit test and value objects, and a `g` jump to the next or previous of each kind. See [Text objects](selections.md#text-objects) and [Structural navigation](moving-around.md#structural-navigation).
 

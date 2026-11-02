@@ -27,7 +27,7 @@ PLUM installs nothing on its own; the commands below do the work when you run th
 | `:plum-cleanup-plugins` | Remove on-disk plugins that `init.scm` does not name |
 | `:plum-update-plugins` | Bring every installed third-party plugin to its pinned tag, branch or commit, or its latest version (see [Pinning a version](plugins.md#pinning-a-version)) |
 | `:plum-list-plugins` | Show named / installed / orphan / missing plugins |
-| `:plum-install-grammar <lang>` | Download and install one language's grammar; Tab-completes language names |
+| `:plum-install-grammar [lang]` | Download and install one language's grammar, the current buffer's language by default; Tab-completes language names |
 | `:plum-list-grammars` | Show the installed grammars, and anything else the grammars folder holds |
 | `:plum-cleanup-grammars` | Remove everything in the grammars folder except the installed grammars |
 | `:plum-install-theme <user/repo>` | Install (or reinstall) a theme repo's themes |

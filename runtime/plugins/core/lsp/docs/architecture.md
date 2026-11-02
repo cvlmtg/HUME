@@ -75,7 +75,9 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
   - When none qualifies, the callback's `err` says why ("hover is not supported by
     rust-analyzer", "… still starting").
   - A request triggered without the user asking (completion, signature help, inlay hints)
-    passes `#:unavailable 'empty` and gets an empty answer instead of that error.
+    passes `#:unavailable 'empty` and gets an empty answer instead of that error. So does
+    a code action's `codeAction/resolve`, so that a server without `resolveProvider` ends
+    in the same "no edit or command" message as an empty resolved action.
   - `#:to` sends to one server chosen earlier. A code action's resolve and execute
     requests go `#:to` the `'server` of the `lsp-request-all!` entry the action came from.
     Range formatting picks its server with `lsp-route` and sends every range `#:to` it.

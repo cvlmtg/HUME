@@ -23,12 +23,12 @@ Each pane owns:
 - **Viewport**: scroll position and pane size. A pane also remembers where
   it last scrolled to in *every* buffer it has shown, so switching back to a
   buffer restores the old scroll position instead of jumping to the top.
-- **Wrap-mode override**: whether and how long lines soft-wrap normally
-  comes from the file, or the editor-wide default. A pane can pin its own
-  wrap style instead, so one pane can show a file wrapped while another,
-  split from it, shows it unwrapped. Like the scroll position, the override
-  is remembered per buffer: pinning one buffer's wrap style does not change
-  how the pane shows another, and switching back restores it.
+- **Wrap-mode override**: whether and how long lines soft-wrap normally comes
+  from the buffer's own setting, or the editor-wide default. A pane can pin
+  its own wrap style instead, so one pane can show a file wrapped while
+  another, split from it, shows it unwrapped. Like the scroll position, the
+  override is remembered per buffer: pinning one buffer's wrap style does not
+  change how the pane shows another, and switching back restores it.
 
 The buffer keeps the text, the undo history and its own settings (its
 default wrap style among them), and nothing about how any pane is looking at

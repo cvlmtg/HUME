@@ -103,7 +103,7 @@ A directory with neither `manifest.scm` nor `plugin.scm` is an error. A missing 
 - **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
 - **`#:languages`**: buffer language names that trigger loading when a buffer's language is set to one of them. Detection only finds languages HUME already knows, so for a language a plugin defines itself, put the `define-language!` in your `init.scm` (see [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language)) and let the plugin load lazily on that name.
 
-A plugin that already has a declared entry keeps those triggers when `load-plugin!` runs: the manifest is not read and the plugin stays lazy. Put `load-plugin!` right after the `declare-plugin!`, because a plugin that activates during startup before its `load-plugin!` line sees an empty config. A `declare-plugin!` placed after the plugin's `load-plugin!` is ignored, and `:messages` reports it.
+A plugin that already has a declared entry keeps those triggers when `load-plugin!` runs: the manifest is not read and the plugin stays lazy. Put `load-plugin!` right after the `declare-plugin!`, because a plugin that activates during startup before its `load-plugin!` line sees an empty config. A `declare-plugin!` placed after the plugin's `load-plugin!` raises an error.
 
 For example, to start `core:lsp` only for Rust buffers, or when you use one of its commands:
 

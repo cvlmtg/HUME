@@ -32,8 +32,9 @@ Ownership is tracked by a stack of what is running, innermost on top. When
 HUME starts evaluating some code, it knows whose code that is: `init.scm` is
 the user's, a runtime file is HUME's. When a plugin body starts running, the
 plugin is pushed onto the stack, and anything defined while it runs belongs
-to it. A body that triggers a second plugin's load pushes that plugin on top;
-the innermost one gets the credit. When a body finishes, it is popped.
+to it. A body that activates a second, lazy plugin (by calling one of its
+commands, say) pushes that plugin on top; the innermost one gets the credit.
+When a body finishes, it is popped.
 
 Ownership is recorded with every procedure a script hands HUME: a command, a
 hook handler, a callback. That procedure always runs as the code that defined

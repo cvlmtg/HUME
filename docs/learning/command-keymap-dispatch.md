@@ -107,10 +107,10 @@ collide.
 
 ## Layer 2: Commands
 
-A command implementation is a plain function of the text, its selections,
-and whatever else its kind takes (a count, the move/extend mode, a
-character). It returns the new state, and knows nothing about keys, modes,
-or how it was invoked.
+A motion, selection or edit command is a plain function of the text, its
+selections, and whatever else its kind takes (a count, the move/extend mode,
+a character). It returns the new state. Editor-level and script-backed
+commands reach more of the editor, but no command knows which key ran it.
 
 ## Layer 3: The Keymap
 

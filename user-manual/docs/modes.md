@@ -64,7 +64,7 @@ Some Normal-mode keys wait for a second key before doing anything. Either they o
 | `G` | `G` + key | Change the selected text: case, comments, number sequences. See [Default Keys](default-keys.md) |
 | Match | `m` + key | Select text objects, or select and wrap surrounding delimiters. See [Text objects](selections.md#text-objects) and [Surround](editing.md#surround) |
 | Match WORD | `M M` | Select the WORD under the cursor. See [Selections](selections.md) |
-| View | `z` + key | Scroll the view to a position, or open a fuzzy picker. See [Moving Around](moving-around.md) and [Fuzzy Finder](pickers.md) |
+| View | `z` + key | Scroll the view to a position, open a fuzzy picker, or open a language-server list or menu. See [Moving Around](moving-around.md), [Fuzzy Finder](pickers.md) and [Language Servers](lsp.md#commands-and-keys) |
 | Pane | `Ctrl-p` + key | Manage panes and tabs: move focus, split, close, rotate, switch tabs. See [Default Keys](default-keys.md) |
 | Register | `"` + char | Target a specific register for yank, paste, or delete. See [Copy & Paste](copy-and-paste.md#register-prefix) |
 

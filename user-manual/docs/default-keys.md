@@ -14,8 +14,8 @@ Keys with a ✓ in the **Kitty** column need the kitty keyboard protocol, which 
 |-----|---------|:-----:|--------|
 | `h` / `←` | `move-left` |  | Move left one grapheme |
 | `l` / `→` | `move-right` |  | Move right one grapheme |
-| `j` / `↓` | `move-down` |  | Move down one visual line |
-| `k` / `↑` | `move-up` |  | Move up one visual line |
+| `j` / `↓` | `move-down` |  | Move down one visual line; with a count, that many buffer lines |
+| `k` / `↑` | `move-up` |  | Move up one visual line; with a count, that many buffer lines |
 | `w` | `select-next-word` |  | Select next word (plus one adjacent whitespace run by default; see `word-selects-whitespace`) |
 | `b` | `select-prev-word` |  | Select previous word (plus one adjacent whitespace run by default) |
 | `W` / `B` | `select-next-uppercase-word` / `select-prev-uppercase-word` |  | WORD variants of `w` / `b` |

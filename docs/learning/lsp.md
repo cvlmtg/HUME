@@ -84,8 +84,9 @@ the handshake:
   put the server's copy out of step from the first edit.
 - **None**: no `didChange` at all.
 
-Every message carries a version number, so an answer computed for an older
-version can be recognized and discarded.
+`didOpen` and every `didChange` carry the document's version number, and
+HUME remembers which version each request was sent for, so an answer
+computed for an older version can be recognized and discarded.
 
 ## Translating edits, in both directions
 

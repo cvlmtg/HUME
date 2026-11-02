@@ -4,10 +4,10 @@ The plugin is orchestration (state, debounce, git process management and decorat
 construction) over one native builtin, `diff-buffer-lines`: a line diff against a ref blob,
 each hunk carrying its changed-word spans.
 
-Signs and inline rendering share one hunk store and one fetch/diff pipeline: the repo
-probe, ref fetch, line diff, debounce, ref-cache invalidation and the reconcile step that
-skips no-op repaints. They differ only in the decorations they build: a `set-signs!` call,
-versus virtual lines, word spans and a line tint.
+Signs and inline rendering share each refresh's hunk set and one fetch/diff pipeline: the
+repo probe, ref fetch, line diff, debounce, ref-cache invalidation and the reconcile step
+that skips no-op repaints. They differ only in the decorations they build: a `set-signs!`
+call, versus virtual lines, word spans and a line tint.
 
 ## File layout
 
