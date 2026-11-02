@@ -28,6 +28,7 @@ One `(box (hash))` keyed by `(buffer-key pane)`, the shape under the core plugin
 |---|---|
 | `"signs?"` / `"inline?"` | The two independent enable flags |
 | `"ref-text"` | The fetch/diff cache (see the table below) |
+| `"ref-path"` | The path the last fetch was for; a cache for another path is not used (see `docs/pipeline.md`'s "Hooks") |
 | `"signs-painted"` / `"inline-painted"` | What each rendering last painted (the sign records, the hunks); `'()` when it shows nothing |
 | `"jobs"` | The in-flight `spawn-async!` id of each job slot (`"diff"`, `"branch"`), keyed by slot; a slot with no job in flight has no key |
 | `"ref"` | `#f` (use the config default) or a runtime override string set via `:toggle-git-signs <ref>`/`:toggle-inline-diff <ref>` |
@@ -46,7 +47,7 @@ one setter call and one `*-painted` field.
 | Value | Meaning |
 |---|---|
 | a string | The cached `git cat-file` blob; a refresh is a local diff, no process |
-| `#f` | Not yet fetched, or dropped by `drop-ref-text!` (a save, a buffer enter, an explicit-ref toggle); the next refresh fetches |
+| `#f` | Not yet fetched, or dropped by `drop-ref-text!` (a buffer enter, focus gained, an explicit-ref toggle, a path change); the next refresh fetches |
 | `'unavailable` | The last fetch failed: a sticky negative cache, so a doomed fetch is not retried on every debounce fire |
 
 ### Tracking a buffer

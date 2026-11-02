@@ -35,16 +35,25 @@ handle-fetch-result! ──▶ diff-buffer-lines                       │
 |---|---|
 | `on-buffer-open` | Track the buffer, schedule a refresh |
 | `on-buffer-enter` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
+| `on-focus-gained` | The same for every buffer a pane shows, with the branch refresh for the focused one |
 | `on-text-changed` | Schedule a refresh when the buffer can diff |
-| `on-buffer-save` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
+| `on-buffer-save` | Schedule a refresh and a branch refresh |
 | `on-buffer-close` | `remove-buffer!` cancels any in-flight diff and branch fetch and drops the entry |
 
-`on-buffer-save` and `on-buffer-enter` share `invalidate-ref!`: it clears the cached
-`"ref-text"` and cancels any fetch already in flight before it schedules the refresh. A save
-changes the file, and a commit or checkout in another terminal moves the ref without any
-event, so the next focus change is the first chance to notice it. Without the cancel, a fetch
-spawned just before could land inside the debounce window and repopulate `"ref-text"` with
-the stale blob, which `refresh!` would treat as a valid cache and never re-fetch.
+A commit or checkout in another terminal moves the ref without any event, so
+`on-buffer-enter` and `on-focus-gained` refetch through `invalidate-ref!`: it clears the
+cached `"ref-text"` and cancels any fetch already in flight before it schedules the refresh.
+Without the cancel, a fetch spawned just before could land inside the debounce window and
+repopulate `"ref-text"` with the stale blob, which `refresh!` would treat as a valid cache
+and never re-fetch. `on-focus-gained` fires when the terminal regains focus and when an
+inline shell command returns, so a commit made with `:!git commit` is seen too. A terminal
+that does not report focus (tmux without `focus-events on`), or a commit made by a background
+process while HUME keeps focus, is seen at the next buffer enter.
+
+A save does not change the blob at `<ref>:./<name>`, so `on-buffer-save` keeps the cache.
+The cache belongs to the path it was fetched for (`"ref-path"`, recorded when the fetch
+starts): a save to a new path (`:w <path>`) changes the buffer's path, and the refresh the
+save schedules finds the cache belongs to another path and fetches again.
 
 ### Fetching
 
@@ -80,8 +89,8 @@ takes it and passes it to `handle-fetch-result!`.
 
 Either way `"ref-text"` becomes `'unavailable`, not `#f`. `#f` means "not fetched yet", and
 `refresh!` would respawn a `git cat-file` that fails the same way on every debounced keystroke.
-`'unavailable` is a sticky negative cache, cleared by `drop-ref-text!` (`on-buffer-save`,
-`on-buffer-enter`, an explicit-ref toggle) or by `force-refresh!`.
+`'unavailable` is a sticky negative cache, cleared by `drop-ref-text!` (`on-buffer-enter`,
+`on-focus-gained`, an explicit-ref toggle, a path change) or by `force-refresh!`.
 
 ### Refresh entry points
 
@@ -114,7 +123,8 @@ fetch failed. Turning a rendering on paints nothing itself: it waits for the ref
 fresh diff.
 
 `drop-ref-text!` cancels any in-flight fetch for a buffer without firing its callback and
-clears `"ref-text"`. It is called from `invalidate-ref!` and the explicit-ref toggle.
+clears `"ref-text"`. It is called from `invalidate-ref!`, the explicit-ref toggle, and
+`refresh!` when the cache belongs to another path.
 
 ### Applying hunks
 
@@ -137,8 +147,9 @@ A second, simpler pipeline next to `diff.scm`'s. It runs `git rev-parse --abbrev
 and pushes the result to the `"steel:git-branch"` statusline element, not into the
 diff renderings or a decoration setter. A branch name is shown only for the focused buffer, so the fetch is
 driven by `on-buffer-enter`, not `on-buffer-open`, which fires for every buffer whether or
-not it is displayed. It also runs on `on-buffer-save`, since a hook run on save or a
-checkout in another terminal can move HEAD without a focus change.
+not it is displayed. It also runs on `on-buffer-save`, since a save to a new path can
+move the buffer into another repository, and on `on-focus-gained`, for a checkout made in
+another terminal.
 
 Branch tracking has no on/off flag: placing the element is the switch. `refresh-branch!`
 checks `branch-element-placed?` (whether `"steel:git-branch"` is one of the statusline

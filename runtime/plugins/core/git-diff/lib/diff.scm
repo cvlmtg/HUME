@@ -70,11 +70,14 @@
   (let* ([entry (git-diff/buffer-entry pane)]
          [path (git-diff/diffable-path pane entry)])
     (when path
-      (let ([ref-text (hash-ref entry "ref-text")])
+      (unless (equal? (hash-ref entry "ref-path") path)
+        (git-diff/drop-ref-text! pane))
+      (let ([ref-text (git-diff/entry-get pane "ref-text")])
         (cond
           [(string? ref-text)
            (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane ref-text) 'hunks))]
           [(and (not ref-text) (not (git-diff/slot-job pane "diff")))
+           (git-diff/entry-set! pane "ref-path" path)
            (git-diff/spawn-job! pane "diff" "git"
                                 (list "cat-file" "--filters" "--end-of-options"
                                       (string-append (git-diff/buffer-ref pane default-ref)

@@ -125,9 +125,9 @@ Requires `core:stdlib` loaded first.
 | `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer |
 | `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer |
 
-Both take an optional git ref, e.g. `:toggle-inline-diff HEAD~2`, and Tab-complete branches and tags from the current buffer's repo. Giving a ref always turns that rendering on and points it at that ref, and the ref sticks across a later bare toggle off and on. The two commands share the ref. A file git doesn't track (untracked, new, or outside a repo) shows no diff.
+Both take an optional git ref, e.g. `:toggle-inline-diff HEAD~2`, and Tab-complete branches and tags from the current buffer's repo. Giving a ref always turns that rendering on and points it at that ref, and the ref sticks across a later bare toggle off and on. The two commands share the ref. A file git doesn't track (untracked, new, or outside a repo) shows no diff. A commit or checkout made outside HUME shows when you switch back to the buffer or HUME regains focus.
 
-The plugin also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer, e.g. `(main)`, or `⎇ main` with `'branch-style` set to `'icon` (see below). Add it to your own `configure-statusline!` call (see [Statusline → Custom elements](settings.md#custom-elements)). It updates when you switch to a buffer and when you save it, and is empty for a buffer outside any repo.
+The plugin also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer, e.g. `(main)`, or `⎇ main` with `'branch-style` set to `'icon` (see below). Add it to your own `configure-statusline!` call (see [Statusline → Custom elements](settings.md#custom-elements)). It updates when you switch to a buffer, when you save it and when HUME regains focus, and is empty for a buffer outside any repo.
 
 Both commands are typed commands, run from the `:` prompt, with no keys bound by default. Each has an editor-command twin, without the ref argument, that you can bind to a key:
 

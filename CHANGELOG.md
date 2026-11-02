@@ -51,6 +51,7 @@
 - The `z r` references list keeps every row on the right line and column after an edit that doesn't change the line count.
 - `:plum-install-grammar`, `:plum-install-theme` and `:lsp-install` show what they are installing, and what they installed, on their output screen, which stays in the terminal after you quit.
 - `core:git-diff` applies its `'signs` and `'inline` settings to buffers opened before it loaded, and its first toggle on such a buffer turns that rendering on.
+- `core:git-diff` picks up a commit made outside HUME when HUME regains focus.
 - `core:git-diff` warns about a bad ref when you give it to `:toggle-git-signs` or `:toggle-inline-diff`, not again each time it refetches.
 
 ## [0.17.0] - 2026-10-28

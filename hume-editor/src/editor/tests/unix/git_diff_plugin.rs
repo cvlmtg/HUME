@@ -1275,7 +1275,7 @@ fn a_bad_explicit_ref_warns_only_for_the_command_that_gave_it() {
 }
 
 #[test]
-fn buffer_save_invalidates_cached_ref_and_refetches() {
+fn saving_keeps_the_cached_blob_until_the_editor_regains_focus() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'inline #t)"#));
@@ -1327,20 +1327,49 @@ fn buffer_save_invalidates_cached_ref_and_refetches() {
     // "file has changed on disk", a real, separate protection this test
     // isn't exercising.
     ed.execute_typed("w!", None).unwrap();
-    ed.settle(); // runs on-buffer-save, clearing the cached ref-text
-    // Unlike the local-diff check above, this refetch needs a real
-    // subprocess round trip (ref-text is now #f): `drain_until`, not a
+    settle_until_idle(&mut ed);
+    assert_eq!(
+        vlines(&ed, bid)[0].2,
+        "CHANGED",
+        "a save to the same path leaves the ref blob as fetched"
+    );
+
+    // The refetch needs a real subprocess round trip: `drain_until`, not a
     // fixed sleep+settle, since the timer firing and the process completing
     // are two separate async stages that don't land in the same settle().
+    ed.handle_input(termina::event::Event::FocusIn);
     drain_until(&mut ed, |ed| {
         vlines(ed, bid).first().map(|v| v.2.as_str()) == Some("FINAL")
     });
-    assert_eq!(
-        vlines(&ed, bid)[0].2,
-        "FINAL",
-        "on-buffer-save must invalidate the cached ref blob and refetch \
-         the real, current HEAD (v3)"
-    );
+}
+
+#[test]
+fn regaining_focus_picks_up_a_commit_made_outside_the_editor() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+    let repo = dirty_six_line_repo();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+
+    git(repo.path(), &["commit", "-q", "-a", "-m", "v2"]);
+    ed.handle_input(termina::event::Event::FocusIn);
+    drain_until(&mut ed, |ed| signs(ed, bid).is_empty());
+}
+
+#[test]
+fn saving_to_a_new_path_diffs_against_that_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+    let repo = dirty_six_line_repo();
+    commit_file(repo.path(), "g.txt", "a\nb\nC\nd\nE\nf\n", "g");
+    std::fs::remove_file(repo.path().join("g.txt")).unwrap();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+
+    let g = repo.path().join("g.txt");
+    ed.execute_typed("w", Some(g.to_str().unwrap())).unwrap();
+    let delta = |line| vec![(line, "~".to_string(), "diff.delta".to_string())];
+    drain_until(&mut ed, |ed| signs(ed, bid) == delta(2));
 }
 
 #[test]

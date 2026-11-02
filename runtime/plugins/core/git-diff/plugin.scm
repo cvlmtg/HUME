@@ -25,13 +25,20 @@
     (git-diff/track! pane)
     (git-diff/schedule-refresh! pane git-diff/ref)))
 
-;;; Refetches the ref blob and the branch — see docs/pipeline.md's "Hooks".
-(define (git-diff/resync-with-git! pane)
+;;; Git can move the ref with no editor event — see docs/pipeline.md's "Hooks".
+(define (git-diff/refetch-ref! pane)
   (git-diff/track! pane)
-  (git-diff/invalidate-ref! pane git-diff/ref)
-  (git-diff/schedule-branch-refresh! pane git-diff/branch-style))
+  (git-diff/invalidate-ref! pane git-diff/ref))
 
-(register-hook! 'on-buffer-enter git-diff/resync-with-git!)
+(register-hook! 'on-buffer-enter
+  (lambda (pane)
+    (git-diff/refetch-ref! pane)
+    (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))
+
+(register-hook! 'on-focus-gained
+  (lambda ()
+    (for-each git-diff/refetch-ref! (panes))
+    (git-diff/schedule-branch-refresh! (focused-pane) git-diff/branch-style)))
 
 ;;; Drives the branch fetch — see docs/pipeline.md's "Branch tracking (`branch.scm`)".
 (register-hook! 'on-option-change
@@ -47,7 +54,11 @@
     (when (git-diff/diffable-path pane (git-diff/buffer-entry pane))
       (git-diff/schedule-refresh! pane git-diff/ref))))
 
-(register-hook! 'on-buffer-save git-diff/resync-with-git!)
+(register-hook! 'on-buffer-save
+  (lambda (pane)
+    (git-diff/track! pane)
+    (git-diff/schedule-refresh! pane git-diff/ref)
+    (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))
 
 (register-hook! 'on-buffer-close git-diff/remove-buffer!)
 
