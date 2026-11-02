@@ -67,10 +67,11 @@ pub use keys::parse_key_stream;
 pub use lazy::PluginStatus;
 pub use rooted::{Callback, Rooted, SteelCall};
 pub use types::{
-    CapabilityQuery, DocSpan, Effect, EvalError, GrammarReg, LspServerStatusEntry, LspServerTarget,
-    Params, PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
-    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, SteelCmdBody, SteelCmdDef,
-    SteelTypedCmdBody, SteelTypedCmdDef, TriggerScope, VirtualLineSpec, WhenUnavailable,
+    CapabilityQuery, DocSpan, Effect, EvalError, GrammarReg, LspErrKind, LspRoute,
+    LspServerStatusEntry, LspServerTarget, Params, PendingLanguageReg, PendingLspNotify,
+    PendingLspRequest, PendingLspServerOp, PendingLspServerReg, RequestMode, RequestParams,
+    RouteSpec, SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef, TriggerScope,
+    VirtualLineSpec, WhenUnavailable, lsp_err_value,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than

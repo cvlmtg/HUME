@@ -10,8 +10,8 @@ use steel::rvals::SteelVal;
 use hume_core::{BufferId, LspFeature, PaneHandle, ServerName};
 
 use crate::types::{
-    CapabilityQuery, Effect, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
-    RequestMode, RequestParams, RouteSpec, WhenUnavailable,
+    CapabilityQuery, Effect, LspErrKind, LspRoute, Params, PendingLspNotify, PendingLspRequest,
+    PendingLspServerOp, RequestMode, RequestParams, RouteSpec, WhenUnavailable, lsp_err_value,
 };
 use crate::{Callback, SteelCtx};
 
@@ -70,10 +70,10 @@ fn route_arg(feature: SteelVal, to: SteelVal) -> Result<RouteSpec, SteelErr> {
 /// standard method already has one, and a second could only disagree.
 fn reject_feature_on_standard_method(
     ctx: &mut SteelCtx,
-    route: &RouteSpec,
+    feature: Option<LspFeature>,
     method: &str,
 ) -> Result<(), SteelErr> {
-    if route.feature.is_none() {
+    if feature.is_none() {
         return Ok(());
     }
     match require_cap(ctx.host.lsp())?.lsp_method_feature(method) {
@@ -104,7 +104,7 @@ fn queue_request(
     tracked: SteelVal,
 ) -> SteelResult {
     let method = string_arg(method, "method")?;
-    reject_feature_on_standard_method(ctx, &route, &method)?;
+    reject_feature_on_standard_method(ctx, route.feature, &method)?;
     let when_unavailable = optional_symbol_arg(unavailable, "#:unavailable")?
         .map(|name| symbol_enum_arg(&name, "#:unavailable", &WhenUnavailable::NAMED))
         .transpose()?
@@ -272,7 +272,7 @@ pub(crate) fn lsp_notify(
     let method = string_arg(method, "method")?;
     let params = checked_params(params, "params")?;
     let route = route_arg(feature, to)?;
-    reject_feature_on_standard_method(ctx, &route, &method)?;
+    reject_feature_on_standard_method(ctx, route.feature, &method)?;
     ctx.push_effect(Effect::LspNotify(PendingLspNotify {
         bid,
         method,
@@ -282,11 +282,21 @@ pub(crate) fn lsp_notify(
     Ok(SteelVal::Void)
 }
 
-/// `(%lsp-servers pane feature method)`, behind the `lsp-servers` wrapper:
-/// the servers attached to `pane`'s buffer, in order. With neither keyword,
-/// every attached server whatever its state; with either, the servers a
-/// request of that feature or method would reach now.
-pub(crate) fn lsp_servers(
+/// `(lsp-servers pane)`: every server attached to `pane`'s buffer, whatever
+/// its state, in order.
+pub(crate) fn lsp_servers(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
+    let servers = require_cap(ctx.host.lsp())?
+        .lsp_servers(bid)
+        .map_err(generic_err)?;
+    Ok(list_of(servers.into_iter().map(ServerRef::into_steel_val)))
+}
+
+/// `(%lsp-route pane feature method)`, behind the `lsp-route` wrapper:
+/// `(hash 'servers s 'err e)`, the servers a request of that feature or
+/// method would reach now with `e` `#f`, or no servers and the `'unavailable`
+/// `err` a request sent now would get. Raises on a `feature` given with a
+/// standard `method`, as a request does.
+pub(crate) fn lsp_route(
     ctx: &mut SteelCtx,
     bid: BufferId,
     feature: SteelVal,
@@ -294,10 +304,29 @@ pub(crate) fn lsp_servers(
 ) -> SteelResult {
     let feature = feature_arg(feature, "#:feature")?;
     let method = optional_string_arg(method, "#:method")?;
-    let servers = require_cap(ctx.host.lsp())?
-        .lsp_servers(bid, feature, method.as_deref())
+    if feature.is_none() && method.is_none() {
+        return Err(generic_err("give #:feature or #:method"));
+    }
+    if let Some(method) = &method {
+        reject_feature_on_standard_method(ctx, feature, method)?;
+    }
+    let route = require_cap(ctx.host.lsp())?
+        .lsp_route(bid, feature, method.as_deref())
         .map_err(generic_err)?;
-    Ok(list_of(servers.into_iter().map(ServerRef::into_steel_val)))
+    let (servers, err) = match route {
+        LspRoute::Servers(servers) => (servers, SteelVal::BoolV(false)),
+        LspRoute::Unavailable(reason) => (
+            Vec::new(),
+            lsp_err_value(LspErrKind::Unavailable, reason, None),
+        ),
+    };
+    Ok(symbol_hash([
+        (
+            "servers",
+            list_of(servers.into_iter().map(ServerRef::into_steel_val)),
+        ),
+        ("err", err),
+    ]))
 }
 
 /// `(lsp-server-name server)` → the name `server` was registered under.

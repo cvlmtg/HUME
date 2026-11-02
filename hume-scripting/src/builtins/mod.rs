@@ -486,7 +486,8 @@ builtins! {
     // Introspection
     cmd  "lsp-capabilities" lsp::lsp_capabilities(server: SteelVal);
     cmd  "%lsp-capability" => "lsp-capability" lsp::lsp_capability(server: SteelVal, feature: SteelVal, method: SteelVal);
-    cmd  "%lsp-servers" => "lsp-servers" lsp::lsp_servers(pane: args::LiveBuffer, feature: SteelVal, method: SteelVal);
+    cmd  "lsp-servers" lsp::lsp_servers(pane: args::LiveBuffer);
+    cmd  "%lsp-route" => "lsp-route" lsp::lsp_route(pane: args::LiveBuffer, feature: SteelVal, method: SteelVal);
     plain "lsp-server-name" lsp::lsp_server_name(server: SteelVal);
     cmd  "lsp-server-status" lsp::lsp_server_status();
     open "lsp-server-registered?" lsp::lsp_server_registered(name: SteelVal);

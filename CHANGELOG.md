@@ -11,6 +11,7 @@
 - `compile-grammar!`, `bundled-language-grammar` and `bundled-grammar-languages` are gone: list HUME's languages with `bundled-languages`.
 - `buffer-display-path`'s `#:relative` takes the directory to be relative to: replace `#:relative #t` with `#:relative (cwd)`.
 - A drawer's `#:render` is called as `(render rows budget)`, as a picker's is: drop the `start` argument, and find what a row needs from its item.
+- `lsp-servers` takes no keywords: replace `(lsp-servers pane #:feature f)` with `(hash-ref (lsp-route pane #:feature f) 'servers)`.
 - `picker!` and `live-picker!` take a keymap in place of `on-select`, and `#:actions` is gone: a picker answers only the keys its keymap binds. Pass `(call! "stdlib/picker-keymap" on-select)` for the keys pickers had, add keys with `hash-insert`, and move cleanup that ran on `#f` into `#:on-close`.
 
 ### Panes & interface
@@ -32,11 +33,13 @@
 - A drawer row too wide for the drawer ends in `…` instead of being clipped, and `show-drawer-list!` takes `#:truncate` to pick the end that is cut.
 - New `string-fit` cuts a string to a number of terminal cells behind a `…`, as pickers and the drawer cut their rows.
 - An error about one entry of a list given to a decoration, drawer, menu or picker function names that entry by its position, as in `lines 1 'segments 0`.
+- New `lsp-route` gives the servers a request would reach, or why it would reach none.
 
 ### Language servers
 - The workspace symbols picker and the goto and references list show a file inside the working directory by its path relative to it.
 - The symbol pickers color each symbol's kind and dim its detail.
 - The goto and references list gives a row from a file that is not open, whose column is the server's own count, the `markup.italic` scope, so a theme can set it apart.
+- Every language server command says why no server can take it, such as a server still starting or a buffer with no file, in the same words for every command.
 
 ### Performance
 - `core:git-diff` refreshes much faster while you type, most of all in large files and files with many changes, and the `diff-` functions no longer take up to a quarter of a second on a large diff.

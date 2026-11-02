@@ -80,15 +80,15 @@
 
 (define-command! "lsp/document-symbols" "Pick a symbol of the current file and jump to it."
   (lambda (pane)
-    (lsp/with-servers (lsp-servers pane #:feature 'document-symbols) "document symbols"
+    (lsp/with-servers pane "document symbols"
       (lambda (servers)
-        (lsp/with-params (lsp-document-params pane) "document symbols"
-          (lambda (params)
-            (let ((uri (hash-ref (hash-ref params "textDocument") "uri")))
-              (lsp-request-all! pane "textDocument/documentSymbol" params
-                (lsp/on-answers "document symbols"
-                  (lambda (results) (lsp/show-document-symbols! pane uri results)))
-                #:require-focus #t))))))))
+        (let* ((params (lsp-document-params pane))
+               (uri (hash-ref (hash-ref params "textDocument") "uri")))
+          (lsp-request-all! pane "textDocument/documentSymbol" params
+            (lsp/on-answers "document symbols"
+              (lambda (results) (lsp/show-document-symbols! pane uri results)))
+            #:require-focus #t)))
+      #:feature 'document-symbols)))
 
 ;; ── Workspace symbols ────────────────────────────────────────────────────────
 
@@ -125,9 +125,10 @@
 
 (define-command! "lsp/workspace-symbols" "Search the symbols of the workspace and jump to one."
   (lambda (pane)
-    (lsp/with-servers (lsp-servers pane #:feature 'workspace-symbols) "workspace symbols"
+    (lsp/with-servers pane "workspace symbols"
       (lambda (servers)
         (live-picker! pane (call! "stdlib/picker-keymap" lsp/goto-symbol!)
                       #:prompt "workspace symbols: " #:truncate 'tail
                       #:render lsp/render-symbol-rows
-                      #:source (lsp/workspace-symbol-source pane))))))
+                      #:source (lsp/workspace-symbol-source pane)))
+      #:feature 'workspace-symbols)))

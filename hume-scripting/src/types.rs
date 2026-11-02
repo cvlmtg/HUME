@@ -9,9 +9,9 @@ use crate::command_procs::{MappableProc, TypedProc};
 
 mod lsp;
 pub use lsp::{
-    CapabilityQuery, DocSpan, LspServerStatusEntry, LspServerTarget, Params, PendingLspNotify,
-    PendingLspRequest, PendingLspServerOp, PendingLspServerReg, RequestMode, RequestParams,
-    RouteSpec, TriggerScope, WhenUnavailable,
+    CapabilityQuery, DocSpan, LspErrKind, LspRoute, LspServerStatusEntry, LspServerTarget, Params,
+    PendingLspNotify, PendingLspRequest, PendingLspServerOp, PendingLspServerReg, RequestMode,
+    RequestParams, RouteSpec, TriggerScope, WhenUnavailable, lsp_err_value,
 };
 
 /// A Steel command definition built by `define-command!` during init or plugin load.

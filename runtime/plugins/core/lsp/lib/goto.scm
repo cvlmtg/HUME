@@ -12,10 +12,10 @@
                           #:what [what "goto"]
                           #:not-found-msg [not-found-msg "No definition found"]
                           #:require-focus [require-focus #f])
-  (lsp/with-params (lsp-position-params pane) what
-    (lambda (params)
+  (lsp/with-servers pane what
+    (lambda (servers)
       (let ((tracked (track-position! pane)))
-        (lsp-request-all! pane method (shape params)
+        (lsp-request-all! pane method (shape (lsp-position-params pane))
           (lsp/on-answers what
             (lambda (results)
               (let* ((locations (lsp/answer-locations results))
@@ -28,7 +28,8 @@
                    (lsp/jump-to! (hash-ref (car places) 'location)))
                   (else (lsp/show-locations! pane tracked places method shape not-found-msg))))))
           #:require-focus require-focus
-          #:tracked tracked)))))
+          #:tracked tracked)))
+    #:method method))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 

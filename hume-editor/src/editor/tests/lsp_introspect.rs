@@ -873,10 +873,10 @@ fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
 }
 
 #[test]
-fn lsp_position_params_is_false_for_an_unattached_buffer() {
+fn lsp_position_params_is_false_for_a_buffer_with_no_path() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    // No server attached at all.
+    // No file, so no server attaches either.
     let host = ScriptingHost::for_testing(&Dirs::none());
     let fired = run_probe(
         &mut ed,

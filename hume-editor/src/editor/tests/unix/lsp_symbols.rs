@@ -387,7 +387,7 @@ fn accepting_a_workspace_symbol_jumps_to_it() {
 }
 
 #[test]
-fn workspace_symbols_without_a_provider_report_unsupported() {
+fn workspace_symbols_without_a_provider_name_the_server_that_lacks_it() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
         setup_cursor_at_start(tmp.path(), SOURCE, serde_json::json!({}), |_, _| {});
@@ -395,6 +395,8 @@ fn workspace_symbols_without_a_provider_report_unsupported() {
     call_and_pump(&mut ed, "lsp/workspace-symbols");
 
     assert!(ed.state.input.picker().is_none());
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
-    assert!(msg.contains("not supported"), "got {msg:?}");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("lsp workspace symbols: workspace-symbols is not supported by rust-analyzer")
+    );
 }

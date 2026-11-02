@@ -17,7 +17,8 @@ The editor functions a plugin uses to register, configure and talk to language s
 | `lsp-request-all!` |  | `(lsp-request-all! pane method params callback [#:feature f] [#:unavailable 'empty] [#:allow-stale #t] [#:supersede key] [#:require-focus #t] [#:tracked token])`{.sig} Send the request to every server that can take it, and call `callback` once, as `(lambda (err results) ...)`, when all have answered. See [Asking every server](#asking-every-server) |
 | `lsp-supersede-key` |  | `(lsp-supersede-key)`{.sig} A new key for `#:supersede`, equal only to itself. Works from `init.scm` and a plugin's top level too |
 | `lsp-notify!` |  | `(lsp-notify! pane method params [#:feature f] [#:to server])`{.sig} Send a notification, with no callback, to every running server attached to `pane`'s buffer that the method (a standard one is tied to its feature), `#:feature` and `#:to` allow |
-| `lsp-servers` |  | `(lsp-servers pane [#:feature f] [#:method m])`{.sig} The servers attached to `pane`'s buffer, as server values, in order. With neither keyword, all of them, running or not; with either, the ones a request of that feature or method would reach now |
+| `lsp-servers` |  | `(lsp-servers pane)`{.sig} Every server attached to `pane`'s buffer, as server values, running or not, in order |
+| `lsp-route` |  | `(lsp-route pane [#:feature f] [#:method m])`{.sig} Where a request of that feature or method would go now, as `(hash 'servers s 'err e)`: the servers it would reach, with `e` `#f`, or no servers and the `'unavailable` error the request would get. Give at least one keyword. Like a request, it raises when `#:feature` comes with a standard method |
 | `lsp-server-name` |  | `(lsp-server-name server)`{.sig} The name `server` was registered under |
 | `register-lsp-notification-hook!` |  | `(register-lsp-notification-hook! methods proc)`{.sig} Call `proc` as `(lambda (server method params) ...)` for server notifications whose method is `methods` (a string) or one of `methods` (a list of strings). Other methods are logged as unhandled unless a plain `register-hook!` handler takes them. As with `register-hook!`, call it at init or plugin load only; it is removed if your plugin fails to load |
 | `lsp-capabilities` |  | `(lsp-capabilities server)`{.sig} A JSON handle onto `server`'s `ServerCapabilities`, or `#f` while it is starting or after `lsp-stop!`. A crashed server keeps its last capabilities |
@@ -94,15 +95,20 @@ Any plugin can call `lsp-request!`, not only `core:lsp`'s commands, to reach a s
 ```scheme
 (define-command! "rust-expand-macro" "Show the expansion of the macro under the cursor."
   (lambda (pane)
-    (lsp-request! pane "rust-analyzer/expandMacro" (lsp-position-params pane)
-      (lambda (err res)
-        (cond
-          (err (log! 'error (string-append "expand macro: " (hash-ref err 'message))))
-          ((void? res) (log! 'info "Not inside a macro"))
-          (else (show-popup! pane (json-ref res "expansion"))))))))
+    (let ((route (lsp-route pane #:method "rust-analyzer/expandMacro")))
+      (if (hash-ref route 'err)
+          (log! 'info (string-append "expand macro: " (hash-ref (hash-ref route 'err) 'message)))
+          (lsp-request! pane "rust-analyzer/expandMacro" (lsp-position-params pane)
+            (lambda (err res)
+              (cond
+                (err (log! 'error (string-append "expand macro: " (hash-ref err 'message))))
+                ((void? res) (log! 'info "Not inside a macro"))
+                (else (show-popup! pane (json-ref res "expansion"))))))))))
 ```
 
-The pattern has three steps: send a request built from `lsp-position-params` or `lsp-primary-range-params`, transform the server's response, and hand the result to a UI or store function (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`, `apply-workspace-edit!`, …).
+The pattern has four steps: check with `lsp-route` that a server can take the request, send a request built from `lsp-position-params` or `lsp-primary-range-params`, transform the server's response, and hand the result to a UI or store function (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`, `apply-workspace-edit!`, …).
+
+Checking the route first tells the user why nothing happened, such as "no LSP server attached to this buffer" or "rust-analyzer still starting". It also makes the params safe to use: a server attaches only to a buffer with a file, so once `lsp-route` finds one, `lsp-position-params` never returns `#f`.
 
 `err` and `res` are never both set. `res` is a JSON handle: read a field with `json-ref`/`json-contains?`/`json-list`, not `hash-ref`. A `null` response arrives as void, not `#f`.
 
@@ -116,7 +122,7 @@ The pattern has three steps: send a request built from `lsp-position-params` or 
 
 ### Choosing the server
 
-With several servers, the request goes to the first in the language's server order that is running and can answer it. A standard method such as `textDocument/hover` or `textDocument/formatting` is tied to its feature, named as in `set-language-servers!` (`'hover`, `'goto-definition`, `'format`, …). A server whose entry leaves that feature out, or that does not advertise it, is skipped. For any other method, name the feature with `#:feature`; giving it for a standard method is an error. `(lsp-servers pane #:method "textDocument/hover")` lists the servers such a request would reach. The server is chosen when the request is sent.
+With several servers, the request goes to the first in the language's server order that is running and can answer it. A standard method such as `textDocument/hover` or `textDocument/formatting` is tied to its feature, named as in `set-language-servers!` (`'hover`, `'goto-definition`, `'format`, …). A server whose entry leaves that feature out, or that does not advertise it, is skipped. For any other method, name the feature with `#:feature`; giving it for a standard method is an error. `(lsp-route pane #:method "textDocument/hover")` gives the servers such a request would reach, or the reason it would reach none. The server is chosen when the request is sent.
 
 To reach one server in particular, such as the one an earlier answer came from, get its value from `(lsp-servers pane)` and pass `#:to server`. `(lsp-server-name server)` gives its name, `(lsp-capabilities server)` its capabilities, and `(lsp-capability server #:feature 'completion)` what it advertises for one feature.
 

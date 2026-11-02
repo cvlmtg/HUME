@@ -1195,15 +1195,16 @@ fn lsp_position_to_char_offset_untagged_handle_errors() {
 #[test]
 fn lsp_reads_without_lsp_host_error() {
     type Call = fn(&mut SteelCtx) -> SteelResult;
-    let calls: [(&str, Call); 15] = [
+    let calls: [(&str, Call); 16] = [
         ("lsp-language-servers", |ctx| {
             lsp_language_servers(ctx, "rust".into_steelval().unwrap())
         }),
-        ("lsp-servers", |ctx| {
-            lsp_servers(
+        ("lsp-servers", |ctx| lsp_servers(ctx, default_bid())),
+        ("lsp-route", |ctx| {
+            lsp_route(
                 ctx,
                 default_bid(),
-                SteelVal::BoolV(false),
+                SteelVal::SymbolV("hover".into()),
                 SteelVal::BoolV(false),
             )
         }),

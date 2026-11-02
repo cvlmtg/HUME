@@ -622,13 +622,18 @@ impl LspHost for EmptyLspHost {
     fn lsp_method_feature(&self, _method: &str) -> Option<hume_core::LspFeature> {
         None
     }
-    fn lsp_servers(
+    fn lsp_servers(&self, _bid: BufferId) -> Result<Vec<crate::ServerRef>, String> {
+        Ok(Vec::new())
+    }
+    fn lsp_route(
         &self,
         _bid: BufferId,
         _feature: Option<hume_core::LspFeature>,
         _method: Option<&str>,
-    ) -> Result<Vec<crate::ServerRef>, String> {
-        Ok(Vec::new())
+    ) -> Result<crate::LspRoute, String> {
+        Ok(crate::LspRoute::Unavailable(
+            "EmptyLspHost: no servers".to_string(),
+        ))
     }
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry> {
         Vec::new()

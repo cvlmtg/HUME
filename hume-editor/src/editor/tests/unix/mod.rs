@@ -330,6 +330,15 @@ fn core_lsp_rig_configured(
     (rig, guard)
 }
 
+/// Focuses a new scratch buffer: it has no file, so no server attaches to it.
+fn focus_scratch_buffer(ed: &mut Editor) {
+    let scratch = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+    ed.switch_to_buffer_without_jump(
+        crate::editor::commands::FocusedPane::current(&ed.view),
+        scratch,
+    );
+}
+
 /// Settles, delivers the scripted LSP answers, and settles again: the way
 /// the interactive loop drains after every keystroke.
 fn pump_lsp(ed: &mut Editor) {

@@ -50,6 +50,23 @@ fn prompt_prefill_shows_the_symbol_under_cursor() {
     );
 }
 
+/// A buffer with no file has no server: rename reports the route's reason
+/// before it opens a prompt.
+#[test]
+fn buffer_with_no_path_reports_without_prompting() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |_backend, _sid| {});
+    focus_scratch_buffer(&mut ed);
+
+    run_rename(&mut ed);
+
+    assert!(ed.state.minibuf().is_none());
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("lsp rename: no LSP server attached to this buffer")
+    );
+}
+
 #[test]
 fn cancel_sends_no_rename_request() {
     let tmp = tempfile::tempdir().unwrap();

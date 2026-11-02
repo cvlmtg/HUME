@@ -1,6 +1,8 @@
 //! The LSP effects and queries a script hands the editor: server
-//! registrations and lifecycle ops, requests and their routing and params,
-//! and trigger-char sets.
+//! registrations and lifecycle ops, requests and their routing, params and
+//! errors, and trigger-char sets.
+
+use steel::SteelVal;
 
 use hume_core::{
     BufferId, ConfigOrigin, ListEntry, ListTier, LspFeature, LspServerConfig, PaneId, ServerName,
@@ -121,6 +123,44 @@ pub enum TriggerScope {
 pub struct RouteSpec {
     pub feature: Option<LspFeature>,
     pub to: Option<crate::ServerRef>,
+}
+
+/// Where a request of one feature or method would go now, as
+/// `lsp-route` answers it: the servers it reaches, never none, or why it
+/// reaches none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LspRoute {
+    Servers(Vec<crate::ServerRef>),
+    Unavailable(String),
+}
+
+hume_core::named_enum! {
+    /// What went wrong with a request, as its `err`'s `'kind` names it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum LspErrKind {
+        /// The server answered with an error.
+        Server => "server",
+        Timeout => "timeout",
+        /// The server stopped or crashed before it answered.
+        Stopped => "stopped",
+        /// No server could take the request.
+        Unavailable => "unavailable",
+        /// The params could not be sent to the server.
+        Unsent => "unsent",
+    }
+}
+
+/// An `err` as a request's callback and `lsp-route` give it:
+/// `(hash 'kind k 'message m)`, with `'code` for a server's own error.
+pub fn lsp_err_value(kind: LspErrKind, message: String, code: Option<i64>) -> SteelVal {
+    crate::symbol_hash(
+        [
+            ("kind", SteelVal::SymbolV(kind.name().into())),
+            ("message", SteelVal::StringV(message.into())),
+        ]
+        .into_iter()
+        .chain(code.map(|code| ("code", SteelVal::IntV(code as isize)))),
+    )
 }
 
 /// A request's params: one value every routed server receives, or one

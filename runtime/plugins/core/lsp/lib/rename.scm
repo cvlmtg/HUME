@@ -4,7 +4,7 @@
 
 (define-command! "lsp/rename" "Rename the symbol under the cursor."
   (lambda (pane)
-    (lsp/with-servers (lsp-servers pane #:feature 'rename-symbol) "rename"
+    (lsp/with-servers pane "rename"
       (lambda (servers)
         (prompt! pane "Rename: "
           (lambda (new-name)
@@ -18,4 +18,5 @@
                       ((void? res) (log! 'info "Nothing to rename"))
                       (else (apply-workspace-edit! pane res #:expect-generation gen))))
                   #:allow-stale #t))))
-          #:prefill (symbol-under-cursor pane))))))
+          #:prefill (symbol-under-cursor pane)))
+      #:feature 'rename-symbol)))

@@ -539,14 +539,13 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
             );
         },
     );
-    ed.doc_mut().forget_file();
+    focus_scratch_buffer(&mut ed);
 
     run_hover(&mut ed);
 
     assert!(popup_lines(&ed).is_none());
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
-    assert!(
-        msg.to_lowercase().contains("no file"),
-        "expected a no-file message, got {msg:?}"
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("lsp hover: no LSP server attached to this buffer")
     );
 }

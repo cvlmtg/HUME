@@ -74,8 +74,18 @@ const LOG_ALL: &str = r#"(lambda (err results)
                    ";"))
                results)))))"#;
 
+/// Logs an `lsp-route` answer as one Warning: its servers' names, or
+/// `<kind>:<message>` and its (empty) server list when it reaches none.
+const LOG_ROUTE: &str = r#"(lambda (route)
+  (let ((err (hash-ref route 'err)))
+    (log! 'warning
+          (if err
+              (string-append (symbol->string (hash-ref err 'kind)) ":" (hash-ref err 'message)
+                             " " (to-string (hash-ref route 'servers)))
+              (to-string (map lsp-server-name (hash-ref route 'servers)))))))"#;
+
 #[test]
-fn lsp_servers_filters_by_capability_and_filter() {
+fn lsp_route_filters_by_capability_and_list_entry() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::drained(
         tmp.path(),
@@ -95,9 +105,7 @@ fn lsp_servers_filters_by_capability_and_filter() {
         },
     );
 
-    rig.probe(
-        r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane #:feature 'hover))))"#,
-    );
+    rig.probe(&format!("({LOG_ROUTE} (lsp-route pane #:feature 'hover))"));
     rig.probe(r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane))))"#);
 
     assert_eq!(
@@ -174,7 +182,7 @@ fn ranges_formatting_needs_ranges_support() {
 }
 
 #[test]
-fn lsp_servers_narrows_a_feature_by_method() {
+fn lsp_route_narrows_a_feature_by_method() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
@@ -194,16 +202,15 @@ fn lsp_servers_narrows_a_feature_by_method() {
         ),
     );
 
-    rig.probe(
-        r#"(log! 'warning (to-string (map lsp-server-name
-             (lsp-servers pane #:method "textDocument/rangeFormatting"))))"#,
-    );
+    rig.probe(&format!(
+        r#"({LOG_ROUTE} (lsp-route pane #:method "textDocument/rangeFormatting"))"#
+    ));
 
     assert_eq!(rig.warnings(), vec![r#"("ra-lint")"#.to_string()]);
 }
 
 #[test]
-fn lsp_servers_accepts_a_method_alone() {
+fn lsp_route_accepts_a_method_alone() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
@@ -214,35 +221,53 @@ fn lsp_servers_accepts_a_method_alone() {
         ),
     );
 
-    rig.probe(
-        r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane #:method "textDocument/hover"))))"#,
-    );
+    rig.probe(&format!(
+        r#"({LOG_ROUTE} (lsp-route pane #:method "textDocument/hover"))"#
+    ));
 
     assert_eq!(rig.warnings(), vec![r#"("ra-lint")"#.to_string()]);
 }
 
 #[test]
-fn lsp_servers_excludes_starting_when_feature_given() {
+fn lsp_route_says_which_servers_are_still_starting() {
     let tmp = tempfile::tempdir().unwrap();
     let (backend, _, _) = RecordingLspBackend::new();
     let mut rig = LspRig::open(tmp.path(), spec("-[f]>n main() {}\n"), backend);
 
-    rig.probe(
-        r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane))))
-           (log! 'warning (to-string (lsp-servers pane #:feature 'hover)))"#,
-    );
+    rig.probe(r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane))))"#);
+    rig.probe(&format!("({LOG_ROUTE} (lsp-route pane #:feature 'hover))"));
 
     assert_eq!(
         rig.warnings(),
         vec![
             r#"("rust-analyzer" "ra-lint")"#.to_string(),
-            "()".to_string()
+            "unavailable:rust-analyzer, ra-lint still starting ()".to_string()
         ]
     );
 }
 
 #[test]
-fn lsp_servers_rejects_an_unknown_feature() {
+fn lsp_route_says_no_server_supports_the_feature() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |_| {},
+        ),
+    );
+
+    rig.probe(&format!("({LOG_ROUTE} (lsp-route pane #:feature 'hover))"));
+
+    assert_eq!(
+        rig.warnings(),
+        vec!["unavailable:hover is not supported by rust-analyzer, ra-lint ()".to_string()]
+    );
+}
+
+#[test]
+fn lsp_route_needs_a_feature_or_a_method() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
@@ -253,11 +278,35 @@ fn lsp_servers_rejects_an_unknown_feature() {
         ),
     );
 
-    rig.probe(r#"(log! 'warning (to-string (lsp-servers pane #:feature 'hovering)))"#);
+    rig.probe(&format!("({LOG_ROUTE} (lsp-route pane))"));
 
     assert!(rig.warnings().is_empty());
     let log = rig.ed.state.message_log.format_for_display();
-    assert!(log.contains("lsp-servers: #:feature"), "{log}");
+    assert!(
+        log.contains("lsp-route: give #:feature or #:method"),
+        "{log}"
+    );
+}
+
+#[test]
+fn lsp_route_rejects_an_unknown_feature() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", hover_caps()),
+            initialize("utf-16", hover_caps()),
+            |_| {},
+        ),
+    );
+
+    rig.probe(&format!(
+        "({LOG_ROUTE} (lsp-route pane #:feature 'hovering))"
+    ));
+
+    assert!(rig.warnings().is_empty());
+    let log = rig.ed.state.message_log.format_for_display();
+    assert!(log.contains("lsp-route: #:feature"), "{log}");
 }
 
 #[test]
@@ -1328,15 +1377,18 @@ fn a_feature_on_a_standard_method_is_rejected_at_the_call() {
              (list
                (lambda () (lsp-request! pane "textDocument/hover" (hash) (lambda (err res) (begin)) #:feature 'completion))
                (lambda () (lsp-request-all! pane "textDocument/hover" (hash) (lambda (err res) (begin)) #:feature 'completion))
-               (lambda () (lsp-notify! pane "textDocument/hover" (hash) #:feature 'completion))))"#,
+               (lambda () (lsp-notify! pane "textDocument/hover" (hash) #:feature 'completion))
+               (lambda () (lsp-route pane #:method "textDocument/hover" #:feature 'completion))))"#,
     );
 
     let warnings = rig.warnings();
-    assert_eq!(warnings.len(), 3);
-    for (warning, verb) in warnings
-        .iter()
-        .zip(["lsp-request!", "lsp-request-all!", "lsp-notify!"])
-    {
+    assert_eq!(warnings.len(), 4);
+    for (warning, verb) in warnings.iter().zip([
+        "lsp-request!",
+        "lsp-request-all!",
+        "lsp-notify!",
+        "lsp-route",
+    ]) {
         assert!(
             warning.contains(&format!(
                 "{verb}: textDocument/hover is a standard method of the 'hover feature; #:feature is for other methods"

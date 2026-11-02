@@ -235,6 +235,7 @@
 (#%register-global "lsp-request!")
 (#%register-global "lsp-request-all!")
 (#%register-global "lsp-restart!")
+(#%register-global "lsp-route")
 (#%register-global "lsp-server-name")
 (#%register-global "lsp-server-registered?")
 (#%register-global "lsp-server-status")

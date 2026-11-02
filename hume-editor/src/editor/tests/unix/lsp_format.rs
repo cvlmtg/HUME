@@ -398,7 +398,6 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
 }
 
 /// A buffer with no attached server reports that, and sends no request.
-/// `lsp-linewise-ranges-params` returns `#f` for it.
 #[test]
 fn no_attached_server_reports_and_sends_nothing() {
     let tmp = tempfile::tempdir().unwrap();
@@ -426,9 +425,8 @@ fn no_attached_server_reports_and_sends_nothing() {
     );
 }
 
-/// A buffer with an attached server but no path (e.g. a scratch buffer)
-/// reports that distinctly from the no-server case above, and sends no
-/// request.
+/// A buffer with no file has no server: `:format-source` reports the route's
+/// reason and sends no request.
 #[test]
 fn buffer_with_no_path_reports_and_sends_nothing() {
     let tmp = tempfile::tempdir().unwrap();
@@ -439,7 +437,7 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
             serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
         );
     });
-    ed.doc_mut().forget_file();
+    focus_scratch_buffer(&mut ed);
     let before = ed.doc().text().to_string();
 
     run_fmt(&mut ed);
@@ -449,10 +447,9 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
         before,
         "a pathless buffer must format nothing"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
-    assert!(
-        msg.to_lowercase().contains("no path"),
-        "expected a no-path warning, got {msg:?}"
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("lsp format: no LSP server attached to this buffer")
     );
 }
 
@@ -853,6 +850,28 @@ fn lsp_fmt_document_without_a_server_reports_nothing() {
 
     let status = rig.ed.state.status_msg.clone().unwrap_or_default();
     assert!(!status.contains("lsp"), "unexpected report: {status:?}");
+}
+
+#[test]
+fn lsp_fmt_document_on_a_buffer_with_no_file_calls_done_and_reports_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |_backend, _sid| {});
+    rig.eval(
+        r#"(define *done* #f)
+           (define-typed-command! "fmt-doc" ""
+             (lambda (pane) (call! "lsp/format-document" pane (lambda () (set! *done* #t)))))"#,
+    );
+    focus_scratch_buffer(&mut rig.ed);
+
+    type_cmd(&mut rig.ed, ":fmt-doc");
+    rig.ed.settle();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+
+    let status = rig.ed.state.status_msg.clone().unwrap_or_default();
+    assert!(!status.contains("format"), "unexpected report: {status:?}");
+    rig.probe(r#"(log! 'warning (if *done* "done" "pending"))"#);
+    assert_eq!(rig.warnings(), vec!["done".to_string()]);
 }
 
 #[test]

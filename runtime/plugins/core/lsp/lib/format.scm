@@ -40,11 +40,11 @@
           #:allow-stale #t))
       ranges)))
 
-;; `td` is the params' "textDocument"; `ranges` a list of LSP ranges, or #f;
-;; `done` a thunk called once the format ends, or #f. `quiet` skips the
+;; `get-ranges` a thunk returning a list of LSP ranges, or #f for the whole
+;; buffer; `done` a thunk called once the format ends, or #f. `quiet` skips the
 ;; notices for a buffer no server can format and for a buffer that needs no
 ;; change. See docs/features.md, "Range requests".
-(define (lsp/format-document! pane td ranges done quiet)
+(define (lsp/format-document! pane get-ranges done quiet)
   (define gen (buffer-generation pane))
   (define (finish!) (when done (done)))
   (define (fail! err)
@@ -59,45 +59,51 @@
     (finish!))
   (define (on-answer err res)
     (if err (fail! err) (apply! (lsp/format-edits res))))
-  (define servers
-    (if ranges (lsp-servers pane #:method "textDocument/rangeFormatting") '()))
+  (define route
+    (lsp-route pane #:method (if get-ranges "textDocument/rangeFormatting" "textDocument/formatting")))
+  (define (document) (hash-ref (lsp-document-params pane) "textDocument"))
   (cond
-    ((not ranges)
+    ((hash-ref route 'err)
+     (unless quiet
+       (lsp/report-error! (if get-ranges "range formatting" "format") (hash-ref route 'err)))
+     (finish!))
+    ((not get-ranges)
      (lsp-request! pane "textDocument/formatting"
-       (hash "textDocument" td "options" (lsp/format-options pane))
+       (hash "textDocument" (document) "options" (lsp/format-options pane))
        on-answer
-       #:allow-stale #t
-       #:unavailable (if quiet 'empty 'error)))
-    ((null? ranges) (finish!))
-    ((null? servers)
-     (unless quiet (lsp/report-unsupported "range formatting"))
-     (finish!))
-    ((and (> (length ranges) 1)
-          (lsp/cap-flag? (lsp-capability (car servers) #:method "textDocument/rangeFormatting")
-                         "rangesSupport"))
-     (lsp-request! pane "textDocument/rangesFormatting"
-       (hash "textDocument" td "ranges" ranges "options" (lsp/format-options pane))
-       on-answer
-       #:to (car servers)
        #:allow-stale #t))
-    ((> (length ranges) lsp/format-max-ranges)
-     (log! 'info
-           (string-append (number->string (length ranges))
-                          " ranges exceeds format-max-ranges ("
-                          (number->string lsp/format-max-ranges)
-                          ") — nothing formatted"))
-     (finish!))
-    (else (lsp/format-fan-out! pane (car servers) td ranges fail! apply!))))
+    (else
+     (let ((server (car (hash-ref route 'servers)))
+           (td (document))
+           (ranges (get-ranges)))
+       (cond
+         ((null? ranges) (finish!))
+         ((and (> (length ranges) 1)
+               (lsp/cap-flag? (lsp-capability server #:method "textDocument/rangeFormatting")
+                              "rangesSupport"))
+          (lsp-request! pane "textDocument/rangesFormatting"
+            (hash "textDocument" td "ranges" ranges "options" (lsp/format-options pane))
+            on-answer
+            #:to server
+            #:allow-stale #t))
+         ((> (length ranges) lsp/format-max-ranges)
+          (log! 'info
+                (string-append (number->string (length ranges))
+                               " ranges exceeds format-max-ranges ("
+                               (number->string lsp/format-max-ranges)
+                               ") — nothing formatted"))
+          (finish!))
+         (else (lsp/format-fan-out! pane server td ranges fail! apply!)))))))
 
 (define (lsp/format-source! pane)
-  (let ((rp (lsp-linewise-ranges-params pane)))
-    (cond
-      ((not rp) (log! 'info "buffer has no path — nothing to format"))
-      ((selections-linewise? pane)
-       (lsp/format-document! pane (hash-ref rp "textDocument") (hash-ref rp "ranges") #f #f))
-      ((selections-charwise? pane)
-       (lsp/format-document! pane (hash-ref rp "textDocument") #f #f #f))
-      (else (log! 'info "mixed whole-line and partial selections — nothing formatted")))))
+  (cond
+    ((selections-linewise? pane)
+     (lsp/format-document! pane
+                           (lambda () (hash-ref (lsp-linewise-ranges-params pane) "ranges"))
+                           #f
+                           #f))
+    ((selections-charwise? pane) (lsp/format-document! pane #f #f #f))
+    (else (log! 'info "mixed whole-line and partial selections — nothing formatted"))))
 
 (define-command! "lsp/format-source"
   "Format the buffer via LSP — bind this to a key. Formats the whole-line selections, or the whole buffer when none are whole-line."
@@ -108,15 +114,7 @@
   (lambda (pane done . ranges)
     (when (> (length ranges) 1)
       (error "lsp/format-document: takes pane, done and at most one ranges list"))
-    (let ((params (lsp-document-params pane)))
-      (if params
-          (lsp/format-document! pane (hash-ref params "textDocument")
-                                (if (null? ranges) #f (car ranges))
-                                done
-                                #t)
-          (begin
-            (log! 'info "buffer has no path — nothing to format")
-            (when done (done)))))))
+    (lsp/format-document! pane (if (null? ranges) #f (lambda () (car ranges))) done #t)))
 
 (define-typed-command! "format-source"
   ":format-source — format the buffer via LSP from the command line."

@@ -28,13 +28,17 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         introspect::method_feature(method)
     }
 
-    fn lsp_servers(
+    fn lsp_servers(&self, bid: BufferId) -> Result<Vec<ServerRef>, String> {
+        introspect::servers(self.state, bid)
+    }
+
+    fn lsp_route(
         &self,
         bid: BufferId,
         feature: Option<LspFeature>,
         method: Option<&str>,
-    ) -> Result<Vec<ServerRef>, String> {
-        introspect::servers(self.state, bid, feature, method)
+    ) -> Result<hume_scripting::LspRoute, String> {
+        introspect::route_servers(self.state, bid, feature, method)
     }
 
     fn lsp_server_status(&self) -> Vec<hume_scripting::LspServerStatusEntry> {

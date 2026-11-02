@@ -20,8 +20,8 @@ use hume_rope::position_encoding::{PositionEncoding, char_range_to_wire_range, c
 use hume_scripting::host::{SupersedeKey, SupersedeKeys, TrackedHold};
 use hume_scripting::json::{WireOrigin, to_steel_handle};
 use hume_scripting::{
-    DocSpan, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams, RouteSpec,
-    ServerRef, SteelCall, WhenUnavailable, symbol_hash,
+    DocSpan, LspErrKind, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams,
+    RouteSpec, ServerRef, SteelCall, WhenUnavailable, lsp_err_value, symbol_hash,
 };
 use steel::rvals::SteelVal;
 
@@ -51,17 +51,17 @@ impl SlotError {
     /// `(kind, message, code)`: the `'kind` a caller tells a request no
     /// server could take from one that failed, its message, and a server's
     /// own error code.
-    fn parts(self) -> (&'static str, String, Option<i64>) {
+    fn parts(self) -> (LspErrKind, String, Option<i64>) {
         match self {
-            SlotError::Response { code, message } => ("server", message, Some(code)),
-            SlotError::TimedOut => ("timeout", "timed out".to_string(), None),
+            SlotError::Response { code, message } => (LspErrKind::Server, message, Some(code)),
+            SlotError::TimedOut => (LspErrKind::Timeout, "timed out".to_string(), None),
             SlotError::Stopped => (
-                "stopped",
+                LspErrKind::Stopped,
                 "server stopped before answering".to_string(),
                 None,
             ),
-            SlotError::Unavailable(message) => ("unavailable", message, None),
-            SlotError::Unsent(message) => ("unsent", message, None),
+            SlotError::Unavailable(message) => (LspErrKind::Unavailable, message, None),
+            SlotError::Unsent(message) => (LspErrKind::Unsent, message, None),
         }
     }
 
@@ -73,18 +73,10 @@ impl SlotError {
         }
     }
 
-    /// The `err` a callback receives: `(hash 'kind k 'message m)`, with
-    /// `'code` for a server's own error.
+    /// The `err` a callback receives.
     fn into_steel(self) -> SteelVal {
         let (kind, message, code) = self.parts();
-        symbol_hash(
-            [
-                ("kind", SteelVal::SymbolV(kind.into())),
-                ("message", SteelVal::StringV(message.into())),
-            ]
-            .into_iter()
-            .chain(code.map(|code| ("code", SteelVal::IntV(code as isize)))),
-        )
+        lsp_err_value(kind, message, code)
     }
 }
 

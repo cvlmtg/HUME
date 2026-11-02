@@ -2,9 +2,9 @@
 ;;; docs/architecture.md.
 
 (provide lsp/report-error! lsp/answered lsp/answers lsp/answer-items lsp/none-answered? lsp/report-answer-errors!
-         lsp/on-answers lsp/with-params
+         lsp/on-answers
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-flag?
-         lsp/with-servers lsp/report-unsupported lsp/jump-to! lsp/payload-rows lsp/refresh-drawer-list!)
+         lsp/with-servers lsp/jump-to! lsp/payload-rows lsp/refresh-drawer-list!)
 
 ;; ── Capabilities ────────────────────────────────────────────────────────────
 
@@ -15,22 +15,13 @@
 (define (lsp/cap-flag? cap field)
   (equal? (lsp/cap-field cap field #f) #t))
 
-;; Calls `(proceed params)` with `params`, a pane's `lsp-position-params` or
-;; `lsp-document-params`, or logs that the buffer has no file when it has none.
-(define (lsp/with-params params what proceed)
-  (if params
-      (proceed params)
-      (log! 'info (string-append "lsp " what ": this buffer has no file"))))
-
-;; Logs that `what` is unsupported by this buffer's language servers.
-(define (lsp/report-unsupported what)
-  (log! 'info (string-append what " is not supported by this buffer's language servers")))
-
-;; Calls `(proceed servers)` with `servers`, or reports `what` unsupported when empty.
-(define (lsp/with-servers servers what proceed)
-  (if (null? servers)
-      (lsp/report-unsupported what)
-      (proceed servers)))
+;; Calls `(proceed servers)` with the servers `lsp-route` finds, or reports its
+;; err. See docs/architecture.md, "Guards".
+(define (lsp/with-servers pane what proceed #:feature [feature #f] #:method [method #f])
+  (let ((route (lsp-route pane #:feature feature #:method method)))
+    (if (hash-ref route 'err)
+        (lsp/report-error! what (hash-ref route 'err))
+        (proceed (hash-ref route 'servers)))))
 
 ;; Jumps the focused pane to `location`, a `goto-location!` target, and logs
 ;; when the place it names no longer exists.

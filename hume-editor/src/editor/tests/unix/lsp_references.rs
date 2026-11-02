@@ -164,15 +164,14 @@ fn buffer_with_no_path_reports_and_tracks_nothing() {
             serde_json::json!([loc(&uri, 0, 0)]),
         );
     });
-    ed.doc_mut().forget_file();
+    focus_scratch_buffer(&mut ed);
 
     run_references(&mut ed);
 
     assert_eq!(ed.state.panes.tracked.len(), 0);
     assert!(ed.state.views.drawer.read().is_none());
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
-    assert!(
-        msg.to_lowercase().contains("no file"),
-        "expected a no-file message, got {msg:?}"
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("lsp references: no LSP server attached to this buffer")
     );
 }

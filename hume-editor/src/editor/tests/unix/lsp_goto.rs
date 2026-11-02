@@ -819,8 +819,8 @@ fn a_second_list_keeps_its_session_when_the_replaced_drawer_closes() {
     assert_eq!(ed.state.panes.tracked.len(), 1);
 }
 
-/// A buffer with no path has no document to ask about: the command reports
-/// it, sends nothing and tracks no position.
+/// A buffer with no file has no server: the command reports the route's
+/// reason, sends nothing and tracks no position.
 #[test]
 fn buffer_with_no_path_reports_and_tracks_nothing() {
     let tmp = tempfile::tempdir().unwrap();
@@ -831,14 +831,13 @@ fn buffer_with_no_path_reports_and_tracks_nothing() {
             serde_json::json!([loc(&uri, 0, 0)]),
         );
     });
-    ed.doc_mut().forget_file();
+    focus_scratch_buffer(&mut ed);
 
     run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(ed.state.panes.tracked.len(), 0);
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
-    assert!(
-        msg.to_lowercase().contains("no file"),
-        "expected a no-file message, got {msg:?}"
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("lsp goto: no LSP server attached to this buffer")
     );
 }

@@ -73,7 +73,7 @@
 
 (define-command! "lsp/code-actions" "Show available code actions for the cursor or selection."
   (lambda (pane)
-    (lsp/with-servers (lsp-servers pane #:feature 'code-action) "code actions"
+    (lsp/with-servers pane "code actions"
       (lambda (servers)
         (let* ((gen (buffer-generation pane))
                (diags (diagnostics-for-buffer pane #:range (lsp/primary-selection-range pane))))
@@ -88,4 +88,5 @@
                         (lambda (entry)
                           (when entry
                             (lsp/run-action pane (car entry) (cdr entry) gen))))))))
-            #:require-focus #t))))))
+            #:require-focus #t)))
+      #:feature 'code-action)))

@@ -72,7 +72,7 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
   user asking (completion, signature help, inlay hints) passes `#:unavailable 'empty` and
   gets an empty answer, not an error, when no server qualifies. A code action's resolve
   and execute requests go `#:to` the `'server` of the `lsp-request-all!` entry the action
-  came from. Range formatting picks its server with `lsp-servers` and sends every range
+  came from. Range formatting picks its server with `lsp-route` and sends every range
   `#:to` it.
 - **Capability fields.** `lsp/cap-field` and `lsp/cap-flag?` read a field off one
   server's `(lsp-capability server #:feature f)` (or `#:method m`), which is `#f`, the
@@ -93,10 +93,16 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
   `lsp/none-answered?` is true when the answer has entries and every one is an error,
   which tells a failure apart from an empty answer, so a caller can keep what it already
   shows.
-- **Guards.** `lsp/with-params` calls its body with a pane's `lsp-position-params` or
-  `lsp-document-params`, or logs "lsp <what>: this buffer has no file" when they are `#f`.
-  `lsp/with-servers` calls its body with a non-empty server list, or logs through
-  `lsp/report-unsupported` "<what> is not supported by this buffer's language servers".
+- **Guards.** Every command the user runs checks its route first. Most start with
+  `lsp/with-servers`, which calls its body with the servers a request of a feature or
+  method would reach, from `lsp-route`, or reports the route's `'unavailable` error
+  through `lsp/report-error!`, so the message names the server that is starting, crashed
+  or lacks the feature. Formatting makes the same check inside `lsp/format-document!`,
+  which reads the ranges only once it passes. The code after the check reads the
+  params builtins without checking for `#f`: a server attaches only to a buffer with a
+  file, so a buffer with none reports "no LSP server attached to this buffer" before any
+  params are read. Completion, signature help and inlay hints, which run without the user
+  asking, check their params themselves and stay silent.
 - **Trigger characters.** `lsp/setup-trigger-chars!` registers an `on-lsp-attach` handler
   for a feature. For every server that attaches it reads the `triggerCharacters` that
   server advertises for the feature's capability, adds the feature's own extra characters,

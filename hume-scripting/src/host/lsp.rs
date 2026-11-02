@@ -88,17 +88,20 @@ pub trait LspHost {
     /// is `hover`'s), or `None` for any other method.
     fn lsp_method_feature(&self, method: &str) -> Option<LspFeature>;
 
-    /// The servers attached to `bid`, in order. With neither `feature` nor
-    /// `method`, every attached server in any state; otherwise the servers
-    /// a request of that feature or method would go to now (running,
-    /// admitted by their list entry, advertising the capability). `Err` for
-    /// a closed buffer.
-    fn lsp_servers(
+    /// Every server attached to `bid`, in any state, in order. `Err` for a
+    /// closed buffer.
+    fn lsp_servers(&self, bid: BufferId) -> Result<Vec<ServerRef>, String>;
+
+    /// Where a request of `feature` or `method` (at least one given) for
+    /// `bid` would go now: the servers it reaches (running, admitted by
+    /// their list entry, advertising the capability), or the reason it
+    /// reaches none. `Err` for a closed buffer.
+    fn lsp_route(
         &self,
         bid: BufferId,
         feature: Option<LspFeature>,
         method: Option<&str>,
-    ) -> Result<Vec<ServerRef>, String>;
+    ) -> Result<crate::LspRoute, String>;
 
     /// One entry per running server instance.
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry>;

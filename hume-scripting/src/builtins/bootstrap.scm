@@ -97,8 +97,8 @@
 (define (lsp-notify! pane method params #:feature [feature #f] #:to [to #f])
   (%lsp-notify! pane method params feature to))
 
-(define (lsp-servers pane #:feature [feature #f] #:method [method #f])
-  (%lsp-servers pane feature method))
+(define (lsp-route pane #:feature [feature #f] #:method [method #f])
+  (%lsp-route pane feature method))
 
 (define (lsp-capability server #:feature [feature #f] #:method [method #f])
   (%lsp-capability server feature method))

@@ -67,10 +67,10 @@ fn signature_help_response(
 
 /// Detach must be a true no-op: `*sighelp-chars*`/`"lsp-sighelp"`'s
 /// trigger-char registration is global, set once at attach, so
-/// `on-lsp-detach` must clear it. The request itself also checks
-/// `lsp-servers` for a signature-help server first: without that, a trigger
-/// char left registered past `:lsp-stop` would reach `lsp-request!`'s
-/// routing failure and log an Error on every matching keystroke.
+/// `on-lsp-detach` must clear it. The request itself also passes
+/// `#:unavailable 'empty`: without that, a trigger char left registered past
+/// `:lsp-stop` would reach `lsp-request!`'s routing failure and log on every
+/// matching keystroke.
 #[test]
 fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     let tmp = tempfile::tempdir().unwrap();

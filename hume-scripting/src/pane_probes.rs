@@ -34,6 +34,7 @@ const PANE_PROBES: &[&str] = &[
     "(buffer-changes-since p #f)",
     r#"(lsp-notify! p "m" (hash))"#,
     "(lsp-servers p)",
+    "(lsp-route p #:feature 'hover)",
     "(lsp-document-params p)",
     r#"(lsp-position->char-offset p (hash "line" 0 "character" 0))"#,
     r#"(lsp-range->char-range p

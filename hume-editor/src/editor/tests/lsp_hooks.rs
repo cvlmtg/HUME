@@ -620,7 +620,7 @@ fn a_filter_change_clears_the_attachments_triggers_and_refires_attach() {
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (log! 'warning "attach")
-             (when (member server (lsp-servers pane #:feature 'hover))
+             (when (member server (hash-ref (lsp-route pane #:feature 'hover) 'servers))
                (set-attachment-hook-triggers! pane "test" server 'diagnostics '(#\.)))))"#,
         backend,
     );

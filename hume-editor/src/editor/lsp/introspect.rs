@@ -56,30 +56,40 @@ pub(in crate::editor) fn capabilities(
         .cloned()
 }
 
-/// `bid`'s attached servers: every one, in any state, with neither
-/// `feature` nor `method`; otherwise the ones a request of that feature or
-/// method reaches now, none when the route reaches none.
+/// Every server attached to `bid`, in any state.
 pub(in crate::editor) fn servers(
     state: &EditorState,
     bid: BufferId,
-    feature: Option<hume_core::LspFeature>,
-    method: Option<&str>,
 ) -> Result<Vec<hume_scripting::ServerRef>, String> {
     if state.buffers.try_get(bid).is_none() {
         return Err(format!("invalid buffer id {bid:?}"));
     }
-    if feature.is_none() && method.is_none() {
-        return Ok(state
-            .buffer_positions
-            .lsp
-            .servers(bid)
-            .filter_map(|sid| state.lsp.instances.server_ref(sid))
-            .collect());
+    Ok(state
+        .buffer_positions
+        .lsp
+        .servers(bid)
+        .filter_map(|sid| state.lsp.instances.server_ref(sid))
+        .collect())
+}
+
+/// The servers a request of `feature` or `method` for `bid` reaches now,
+/// or why it reaches none.
+pub(in crate::editor) fn route_servers(
+    state: &EditorState,
+    bid: BufferId,
+    feature: Option<hume_core::LspFeature>,
+    method: Option<&str>,
+) -> Result<hume_scripting::LspRoute, String> {
+    if state.buffers.try_get(bid).is_none() {
+        return Err(format!("invalid buffer id {bid:?}"));
     }
     let spec = hume_scripting::RouteSpec { feature, to: None };
-    Ok(super::route::route(state, bid, method, &spec)
-        .map(|routed| routed.into_iter().map(|r| r.server).collect())
-        .unwrap_or_default())
+    Ok(match super::route::route(state, bid, method, &spec) {
+        Ok(routed) => {
+            hume_scripting::LspRoute::Servers(routed.into_iter().map(|r| r.server).collect())
+        }
+        Err(unavailable) => hume_scripting::LspRoute::Unavailable(unavailable.to_string()),
+    })
 }
 
 /// One entry per server instance: `:lsp-status`'s data in

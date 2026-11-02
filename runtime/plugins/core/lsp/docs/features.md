@@ -142,11 +142,13 @@ instead of applying to the wrong text.
 the selections and hands them to `lsp/format-document`'s implementation.
 `lsp/format-document` takes a `done` and optional ranges: with no ranges it formats the
 whole document, and it calls `done` once the edits are applied or the attempt has failed
-(no path, no server, a server error, stale text). It works on a buffer no pane shows.
+(no server, a server error, stale text). It works on a buffer no pane shows.
 Format-on-save is not wired by default; the user manual's "Format on save" section has the
 recipe.
 
-A buffer with no path logs a message and formats nothing. Formatting the whole buffer
+A buffer no server can format, a buffer with no file among them, logs why and formats
+nothing; `lsp/format-document` stays silent about it, since it runs from save hooks.
+Formatting the whole buffer
 goes to the first running server with the `format` feature and a
 `documentFormattingProvider`; when there is none, the error names why. Formatting ranges
 goes to the first server with a `documentRangeFormattingProvider`, and every range of one
