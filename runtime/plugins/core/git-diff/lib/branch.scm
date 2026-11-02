@@ -22,26 +22,23 @@
                                         (trim (hash-ref result 'stderr)))))
           (set-statusline-text! pane "git-branch" "")))))
 
-;;; `git rev-parse --abbrev-ref HEAD`, cwd = `path`'s directory.
-(define (git-diff/fetch-branch! pane style path)
-  (git-diff/spawn-job! pane "branch-job" "git" '("rev-parse" "--abbrev-ref" "HEAD")
-                       (parent-name path)
-                       (lambda (result) (git-diff/handle-branch-result! pane style result))))
-
 ;;; Gates the fetch on `"steel:git-branch"` being placed — see docs/pipeline.md.
 (define (git-diff/branch-element-placed?)
   (let ([sections (get-option "statusline")])
     (and (member "steel:git-branch"
-                 (append (hash-ref sections 'left)
-                         (hash-ref sections 'center)
-                         (hash-ref sections 'right)))
+                 (call! "stdlib/concat" (list (hash-ref sections 'left)
+                                              (hash-ref sections 'center)
+                                              (hash-ref sections 'right))))
          #t)))
 
 ;;; Immediate (non-debounced) — see docs/pipeline.md's "Branch tracking (`branch.scm`)".
 (define (git-diff/refresh-branch! pane style)
   (when (and (git-diff/buffer-entry pane) (git-diff/branch-element-placed?))
     (let ([path (buffer-path pane)])
-      (when path (git-diff/fetch-branch! pane style path)))))
+      (when path
+        (git-diff/spawn-job! pane "branch" "git" '("rev-parse" "--abbrev-ref" "HEAD")
+                             (parent-name path)
+                             (lambda (result) (git-diff/handle-branch-result! pane style result)))))))
 
 ;;; `debounce-by`, keyed per buffer, at 150ms — see docs/pipeline.md.
 (define git-diff/schedule-branch-refresh!

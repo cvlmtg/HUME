@@ -1,8 +1,8 @@
 # core:git-diff — Rendering (`render.scm`)
 
 Every function in this file is a pure `hunks → decoration records` view over the one hunk
-shape `diff-buffer-lines` returns (see [One hunk set](architecture.md#one-hunk-set)), and ends in
-one setter call. `render-inline!` makes two. The signs and the plugin's own inline rendering
+shape `diff-buffer-lines` returns (see [One hunk set](architecture.md#one-hunk-set)), or the
+setter call that draws such records. `render-inline!` makes two. The signs and the plugin's own inline rendering
 share a feature-scoped source name, `"git-diff"`, not the `core:git-diff` plugin id,
 matching `core:lsp`'s own decoration sources (`"lsp-diagnostics"`, `"lsp-inlay-hints"`).
 The inline renderers take the source name as a parameter, so another plugin's hunks draw

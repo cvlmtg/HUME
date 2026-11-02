@@ -18,8 +18,8 @@
 (define (git-diff/inline-visible? entry)
   (and (hash-ref entry "inline?") (null? (hash-ref entry "covered-by"))))
 
-(define (git-diff/reconcile-signs! entry pane target)
-  (git-diff/reconcile-rendering! entry pane "signs-painted" target git-diff/render-signs!))
+(define (git-diff/reconcile-signs! entry pane signs)
+  (git-diff/reconcile-rendering! entry pane "signs-painted" signs git-diff/render-signs!))
 
 (define (git-diff/reconcile-inline! entry pane target)
   (git-diff/reconcile-rendering! entry pane "inline-painted" target
@@ -29,7 +29,8 @@
 (define (git-diff/apply-hunks! pane hunks)
   (let ([entry (git-diff/buffer-entry pane)])
     (when entry
-      (git-diff/reconcile-signs! entry pane (if (git-diff/signs-visible? entry) hunks '()))
+      (git-diff/reconcile-signs! entry pane
+        (if (git-diff/signs-visible? entry) (git-diff/hunks->signs hunks) '()))
       (git-diff/reconcile-inline! entry pane (if (git-diff/inline-visible? entry) hunks '())))))
 
 ;;; Clears each hidden rendering and leaves the visible ones as painted.
@@ -41,7 +42,7 @@
       (unless (git-diff/inline-visible? entry)
         (git-diff/reconcile-inline! entry pane '())))))
 
-;;; `spawn-async!` callback for the `git cat-file` below — see docs/pipeline.md.
+;;; `spawn-async!` callback for `refresh!`'s `git cat-file` — see docs/pipeline.md.
 (define (git-diff/handle-fetch-result! pane result)
   (let ([exit-code (hash-ref result 'exit)]
         [stdout (hash-ref result 'stdout)])
@@ -50,22 +51,13 @@
           (git-diff/entry-set! pane "ref-text" stdout)
           (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane stdout) 'hunks)))
         (begin
-          (let ([entry (git-diff/buffer-entry pane)])
-            (log! (cond [(not exit-code) 'error]
-                        [(hash-ref entry "ref") 'warning]
-                        [else 'trace])
-                  (string-append "git-diff: `git cat-file` failed: "
-                                 (trim (hash-ref result 'stderr)))))
+          (log! (cond [(not exit-code) 'error]
+                      [(git-diff/entry-get pane "ref") 'warning]
+                      [else 'trace])
+                (string-append "git-diff: `git cat-file` failed: "
+                               (trim (hash-ref result 'stderr))))
           (git-diff/entry-set! pane "ref-text" 'unavailable)
           (git-diff/apply-hunks! pane '())))))
-
-;;; `git cat-file --filters <ref>:./<name>`, cwd = `path`'s directory.
-(define (git-diff/fetch-ref! pane path ref)
-  (git-diff/spawn-job! pane "job" "git"
-                       (list "cat-file" "--filters" "--end-of-options"
-                             (string-append ref ":./" (file-name path)))
-                       (parent-name path)
-                       (lambda (result) (git-diff/handle-fetch-result! pane result))))
 
 ;;; Immediate (non-debounced) refresh — `schedule-refresh!` is the debounced entry point.
 ;;; A buffer without its own ref diffs against `default-ref`.
@@ -78,20 +70,23 @@
             (cond
               [(string? ref-text)
                (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane ref-text) 'hunks))]
-              [(and (not ref-text) (not (hash-ref entry "job")))
-               (git-diff/fetch-ref! pane path (git-diff/buffer-ref pane default-ref))])))))))
+              [(and (not ref-text) (not (git-diff/slot-job pane "diff")))
+               (git-diff/spawn-job! pane "diff" "git"
+                                    (list "cat-file" "--filters" "--end-of-options"
+                                          (string-append (git-diff/buffer-ref pane default-ref)
+                                                         ":./" (file-name path)))
+                                    (parent-name path)
+                                    (lambda (result) (git-diff/handle-fetch-result! pane result)))])))))))
 
 ;;; Forces a fetch even through a sticky `'unavailable` cache — see docs/pipeline.md.
 (define (git-diff/force-refresh! pane default-ref)
-  (let ([entry (git-diff/buffer-entry pane)])
-    (when entry
-      (unless (string? (hash-ref entry "ref-text"))
-        (git-diff/entry-set! pane "ref-text" #f))
-      (git-diff/refresh! pane default-ref))))
+  (unless (string? (git-diff/entry-get pane "ref-text"))
+    (git-diff/entry-set! pane "ref-text" #f))
+  (git-diff/refresh! pane default-ref))
 
 ;;; Drops the cached blob and cancels any fetch in flight without firing its callback.
 (define (git-diff/drop-ref-text! pane)
-  (git-diff/cancel-job! pane "job")
+  (git-diff/cancel-job! pane "diff")
   (git-diff/entry-set! pane "ref-text" #f))
 
 ;;; Drops the cached blob and any fetch in flight, then schedules a refetch.

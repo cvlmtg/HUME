@@ -1,8 +1,17 @@
 ;;; core:git-diff — render.scm. See docs/rendering.md.
 
-(provide git-diff/*source* git-diff/render-signs! git-diff/render-diff!)
+(provide git-diff/*source* git-diff/hunks->signs git-diff/render-signs! git-diff/render-diff!)
 
 (define git-diff/*source* "git-diff")
+
+(define (git-diff/pure-addition? hunk)
+  (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line)))
+
+;;; Where a hunk's removed lines sit, as a `(kind . line)` pair — see docs/rendering.md's "Anchors".
+(define (git-diff/hunk-anchor new-start)
+  (if (= new-start 0)
+      (cons 'before 0)
+      (cons 'after (- new-start 1))))
 
 ;; ── Signs ────────────────────────────────────────────────────────────────────
 
@@ -15,29 +24,27 @@
 
 ;;; One `diff-buffer-lines` hunk -> a list of `(hash 'line 'text 'scope)` sign entries — see docs/rendering.md.
 (define (git-diff/hunk->signs hunk)
-  (let* ([pure-addition? (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line))]
-         [new-start (hash-ref hunk 'new-start-line)]
-         [new-end (hash-ref hunk 'new-end-line)])
+  (let ([new-start (hash-ref hunk 'new-start-line)]
+        [new-end (hash-ref hunk 'new-end-line)])
     (cond
-      [(and (= new-start new-end) (= new-start 0))
-       (list (hash 'line 0 'text "▔" 'scope "diff.minus"))]
       [(= new-start new-end)
-       (list (hash 'line (- new-start 1) 'text "▁" 'scope "diff.minus"))]
-      [pure-addition? (git-diff/line-signs new-start new-end "+" "diff.plus")]
+       (let ([anchor (git-diff/hunk-anchor new-start)])
+         (list (hash 'line (cdr anchor)
+                     'text (if (equal? (car anchor) 'before) "▔" "▁")
+                     'scope "diff.minus")))]
+      [(git-diff/pure-addition? hunk) (git-diff/line-signs new-start new-end "+" "diff.plus")]
       [else (git-diff/line-signs new-start new-end "~" "diff.delta")])))
 
-;;; Registers first regardless of `hunks` — see docs/rendering.md's "Signs".
-(define (git-diff/render-signs! pane hunks)
+(define (git-diff/hunks->signs hunks)
+  (call! "stdlib/concat" (map git-diff/hunk->signs hunks)))
+
+;;; Registers first regardless of `signs` — see docs/rendering.md's "Signs".
+(define (git-diff/render-signs! pane signs)
   (register-sign-source! pane git-diff/*source* git-diff/*sign-priority*)
-  (set-signs! pane git-diff/*source* (call! "stdlib/concat" (map git-diff/hunk->signs hunks))))
+  (set-signs! pane git-diff/*source* signs))
 
 ;; ── Inline: deleted lines + word highlights ─────────────────────────────────
 ;; See docs/rendering.md.
-
-(define (git-diff/hunk-anchor new-start)
-  (if (= new-start 0)
-      (cons 'before 0)
-      (cons 'after (- new-start 1))))
 
 (define (git-diff/virtual-line-hash text anchor segments)
   (let ([base (hash 'line (cdr anchor) 'text text 'side (car anchor) 'scope "diff.minus.line")])
@@ -66,7 +73,7 @@
 
 ;;; One hunk -> `(virtual-lines . spans)` for `render-inline!` — see docs/rendering.md.
 (define (git-diff/hunk-inline-data hunk)
-  (if (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line))
+  (if (git-diff/pure-addition? hunk)
       (cons '() '())
       (let* ([words (or (hash-ref hunk 'words) (hash 'old '() 'new '()))]
              [anchor (git-diff/hunk-anchor (hash-ref hunk 'new-start-line))])
@@ -87,13 +94,9 @@
 ;; ── Line background tint ─────────────────────────────────────────────────────
 
 (define (git-diff/hunk->line-bgs hunk)
-  (let* ([pure-addition? (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line))]
-         [new-start (hash-ref hunk 'new-start-line)]
-         [new-end (hash-ref hunk 'new-end-line)])
-    (if (= new-start new-end)
-        '()
-        (let ([scope (if pure-addition? "diff.plus.line" "diff.delta.line")])
-          (map (lambda (line) (hash 'line line 'scope scope)) (range new-start new-end))))))
+  (let ([scope (if (git-diff/pure-addition? hunk) "diff.plus.line" "diff.delta.line")])
+    (map (lambda (line) (hash 'line line 'scope scope))
+         (range (hash-ref hunk 'new-start-line) (hash-ref hunk 'new-end-line)))))
 
 (define (git-diff/render-line-bgs! pane source hunks)
   (set-line-backgrounds! pane source (call! "stdlib/concat" (map git-diff/hunk->line-bgs hunks))))

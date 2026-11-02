@@ -20,10 +20,12 @@
     (git-diff/init-buffer! pane git-diff/signs-default git-diff/inline-default)
     (git-diff/schedule-refresh! pane git-diff/ref)))
 
-(register-hook! 'on-buffer-enter
-  (lambda (pane)
-    (git-diff/invalidate-ref! pane git-diff/ref)
-    (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))
+;;; Refetches the ref blob and the branch — see docs/pipeline.md's "Hooks".
+(define (git-diff/resync-with-git! pane)
+  (git-diff/invalidate-ref! pane git-diff/ref)
+  (git-diff/schedule-branch-refresh! pane git-diff/branch-style))
+
+(register-hook! 'on-buffer-enter git-diff/resync-with-git!)
 
 ;;; Drives the branch fetch — see docs/pipeline.md's "Branch tracking (`branch.scm`)".
 (register-hook! 'on-option-change
@@ -34,13 +36,9 @@
 (register-hook! 'on-text-changed
   (lambda (pane changes) (git-diff/schedule-refresh! pane git-diff/ref)))
 
-(register-hook! 'on-buffer-save
-  (lambda (pane)
-    (git-diff/invalidate-ref! pane git-diff/ref)
-    (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))
+(register-hook! 'on-buffer-save git-diff/resync-with-git!)
 
-(register-hook! 'on-buffer-close
-  (lambda (pane) (git-diff/remove-buffer! pane)))
+(register-hook! 'on-buffer-close git-diff/remove-buffer!)
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
@@ -122,9 +120,7 @@
 
 (define-command! "git-diff/inline-diff?"
   "Whether inline git diff is on for a buffer. Argument: pane. Returns #t or #f."
-  (lambda (pane)
-    (let ([entry (git-diff/buffer-entry pane)])
-      (and entry (hash-ref entry "inline?")))))
+  (lambda (pane) (git-diff/entry-get pane "inline?")))
 
 (define-typed-command! "toggle-git-signs"
   (string-append git-diff/toggle-signs-doc " Optional argument: a git ref to diff against, e.g. :toggle-git-signs HEAD~2 (default: the `ref` config value, shared with toggle-inline-diff).")

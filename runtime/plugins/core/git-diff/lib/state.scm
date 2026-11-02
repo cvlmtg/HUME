@@ -1,8 +1,8 @@
 ;;; core:git-diff — state.scm. See docs/architecture.md.
 
 (provide git-diff/init-buffer! git-diff/remove-buffer!
-         git-diff/buffer-entry git-diff/entry-set! git-diff/ensure-entry!
-         git-diff/buffer-ref git-diff/toggle-flag! git-diff/cancel-job! git-diff/spawn-job!
+         git-diff/buffer-entry git-diff/entry-get git-diff/entry-set! git-diff/ensure-entry!
+         git-diff/buffer-ref git-diff/toggle-flag! git-diff/slot-job git-diff/cancel-job! git-diff/spawn-job!
          git-diff/add-cover! git-diff/remove-cover!)
 
 ;;; Keyed by `(buffer-key pane)`, not `pane` itself — see docs/architecture.md's "State (`state.scm`)".
@@ -12,10 +12,15 @@
 (define (git-diff/fresh-entry signs? inline?)
   (hash "signs?" signs? "inline?" inline?
         "ref-text" #f "signs-painted" '() "inline-painted" '()
-        "job" #f "ref" #f "branch-job" #f "covered-by" '()))
+        "jobs" (hash) "ref" #f "covered-by" '()))
 
 (define (git-diff/buffer-entry pane)
   (hash-try-get (unbox git-diff/*buffers*) (buffer-key pane)))
+
+;;; `key`'s value in `pane`'s entry, or #f when the buffer has no tracked entry.
+(define (git-diff/entry-get pane key)
+  (let ([entry (git-diff/buffer-entry pane)])
+    (and entry (hash-ref entry key))))
 
 (define (git-diff/put-entry! pane entry)
   (set-box! git-diff/*buffers*
@@ -26,12 +31,8 @@
 
 ;;; Cancels the entry's in-flight jobs without firing their callbacks, then drops it.
 (define (git-diff/remove-buffer! pane)
-  (let ([entry (git-diff/buffer-entry pane)])
-    (when entry
-      (for-each (lambda (key)
-                  (let ([job (hash-ref entry key)])
-                    (when job (cancel-async! job))))
-                '("job" "branch-job"))))
+  (let ([jobs (git-diff/entry-get pane "jobs")])
+    (when jobs (for-each cancel-async! (hash-values->list jobs))))
   (set-box! git-diff/*buffers* (hash-remove (unbox git-diff/*buffers*) (buffer-key pane))))
 
 ;;; No-op when `pane`'s buffer has no tracked entry — see docs/architecture.md.
@@ -48,37 +49,45 @@
 
 ;;; The buffer's own ref, else `default`.
 (define (git-diff/buffer-ref pane default)
-  (let ([entry (git-diff/buffer-entry pane)])
-    (or (and entry (hash-ref entry "ref")) default)))
+  (or (git-diff/entry-get pane "ref") default))
 
 ;;; Flips `key` (one of "signs?"/"inline?") and returns the new value.
 (define (git-diff/toggle-flag! pane key)
   (git-diff/ensure-entry! pane)
-  (let ([new? (not (hash-ref (git-diff/buffer-entry pane) key))])
+  (let ([new? (not (git-diff/entry-get pane key))])
     (git-diff/entry-set! pane key new?)
     new?))
 
 ;;; See docs/rendering.md's "Rendering another plugin's hunks".
 (define (git-diff/add-cover! pane source)
   (git-diff/ensure-entry! pane)
-  (let ([covers (hash-ref (git-diff/buffer-entry pane) "covered-by")])
+  (let ([covers (git-diff/entry-get pane "covered-by")])
     (unless (member source covers)
       (git-diff/entry-set! pane "covered-by" (cons source covers)))))
 
 (define (git-diff/remove-cover! pane source)
-  (let ([entry (git-diff/buffer-entry pane)])
-    (when entry
+  (let ([covers (git-diff/entry-get pane "covered-by")])
+    (when covers
       (git-diff/entry-set! pane "covered-by"
-                           (filter (lambda (s) (not (equal? s source)))
-                                   (hash-ref entry "covered-by"))))))
+                           (filter (lambda (s) (not (equal? s source))) covers)))))
+
+;;; The job in slot `key`, or #f.
+(define (git-diff/slot-job pane key)
+  (let ([jobs (git-diff/entry-get pane "jobs")])
+    (and jobs (hash-try-get jobs key))))
+
+;;; Puts `job` in slot `key`, or empties the slot when `job` is #f.
+(define (git-diff/set-slot! pane key job)
+  (let ([jobs (git-diff/entry-get pane "jobs")])
+    (when jobs
+      (git-diff/entry-set! pane "jobs" (if job (hash-insert jobs key job) (hash-remove jobs key))))))
 
 ;;; Cancels the job in slot `key` without firing its callback — see docs/architecture.md.
 (define (git-diff/cancel-job! pane key)
-  (let ([entry (git-diff/buffer-entry pane)])
-    (when entry
-      (let ([job (hash-ref entry key)])
-        (when job (cancel-async! job)))
-      (git-diff/entry-set! pane key #f))))
+  (let ([job (git-diff/slot-job pane key)])
+    (when job
+      (cancel-async! job)
+      (git-diff/set-slot! pane key #f))))
 
 ;;; Starts `program` as the job in slot `key`, cancelling that slot's current
 ;;; job. `on-result` runs only while the job still owns the slot, so a result
@@ -88,10 +97,9 @@
   (let* ([id (box #f)]
          [job (spawn-async! program args
                 (lambda (result)
-                  (let ([entry (git-diff/buffer-entry pane)])
-                    (when (and entry (equal? (hash-ref entry key) (unbox id)))
-                      (git-diff/entry-set! pane key #f)
-                      (on-result result))))
+                  (when (equal? (git-diff/slot-job pane key) (unbox id))
+                    (git-diff/set-slot! pane key #f)
+                    (on-result result)))
                 #:cwd cwd)])
     (set-box! id job)
-    (git-diff/entry-set! pane key job)))
+    (git-diff/set-slot! pane key job)))

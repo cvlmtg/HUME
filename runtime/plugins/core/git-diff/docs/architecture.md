@@ -28,18 +28,17 @@ One `(box (hash))` keyed by `(buffer-key pane)`, the shape under the core plugin
 |---|---|
 | `"signs?"` / `"inline?"` | The two independent enable flags |
 | `"ref-text"` | The fetch/diff cache (see the table below) |
-| `"signs-painted"` / `"inline-painted"` | The hunks each rendering last painted; `'()` when it shows nothing |
-| `"job"` | The in-flight diff-fetch `spawn-async!` id, or `#f` |
+| `"signs-painted"` / `"inline-painted"` | What each rendering last painted (the sign records, the hunks); `'()` when it shows nothing |
+| `"jobs"` | The in-flight `spawn-async!` id of each job slot (`"diff"`, `"branch"`), keyed by slot; a slot with no job in flight has no key |
 | `"ref"` | `#f` (use the config default) or a runtime override string set via `:toggle-git-signs <ref>`/`:toggle-inline-diff <ref>` |
-| `"branch-job"` | The in-flight branch-fetch `spawn-async!` id, or `#f`; independent of `"job"` |
 | `"covered-by"` | The other plugins' decoration sources drawing through `git-diff/render-diff`, which hide the inline rendering (see `docs/rendering.md`) |
 
 ### One hunk set
 
 Every renderer in `render.scm` is a pure function over the one hunk set a refresh passes
 to `apply-hunks!`. The plugin does not store it. A rendering that is off or covered shows
-nothing. `diff.scm` compares each rendering's target (the hunks, or `'()`) with its
-`*-painted` field and paints only on a difference. A new rendering is one function,
+nothing. `diff.scm` compares each rendering's target (what it would draw from the hunks, or `'()`)
+with its `*-painted` field and paints only on a difference. A new rendering is one function,
 one setter call and one `*-painted` field.
 
 ### `"ref-text"` states
@@ -60,13 +59,12 @@ Both write to an entry. They differ on a missing one, the two write-path shapes 
 | `entry-set!` | No-ops | A `spawn-async!` callback. A late callback for a buffer closed while its fetch was in flight must not resurrect state for it |
 | `ensure-entry!` | Creates one from `fresh-entry` with both flags off | A toggle command and `add-cover!`. A toggle, or another plugin's `git-diff/render-diff`, must succeed even for a buffer whose `on-buffer-open` never fired (an activation list can override the manifest's `#:events` with a `#:commands`-only list) |
 
-`spawn-job!` starts a `spawn-async!` job in a slot (`"job"`/`"branch-job"`), cancelling the
+`spawn-job!` starts a `spawn-async!` job in a slot (`"diff"`/`"branch"`), cancelling the
 slot's current job first. The result callback runs only while its job still owns the slot, so
 a result queued before a cancel or a replacement, or arriving after the buffer closed, is
 dropped. `cancel-job!` cancels a slot's job without firing its callback. `diff.scm` and
 `branch.scm` both go through these two, differing only in the key. `remove-buffer!` cancels
-the live job of each slot in its own `'("job" "branch-job")` list before it drops the entry,
-so a new slot must be added to that list.
+every job in `"jobs"` before it drops the entry.
 
 ## Ref handling
 

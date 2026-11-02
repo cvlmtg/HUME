@@ -48,7 +48,7 @@ the stale blob, which `refresh!` would treat as a valid cache and never re-fetch
 
 ### Fetching
 
-`fetch-ref!` starts `git cat-file --filters --end-of-options <ref>:./<name>` through
+`refresh!` starts `git cat-file --filters --end-of-options <ref>:./<name>` through
 `spawn-job!`, which cancels any earlier fetch, with cwd set to the buffer's own directory.
 The `./` prefix resolves the name relative to cwd, so locating the blob needs no
 `git rev-parse --show-toplevel` call and no cached repo root in state. `--filters` applies
@@ -57,7 +57,7 @@ smudge filter diffs as the text on disk. `--end-of-options` keeps a ref that sta
 from being read as an option.
 
 `handle-fetch-result!` is the `spawn-job!` callback, so it runs only for the fetch that
-still owns `"job"`. It trusts `stdout` only on exit code `0`. On success it stores the blob in `"ref-text"` and applies the diff;
+still owns the `"diff"` slot. It trusts `stdout` only on exit code `0`. On success it stores the blob in `"ref-text"` and applies the diff;
 on failure it sets `"ref-text"` to `'unavailable` and applies `'()`, which clears the painted
 hunks.
 
@@ -115,9 +115,11 @@ clears `"ref-text"`. It is called from `invalidate-ref!` and the explicit-ref to
 
 `apply-hunks!` takes the fresh hunks and compares each rendering's target with what it last
 painted (`"signs-painted"`/`"inline-painted"`), painting only on a difference. A rendering's
-target is the hunks when its flag is on (for inline, also when no other plugin's source
-covers the buffer), else `'()`. The hunks are not stored: only a refresh holds them, so
-nothing else can paint hunks for text that has since changed. `hide-renderings!`, which the
+target is what it draws when its flag is on (for inline, also when no other plugin's source
+covers the buffer), else `'()`. For signs that is the sign records, which read only the
+hunks' line numbers, so typing inside an already changed line repaints no signs. For inline
+it is the hunks. A painted target is kept only for that comparison: only a refresh paints
+hunks, so nothing else can paint hunks for text that has since changed. `hide-renderings!`, which the
 toggle-off and the `render-diff` command's cover call, takes no hunks and only clears the
 renderings that are hidden. Signs on with
 inline off, or the reverse, is a valid state, and a refresh for one must not touch the other.
