@@ -63,7 +63,9 @@
 
 (define (pickers/status-span i c)
   (let ([scope (pickers/status-scope c)])
-    (if scope (list (hash 'start-char i 'end-char (+ i 1) 'scope scope)) '())))
+    (if scope
+        (list (hash 'start-char i 'end-char (+ i 1) 'scope scope 'selected-scope "ui.text.focus"))
+        '())))
 
 (define (pickers/git-row row budget)
   (let ([entry (car row)])

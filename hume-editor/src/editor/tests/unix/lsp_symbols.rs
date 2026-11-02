@@ -103,12 +103,15 @@ fn symbol_rows_style_the_kind_and_dim_the_detail() {
     assert_picker_styles(
         &mut ed,
         &[
-            (None, &[(6, 14, "type", None)][..]),
+            (None, &[(6, 14, "type", Some("ui.text.focus"))][..]),
             (
                 None,
-                &[(5, 13, "type", None), (15, 19, "comment", None)][..],
+                &[
+                    (5, 13, "type", Some("ui.text.focus")),
+                    (15, 19, "comment", Some("ui.text.focus")),
+                ][..],
             ),
-            (None, &[(5, 11, "type", None)][..]),
+            (None, &[(5, 11, "type", Some("ui.text.focus"))][..]),
         ],
     );
 }
@@ -131,7 +134,10 @@ fn symbol_rows_place_their_spans_by_character() {
     call_and_pump(&mut ed, "lsp/document-symbols");
     frame(&mut ed, 60, 20);
 
-    assert_picker_styles(&mut ed, &[(None, &[(7, 15, "type", None)][..])]);
+    assert_picker_styles(
+        &mut ed,
+        &[(None, &[(7, 15, "type", Some("ui.text.focus"))][..])],
+    );
 }
 
 #[test]

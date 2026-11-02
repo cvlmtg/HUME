@@ -507,8 +507,8 @@ fn git_modified_rows_keep_and_color_their_status() {
     assert_picker_styles(
         &mut ed,
         &[
-            (None, &[(1, 2, "diff.delta", None)][..]),
-            (None, &[(0, 1, "diff.plus", None)][..]),
+            (None, &[(1, 2, "diff.delta", Some("ui.text.focus"))][..]),
+            (None, &[(0, 1, "diff.plus", Some("ui.text.focus"))][..]),
         ],
     );
 }

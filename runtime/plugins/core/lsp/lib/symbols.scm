@@ -30,13 +30,16 @@
     (let ((target (lsp/symbol-row-target row)))
       (lsp/jump-to! (if (pair? target) (lsp-location (car target) (cdr target)) target)))))
 
+(define (lsp/symbol-span start end scope)
+  (hash 'start-char start 'end-char end 'scope scope 'selected-scope "ui.text.focus"))
+
 (define (lsp/symbol-spans row)
   (let* ((text (car row))
          (kind-start (+ (lsp/symbol-row-name-chars (cdr row)) 2))
          (kind-end (+ kind-start (lsp/symbol-row-kind-chars (cdr row))))
-         (kind (hash 'start-char kind-start 'end-char kind-end 'scope "type")))
+         (kind (lsp/symbol-span kind-start kind-end "type")))
     (if (> (string-length text) kind-end)
-        (list kind (hash 'start-char (+ kind-end 2) 'end-char (string-length text) 'scope "comment"))
+        (list kind (lsp/symbol-span (+ kind-end 2) (string-length text) "comment"))
         (list kind))))
 
 (define (lsp/render-symbol-rows rows budget)

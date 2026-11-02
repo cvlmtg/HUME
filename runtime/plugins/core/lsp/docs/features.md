@@ -36,8 +36,10 @@ rows as `name  kind  detail` and jump to the accepted row in `(focused-pane)`.
 A row's payload is an `lsp/symbol-row`: its jump target, and the char lengths of its name
 and kind. The pickers' `#:render`, `lsp/render-symbol-rows`, reads those lengths to give
 the kind the `type` scope and the detail the `comment` scope, rather than splitting the
-label on its separators, which a name or detail may contain. It leaves the text as it is,
-so `#:truncate 'tail` still cuts a long row.
+label on its separators, which a name or detail may contain. On the selected row both take
+`ui.text.focus`, the row's own selected style, since a theme's `type` or `comment` color
+can match that row's background. It leaves the text as it is, so `#:truncate 'tail` still
+cuts a long row.
 
 `lsp/document-symbols` asks every server offering `documentSymbolProvider` and shows one
 `picker!` over every server's answers. A `DocumentSymbol[]` answer is walked pre-order, a
