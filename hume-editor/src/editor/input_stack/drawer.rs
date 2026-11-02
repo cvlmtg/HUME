@@ -97,7 +97,7 @@ impl DrawerLayer {
     pub(in crate::editor) fn item_count(&self, store: &BufferStore) -> usize {
         match self.rows {
             DrawerRows::Buffers { .. } => store.iter().count(),
-            DrawerRows::Script { .. } => self.rows.len(),
+            DrawerRows::Script(_) => self.rows.len(),
         }
     }
 
@@ -117,7 +117,7 @@ impl DrawerLayer {
     fn set_buffer_list(&mut self, list: BufferList) {
         let kept = match &self.rows {
             DrawerRows::Buffers { buffers, .. } => buffers.get(self.selected).copied(),
-            DrawerRows::Script { .. } => None,
+            DrawerRows::Script(_) => None,
         };
         let selected = kept
             .and_then(|b| list.buffers.iter().position(|&n| n == b))
@@ -138,41 +138,44 @@ impl DrawerLayer {
     /// The selected row's payload, `None` for a drawer no script owns.
     pub(in crate::editor) fn selected_payload(&self) -> Option<&SteelVal> {
         match &self.rows {
-            DrawerRows::Script { payloads, .. } => Some(payloads[self.selected].value()),
+            DrawerRows::Script(script) => Some(script.payload(self.selected)),
             DrawerRows::Buffers { .. } => None,
         }
-    }
-
-    /// The call of a script's drawer callback with `payload` (the selected
-    /// row, or `#f` on close) and this drawer's token, so an owner can tell
-    /// its own drawer's close from a replaced one's. `None` for a drawer no
-    /// script owns. Every call to the callback is built here.
-    fn callback_call(&self, payload: SteelVal) -> Option<SteelCall> {
-        let callback = self.rows.on_select()?.clone();
-        Some(SteelCall::new(
-            callback,
-            vec![payload, token_to_steel(self.token)],
-        ))
     }
 }
 
 /// A drawer's rows and what `Enter` on one does.
 pub(in crate::editor) enum DrawerRows {
-    /// A script's rows. `Enter` on row `i` calls `on_select` with
-    /// `payloads[i]` and the drawer's token. The payloads and the rows are
-    /// only ever replaced together, so a rendered row never outlives the key
-    /// it was rendered from.
-    Script {
-        rows: ScriptRows,
-        payloads: Vec<hume_scripting::Rooted>,
-        on_select: hume_scripting::Callback,
-    },
+    Script(ScriptDrawer),
     /// `:ls`'s rows: row `i` names `buffers[i]`, and `Enter` switches the
     /// focused pane to it.
     Buffers {
         rows: Vec<Arc<ListRow>>,
         buffers: Vec<BufferId>,
     },
+}
+
+/// A script's rows. `Enter` on row `i` calls `on_select` with `payloads[i]`
+/// and the drawer's token. The payloads and the rows are only ever replaced
+/// together, so a rendered row never outlives the key it was rendered from.
+pub(in crate::editor) struct ScriptDrawer {
+    rows: ScriptRows,
+    payloads: Vec<hume_scripting::Rooted>,
+    on_select: hume_scripting::Callback,
+}
+
+impl ScriptDrawer {
+    fn payload(&self, row: usize) -> &SteelVal {
+        self.payloads[row].value()
+    }
+
+    /// The call of the callback with `payload` (the selected row, or `#f`
+    /// on close) and the drawer's `token`, so an owner can tell its own
+    /// drawer's close from a replaced one's. Every call to the callback is
+    /// built here.
+    fn call(&self, payload: SteelVal, token: HostToken) -> SteelCall {
+        SteelCall::new(self.on_select.clone(), vec![payload, token_to_steel(token)])
+    }
 }
 
 /// How a script's drawer makes the rows it shows.
@@ -207,11 +210,11 @@ impl DrawerRows {
                 )
             }
         };
-        Self::Script {
+        Self::Script(ScriptDrawer {
             rows,
             payloads,
             on_select,
-        }
+        })
     }
 
     fn buffers(list: BufferList) -> Self {
@@ -223,7 +226,7 @@ impl DrawerRows {
 
     pub(in crate::editor) fn len(&self) -> usize {
         match self {
-            Self::Script { payloads, .. } => payloads.len(),
+            Self::Script(script) => script.payloads.len(),
             Self::Buffers { buffers, .. } => buffers.len(),
         }
     }
@@ -234,28 +237,20 @@ impl DrawerRows {
         self.len() - 1
     }
 
-    /// The callback a script's drawer calls on `Enter` and on a close.
-    fn on_select(&self) -> Option<&hume_scripting::Callback> {
-        match self {
-            Self::Script { on_select, .. } => Some(on_select),
-            Self::Buffers { .. } => None,
-        }
-    }
-
     /// Each row as the drawer lists it, before it is cut to a width: the row
     /// given, or for a rendered row the one made, `None` until made.
     #[cfg(test)]
     pub(in crate::editor) fn listed(&self) -> Vec<Option<&ListRow>> {
         match self {
-            Self::Script {
+            Self::Script(ScriptDrawer {
                 rows: ScriptRows::Given(rows),
                 ..
-            }
+            })
             | Self::Buffers { rows, .. } => rows.iter().map(|row| Some(&**row)).collect(),
-            Self::Script {
+            Self::Script(ScriptDrawer {
                 rows: ScriptRows::Rendered(rendered),
                 ..
-            } => rendered.made().collect(),
+            }) => rendered.made().collect(),
         }
     }
 
@@ -263,24 +258,22 @@ impl DrawerRows {
     /// made `budget` cells wide. `None` for a drawer with no render proc, or
     /// when it made every row in `window`.
     fn unrendered(&self, window: Range<usize>, budget: usize) -> Option<RenderCall> {
-        let Self::Script {
-            rows: ScriptRows::Rendered(rendered),
-            payloads,
-            ..
-        } = self
-        else {
+        let Self::Script(script) = self else {
             return None;
         };
-        rendered.unrendered(window, budget, None, |i| payloads[i].value().clone())
+        let ScriptRows::Rendered(rendered) = &script.rows else {
+            return None;
+        };
+        rendered.unrendered(window, budget, None, |i| script.payload(i).clone())
     }
 
     /// The rows the render proc made, for [`Editor::render_rows_into`] to
     /// store the rows [`Self::unrendered`] asked for.
     fn rendered_mut(&mut self) -> &mut RenderedRows {
-        let Self::Script {
+        let Self::Script(ScriptDrawer {
             rows: ScriptRows::Rendered(rendered),
             ..
-        } = self
+        }) = self
         else {
             unreachable!("only a rendered list asks for rows");
         };
@@ -297,18 +290,18 @@ impl DrawerRows {
         truncate: TruncateEnd,
     ) -> Vec<Option<Arc<ListRow>>> {
         match self {
-            Self::Script {
+            Self::Script(ScriptDrawer {
                 rows: ScriptRows::Given(rows),
                 ..
-            }
+            })
             | Self::Buffers { rows, .. } => rows[window]
                 .iter()
                 .map(|row| Some(row.fit_shared(budget, truncate)))
                 .collect(),
-            Self::Script {
+            Self::Script(ScriptDrawer {
                 rows: ScriptRows::Rendered(rendered),
                 ..
-            } => window.map(|i| rendered.at(i, budget).cloned()).collect(),
+            }) => window.map(|i| rendered.at(i, budget).cloned()).collect(),
         }
     }
 }
@@ -440,8 +433,8 @@ impl EditorState {
 
 impl super::stack::FiresFalseOnReplace for DrawerLayer {
     fn close_firing_false(self: Box<Self>, state: &mut EditorState) {
-        if let Some(call) = self.callback_call(SteelVal::BoolV(false)) {
-            state.queue_steel_call(call);
+        if let DrawerRows::Script(script) = &self.rows {
+            state.queue_steel_call(script.call(SteelVal::BoolV(false), self.token));
         }
     }
 }
@@ -538,10 +531,8 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
         .at::<DrawerLayer>(r)
         .expect("dispatch_at already checked kind(r) == DrawerLayer");
     match &drawer.rows {
-        DrawerRows::Script { payloads, .. } => {
-            let call = drawer
-                .callback_call(payloads[drawer.selected].value().clone())
-                .expect("a script's drawer has a callback");
+        DrawerRows::Script(script) => {
+            let call = script.call(script.payload(drawer.selected).clone(), drawer.token);
             ed.state.queue_steel_call(call);
         }
         DrawerRows::Buffers { buffers, .. } => {

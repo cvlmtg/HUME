@@ -22,7 +22,7 @@ fn drawer_open(ed: &Editor) -> bool {
 fn listed(ed: &Editor) -> Vec<BufferId> {
     match &ed.state.input.drawer().expect("drawer must be open").rows {
         DrawerRows::Buffers { buffers, .. } => buffers.clone(),
-        DrawerRows::Script { .. } => panic!("expected a buffer-list drawer"),
+        DrawerRows::Script(_) => panic!("expected a buffer-list drawer"),
     }
 }
 
