@@ -39,6 +39,7 @@
 - The goto and references list gives a row from a file that is not open, whose column is the server's own count, the `markup.italic` scope, so a theme can set it apart.
 
 ### Performance
+- `core:git-diff` refreshes a large file about twice as fast while you type.
 - `core:git-diff` refreshes a file with many changes several times faster, and the `diff-` functions no longer take up to a quarter of a second on a large diff.
 - `core:buffer-words` updates its index after an edit much faster: it reads only the lines the edit changed instead of the whole buffer, and no longer restarts its scan at every edit.
 

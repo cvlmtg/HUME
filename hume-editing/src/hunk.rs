@@ -2,13 +2,12 @@
 //! producers fill the same shape: [`change_hunks`] from a changeset, and
 //! [`text_hunks`] from a line diff.
 
+use std::borrow::Cow;
 use std::ops::Range;
-
-use ropey::RopeSlice;
 
 use hume_rope::column::CharCol;
 use hume_rope::line::{ContentLine, RopeyLine};
-use hume_rope::lines::{line_token_content, strip_line_break};
+use hume_rope::lines::strip_line_break;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::changeset::{ChangeSet, EditedRegion};
@@ -247,8 +246,8 @@ pub fn text_hunks(old: &BufferText, new: &BufferText) -> Vec<ChangeHunk> {
 
 /// [`text_hunks`] with an explicit word budget.
 fn text_hunks_within(old: &BufferText, new: &BufferText, budget: usize) -> Vec<ChangeHunk> {
-    let old_tokens: Vec<RopeSlice<'_>> = old.line_tokens().collect();
-    let new_tokens: Vec<RopeSlice<'_>> = new.line_tokens().collect();
+    let old_tokens: Vec<Cow<'_, str>> = old.line_tokens().collect();
+    let new_tokens: Vec<Cow<'_, str>> = new.line_tokens().collect();
     let mut left = budget;
     diff_lines(&old_tokens, &new_tokens)
         .into_iter()
@@ -284,11 +283,10 @@ fn text_hunks_within(old: &BufferText, new: &BufferText, budget: usize) -> Vec<C
 }
 
 /// `tokens[range]` as owned lines without their line breaks.
-fn token_lines(tokens: &[RopeSlice<'_>], range: Range<usize>) -> Vec<String> {
+fn token_lines(tokens: &[Cow<'_, str>], range: Range<usize>) -> Vec<String> {
     tokens[range]
         .iter()
-        .copied()
-        .map(line_token_content)
+        .map(|token| strip_line_break(token).to_owned())
         .collect()
 }
 

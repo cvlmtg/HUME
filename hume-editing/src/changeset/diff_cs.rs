@@ -10,8 +10,8 @@
 //! Memory cost of the *stored* inverse ≈ size of the changed lines only, not
 //! the full buffer. This is what lets `:e!` reload record a normal undo step
 //! without a coarse delete-all + insert-all that doubles buffer memory.
-//! [`BufferText::line_tokens`] yields borrowed `RopeSlice`s, and the diff
-//! only ever compares and counts them, so changed lines get materialized
+//! [`BufferText::line_tokens`] borrows each line from the rope wherever it
+//! can, and the diff only ever compares and counts them, so changed lines get materialized
 //! once, when [`build_changesets`] re-slices them from `old`/`new`;
 //! `LineHunkKind` carries no payload of its own, only the line-index ranges.
 //! None of this affects what survives in the history tree afterwards, which
@@ -22,8 +22,9 @@
 
 use std::ops::Range;
 
+use std::borrow::Cow;
+
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-use ropey::RopeSlice;
 
 use crate::diff::{LineHunk, LineHunkKind, diff_lines};
 use crate::text::BufferText;
@@ -130,7 +131,7 @@ fn build_changesets(
 /// `text.len_chars()`. `build_changesets` needs both: the tokens to diff,
 /// the offsets to translate a hunk's line-index range back to a char range
 /// into the rope.
-fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<CharOffset>) {
+fn tokens_with_offsets(text: &BufferText) -> (Vec<Cow<'_, str>>, Vec<CharOffset>) {
     let mut tokens = Vec::with_capacity(text.ropey_line_count().get());
     let mut offsets = Vec::with_capacity(text.ropey_line_count().get() + 1);
     offsets.push(CharOffset::new(0));
@@ -140,7 +141,7 @@ fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<CharOffset
     // position in its own right until it's pushed.
     let mut char_acc = 0usize;
     for token in text.line_tokens() {
-        char_acc += token.len_chars();
+        char_acc += token.chars().count();
         offsets.push(CharOffset::new(char_acc));
         tokens.push(token);
     }

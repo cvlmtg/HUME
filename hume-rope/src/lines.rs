@@ -5,6 +5,9 @@
 // functions that resolve a line's start or count the same way.
 #![allow(clippy::disallowed_methods)]
 
+use std::borrow::Cow;
+
+use ropey::iter::Chunks;
 use ropey::{Rope, RopeSlice};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -120,6 +123,65 @@ pub fn line_tokens_back_from(
     line_idx: RopeyLine,
 ) -> impl Iterator<Item = RopeSlice<'_>> {
     rope.lines_at(line_idx.index() + 1).reversed()
+}
+
+/// Every line token of `rope`, the ones [`line_tokens_at`] yields from line 0,
+/// as text: borrowed where a line lies inside one rope chunk, copied where it
+/// straddles chunks. A whole-text line diff splits with this, since walking
+/// chunks is several times faster than `Rope::lines()` and a `&str` hashes and
+/// compares faster than a `RopeSlice`.
+pub fn line_token_strs(rope: &Rope) -> LineTokenStrs<'_> {
+    LineTokenStrs {
+        chunks: rope.chunks(),
+        rest: "",
+        done: false,
+    }
+}
+
+/// The iterator [`line_token_strs`] returns.
+pub struct LineTokenStrs<'a> {
+    chunks: Chunks<'a>,
+    /// What is left of the current chunk.
+    rest: &'a str,
+    done: bool,
+}
+
+impl<'a> Iterator for LineTokenStrs<'a> {
+    type Item = Cow<'a, str>;
+
+    fn next(&mut self) -> Option<Cow<'a, str>> {
+        if self.done {
+            return None;
+        }
+        let mut straddling: Option<String> = None;
+        loop {
+            if let Some(end) = self.rest.find('\n') {
+                let (line, rest) = self.rest.split_at(end + 1);
+                self.rest = rest;
+                return Some(match straddling {
+                    None => Cow::Borrowed(line),
+                    Some(mut head) => {
+                        head.push_str(line);
+                        Cow::Owned(head)
+                    }
+                });
+            }
+            if !self.rest.is_empty() {
+                straddling
+                    .get_or_insert_with(String::new)
+                    .push_str(self.rest);
+            }
+            match self.chunks.next() {
+                Some(chunk) => self.rest = chunk,
+                // The last token: the line after the final break, empty when
+                // the text ends with one.
+                None => {
+                    self.done = true;
+                    return Some(straddling.map_or(Cow::Borrowed(""), Cow::Owned));
+                }
+            }
+        }
+    }
 }
 
 /// Strips the trailing line break from a line-tokenization token. `'\n'` is

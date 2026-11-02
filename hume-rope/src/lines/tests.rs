@@ -452,6 +452,35 @@ fn last_char_of_line_last_content_line() {
     assert_eq!(last_char_of_line(&buf, last_content_line(&buf)), co(4));
 }
 
+// ── line_token_strs ─────────────────────────────────────────────────────────
+
+/// The tokens `Rope::lines` yields, on texts whose lines straddle chunk
+/// boundaries: a line longer than a chunk, multi-byte chars on every line, a
+/// missing final break, and the empty text.
+#[test]
+fn line_token_strs_are_the_tokens_rope_lines_yields() {
+    let long = "é".repeat(5_000);
+    let mixed: String = (0..2_000)
+        .map(|i| format!("line {i} ✓ {}\n", "x".repeat(i % 97)))
+        .collect();
+    let texts = [
+        String::new(),
+        "\n".to_string(),
+        "a".to_string(),
+        "a\nb".to_string(),
+        "a\nb\n".to_string(),
+        format!("{long}\n{long}"),
+        format!("start\n{long}\nend\n"),
+        mixed,
+    ];
+    for text in texts {
+        let rope = Rope::from_str(&text);
+        let expected: Vec<String> = rope.lines().map(String::from).collect();
+        let actual: Vec<String> = line_token_strs(&rope).map(String::from).collect();
+        assert_eq!(actual, expected, "chunks: {}", rope.chunks().count());
+    }
+}
+
 // ── line_token_content ──────────────────────────────────────────────────────
 
 #[test]
