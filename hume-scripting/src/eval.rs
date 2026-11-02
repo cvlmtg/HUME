@@ -493,23 +493,26 @@ impl ScriptingHost {
         (completed, effects)
     }
 
-    /// Calls a list's `render` proc as `(render rows budget)`, as its owner:
-    /// `rows` are the items of the rows to show, in order, each with its
-    /// place in the list the script gave, and `budget` the cells one row
-    /// gets. Decodes its result: one row display per row, paired with its
+    /// Calls a list's `render` proc as `(render rows budget)`, or as
+    /// `(render rows budget query)` for a list whose rows answer `query`, as
+    /// its owner: `rows` are the items of the rows to show, in order, each
+    /// with its place in the list the script gave, and `budget` the cells one
+    /// row gets. Decodes its result: one row display per row, paired with its
     /// place, which also names the row in an error.
     pub fn render_rows(
         &mut self,
         render: &Callback,
         rows: Vec<(usize, SteelVal)>,
         budget: usize,
+        query: Option<&str>,
         host: &mut dyn EditorHost,
     ) -> Result<Vec<(usize, crate::host::RowDisplay)>, String> {
         let (places, items): (Vec<_>, Vec<_>) = rows.into_iter().unzip();
-        let args = vec![
+        let mut args = vec![
             builtins::args::list_of(items),
             SteelVal::IntV(budget as isize),
         ];
+        args.extend(query.map(|query| SteelVal::StringV(query.into())));
         let proc = render.proc().value().clone();
         let value = self.read_only_call(host, render.provenance().clone(), |steel| {
             steel.call_function_with_args(proc, args)

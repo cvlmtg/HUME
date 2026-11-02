@@ -54,7 +54,7 @@ fn streamed_rows_go_through_render() {
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
           (set! tok (picker! pane '() (test-picker-keys (lambda (x) (log! 'info (to-string x))))
-                             #:render (lambda (rows budget)
+                             #:render (lambda (rows budget query)
                                         (map (lambda (row) (string-append "<" (cdr row) ">")) rows))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "printf 'a\nb\n'"))))

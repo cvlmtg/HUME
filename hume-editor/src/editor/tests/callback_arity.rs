@@ -69,6 +69,14 @@ fn a_callback_of_the_wrong_arity_raises_where_it_is_handed_over() {
             "picker!: #:on-close: expected a procedure of 0 parameters",
         ),
         (
+            r#"(picker! pane (list (cons "a" 1)) (hash) #:render (lambda (rows budget) 1))"#,
+            "picker!: #:render: expected a procedure of 3 parameters",
+        ),
+        (
+            r#"(live-picker! pane (hash) #:source (lambda (t q) 1) #:render (lambda (rows budget) 1))"#,
+            "live-picker!: #:render: expected a procedure of 3 parameters",
+        ),
+        (
             r#"(live-picker! pane (hash "enter" (lambda (item) 1)) #:source (lambda (t q) 1))"#,
             "live-picker!: keymap: expected a procedure of 2 parameters",
         ),

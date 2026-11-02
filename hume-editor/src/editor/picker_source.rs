@@ -80,7 +80,7 @@ impl Editor {
     /// deadline to poll for here.
     ///
     /// Coalesces every batch queued since the last frame into at most ONE
-    /// `PickerSession::push`: `push` reranks every call, and reranking once
+    /// `PickerSession::source_batch`: it reranks every call, and reranking once
     /// per queued batch instead of once per frame would multiply the
     /// rerank cost by however many batches arrived this frame.
     pub(super) fn drain_picker_source(&mut self) {
@@ -111,18 +111,7 @@ impl Editor {
                 payload: hume_scripting::Rooted::new(SteelVal::StringV(line.into())),
             })
             .collect();
-        let delivered_a_batch = !items.is_empty();
-        if delivered_a_batch {
-            session.push(items);
-        }
-
-        // A live requery's source that disconnects having delivered
-        // nothing (rg exit 1, "no matches") must still drop the previous
-        // pattern's rows: `push`'s wholesale-replace-on-first-batch never
-        // ran, so `supersedes_rows` is still armed here to say so.
-        if disconnected && !delivered_a_batch && session.source_supersedes_rows() {
-            session.replace(Vec::new());
-        }
+        session.source_batch(items, disconnected);
 
         let exit = disconnected.then(|| {
             session

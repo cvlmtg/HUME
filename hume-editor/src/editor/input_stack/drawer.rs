@@ -263,7 +263,7 @@ impl DrawerRows {
         else {
             return None;
         };
-        rendered.unrendered(window, budget, |i| payloads[i].value().clone())
+        rendered.unrendered(window, budget, None, |i| payloads[i].value().clone())
     }
 
     /// The rows the render proc made, for [`Editor::render_rows_into`] to

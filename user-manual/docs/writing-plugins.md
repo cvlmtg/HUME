@@ -613,12 +613,12 @@ A row too wide for the panel is clipped to fit, with `…` at the dropped end. `
 - `'head` (default) drops the front and keeps the tail: right for a file path, whose file name sits at the end.
 - `'tail` drops the back and keeps the head: right for a row whose distinguishing part sits at the front, like a grep match's `path:line:col:` prefix before the line preview.
 
-To show rows differently from the text the query matches, pass `#:render`, a procedure of two arguments. Before the panel shows rows it hasn't drawn at its current width, it calls `(render rows budget)`: `rows` are those rows' `(display . payload)` items, top to bottom, and `budget` is how many terminal cells one row gets. It returns one [row display](plugin-api.md#row-display) per item, a string or a hash with spans, which can change the text as well as style it. Streamed rows go through it too, so a row can show a status letter in color or a path with its directory dimmed without parsing every line up front.
+To show rows differently from the text the query matches, pass `#:render`, a procedure of three arguments. Before the panel shows rows it hasn't drawn, it calls `(render rows budget query)`: `rows` are those rows' `(display . payload)` items, top to bottom, `budget` is how many terminal cells one row gets, and `query` is the query the rows answer, to highlight what they matched. It returns one [row display](plugin-api.md#row-display) per item, a string or a hash with spans, which can change the text as well as style it. Streamed rows go through it too, so a row can show a status letter in color or a path with its directory dimmed without parsing every line up front.
 
-Each row is drawn once for a given width, so `render` runs again only for rows scrolled into view, rows that arrive later, or every visible row after the panel changes width. The query still matches each item's display, `.` repeats a pick by it, and a binding still gets the payload. Use `string-width` and `string-fit` to fit a row to `budget`; a row still wider than `budget` is cut at the `#:truncate` end, as a row without `render` is. This keeps a status prefix and drops the front of a long path:
+Each row is drawn once for a given width and query, so `render` runs again only for rows scrolled into view, rows that arrive later, or every visible row after the panel changes width or the query changes. The query still matches each item's display, `.` repeats a pick by it, and a binding still gets the payload. Use `string-width` and `string-fit` to fit a row to `budget`; a row still wider than `budget` is cut at the `#:truncate` end, as a row without `render` is. This keeps a status prefix and drops the front of a long path:
 
 ```scheme
-(define (render-status-rows rows budget)
+(define (render-status-rows rows budget query)
   (map (lambda (row)
          (let* ([entry (car row)]
                 [path (substring entry 3 (string-length entry))])
@@ -657,7 +657,7 @@ A picker whose query should re-run an external command with the new pattern on e
                 #:truncate 'tail))
 ```
 
-`live-picker!` takes a keymap and accepts `#:truncate`, `#:render` and `#:on-close` as `picker!` does (see [Custom pickers](#custom-pickers) above). `#:truncate 'tail` keeps the `path:line:col` start of `rg --vimgrep`'s rows. `stdlib/picker-keymap`'s `Ctrl-t`, `Ctrl-v` and `Ctrl-s` open a match in a new tab or split instead of the current pane.
+`live-picker!` takes a keymap and accepts `#:truncate`, `#:render` and `#:on-close` as `picker!` does (see [Custom pickers](#custom-pickers) above). Its `render` gets the query whose search produced the rows, so rows still shown while a new search runs keep matching what they were found for. `#:truncate 'tail` keeps the `path:line:col` start of `rg --vimgrep`'s rows. `stdlib/picker-keymap`'s `Ctrl-t`, `Ctrl-v` and `Ctrl-s` open a match in a new tab or split instead of the current pane.
 
 [grep.hume](https://github.com/cvlmtg/grep.hume) is this same idea, finished, with `grep/parse` included.
 

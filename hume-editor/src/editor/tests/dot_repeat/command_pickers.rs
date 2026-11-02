@@ -74,7 +74,7 @@ fn dot_repeats_a_rendered_pickers_pick_by_its_original_display() {
         &format!(
             r#"(define-command! "pk" "" (lambda (pane)
                  (picker! pane (list (cons "a" "A") (cons "b" "B")) (test-picker-keys {PK_SELECT})
-                          #:render (lambda (rows budget) (map (lambda (row) "shown") rows))))
+                          #:render (lambda (rows budget query) (map (lambda (row) "shown") rows))))
                  #:repeatable #t)"#
         ),
     );

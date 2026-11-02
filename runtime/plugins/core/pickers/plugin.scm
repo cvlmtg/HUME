@@ -72,7 +72,7 @@
            (lambda (entry)
              (pickers/open-file! (and entry (path-join root (pickers/status-path entry)))))
            "git" pickers/git-status-args
-           #:render (lambda (rows budget)
+           #:render (lambda (rows budget query)
                       (map (lambda (row) (pickers/git-row (car row) budget)) rows)))
           (error "pickers/git-modified: not inside a git repository (or 'git' is not installed)")))))
 
@@ -103,7 +103,7 @@
                          (buffers))
                (call! "stdlib/picker-keymap" pickers/switch-to!)
                #:prompt "buffers: "
-               #:render (lambda (rows budget)
+               #:render (lambda (rows budget query)
                           (map (lambda (row) (pickers/buffer-row row current)) rows))))))
 
 ;; ── Keybindings ───────────────────────────────────────────────────────────────

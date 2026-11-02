@@ -50,7 +50,7 @@ pub(in crate::editor) fn picker_items(items: Vec<(String, Rooted)>) -> Vec<Picke
 struct AttachedSource {
     source: SpawnedLineSource,
     ok_exit_codes: Vec<i32>,
-    /// Set at attach time for a live requery's source: its first `push`
+    /// Set at attach time for a live requery's source: its first batch
     /// replaces `items` wholesale instead of appending, so the previous
     /// pattern's rows stay on screen until this source actually has
     /// something to show. Scoped to the source, not the session, so a
@@ -58,6 +58,8 @@ struct AttachedSource {
     /// respawn but not yet drained) can never carry this flag; only the
     /// source actually attached when a batch arrives can.
     supersedes_rows: bool,
+    /// The query current when it was attached, the one its rows answer.
+    query: String,
 }
 
 /// Whether the query drives the local fuzzy filter (`picker!`) or an
@@ -72,6 +74,11 @@ enum PickerMode {
     /// the identity permutation over `items`.
     Live {
         on_query_change: Callback,
+        /// The query the rows in `items` answer: the one current when the
+        /// feed or source that last changed them was made. Lags `query` from
+        /// a keystroke until a feed or source made for the new query
+        /// delivers.
+        rows_query: String,
     },
 }
 
@@ -103,12 +110,13 @@ enum Population {
 /// `picker-replace!`/`picker-move!`/`picker-close!`;
 /// this module has no Steel-facing surface of its own.
 pub(in crate::editor) struct PickerSession {
-    /// Append-only via `push`/`new`, the common case, and what lets
-    /// `push` preserve a selection by index (see `rerank_keeping_selection`).
-    /// `replace` is the one mutator that breaks this: it clears the vec
-    /// wholesale before re-extending it, for a live requery that must drop
-    /// the previous pattern's rows. `push` itself can also take this path;
-    /// see its `take_supersede` exception, doc'd there rather than here.
+    /// Append-only via `append`, the common case, and what lets it preserve
+    /// a selection by index (see `rerank_keeping_selection`).
+    /// `replace_items` is the one mutator that breaks this: it clears the
+    /// vec wholesale before re-extending it, for a live requery that must
+    /// drop the previous pattern's rows. `append` itself can also take this
+    /// path; see its `take_supersede` exception, doc'd there rather than
+    /// here.
     items: Vec<PickerItem>,
     query: String,
     /// Ranked indices into `items`, rebuilt on every rerank.
@@ -132,7 +140,8 @@ pub(in crate::editor) struct PickerSession {
     /// [`TruncateEnd`].
     truncate: TruncateEnd,
     /// `#:render`, how a row is shown (see `UiHost::open_picker`'s doc),
-    /// and the rows it made, by their index in `items`.
+    /// and the rows it made for the current [`Self::render_query`], by their
+    /// index in `items`.
     rendered: Option<RenderedRows>,
     /// Identifies this session to Steel. [`super::session_for_token`] and
     /// [`super::session_for_feed`] are the guards every token-scoped picker
@@ -157,10 +166,10 @@ pub(in crate::editor) struct PickerSession {
     /// ride `population`: `picker-source-stop!` takes the source and
     /// resets `population` to `Complete` well before the respawn's first
     /// batch lands, and `is_pending` must keep reading "still arriving"
-    /// across that whole gap. Armed by `notify_query_change`; cleared only
-    /// by `replace`, not by `push`'s ordinary append path, which a batch
+    /// across that whole gap. Armed by `query_changed`; cleared only
+    /// by `replace_items`, not by `append`'s ordinary path, which a batch
     /// still in flight from the *outgoing* source can also reach (see
-    /// `replace`'s doc).
+    /// `replace_items`'s doc).
     requery_armed: bool,
     /// Every key the picker answers besides typing, no key twice. A linear
     /// scan, not a map: a keymap holds a dozen entries or so, where scanning
@@ -209,14 +218,11 @@ impl PickerSession {
         keymap: Vec<PickerBinding>,
         opts: LivePickerOpts,
     ) -> Result<Self, String> {
-        Self::build(
-            keymap,
-            opts.common,
-            Population::Complete,
-            PickerMode::Live {
-                on_query_change: opts.on_query_change,
-            },
-        )
+        let mode = PickerMode::Live {
+            on_query_change: opts.on_query_change,
+            rows_query: opts.common.query.clone(),
+        };
+        Self::build(keymap, opts.common, Population::Complete, mode)
     }
 
     fn build(
@@ -306,7 +312,7 @@ impl PickerSession {
     /// Clears `#:pending` on an applied batch: the `Awaiting` half of
     /// "still populating" ends the moment real results (even an empty
     /// batch) land. Leaves `Streaming` untouched: a source drains lines
-    /// into `push` continuously, and the source itself (not the arrival of
+    /// into `source_batch` continuously, and the source itself (not the arrival of
     /// one particular batch) is what decides when populating ends (its
     /// disconnect, handled by `take_source`).
     fn batch_arrived(&mut self) {
@@ -315,35 +321,33 @@ impl PickerSession {
         }
     }
 
-    /// Appends `items` and reranks. No token guard here: every
-    /// *token-scoped* caller (`picker-push!`, via `EditorHostImpl::picker_feed`)
-    /// has already gone through [`super::session_for_feed`] before reaching
-    /// this; the other two callers, [`new`](Self::new) and
-    /// `Editor::drain_picker_source`, hold the session directly (at
-    /// construction, and via the frame's own `&mut EditorState`, respectively)
-    /// and so have no token to check in the first place.
+    /// `picker-push!`: appends `items` and reranks. No token guard here: its
+    /// caller, `EditorHostImpl::picker_feed`, has already gone through
+    /// [`super::session_for_feed`], so the rows answer the current query.
+    pub(in crate::editor) fn push(&mut self, items: Vec<PickerItem>) {
+        self.items_from_opener = false;
+        self.append(items);
+        self.rows_answer(self.query.clone());
+    }
+
+    /// Appends `items` and reranks: the body of `push`, `new` and
+    /// `source_batch`.
     ///
     /// Reranks via [`rerank_keeping_selection`](Self::rerank_keeping_selection),
     /// not a hard reset: a streaming source pushes once per frame, and
     /// snapping back to row 0 on every batch would make a picker the user
     /// is actively scrolling through unnavigable. Safe here specifically
-    /// because `push` only ever appends, so every index a pre-push
+    /// because this only ever appends, so every index a pre-append
     /// `filtered` held still names the same item afterward.
     ///
     /// Exception: the attached source's first batch after a live requery
     /// (`take_supersede`) replaces `items` wholesale instead; see
-    /// `AttachedSource::supersedes_rows`'s doc. That's `replace`'s job, not
-    /// a hand-rolled clear-then-extend here, so it also gets `replace`'s
+    /// `AttachedSource::supersedes_rows`'s doc. That's `replace_items`'s
+    /// job, not a hand-rolled clear-then-extend here, so it also gets its
     /// row-0 reset.
-    pub(in crate::editor) fn push(&mut self, items: Vec<PickerItem>) {
-        self.items_from_opener = false;
-        self.append(items);
-    }
-
-    /// `push`'s body, shared with `new`.
     fn append(&mut self, items: Vec<PickerItem>) {
         if self.take_supersede() {
-            self.replace(items);
+            self.replace_items(items);
             return;
         }
         self.batch_arrived();
@@ -351,37 +355,95 @@ impl PickerSession {
         self.rerank_keeping_selection();
     }
 
+    /// `picker-replace!`: replaces the item list wholesale and reranks, with
+    /// the same [`super::session_for_feed`]-guarded contract as `push`, so
+    /// the rows answer the current query.
+    pub(in crate::editor) fn replace(&mut self, items: Vec<PickerItem>) {
+        self.replace_items(items);
+        self.rows_answer(self.query.clone());
+    }
+
     /// Replaces the item list wholesale and reranks, with the same
-    /// [`super::session_for_feed`]-guarded and `pending`-clearing contract
-    /// as `push`, but always lands on row `0` (`rerank`, not `push`'s
-    /// keep-the-same-item `rerank_keeping_selection`): every index the
-    /// pre-replace `filtered` held names a *different* item (or nothing)
-    /// once `items` is cleared, so there is no selection worth trying to
-    /// preserve. Items are otherwise append-only; this is the only way to
-    /// drop stale rows: a plugin driving `picker-replace!` directly, or
-    /// `drain_picker_source` clearing a live requery's stale rows on a
-    /// no-results exit. Also consumes `take_supersede`: an explicit
-    /// replace already *is* the swap a live requery's first batch would
-    /// otherwise perform, so that later batch must append, not replace
-    /// again.
+    /// `pending`-clearing contract as `append`, but always lands on row `0`
+    /// (`rerank`, not `append`'s keep-the-same-item
+    /// `rerank_keeping_selection`): every index the pre-replace `filtered`
+    /// held names a *different* item (or nothing) once `items` is cleared,
+    /// so there is no selection worth trying to preserve. Items are
+    /// otherwise append-only; this is the only way to drop stale rows: a
+    /// plugin driving `picker-replace!` directly, or `source_batch` clearing
+    /// a live requery's stale rows on a no-results exit. Also consumes
+    /// `take_supersede`: an explicit replace already *is* the swap a live
+    /// requery's first batch would otherwise perform, so that later batch
+    /// must append, not replace again.
     ///
-    /// The one place `requery_armed` clears; see its doc. `push`'s ordinary
-    /// append path does not: a batch queued from the *outgoing*
-    /// source can still land there after a keystroke has armed the next
-    /// requery but before the queued `picker-source-stop!` callback runs
+    /// The one place `requery_armed` clears; see its doc. `append`'s
+    /// ordinary path does not: a batch queued from the *outgoing* source
+    /// can still land there after a keystroke has armed the next requery
+    /// but before the queued `picker-source-stop!` callback runs
     /// (`drain_async_sources` precedes `drain_pending_work` in
     /// `Editor::settle`), and that stale batch must not read as "the
     /// requery landed."
-    pub(in crate::editor) fn replace(&mut self, items: Vec<PickerItem>) {
+    fn replace_items(&mut self, items: Vec<PickerItem>) {
         self.items_from_opener = false;
         self.take_supersede();
         self.batch_arrived();
         self.requery_armed = false;
         self.items = items;
+        self.forget_rendered();
+        self.rerank();
+    }
+
+    /// The attached source's lines since the last drain, and whether it has
+    /// disconnected: `Editor::drain_picker_source`'s one batch per frame.
+    /// No token guard: the session holds its source directly. The rows
+    /// answer the query the source was attached for, which a keystroke since
+    /// does not change while that source's stop is still queued.
+    pub(in crate::editor) fn source_batch(&mut self, items: Vec<PickerItem>, disconnected: bool) {
+        let Some(query) = self.attached().map(|attached| attached.query.clone()) else {
+            return;
+        };
+        if !items.is_empty() {
+            self.append(items);
+        } else if disconnected && self.source_supersedes_rows() {
+            // A live requery's source that disconnects having delivered
+            // nothing (rg exit 1, "no matches") must still drop the previous
+            // pattern's rows: `append`'s wholesale-replace-on-first-batch
+            // never ran, so `supersedes_rows` is still armed here to say so.
+            self.replace_items(Vec::new());
+        } else {
+            return;
+        }
+        self.rows_answer(query);
+    }
+
+    /// The query `#:render` gets with the rows: a filter session's rows
+    /// answer the current query, a live session's the one they were found
+    /// for.
+    pub(in crate::editor) fn render_query(&self) -> &str {
+        match &self.mode {
+            PickerMode::Filter => &self.query,
+            PickerMode::Live { rows_query, .. } => rows_query,
+        }
+    }
+
+    /// Records that a live session's rows answer `query`. The rows
+    /// `#:render` made for another query are forgotten. A filter session's
+    /// rows always answer its query, so nothing changes there.
+    fn rows_answer(&mut self, query: String) {
+        let PickerMode::Live { rows_query, .. } = &mut self.mode else {
+            return;
+        };
+        if *rows_query != query {
+            *rows_query = query;
+            self.forget_rendered();
+        }
+    }
+
+    /// Forgets every row `#:render` made.
+    fn forget_rendered(&mut self) {
         if let Some(rendered) = &mut self.rendered {
             rendered.clear();
         }
-        self.rerank();
     }
 
     /// Attaches a spawned streaming source. A source already attached is
@@ -396,8 +458,8 @@ impl PickerSession {
     /// its rows always belong to one query, so the next source's
     /// first batch should replace them. A `picker!` session driving
     /// `picker-source-spawn!` itself may legitimately spawn a second source
-    /// to *add* rows to an already-seeded list, so it keeps `push`'s
-    /// ordinary append behavior.
+    /// to *add* rows to an already-seeded list, so it keeps `append`'s
+    /// ordinary behavior.
     pub(in crate::editor) fn attach_source(
         &mut self,
         source: SpawnedLineSource,
@@ -409,12 +471,13 @@ impl PickerSession {
             source,
             ok_exit_codes,
             supersedes_rows,
+            query: self.query.clone(),
         });
     }
 
     /// Consumes the attached source's `supersedes_rows` flag, if any:
     /// `false` (and a no-op) when nothing is attached or the flag was
-    /// already spent. Called only by `push` and `replace`.
+    /// already spent. Called only by `append` and `replace_items`.
     fn take_supersede(&mut self) -> bool {
         match &mut self.population {
             Population::Streaming(attached) => {
@@ -432,10 +495,10 @@ impl PickerSession {
     }
 
     /// Whether the attached source (if any) would still replace `items`
-    /// wholesale on its next batch: `drain_picker_source`'s check for a
-    /// live requery's source that disconnected before ever delivering one,
-    /// so it can clear the previous pattern's now-stale rows itself.
-    pub(in crate::editor) fn source_supersedes_rows(&self) -> bool {
+    /// wholesale on its next batch: `source_batch`'s check for a live
+    /// requery's source that disconnected before ever delivering one, so it
+    /// can clear the previous pattern's now-stale rows itself.
+    fn source_supersedes_rows(&self) -> bool {
         self.attached()
             .is_some_and(|attached| attached.supersedes_rows)
     }
@@ -510,7 +573,7 @@ impl PickerSession {
     pub(in crate::editor) fn insert_char(&mut self, ch: char) -> Option<Callback> {
         self.query.push(ch);
         self.rerank();
-        self.notify_query_change()
+        self.query_changed()
     }
 
     /// Bulk counterpart of [`insert_char`](Self::insert_char): a terminal
@@ -521,7 +584,7 @@ impl PickerSession {
     pub(in crate::editor) fn insert_str(&mut self, s: &str) -> Option<Callback> {
         self.query.push_str(s);
         self.rerank();
-        self.notify_query_change()
+        self.query_changed()
     }
 
     /// Removes the trailing grapheme cluster (not merely the last `char`) so
@@ -540,16 +603,22 @@ impl PickerSession {
             self.query.len(),
         ));
         self.rerank();
-        self.notify_query_change()
+        self.query_changed()
     }
 
-    /// Shared tail of `insert_char`/`pop_grapheme`: the mode's
-    /// `on_query_change` callback, if any, and (only when there is one,
-    /// i.e. only for a live session) arms `requery_armed` so `is_pending`
-    /// reads "still arriving" for the whole stop/debounce/respawn gap a
-    /// requery opens, not just while a source happens to be attached.
-    fn notify_query_change(&mut self) -> Option<Callback> {
-        let PickerMode::Live { on_query_change } = &self.mode else {
+    /// Shared tail of `insert_char`/`insert_str`/`pop_grapheme`. A filter
+    /// session's rows answer the new query, so the rows `#:render` made are
+    /// forgotten. A live session's keep theirs until its requery delivers:
+    /// this returns its `on_query_change` callback and arms `requery_armed`
+    /// so `is_pending` reads "still arriving" for the whole
+    /// stop/debounce/respawn gap a requery opens, not just while a source
+    /// happens to be attached.
+    fn query_changed(&mut self) -> Option<Callback> {
+        let PickerMode::Live {
+            on_query_change, ..
+        } = &self.mode
+        else {
+            self.forget_rendered();
             return None;
         };
         let on_query_change = on_query_change.clone();
@@ -629,19 +698,23 @@ impl PickerSession {
     }
 
     /// The call that makes the rows in the window of `list_rows` that
-    /// `#:render` has not made `budget` cells wide, in on-screen order.
-    /// `None` for a picker without `#:render`, or when it made every one.
+    /// `#:render` has not made `budget` cells wide, in on-screen order, with
+    /// the [`Self::render_query`] they answer. `None` for a picker without
+    /// `#:render`, or when it made every one.
     pub(in crate::editor) fn unrendered(
         &self,
         list_rows: usize,
         budget: usize,
     ) -> Option<RenderCall> {
-        self.rendered
-            .as_ref()?
-            .unrendered(self.visible(list_rows), budget, |i| {
+        self.rendered.as_ref()?.unrendered(
+            self.visible(list_rows),
+            budget,
+            Some(self.render_query()),
+            |i| {
                 let item = &self.items[i];
                 display_item(&item.display, item.payload.value().clone())
-            })
+            },
+        )
     }
 
     /// The rows `#:render` made, for [`Editor::render_rows_into`] to store the
@@ -767,7 +840,7 @@ impl PickerSession {
     }
 
     /// Rebuilds `filtered` and resets the cursor, for an item-list mutation
-    /// under a changed set of items (`replace`), where the previous
+    /// under a changed set of items (`replace_items`), where the previous
     /// `filtered` no longer names anything reliable.
     fn rerank(&mut self) {
         self.rebuild_filtered();
@@ -776,7 +849,7 @@ impl PickerSession {
 
     /// Rebuilds `filtered` like `rerank`, but tries to keep the selection on
     /// the same *item* instead of resetting it, for an item-list mutation
-    /// under an unchanged query (`push`), where a source streaming in the
+    /// under an unchanged query (`append`), where a source streaming in the
     /// background must not keep yanking the cursor back to the top row every
     /// frame. Falls back to row `0`, same as `rerank`, when the previously
     /// selected item is no longer in `filtered` (e.g. a query already
@@ -784,8 +857,8 @@ impl PickerSession {
     ///
     /// Only valid when every index the pre-call `filtered` held still names
     /// the same item afterward, i.e. `items` was purely appended to, never
-    /// cleared or reordered. `push` is `self`'s only caller and guarantees
-    /// that; a caller that clears `items` first (`replace`) uses `rerank`
+    /// cleared or reordered. `append` is `self`'s only caller and guarantees
+    /// that; a caller that clears `items` first (`replace_items`) uses `rerank`
     /// instead, since a same-index match there would be coincidental, not a
     /// real preserved selection.
     fn rerank_keeping_selection(&mut self) {

@@ -357,6 +357,39 @@ fn live_session_second_batch_from_the_same_source_appends() {
     );
 }
 
+/// A source still attached after a keystroke (its stop is queued, not yet
+/// run) delivers rows for the query it was spawned for, so a render of them
+/// gets that query, not the one being typed.
+#[test]
+fn a_stale_sources_late_batch_keeps_the_query_its_rows_answer() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_live_test_picker(&mut ed);
+    let picker_total = |ed: &Editor| ed.state.input.picker().map_or(0, |p| p.total_len());
+    let render_query = |ed: &Editor| ed.state.input.picker().unwrap().render_query().to_owned();
+    let _ = ed.state.input.picker_mut().unwrap().insert_char('a');
+
+    attach_sh(
+        &mut ed,
+        "printf 'first\\n'; sleep 0.3; printf 'second\\n'",
+        vec![0],
+    );
+    drain_sources_until(&mut ed, |ed| picker_total(ed) == 1);
+    assert_eq!(render_query(&ed), "a");
+
+    let _ = ed.state.input.picker_mut().unwrap().insert_char('b');
+    drain_sources_until(&mut ed, |ed| picker_total(ed) == 2);
+    assert_eq!(render_query(&ed), "a");
+
+    attach_sh(&mut ed, "printf 'fresh\\n'", vec![0]);
+    drain_sources_until(&mut ed, |ed| {
+        ed.state
+            .input
+            .picker()
+            .is_some_and(|p| p.window(10).eq(["fresh"]))
+    });
+    assert_eq!(render_query(&ed), "ab");
+}
+
 #[test]
 fn filter_session_attach_source_still_appends_not_replaces() {
     let mut ed = editor_from("-[a]>bc\n");

@@ -410,7 +410,7 @@ fn picker_common_opts(
         prompt: string_arg(prompt, "#:prompt")?,
         query: string_arg(query, "#:query")?,
         truncate: truncate_end_arg(truncate, "#:truncate")?,
-        render: optional_callback_arg(ctx, render, 2, "#:render")?,
+        render: optional_callback_arg(ctx, render, 3, "#:render")?,
         on_close: optional_callback_arg(ctx, on_close, 0, "#:on-close")?,
     })
 }

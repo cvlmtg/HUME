@@ -385,11 +385,13 @@ pub trait UiHost {
     ///
     /// `render` (`#:render`), when given, is how a row is shown. Before a
     /// frame shows rows not yet rendered at the panel's current width, the
-    /// editor calls `(render rows budget)`: `rows` are those rows'
+    /// editor calls `(render rows budget query)`: `rows` are those rows'
     /// `(display . payload)` items in on-screen order, streamed rows
-    /// included, and `budget` the cells one row gets. It returns one row
-    /// display per row, which may change the text. Each row is rendered
-    /// once per width. Ranking, `.` and the payload a binding gets stay on
+    /// included, `budget` the cells one row gets, and `query` the query the
+    /// rows answer, for a live picker the one whose search produced them. It
+    /// returns one row display per row, which may change the text. Each row
+    /// is rendered once per width and query. Ranking, `.` and the payload a
+    /// binding gets stay on
     /// the item. A row still wider than `budget` is cut at the `#:truncate`
     /// end, as an unrendered row is. `render` runs read-only, as a drawer's
     /// does, and an error or a wrong result closes the picker, firing

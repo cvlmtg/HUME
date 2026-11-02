@@ -10,7 +10,7 @@
 - Release archives no longer include `hume-grammar-build`. To build a grammar yourself, get it from [treesitter.hume](https://github.com/cvlmtg/treesitter.hume).
 - `compile-grammar!`, `bundled-language-grammar` and `bundled-grammar-languages` are gone: list HUME's languages with `bundled-languages`.
 - `buffer-display-path`'s `#:relative` takes the directory to be relative to: replace `#:relative #t` with `#:relative (cwd)`.
-- A drawer's `#:render` is called as `(render rows budget)`, as a picker's is: drop the `start` argument, and find what a row needs from its item.
+- A drawer's `#:render` is called as `(render rows budget)`: drop the `start` argument, and find what a row needs from its item.
 - `lsp-servers` takes no keywords: replace `(lsp-servers pane #:feature f)` with `(hash-ref (lsp-route pane #:feature f) 'servers)`.
 - A `#:supersede` key cancels only the pending request for the same buffer: one key per plugin serves every buffer, so drop any per-buffer keys.
 - The `"uri"` in `lsp-document-params` and the other `lsp-*-params` results is an opaque value instead of a string, and they return params for a buffer with no file instead of `#f`: drop `#f` checks on them, and don't read the URI out of them.
@@ -33,7 +33,7 @@
 - New `stdlib/verify-sha256!` checks a file's SHA-256, and new `stdlib/extract-archive!` unpacks a tar or zip archive, refusing one whose symlinks point outside its directory. New `stdlib/find-extractor` finds the program that extracts an archive format.
 - Drawer rows can give theme scopes to parts of their text and to the whole row while it is selected.
 - Menu rows can give theme scopes to parts of their text and to the whole row while it is selected, as drawer rows can.
-- `picker!` and `live-picker!` take `#:render`, which styles or rewrites each row as it is shown, and new `string-width` gives how many terminal cells a string takes.
+- `picker!` and `live-picker!` take `#:render`, which styles or rewrites each row as it is shown and gets the query the rows answer, and new `string-width` gives how many terminal cells a string takes.
 - A drawer row too wide for the drawer ends in `…` instead of being clipped, and `show-drawer-list!` takes `#:truncate` to pick the end that is cut.
 - New `string-fit` cuts a string to a number of terminal cells behind a `…`, as pickers and the drawer cut their rows.
 - An error about one entry of a list given to a decoration, drawer, menu or picker function names that entry by its position, as in `lines 1 'segments 0`.

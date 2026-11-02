@@ -37,6 +37,9 @@ pub(in crate::editor) struct RenderCall {
     render: hume_scripting::Callback,
     // steel-val-transient: built for one render call and moved into it.
     items: Vec<(usize, SteelVal)>,
+    /// The query the rows answer, passed after the budget. `None` for a list
+    /// with no query, whose render proc takes two arguments.
+    query: Option<String>,
 }
 
 /// A list's `#:render` proc and the rows it has made, by their place in
@@ -76,11 +79,13 @@ impl RenderedRows {
     }
 
     /// The call that makes the rows at `places` not made `budget` cells
-    /// wide, each passed as `item(place)`. `None` when every one was made.
+    /// wide, each passed as `item(place)`, with the `query` they answer, if
+    /// the list has one. `None` when every one was made.
     pub(in crate::editor) fn unrendered(
         &self,
         places: impl Iterator<Item = usize>,
         budget: usize,
+        query: Option<&str>,
         mut item: impl FnMut(usize) -> SteelVal,
     ) -> Option<RenderCall> {
         let items: Vec<(usize, SteelVal)> = places
@@ -90,6 +95,7 @@ impl RenderedRows {
         (!items.is_empty()).then(|| RenderCall {
             render: self.render.clone(),
             items,
+            query: query.map(str::to_owned),
         })
     }
 
@@ -106,7 +112,8 @@ impl RenderedRows {
         }
     }
 
-    /// Forgets every row made, for a list whose rows were replaced.
+    /// Forgets every row made, for a list whose rows were replaced or now
+    /// answer another query.
     pub(in crate::editor) fn clear(&mut self) {
         self.rows.clear();
     }
@@ -137,7 +144,13 @@ impl Editor {
             return Err("scripting is not available".to_owned());
         };
         let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
-        let result = scripting.render_rows(&call.render, call.items, budget, &mut host);
+        let result = scripting.render_rows(
+            &call.render,
+            call.items,
+            budget,
+            call.query.as_deref(),
+            &mut host,
+        );
         self.flush_script_messages();
         let rows = result?
             .into_iter()

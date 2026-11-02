@@ -1,6 +1,7 @@
 // A picker's `#:render`: the picker asks it for the rows of the visible
-// window it has not shown at the panel's current width, once per row, before
-// the frame is drawn. Ranking, `.` and bindings stay on the items.
+// window it has not shown at the panel's current width and query, once per
+// row, before the frame is drawn, passing the query the rows answer.
+// Ranking, `.` and bindings stay on the items.
 //
 // The picker is full-modal and eats typed keys, so the log of render calls
 // is read through a keymap command (`requests`), not a typed one.
@@ -15,17 +16,17 @@ use hume_engine::pipeline::RenderContext;
 const WIDTH: u16 = 40;
 const HEIGHT: u16 = 16;
 
-/// Every render call is appended to `requests` as `count:budget;`, and every
-/// row it renders to `rendered` as `display,`. Rows read `<display>`.
+/// Every render call is appended to `requests` as `count:budget:query;`, and
+/// every row it renders to `rendered` as `display,`. Rows read `<display>`.
 /// `on-select` logs its argument, and `#:on-close` counts in `closes`.
 const PRELUDE: &str = r##"
 (define requests "")
 (define rendered "")
 (define closes 0)
 (define tok #f)
-(define (render rows budget)
+(define (render rows budget query)
   (set! requests (string-append requests (number->string (length rows)) ":"
-                                (number->string budget) ";"))
+                                (number->string budget) ":" query ";"))
   (map (lambda (row)
          (set! rendered (string-append rendered (car row) ","))
          (string-append "<" (car row) ">"))
@@ -66,14 +67,19 @@ fn shown(ed: &mut Editor, name: &str) -> String {
     ed.state.status_msg.clone().unwrap()
 }
 
-/// `(count, budget)` per render call, in call order.
-fn requests(ed: &mut Editor) -> Vec<(usize, usize)> {
+/// `(count, budget, query)` per render call, in call order.
+fn requests(ed: &mut Editor) -> Vec<(usize, usize, String)> {
     shown(ed, "requests")
         .split(';')
         .filter(|s| !s.is_empty())
         .map(|s| {
-            let (count, budget) = s.split_once(':').unwrap();
-            (count.parse().unwrap(), budget.parse().unwrap())
+            let mut fields = s.splitn(3, ':');
+            let mut field = || fields.next().unwrap();
+            (
+                field().parse().unwrap(),
+                field().parse().unwrap(),
+                field().to_owned(),
+            )
         })
         .collect()
 }
@@ -120,7 +126,7 @@ fn only_visible_rows_are_rendered() {
 
     let (list_rows, budget) = panel(&ed);
     assert!(list_rows < 50, "setup: the panel cannot show every row");
-    assert_eq!(requests(&mut ed), vec![(list_rows, budget)]);
+    assert_eq!(requests(&mut ed), vec![(list_rows, budget, String::new())]);
     assert_eq!(view_rows(&ed), (0..list_rows).map(row).collect::<Vec<_>>());
 }
 
@@ -170,7 +176,10 @@ fn a_resize_renders_the_visible_rows_again_at_the_new_budget() {
     assert_ne!(narrow, wide, "setup: the panel grew wider");
     assert_eq!(
         requests(&mut ed),
-        vec![(list_rows, narrow), (list_rows, wide)]
+        vec![
+            (list_rows, narrow, String::new()),
+            (list_rows, wide, String::new())
+        ]
     );
 }
 
@@ -190,12 +199,15 @@ fn a_taller_panel_renders_its_newly_visible_rows_in_the_same_frame() {
     assert_eq!(view_rows(&ed), (0..tall).map(row).collect::<Vec<_>>());
     assert_eq!(
         requests(&mut ed),
-        vec![(short, budget), (tall - short, budget)]
+        vec![
+            (short, budget, String::new()),
+            (tall - short, budget, String::new())
+        ]
     );
 }
 
 #[test]
-fn typing_renders_only_rows_not_rendered_before() {
+fn typing_renders_the_visible_rows_again_with_the_new_query() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(&mut ed, tmp.path(), "(items 0 50)", "#:render render");
@@ -205,11 +217,11 @@ fn typing_renders_only_rows_not_rendered_before() {
         frame(&mut ed, WIDTH, HEIGHT);
     }
 
-    let rendered = rendered(&mut ed);
-    let mut unique = rendered.clone();
-    unique.sort();
-    unique.dedup();
-    assert_eq!(unique.len(), rendered.len(), "no row twice: {rendered:?}");
+    let queries: Vec<String> = requests(&mut ed)
+        .into_iter()
+        .map(|(_, _, query)| query)
+        .collect();
+    assert_eq!(queries, ["", "i", "it", "ite", "item", "item1"]);
     assert!(
         view_rows(&ed).iter().all(Option::is_some),
         "every visible row is rendered"
@@ -240,7 +252,7 @@ fn render_gets_display_payload_pairs_and_the_budget() {
         &mut ed,
         tmp.path(),
         "(items 0 2)",
-        r#"#:render (lambda (rows budget)
+        r#"#:render (lambda (rows budget query)
              (map (lambda (row)
                     (string-append (car row) "=" (number->string (cdr row))
                                    "@" (number->string budget)))
@@ -266,7 +278,7 @@ fn matching_ranking_and_bindings_use_the_original_item() {
         &mut ed,
         tmp.path(),
         "(items 0 50)",
-        r#"#:render (lambda (rows budget) (map (lambda (row) "zzz") rows))"#,
+        r#"#:render (lambda (rows budget query) (map (lambda (row) "zzz") rows))"#,
     );
     for ch in "item37".chars() {
         ed.feed_key(key(ch));
@@ -284,7 +296,7 @@ fn matching_ranking_and_bindings_use_the_original_item() {
 
 #[test]
 fn a_row_wider_than_the_budget_is_cut_at_the_truncate_end() {
-    let long = r#"#:render (lambda (rows budget)
+    let long = r#"#:render (lambda (rows budget query)
                    (map (lambda (row) (string-append "START" (make-string 60 #\-) "END")) rows))"#;
     let first_row = |cut: &str| {
         let tmp = tempfile::tempdir().unwrap();
@@ -326,7 +338,7 @@ fn render_rows_take_spans_and_a_selected_scope() {
         &mut ed,
         tmp.path(),
         "(items 0 2)",
-        r#"#:render (lambda (rows budget)
+        r#"#:render (lambda (rows budget query)
              (map (lambda (row)
                     (if (= (cdr row) 0)
                         (hash 'text (car row) 'selected-scope "markup.bold"
@@ -382,13 +394,13 @@ fn failing_render(proc: &str, needle: &str) {
 
 #[test]
 fn a_raising_render_proc_closes_the_picker() {
-    failing_render(r#"(lambda (rows budget) (error "boom"))"#, "boom");
+    failing_render(r#"(lambda (rows budget query) (error "boom"))"#, "boom");
 }
 
 #[test]
 fn a_render_proc_returning_too_few_rows_closes_the_picker() {
     failing_render(
-        r#"(lambda (rows budget) (list "only one"))"#,
+        r#"(lambda (rows budget query) (list "only one"))"#,
         "expected a list of",
     );
 }
@@ -396,7 +408,7 @@ fn a_render_proc_returning_too_few_rows_closes_the_picker() {
 #[test]
 fn a_render_proc_returning_numbers_closes_the_picker() {
     failing_render(
-        "(lambda (rows budget) (map cdr rows))",
+        "(lambda (rows budget query) (map cdr rows))",
         "row 0: expected a string",
     );
 }
@@ -411,7 +423,7 @@ fn a_render_error_for_invalid_spans_names_the_row() {
         &mut ed,
         tmp.path(),
         "(items 0 30)",
-        r#"#:render (lambda (rows budget)
+        r#"#:render (lambda (rows budget query)
              (map (lambda (row)
                     (if (equal? (car row) "item29")
                         (hash 'text "x" 'spans (list (hash 'start-char 0 'end-char 9 'scope "keyword")))
@@ -444,7 +456,7 @@ fn a_render_proc_that_changes_the_editor_closes_the_picker() {
         &mut ed,
         tmp.path(),
         "(items 0 30)",
-        r#"#:render (lambda (rows budget)
+        r#"#:render (lambda (rows budget query)
              (with-handler (lambda (e) (begin))
                            (set-buffer-option! (focused-pane) "indent-width" 8))
              (map car rows))"#,
@@ -468,7 +480,7 @@ fn a_failed_render_leaves_no_view_of_a_layer_above_the_picker() {
         &mut ed,
         tmp.path(),
         "(items 0 2)",
-        r#"#:render (lambda (rows budget)
+        r#"#:render (lambda (rows budget query)
              (map (lambda (row)
                     (if (equal? (car row) "item500") (error "boom") (car row)))
                   rows))"#,
@@ -496,49 +508,57 @@ fn a_failed_render_leaves_no_view_of_a_layer_above_the_picker() {
     assert!(ed.state.views.menu.read().is_none(), "no menu shows");
 }
 
-#[test]
-fn render_must_take_two_arguments() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[x]>abc\n");
-    open(
-        &mut ed,
-        tmp.path(),
-        "(items 0 3)",
-        "#:render (lambda (rows) rows)",
+/// Defines `:go`, which opens a live picker whose source answers a query
+/// `q` with the one row `q`, with `extra` keywords, and runs it. Its render
+/// shows a row as `<display@query>`.
+fn open_live(ed: &mut Editor, tmp: &Path, extra: &str) {
+    run(
+        ed,
+        tmp,
+        &format!(
+            r#"{PRELUDE}
+(define-typed-command! "go" "" (lambda (pane)
+  (live-picker! pane (test-picker-keys (lambda (x) (void)))
+                #:source (lambda (token q) (picker-replace! token (list (cons q 'q))))
+                #:render (lambda (rows budget query)
+                           (map (lambda (row) (string-append "<" (car row) "@" query ">"))
+                                rows))
+                {extra})))"#
+        ),
     );
-
-    assert!(ed.state.input.picker().is_none());
-    assert!(
-        error_log(&ed).iter().any(|e| e.contains("#:render")),
-        "errors: {:?}",
-        error_log(&ed)
-    );
+    type_cmd(ed, ":go");
 }
 
 #[test]
 fn live_picker_rows_go_through_render() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        &format!(
-            r#"{PRELUDE}
-(define-typed-command! "go" "" (lambda (pane)
-  (live-picker! pane (test-picker-keys (lambda (x) (void)))
-                #:debounce-ms 0
-                #:source (lambda (token q) (picker-replace! token (list (cons q 'q))))
-                #:render render)))"#
-        ),
-    );
-    type_cmd(&mut ed, ":go");
+    open_live(&mut ed, tmp.path(), "#:debounce-ms 0");
     for ch in "abc".chars() {
         ed.feed_key(key(ch));
     }
     ed.settle();
     frame(&mut ed, WIDTH, HEIGHT);
 
-    assert_eq!(view_rows(&ed), vec![Some("<abc>".to_string())]);
+    assert_eq!(view_rows(&ed), vec![Some("<abc@abc>".to_string())]);
+}
+
+/// Rows shown again after a keystroke, before that query's search lands,
+/// still get the query they were found for.
+#[test]
+fn a_live_pickers_old_rows_render_with_the_query_they_answer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open_live(&mut ed, tmp.path(), r#"#:query "a" #:debounce-ms 60000"#);
+    ed.settle();
+    frame(&mut ed, WIDTH, HEIGHT);
+    assert_eq!(view_rows(&ed), vec![Some("<a@a>".to_string())]);
+
+    ed.feed_key(key('b'));
+    ed.settle();
+    frame(&mut ed, WIDTH + 20, HEIGHT);
+
+    assert_eq!(view_rows(&ed), vec![Some("<a@a>".to_string())]);
 }
 
 #[test]
@@ -550,7 +570,7 @@ fn snapshot_picker_with_rendered_styles() {
         &mut ed,
         tmp.path(),
         "(items 0 3)",
-        r#"#:render (lambda (rows budget)
+        r#"#:render (lambda (rows budget query)
              (map (lambda (row)
                     (hash 'text (string-append "M  " (car row))
                           'spans (list (hash 'start-char 0 'end-char 1 'scope "keyword"))))

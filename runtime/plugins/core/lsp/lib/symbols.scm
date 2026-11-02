@@ -46,7 +46,7 @@
         (list kind (lsp/symbol-span (+ kind-end 2) (string-length text) "comment"))
         (list kind))))
 
-(define (lsp/render-symbol-rows rows budget)
+(define (lsp/render-symbol-rows rows budget query)
   (map (lambda (row) (hash 'text (car row) 'spans (lsp/symbol-spans row))) rows))
 
 ;; ── Document symbols ─────────────────────────────────────────────────────────
