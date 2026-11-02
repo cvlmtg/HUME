@@ -150,7 +150,7 @@ fn a_call_frame_runs_as_its_owner_and_is_not_a_body() {
     assert_eq!(stack.body_depth(), 1);
     assert_eq!(stack.pop_body(), None, "the innermost frame is the call");
     assert_eq!(
-        stack.innermost_body().map(|entry| &**entry),
+        stack.innermost_body().map(Rc::as_ref),
         Some(&EntryId::main(pid("user/x")))
     );
     assert!(stack.drain_above(depth).is_empty());

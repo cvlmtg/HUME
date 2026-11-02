@@ -125,7 +125,7 @@ impl std::error::Error for ThemeError {
         match self {
             ThemeError::Parse(e) => Some(e),
             ThemeError::Io { error, .. } => Some(error),
-            ThemeError::InFile { error, .. } => Some(&**error),
+            ThemeError::InFile { error, .. } => Some(error.as_ref()),
             _ => None,
         }
     }

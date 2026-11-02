@@ -466,7 +466,7 @@ fn check_config(config: &SteelVal) -> Result<(), SteelErr> {
 /// or callback it defined (`SteelCtx::owner`). Raises when no plugin's code
 /// is running, since an empty answer would read as "no config passed".
 fn calling_plugin<'c>(ctx: &'c SteelCtx) -> Result<&'c PluginId, SteelErr> {
-    match &**ctx.owner() {
+    match ctx.owner().as_ref() {
         Owner::Plugin(id) => Ok(&id.plugin),
         Owner::Core | Owner::User => steel::stop!(Generic => "called outside a plugin's code"),
     }

@@ -246,7 +246,7 @@ impl DrawerRows {
                 rows: ScriptRows::Given(rows),
                 ..
             })
-            | Self::Buffers { rows, .. } => rows.iter().map(|row| Some(&**row)).collect(),
+            | Self::Buffers { rows, .. } => rows.iter().map(|row| Some(row.as_ref())).collect(),
             Self::Script(ScriptDrawer {
                 rows: ScriptRows::Rendered(rendered),
                 ..
@@ -577,7 +577,7 @@ impl EditorState {
             return;
         };
         let list = self.buffer_list(current, registry);
-        if *listed == list.buffers && rows.iter().map(|row| &**row).eq(list.rows.iter()) {
+        if *listed == list.buffers && rows.iter().map(Arc::as_ref).eq(list.rows.iter()) {
             return;
         }
         self.input

@@ -363,7 +363,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     let mut palette: FxHashMap<String, Option<Rgb>> = FxHashMap::default();
     if let Some(toml::Value::Table(pal_table)) = table.remove("palette") {
         for (k, v) in pal_table {
-            let origin = palette_origins.get(&k).map(|p| &**p);
+            let origin = palette_origins.get(&k).map(Arc::as_ref);
             let color = match v.as_str() {
                 None => {
                     warnings.push(attribute(
@@ -406,7 +406,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
         if is_reserved(&key) {
             continue;
         }
-        let origin = origins.get(&key).map(|p| &**p);
+        let origin = origins.get(&key).map(Arc::as_ref);
         let style = match parse_scope_value(&key, &value, &palette) {
             Ok((style, field_warnings)) => {
                 warnings.extend(field_warnings.into_iter().map(|e| attribute(e, origin)));

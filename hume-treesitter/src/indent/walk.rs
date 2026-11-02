@@ -451,7 +451,7 @@ fn holds(predicate: &Predicate, m: &QueryMatch<'_, '_>, lines: &PlannedLines) ->
     let first = |capture: u32| m.nodes_for_capture_index(capture).next();
     match predicate {
         Predicate::NotKindEq { capture, kind } => {
-            first(*capture).is_none_or(|node| node.kind() != &**kind)
+            first(*capture).is_none_or(|node| node.kind() != kind.as_ref())
         }
         Predicate::SameLine { a, b, same } => match (first(*a), first(*b)) {
             (Some(a), Some(b)) => (lines.start(a) == lines.start(b)) == *same,
