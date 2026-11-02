@@ -957,3 +957,102 @@ fn popup_never_paints_outside_the_pane_rect() {
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
     insta::assert_snapshot!(snap);
 }
+
+// ── #:anchor 'fit ─────────────────────────────────────────────────────────────
+
+/// The open band's wrapped lines, `Arc` and all, for identity checks.
+fn popup_band_lines_arc(ed: &Editor) -> Option<Arc<hume_ui::popup::WrappedLines>> {
+    ed.state
+        .views
+        .popup_band
+        .read()
+        .as_ref()
+        .map(|s| Arc::clone(&s.lines))
+}
+
+/// An editor with a `:go` command opening `text` (a Steel string literal's
+/// body) as a scrollable `'fit` popup.
+fn fit_popup_editor(tmp: &std::path::Path, text: &str) -> Editor {
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp,
+        &format!(
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{text}" #:kind 'scrollable #:anchor 'fit)))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+    ed
+}
+
+// An 80x24 terminal leaves the pane 23 rows: the cursor box is a third of
+// that, 7 rows, 5 of them inside its frame.
+
+#[test]
+fn fit_popup_that_fits_the_cursor_box_floats_at_the_cursor() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = fit_popup_editor(tmp.path(), &popup_lines(5));
+
+    frame(&mut ed, 80, 24);
+
+    let (lines, _, _) = popup_view(&ed).expect("a popup that fits floats at the cursor");
+    assert_eq!(lines.len(), 5);
+    assert!(popup_band_lines(&ed).is_none());
+}
+
+#[test]
+fn fit_popup_docks_once_its_rows_exceed_the_cursor_box() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = fit_popup_editor(tmp.path(), &popup_lines(6));
+
+    frame(&mut ed, 80, 24);
+
+    assert!(popup_view(&ed).is_none());
+    let band = popup_band_lines(&ed).expect("a popup taller than the cursor box docks");
+    assert_eq!(band.len(), 6);
+}
+
+#[test]
+fn fit_popup_counts_the_rows_a_long_line_wraps_to() {
+    let tmp = tempfile::tempdir().unwrap();
+    let long_line = "word ".repeat(200);
+    let mut ed = fit_popup_editor(tmp.path(), long_line.trim_end());
+
+    frame(&mut ed, 80, 24);
+
+    assert!(popup_view(&ed).is_none());
+    assert!(
+        popup_band_lines(&ed).is_some(),
+        "one line wrapping past the cursor box docks"
+    );
+}
+
+#[test]
+fn fit_popup_decides_again_when_the_terminal_resizes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = fit_popup_editor(tmp.path(), &popup_lines(6));
+
+    frame(&mut ed, 80, 24);
+    assert!(popup_band_lines(&ed).is_some(), "docked on a 23-row pane");
+
+    frame(&mut ed, 80, 40);
+    assert!(popup_view(&ed).is_some(), "floats on a 39-row pane");
+    assert!(popup_band_lines(&ed).is_none());
+
+    frame(&mut ed, 80, 24);
+    assert!(popup_band_lines(&ed).is_some(), "docked again");
+    assert!(popup_view(&ed).is_none());
+}
+
+#[test]
+fn docked_fit_popup_is_not_rewrapped_across_frames() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = fit_popup_editor(tmp.path(), &popup_lines(6));
+
+    frame(&mut ed, 80, 24);
+    let first = popup_band_lines_arc(&ed).expect("docked");
+    frame(&mut ed, 80, 24);
+    let second = popup_band_lines_arc(&ed).expect("still docked");
+
+    assert!(Arc::ptr_eq(&first, &second));
+}

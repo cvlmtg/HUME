@@ -2,10 +2,10 @@
 //! editor that lays the popup out.
 
 named_enum! {
-    /// Where a popup renders: same widget, same model, two placements.
-    /// `show-popup!`'s `#:anchor` symbol selects between them, decoded once
-    /// at the builtin boundary (`hume-editor`'s `PopupLayer::layout` reads
-    /// it).
+    /// Where a popup asks to render: same widget, same model, two
+    /// placements, or the one its text fits. `show-popup!`'s `#:anchor`
+    /// symbol, decoded once at the builtin boundary; `hume-editor` resolves
+    /// it to a placement every frame.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum PopupLayout {
         /// Floating, anchored near the focused pane's cursor (the default).
@@ -15,5 +15,8 @@ named_enum! {
         /// layout. It keeps popup semantics: plain scroll, no selection,
         /// closed by any other key.
         Docked => "bottom",
+        /// `Cursor` while the wrapped text fits the cursor box, `Docked`
+        /// otherwise.
+        Fit => "fit",
     }
 }

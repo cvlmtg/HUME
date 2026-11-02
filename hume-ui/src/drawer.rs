@@ -16,7 +16,7 @@
 //! browse).
 //!
 //! Long-form text (e.g. hover overflow) is not a drawer use case. That's
-//! the docked popup (`show-popup! #:anchor 'bottom`, [`super::popup`]), a
+//! the docked popup (`show-popup! #:anchor 'bottom` or `'fit`, [`super::popup`]), a
 //! separate bottom band that keeps popup scroll/dismiss semantics instead of
 //! pick-list selection.
 

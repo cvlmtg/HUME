@@ -192,6 +192,47 @@ fn geometry_clamps_height_to_pane_when_content_is_taller() {
     );
 }
 
+// ── resolve_popup / fits_cursor_box ──────────────────────────────────
+
+fn numbered(n: usize) -> PopupContent {
+    let text = (0..n)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    PopupContent::plain(&text)
+}
+
+fn cursor_box(content: &PopupContent, pane_height: u16) -> PopupState {
+    let pane = rect(0, 0, 80, pane_height);
+    let placement = PopupPlacement {
+        anchor: (0, 0),
+        pane_rect: pane,
+        content_width: 80,
+    };
+    resolve_popup(content, placement, 0, true)
+}
+
+/// A third of a 23-row pane is 7 rows, 2 of them the frame.
+#[test]
+fn cursor_box_on_a_23_row_pane_shows_five_content_rows() {
+    assert_eq!(cursor_box(&numbered(30), 23).inner_height(), 5);
+}
+
+#[test]
+fn fits_cursor_box_agrees_with_what_resolve_popup_shows() {
+    for pane_height in [9, 17, 23, 40] {
+        for lines in 1..=12 {
+            let content = numbered(lines);
+            let shown = cursor_box(&content, pane_height).inner_height();
+            assert_eq!(
+                fits_cursor_box(&content, pane_height, 80),
+                lines <= shown,
+                "{lines} lines on a {pane_height}-row pane"
+            );
+        }
+    }
+}
+
 // ── resolve_menu ──────────────────────────────────────────────────────
 
 fn placement(pane: Rect) -> PopupPlacement {

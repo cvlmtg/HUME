@@ -26,12 +26,8 @@ fn setup(
     initialize_result: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeDirs, ServerId) {
-    // 30 lines: comfortably taller than the default pane height's ⅓-cap
-    // (`Pane::new`'s default viewport is 24 rows tall; `(viewport-range bid)`
-    // resolves against this immediately, no `prepare_frame` needed), so a
-    // one-line hover response lands well under the popup/drawer threshold, whereas
-    // a tiny 1-2 line fixture would make even trivial hover content overflow
-    // to the drawer, which isn't what these tests are checking.
+    // 30 lines, so Ctrl-d falling through a popup has a half page below
+    // the cursor to move into.
     let filler = (0..29)
         .map(|i| format!("// line {i}"))
         .collect::<Vec<_>>()
@@ -299,57 +295,61 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     );
 }
 
-/// `lsp/show-hover` takes `viewport-range`'s exclusive width with no `+ 1`:
-/// `viewport-range` is already end-exclusive, so adding an
-/// inclusive-range `+ 1` would overcount by one line and shift
-/// the ⅓ popup/drawer threshold by one. The default
-/// 24-row pane can't tell the two formulas apart (`⌊24/3⌋ == ⌊25/3⌋ == 8`,
-/// see `tall_content_docks_instead_of_using_the_drawer` below); a 23-row
-/// pane can (`⌊23/3⌋ == 7`, `⌊24/3⌋ == 8`).
-#[test]
-fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
-    let tmp = tempfile::tempdir().unwrap();
-    let eight_lines = (0..8)
-        .map(|i| format!("line{i}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let (mut ed, _guard, _sid) = setup(
-        tmp.path(),
+/// Opens a hover answering `contents` and paints one frame at 80x24, where
+/// the pane is 23 rows and the cursor box shows 5 content rows.
+fn hover_frame_at_80x24(tmp: &Path, contents: &str) -> (Editor, RealRuntimeDirs) {
+    let contents = contents.to_string();
+    let (mut ed, guard, _sid) = setup(
+        tmp,
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
             backend.respond_to(
                 "textDocument/hover",
-                serde_json::json!({"contents": eight_lines}),
+                serde_json::json!({"contents": {"kind": "plaintext", "value": contents}}),
             );
         },
     );
     ed.resize_terminal(80, 24);
-
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
     ed.resize_terminal(80, 24);
     ed.settle();
     ed.prepare_frame(&mut ctx);
+    (ed, guard)
+}
 
-    assert!(
-        popup_lines(&ed).is_none(),
-        "8 lines against a 23-row pane (threshold 7) must dock, not float"
-    );
-    assert!(
-        matches!(
-            ed.state.input.popup().map(|p| &p.layout),
-            Some(hume_core::PopupLayout::Docked)
-        ),
-        "must be a docked popup, not the drawer"
-    );
+fn popup_band_shown(ed: &Editor) -> bool {
+    ed.state.views.popup_band.read().is_some()
+}
+
+#[test]
+fn hover_docks_once_its_rows_exceed_the_cursor_box() {
+    let tmp = tempfile::tempdir().unwrap();
+    let six_lines = (0..6)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let (ed, _guard) = hover_frame_at_80x24(tmp.path(), &six_lines);
+
+    assert!(popup_lines(&ed).is_none());
+    assert!(popup_band_shown(&ed));
+}
+
+#[test]
+fn hover_counts_the_rows_a_long_line_wraps_to() {
+    let tmp = tempfile::tempdir().unwrap();
+    let contents = format!("fn main()\n{}", "word ".repeat(80).trim_end());
+
+    let (ed, _guard) = hover_frame_at_80x24(tmp.path(), &contents);
+
+    assert!(popup_lines(&ed).is_none());
+    assert!(popup_band_shown(&ed));
 }
 
 #[test]
 fn tall_content_docks_instead_of_using_the_drawer() {
     let tmp = tempfile::tempdir().unwrap();
-    // The fixture file is ~30 lines against the default 24-row pane height,
-    // so the popup threshold (⅓ of visible lines) lands around 8, and 20 lines
-    // must overflow to the docked layout regardless of the exact figure.
     let tall = (0..20)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()
@@ -371,13 +371,6 @@ fn tall_content_docks_instead_of_using_the_drawer() {
     assert!(
         popup_lines(&ed).is_none(),
         "tall content must not use the cursor-anchored popup layout"
-    );
-    assert!(
-        matches!(
-            ed.state.input.popup().map(|p| &p.layout),
-            Some(hume_core::PopupLayout::Docked)
-        ),
-        "tall content must still be a popup, just docked, never the drawer"
     );
     assert!(
         ed.state

@@ -225,7 +225,7 @@ pub trait UiHost {
     /// showing (no stacking).
     ///
     /// `kind`: see [`PopupKind`] for the two dismiss behaviors. `layout`:
-    /// see [`PopupLayout`] for the two placements. `lang`: when `Some(name)` and a grammar
+    /// see [`PopupLayout`] for the placements it asks for. `lang`: when `Some(name)` and a grammar
     /// named `name` is registered, `text` is syntax-highlighted like a real
     /// buffer; otherwise (no grammar by that name, or `None`) it renders as
     /// plain text.

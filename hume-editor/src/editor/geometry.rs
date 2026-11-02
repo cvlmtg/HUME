@@ -9,6 +9,7 @@ use hume_engine::pane::Pane;
 use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
 use hume_engine::providers::GutterInputs;
 
+use super::input_stack::{FocusedBox, ResolvedPopupLayout};
 use super::{EditorState, commands};
 
 /// Every input a pane's layout depends on: its
@@ -62,25 +63,60 @@ impl EditorState {
     /// the seam setting. Every size and rect read outside the frame's own
     /// pass comes from here, so it reflects a band opened or closed since the
     /// last frame. Never runs Steel, so it is safe inside a Steel call.
-    #[allow(clippy::disallowed_methods)]
     pub(in crate::editor) fn screen_layout(&self, view: &EngineView) -> ScreenLayout {
+        self.popup_screen_layout(view).0
+    }
+
+    /// [`Self::screen_layout`], with where the open popup renders on it,
+    /// `None` with no popup open. A `'fit` popup is measured against the
+    /// layout without its band, the pane its cursor box would sit in, and
+    /// docks when its wrapped text overflows that box. A frame takes both
+    /// once, so its band and its cursor box cannot disagree.
+    #[allow(clippy::disallowed_methods)]
+    pub(in crate::editor) fn popup_screen_layout(
+        &self,
+        view: &EngineView,
+    ) -> (ScreenLayout, Option<ResolvedPopupLayout>) {
         let area = view.terminal_area();
         let drawer = self.input.drawer().map_or(0, |d| {
             hume_ui::drawer::band_height(d.item_count(&self.buffers), area.height)
         });
-        let popup = self
-            .input
-            .popup()
-            .filter(|p| matches!(p.layout, hume_core::PopupLayout::Docked))
-            .map_or(0, |p| {
-                let lines = p.docked_total_rows(area.width);
-                hume_ui::popup::band_height(lines, area.height)
-            });
-        let rows = ChromeRows {
-            tabbar: u16::from(self.tabline_visible()),
-            bands: hume_ui::Bands { drawer, popup }.in_stack_order(),
+        let tabbar = u16::from(self.tabline_visible());
+        let layout_with = |popup: u16| {
+            let rows = ChromeRows {
+                tabbar,
+                bands: hume_ui::Bands { drawer, popup }.in_stack_order(),
+            };
+            view.screen_layout(rows, self.settings.pane_dividers)
         };
-        view.screen_layout(rows, self.settings.pane_dividers)
+        let base = layout_with(0);
+        let Some(popup) = self.input.popup() else {
+            return (base, None);
+        };
+        let resolved = match popup.layout {
+            hume_core::PopupLayout::Cursor => ResolvedPopupLayout::Cursor,
+            hume_core::PopupLayout::Docked => ResolvedPopupLayout::Docked,
+            hume_core::PopupLayout::Fit => {
+                let bounds = FocusedBox::new(self, view, &base);
+                if hume_ui::popup::fits_cursor_box(
+                    popup.content(),
+                    bounds.pane_rect.height,
+                    bounds.content_width(),
+                ) {
+                    ResolvedPopupLayout::Cursor
+                } else {
+                    ResolvedPopupLayout::Docked
+                }
+            }
+        };
+        let screen = match resolved {
+            ResolvedPopupLayout::Cursor => base,
+            ResolvedPopupLayout::Docked => {
+                let lines = popup.docked_total_rows(area.width);
+                layout_with(hume_ui::popup::band_height(lines, area.height))
+            }
+        };
+        (screen, Some(resolved))
     }
 
     /// Whether the tab bar takes a row of the screen.

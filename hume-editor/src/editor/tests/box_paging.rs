@@ -95,6 +95,66 @@ fn half_page_on_a_cursor_popup_opened_with_a_drawer_measures_the_shorter_pane() 
 }
 
 #[test]
+fn half_page_on_a_docked_fit_popup_before_its_first_frame_pages_by_the_band() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (path, _f) = tall_file();
+    let mut ed = open_headless(Some(path));
+    let long = popup_lines(30);
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{long}" #:kind 'scrollable #:anchor 'fit)))"#
+        ),
+    );
+    frame(&mut ed, 80, 24);
+
+    type_cmd(&mut ed, ":go");
+    ed.feed_key(key_ctrl('d'));
+
+    let scroll = ed
+        .state
+        .input
+        .popup()
+        .expect("Ctrl-d scrolls the band")
+        .scroll;
+    frame(&mut ed, 80, 24);
+    let visible = ed
+        .state
+        .views
+        .popup_band
+        .read()
+        .as_ref()
+        .expect("thirty lines dock")
+        .visible
+        .len();
+    assert!(visible >= 2, "setup: the band shows at least two lines");
+    assert_eq!(scroll, visible / 2);
+}
+
+#[test]
+fn half_page_on_a_fit_popup_that_fits_falls_through() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (path, _f) = tall_file();
+    let mut ed = open_headless(Some(path));
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "one" #:kind 'scrollable #:anchor 'fit)))"#,
+    );
+    frame(&mut ed, 80, 24);
+
+    type_cmd(&mut ed, ":go");
+    assert!(ed.state.input.popup().is_some(), "setup: the popup opens");
+    ed.feed_key(key_ctrl('d'));
+
+    assert!(
+        ed.state.input.popup().is_none(),
+        "Ctrl-d closes a popup with nothing to page"
+    );
+}
+
+#[test]
 fn page_down_in_a_picker_that_evicted_a_docked_popup_pages_by_the_full_pane() {
     let tmp = tempfile::tempdir().unwrap();
     let (path, _f) = tall_file();

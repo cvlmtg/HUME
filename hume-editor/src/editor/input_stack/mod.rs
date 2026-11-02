@@ -40,6 +40,7 @@ pub(in crate::editor) mod shell_prompt;
 pub(in crate::editor) mod sift;
 
 pub(in crate::editor) use paste::PastedText;
+pub(in crate::editor) use placement::FocusedBox;
 pub(in crate::editor) use stack::{InputEvent, InputStack, LayerRef, OtherLayers};
 
 pub(in crate::editor) use base::{BaseLayer, PendingSequence};
@@ -57,7 +58,7 @@ pub(in crate::editor) use picker::{PickerItem, PickerSession};
 // (`is::<PickerLayer>(r)`, `ref_of::<PickerLayer>()`).
 #[cfg(test)]
 pub(in crate::editor) use picker::PickerLayer;
-pub(in crate::editor) use popup::PopupLayer;
+pub(in crate::editor) use popup::{PopupLayer, ResolvedPopupLayout};
 #[cfg(test)]
 pub(in crate::editor) use prompt::PromptLayer;
 pub(in crate::editor) use search::{

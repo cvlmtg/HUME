@@ -28,13 +28,8 @@
 
 (define lsp/*hover-popup* #f)
 
-;; `viewport-range` is end-exclusive, so its width needs no `+ 1`.
 (define (lsp/show-hover pane text lang)
-  (let* ((range (viewport-range pane))
-         (threshold (quotient (- (hash-ref range 'end-line) (hash-ref range 'start-line)) 3)))
-    (set! lsp/*hover-popup*
-      (show-popup! pane text #:kind 'scrollable #:lang lang
-                   #:anchor (if (<= (length (split-many text "\n")) threshold) 'cursor 'bottom)))))
+  (set! lsp/*hover-popup* (show-popup! pane text #:kind 'scrollable #:lang lang #:anchor 'fit)))
 
 (define (lsp/close-hover!)
   (close-popup! lsp/*hover-popup*)

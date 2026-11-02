@@ -23,6 +23,7 @@ use hume_engine::pipeline::{
 use hume_engine::types::EditorMode;
 
 use super::buffer::{Buffer, BufferFile};
+use super::input_stack::ResolvedPopupLayout;
 use super::{Editor, EditorState};
 
 /// Project a pane's selections into its engine mirror, in the model's start
@@ -526,8 +527,9 @@ impl Editor {
         self.state
             .clamp_drawer_scroll_to_terminal(self.view.terminal_area().height);
         self.sync_drawer_view();
-        let screen = self.state.screen_layout(&self.view);
-        self.state.sync_band_views(&mut self.view, &screen);
+        let (screen, popup_layout) = self.state.popup_screen_layout(&self.view);
+        self.state
+            .sync_band_views(&mut self.view, &screen, popup_layout);
 
         // Nothing below changes which panes the active tab shows.
         let active = self.view.active_pane_ids();
@@ -617,7 +619,7 @@ impl Editor {
         let picker_geometry = hume_ui::picker_panel::panel_geometry(screen.pane_area());
         self.prepare_picker_window(picker_geometry.as_ref());
         self.sync_minibuf_completion_view(&screen);
-        self.sync_popup_view(&screen, ctx.cursor_content_pos);
+        self.sync_popup_view(&screen, popup_layout, ctx.cursor_content_pos);
         self.sync_menu_view(&screen, ctx.cursor_content_pos);
         self.sync_completion_menu_view(&screen, ctx.cursor_content_pos);
         self.sync_picker_view(picker_geometry.as_ref());
@@ -712,9 +714,15 @@ impl EditorState {
     }
 
     /// Bring the band views (docked popup, tab bar) up to their models for
-    /// this frame to paint, the tab bar at its place in `screen`.
-    fn sync_band_views(&mut self, view: &mut EngineView, screen: &ScreenLayout) {
-        self.sync_popup_band_view(view);
+    /// this frame to paint, the tab bar at its place in `screen`, the popup
+    /// per `popup_layout`.
+    fn sync_band_views(
+        &mut self,
+        view: &mut EngineView,
+        screen: &ScreenLayout,
+        popup_layout: Option<ResolvedPopupLayout>,
+    ) {
+        self.sync_popup_band_view(view, popup_layout);
         self.sync_tabline_view(view, screen);
     }
 

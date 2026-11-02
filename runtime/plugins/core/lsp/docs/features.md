@@ -70,8 +70,8 @@ a code block so the popup's markdown injection can highlight it, and a
 `MarkupContent`'s `value` as is. The text is shown as markdown unless the contents is a
 `MarkupContent` with `kind: "plaintext"`.
 
-The popup floats near the cursor when its line count is at most a third of the viewport
-height and docks at the bottom otherwise. Each `lsp/hover` closes the previous hover popup
+The popup floats near the cursor while all of its wrapped text fits there and docks at
+the bottom otherwise (`show-popup!`'s `#:anchor 'fit`). Each `lsp/hover` closes the previous hover popup
 before sending its request. An empty response logs "No hover info".
 
 ## Signature help

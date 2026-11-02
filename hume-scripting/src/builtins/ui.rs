@@ -32,7 +32,8 @@ use super::errors::{generic_err, require_cap};
 /// for `close-popup!`, or `#f` when the popup was dropped. `anchor` selects the
 /// render layout: `'cursor` floats near the focused pane's cursor (default);
 /// `'bottom` docks as a full-width band above the statusline, reserving pane
-/// space like the drawer. `kind` selects the dismiss behavior; see
+/// space like the drawer; `'fit` is either, by whether the text fits the
+/// cursor box. `kind` selects the dismiss behavior; see
 /// [`PopupKind`].
 pub(crate) fn show_popup(
     ctx: &mut SteelCtx,

@@ -34,12 +34,14 @@
 - New `string-fit` cuts a string to a number of terminal cells behind a `…`, as pickers and the drawer cut their rows.
 - An error about one entry of a list given to a decoration, drawer, menu or picker function names that entry by its position, as in `lines 1 'segments 0`.
 - New `lsp-route` gives the servers a request would reach, or why it would reach none.
+- `show-popup!` takes `#:anchor 'fit`, which floats the popup near the cursor while its text fits there and docks it otherwise.
 
 ### Language servers
 - The workspace symbols picker and the goto and references list show a file inside the working directory by its path relative to it.
 - The symbol pickers color each symbol's kind and dim its detail.
 - The goto and references list gives a row from a file that is not open, whose column is the server's own count, the `markup.italic` scope, so a theme can set it apart.
 - Every language server command says why no server can take it, such as a server still starting or a buffer with no file, in the same words for every command.
+- Hover docks at the bottom whenever its text, long lines wrapped, would not fit near the cursor.
 
 ### Performance
 - `core:git-diff` refreshes much faster while you type, most of all in large files and files with many changes, and the `diff-` functions no longer take up to a quarter of a second on a large diff.

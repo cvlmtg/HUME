@@ -7,7 +7,8 @@
 //!   space below is smaller than the content and the space above is larger.
 //! - Clamp horizontally to the pane's right edge.
 //! - Max width `min(120, pane_width - 4)`, max height a third of the pane.
-//!   Taller content is the caller's problem (hover overflows to the drawer).
+//!   Taller content scrolls; [`fits_cursor_box`] tells a caller when to dock
+//!   it instead.
 //! - 1-cell frame themed `ui.popup` (`ui.menu` for menus), box-drawn when
 //!   `popup-border` is on. Rendering lives in [`super::menu_box`].
 //! - A side popup ([`resolve_side_popup`]) sits beside another box rather
@@ -23,7 +24,7 @@
 
 use hume_engine::types::{ResolvedStyle, Scope};
 use hume_grid::Rect;
-use std::cell::{Ref, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::sync::Arc;
 
 use hume_engine::lock::SharedSlot;
@@ -63,6 +64,10 @@ const MAX_POPUP_WIDTH: u16 = 120;
 pub struct PopupContent {
     source: PopupSource,
     cache: RefCell<Option<Wrapped>>,
+    /// `(width, rows)` from [`Self::row_count`] at a width `cache` does not
+    /// hold, so measuring one width while painting another wraps neither
+    /// again.
+    counted: Cell<Option<(u16, usize)>>,
 }
 
 /// A popup's text: plain, painted in one style, or styled runs.
@@ -164,6 +169,7 @@ impl PopupContent {
         Self {
             source: PopupSource::Plain(text.to_string()),
             cache: RefCell::new(None),
+            counted: Cell::new(None),
         }
     }
 
@@ -174,6 +180,7 @@ impl PopupContent {
         Self {
             source: PopupSource::Styled(runs),
             cache: RefCell::new(None),
+            counted: Cell::new(None),
         }
     }
 
@@ -193,18 +200,7 @@ impl PopupContent {
             .as_ref()
             .is_none_or(|c| c.width != width);
         if stale {
-            let lines = match &self.source {
-                PopupSource::Plain(text) => WrappedLines::Plain(
-                    wrap_styled([(text.as_str(), ResolvedStyle::default())], width)
-                        .iter()
-                        .map(row_text)
-                        .collect(),
-                ),
-                PopupSource::Styled(runs) => WrappedLines::Styled(wrap_styled(
-                    runs.iter().map(|(text, style)| (text.as_str(), *style)),
-                    width,
-                )),
-            };
+            let lines = self.wrap(width);
             let inner_width = lines.widest();
             *self.cache.borrow_mut() = Some(Wrapped {
                 width,
@@ -215,6 +211,44 @@ impl PopupContent {
         Ref::map(self.cache.borrow(), |cache| {
             cache.as_ref().expect("populated above")
         })
+    }
+
+    /// The rows `self` wraps to at `width`. Reads [`Self::wrapped`]'s cache
+    /// when it is empty or at `width`, and otherwise leaves it holding the
+    /// width it is painted at.
+    fn row_count(&self, width: u16) -> usize {
+        let holds_another = self
+            .cache
+            .borrow()
+            .as_ref()
+            .is_some_and(|c| c.width != width);
+        if !holds_another {
+            return self.wrapped(width).lines.len();
+        }
+        if let Some((counted_width, rows)) = self.counted.get()
+            && counted_width == width
+        {
+            return rows;
+        }
+        let rows = self.wrap(width).len();
+        self.counted.set(Some((width, rows)));
+        rows
+    }
+
+    /// The source wrapped at `width`, uncached.
+    fn wrap(&self, width: u16) -> WrappedLines {
+        match &self.source {
+            PopupSource::Plain(text) => WrappedLines::Plain(
+                wrap_styled([(text.as_str(), ResolvedStyle::default())], width)
+                    .iter()
+                    .map(row_text)
+                    .collect(),
+            ),
+            PopupSource::Styled(runs) => WrappedLines::Styled(wrap_styled(
+                runs.iter().map(|(text, style)| (text.as_str(), *style)),
+                width,
+            )),
+        }
     }
 }
 
@@ -368,15 +402,8 @@ pub fn resolve_popup(
     scroll: usize,
     border: bool,
 ) -> PopupState {
-    // Reserve the frame's cells on each axis, so content and border
-    // together fit inside the envelope.
-    let max_width = MAX_POPUP_WIDTH
-        .min(placement.content_width.saturating_sub(4))
-        .saturating_sub(FRAME_CELLS);
-    let max_height = (placement.pane_rect.height / 3)
-        .max(1)
-        .saturating_sub(FRAME_CELLS)
-        .max(1);
+    let (max_width, max_height) =
+        cursor_box_limits(placement.pane_rect.height, placement.content_width);
 
     let wrapped = content.wrapped(max_width);
     let total_rows = wrapped.lines.len();
@@ -385,6 +412,25 @@ pub fn resolve_popup(
     let (x, y, outer_w, outer_h) =
         resolve_popup_geometry(outer_w, outer_h, placement.anchor, placement.pane_rect);
     wrapped.popup_state(Rect::new(x, y, outer_w, outer_h), scroll, border)
+}
+
+/// A cursor box's wrap width and most content rows, in a pane
+/// `pane_height` rows tall with `content_width` text columns. The frame's
+/// cells are reserved on each axis, so content and border together fit
+/// inside the envelope.
+fn cursor_box_limits(pane_height: u16, content_width: u16) -> (u16, u16) {
+    let wrap_width = MAX_POPUP_WIDTH
+        .min(content_width.saturating_sub(4))
+        .saturating_sub(FRAME_CELLS);
+    let max_rows = (pane_height / 3).max(1).saturating_sub(FRAME_CELLS).max(1);
+    (wrap_width, max_rows)
+}
+
+/// Whether [`resolve_popup`] shows all of `content` in a pane `pane_height`
+/// rows tall with `content_width` text columns, without scrolling.
+pub fn fits_cursor_box(content: &PopupContent, pane_height: u16, content_width: u16) -> bool {
+    let (wrap_width, max_rows) = cursor_box_limits(pane_height, content_width);
+    content.row_count(wrap_width) <= usize::from(max_rows)
 }
 
 /// Narrowest side popup worth drawing, frame included.

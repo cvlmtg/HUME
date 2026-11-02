@@ -1,10 +1,42 @@
 //! Screen-placement math shared by the three cursor/token-anchored overlays.
 //! Nothing here is specific to any one of them.
 
-use hume_engine::pipeline::ScreenLayout;
+use hume_engine::layout::PaneGeometry;
+use hume_engine::pipeline::{EngineView, PaneSize, ScreenLayout};
+use hume_grid::Rect;
 use hume_rope::cluster::ClusterStart;
 
-use super::super::Editor;
+use super::super::{Editor, EditorState};
+
+/// The focused pane as a cursor-anchored box sees it on `screen`: its rect,
+/// its size, and its gutter and content widths. None of it depends on where
+/// the cursor is.
+pub(in crate::editor) struct FocusedBox {
+    pub(in crate::editor) pane_rect: Rect,
+    pub(in crate::editor) size: PaneSize,
+    pub(in crate::editor) geometry: PaneGeometry,
+}
+
+impl FocusedBox {
+    pub(in crate::editor) fn new(
+        state: &EditorState,
+        view: &EngineView,
+        screen: &ScreenLayout,
+    ) -> Self {
+        let layout = view.focused_layout();
+        let size = screen.focused_size(layout);
+        Self {
+            pane_rect: screen.focused_rect(layout),
+            size,
+            geometry: state.pane_geometry(view, view.focused_pane(), size),
+        }
+    }
+
+    /// The text columns the pane gives its content.
+    pub(in crate::editor) fn content_width(&self) -> u16 {
+        self.geometry.content_width.get().get()
+    }
+}
 
 /// The focused pane's primary cursor: the anchor
 /// `Editor::resolve_cursor_popup` and
@@ -39,10 +71,8 @@ pub(in crate::editor) fn popup_placement(
     anchor: ClusterStart,
 ) -> Option<hume_ui::popup::PopupPlacement> {
     let focused = ed.view.focused_pane();
-    let layout = ed.view.focused_layout();
-    let pane_rect = screen.focused_rect(layout);
-    let size = screen.focused_size(layout);
-    let geometry = ed.state.pane_geometry(&ed.view, focused, size);
+    let bounds = FocusedBox::new(&ed.state, &ed.view, screen);
+    let (pane_rect, size, geometry) = (bounds.pane_rect, bounds.size, bounds.geometry);
     let (content_x, row) = match cursor_cell {
         Some(cell) if anchor == focused_cursor(ed) => cell,
         _ => {
@@ -70,6 +100,6 @@ pub(in crate::editor) fn popup_placement(
     Some(hume_ui::popup::PopupPlacement {
         anchor: screen,
         pane_rect,
-        content_width: geometry.content_width.get().get(),
+        content_width: bounds.content_width(),
     })
 }

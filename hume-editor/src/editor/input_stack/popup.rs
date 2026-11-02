@@ -17,9 +17,17 @@ use super::paste::PastedText;
 use super::placement::{focused_cursor, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler};
 
+/// Where the open popup renders this frame: its `#:anchor`, with `'fit`
+/// decided by [`EditorState::popup_screen_layout`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) enum ResolvedPopupLayout {
+    Cursor,
+    Docked,
+}
+
 /// `(show-popup! text)`'s raw, unwrapped content, held on `EditorState`
 /// until `Editor::sync_popup_view` or `EditorState::sync_popup_band_view`
-/// (per `layout`) resolves it into a positioned
+/// (per its [`ResolvedPopupLayout`]) resolves it into a positioned
 /// `hume_ui::popup::PopupState` or a band's `PopupRows`. Never buried: every
 /// layer's own `Layer::setup` retires it before landing (`PopupLayer`'s own,
 /// for its self-replace contract; `MenuLayer`/`DrawerLayer`/`PickerLayer`,
@@ -137,49 +145,43 @@ impl Editor {
     /// Write the current *cursor-anchored* popup into the shared
     /// `PopupState` slot so `PopupOverlay` can render it during this frame,
     /// through [`Self::resolve_cursor_popup`]. The slot is cleared when no
-    /// cursor popup is open, including for a docked popup
-    /// (`PopupLayout::Docked`), which [`EditorState::sync_popup_band_view`]
-    /// handles instead.
+    /// popup renders at the cursor, including a docked one, which
+    /// [`EditorState::sync_popup_band_view`] handles instead.
     ///
-    /// Called from `prepare_frame` after its scroll step, with the cursor
-    /// cell that step resolved as `cursor_cell`.
+    /// Called from `prepare_frame` after its scroll step, with the
+    /// `screen` and `layout` its [`EditorState::popup_screen_layout`] gave
+    /// and the cursor cell its scroll step resolved as `cursor_cell`.
     pub(in crate::editor) fn sync_popup_view(
         &mut self,
         screen: &ScreenLayout,
+        layout: Option<ResolvedPopupLayout>,
         cursor_cell: Option<(u16, u16)>,
     ) {
-        let resolved = self.resolve_cursor_popup(screen, cursor_cell);
+        let resolved = match layout {
+            Some(ResolvedPopupLayout::Cursor) => self.resolve_cursor_popup(screen, cursor_cell),
+            Some(ResolvedPopupLayout::Docked) | None => None,
+        };
         if resolved.is_some() || self.state.views.popup.read().is_some() {
             self.state.views.popup.set(resolved);
         }
     }
 
-    /// The open cursor-anchored popup resolved against the focused pane's
-    /// current rect and viewport: what a frame paints and what Ctrl-d/Ctrl-u
-    /// page against. `None` with no cursor popup open, or when the cursor is
-    /// not in view. Geometry (wrap width, flip/clamp position) is never
-    /// computed at `show-popup!` call time, so a resize or scroll never
+    /// The open popup resolved at the cursor against the focused pane's
+    /// current rect and viewport, for a popup whose layout resolved to
+    /// [`ResolvedPopupLayout::Cursor`]: what a frame paints and what
+    /// Ctrl-d/Ctrl-u page against. `None` with no popup open, or when the
+    /// cursor is not in view. Geometry (wrap width, flip/clamp position) is
+    /// never computed at `show-popup!` call time, so a resize or scroll never
     /// leaves it stale. `screen` and `cursor_cell` are [`popup_placement`]'s.
     fn resolve_cursor_popup(
         &mut self,
         screen: &ScreenLayout,
         cursor_cell: Option<(u16, u16)>,
     ) -> Option<hume_ui::popup::PopupState> {
-        let is_cursor = matches!(
-            self.state.input.popup().map(|m| &m.layout),
-            Some(hume_core::PopupLayout::Cursor)
-        );
-        if !is_cursor {
-            return None;
-        }
         let anchor = focused_cursor(self);
         let placement = popup_placement(self, screen, cursor_cell, anchor)?;
         let border = self.state.settings.popup_border;
-        let model = self
-            .state
-            .input
-            .popup()
-            .expect("popup present: is_cursor checked above");
+        let model = self.state.input.popup()?;
         Some(hume_ui::popup::resolve_popup(
             model.content(),
             placement,
@@ -200,25 +202,26 @@ impl EditorState {
     /// render time.
     ///
     /// Wraps and caps against `EngineView::terminal_area`: the band spans
-    /// the full terminal.
-    pub(in crate::editor) fn sync_popup_band_view(&mut self, view: &EngineView) {
-        let is_docked = matches!(
-            self.input.popup().map(|m| &m.layout),
-            Some(hume_core::PopupLayout::Docked)
-        );
-        if !is_docked {
+    /// the full terminal. `layout` is the frame's, from
+    /// [`EditorState::popup_screen_layout`].
+    pub(in crate::editor) fn sync_popup_band_view(
+        &mut self,
+        view: &EngineView,
+        layout: Option<ResolvedPopupLayout>,
+    ) {
+        let docked = match layout {
+            Some(ResolvedPopupLayout::Docked) => self.input.popup(),
+            Some(ResolvedPopupLayout::Cursor) | None => None,
+        };
+        let Some(model) = docked else {
             if self.views.popup_band.read().is_some() {
                 self.views.popup_band.set(None);
             }
             return;
-        }
+        };
 
         let area = view.terminal_area();
         let border = self.settings.popup_border;
-        let model = self
-            .input
-            .popup()
-            .expect("popup present: is_docked checked above");
         let resolved = hume_ui::popup::resolve_band(model.content(), area, model.scroll, border);
 
         self.views.popup_band.set(Some(resolved));
@@ -275,14 +278,13 @@ fn popup_paste(
 /// cursor popup's come from [`Editor::resolve_cursor_popup`], a docked
 /// popup's from the rows its band is laid out with.
 fn popup_rows(ed: &mut Editor) -> Option<(usize, usize)> {
-    match ed.state.input.popup()?.layout {
-        hume_core::PopupLayout::Cursor => {
-            let screen = ed.state.screen_layout(&ed.view);
-            ed.resolve_cursor_popup(&screen, None)
-                .as_ref()
-                .map(boxed_popup_rows)
-        }
-        hume_core::PopupLayout::Docked => {
+    let (screen, layout) = ed.state.popup_screen_layout(&ed.view);
+    match layout? {
+        ResolvedPopupLayout::Cursor => ed
+            .resolve_cursor_popup(&screen, None)
+            .as_ref()
+            .map(boxed_popup_rows),
+        ResolvedPopupLayout::Docked => {
             let area = ed.view.terminal_area();
             let total = ed.state.input.popup()?.docked_total_rows(area.width);
             let visible = hume_ui::popup::band_visible_rows(total, area.height);
