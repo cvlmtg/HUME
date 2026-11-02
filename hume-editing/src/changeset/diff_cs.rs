@@ -44,7 +44,7 @@ use super::{ChangeSet, ChangeSetBuilder};
 /// The caller still owns the `BufferText` mutation; this helper only produces the
 /// `ChangeSet`s, it does not touch either buffer.
 pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeSet, ChangeSet) {
-    let diff = text_line_diff(old, new);
+    let diff = text_line_diff(old.rope().slice(..), new.rope().slice(..));
     let old_offsets = token_offsets(&diff.old, diff.ends.old_middle);
     let new_offsets = token_offsets(&diff.new, diff.ends.new_middle);
     build_changesets(old, new, &diff.hunks, &old_offsets, &new_offsets)

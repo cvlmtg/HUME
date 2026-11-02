@@ -485,8 +485,9 @@ fn line_token_strs_are_the_tokens_rope_lines_yields() {
 
 // ── shared_line_ends ────────────────────────────────────────────────────────
 
+/// Both texts as ropes, so a long one spans many chunks.
 fn ends(old: &str, new: &str) -> SharedLineEnds {
-    shared_line_ends(&Rope::from_str(old), &Rope::from_str(new))
+    shared_line_ends(Rope::from_str(old).slice(..), Rope::from_str(new).slice(..))
 }
 
 /// Line `first` starts both middles, given as char ranges.

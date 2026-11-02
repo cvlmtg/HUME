@@ -226,7 +226,7 @@ fn a_whole_line_diff_revision_has_no_word_spans() {
 }
 
 fn text_of(old: &str, new: &str) -> Vec<ChangeHunk> {
-    text_hunks(&BufferText::from(old), &BufferText::from(new))
+    text_hunks(old, &BufferText::from(new))
 }
 
 /// The words of a text hunk with both sides, which must be its only hunk.
@@ -383,11 +383,7 @@ fn text_hunk_words_split_a_span_across_lines() {
 /// change of whole lines.
 #[test]
 fn text_hunks_past_the_word_budget_say_so() {
-    let hunks = text_hunks_within(
-        &BufferText::from("let x = 1;\n"),
-        &BufferText::from("let y = 1;\n"),
-        0,
-    );
+    let hunks = text_hunks_within("let x = 1;\n", &BufferText::from("let y = 1;\n"), 0);
     assert_eq!(
         hunks,
         vec![over_budget(hunk(0, 0, &["let x = 1;"], &["let y = 1;"]))]
@@ -400,7 +396,7 @@ fn text_hunks_past_the_word_budget_say_so() {
 #[test]
 fn text_hunks_skip_the_spans_of_a_hunk_larger_than_the_budget_left() {
     let hunks = text_hunks_within(
-        &BufferText::from("p q r s\nkeep\nm n\n"),
+        "p q r s\nkeep\nm n\n",
         &BufferText::from("p Q r s\nkeep\nm o\n"),
         6,
     );

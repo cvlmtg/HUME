@@ -178,7 +178,7 @@ pub struct SharedLineEnds {
 /// and diff the middles. A middle starts at a line start and ends after a
 /// line break or at its text's end, so its [`line_token_strs`] are whole lines
 /// of the text, then an empty token.
-pub fn shared_line_ends(old: &Rope, new: &Rope) -> SharedLineEnds {
+pub fn shared_line_ends(old: RopeSlice<'_>, new: RopeSlice<'_>) -> SharedLineEnds {
     let (old_len, new_len) = (old.len_bytes(), new.len_bytes());
     let shortest = old_len.min(new_len);
     let head = shared_len(
@@ -203,10 +203,10 @@ pub fn shared_line_ends(old: &Rope, new: &Rope) -> SharedLineEnds {
         .bytes()
         .position(|b| b == b'\n')
         .map_or(0, |at| tail - at - 1);
-    let middle = |rope: &Rope, len: usize| {
+    let middle = |text: RopeSlice<'_>, len: usize| {
         ExclusiveRange::new(
-            CharOffset::new(rope.byte_to_char(start)),
-            CharOffset::new(rope.byte_to_char(len - whole_tail)),
+            CharOffset::new(text.byte_to_char(start)),
+            CharOffset::new(text.byte_to_char(len - whole_tail)),
         )
     };
     SharedLineEnds {

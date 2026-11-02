@@ -16,7 +16,7 @@ use hume_core::BufferId;
 use super::SteelResult;
 use super::args::{
     END_CHAR_COL, START_CHAR_COL, char_range_value, list_of, not_live_err, string_arg, string_list,
-    symbol_hash,
+    string_ref_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
 use super::ids::BufferGeneration;
@@ -29,12 +29,9 @@ use super::ids::BufferGeneration;
 /// as buffer content (see [`text_hunks`]). The end lines are derived here
 /// from the line lists, since [`ChangeHunk`] stores no end.
 pub(crate) fn diff_lines(old: SteelVal, new: SteelVal) -> SteelResult {
-    let old = string_arg(old, "old-text")?;
-    let new = string_arg(new, "new-text")?;
-    Ok(hunks_to_steel(text_hunks(
-        &BufferText::from(old.as_str()),
-        &BufferText::from(new.as_str()),
-    )))
+    let old = string_ref_arg(&old, "old-text")?;
+    let new = BufferText::from(string_ref_arg(&new, "new-text")?);
+    Ok(hunks_to_steel(text_hunks(old, &new)))
 }
 
 /// `(diff-buffer-lines pane ref-text)` → same shape as `diff-lines`, diffing
@@ -45,15 +42,12 @@ pub(crate) fn diff_buffer_lines(
     bid: BufferId,
     ref_text: SteelVal,
 ) -> SteelResult {
-    let ref_text = string_arg(ref_text, "ref-text")?;
+    let ref_text = string_ref_arg(&ref_text, "ref-text")?;
     // `LiveBuffer` already checked liveness; `None` would be a host disagreeing with itself.
     let live = require_cap(ctx.host.diff())?
         .live_text(bid)
         .ok_or_else(|| not_live_err("pane", bid))?;
-    Ok(hunks_to_steel(text_hunks(
-        &BufferText::from(ref_text.as_str()),
-        &live,
-    )))
+    Ok(hunks_to_steel(text_hunks(ref_text, &live)))
 }
 
 /// `(buffer-revision-diff pane id)` → the `(hash 'hunks)` that

@@ -139,6 +139,20 @@ fn normalize_line_endings_is_noop_on_lf() {
     assert_eq!(normalize_line_endings("a\nb"), "a\nb");
 }
 
+/// `buffer_content` is the text `BufferText::from` holds, and borrows a text
+/// that already has LF line endings and a final line break.
+#[test]
+fn buffer_content_is_what_a_buffer_text_holds() {
+    for text in ["", "a", "a\n", "a\r\nb", "a\rb\n", "a\nb\r\n", "\r"] {
+        assert_eq!(
+            buffer_content(text),
+            BufferText::from(text).to_string(),
+            "{text:?}"
+        );
+    }
+    assert!(matches!(buffer_content("a\nb\n"), Cow::Borrowed(_)));
+}
+
 #[test]
 fn from_str_trailing_newline() {
     // A trailing newline creates an extra empty line.

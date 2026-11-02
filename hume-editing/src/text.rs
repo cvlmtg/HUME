@@ -595,16 +595,8 @@ impl BufferText {
 // with a `String` must be explicit: `BufferText::from(my_string.as_str())`.
 impl From<&str> for BufferText {
     fn from(text: &str) -> Self {
-        let (normalized, line_ending) = normalize_line_endings_detecting(text);
-        // O(1) byte check on the &str before building the rope, avoiding the
-        // O(log n) rope traversal that `ensure_trailing_newline` would need.
-        let rope = if normalized.ends_with('\n') {
-            Rope::from_str(&normalized)
-        } else {
-            let mut r = Rope::from_str(&normalized);
-            r.insert_char(r.len_chars(), '\n');
-            r
-        };
+        let (content, line_ending) = content_and_line_ending(text);
+        let rope = Rope::from_str(&content);
         let (version, generation, generations) = new_lineage();
         Self {
             rope,
@@ -614,6 +606,22 @@ impl From<&str> for BufferText {
             generations,
         }
     }
+}
+
+/// `text` as buffer content, the text `BufferText::from(text)` holds: LF line
+/// endings and a final line break. Borrowed when `text` already has both, so
+/// a diff can read a text it is handed as a string without building a rope.
+pub fn buffer_content(text: &str) -> Cow<'_, str> {
+    content_and_line_ending(text).0
+}
+
+/// [`buffer_content`], and the line ending `text` was written with.
+fn content_and_line_ending(text: &str) -> (Cow<'_, str>, LineEnding) {
+    let (mut content, line_ending) = normalize_line_endings_detecting(text);
+    if !content.ends_with('\n') {
+        content.to_mut().push('\n');
+    }
+    (content, line_ending)
 }
 
 // Implementing `Display` gives us `.to_string()` for free via the blanket

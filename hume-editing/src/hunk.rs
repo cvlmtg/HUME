@@ -5,6 +5,8 @@
 use std::borrow::Cow;
 use std::ops::Range;
 
+use ropey::RopeSlice;
+
 use hume_rope::column::CharCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::lines::strip_line_break;
@@ -13,7 +15,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use crate::changeset::{ChangeSet, EditedRegion};
 use crate::diff::{LineHunk, LineHunkKind, word_change_ranges};
 use crate::line_diff::{TextLineDiff, text_line_diff};
-use crate::text::BufferText;
+use crate::text::{BufferText, buffer_content};
 
 /// Word tokens [`text_hunks`] word-diffs across all its hunks together,
 /// both sides counted. The call runs on the main thread after each debounced
@@ -233,28 +235,29 @@ fn group_hunk(
     })
 }
 
-/// The line hunks of `new` against `old`, `Equal` runs dropped. Both texts
-/// are buffer content, so a caller holding a raw string normalizes it through
-/// [`BufferText::from`]: line endings become LF and a missing final newline
-/// is added, so a ref blob without one shows no phantom trailing hunk. Only
-/// what lies between the lines both texts start and end with is split and
-/// diffed ([`hume_rope::lines::shared_line_ends`]).
+/// The line hunks of `new` against `old`, `Equal` runs dropped. `old` is read
+/// as buffer content ([`buffer_content`]): line endings become LF and a
+/// missing final newline is added, so a ref blob without one shows no phantom
+/// trailing hunk. It is diffed as the string it is, with no rope built for
+/// it. Only what lies between the lines both texts start and end with is
+/// split and diffed ([`hume_rope::lines::shared_line_ends`]).
 ///
 /// Word spans come from a word diff of each hunk's two sides joined by line
 /// breaks, so an edit is marked where it is whatever the line counts on
 /// either side. All hunks share `HUNK_WORDS_BUDGET`.
-pub fn text_hunks(old: &BufferText, new: &BufferText) -> Vec<ChangeHunk> {
+pub fn text_hunks(old: &str, new: &BufferText) -> Vec<ChangeHunk> {
     text_hunks_within(old, new, HUNK_WORDS_BUDGET)
 }
 
 /// [`text_hunks`] with an explicit word budget.
-fn text_hunks_within(old: &BufferText, new: &BufferText, budget: usize) -> Vec<ChangeHunk> {
+fn text_hunks_within(old: &str, new: &BufferText, budget: usize) -> Vec<ChangeHunk> {
+    let old = buffer_content(old);
     let TextLineDiff {
         ends,
         old: old_tokens,
         new: new_tokens,
         hunks,
-    } = text_line_diff(old, new);
+    } = text_line_diff(RopeSlice::from(old.as_ref()), new.rope().slice(..));
     let mut left = budget;
     hunks
         .into_iter()

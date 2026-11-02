@@ -4,12 +4,13 @@
 use std::borrow::Cow;
 
 use hume_rope::lines::{SharedLineEnds, line_token_strs, shared_line_ends};
+use hume_rope::offset::{CharOffset, ExclusiveRange};
+use ropey::RopeSlice;
 
 use crate::diff::{LineHunk, diff_lines};
-use crate::text::BufferText;
 
-/// The line diff of two texts, split and diffed only between the lines both
-/// texts start and end with.
+/// The line diff of two texts of buffer content, split and diffed only
+/// between the lines both texts start and end with.
 pub(crate) struct TextLineDiff<'a> {
     pub(crate) ends: SharedLineEnds,
     /// The line tokens of each text's middle.
@@ -21,10 +22,13 @@ pub(crate) struct TextLineDiff<'a> {
     pub(crate) hunks: Vec<LineHunk>,
 }
 
-pub(crate) fn text_line_diff<'a>(old: &'a BufferText, new: &'a BufferText) -> TextLineDiff<'a> {
-    let ends = shared_line_ends(old.rope(), new.rope());
-    let old_tokens: Vec<Cow<'_, str>> = line_token_strs(old.slice(ends.old_middle)).collect();
-    let new_tokens: Vec<Cow<'_, str>> = line_token_strs(new.slice(ends.new_middle)).collect();
+pub(crate) fn text_line_diff<'a>(old: RopeSlice<'a>, new: RopeSlice<'a>) -> TextLineDiff<'a> {
+    let ends = shared_line_ends(old, new);
+    let middle = |text: RopeSlice<'a>, chars: ExclusiveRange<CharOffset>| {
+        line_token_strs(text.slice(chars.start.index()..chars.end.index())).collect()
+    };
+    let old_tokens: Vec<Cow<'a, str>> = middle(old, ends.old_middle);
+    let new_tokens: Vec<Cow<'a, str>> = middle(new, ends.new_middle);
     let hunks = diff_lines(&old_tokens, &new_tokens);
     TextLineDiff {
         ends,

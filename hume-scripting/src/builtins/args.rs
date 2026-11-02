@@ -52,9 +52,14 @@ pub(crate) fn not_live_err(arg: &str, bid: BufferId) -> SteelErr {
 /// A string. Accepts both strings and symbols, since Scheme callers often
 /// pass unquoted symbol literals where a string is semantically expected.
 pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
+    string_ref_arg(&val, ctx_name).map(str::to_owned)
+}
+
+/// [`string_arg`], borrowed from `val` for a caller that only reads it.
+pub(crate) fn string_ref_arg<'a>(val: &'a SteelVal, ctx_name: &str) -> Result<&'a str, SteelErr> {
     match val {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        SteelVal::SymbolV(s) => Ok(s.to_string()),
+        SteelVal::StringV(s) => Ok(s.as_str()),
+        SteelVal::SymbolV(s) => Ok(s.as_str()),
         _ => steel::stop!(TypeMismatch => "{}: expected a string", ctx_name),
     }
 }
