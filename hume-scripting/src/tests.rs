@@ -162,6 +162,32 @@ fn steel_path_literal_rejects_a_path_containing_a_quote() {
     );
 }
 
+/// `error-text` reads a caught error's message alone, trimmed of the space
+/// Steel's `error` puts in front, and writes any other value as `to-string`.
+#[test]
+fn error_text_is_a_caught_errors_message_or_the_value_written() {
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
+    let value = host.eval_source_for_value(
+        r#"
+        (list (error-text (with-handler (lambda (err) err) (error "boom")))
+              (error-text "plain")
+              (error-text 42))
+        "#,
+        &mut NullHost,
+    );
+    let Ok(SteelVal::ListV(texts)) = &value else {
+        panic!("got {value:?}");
+    };
+    let texts: Vec<_> = texts
+        .iter()
+        .map(|text| match text {
+            SteelVal::StringV(s) => s.as_str().to_owned(),
+            other => panic!("not a string: {other:?}"),
+        })
+        .collect();
+    assert_eq!(texts, ["boom", "plain", "42"]);
+}
+
 /// A handler that raises again hands the same error to the enclosing
 /// `with-handler`: its message matches the one a single handler sees.
 #[test]

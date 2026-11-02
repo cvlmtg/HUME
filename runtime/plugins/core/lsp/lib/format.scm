@@ -54,7 +54,7 @@
     (if (null? edits)
         (unless quiet (log! 'info "Already formatted"))
         (with-handler
-          (lambda (e) (log! 'error (string-append "lsp format: " (to-string e))))
+          (lambda (e) (log! 'error (string-append "lsp format: " (error-text e))))
           (apply-text-edits! pane edits #:expect-generation gen)))
     (finish!))
   (define (on-answer err res)

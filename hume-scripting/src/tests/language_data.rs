@@ -295,10 +295,12 @@ fn read_data_file_raises_naming_the_file_on_bad_syntax_and_the_next_read_is_unaf
         &format!(
             r#"{LANGUAGES_DIR}
                (define caught
-                 (with-handler (lambda (err) (to-string err))
+                 (with-handler (lambda (err) (error-object-message err))
                                (read-data-file (path-join dir "bad.scm"))))
                (unless (and (string? caught) (string-contains? caught "bad.scm"))
                  (error (string-append "expected an error naming bad.scm: " (to-string caught))))
+               (when (string-contains? caught "Error:")
+                 (error (string-append "expected the parse error's message, not its kind: " caught)))
                (unless (equal? (read-data-file (path-join dir "good.scm")) (list 1))
                  (error "a read after the failed one saw its text"))"#
         ),

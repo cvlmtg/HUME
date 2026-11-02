@@ -97,6 +97,15 @@ of lists times their total length. On 2,000 one-element lists it took 16 ms, whe
 `apply` itself is not the cost: 23 µs for 2,000 arguments. HUME's core plugins join lists
 with `core:stdlib`'s `stdlib/concat` instead.
 
+### Known wrong, not patched
+
+**`error` escapes its string arguments.** `error` (`src/primitives/control.rs`) builds its
+message from each argument's printed form with the outer quotes trimmed, so a `"` or `\`
+inside a string argument comes back backslash-escaped from `error-object-message`, and from
+HUME's `error-text`. A message that wraps a caught error's text in a new `error` escapes it
+again. Messages HUME shows the user carry those escapes; `install_theme_rejects_unsafe_slugs`
+(`hume-editor`) asserts the escaped form.
+
 ## steel-parser 0.8.3
 
 Upstream: [mattwparas/steel](https://github.com/mattwparas/steel), `crates/steel-parser` at

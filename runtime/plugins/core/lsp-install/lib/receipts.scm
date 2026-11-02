@@ -82,7 +82,7 @@
                (with-handler
                  (lambda (delete-err)
                    (log! 'error (string-append "LSP: could not delete the failed install in "
-                                               folder ": " (to-string delete-err))))
+                                               folder ": " (error-text delete-err))))
                  (call! "stdlib/delete-dir!" folder)
                  (when (and (path-exists? dir) (null? (call! "stdlib/list-entries" dir)))
                    (remove-dir! dir)))
@@ -99,7 +99,7 @@
               (lambda (err)
                 (log! 'warning (string-append "LSP: " name " is installed, but " path
                                               " could not be deleted, the next :lsp-install of "
-                                              name " tries again: " (to-string err))))
+                                              name " tries again: " (error-text err))))
               (if (is-dir? path)
                   (remove-dir! path)
                   (delete-file! path))))))

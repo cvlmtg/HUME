@@ -857,6 +857,10 @@ fn installed_grammar_without_a_manifest_warns_and_is_not_registered() {
             .any(|w| w.contains("\"json\"") && w.contains(":plum-install-grammar json")),
         "{warnings:?}"
     );
+    assert!(
+        warnings.iter().all(|w| !w.contains("Error:")),
+        "the warning carries the error's message, not its kind: {warnings:?}"
+    );
     assert!(!ed.state.config.languages.has_grammar("json"));
 }
 

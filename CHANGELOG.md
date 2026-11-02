@@ -27,6 +27,7 @@
 - New `buffer-changes-since` lists the lines that changed since a `buffer-generation` value.
 - New `buffer-search` finds a pattern in a buffer without moving the selection or changing the current search, and new `word-search-pattern` gives the pattern `*` searches for a word.
 - New `stdlib/concat` joins a list of lists, much faster than `(apply append …)` over many lists.
+- New `error-text` gives the message of an error a handler caught, without its kind.
 - New `stdlib/download!` downloads a file, or a byte range of one, with `curl`.
 - New `stdlib/list-entries` lists every entry of a directory.
 - New `stdlib/verify-sha256!` checks a file's SHA-256, and new `stdlib/extract-archive!` unpacks a tar or zip archive, refusing one whose symlinks point outside its directory. New `stdlib/find-extractor` finds the program that extracts an archive format.
@@ -67,6 +68,7 @@
 - `core:git-diff` applies its `'signs` and `'inline` settings to buffers opened before it loaded, and its first toggle on such a buffer turns that rendering on.
 - `core:git-diff` picks up a commit made outside HUME when HUME regains focus.
 - `core:git-diff` warns about a bad ref when you give it to `:toggle-git-signs` or `:toggle-inline-diff`, not again each time it refetches.
+- Messages about a broken grammar, a failed format or a failed language server install no longer start their reason with `Error: Generic:`.
 
 ## [0.17.0] - 2026-10-28
 

@@ -147,6 +147,7 @@ See [Hooks](writing-plugins.md#hooks) for every hook name and its lambda signatu
 |------|--------|
 | `log!` | `(log! severity message)`{.sig} Report `message` at `severity`: in the statusline, in `:messages`, or both (see below) |
 | `print!` | `(print! text)`{.sig} Write `text` and a line break to the terminal, inside an `#:inline-output` command; raises outside one |
+| `error-text` | `(error-text err)`{.sig} The message of an error a `with-handler` handler caught, without the error kind `to-string` puts in front; any other value as `to-string` writes it |
 
 `severity` is one of `'trace`, `'info`, `'warning`, `'error`; anything else raises. It decides where the message goes:
 

@@ -128,7 +128,7 @@
         (with-handler
           (lambda (err)
             (log! 'warning (string-append
-                            "grammar \"" name "\" is installed but broken (" (to-string err)
+                            "grammar \"" name "\" is installed but broken (" (error-text err)
                             ") — run :plum-install-grammar " name " to repair")))
           (register-installed-grammar! name folder))))
     (installed-grammar-folders)))

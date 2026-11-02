@@ -122,6 +122,10 @@ fn install_lock_is_released_after_a_failed_install() {
         log.contains("opam"),
         "sanity: the install must actually have failed: {log}"
     );
+    assert!(
+        !log.contains("failed: Error:"),
+        "the failure carries the error's message, not its kind: {log}"
+    );
 
     let lock_path = servers_dir(data_tmp.path()).join(".install-lock");
     std::fs::File::open(&lock_path)
@@ -156,6 +160,10 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     assert!(
         log.contains("already in progress"),
         "a held cross-process lock must refuse the install loudly: {log}"
+    );
+    assert!(
+        !log.contains("LSP: Error:"),
+        "the refusal carries the error's message, not its kind: {log}"
     );
 }
 

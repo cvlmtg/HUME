@@ -19,13 +19,13 @@
 (define (lsp-install/with-lock! what thunk)
   (let ((acquired?
           (with-handler
-            (lambda (err) (log! 'error (string-append "LSP: " (to-string err))) #f)
+            (lambda (err) (log! 'error (string-append "LSP: " (error-text err))) #f)
             (begin (lsp-install/acquire-lock!) #t))))
     (and acquired?
          (let ((ok?
                  (with-handler
                    (lambda (err)
-                     (log! 'error (string-append "LSP: " what " failed: " (to-string err)))
+                     (log! 'error (string-append "LSP: " what " failed: " (error-text err)))
                      #f)
                    (begin (thunk) #t))))
            (lsp-install/release-lock!)

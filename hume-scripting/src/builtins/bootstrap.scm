@@ -294,9 +294,14 @@
          (member file (map file-name (read-dir dir)))
          (path-join dir file))))
 
+(define (error-text err)
+  (if (error-object? err)
+      (trim (error-object-message err))
+      (to-string err)))
+
 (define (read-data-file path)
   (let* ((text (call-with-input-file path read-port-to-string))
-         (forms (with-handler (lambda (err) (error (string-append path ": " (to-string err))))
+         (forms (with-handler (lambda (err) (error (string-append path ": " (error-text err))))
                               (hm.read! text))))
     (unless (= (length forms) 1)
       (error (string-append path ": expected one top-level form, found "

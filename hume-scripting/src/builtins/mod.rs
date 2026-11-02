@@ -283,6 +283,9 @@ macro_rules! builtins {
 // stems-with-suffix: sorts after stripping the suffix, since sorting full
 // file names would put "a-b.x" ahead of "a.x" ('-' < '.').
 //
+// error-text: what a handler shows for a value it caught. Steel's own
+// rendering of an error object puts its kind first ("Error: Generic:").
+//
 // read-data-file: the one reader of a data file, returning its single
 // top-level form. It parses with hm.read!, never `read`: steel-core's `read`
 // keeps one buffer across calls, returns eof instead of raising on bad
