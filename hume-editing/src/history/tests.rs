@@ -7,8 +7,6 @@ use crate::selection::SelectionSet;
 use crate::state::EditState;
 use crate::text::BufferText;
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-
 /// A cursor at offset `pos` of one text shared by every call, wide enough
 /// that every char below 60 starts a cluster, so two calls with one `pos`
 /// give equal sets.

@@ -12,16 +12,12 @@ use crate::render::Canvas;
 use crate::builtins::line_number::LineNumberStyle;
 use crate::types::{DisplayLineKind, EditorMode, Scope, ScopeId};
 
-// ---------------------------------------------------------------------------
 // Provider ID
-// ---------------------------------------------------------------------------
 
 /// Unique identifier for a registered provider.
 pub type ProviderId = u16;
 
-// ---------------------------------------------------------------------------
 // Highlight tier
-// ---------------------------------------------------------------------------
 
 /// Priority tier of a highlight span in the style cascade.
 /// Higher = wins over lower. Style stage processes tiers lowest-first so later
@@ -38,9 +34,7 @@ pub enum HighlightTier {
     BracketMatch = 4,
 }
 
-// ---------------------------------------------------------------------------
 // Syntax spans
-// ---------------------------------------------------------------------------
 
 /// Per-buffer source of syntax highlight spans, implemented outside the
 /// engine (hume-treesitter's `Syntax`). Same span shape as
@@ -60,9 +54,7 @@ pub trait SyntaxSpans {
     );
 }
 
-// ---------------------------------------------------------------------------
 // Gutter column
-// ---------------------------------------------------------------------------
 
 /// Context passed to `GutterColumn::render_cells` for buffer/syntax access.
 ///
@@ -164,9 +156,7 @@ impl GutterCell {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Virtual line
-// ---------------------------------------------------------------------------
 
 /// A virtual (non-buffer) display line injected by a provider.
 ///
@@ -198,9 +188,7 @@ pub struct VirtualLine {
     pub base_scope: Option<ScopeId>,
 }
 
-// ---------------------------------------------------------------------------
 // Inline insert
-// ---------------------------------------------------------------------------
 
 /// An inline decoration injected at a specific byte offset within a buffer
 /// line. Participates in wrapping, as a unit. Used for inlay hints,
@@ -219,9 +207,7 @@ pub struct InlineInsert {
     pub scope: ScopeId,
 }
 
-// ---------------------------------------------------------------------------
 // Decoration source
-// ---------------------------------------------------------------------------
 
 /// One piece of per-line decoration data a [`DecorationSource`] can produce.
 /// A single query result covering every kind (highlight spans, virtual
@@ -288,9 +274,7 @@ pub trait DecorationSource {
     );
 }
 
-// ---------------------------------------------------------------------------
 // Overlay provider
-// ---------------------------------------------------------------------------
 
 /// An overlay rendered on top of the content area after the main pipeline
 /// (see `EngineView::overlays`).
@@ -302,9 +286,7 @@ pub trait OverlayProvider {
     fn render(&self, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 
-// ---------------------------------------------------------------------------
 // Chrome
-// ---------------------------------------------------------------------------
 
 /// Paints one chrome element (the statusline, the tab bar, a bottom band)
 /// into the rect `EngineView::render` placed it at.
@@ -312,9 +294,7 @@ pub trait ChromeProvider {
     fn render(&self, area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 
-// ---------------------------------------------------------------------------
 // Provider set
-// ---------------------------------------------------------------------------
 
 /// Complete set of providers for a pane. Allocated once at startup.
 ///
@@ -375,10 +355,6 @@ impl ProviderSet {
             .map(|(id, _, p)| (*id, p.as_ref()))
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

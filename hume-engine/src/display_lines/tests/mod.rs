@@ -35,10 +35,6 @@ fn ex(start: usize, end: usize) -> ExclusiveRange<CharOffset> {
     ExclusiveRange::new(co(start), co(end))
 }
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
 fn ws() -> WhitespaceConfig {
     WhitespaceConfig::default()
 }

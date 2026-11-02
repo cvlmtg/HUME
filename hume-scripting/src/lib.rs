@@ -483,8 +483,6 @@ impl ScriptingHost {
     }
 }
 
-// ── Test helpers ──────────────────────────────────────────────────────────────
-
 #[cfg(any(test, feature = "test-util"))]
 impl ScriptingHost {
     /// Shared tail for [`eval_source`](Self::eval_source) and

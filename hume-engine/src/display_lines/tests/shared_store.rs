@@ -14,9 +14,7 @@ fn with_counting_anchor() -> (ProviderSet, Rc<Cell<usize>>) {
     (providers, calls)
 }
 
-// ---------------------------------------------------------------------------
 // Shared line store
-// ---------------------------------------------------------------------------
 
 /// The frame's two passes over one pane (the editor's scroll step and the
 /// render pass) each build their own `DisplayLineMap`, but over the same store. Under

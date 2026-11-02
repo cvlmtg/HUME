@@ -3,8 +3,6 @@ use hume_engine::pane::WrapMode;
 use hume_engine::test_doubles::VirtualLineBlock;
 use hume_grid::Rect;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 fn focused_pane(ed: &Editor) -> &hume_engine::pane::Pane {
     &ed.view.panes[ed.view.focused_pane()]
 }

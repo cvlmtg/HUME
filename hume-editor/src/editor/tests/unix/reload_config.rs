@@ -155,9 +155,7 @@ fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // --config override
-// ---------------------------------------------------------------------------
 
 /// `set_config_source` (the `--config` flag's editor-side setter) must make
 /// `init_scripting` evaluate the override file instead of the default
@@ -319,9 +317,7 @@ fn config_override_works_with_no_config_dir() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // --no-config
-// ---------------------------------------------------------------------------
 
 /// `ConfigSource::Skip` (`--no-config`) must skip the user's `init.scm`:
 /// `scroll-margin` stays at its compiled-in default despite the fixture's
@@ -636,9 +632,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
     );
 }
 
-// ---------------------------------------------------------------------------
 // :reload-config must not drop a startup-registered grammar
-// ---------------------------------------------------------------------------
 
 /// `init_scripting`'s unconditional `scheme/grammars.scm` eval is the only
 /// place a grammar gets registered, and `:reload-config` re-enters it after
@@ -709,9 +703,7 @@ fn reload_config_keeps_a_startup_grammar_registered() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // :reload-config with no resolvable config directory fails fast
-// ---------------------------------------------------------------------------
 
 /// `typed_reload_config` checks `config_path()` *before* touching anything:
 /// past `reset_config_state`, which wipes languages/keymap/theme/highlighting,
@@ -768,9 +760,7 @@ fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // :reload-config twice in a row
-// ---------------------------------------------------------------------------
 
 /// Two reloads back to back must both fully apply the (changing) config on
 /// disk. Each reload captures its own `ReloadSnapshot` (`pre_reload_bids`, and
@@ -815,9 +805,7 @@ fn reload_config_twice_in_a_row_both_apply_cleanly() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // :reload-config's explicit-language restore skips a closed buffer
-// ---------------------------------------------------------------------------
 
 /// A bid whose buffer closed between the snapshot and the resync sweep must
 /// not have its pre-reload explicit language restored. `ReloadSnapshot::
@@ -887,10 +875,8 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     drop(fixture);
 }
 
-// ---------------------------------------------------------------------------
 // :reload-config preserves editing state: undo, jump list, minibuf
 // history, registers, mode/selection, and pane focus
-// ---------------------------------------------------------------------------
 
 /// A real `:reload-config` dispatch must leave every piece of *editing*
 /// state exactly as `typed_reload_config`'s doc comment promises: "buffers,

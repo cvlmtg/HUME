@@ -12,10 +12,6 @@ use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::pane::Viewport;
 use hume_rope::column::DisplayLineCol;
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 /// Compute the pane-content-relative `(x, row)` of `cursor` within the
 /// pane content area (i.e., after the gutter, not a terminal-absolute
 /// screen cell; callers add the gutter width and pane origin for that).
@@ -101,9 +97,7 @@ pub(in crate::editor) fn place(
     (content_x as u16, screen_row as u16)
 }
 
-// ---------------------------------------------------------------------------
 // Screen-to-buffer reverse mapping
-// ---------------------------------------------------------------------------
 
 /// Convert a pane-content-relative `(content_x, content_y)` click position to
 /// the buffer cluster it hits.
@@ -142,10 +136,6 @@ pub(in crate::editor) fn screen_to_cluster(
     // landing on the line's `\n`, a real cursor position in HUME's inclusive model.
     Some(dlm.char_at(clicked, display_col, DisplayColTarget::Cell))
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

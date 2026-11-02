@@ -242,9 +242,7 @@ impl Editor {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Coordinate helpers
-// ---------------------------------------------------------------------------
 
 /// Translate a pane-content-relative `(content_x, row)` cell (relative to
 /// the pane's content area, past the `gutter_w`-wide gutter) into an

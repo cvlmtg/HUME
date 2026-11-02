@@ -41,8 +41,6 @@ fn reparse_edit(ed: &mut Editor) {
     ed.reparse_stale_buffers(); // drains the queued result and installs it
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[test]
 fn first_parse_full_reparse_no_pending() {
     require_grammars(&["json"]);

@@ -28,9 +28,7 @@ use super::commands::{
 use super::{EditorState, doc_ops};
 use crate::editor::error::CommandError;
 
-// ---------------------------------------------------------------------------
 // Vertical movement
-// ---------------------------------------------------------------------------
 
 /// Move `head` by `count` content display lines, landing on the last one
 /// reached (or staying put if the document's edge came first). Virtual
@@ -251,9 +249,7 @@ pub(super) fn apply_visual_vertical(
     );
 }
 
-// ---------------------------------------------------------------------------
 // Vertical selection copy
-// ---------------------------------------------------------------------------
 
 /// Where the copy of a selection end `end` lands on line `line`: the line's
 /// `\n` when `end` is on its own line's `\n`, so a copied whole line stays a
@@ -406,9 +402,7 @@ fn copy_selection_on_line(
     );
 }
 
-// ---------------------------------------------------------------------------
 // Public commands
-// ---------------------------------------------------------------------------
 
 /// Shared body of [`cmd_visual_move_down`]/[`cmd_visual_move_up`]: the two
 /// differ only in `down`, so they delegate here rather than each carrying

@@ -9,9 +9,7 @@ use rustc_hash::FxHashMap;
 
 use crate::types::{ResolvedStyle, Scope, ScopeId};
 
-// ---------------------------------------------------------------------------
 // ScopeRegistry
-// ---------------------------------------------------------------------------
 
 /// Maps scope name strings to compact [`ScopeId`] integers.
 ///
@@ -165,9 +163,7 @@ pub const CURSOR_PRIMARY: &str = "ui.cursor.primary";
 pub const CURSOR_MATCH: &str = "ui.cursor.match";
 pub const CURSOR_MATCH_SEARCH: &str = "ui.cursor.match.search";
 
-// ---------------------------------------------------------------------------
 // UiScopes
-// ---------------------------------------------------------------------------
 
 /// Pre-resolved styles for the UI scopes used on the per-grapheme hot path.
 ///
@@ -237,9 +233,7 @@ pub struct UiScopes {
     pub window_focused: ResolvedStyle,
 }
 
-// ---------------------------------------------------------------------------
 // Theme
-// ---------------------------------------------------------------------------
 
 /// Maps semantic scope names to concrete styles.
 ///
@@ -395,8 +389,6 @@ impl Theme {
         fallback_chain(s).find_map(|key| self.raw.get(key).copied())
     }
 
-    // ── Private helpers ──────────────────────────────────────────────────
-
     fn compute_ui(&self) -> UiScopes {
         let [
             (_, normal, normal_primary),
@@ -475,10 +467,6 @@ impl Default for Theme {
         Self::from_owned(FxHashMap::default(), ResolvedStyle::default())
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

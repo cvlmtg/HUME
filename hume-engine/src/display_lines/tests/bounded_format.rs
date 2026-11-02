@@ -18,9 +18,7 @@ fn is_unformatted(store: &PaneLineStore, line: ContentLine) -> bool {
         .is_some_and(|i| store.entry(i).format.extent.is_none())
 }
 
-// ---------------------------------------------------------------------------
 // Bounded formatting
-// ---------------------------------------------------------------------------
 
 /// One unwrapped line far longer than any query needs to scan. Pure ASCII, so
 /// column == char offset and the expected answers are plain arithmetic.

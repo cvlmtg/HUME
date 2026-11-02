@@ -27,8 +27,6 @@ use paths::{
     entry_path, installed_plugin_dir, path_exists, plugin_dir_for_id, require_program_for_path,
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 /// Log an `Error` for a `core:` plugin that is absent from the runtime dir.
 ///
 /// For `core:` plugins, absent = typo or broken `HUME_RUNTIME`; PLUM never
@@ -500,7 +498,6 @@ pub(super) mod activation;
 pub(crate) use activation::{abandon_open_activations, fail_open_bodies};
 pub(crate) mod paths;
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
 //
 // Parsing tests (valid/invalid plugin names, segments) live in
 // `hume_scripting::attribution::tests` alongside `PluginId::parse`.  The tests here

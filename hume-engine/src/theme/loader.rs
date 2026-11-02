@@ -51,10 +51,6 @@ fn is_reserved(key: &str) -> bool {
     RESERVED_KEYS.contains(&key)
 }
 
-// ---------------------------------------------------------------------------
-// Public entry points
-// ---------------------------------------------------------------------------
-
 /// A theme resolved from a TOML document, plus a warning for every entry
 /// that was malformed on its own. A non-empty `warnings` doesn't mean the
 /// load failed ([`Theme`] is always fully usable); it means some key in
@@ -107,9 +103,7 @@ pub fn parse_theme(toml_str: &str) -> Result<LoadedTheme, ThemeError> {
     Ok(resolve_theme_table(raw))
 }
 
-// ---------------------------------------------------------------------------
 // Recursive loader
-// ---------------------------------------------------------------------------
 //
 // An `inherits` chain is merged as raw TOML (parent and child tables, palette
 // included) and resolved to colors exactly once, after the whole chain is
@@ -433,9 +427,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Scope value parsing
-// ---------------------------------------------------------------------------
 
 /// Parse one TOML scope entry into a `ResolvedStyle`, plus a warning for
 /// every individually malformed field inside a style table (the `Ok` arm's
@@ -612,10 +604,6 @@ fn parse_style_table(
 
     (style, warnings)
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

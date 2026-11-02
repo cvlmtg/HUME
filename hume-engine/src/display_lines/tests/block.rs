@@ -17,9 +17,7 @@ impl DecorationSource for CountingLineBg {
     }
 }
 
-// ---------------------------------------------------------------------------
 // block()
-// ---------------------------------------------------------------------------
 
 #[test]
 fn block_without_providers_is_content_only() {
@@ -262,9 +260,7 @@ fn no_wrap_block_counts_without_running_the_formatter() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // slot() / clamp() / last_line()
-// ---------------------------------------------------------------------------
 
 /// Line 0 wrapped into 2 content display lines, with 2 Before display lines and 1 After display line:
 /// a 5-display-line block whose every display line slot is hand-known.

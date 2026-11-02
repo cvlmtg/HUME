@@ -3,9 +3,7 @@
 use super::*;
 use hume_rope::cluster::ClusterRange;
 
-// ---------------------------------------------------------------------------
 // locate() / char_at()
-// ---------------------------------------------------------------------------
 
 #[test]
 fn locate_returns_the_wrap_display_line_and_column_of_a_char() {
@@ -435,9 +433,7 @@ fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // content_display_line_clusters()
-// ---------------------------------------------------------------------------
 
 #[test]
 fn content_display_line_clusters_scopes_to_one_wrap_display_line() {

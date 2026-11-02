@@ -53,8 +53,6 @@ pub(in crate::editor) struct CompletionCtx<'a> {
     pub dirs: &'a hume_platform::dirs::Dirs,
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
-
 /// Extract the argument prefix for commands that take a single argument.
 ///
 /// Splits `input[..cursor]` on the first space.  Returns `(arg_start, prefix)`

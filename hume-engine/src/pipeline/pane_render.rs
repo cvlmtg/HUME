@@ -14,9 +14,7 @@ use super::{FrameScratch, PaneRenderCtx, PaneSize};
 /// would be scanned but never pushed, clipping it one column too early.
 const H_WINDOW_SLACK: u16 = 4;
 
-// ---------------------------------------------------------------------------
 // Fused pipeline
-// ---------------------------------------------------------------------------
 
 /// Render one pane by walking its display lines.
 ///
@@ -226,9 +224,7 @@ pub(crate) fn render_pane(
     render::render_tilde_fillers(screen_row, lane_widths, &compose_ctx, &mut canvas);
 }
 
-// ---------------------------------------------------------------------------
 // Per-line style state
-// ---------------------------------------------------------------------------
 
 /// The per-line facts every content display line of one buffer line shares.
 ///

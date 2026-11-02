@@ -12,6 +12,10 @@
 //! in either spelling ([`retired_kind_term`]): the pane argument
 //! types of the `builtins!` table name those needs.
 //!
+//! A section banner (`// ── Name ──`, `// -----`) is rejected when it
+//! carries no heading, or a generic one such as "Tests" or "Helpers"
+//! ([`noise_banner`]). A banner naming what its section holds stays.
+//!
 //! Only unambiguous phrases are listed. History wording such as "no longer"
 //! or "used to" also has legitimate present-tense uses, so it is left to
 //! review.
@@ -40,6 +44,40 @@ const EMPHASIS: &[&str] = &[
     "genuinely",
     "by construction",
 ];
+
+/// Banner headings that name no section in particular.
+const NOISE_HEADINGS: &[&str] = &[
+    "Tests",
+    "Helpers",
+    "Shared helpers",
+    "Private helpers",
+    "Test helpers",
+    "Test-only helpers",
+    "Public API",
+    "Public entry points",
+    "Types",
+    "Fixtures",
+];
+
+/// `comment`'s text when it is a banner, opened or closed by a run of two
+/// or more box-drawing `─` or three or more `-` or `=`, whose heading is
+/// empty or in [`NOISE_HEADINGS`]. Two dashes alone open a `--flag`, not a
+/// banner.
+fn noise_banner(comment: &str) -> Option<&str> {
+    let text = comment
+        .trim_start_matches('/')
+        .trim_start_matches('!')
+        .trim();
+    let (rule, _) = [('─', 2), ('-', 3), ('=', 3)]
+        .into_iter()
+        .find(|&(rule, min)| {
+            let run = rule.len_utf8() * min;
+            text.len() - text.trim_start_matches(rule).len() >= run
+                || text.len() - text.trim_end_matches(rule).len() >= run
+        })?;
+    let heading = text.trim_matches(rule).trim();
+    (heading.is_empty() || NOISE_HEADINGS.contains(&heading)).then_some(text)
+}
 
 /// `kind-` and a/b/c in any case, or `kind` in any case, a space and an
 /// uppercase A/B/C, as a whole word. A lowercase letter after the space is
@@ -91,7 +129,8 @@ fn comments_carry_no_workflow_vocabulary() {
                 .find(|p| comment.contains(**p))
                 .or_else(|| EMPHASIS.iter().find(|p| lower.contains(**p)))
                 .copied()
-                .or_else(|| retired_kind_term(comment));
+                .or_else(|| retired_kind_term(comment))
+                .or_else(|| noise_banner(comment));
             if let Some(hit) = hit {
                 let file = path.strip_prefix(&root).unwrap_or(path).display();
                 violations.push(format!("{file}:{}: {hit:?}", i + 1));
@@ -101,8 +140,9 @@ fn comments_carry_no_workflow_vocabulary() {
 
     assert!(
         violations.is_empty(),
-        "\nWorkflow or emphasis vocabulary in comments. State the behaviour\n\
-         instead, and put validation notes or fix history in the commit message.\n{}\n",
+        "\nWorkflow or emphasis vocabulary, or a noise banner, in comments.\n\
+         State the behaviour instead, and put validation notes or fix history\n\
+         in the commit message.\n{}\n",
         violations.join("\n")
     );
 }
@@ -119,5 +159,28 @@ fn retired_kind_terms_match_in_either_spelling() {
         "unkind-a",
     ] {
         assert_eq!(retired_kind_term(miss), None, "{miss:?}");
+    }
+}
+
+#[test]
+fn noise_banners_are_empty_or_generic_headings() {
+    for hit in [
+        "// ── Tests ──────",
+        "// ---------------------",
+        "// ===== Helpers",
+        "//! ── Public API",
+        "// Types ---",
+    ] {
+        assert!(noise_banner(hit).is_some(), "{hit:?}");
+    }
+    for miss in [
+        "// ── Mode transitions ──────",
+        "// --- Selection helpers ---",
+        "// --release builds",
+        "// a -- b",
+        "// Tests",
+        "// ─ Tests",
+    ] {
+        assert_eq!(noise_banner(miss), None, "{miss:?}");
     }
 }

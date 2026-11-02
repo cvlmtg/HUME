@@ -8,9 +8,7 @@ use rustc_hash::FxHashMap;
 use super::UnattachedPane;
 use hume_core::PaneId;
 
-// ---------------------------------------------------------------------------
 // Layout tree
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
@@ -645,9 +643,7 @@ impl FocusedLayout {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Seam junction glyphs
-// ---------------------------------------------------------------------------
 //
 // Where a horizontal seam meets a vertical seam, the crossing cell needs a
 // junction glyph (`┬ ┴ ├ ┤ ┼`) instead of a plain `│`/`─`. Connectivity at a

@@ -3,9 +3,7 @@ use std::path::Path;
 use tree_sitter::Language;
 use tree_sitter_language::LanguageFn;
 
-// ---------------------------------------------------------------------------
 // LoadedGrammar
-// ---------------------------------------------------------------------------
 
 /// A tree-sitter grammar loaded from a dynamic library at runtime.
 ///

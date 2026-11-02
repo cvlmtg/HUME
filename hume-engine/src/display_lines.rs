@@ -48,9 +48,7 @@ mod stepping;
 pub use pos::{BlockBreakdown, BlockSlot, DisplayColTarget, DisplayLinePos};
 pub use scroll::carry;
 
-// ---------------------------------------------------------------------------
 // Display-line map
-// ---------------------------------------------------------------------------
 
 /// Everything the render stage needs to style and compose one display line.
 pub struct RenderDisplayLine<'m> {
@@ -415,10 +413,6 @@ impl<'a> DisplayLineMap<'a> {
         format.h_window = self.h_window.clone();
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

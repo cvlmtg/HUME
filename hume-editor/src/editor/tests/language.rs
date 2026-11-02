@@ -4,8 +4,6 @@ use hume_platform::dirs::Dirs;
 use crate::testing::MockHost;
 use hume_scripting::ScriptingHost;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 /// Attach a scripting host to `ed`, optionally evaluating `src` in init mode.
 pub(super) fn attach_host(ed: &mut Editor, src: &str) {
     let mut host = ScriptingHost::for_testing(&Dirs::none());

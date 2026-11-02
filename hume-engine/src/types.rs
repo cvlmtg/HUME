@@ -4,9 +4,7 @@ use hume_rope::cluster::ClusterStart;
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::ExclusiveRange;
 
-// ---------------------------------------------------------------------------
 // Theme & Style
-// ---------------------------------------------------------------------------
 
 /// A semantic scope name emitted by providers. All style decisions go through
 /// the Theme; providers never emit raw colors.
@@ -41,9 +39,7 @@ pub struct ScopeId(pub u16);
 /// the way to the terminal.
 pub use hume_grid::{Modifiers, ResolvedStyle, UnderlineStyle};
 
-// ---------------------------------------------------------------------------
 // Grapheme: the atom of the formatter
-// ---------------------------------------------------------------------------
 
 /// One grapheme cluster laid out by the Format stage.
 /// This is the unit that flows through Style into Render.
@@ -131,9 +127,7 @@ pub enum CellContent {
     Virtual { start: u32, len: u16 },
 }
 
-// ---------------------------------------------------------------------------
 // Display Line
-// ---------------------------------------------------------------------------
 
 /// One horizontal line in the content area.
 /// A single buffer line may produce multiple DisplayLines when wrapping.
@@ -191,9 +185,7 @@ impl DisplayLineKind {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Selections & Cursor
-// ---------------------------------------------------------------------------
 
 /// A selection as the renderer paints it. The editor builds these from its
 /// selection model each frame; the engine only reads them.
@@ -291,10 +283,6 @@ pub enum EditorMode {
     Command,
     Search,
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

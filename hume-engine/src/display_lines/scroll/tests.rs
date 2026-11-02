@@ -57,9 +57,7 @@ fn local_place(v: &Viewport, cursor_display_col: DisplayLineCol, row: usize) -> 
     (x as u16, row as u16)
 }
 
-// ---------------------------------------------------------------------------
 // Test doubles
-// ---------------------------------------------------------------------------
 
 /// Counts how many times `line` is formatted, and decorates nothing.
 struct FormatProbe {

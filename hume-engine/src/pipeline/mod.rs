@@ -31,9 +31,7 @@ pub use layout::{
 pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
 
-// ---------------------------------------------------------------------------
 // Frame scratch buffers
-// ---------------------------------------------------------------------------
 
 /// Per-frame scratch storage for the Style and gutter-layout stages.
 /// Cleared at the start of each pane render. After a few frames, all `Vec`s
@@ -87,9 +85,7 @@ pub struct FrameInputs<'a, R, S> {
     pub layout: ScreenLayout,
 }
 
-// ---------------------------------------------------------------------------
 // Render context: all per-frame scratch in one place
-// ---------------------------------------------------------------------------
 
 /// All scratch buffers needed for one render pass.
 ///
@@ -162,9 +158,7 @@ impl Default for RenderContext {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Editor view: top-level owner
-// ---------------------------------------------------------------------------
 
 /// Permission to change which pane is focused, or which buffer a pane
 /// shows. [`EngineView::new`] mints one per view, and every `EngineView`

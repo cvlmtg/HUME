@@ -9,9 +9,7 @@ use tree_sitter::{Query, QueryCursor};
 
 use crate::layers::{SyntaxLayers, layer_covers_line};
 
-// ---------------------------------------------------------------------------
 // RopeProvider
-// ---------------------------------------------------------------------------
 
 /// Feeds rope chunks to tree-sitter query matching as a `TextProvider`.
 ///
@@ -38,9 +36,7 @@ impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
 // TreeSitterHighlighter
-// ---------------------------------------------------------------------------
 
 /// Built-in highlighter that drives one language's compiled tree-sitter
 /// highlight query against a parse tree.
@@ -214,10 +210,6 @@ pub fn layer_highlights_for_line(
         hume_engine::interval_sweep::TieBreak::LastPushed,
     );
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

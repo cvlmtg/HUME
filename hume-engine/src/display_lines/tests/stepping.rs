@@ -22,9 +22,7 @@ fn walk_forward(dlm: &mut DisplayLineMap<'_>) -> Vec<DisplayLinePos> {
     positions
 }
 
-// ---------------------------------------------------------------------------
 // Stepping
-// ---------------------------------------------------------------------------
 
 /// "a\nb\nc\n" with 2 Before display lines on line 1 and 1 After display line on line 2. Hand-
 /// written display line list, in document order:

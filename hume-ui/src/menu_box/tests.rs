@@ -443,9 +443,7 @@ fn draw_menu_box_too_small_outer_does_nothing() {
     assert_eq!(buf, before, "sub-3x3 outer must not panic or paint");
 }
 
-// ---------------------------------------------------------------------------
 // scrollbar_thumb: pure geometry, independent of the painter
-// ---------------------------------------------------------------------------
 
 #[test]
 fn scrollbar_thumb_none_when_content_fits() {

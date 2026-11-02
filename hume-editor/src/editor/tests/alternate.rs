@@ -3,8 +3,6 @@ use hume_scripting::host::CommandHost;
 use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 // ── alternate_buffer() ────────────────────────────────────────────────────────
 
 #[test]

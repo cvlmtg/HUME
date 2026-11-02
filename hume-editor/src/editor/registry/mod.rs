@@ -424,8 +424,6 @@ fn is_typed_lazy(cmd: &Command) -> bool {
     )
 }
 
-// ── Test-only helpers ─────────────────────────────────────────────────────────
-
 #[cfg(test)]
 impl CommandRegistry {
     /// Iterate over all registered canonical command names (not aliases),

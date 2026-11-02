@@ -3,8 +3,6 @@
 use super::super::*;
 use pretty_assertions::assert_eq;
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 /// `c` must group the delete and the subsequent insert session into a single
 /// undo step. One `u` should restore the original selection, not leave a
 /// half-undone intermediate state.

@@ -24,9 +24,7 @@ pub(super) fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
     (grammar_parser_path(name), grammar_query_path(name))
 }
 
-// ---------------------------------------------------------------------------
 // Steel command-mode test
-// ---------------------------------------------------------------------------
 
 /// End-to-end: register-grammar! in command mode attaches the grammar immediately
 /// (init mode only queues it) and the execute path auto-sweeps open buffers of
@@ -242,9 +240,7 @@ fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() 
     );
 }
 
-// ---------------------------------------------------------------------------
 // Startup (call! …) during init
-// ---------------------------------------------------------------------------
 
 /// Passive grammar registration: an init that registers grammars directly
 /// succeeds without error and populates the pending language regs. A `(call! "unknown-cmd")` in the same init raises,
@@ -342,9 +338,7 @@ fn plum_install_grammar_tab_completes_a_declared_name() {
     assert_eq!(minibuf_input(&ed), "plum-install-grammar agda");
 }
 
-// ---------------------------------------------------------------------------
 // Startup ordering invariant
-// ---------------------------------------------------------------------------
 
 /// Helper: write a temp-runtime `scheme/prelude.scm` (copied verbatim from the
 /// real runtime; it's self-contained and defines the `define-language!`
@@ -561,9 +555,7 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // Grammar registration survives core:plum's absence
-// ---------------------------------------------------------------------------
 
 /// `runtime/scheme/grammars.scm` registers already-compiled grammars
 /// unconditionally at startup, so highlighting for an installed grammar must
@@ -622,9 +614,7 @@ fn grammar_registration_survives_plum_absence() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // A user override in init.scm must not undo a startup grammar registration
-// ---------------------------------------------------------------------------
 
 /// `grammars.scm` registers every already-compiled grammar before `init.scm`
 /// runs (`scripting/init.rs`: prelude → languages → grammars → init.scm).
@@ -677,10 +667,8 @@ fn define_language_override_in_init_keeps_startup_grammar() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // Registration is driven by <data>/grammars/<name>/<install>/, reading each
 // installed grammar's manifest
-// ---------------------------------------------------------------------------
 
 /// A bundled `json` data file, which has no part in grammar registration.
 const JSON_DATA: &str = "()";

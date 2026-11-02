@@ -1,9 +1,7 @@
 use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterInputs};
 use crate::types::{DisplayLineKind, ScopeId};
 
-// ---------------------------------------------------------------------------
 // Line number style
-// ---------------------------------------------------------------------------
 
 /// How line numbers are displayed in the gutter.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -17,9 +15,7 @@ pub enum LineNumberStyle {
     Hybrid,
 }
 
-// ---------------------------------------------------------------------------
 // LineNumberColumn
-// ---------------------------------------------------------------------------
 
 /// Built-in gutter column that renders line numbers, in the style
 /// [`GutterInputs::line_numbers`](crate::providers::GutterInputs) names.
@@ -118,10 +114,6 @@ impl GutterColumn for LineNumberColumn {
         vec![cell]
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

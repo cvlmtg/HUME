@@ -17,10 +17,6 @@ use super::before_save::warning_texts;
 use super::render_snapshot::render_to_styled_string;
 use test_fixtures::require_grammars;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /// `<repo>/runtime/scheme/`: the runtime Scheme directory.
 pub(super) fn runtime_scheme_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -34,9 +30,7 @@ pub(super) fn prelude_source() -> String {
     std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap()
 }
 
-// ---------------------------------------------------------------------------
 // Direct-attach tests (Rust API only; no Steel dispatch)
-// ---------------------------------------------------------------------------
 
 /// `setup_buffer_syntax` returns early and leaves `syntax` unset when the
 /// language has no grammar to load, so the grammar is attached first.
@@ -403,9 +397,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // has_grammar reflection
-// ---------------------------------------------------------------------------
 
 /// `has_grammar` is false for an identity-only language and true once a grammar is attached.
 #[test]
@@ -461,9 +453,7 @@ fn language_has_grammar_is_true_once_registered_and_false_after_a_failed_load() 
     assert!(!ed.state.config.languages.has_grammar("json"));
 }
 
-// ---------------------------------------------------------------------------
 // Closing the last buffer must clear stale engine syntax state
-// ---------------------------------------------------------------------------
 
 /// Closing the last open buffer (`buffer::lifecycle::
 /// close_buffer`'s `None` branch, which frees `bid`'s slot outright and opens a
@@ -509,9 +499,7 @@ fn closing_the_last_buffer_clears_engine_syntax_state() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // reparse_stale_buffers must re-attach on shrink below cap
-// ---------------------------------------------------------------------------
 
 /// Once a buffer's syntax is detached (via the max_bytes growth branch),
 /// reparse_stale_buffers must re-attach it on shrink below cap.
@@ -551,9 +539,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // Highlighting self-heals after :e! reload
-// ---------------------------------------------------------------------------
 
 /// `reload_buffer_in_place` (`:e!`) must keep syntax highlighting alive across
 /// a reload when the buffer's language is unchanged.
@@ -682,9 +668,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // Off-main-thread parse worker
-// ---------------------------------------------------------------------------
 
 /// The reparse path is two-phase: the first `reparse_stale_buffers` call after an
 /// edit posts the request (the inline backend stashes the result immediately), but

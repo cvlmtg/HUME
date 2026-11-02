@@ -110,7 +110,6 @@ fn build_changesets(
     (fwd.finish(), inv.finish())
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
 //
 // The core check: apply `forward` to a copy of `old` and assert it
 // equals `new`; apply `inverse` to a copy of `new` and assert it equals `old`.

@@ -13,9 +13,7 @@ impl DecorationSource for NoVirtualLines {
     fn decorations_for_line(&self, _line_idx: ContentLine, _out: &mut Vec<Decoration>) {}
 }
 
-// ---------------------------------------------------------------------------
 // Render accessors
-// ---------------------------------------------------------------------------
 
 #[test]
 fn render_display_line_yields_a_content_lines_wrap_display_lines() {

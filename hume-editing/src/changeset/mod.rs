@@ -8,8 +8,6 @@ use ropey::Rope;
 use crate::error::ApplyError;
 use crate::text::{BufferText, TextVersion};
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
 /// A single atomic edit operation within a changeset.
 ///
 /// A changeset decomposes any text transformation into three OT primitives,

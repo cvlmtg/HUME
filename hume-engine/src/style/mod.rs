@@ -11,9 +11,7 @@ use crate::providers::Decoration;
 use crate::theme::Theme;
 use crate::types::{DisplayLine, EditorMode, Grapheme, PaintedSelections, ResolvedStyle, ScopeId};
 
-// ---------------------------------------------------------------------------
 // Scratch storage
-// ---------------------------------------------------------------------------
 
 /// Reusable scratch buffers for the Style stage (Stage 3).
 ///
@@ -67,10 +65,6 @@ impl Default for StyleScratch {
         Self::new()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Public entry points
-// ---------------------------------------------------------------------------
 
 /// Resolve per-grapheme styles for one display line.
 ///
@@ -265,9 +259,7 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
     if is_primary { primary } else { secondary }
 }
 
-// ---------------------------------------------------------------------------
 // Selection helpers
-// ---------------------------------------------------------------------------
 
 /// Collect (start_display_col, end_display_col_exclusive) spans for the given line within `grapheme_range`.
 ///
@@ -433,10 +425,6 @@ fn display_col_at(
 ) -> Option<DisplayLineCol> {
     resolve_grapheme_display_col(pos, graphemes, grapheme_range).map(|(display_col, _)| display_col)
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

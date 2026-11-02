@@ -10,9 +10,7 @@ use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
 use ropey::Rope;
 
-// ---------------------------------------------------------------------------
 // Viewport  (per-pane scroll)
-// ---------------------------------------------------------------------------
 
 /// The scroll state of one pane's viewport. Its size is a
 /// [`PaneSize`](crate::pipeline::PaneSize) read from the screen's layout.
@@ -124,9 +122,7 @@ impl ViewGeometry {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Wrap mode
-// ---------------------------------------------------------------------------
 
 /// How the formatter handles lines that exceed the content width.
 ///
@@ -247,9 +243,7 @@ impl ResolvedWrap {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Whitespace indicators
-// ---------------------------------------------------------------------------
 
 /// When to render a whitespace indicator for a particular whitespace type.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -304,9 +298,7 @@ impl Default for WhitespaceConfig {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Pane
-// ---------------------------------------------------------------------------
 
 /// A single editor pane: an independent view into a buffer.
 pub struct Pane {
@@ -448,10 +440,6 @@ pub fn primary_head_line(selections: &PaintedSelections, rope: &Rope) -> Content
     // test may not even uphold).
     ContentLine::new(hume_rope::lines::char_to_ropey_line(rope, head.offset()).index())
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

@@ -20,9 +20,7 @@ pub(crate) use virtual_lines::format_virtual_lines;
 
 use cells::grapheme_display;
 
-// ---------------------------------------------------------------------------
 // Buffer line formatting
-// ---------------------------------------------------------------------------
 
 /// Format one buffer line, appending zero or more `DisplayLine`s.
 ///
@@ -368,9 +366,7 @@ pub fn format_buffer_line(
     close_display_line_at(lines_out, state.line_g_start, graphemes_out.len());
 }
 
-// ---------------------------------------------------------------------------
 // Wrap owner
-// ---------------------------------------------------------------------------
 
 /// What a run of wrapped display lines belongs to: a buffer line or one
 /// provider virtual line. Decides the kind of each display line the wrap
@@ -410,9 +406,7 @@ impl WrapOwner {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Wrap state
-// ---------------------------------------------------------------------------
 
 /// Mutable state for the word-wrap / soft-wrap pass inside `format_buffer_line`
 /// and `format_virtual_lines`.
@@ -557,9 +551,7 @@ impl WrapState {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Display line closing helpers
-// ---------------------------------------------------------------------------
 
 /// Close the last display line in `lines_out`, spanning `[line_g_start, split_at)`.
 /// `split_at` is either a mid-line wrap boundary or, for the final display
@@ -570,18 +562,10 @@ fn close_display_line_at(lines_out: &mut [DisplayLine], line_g_start: usize, spl
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 #[inline]
 fn is_whitespace_grapheme(s: &str) -> bool {
     s == " " || s == "\t"
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

@@ -2,9 +2,7 @@
 
 use super::*;
 
-// ---------------------------------------------------------------------------
 // buffer_line_col / char_at_buffer_line_col
-// ---------------------------------------------------------------------------
 
 #[test]
 fn line_display_col_matches_locate_column_in_no_wrap() {

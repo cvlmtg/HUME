@@ -3,9 +3,7 @@ use ropey::Rope;
 use crate::pipeline::{ContentWidth, PaneSize};
 use crate::providers::{GutterColumn, GutterInputs};
 
-// ---------------------------------------------------------------------------
 // Pane geometry: output of Stage 1
-// ---------------------------------------------------------------------------
 
 /// The output of the Layout stage: the pane geometry the Format/Render stages
 /// should use.
@@ -25,9 +23,7 @@ pub struct PaneGeometry {
     pub last_line_idx: hume_rope::line::RopeyLine,
 }
 
-// ---------------------------------------------------------------------------
 // Stage 1: compute_viewport
-// ---------------------------------------------------------------------------
 
 /// Per-lane widths of `gutter_columns` for the given `max_line` (0-based
 /// last line index), one entry per column in order: the single computation
@@ -84,10 +80,6 @@ pub fn compute_viewport<'a>(
         last_line_idx,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

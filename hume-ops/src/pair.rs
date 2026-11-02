@@ -32,9 +32,7 @@ pub(crate) fn delimiter_at(
         .find(|&(_, ch)| is_delimiter(ch))
 }
 
-// ---------------------------------------------------------------------------
 // Bracket pairs
-// ---------------------------------------------------------------------------
 
 /// The bracket pairs `%`-style matching and the argument text object both
 /// scan for. `<>` is absent: in real code it's a comparison
@@ -419,9 +417,7 @@ pub fn matching_bracket(
     Some(text.snap(partner))
 }
 
-// ---------------------------------------------------------------------------
 // Quote pairs
-// ---------------------------------------------------------------------------
 
 /// Find the quote pair on the current line that encloses or is nearest to `pos`.
 ///

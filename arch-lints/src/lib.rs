@@ -27,8 +27,6 @@ pub fn workspace_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
-// ── Shared helpers ───────────────────────────────────────────────────────────
-
 /// Every workspace member crate name, derived from the root `Cargo.toml`'s
 /// `[workspace] members = [...]` line, the single source of truth for
 /// "what crates exist." A hand-maintained crate list can silently drop out

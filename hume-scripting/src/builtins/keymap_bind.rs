@@ -14,8 +14,6 @@ use super::SteelResult;
 use super::args::{optional_string_arg, string_arg, symbol_arg, symbol_enum_arg};
 use super::errors::{self, generic_err};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 fn mode_from_symbol(mode: &SteelVal) -> Result<BindMode, SteelErr> {
     let mode_str = symbol_arg(mode, "mode", "a mode symbol like 'normal")?;
     symbol_enum_arg(mode_str, "mode", &BindMode::NAMED)

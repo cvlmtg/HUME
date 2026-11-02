@@ -14,9 +14,7 @@ use crate::providers::{GutterColumn, GutterCtx, GutterInputs, ProviderId};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayLineKind, EditorMode, ResolvedStyle, ScopeId};
 
-// ---------------------------------------------------------------------------
 // Stage 4: compose
-// ---------------------------------------------------------------------------
 
 /// Glyph drawn at each inner indent-guide tab stop. Single source of truth:
 /// referenced by `compose_display_line` and by tests, so the glyph only ever needs to
@@ -512,10 +510,6 @@ pub(crate) fn render_tilde_fillers(
         screen_row += 1;
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

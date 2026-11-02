@@ -491,8 +491,6 @@ impl MatchScan<'_> {
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 /// Find a non-zero-width match in `byte_range`, or `None`.
 ///
 /// `take_last`: `false` takes the first match found (forward search);

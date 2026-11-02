@@ -480,8 +480,6 @@ fn json_layer_at(session: &Session, at: CharOffset) -> bool {
         })
 }
 
-// ── Fixtures ─────────────────────────────────────────────────────────────
-
 fn edit_inside_a_fence(session: &mut Session) {
     let at = session.find("    let v", 0);
     session.change(&[Replace {
