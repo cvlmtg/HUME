@@ -31,6 +31,7 @@ pub mod error;
 pub mod history;
 pub mod hunk;
 pub mod indent;
+mod line_diff;
 #[cfg(any(test, feature = "test-util"))]
 pub mod marked;
 pub mod selection;

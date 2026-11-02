@@ -391,17 +391,8 @@ impl BufferText {
         hume_rope::lines::last_content_line(&self.rope)
     }
 
-    /// The line tokens of this text's bytes `bytes`, which start at a line
-    /// start, as text. See [`hume_rope::lines::line_token_strs`].
-    pub fn line_tokens_in(
-        &self,
-        bytes: impl std::ops::RangeBounds<usize>,
-    ) -> impl Iterator<Item = Cow<'_, str>> {
-        hume_rope::lines::line_token_strs(self.rope.byte_slice(bytes))
-    }
-
     /// Line tokens from `line_idx` forward, each keeping its trailing line
-    /// break (see [`hume_rope::lines::line_tokens_at`] for why).
+    /// break (see [`hume_rope::lines::line_token_strs`] for why).
     ///
     /// # Panics
     /// Panics if `line_idx > self.ropey_line_count()` (matches `line_to_char`).

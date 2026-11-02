@@ -147,35 +147,6 @@ fn from_str_trailing_newline() {
 }
 
 #[test]
-fn line_tokens_count_matches_ropey_line_count_and_keeps_terminators() {
-    let text = BufferText::from("a\nb\n");
-    let tokens: Vec<_> = text.line_tokens_in(..).collect();
-    assert_eq!(tokens.len(), text.ropey_line_count().get());
-    assert_eq!(tokens, vec!["a\n", "b\n", ""]);
-}
-
-#[test]
-fn line_tokens_treats_every_non_lf_break_char_as_content() {
-    // `\n` is the only line break under this workspace's ropey config, so a
-    // form feed doesn't split a token. Nor would a `\r`, which additionally
-    // can't reach a live buffer at all: `BufferText::from` normalizes it to
-    // `\n`, so it becomes a real break by being rewritten, not by ropey
-    // recognizing it.
-    let text = BufferText::from("a\u{0C}b\n");
-    assert_eq!(
-        text.line_tokens_in(..).collect::<Vec<_>>(),
-        vec!["a\u{0C}b\n", ""]
-    );
-
-    let cr = BufferText::from("a\rb\n");
-    assert_eq!(cr.to_string(), "a\nb\n");
-    assert_eq!(
-        cr.line_tokens_in(..).collect::<Vec<_>>(),
-        vec!["a\n", "b\n", ""]
-    );
-}
-
-#[test]
 fn line_tokens_at_starts_at_the_requested_line() {
     let text = BufferText::from("a\nb\nc\n");
     let tokens: Vec<_> = text.line_tokens_at(RopeyLine::new(1)).collect();

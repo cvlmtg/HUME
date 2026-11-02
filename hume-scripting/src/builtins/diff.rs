@@ -1,8 +1,8 @@
 //! `(diff-lines old-text new-text)` / `(diff-buffer-lines pane ref-text)` /
 //! `(buffer-revision-diff pane id)` / `(buffer-changes-since pane generation)` /
 //! `(diff-words old-text new-text)`:
-//! native line and word diff, exposed to Steel plugins. `diff-lines` and
-//! `diff-words` read no editor state, so they call `hume-editing` directly.
+//! native line and word diff, exposed to Steel plugins. Every text diff calls
+//! `hume-editing` here; the host only lends a buffer's live text.
 
 use steel::rvals::SteelVal;
 
@@ -47,10 +47,13 @@ pub(crate) fn diff_buffer_lines(
 ) -> SteelResult {
     let ref_text = string_arg(ref_text, "ref-text")?;
     // `LiveBuffer` already checked liveness; `None` would be a host disagreeing with itself.
-    let diff = require_cap(ctx.host.diff())?
-        .diff_buffer_lines(bid, &ref_text)
+    let live = require_cap(ctx.host.diff())?
+        .live_text(bid)
         .ok_or_else(|| not_live_err("pane", bid))?;
-    Ok(hunks_to_steel(diff))
+    Ok(hunks_to_steel(text_hunks(
+        &BufferText::from(ref_text.as_str()),
+        &live,
+    )))
 }
 
 /// `(buffer-revision-diff pane id)` → the `(hash 'hunks)` that

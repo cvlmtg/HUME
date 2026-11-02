@@ -6,9 +6,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::borrow::Cow;
-use std::ops::Range;
 
-use ropey::iter::Chunks;
 use ropey::{Rope, RopeSlice};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -90,11 +88,8 @@ pub fn last_content_line(rope: &Rope) -> ContentLine {
     ContentLine::new(content_line_count(rope).get().saturating_sub(1))
 }
 
-/// Line tokens from `line_idx` forward, each keeping its trailing line-break
-/// character(s): the tokenization line diffing needs so an `Equal` hunk
-/// stays byte-comparable across the trailing-empty-line boundary (a bare
-/// split on `\n` would misalign a 0-char trailing line against a 1-char
-/// internal `"\n"` line by exactly one char). A slice is a view, never an
+/// Line tokens from `line_idx` forward, each keeping its trailing line break,
+/// as [`line_token_strs`] gives them. A slice is a view, never an
 /// allocation: a caller that only inspects a token (e.g.
 /// [`is_empty_line_token`]) pays nothing for one that straddles a rope
 /// chunk; owned text is a conversion ([`line_token_content`]) at the
@@ -130,70 +125,52 @@ pub fn line_tokens_back_from(
 /// borrowed where a line lies inside one rope chunk, copied where it
 /// straddles chunks. A whole-text line diff splits with this, since walking
 /// chunks is several times faster than `Rope::lines()` and a `&str` hashes and
-/// compares faster than a `RopeSlice`.
-pub fn line_token_strs(text: RopeSlice<'_>) -> LineTokenStrs<'_> {
-    LineTokenStrs {
-        chunks: text.chunks(),
-        rest: "",
-        done: false,
-    }
-}
-
-/// The iterator [`line_token_strs`] returns.
-pub struct LineTokenStrs<'a> {
-    chunks: Chunks<'a>,
-    /// What is left of the current chunk.
-    rest: &'a str,
-    done: bool,
-}
-
-impl<'a> Iterator for LineTokenStrs<'a> {
-    type Item = Cow<'a, str>;
-
-    fn next(&mut self) -> Option<Cow<'a, str>> {
-        if self.done {
-            return None;
-        }
-        let mut straddling: Option<String> = None;
+/// compares faster than a `RopeSlice`. A token keeps its line break so an
+/// `Equal` hunk stays byte-comparable across the trailing empty token: a bare
+/// split on `\n` would pair a 0-char trailing line with a 1-char `"\n"` line.
+pub fn line_token_strs(text: RopeSlice<'_>) -> impl Iterator<Item = Cow<'_, str>> {
+    let mut chunks = text.chunks();
+    // What is left of the current chunk; `None` once the last token is out.
+    let mut rest = Some("");
+    std::iter::from_fn(move || {
+        let mut straddling = String::new();
         loop {
-            if let Some(end) = self.rest.find('\n') {
-                let (line, rest) = self.rest.split_at(end + 1);
-                self.rest = rest;
-                return Some(match straddling {
-                    None => Cow::Borrowed(line),
-                    Some(mut head) => {
-                        head.push_str(line);
-                        Cow::Owned(head)
-                    }
-                });
+            let chunk = rest?;
+            if let Some(end) = chunk.find('\n') {
+                let (line, after) = chunk.split_at(end + 1);
+                rest = Some(after);
+                return Some(joined(straddling, line));
             }
-            if !self.rest.is_empty() {
-                straddling
-                    .get_or_insert_with(String::new)
-                    .push_str(self.rest);
-            }
-            match self.chunks.next() {
-                Some(chunk) => self.rest = chunk,
+            straddling.push_str(chunk);
+            rest = chunks.next();
+            if rest.is_none() {
                 // The last token: the line after the final break, empty when
                 // the text ends with one.
-                None => {
-                    self.done = true;
-                    return Some(straddling.map_or(Cow::Borrowed(""), Cow::Owned));
-                }
+                return Some(joined(straddling, ""));
             }
         }
+    })
+}
+
+/// `piece` after `head`, the part of its line from earlier chunks: borrowed
+/// when there is none.
+fn joined(mut head: String, piece: &str) -> Cow<'_, str> {
+    if head.is_empty() {
+        Cow::Borrowed(piece)
+    } else {
+        head.push_str(piece);
+        Cow::Owned(head)
     }
 }
 
 /// What lies between the whole lines two texts both start and end with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharedLineEnds {
-    /// Lines both texts start with.
-    pub lines: usize,
-    /// The byte range of each text after its shared head and before its
-    /// shared tail.
-    pub old_middle: Range<usize>,
-    pub new_middle: Range<usize>,
+    /// The first line after the shared head, in both texts.
+    pub first_middle_line: RopeyLine,
+    /// Each text after its shared head and before its shared tail.
+    pub old_middle: ExclusiveRange<CharOffset>,
+    pub new_middle: ExclusiveRange<CharOffset>,
 }
 
 /// The whole lines `old` and `new` both start and end with, found by comparing
@@ -202,20 +179,22 @@ pub struct SharedLineEnds {
 /// line break or at its text's end, so its [`line_token_strs`] are whole lines
 /// of the text, then an empty token.
 pub fn shared_line_ends(old: &Rope, new: &Rope) -> SharedLineEnds {
+    let (old_len, new_len) = (old.len_bytes(), new.len_bytes());
+    let shortest = old_len.min(new_len);
     let head = shared_len(
         Edge::Start,
         old.chunks().map(str::as_bytes),
         new.chunks().map(str::as_bytes),
+        shortest,
     );
-    let lines = old.byte_to_line(head);
-    let start = old.line_to_byte(lines);
-    let (old_len, new_len) = (old.len_bytes(), new.len_bytes());
+    let first_middle_line = RopeyLine::new(old.byte_to_line(head));
+    let start = old.line_to_byte(first_middle_line.index());
     let tail = shared_len(
         Edge::End,
         old.chunks_at_byte(old_len).0.reversed().map(str::as_bytes),
         new.chunks_at_byte(new_len).0.reversed().map(str::as_bytes),
-    )
-    .min(old_len.min(new_len) - start);
+        shortest - start,
+    );
     // The shared tail's whole lines begin after its first line break: the
     // byte before the tail differs, so the line it is in may start
     // differently in the two texts.
@@ -224,10 +203,16 @@ pub fn shared_line_ends(old: &Rope, new: &Rope) -> SharedLineEnds {
         .bytes()
         .position(|b| b == b'\n')
         .map_or(0, |at| tail - at - 1);
+    let middle = |rope: &Rope, len: usize| {
+        ExclusiveRange::new(
+            CharOffset::new(rope.byte_to_char(start)),
+            CharOffset::new(rope.byte_to_char(len - whole_tail)),
+        )
+    };
     SharedLineEnds {
-        lines,
-        old_middle: start..old_len - whole_tail,
-        new_middle: start..new_len - whole_tail,
+        first_middle_line,
+        old_middle: middle(old, old_len),
+        new_middle: middle(new, new_len),
     }
 }
 
@@ -238,19 +223,17 @@ enum Edge {
     End,
 }
 
-/// How many bytes two chunked texts share from one end, given their chunks
-/// in the order that end reaches them.
+/// How many bytes, up to `limit`, two chunked texts share from one end,
+/// given their chunks in the order that end reaches them.
 fn shared_len<'a>(
     from: Edge,
     mut old: impl Iterator<Item = &'a [u8]>,
     mut new: impl Iterator<Item = &'a [u8]>,
+    limit: usize,
 ) -> usize {
     // `n` bytes of `chunk` at the compared end, and the rest of it.
     let split = |chunk: &'a [u8], n: usize| match from {
-        Edge::Start => {
-            let (near, rest) = chunk.split_at(n);
-            (near, rest)
-        }
+        Edge::Start => chunk.split_at(n),
         Edge::End => {
             let (rest, near) = chunk.split_at(chunk.len() - n);
             (near, rest)
@@ -258,22 +241,22 @@ fn shared_len<'a>(
     };
     let (mut a, mut b): (&[u8], &[u8]) = (&[], &[]);
     let mut shared = 0;
-    loop {
+    while shared < limit {
         if a.is_empty() {
             match old.next() {
                 Some(chunk) => a = chunk,
-                None => return shared,
+                None => break,
             }
             continue;
         }
         if b.is_empty() {
             match new.next() {
                 Some(chunk) => b = chunk,
-                None => return shared,
+                None => break,
             }
             continue;
         }
-        let n = a.len().min(b.len());
+        let n = a.len().min(b.len()).min(limit - shared);
         let ((a_near, a_rest), (b_near, b_rest)) = (split(a, n), split(b, n));
         if a_near != b_near {
             let pairs = a_near.iter().zip(b_near);
@@ -287,6 +270,7 @@ fn shared_len<'a>(
         a = a_rest;
         b = b_rest;
     }
+    shared
 }
 
 /// Strips the trailing line break from a line-tokenization token. `'\n'` is

@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use super::*;
 use crate::column::BufferLineCol;
 use crate::test_support::rope;
@@ -471,6 +469,8 @@ fn line_token_strs_are_the_tokens_rope_lines_yields() {
         "a".to_string(),
         "a\nb".to_string(),
         "a\nb\n".to_string(),
+        // `\n` is the only line break under this workspace's ropey config.
+        "a\u{0C}b\rc\u{2028}d\n".to_string(),
         format!("{long}\n{long}"),
         format!("start\n{long}\nend\n"),
         mixed,
@@ -489,48 +489,50 @@ fn ends(old: &str, new: &str) -> SharedLineEnds {
     shared_line_ends(&Rope::from_str(old), &Rope::from_str(new))
 }
 
-fn shared(lines: usize, old_middle: Range<usize>, new_middle: Range<usize>) -> SharedLineEnds {
+/// Line `first` starts both middles, given as char ranges.
+fn shared(first: usize, old_middle: (usize, usize), new_middle: (usize, usize)) -> SharedLineEnds {
+    let chars = |(start, end)| ExclusiveRange::new(co(start), co(end));
     SharedLineEnds {
-        lines,
-        old_middle,
-        new_middle,
+        first_middle_line: RopeyLine::new(first),
+        old_middle: chars(old_middle),
+        new_middle: chars(new_middle),
     }
 }
 
 #[test]
 fn shared_line_ends_leave_out_the_lines_around_a_changed_one() {
-    assert_eq!(ends("a\nb\nc\n", "a\nB\nc\n"), shared(1, 2..4, 2..4));
+    assert_eq!(ends("a\nb\nc\n", "a\nB\nc\n"), shared(1, (2, 4), (2, 4)));
 }
 
 #[test]
 fn shared_line_ends_of_equal_texts_leave_empty_middles() {
-    assert_eq!(ends("a\nb\n", "a\nb\n"), shared(2, 4..4, 4..4));
+    assert_eq!(ends("a\nb\n", "a\nb\n"), shared(2, (4, 4), (4, 4)));
 }
 
 #[test]
 fn shared_line_ends_of_an_appended_line() {
-    assert_eq!(ends("a\n", "a\nb\n"), shared(1, 2..2, 2..4));
+    assert_eq!(ends("a\n", "a\nb\n"), shared(1, (2, 2), (2, 4)));
 }
 
 /// The first line of a shared tail is kept in the middle: the byte before it
 /// is the text start in one text and a line break in the other.
 #[test]
 fn shared_line_ends_keep_a_tail_line_whose_start_differs() {
-    assert_eq!(ends("b\n", "a\nb\n"), shared(0, 0..2, 0..4));
+    assert_eq!(ends("b\n", "a\nb\n"), shared(0, (0, 2), (0, 4)));
 }
 
 /// A change inside a line keeps the whole line, though bytes on both sides
 /// of the change match.
 #[test]
 fn shared_line_ends_snap_to_whole_lines() {
-    assert_eq!(ends("ab\ncd\n", "aXb\ncd\n"), shared(0, 0..3, 0..4));
+    assert_eq!(ends("ab\ncd\n", "aXb\ncd\n"), shared(0, (0, 3), (0, 4)));
 }
 
 /// The shared head and tail never overlap: with repeated lines the tail is
 /// cut back to what follows the head.
 #[test]
 fn shared_line_ends_do_not_count_a_line_twice() {
-    assert_eq!(ends("a\na\n", "a\na\na\n"), shared(2, 4..4, 4..6));
+    assert_eq!(ends("a\na\n", "a\na\na\n"), shared(2, (4, 4), (4, 6)));
 }
 
 #[test]
@@ -540,13 +542,14 @@ fn shared_line_ends_compare_across_chunks() {
     let mut edited = lines.clone();
     edited[1_500] = "changed ✓\n".to_string();
     let new: String = edited.concat();
-    let start: usize = lines[..1_500].iter().map(String::len).sum();
+    let chars = |line: &String| line.chars().count();
+    let start: usize = lines[..1_500].iter().map(chars).sum();
     assert_eq!(
         ends(&old, &new),
         shared(
             1_500,
-            start..start + lines[1_500].len(),
-            start..start + edited[1_500].len()
+            (start, start + chars(&lines[1_500])),
+            (start, start + chars(&edited[1_500]))
         )
     );
 }

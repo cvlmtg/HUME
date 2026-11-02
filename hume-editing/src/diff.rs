@@ -64,12 +64,12 @@ pub struct LineHunk {
 /// `old` and `new` are line slices; the caller decides how to tokenize
 /// (rope lines, file lines, etc.). This keeps `diff.rs` independent of
 /// `ropey` and lets the rope-vs-plain-text choice live with the caller.
-pub fn diff_lines<T: Eq + Hash + Clone>(old: &[T], new: &[T]) -> Vec<LineHunk> {
+pub fn diff_lines<T: Eq + Hash>(old: &[T], new: &[T]) -> Vec<LineHunk> {
     diff_lines_within(old, new, HISTOGRAM_WORK_LIMIT)
 }
 
 /// [`diff_lines`] with `limit` in place of [`HISTOGRAM_WORK_LIMIT`].
-fn diff_lines_within<T: Eq + Hash + Clone>(old: &[T], new: &[T], limit: usize) -> Vec<LineHunk> {
+fn diff_lines_within<T: Eq + Hash>(old: &[T], new: &[T], limit: usize) -> Vec<LineHunk> {
     let input = interned(old, new);
     let lines = old.len() + new.len();
     // Unchanged lines separate change hunks, and the shorter input holds
@@ -90,15 +90,16 @@ fn histogram_fits(lines: usize, hunks: usize, limit: usize) -> bool {
     lines.saturating_mul(hunks) <= limit
 }
 
-/// `old` and `new` interned for `imara-diff`.
-fn interned<T: Eq + Hash + Clone>(old: &[T], new: &[T]) -> InternedInput<T> {
+/// `old` and `new` interned for `imara-diff`, by reference so no token is
+/// copied.
+fn interned<'a, T: Eq + Hash>(old: &'a [T], new: &'a [T]) -> InternedInput<&'a T> {
     let mut input = InternedInput {
         before: Vec::with_capacity(old.len()),
         after: Vec::with_capacity(new.len()),
         interner: Interner::new(old.len() + new.len()),
     };
-    input.update_before(old.iter().cloned());
-    input.update_after(new.iter().cloned());
+    input.update_before(old.iter());
+    input.update_after(new.iter());
     input
 }
 
