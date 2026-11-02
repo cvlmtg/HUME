@@ -677,6 +677,76 @@ fn requests_under_two_keys_do_not_cancel_each_other() {
     assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 0);
 }
 
+/// A script request no server can take still cancels the request in flight
+/// under its key: only the newer request's callback runs.
+#[test]
+fn an_unavailable_script_request_still_cancels_its_keys_holder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |_| {},
+        ),
+    );
+    rig.eval("(define *key* (lsp-supersede-key)) (define *lint* #f)");
+    rig.probe("(set! *lint* (cadr (lsp-servers pane)))");
+    rig.stop("ra-lint");
+
+    rig.probe(&format!(
+        r#"(lsp-request! pane "custom/ping" (hash) {LOG_ONE} #:supersede *key*)
+           (lsp-request! pane "custom/ping" (hash) {LOG_ONE} #:supersede *key* #:to *lint*)"#
+    ));
+
+    let warnings = rig.warnings();
+    assert!(
+        matches!(warnings.as_slice(), [only] if only.starts_with("err:")),
+        "{warnings:?}"
+    );
+    assert_eq!(rig.sent(RA, "$/cancelRequest").len(), 1);
+    assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 0);
+    assert_eq!(rig.ed.state.lsp.callback_count_for_test(), 0);
+}
+
+/// The editor's own request no server can take still cancels the request in
+/// flight under its key, as a script's does.
+#[test]
+fn an_unroutable_editor_request_still_cancels_its_keys_holder() {
+    use crate::editor::lsp::{EditorDeliveryKey, RustDelivery};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |_| {},
+        ),
+    );
+    rig.stop("ra-lint");
+    let delivery = || RustDelivery {
+        allow_stale: false,
+        supersede: Some(EditorDeliveryKey::CompletionDoc),
+    };
+
+    for sid in [RA, LINT] {
+        rig.ed.state.lsp_request_json(
+            rig.bid,
+            sid,
+            "custom/ping",
+            serde_json::json!({}),
+            delivery(),
+            Box::new(|_, _, _| {}),
+        );
+    }
+
+    assert_eq!(rig.requests_to(RA, "custom/ping").len(), 1);
+    assert!(rig.requests_to(LINT, "custom/ping").is_empty());
+    assert_eq!(rig.sent(RA, "$/cancelRequest").len(), 1);
+    assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 0);
+}
+
 #[test]
 fn delivery_count_leak_check_after_stop() {
     let tmp = tempfile::tempdir().unwrap();

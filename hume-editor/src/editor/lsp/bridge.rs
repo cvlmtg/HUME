@@ -287,11 +287,8 @@ impl EditorState {
         view: &EngineView,
         req: PendingLspRequest,
     ) {
-        self.lsp_flush_pending();
         let supersede = req.supersede.map(|key| DeliveryKey::Script(key, req.bid));
-        if let Some(key) = supersede {
-            self.cancel_superseded(key);
-        }
+        self.start_request(supersede);
         let members = match self.request_members(&req) {
             Ok(members) => members,
             Err(reason) => {
@@ -322,8 +319,9 @@ impl EditorState {
     /// Sends `method` with wire-form `params` to `server` alone, and calls
     /// `responder` with its answer. A server that [`route`] would not send
     /// `method` to for `bid` (not attached, not running, its list entry
-    /// excluding the feature, or lacking the capability) sends nothing,
-    /// cancels nothing under `delivery.supersede`, and never calls back.
+    /// excluding the feature, or lacking the capability) sends nothing and
+    /// never calls back, but the request under `delivery.supersede` is still
+    /// cancelled.
     pub(in crate::editor) fn lsp_request_json(
         &mut self,
         bid: BufferId,
@@ -333,6 +331,7 @@ impl EditorState {
         delivery: RustDelivery,
         responder: RustResponder,
     ) {
+        self.start_request(delivery.supersede.map(DeliveryKey::Editor));
         let Some(server) = self.lsp.instances.server_ref(server) else {
             return;
         };
@@ -343,10 +342,6 @@ impl EditorState {
         let Ok(mut routed) = route(self, bid, Some(method), &spec) else {
             return;
         };
-        self.lsp_flush_pending();
-        if let Some(key) = delivery.supersede {
-            self.cancel_superseded(DeliveryKey::Editor(key));
-        }
         let spec = DeliverySpec {
             anchor: ResponseAnchor {
                 bid,
@@ -363,6 +358,16 @@ impl EditorState {
         if let Some(did) = self.begin_delivery(spec, members) {
             // Nothing is in flight, so the responder has no answer to give.
             self.cancel_delivery(did);
+        }
+    }
+
+    /// Sends pending text changes and cancels the delivery filed under
+    /// `supersede`: the first step of every request, so a key's previous
+    /// request is retired whether or not the new one reaches a server.
+    fn start_request(&mut self, supersede: Option<DeliveryKey>) {
+        self.lsp_flush_pending();
+        if let Some(key) = supersede {
+            self.cancel_superseded(key);
         }
     }
 
