@@ -454,5 +454,5 @@ fn render_fails_with_the_encoders_error() {
 fn json_params_rejects_a_doc_pos() {
     let err = crate::builtins::args::json_params(doc_pos_val(0), "ctx")
         .expect_err("a position has no plain JSON form");
-    assert!(err.to_string().contains(POSITION_NOT_JSON), "{err}");
+    assert!(err.to_string().contains(DOC_SPAN_NOT_JSON), "{err}");
 }

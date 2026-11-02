@@ -75,8 +75,8 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
     }
 }
 
-/// Why a value holding a document or position has no plain JSON form.
-pub(crate) const POSITION_NOT_JSON: &str = "a document or position value can only be sent through lsp-request!, lsp-request-all! or lsp-notify!";
+/// Why a value holding a [`DocSpan`] has no plain JSON form.
+pub(crate) const DOC_SPAN_NOT_JSON: &str = "a document or position value can only be sent through lsp-request!, lsp-request-all! or lsp-notify!";
 
 /// Converts a `SteelVal` into request [`Params`]: the equivalent
 /// `serde_json::Value`, except a [`crate::DocUri`], [`crate::DocPos`] or

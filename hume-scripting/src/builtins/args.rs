@@ -567,7 +567,7 @@ pub(crate) fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::V
         Params::Json(json) => Ok(json),
         _ => Err(generic_err(format!(
             "{ctx_name}: {}",
-            crate::json::POSITION_NOT_JSON
+            crate::json::DOC_SPAN_NOT_JSON
         ))),
     }
 }
