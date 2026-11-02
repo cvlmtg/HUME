@@ -12,6 +12,7 @@
 - `buffer-display-path`'s `#:relative` takes the directory to be relative to: replace `#:relative #t` with `#:relative (cwd)`.
 - A drawer's `#:render` is called as `(render rows budget)`, as a picker's is: drop the `start` argument, and find what a row needs from its item.
 - `lsp-servers` takes no keywords: replace `(lsp-servers pane #:feature f)` with `(hash-ref (lsp-route pane #:feature f) 'servers)`.
+- A `#:supersede` key cancels only the pending request for the same buffer: one key per plugin serves every buffer, so drop any per-buffer keys.
 - `picker!` and `live-picker!` take a keymap in place of `on-select`, and `#:actions` is gone: a picker answers only the keys its keymap binds. Pass `(call! "stdlib/picker-keymap" on-select)` for the keys pickers had, add keys with `hash-insert`, and move cleanup that ran on `#f` into `#:on-close`.
 
 ### Panes & interface

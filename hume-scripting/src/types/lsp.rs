@@ -301,8 +301,9 @@ pub struct PendingLspRequest {
     pub when_unavailable: WhenUnavailable,
     pub callback: crate::Callback,
     pub allow_stale: bool,
-    /// `#:supersede`: a new request under the same key cancels the
-    /// previous one still in flight under it, on every server it went to.
+    /// `#:supersede`: a new request under the same key for the same buffer
+    /// cancels the previous one still in flight under it, on every server
+    /// it went to.
     /// An explicit opt-in, so two features issuing the same method never
     /// cancel each other.
     pub supersede: Option<crate::host::SupersedeKey>,

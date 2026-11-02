@@ -207,7 +207,7 @@ feature, so it goes to whichever server supports it when the name is accepted.
 | Whole-buffer formatting | `'format` and `documentFormattingProvider` | | yes | |
 | Range formatting (both shapes) | `#:to` the first range-formatting server | | yes | |
 | Rename | `'rename-symbol` | | yes | |
-| Inlay hints, every server | `'inlay-hints` | | | one key per buffer |
+| Inlay hints, every server | `'inlay-hints` | | | one key |
 | Locations drawer refresh | the drawer's own feature | | yes | one key |
 
 "Routed by" is what picks the server among a buffer's servers when the request is sent:
@@ -222,6 +222,6 @@ buffer has changed since the request was sent. It fits requests whose result is 
 another way: edits carry `#:expect-generation`, and the locations refresh re-requests at
 the tracked position. The goto commands use neither, so a navigation the user asked for
 completes even if they looked elsewhere while waiting. `#:supersede` cancels the
-pending request under the same key. Each key comes from `lsp-supersede-key`, minted once at the
-plugin's top level or once per buffer for inlay hints, so no other caller can cancel these
-requests.
+pending request under the same key for the same buffer. Each key comes from
+`lsp-supersede-key`, minted once at the plugin's top level, so no other caller can cancel
+these requests.

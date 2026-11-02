@@ -150,10 +150,12 @@ pub(in crate::editor) enum EditorDeliveryKey {
     CompletionDoc,
 }
 
-/// The key a delivery is filed under for supersede-cancel.
+/// The key a delivery is filed under for supersede-cancel. A script's key
+/// is scoped to the buffer its request is about, so one key minted once
+/// replaces each buffer's request without touching another's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::editor) enum DeliveryKey {
-    Script(SupersedeKey),
+    Script(SupersedeKey, BufferId),
     Editor(EditorDeliveryKey),
 }
 
@@ -252,7 +254,8 @@ impl Deliveries {
     }
 
     /// The delivery still in flight under `key`. A new request under the
-    /// same key cancels it first, so at most one delivery holds a key.
+    /// same key cancels it first, so at most one delivery holds a key (for a
+    /// script's, one per buffer).
     fn in_flight_under(&self, key: DeliveryKey) -> Option<DeliveryId> {
         self.map
             .iter()
@@ -286,8 +289,9 @@ impl EditorState {
         req: PendingLspRequest,
     ) {
         self.lsp_flush_pending();
-        if let Some(key) = req.supersede {
-            self.cancel_superseded(DeliveryKey::Script(key));
+        let supersede = req.supersede.map(|key| DeliveryKey::Script(key, req.bid));
+        if let Some(key) = supersede {
+            self.cancel_superseded(key);
         }
         let members = match self.request_members(&req) {
             Ok(members) => members,
@@ -305,7 +309,7 @@ impl EditorState {
             },
             method: req.method,
             mode: req.mode,
-            supersede: req.supersede.map(DeliveryKey::Script),
+            supersede,
             responder: Responder::Steel {
                 callback: req.callback,
                 tracked: req.tracked,

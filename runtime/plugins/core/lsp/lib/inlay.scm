@@ -10,15 +10,7 @@
 ;;; Buffers toggled away from `lsp/inlay-default`, keyed by `(buffer-key pane)`.
 (define lsp/*inlay-overrides* (hash))
 
-;;; Each buffer's supersede key, keyed by `(buffer-key pane)`.
-(define lsp/*inlay-keys* (hash))
-
-(define (lsp/inlay-key pane)
-  (let ((bkey (buffer-key pane)))
-    (or (hash-try-get lsp/*inlay-keys* bkey)
-        (let ((key (lsp-supersede-key)))
-          (set! lsp/*inlay-keys* (hash-insert lsp/*inlay-keys* bkey key))
-          key))))
+(define lsp/inlay-key (lsp-supersede-key))
 
 (define (lsp/inlay-on? pane)
   (let ((key (buffer-key pane)))
@@ -73,7 +65,7 @@
                               (map (lambda (h) (lsp/hint->store-entry pane h))
                                    (lsp/answer-items results))))))
                 #:unavailable 'empty
-                #:supersede (lsp/inlay-key pane)))))))
+                #:supersede lsp/inlay-key))))))
     #:key (lambda (p . _) (buffer-key p))))
 
 (define (lsp/refresh-hints pane)
@@ -96,9 +88,7 @@
 
 (register-hook! 'on-buffer-close
   (lambda (pane)
-    (let ((bkey (buffer-key pane)))
-      (set! lsp/*inlay-overrides* (hash-remove lsp/*inlay-overrides* bkey))
-      (set! lsp/*inlay-keys* (hash-remove lsp/*inlay-keys* bkey)))))
+    (set! lsp/*inlay-overrides* (hash-remove lsp/*inlay-overrides* (buffer-key pane)))))
 
 (define-typed-command! "toggle-inlay-hints"
   "Toggle LSP inlay hints for the current buffer."

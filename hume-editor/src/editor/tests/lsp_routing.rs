@@ -830,6 +830,41 @@ fn doc_pos_for_another_buffer_fills_the_slot_with_an_error() {
     assert!(rig.requests_to(RA, "custom/at").is_empty());
 }
 
+/// A supersede key names one request per buffer: the same key used for
+/// two buffers leaves both in flight.
+#[test]
+fn one_key_from_two_buffers_cancels_neither() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |_| {},
+        ),
+    );
+    rig.eval("(define *key* (lsp-supersede-key)) (define *main* #f)");
+    rig.probe("(set! *main* pane)");
+    let other = rig.root.join("src/other.rs");
+    std::fs::write(&other, "fn other() {}\n").unwrap();
+    let other = rig
+        .ed
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&other))
+        .expect("the file opens");
+    let fp = crate::editor::commands::FocusedPane::current(&rig.ed.view);
+    rig.ed.switch_to_buffer_without_jump(fp, other);
+    rig.ed.drain_lsp();
+
+    rig.probe(&format!(
+        r#"(lsp-request! *main* "custom/slow" (hash) {LOG_ONE} #:supersede *key*)
+           (lsp-request! pane "custom/slow" (hash) {LOG_ONE} #:supersede *key*)"#
+    ));
+
+    assert_eq!(rig.requests_to(RA, "custom/slow").len(), 2);
+    assert!(rig.sent(RA, "$/cancelRequest").is_empty());
+    assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 2);
+}
+
 #[test]
 fn doc_pos_from_before_a_same_eval_edit_errors() {
     let tmp = tempfile::tempdir().unwrap();

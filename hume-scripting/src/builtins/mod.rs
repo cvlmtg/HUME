@@ -249,7 +249,7 @@ macro_rules! builtins {
 // lsp-request-all!: callback is (lambda (err results)), results one hash per
 // server. the method, #:feature and #:to choose the servers when the request is
 // sent. #:supersede <key>, a key from lsp-supersede-key, cancels the pending
-// request under the same key. #:require-focus drops the callback unless pane is still focused
+// request under the same key for the same buffer. #:require-focus drops the callback unless pane is still focused
 // when the answers arrive.
 //
 // debounce / debounce-by: trailing-edge; debounce-by keeps one timer per
