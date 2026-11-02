@@ -6,11 +6,13 @@
 (provide git-diff/diffable-path git-diff/schedule-refresh! git-diff/refresh! git-diff/force-refresh!
          git-diff/invalidate-ref! git-diff/drop-ref-text! git-diff/hide-renderings!)
 
-;;; Calls `paint!` with `target` when it differs from what `painted-key` last recorded.
-(define (git-diff/reconcile-rendering! entry pane painted-key target paint!)
-  (unless (equal? (hash-ref entry painted-key) target)
-    (paint! pane target)
-    (git-diff/entry-set! pane painted-key target)))
+;;; Calls `paint!` with `target` when it differs from what `painted-key` holds in
+;;; `entry`, and returns `entry` recording `target`.
+(define (git-diff/reconcile-rendering entry pane painted-key target paint!)
+  (if (equal? (hash-ref entry painted-key) target)
+      entry
+      (begin (paint! pane target)
+             (hash-insert entry painted-key target))))
 
 (define (git-diff/signs-visible? entry)
   (hash-ref entry "signs?"))
@@ -24,29 +26,32 @@
        (or (git-diff/signs-visible? entry) (git-diff/inline-visible? entry))
        (buffer-path pane)))
 
-(define (git-diff/reconcile-signs! entry pane signs)
-  (git-diff/reconcile-rendering! entry pane "signs-painted" signs git-diff/render-signs!))
+(define (git-diff/reconcile-signs entry pane signs)
+  (git-diff/reconcile-rendering entry pane "signs-painted" signs git-diff/render-signs!))
 
-(define (git-diff/reconcile-inline! entry pane target)
-  (git-diff/reconcile-rendering! entry pane "inline-painted" target
+(define (git-diff/reconcile-inline entry pane target)
+  (git-diff/reconcile-rendering entry pane "inline-painted" target
     (lambda (p hunks) (git-diff/render-diff! p git-diff/*source* hunks))))
 
-;;; Paints `hunks` in each visible rendering and clears each hidden one.
-(define (git-diff/apply-hunks! pane hunks)
-  (let ([entry (git-diff/buffer-entry pane)])
-    (when entry
-      (git-diff/reconcile-signs! entry pane
+;;; Paints `hunks` in each visible rendering of `entry`, `pane`'s current entry, clears
+;;; each hidden one, and stores the entry.
+(define (git-diff/apply-hunks! pane entry hunks)
+  (git-diff/put-entry! pane
+    (git-diff/reconcile-inline
+      (git-diff/reconcile-signs entry pane
         (if (git-diff/signs-visible? entry) (git-diff/hunks->signs hunks) '()))
-      (git-diff/reconcile-inline! entry pane (if (git-diff/inline-visible? entry) hunks '())))))
+      pane (if (git-diff/inline-visible? entry) hunks '()))))
 
 ;;; Clears each hidden rendering and leaves the visible ones as painted.
 (define (git-diff/hide-renderings! pane)
-  (let ([entry (git-diff/buffer-entry pane)])
-    (when entry
-      (unless (git-diff/signs-visible? entry)
-        (git-diff/reconcile-signs! entry pane '()))
-      (unless (git-diff/inline-visible? entry)
-        (git-diff/reconcile-inline! entry pane '())))))
+  (let* ([entry (git-diff/buffer-entry pane)]
+         [entry (if (git-diff/signs-visible? entry)
+                    entry
+                    (git-diff/reconcile-signs entry pane '()))]
+         [entry (if (git-diff/inline-visible? entry)
+                    entry
+                    (git-diff/reconcile-inline entry pane '()))])
+    (git-diff/put-entry! pane entry)))
 
 ;;; `spawn-async!` callback for `refresh!`'s `git cat-file`; a failure logs at
 ;;; `failure-severity` — see docs/pipeline.md's "Severity routing".
@@ -54,15 +59,16 @@
   (let ([exit-code (hash-ref result 'exit)]
         [stdout (hash-ref result 'stdout)])
     (if (equal? exit-code 0)
-        (begin
-          (git-diff/entry-set! pane "ref-text" stdout)
-          (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane stdout) 'hunks)))
+        (git-diff/apply-hunks! pane
+                               (hash-insert (git-diff/buffer-entry pane) "ref-text" stdout)
+                               (hash-ref (diff-buffer-lines pane stdout) 'hunks))
         (begin
           (log! (if exit-code failure-severity 'error)
                 (string-append "git-diff: `git cat-file` failed: "
                                (trim (hash-ref result 'stderr))))
-          (git-diff/entry-set! pane "ref-text" 'unavailable)
-          (git-diff/apply-hunks! pane '())))))
+          (git-diff/apply-hunks! pane
+                                 (hash-insert (git-diff/buffer-entry pane) "ref-text" 'unavailable)
+                                 '())))))
 
 ;;; Immediate (non-debounced) refresh — `schedule-refresh!` is the debounced entry point.
 ;;; A buffer without its own ref diffs against `default-ref`.
@@ -75,7 +81,8 @@
       (let ([ref-text (git-diff/entry-get pane "ref-text")])
         (cond
           [(string? ref-text)
-           (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane ref-text) 'hunks))]
+           (git-diff/apply-hunks! pane (git-diff/buffer-entry pane)
+                                  (hash-ref (diff-buffer-lines pane ref-text) 'hunks))]
           [(and (not ref-text) (not (git-diff/slot-job pane "diff")))
            (git-diff/entry-set! pane "ref-path" path)
            (git-diff/spawn-job! pane "diff" "git"

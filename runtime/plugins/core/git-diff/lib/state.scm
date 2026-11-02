@@ -1,7 +1,8 @@
 ;;; core:git-diff — state.scm. See docs/architecture.md.
 
 (provide git-diff/remove-buffer!
-         git-diff/buffer-entry git-diff/entry-get git-diff/entry-set! git-diff/ensure-entry!
+         git-diff/buffer-entry git-diff/put-entry! git-diff/entry-get git-diff/entry-set!
+         git-diff/ensure-entry!
          git-diff/buffer-ref git-diff/toggle-flag! git-diff/slot-job git-diff/cancel-job! git-diff/spawn-job!
          git-diff/add-cover! git-diff/remove-cover!)
 
