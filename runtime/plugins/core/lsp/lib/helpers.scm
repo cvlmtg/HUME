@@ -33,11 +33,11 @@
   (map (lambda (item) (cons (row-text item) item)) items))
 
 ;; See docs/architecture.md, "Drawer refresh".
-(define (lsp/refresh-drawer-list! token row-text items on-select pick-index)
-  (let ((selected (drawer-selected-index token)))
-    (and selected
+(define (lsp/refresh-drawer-list! token row-text items on-select pick-row)
+  (let ((selection (drawer-selection token)))
+    (and selection
          (update-drawer-list! token (lsp/payload-rows row-text items) on-select
-                              (pick-index selected)))))
+                              (pick-row selection)))))
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 

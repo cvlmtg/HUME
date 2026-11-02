@@ -53,8 +53,7 @@
                           (when (undotree/session-drawer? drawer)
                             (undotree/show!))))])
     (set! undotree/*session*
-          (hash 'drawer drawer 'pane pane 'nodes (hash-ref rendered 'nodes)
-                'drawn revision 'timer timer))
+          (hash 'drawer drawer 'pane pane 'drawn revision 'timer timer))
     (when previous
       (cancel-timer! (hash-ref previous 'timer)))
     (when (and previous (not same-buffer?))
@@ -76,13 +75,12 @@
   (let* ([session undotree/*session*]
          [pane (focused-pane)]
          [drawer (hash-ref session 'drawer)]
-         [selected (drawer-selected-index drawer)])
-    (if (not selected)
+         [selection (drawer-selection drawer)])
+    (if (not selection)
         (undotree/end-session!)
         (let* ([rendered (undotree/render (buffer-undo-tree pane))]
                [kept (and (undotree/shows-buffer? session pane)
-                          ((hash-ref rendered 'row-of)
-                           (hash-ref (list-ref (hash-ref session 'nodes) selected) 'id)))]
+                          ((hash-ref rendered 'row-of) (hash-ref (car selection) 'id)))]
                [highlight (or kept (hash-ref rendered 'current))])
           (if (update-drawer-list! drawer (hash-ref rendered 'nodes) undotree/on-select highlight
                                    #:render (hash-ref rendered 'render))
@@ -109,7 +107,7 @@
 
 (define (undotree/toggle! pane)
   (let ([session undotree/*session*])
-    (if (and session (drawer-selected-index (hash-ref session 'drawer)))
+    (if (and session (drawer-selection (hash-ref session 'drawer)))
         (begin
           (close-drawer! (hash-ref session 'drawer))
           (undotree/end-session!))

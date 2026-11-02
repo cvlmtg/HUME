@@ -128,11 +128,19 @@ impl DrawerLayer {
 
     /// Identifies this drawer to a Steel owner: `show-drawer-list!`'s return
     /// value, and the shared guard every token-scoped drawer mutation
-    /// (`close-drawer!`, `update-drawer-list!`, `drawer-selected-index`)
+    /// (`close-drawer!`, `update-drawer-list!`, `drawer-selection`)
     /// checks before touching the open drawer. Mirrors
     /// `PickerSession::token`.
     pub(in crate::editor) fn token(&self) -> HostToken {
         self.token
+    }
+
+    /// The selected row's payload, `None` for a drawer no script owns.
+    pub(in crate::editor) fn selected_payload(&self) -> Option<&SteelVal> {
+        match &self.rows {
+            DrawerRows::Script { payloads, .. } => Some(payloads[self.selected].value()),
+            DrawerRows::Buffers { .. } => None,
+        }
     }
 
     /// The call of a script's drawer callback with `payload` (the selected
@@ -449,7 +457,7 @@ impl super::stack::InputStack {
 
     /// The open drawer, but only if its token is `token`: the shared guard
     /// for every token-scoped drawer mutation (`update-drawer-list!`,
-    /// `drawer-selected-index`). Mirrors `picker::session_for_token`'s own
+    /// `drawer-selection`). Mirrors `picker::session_for_token`'s own
     /// doc and shape: a mismatch, or no drawer open at all, is
     /// expected-normal (a late callback racing a drawer the user already
     /// closed or replaced), so callers treat `None` as a silent no-op, never

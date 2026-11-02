@@ -65,7 +65,7 @@
           (let ((token (show-drawer-list! pane (lsp/payload-rows lsp/diag-row diags)
                                           (lsp/diag-select-callback pane))))
             (when token
-              (set! lsp/*diag-drawer* (hash 'key (buffer-key pane) 'token token 'diags diags))))))))
+              (set! lsp/*diag-drawer* (hash 'key (buffer-key pane) 'token token))))))))
 
 (define (lsp/diag-best-match old new-diags)
   (let ((old-msg (hash-ref old 'message))
@@ -82,20 +82,16 @@
                 (loop (cdr rest) (+ i 1) i dist)
                 (loop (cdr rest) (+ i 1) best best-dist)))))))
 
-;; The drawer's rows are `old-diags`, so `old-idx` names one of them.
-(define (lsp/diag-refresh-index old-diags old-idx new-diags)
-  (or (lsp/diag-best-match (list-ref old-diags old-idx) new-diags) old-idx))
-
 (define (lsp/refresh-diagnostics-drawer! pane diags)
   (let ((drawer lsp/*diag-drawer*))
     (when (and drawer (equal? (buffer-key pane) (hash-ref drawer 'key)))
       (let ((token (hash-ref drawer 'token)))
         (cond
           ((null? diags) (close-drawer! token) (set! lsp/*diag-drawer* #f))
-          ((lsp/refresh-drawer-list! token lsp/diag-row diags (lsp/diag-select-callback pane)
-             (lambda (selected) (lsp/diag-refresh-index (hash-ref drawer 'diags) selected diags)))
-           (set! lsp/*diag-drawer* (hash-insert drawer 'diags diags)))
-          (else (set! lsp/*diag-drawer* #f)))))))
+          ((not (lsp/refresh-drawer-list! token lsp/diag-row diags (lsp/diag-select-callback pane)
+                  (lambda (selection)
+                    (or (lsp/diag-best-match (car selection) diags) (cdr selection)))))
+           (set! lsp/*diag-drawer* #f)))))))
 
 ;; ── Diagnostic decorations: EOL summary + gutter signs ──────────────────────
 ;; See docs/decorations.md.

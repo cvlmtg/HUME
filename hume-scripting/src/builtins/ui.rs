@@ -20,8 +20,8 @@ use crate::{Callback, Rooted, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    END_CHAR, START_CHAR, bool_arg, callback_arg, cwd_arg, hash_entry, hash_list, int_arg,
-    list_items, list_to_i32s, list_to_strings, optional_callback_arg, optional_string_arg,
+    END_CHAR, START_CHAR, bool_arg, callback_arg, cons_pair, cwd_arg, hash_entry, hash_list,
+    int_arg, list_items, list_to_i32s, list_to_strings, optional_callback_arg, optional_string_arg,
     pair_fields, single_key, spanned_text, string_arg, symbol_enum_arg, token_arg, token_or_false,
     truncate_end_arg, usize_arg, write_item_label,
 };
@@ -96,7 +96,7 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 /// clamped into `items`; `truncate` is the end of an over-long row the
 /// drawer cuts. A row whose spans don't fit its text raises.
 /// Returns a token scoping
-/// `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this
+/// `close-drawer!`/`update-drawer-list!`/`drawer-selection` to this
 /// drawer, same shape as `picker!`'s own return, or `#f` when the request
 /// was dropped as stale (the stack moved before it could open; see
 /// `UiHost::show_drawer_list`'s own doc), which callers must branch on
@@ -186,13 +186,14 @@ fn non_empty<T>(items: Vec<T>, ctx_name: &str) -> Result<NonEmpty<T>, SteelErr> 
     }
 }
 
-/// `(drawer-selected-index token)`: the open drawer's selected row, or
-/// `#f` when no drawer is open, `token` doesn't match its own, or `token`
-/// itself is `#f` (the opener that produced it returned `#f`).
-pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
+/// `(drawer-selection token)`: the open drawer's selected row as
+/// `(item . index)`, or `#f` when no drawer is open, `token` doesn't match
+/// its own, or `token` itself is `#f` (the opener that produced it returned
+/// `#f`).
+pub(crate) fn drawer_selection(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    match require_cap(ctx.host.ui())?.drawer_selected_index(token) {
-        Some(idx) => Ok(SteelVal::IntV(idx as isize)),
+    match require_cap(ctx.host.ui())?.drawer_selection(token) {
+        Some((item, idx)) => cons_pair(item, SteelVal::IntV(idx as isize)),
         None => Ok(SteelVal::BoolV(false)),
     }
 }

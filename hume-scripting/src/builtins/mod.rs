@@ -570,7 +570,7 @@ builtins! {
     cmd "%show-drawer-list!" => "show-drawer-list!" ui::show_drawer_list(pane: args::FocusedPane, items: SteelVal, on_select: args::ScriptProc<2>, selected: SteelVal, truncate: SteelVal, render: SteelVal);
     cmd "close-drawer!" ui::close_drawer(token: SteelVal);
     cmd "%update-drawer-list!" => "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: args::ScriptProc<2>, selected: SteelVal, render: SteelVal);
-    cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);
+    cmd "drawer-selection" ui::drawer_selection(token: SteelVal);
 
     // Fuzzy-picker widget.
     cmd "%picker!" => "picker!" ui::picker(pane: args::FocusedPane, items: SteelVal, keymap: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, render: SteelVal, on_close: SteelVal);

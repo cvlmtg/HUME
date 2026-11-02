@@ -96,7 +96,7 @@
 
 (define (lsp/swap-locations! session places)
   (if (lsp/refresh-drawer-list! (hash-ref session 'drawer) lsp/place-row places
-                                lsp/locations-on-select (lambda (selected) selected))
+                                lsp/locations-on-select cdr)
       (set! lsp/*locations* (lsp/with-places session (hash-ref session 'pane) places))
       (lsp/end-locations-session!)))
 
@@ -123,7 +123,7 @@
 (define (lsp/refresh-locations!)
   (when lsp/*locations*
     (let* ((session lsp/*locations*)
-           (params (and (drawer-selected-index (hash-ref session 'drawer))
+           (params (and (drawer-selection (hash-ref session 'drawer))
                         (tracked-position-params (hash-ref session 'tracked)))))
       (if (not params)
           (lsp/end-locations-session!)

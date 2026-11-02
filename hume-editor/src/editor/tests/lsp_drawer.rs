@@ -505,10 +505,10 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     );
 }
 
-/// Same mismatch guard for `drawer-selected-index`: must report `#f` even
+/// Same mismatch guard for `drawer-selection`: must report `#f` even
 /// though a drawer is open, since it isn't the caller's own.
 #[test]
-fn drawer_selected_index_with_a_mismatched_token_reports_none() {
+fn drawer_selection_with_a_mismatched_token_reports_none() {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
@@ -518,13 +518,13 @@ fn drawer_selected_index_with_a_mismatched_token_reports_none() {
     let _pane = focused_pane(&ed);
     let host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert_eq!(
-        host.drawer_selected_index(hume_core::HostToken::mint()),
+        host.drawer_selection(hume_core::HostToken::mint()),
         None,
         "a foreign token must read as no selection, even though a drawer is open"
     );
     assert_eq!(
-        host.drawer_selected_index(token),
-        Some(0),
+        host.drawer_selection(token),
+        Some((steel::rvals::SteelVal::StringV("a".into()), 0)),
         "sanity: the real token still reads the real selection"
     );
 }
@@ -725,7 +725,7 @@ fn replace_passes_the_outgoing_drawers_token() {
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false:#true:#false");
 }
 
-// ── update-drawer-list! / drawer-selected-index ──────────────────────────────
+// ── update-drawer-list! / drawer-selection ───────────────────────────────────
 
 /// `update-drawer-list!` replaces rows + callback in place (no reset to row
 /// 0, no `#f` to the outgoing callback: it is a refresh, not a replace),
@@ -741,7 +741,8 @@ fn update_replaces_rows_callback_and_selection_in_place() {
            (define-typed-command! "go" "" (lambda (pane)
              (set! *tok* (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a" "b" "c")) (lambda (row tok) (log! 'info "old"))))))
            (define-typed-command! "sel" "" (lambda ()
-             (log! 'info (to-string (drawer-selected-index *tok*)))))
+             (let ([selection (drawer-selection *tok*)])
+               (log! 'info (string-append (car selection) " " (to-string (cdr selection)))))))
            (define-typed-command! "upd" "" (lambda ()
              (log! 'info (to-string (update-drawer-list! *tok* (map (lambda (row) (cons row row)) (list "x" "y"))
                (lambda (row tok) (log! 'info (to-string row))) 1)))))
@@ -756,7 +757,7 @@ fn update_replaces_rows_callback_and_selection_in_place() {
     ed.feed_key(key_ctrl('d'));
     type_cmd(&mut ed, ":sel");
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "b 1");
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
         1,
@@ -801,7 +802,7 @@ fn update_replaces_rows_callback_and_selection_in_place() {
 /// nothing (and opens nothing), the getter reports no selection. Never an
 /// error: a closed-or-replaced drawer is an expected-normal race.
 #[test]
-fn update_and_selected_index_with_none_open_report_false() {
+fn update_and_selection_with_none_open_report_false() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
@@ -811,7 +812,7 @@ fn update_and_selected_index_with_none_open_report_false() {
              (log! 'info (to-string (update-drawer-list! 0 (map (lambda (row) (cons row row)) (list "x"))
                (lambda (row tok) (void)) 0)))))
            (define-typed-command! "sel" "" (lambda ()
-             (log! 'info (to-string (drawer-selected-index 0)))))"#,
+             (log! 'info (to-string (drawer-selection 0)))))"#,
     );
     type_cmd(&mut ed, ":upd");
     ed.settle();

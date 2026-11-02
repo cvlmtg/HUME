@@ -12,6 +12,7 @@ use hume_scripting::host::{
     DrawerItems, FocusedHandle, LivePickerOpts, PickerBinding, PickerFeedMode, PickerOpts,
     PickerSourceOpts, PickerStep, PopupKind, RowDisplay, UiHost,
 };
+use steel::rvals::SteelVal;
 
 impl<'a> UiHost for EditorHostImpl<'a> {
     // ── Minibuffer prompt ────────────────────────────────────────────────
@@ -210,11 +211,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         self.state.set_drawer_items(token, rows, selected)
     }
 
-    fn drawer_selected_index(&self, token: HostToken) -> Option<usize> {
-        self.state
-            .input
-            .drawer_with_token(token)
-            .map(|d| d.selected)
+    fn drawer_selection(&self, token: HostToken) -> Option<(SteelVal, usize)> {
+        let drawer = self.state.input.drawer_with_token(token)?;
+        Some((drawer.selected_payload()?.clone(), drawer.selected))
     }
 
     // ── Fuzzy picker ──────────────────────────────────────────────────────

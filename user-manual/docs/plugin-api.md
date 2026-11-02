@@ -397,8 +397,8 @@ Any plugin can drive a picker with these editor functions, opening one and pushi
 | `close-menu!` |  | `(close-menu! token)`{.sig} Close the menu `token` names without calling its `callback` |
 | `show-drawer-list!` | focused | `(show-drawer-list! pane items callback [#:selected row] [#:truncate side] [#:render proc])`{.sig} Show a list in the bottom drawer, replacing any drawer already open. Returns a token, or `#f`. See [The drawer](#the-drawer) |
 | `close-drawer!` |  | `(close-drawer! token)`{.sig} Close the drawer `token` names |
-| `update-drawer-list!` |  | `(update-drawer-list! token items callback selected [#:render proc])`{.sig} Replace the open drawer's rows in place (`#:render` as for `show-drawer-list!`; the drawer keeps the `#:truncate` it opened with), selecting row `selected` (clamped into `items`; pass `(drawer-selected-index token)` to keep the current row). Returns `#t` when applied, `#f` for a stale token. Raises on empty `items` (close the drawer instead of clearing it), and on a row whose spans don't fit its text, as `show-drawer-list!` does |
-| `drawer-selected-index` |  | `(drawer-selected-index token)`{.sig} The open drawer's selected row, or `#f` for a stale token |
+| `update-drawer-list!` |  | `(update-drawer-list! token items callback selected [#:render proc])`{.sig} Replace the open drawer's rows in place (`#:render` as for `show-drawer-list!`; the drawer keeps the `#:truncate` it opened with), selecting row `selected` (clamped into `items`; pass `(cdr (drawer-selection token))` to keep the current row). Returns `#t` when applied, `#f` for a stale token. Raises on empty `items` (close the drawer instead of clearing it), and on a row whose spans don't fit its text, as `show-drawer-list!` does |
+| `drawer-selection` |  | `(drawer-selection token)`{.sig} The open drawer's selected row as `(item . index)`, or `#f` for a stale token |
 
 ### Row display
 
@@ -416,7 +416,7 @@ With `#:render`, `items` can be any values but `#f`, one per row, each its row's
 
 A new drawer replaces the one already open. The outgoing drawer's `callback` fires with `#f` and its own token, so its owner knows that drawer is gone and can tell this from its new drawer closing.
 
-`show-drawer-list!` returns the token `close-drawer!`, `update-drawer-list!` and `drawer-selected-index` take. It returns `#f`, with a warning, when the editor is not in Normal or Extend mode, and `#f` when the editor moved on before the call landed. `.` never records a drawer pick; see [Dot-repeat](writing-plugins.md#dot-repeat).
+`show-drawer-list!` returns the token `close-drawer!`, `update-drawer-list!` and `drawer-selection` take. It returns `#f`, with a warning, when the editor is not in Normal or Extend mode, and `#f` when the editor moved on before the call landed. `.` never records a drawer pick; see [Dot-repeat](writing-plugins.md#dot-repeat).
 
 ## Timers
 

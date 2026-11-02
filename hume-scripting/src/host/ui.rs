@@ -298,7 +298,7 @@ pub trait UiHost {
     /// Replaces any drawer already open (no stacking).
     ///
     /// Returns a token scoping [`Self::close_drawer`]/
-    /// [`Self::update_drawer_list`]/[`Self::drawer_selected_index`] to *this*
+    /// [`Self::update_drawer_list`]/[`Self::drawer_selection`] to *this*
     /// drawer, mirroring [`Self::open_picker`]'s own token: a caller must
     /// hold onto it to touch the drawer it opened again, rather than
     /// whichever drawer happens to be open when it gets around to it.
@@ -344,12 +344,13 @@ pub trait UiHost {
         selected: usize,
     ) -> bool;
 
-    /// `(drawer-selected-index token)`: the open drawer's selected row
-    /// index, or `None` (`#f`) when no drawer is open or `token` doesn't
-    /// match its own. Read-only; pairs with [`Self::update_drawer_list`] so
-    /// an owner can map its own selection identity across a refresh (Rust
-    /// never interprets a row's payload; only the owner knows what a row *is*).
-    fn drawer_selected_index(&self, token: HostToken) -> Option<usize>;
+    /// `(drawer-selection token)`: the open script drawer's selected row,
+    /// as its payload and its index, or `None` (`#f`) when no drawer is
+    /// open or `token` doesn't match its own. Read-only; pairs with
+    /// [`Self::update_drawer_list`] so an owner can map its selection across
+    /// a refresh by what the row is, where it sits, or both (Rust never
+    /// interprets a row's payload; only the owner knows what a row *is*).
+    fn drawer_selection(&self, token: HostToken) -> Option<(SteelVal, usize)>;
 
     /// `(picker! pane items keymap #:prompt "…" #:pending [#f] #:query [""]
     /// #:truncate ['head] #:render [#f] #:on-close [#f])` opens the fuzzy-finder panel,

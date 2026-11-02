@@ -120,9 +120,9 @@ minute, `Nm` under an hour, `Nh` under a day, else `Nd`. These are the units `:e
 ### Session
 
 One session at a time, since the drawer is one slot: a hash of the drawer token, the pane
-the tree was last read from, the revision id behind each row, the revision diff last
-drawn, and the age timer. Every refresh reads the focused pane and replaces the hash in one step, before it
-draws the diff, so an error from the renderer leaves a session that matches the drawer.
+the tree was last read from, the revision diff last drawn, and the age timer. Every refresh
+reads the focused pane and replaces the hash in one step, before it draws the diff, so an
+error from the renderer leaves a session that matches the drawer.
 Esc, or another feature opening its own drawer, delivers `#f` to the callback. The callback
 also receives the token of the drawer that fired. The session ends only when that is its
 own drawer, so the `#f` of a drawer this session replaced does nothing. Enter acts on the

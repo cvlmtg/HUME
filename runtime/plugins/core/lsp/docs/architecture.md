@@ -114,7 +114,8 @@ lsp-request!   ───┘                      └─▶ store builtin (set-in
   `set-attachment-completion-triggers!`, and the editor invokes the source directly with
   no hook round trip.
 - **Drawer refresh.** `lsp/refresh-drawer-list!` swaps an open drawer's rows in place and
-  moves its selection, or returns `#f` when that drawer has closed or another replaced it.
+  moves its selection to the row its `pick-row` gives for the old `(item . index)`
+  selection, or returns `#f` when that drawer has closed or another replaced it.
   The diagnostics drawer and the locations drawer both refresh through it.
 - **Position formatting.** `lsp/format-position` renders a 0-based line and column as
   1-based `line:col`, so a position reads the same in every drawer.
