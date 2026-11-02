@@ -1214,14 +1214,7 @@ fn diagnostics_for_buffer_refuses_a_request_range_of_another_buffer() {
     let mut rig = rig_with_three_diagnostics(tmp.path());
     rig.eval("(define *range* #f)");
     rig.probe(r#"(set! *range* (hash-ref (lsp-primary-range-params pane) "range"))"#);
-    let other = rig.root.join("src/other.rs");
-    std::fs::write(&other, "fn other() {}\n").unwrap();
-    let other = rig
-        .ed
-        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&other))
-        .expect("the file opens");
-    let fp = crate::editor::commands::FocusedPane::current(&rig.ed.view);
-    rig.ed.switch_to_buffer_without_jump(fp, other);
+    rig.show_other_file();
 
     rig.probe("(log! 'warning (to-string (diagnostics-for-buffer pane #:range *range*)))");
 

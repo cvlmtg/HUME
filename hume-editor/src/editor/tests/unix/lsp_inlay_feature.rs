@@ -498,13 +498,6 @@ fn hidden_buffer_skips_a_server_triggered_refresh() {
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    let sid = ed
-        .state
-        .buffer_positions
-        .lsp
-        .servers(ed.focused_buffer_id())
-        .next()
-        .expect("buffer must be attached");
     let bid = ed.focused_buffer_id();
     let hidden_uri = rust_rig_uri(tmp.path());
     let requests_for_hidden = || {
@@ -534,7 +527,7 @@ fn hidden_buffer_skips_a_server_triggered_refresh() {
     settle_until_idle(&mut ed);
     let before = requests_for_hidden();
 
-    ed.state.lsp_refresh_inlay_hints(sid);
+    refresh_from_the_server(&mut ed, bid);
     settle_until_idle(&mut ed);
 
     assert_eq!(

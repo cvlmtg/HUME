@@ -169,18 +169,14 @@ impl Editor {
                 ctx.cursor_content_pos.map(|(content_x, row)| {
                     // The focused pane's origin in the frame's layout, so the
                     // cursor lands inside the pane, not at the origin.
-                    let layout = self.view.focused_layout();
-                    let pane_rect = frame_layout.focused_rect(layout);
-                    let gutter_w = self
-                        .state
-                        .pane_geometry(
-                            &self.view,
-                            self.view.focused_pane(),
-                            frame_layout.focused_size(layout),
-                        )
-                        .gutter_width;
-                    let (x, y) =
-                        super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
+                    let focused =
+                        super::input_stack::FocusedBox::new(&self.state, &self.view, &frame_layout);
+                    let (x, y) = super::mouse::content_pos_to_screen(
+                        content_x,
+                        row,
+                        focused.geometry.gutter_width,
+                        focused.pane_rect,
+                    );
                     Position::new(x, y)
                 })
             }

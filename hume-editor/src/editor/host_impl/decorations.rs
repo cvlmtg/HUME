@@ -12,7 +12,7 @@ use crate::editor::EditorState;
 use crate::statusline::StatusElement;
 
 use super::EditorHostImpl;
-use hume_scripting::host::{DecorationHost, DiagnosticCounts, MarkedLines, SetError};
+use hume_scripting::host::{DecorationHost, DiagnosticCounts, MarkedLines, SetError, each_entry};
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {
     fn set_inlay_hints(
@@ -89,7 +89,6 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         lines: Vec<(ContentLine, hume_scripting::VirtualLineSpec)>,
     ) -> Result<(), SetError> {
-        buffer_text(self.state, bid).map_err(SetError::Call)?;
         let entries = lines
             .into_iter()
             .map(|(line, spec)| {
@@ -153,7 +152,6 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         lines: Vec<(ContentLine, String, String)>,
         hide_on_insert_line: bool,
     ) -> Result<(), SetError> {
-        buffer_text(self.state, bid).map_err(SetError::Call)?;
         let entries = lines
             .into_iter()
             .map(|(line, eol_text, scope)| hume_decorations::EolTextEntry {
@@ -176,7 +174,6 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         entries: Vec<(MarkedLines, String)>,
     ) -> Result<(), SetError> {
-        buffer_text(self.state, bid).map_err(SetError::Call)?;
         let entries = entries
             .into_iter()
             .map(|(lines, scope)| (lines, self.view.registry.intern_runtime(&scope)));
@@ -237,8 +234,8 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 }
 
 /// The live text for `bid`, or `Err` if `bid` doesn't name
-/// an open buffer. Every decoration setter needs this to validate/convert
-/// its Steel-facing positions. `bid`'s liveness is already checked before
+/// an open buffer, for the setters that validate char offsets against it
+/// and the statusline setter's "unknown buffer" wording. `bid`'s liveness is already checked before
 /// any of these setters' bodies run (`args::LiveBuffer`'s `BuiltinArg::resolve`
 /// in the `builtins!`-registered closure), so the `Err` arm here is a
 /// defensive fallback, not the primary check. It is kept because `try_get` could
@@ -252,19 +249,6 @@ fn buffer_text(
         .try_get(bid)
         .map(|b| b.text())
         .ok_or_else(|| "unknown buffer".to_owned())
-}
-
-/// `items` mapped by `entry`, a failure naming the item by its place in
-/// `items`.
-fn each_entry<S, T>(
-    items: Vec<S>,
-    mut entry: impl FnMut(S) -> Result<T, String>,
-) -> Result<Vec<T>, SetError> {
-    items
-        .into_iter()
-        .enumerate()
-        .map(|(index, item)| entry(item).map_err(|message| SetError::Entry { index, message }))
-        .collect()
 }
 
 /// Each line of each entry in `entries`, paired with its payload, a line

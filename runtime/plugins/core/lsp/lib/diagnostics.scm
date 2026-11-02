@@ -107,30 +107,27 @@
 (define (lsp/severity-scope severity)
   (string-append (symbol->string severity) ".diagnostic.inline"))
 
+(define (lsp/more-severe? a b)
+  (< (hash-ref a 'severity-rank) (hash-ref b 'severity-rank)))
+
 (define (lsp/most-severe line-diags)
-  (foldl (lambda (d best)
-           (if (< (hash-ref d 'severity-rank) (hash-ref best 'severity-rank)) d best))
+  (foldl (lambda (d best) (if (lsp/more-severe? d best) d best))
          (car line-diags)
          (cdr line-diags)))
 
-(define (lsp/group-by key-fn lst)
-  (if (null? lst)
+(define (lsp/group-by-line diags)
+  (if (null? diags)
       '()
-      (let loop ((rest (cdr lst))
-                 (current-key (key-fn (car lst)))
-                 (current-group (list (car lst)))
+      (let loop ((rest (cdr diags))
+                 (group (list (car diags)))
                  (groups '()))
         (cond
           ((null? rest)
-           (reverse (cons (cons current-key (reverse current-group)) groups)))
-          ((equal? (key-fn (car rest)) current-key)
-           (loop (cdr rest) current-key (cons (car rest) current-group) groups))
+           (reverse (cons (reverse group) groups)))
+          ((equal? (hash-ref (car rest) 'start-line) (hash-ref (car group) 'start-line))
+           (loop (cdr rest) (cons (car rest) group) groups))
           (else
-           (loop (cdr rest) (key-fn (car rest)) (list (car rest))
-                 (cons (cons current-key (reverse current-group)) groups)))))))
-
-(define (lsp/group-by-line diags)
-  (map cdr (lsp/group-by (lambda (d) (hash-ref d 'start-line)) diags)))
+           (loop (cdr rest) (list (car rest)) (cons (reverse group) groups)))))))
 
 (define (lsp/line-group->entry group)
   (let* ((leftmost (car group))
@@ -146,7 +143,7 @@
   (map (lambda (d)
          (hash 'line (hash-ref d 'start-line) 'end-line (hash-ref d 'end-line)
                'text "●" 'scope (symbol->string (hash-ref d 'severity))))
-       (sort diags (lambda (a b) (< (hash-ref a 'severity-rank) (hash-ref b 'severity-rank))))))
+       (sort diags lsp/more-severe?)))
 
 (define (lsp/refresh-diagnostic-decorations! pane diags)
   (register-sign-source! pane lsp/diagnostics-source lsp/*sign-priority*)

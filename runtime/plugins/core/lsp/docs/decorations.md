@@ -62,10 +62,10 @@ the result for both the decorations and the drawer:
 
 - **Severity.** Each diagnostic carries a `'severity-rank` field, authored once in Rust
   (`0` for error up to `3` for hint). The worst diagnostic is the one with the lowest
-  rank, so no sort is needed to find it.
-- **EOL grouping.** `lsp/group-by` groups adjacent items with equal keys. The EOL
-  summary groups by line, relying on the store returning diagnostics start-ascending so
-  same-line entries are contiguous, and `lsp/most-severe` picks each line's worst.
+  rank, which `lsp/more-severe?` compares.
+- **EOL grouping.** `lsp/group-by-line` groups adjacent diagnostics on the same line,
+  relying on the store returning diagnostics start-ascending so same-line entries are
+  contiguous, and `lsp/most-severe` picks each line's worst.
 - **Sign lines.** One sign entry per diagnostic, spanning its lines with `'end-line`, in
   order of severity: `set-signs!` gives a line two entries share to the first, so the
   most severe diagnostic on a line wins it.
@@ -95,7 +95,7 @@ rows also use.
 Signs are set with `set-signs!` under the same source, glyph `●`. Every refresh
 registers the source for the buffer with `register-sign-source!` at priority `10`. A
 diagnostic spanning several lines gets a sign on each line from its `'start-line` up to,
-not including, its `'end-line`, and the most severe diagnostic on a line wins. The sign's scope is the bare severity name (`error`, `warning`,
+not including, its `'end-line`. The sign's scope is the bare severity name (`error`, `warning`,
 `info`, `hint`) rather than the summary's `.diagnostic.inline` form, because the gutter
 glyph is a separate render surface and must not inherit the text squiggle's underline.
 This plugin is the only place a diagnostic becomes a gutter mark.
@@ -116,7 +116,8 @@ activated needs no setup; `on-buffer-close` drops the record.
 | `on-text-changed` | Buffer only | Refreshes. It covers undo, redo and edits that do not scroll, so a hint dropped with its anchor character returns when the edit is undone |
 
 Every trigger hands the refresh its value as it came, and a trigger for a buffer whose
-hints are off schedules nothing. The refresh resolves a pane with `lsp/resolve-pane` when
+hints are off, or that no pane shows, schedules nothing: showing the buffer changes a
+viewport, which refreshes it. The refresh resolves a pane again with `lsp/resolve-pane` when
 its debounce fires, not when it is scheduled: the pane that asked may have switched buffer
 or closed in the meantime, and another pane showing the buffer serves instead.
 `lsp/resolve-pane` is `(car (buffer-panes pane))`, or `#f` when no pane shows the buffer

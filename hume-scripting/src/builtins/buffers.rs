@@ -299,19 +299,19 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -
         .buffer_line_count(bid)
         .ok_or_else(invalid_id)?;
     let (start, end) = range.unwrap_or((0, line_count));
-    if start > end || end > line_count {
-        return Err(generic_err(format!(
-            "range {start}..{end} out of bounds for a {line_count}-line buffer"
-        )));
-    }
-    // Trusted mint: the check above is what licenses ContentLine::new here.
-    // `end` may legitimately equal `line_count` (the one-past-last-line
-    // exclusive bound `ContentLineCount::end_exclusive()` also names), which
-    // `ContentLine::checked` would reject.
-    let range = hume_rope::offset::ExclusiveRange::new(
-        hume_rope::line::ContentLine::new(start),
-        hume_rope::line::ContentLine::new(end),
-    );
+    let range = match (
+        content_line_bound(start, line_count),
+        content_line_bound(end, line_count),
+    ) {
+        (Some(start), Some(end)) if start <= end => {
+            hume_rope::offset::ExclusiveRange::new(start, end)
+        }
+        _ => {
+            return Err(generic_err(format!(
+                "range {start}..{end} out of bounds for a {line_count}-line buffer"
+            )));
+        }
+    };
     let lines = ctx
         .host
         .buffers()
@@ -545,6 +545,18 @@ pub(super) fn content_line_arg(
     }
     // Trusted mint: the check above is what licenses ContentLine::new here.
     Ok(hume_rope::line::ContentLine::new(line))
+}
+
+/// `bound` as a bound of a content-line range in a buffer with `line_count`
+/// content lines, or `None` past the line count. `line_count` itself is a
+/// bound: the exclusive end one past the last line, which
+/// `ContentLine::checked` would reject.
+pub(super) fn content_line_bound(
+    bound: usize,
+    line_count: usize,
+) -> Option<hume_rope::line::ContentLine> {
+    // Trusted mint: the check is what licenses ContentLine::new here.
+    (bound <= line_count).then(|| hume_rope::line::ContentLine::new(bound))
 }
 
 /// `(line->char-offset pane line)` → 0-based char offset where 0-based content

@@ -7,6 +7,9 @@
 (define (git-diff/pure-addition? hunk)
   (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line)))
 
+(define (git-diff/pure-deletion? hunk)
+  (= (hash-ref hunk 'new-start-line) (hash-ref hunk 'new-end-line)))
+
 ;;; Where a hunk's removed lines sit, as a `(kind . line)` pair — see docs/rendering.md's "Anchors".
 (define (git-diff/hunk-anchor new-start)
   (if (= new-start 0)
@@ -21,12 +24,12 @@
 (define (git-diff/line-signs new-start new-end text scope)
   (list (hash 'line new-start 'end-line new-end 'text text 'scope scope)))
 
-;;; One `diff-buffer-lines` hunk -> a list of `(hash 'line 'text 'scope)` sign entries — see docs/rendering.md.
+;;; One `diff-buffer-lines` hunk -> a list of `set-signs!` entries — see docs/rendering.md.
 (define (git-diff/hunk->signs hunk)
   (let ([new-start (hash-ref hunk 'new-start-line)]
         [new-end (hash-ref hunk 'new-end-line)])
     (cond
-      [(= new-start new-end)
+      [(git-diff/pure-deletion? hunk)
        (let ([anchor (git-diff/hunk-anchor new-start)])
          (list (hash 'line (cdr anchor)
                      'text (if (equal? (car anchor) 'before) "▔" "▁")
@@ -92,14 +95,11 @@
 
 ;; ── Line background tint ─────────────────────────────────────────────────────
 
-;;; A pure deletion has no new lines to tint.
 (define (git-diff/hunk->line-bgs hunk)
-  (let ([new-start (hash-ref hunk 'new-start-line)]
-        [new-end (hash-ref hunk 'new-end-line)])
-    (if (= new-start new-end)
-        '()
-        (list (hash 'line new-start 'end-line new-end
-                    'scope (if (git-diff/pure-addition? hunk) "diff.plus.line" "diff.delta.line"))))))
+  (if (git-diff/pure-deletion? hunk)
+      '()
+      (list (hash 'line (hash-ref hunk 'new-start-line) 'end-line (hash-ref hunk 'new-end-line)
+                  'scope (if (git-diff/pure-addition? hunk) "diff.plus.line" "diff.delta.line")))))
 
 (define (git-diff/render-line-bgs! pane source hunks)
   (set-line-backgrounds! pane source (call! "stdlib/concat" (map git-diff/hunk->line-bgs hunks))))

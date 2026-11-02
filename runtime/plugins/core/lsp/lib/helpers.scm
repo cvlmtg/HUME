@@ -32,9 +32,7 @@
 (define (lsp/payload-rows row-text items)
   (map (lambda (item) (cons (row-text item) item)) items))
 
-;; Replaces the rows of the drawer `token` names with `items`, moving its
-;; selection to `(pick-index selected)`. Returns #f when that drawer has
-;; closed or another has replaced it.
+;; See docs/architecture.md, "Drawer refresh".
 (define (lsp/refresh-drawer-list! token row-text items on-select pick-index)
   (let ((selected (drawer-selected-index token)))
     (and selected
@@ -96,8 +94,7 @@
   (for-each (lambda (r) (when (hash-ref r 'err) (lsp/report-error! what (hash-ref r 'err))))
             results))
 
-;; An `lsp-request-all!` callback: reports the request's error, or reports
-;; each server's error and calls `(proceed results)`.
+;; See docs/architecture.md, "Multi-server answers".
 (define (lsp/on-answers what proceed)
   (lambda (err results)
     (if err

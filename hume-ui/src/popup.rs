@@ -64,9 +64,9 @@ const MAX_POPUP_WIDTH: u16 = 120;
 pub struct PopupContent {
     source: PopupSource,
     cache: RefCell<Option<Wrapped>>,
-    /// `(width, rows)` from [`Self::row_count`] at a width `cache` does not
-    /// hold, so measuring one width while painting another wraps neither
-    /// again.
+    /// `(width, rows)` at a width `cache` does not hold, from
+    /// [`Self::row_count`] or the cache [`Self::wrapped`] last replaced, so
+    /// measuring one width while painting another wraps neither again.
     counted: Cell<Option<(u16, usize)>>,
 }
 
@@ -192,7 +192,8 @@ impl PopupContent {
     /// hand that same `Arc` straight to [`PopupRows`] (an `Arc` clone, never
     /// a copy, regardless of scroll position) along with a `visible` range
     /// into it. The window is a view, not a slice
-    /// taken up front.
+    /// taken up front. A cache it replaces leaves its row count to
+    /// [`Self::row_count`].
     fn wrapped(&self, width: u16) -> Ref<'_, Wrapped> {
         let stale = self
             .cache
@@ -200,6 +201,9 @@ impl PopupContent {
             .as_ref()
             .is_none_or(|c| c.width != width);
         if stale {
+            if let Some(old) = self.cache.borrow().as_ref() {
+                self.counted.set(Some((old.width, old.lines.len())));
+            }
             let lines = self.wrap(width);
             let inner_width = lines.widest();
             *self.cache.borrow_mut() = Some(Wrapped {

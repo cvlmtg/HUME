@@ -8,9 +8,8 @@ use hume_rope::cluster::ClusterStart;
 
 use super::super::{Editor, EditorState};
 
-/// The focused pane as a cursor-anchored box sees it on `screen`: its rect,
-/// its size, and its gutter and content widths. None of it depends on where
-/// the cursor is.
+/// The focused pane on `screen`: its rect, its size, and its gutter and
+/// content widths. None of it depends on where the cursor is.
 pub(in crate::editor) struct FocusedBox {
     pub(in crate::editor) pane_rect: Rect,
     pub(in crate::editor) size: PaneSize,

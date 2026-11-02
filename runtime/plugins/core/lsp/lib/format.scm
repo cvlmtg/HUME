@@ -73,12 +73,13 @@
        on-answer
        #:allow-stale #t))
     (else
-     (let ((server (car (hash-ref route 'servers)))
-           (td (document))
-           (ranges (get-ranges)))
+     (let* ((server (car (hash-ref route 'servers)))
+            (td (document))
+            (ranges (get-ranges))
+            (n (length ranges)))
        (cond
-         ((null? ranges) (finish!))
-         ((and (> (length ranges) 1)
+         ((= n 0) (finish!))
+         ((and (> n 1)
                (lsp/cap-flag? (lsp-capability server #:method "textDocument/rangeFormatting")
                               "rangesSupport"))
           (lsp-request! pane "textDocument/rangesFormatting"
@@ -86,9 +87,9 @@
             on-answer
             #:to server
             #:allow-stale #t))
-         ((> (length ranges) lsp/format-max-ranges)
+         ((> n lsp/format-max-ranges)
           (log! 'info
-                (string-append (number->string (length ranges))
+                (string-append (number->string n)
                                " ranges exceeds format-max-ranges ("
                                (number->string lsp/format-max-ranges)
                                ") — nothing formatted"))

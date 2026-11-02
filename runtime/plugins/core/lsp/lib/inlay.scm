@@ -69,7 +69,7 @@
     #:key (lambda (p . _) (buffer-key p))))
 
 (define (lsp/refresh-hints pane)
-  (when (lsp/inlay-on? pane)
+  (when (and (lsp/inlay-on? pane) (lsp/resolve-pane pane))
     (lsp/request-hints pane)))
 
 (register-hook! 'on-viewport-change

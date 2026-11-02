@@ -8,7 +8,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{DiagnosticEntry, DiagnosticRange, MarkedLines, SetError};
+use crate::host::{DiagnosticEntry, DiagnosticRange, MarkedLines, SetError, each_entry};
 use crate::json::{WireOrigin, to_steel_handle};
 use crate::types::VirtualLineSpec;
 
@@ -16,10 +16,10 @@ use super::SteelResult;
 use super::args::{
     ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry, START_CHAR,
     START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg, item_label, not_live_err,
-    optional_hash_entry, optional_symbol_arg, spanned_text, string_arg, symbol_enum_arg,
-    symbol_hash,
+    optional_hash_entry, optional_symbol_arg, spanned_text, string_arg, symbol_arg,
+    symbol_enum_arg, symbol_hash,
 };
-use super::buffers::content_line_arg;
+use super::buffers::{content_line_arg, content_line_bound};
 use super::errors::{generic_err, require_cap};
 use super::ids::DocRange;
 
@@ -100,9 +100,10 @@ pub(crate) fn set_signs(
         Ok((entry.line_and_end_line()?, text, entry.string("scope")?))
     })?;
     let line_count = decorated_line_count(ctx, bid)?;
-    let parsed = mint_lines(list, parsed, |(lines, text, scope)| {
+    let parsed = each_entry(parsed, |(lines, text, scope)| {
         Ok((marked_lines(lines, line_count)?, text, scope))
-    })?;
+    })
+    .map_err(set_err(list))?;
     require_cap(ctx.host.decorations())?
         .set_signs(source, bid, parsed)
         .map_err(set_err(list))?;
@@ -123,9 +124,10 @@ pub(crate) fn set_virtual_lines(
 ) -> SteelResult {
     let parsed = virtual_line_specs(lines)?;
     let line_count = decorated_line_count(ctx, bid)?;
-    let parsed = mint_lines(VIRTUAL_LINES, parsed, |(line, spec)| {
+    let parsed = each_entry(parsed, |(line, spec)| {
         Ok((content_line_arg(line, line_count)?, spec))
-    })?;
+    })
+    .map_err(set_err(VIRTUAL_LINES))?;
     require_cap(ctx.host.decorations())?
         .set_virtual_lines(source, bid, parsed)
         .map_err(set_err(VIRTUAL_LINES))?;
@@ -257,22 +259,6 @@ fn decorated_line_count(ctx: &mut SteelCtx, bid: BufferId) -> Result<usize, Stee
         .ok_or_else(|| not_live_err("pane", bid))
 }
 
-/// Each of `entries` with its lines minted against the buffer by `mint`, an
-/// `Err` naming the entry by its place in the list `list` labels.
-fn mint_lines<S, T>(
-    list: &str,
-    entries: Vec<S>,
-    mut mint: impl FnMut(S) -> Result<T, String>,
-) -> Result<Vec<T>, SteelErr> {
-    entries
-        .into_iter()
-        .enumerate()
-        .map(|(index, entry)| {
-            mint(entry).map_err(|message| set_err(list)(SetError::Entry { index, message }))
-        })
-        .collect()
-}
-
 /// The lines an entry's `'line` and optional `'end-line` mark in a buffer
 /// of `line_count` content lines.
 fn marked_lines(
@@ -283,14 +269,10 @@ fn marked_lines(
     let Some(end) = end else {
         return Ok(MarkedLines::one(start));
     };
-    if end > line_count {
-        return Err(format!(
-            "'end-line {end} is past the last line (buffer has {line_count} content lines)"
-        ));
-    }
-    // Trusted mint: `end` is at most the line count, the exclusive bound
-    // one past the last line.
-    MarkedLines::run(start, hume_rope::line::ContentLine::new(end))
+    let end_line = content_line_bound(end, line_count).ok_or_else(|| {
+        format!("'end-line {end} is past the last line (buffer has {line_count} content lines)")
+    })?;
+    MarkedLines::run(start, end_line)
         .ok_or_else(|| format!("'end-line {end} is not after 'line {line}"))
 }
 
@@ -317,9 +299,10 @@ pub(crate) fn set_eol_text(
     })?;
     let hide_on_insert_line = bool_arg(hide_on_insert_line, "#:hide-on-insert-line")?;
     let line_count = decorated_line_count(ctx, bid)?;
-    let parsed = mint_lines(list, parsed, |(line, text, scope)| {
+    let parsed = each_entry(parsed, |(line, text, scope)| {
         Ok((content_line_arg(line, line_count)?, text, scope))
-    })?;
+    })
+    .map_err(set_err(list))?;
     require_cap(ctx.host.decorations())?
         .set_eol_text(source, bid, parsed, hide_on_insert_line)
         .map_err(set_err(list))?;
@@ -358,9 +341,10 @@ pub(crate) fn set_line_backgrounds(
         Ok((entry.line_and_end_line()?, entry.string("scope")?))
     })?;
     let line_count = decorated_line_count(ctx, bid)?;
-    let parsed = mint_lines(list, parsed, |(lines, scope)| {
+    let parsed = each_entry(parsed, |(lines, scope)| {
         Ok((marked_lines(lines, line_count)?, scope))
-    })?;
+    })
+    .map_err(set_err(list))?;
     require_cap(ctx.host.decorations())?
         .set_line_backgrounds(source, bid, parsed)
         .map_err(set_err(list))?;
@@ -454,10 +438,8 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
 /// `(diagnostic-glyph severity)`: the one-cell mark for a diagnostic
 /// severity symbol, as the statusline shows it.
 pub(crate) fn diagnostic_glyph(severity: SteelVal) -> SteelResult {
-    let SteelVal::SymbolV(name) = severity else {
-        steel::stop!(TypeMismatch => "severity: expected a symbol, got {}", severity);
-    };
-    let severity = symbol_enum_arg(&name, "severity", &DiagSeverity::NAMED)?;
+    let name = symbol_arg(&severity, "severity", "a severity symbol like 'error")?;
+    let severity = symbol_enum_arg(name, "severity", &DiagSeverity::NAMED)?;
     Ok(SteelVal::StringV(severity.glyph().into()))
 }
 

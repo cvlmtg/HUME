@@ -228,6 +228,19 @@ impl LspRig {
         self.ed.settle();
     }
 
+    /// Opens `src/other.rs` and shows it in the focused pane, so `pane` in a
+    /// later probe names another buffer.
+    pub(in crate::editor) fn show_other_file(&mut self) {
+        let other = self.root.join("src/other.rs");
+        std::fs::write(&other, "fn other() {}\n").unwrap();
+        let other = self
+            .ed
+            .open_extra_file(&AbsolutePath::rooted(&other))
+            .expect("the file opens");
+        let fp = crate::editor::commands::FocusedPane::current(&self.ed.view);
+        self.ed.switch_to_buffer_without_jump(fp, other);
+    }
+
     /// The text of every Warning the log holds, oldest first: what a probe
     /// reports through `(log! 'warning …)`.
     pub(in crate::editor) fn warnings(&self) -> Vec<String> {

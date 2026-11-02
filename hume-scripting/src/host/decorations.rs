@@ -65,6 +65,19 @@ impl std::fmt::Display for SetError {
     }
 }
 
+/// `items` mapped by `entry`, a failure naming the item by its place in
+/// `items`.
+pub fn each_entry<S, T>(
+    items: Vec<S>,
+    mut entry: impl FnMut(S) -> Result<T, String>,
+) -> Result<Vec<T>, SetError> {
+    items
+        .into_iter()
+        .enumerate()
+        .map(|(index, item)| entry(item).map_err(|message| SetError::Entry { index, message }))
+        .collect()
+}
+
 /// Inlay hints, signs, virtual lines, extra highlights, EOL text, statusline
 /// text, and the diagnostic pull/count reads, accessed through
 /// [`EditorHost::decorations`](super::EditorHost::decorations).
