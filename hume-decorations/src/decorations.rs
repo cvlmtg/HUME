@@ -363,6 +363,18 @@ impl<K: Ord, T: Anchored> SourceStore<K, T> {
     }
 }
 
+impl<K: Ord, T: LineAnchored> SourceStore<K, T> {
+    /// [`Self::set`] for a kind with one entry per line per source: of a
+    /// source's entries on one line, the first it lists is kept. Remapping
+    /// maps distinct lines to distinct lines, so the rule holds through
+    /// edits.
+    pub fn set_one_per_line(&mut self, source: K, bid: BufferId, mut entries: Vec<T>) {
+        entries.sort_by_key(Anchored::anchor);
+        entries.dedup_by_key(|e| e.anchor());
+        self.set(source, bid, entries);
+    }
+}
+
 impl<K, T> SourceStore<K, T> {
     /// Remaps every entry for `bid`, one pass per source through a fresh
     /// `new_cursor()`, handing `map_entry` each entry in anchor order to
@@ -590,9 +602,10 @@ impl DecorationStores {
         self.inlay_hints.in_range(bid, range)
     }
 
-    /// Replaces `source`'s signs for `bid` wholesale.
+    /// Replaces `source`'s signs for `bid` wholesale, one per line
+    /// ([`SourceStore::set_one_per_line`]).
     pub fn set_signs(&mut self, source: String, bid: BufferId, signs: Vec<SignEntry>) {
-        self.signs.set(source, bid, signs);
+        self.signs.set_one_per_line(source, bid, signs);
         self.touch(bid);
     }
 
@@ -700,9 +713,10 @@ impl DecorationStores {
         self.virtual_lines.entries_for(source, bid)
     }
 
-    /// Replaces `source`'s EOL text for `bid` wholesale.
+    /// Replaces `source`'s EOL text for `bid` wholesale, one per line
+    /// ([`SourceStore::set_one_per_line`]).
     pub fn set_eol_text(&mut self, source: String, bid: BufferId, entries: Vec<EolTextEntry>) {
-        self.eol_text.set(source, bid, entries);
+        self.eol_text.set_one_per_line(source, bid, entries);
         self.touch(bid);
     }
 
@@ -719,8 +733,8 @@ impl DecorationStores {
 
     /// EOL text entries for `bid` on a line in `lines`, paired with their
     /// source name, sources in ascending name order. The render write side
-    /// needs the name for a deterministic tie-break when a remap collapses
-    /// two sources' entries onto the same line.
+    /// reads that order as the tie-break when two sources write the same
+    /// line.
     pub fn eol_text_in_range(
         &self,
         bid: BufferId,
@@ -731,14 +745,15 @@ impl DecorationStores {
             .flat_map(|(s, es)| es.iter().map(move |e| (s.as_str(), e)))
     }
 
-    /// Replaces `source`'s line backgrounds for `bid` wholesale.
+    /// Replaces `source`'s line backgrounds for `bid` wholesale, one per
+    /// line ([`SourceStore::set_one_per_line`]).
     pub fn set_line_backgrounds(
         &mut self,
         source: String,
         bid: BufferId,
         entries: Vec<LineBgEntry>,
     ) {
-        self.line_backgrounds.set(source, bid, entries);
+        self.line_backgrounds.set_one_per_line(source, bid, entries);
         self.touch(bid);
     }
 
@@ -749,8 +764,8 @@ impl DecorationStores {
 
     /// Line-background entries for `bid` on a line in `lines`, paired
     /// with their source name, sources in ascending name order. The render
-    /// write side needs the name for a deterministic tie-break when two
-    /// sources tint the same line.
+    /// write side reads that order as the tie-break when two sources tint
+    /// the same line.
     pub fn line_backgrounds_in_range(
         &self,
         bid: BufferId,

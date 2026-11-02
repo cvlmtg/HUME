@@ -53,13 +53,10 @@ fn full_message_reaches_the_render_provider_untruncated() {
     );
 }
 
-/// Two entries from the *same* source landing on the same line: the shape a
-/// remap produces when an edit collapses several originally-distinct lines
-/// into one; `last_writer_per_line` folds them, keeping the last. Pushing
-/// onto a per-line `Vec` in `update_eol_text_providers` would keep both
-/// entries and render them concatenated at the same byte offset.
+/// Two entries from the *same* source on the same line render as one, the
+/// first: two inserts would render concatenated at the same byte offset.
 #[test]
-fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
+fn two_entries_from_one_source_on_the_same_line_collapse_to_the_first_one() {
     let mut ed = open_headless(None);
     ed.feed_key(key('i'));
     for ch in "let x = 1".chars() {
@@ -104,14 +101,13 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
          not stack"
     );
     assert_eq!(
-        inserts[0].text, "second",
-        "the later entry must win: last_writer_per_line folds left-to-right"
+        inserts[0].text, "first",
+        "the first entry the source listed must win"
     );
 }
 
-/// Two sources tinting the same line: the cross-source
-/// tie-break, mirroring the sign pipeline: the alphabetically *first*
-/// source wins.
+/// Two sources writing the same line: the alphabetically *first* source
+/// wins.
 #[test]
 fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
     let mut ed = open_headless(None);

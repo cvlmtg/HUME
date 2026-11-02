@@ -37,6 +37,7 @@
 - New `lsp-route` gives the servers a request would reach, or why it would reach none.
 - New `on-inlay-hints-refresh` hook runs when a language server asks for fresh inlay hints.
 - `set-signs!` and `set-line-backgrounds!` entries take `'end-line`, to mark a run of lines with one entry.
+- When two `set-eol-text!` entries name the same line, the first one in the list wins it, as with `set-signs!` and `set-line-backgrounds!`.
 - New `diagnostic-glyph` gives the mark the status line shows for a diagnostic severity.
 - `diagnostics-for-buffer`'s `#:range` also takes the `"range"` of `lsp-primary-range-params`.
 - `show-popup!` takes `#:anchor 'fit`, which floats the popup near the cursor while its text fits there and docks it otherwise.

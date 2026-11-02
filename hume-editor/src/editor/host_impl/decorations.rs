@@ -72,8 +72,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             let scope = self.view.registry.intern_runtime(&scope);
             (lines, (std::sync::Arc::<str>::from(sign_text), scope))
         });
-        let entries = claim_lines(signs)
-            .into_iter()
+        let entries = each_line(signs)
             .map(|(line, (text, scope))| hume_decorations::SignEntry { line, text, scope })
             .collect();
         self.state
@@ -177,8 +176,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = entries
             .into_iter()
             .map(|(lines, scope)| (lines, self.view.registry.intern_runtime(&scope)));
-        let entries = claim_lines(entries)
-            .into_iter()
+        let entries = each_line(entries)
             .map(|(line, scope)| hume_decorations::LineBgEntry { line, scope })
             .collect();
         self.state
@@ -251,22 +249,17 @@ fn buffer_text(
         .ok_or_else(|| "unknown buffer".to_owned())
 }
 
-/// Each line of each entry in `entries`, paired with its payload, a line
-/// two entries share going to the first: the overlap rule of every setter
-/// that takes [`MarkedLines`].
-fn claim_lines<T: Clone>(
+/// Each line of each entry in `entries`, paired with its payload, in entry
+/// order: the store keeps the first entry for a line.
+fn each_line<T: Clone>(
     entries: impl IntoIterator<Item = (MarkedLines, T)>,
-) -> Vec<(ContentLine, T)> {
-    let mut claimed = rustc_hash::FxHashSet::default();
-    let mut lines = Vec::new();
-    for (marked, payload) in entries {
-        for line in marked.lines().iter() {
-            if claimed.insert(line) {
-                lines.push((line, payload.clone()));
-            }
-        }
-    }
-    lines
+) -> impl Iterator<Item = (ContentLine, T)> {
+    entries.into_iter().flat_map(|(marked, payload)| {
+        marked
+            .lines()
+            .iter()
+            .map(move |line| (line, payload.clone()))
+    })
 }
 
 /// `pos` must address a real char in `text` (`<` its length), `Err`

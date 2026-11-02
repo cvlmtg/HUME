@@ -145,7 +145,8 @@ pub trait DecorationHost {
     /// `(set-eol-text! pane source lines)`: replaces `source`'s EOL text for
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
     /// spliced in at the end of `line`, which is caller-validated against
-    /// `BufferHost::buffer_line_count`. `hide_on_insert_line` marks every entry
+    /// `BufferHost::buffer_line_count`. A line two entries share goes to the
+    /// first. `hide_on_insert_line` marks every entry
     /// to be hidden on the primary cursor's line while the pane types in
     /// Insert mode. Not diagnostics-specific: the diagnostics plugin is its
     /// first client, not its owner.

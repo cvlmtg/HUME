@@ -709,6 +709,45 @@ fn line_backgrounds_in_range_keeps_in_range_entries_in_source_order() {
 }
 
 #[test]
+fn a_source_keeps_its_first_sign_eol_text_and_background_on_a_shared_line() {
+    let mut store = DecorationStores::default();
+    let (a, _) = make_two_bids();
+    store.set_signs(
+        "s".to_string(),
+        a,
+        vec![sign(3, "x"), sign(1, "a"), sign(1, "b")],
+    );
+    store.set_eol_text("s".to_string(), a, vec![eol(1, "first"), eol(1, "second")]);
+    let bg = |line, scope| LineBgEntry {
+        line: cl(line),
+        scope: ScopeId(scope),
+    };
+    store.set_line_backgrounds("s".to_string(), a, vec![bg(2, 7), bg(2, 8)]);
+
+    assert_eq!(sign_lines(&store, "s", a), vec![(1, "a"), (3, "x")]);
+    let eol_texts: Vec<&str> = store
+        .eol_text_for_buffer(a)
+        .map(|(_, e)| e.text.as_str())
+        .collect();
+    assert_eq!(eol_texts, vec!["first"]);
+    let bg_scopes: Vec<ScopeId> = store
+        .line_backgrounds_for("s", a)
+        .iter()
+        .map(|e| e.scope)
+        .collect();
+    assert_eq!(bg_scopes, vec![ScopeId(7)]);
+}
+
+#[test]
+fn a_source_keeps_every_virtual_line_on_a_shared_line() {
+    let mut store = DecorationStores::default();
+    let (a, _) = make_two_bids();
+    store.set_virtual_lines("s".to_string(), a, vec![virtual_line(2), virtual_line(2)]);
+
+    assert_eq!(store.virtual_lines_for("s", a).len(), 2);
+}
+
+#[test]
 fn extra_highlights_starting_before_keeps_spans_that_start_before_the_end() {
     let mut store = DecorationStores::default();
     let (a, b) = make_two_bids();
@@ -824,6 +863,7 @@ mod remap_lines_matches_the_per_entry_rule {
             let fold = |lines: Vec<usize>| -> Vec<usize> {
                 let mut lines: Vec<usize> = lines.into_iter().map(|l| l % count).collect();
                 lines.sort_unstable();
+                lines.dedup();
                 lines
             };
             let sources = [("first", fold(first)), ("second", fold(second))];

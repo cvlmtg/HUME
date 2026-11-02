@@ -311,23 +311,19 @@ impl Editor {
                 }
                 let slot = slot as u8;
                 let entries = by_line.entry(e.line).or_default();
-                // Two different sources never contend for one slot: a
-                // slot is a source's fixed registry rank. A source holds one
-                // entry per line (`set-signs!` gives a shared line to its
-                // first entry, and remapping drops the entry whose line break
-                // an edit deletes), so `Ok`, this source's earlier entry for
-                // the line, means a store write that skipped that rule; the
-                // earlier entry keeps the slot. `Err` is the insertion point.
-                if let Err(i) = entries.binary_search_by_key(&slot, |s| s.slot) {
-                    entries.insert(
-                        i,
-                        Sign {
-                            text: std::sync::Arc::clone(&e.text),
-                            scope: e.scope,
-                            slot,
-                        },
-                    );
-                }
+                // A slot is a source's fixed registry rank, and the store
+                // holds one sign per line per source.
+                let i = entries
+                    .binary_search_by_key(&slot, |s| s.slot)
+                    .expect_err("a source holds one sign per line");
+                entries.insert(
+                    i,
+                    Sign {
+                        text: std::sync::Arc::clone(&e.text),
+                        scope: e.scope,
+                        slot,
+                    },
+                );
             }
 
             self.state.panes.entries[pid].render.set_signs(by_line);
@@ -416,13 +412,13 @@ impl Editor {
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
             let text = self.state.buffers.get(bid).text();
-            let per_line: Vec<(&str, hume_rope::line::ContentLine, InlineInsert)> = self
+            let per_line = self
                 .state
                 .config
                 .decorations
                 .eol_text_in_range(bid, p.lines)
                 .filter(|&(_, e)| !(e.hide_on_insert_line && Some(e.line) == p.insert_line))
-                .map(|(source, e)| {
+                .map(|(_, e)| {
                     let line = e.line;
                     // End-of-line placement: the line's own trailing '\n'
                     // char resolves to a byte offset within `line` (never
@@ -432,7 +428,6 @@ impl Editor {
                     let line_newline = text.lines().newline(line);
                     let (_, byte_offset) = text.columns().byte_position(line_newline.offset());
                     (
-                        source,
                         line,
                         InlineInsert {
                             byte_offset,
@@ -440,10 +435,9 @@ impl Editor {
                             scope: e.scope,
                         },
                     )
-                })
-                .collect();
+                });
             let by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<InlineInsert>> =
-                last_writer_per_line(per_line)
+                first_per_line(per_line)
                     .into_iter()
                     .map(|(line, insert)| (line, vec![insert]))
                     .collect();
@@ -467,8 +461,8 @@ impl Editor {
     /// every pane on every *other* buffer to resync too. No
     /// viewport dependency: any [`Self::decorated_panes`] snapshot works, since only
     /// `pid`/`bid` are read per pane. Two sources
-    /// anchored to the same line stack rather than collapse (unlike the
-    /// four line-anchored kinds `last_writer_per_line` folds):
+    /// anchored to the same line stack rather than collapse (unlike EOL
+    /// text and line backgrounds, which `first_per_line` folds):
     /// `virtual_lines_for_buffer` (`SourceStore::for_buffer`) yields sources
     /// ascending by name, and `DisplayLineMap::block`'s side sort is stable, so
     /// they render in alphabetical-by-source order, not registration order.
@@ -535,18 +529,13 @@ impl Editor {
 
             // Like the sign path above (`update_sign_providers`): a tinted
             // line scrolled out of view costs nothing but the filter check.
-            let per_line: Vec<(
-                &str,
-                hume_rope::line::ContentLine,
-                hume_engine::types::ScopeId,
-            )> = self
-                .state
-                .config
-                .decorations
-                .line_backgrounds_in_range(bid, p.lines)
-                .map(|(source, e)| (source, e.line, e.scope))
-                .collect();
-            let by_line = last_writer_per_line(per_line);
+            let by_line = first_per_line(
+                self.state
+                    .config
+                    .decorations
+                    .line_backgrounds_in_range(bid, p.lines)
+                    .map(|(_, e)| (e.line, e.scope)),
+            );
 
             self.state.panes.entries[pid]
                 .render
@@ -555,27 +544,19 @@ impl Editor {
     }
 }
 
-/// Folds per-source, line-anchored decoration entries into one winner per
-/// line: within one source, a later entry beats an earlier one on the same
-/// line (store order: `SourceStore::set` sorts by line, stably, so "later"
-/// means listed later by the source); across sources, tie-break by source name:
-/// the alphabetically first source wins, same convention `SourceStore::set`
-/// itself keeps sources ascending by name. Signs use a different mechanism:
-/// each registered source has its own fixed gutter slot, so two sign
-/// sources never contend for one line's cell the way EOL text/line
-/// backgrounds do here.
-///
-/// A single stable sort **descending** by source name gets both properties
-/// from one `FxHashMap::insert`-per-entry fold: one source's own entries
-/// keep their relative (store) order, so its later entry overwrites its
-/// earlier one when folded left-to-right; and the alphabetically-first
-/// source sorts last, so its entries are folded last and win the
-/// cross-source overwrite.
-fn last_writer_per_line<T>(
-    mut entries: Vec<(&str, hume_rope::line::ContentLine, T)>,
+/// The first entry for each line of `entries`. The EOL text and line
+/// background stores hold one entry per line per source and yield sources in
+/// ascending name order, so a line two sources write goes to the
+/// alphabetically first. Signs need no such fold: each source has its own
+/// gutter slot.
+fn first_per_line<T>(
+    entries: impl IntoIterator<Item = (hume_rope::line::ContentLine, T)>,
 ) -> rustc_hash::FxHashMap<hume_rope::line::ContentLine, T> {
-    entries.sort_by(|a, b| b.0.cmp(a.0));
-    entries.into_iter().map(|(_, line, v)| (line, v)).collect()
+    let mut by_line = rustc_hash::FxHashMap::default();
+    for (line, entry) in entries {
+        by_line.entry(line).or_insert(entry);
+    }
+    by_line
 }
 
 /// Push one `(line, byte_start, byte_end, scope)` quadruple per line `range`
