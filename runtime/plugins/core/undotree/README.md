@@ -31,7 +31,7 @@ shows what the current revision changed.
 |---|---|
 | `manifest.scm` | Lazy activation on the two commands |
 | `plugin.scm` | The drawer session, the two commands, the revision diff, and the hooks that keep the drawer current |
-| `render.scm` | Pure data to rows: `undotree/render`, `undotree/format-age`, and `undotree/row-index`, which finds the row a predicate matches. Calls no editor builtin |
+| `render.scm` | Pure data to rows: `undotree/render`. Calls no editor builtin |
 
 ### Graph
 
@@ -39,12 +39,13 @@ shows what the current revision changed.
 `(hash 'id 'parent 'age-secs 'current? 'saved?)` per revision, ascending by id, never
 empty. A revision's parent always has a smaller id, so walking the list newest first
 visits every child before its parent. It returns
-`(hash 'nodes 'render 'current 'current-node 'next-change-secs)`:
+`(hash 'nodes 'render 'row-of 'current 'current-node 'next-change-secs)`:
 
 | Key | Holds |
 |---|---|
 | `'nodes` | The input hashes newest first, one per row. The plugin hands them to the drawer as its row keys |
 | `'render` | A `(render nodes budget)` procedure that formats the rows of those hashes, each at the graph row its id names. The plugin hands it to the drawer as its `#:render`, so only the rows the drawer shows are formatted |
+| `'row-of` | A procedure from a revision id to the index of its row, `#f` for an id the tree does not hold. A refresh uses it to keep the highlight on the same revision |
 | `'current` | The index of the current revision's row |
 | `'current-node` | That revision's input hash |
 | `'next-change-secs` | Seconds until the first age label changes, which arms the age timer (see [Refresh](#refresh)) |
@@ -87,16 +88,18 @@ is 0:
 Every row is a revision, so a row always names a revision to jump to.
 
 The graph depends only on each revision's id and parent. `undotree/render` keeps the graph
-rows of its last call, as a vector, with the width of the widest, and the list of
-`(id . parent)` pairs, newest first, they were drawn for. The next call reuses the rows when
-its list is `equal?` to that one. An undo, redo or jump moves only the markers, so it skips
-the lane walk; the markers and ages are formatted on every render.
+rows of its last call, as a vector oldest first, with the width of the widest, each id's
+index into that vector, and the list of `(id . parent)` pairs, newest first, they were drawn
+for. The next call reuses all three when its list is `equal?` to that one. An undo, redo or
+jump moves only the markers, so it skips the lane walk; the markers and ages are formatted
+on every render.
 
 An edit adds one revision under the newest, and then the previous rows still hold: the
 previous newest revision started with no lanes, and with the new one waiting for it it
 takes column 0 with the same row and the same lanes after it. So when the new list is the
-previous one plus a newest revision whose parent is the previous newest, the rows are `o`
-followed by the previous rows, at the same width, and the walk is skipped. Any other new
+previous one plus a newest revision whose parent is the previous newest, the rows are the
+previous rows with `o` added at the newest end, at the same width, the new id indexes that
+row, and the walk is skipped. Any other new
 list, such as an edit after an undo, is laid out from scratch. The key is the whole input to
 the lane walk, so there is nothing to invalidate.
 
@@ -117,8 +120,8 @@ minute, `Nm` under an hour, `Nh` under a day, else `Nd`. These are the units `:e
 ### Session
 
 One session at a time, since the drawer is one slot: a hash of the drawer token, the pane
-the tree was last read from, the revision id behind each row, and the revision diff last
-drawn. Every refresh reads the focused pane and replaces the hash in one step, before it
+the tree was last read from, the revision id behind each row, the revision diff last
+drawn, and the age timer. Every refresh reads the focused pane and replaces the hash in one step, before it
 draws the diff, so an error from the renderer leaves a session that matches the drawer.
 Esc, or another feature opening its own drawer, delivers `#f` to the callback. The callback
 also receives the token of the drawer that fired. The session ends only when that is its
@@ -181,7 +184,8 @@ revision differs from that, since a revision's text never changes. So the age ti
 redraws it, and a renderer that raised is not asked again until the revision changes. Its
 error is reported and the drawer stays open. Retargeting to another buffer first clears the
 diff of the buffer it leaves. Ending the session clears it too, for a buffer that is still
-open.
+open. A session that never drew, because `core:git-diff` was not loaded, has nothing to
+clear.
 
 ## Known limitations
 

@@ -7,9 +7,6 @@
 
 (define undotree/*session* #f)
 
-;; See README.md's "Refresh".
-(define undotree/*age-timer* #f)
-
 ;; ── Revision diff ────────────────────────────────────────────────────────────
 ;; See README.md's "Revision diff".
 
@@ -25,33 +22,23 @@
     (call! undotree/diff-command pane undotree/*source*
            (if parent (hash-ref (buffer-revision-diff pane parent) 'hunks) '()))))
 
-(define (undotree/clear-diff! pane)
-  (when (and (undotree/diff-available?) (buffer-live? pane))
-    (call! undotree/release-command pane undotree/*source*)))
+(define (undotree/clear-diff! session)
+  (let ([pane (hash-ref session 'pane)])
+    (when (and (hash-ref session 'drawn) (buffer-live? pane))
+      (call! undotree/release-command pane undotree/*source*))))
 
 (define (undotree/end-session!)
   (let ([session undotree/*session*])
-    (when undotree/*age-timer*
-      (cancel-timer! undotree/*age-timer*)
-      (set! undotree/*age-timer* #f))
     (set! undotree/*session* #f)
     (when session
-      (undotree/clear-diff! (hash-ref session 'pane)))))
+      (cancel-timer! (hash-ref session 'timer))
+      (undotree/clear-diff! session))))
 
 (define (undotree/session-drawer? drawer)
   (and undotree/*session* (equal? (hash-ref undotree/*session* 'drawer) drawer)))
 
-(define (undotree/session-buffer? pane)
-  (equal? (buffer-key pane) (buffer-key (hash-ref undotree/*session* 'pane))))
-
-(define (undotree/arm-age-timer! drawer secs)
-  (when undotree/*age-timer*
-    (cancel-timer! undotree/*age-timer*))
-  (set! undotree/*age-timer*
-        (after! (* secs 1000)
-                (lambda ()
-                  (when (undotree/session-drawer? drawer)
-                    (undotree/show!))))))
+(define (undotree/shows-buffer? session pane)
+  (and session (equal? (buffer-key pane) (buffer-key (hash-ref session 'pane)))))
 
 ;;; Makes `drawer`, which shows `pane`'s freshly rendered tree, the session.
 ;;; The session is stored before the diff is drawn, so a raising renderer
@@ -60,29 +47,29 @@
   (let* ([previous undotree/*session*]
          [node (hash-ref rendered 'current-node)]
          [revision (and (undotree/diff-available?) (hash-ref node 'id))]
-         [same-buffer? (and previous
-                            (equal? (buffer-key pane) (buffer-key (hash-ref previous 'pane))))])
+         [same-buffer? (undotree/shows-buffer? previous pane)]
+         [timer (after! (* (hash-ref rendered 'next-change-secs) 1000)
+                        (lambda ()
+                          (when (undotree/session-drawer? drawer)
+                            (undotree/show!))))])
     (set! undotree/*session*
           (hash 'drawer drawer 'pane pane 'nodes (hash-ref rendered 'nodes)
-                'drawn revision))
-    (undotree/arm-age-timer! drawer (hash-ref rendered 'next-change-secs))
+                'drawn revision 'timer timer))
+    (when previous
+      (cancel-timer! (hash-ref previous 'timer)))
     (when (and previous (not same-buffer?))
-      (undotree/clear-diff! (hash-ref previous 'pane)))
+      (undotree/clear-diff! previous))
     (when (and revision
                (not (and same-buffer? (equal? revision (hash-ref previous 'drawn)))))
       (undotree/draw-diff! pane node))))
 
 ;; ── Drawer ───────────────────────────────────────────────────────────────────
 
-(define (undotree/row-id nodes idx)
-  (hash-ref (list-ref nodes idx) 'id))
-
-(define (undotree/on-select key)
-  (lambda (node drawer)
-    (when (undotree/session-drawer? drawer)
-      (if node
-          (undotree/jump! key node)
-          (undotree/end-session!)))))
+(define (undotree/on-select node drawer)
+  (when (undotree/session-drawer? drawer)
+    (if node
+        (undotree/jump! node)
+        (undotree/end-session!))))
 
 ;;; Re-renders the focused pane's tree into the open drawer. See README.md's "Refresh".
 (define (undotree/show!)
@@ -93,20 +80,18 @@
     (if (not selected)
         (undotree/end-session!)
         (let* ([rendered (undotree/render (buffer-undo-tree pane))]
-               [nodes (hash-ref rendered 'nodes)]
-               [kept (and (undotree/session-buffer? pane)
-                          (let ([wanted (undotree/row-id (hash-ref session 'nodes) selected)])
-                            (undotree/row-index (lambda (node) (equal? (hash-ref node 'id) wanted))
-                                                nodes)))]
+               [kept (and (undotree/shows-buffer? session pane)
+                          ((hash-ref rendered 'row-of)
+                           (hash-ref (list-ref (hash-ref session 'nodes) selected) 'id)))]
                [highlight (or kept (hash-ref rendered 'current))])
-          (if (update-drawer-list! drawer nodes (undotree/on-select (buffer-key pane)) highlight
+          (if (update-drawer-list! drawer (hash-ref rendered 'nodes) undotree/on-select highlight
                                    #:render (hash-ref rendered 'render))
               (undotree/commit! drawer pane rendered)
               (undotree/end-session!))))))
 
-(define (undotree/jump! key node)
+(define (undotree/jump! node)
   (let ([pane (focused-pane)])
-    (if (equal? (buffer-key pane) key)
+    (if (undotree/shows-buffer? undotree/*session* pane)
         (goto-revision! pane (hash-ref node 'id))
         (undotree/show!))))
 
@@ -114,7 +99,7 @@
   (undotree/end-session!)
   (let* ([rendered (undotree/render (buffer-undo-tree pane))]
          [drawer (show-drawer-list! (focused-pane) (hash-ref rendered 'nodes)
-                                    (undotree/on-select (buffer-key pane))
+                                    undotree/on-select
                                     #:selected (hash-ref rendered 'current)
                                     #:render (hash-ref rendered 'render))])
     (when drawer
@@ -135,19 +120,15 @@
 (define undotree/toggle-doc
   "Show or hide the focused buffer's undo tree in the bottom drawer. Enter on a row jumps to that revision.")
 
-(define-command! "undotree/toggle"
-  undotree/toggle-doc
-  (lambda (pane) (undotree/toggle! pane)))
+(define-command! "undotree/toggle" undotree/toggle-doc undotree/toggle!)
 
-(define-typed-command! "undotree"
-  undotree/toggle-doc
-  (lambda (pane) (undotree/toggle! pane)))
+(define-typed-command! "undotree" undotree/toggle-doc undotree/toggle!)
 
 ;; ── Hooks ────────────────────────────────────────────────────────────────────
 
 (register-hook! 'on-undo-history-changed
   (lambda (pane)
-    (when (and undotree/*session* (undotree/session-buffer? pane))
+    (when (undotree/shows-buffer? undotree/*session* pane)
       (undotree/show!))))
 
 (register-hook! 'on-buffer-enter

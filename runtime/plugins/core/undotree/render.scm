@@ -1,6 +1,6 @@
 ;;; core:undotree — render.scm. See README.md's "Graph".
 
-(provide undotree/format-age undotree/render undotree/row-index)
+(provide undotree/render)
 
 ;;; See README.md's "Age".
 (define (undotree/age-unit secs)
@@ -85,34 +85,42 @@
 ;;; See README.md's "Graph".
 (define undotree/*layout-memo* (box #f))
 
-(define (undotree/remember-layout! key graphs width)
-  (let ([entry (cons graphs width)])
-    (set-box! undotree/*layout-memo* (cons key entry))
-    entry))
-
 (define (undotree/appends-child? key previous-key)
   (and (equal? (cdr (car key)) (car (car previous-key)))
        (equal? (cdr key) previous-key)))
 
-(define (undotree/graphs newest-first)
-  (let ([key (map (lambda (node) (cons (hash-ref node 'id) (hash-ref node 'parent)))
-                  newest-first)]
-        [memo (unbox undotree/*layout-memo*)])
-    (cond
-      [(and memo (equal? (car memo) key)) (cdr memo)]
-      [(and memo (undotree/appends-child? key (car memo)))
-       (let ([previous (cdr memo)])
-         (undotree/remember-layout! key
-                                    (vector-append (vector "o") (car previous))
-                                    (cdr previous)))]
-      [else
-       (let ([graphs (undotree/layout newest-first '() '())])
-         (undotree/remember-layout! key (list->vector graphs) (undotree/max-width graphs)))])))
+(define (undotree/positions oldest-first)
+  (let loop ([nodes oldest-first] [i 0] [acc (hash)])
+    (if (null? nodes)
+        acc
+        (loop (cdr nodes) (+ i 1) (hash-insert acc (hash-ref (car nodes) 'id) i)))))
+
+(define (undotree/graphs oldest-first newest-first)
+  (let* ([key (map (lambda (node) (cons (hash-ref node 'id) (hash-ref node 'parent)))
+                   newest-first)]
+         [memo (unbox undotree/*layout-memo*)]
+         [layout
+          (cond
+            [(and memo (equal? (car memo) key)) (cdr memo)]
+            [(and memo (undotree/appends-child? key (car memo)))
+             (let* ([previous (cdr memo)]
+                    [graphs (hash-ref previous 'graphs)])
+               (hash 'graphs (vector-append graphs (vector "o"))
+                     'width (hash-ref previous 'width)
+                     'position (hash-insert (hash-ref previous 'position)
+                                            (car (car key)) (vector-length graphs))))]
+            [else
+             (let ([graphs (undotree/layout newest-first '() '())])
+               (hash 'graphs (list->vector (reverse graphs))
+                     'width (apply max (map string-length graphs))
+                     'position (undotree/positions oldest-first)))])])
+    (set-box! undotree/*layout-memo* (cons key layout))
+    layout))
 
 ;; ── Rows ─────────────────────────────────────────────────────────────────────
 
 (define (undotree/spaces s width)
-  (make-string (max 0 (- width (string-length s))) #\space))
+  (make-string (- width (string-length s)) #\space))
 
 (define (undotree/pad-right s width)
   (string-append s (undotree/spaces s width)))
@@ -120,11 +128,11 @@
 (define (undotree/pad-left s width)
   (string-append (undotree/spaces s width) s))
 
-(define (undotree/max-width strings)
-  (apply max (map string-length strings)))
-
 (define (undotree/span start end scope)
   (hash 'start-char start 'end-char end 'scope scope))
+
+(define undotree/current-scope "diagnostic.warning.message")
+(define undotree/saved-scope "diagnostic.info.message")
 
 (define (undotree/marker-span flag cell scope selected-scope)
   (if flag
@@ -148,48 +156,40 @@
                             (list (undotree/span 1 (+ 1 (string-length graph)) "markup.bold"))
                             (undotree/marker-span current? (+ graph-width 3)
                                                   "diagnostic.warning.message-text"
-                                                  "diagnostic.warning.message")
+                                                  undotree/current-scope)
                             (undotree/marker-span saved? (+ graph-width 4)
                                                   "diagnostic.info.message-text"
-                                                  "diagnostic.info.message")))])
+                                                  undotree/saved-scope)))])
     (cond
-      [current? (hash-insert row 'selected-scope "diagnostic.warning.message")]
-      [saved? (hash-insert row 'selected-scope "diagnostic.info.message")]
+      [current? (hash-insert row 'selected-scope undotree/current-scope)]
+      [saved? (hash-insert row 'selected-scope undotree/saved-scope)]
       [else row])))
-
-(define (undotree/find-row pred rows i)
-  (cond
-    [(null? rows) #f]
-    [(pred (car rows)) (cons i (car rows))]
-    [else (undotree/find-row pred (cdr rows) (+ i 1))]))
-
-(define (undotree/row-index pred rows)
-  (let ([hit (undotree/find-row pred rows 0)])
-    (and hit (car hit))))
 
 ;;; See README.md's "Graph" for the input and result shapes.
 (define (undotree/render nodes)
   (let* ([newest-first (reverse nodes)]
-         [layout (undotree/graphs newest-first)]
-         [graphs (car layout)]
-         [graph-width (cdr layout)]
+         [layout (undotree/graphs nodes newest-first)]
+         [graphs (hash-ref layout 'graphs)]
+         [position (hash-ref layout 'position)]
+         [graph-width (hash-ref layout 'width)]
+         [newest (- (vector-length graphs) 1)]
+         [row-of (lambda (id)
+                   (let ([i (hash-try-get position id)])
+                     (and i (- newest i))))]
          [age-width (max 3 (string-length
                             (undotree/format-age (hash-ref (car nodes) 'age-secs))))]
-         [current (undotree/find-row (lambda (node) (hash-ref node 'current?)) newest-first 0)]
-         [row-of (let loop ([nodes newest-first] [i 0] [acc (hash)])
-                   (if (null? nodes)
-                       acc
-                       (loop (cdr nodes) (+ i 1) (hash-insert acc (hash-ref (car nodes) 'id) i))))])
+         [current-node (findf (lambda (node) (hash-ref node 'current?)) newest-first)])
     (hash 'nodes newest-first
           'render (lambda (rows budget)
                     (map (lambda (node)
                            (undotree/format-row
-                            node (vector-ref graphs (hash-ref row-of (hash-ref node 'id)))
+                            node (vector-ref graphs (hash-ref position (hash-ref node 'id)))
                             (undotree/format-age (hash-ref node 'age-secs))
                             graph-width age-width))
                          rows))
-          'current (car current)
-          'current-node (cdr current)
+          'row-of row-of
+          'current (row-of (hash-ref current-node 'id))
+          'current-node current-node
           'next-change-secs (apply min (map (lambda (node)
                                               (undotree/secs-to-label-change
                                                (hash-ref node 'age-secs)))
