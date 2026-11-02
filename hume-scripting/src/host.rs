@@ -34,7 +34,9 @@ pub use completion::{
     CompletionHost, CompletionSourceTarget, EmittedWord, PendingCompletionSource, PendingTarget,
 };
 pub use cursor::{CursorHost, SelectionInfo};
-pub use decorations::{DecorationHost, DiagnosticCounts, DiagnosticEntry, SetError};
+pub use decorations::{
+    DecorationHost, DiagnosticCounts, DiagnosticEntry, DiagnosticRange, SetError,
+};
 pub use diff::DiffHost;
 pub use edits::{CharTextEdit, EditHost, WireTextEdit};
 pub use events::{EventHost, EventShape};

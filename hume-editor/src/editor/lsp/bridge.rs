@@ -686,6 +686,24 @@ impl Member {
     }
 }
 
+/// `Ok` when a position or range taken from `buffer` at `version` still
+/// addresses `bid`'s `text`: the check every script-held position passes
+/// before the editor reads it.
+pub(super) fn check_doc_span(
+    text: &BufferText,
+    bid: BufferId,
+    buffer: BufferId,
+    version: TextVersion,
+) -> Result<(), String> {
+    if buffer != bid {
+        Err("position belongs to another buffer".to_string())
+    } else if version != text.version() {
+        Err("position is from an earlier version of the buffer".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 /// `params` as the JSON `encoding`'s server receives: every position and
 /// range in it becomes a wire position or range in `encoding`. A position
 /// must belong to `bid` and have been taken at its current text version.
@@ -695,15 +713,7 @@ fn serialize_params(
     encoding: PositionEncoding,
     params: &Params,
 ) -> Result<serde_json::Value, String> {
-    let check = |buffer: BufferId, version: TextVersion| {
-        if buffer != bid {
-            Err("position belongs to another buffer".to_string())
-        } else if version != text.version() {
-            Err("position is from an earlier version of the buffer".to_string())
-        } else {
-            Ok(())
-        }
-    };
+    let check = |buffer, version| check_doc_span(text, bid, buffer, version);
     params.render(&mut |span| match span {
         DocSpan::Pos(pos) => check(pos.buffer, pos.version).map(|()| {
             hume_lsp::position::to_json_position(char_to_wire(text.rope(), pos.offset, encoding))

@@ -113,6 +113,7 @@
 (#%register-global "delete-word-backward")
 (#%register-global "detach-keymap!")
 (#%register-global "diagnostic-counts")
+(#%register-global "diagnostic-glyph")
 (#%register-global "diagnostics-for-buffer")
 (#%register-global "diff-buffer-lines")
 (#%register-global "diff-lines")

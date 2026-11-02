@@ -35,4 +35,15 @@ impl DiagSeverity {
     pub const fn rank(self) -> u8 {
         self as u8
     }
+
+    /// The one-cell mark every surface that shows a severity uses: the
+    /// statusline's counts and `diagnostic-glyph`'s callers.
+    pub const fn glyph(self) -> &'static str {
+        match self {
+            DiagSeverity::Error => "✘",
+            DiagSeverity::Warning => "⚠",
+            DiagSeverity::Info => "ℹ",
+            DiagSeverity::Hint => "·",
+        }
+    }
 }

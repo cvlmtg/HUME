@@ -1032,6 +1032,98 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
     );
 }
 
+/// A rig over "abcdefghij" with the cursor on `a`, holding an error on
+/// `a`, a warning on `c` and a hint on `i`.
+fn rig_with_three_diagnostics(tmp: &std::path::Path) -> LspRig {
+    let mut rig = LspRig::rust(
+        tmp,
+        "-[a]>bcdefghij\n",
+        serde_json::json!({"capabilities": {}}),
+    );
+    let sid = rig.sid("rust-analyzer");
+    rig.publish(
+        sid,
+        serde_json::json!([
+            {
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                "severity": 1,
+                "message": "an error",
+            },
+            {
+                "range": {"start": {"line": 0, "character": 2}, "end": {"line": 0, "character": 3}},
+                "severity": 2,
+                "message": "a warning",
+            },
+            {
+                "range": {"start": {"line": 0, "character": 8}, "end": {"line": 0, "character": 9}},
+                "severity": 4,
+                "message": "a hint",
+            },
+        ]),
+    );
+    rig
+}
+
+#[test]
+fn diagnostics_for_buffer_takes_a_request_range_as_its_range() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = rig_with_three_diagnostics(tmp.path());
+
+    rig.probe(
+        r#"(let ((range (hash-ref (lsp-primary-range-params pane) "range")))
+             (log! 'warning (to-string (map (lambda (d) (hash-ref d 'message))
+                                            (diagnostics-for-buffer pane #:severity 'hint #:range range)))))"#,
+    );
+
+    assert_eq!(rig.warnings(), vec![r#"("an error")"#.to_string()]);
+}
+
+#[test]
+fn diagnostics_for_buffer_refuses_a_request_range_from_an_earlier_text() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = rig_with_three_diagnostics(tmp.path());
+
+    rig.probe(
+        r#"(let ((range (hash-ref (lsp-primary-range-params pane) "range")))
+             (call! "delete" pane)
+             (log! 'warning (to-string (diagnostics-for-buffer pane #:range range))))"#,
+    );
+
+    assert!(rig.warnings().is_empty());
+    let log = rig.ed.state.message_log.format_for_display();
+    assert!(
+        log.contains(
+            "diagnostics-for-buffer: #:range position is from an earlier version of the buffer"
+        ),
+        "{log}"
+    );
+}
+
+#[test]
+fn diagnostics_for_buffer_refuses_a_request_range_of_another_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = rig_with_three_diagnostics(tmp.path());
+    rig.eval("(define *range* #f)");
+    rig.probe(r#"(set! *range* (hash-ref (lsp-primary-range-params pane) "range"))"#);
+    let other = rig.root.join("src/other.rs");
+    std::fs::write(&other, "fn other() {}\n").unwrap();
+    let other = rig
+        .ed
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&other))
+        .expect("the file opens");
+    let fp = crate::editor::commands::FocusedPane::current(&rig.ed.view);
+    rig.ed.switch_to_buffer_without_jump(fp, other);
+
+    rig.probe("(log! 'warning (to-string (diagnostics-for-buffer pane #:range *range*)))");
+
+    assert!(rig.warnings().is_empty());
+    let log = rig.ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("diagnostics-for-buffer: #:range position belongs to another buffer"),
+        "{log}"
+    );
+}
+
 #[test]
 fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
     let tmp = tempfile::tempdir().unwrap();

@@ -2,12 +2,6 @@
 
 (require "helpers.scm")
 
-(define (lsp/primary-selection-range pane)
-  (let ((primary (call! "stdlib/primary-selection" (buffer-selections pane))))
-    (and primary
-         (hash 'start-char (selection-start-char primary)
-               'end-char (selection-end-char primary)))))
-
 (define lsp/no-edit-message "Code action has no edit or command")
 
 ;; `server` produced the action: its resolve and command go back to it.
@@ -38,17 +32,16 @@
          #:unavailable 'empty))
       (else (log! 'info lsp/no-edit-message)))))
 
-;; See docs/features.md, "Code actions".
-(define (lsp/code-action-params pane servers diags)
-  (let ((base (lsp-primary-range-params pane)))
-    (map (lambda (server)
-           (cons server
-                 (hash-insert base "context"
-                   (hash "diagnostics"
-                         (map (lambda (d) (hash-ref d 'raw))
-                              (filter (lambda (d) (equal? (hash-ref d 'server) server)) diags))
-                         "triggerKind" 1))))
-         servers)))
+;; `base` is `lsp-primary-range-params`; see docs/features.md, "Code actions".
+(define (lsp/code-action-params base servers diags)
+  (map (lambda (server)
+         (cons server
+               (hash-insert base "context"
+                 (hash "diagnostics"
+                       (map (lambda (d) (hash-ref d 'raw))
+                            (filter (lambda (d) (equal? (hash-ref d 'server) server)) diags))
+                       "triggerKind" 1))))
+       servers))
 
 ;; `(server . action)` for every enabled action, in server order.
 (define (lsp/offered-actions results)
@@ -76,9 +69,10 @@
     (lsp/with-servers pane "code actions"
       (lambda (servers)
         (let* ((gen (buffer-generation pane))
-               (diags (diagnostics-for-buffer pane #:range (lsp/primary-selection-range pane))))
+               (base (lsp-primary-range-params pane))
+               (diags (diagnostics-for-buffer pane #:range (hash-ref base "range"))))
           (lsp-request-all! pane "textDocument/codeAction"
-            (lsp/code-action-params pane servers diags)
+            (lsp/code-action-params base servers diags)
             (lsp/on-answers "code action"
               (lambda (results)
                 (let ((offered (lsp/offered-actions results)))

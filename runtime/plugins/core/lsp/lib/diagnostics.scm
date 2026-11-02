@@ -5,14 +5,6 @@
 
 ;; ── Helpers ──────────────────────────────────────────────────────────────────
 
-(define (lsp/severity-glyph severity)
-  (cond
-    ((equal? severity 'error) "✘")
-    ((equal? severity 'warning) "⚠")
-    ((equal? severity 'info) "ℹ")
-    ((equal? severity 'hint) "·")
-    (else "?")))
-
 (define (lsp/first-line text)
   (let ((parts (split-once text "\n")))
     (if (pair? parts) (car parts) text)))
@@ -53,7 +45,7 @@
     (if (void? source) (lsp-server-name (hash-ref d 'server)) source)))
 
 (define (lsp/diag-row d)
-  (string-append (lsp/severity-glyph (hash-ref d 'severity)) " "
+  (string-append (diagnostic-glyph (hash-ref d 'severity)) " "
                  (lsp/format-position (hash-ref d 'start-line) (hash-ref d 'grapheme-col)) " "
                  (lsp/diag-origin d) ": "
                  (lsp/first-line (hash-ref d 'message))))

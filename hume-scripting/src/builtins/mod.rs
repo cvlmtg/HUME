@@ -527,6 +527,7 @@ builtins! {
     cmd "set-statusline-text!" decorations::set_statusline_text(pane: args::LiveBuffer, source: args::SourceName, text: SteelVal);
     cmd "%diagnostics-for-buffer" => "diagnostics-for-buffer" decorations::diagnostics_for_buffer(pane: args::ArgPane, severity: SteelVal, range: SteelVal);
     cmd "%diagnostic-counts" => "diagnostic-counts" decorations::diagnostic_counts(pane: args::ArgPane, severity: SteelVal);
+    plain "diagnostic-glyph" decorations::diagnostic_glyph(severity: SteelVal);
 
     // Edit + navigation primitives.
     cmd "%apply-text-edits!" => "apply-text-edits!" edits::apply_text_edits(pane: args::RequesterPane, edits: SteelVal, expect_gen: SteelVal);

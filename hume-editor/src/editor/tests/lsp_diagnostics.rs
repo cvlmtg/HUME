@@ -711,7 +711,7 @@ fn read(rig: &mut LspRig, floor: Option<DiagSeverity>, range: Option<(usize, usi
         &mut rig.ed.state,
         rig.bid,
         floor,
-        range,
+        range.map(|(start, end)| hume_scripting::host::DiagnosticRange::Chars { start, end }),
     )
     .unwrap()
     .len()

@@ -8,6 +8,15 @@ use hume_rope::position_encoding::PositionEncoding;
 
 use crate::types::VirtualLineSpec;
 
+/// What `diagnostics-for-buffer`'s `#:range` names: a char range of the
+/// buffer as it is, or a request's range, which carries the buffer and text
+/// it was taken from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticRange {
+    Chars { start: usize, end: usize },
+    Request(crate::builtins::ids::DocRange),
+}
+
 /// Why a decoration setter refused its entries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetError {
@@ -142,7 +151,7 @@ pub trait DecorationHost {
         &mut self,
         bid: BufferId,
         severity_floor: Option<DiagSeverity>,
-        range: Option<(usize, usize)>,
+        range: Option<DiagnosticRange>,
     ) -> Result<Vec<DiagnosticEntry>, String>;
 
     /// `(diagnostic-counts pane #:severity floor)`: `bid`'s diagnostics

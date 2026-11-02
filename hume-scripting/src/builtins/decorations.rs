@@ -8,7 +8,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{DiagnosticEntry, SetError};
+use crate::host::{DiagnosticEntry, DiagnosticRange, SetError};
 use crate::json::{WireOrigin, to_steel_handle};
 use crate::types::VirtualLineSpec;
 
@@ -19,6 +19,7 @@ use super::args::{
     optional_symbol_arg, spanned_text, string_arg, symbol_enum_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
+use super::ids::DocRange;
 
 /// `(set-inlay-hints! pane source hints)`: `hints`: list of `(hash 'char-offset
 /// 'text 'side)`, `'char-offset` a char offset, `side` `'before` or `'after`. LSP wire `{"line"
@@ -315,7 +316,8 @@ pub(crate) fn set_statusline_text(
 
 /// `(%diagnostics-for-buffer pane severity range)`: the `diagnostics-for-buffer`
 /// Scheme wrapper supplies `#:severity`/`#:range` defaults. `severity`: a
-/// symbol or `#f`. `range`: a `(hash 'start-char s 'end-char e)` or `#f`.
+/// symbol or `#f`. `range`: a `(hash 'start-char s 'end-char e)`, a request's
+/// range (the `"range"` of `lsp-primary-range-params`), or `#f`.
 pub(crate) fn diagnostics_for_buffer(
     ctx: &mut SteelCtx,
     pane: ArgPane,
@@ -324,9 +326,13 @@ pub(crate) fn diagnostics_for_buffer(
 ) -> SteelResult {
     let id = pane.0.buffer();
     let floor = severity_floor_arg(severity)?;
-    let range = optional_hash_entry(range, "#:range", CHAR_RANGE_KEYS)?
-        .map(|range| range.char_range())
-        .transpose()?;
+    let range = match DocRange::from_steel_val(&range) {
+        Some(request) => Some(DiagnosticRange::Request(request)),
+        None => optional_hash_entry(range, "#:range", CHAR_RANGE_KEYS)?
+            .map(|range| range.char_range())
+            .transpose()?
+            .map(|(start, end)| DiagnosticRange::Chars { start, end }),
+    };
     let entries = require_cap(ctx.host.decorations())?
         .diagnostics_for_buffer(id, floor, range)
         .map_err(generic_err)?;
@@ -370,6 +376,16 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
         ),
         ("server", entry.server.into_steel_val()),
     ])
+}
+
+/// `(diagnostic-glyph severity)`: the one-cell mark for a diagnostic
+/// severity symbol, as the statusline shows it.
+pub(crate) fn diagnostic_glyph(severity: SteelVal) -> SteelResult {
+    let SteelVal::SymbolV(name) = severity else {
+        steel::stop!(TypeMismatch => "severity: expected a symbol, got {}", severity);
+    };
+    let severity = symbol_enum_arg(&name, "severity", &DiagSeverity::NAMED)?;
+    Ok(SteelVal::StringV(severity.glyph().into()))
 }
 
 /// A `#:severity` floor: a diagnostic severity symbol, or `#f` for the

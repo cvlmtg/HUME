@@ -69,6 +69,28 @@ fn diagnostic_reads_without_decoration_host_error() {
 }
 
 #[test]
+fn diagnostic_glyph_names_each_severity() {
+    let glyphs: Vec<String> = ["error", "warning", "info", "hint"]
+        .into_iter()
+        .map(
+            |sev| match diagnostic_glyph(SteelVal::SymbolV(sev.into())).unwrap() {
+                SteelVal::StringV(s) => s.to_string(),
+                other => panic!("expected a string, got {other:?}"),
+            },
+        )
+        .collect();
+    assert_eq!(glyphs, ["✘", "⚠", "ℹ", "·"]);
+}
+
+#[test]
+fn diagnostic_glyph_raises_on_an_unknown_severity() {
+    let msg = diagnostic_glyph(SteelVal::SymbolV("bogus".into()))
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("severity"), "got: {msg}");
+}
+
+#[test]
 fn set_inlay_hints_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();

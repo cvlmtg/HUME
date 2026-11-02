@@ -12,7 +12,7 @@ use hume_lsp::diagnostic::{PublishedDiagnostics, WireDiagnostic};
 use hume_lsp::sync::wire_version;
 use hume_platform::path::AbsolutePath;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-use hume_scripting::host::DiagnosticCounts;
+use hume_scripting::host::{DiagnosticCounts, DiagnosticRange};
 #[cfg(test)]
 use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
@@ -613,7 +613,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     state: &mut EditorState,
     bid: BufferId,
     floor: Option<DiagSeverity>,
-    range: Option<(usize, usize)>,
+    range: Option<hume_scripting::host::DiagnosticRange>,
 ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
     let floor = severity_floor(state, floor);
     let whole = range.is_none();
@@ -626,8 +626,15 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     // checked against.
     let range = match range {
         None => ExclusiveRange::new(CharOffset::new(0), text.end()),
-        Some((start, end)) => crate::editor::buffer::offsets::checked_char_range(text, start, end)
-            .map_err(|e| format!("#:range {e}"))?,
+        Some(DiagnosticRange::Chars { start, end }) => {
+            crate::editor::buffer::offsets::checked_char_range(text, start, end)
+                .map_err(|e| format!("#:range {e}"))?
+        }
+        Some(DiagnosticRange::Request(range)) => {
+            super::bridge::check_doc_span(text, bid, range.buffer, range.version)
+                .map_err(|e| format!("#:range {e}"))?;
+            ExclusiveRange::new(range.start, range.end)
+        }
     };
 
     let matched = state

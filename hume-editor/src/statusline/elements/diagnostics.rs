@@ -1,3 +1,4 @@
+use hume_core::DiagSeverity;
 use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
 
@@ -5,9 +6,6 @@ use super::StatuslineElement;
 use crate::editor::lsp::introspect::LspActivity;
 use crate::statusline::HumeStatusline;
 use crate::statusline::colors::EditorColors;
-
-const DIAGNOSTICS_ERROR_GLYPH: &str = "✘";
-const DIAGNOSTICS_WARNING_GLYPH: &str = "⚠";
 
 /// Braille spinner frames for the loading state, indexed by
 /// `frame % SPINNER.len()`.
@@ -55,13 +53,13 @@ impl StatuslineElement for DiagnosticsElement {
                 percentage: Some(p),
             } => Some(format!("{spinner} {p}%")),
         };
+        let error = DiagSeverity::Error.glyph();
+        let warning = DiagSeverity::Warning.glyph();
         let counts = match (errors, warnings) {
             (0, 0) => None,
-            (e, 0) => Some(format!("{DIAGNOSTICS_ERROR_GLYPH} {e}")),
-            (0, w) => Some(format!("{DIAGNOSTICS_WARNING_GLYPH} {w}")),
-            (e, w) => Some(format!(
-                "{DIAGNOSTICS_ERROR_GLYPH} {e} {DIAGNOSTICS_WARNING_GLYPH} {w}"
-            )),
+            (e, 0) => Some(format!("{error} {e}")),
+            (0, w) => Some(format!("{warning} {w}")),
+            (e, w) => Some(format!("{error} {e} {warning} {w}")),
         };
         let label = match (spinner_prefix, counts) {
             (Some(s), Some(c)) => format!("{s} {c}"),

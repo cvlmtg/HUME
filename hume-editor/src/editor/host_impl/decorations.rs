@@ -216,7 +216,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         &mut self,
         bid: BufferId,
         severity_floor: Option<DiagSeverity>,
-        range: Option<(usize, usize)>,
+        range: Option<hume_scripting::host::DiagnosticRange>,
     ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
         crate::editor::lsp::diagnostics::diagnostics_for_buffer(
             self.state,

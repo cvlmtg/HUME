@@ -122,7 +122,7 @@ server offered some, each title ends with its server's name. A chosen action's r
 and command go back to the server that offered it.
 
 Each server's `context.diagnostics` echoes the raw wire `Diagnostic` objects in the
-primary selection's range that this server published (the `'raw` field of the
+primary selection's range, read with the request's own range, that this server published (the `'raw` field of the
 diagnostics store entries whose `'server` is it), and `triggerKind` is `1`. Actions with a
 truthy `"disabled"` field are dropped from the menu.
 
