@@ -264,7 +264,7 @@ fn probe_via_events(term: &terminal::SharedTerm) -> std::io::Result<bool> {
     use std::io::Write;
     use termina::escape::csi::{Csi, Device, Keyboard};
 
-    let mut out = term.clone();
+    let mut out = term;
     write!(
         out,
         "{}{}",

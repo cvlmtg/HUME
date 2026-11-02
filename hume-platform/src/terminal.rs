@@ -13,9 +13,10 @@
 //! framing, and the inline-subprocess-output flow
 //! ([`enter_inline_output`]/[`InlineOutputScreen::close`]).
 //!
-//! [`SharedTerm`] is a cheap-to-clone handle: every caller that needs to read
-//! or write the terminal (the render loop, the signal handler, the inline-
-//! output bracket) holds a clone. Event reads/polls never lock the shared
+//! [`SharedTerm`] is a cheap-to-clone handle: every owner that keeps the
+//! terminal (the render loop, the signal handler, the inline-output bracket)
+//! holds a clone, and a write or mode switch needs only a `&SharedTerm`.
+//! Event reads/polls never lock the shared
 //! mutex (they go straight to the cloned [`EventReader`]), so a blocking
 //! read on one thread can never stall a write on another.
 
@@ -77,7 +78,9 @@ impl SharedTerm {
     }
 }
 
-impl io::Write for SharedTerm {
+// Every operation locks internally, so a shared reference does all of them,
+// as `&File` does. The owned impls forward to these.
+impl io::Write for &SharedTerm {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.lock().write(buf)
     }
@@ -87,7 +90,7 @@ impl io::Write for SharedTerm {
     }
 }
 
-impl termina::Terminal for SharedTerm {
+impl termina::Terminal for &SharedTerm {
     fn enter_raw_mode(&mut self) -> io::Result<()> {
         self.lock().enter_raw_mode()
     }
@@ -121,8 +124,52 @@ impl termina::Terminal for SharedTerm {
     }
 }
 
+impl io::Write for SharedTerm {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (&*self).write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        (&*self).flush()
+    }
+}
+
+impl termina::Terminal for SharedTerm {
+    fn enter_raw_mode(&mut self) -> io::Result<()> {
+        <&Self as termina::Terminal>::enter_raw_mode(&mut &*self)
+    }
+
+    fn enter_cooked_mode(&mut self) -> io::Result<()> {
+        <&Self as termina::Terminal>::enter_cooked_mode(&mut &*self)
+    }
+
+    fn get_dimensions(&self) -> io::Result<WindowSize> {
+        <&Self as termina::Terminal>::get_dimensions(&self)
+    }
+
+    fn event_reader(&self) -> EventReader {
+        <&Self as termina::Terminal>::event_reader(&self)
+    }
+
+    fn poll<F: Fn(&Event) -> bool>(
+        &self,
+        filter: F,
+        timeout: Option<Duration>,
+    ) -> io::Result<bool> {
+        <&Self as termina::Terminal>::poll(&self, filter, timeout)
+    }
+
+    fn read<F: Fn(&Event) -> bool>(&self, filter: F) -> io::Result<Event> {
+        <&Self as termina::Terminal>::read(&self, filter)
+    }
+
+    fn set_panic_hook(&mut self, f: impl Fn(&mut PlatformHandle) + Send + Sync + 'static) {
+        <&Self as termina::Terminal>::set_panic_hook(&mut &*self, f);
+    }
+}
+
 /// Open the process terminal. Call once at startup; clone the result for
-/// every caller that needs to read or write it. `launch_cwd` is the
+/// every owner that keeps it. `launch_cwd` is the
 /// directory the shell started HUME in.
 ///
 /// On Windows, `PlatformTerminal::new` enables VT input/output mode
@@ -335,9 +382,9 @@ fn write_unwind_escapes(out: &mut impl io::Write, launch_cwd_url: Option<&str>) 
 /// user as a one-line stderr hint: kitty support degrades to "off" but the
 /// editor still starts. A plain timeout reports `Ok(false)` upstream.
 pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
-    let mut term = term.clone();
+    let mut term = term;
     term.enter_raw_mode()?;
-    let kitty_enabled = match crate::probe_kitty_support(&term) {
+    let kitty_enabled = match crate::probe_kitty_support(term) {
         Ok(v) => v,
         Err(e) => {
             // Disable raw mode so the hint prints with normal line discipline
@@ -370,7 +417,7 @@ pub fn init(
     mouse_select: bool,
     kitty_enabled: bool,
 ) -> io::Result<crate::screen::Screen> {
-    let mut term = term.clone();
+    let mut term = term;
 
     // Arm before entering any mode: a panic during the enable sequence below
     // still unwinds through this hook, and every escape it emits is a
@@ -387,11 +434,11 @@ pub fn init(
     if let Err(e) = enter {
         // A partial enable must not leak: the caller propagates this error
         // and never reaches the happy-path `restore()` in `run()`.
-        let _ = restore(&term);
+        let _ = restore(term);
         return Err(e);
     }
 
-    Ok(crate::screen::Screen::new(term))
+    Ok(crate::screen::Screen::new(term.clone()))
 }
 
 /// Undo everything [`init`] did: run `write_unwind_escapes` then leave raw
@@ -399,7 +446,7 @@ pub fn init(
 /// the shell as usable as possible. The first error encountered is returned;
 /// a second is silently discarded.
 pub fn restore(term: &SharedTerm) -> io::Result<()> {
-    let mut out = term.clone();
+    let mut out = term;
     run_all([
         write_unwind_escapes(&mut out, term.launch_cwd_url.as_deref()),
         out.enter_cooked_mode(),
@@ -417,7 +464,7 @@ pub fn restore(term: &SharedTerm) -> io::Result<()> {
 /// Buffered: the sequence reaches the terminal at the next flush, which
 /// [`end_synchronized_update`] makes at the end of every frame.
 pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
-    let mut term = term.clone();
+    let mut term = term;
     if black {
         write!(
             term,
@@ -442,7 +489,7 @@ pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
 /// terminal does not keep a stale directory. [`restore`] and the panic hook
 /// report the launch directory again.
 pub fn set_working_directory(term: &SharedTerm, cwd: &Path) -> io::Result<()> {
-    let mut term = term.clone();
+    let mut term = term;
     write_cwd_report(&mut term, working_directory_url(cwd).as_deref())
 }
 
@@ -451,7 +498,7 @@ pub fn set_working_directory(term: &SharedTerm, cwd: &Path) -> io::Result<()> {
 /// Fire-and-forget: a terminal that doesn't implement or permit OSC 52
 /// ignores the sequence, so success here only means the bytes were written.
 pub fn set_clipboard(term: &SharedTerm, text: &str) -> io::Result<()> {
-    let mut term = term.clone();
+    let mut term = term;
     write!(term, "{}", Osc::SetSelection(Selection::CLIPBOARD, text))?;
     term.flush()
 }
@@ -465,7 +512,7 @@ pub fn set_clipboard(term: &SharedTerm, text: &str) -> io::Result<()> {
 ///
 /// Buffered, like [`set_cursor_color`].
 pub fn set_cursor_shape(term: &SharedTerm, style: CursorStyle) -> io::Result<()> {
-    let mut term = term.clone();
+    let mut term = term;
     write!(term, "{}", Csi::Cursor(Cursor::CursorStyle(style)))
 }
 
@@ -478,7 +525,7 @@ pub fn set_cursor_shape(term: &SharedTerm, style: CursorStyle) -> io::Result<()>
 /// a write failure here must never abort the render loop. Buffered, like the
 /// rest of the frame, until [`end_synchronized_update`] flushes it.
 pub fn begin_synchronized_update(term: &SharedTerm) -> io::Result<()> {
-    let mut term = term.clone();
+    let mut term = term;
     write!(term, "{}", dec_set(DecPrivateModeCode::SynchronizedOutput))
 }
 
@@ -489,7 +536,7 @@ pub fn begin_synchronized_update(term: &SharedTerm) -> io::Result<()> {
 /// cursor shape, cursor colour). Pairs with [`begin_synchronized_update`].
 /// This is the frame's one flush: the writes before it only buffer.
 pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
-    let mut term = term.clone();
+    let mut term = term;
     write_sync_reset(&mut term)
 }
 
@@ -519,13 +566,23 @@ trait ModeSwitch: io::Write {
     fn cooked_mode(&mut self) -> io::Result<()>;
 }
 
-impl ModeSwitch for SharedTerm {
+impl ModeSwitch for &SharedTerm {
     fn raw_mode(&mut self) -> io::Result<()> {
         self.enter_raw_mode()
     }
 
     fn cooked_mode(&mut self) -> io::Result<()> {
         self.enter_cooked_mode()
+    }
+}
+
+impl ModeSwitch for SharedTerm {
+    fn raw_mode(&mut self) -> io::Result<()> {
+        (&*self).raw_mode()
+    }
+
+    fn cooked_mode(&mut self) -> io::Result<()> {
+        (&*self).cooked_mode()
     }
 }
 
@@ -702,7 +759,7 @@ pub fn set_mouse_mode(
     mouse_enabled: bool,
     mouse_select: bool,
 ) -> io::Result<()> {
-    let mut term = term.clone();
+    let mut term = term;
     write_mouse_disable(&mut term)?;
     if mouse_enabled {
         write_mouse_enable(&mut term, mouse_select)?;
@@ -726,7 +783,7 @@ fn print_return_prompt() {
 /// events. Holds subprocess output on screen until the user is ready to return
 /// to the TUI. Leaves the terminal in raw mode.
 fn wait_for_keypress(term: &SharedTerm) {
-    let mut term = term.clone();
+    let mut term = term;
     let _ = term.enter_raw_mode();
     let reader = term.event_reader();
     loop {
