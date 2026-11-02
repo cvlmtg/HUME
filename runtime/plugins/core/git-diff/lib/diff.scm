@@ -3,7 +3,7 @@
 (require "state.scm")
 (require "render.scm")
 
-(provide git-diff/schedule-refresh! git-diff/refresh! git-diff/force-refresh!
+(provide git-diff/diffable-path git-diff/schedule-refresh! git-diff/refresh! git-diff/force-refresh!
          git-diff/invalidate-ref! git-diff/drop-ref-text! git-diff/hide-renderings!)
 
 ;;; Calls `paint!` with `target` when it differs from what `painted-key` last recorded.
@@ -17,6 +17,12 @@
 
 (define (git-diff/inline-visible? entry)
   (and (hash-ref entry "inline?") (null? (hash-ref entry "covered-by"))))
+
+;;; The file `pane`'s buffer diffs, or #f when it has none or `entry` shows no rendering.
+(define (git-diff/diffable-path pane entry)
+  (and entry
+       (or (git-diff/signs-visible? entry) (git-diff/inline-visible? entry))
+       (buffer-path pane)))
 
 (define (git-diff/reconcile-signs! entry pane signs)
   (git-diff/reconcile-rendering! entry pane "signs-painted" signs git-diff/render-signs!))
@@ -61,22 +67,21 @@
 ;;; Immediate (non-debounced) refresh — `schedule-refresh!` is the debounced entry point.
 ;;; A buffer without its own ref diffs against `default-ref`.
 (define (git-diff/refresh! pane default-ref failure-severity)
-  (let ([entry (git-diff/buffer-entry pane)])
-    (when (and entry (or (hash-ref entry "signs?") (hash-ref entry "inline?")))
-      (let ([path (buffer-path pane)])
-        (when path
-          (let ([ref-text (hash-ref entry "ref-text")])
-            (cond
-              [(string? ref-text)
-               (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane ref-text) 'hunks))]
-              [(and (not ref-text) (not (git-diff/slot-job pane "diff")))
-               (git-diff/spawn-job! pane "diff" "git"
-                                    (list "cat-file" "--filters" "--end-of-options"
-                                          (string-append (git-diff/buffer-ref pane default-ref)
-                                                         ":./" (file-name path)))
-                                    (parent-name path)
-                                    (lambda (result)
-                                      (git-diff/handle-fetch-result! pane failure-severity result)))])))))))
+  (let* ([entry (git-diff/buffer-entry pane)]
+         [path (git-diff/diffable-path pane entry)])
+    (when path
+      (let ([ref-text (hash-ref entry "ref-text")])
+        (cond
+          [(string? ref-text)
+           (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane ref-text) 'hunks))]
+          [(and (not ref-text) (not (git-diff/slot-job pane "diff")))
+           (git-diff/spawn-job! pane "diff" "git"
+                                (list "cat-file" "--filters" "--end-of-options"
+                                      (string-append (git-diff/buffer-ref pane default-ref)
+                                                     ":./" (file-name path)))
+                                (parent-name path)
+                                (lambda (result)
+                                  (git-diff/handle-fetch-result! pane failure-severity result)))])))))
 
 ;;; Forces a fetch even through a sticky `'unavailable` cache — see docs/pipeline.md.
 (define (git-diff/force-refresh! pane default-ref failure-severity)

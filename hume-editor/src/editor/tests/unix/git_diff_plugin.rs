@@ -1624,6 +1624,21 @@ fn dirty_six_line_repo() -> tempfile::TempDir {
 }
 
 #[test]
+fn editing_a_buffer_with_no_file_arms_no_refresh_timer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+    settle_until_idle(&mut ed);
+    assert!(ed.doc().path().is_none(), "sanity: a scratch buffer");
+
+    type_text(&mut ed, "x");
+    ed.settle();
+    assert!(
+        ed.timers.is_empty(),
+        "a buffer with no file has nothing to diff against"
+    );
+}
+
+#[test]
 fn a_buffer_opened_before_the_plugin_loads_diffs_with_the_config_defaults() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_lazy_on_typed_commands(tmp.path());

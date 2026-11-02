@@ -35,7 +35,7 @@ handle-fetch-result! ──▶ diff-buffer-lines                       │
 |---|---|
 | `on-buffer-open` | Track the buffer, schedule a refresh |
 | `on-buffer-enter` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
-| `on-text-changed` | Schedule a refresh |
+| `on-text-changed` | Schedule a refresh when the buffer can diff |
 | `on-buffer-save` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
 | `on-buffer-close` | `remove-buffer!` cancels any in-flight diff and branch fetch and drops the entry |
 
@@ -94,9 +94,11 @@ is a local diff and not a git process, so it can debounce tighter than `core:lsp
 hints at 200ms.
 
 `refresh!` is the immediate entry point. It re-reads the buffer's live entry and path, since
-a debounced fire happens after state may have moved. A buffer with neither rendering on is
-skipped, as is a pathless buffer (`:messages`), which still fires `on-text-changed`
-and has nothing to diff against. The `"ref-text"` value decides the rest:
+a debounced fire happens after state may have moved. `diffable-path` skips a buffer that
+shows no rendering (both off, or inline covered with signs off) and a pathless buffer
+(`:messages`), which has nothing to diff against. The `on-text-changed` hook asks it too
+before scheduling, since `:messages` changes on every log line. The `"ref-text"` value
+decides the rest:
 
 | `"ref-text"` | `refresh!` does |
 |---|---|

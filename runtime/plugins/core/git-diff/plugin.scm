@@ -44,7 +44,8 @@
 (register-hook! 'on-text-changed
   (lambda (pane changes)
     (git-diff/track! pane)
-    (git-diff/schedule-refresh! pane git-diff/ref)))
+    (when (git-diff/diffable-path pane (git-diff/buffer-entry pane))
+      (git-diff/schedule-refresh! pane git-diff/ref))))
 
 (register-hook! 'on-buffer-save git-diff/resync-with-git!)
 
