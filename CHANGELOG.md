@@ -69,6 +69,8 @@
 - `core:git-diff` picks up a commit made outside HUME when HUME regains focus.
 - `core:git-diff` warns about a bad ref when you give it to `:toggle-git-signs` or `:toggle-inline-diff`, not again each time it refetches.
 - Messages about a broken grammar, a failed format or a failed language server install no longer start their reason with `Error: Generic:`.
+- Removing a theme repository, or an update that drops a theme, keeps that theme when another installed repository ships it.
+- When a grammar fails to install, `plum/ensure-grammars` skips the grammars that need it instead of installing them broken, and `:plum-install-grammar` reports the grammar it skipped.
 
 ## [0.17.0] - 2026-10-28
 

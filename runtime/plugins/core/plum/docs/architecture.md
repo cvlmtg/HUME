@@ -21,12 +21,14 @@ source.
 
 | Function | Does |
 |---|---|
+| `plum/msg` | Every line PLUM logs or prints, prefixed `PLUM: `; a raised error carries no prefix and gets this one where it is reported, with `error-text` |
+| `plum/report-failure!` | Logs an error a command raises as `PLUM: <action> failed: <message>` |
 | `plum/staging-dir` | `<data>/plum-staging/`, where every install builds its new copy |
 | `plum/staged-install!` | The stage-then-replace step every install shares: fills a fresh stage directory, then moves it into place with `replace-dir!`, deleting the stage on failure |
 | `plum/github-url` | The one GitHub URL shape |
 | `plum/install-repo!` | The plugin and theme install (see [`repos.md`](repos.md#pinned-plugins)) |
 | `plum/git-sync!` | The checkout behind both install and update (see [`repos.md`](repos.md#pinned-plugins)) |
-| `plum/batch-run!` | Runs a command's items one by one, collecting failures rather than aborting, then logs a summary and each failure (see [Output model](#output-model)) |
+| `plum/batch-run!` | Runs a command's items one by one, collecting failures rather than aborting, and returns how many succeeded. It then logs a summary built with its `verb` argument and each failure, or the caller's `#:none` message when there are no items. `#:skip`, given an item and the items that failed so far, returns why to skip it, or `#f`; a skipped item counts as failed. `#:progress` names the line printed as each item starts (see [Output model](#output-model)) |
 | `plum/two-level-repos` | The `<root>/<user>/<repo>/` walk behind plugin and theme-repo discovery |
 
 Directory listing, filesystem cleanup, list search, downloads, digests and archive
@@ -47,14 +49,18 @@ Every command that reaches the network (`plum-install-plugins`, `plum-update-plu
 so `git`'s progress and the `curl` and `tar` errors print as they happen, and returns to
 the editor on a keypress once the run finishes.
 
-`plum/batch-run!` paints each item's progress line with the `#:progress` reporter its
-caller passes, `print!` for the commands above, because `log!` buffers until the command
-returns and then collapses into one status-line slot, which would lose every per-item line
-but the last while the batch runs. `plum-install-grammar` and `plum-install-theme` print
-their own "installing" and "installed" lines with `print!` for the same reason; a grammar
-download and unpack print nothing else, so without them its screen stays empty. `print!`
+While one of these commands runs, the user is watching the terminal screen it switched to,
+not HUME's. `log!` reports to HUME's statusline and `:messages`, which the user sees only
+once back in the editor, so a line meant for the run's own screen goes through `print!`.
+`plum/batch-run!` prints `PLUM: <progress> <item>` as each item starts, when its caller
+passes `#:progress`, as the commands above do, and logs its summary and each failure for
+the user to read back in the editor. A grammar download and unpack print nothing else, so
+fetching the release index prints its own line, and `plum-install-grammar` prints an
+"installed" line only when its whole plan installed. `plum-install-theme` prints its own
+"installing" and "installed" lines. `print!`
 writes only inside an `#:inline-output` command, so `plum-cleanup-plugins` and
-`plum-cleanup-grammars`, which finish at once, pass none and keep their summary `log!` line.
+`plum-cleanup-grammars`, which finish at once and never leave the editor, pass no
+`#:progress` and report only through their summary `log!` line.
 
 The list commands (`plum-list-plugins`, `plum-list-grammars`, `plum-list-themes`) build
 their report with `core:stdlib`'s [report commands](../../stdlib/README.md#reports), in a

@@ -1,4 +1,4 @@
-;;; core:plum/plugins.scm
+;;; core:plum/lib/plugins.scm
 
 (require "helpers.scm")
 
@@ -31,39 +31,34 @@
 (define-typed-command! "plum-install-plugins"
   "Install all declared plugins that are not yet on disk."
   (lambda ()
-    (let ((missing (plum/missing-plugins (declared-plugins) (plum/installed-plugins))))
-      (if (null? missing)
-          (log! 'info "PLUM: nothing to install")
-          (let ((n (plum/batch-run! "installed" missing
-                     (lambda (name)
-                       (plum/install-repo! (plum/github-url name) (plum/plugin-dir name)
-                                           (declared-plugin-ref name)))
-                     #:progress print!)))
-            (when (> n 0)
-              (log! 'info "PLUM: run :reload-config to activate the newly installed plugins"))))))
+    (let ((n (plum/batch-run! "installed"
+               (plum/missing-plugins (declared-plugins) (plum/installed-plugins))
+               (lambda (name)
+                 (plum/install-repo! (plum/github-url name) (plum/plugin-dir name)
+                                     (declared-plugin-ref name)))
+               #:none "nothing to install"
+               #:progress "installing")))
+      (when (> n 0)
+        (log! 'info (plum/msg "run :reload-config to activate the newly installed plugins")))))
   #:inline-output #t)
 
 (define-typed-command! "plum-cleanup-plugins"
   "Remove on-disk plugins that are no longer declared in init.scm."
   (lambda ()
-    (let ((orphans (plum/orphan-plugins (declared-plugins) (plum/installed-plugins))))
-      (if (null? orphans)
-          (log! 'info "PLUM: nothing to remove")
-          (plum/batch-run! "removed" orphans
-            (lambda (name) (call! "stdlib/delete-dir!" (plum/plugin-dir name))))))))
+    (plum/batch-run! "removed" (plum/orphan-plugins (declared-plugins) (plum/installed-plugins))
+      (lambda (name) (call! "stdlib/delete-dir!" (plum/plugin-dir name)))
+      #:none "nothing to remove")))
 
 (define-typed-command! "plum-update-plugins"
   "Bring every installed third-party plugin to its #:ref, or its latest commit."
   (lambda ()
-    (let ((installed (plum/installed-plugins)))
-      (if (null? installed)
-          (log! 'info "PLUM: no installed plugins to update")
-          (let ((n (plum/batch-run! "updated" installed
-                     (lambda (name)
-                       (plum/git-sync! (plum/plugin-dir name) (declared-plugin-ref name)))
-                     #:progress print!)))
-            (when (> n 0)
-              (log! 'info "PLUM: run :reload-config to pick up the updated plugins"))))))
+    (let ((n (plum/batch-run! "updated" (plum/installed-plugins)
+               (lambda (name)
+                 (plum/git-sync! (plum/plugin-dir name) (declared-plugin-ref name)))
+               #:none "no installed plugins to update"
+               #:progress "updating")))
+      (when (> n 0)
+        (log! 'info (plum/msg "run :reload-config to pick up the updated plugins")))))
   #:inline-output #t)
 
 (define-typed-command! "plum-list-plugins"

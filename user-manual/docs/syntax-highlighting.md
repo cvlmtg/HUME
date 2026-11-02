@@ -39,6 +39,8 @@ This is how to get a grammar for a language you only use inside a fenced code bl
 
 `:plum-install-grammar` always downloads the grammar again, and replaces the installed copy only once the new one is complete. Running it again is also how you repair a broken install or update a grammar after updating HUME.
 
+When a grammar fails to install, the grammars that need it are skipped and the others still install. Each one that didn't install is listed in `:messages` with the reason.
+
 To install several grammars at startup, skipping any already installed, add this to your `init.scm`:
 
 ```scheme

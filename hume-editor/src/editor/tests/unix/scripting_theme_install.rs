@@ -140,15 +140,17 @@ fn install_theme_rejects_unsafe_slugs() {
         }
     }
 
-    // An uncaught Scheme `error`'s message has each `"`/`\` backslash-escaped
-    // on the way into the log (Rust's `char::escape_debug`), so a slug
-    // containing one of those characters needs the same escaping applied
-    // before it's searched for.
+    // A Scheme `error`'s message has each `"`/`\` backslash-escaped (Steel
+    // builds it from each argument's printed form), so a slug containing one
+    // of those characters needs the same escaping applied before it's
+    // searched for.
     let log = ed.state.message_log.format_for_display();
     for (bad_slug, _) in cases.into_iter().filter(|(_, loud)| *loud) {
         let escaped: String = bad_slug.chars().flat_map(char::escape_debug).collect();
         assert!(
-            log.contains(&format!("\\\"{escaped}\\\" is not a valid")),
+            log.contains(&format!(
+                "PLUM: install failed: \\\"{escaped}\\\" is not a valid"
+            )),
             "slug {bad_slug:?} must be rejected: {log}"
         );
     }
@@ -221,7 +223,7 @@ fn sync_errors_when_repo_has_no_themes_dir() {
     // behavioral proof the failed repo didn't count as updated.
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("has no themes/*.toml"),
+        log.contains("PLUM: acme/theme.hume: no themes/*.toml in the repo"),
         "expected the sync error in the log: {log}"
     );
 
@@ -259,6 +261,120 @@ fn update_themes_warns_on_shadowed_theme_name() {
             .any(|w| w.contains("dark")
                 && (w.contains("acme/dark.hume") || w.contains("zed/dark.hume"))),
         "expected a shadowed-name warning naming \"dark\" and the other repo: {warnings:?}"
+    );
+}
+
+const ACME_DARK: &str = "\"ui.cursor.primary\" = { fg = \"#aaaaaa\" }";
+const MID_DARK: &str = "\"ui.cursor.primary\" = { fg = \"#999999\" }";
+const ZED_DARK: &str = "\"ui.cursor.primary\" = { fg = \"#bbbbbb\" }";
+
+/// `acme/dark.hume`, `mid/dark.hume` and then `zed/dark.hume` installed, each
+/// shipping its own `themes/dark.toml`, so zed's copy is the one in
+/// `<data>/themes/`. Returns the data dir, the origins' tempdirs (kept alive
+/// for `git fetch`) and the origins, in slug order.
+fn repos_sharing_dark() -> (tempfile::TempDir, [tempfile::TempDir; 3], [PathBuf; 3]) {
+    let data_tmp = tempfile::tempdir().unwrap();
+    let repo = |user: &str, content: &str| {
+        let origin_tmp = tempfile::tempdir().unwrap();
+        let origin = origin_tmp.path().join(format!("{user}-dark.hume"));
+        init_theme_origin(&origin, &[("themes/dark.toml", content)]);
+        fabricate_installed_theme_repo(data_tmp.path(), &format!("{user}/dark.hume"), &origin);
+        (origin_tmp, origin)
+    };
+    let (acme_tmp, acme) = repo("acme", ACME_DARK);
+    let (mid_tmp, mid) = repo("mid", MID_DARK);
+    let (zed_tmp, zed) = repo("zed", ZED_DARK);
+
+    let dark = canonical_data_dir(data_tmp.path()).join("themes/dark.toml");
+    assert_eq!(std::fs::read_to_string(dark).unwrap(), ZED_DARK);
+    (data_tmp, [acme_tmp, mid_tmp, zed_tmp], [acme, mid, zed])
+}
+
+fn installed_dark(data_tmp: &tempfile::TempDir) -> Option<String> {
+    std::fs::read_to_string(canonical_data_dir(data_tmp.path()).join("themes/dark.toml")).ok()
+}
+
+/// Removing the repo whose copy of a shared name is in place puts back the
+/// copy of another installed repo that ships the name.
+#[test]
+fn remove_theme_restores_a_shared_name_from_another_repo() {
+    let (data_tmp, _origins, _) = repos_sharing_dark();
+
+    let mut ed = plum_editor(data_tmp.path());
+    type_cmd(&mut ed, ":plum-remove-theme zed/dark.hume");
+
+    assert_eq!(
+        installed_dark(&data_tmp).as_deref(),
+        Some(ACME_DARK),
+        "acme/dark.hume still ships dark"
+    );
+}
+
+/// Removing a repo whose copy of a shared name is not the one in place leaves
+/// the copy of the repo that provides it.
+#[test]
+fn remove_theme_keeps_a_shared_name_another_repo_provides() {
+    let (data_tmp, _origins, _) = repos_sharing_dark();
+
+    let mut ed = plum_editor(data_tmp.path());
+    type_cmd(&mut ed, ":plum-remove-theme acme/dark.hume");
+
+    assert_eq!(
+        installed_dark(&data_tmp).as_deref(),
+        Some(ZED_DARK),
+        "zed/dark.hume provides dark"
+    );
+}
+
+/// An update that drops a shared name keeps the name, from another installed
+/// repo that still ships it.
+#[test]
+fn update_that_drops_a_shared_name_restores_it_from_another_repo() {
+    let (data_tmp, _origins, [_, _, zed]) = repos_sharing_dark();
+    std::fs::remove_file(zed.join("themes/dark.toml")).unwrap();
+    write_files(&zed, &[("themes/zed_light.toml", THEME_TOML)]);
+    commit_all(&zed, "drop dark");
+
+    let mut ed = plum_editor(data_tmp.path());
+    type_cmd(&mut ed, ":plum-update-themes");
+
+    assert_eq!(
+        installed_dark(&data_tmp).as_deref(),
+        Some(MID_DARK),
+        "mid/dark.hume, updated after acme/dark.hume, still ships dark"
+    );
+    let themes_dir = canonical_data_dir(data_tmp.path()).join("themes");
+    assert!(themes_dir.join("zed_light.toml").exists());
+}
+
+/// An update that drops a shared name from a repo whose copy is not the one in
+/// place leaves the copy of the repo that provides it. The updates of mid and
+/// zed fail, so no later sync writes a copy of dark.
+#[test]
+fn update_that_drops_a_name_keeps_the_copy_another_repo_provides() {
+    let (data_tmp, _origins, [acme, mid, zed]) = repos_sharing_dark();
+    std::fs::remove_file(acme.join("themes/dark.toml")).unwrap();
+    write_files(&acme, &[("themes/acme_light.toml", THEME_TOML)]);
+    commit_all(&acme, "drop dark");
+    std::fs::remove_dir_all(&mid).unwrap();
+    std::fs::remove_dir_all(&zed).unwrap();
+
+    let mut ed = plum_editor(data_tmp.path());
+    type_cmd(&mut ed, ":plum-update-themes");
+
+    let errors = error_log(&ed);
+    for slug in ["mid/dark.hume", "zed/dark.hume"] {
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.starts_with(&format!("PLUM: {slug}:"))),
+            "{slug}'s update must fail: {errors:?}"
+        );
+    }
+    assert_eq!(
+        installed_dark(&data_tmp).as_deref(),
+        Some(ZED_DARK),
+        "zed/dark.hume provides dark"
     );
 }
 

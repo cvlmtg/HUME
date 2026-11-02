@@ -62,6 +62,8 @@ To install a third-party theme repository, run `:plum-install-theme <user/repo>`
 
 `:theme <Tab>` picks it up right away, with no restart.
 
+When two installed repositories ship a theme with the same name, the one you installed or updated last provides it. Removing that repository keeps the theme, from another installed repository that ships it.
+
 A theme editor is available online: a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
 
 ## Theme scopes

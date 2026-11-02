@@ -15,7 +15,7 @@
     (and (hash-contains? cfg 'grammar-source)
          (let ((folder (call! "stdlib/config-string" "core:plum" cfg 'grammar-source "")))
            (unless (call! "stdlib/path-absolute?" folder)
-             (error (string-append "plum: 'grammar-source must be an absolute path: " folder)))
+             (error (string-append "'grammar-source must be an absolute path: " folder)))
            folder))))
 
 (define (plum/release-url file)
@@ -36,29 +36,24 @@
 (define (plum/with-staged-file! file body)
   (let ((path (path-join (plum/grammar-staging-dir) file)))
     (create-directory! (plum/grammar-staging-dir))
-    (let ((result (with-handler
-                    (lambda (err)
-                      (call! "stdlib/delete-file!" path)
-                      (raise-error err))
-                    (body path))))
-      (call! "stdlib/delete-file!" path)
-      result)))
+    (dynamic-wind (lambda () #t)
+                  (lambda () (body path))
+                  (lambda () (call! "stdlib/delete-file!" path)))))
 
 ;; ── Index ─────────────────────────────────────────────────────────────────────
 ;; See docs/grammars.md's "Grammar source".
 
 (define (plum/index-error reason)
-  (error (string-append "plum: the grammar index " reason)))
+  (error (string-append "the grammar index " reason)))
 
 (define (plum/parse-member line)
-  (let ((fields (split-whitespace line)))
-    (unless (= (length fields) 4)
+  (let* ((fields (split-whitespace line))
+         (four (= (length fields) 4))
+         (offset (and four (string->number (list-ref fields 1))))
+         (size (and four (string->number (list-ref fields 2)))))
+    (unless (and (integer? offset) (integer? size) (>= offset 0) (> size 0))
       (plum/index-error (string-append "has a malformed line: " line)))
-    (let ((offset (string->number (list-ref fields 1)))
-          (size (string->number (list-ref fields 2))))
-      (unless (and (integer? offset) (integer? size) (>= offset 0) (> size 0))
-        (plum/index-error (string-append "has a malformed line: " line)))
-      (list (car fields) offset size (list-ref fields 3)))))
+    (list (car fields) offset size (list-ref fields 3))))
 
 ;;; The release index's `(name offset size sha256)` lines.
 (define (plum/parse-index text)
@@ -76,11 +71,12 @@
   (plum/parse-index
     (with-handler
       (lambda (err)
-        (error (string-append "plum: cannot fetch the treesitter.hume " *plum-grammar-tag*
+        (error (string-append "cannot fetch the treesitter.hume " *plum-grammar-tag*
                               " grammar index for " (grammar-platform) ": "
-                              (to-string err))))
+                              (error-text err))))
       (plum/with-staged-file! "index"
         (lambda (path)
+          (print! (plum/msg "fetching the treesitter.hume " *plum-grammar-tag* " grammar index"))
           (call! "stdlib/download!" (plum/release-url (plum/bundle-file "index")) path)
           (call-with-input-file path read-port-to-string))))))
 
@@ -97,7 +93,7 @@
 (define (plum/checked-folder)
   (let* ((folder *plum-grammar-folder*)
          (fail (lambda (reason)
-                 (error (string-append "plum: 'grammar-source " folder " " reason)))))
+                 (error (string-append "'grammar-source " folder " " reason)))))
     (when folder
       (unless (is-dir? folder)
         (fail "is not a directory"))
@@ -126,8 +122,8 @@
                   (with-handler
                     (lambda (err)
                       (if folder
-                          (error (string-append "plum: no " name " grammar in " folder "; "
-                                                (to-string err)))
+                          (error (string-append "no " name " grammar in " folder "; "
+                                                (error-text err)))
                           (raise-error err)))
                     (plum/read-release-index))))
               (let ((member (assoc name release)))
@@ -141,7 +137,7 @@
   (let* ((manifest (grammar-manifest dir))
          (field (lambda (key) (grammar-manifest-ref manifest key)))
          (symbol (field 'symbol))
-         (fail (lambda (reason) (error (string-append "plum: the " name " grammar " reason)))))
+         (fail (lambda (reason) (error (string-append "the " name " grammar " reason)))))
     (unless (equal? (field 'name) name)
       (fail (string-append "archive is the " (to-string (field 'name)) " grammar")))
     (unless (and (string? symbol) (not (equal? symbol "")))
@@ -154,18 +150,12 @@
           (fail (string-append "archive has no " file))))
       (list (grammar-library-file name) (grammar-query-file "highlights.scm")))
     (unless (equal? (field 'tag) *plum-grammar-tag*)
-      (log! 'warning (string-append "PLUM: the " name " grammar is from treesitter.hume "
-                                    (to-string (field 'tag)) "; HUME pins "
-                                    *plum-grammar-tag*)))))
+      (log! 'warning (plum/msg "the " name " grammar is from treesitter.hume "
+                               (to-string (field 'tag)) "; HUME pins " *plum-grammar-tag*)))))
 
 ;;; Hash: name → (dep-name ...). See docs/grammars.md's "Grammar dependencies".
 (define *plum-grammar-deps*
   (hash "markdown" (list "markdown.inline")))
-
-(define (plum/grammar-deps name)
-  (if (hash-contains? *plum-grammar-deps* name)
-      (hash-ref *plum-grammar-deps* name)
-      '()))
 
 ;;; A name for the next install folder after `installs`, a `grammar-installs` list.
 (define (plum/new-install-name installs)
@@ -179,7 +169,7 @@
 (define (plum/delete-reporting! path)
   (with-handler
     (lambda (err)
-      (let ((failure (string-append "PLUM: could not delete " path ": " (to-string err))))
+      (let ((failure (plum/msg "could not delete " path ": " (error-text err))))
         (if (equal? (current-os!) "windows")
             (log! 'warning (string-append failure ". A grammar library HUME has loaded cannot be "
                                           "deleted on Windows: restart HUME and run "
@@ -213,30 +203,43 @@
 (define (plum/not-installed? name)
   (not (grammar-installed? name)))
 
+(define (plum/grammar-deps name)
+  (or (hash-try-get *plum-grammar-deps* name) '()))
+
 ;;; `plan`, newest first, with `name` after the not-installed dependencies it needs.
-(define (plum/plan-add plan name)
+(define (plum/plan-add name plan)
   (if (member name plan)
       plan
-      (cons name (plum/plan-add-all plan (filter plum/not-installed? (plum/grammar-deps name))))))
-
-(define (plum/plan-add-all plan names)
-  (if (null? names)
-      plan
-      (plum/plan-add-all (plum/plan-add plan (car names)) (cdr names))))
+      (cons name (foldl plum/plan-add plan
+                        (filter plum/not-installed? (plum/grammar-deps name))))))
 
 ;;; `((name . source) ...)` in install order; see docs/grammars.md's "Grammar install pipeline".
 (define (plum/served-plan names)
   (let* ((lookup (plum/source-lookup))
          (plan (map (lambda (name) (cons name (lookup name)))
-                    (reverse (plum/plan-add-all '() names))))
+                    (reverse (foldl plum/plan-add '() names))))
          (absent (map car (filter (lambda (entry) (not (cdr entry))) plan))))
     (unless (null? absent)
-      (error (string-append "plum: no " (string-join absent ", ") " grammar in "
+      (error (string-append "no " (string-join absent ", ") " grammar in "
                             (if *plum-grammar-folder*
                                 (string-append *plum-grammar-folder* " or ")
                                 "")
                             "treesitter.hume " *plum-grammar-tag* " for " (grammar-platform))))
     plan))
+
+;;; Installs `plan`, a `plum/served-plan` result, skipping a grammar whose dependency failed,
+;;; and returns how many installed. See docs/grammars.md's "Grammar install pipeline".
+(define (plum/install-plan! plan)
+  (plum/batch-run! "installed grammar" (map car plan)
+    (lambda (name) (plum/install-one name (cdr (assoc name plan))))
+    #:skip (lambda (name failed)
+             (let ((dep (call! "stdlib/find" (lambda (dep) (member dep failed))
+                               (plum/grammar-deps name))))
+               (and dep (string-append "skipped, it needs " dep ", which did not install"))))
+    #:progress "installing grammar"))
+
+(define (plum/entries-if-present dir)
+  (if (path-exists? dir) (call! "stdlib/list-entries" dir) '()))
 
 ;;; Paths relative to `<data>/grammars/`; see docs/grammars.md's "Leftovers".
 (define (plum/grammar-leftovers in-use)
@@ -249,23 +252,18 @@
                              (filter (lambda (inner) (not (equal? inner current)))
                                      (call! "stdlib/list-entries" (grammar-dir entry)))))
                       (list entry))))
-              (if (path-exists? (grammars-dir))
-                  (call! "stdlib/list-entries" (grammars-dir))
-                  '()))))
+              (plum/entries-if-present (grammars-dir)))))
 
 ;;; See docs/grammars.md's "Leftovers".
 (define (plum/staging-leftovers)
-  (let ((staging (plum/grammar-staging-dir)))
-    (if (path-exists? staging)
-        (call! "stdlib/list-entries" staging)
-        '())))
+  (plum/entries-if-present (plum/grammar-staging-dir)))
 
 ;;; A string argument wins; otherwise falls back to the current buffer's language.
 (define (plum/resolve-grammar-arg pane arg)
   (let ((name (call! "stdlib/resolve-lang-arg" pane "plum-install-grammar" arg)))
     (cond ((not name) #f)
           ((not (member name (bundled-languages)))
-           (log! 'info (string-append "plum-install-grammar: no language \"" name "\"; Tab after :plum-install-grammar lists the languages"))
+           (log! 'info (plum/msg "no language \"" name "\"; Tab after :plum-install-grammar lists the languages"))
            #f)
           (else name))))
 
@@ -282,18 +280,11 @@
   (lambda (pane arg)
     (let ((name (plum/resolve-grammar-arg pane arg)))
       (when name
-        (print! (string-append "PLUM: installing grammar for " name))
-        (with-handler
-          (lambda (err)
-            (log! 'error (string-append "PLUM: install failed: " (to-string err))))
-          (for-each
-            (lambda (entry)
-              (let ((each (car entry)))
-                (unless (equal? each name)
-                  (print! (string-append "PLUM: installing dependency " each " for " name)))
-                (plum/install-one each (cdr entry))))
-            (plum/served-plan (list name)))
-          (print! (string-append "PLUM: installed grammar for " name))))))
+        (plum/report-failure! "install"
+          (lambda ()
+            (let ((plan (plum/served-plan (list name))))
+              (when (= (plum/install-plan! plan) (length plan))
+                (print! (plum/msg "installed grammar for " name)))))))))
   #:inline-output #t #:complete "plum:grammars")
 
 (define-command! "plum/ensure-grammars"
@@ -308,11 +299,8 @@
                               (string-join unknown ", ")))))
     (let ((missing (filter plum/not-installed? grammars)))
       (if (null? missing)
-          (log! 'info "PLUM: all requested grammars are installed")
-          (let ((plan (plum/served-plan missing)))
-            (plum/batch-run! "installed grammar" (map car plan)
-                             (lambda (name) (plum/install-one name (cdr (assoc name plan))))
-                             #:progress print!)))))
+          (log! 'info (plum/msg "all requested grammars are installed"))
+          (plum/install-plan! (plum/served-plan missing)))))
   #:inline-output #t)
 
 (define-typed-command! "plum-list-grammars"
@@ -334,10 +322,9 @@
                               (plum/grammar-leftovers (installed-grammar-folders)))
                          (map (lambda (entry) (path-join (plum/grammar-staging-dir) entry))
                               (plum/staging-leftovers)))))
-      (if (null? paths)
-          (log! 'info "PLUM: no grammar files to remove")
-          (plum/batch-run! "cleared" paths
-            (lambda (path)
-              (if (is-dir? path)
-                  (call! "stdlib/delete-dir!" path)
-                  (call! "stdlib/delete-file!" path))))))))
+      (plum/batch-run! "cleared" paths
+        (lambda (path)
+          (if (is-dir? path)
+              (call! "stdlib/delete-dir!" path)
+              (call! "stdlib/delete-file!" path)))
+        #:none "no grammar files to remove"))))

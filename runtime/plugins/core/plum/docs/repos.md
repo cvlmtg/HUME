@@ -65,8 +65,8 @@ reads the filesystem at load time and the completer re-scans on every `Tab`.
 
 A slug not shaped like `user/repo` is a usage mistake and logs `'info`, which reaches the
 status line but not `:messages`. A slug of the right shape with a segment
-`safe-path-segment?` rejects would otherwise reach `path-join` and `git`, so it raises and
-stays in `:messages`.
+`safe-path-segment?` rejects would otherwise reach `path-join` and `git`, so it fails the
+command with an `'error`, which stays in `:messages`.
 
 ### Layout and discovery
 
@@ -85,17 +85,19 @@ Two installed repos that provide the same theme name write the same
 `<data>/themes/<name>.toml`. The sync step logs a `'warning` naming the other repos
 whenever it is about to write a name another installed repo also provides.
 
+The repo an install or update syncs writes its own names. A name a repo stops providing,
+because `:plum-remove-theme` removes the repo or an update drops the name, is settled by
+`plum/drop-theme-names!` from the clones alone. The copy in place stays when another
+installed repo ships the same text, so the repo that provides the name keeps it. Otherwise
+the first other installed repo in slug order that ships the name provides it, and the
+`.toml` is deleted only when none does.
+
 ### Reinstall
 
 `:plum-install-theme` always installs from a fresh clone through `plum/install-repo!`,
 which also repairs a broken install. Its `#:build` raises when the new clone has no
 `themes/*.toml`, so a repo without themes fails before it replaces an installed clone, and
 the installed copies stay as they were.
-
-## Design decisions
-
-- **Theme repos are found by `.git`, not `themes/`.** See
-  [Layout and discovery](#layout-and-discovery).
 
 ## Known limitations
 

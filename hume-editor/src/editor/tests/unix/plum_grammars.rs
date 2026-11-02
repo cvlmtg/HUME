@@ -685,7 +685,7 @@ fn a_failed_reinstall_keeps_the_installed_grammar() {
     std::fs::write(archive_path(&folder, "json"), b"truncated").unwrap();
     type_cmd(&mut ed, ":plum-install-grammar json");
 
-    assert!(log(&ed).contains("install failed"), "{}", log(&ed));
+    assert!(log(&ed).contains("PLUM: json: "), "{}", log(&ed));
     assert!(installed(data_tmp.path(), "json"));
     assert!(
         current_install(data_tmp.path(), "json")
@@ -715,7 +715,7 @@ fn a_reinstall_whose_library_cannot_load_keeps_the_installed_grammar() {
 
     type_cmd(&mut ed, ":plum-install-grammar json");
 
-    assert!(log(&ed).contains("install failed"), "{}", log(&ed));
+    assert!(log(&ed).contains("PLUM: json: "), "{}", log(&ed));
     assert_eq!(installs(data_tmp.path(), "json"), before);
     let manifest = current_install(data_tmp.path(), "json")
         .unwrap()
@@ -781,7 +781,7 @@ fn an_older_install_that_cannot_be_deleted_is_reported_and_the_reinstall_stands(
         errors[0].contains(&older.display().to_string()),
         "{errors:?}"
     );
-    assert!(!log(&ed).contains("install failed"), "{}", log(&ed));
+    assert!(!log(&ed).contains("PLUM: json: "), "{}", log(&ed));
     let installs = installs(data_tmp.path(), "json");
     assert_eq!(installs.len(), 2);
     assert_ne!(current_install(data_tmp.path(), "json").unwrap(), older);
@@ -804,7 +804,7 @@ fn a_retry_after_a_failed_install_loads_the_corrected_library() {
     });
     let mut ed = plum_from_folder(data_tmp.path(), &folder);
     type_cmd(&mut ed, ":plum-install-grammar json");
-    assert!(log(&ed).contains("install failed"), "{}", log(&ed));
+    assert!(log(&ed).contains("PLUM: json: "), "{}", log(&ed));
     assert!(!grammar_dir(data_tmp.path(), "json").exists());
     let fixed = work.path().join("fixed");
     replace_archive(
@@ -826,7 +826,7 @@ fn a_grammar_whose_library_cannot_load_installs_nothing() {
     let work = tempfile::tempdir().unwrap();
     let folder = one_archive_folder(work.path(), "json", wrong_symbol);
 
-    assert_json_install_refused(&folder, "install failed");
+    assert_json_install_refused(&folder, "PLUM: json: ");
 }
 
 #[test]
@@ -889,6 +889,61 @@ fn a_dependency_in_neither_the_folder_nor_the_release_installs_nothing() {
     }
 }
 
+/// A copy of the fixture archive folder under `work` whose markdown.inline
+/// manifest names a symbol its library does not export.
+fn folder_with_a_broken_markdown_inline(work: &Path) -> PathBuf {
+    let folder = folder_copy(work);
+    let broken = one_archive_folder(&work.join("broken"), "markdown.inline", |manifest| {
+        manifest.replace("\"tree_sitter_markdown_inline\"", "\"tree_sitter_nosuch\"")
+    });
+    replace_archive(&folder, &broken, "markdown.inline");
+    folder
+}
+
+/// Whether `ed`'s errors report markdown skipped for its failed dependency.
+fn markdown_skipped(ed: &Editor) -> bool {
+    error_log(ed)
+        .iter()
+        .any(|e| e.starts_with("PLUM: markdown: ") && e.contains("markdown.inline"))
+}
+
+/// A batch skips a grammar whose dependency failed to install, and still
+/// installs the grammars that don't need it.
+#[test]
+fn a_failed_dependency_skips_its_dependents_and_not_the_rest_of_the_batch() {
+    require_grammars(&["json", "markdown", "markdown.inline"]);
+    let work = tempfile::tempdir().unwrap();
+    let folder = folder_with_a_broken_markdown_inline(work.path());
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = plum_from_folder(data_tmp.path(), &folder);
+
+    ensure_grammars(&mut ed, data_tmp.path(), &["markdown", "json"]);
+
+    assert!(installed(data_tmp.path(), "json"), "{}", log(&ed));
+    for name in ["markdown.inline", "markdown"] {
+        assert!(!installed(data_tmp.path(), name), "{name}: {}", log(&ed));
+    }
+    assert!(markdown_skipped(&ed), "{}", log(&ed));
+}
+
+/// `:plum-install-grammar` skips the grammar it was asked for when a
+/// dependency fails, reporting it the way a batch does.
+#[test]
+fn install_grammar_skips_the_grammar_whose_dependency_failed() {
+    require_grammars(&["json", "markdown", "markdown.inline"]);
+    let work = tempfile::tempdir().unwrap();
+    let folder = folder_with_a_broken_markdown_inline(work.path());
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = plum_from_folder(data_tmp.path(), &folder);
+
+    type_cmd(&mut ed, ":plum-install-grammar markdown");
+
+    for name in ["markdown.inline", "markdown"] {
+        assert!(!installed(data_tmp.path(), name), "{name}: {}", log(&ed));
+    }
+    assert!(markdown_skipped(&ed), "{}", log(&ed));
+}
+
 /// A release index download that writes part of its output and then fails
 /// fails the install and leaves no temp file.
 #[test]
@@ -915,8 +970,10 @@ fn an_unreadable_index_fails_cleanly() {
     type_cmd(&mut ed, ":plum-install-grammar json");
 
     let expected = format!(
-        "cannot fetch the treesitter.hume {} grammar index",
-        release_tag()
+        "PLUM: install failed: cannot fetch the treesitter.hume {} grammar index for {}: \
+         stream did not contain valid UTF-8",
+        release_tag(),
+        platform()
     );
     assert!(log(&ed).contains(&expected), "{}", log(&ed));
     assert_eq!(staging_leftovers(data_tmp.path()), Vec::<String>::new());

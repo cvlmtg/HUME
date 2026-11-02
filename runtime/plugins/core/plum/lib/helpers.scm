@@ -1,7 +1,19 @@
 ;;; core:plum/lib/helpers.scm
 
-(provide plum/batch-run! plum/two-level-repos
+(provide plum/msg plum/report-failure! plum/batch-run! plum/two-level-repos
          plum/staging-dir plum/github-url plum/staged-install! plum/install-repo! plum/git-sync!)
+
+;; ── Messages ──────────────────────────────────────────────────────────────────
+
+;;; A line PLUM logs or prints; see docs/architecture.md's "Shared module".
+(define (plum/msg . parts)
+  (apply string-append "PLUM: " parts))
+
+;;; Runs `thunk`, logging an error it raises as `what` having failed.
+(define (plum/report-failure! what thunk)
+  (with-handler
+    (lambda (err) (log! 'error (plum/msg what " failed: " (error-text err))))
+    (thunk)))
 
 ;; ── Two-level repo discovery ──────────────────────────────────────────────────
 
@@ -19,8 +31,7 @@
                                    (call! "stdlib/list-subdirs" udir)))))
                   (call! "stdlib/list-subdirs" root)))))
 
-;; ── Process spawning ──────────────────────────────────────────────────────────
-;; See docs/architecture.md's "Output model" and `hume_platform::process::run_inline_output`'s own doc.
+;; ── Clone and checkout ────────────────────────────────────────────────────────
 
 (define (plum/github-url slug)
   (string-append "https://github.com/" slug ".git"))
@@ -69,6 +80,7 @@
                                                        "unambiguous and on a branch or tag")))
                              "FETCH_HEAD")))))
 
+;;; See docs/architecture.md's "Output model".
 (define (plum/git! dir args)
   (run-inline-output! "git" args #:cwd dir))
 
@@ -96,26 +108,31 @@
 
 ;; ── Batch runner ──────────────────────────────────────────────────────────────
 
-;;; Runs `thunk` on each of `names`, collecting errors rather than aborting.
-(define (plum/batch-run! verb names thunk #:progress [progress #f])
-  (let loop ((names names) (ok 0) (errs '()))
-    (cond
-      ((null? names)
-       (log! 'info
-             (string-append "PLUM: "
-                            (number->string ok) " " verb
-                            " — "
-                            (number->string (length errs)) " failed"))
-       (for-each (lambda (e) (log! 'error e)) (reverse errs))
-       ok)
-      (else
-       (let ((name (car names)))
-         ;; See docs/architecture.md's "Output model".
-         (when progress (progress (string-append "PLUM: " verb " " name)))
-         (with-handler
-           (lambda (err)
-             (loop (cdr names) ok
-                   (cons (string-append "  " name ": " (to-string err)) errs)))
-           (begin
-             (thunk name)
-             (loop (cdr names) (+ ok 1) errs))))))))
+;;; See docs/architecture.md's "Shared module".
+(define (plum/batch-run! verb names thunk #:none [none #f] #:skip [skip #f] #:progress [progress #f])
+  (if (and none (null? names))
+      (begin (log! 'info (plum/msg none)) 0)
+      (let loop ((names names) (ok 0) (failed '()) (errs '()))
+        (cond
+          ((null? names)
+           (log! 'info (plum/msg (number->string ok) " " verb
+                                 " — " (number->string (length errs)) " failed"))
+           (for-each (lambda (e) (log! 'error e)) (reverse errs))
+           ok)
+          (else
+           (let* ((name (car names))
+                  (fail (lambda (reason)
+                          (loop (cdr names) ok (cons name failed)
+                                (cons (plum/msg name ": " reason) errs))))
+                  (skipped (and skip (skip name failed))))
+             (if skipped
+                 (fail skipped)
+                 (begin
+                   ;; See docs/architecture.md's "Output model".
+                   (when progress (print! (plum/msg progress " " name)))
+                   (let ((reason (with-handler (lambda (err) (error-text err))
+                                   (thunk name)
+                                   #f)))
+                     (if reason
+                         (fail reason)
+                         (loop (cdr names) (+ ok 1) failed errs)))))))))))

@@ -66,10 +66,12 @@ Markdown buffer also installs `markdown.inline`.
 
 ## Grammar install pipeline
 
-`:plum-install-grammar` installs one grammar and `plum/ensure-grammars` a batch, both
-through `plum/served-plan`, which first checks that every grammar of the plan has a source,
-so a grammar no source serves installs nothing. Each command reads the release index at most
-once.
+`:plum-install-grammar` installs one grammar and `plum/ensure-grammars` a batch, each from
+the plan `plum/served-plan` resolves before anything installs, so a grammar no source serves
+installs nothing (see [Grammar source](#grammar-source)). Both install the plan through
+`plum/install-plan!`, which goes on past a grammar that fails and skips each grammar a
+dependency of which failed or was skipped, so Markdown never installs without
+`markdown.inline`. Each failed or skipped grammar is logged as `PLUM: <language>: <reason>`.
 
 Each install of a grammar gets its own folder, `<data>/grammars/<language>/<install>/`, and the
 newest one marked `checked` is the grammar in use. An install never renames or deletes a
