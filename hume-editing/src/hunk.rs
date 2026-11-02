@@ -7,7 +7,7 @@ use std::ops::Range;
 
 use hume_rope::column::CharCol;
 use hume_rope::line::{ContentLine, RopeyLine};
-use hume_rope::lines::strip_line_break;
+use hume_rope::lines::{shared_line_ends, strip_line_break};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::changeset::{ChangeSet, EditedRegion};
@@ -235,7 +235,9 @@ fn group_hunk(
 /// The line hunks of `new` against `old`, `Equal` runs dropped. Both texts
 /// are buffer content, so a caller holding a raw string normalizes it through
 /// [`BufferText::from`]: line endings become LF and a missing final newline
-/// is added, so a ref blob without one shows no phantom trailing hunk.
+/// is added, so a ref blob without one shows no phantom trailing hunk. Only
+/// what lies between the lines both texts start and end with is split and
+/// diffed ([`shared_line_ends`]).
 ///
 /// Word spans come from a word diff of each hunk's two sides joined by line
 /// breaks, so an edit is marked where it is whatever the line counts on
@@ -246,8 +248,9 @@ pub fn text_hunks(old: &BufferText, new: &BufferText) -> Vec<ChangeHunk> {
 
 /// [`text_hunks`] with an explicit word budget.
 fn text_hunks_within(old: &BufferText, new: &BufferText, budget: usize) -> Vec<ChangeHunk> {
-    let old_tokens: Vec<Cow<'_, str>> = old.line_tokens().collect();
-    let new_tokens: Vec<Cow<'_, str>> = new.line_tokens().collect();
+    let ends = shared_line_ends(old.rope(), new.rope());
+    let old_tokens: Vec<Cow<'_, str>> = old.line_tokens_in(ends.old_middle).collect();
+    let new_tokens: Vec<Cow<'_, str>> = new.line_tokens_in(ends.new_middle).collect();
     let mut left = budget;
     diff_lines(&old_tokens, &new_tokens)
         .into_iter()
@@ -260,11 +263,11 @@ fn text_hunks_within(old: &BufferText, new: &BufferText, budget: usize) -> Vec<C
              }| {
                 let old_lines = token_lines(&old_tokens, old_range.clone());
                 let new_lines = token_lines(&new_tokens, new_range.clone());
-                // The phantom trailing line is an empty token on both sides, so it
-                // only ever matches as `Equal`: a start is a content line or the
+                // Each middle ends in an empty token, on both sides, so it only
+                // ever matches as `Equal`: a start is a content line or the
                 // one-past-last insertion point.
-                let old_start = ContentLine::new(old_range.start);
-                let new_start = ContentLine::new(new_range.start);
+                let old_start = ContentLine::new(ends.lines + old_range.start);
+                let new_start = ContentLine::new(ends.lines + new_range.start);
                 ChangeHunk {
                     old_start,
                     new_start,

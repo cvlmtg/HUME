@@ -239,6 +239,39 @@ fn words_of(old: &str, new: &str) -> WordSpans {
         .expect("a test hunk fits the word budget")
 }
 
+/// Each hunk's new lines are the new text's lines at its start, and replaying
+/// the hunks over the new text gives the old one, for edits at either end, in
+/// the middle, among repeated lines, and in texts many chunks long.
+#[test]
+fn text_hunks_replay_the_new_text_into_the_old() {
+    let long: String = (0..3_000).map(|i| format!("line {i} ✓\n")).collect();
+    let pairs = [
+        ("a\nb\nc\n".to_string(), "a\nB\nc\n".to_string()),
+        ("b\nc\n".to_string(), "a\nb\nc\n".to_string()),
+        ("a\nb\n".to_string(), "a\nb\nc\n".to_string()),
+        ("a\na\n".to_string(), "a\na\na\n".to_string()),
+        ("a\na\na\n".to_string(), "a\na\n".to_string()),
+        ("x\n".to_string(), "y\n".to_string()),
+        (long.clone(), long.replace("line 1500 ✓\n", "changed\n")),
+        (long.clone(), long.replace("line 0 ✓\n", "")),
+        (long.clone(), format!("{long}tail\n")),
+        (long.clone(), long.replace("line 7", "LINE 7")),
+    ];
+    for (old, new) in pairs {
+        let hunks = text_of(&old, &new);
+        let new_lines = lines_of(&new);
+        for h in &hunks {
+            let start = h.new_start.index();
+            assert_eq!(
+                new_lines[start..start + h.new_lines.len()],
+                h.new_lines[..],
+                "{h:?}"
+            );
+        }
+        assert_eq!(replay(&new, &hunks), lines_of(&old));
+    }
+}
+
 #[test]
 fn text_hunks_drop_equal_runs() {
     assert_eq!(text_of("a\nb\nc\n", "a\nb\nc\n"), Vec::new());

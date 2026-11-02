@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use super::*;
 use crate::column::BufferLineCol;
 use crate::test_support::rope;
@@ -476,9 +478,77 @@ fn line_token_strs_are_the_tokens_rope_lines_yields() {
     for text in texts {
         let rope = Rope::from_str(&text);
         let expected: Vec<String> = rope.lines().map(String::from).collect();
-        let actual: Vec<String> = line_token_strs(&rope).map(String::from).collect();
+        let actual: Vec<String> = line_token_strs(rope.slice(..)).map(String::from).collect();
         assert_eq!(actual, expected, "chunks: {}", rope.chunks().count());
     }
+}
+
+// ── shared_line_ends ────────────────────────────────────────────────────────
+
+fn ends(old: &str, new: &str) -> SharedLineEnds {
+    shared_line_ends(&Rope::from_str(old), &Rope::from_str(new))
+}
+
+fn shared(lines: usize, old_middle: Range<usize>, new_middle: Range<usize>) -> SharedLineEnds {
+    SharedLineEnds {
+        lines,
+        old_middle,
+        new_middle,
+    }
+}
+
+#[test]
+fn shared_line_ends_leave_out_the_lines_around_a_changed_one() {
+    assert_eq!(ends("a\nb\nc\n", "a\nB\nc\n"), shared(1, 2..4, 2..4));
+}
+
+#[test]
+fn shared_line_ends_of_equal_texts_leave_empty_middles() {
+    assert_eq!(ends("a\nb\n", "a\nb\n"), shared(2, 4..4, 4..4));
+}
+
+#[test]
+fn shared_line_ends_of_an_appended_line() {
+    assert_eq!(ends("a\n", "a\nb\n"), shared(1, 2..2, 2..4));
+}
+
+/// The first line of a shared tail is kept in the middle: the byte before it
+/// is the text start in one text and a line break in the other.
+#[test]
+fn shared_line_ends_keep_a_tail_line_whose_start_differs() {
+    assert_eq!(ends("b\n", "a\nb\n"), shared(0, 0..2, 0..4));
+}
+
+/// A change inside a line keeps the whole line, though bytes on both sides
+/// of the change match.
+#[test]
+fn shared_line_ends_snap_to_whole_lines() {
+    assert_eq!(ends("ab\ncd\n", "aXb\ncd\n"), shared(0, 0..3, 0..4));
+}
+
+/// The shared head and tail never overlap: with repeated lines the tail is
+/// cut back to what follows the head.
+#[test]
+fn shared_line_ends_do_not_count_a_line_twice() {
+    assert_eq!(ends("a\na\n", "a\na\na\n"), shared(2, 4..4, 4..6));
+}
+
+#[test]
+fn shared_line_ends_compare_across_chunks() {
+    let lines: Vec<String> = (0..3_000).map(|i| format!("line {i} ✓\n")).collect();
+    let old: String = lines.concat();
+    let mut edited = lines.clone();
+    edited[1_500] = "changed ✓\n".to_string();
+    let new: String = edited.concat();
+    let start: usize = lines[..1_500].iter().map(String::len).sum();
+    assert_eq!(
+        ends(&old, &new),
+        shared(
+            1_500,
+            start..start + lines[1_500].len(),
+            start..start + edited[1_500].len()
+        )
+    );
 }
 
 // ── line_token_content ──────────────────────────────────────────────────────

@@ -149,7 +149,7 @@ fn from_str_trailing_newline() {
 #[test]
 fn line_tokens_count_matches_ropey_line_count_and_keeps_terminators() {
     let text = BufferText::from("a\nb\n");
-    let tokens: Vec<_> = text.line_tokens().collect();
+    let tokens: Vec<_> = text.line_tokens_in(..).collect();
     assert_eq!(tokens.len(), text.ropey_line_count().get());
     assert_eq!(tokens, vec!["a\n", "b\n", ""]);
 }
@@ -163,13 +163,16 @@ fn line_tokens_treats_every_non_lf_break_char_as_content() {
     // recognizing it.
     let text = BufferText::from("a\u{0C}b\n");
     assert_eq!(
-        text.line_tokens().collect::<Vec<_>>(),
+        text.line_tokens_in(..).collect::<Vec<_>>(),
         vec!["a\u{0C}b\n", ""]
     );
 
     let cr = BufferText::from("a\rb\n");
     assert_eq!(cr.to_string(), "a\nb\n");
-    assert_eq!(cr.line_tokens().collect::<Vec<_>>(), vec!["a\n", "b\n", ""]);
+    assert_eq!(
+        cr.line_tokens_in(..).collect::<Vec<_>>(),
+        vec!["a\n", "b\n", ""]
+    );
 }
 
 #[test]

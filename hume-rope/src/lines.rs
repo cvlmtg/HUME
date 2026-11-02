@@ -6,6 +6,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::borrow::Cow;
+use std::ops::Range;
 
 use ropey::iter::Chunks;
 use ropey::{Rope, RopeSlice};
@@ -125,14 +126,14 @@ pub fn line_tokens_back_from(
     rope.lines_at(line_idx.index() + 1).reversed()
 }
 
-/// Every line token of `rope`, the ones [`line_tokens_at`] yields from line 0,
-/// as text: borrowed where a line lies inside one rope chunk, copied where it
+/// Every line token of `text`, the ones `Rope::lines()` yields, as text:
+/// borrowed where a line lies inside one rope chunk, copied where it
 /// straddles chunks. A whole-text line diff splits with this, since walking
 /// chunks is several times faster than `Rope::lines()` and a `&str` hashes and
 /// compares faster than a `RopeSlice`.
-pub fn line_token_strs(rope: &Rope) -> LineTokenStrs<'_> {
+pub fn line_token_strs(text: RopeSlice<'_>) -> LineTokenStrs<'_> {
     LineTokenStrs {
-        chunks: rope.chunks(),
+        chunks: text.chunks(),
         rest: "",
         done: false,
     }
@@ -181,6 +182,110 @@ impl<'a> Iterator for LineTokenStrs<'a> {
                 }
             }
         }
+    }
+}
+
+/// What lies between the whole lines two texts both start and end with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedLineEnds {
+    /// Lines both texts start with.
+    pub lines: usize,
+    /// The byte range of each text after its shared head and before its
+    /// shared tail.
+    pub old_middle: Range<usize>,
+    pub new_middle: Range<usize>,
+}
+
+/// The whole lines `old` and `new` both start and end with, found by comparing
+/// their chunks byte for byte, so a line diff of the two only needs to split
+/// and diff the middles. A middle starts at a line start and ends after a
+/// line break or at its text's end, so its [`line_token_strs`] are whole lines
+/// of the text, then an empty token.
+pub fn shared_line_ends(old: &Rope, new: &Rope) -> SharedLineEnds {
+    let head = shared_len(
+        Edge::Start,
+        old.chunks().map(str::as_bytes),
+        new.chunks().map(str::as_bytes),
+    );
+    let lines = old.byte_to_line(head);
+    let start = old.line_to_byte(lines);
+    let (old_len, new_len) = (old.len_bytes(), new.len_bytes());
+    let tail = shared_len(
+        Edge::End,
+        old.chunks_at_byte(old_len).0.reversed().map(str::as_bytes),
+        new.chunks_at_byte(new_len).0.reversed().map(str::as_bytes),
+    )
+    .min(old_len.min(new_len) - start);
+    // The shared tail's whole lines begin after its first line break: the
+    // byte before the tail differs, so the line it is in may start
+    // differently in the two texts.
+    let whole_tail = old
+        .byte_slice(old_len - tail..)
+        .bytes()
+        .position(|b| b == b'\n')
+        .map_or(0, |at| tail - at - 1);
+    SharedLineEnds {
+        lines,
+        old_middle: start..old_len - whole_tail,
+        new_middle: start..new_len - whole_tail,
+    }
+}
+
+/// Which end of two texts [`shared_len`] compares from.
+#[derive(Clone, Copy)]
+enum Edge {
+    Start,
+    End,
+}
+
+/// How many bytes two chunked texts share from one end, given their chunks
+/// in the order that end reaches them.
+fn shared_len<'a>(
+    from: Edge,
+    mut old: impl Iterator<Item = &'a [u8]>,
+    mut new: impl Iterator<Item = &'a [u8]>,
+) -> usize {
+    // `n` bytes of `chunk` at the compared end, and the rest of it.
+    let split = |chunk: &'a [u8], n: usize| match from {
+        Edge::Start => {
+            let (near, rest) = chunk.split_at(n);
+            (near, rest)
+        }
+        Edge::End => {
+            let (rest, near) = chunk.split_at(chunk.len() - n);
+            (near, rest)
+        }
+    };
+    let (mut a, mut b): (&[u8], &[u8]) = (&[], &[]);
+    let mut shared = 0;
+    loop {
+        if a.is_empty() {
+            match old.next() {
+                Some(chunk) => a = chunk,
+                None => return shared,
+            }
+            continue;
+        }
+        if b.is_empty() {
+            match new.next() {
+                Some(chunk) => b = chunk,
+                None => return shared,
+            }
+            continue;
+        }
+        let n = a.len().min(b.len());
+        let ((a_near, a_rest), (b_near, b_rest)) = (split(a, n), split(b, n));
+        if a_near != b_near {
+            let pairs = a_near.iter().zip(b_near);
+            return shared
+                + match from {
+                    Edge::Start => pairs.take_while(|(x, y)| x == y).count(),
+                    Edge::End => pairs.rev().take_while(|(x, y)| x == y).count(),
+                };
+        }
+        shared += n;
+        a = a_rest;
+        b = b_rest;
     }
 }
 

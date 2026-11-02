@@ -10,7 +10,9 @@
 //! Memory cost of the *stored* inverse ≈ size of the changed lines only, not
 //! the full buffer. This is what lets `:e!` reload record a normal undo step
 //! without a coarse delete-all + insert-all that doubles buffer memory.
-//! [`BufferText::line_tokens`] borrows each line from the rope wherever it
+//! Only what lies between the lines both texts start and end with is split
+//! and diffed ([`shared_line_ends`]): the lines around it are retained.
+//! [`BufferText::line_tokens_in`] borrows each line from the rope wherever it
 //! can, and the diff only ever compares and counts them, so changed lines get materialized
 //! once, when [`build_changesets`] re-slices them from `old`/`new`;
 //! `LineHunkKind` carries no payload of its own, only the line-index ranges.
@@ -24,6 +26,7 @@ use std::ops::Range;
 
 use std::borrow::Cow;
 
+use hume_rope::lines::shared_line_ends;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::diff::{LineHunk, LineHunkKind, diff_lines};
@@ -42,8 +45,9 @@ use super::{ChangeSet, ChangeSetBuilder};
 /// The caller still owns the `BufferText` mutation; this helper only produces the
 /// `ChangeSet`s, it does not touch either buffer.
 pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeSet, ChangeSet) {
-    let (old_tokens, old_offsets) = tokens_with_offsets(old);
-    let (new_tokens, new_offsets) = tokens_with_offsets(new);
+    let ends = shared_line_ends(old.rope(), new.rope());
+    let (old_tokens, old_offsets) = tokens_with_offsets(old, ends.old_middle.clone());
+    let (new_tokens, new_offsets) = tokens_with_offsets(new, ends.new_middle.clone());
 
     let hunks = diff_lines(&old_tokens, &new_tokens);
 
@@ -52,16 +56,16 @@ pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeS
             .last()
             .copied()
             .expect("tokens_with_offsets always pushes the trailing sentinel"),
-        old.end(),
-        "old token char count must equal rope len_chars",
+        char_at_byte(old, ends.old_middle.end),
+        "old token char count must end at the old middle's end",
     );
     debug_assert_eq!(
         new_offsets
             .last()
             .copied()
             .expect("tokens_with_offsets always pushes the trailing sentinel"),
-        new.end(),
-        "new token char count must equal rope len_chars",
+        char_at_byte(new, ends.new_middle.end),
+        "new token char count must end at the new middle's end",
     );
 
     build_changesets(old, new, &hunks, &old_offsets, &new_offsets)
@@ -70,8 +74,9 @@ pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeS
 /// Walk the line-diff hunks and emit the `(forward, inverse)` `ChangeSet` pair.
 ///
 /// `old_offsets` / `new_offsets` are the cumulative char-offset tables over
-/// each side's line tokens (length `tokens.len() + 1`, last entry == buffer
-/// `len_chars`). Using token-derived offsets (not `BufferText::line_to_char`) keeps
+/// each side's middle line tokens (length `tokens.len() + 1`): the first
+/// entry is where the middle starts, the last where it ends. The shared lines
+/// before the middle are retained first and the ones after it by `finish`. Using token-derived offsets (not `BufferText::line_to_char`) keeps
 /// the hunk end at `ropey_line_count()` (the trailing empty token) panic-free
 /// and keeps the forward/inverse cursors byte-for-byte aligned with the rope.
 fn build_changesets(
@@ -83,6 +88,8 @@ fn build_changesets(
 ) -> (ChangeSet, ChangeSet) {
     let mut fwd = ChangeSetBuilder::new(old.end());
     let mut inv = ChangeSetBuilder::new(new.end());
+    fwd.retain_to(old_offsets[0]);
+    inv.retain_to(new_offsets[0]);
 
     let span = |offsets: &[CharOffset], range: &Range<usize>| {
         offsets[range.end].chars_since(offsets[range.start])
@@ -125,27 +132,34 @@ fn build_changesets(
     (fwd.finish(), inv.finish())
 }
 
-/// [`BufferText::line_tokens`] plus the cumulative char offset of each token (with
-/// a trailing sentinel): `offsets[i]` is the char offset where token `i`
-/// starts and `offsets[tokens.len()]` is the total char count, matching
-/// `text.len_chars()`. `build_changesets` needs both: the tokens to diff,
-/// the offsets to translate a hunk's line-index range back to a char range
-/// into the rope.
-fn tokens_with_offsets(text: &BufferText) -> (Vec<Cow<'_, str>>, Vec<CharOffset>) {
-    let mut tokens = Vec::with_capacity(text.ropey_line_count().get());
-    let mut offsets = Vec::with_capacity(text.ropey_line_count().get() + 1);
-    offsets.push(CharOffset::new(0));
+/// The line tokens of `text`'s bytes `middle` plus the char offset in `text`
+/// of each token (with a trailing sentinel): `offsets[i]` is where token `i`
+/// starts and `offsets[tokens.len()]` where the middle ends.
+/// `build_changesets` needs both: the tokens to diff, the offsets to
+/// translate a hunk's line-index range back to a char range into the rope.
+fn tokens_with_offsets(
+    text: &BufferText,
+    middle: Range<usize>,
+) -> (Vec<Cow<'_, str>>, Vec<CharOffset>) {
+    let start = char_at_byte(text, middle.start);
+    let mut tokens = Vec::new();
+    let mut offsets = vec![start];
     // Raw `usize` accumulator, minted to `CharOffset` only once each running
     // total is complete, the same "trusted mint" shape as an ASCII delimiter
     // scan's own loop variable: `char_acc` never appears anywhere as a
     // position in its own right until it's pushed.
-    let mut char_acc = 0usize;
-    for token in text.line_tokens() {
+    let mut char_acc = start.index();
+    for token in text.line_tokens_in(middle) {
         char_acc += token.chars().count();
         offsets.push(CharOffset::new(char_acc));
         tokens.push(token);
     }
     (tokens, offsets)
+}
+
+/// The char offset of byte `byte`, a line start or the text's end.
+fn char_at_byte(text: &BufferText, byte: usize) -> CharOffset {
+    CharOffset::new(text.rope().byte_to_char(byte))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
