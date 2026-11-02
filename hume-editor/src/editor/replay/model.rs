@@ -14,10 +14,9 @@ use crate::editor::keymap::CanonicalKey;
 /// The user's choice at one interactive input: a character read, a picker,
 /// a prompt or a menu. Its place is taken when the input opens, so answers
 /// stay in the order their inputs opened, which is the order a re-run opens
-/// them in; it is filled when the input resolves. Handed back to the same
-/// input when `.` re-runs the command or binding that opened it, which then
-/// never waits for the user. What the command does with the
-/// choice is decided again at the new cursor.
+/// them in; it is filled when the input resolves. `.` hands it back to the
+/// same input, which then never waits for the user; what the command does
+/// with the choice is decided again at the new cursor.
 #[derive(Debug, Clone)]
 pub(crate) enum Answer {
     /// A character: a native operand (`r`/`f`/`t`/`surround-add`) or an
@@ -110,11 +109,9 @@ impl Choice {
 /// One Insert-session input a change consumed, in arrival order.
 ///
 /// `.` replays a change by re-running its command and then re-feeding each
-/// transcript entry into the funnel live input goes through, never by
-/// inferring, after a dispatch, what it turned out to do. The one exception
-/// is a completion accept ([`Input::Result`]), recorded as its own net
-/// cursor edit, since it hands no choice to a callback that could take it
-/// again.
+/// entry into the funnel live input goes through. A completion accept
+/// ([`Input::Result`]) is the exception, recorded as its net cursor edit,
+/// since it hands no choice to a callback that could take it again.
 #[derive(Debug, Clone)]
 pub(crate) enum Input {
     /// A key with no Insert keymap binding: one run of its *default*
@@ -164,19 +161,16 @@ pub(crate) struct CursorReplacement {
 pub(crate) struct RepeatableAction {
     /// The command name that began this change (e.g. `"delete"`, `"change"`).
     pub command: Rc<str>,
-    /// The count prefix the change ran with. Overridden when `.` itself is given a
-    /// count.
+    /// The count prefix the change ran with. A count given to `.` overrides
+    /// it.
     pub count: Count,
-    /// Selection-building recipe to replay BEFORE the command.
-    ///
-    /// `[]` (the command acted on a pre-existing selection), or a sequence of
-    /// `Establishes`/`Composes` steps; see `SelectionTracking`. Taken from
-    /// `EditorState::selection_recipe` when the change starts.
+    /// Selection-building steps replayed before the command, taken from
+    /// `EditorState::selection_recipe` when the change starts. Empty when the
+    /// command acted on an existing selection.
     pub selection_recipe: Vec<SelectionStep>,
     /// The answers the command's own interactive inputs got, in the order
-    /// their inputs opened. See [`Answer`].
+    /// their inputs opened.
     pub answers: Vec<Answer>,
     /// Every Insert-session input the change consumed, in arrival order.
-    /// See [`Input`].
     pub transcript: Vec<Input>,
 }

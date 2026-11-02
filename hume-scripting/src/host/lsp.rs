@@ -69,9 +69,9 @@ impl SupersedeKeys {
 /// LSP server introspection, accessed through [`EditorHost::lsp`](super::EditorHost::lsp).
 pub trait LspHost {
     /// `server`'s wire `ServerCapabilities`, or `None` if it is no longer
-    /// running or has not finished its handshake. `Arc`-wrapped so the
-    /// `JsonHandle` `(lsp-capabilities …)` hands Steel shares this
-    /// allocation instead of a value rebuilt per call.
+    /// running or has not finished its handshake. Shared through `Arc` so
+    /// the `JsonHandle` `(lsp-capabilities …)` returns is not rebuilt per
+    /// call.
     fn lsp_capabilities(&self, server: ServerId) -> Option<Arc<serde_json::Value>>;
 
     /// What `server` advertises for `feature`, or for the one capability
@@ -153,24 +153,19 @@ pub trait LspHost {
     /// range the primary selection covers.
     fn lsp_primary_range_params(&self, pane: ShownHandle) -> Result<RangeParams, String>;
 
-    /// One range per *linewise* selection in `pane`'s pane, coalescing
-    /// any run of selections that touch end-to-end into a single range (an
-    /// LSP range is naturally contiguous, so a touching run needs no
-    /// splitting). A non-linewise selection is skipped, not an error:
-    /// `ranges` is empty when none of the selections are linewise.
+    /// One range per linewise selection in `pane`'s pane, with a run of
+    /// selections that touch end to end coalesced into one range. A
+    /// non-linewise selection is skipped, not an error, so `ranges` is empty
+    /// when no selection is linewise.
     fn lsp_linewise_ranges_params(&self, pane: ShownHandle) -> Result<RangesParams, String>;
 
-    /// A wire `[start, end)` range → char offsets, decoded in `encoding`.
-    /// Backs `lsp-range->char-range`. `encoding` comes from the caller's own
-    /// tagged `JsonHandle` (the response the range was read out of), not
-    /// from `id`'s *currently* attached server: the two can diverge (a
-    /// restart renegotiates, a detach leaves none), and the tag is always
-    /// the encoding the range was actually written in. `None` when the range
-    /// cannot be converted for `id`: an end is on a line past the document
-    /// end, which names no offset, or `id` is unknown. A `character` past its
-    /// line's end clamps, and an end may sit at the document end
-    /// `(line count, 0)`; point-anchored callers want
-    /// [`lsp_wire_point_to_char`](Self::lsp_wire_point_to_char).
+    /// A wire `[start, end)` range → char offsets, decoded in `encoding`, for
+    /// `lsp-range->char-range`. `encoding` is the tag of the handle the range
+    /// was read from, not `id`'s current server's, which a restart or detach
+    /// can change. `None` when an end is on a line past the document end, or
+    /// `id` is unknown. A `character` past its line's end clamps, and an end
+    /// may sit at the document end `(line count, 0)`; point-anchored callers
+    /// want [`lsp_wire_point_to_char`](Self::lsp_wire_point_to_char).
     fn lsp_wire_range_to_chars(
         &self,
         id: BufferId,
@@ -179,12 +174,10 @@ pub trait LspHost {
     ) -> Option<(usize, usize)>;
 
     /// A wire position → char offset, decoded in `encoding`, for
-    /// `lsp-position->char-offset`. A point must lie on a content line:
-    /// `None` when the position would land on the buffer's trailing phantom
-    /// line or past it, since every point-anchored decoration setter
-    /// (`set-inlay-hints!`) rejects that offset outright, or when `id` is
-    /// unknown. See `wire_point_to_char_for_buffer`'s doc for why a point and
-    /// a range differ.
+    /// `lsp-position->char-offset`. `None` when the position lands on the
+    /// buffer's trailing phantom line or past it, an offset every
+    /// point-anchored decoration setter (`set-inlay-hints!`) rejects, or when
+    /// `id` is unknown.
     fn lsp_wire_point_to_char(
         &self,
         id: BufferId,
@@ -192,44 +185,25 @@ pub trait LspHost {
         encoding: PositionEncoding,
     ) -> Option<usize>;
 
-    /// `(lsp-locations->places locs)`: the filesystem path, wire
-    /// line, and column of each raw `Location`/`LocationLink` handle in
-    /// `locs`, decoded through the same `hume_lsp::location::decode_location`
-    /// `goto-location!` uses. Backs `lsp/place-display`'s drawer rows:
-    /// `goto-location!` already converts wire positions correctly for the
-    /// *jump*; this is the display-side counterpart.
+    /// `(lsp-locations->places locs)`: the path, wire line and column of each
+    /// `Location`/`LocationLink` handle in `locs`, for `lsp/place-display`'s
+    /// drawer rows. Decoded through `hume_lsp::location::decode_location`,
+    /// as `goto-location!` decodes the jump, each handle in its own
+    /// producing-server encoding, so one batch may mix responses. The column
+    /// is a grapheme column when the target has an open buffer and the wire
+    /// `character` otherwise (see [`PlaceCol::Wire`]).
     ///
-    /// The column is an exact grapheme column when the target has an open
-    /// buffer, and otherwise the location's own wire `character` verbatim. See
-    /// [`PlaceCol::Wire`] for why that last case is the one sanctioned
-    /// exception to "never render a wire unit directly".
+    /// One entry per input location, in order, never merged. A location
+    /// `goto-location!` cannot jump to (a non-`file://` URI, or a line past
+    /// the content of the file's open buffer) is [`LocationPlace::Skipped`].
+    /// Path, line and column come from one decode, so a row's prefix always
+    /// names the position its column was read from.
     ///
-    /// One entry per input location, in order, and entries are not merged:
-    /// whether two locations are the same place is the caller's policy. A
-    /// location with no place `goto-location!` can jump to (a URI that is
-    /// not a `file://` one, or a line past the content of the file's open
-    /// buffer) is [`LocationPlace::Skipped`].
-    ///
-    /// The path and line ride along with the column because all three come
-    /// from one decode: reading `range.start.line` a second time in Scheme
-    /// to render the row prefix is how a row ends up naming a position that
-    /// doesn't match the one its column was read from. Each handle comes
-    /// paired with its own producing-server encoding (same rationale
-    /// `GotoTarget::Wire` uses for the actual jump), so a batch built from
-    /// locations spanning more than one response decodes each correctly
-    /// rather than assuming they share one server.
-    ///
-    /// `Err` (aborting the whole batch, not just one row) only for a
-    /// location whose shape can't be decoded at all (missing `uri`/`range`,
-    /// a malformed `file://` URI, or untagged): such a location names no
-    /// destination `goto-location!` could reach either, so a drawer row for it
-    /// would be unselectable. Degrading only this builtin wouldn't
-    /// help either: the same malformed location would still abort three
-    /// lines later inside `lsp/place-display`, which is why both routes
-    /// decode through the one shared `decode_location` instead of
-    /// tolerating a bad shape here. See `decode_location`'s doc for the
-    /// full rule. The error does not name a builtin: the builtin that called
-    /// this adds its own name.
+    /// `Err`, aborting the whole batch, only for a location that cannot be
+    /// decoded at all (missing `uri`/`range`, a malformed `file://` URI, or
+    /// untagged): it names no destination, and `lsp/place-display` would
+    /// abort on it too. The error does not name a builtin; the calling
+    /// builtin adds its own name.
     fn lsp_location_places(
         &self,
         locs: &[(crate::json::JsonHandle, PositionEncoding)],
@@ -246,16 +220,15 @@ pub enum LocationPlace {
     Skipped,
 }
 
-/// A [`Place`]'s 0-based column. A measured column always names the open
-/// buffer it was measured on, so a grapheme column without a buffer cannot be
-/// built.
+/// A [`Place`]'s 0-based column. A grapheme column always names the open
+/// buffer it was measured on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlaceCol {
     /// The grapheme column measured on the open buffer's current text.
     Grapheme { buffer: BufferId, col: GraphemeCol },
     /// The location's own wire `character`, shown verbatim for a target with
-    /// no open buffer (the file is never read to refine it). The one
-    /// sanctioned wire-unit display in CLAUDE.md's "Line/buffer columns".
+    /// no open buffer rather than reading the file to convert it. The only
+    /// wire unit the editor displays.
     Wire { character: usize },
 }
 

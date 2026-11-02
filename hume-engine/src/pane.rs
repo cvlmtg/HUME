@@ -15,37 +15,23 @@ use ropey::Rope;
 /// The scroll state of one pane's viewport. Its size is a
 /// [`PaneSize`](crate::pipeline::PaneSize) read from the screen's layout.
 ///
-/// `top` is `pub(crate)`, not `pub`: every write to it from outside this
-/// crate goes through one of the scroll verbs in
-/// [`crate::display_lines::scroll`] (`scroll_by`/`reveal`/`align`), the
-/// single write API for a pane's scroll position, so no caller resolves a
-/// `DisplayLinePos` address independently of it. `DisplayLinePos::slot` is a
-/// raw `usize`, unnarrowed: nothing needs a slot past a display-line count
-/// no real terminal or document reaches.
+/// `top` is written from outside this crate only through the scroll verbs
+/// in [`crate::display_lines::scroll`] (`scroll_by`/`reveal`/`align`), so no
+/// caller resolves a `DisplayLinePos` independently of them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Viewport {
     pub(crate) top: DisplayLinePos,
-    /// Horizontal scroll in columns (0 when soft-wrap is on). A document
-    /// column, not a terminal cell. Widened past `u16` alongside
-    /// `Grapheme::display_col` so scrolling isn't ceilinged at column 65535 on an
-    /// unwrapped line.
-    ///
-    /// `pub(crate)`, not `pub`, for the same reason as `top`: the only write
-    /// from outside this crate is "reset to 0" (a wrap-mode change), which
-    /// [`Viewport::reset_horizontal`] covers; every other write is
-    /// [`Viewport::reveal_horizontal`](crate::display_lines::scroll)'s own.
+    /// Horizontal scroll in document columns, not terminal cells (0 when
+    /// soft-wrap is on). Written outside this crate only through
+    /// [`Viewport::reset_horizontal`].
     pub(crate) horizontal_offset: DisplayLineCol,
 }
 
 impl Viewport {
-    /// The viewport's top display-line address: the last one
-    /// [`Viewport::top_at`](crate::display_lines::scroll) resolved it to.
-    ///
-    /// A caller holding a `DisplayLineMap` must call `top_at` instead of this:
-    /// nothing here validates the address against the map's current block
-    /// shape, so a write site that ran since the last resolve (`show_buffer`,
-    /// an LSP jump, `Pane::inherit_view_state`) can leave it stale. This
-    /// accessor exists for readers that hold no map, plus test assertions.
+    /// The viewport's top display-line address as last stored, unvalidated:
+    /// a write since the last [`Viewport::top_at`](crate::display_lines::scroll)
+    /// (`show_buffer`, an LSP jump, `Pane::inherit_view_state`) can leave it
+    /// stale. A caller holding a `DisplayLineMap` calls `top_at` instead.
     pub fn top(&self) -> DisplayLinePos {
         self.top
     }
@@ -55,57 +41,37 @@ impl Viewport {
         self.horizontal_offset
     }
 
-    /// Zero the horizontal scroll offset, for a wrap-mode change, where
-    /// horizontal scroll is meaningless once wrapped and the caller needs
-    /// it zero immediately rather than waiting a frame for
-    /// [`Viewport::reveal_horizontal`](crate::display_lines::scroll) to
-    /// notice the pane is now wrapping.
+    /// Zero the horizontal scroll offset on a wrap-mode change, without
+    /// waiting a frame for
+    /// [`Viewport::reveal_horizontal`](crate::display_lines::scroll).
     pub fn reset_horizontal(&mut self) {
         self.horizontal_offset = DisplayLineCol::new(0);
     }
 
-    /// Seed an arbitrary top, for test fixtures that need a pane to start
-    /// scrolled without exercising the scroll verbs themselves. Not
-    /// `#[cfg(test)]`: `hume-editor`'s own integration tests need this too,
-    /// and cross-crate `cfg(test)` items are invisible to a dependent
-    /// crate's test build (a normal, non-test build of `hume-engine`
-    /// backs it).
-    ///
-    /// Production code never calls this. Every real write goes through a
-    /// scroll verb or `Pane::show_buffer`. An unvalidated address left
-    /// here self-heals on the next `top_at` read, the same posture
-    /// `show_buffer`'s own unvalidated slot write already has.
+    /// Seed an arbitrary top, for test fixtures. Not `#[cfg(test)]` because
+    /// `hume-editor`'s tests use it too. Production never calls it. An
+    /// invalid address heals on the next `top_at` read.
     pub fn seed_top_for_test(&mut self, top: DisplayLinePos) {
         self.top = top;
     }
 
-    /// [`Viewport::seed_top_for_test`]'s counterpart for `horizontal_offset`:
-    /// a test fixture that needs a pane pre-scrolled horizontally without
-    /// driving `reveal_horizontal` to get there.
+    /// [`Viewport::seed_top_for_test`]'s counterpart for `horizontal_offset`.
     pub fn seed_horizontal_offset_for_test(&mut self, horizontal_offset: DisplayLineCol) {
         self.horizontal_offset = horizontal_offset;
     }
 }
 
-/// A nonzero-height viewport's scroll-margin geometry, resolved once per scroll
-/// operation and threaded through every verb in
-/// [`crate::display_lines::scroll`]. [`PaneSize::geometry`](crate::pipeline::PaneSize::geometry) is the sole
-/// constructor, so a verb can never observe `height == 0` or a `target` with
-/// nothing to reach, and [`Viewport::reveal`](crate::display_lines::scroll)
-/// (vertical cursor-follow) and `DisplayLineMap::max_scroll_top` (the
-/// scroll-down bound) can never disagree on `margin`/`target`: both read
-/// them off the same `ViewGeometry`, rather than each computing its own.
-/// That agreement matters because a `Ctrl-d`/wheel scroll to EOF and the
-/// very next ordinary cursor motion share one viewport top.
+/// A nonzero-height viewport's scroll-margin geometry, resolved once per
+/// scroll operation and threaded through every verb in
+/// [`crate::display_lines::scroll`]. Minted only by
+/// [`PaneSize::geometry`](crate::pipeline::PaneSize::geometry), so `height`
+/// is never 0. Cursor-follow (`reveal`) and the scroll-down bound
+/// (`max_scroll_top`) read `margin`/`target` from the same value, so a
+/// `Ctrl-d` to EOF and the next cursor motion agree on the viewport top.
 #[derive(Copy, Clone, Debug)]
 pub struct ViewGeometry {
-    /// A terminal-cell count at its root (`PaneSize::height`), but read in
-    /// three different units depending on the caller: a display-line cap
-    /// (`place_in_band`'s `distance` call), a buffer-line cap (`scroll_by`'s
-    /// `lines_to_end` short-circuit), and a genuine terminal-row cap
-    /// (`PaneSize::geometry`'s own `margin`/`target` derivation). Each
-    /// site reasons about which unit it needs inline; this field commits to
-    /// none of them.
+    /// The pane's height in terminal rows. Callers also use it as a
+    /// display-line or buffer-line cap; each site picks its unit.
     pub(crate) height: usize,
     /// Display lines of look-ahead kept above/below the cursor, clamped so
     /// the two margins can never meet in the middle of an odd-or-even height.
@@ -142,53 +108,33 @@ pub enum WrapMode {
     Indent { width: u16 },
 }
 
-/// The wrapping style used whenever a "sensible default" wrapping mode is
-/// needed but nothing more specific applies: `EditorSettings::wrap_mode`'s
-/// own default, and the last-resort fallback `hume-editor`'s
-/// `pane_state::toggle_focused_wrap` pins to when `:wrap` turns wrapping on
-/// but neither a saved pane pin nor the configured global style would
-/// actually wrap.
+/// The wrapping style used when nothing more specific applies:
+/// `EditorSettings::wrap_mode`'s default, and what `:wrap` pins when neither
+/// a saved pane pin nor the configured style would wrap.
 pub const DEFAULT_WRAP_STYLE: WrapMode = WrapMode::Indent { width: 0 };
 
 /// A pane's wrap-mode override for one buffer: the value type of
 /// `Pane::wraps`.
 ///
-/// Kept per (pane, buffer) rather than flat on `Pane` so the pin follows the
-/// pane's *view of that buffer*, not the pane itself: switching to another
-/// buffer resolves through that buffer's own override/global chain (letting
-/// e.g. a per-language `on-language-set` default take effect), and switching
-/// back restores this pane's pin for it, the same lifetime a saved
-/// `Viewport` has in `saved_scrolls`.
+/// Kept per (pane, buffer) so switching to another buffer resolves through
+/// that buffer's own override/global chain, and switching back restores this
+/// pane's pin, the same lifetime a saved `Viewport` has in `saved_scrolls`.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct WrapOverride {
     /// `None` means no override: the effective mode falls back to the
-    /// buffer's, then the global default (`hume-editor`'s
-    /// `commands::effective_wrap_mode` is the resolver; `hume-engine` has
-    /// no dependency on `hume-editor` and so cannot resolve that chain
-    /// itself). Stored raw (a `width: 0` unresolved) when `Some`, since
-    /// content width depends on live pane geometry.
+    /// buffer's, then the global default (resolved in `hume-editor`). Stored
+    /// unresolved, since content width depends on live pane geometry.
     pub mode: Option<WrapMode>,
-    /// The *override* to restore when `:wrap` turns wrapping back on for
-    /// this buffer. Provenance, not a resolved value: `None` means the pane
-    /// was inheriting (from the buffer/global setting) when it was last
-    /// turned off, so toggling back on returns it to inheriting; `Some(m)`
-    /// means it was explicitly pinned to `m` (`:set pane wrap-mode=…`), so
-    /// toggling back on restores that exact pin. Never `Some(WrapMode::None)`,
-    /// since that would make toggle-on a no-op. Written by both
-    /// `hume-editor`'s `pane_state::toggle_focused_wrap` (the toggle-off
-    /// stash and the "inheriting but the inherited mode doesn't wrap"
-    /// fallback) and `pane_state::set_focused_wrap_override` (synced to the
-    /// pin whenever it wraps); copied across a same-buffer split by
-    /// `inherit_view_state`.
+    /// The override to restore when `:wrap` turns wrapping back on for this
+    /// buffer: `None` returns the pane to inheriting, `Some(m)` restores the
+    /// pin `m`. Never `Some(WrapMode::None)`, which would make toggle-on a
+    /// no-op.
     pub saved: Option<WrapMode>,
 }
 
 impl WrapMode {
-    /// Replace a `width: 0` with `content_width`: the only way to
-    /// get a [`ResolvedWrap`]. `WrapMode::None` and concrete non-zero widths
-    /// pass through unchanged. The effective mode (see `hume-editor`'s
-    /// `commands::effective_wrap_mode`) is raw; content width depends on live
-    /// pane geometry, so it is resolved again on every resize.
+    /// Replace a `width: 0` with `content_width`: the only way to get a
+    /// [`ResolvedWrap`]. Other modes pass through unchanged.
     pub fn resolve(self, content_width: NonZeroU16) -> ResolvedWrap {
         let content_width = content_width.get();
         ResolvedWrap(match self {
@@ -259,28 +205,24 @@ pub enum WhitespaceRender {
 
 /// Configuration for whitespace indicator rendering.
 ///
-/// `PartialEq`/`Eq` so it can sit in `display_lines::line_store`'s scope key: a
-/// whitespace change alters how a line formats, so a cached format from
-/// before the change must not be served after it.
+/// Part of `display_lines::line_store`'s format key, so a whitespace change
+/// invalidates cached formats.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct WhitespaceConfig {
     pub space: WhitespaceRender,
     pub tab: WhitespaceRender,
-    /// Whether to render the newline indicator. A newline is inherently
-    /// always at end-of-line, so unlike `space`/`tab` there is no meaningful
-    /// "trailing vs all" distinction here, just on/off.
+    /// Whether to render the newline indicator. A newline is always
+    /// trailing, so this is on/off only.
     pub newline: bool,
-    /// Character to show in place of a space when rendered. Not
-    /// runtime-configurable: no `:set` key or Steel setter writes it.
+    /// Character to show in place of a space when rendered.
     pub space_char: &'static str,
     /// Character to show at the start of a tab expansion.
     pub tab_char: &'static str,
     /// Character to show in place of a newline when rendered.
     pub newline_char: &'static str,
     /// Character to show in place of an invisible Unicode space (NBSP U+00A0,
-    /// ideographic space U+3000) when rendered. Distinct from `space_char` so
-    /// stray non-breaking spaces stand out from ordinary ones. Gated by the
-    /// `space` render mode, with no separate render axis.
+    /// ideographic space U+3000) when rendered, so stray ones stand out.
+    /// Gated by the `space` render mode.
     pub nbsp_char: &'static str,
 }
 
@@ -307,41 +249,30 @@ pub struct Pane {
     pub(crate) buffer_id: BufferId,
     /// Scroll and size state.
     pub viewport: Viewport,
-    /// Per-buffer scroll memory: where this pane was when it last viewed each buffer.
-    /// Saved and restored by `Pane::show_buffer`.
+    /// Where this pane was when it last viewed each buffer.
     pub saved_scrolls: SecondaryMap<BufferId, Viewport>,
     /// All active selections as the renderer paints them. `None` until the
     /// host writes the first frame's mirror.
     pub selections: Option<PaintedSelections>,
     /// Registered providers for this pane.
     pub providers: ProviderSet,
-    /// This pane's wrap-mode override, per buffer it has shown. A view
-    /// property, not a document one: two panes on the same buffer may wrap
-    /// differently, and this pane may pin a different style per buffer. See
-    /// [`WrapOverride`]. Read/written through [`Pane::wrap`]/[`Pane::set_wrap`]
-    /// rather than directly, as `saved_scrolls` is through `show_buffer`.
+    /// This pane's wrap-mode override, per buffer it has shown. Two panes on
+    /// the same buffer may wrap differently. Read and written through
+    /// [`Pane::wrap`]/[`Pane::set_wrap`].
     pub wraps: SecondaryMap<BufferId, WrapOverride>,
     /// What every walk of this pane's display lines has learned about the
     /// lines it visited; see [`crate::display_lines::line_store`].
     ///
-    /// Per pane rather than one shared store, because two panes can show the
-    /// same buffer at the same width and resolve a bit-identical
-    /// [`FormatKey`](crate::display_lines::line_store::FormatKey): with nothing naming
-    /// the pane in that key, one pane's cache hit would skip querying the
-    /// other's providers entirely. And *every* pane's scroll step runs before
-    /// *any* pane's render pass, so a single store would hold only the last
-    /// pane's lines by the time the first one drew.
-    ///
-    /// On the pane rather than beside it in a `PaneId`-keyed map so its
-    /// lifetime *is* the pane's: closing a pane drops its entries, with no
-    /// sweep for a future pane-close path to remember.
+    /// Per pane because two panes on one buffer at one width resolve the
+    /// same [`FormatKey`](crate::display_lines::line_store::FormatKey), and a
+    /// shared hit would skip the other pane's providers. Every pane's scroll
+    /// step also runs before any pane renders, so one shared store would hold
+    /// only the last pane's lines.
     pub line_store: crate::display_lines::line_store::PaneLineStore,
 }
 
 impl Pane {
-    /// Create a new pane viewing `buffer_id`, with no wrap-mode override for
-    /// any buffer. It inherits each buffer's/the global's effective mode
-    /// until `:wrap` or `:set pane wrap-mode=…` pins one for that buffer.
+    /// Create a new pane viewing `buffer_id`, with no wrap-mode override.
     pub fn new(buffer_id: BufferId) -> Self {
         Self {
             buffer_id,
@@ -356,9 +287,8 @@ impl Pane {
 
     /// Copy the view state a same-buffer split inherits from its source pane.
     ///
-    /// Exhaustive destructure on purpose: adding a `Pane` field forces a
-    /// compile-time inherit-or-skip decision here instead of a silent split
-    /// bug.
+    /// The exhaustive destructure makes a new `Pane` field a compile error
+    /// here until it is inherited or skipped.
     pub fn inherit_view_state(&mut self, src: &Pane) {
         let Pane {
             buffer_id: _, // pane identity, set by the split itself
@@ -367,17 +297,15 @@ impl Pane {
             selections: _, // engine render copy, repopulated every frame
             providers: _,  // allocated per pane in build_pane
             wraps,
-            line_store: _, // per-frame scratch; a new pane starts empty and
-                           // `EngineView::begin_frame` rewinds it every frame anyway
+            line_store: _, // per-frame scratch, rewound every frame
         } = src;
         self.viewport = *viewport;
         self.saved_scrolls = saved_scrolls.clone();
         self.wraps = wraps.clone();
     }
 
-    /// This pane's wrap-mode override for the buffer it currently views:
-    /// `WrapOverride::default()` (no override, nothing to restore) if this
-    /// pane has never pinned or toggled wrap for that buffer.
+    /// This pane's wrap-mode override for the buffer it currently views,
+    /// `WrapOverride::default()` if it has never pinned or toggled one.
     pub fn wrap(&self) -> WrapOverride {
         self.wraps.get(self.buffer_id).copied().unwrap_or_default()
     }
@@ -395,14 +323,10 @@ impl Pane {
     /// Show `target`, saving the scroll of the buffer shown until now and
     /// restoring `target`'s (the top on a first visit).
     ///
-    /// `last_content_line` is `target`'s *current* last content line index.
-    /// The buffer may have shrunk since its scroll was saved (edited
-    /// elsewhere while this pane showed another buffer), so `top`'s line is
-    /// clamped to it. `top`'s slot is restored verbatim, unvalidated against
-    /// the block it addresses: like every other write outside
-    /// `display_lines::scroll`'s verbs, it relies on the next
-    /// `Viewport::top_at` read, whichever pass gets there first, to
-    /// self-heal a stale address.
+    /// `top`'s line is clamped to `last_content_line`, `target`'s current
+    /// last line, since the buffer may have shrunk since its scroll was
+    /// saved. `top`'s slot is restored unvalidated; the next
+    /// `Viewport::top_at` read heals a stale one.
     pub(crate) fn show_buffer(&mut self, target: BufferId, last_content_line: ContentLine) {
         self.saved_scrolls.insert(self.buffer_id, self.viewport);
         self.buffer_id = target;
@@ -421,11 +345,10 @@ impl Pane {
     }
 }
 
-/// Line index of the primary selection head, resolved via the rope.
+/// Line index of the primary selection head.
 ///
-/// O(log n) rope lookup. Takes the two fields rather than `&Pane` so the
-/// render pass can call it while holding a `&mut` on a *different* field of
-/// the same pane (its line store).
+/// Takes the two fields rather than `&Pane` so the render pass can call it
+/// while holding `&mut` on the pane's line store.
 pub fn primary_head_line(selections: &PaintedSelections, rope: &Rope) -> ContentLine {
     let head = selections.primary().cursor;
     debug_assert!(
@@ -434,10 +357,7 @@ pub fn primary_head_line(selections: &PaintedSelections, rope: &Rope) -> Content
          pane.selections is out of sync with pane.buffer_id",
         rope.len_chars()
     );
-    // Trusted mint, not `RopeyLine::to_content`: a cluster start lies below
-    // the text end, on a real content line, and this does not validate
-    // against `rope`'s own invariant (which a bare `ropey::Rope` in a unit
-    // test may not even uphold).
+    // A cluster start lies below the text end, on a real content line.
     ContentLine::new(hume_rope::lines::char_to_ropey_line(rope, head.offset()).index())
 }
 

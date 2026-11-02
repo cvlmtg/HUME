@@ -1,14 +1,11 @@
 //! Platform abstraction layer for HUME.
 //!
-//! Home for the codebase's platform-conditional code: terminal control,
-//! process spawning with process-group/reap discipline, and OS-specific
-//! directory/path conventions. Each sub-module is a narrow surface for one
-//! concern:
+//! The codebase's platform-conditional code, one concern per module:
 //!
 //! - [`terminal`]: raw-mode lifecycle, cursor shape/colour, kitty keyboard
 //!   protocol, synchronized updates, and the inline-subprocess output flow.
-//! - [`screen`]: double-buffered frame presentation, i.e. the cell diff and the
-//!   escape-sequence emitter that carries a composed frame to the terminal.
+//! - [`screen`]: double-buffered frame presentation: the cell diff and the
+//!   escape-sequence emitter.
 //! - [`io`]: atomic file writes that preserve permissions and ownership.
 //! - [`process`]: process-group-isolated spawning, plus the LSP-server
 //!   install pipeline's platform-specific pieces (compiler selection,
@@ -24,9 +21,8 @@
 //! - [`snapshots`]: a background thread that reports a growing result, read
 //!   by its consumer one latest snapshot at a time.
 //!
-//! All platform-conditional code (`#[cfg(unix)]`, `#[cfg(windows)]`) is
-//! hidden behind private sub-modules; every public function has a uniform
-//! signature across platforms.
+//! `#[cfg(unix)]`/`#[cfg(windows)]` code sits in private sub-modules; every
+//! public function has one signature across platforms.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
@@ -52,40 +48,30 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// Grace window between asking the editor to quit gracefully and forcing the
-/// process down. Must comfortably exceed the editor's own worst-case
-/// teardown cost: `Editor::SHUTDOWN_GRACE`'s 500 ms budget
-/// (`hume-editor/src/editor/lsp/mod.rs`), plus up to `ServerHandle::drop`'s
-/// 200 ms `WRITER_FLUSH_GRACE` (`hume-lsp/src/transport.rs`) *per still-live
-/// LSP server* as each one is dropped afterward, so a handful of attached
-/// servers doesn't blow through the window mid-teardown.
+/// process down. Must exceed the editor's worst-case teardown:
+/// `Editor::SHUTDOWN_GRACE` plus `WRITER_FLUSH_GRACE` per live LSP server,
+/// each dropped in turn.
 pub(crate) const QUIT_GRACE: Duration = Duration::from_millis(3000);
 
-/// [`QUIT_GRACE`], exposed to consumer crates so the budget it documents
-/// itself as needing (`Editor::SHUTDOWN_GRACE` plus `WRITER_FLUSH_GRACE` per
-/// live LSP server) can be checked against the real values instead of just
-/// a comment promising they're kept in step (see the invariant test in
-/// `hume-editor`).
+/// [`QUIT_GRACE`], for `hume-editor`'s test that checks it against the
+/// teardown budget it must exceed.
 #[cfg(any(test, feature = "test-util"))]
 pub fn quit_grace() -> Duration {
     QUIT_GRACE
 }
 
 /// Windows' exit code for every console control event that ends HUME
-/// (Ctrl-c, Ctrl-Break, console close, logoff, shutdown). Windows has no
-/// signal numbers to derive a code from the way Unix derives `128 + signo`,
-/// so every event exits with the shell's code for an interrupted program.
-/// Numerically the same as Unix's `SIGINT` code, but a different exit code
-/// with a different rationale, not the same constant reused.
+/// (Ctrl-c, Ctrl-Break, console close, logoff, shutdown). With no signal
+/// numbers to derive `128 + signo` from, every event exits with the shell's
+/// code for an interrupted program.
 #[cfg(windows)]
 const WINDOWS_SIGNAL_EXIT_CODE: i32 = 130;
 
-/// Set by whichever caller wins [`claim_exit`]'s race; see there.
+/// Set by whichever caller wins [`claim_exit`]'s race.
 static EXIT_CLAIMED: AtomicBool = AtomicBool::new(false);
 
 /// Returns `true` for the one call, process-wide, that wins the race to
-/// tear the process down; `false` for every call after it. Split out from
-/// [`restore_for_exit`] so the claim itself (not the losing side's
-/// park-forever) is unit-testable.
+/// tear the process down; `false` for every call after it.
 fn claim_exit() -> bool {
     !EXIT_CLAIMED.swap(true, Ordering::AcqRel)
 }
@@ -93,19 +79,14 @@ fn claim_exit() -> bool {
 /// Restores the terminal on behalf of the one thread that gets to take the
 /// process down, then returns so the caller can call `std::process::exit`.
 ///
-/// The terminator thread ([`spawn_terminator`]'s force-exit arms) and the
-/// main thread (`hume-editor`'s `run`, after its own graceful shutdown) can
-/// both reach an exit path once `QUIT_GRACE` elapses. Its budget is sized
-/// to just barely exceed the main thread's worst-case teardown, so with
-/// enough attached LSP servers the two windows overlap. Without a single
-/// winner, both would write terminal-restore sequences to the same
-/// [`terminal::SharedTerm`] and both would call `process::exit`:
-/// interleaved restores can leave the shell in the alt screen or raw mode,
-/// and a second `exit` re-enters the same atexit/TLS teardown.
+/// The terminator thread ([`spawn_terminator`]) and the main thread (after
+/// its graceful shutdown) can both reach an exit path once `QUIT_GRACE`
+/// elapses. Two winners would interleave restore sequences on one
+/// [`terminal::SharedTerm`], which can leave the shell in the alt screen or
+/// raw mode, and a second `exit` re-enters the atexit/TLS teardown.
 ///
-/// A caller that loses the race parks forever: it has nothing left to do
-/// once another thread is committed to tearing the process down, and
-/// returning would race that thread's own `process::exit`.
+/// A caller that loses the race parks forever, since returning would race
+/// the winner's `process::exit`.
 pub fn restore_for_exit(term: &terminal::SharedTerm) -> std::io::Result<()> {
     if !claim_exit() {
         loop {
@@ -118,16 +99,12 @@ pub fn restore_for_exit(term: &terminal::SharedTerm) -> std::io::Result<()> {
 /// Restores the terminal, then kills every still-registered
 /// [`process::tracked::TrackedChild`], then exits with `code`.
 ///
-/// The reap runs *after* [`restore_for_exit`]'s claim, not before: a caller
-/// that loses that race parks forever without ever reaching `process::exit`,
-/// so killing children ahead of the claim would perform the destructive half
-/// of this function for a call that goes on to do nothing else, reaping
-/// every LSP server out from under whichever thread *did* win the claim and
-/// is mid graceful shutdown, for no exit that ever happens.
+/// The reap runs after [`restore_for_exit`]'s claim: a losing caller parks
+/// forever, and reaping first would kill the LSP servers of the thread that
+/// won and is mid graceful shutdown.
 ///
-/// `process::exit` runs no destructors, so this is the only place LSP
-/// servers and other long-lived children (normally reaped by their own
-/// `Drop`) get killed on this path; see `process::tracked`'s module doc.
+/// `process::exit` runs no destructors, so this is the only place long-lived
+/// children (normally reaped by their `Drop`) get killed on this path.
 #[cfg_attr(not(any(unix, windows)), allow(dead_code))]
 fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
     let _ = restore_for_exit(term);
@@ -135,36 +112,23 @@ fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
     std::process::exit(code);
 }
 
-/// Exit code for a bare terminal hangup with no signal delivered at all.
-/// Conventionally `SIGINT`'s `128 + 2`, but a hangup is not a signal and has
-/// no `signo` of its own to derive one from. Equal to
-/// `WINDOWS_SIGNAL_EXIT_CODE` with a different rationale, so not the same
-/// constant.
+/// Exit code for a bare terminal hangup with no signal delivered. A hangup
+/// has no `signo` of its own, so it takes `SIGINT`'s `128 + 2`.
 const HANGUP_EXIT_CODE: i32 = 130;
 
-/// `Some(HANGUP_EXIT_CODE)` when `err` means the controlling terminal
-/// itself went away rather than a genuine, reportable failure, `None` for
-/// every other error, which the caller should propagate and print as-is.
+/// `Some(HANGUP_EXIT_CODE)` when `err` means the controlling terminal went
+/// away, `None` for any other error, which the caller reports as-is.
 ///
-/// Sound only against an error channel that carries terminal I/O and nothing
-/// else: `UnexpectedEof`/`EIO`/`ENXIO` are recognized unconditionally, with
-/// no source tag, so calling this on an error from any other channel (a file
-/// read, say) risks misreporting a real failure as a silent hangup exit.
-/// `hume_editor::run` (the only caller) is sound today because every `?`
-/// its own error paths route through here is terminal I/O exclusively; that
-/// must stay true for this function to stay safe to call there.
+/// Call it only on errors from terminal I/O: the kinds below carry no
+/// source tag, so a file read's `UnexpectedEof` would be misreported as a
+/// hangup.
 ///
-/// Two signals of the same event, one per platform's read primitive:
-/// - `UnexpectedEof`: termina's own error (≥0.4.0) for a zero-byte read on
-///   a blocking tty fd `poll` reported ready
-///   (`UnixEventSource::try_read`): what a pty
-///   slave read produces on macOS/BSD once the master closes.
-/// - Raw `EIO`/`ENXIO` on Unix: what a Linux pty slave surfaces directly.
-///   `EIO` is the documented case; `ENXIO` covers losing the device out from
-///   under the fd on platforms that don't surface `EIO` the same way. Any
-///   other raw errno (`EBADF`, `ENOTTY`, ...) means something is wrong with
-///   the fd itself, not that the terminal hung up, and falls through to
-///   `None`.
+/// - `UnexpectedEof`: termina's error for a zero-byte read on a tty `poll`
+///   reported ready, what a pty slave gives on macOS/BSD once the master
+///   closes.
+/// - Raw `EIO`/`ENXIO` on Unix: what a Linux pty slave surfaces, or the
+///   device lost from under the fd. Any other errno (`EBADF`, `ENOTTY`)
+///   means a broken fd, not a hangup.
 pub fn hangup_exit_code(err: &std::io::Error) -> Option<i32> {
     if err.kind() == std::io::ErrorKind::UnexpectedEof {
         return Some(HANGUP_EXIT_CODE);
@@ -182,20 +146,16 @@ pub fn hangup_exit_code(err: &std::io::Error) -> Option<i32> {
     None
 }
 
-/// Install the watcher that terminates the process on: Ctrl-c, `kill <pid>`
-/// (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, and Ctrl-c, Ctrl-Break and
-/// console close on Windows. See `unix::spawn_terminator` and
-/// `windows::install_terminator` for each platform's implementation.
+/// Install the watcher that terminates the process on Ctrl-c or
+/// `kill <pid>` (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, and on Ctrl-c,
+/// Ctrl-Break and console close on Windows.
 ///
-/// `request_quit` is called with the exit code the process should use
-/// (`128 + signo` on Unix, 130 on Windows, which has no signal numbers) and
-/// routes through the editor's normal quit path (graceful LSP `shutdown`)
-/// rather than tearing the terminal down here. The watcher then waits up to
-/// `QUIT_GRACE` for the main loop to exit on its own before force-restoring
-/// and exiting with that code anyway; a second trigger inside the window is
-/// ignored. A bare terminal hangup with
-/// no signal at all does not go through this function at all; see
-/// [`hangup_exit_code`]'s doc.
+/// `request_quit` gets the exit code to use (`128 + signo` on Unix, 130 on
+/// Windows) and routes through the editor's normal quit path. The watcher
+/// then waits up to `QUIT_GRACE` for the main loop to exit before
+/// force-restoring and exiting with that code; a second trigger inside the
+/// window is ignored. A bare terminal hangup with no signal is handled by
+/// [`hangup_exit_code`] instead.
 ///
 /// In raw mode Ctrl-c reaches HUME as a key, not as SIGINT or a console
 /// event. While a `terminal::InlineOutputScreen` lives, the cooked terminal
@@ -222,17 +182,13 @@ pub fn spawn_terminator(
 
 /// Probe the terminal for kitty keyboard protocol support.
 ///
-/// On Unix, constructs a [`ProbeChannel`] over native polling primitives and
-/// delegates the query/response loop to [`run_probe`]. Returns `Ok(true)` if
-/// the terminal supports kitty keyboard protocol push, `Ok(false)` otherwise.
+/// Returns `Ok(true)` if the terminal supports kitty keyboard protocol push.
+/// Unix runs [`run_probe`] over a [`ProbeChannel`].
 ///
-/// On Windows, writes the same kitty query (plus a DA1 fence) through `term`
-/// and waits for termina's event reader to decode a reply; see
-/// `probe_via_events`. This is the same decode path real input goes
-/// through, so a `true` here means kitty-encoded keys will actually work,
-/// unlike asking the terminal in the abstract (ConPTY from Windows Terminal
-/// ≥ 1.25 answers the query even when nothing downstream could decode the
-/// reply).
+/// Windows decodes the reply through termina's event reader, the path real
+/// input takes, so `true` means kitty-encoded keys will work: ConPTY from
+/// Windows Terminal ≥ 1.25 answers the query even when nothing downstream
+/// could decode the keys.
 ///
 /// Must be called after `enable_raw_mode()`.
 pub(crate) fn probe_kitty_support(term: &terminal::SharedTerm) -> std::io::Result<bool> {
@@ -255,10 +211,8 @@ pub(crate) fn probe_kitty_support(term: &terminal::SharedTerm) -> std::io::Resul
 /// Windows kitty probe: write the progressive-enhancement query plus a DA1
 /// fence, then wait for termina's event reader to decode either reply.
 ///
-/// Typed keys the user presses during the probe window are filtered out
-/// (not consumed) and stay buffered in the [`EventReader`](termina::EventReader)
-/// for the main loop to read, unlike the Unix byte-channel probe, which has
-/// no such buffering and can eat a keystroke typed during the race.
+/// Keys typed during the probe are filtered out, not consumed, and stay
+/// buffered in the [`EventReader`](termina::EventReader) for the main loop.
 #[cfg(windows)]
 fn probe_via_events(term: &terminal::SharedTerm) -> std::io::Result<bool> {
     use std::io::Write;
@@ -291,11 +245,9 @@ fn probe_via_events(term: &terminal::SharedTerm) -> std::io::Result<bool> {
 
 /// Classifies one event from the Windows probe's query/response exchange.
 ///
-/// `Some(true)` means the terminal reported kitty keyboard protocol flags: it
-/// supports the query, so it supports the push we're about to send. `Some(false)`
-/// means the DA1 fence arrived with no kitty report first: the terminal answered
-/// every query we sent and kitty was not among the replies. `None` means an
-/// event outside this classification (e.g. a stray key); keep waiting.
+/// `Some(true)` for a kitty keyboard flags report, `Some(false)` for the DA1
+/// fence arriving first (kitty unsupported), `None` for anything else (a
+/// stray key): keep waiting.
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
 fn classify_probe_event(ev: &termina::Event) -> Option<bool> {
     use termina::Event;
@@ -310,15 +262,9 @@ fn classify_probe_event(ev: &termina::Event) -> Option<bool> {
 
 /// Bidirectional byte channel used by [`run_probe`] to query the terminal.
 ///
-/// Implemented on top of the native readable-with-deadline primitive
-/// (`poll(2)` on Unix). The trait isolates the one OS-specific concern ("is
-/// there input ready before `deadline`?"), so the query/response loop in
-/// [`run_probe`] is platform-agnostic and unit-testable via a mock channel.
-///
-/// Only `unix::probe_kitty_support` implements it in production; on Windows
-/// (kitty probing goes through `probe_via_events` instead) it exists only
-/// for its unit tests, which is also why the whole family stays testable
-/// cross-platform rather than being gated to `#[cfg(unix)]` outright.
+/// Isolates the one OS-specific concern, "is there input before
+/// `deadline`?" (`poll(2)` on Unix), so [`run_probe`] is unit-testable with a
+/// mock channel on every platform. Only Unix implements it in production.
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 trait ProbeChannel {
     fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()>;
@@ -331,21 +277,14 @@ trait ProbeChannel {
 
 /// Shared kitty-keyboard-protocol probe body.
 ///
-/// Writes three queries, `\x1B[?u` (kitty flags), `\x1B[>q` (XTVERSION) and
-/// `\x1B[c` (DA1 sentinel), then reads replies until DA1 arrives or the
-/// deadline expires, and classifies via [`has_kitty_response`] /
-/// [`has_kitty_xtversion`]. A single 500 ms deadline bounds the whole
-/// exchange; local terminals reply in single-digit ms, slow/remote ones get
-/// one generous budget rather than per-read timeouts.
+/// Writes `\x1B[?u` (kitty flags), `\x1B[>q` (XTVERSION) and `\x1B[c` (DA1
+/// sentinel), then reads replies until DA1 arrives or a single 500 ms
+/// deadline for the whole exchange expires.
 ///
-/// Assumes replies arrive in order, so stopping at the first complete DA1
-/// (the terminal's last response to the three-query burst) is safe. A
-/// terminal that reordered DA1 ahead of an earlier reply would be missed and
-/// reported `false`; no known terminal does this.
+/// Assumes replies arrive in order, so DA1 is the last; no known terminal
+/// reorders them.
 ///
-/// Clean EOF (`Ok(0)`) breaks the loop and reports `false`: the terminal
-/// went away without answering. Any other `Err` is a permanent channel
-/// failure and propagates to the caller rather than degrading silently.
+/// Clean EOF (`Ok(0)`) reports `false`. Any other `Err` propagates.
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
     ch.write_all(b"\x1B[?u\x1B[>q\x1B[c")?;
@@ -365,8 +304,6 @@ fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
         };
         response.extend_from_slice(&buf[..n]);
 
-        // DA1 is the last reply; once it lands the terminal has finished
-        // responding to all three queries.
         if has_da1_response(&response) {
             break;
         }
@@ -375,17 +312,9 @@ fn run_probe(ch: &mut impl ProbeChannel) -> std::io::Result<bool> {
     Ok(has_kitty_response(&response) || has_kitty_xtversion(&response))
 }
 
-/// Scans `buf` for complete `ESC [ ? <digits/;>* <final>` replies (the shape
-/// both the kitty-flags response (`ESC[?<n>u`) and the DA1 response
-/// (`ESC[?<n>c`) take) and collects each one's final byte, in order. Shared
-/// by [`has_kitty_response`] and [`has_da1_response`], which only differ in
-/// which final byte they look for; a match on the *other* byte mid-scan is
-/// still a complete sequence, so scanning continues past it rather than
-/// aborting.
-///
-/// A sequence that runs out of buffer before a final byte arrives is
-/// incomplete and contributes nothing: a truncated tail can never
-/// fabricate a match.
+/// The final byte of each complete `ESC [ ? <digits/;>* <final>` reply in
+/// `buf`, in order: the shape of both the kitty-flags (`u`) and DA1 (`c`)
+/// responses. A truncated tail contributes nothing.
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn csi_final_bytes(buf: &[u8]) -> Vec<u8> {
     let mut finals = Vec::new();
@@ -407,12 +336,7 @@ fn csi_final_bytes(buf: &[u8]) -> Vec<u8> {
     finals
 }
 
-/// Scan raw terminal response bytes for a kitty keyboard protocol reply.
-///
-/// Looks for the pattern `ESC [ ? <digits> u` which is the terminal's response
-/// to the `\x1B[?u` query. DA1 sequences (`ESC [ ? <digits> c`) are skipped
-/// over: they don't indicate kitty support but don't rule it out either, since
-/// both responses may appear in the same buffer.
+/// Whether `buf` holds a kitty keyboard flags reply (`ESC [ ? <digits> u`).
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn has_kitty_response(buf: &[u8]) -> bool {
     csi_final_bytes(buf).contains(&b'u')
@@ -421,32 +345,26 @@ fn has_kitty_response(buf: &[u8]) -> bool {
 /// Check XTVERSION response (`ESC P > | <name> ESC \`) against terminals known
 /// to support kitty keyboard protocol push but that may not respond to the
 /// `\x1B[?u` query (e.g. older WezTerm releases).
-///
-/// XTVERSION is sent alongside the kitty query and DA1 sentinel as a fallback
-/// identification mechanism. Its response arrives before DA1.
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn has_kitty_xtversion(buf: &[u8]) -> bool {
-    // Find the DCS introducer for XTVERSION: ESC P > |
+    // DCS introducer: ESC P > |
     let Some(pos) = buf.windows(4).position(|w| w == b"\x1BP>|") else {
         return false;
     };
     let name_start = pos + 4;
-    // Find the String Terminator: ESC \
+    // String Terminator: ESC \
     let Some(st_pos) = buf[name_start..].windows(2).position(|w| w == b"\x1B\\") else {
         return false;
     };
     let name = &buf[name_start..name_start + st_pos];
-    // Terminals confirmed to support kitty push regardless of query support.
-    // kitty, ghostty, and foot also respond to the query, so they're redundant
-    // here but harmless as a fallback.
+    // kitty, ghostty and foot also answer the query; listed as a fallback.
     name.starts_with(b"WezTerm")
         || name.starts_with(b"kitty")
         || name.starts_with(b"ghostty")
         || name.starts_with(b"foot")
 }
 
-/// Returns true once the buffer contains a complete DA1 response (`ESC [ ? <digits> c`),
-/// which signals the terminal has finished responding to all queries.
+/// Whether `buf` holds a complete DA1 response (`ESC [ ? <digits> c`).
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]
 fn has_da1_response(buf: &[u8]) -> bool {
     csi_final_bytes(buf).contains(&b'c')

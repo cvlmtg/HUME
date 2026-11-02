@@ -39,24 +39,21 @@ pub struct StoredLanguage {
 pub trait BufferHost {
     /// All open buffer ids in open-order.
     fn buffer_ids(&self) -> Vec<BufferId>;
-    /// Every open pane, across every tab (including panes in inactive
-    /// tabs, not just the active tab's own), paired with the buffer each
-    /// shows. Backs `(panes)`.
+    /// Every open pane in every tab, inactive tabs included, paired with the
+    /// buffer each shows. Backs `(panes)`.
     fn panes(&self) -> Vec<PaneHandle>;
 
-    /// `(focused-pane)` → the pane focused *right now*, paired with the
-    /// buffer it shows. Reads live editor state on every call. Meant for
-    /// code with no pane of its own to act on (a global option-change hook,
-    /// a focus-following timer) and for staleness checks in an async
-    /// callback that captured a different pane at request time. Never a
-    /// substitute for a command's own `pane` parameter, or for capturing the
-    /// buffer a request or edit is actually *about*.
+    /// `(focused-pane)`: the pane focused right now, paired with the buffer
+    /// it shows. For code with no pane of its own (a global option-change
+    /// hook, a focus-following timer) and for an async callback's staleness
+    /// check. Never a substitute for a command's own `pane` parameter, or
+    /// for capturing the buffer a request or edit is about.
     fn focused_pane(&self) -> PaneHandle;
 
     /// Every pane showing buffer `id`: the focused pane first if it shows
     /// it, then the rest of the active tab, then other tabs. Backs
-    /// `(buffer-panes pane)`: `(car (buffer-panes pane))` is the caller's
-    /// own choice of a pane on the buffer, where no builtin guesses one.
+    /// `(buffer-panes pane)`, so the caller, not a builtin, picks a pane on
+    /// the buffer.
     fn buffer_panes(&self, id: BufferId) -> Vec<PaneHandle>;
 
     /// Whether `pane` names a pane that still exists and still shows
@@ -79,8 +76,8 @@ pub trait BufferHost {
     ) -> Option<String>;
     fn buffer_display_name(&self, id: BufferId) -> Option<String>;
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool>;
-    /// Language stored on the buffer (not accounting for pending `set-buffer-option!`'s `"language"`).
-    /// The default for an unknown id.
+    /// Language stored on the buffer, not counting a pending
+    /// `set-buffer-option!` `"language"`. The default for an unknown id.
     fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage;
 
     // ── Working directory and search path ───────────────────────────────────
@@ -121,10 +118,9 @@ pub trait BufferHost {
         text: &str,
     ) -> Result<PaneHandle, String>;
 
-    /// Steel-side staleness token for buffer `id` (its text generation, bumped by
-    /// every mutation), or `None` if `id` is unknown. Not LSP-specific (any
-    /// script can compare a saved value against a live read), but the LSP
-    /// bridge's own `#:allow-stale` staleness check is what motivated it.
+    /// Buffer `id`'s text generation, bumped by every mutation, or `None` if
+    /// `id` is unknown. A script compares a saved value against a live read
+    /// to detect staleness.
     fn buffer_generation(&self, id: BufferId) -> Option<u64>;
 
     /// `(buffer-search pane pattern)`: the first match in `id`'s text of
@@ -158,11 +154,9 @@ pub trait BufferHost {
         range: Option<(usize, usize)>,
     ) -> Option<Result<String, String>>;
 
-    /// `(buffer-line-count bid)`: number of *content* lines in `id`'s live
-    /// text. Every HUME buffer ends with a structural `\n`, which ropey
-    /// counts as one extra empty line; this excludes that phantom line,
-    /// matching what the statusline and `:w` report. `None` if `id` is
-    /// unknown.
+    /// `(buffer-line-count bid)`: the number of content lines in `id`'s live
+    /// text, without the empty line ropey counts after the structural `\n`,
+    /// as the statusline and `:w` report it. `None` if `id` is unknown.
     fn buffer_line_count(&self, id: BufferId) -> Option<usize>;
 
     /// `(buffer-char-count bid)`: length of `id`'s live text in chars, the
@@ -171,44 +165,32 @@ pub trait BufferHost {
     fn buffer_char_count(&self, id: BufferId) -> Option<usize>;
 
     /// Content lines `range` of `id`'s live text, each with its trailing line
-    /// break stripped. `range` is caller-validated against
-    /// [`buffer_line_count`](Self::buffer_line_count) before this is called;
-    /// the `ContentLine` bound itself carries that validation, so this call
-    /// does not re-clamp or re-check it, and a `range` built any other way
-    /// (not checked against this buffer's own line count) is a caller bug:
-    /// implementations may panic rather than return `None` (the editor
-    /// implementation does, via the underlying rope's line lookup). `None` if
-    /// `id` is unknown.
+    /// break stripped. The caller checks `range` against
+    /// [`buffer_line_count`](Self::buffer_line_count); this does not, and an
+    /// implementation may panic on a `range` built any other way (the
+    /// editor's does). `None` if `id` is unknown.
     fn buffer_lines(
         &self,
         id: BufferId,
         range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
     ) -> Option<Vec<String>>;
 
-    /// The char offset where content `line` starts in `id`'s live text.
-    /// `line` is caller-validated against
-    /// [`buffer_line_count`](Self::buffer_line_count) before this is called,
-    /// same contract as [`buffer_lines`](Self::buffer_lines): this call does
-    /// not re-check it, and a `line` built any other way is a caller bug (the
-    /// editor implementation panics, via the underlying rope's line lookup).
-    /// `None` if `id` is unknown.
-    ///
-    /// Backs the Steel `(line->char-offset bid line)` builtin, the inverse
-    /// direction of `char-offset->line`.
+    /// The char offset where content `line` starts in `id`'s live text, for
+    /// `(line->char-offset bid line)`. `line` is caller-checked as in
+    /// [`buffer_lines`](Self::buffer_lines), with the same panic on one
+    /// built any other way. `None` if `id` is unknown.
     fn line_to_char_offset(
         &self,
         id: BufferId,
         line: hume_rope::line::ContentLine,
     ) -> Option<usize>;
 
-    /// The content-domain line range currently visible in `pane`'s pane.
-    /// Backs the Steel `(viewport-range pane)` builtin, which unwraps the
-    /// range to a `(hash 'start-line first 'end-line end)` at the Steel boundary
-    /// (0-based, end-exclusive). Pane geometry, not LSP state, so it doesn't need
-    /// an attached server. A pane on a background tab answers too: its size follows the terminal, but its
+    /// The content lines visible in `pane`'s pane, for
+    /// `(viewport-range pane)` (0-based, end-exclusive). A pane on a
+    /// background tab answers too: its size follows the terminal, but its
     /// scroll position stays where it was until that tab is focused again.
-    /// Takes `&mut self` so the host can first lay its panes out against a
-    /// band opened or closed since its last frame.
+    /// `&mut self` so the host can first lay its panes out against a band
+    /// opened or closed since its last frame.
     fn viewport_range(
         &mut self,
         pane: ShownHandle,

@@ -11,31 +11,18 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 
 // ScopeRegistry
 
-/// Maps scope name strings to compact [`ScopeId`] integers.
+/// Maps scope name strings to compact [`ScopeId`] integers, at most
+/// `u16::MAX` of them. Append-only.
 ///
-/// Two registration entry points share one map and interning path:
-/// - [`ScopeRegistry::intern`] for `&'static str`.
-/// - [`ScopeRegistry::intern_runtime`] for `&str`, where scope names are runtime strings.
-///
-/// Interning is cold (construction, a runtime language/grammar load,
-/// mid-session plugin activation, never the per-grapheme render path), so a
-/// single owned-key map costs one extra allocation per newly-interned static
-/// scope over a `&'static str` fast path, in exchange for one map and one
-/// interning method instead of two. The total number of distinct scopes is
-/// bounded by `u16::MAX`.
-///
-/// See [`Theme::bake_if_stale`] for when interned scopes get baked into
-/// resolvable styles. After baking, [`Theme::resolve`] is an O(1) `Vec` index.
+/// Interning is cold (construction, a grammar load, plugin activation), so
+/// static and runtime names share one owned-key map. Interned scopes become
+/// resolvable at the next [`Theme::bake_if_stale`].
 ///
 /// Lives on [`crate::pipeline::EngineView`] so it outlives all providers.
 #[derive(Default)]
 pub struct ScopeRegistry {
-    /// Name → id. Owned keys regardless of registration path: a `&str`
-    /// lookup costs the same whether the stored key came from a `&'static`
-    /// literal or a runtime string.
     map: FxHashMap<Box<str>, ScopeId>,
-    /// Combined name table; index is the `ScopeId`. Both registration paths
-    /// push here so `name_of` works uniformly.
+    /// Indexed by `ScopeId`.
     names: Vec<Box<str>>,
 }
 
@@ -72,10 +59,8 @@ impl ScopeRegistry {
         self.intern_str(name)
     }
 
-    /// Return the [`ScopeId`] for any `&str` scope name, interning if new.
-    ///
-    /// Use this for runtime-generated scope names (e.g. tree-sitter capture
-    /// names from a Steel-loaded `(register-grammar!)`).
+    /// Return the [`ScopeId`] for a runtime scope name (a tree-sitter
+    /// capture name, say), interning if new.
     pub fn intern_runtime(&mut self, name: &str) -> ScopeId {
         self.intern_str(name)
     }
@@ -85,9 +70,10 @@ impl ScopeRegistry {
         self.map.get(name).copied()
     }
 
-    /// Reverse-lookup: return the name interned as `id`.
+    /// The name interned as `id`.
     ///
-    /// Panics if `id` is out of range (i.e. not produced by this registry).
+    /// # Panics
+    /// Panics if `id` was not produced by this registry.
     pub fn name_of(&self, id: ScopeId) -> &str {
         &self.names[id.0 as usize]
     }
@@ -104,34 +90,25 @@ impl ScopeRegistry {
 /// The dot-notation fallback chain for `scope`, most specific first:
 /// `"keyword.function"` yields `"keyword.function"`, then `"keyword"`.
 ///
-/// Shared so the walk exists once: `Theme::resolve_raw` takes the first name
-/// with an entry, while `:theme-debug` reports every name that has one.
+/// `Theme::resolve_raw` takes the first name with an entry; `:theme-debug`
+/// reports every name that has one.
 pub fn fallback_chain(scope: &str) -> impl Iterator<Item = &str> {
     std::iter::successors(Some(scope), |cur| cur.rfind('.').map(|dot| &cur[..dot]))
 }
 
 /// The three cursor modes a theme's `ui.cursor*` scopes distinguish, as
-/// `(display label, mode scope, primary mode scope)`: the mode-identity half
-/// [`cursor_ladder_ids`] itself leaves to its caller. Single source for both
-/// `Theme::compute_ui` and `:theme-debug`, so renaming a mode's scope (or
-/// adding a fourth mode) can't leave one of them naming the old pair. This
-/// is the same drift guard the shared rung-list function below provides,
-/// one level up.
+/// `(display label, mode scope, primary mode scope)`, shared by
+/// `Theme::compute_ui` and `:theme-debug`.
 pub const CURSOR_MODES: [(&str, &str, &str); 3] = [
     ("normal", "ui.cursor.normal", "ui.cursor.primary.normal"),
     ("insert", "ui.cursor.insert", "ui.cursor.primary.insert"),
-    // Labelled "extend" (not "select"): HUME's own Select mode is an
-    // unrelated prompt with no cursor ladder of its own (see `EditorMode`).
+    // HUME's Extend mode keeps Helix's `select` scope names.
     ("extend", "ui.cursor.select", "ui.cursor.primary.select"),
 ];
 
 /// The (secondary, primary) rung lists `Theme::cursor_ladder` resolves, for
-/// one mode's own scope names; see that method's doc for the ladder shape.
-///
-/// Exposed as a shared function rather than left private so `:theme-debug`
-/// can report which rung actually matched, without hand-copying the list: a
-/// second copy would silently drift past the exact order and skip-rules
-/// `hume-engine/src/theme/tests.rs` pins for it.
+/// one mode's own scope names. Public so `:theme-debug` can report which
+/// rung matched.
 pub fn cursor_ladder_ids(
     mode_scope: &'static str,
     primary_mode_scope: &'static str,
@@ -148,39 +125,28 @@ pub fn cursor_ladder_ids(
     )
 }
 
-/// The two ladder roots: not a ladder rung themselves (`cursor_ladder_ids`
-/// resolves them as fallback parents, never as a leading rung), but still a
-/// "Cursor"-category scope name, so they live beside `CURSOR_MODES` rather
-/// than in `ui_scopes`, whose own doc excludes Cursor names.
+/// The two cursor ladder roots. Cursor scope names live here rather than in
+/// `ui_scopes`.
 pub const CURSOR: &str = "ui.cursor";
 pub const CURSOR_PRIMARY: &str = "ui.cursor.primary";
 
-/// The bracket/search-match highlight under the cursor: not a ladder rung
-/// (`cursor_ladder_ids` doesn't cover it, it's resolved directly wherever a
-/// bracket/search match is found), but still a "Cursor"-category scope name,
-/// so it lives beside `CURSOR_MODES` rather than in `ui_scopes`, whose own
-/// doc excludes Cursor names.
+/// The bracket/search-match highlight under the cursor, resolved directly
+/// rather than through a ladder.
 pub const CURSOR_MATCH: &str = "ui.cursor.match";
 pub const CURSOR_MATCH_SEARCH: &str = "ui.cursor.match.search";
 
 // UiScopes
 
 /// Pre-resolved styles for the UI scopes used on the per-grapheme hot path.
-///
-/// Computed eagerly in [`Theme::new`] so they are always valid, with no bake
-/// required to use them. Re-computed in [`Theme::bake`] in case the baked
-/// resolution path would differ (it won't, since `raw` is immutable after
-/// construction, but calling it is idempotent).
+/// Computed at construction, so usable before any bake.
 #[derive(Default)]
 pub struct UiScopes {
     /// Secondary selection-head highlight in Normal mode. Falls back through
-    /// `ui.cursor.normal` → `ui.cursor` → `ui.selection`, matching Helix's own
-    /// `cursor_scope` in `doc_selection_highlights`.
+    /// `ui.cursor.normal` → `ui.cursor` → `ui.selection`.
     pub cursor: ResolvedStyle,
-    /// Secondary selection-head highlight in Insert mode. Named `cursor_insert`
-    /// for Helix theme compat. Falls back through `ui.cursor.insert` →
-    /// `ui.cursor` → `ui.selection`. Painted only when `insert-cursor-shape` is
-    /// `block`; see the Tier 1/0 comment in `style::style_display_line`.
+    /// Secondary selection-head highlight in Insert mode. Falls back through
+    /// `ui.cursor.insert` → `ui.cursor` → `ui.selection`. Painted only when
+    /// `insert-cursor-shape` is `block`.
     pub cursor_insert: ResolvedStyle,
     /// Selection highlight.
     pub selection: ResolvedStyle,
@@ -190,46 +156,39 @@ pub struct UiScopes {
     pub virtual_text: ResolvedStyle,
     /// Indent-guide column markers.
     pub indent_guide: ResolvedStyle,
-    /// `ui.virtual.invisible`: the `<200b>` stand-in a cluster the terminal
-    /// must not be shown is drawn as. Dot-fallback reaches `ui.virtual`, so a
-    /// theme that defines nothing still renders these muted rather than as
-    /// ordinary text.
+    /// `ui.virtual.invisible`: the `<200b>` stand-in for a cluster the
+    /// terminal must not show. Falls back to `ui.virtual`.
     pub invisible: ResolvedStyle,
     /// `ui.virtual.whitespace`: an opted-in whitespace indicator glyph
-    /// (`·`, `→`, `⏎`, `⍽`). Dot-fallback reaches `ui.virtual`. Never applied
-    /// to `CellContent::TabFill`: the blank a tab renders as with its
-    /// indicator off must stay unstyled regardless of this scope.
+    /// (`·`, `→`, `⏎`, `⍽`). Falls back to `ui.virtual`. Never applied to
+    /// `CellContent::TabFill`.
     pub whitespace: ResolvedStyle,
     /// Primary selection-head highlight in Normal mode. Falls back through
     /// `ui.cursor.primary.normal` → `ui.cursor.primary` → `ui.cursor` → `ui` →
-    /// `ui.selection`. Painted only when the resolved cursor shape for the
-    /// current mode is `Block` (Normal always is); see
-    /// `PaneRenderSettings::cursor_is_block`.
+    /// `ui.selection`. Painted only when the mode's cursor shape is `Block`
+    /// (`PaneRenderSettings::cursor_is_block`).
     pub cursor_primary: ResolvedStyle,
     /// Primary selection-head highlight in Insert mode. Same ladder as
     /// [`Self::cursor_primary`], rooted at `ui.cursor.primary.insert`. Painted
-    /// only when `insert-cursor-shape` is `block`; for `bar`/`underline` the
-    /// real terminal cursor is the sole indicator for this head, and this
-    /// style is unused.
+    /// only when `insert-cursor-shape` is `block`; otherwise the terminal
+    /// cursor marks this head.
     pub cursor_insert_primary: ResolvedStyle,
-    /// Secondary selection-head highlight in Extend mode, HUME's name for Helix's
-    /// Select mode (HUME's own `Sift` mode is the `s` regex prompt, unrelated to
-    /// this scope, and maps to the Normal ladder instead). Falls back through
-    /// `ui.cursor.select` → `ui.cursor` → `ui.selection`.
+    /// Secondary selection-head highlight in Extend mode (Helix's Select
+    /// mode). Falls back through `ui.cursor.select` → `ui.cursor` →
+    /// `ui.selection`.
     pub cursor_select: ResolvedStyle,
     /// Primary selection-head highlight in Extend mode. Same ladder shape as
     /// [`Self::cursor_primary`], rooted at `ui.cursor.primary.select`. Always
-    /// painted: Extend has no configurable shape, and is hardwired `Block`.
+    /// painted: Extend's cursor is always `Block`.
     pub cursor_select_primary: ResolvedStyle,
     /// Primary selection highlight. Falls back to `selection` if unset.
     pub selection_primary: ResolvedStyle,
-    /// Pane background colour. Painted behind all content cells so the theme bg shows
-    /// through trailing whitespace and empty lines rather than the terminal default.
+    /// Pane background, painted behind all content cells.
     pub background: ResolvedStyle,
     /// Seam divider drawn between sibling panes (`ui.window`, Helix convention).
     pub window: ResolvedStyle,
-    /// Seam divider segments adjacent to the focused pane. Dot-notation
-    /// fallback to `ui.window` when unset, same as the other `.primary` scopes.
+    /// Seam divider segments adjacent to the focused pane. Falls back to
+    /// `ui.window`.
     pub window_focused: ResolvedStyle,
 }
 
@@ -239,44 +198,32 @@ pub struct UiScopes {
 ///
 /// # Two-phase API
 ///
-/// 1. Construct with [`Theme::new`] (or [`Theme::default`]).
-///    `theme.ui` is immediately usable: hot-path UI scopes are resolved from
-///    the raw map on construction.
+/// 1. Construct with [`Theme::from_owned`] (or [`Theme::default`]).
+///    `theme.ui` is usable at once.
 ///
-/// 2. After registering all providers, call [`Theme::bake`] with the
-///    [`ScopeRegistry`]. This pre-resolves every provider-emitted scope into a
-///    flat `Vec`, making [`Theme::resolve`] an O(1) index with no hashing.
+/// 2. Bake against the [`ScopeRegistry`] ([`Theme::bake_if_stale`]) before
+///    [`Theme::resolve`] reads an interned scope.
 ///
-/// # Fallback
-///
-/// Scope names use dot-notation with automatic fallback:
-/// `keyword.function` → `keyword` → default.
+/// Scope names fall back by dot-notation: `keyword.function` → `keyword` →
+/// default.
 pub struct Theme {
-    /// Source map: written once at construction, read by `bake()` and
-    /// `resolve_by_name()`. Never mutated after construction.
+    /// Source map, never mutated after construction.
     raw: FxHashMap<String, ResolvedStyle>,
-    /// Per-[`ScopeId`] resolved styles. Populated by `bake()`.
-    /// `baked[id.0]` is the style for the scope with that id, `None` when no
-    /// name on its fallback chain has an entry.
+    /// Indexed by [`ScopeId`]; `None` when no name on the scope's fallback
+    /// chain has an entry.
     baked: Vec<Option<ResolvedStyle>>,
     /// Default style used when no scope matches.
     pub default: ResolvedStyle,
-    /// Pre-resolved styles for hot-path UI scopes. Always valid (computed in
-    /// construction and re-computed in `bake()`).
+    /// Pre-resolved styles for hot-path UI scopes.
     pub ui: UiScopes,
 }
 
 impl Theme {
     /// Build a theme from a `scope → style` map with static string keys.
     ///
-    /// Test-only convenience constructor (no production caller; production
-    /// builds themes from TOML via [`loader::parse_theme`]/[`Self::from_owned`]).
-    /// Takes a plain `HashMap`, not `FxHashMap`: the map is consumed once via
-    /// `.collect()` into the real (`FxHashMap`-backed) storage below, so its
-    /// hasher never matters, and keeping it a plain `HashMap` lets every test
-    /// build `styles` with an ordinary literal instead of `FxHashMap::default()`.
-    /// `ui` fields are resolved immediately from `styles`, so callers can use
-    /// `theme.ui.*` before calling `bake()`.
+    /// A convenience for tests; production builds themes through
+    /// [`loader::parse_theme`]/[`Self::from_owned`]. A plain `HashMap` lets a
+    /// test build `styles` from a literal.
     pub fn new(styles: HashMap<&'static str, ResolvedStyle>, default: ResolvedStyle) -> Self {
         let owned: FxHashMap<String, ResolvedStyle> = styles
             .into_iter()
@@ -297,34 +244,23 @@ impl Theme {
         t
     }
 
-    /// Pre-resolve all scopes interned in `registry` into a flat `Vec`.
-    ///
-    /// After baking, [`Self::resolve`] is an O(1) `Vec` index with no hashing.
-    ///
-    /// Unconditional: always re-resolves every interned scope, even ones
-    /// already baked. In production, prefer [`Self::bake_if_stale`], which skips the
-    /// work when nothing changed; it's what `prepare_frame` calls every frame.
-    /// Call `bake` directly only when you need an immediate, unconditional
-    /// re-bake against a specific registry (e.g. tests).
+    /// Re-resolve every scope interned in `registry`, already baked or not.
+    /// Production calls [`Self::bake_if_stale`] instead.
     pub fn bake(&mut self, registry: &ScopeRegistry) {
         self.baked.clear();
         self.baked.resize(registry.len(), None);
         for i in 0..registry.len() {
             self.baked[i] = self.lookup(registry.name_of(ScopeId(i as u16)));
         }
-        // Re-populate ui in case bake() is called after construction (idempotent).
         self.ui = self.compute_ui();
     }
 
     /// Re-bake only if scopes were interned since the last [`Self::bake`] call.
     ///
-    /// `ScopeRegistry` is append-only and `bake` sizes `baked` to exactly
-    /// `registry.len()`, so `baked.len() != registry.len()` is precisely "new
-    /// scopes are unbaked". Called by the editor wherever it resolves styles
-    /// outside `render` (a highlighted popup's content), and once at the end
-    /// of `prepare_frame` (catching the frame's own steps, several of which
-    /// intern scopes lazily as they run), so nothing resolved can outrun
-    /// `baked`. Cheap when nothing changed: one `usize` compare.
+    /// `ScopeRegistry` is append-only and `bake` sizes `baked` to
+    /// `registry.len()`, so a length mismatch means new scopes are unbaked.
+    /// Called at the end of `prepare_frame`, whose steps intern scopes
+    /// lazily, and wherever the editor resolves styles outside `render`.
     pub fn bake_if_stale(&mut self, registry: &ScopeRegistry) {
         if self.baked.len() != registry.len() {
             self.bake(registry);
@@ -333,26 +269,23 @@ impl Theme {
 
     /// Look up the style for an interned scope.
     ///
-    /// **O(1)** after [`Self::bake`]. Returns `default` for IDs created after the
-    /// last `bake()` call (a programming error; debug-assert helps catch it).
+    /// Returns `default` for an id interned after the last bake, a
+    /// programming error the debug-assert catches.
     #[inline]
     pub fn resolve(&self, id: ScopeId) -> ResolvedStyle {
         self.baked_style(id).unwrap_or(self.default)
     }
 
     /// The style an interned scope adds when layered over another style:
-    /// the same lookup as [`Self::resolve`], but no style at all when no
-    /// name on the scope's fallback chain has an entry, so the style
-    /// underneath shows unchanged. The theme's `default` is a base style,
-    /// and layering it would repaint the colors underneath.
+    /// like [`Self::resolve`], but empty rather than `default` when no name
+    /// on the fallback chain has an entry, so the style underneath shows.
     #[inline]
     pub fn resolve_layer(&self, id: ScopeId) -> ResolvedStyle {
         self.baked_style(id).unwrap_or_default()
     }
 
     /// The baked style of an interned scope, `None` when nothing on its
-    /// fallback chain has an entry or when `id` was interned after the last
-    /// `bake()` (a programming error the debug-assert catches).
+    /// fallback chain has an entry or `id` was interned after the last bake.
     #[inline]
     fn baked_style(&self, id: ScopeId) -> Option<ResolvedStyle> {
         debug_assert!(
@@ -365,9 +298,8 @@ impl Theme {
 
     /// Resolve a scope name via the dot-notation fallback chain.
     ///
-    /// **Slow path** (one `FxHashMap` lookup per dot segment). Use this only for
-    /// non-hot call sites such as gutter-cell rendering (~100 calls/frame).
-    /// On the per-grapheme hot path, intern the scope and use [`Self::resolve`].
+    /// One map lookup per dot segment; the per-grapheme hot path interns the
+    /// scope and uses [`Self::resolve`] instead.
     pub fn resolve_by_name(&self, scope: Scope) -> ResolvedStyle {
         self.resolve_raw(scope.0)
     }
@@ -377,9 +309,7 @@ impl Theme {
         self.raw.contains_key(key)
     }
 
-    /// Walk the dot-notation fallback chain for `s`, returning the resolved style.
-    ///
-    /// `"keyword.function"` tries `"keyword.function"`, then `"keyword"`, then returns `default`.
+    /// Resolve `s` through its dot-notation fallback chain, or `default`.
     pub(crate) fn resolve_raw(&self, s: &str) -> ResolvedStyle {
         self.lookup(s).unwrap_or(self.default)
     }
@@ -404,7 +334,6 @@ impl Theme {
             selection: self.resolve_raw(ui_scopes::SELECTION),
             cursorline: self.resolve_raw(ui_scopes::CURSORLINE_PRIMARY),
             virtual_text: self.resolve_raw(ui_scopes::VIRTUAL_TEXT),
-            // dot-fallback to ui.virtual for themes that don't define the guide explicitly
             indent_guide: self.resolve_raw(ui_scopes::VIRTUAL_INDENT_GUIDE),
             invisible: self.resolve_raw(ui_scopes::VIRTUAL_INVISIBLE),
             whitespace: self.resolve_raw(ui_scopes::VIRTUAL_WHITESPACE),
@@ -412,7 +341,6 @@ impl Theme {
             cursor_insert_primary,
             cursor_select,
             cursor_select_primary,
-            // Primary selection: dot-notation fallback ui.selection.primary → ui.selection is correct.
             selection_primary: self.resolve_raw(ui_scopes::SELECTION_PRIMARY),
             background: self.resolve_raw(ui_scopes::BACKGROUND),
             window: self.resolve_raw(ui_scopes::WINDOW),
@@ -420,20 +348,14 @@ impl Theme {
         }
     }
 
-    /// Build the (secondary, primary) cursor style pair for one mode's own
-    /// scope name, matching Helix's two fallback ladders in
-    /// `doc_selection_highlights` exactly:
+    /// Build the (secondary, primary) cursor style pair for one mode, matching
+    /// Helix's two fallback ladders:
     ///
     /// - secondary: `ui.cursor.<mode>` → `ui.cursor` → `ui.selection`
     /// - primary: `ui.cursor.primary.<mode>` → `ui.cursor.primary` →
     ///   `ui.cursor` → `ui` → `ui.selection`
     ///
-    /// The bare `ui` rung exists only on the primary ladder, Helix's own
-    /// asymmetry (`base_primary_cursor_scope` is the one prefix-walking
-    /// lookup in the function; every other rung, on both ladders, is exact).
-    /// `mode_scope`/`primary_mode_scope` are spelled out at each call site
-    /// rather than built from a mode string, so every rung stays a `&'static
-    /// str` literal with no runtime formatting.
+    /// The bare `ui` rung is on the primary ladder only, as in Helix.
     fn cursor_ladder(
         &self,
         mode_scope: &'static str,
@@ -446,15 +368,12 @@ impl Theme {
         )
     }
 
-    /// Resolve a cursor scope from an explicit, ordered key list (first key with
-    /// an entry wins) with NO dot-notation fallback of its own. Returns an empty
-    /// (all-`None`) style when no listed key is defined.
+    /// Resolve a cursor scope from an ordered key list, first key with an
+    /// entry winning, with no dot-notation fallback per key. Empty when no
+    /// listed key is defined.
     ///
-    /// Needed instead of `resolve_raw` because a primary cursor's chain must
-    /// reach a key dot-trimming *skips*: `ui.cursor.primary.<mode>` →
-    /// `ui.cursor.primary` → `ui.cursor` (Helix's own order), where trimming
-    /// the leading key by dots would jump from `ui.cursor.primary` straight
-    /// past the mode's own `ui.cursor.<mode>` rung.
+    /// Not `resolve_raw`: both ladders end at `ui.selection`, which
+    /// dot-trimming never reaches, and the secondary ladder skips `ui`.
     fn resolve_cursor_chain(&self, keys: &[&str]) -> ResolvedStyle {
         keys.iter()
             .find_map(|k| self.raw.get(*k).copied())

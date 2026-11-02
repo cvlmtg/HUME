@@ -1,18 +1,14 @@
 //! Every change of the focused pane (the pane that owns the terminal
 //! cursor, the live buffer, and any open Insert session), and of the buffer
 //! a pane shows. The engine stores the focused pane with the active tab's
-//! layout (`EngineView::focused_pane`), so it is always a pane of that
-//! layout. Every other open tab's own focused pane is stashed on
-//! `EditorState::tabs` instead (see `tab::store`'s module doc).
+//! layout, so it is always a pane of that layout; every other tab's focused
+//! pane is stashed on `EditorState::tabs`.
 //!
 //! The engine methods that move focus or change a pane's buffer take the
-//! [`FocusKey`], which [`Focus`] keeps in a field private to this module, so
-//! the functions here are the only way to make either change. Each runs the
-//! Insert/paste session teardown the change needs; skipping it would leave a
-//! session open and pointed at a pane the user has already left (a custom
-//! keybinding or a Steel hook driving a pane-focus command can trigger a
-//! focus change from anywhere, so this can't be caught by auditing dispatch
-//! call sites alone).
+//! [`FocusKey`], which [`Focus`] keeps private to this module, so these
+//! functions are the only way to make either change. Each runs the
+//! Insert/paste session teardown the change needs, which would otherwise
+//! leave a session pointed at a pane the user has left.
 
 use hume_core::{BufferId, PaneId};
 use hume_engine::pipeline::{
@@ -21,7 +17,7 @@ use hume_engine::pipeline::{
 
 use super::EditorState;
 
-/// See this module's own doc.
+/// The [`FocusKey`], private to this module.
 #[derive(Debug)]
 pub(in crate::editor) struct Focus(FocusKey);
 
@@ -47,29 +43,15 @@ impl Focus {
     }
 }
 
-/// End the open Insert or paste session, if any: the shared teardown
-/// [`focus_pane`] and every pane-buffer switch ([`switch_pane_to_buffer`],
-/// `Editor::reset_config_state`'s reload) run, so
-/// that any command which moves focus or retargets the focused pane's buffer
-/// leaves Insert mode.
+/// End the open Insert, paste or replay session, if any, so a command that
+/// moves focus or retargets the focused pane's buffer leaves Insert mode.
+/// Safe to call with nothing open.
 ///
-/// Both teardowns act on the `(pane, buffer)` the session itself recorded
-/// (`EditorState::open_session`), never on current focus, so their
-/// correctness does not depend on running before or after the focus write.
-/// Callers still run this first for their own reasons: a pane close drops
-/// the pane's state right after, and a reload's `truncate_to_base` drops
-/// layers without running their teardown.
-///
-/// `end_insert_session` is a no-op past its own guard (no `Insert` layer
-/// open) whenever nothing is open, so every caller can route through this
-/// unconditionally instead of checking first. Whatever it leaves behind,
-/// a Paste session or a `Replay`-kind `EditSession` (what
-/// `Editor::replay_dot`'s own pre-open produces before its replayed body
-/// decides what it needs, see `edit_session::open_or_retarget`'s doc),
-/// commits the same way through
-/// [`edit_session::commit_open_session`](super::edit_session::commit_open_session):
-/// this is the chokepoint every focus/buffer-switch path already runs before
-/// removing the `(pane, buffer)` state a later commit would need to read.
+/// Both teardowns act on the `(pane, buffer)` the session recorded, not on
+/// current focus, so they do not depend on running before the focus write.
+/// Callers still run this first: a pane close drops the pane's state right
+/// after, and a reload's `truncate_to_base` drops layers without running
+/// their teardown.
 pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &EngineView) {
     super::commands::end_insert_session(state, view);
     super::edit_session::commit_open_session(
@@ -106,14 +88,8 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     if is_focused_switch {
         state.buffers.touch_mru(target);
     }
-    // Seeds the pane's state for `target` on its first visit to
-    // `target`. Required regardless of reveal, since `frame.rs`'s scroll
-    // step indexes it directly. A different buffer's cursor/viewport pairing
-    // always needs re-settling, whether or not the recalled selection's head
-    // happens to equal the outgoing one: `EditorState::layout_key`'s
-    // `buffer_tag` names the buffer, so a switch to a different one always
-    // differs from `PaneBufferState::last_layout_key`: the very first read
-    // for a `(pane, buffer)` pair is `None`, which differs from anything.
+    // `frame.rs`'s scroll step indexes the pane's state for `target`
+    // directly, so it must exist from the first visit.
     super::pane_state::ensure(
         &mut state.panes.entries,
         &state.buffers,
@@ -123,10 +99,8 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     );
 }
 
-/// Move focus to `pid`, a pane of the active layout, first calling
-/// [`end_focus_sessions`]. `focus_toward`/`focus_cycled`/
-/// `mouse_left_down` switch focus *within* a tab this way, where no layout
-/// displacement happens and no earlier teardown has run.
+/// Move focus to `pid`, a pane of the active layout, ending any open session
+/// first.
 pub(in crate::editor) fn focus_pane(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
     end_focus_sessions(state, view);
     view.focus(&state.focus.0, pid);
@@ -161,11 +135,10 @@ pub(in crate::editor) fn install_layout(
 }
 
 /// Promote the focused pane's buffer in `BufferStore.mru` at the focus move
-/// itself, as `switch_pane_to_buffer` does for a buffer switch, rather than
-/// when `Editor::detect_buffer_enter` next observes the change after
-/// `settle()`. `goto-alternate-buffer` reads `mru`'s tail as the buffer on
-/// screen, so a command chained after the focus move in the same dispatch
-/// would otherwise read the previous one.
+/// itself, not when `Editor::detect_buffer_enter` next observes it:
+/// `goto-alternate-buffer` reads `mru`'s tail as the buffer on screen, and a
+/// command chained after the move in the same dispatch would otherwise read
+/// the previous one.
 fn touch_focused_mru(state: &mut EditorState, view: &EngineView) {
     state
         .buffers

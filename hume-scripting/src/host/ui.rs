@@ -1,12 +1,10 @@
 //! Cursor-anchored popup, selection menu, bottom drawer, minibuffer
 //! prompt, and the fuzzy-finder picker.
 //!
-//! Each of these is a layer pushed onto the editor's input stack: opening
-//! one is a stack push, precedence between whatever is open is push order
-//! (topmost wins), and a synchronous opener (a key or `:` command running
-//! right now) can push above anything, while an async opener (a Steel
-//! callback answering a request fired earlier) checks whether the stack
-//! has moved since. See each method below for its own gate.
+//! Each is a layer on the editor's input stack, and the topmost wins. A
+//! synchronous opener (a key or `:` command) can push above anything; an
+//! async opener (a Steel callback answering an earlier request) first checks
+//! whether the stack has moved since. Each method states its own gate.
 
 use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
@@ -62,36 +60,27 @@ pub enum DrawerItems {
 
 hume_core::named_enum! {
     /// How an open popup reacts to key and mouse input: `show-popup!`'s
-    /// `#:kind` symbol, decoded once at the builtin boundary
-    /// (`builtins::ui::show_popup`) and carried as-is into the editor's own
-    /// popup state, so there is one definition of the two dismiss
-    /// behaviors, not a bool pair mapped to a second enum on the other side of
-    /// the trait.
+    /// `#:kind` symbol.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum PopupKind {
-        /// Untouched by keys and mouse input alike; lives in the current
-        /// editing mode's own slot (`Base`/`Insert` only; anything else has
-        /// none, so `#:kind 'sticky` with any other layer on top is a no-op),
-        /// and closes when that mode ends, via `close-popup!`, or on the next
-        /// `show-popup!`. Default: `#:kind` omitted, or `'sticky`.
+        /// Ignores keys and mouse input. Lives in the current editing mode's
+        /// slot (`Base`/`Insert` only, so `'sticky` under any other layer is
+        /// a no-op) and closes when that mode ends, on `close-popup!`, or on
+        /// the next `show-popup!`. The default when `#:kind` is omitted.
         Sticky => "sticky",
-        /// Ctrl-u/Ctrl-d scroll the content and are consumed *when it overflows
-        /// one screenful*; every other key or mouse event (and Ctrl-u/d with
-        /// nothing to scroll) closes the popup and falls through to normal
-        /// dispatch (`#:kind 'scrollable`). Covers both scrollable hover and
-        /// the dismiss-on-any-key `gn`/`gp` diagnostic overlay: the two
-        /// collapse to the same behavior once content fits on screen, and a
-        /// long diagnostic gets scrolling for free instead of a hard height
-        /// cap.
+        /// Ctrl-u/Ctrl-d scroll the content and are consumed while it
+        /// overflows one screenful; any other key or mouse event, and
+        /// Ctrl-u/d with nothing to scroll, closes the popup and falls
+        /// through to normal dispatch. Serves both hover and the `gn`/`gp`
+        /// diagnostic overlay, which behave alike once content fits.
         Scrollable => "scrollable",
     }
 }
 
 /// One `picker!`/`live-picker!` keymap entry: the key spec as the script
-/// wrote it (named in an error when two specs name the same key), the one
-/// key it names, and the binding, called with the selected item's payload
-/// (`#f` when nothing matches) and the picker's token when that key is
-/// pressed.
+/// wrote it (named in an error when two specs name the same key), the key
+/// it names, and the binding, called with the selected item's payload (`#f`
+/// when nothing matches) and the picker's token.
 pub struct PickerBinding {
     pub spec: String,
     pub key: KeyEvent,
@@ -99,8 +88,7 @@ pub struct PickerBinding {
 }
 
 hume_core::named_enum! {
-    /// What `picker-move!`'s count counts: `#:by`'s symbol, decoded once at
-    /// the builtin boundary.
+    /// What `picker-move!`'s count counts: its `#:by` symbol.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum PickerStep {
         Row => "row",
@@ -111,77 +99,57 @@ hume_core::named_enum! {
     }
 }
 
-/// The open-time keyword options `picker!` and `live-picker!` share.
-/// `Default` is every keyword's own default (empty prompt, empty query, no
-/// `#:render`, no `#:on-close`).
+/// The keyword options `picker!` and `live-picker!` share. `Default` is
+/// every keyword's own default.
 #[derive(Default)]
 pub struct PickerCommonOpts {
     /// `#:prompt`: label painted before the query in the input line.
     pub prompt: String,
-    /// `#:query`: the query the picker opens with. A `picker!` applies it
-    /// as a fuzzy filter to the item list at construction. For a
-    /// `live-picker!`, a non-empty value also has the Scheme wrapper spawn
-    /// once, undebounced, right after this call returns (see
-    /// [`UiHost::open_live_picker`]'s doc); `open_live_picker` itself never
-    /// fires `on_query_change` for it, which is reserved for per-keystroke
-    /// requeries.
+    /// `#:query`: the query the picker opens with. `picker!` filters its
+    /// items by it at construction. For `live-picker!`, the Scheme wrapper
+    /// runs the source once for a non-empty value, undebounced, right after
+    /// [`UiHost::open_live_picker`] returns; `on_query_change` is never
+    /// fired for it.
     pub query: String,
     /// `#:truncate`: see [`TruncateEnd`].
     pub truncate: TruncateEnd,
-    /// `#:render`: see [`UiHost::open_picker`]'s doc.
+    /// `#:render`: see [`UiHost::open_picker`].
     pub render: Option<crate::Callback>,
-    /// `#:on-close`: see [`UiHost::open_picker`]'s doc.
+    /// `#:on-close`: see [`UiHost::open_picker`].
     pub on_close: Option<crate::Callback>,
 }
 
-/// Grouped `picker!` open-time keyword options. [`UiHost::open_picker`] takes
-/// the Scheme call's positional arguments (`items`, `keymap`) directly;
-/// every `#:`-prefixed one rides here instead, the same split
-/// [`PickerSourceOpts`] uses for `picker_source_spawn`. `Default` is every
-/// keyword's own default, the shape a test that doesn't care about any of
-/// them wants.
+/// `picker!`'s keyword options; its positional `items` and `keymap` are
+/// [`UiHost::open_picker`]'s own parameters.
 #[derive(Default)]
 pub struct PickerOpts {
     pub common: PickerCommonOpts,
-    /// `#:pending`: see [`UiHost::open_picker`]'s doc.
+    /// `#:pending`: see [`UiHost::open_picker`].
     pub pending: bool,
 }
 
-/// Grouped `live-picker!` open-time keyword options: the live counterpart
-/// of [`PickerOpts`]. No `Default`: `on_query_change` is always
-/// `live-picker!`'s own internal requery lambda (never a caller-supplied
-/// value directly), so a default that opened a non-live session unasked
-/// would be a footgun, not a convenience.
+/// `live-picker!`'s keyword options. No `Default`: `on_query_change` always
+/// comes from `live-picker!`'s own requery lambda.
 pub struct LivePickerOpts {
     pub common: PickerCommonOpts,
-    /// Fired with `(token query)` on every query-changing keystroke instead
-    /// of driving a local fuzzy filter; `token` is the one feeds for that
-    /// query must carry. See
-    /// `PickerSession::rebuild_filtered`'s doc for why a live session skips
-    /// it. Always `live-picker!`'s own stop-then-debounce
-    /// wrapper around the caller's `#:source`, never the source
-    /// itself.
+    /// Fired with `(token query)` on every query-changing keystroke, in
+    /// place of a local fuzzy filter; feeds for that query must carry
+    /// `token`. Always `live-picker!`'s stop-then-debounce wrapper around
+    /// the caller's `#:source`.
     pub on_query_change: crate::Callback,
 }
 
-/// Grouped `picker-source-spawn!` keyword options, the same split
-/// [`PickerOpts`] uses for `open_picker`: [`UiHost::picker_source_spawn`]'s
-/// positional arguments (`token`, `cmd`, `args`) stay directly on the trait
-/// method. No `Default`: `#:ok-exit-codes` defaults to `'(0)`, not
-/// `Vec::default()`'s empty list, so a caller must always supply it
-/// explicitly rather than get a wrong allowlist with no error.
+/// `picker-source-spawn!`'s keyword options. No `Default`: the keyword
+/// defaults to `'(0)`, and an empty `ok_exit_codes` would count every exit
+/// as a failure.
 pub struct PickerSourceOpts {
     /// `#:cwd`: working directory for the spawned process.
     pub cwd: std::path::PathBuf,
     /// `#:nul`: split stdout on NUL bytes instead of newlines.
     pub nul: bool,
     /// `#:ok-exit-codes`: the complete set of exit codes that count as a
-    /// normal outcome. It *replaces* the success check rather than
-    /// extending it (nothing is implied, `0` included), so a caller
-    /// overriding the `'(0)` default lists `0` alongside whatever it adds:
-    /// `'(0 1)` for `rg`, which exits `1` on "no matches". `'(1)` alone
-    /// would report every successful run as a failure. Explicit over
-    /// convenient: the list is the whole contract.
+    /// normal outcome, `0` included only if listed. `rg`, which exits `1` on
+    /// no matches, needs `'(0 1)`.
     pub ok_exit_codes: Vec<i32>,
 }
 
@@ -192,17 +160,15 @@ pub enum PickerFeedMode {
     Replace,
 }
 
-/// Cursor-anchored popup, selection menu, bottom drawer, and minibuffer
-/// prompt, accessed through [`EditorHost::ui`](super::EditorHost::ui). `None` from that accessor
-/// means "no UI surface to drive" (test stubs); every method here is
-/// required once a host does provide `UiHost`. Every opener opens over the
-/// focused pane its `pane` names.
+/// Cursor-anchored popup, selection menu, bottom drawer, minibuffer prompt
+/// and picker, accessed through [`EditorHost::ui`](super::EditorHost::ui),
+/// which is `None` for a host with no UI surface. Every opener opens over
+/// the focused pane its `pane` names.
 pub trait UiHost {
     /// `(prompt! pane label on-confirm #:prefill text)` opens a one-shot
-    /// Command-mode minibuffer session. `callback` fires once, with
-    /// the confirmed text or `#f` on cancel, queued through the same
-    /// drained-at-frame-boundary path as every other Rust→Steel call, never
-    /// invoked inline. Errors if a minibuffer session is already open.
+    /// Command-mode minibuffer session. `callback` fires once, queued and
+    /// never inline, with the confirmed text or `#f` on cancel. `Err` if a
+    /// minibuffer session is already open.
     fn prompt(
         &mut self,
         pane: FocusedHandle,
@@ -219,20 +185,13 @@ pub trait UiHost {
     fn on_next_char(&mut self, callback: crate::Callback) -> Result<(), String>;
 
     /// `(show-popup! text #:anchor 'cursor #:kind 'sticky #:lang #f)` shows
-    /// `text` in a popup panel. Geometry (wrap width, flip/clamp position, or
-    /// the docked band's size) is resolved fresh every frame by the host, not
-    /// here; this just stores the raw content. Replaces any popup already
-    /// showing (no stacking).
-    ///
-    /// `kind`: see [`PopupKind`] for the two dismiss behaviors. `layout`:
-    /// see [`PopupLayout`] for the placements it asks for. `lang`: when `Some(name)` and a grammar
-    /// named `name` is registered, `text` is syntax-highlighted like a real
-    /// buffer; otherwise (no grammar by that name, or `None`) it renders as
+    /// `text` in a popup, replacing any popup already showing. The host
+    /// resolves geometry every frame; this stores the content. `lang` names
+    /// a grammar to highlight `text` with; an unknown name or `None` renders
     /// plain text.
     ///
-    /// Returns a token scoping [`Self::close_popup`] to *this* popup, or
-    /// `None` when the popup was dropped (no layer can hold it right now),
-    /// same shape as [`Self::show_drawer_list`]'s own return.
+    /// Returns a token scoping [`Self::close_popup`] to this popup, or `None`
+    /// when no layer can hold it right now.
     fn show_popup(
         &mut self,
         pane: FocusedHandle,
@@ -242,33 +201,26 @@ pub trait UiHost {
         lang: Option<String>,
     ) -> Result<Option<HostToken>, String>;
 
-    /// `(close-popup! token)` dismisses the popup `token` names. Idempotent:
-    /// a no-op when no popup is showing or the showing one was opened by a
-    /// different `show-popup!` call (only an unsupported *host* errors).
+    /// `(close-popup! token)` dismisses the popup `token` names. A no-op when
+    /// no popup is showing or another `show-popup!` call opened the one that
+    /// is. Only a host without popups errors.
     fn close_popup(&mut self, token: HostToken) -> Result<(), String>;
 
-    /// `(show-menu! items on-select)` opens a selection menu near the
-    /// cursor over `items`, `(display . payload)` rows whose displays are
-    /// row displays, as a drawer's are.
-    /// `on-select` fires at most once: the chosen row's payload, or `#f` on
-    /// any dismissal but [`Self::close_menu`], which fires nothing; queued,
-    /// never invoked inline. A menu that can't be
-    /// driven is worse than no menu, so this requires the mode layer to be
-    /// `Base` (Normal/Extend; a menu open under Insert or a minibuf mode
-    /// has no way to route its own keys) *and* the stack to be otherwise
-    /// unmoved since the request that produced this call was fired (this is
-    /// an async opener answering an earlier request, not a direct key/`:`
-    /// response). Either failing drops the call, with no message, rather than
-    /// erroring, since the mismatch is timing, not a plugin bug. A
-    /// non-modal overlay (the drawer, a scrollable popup) already being
-    /// open does not itself count as "moved": a menu can land above one,
-    /// same as a fresh popup can land above an open menu. Replaces a menu
-    /// already open (its callback fires `#f`, same as any other dismissal)
-    /// rather than being read as stale: a second response for the same
-    /// request is a refresh, not staleness.
+    /// `(show-menu! items on-select)` opens a selection menu near the cursor
+    /// over `items`, `(display . payload)` rows with drawer-style row
+    /// displays. `on-select` fires at most once, queued: the chosen row's
+    /// payload, or `#f` on any dismissal but [`Self::close_menu`], which
+    /// fires nothing.
     ///
-    /// Returns a token scoping [`Self::close_menu`] to *this* menu, or
-    /// `None` when the call was dropped as stale.
+    /// An async opener: the call is dropped, without an error, unless the
+    /// mode layer is `Base` (a menu under Insert or a minibuffer mode could
+    /// not route its keys) and the stack is otherwise unmoved since the
+    /// request was fired. An open drawer or scrollable popup does not count
+    /// as moved. A menu already open is replaced, its callback firing `#f`:
+    /// a second response to one request is a refresh.
+    ///
+    /// Returns a token scoping [`Self::close_menu`] to this menu, or `None`
+    /// when the call was dropped.
     fn show_menu(
         &mut self,
         pane: FocusedHandle,
@@ -276,35 +228,24 @@ pub trait UiHost {
         callback: crate::Callback,
     ) -> Result<Option<HostToken>, String>;
 
-    /// `(close-menu! token)` dismisses the menu `token` names *without*
-    /// invoking its callback (caller-initiated close, distinct from the
-    /// key-driven dismissal paths which do call back with `#f`). Idempotent:
-    /// a no-op if none is open or the open one carries a different token.
-    /// Closes a buried menu too (a scrollable popup can land above one).
+    /// `(close-menu! token)` dismisses the menu `token` names without
+    /// invoking its callback, even when another layer covers it. A no-op if
+    /// none is open or the open one carries a different token.
     fn close_menu(&mut self, token: HostToken) -> Result<(), String>;
 
     /// `(show-drawer-list! items on-select #:selected [0] #:truncate ['tail]
-    /// #:render [#f])` opens a scrolling pick-list
-    /// in the bottom chrome band. `items` are `(display . payload)` rows, or
-    /// render keys (see [`DrawerItems`]). The drawer never interprets
-    /// a payload: the jump (if any) is the caller's job, typically
-    /// `(goto-location! ...)` inside `on-select`.
-    /// `on-select` receives the chosen row's payload and the drawer's token, so an owner can tell
-    /// its own drawer's close from a replaced one's, and, unlike the popup/menu's
-    /// one-shot callback, may fire more than once: the drawer stays open
-    /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
-    /// `selected` names the row to open on, clamped into `items`. A row
-    /// wider than the drawer is cut at its `truncate` end.
-    /// Replaces any drawer already open (no stacking).
+    /// #:render [#f])` opens a scrolling pick-list in the bottom band,
+    /// replacing any drawer already open. `items` are `(display . payload)`
+    /// rows or render keys (see [`DrawerItems`]); the drawer never interprets
+    /// a payload. `on-select` gets the chosen row's payload and the drawer's
+    /// token, which tells an owner its own drawer's close from a replaced
+    /// one's, and may fire more than once: the drawer stays open across
+    /// `Enter` until `Esc` or `close-drawer!`. `selected` is clamped into
+    /// `items`; a row wider than the drawer is cut at its `truncate` end.
     ///
-    /// Returns a token scoping [`Self::close_drawer`]/
-    /// [`Self::update_drawer_list`]/[`Self::drawer_selection`] to *this*
-    /// drawer, mirroring [`Self::open_picker`]'s own token: a caller must
-    /// hold onto it to touch the drawer it opened again, rather than
-    /// whichever drawer happens to be open when it gets around to it.
-    /// `None` when the request was dropped as stale before minting one: this
-    /// opener is async (a Steel callback answering a request fired earlier),
-    /// checked by `EditorState::async_opener_stale`.
+    /// Returns the token [`Self::close_drawer`], [`Self::update_drawer_list`]
+    /// and [`Self::drawer_selection`] take, or `None` when this async
+    /// opener's request was dropped as stale.
     fn show_drawer_list(
         &mut self,
         pane: FocusedHandle,
@@ -314,28 +255,18 @@ pub trait UiHost {
         truncate: TruncateEnd,
     ) -> Result<Option<HostToken>, String>;
 
-    /// `(close-drawer! token)` dismisses the drawer *without* invoking its
-    /// callback (caller-initiated close, distinct from `Esc`, which does
-    /// call back with `#f`). Idempotent: a no-op if none is open, or if
-    /// `token` doesn't match the open drawer's own (someone else's drawer
-    /// has since taken over, the same expected-normal race
-    /// [`Self::update_drawer_list`] already has). Closes a buried drawer
-    /// too: the drawer stays open across `Insert`/a popup/etc. by design
-    /// (browse-while-editing), so being buried is its normal state, not a
-    /// "wrong widget is active" error.
+    /// `(close-drawer! token)` dismisses the drawer without invoking its
+    /// callback (`Esc` calls it with `#f`). A no-op if none is open or
+    /// `token` is not the open drawer's. Closes a covered drawer too: it
+    /// stays open under Insert or a popup while the user edits.
     fn close_drawer(&mut self, token: HostToken) -> Result<(), String>;
 
     /// `(update-drawer-list! token items on-select selected #:render [#f])`
-    /// replaces the open drawer's rows, `on-select` and render proc in
-    /// place, keeping the browse session (selection, scroll) and the
-    /// `#:truncate` end it opened with, instead of resetting them the way a
-    /// second `show-drawer-list!` would. `selected` names the row to select, clamped into the new
-    /// list. Returns whether the update applied: `#f` when no drawer is
-    /// open or `token` doesn't match the open drawer's own (an
-    /// expected-normal race: the caller's drawer was closed or replaced, by
-    /// `Esc` or by a second `show-drawer-list!`, either of which the caller
-    /// learns of via its callback's `#f`, the same shape as `show-menu!`'s
-    /// own self-replace).
+    /// replaces the open drawer's rows, `on-select` and render proc in place,
+    /// keeping its selection, scroll and `#:truncate` end. `selected` is
+    /// clamped into the new list. Returns `false` when no drawer is open or
+    /// `token` is not its own: the caller's drawer was closed or replaced,
+    /// which its callback's `#f` already reported.
     fn update_drawer_list(
         &mut self,
         token: HostToken,
@@ -344,59 +275,49 @@ pub trait UiHost {
         selected: usize,
     ) -> bool;
 
-    /// `(drawer-selection token)`: the open script drawer's selected row,
-    /// as its payload and its index, or `None` (`#f`) when no drawer is
-    /// open or `token` doesn't match its own. Read-only; pairs with
-    /// [`Self::update_drawer_list`] so an owner can map its selection across
-    /// a refresh by what the row is, where it sits, or both (Rust never
-    /// interprets a row's payload; only the owner knows what a row *is*).
+    /// `(drawer-selection token)`: the open drawer's selected row as its
+    /// payload and index, or `None` when no drawer is open or `token` is not
+    /// its own. Lets an owner map its selection across
+    /// [`Self::update_drawer_list`] by what the row is, where it sits, or
+    /// both.
     fn drawer_selection(&self, token: HostToken) -> Option<(SteelVal, usize)>;
 
     /// `(picker! pane items keymap #:prompt "…" #:pending [#f] #:query [""]
-    /// #:truncate ['head] #:render [#f] #:on-close [#f])` opens the fuzzy-finder panel,
-    /// always fuzzy-filtered over `items` (query-change never leaves the
-    /// local filter; for a source whose query drives an external command
-    /// instead, see [`open_live_picker`](Self::open_live_picker)). `items`
-    /// are `(display . payload)` pairs; `payload` is handed to a binding
-    /// verbatim, never interpreted by Rust. Returns a token that scopes
-    /// later `picker-push!`/`picker-replace!`/`picker-source-spawn!`/
-    /// `picker-move!`/`picker-close!` calls to this session, or `None`
-    /// (`#f`) under `.` replay, which opens no picker, as [`Self::show_menu`]
-    /// does. Unlike the menu/drawer, the picker is allowed from any mode but
-    /// closes any live completion session first, since only one modal owner
-    /// may be active at a time.
+    /// #:truncate ['head] #:render [#f] #:on-close [#f])` opens the
+    /// fuzzy-finder panel, filtered locally over `items` (a query that drives
+    /// an external command is [`open_live_picker`](Self::open_live_picker)).
+    /// `items` are `(display . payload)` pairs; Rust never interprets a
+    /// payload. Returns the token later `picker-push!`/`picker-replace!`/
+    /// `picker-source-spawn!`/`picker-move!`/`picker-close!` calls are scoped
+    /// to, or `None` under `.` replay, which opens no picker. Allowed from
+    /// any mode; closes a live completion session first, since only one
+    /// modal owner may be active.
     ///
-    /// `keymap` is every key the picker answers besides typing: a pressed
-    /// key it binds runs its binding, queued (never invoked inline), and
-    /// nothing else; the picker stays open until a binding calls
-    /// `picker-close!`. An unbound key with a plain character (no Ctrl or
-    /// Alt) types into the query and an unbound `Backspace` deletes from it;
-    /// any other unbound key does nothing. `Err` when two of its specs name
+    /// `keymap` is every key the picker answers besides typing: a bound key
+    /// runs its binding, queued, and nothing else, so the picker stays open
+    /// until a binding calls `picker-close!`. An unbound plain character (no
+    /// Ctrl or Alt) types into the query, an unbound `Backspace` deletes from
+    /// it, and any other unbound key does nothing. `Err` when two specs name
     /// the same key.
     ///
-    /// `on_close` (`#:on-close`), when given, fires once, queued,
-    /// however the picker closes: `picker-close!`, a second
-    /// `picker!`/`live-picker!` replacing it, or being removed under a
-    /// layer that closes. `pending`: set when a caller opens empty and
-    /// expects more results via `spawn-async!` rather than
-    /// `picker-source-spawn!` (which already implies "still populating" on
-    /// its own). Surfaced to the UI as a "results still arriving"
-    /// indicator, cleared by the first `push!`/`replace!` that actually
-    /// applies. `query`: see [`PickerCommonOpts`].
+    /// `on_close` fires once, queued, however the picker closes:
+    /// `picker-close!`, a second `picker!`/`live-picker!` replacing it, or
+    /// being removed under a layer that closes. `pending` shows a "results
+    /// still arriving" indicator for a caller that opens empty and feeds
+    /// through `spawn-async!` (`picker-source-spawn!` implies it); the first
+    /// applied `push!`/`replace!` clears it.
     ///
-    /// `render` (`#:render`), when given, is how a row is shown. Before a
-    /// frame shows rows not yet rendered at the panel's current width, the
-    /// editor calls `(render rows budget query)`: `rows` are those rows'
-    /// `(display . payload)` items in on-screen order, streamed rows
-    /// included, `budget` the cells one row gets, and `query` the query the
-    /// rows answer, for a live picker the one whose search produced them. It
-    /// returns one row display per row, which may change the text. Each row
-    /// is rendered once per width and query. Ranking, `.` and the payload a
-    /// binding gets stay on
-    /// the item. A row still wider than `budget` is cut at the `#:truncate`
-    /// end, as an unrendered row is. `render` runs read-only, as a drawer's
-    /// does, and an error or a wrong result closes the picker, firing
-    /// `on_close`.
+    /// `render`, when given, shows each row. Before a frame shows rows not
+    /// yet rendered at the panel's current width, the editor calls
+    /// `(render rows budget query)`: `rows` are those rows' `(display .
+    /// payload)` items in on-screen order, streamed rows included, `budget`
+    /// the cells one row gets, and `query` the query the rows answer (for a
+    /// live picker, the one whose search produced them). It returns one row
+    /// display per row and may change the text; ranking, `.` and a binding's
+    /// payload still use the item. Each row is rendered once per width and
+    /// query, and a row still wider than `budget` is cut at the `#:truncate`
+    /// end. `render` runs read-only; an error or a wrong result closes the
+    /// picker, firing `on_close`.
     fn open_picker(
         &mut self,
         pane: FocusedHandle,
@@ -407,20 +328,16 @@ pub trait UiHost {
 
     /// `(live-picker! pane keymap #:source source #:prompt "…" #:query [""]
     /// #:debounce-ms [150] #:truncate ['head] #:render [#f] #:on-close [#f])`
-    /// opens the fuzzy-finder panel with the query driving an external
-    /// source instead of the local fuzzy filter: `filtered` is always the
-    /// identity permutation over whatever `items` currently holds (see
-    /// `PickerSession::rebuild_filtered`'s doc). No `items`/`pending`
-    /// parameter: a live session starts empty and is populated entirely by
-    /// its own `on_query_change` callback (via `picker-push!`/
-    /// `picker-replace!`/`picker-source-spawn!`, as a `picker!`
-    /// session's async sources are). Same return, keymap, `#:render`,
-    /// `#:on-close` and modal-ownership contract as `open_picker`. `opts`: see
-    /// [`LivePickerOpts`]. This method itself never fires
-    /// `on_query_change`; the `live-picker!` Scheme wrapper runs the source for a
-    /// non-empty seed `query` itself, undebounced, right after this
-    /// returns, so a bad `#:source` raise on that seed leaves the session
-    /// this call already opened in place rather than tearing it down.
+    /// opens the fuzzy-finder panel with the query driving an external source
+    /// instead of the local filter, so rows show unfiltered in item order.
+    /// The session starts empty and is fed only by its `on_query_change`,
+    /// through `picker-push!`/`picker-replace!`/`picker-source-spawn!`. Same
+    /// return, keymap, `#:render`, `#:on-close` and modal-ownership contract
+    /// as [`Self::open_picker`].
+    ///
+    /// Never fires `on_query_change` itself: the `live-picker!` wrapper runs
+    /// the source for a non-empty `query` right after this returns, so a
+    /// `#:source` that raises on it leaves the opened session in place.
     fn open_live_picker(
         &mut self,
         pane: FocusedHandle,
@@ -428,22 +345,16 @@ pub trait UiHost {
         opts: LivePickerOpts,
     ) -> Result<Option<HostToken>, String>;
 
-    /// `(picker-push! token items)` / `(picker-replace! token items)`
-    /// appends to, or wholesale replaces, the open picker's item list and
-    /// reranks, but only if `token` matches the session the caller opened
-    /// (returned by `open_picker`). One method for both: the token guard
-    /// and "no open picker"/stale-token no-op contract are identical, only
-    /// the merge policy ([`PickerFeedMode`]) differs. A stale token (the
-    /// picker was closed or replaced since) is expected-normal for an
-    /// async source racing the user, so it is a silent no-op, not an error:
-    /// returns whether the feed was applied. A live picker accepts a feed
-    /// only through the token of its current query, so a late answer for an
-    /// old query cannot overwrite the current one's rows or settle its
-    /// pending state. `Replace` is the requery half of a live source: the
-    /// previous pattern's rows stay on screen through the requery's
-    /// stop/debounce/respawn gap and are only dropped once the new search
-    /// has something to show in their place (or settles on nothing). Items
-    /// are otherwise append-only.
+    /// `(picker-push! token items)` / `(picker-replace! token items)` appends
+    /// to, or replaces, the open picker's items and reranks, if `token`
+    /// matches the open session. A stale token is a normal race for an async
+    /// source, so it is a no-op, not an error; returns whether the feed
+    /// applied. A live picker accepts only the token of its current query,
+    /// so a late answer for an old query cannot overwrite the current rows
+    /// or settle its pending state. `Replace` is a live source's requery: the
+    /// previous rows stay on screen through the stop/debounce/respawn gap
+    /// until the new search has rows to show or settles on none. Apart from
+    /// `Replace`, items are append-only.
     fn picker_feed(
         &mut self,
         token: HostToken,
@@ -452,21 +363,15 @@ pub trait UiHost {
     ) -> bool;
 
     /// `(picker-source-spawn! token cmd args #:cwd dir #:nul flag
-    /// #:ok-exit-codes '(0))` attaches a streaming external-command
-    /// source to the open picker (direct argv spawn, no shell). Its stdout
-    /// lines flow directly into the store, never through Steel. Replaces
-    /// (killing) any source already attached to the same session: a
-    /// second spawn is a re-spawn, not a second concurrent source, which is
-    /// also how a live source re-runs per query change. If the outgoing
-    /// source had already exited, its exit is reported as it would
-    /// have been had it disconnected on its own. A re-spawn must not
-    /// silence a genuine failure just because a newer search superseded it
-    /// before the drain got to it. `opts`: see [`PickerSourceOpts`].
+    /// #:ok-exit-codes '(0))` attaches a streaming external-command source to
+    /// the open picker (argv spawn, no shell); its stdout lines reach the
+    /// item store without passing through Steel. Kills and replaces a source
+    /// already attached to the session, which is how a live source re-runs
+    /// per query. An outgoing source that had already exited still has its
+    /// exit reported, so a superseded search does not hide a failure.
     ///
-    /// `Ok(false)` (same "expected-normal race, not an error" contract as
-    /// `picker_feed`) means a stale token or no open picker; nothing was
-    /// spawned. `Err` means the process itself failed to spawn (missing
-    /// binary, bad `#:cwd`).
+    /// `Ok(false)` for a stale token or no open picker, with nothing spawned.
+    /// `Err` when the process fails to spawn (missing binary, bad `#:cwd`).
     fn picker_source_spawn(
         &mut self,
         token: HostToken,
@@ -475,23 +380,16 @@ pub trait UiHost {
         opts: PickerSourceOpts,
     ) -> Result<bool, String>;
 
-    /// `(picker-source-stop! token)` stops the open picker's attached
-    /// streaming source, if any, without touching the item list.
-    /// `picker-replace!` can clear stale rows but has no way to silence the
-    /// search that produced them; this is that missing half, for a live
-    /// requery whose new query has nothing to spawn a replacement source
-    /// for (e.g. backspacing to an empty pattern). Same
-    /// expected-normal-race contract as `picker_feed`: returns whether
-    /// `token` matched the open session, regardless of whether a source was
-    /// actually attached. Reports the outgoing source's exit if it had
-    /// already exited, same as a re-spawn via `picker_source_spawn`.
+    /// `(picker-source-stop! token)` stops the open picker's attached source,
+    /// if any, leaving the items alone: for a live requery with nothing to
+    /// spawn (an emptied pattern). Returns whether `token` matched the open
+    /// session, whether or not a source was attached. Reports an already
+    /// exited source's exit, as a re-spawn does.
     fn picker_source_stop(&mut self, token: HostToken) -> bool;
 
-    /// `(picker-close! token)` ends the picker `token` names, firing its
-    /// `#:on-close`, if any (unlike `close-menu!`/`close-drawer!`, which
-    /// drop the callback without invoking it). A no-op if no picker is open
-    /// or the open one carries a different token (someone else's session
-    /// has since taken over), the same guard `picker-push!` applies.
+    /// `(picker-close! token)` ends the picker `token` names and fires its
+    /// `#:on-close`, if any (`close-menu!`/`close-drawer!` drop their
+    /// callback). A no-op if no picker is open or it carries another token.
     fn picker_close(&mut self, token: HostToken);
 
     /// `(picker-move! token count #:by ['row])` moves the selection of the

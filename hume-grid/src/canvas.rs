@@ -7,30 +7,18 @@ use crate::style::ResolvedStyle;
 /// The frame's drawing surface: every cell write, pane or chrome, goes
 /// through here.
 ///
-/// Wraps the frame's [`Grid`] and, when set, a dim target: fg/bg is blended
-/// toward it on every write. This is the single chokepoint for the non-focused
-/// pane dim effect. Pane renderers never touch the grid directly, so a
-/// future write site cannot forget to dim: the blend happens exactly once
-/// per cell, inline in the single write, never a separate sweep over an
-/// already-drawn rect. Chrome (menus,
-/// pickers, the drawer, the statusline) is never dimmed, so it always passes
-/// `dim: None`; the field only ever blends for a pane.
+/// When `dim` is set, fg/bg is blended toward it once per cell at the write
+/// itself, so no write site can skip the non-focused pane dim. Chrome
+/// (menus, pickers, the drawer, the statusline) passes `dim: None`.
 ///
-/// Also the single place a placeholder cell's style is carried:
-/// [`Canvas::new`] takes it pre-resolved (`theme.ui.invisible`, resolved once
-/// per frame by the caller) so a [`Canvas::write_text_run`] placeholder never
-/// needs a `Theme` hand-threaded down to this crate. `hume-grid` has no
-/// dependency on `hume-engine`'s theme type, only on the one `ResolvedStyle`
-/// value it resolves to.
+/// The placeholder style arrives pre-resolved (`theme.ui.invisible`), so
+/// this crate needs no dependency on `hume-engine`'s theme type.
 pub struct Canvas<'a> {
     grid: &'a mut Grid,
     /// Colour every write is blended toward, and by how much. `None` for
-    /// chrome, which is never dimmed.
+    /// chrome.
     dim: Option<(Rgb, f32)>,
-    /// Layered onto a [`Canvas::write_text_run`] placeholder cell so it reads
-    /// distinctly from ordinary text (buffer text gets this same layering
-    /// via `style_display_line`'s Tier 2d½; chrome has no per-cell style tiers of its
-    /// own, so the canvas carries the one style every write needs for it).
+    /// Style of a [`Canvas::write_text_run`] placeholder cell.
     invisible_style: ResolvedStyle,
 }
 
@@ -47,19 +35,13 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Write one cell, `advance` columns wide, dropped whole rather than
-    /// split if it would cross `right_edge`, the same rule
-    /// [`Canvas::write_text_run`] follows for a multi-cluster run.
+    /// Write one pre-measured cell, `advance` columns wide, dropped whole
+    /// rather than split if it would cross `right_edge`.
     ///
-    /// The frame's lowest-level writer, for a caller drawing exactly one
-    /// pre-measured glyph rather than a run. `Grid::set_glyph`
-    /// itself has no `right_edge` (only the grid's own physical edge), which
-    /// is what made a bare `Grid::set_glyph` call unsafe to expose before
-    /// this bound existed: nothing stopped a write from crossing a pane,
-    /// lane, or box boundary that sits inside the grid's bounds. The
-    /// trailing columns of
-    /// a wide glyph are still the grid's business, not a caller's:
-    /// `Grid::set_glyph` claims them itself.
+    /// `Grid::set_glyph` bounds writes only at the grid's own edge, so this
+    /// writer takes `right_edge` to keep a cell from crossing a pane, lane,
+    /// or box border inside the grid. `Grid::set_glyph` claims a wide
+    /// glyph's trailing columns itself.
     pub fn write_cell(
         &mut self,
         x: u16,
@@ -79,18 +61,13 @@ impl<'a> Canvas<'a> {
     /// Resolve `style` against whatever is already painted at `(x, y)`.
     ///
     /// A colour the caller left unset means "whatever is already there", not
-    /// "the terminal's default". Glyph styles are routinely partial on
-    /// purpose: `ui.virtual_text` (the `~` fillers) and the statusline
-    /// separator set a foreground only, and are drawn over a background some
-    /// earlier fill put down. Making the omission inherit is what lets a
-    /// writer draw a glyph without first having to find out what it is
-    /// standing on.
+    /// "the terminal's default": `ui.virtual_text` (the `~` fillers) and the
+    /// statusline separator set a foreground only and draw over an earlier
+    /// fill's background.
     ///
-    /// Modifiers and the underline replace outright, and that asymmetry is
-    /// deliberate: an opaque overlay (a completion popup over highlighted
-    /// code) must not inherit the bold of whatever it covered. Colours
-    /// compose; emphasis does not. See [`ResolvedStyle::over`], which does
-    /// the composing.
+    /// Modifiers and the underline replace outright, so an opaque overlay (a
+    /// completion popup over highlighted code) does not inherit the bold of
+    /// what it covers. Colours compose; emphasis does not.
     fn over_painted(&self, x: u16, y: u16, style: ResolvedStyle) -> ResolvedStyle {
         let Some(under) = self.grid.cell(x, y).map(Cell::style) else {
             return style;
@@ -101,53 +78,25 @@ impl<'a> Canvas<'a> {
     /// Write `text` cell by cell from `(x, y)`, stopping before `right_edge`,
     /// and return the column just past the last cell written.
     ///
-    /// The frame's single text writer for anything measured beforehand: UI
-    /// chrome (statusline, menus, pickers, the drawer), gutter cells, and
-    /// (inside `compose_display_line`, for a `CellContent::Whitespace`/`Placeholder`
-    /// cell) a pane-content whitespace glyph or unrenderable-cluster
-    /// stand-in. That last case still measures against `CHROME_TAB_WIDTH`
-    /// (this method's fixed tab width, not the pane's real one) safely: the
-    /// resolved string is always a pre-built glyph (`→`, `<200b>`) that
-    /// itself never contains a literal `\t` needing the pane's own tab-stop
-    /// math to re-measure. A real buffer tab's cell is written directly by
-    /// `compose_display_line`'s own tab-arm, never routed through here.
-    /// Writes through [`Canvas::write_cell`] rather than `Grid::set_glyph`
-    /// directly: `write_cell` is the primitive this method is built on,
-    /// one layer too low on its own for anything measured beforehand.
+    /// The frame's text writer for anything measured beforehand: UI chrome,
+    /// gutter cells, and a pane's pre-built whitespace or placeholder glyph
+    /// (`→`, `<200b>`). Such a glyph never holds a literal `\t`, so measuring
+    /// it at `CHROME_TAB_WIDTH` is safe; a buffer tab is drawn by
+    /// `compose_display_line` itself.
     ///
-    /// **It agrees with [`hume_rope::width`], the width model everything
-    /// else in the frame is measured with.** A [`Cell`] stores the display
-    /// width its writer measured rather than letting anything downstream
-    /// re-derive it (see this crate's own doc), so a caller that sized a
-    /// field with `str_width` and then drew it by walking clusters a second,
-    /// different way could reserve columns nothing was drawn in, or draw
-    /// wider than it reserved. Here the advance returned is
-    /// `chrome_width(text)`, because that is the same per-cluster width
-    /// this walks by: measurement and drawing cannot drift, since they are
-    /// one model. Chrome has no tab
-    /// stops of its own, so a tab measures and draws as one cell (a
-    /// plain space) rather than advancing to the next multiple of some tab
-    /// width. Any other cluster the terminal must not be shown as itself (a
-    /// control character, or one measuring zero columns) draws as its
-    /// codepoint placeholder instead, the same substitution buffer text gets
-    /// from `hume-engine`'s `format::grapheme_display`. `grapheme_width`
-    /// already sized the run for that placeholder, so it spans the columns
-    /// reserved for it. The placeholder is drawn as the codepoint
-    /// rather than as a blank: a bidi override that renders like
-    /// a space is the Trojan Source attack, so the cluster has to stay
-    /// visibly present rather than disappear. That placeholder is drawn in
-    /// this canvas's `invisible_style` rather than `style`, so it reads
-    /// distinctly from ordinary text. Buffer text gets the same layering
-    /// via `style_display_line`'s Tier 2d½; chrome has no per-cell style
-    /// tiers, so this is its equivalent.
+    /// Each cluster advances by the same [`hume_rope::width`] model a caller
+    /// sized the field with (`chrome_width`), so measurement and drawing
+    /// cannot drift. A tab is one cell, drawn as a space. Any other cluster
+    /// the terminal must not show as itself (a control character, a
+    /// zero-width cluster) draws as its codepoint placeholder in
+    /// `invisible_style`, the substitution buffer text gets from
+    /// `format::grapheme_display`. The placeholder is the codepoint rather
+    /// than a blank because a bidi override that renders like a space is the
+    /// Trojan Source attack: the cluster must stay visible.
     ///
-    /// **`right_edge` is required, not implied.** `Grid::set_glyph`/
-    /// `fill_span` clip only at the grid's own edge and nothing narrower, so
-    /// a caller drawing into a pane, a gutter lane, or a bordered box had to
-    /// remember to pre-truncate or bleed past it. Taking the bound as an
-    /// argument moves that from something each call site remembers to
-    /// something the signature asks for. A cluster that would straddle
-    /// `right_edge` is dropped whole, never split, the same rule
+    /// `Grid` clips only at its own edge, so `right_edge` bounds the run at
+    /// a pane, lane, or box border. A cluster that would straddle it is
+    /// dropped whole, never split, the same rule
     /// [`hume_rope::width::truncate_to_width`] follows.
     pub fn write_text_run(
         &mut self,
@@ -162,42 +111,26 @@ impl<'a> Canvas<'a> {
         let invisible_style = self.invisible_style;
         let mut cx = x;
         for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(text, true) {
-            // Classified once: tab vs. placeholder vs. plain is decided
-            // here, not re-tested per branch below (a tab is also a control
-            // character, so testing `needs_placeholder` first would draw a
-            // multi-cell `<9>` into the single cell reserved for it;
-            // `classify` itself orders that check, matching
-            // `format::grapheme_display`'s own tab-before-placeholder order).
+            // A tab is also a control character; `classify` tests for it
+            // first so it is never drawn as a multi-cell `<9>`.
             let classified = hume_rope::width::classify(
                 cluster,
                 (cx - x) as usize,
                 hume_rope::width::CHROME_TAB_WIDTH,
             );
-            // Cluster::width() reads classify()'s own decision, not a second raw measurement.
             let width = classified.width() as u16;
             if cx.saturating_add(width) > right_edge {
                 break;
             }
             match classified {
                 hume_rope::width::Cluster::Tab { .. } => {
-                    // Chrome's tab is exactly one cell (see this method's
-                    // doc), so it draws as one plain space.
                     self.write_cell(cx, y, " ", 1, style, right_edge);
                 }
                 hume_rope::width::Cluster::Placeholder(p) => {
-                    // A cluster the terminal must not be shown as itself is
-                    // drawn as its codepoint, the same substitution buffer
-                    // text gets (`format::grapheme_display`). `classify`
-                    // above already sized the run for that placeholder, so
-                    // it spans exactly the columns reserved for it: one
-                    // cell per character of `<200b>`. Colours fall back to
-                    // the row's own, so a selected menu row or a cursorline
-                    // still shows through, but the *emphasis*
-                    // (`invisible_style`'s modifiers and underline) replaces
-                    // rather than unions with the run's: a placeholder inside
-                    // a bold field reads as a placeholder, not as bold text.
-                    // That is why this composes with `ResolvedStyle::over`
-                    // instead of `layer`, which unions modifiers.
+                    // One cell per character of `<200b>`. `over` rather than
+                    // `layer`: colours fall back to the row's (a selected
+                    // menu row shows through), but `invisible_style`'s
+                    // emphasis replaces the run's instead of unioning with it.
                     let placeholder_style = invisible_style.over(style);
                     for (i, ch) in p.as_str().chars().enumerate() {
                         let mut glyph = [0u8; 4];
@@ -224,15 +157,10 @@ impl<'a> Canvas<'a> {
     /// each of `count` cells starting at `(x, y)`, clipped at `right_edge`,
     /// and return the column just past the last cell written.
     ///
-    /// The span counterpart of [`Canvas::write_text_run`] for repeating one
-    /// glyph many times, most commonly a horizontal box-drawing border line
-    /// without building a `String` of it first just to hand it to a
-    /// grapheme walker one call site already knows walks a single repeated
-    /// cluster. `glyph` must already be exactly one column and free of
-    /// anything `write_text_run` would substitute for (a control character,
-    /// a zero-width cluster): callers pass a compile-time constant, never
-    /// buffer-derived text, so that is a property of the call site rather
-    /// than something this method has to verify.
+    /// For a repeated glyph such as a box-drawing border, without building a
+    /// `String`. `glyph` must be one column wide and need no placeholder (a
+    /// control character, a zero-width cluster); callers pass a constant,
+    /// never buffer text.
     pub fn fill_glyph_run(
         &mut self,
         x: u16,
@@ -259,21 +187,14 @@ impl<'a> Canvas<'a> {
     /// Paint every cell of `rect` with a space glyph and `style`, clipping to
     /// grid bounds, through this canvas's dim blend.
     ///
-    /// `Grid::fill_span` only overwrites glyph and style together: there is
-    /// no way to touch style alone and leave a previous glyph showing, so an
-    /// opaque overlay (popup, statusline fill) never needs a second pass to
-    /// blank what it covers. The chrome-facing counterpart of the pane-only
-    /// `Canvas::fill_row_bg`; blending is currently always a no-op there
-    /// (chrome passes `dim: None`), but routing both through this one method
-    /// keeps every write, pane or chrome, going through one blend point
-    /// rather than two conventions.
+    /// Glyph and style are overwritten together, so an opaque overlay (popup,
+    /// statusline fill) blanks what it covers in one pass.
     ///
-    /// One `fill_span` per row rather than `write_cell` per cell, sound only
-    /// because a background fill never needs to read what it's painting
-    /// over: `Grid::reset` blanks the frame before any pane draws, panes
-    /// tile without overlap, and `compose_gutter` (`hume-engine`) only ever
-    /// writes left of `content_x_origin`, so nothing in the same frame has
-    /// painted this rect before a fill reaches it.
+    /// One `fill_span` per row rather than `write_cell` per cell, so the fill
+    /// does not compose with what is under it. That is sound because
+    /// `Grid::reset` blanks the frame before any pane draws, panes tile
+    /// without overlap, and `compose_gutter` (`hume-engine`) writes only left
+    /// of `content_x_origin`: nothing has painted this rect before a fill.
     pub fn fill_rect_bg(&mut self, rect: Rect, style: ResolvedStyle) {
         let (x0, y0, x1, y1) = clamp_rect_to_grid(self.grid.size(), rect);
         if x0 >= x1 {
@@ -285,15 +206,9 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Fill a horizontal span with spaces, `bg` as the background colour,
-    /// used for cursorline highlighting so the tint extends past the last
-    /// grapheme. `None` blanks the span to the terminal's own colours
-    /// instead (taken only when `theme.ui.background.bg` is `None`, which is
-    /// exactly when `dim` is `None` too, since the pipeline gates both on that
-    /// same value, so a `None` bg never needs a blend). A bg-only
-    /// [`Canvas::fill_rect_bg`] style blends identically to blending the
-    /// colour alone, so both cases route through it without a separate
-    /// blend step of their own.
+    /// Fill a horizontal span with spaces on `bg`, so the cursorline tint
+    /// extends past the last grapheme. `None` blanks the span to the
+    /// terminal's own colours.
     pub fn fill_row_bg(&mut self, x_start: u16, x_end: u16, y: u16, bg: Option<Rgb>) {
         self.fill_rect_bg(
             Rect::new(x_start, y, x_end.saturating_sub(x_start), 1),
@@ -308,15 +223,8 @@ impl<'a> Canvas<'a> {
 /// Clamp `rect` to a `(width, height)` grid's bounds, returning exclusive
 /// `(x0, y0, x1, y1)` ready for a `for y in y0..y1 { … x0..x1 }` loop.
 ///
-/// Takes the size rather than `&Grid` so a caller already holding an
-/// exclusive `&mut Grid` (or its wrapping `Canvas`) can still call this:
-/// `Grid::size()` is `Copy`, unlike the grid itself. `Grid::fill_span`
-/// independently clamps `x`/`y` against its own bounds on every call, so
-/// this bound is what keeps a caller from iterating rows the fill would
-/// have no-opped on anyway, not the only thing standing between a rect and
-/// an out-of-bounds write.
-///
-/// `pub`, not `pub(crate)`: pure rect/size geometry, no write capability.
+/// Takes the size rather than `&Grid` so a caller holding a `&mut Grid` (or
+/// its `Canvas`) can still call it.
 #[inline]
 pub fn clamp_rect_to_grid((width, height): (u16, u16), rect: Rect) -> (u16, u16, u16, u16) {
     (
@@ -328,8 +236,7 @@ pub fn clamp_rect_to_grid((width, height): (u16, u16), rect: Rect) -> (u16, u16,
 }
 
 /// Blend both fg and bg of `style` toward `dim`'s target, if any. A `None`
-/// colour is the terminal's own default: there is no numeric value to
-/// blend, so it stays as it is; `None` dim (chrome, always) is likewise free.
+/// colour is the terminal's own default and stays as it is.
 #[inline]
 fn blend_style(mut style: ResolvedStyle, dim: Option<(Rgb, f32)>) -> ResolvedStyle {
     if let Some((target, factor)) = dim {

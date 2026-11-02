@@ -8,28 +8,21 @@ compile_error!("hume must build with panic = \"unwind\": dirty buffers are dumpe
 
 pub mod cli;
 pub(crate) mod editor;
-// `pub`, not `pub(crate)`: `tests/scripting.rs` is a separate crate that
-// links against this lib and names `hume_editor::statusline::StatusElement`
-// directly.
+// `pub` for `tests/scripting.rs`, which names `StatusElement` from outside
+// the crate.
 pub mod statusline;
 pub(crate) mod tabline;
 
-// `extern crate self as hume` lets `hume::testing::MockHost` (reached both
-// from the lib's own `#[cfg(test)]` build and from `tests/scripting.rs`/
-// `tests/unix/main.rs` via the `test-util` feature below) use `hume::` paths
-// uniformly in both contexts, without conditional `crate::` vs `hume::`
-// branching.
+// Lets `testing::MockHost` use `hume::` paths both in the lib's own test
+// build and from the integration-test crates.
 extern crate self as hume;
 
 #[cfg(test)]
 mod proptest_doc;
 #[cfg(test)]
 mod proptest_editor;
-// `pub`, not `pub(crate)`: `tests/scripting.rs` and `tests/unix/main.rs` are
-// separate crates that link against this lib rather than being compiled into
-// it, so `pub(crate)` would be invisible to them. `test-util` is what lets
-// those crates' `Cargo.toml` dev-dependency turn this module on without it
-// leaking into a release build.
+// `pub` for the integration-test crates, which enable it through the
+// `test-util` feature; a release build leaves it out.
 #[cfg(any(test, feature = "test-util"))]
 pub mod testing;
 
@@ -40,7 +33,7 @@ pub mod testing;
 /// the editor's normal dispatch path, then writes the final buffer content to
 /// `output`. No terminal is initialised. `config` picks what `init_scripting`
 /// evaluates (the default `init.scm`, a `--config` override, or
-/// `ConfigSource::Skip` for `--no-config`), exactly as it would for [`run`].
+/// `ConfigSource::Skip` for `--no-config`), as it does for [`run`].
 /// `cwd` is the startup working directory.
 ///
 /// Stops replaying at `:wq` / `:q` / `<c-c>` (the editor sets
@@ -81,27 +74,23 @@ pub fn run_keys(
     } else {
         for key in parsed {
             editor.step(key);
-            // `step` only dispatches the key; `settle()` is what drains the
-            // queued work (hooks, LSP/timer callbacks) that dispatch enqueues.
-            // This mirrors `Editor::run`'s interactive loop, where the loop settles
-            // and the input handler doesn't (see `Editor::settle`'s doc).
+            // `step` only dispatches the key; `settle()` drains the work
+            // dispatch queues (hooks, LSP/timer callbacks), as `Editor::run`'s
+            // loop does.
             editor.settle();
             if editor.state.should_quit {
                 break;
             }
         }
-        // One more pass after the loop: `drain_async_sources` runs once per
-        // `settle()` call, outside its fixpoint (see that doc), so a timer a
-        // handler armed *during* the last key's own settle only converts to
-        // due work on the next call. With no further key to trigger one, it
-        // would otherwise never fire.
+        // `drain_async_sources` runs once per `settle()`, outside its
+        // fixpoint, so a timer armed during the last key's settle becomes due
+        // work only on the next call.
         editor.settle();
         std::fs::write(&output, editor.doc().text().to_string())
     };
-    // Config can spawn LSP servers, so give them the same graceful shutdown
-    // window `run` gives them, rather than leaving `ServerHandle::drop` to
-    // `SIGKILL` them on the way out. Runs before any result is propagated:
-    // an early `?` would skip it.
+    // Config can spawn LSP servers: give them `run`'s graceful shutdown
+    // window rather than leaving `ServerHandle::drop` to `SIGKILL` them.
+    // Before any `?`, which would skip it.
     editor.lsp_shutdown_all(editor::Editor::SHUTDOWN_GRACE);
     let reported = editor
         .state
@@ -144,20 +133,16 @@ pub fn run(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let shared = hume_platform::terminal::create(&cwd)?;
 
-    // The cross-thread waker: background threads (LSP transport, parse
-    // worker) call `wake()` after posting a result so the main loop wakes
-    // instead of polling for completion (see `Editor::run`'s event step).
+    // Background threads (LSP transport, parse worker) call `wake()` after
+    // posting a result, so the main loop wakes instead of polling.
     let waker = shared.event_reader().waker();
     let wake: hume_platform::wake::WakeCallback = std::sync::Arc::new(move || {
         let _ = waker.wake();
     });
 
-    // Set by the terminator thread to the process exit code on termination,
-    // polled at the top of `Editor::run`'s loop and re-read below after it
-    // returns; shared with `editor.attach_terminate_flag` so both sides
-    // observe the same atomic. `0` means "no termination requested", never
-    // a valid signal-termination exit code. A bare pty hangup with no signal
-    // does not go through this; see `hume_platform::hangup_exit_code`'s doc.
+    // The exit code the terminator thread sets on termination, polled by
+    // `Editor::run`'s loop and re-read below. `0` means no termination was
+    // requested. A bare pty hangup with no signal does not set it.
     let terminate = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
     let request_quit = {
         let (terminate, wake) = (terminate.clone(), wake.clone());
@@ -169,9 +154,8 @@ pub fn run(
         }
     };
     if let Err(e) = hume_platform::spawn_terminator(shared.clone(), request_quit) {
-        // Non-fatal: Ctrl-c/SIGTERM/SIGHUP will leak terminal
-        // state or spin the event loop instead of exiting, but the editor
-        // still works correctly for normal exit.
+        // Non-fatal: Ctrl-c/SIGTERM/SIGHUP then leak terminal state or spin
+        // the event loop instead of exiting, but a normal exit still works.
         eprintln!("hume: failed to start terminator: {e}");
     }
 
@@ -210,29 +194,14 @@ pub fn run(
     // the process down `QUIT_GRACE` after a signal, and each dump is one
     // write and one rename.
     let dumps = editor.dump_if_abnormal_exit(&result, scratch_dumps.as_deref());
-    // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
-    // mode) before the LSP grace window below, not after: `lsp_shutdown_all`
-    // can take up to `SHUTDOWN_GRACE` per server, and every millisecond of
-    // that is otherwise spent sitting in the alternate screen, reading as a
-    // frozen editor. Errors are collected rather than propagated immediately
-    // (`run_all`'s "attempt everything, report the first failure" discipline,
-    // `hume_platform::terminal`) so a dead pty here doesn't skip the graceful
-    // LSP shutdown that follows. The cursor shape/colour resets below are
-    // unconditional and idempotent regardless of who else is tearing down at
-    // the same moment, so they need no gate; `restore_for_exit` (not a bare
-    // `terminal::restore`) is the one function allowed to write the
-    // alt-screen-leave/raw-mode-restore/kitty-keyboard-pop sequence that
-    // follows them. It gates on `claim_exit`, the process-wide
-    // single-restorer race with the terminator thread's `force_exit`, so a
-    // second thread mid-teardown at the same moment can't interleave a
-    // second copy of that sequence into this one's. Calling it first, while
-    // there's the most of `QUIT_GRACE` left, also minimizes how often this
-    // thread is the one that loses that race and parks here instead of
-    // returning: if it does, the terminator thread's `force_exit` has
-    // already won the claim ahead of it (the only way this thread's own
-    // claim attempt loses) and goes on to `kill_tracked_children`,
-    // including every attached LSP server, right after, so the graceful
-    // shutdown below would never run regardless.
+    // Restore the terminal before the LSP grace window: `lsp_shutdown_all`
+    // can take `SHUTDOWN_GRACE` per server, which on the alternate screen
+    // reads as a frozen editor. Errors are collected, not propagated, so a
+    // dead pty does not skip the LSP shutdown. The cursor resets are
+    // idempotent and need no gate; `restore_for_exit` claims the one
+    // restore against the terminator thread's `force_exit`. If this thread
+    // loses that claim it parks, and `force_exit` kills every tracked child,
+    // LSP servers included.
     let mut restore_err = hume_platform::terminal::set_cursor_shape(
         &shared,
         hume_platform::terminal::CursorStyle::Default,
@@ -245,39 +214,28 @@ pub fn run(
     // Back on the normal screen, where the messages stay in scrollback.
     editor::buffer::report_dumps(&mut std::io::stderr().lock(), &dumps);
     editor::buffer::print_worker_panics(&mut std::io::stderr().lock(), &worker_panics);
-    // Give every running LSP server a chance to exit cleanly (shutdown
-    // request, then exit notification) before the process ends;
-    // ServerHandle::drop would otherwise SIGKILL them.
+    // Shutdown request, then exit notification, so `ServerHandle::drop`
+    // does not `SIGKILL` the servers.
     editor.lsp_shutdown_all(editor::Editor::SHUTDOWN_GRACE);
-    // Explicit, not left to the function's own scope-end order: the signal
-    // exit branch below calls `std::process::exit`, which runs no
-    // destructors, so leaving this to an implicit end-of-scope drop would
-    // skip each attached LSP server's `WRITER_FLUSH_GRACE` teardown whenever
-    // that branch is taken.
+    // The signal branch below calls `std::process::exit`, which runs no
+    // destructors and would skip each LSP server's `WRITER_FLUSH_GRACE`
+    // teardown.
     drop(editor);
     // Panics raised during the LSP shutdown or the drop above.
     editor::buffer::print_worker_panics(&mut std::io::stderr().lock(), &worker_panics);
 
     let code = terminate.load(std::sync::atomic::Ordering::Acquire);
     if code != 0 {
-        // Killed by a signal, not by `:q`: exit with the terminator's own
-        // code rather than propagating `restore_err`/`result`: on a genuine
-        // terminal hangup (e.g. SIGHUP with the pty already gone) every
-        // teardown write fails with `EIO`, and surfacing that as a `?`
-        // instead of the signal's exit code would print an error to a
-        // terminal that's already gone and report the wrong code.
+        // Killed by a signal: exit with the terminator's code. On a hangup
+        // every teardown write fails with `EIO`, and propagating that would
+        // print to a gone terminal and report the wrong code.
         std::process::exit(code);
     }
 
-    // Not a signal exit. A bare hangup (the controlling terminal went away
-    // with no signal delivered at all) surfaces here instead: `editor.run`'s
-    // reader returns `UnexpectedEof`/`EIO` once the pty master closes rather
-    // than spinning (see `hume_platform::hangup_exit_code`'s doc for exactly
-    // which errors this recognizes). Every teardown write above fails the
-    // same way against a dead pty, so `restore_err` (checked first, same as
-    // the signal branch above) needs the same recognition as `result`, or a
-    // hangup here would be misreported as a real teardown failure instead of
-    // exiting with the conventional code.
+    // A hangup with no signal surfaces here: `editor.run`'s reader returns
+    // `UnexpectedEof`/`EIO` once the pty master closes. Every teardown write
+    // fails the same way, so `restore_err` needs the same recognition as
+    // `result`.
     if let Some(code) = restore_err
         .as_ref()
         .and_then(hume_platform::hangup_exit_code)

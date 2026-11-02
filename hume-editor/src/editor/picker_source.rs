@@ -1,14 +1,6 @@
-//! Per-frame drain for a session-owned spawned line source. Kept out of
-//! `picker.rs` so that module
-//! stays a pure store; this is the one place `PickerItem`s get built from
-//! streamed lines and the one place a spawned source's exit gets reported.
-//! Also owns spawning/stopping a source (`spawn_source`/`stop_source`,
-//! `EditorHostImpl`'s delegates for `picker-source-spawn!`/
-//! `picker-source-stop!`), guarded by `picker::session_for_feed` and
-//! `picker::session_for_token` like every other token-scoped picker
-//! mutation. The "report the outgoing source before attaching a new one"
-//! ordering rule lives here, beside the exit-reporting it feeds, not in the
-//! host-trait translation layer.
+//! A picker session's spawned line source: spawning and stopping it, the
+//! per-frame drain that builds `PickerItem`s from streamed lines, and
+//! reporting its exit.
 
 use std::sync::Arc;
 
@@ -21,17 +13,13 @@ use super::input_stack::picker::{session_for_feed, session_for_token};
 use super::{Editor, EditorState};
 use hume_core::{HostToken, Severity};
 
-/// `EditorHostImpl::picker_source_spawn`'s body: attaches a streaming
-/// external-command source to the picker named by `token`. `Ok(false)` (a
-/// stale token or no open picker) is the same expected-normal-race
-/// contract `picker_feed` uses; a genuine spawn failure raises.
+/// Attaches a streaming external-command source to the picker named by
+/// `token`. `Ok(false)` for a stale token or no open picker, an expected
+/// race; a spawn failure is an `Err`.
 ///
-/// Reports the outgoing source's exit (if it had already exited) *before*
-/// attaching the new one, never after, or a source that already failed
-/// would be silently dropped by the attach's own replace. Spawns the new
-/// child before reaping the old one, though: the `?` below must return
-/// before anything is torn down, so a failed re-spawn leaves the working
-/// source in place rather than leaving the picker sourceless.
+/// Spawns the new child before touching the old source, so a failed spawn
+/// leaves the working source in place. The outgoing source's exit is
+/// reported before the attach replaces it.
 pub(super) fn spawn_source(
     state: &mut EditorState,
     token: HostToken,
@@ -62,9 +50,9 @@ pub(super) fn spawn_source(
     Ok(true)
 }
 
-/// `EditorHostImpl::picker_source_stop`'s body: detaches (and reports, if
-/// already exited) the picker's attached source, if any, without touching
-/// the item list. Same expected-normal-race contract as `spawn_source`.
+/// Detaches the picker's source, if any, reporting its exit if it had
+/// already exited, without touching the item list. `false` for a stale token
+/// or no open picker.
 pub(super) fn stop_source(state: &mut EditorState, token: HostToken) -> bool {
     if session_for_token(state, token).is_none() {
         return false;
@@ -74,15 +62,11 @@ pub(super) fn stop_source(state: &mut EditorState, token: HostToken) -> bool {
 }
 
 impl Editor {
-    /// Arrival-driven, like the parse worker: no `AsyncSource` impl (see
-    /// `async_source.rs`'s module doc); the reader thread's `WakeCallback`
-    /// wakes the loop directly the moment a batch lands, so there is no
-    /// deadline to poll for here.
+    /// The reader thread's `WakeCallback` wakes the loop when a batch lands,
+    /// so there is no deadline to poll for.
     ///
-    /// Coalesces every batch queued since the last frame into at most ONE
-    /// `PickerSession::source_batch`: it reranks every call, and reranking once
-    /// per queued batch instead of once per frame would multiply the
-    /// rerank cost by however many batches arrived this frame.
+    /// Coalesces every batch queued since the last frame into one
+    /// `PickerSession::source_batch`, which reranks on every call.
     pub(super) fn drain_picker_source(&mut self) {
         let Some(session) = self.state.input.picker_mut() else {
             return;
@@ -92,21 +76,17 @@ impl Editor {
         };
         let (lines, disconnected) = source.try_recv_batches();
 
-        // A blank line is unmatchable noise, not a real candidate: dropped
-        // here rather than in the splitter, which stays a faithful,
-        // pure transcription of the byte stream (see `line_source.rs`).
+        // A blank line is unmatchable noise. The splitter transcribes the
+        // byte stream as-is, so it is dropped here.
         let items: Vec<PickerItem> = lines
             .into_iter()
             .filter(|line| !line.is_empty())
             .map(|line| PickerItem {
-                // A NUL is a field separator a source without `--nul` (e.g.
-                // `rg --vimgrep --null`) puts *inside* a line, not between
-                // lines. Left alone, the panel paints it as its `<0>`
-                // control-char placeholder. `:` is what the same tool
-                // prints there without that flag, so this reads like any
-                // other row. `payload` keeps the raw byte: a plugin's own
-                // parser still needs the unambiguous separator to split a
-                // path containing a literal colon.
+                // A source without `--nul` (`rg --vimgrep --null`) puts a
+                // NUL inside a line as a field separator, which would paint
+                // as a `<0>` placeholder; `:` is what the tool prints there
+                // without that flag. `payload` keeps the raw byte so a
+                // plugin can split a path that contains a colon.
                 display: line.replace('\0', ":"),
                 payload: hume_scripting::Rooted::new(SteelVal::StringV(line.into())),
             })
@@ -118,8 +98,6 @@ impl Editor {
                 .take_source()
                 .expect("source_mut returned Some above, and disconnect came from the same source")
         });
-        // `session` (a borrow of `self.state.input`) is not used past this
-        // point, so `report_source_exit` below can take `&mut self.state` freely.
 
         if let Some((source, ok_exit_codes)) = exit {
             report_source_exit(&mut self.state, source, &ok_exit_codes);
@@ -128,9 +106,8 @@ impl Editor {
 }
 
 /// Reports a spawned source's exit as a message-log error unless its status
-/// code is in `ok_exit_codes`. `ok_exit_codes` is the complete allowlist, not an addition to
-/// `ExitStatus::success`; see `UiHost::picker_source_spawn`'s doc for why a
-/// list omitting `0` reports a successful exit as a failure.
+/// code is in `ok_exit_codes`. That list is the complete allowlist, so one
+/// without `0` reports a successful exit as a failure.
 fn report_source_exit(state: &mut EditorState, source: SpawnedLineSource, ok_exit_codes: &[i32]) {
     let cmd = source.cmd().to_string();
     let exit = source.finish();
@@ -146,15 +123,11 @@ fn report_source_exit(state: &mut EditorState, source: SpawnedLineSource, ok_exi
     );
 }
 
-/// Takes the picker's attached source (if any) out and, if it had already
-/// exited before being superseded by a respawn or explicitly stopped,
-/// reports its exit the same way the natural end-of-stream drain would have.
-/// A source still running is dropped silently: `SpawnedLineSource::drop`
-/// kills it, and the exit status of a deliberate kill is noise, not a
-/// failure worth logging. This is the distinction `has_exited` exists to
-/// draw. `close_picker` (`input_stack/picker/mod.rs`) is a third, deliberate path that
-/// drops a source without going through here: a picker being closed has
-/// nowhere left to report to, so its exit (if any) goes unreported.
+/// Takes the picker's attached source out, reporting its exit if it had
+/// already exited. A source still running is dropped without a report:
+/// `SpawnedLineSource::drop` kills it, and a deliberate kill's status is not
+/// a failure. Closing a picker drops its source without coming here, since
+/// there is nowhere left to report.
 fn take_and_report_outgoing_source(state: &mut EditorState) {
     let Some(session) = state.input.picker_mut() else {
         return;

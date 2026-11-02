@@ -1,8 +1,6 @@
-//! The two per-line formatting buffers ([`LineFormat`],
-//! [`VirtualFormat`]) and the scan-bound type ([`FormatBound`]) that
-//! [`format_buffer_line`](super::format_buffer_line) reads and writes. Pure
-//! container/capacity types plus the bound enum; `format_buffer_line`
-//! itself stays in the parent.
+//! The per-line formatting buffers ([`LineFormat`], [`VirtualFormat`]) and
+//! the scan bound ([`FormatBound`]) that
+//! [`format_buffer_line`](super::format_buffer_line) reads and writes.
 
 use std::ops::Range;
 
@@ -16,21 +14,17 @@ use crate::types::{DisplayLine, Grapheme, ScopeId};
 ///
 /// Every index inside is line-local: `DisplayLine::graphemes` indexes
 /// `graphemes`, `Grapheme::byte_range` indexes `line_text` from 0, and
-/// `CellContent`'s arena `(start, len)` pairs index `virtual_texts`. That is
-/// what lets one of these be held alongside others, or handed between the
-/// passes that walk a line, without rebasing anything.
+/// `CellContent`'s arena `(start, len)` pairs index `virtual_texts`, so one
+/// can be handed between passes without rebasing anything.
 ///
-/// Lives in a [`crate::display_lines::line_store::PaneLineStore`], which owns them for as
-/// long as the lines they describe are being walked and reuses their
-/// allocations afterwards, so a line formatted on one frame costs the
-/// allocator nothing on the next.
+/// Owned by a [`crate::display_lines::line_store::PaneLineStore`], which
+/// reuses its allocations across frames.
 pub struct LineFormat {
     /// `DisplayLine`s produced for this buffer line.
     pub display_lines: Vec<DisplayLine>,
     /// `Grapheme`s for this line; display lines index into this.
     pub graphemes: Vec<Grapheme>,
-    /// Pre-materialised text for this line. Written by
-    /// [`format_buffer_line`](super::format_buffer_line); read by `display_lines::DisplayLineMap`'s render accessors as
+    /// Pre-materialised text for this line, read back as
     /// `RenderDisplayLine::line_text`.
     pub line_text: LineText,
     /// Arena backing this line's `CellContent::Virtual` (inline inserts) and
@@ -38,36 +32,24 @@ pub struct LineFormat {
     /// `&'static str` (LSP hints, Steel-configured icons). `TabFill` needs no
     /// arena entry: its text is always a single space.
     pub virtual_texts: String,
-    /// How much of the line the buffers above actually cover, or `None` when
-    /// nothing has been formatted into them yet. That's the state a line sits in
-    /// while only its virtual display lines and block shape are known.
-    ///
-    /// A bounded scan stops early, so a later query wanting more has to
-    /// reformat; see [`FormatBound::covers`].
+    /// How much of the line the buffers above cover, or `None` when nothing
+    /// has been formatted into them yet (only the virtual display lines and
+    /// block shape are known).
     pub extent: Option<FormatBound>,
-    /// The horizontal clip this format was cut to, if any: `DisplayLineMap`'s own
-    /// `h_window` at the moment this ran. Not a formatting input in the sense
-    /// `wrap_mode`/`tab_width`/etc. are (those live on `crate::display_lines::line_store::ResolvedFormatKey`
-    /// and invalidate the whole entry on change): a windowed format *drops*
-    /// leading graphemes rather than truncating, so it answers a different
-    /// question from an unclipped one over the same line. Recording it here
-    /// instead lets the entry's window-independent fields (block shape,
-    /// virtual display lines) survive a window change; only [`LineFormat::covers`]
-    /// needs to tell the two formats apart.
+    /// The horizontal clip this format was cut to, if any: `DisplayLineMap`'s
+    /// `h_window` when it ran. A windowed format drops leading graphemes, so
+    /// it answers a different query from an unclipped one. Kept here rather
+    /// than in `ResolvedFormatKey` so a window change keeps the entry's
+    /// window-independent fields (block shape, virtual display lines).
     pub h_window: Option<Range<DisplayLineCol>>,
 }
 
 /// How large each buffer may stay across a frame boundary. Past this,
-/// [`LineFormat::reset_and_shrink`] reclaims it down to exactly this size.
+/// [`LineFormat::reset_and_shrink`] reclaims it down to this size.
 ///
-/// Ceilings only, not starting sizes: a `LineFormat` begins empty and grows to
-/// whatever its line actually needs. These sit far above an ordinary source
-/// line (which vary by an order of magnitude among themselves) because they
-/// only need to catch the pathological case (a minified-JS file's
-/// single line, megabytes wide) that would otherwise pin that much capacity
-/// for the pane's whole life, reversing the free list's own memory bound,
-/// since retained allocations are exactly what the free list keeps to avoid
-/// reallocating.
+/// Ceilings, not starting sizes. They sit far above an ordinary source line
+/// to catch only the pathological case (a minified-JS line megabytes wide)
+/// that would otherwise pin that capacity for the pane's whole life.
 const DISPLAY_LINES_CEILING: usize = 256;
 const GRAPHEMES_CEILING: usize = 8192;
 const LINE_TEXT_CEILING: usize = 8192;
@@ -76,12 +58,8 @@ const VIRTUAL_TEXTS_CEILING: usize = 4096;
 impl LineFormat {
     /// Empty, with nothing allocated yet.
     ///
-    /// One of these exists per buffer line a pass *walks*, not per line it
-    /// formats, and under `WrapMode::None` block shape is known without
-    /// formatting, so most of them never fill. Reserving up front would charge
-    /// every walked line for buffers only a rendered one uses; the free list
-    /// (see [`crate::display_lines::line_store::PaneLineStore`]) is what makes growing
-    /// on demand free after the first frame anyway.
+    /// One exists per buffer line a pass walks, not per line it formats, and
+    /// under `WrapMode::None` most never fill, so nothing is reserved up front.
     pub fn new() -> Self {
         Self {
             display_lines: Vec::new(),
@@ -104,33 +82,21 @@ impl LineFormat {
         self.h_window = None;
     }
 
-    /// [`Self::reset`] plus reclaiming any buffer grown past its ceiling:
-    /// the frame-boundary counterpart to `reset`, and the exact shape
-    /// [`VirtualFormat::clear_and_shrink`] takes for the same reason.
+    /// [`Self::reset`] plus reclaiming any buffer grown past its ceiling, for
+    /// the frame boundary, where the next user may be a different line.
+    /// `reset` alone serves a reformat of the same line, where shrinking
+    /// would only force a re-grow.
     ///
-    /// `reset` alone runs when the same line is about to be reformatted,
-    /// where shrinking would only force an immediate re-grow. This one runs
-    /// from `PaneLineStore::rewind`, where the buffer's next user may be a
-    /// different line or no line at all, which is the point where an outsized
-    /// allocation is worth paying to give back.
-    ///
-    /// Resetting first is what lets the shrink take effect at all:
-    /// [`shrink_to`](Vec::shrink_to) never drops capacity below the length
-    /// still in the buffer.
+    /// Resetting first matters: [`shrink_to`](Vec::shrink_to) never drops
+    /// capacity below the current length.
     pub fn reset_and_shrink(&mut self) {
         self.reset();
         self.shrink_oversized();
     }
 
     /// Shrink any buffer that has grown past its ceiling back down to it.
-    ///
-    /// Buffers below their ceiling are untouched: keeping their capacity
-    /// across reuse is the free list's whole point.
     fn shrink_oversized(&mut self) {
-        // A macro rather than a helper fn: `Vec` and `String` share no trait
-        // carrying `capacity`/`shrink_to`. Four one-liners naming their own
-        // ceiling, so a field paired with the wrong constant reads as wrong
-        // on the line it happens.
+        // `Vec` and `String` share no trait carrying `capacity`/`shrink_to`.
         macro_rules! shrink {
             ($buf:expr, $ceiling:expr) => {
                 if $buf.capacity() > $ceiling {
@@ -145,8 +111,7 @@ impl LineFormat {
     }
 
     /// Whether this format already answers a query bounded by `bound`, cut to
-    /// the same `h_window` the querying map is using. A windowed format never
-    /// answers for an unwindowed query or vice versa; see the field doc.
+    /// the same `h_window` the querying map is using.
     pub fn covers(&self, bound: FormatBound, h_window: Option<&Range<DisplayLineCol>>) -> bool {
         self.extent.is_some_and(|e| e.covers(bound)) && self.h_window.as_ref() == h_window
     }
@@ -161,12 +126,9 @@ impl Default for LineFormat {
 /// One buffer line's laid-out virtual display lines: every display line
 /// its provider virtual lines occupy, `Before`-anchored ones first.
 ///
-/// A dedicated buffer, not a reuse of `LineFormat`'s content-line fields:
-/// a `Before` virtual display line renders ahead of its line's content
-/// display lines, which may already be formatted and cached
-/// (`display_lines::DisplayLineMap::block` runs the formatter in wrapping mode to count
-/// wrap display lines). Laying virtual display lines out over them would
-/// destroy that cached format and force a redundant reformat.
+/// Separate from `LineFormat` because a `Before` virtual display line
+/// renders ahead of content display lines that may already be formatted and
+/// cached; laying it out over them would force a reformat.
 pub struct VirtualFormat {
     /// The laid-out display lines; each indexes `graphemes`.
     pub display_lines: Vec<DisplayLine>,
@@ -181,18 +143,13 @@ pub struct VirtualFormat {
     /// Graphemes for `display_lines`.
     pub graphemes: Vec<Grapheme>,
     /// Arena backing these display lines' `CellContent::Virtual` text ranges
-    /// (entirely the providers' `VirtualLine::text`), unlike
-    /// `LineFormat::virtual_texts` which backs a content line's inline
-    /// decorations.
+    /// (the providers' `VirtualLine::text`).
     pub texts: String,
 }
 
 impl VirtualFormat {
-    /// Empty, with nothing allocated yet.
-    ///
-    /// Every line entry holds one whether or not that line has any virtual
-    /// display lines at all, so it grows on first use rather than charging
-    /// every entry up front, the same reasoning as [`LineFormat::new`].
+    /// Empty, with nothing allocated yet: every line entry holds one, with or
+    /// without virtual display lines.
     pub fn new() -> Self {
         Self {
             display_lines: Vec::new(),
@@ -203,21 +160,17 @@ impl VirtualFormat {
         }
     }
 
-    /// Display lines anchored `After` the line: whatever `before` doesn't
-    /// claim, since the two groups sit back to back.
+    /// How many display lines are anchored `After` the line.
     pub fn after(&self) -> usize {
         self.display_lines.len() - self.before
     }
 
-    /// Reset to empty, then reclaim a buffer grown past its ceiling.
+    /// Reset to empty, then reclaim a buffer grown past its ceiling, for the
+    /// frame boundary.
     ///
     /// A multi-line deleted hunk lands in one `VirtualFormat`, so the ceilings
     /// are the content-line ones: such a hunk is not freed and re-grown every
     /// frame.
-    ///
-    /// Runs at the frame boundary, when the next user may be a different
-    /// line or no line at all, which is where an outsized allocation is worth
-    /// paying to give back.
     pub fn clear_and_shrink(&mut self) {
         self.display_lines.clear();
         self.before = 0;
@@ -241,21 +194,17 @@ impl Default for VirtualFormat {
 
 /// How far into a line [`format_buffer_line`](super::format_buffer_line) needs to scan.
 ///
-/// A query that only wants one position out of a line (where a char offset
-/// sits (`ToByte`), or which char a display column lands on (`ToDisplayCol`))
-/// has its answer as soon as the scan passes that point, so it can stop there
-/// instead of walking an arbitrarily long unwrapped line to the end.
+/// A query for one position in a line (where a char offset sits,
+/// `ToByte`; which char a display column lands on, `ToDisplayCol`) can stop
+/// once the scan passes that point instead of walking a long unwrapped line
+/// to the end.
 ///
-/// **The stop is a pure optimization, never a correctness mechanism.** A
-/// bounded scan emits a strict *prefix* of what `Full` emits: it only
-/// truncates, no emitted cell differs, and `clipped` suppresses only the
-/// end-of-line tail. Every consumer is prefix-stable: `display_lines::DisplayLineMap::locate`
-/// resolves by binary search and never reads past its target,
-/// `char_at`/`Cell` takes the first cell containing the column, and
-/// `char_at`/`NearestContent` and `NearestInsertionPoint` take the first
-/// column-nearest eligible cell. So
-/// scanning further than asked can never change an answer, which is what lets
-/// `Full` stand in for any bound.
+/// The stop is an optimization only. A bounded scan emits a strict prefix of
+/// what `Full` emits (`clipped` suppresses only the end-of-line tail), and
+/// every consumer is prefix-stable: `DisplayLineMap::locate` never reads past
+/// its target, `char_at`/`Cell` takes the first cell containing the column,
+/// and `char_at`/`NearestContent` and `NearestInsertionPoint` take the first
+/// column-nearest eligible cell. So `Full` can stand in for any bound.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FormatBound {
     /// Scan the whole line. Required whenever the display line *count*
@@ -270,8 +219,7 @@ pub enum FormatBound {
 
 impl FormatBound {
     /// Whether a scan already run to `self` also answers a request for
-    /// `other`. Conservative by design: a `false` costs a reformat, never a
-    /// stale read.
+    /// `other`. A `false` costs a reformat, never a stale read.
     ///
     /// Cross-kind pairs never cover each other: a byte bound implies no
     /// useful column bound (a 4-byte char is one column) and vice versa (a

@@ -1,10 +1,7 @@
-//! LSP-driven text edits, workspace edits, and go-to-location, plus
-//! `goto-revision!` (undo-history navigation), `insert-key!`, `paste-text!`
-//! and `edit-text!`, which edit too but aren't LSP-driven. They live here
-//! rather than in their own trait because one capability accessor
-//! (`EditorHost::edits`) already gates every buffer-mutating builtin that
-//! isn't a named editor command, and a second accessor for them would only
-//! duplicate that gate.
+//! LSP-driven text edits, workspace edits and go-to-location, plus
+//! `goto-revision!`, `insert-key!`, `paste-text!` and `edit-text!`. They
+//! share one accessor (`EditorHost::edits`), which gates every
+//! buffer-mutating builtin that isn't a named editor command.
 
 use hume_core::{BufferId, PaneHandle};
 use hume_platform::path::AbsolutePath;
@@ -14,10 +11,9 @@ use termina::event::KeyEvent;
 use super::{FocusedHandle, ShownHandle};
 
 /// One `apply-text-edits!` entry: a wire range plus its replacement text.
-/// `encoding` is this entry's own producing server's negotiated encoding:
-/// each entry decodes from its own `JsonHandle`, so a batch built from more
-/// than one response could in principle disagree; the host implementation
-/// checks every entry in a batch agrees before applying any of them.
+/// `encoding` is the producing server's negotiated encoding; entries from
+/// different responses may disagree, so the host checks that every entry in
+/// a batch agrees before applying any of them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WireTextEdit {
     pub range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
@@ -35,22 +31,20 @@ pub struct CharTextEdit {
     pub text: String,
 }
 
-/// LSP-driven text edits, workspace edits, and go-to-location, accessed
+/// LSP-driven text edits, workspace edits and go-to-location, accessed
 /// through [`EditorHost::edits`](super::EditorHost::edits).
 ///
-/// A method acts through `pane`'s pane (mapping selections through the
-/// edit, moving the cursor on goto), not the focused one: a response landing
-/// after the user has since switched panes must still edit or navigate the
-/// pane the request was made from. [`Self::apply_text_edits`],
-/// [`Self::apply_workspace_edit`] and [`Self::edit_text`] take any `pane`,
-/// and edit through it while it shows the buffer being edited and for no
-/// pane otherwise.
+/// A method acts through `pane`'s pane, not the focused one, so a response
+/// that lands after the user switched panes still reaches the pane the
+/// request came from. [`Self::apply_text_edits`],
+/// [`Self::apply_workspace_edit`] and [`Self::edit_text`] take any `pane`
+/// and edit through it while it shows the edited buffer, through no pane
+/// otherwise.
 pub trait EditHost {
-    /// `(apply-text-edits! pane edits #:expect-generation gen)`: `edits` is
-    /// a list of wire-coordinate ranges plus replacement text. Applied as
-    /// one undo step. A `pane` that names a pane showing the buffer edits
-    /// through it; any other `pane` edits that buffer for no pane, carrying
-    /// every pane's selections and refusing while any session is open on it.
+    /// `(apply-text-edits! pane edits #:expect-generation gen)` applies wire
+    /// range edits as one undo step. Editing through no pane carries every
+    /// pane's selections and is refused while any session is open on the
+    /// buffer.
     fn apply_text_edits(
         &mut self,
         pane: PaneHandle,
@@ -58,25 +52,17 @@ pub trait EditHost {
         expect_gen: Option<u64>,
     ) -> Result<(), String>;
 
-    /// `(apply-workspace-edit! pane edit #:expect-generation gen)`: `edit`
-    /// is an LSP `WorkspaceEdit` wire JSON blob, read-only here (deserialized
-    /// into a typed `WorkspaceEdit` without needing ownership), so the
-    /// builtin passes a borrow of its `JsonHandle`/hashmap argument rather
-    /// than cloning it. `encoding` is the builtin's own read of that
-    /// handle's tagged producing-server encoding
-    /// (`JsonHandle::position_encoding`); every position in `edit` is
-    /// counted in it. A `WorkspaceEdit` can touch many files at once; each is
-    /// edited through `pane`'s pane while that pane shows it and for no pane
-    /// otherwise, as `apply_text_edits` does. Reports and returns the number
-    /// of buffers modified.
+    /// `(apply-workspace-edit! pane edit #:expect-generation gen)`: `edit` is
+    /// an LSP `WorkspaceEdit` wire JSON value, borrowed from the builtin's
+    /// argument. Every position in it is counted in `encoding`, the
+    /// argument's tagged producing-server encoding. Each file is edited as
+    /// [`Self::apply_text_edits`] edits its buffer. Reports and returns the
+    /// number of buffers modified.
     ///
-    /// `expect_gen`, like `apply_text_edits`'s own, is the *requesting*
-    /// pane's buffer generation at the time the request that produced
-    /// `edit` was sent, checked against that buffer's current generation
-    /// before any file's changeset is built, so an edit computed against
-    /// text that has since changed fails loudly instead of either silently
-    /// vanishing (a request-side staleness drop, before this is ever
-    /// called) or applying against the wrong text.
+    /// `expect_gen` is the requesting pane's buffer generation when the
+    /// request was sent, checked before any file's changeset is built, so an
+    /// edit computed against since-changed text fails with an error instead
+    /// of applying to the wrong text.
     fn apply_workspace_edit(
         &mut self,
         pane: PaneHandle,
@@ -85,15 +71,13 @@ pub trait EditHost {
         expect_gen: Option<u64>,
     ) -> Result<usize, String>;
 
-    /// `(goto-location! pane target)`, raw `Location`/`LocationLink`
-    /// hashmap/handle shape, `loc` decoded through
-    /// `hume_lsp::location::decode_location`, the same decoder
-    /// `lsp-locations->places` uses for drawer rows. `encoding` is
-    /// the builtin's own read of `loc`'s tagged producing-server encoding;
-    /// see [`Self::apply_workspace_edit`]'s doc for the same reasoning.
-    /// `Ok(Some(handle))` names the pane and the buffer it now shows;
-    /// `Ok(None)` when the location's line no longer exists in its file:
-    /// nothing moves, and a buffer this call opened for it is closed again.
+    /// `(goto-location! pane target)` for a raw `Location`/`LocationLink`,
+    /// decoded through `hume_lsp::location::decode_location` as
+    /// `lsp-locations->places` decodes it. `encoding` is `loc`'s tagged
+    /// producing-server encoding. `Ok(Some(handle))` names the pane and the
+    /// buffer it now shows; `Ok(None)` when the location's line no longer
+    /// exists in its file: nothing moves, and a buffer this call opened for
+    /// it is closed again.
     fn goto_location_value(
         &mut self,
         pane: ShownHandle,
@@ -101,16 +85,12 @@ pub trait EditHost {
         encoding: PositionEncoding,
     ) -> Result<Option<PaneHandle>, String>;
 
-    /// `(goto-location! pane target)`, `(hash 'target 'line 'char-col)` shape
-    /// with a path target, made absolute against the editor's working
-    /// directory as written, already char-indexed. `line` and `char_col`
-    /// are bare `usize`: the file may not be open, so no rope exists to check
-    /// `line` against before the host opens one, and the host mints it with
-    /// `ContentLine::checked` against that text. `Ok(None)` when `line` is
-    /// past the text's last content line, with the same cleanup as
-    /// [`Self::goto_location_value`]; `char_col` clamps to its line and is the
-    /// sanctioned addressing-unit exception, same as everywhere else on this
-    /// trait.
+    /// `(goto-location! pane target)` for a `(hash 'target 'line 'char-col)`
+    /// path target, made absolute against the working directory, already
+    /// char-indexed. `line` is a bare `usize` because the file may not be
+    /// open; the host checks it with `ContentLine::checked` against the text
+    /// it opens. `Ok(None)` when `line` is past the last content line, with
+    /// [`Self::goto_location_value`]'s cleanup. `char_col` clamps to its line.
     fn goto_location_path(
         &mut self,
         pane: ShownHandle,
@@ -119,9 +99,8 @@ pub trait EditHost {
         char_col: usize,
     ) -> Result<Option<PaneHandle>, String>;
 
-    /// `(goto-location! pane target)`, `(hash 'target 'char-offset)` shape
-    /// with a buffer target. `char_offset` is a buffer position at the host
-    /// seam, so a bare `usize`. `Err` when it is past the buffer's end:
+    /// `(goto-location! pane target)` for a `(hash 'target 'char-offset)`
+    /// buffer target. `Err` when `char_offset` is past the buffer's end:
     /// Scheme computed it for a live buffer.
     fn goto_location_buffer(
         &mut self,
@@ -131,47 +110,36 @@ pub trait EditHost {
     ) -> Result<PaneHandle, String>;
 
     /// `(goto-revision! pane revision)`: moves `pane`'s buffer to revision
-    /// number `revision` of its undo history, across branches, as one undo
-    /// walk. `revision` is a raw number from `(buffer-undo-tree pane)`,
-    /// validated here. `Err` for a number the buffer has no revision for
-    /// (never recorded, or trimmed away), or for a read-only buffer, so a
-    /// refusal is never mistaken for a jump that happened.
+    /// `revision` of its undo history, across branches, as one undo walk.
+    /// `revision` comes from `(buffer-undo-tree pane)` and is validated here.
+    /// `Err` for a revision the buffer lacks (never recorded, or trimmed
+    /// away) or a read-only buffer, so a refusal never reads as a jump.
     fn goto_revision(&mut self, pane: ShownHandle, revision: usize) -> Result<(), String>;
 
-    /// `(insert-key! pane key)`: runs `key`'s Insert-mode default
-    /// behaviour (indent-style-aware Tab, auto-pairs, auto-indented Enter, …)
-    /// against `pane`, without walking the Insert keymap. `pane` must be the
-    /// focused pane, since this acts on live Insert-session bookkeeping (the
-    /// open undo group, autoindent ownership, a live completion session),
-    /// which is focus-bound rather than a property of an arbitrary
-    /// background pane. `Err` when the focused mode isn't Insert, the call isn't from
-    /// inside a command an Insert-mode key's own binding is dispatching
-    /// (a hook or timer calling this instead would edit untracked for dot-
-    /// repeat), or `key` has no default Insert-mode behaviour to run
-    /// (an arrow, Esc, an unhandled Ctrl-chord, …).
-    ///
-    /// Exists so a command bound to an Insert-mode key can fall back to
-    /// that key's normal behaviour after deciding it doesn't want to
-    /// override it (e.g. Tab: complete after a letter, else insert a tab).
-    /// There is otherwise no way to hand a key back to "as if unbound"
-    /// once a binding has claimed it.
+    /// `(insert-key! pane key)`: runs `key`'s Insert-mode default behaviour
+    /// (indent-style-aware Tab, auto-pairs, auto-indented Enter, …) on
+    /// `pane` without walking the Insert keymap, so a command bound to an
+    /// Insert-mode key can hand the key back as if unbound. `pane` must be
+    /// focused: the Insert session's undo group, autoindent ownership and
+    /// completion session belong to the focused pane. `Err` when the focused
+    /// mode isn't Insert, when not called from a command an Insert-mode key's
+    /// binding dispatches (a hook or timer would edit untracked by
+    /// dot-repeat), or when `key` has no default Insert-mode behaviour (an
+    /// arrow, Esc, an unhandled Ctrl-chord, …).
     fn insert_key(&mut self, pane: FocusedHandle, key: KeyEvent) -> Result<(), String>;
 
     /// `(paste-text! pane text)`: pastes `values` into whatever has focus,
-    /// through the same path a terminal paste takes, so it does whatever a
-    /// paste would do there. Several values are placed at the selections as
-    /// `p` places a register's. `Err` when the paste was refused (its buffer
-    /// is read-only, or busy with a pipe).
+    /// through the path a terminal paste takes. Several values are placed at
+    /// the selections as `p` places a register's. `Err` when the paste is
+    /// refused (its buffer is read-only, or busy with a pipe).
     fn paste_text(&mut self, pane: FocusedHandle, values: Vec<String>) -> Result<(), String>;
 
     /// `(edit-text! pane edits #:expect-generation gen)`: applies `edits`,
     /// all positioned against the text before the call, to `pane`'s buffer
-    /// as one undo step, carrying every selection through the change. It
-    /// acts through `pane` while that pane shows the buffer, through no pane
-    /// otherwise, as `apply-text-edits!` does. An empty list changes nothing
-    /// and is checked for nothing. Otherwise `Err` for an offset past the
-    /// end, a reversed or overlapping range, a read-only buffer, or a buffer
-    /// whose generation is not `expect_gen`.
+    /// as one undo step, carrying every selection through the change. An
+    /// empty list changes nothing and is checked for nothing. Otherwise
+    /// `Err` for an offset past the end, a reversed or overlapping range, a
+    /// read-only buffer, or a buffer whose generation is not `expect_gen`.
     fn edit_text(
         &mut self,
         pane: PaneHandle,
