@@ -15,16 +15,17 @@ use crate::statusline::colors::EditorColors;
 /// alongside the provider, which `read`'s single-argument signature has no
 /// room for (see `custom.rs`).
 pub(super) trait StatuslineElement {
-    type Data;
+    /// What `read` takes from the editor, borrowed from it where it can be.
+    type Data<'a>;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data;
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a>;
 
-    fn format(data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle);
+    fn format<'a>(data: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle);
 
-    fn render(
-        editor: &HumeStatusline<'_>,
+    fn render<'a>(
+        editor: &'a HumeStatusline<'_>,
         colors: &EditorColors,
-    ) -> (Cow<'static, str>, ResolvedStyle) {
+    ) -> (Cow<'a, str>, ResolvedStyle) {
         Self::format(Self::read(editor), colors)
     }
 }

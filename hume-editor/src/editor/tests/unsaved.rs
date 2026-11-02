@@ -88,23 +88,15 @@ fn the_script_host_reports_an_open_session_as_dirty() {
 fn the_statusline_shows_the_indicator_while_an_insert_session_has_an_edit() {
     let (_dir, mut ed) = file_editor();
     let colors = crate::statusline::colors::EditorColors::default();
-    let (before, _) = render_element(
-        &StatusElement::DirtyIndicator,
-        &ed.statusline(),
-        &colors,
-        "",
-    );
+    let statusline = ed.statusline();
+    let (before, _) = render_element(&StatusElement::DirtyIndicator, &statusline, &colors, "");
     assert!(before.is_empty(), "a fresh buffer is clean, got {before:?}");
 
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
 
-    let (during, _) = render_element(
-        &StatusElement::DirtyIndicator,
-        &ed.statusline(),
-        &colors,
-        "",
-    );
+    let statusline = ed.statusline();
+    let (during, _) = render_element(&StatusElement::DirtyIndicator, &statusline, &colors, "");
     assert_eq!(during.as_ref(), "[+]");
 }
 

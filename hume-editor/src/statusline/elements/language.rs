@@ -8,16 +8,16 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct LanguageElement;
 
 impl StatuslineElement for LanguageElement {
-    type Data = Option<String>;
+    type Data<'a> = Option<&'a str>;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor
             .doc()
             .language
-            .map(|id| editor.state.config.languages.name_of(id).to_owned())
+            .map(|id| editor.state.config.languages.name_of(id))
     }
 
-    fn format(lang: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(lang: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
         match lang {
             Some(lang) => (Cow::Owned(format!("[{lang}]")), colors.statusline),
             None => (Cow::Borrowed(""), colors.statusline),

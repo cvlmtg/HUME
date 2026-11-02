@@ -9,18 +9,18 @@ pub(in crate::statusline) struct MiniBufElement;
 
 impl StatuslineElement for MiniBufElement {
     /// `(prompt, input)`, present only while the minibuffer is active.
-    type Data = Option<(String, String)>;
+    type Data<'a> = Option<(&'a str, &'a str)>;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor
             .state
             .minibuf()
-            .map(|mb| (mb.prompt.clone(), mb.input.clone()))
+            .map(|mb| (mb.prompt.as_str(), mb.input.as_str()))
     }
 
-    fn format(data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(data: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
         match data {
-            Some((prompt, input)) => (Cow::Owned(prompt + &input), colors.statusline),
+            Some((prompt, input)) => (Cow::Owned(format!("{prompt}{input}")), colors.statusline),
             None => (Cow::Borrowed(""), colors.statusline),
         }
     }

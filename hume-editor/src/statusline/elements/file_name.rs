@@ -8,13 +8,13 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct FileNameElement;
 
 impl StatuslineElement for FileNameElement {
-    type Data = String;
+    type Data<'a> = String;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor.doc().display_name()
     }
 
-    fn format(name: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(name: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
         (Cow::Owned(name), colors.statusline)
     }
 }

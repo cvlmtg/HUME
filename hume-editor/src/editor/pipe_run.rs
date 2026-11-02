@@ -216,7 +216,7 @@ impl PipeRuns {
 
     /// `bid`'s run, as the statusline shows it: once it has gone on for
     /// [`PROGRESS_GRACE`], until its processes are done.
-    pub(crate) fn progress(&self, bid: BufferId) -> Option<PipeProgress> {
+    pub(crate) fn progress(&self, bid: BufferId) -> Option<PipeProgress<'_>> {
         let now = Instant::now();
         self.runs
             .iter()
@@ -225,7 +225,7 @@ impl PipeRuns {
                 matches!(run.state, RunState::Running(_)) && now >= run.started + PROGRESS_GRACE
             })
             .map(|run| PipeProgress {
-                command: run.launch.command.clone(),
+                command: &run.launch.command,
                 done: run.done,
                 total: run.launch.input_ends_line.len(),
             })
@@ -324,9 +324,9 @@ impl super::async_source::AsyncSource for PipeRuns {
 }
 
 /// A pipe run, as the statusline shows it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PipeProgress {
-    pub(crate) command: String,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PipeProgress<'a> {
+    pub(crate) command: &'a str,
     /// Processes finished.
     pub(crate) done: usize,
     /// Processes in the run, one per selection.

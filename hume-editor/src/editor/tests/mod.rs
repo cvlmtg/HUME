@@ -406,9 +406,10 @@ fn pending_calls(ed: &Editor) -> Vec<(steel::rvals::SteelVal, Vec<steel::rvals::
 /// the render side of `(set-statusline-text! bid name text)`.
 fn custom_text(ed: &Editor, name: &str) -> String {
     let colors = crate::statusline::colors::EditorColors::default();
+    let statusline = ed.statusline();
     let (text, _) = crate::statusline::render_element(
         &crate::statusline::StatusElement::Custom(name.into()),
-        &ed.statusline(),
+        &statusline,
         &colors,
         "",
     );

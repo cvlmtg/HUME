@@ -76,12 +76,8 @@ fn macro_recording_element_idle_renders_empty() {
     // When not recording, MacroRecording should contribute an empty string.
     let ed = test_editor();
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(
-        &StatusElement::MacroRecording,
-        &ed.statusline(),
-        &colors,
-        "",
-    );
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::MacroRecording, &statusline, &colors, "");
     assert!(
         text.is_empty(),
         "expected empty string when not recording, got {:?}",
@@ -100,12 +96,8 @@ fn macro_recording_element_active_renders_label() {
         ));
     }
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(
-        &StatusElement::MacroRecording,
-        &ed.statusline(),
-        &colors,
-        "",
-    );
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::MacroRecording, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"[recording @q]");
 }
 
@@ -120,12 +112,8 @@ fn macro_recording_element_named_register() {
         ));
     }
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(
-        &StatusElement::MacroRecording,
-        &ed.statusline(),
-        &colors,
-        "",
-    );
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::MacroRecording, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"[recording @3]");
 }
 
@@ -135,7 +123,8 @@ fn macro_recording_element_named_register() {
 fn pipe_element_idle_renders_empty() {
     let ed = test_editor();
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Pipe, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::Pipe, &statusline, &colors, "");
     assert!(text.is_empty(), "got {text:?}");
 }
 
@@ -143,13 +132,13 @@ fn pipe_element_idle_renders_empty() {
 fn pipe_element_shows_the_command_and_progress() {
     use crate::editor::PipeProgress;
     let colors = crate::statusline::colors::EditorColors::default();
-    let progress = |command: &str, done, total| {
+    fn progress(command: &str, done: usize, total: usize) -> Option<PipeProgress<'_>> {
         Some(PipeProgress {
-            command: command.to_string(),
+            command,
             done,
             total,
         })
-    };
+    }
     let (one, _) = PipeElement::format(progress("sort", 0, 1), &colors);
     insta::assert_snapshot!(one, @"running `sort`");
     let (many, _) = PipeElement::format(progress("uuidgen", 3, 10), &colors);
@@ -272,7 +261,8 @@ fn test_editor_with_text(s: &str) -> crate::editor::Editor {
 fn line_ending_element_lf() {
     let ed = test_editor_with_text("hello\n");
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::LineEnding, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::LineEnding, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"LF");
 }
 
@@ -280,7 +270,8 @@ fn line_ending_element_lf() {
 fn line_ending_element_crlf() {
     let ed = test_editor_with_text("hello\r\n");
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::LineEnding, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::LineEnding, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"CRLF");
 }
 
@@ -297,7 +288,8 @@ fn test_editor_with_text_and_cursor(s: &str, head: usize) -> crate::editor::Edit
 fn position_element_single_line_pads_to_min_field() {
     let ed = test_editor_with_text("hello\n");
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Position, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::Position, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"    1:1");
 }
 
@@ -308,7 +300,8 @@ fn position_element_two_digit_line_stays_in_min_field() {
     let head = 13 + 2; // start of line 14 (char 13) + 2 chars ('a','b') before 'c'
     let ed = test_editor_with_text_and_cursor(&s, head);
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Position, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::Position, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"   14:3");
 }
 
@@ -320,7 +313,8 @@ fn position_element_three_digit_line_and_col() {
     let head = 142 + 48; // start of line 143 (char 142) + 48 chars before the 49th 'a'
     let ed = test_editor_with_text_and_cursor(&s, head);
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Position, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::Position, &statusline, &colors, "");
     insta::assert_snapshot!(text, @" 143:49");
 }
 
@@ -347,7 +341,8 @@ fn position_element_shows_grapheme_column_not_char_or_utf16_count() {
     let head = 3; // char offset of 'x': 'e', combining mark, astral char, then 'x'
     let ed = test_editor_with_text_and_cursor(s, head);
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Position, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::Position, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"    1:3");
 }
 
@@ -356,7 +351,8 @@ fn position_element_widens_field_past_1000_lines() {
     let s = "\n".repeat(1000);
     let ed = test_editor_with_text_and_cursor(&s, 0);
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Position, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::Position, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"     1:1");
 }
 
@@ -368,14 +364,16 @@ fn position_element_width_stable_across_line_digit_growth() {
     let colors = crate::statusline::colors::EditorColors::default();
 
     let ed9 = test_editor_with_text_and_cursor(&s, 8); // line 9
+    let statusline = ed9.statusline();
     let spans9 = pad_left(
-        render_section(&[StatusElement::Position], &ed9.statusline(), &colors, ""),
+        render_section(&[StatusElement::Position], &statusline, &colors, ""),
         &colors,
     );
 
     let ed10 = test_editor_with_text_and_cursor(&s, 9); // line 10
+    let statusline = ed10.statusline();
     let spans10 = pad_left(
-        render_section(&[StatusElement::Position], &ed10.statusline(), &colors, ""),
+        render_section(&[StatusElement::Position], &statusline, &colors, ""),
         &colors,
     );
 
@@ -389,7 +387,8 @@ fn cwd_element_renders_nonempty() {
     // Smoke test: the element renders the editor's cwd.
     let ed = test_editor();
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Cwd, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::Cwd, &statusline, &colors, "");
     assert!(
         !text.is_empty(),
         "Cwd rendered empty; expected a path string"
@@ -402,7 +401,8 @@ fn cwd_element_renders_nonempty() {
 fn language_element_empty_when_none() {
     let ed = test_editor();
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Language, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::Language, &statusline, &colors, "");
     assert!(
         text.is_empty(),
         "expected empty string for undetected language, got {:?}",
@@ -414,7 +414,8 @@ fn language_element_empty_when_none() {
 fn language_element_renders_bracketed() {
     let ed = crate::editor::tests::editor_with_language("hello\n", "rust");
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::Language, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::Language, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"[rust]");
 }
 
@@ -424,7 +425,8 @@ fn language_element_renders_bracketed() {
 fn readonly_element_empty_for_normal_buffer() {
     let ed = test_editor();
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::ReadOnly, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::ReadOnly, &statusline, &colors, "");
     assert!(
         text.is_empty(),
         "expected empty for writable buffer, got {text:?}"
@@ -435,7 +437,8 @@ fn readonly_element_empty_for_normal_buffer() {
 fn readonly_element_renders_ro_label() {
     let ed = crate::editor::tests::editor_with_read_only_view("hello\n", "test");
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = render_element(&StatusElement::ReadOnly, &ed.statusline(), &colors, "");
+    let statusline = ed.statusline();
+    let (text, _) = render_element(&StatusElement::ReadOnly, &statusline, &colors, "");
     insta::assert_snapshot!(text, @"[RO]");
 }
 
@@ -740,9 +743,10 @@ fn custom_element_renders_the_focused_buffers_pushed_text_or_empty() {
     let colors = crate::statusline::colors::EditorColors::default();
     let bid = ed.focused_buffer_id();
 
+    let statusline = ed.statusline();
     let (empty, _) = render_element(
         &StatusElement::Custom("greeting".into()),
-        &ed.statusline(),
+        &statusline,
         &colors,
         "",
     );
@@ -754,9 +758,10 @@ fn custom_element_renders_the_focused_buffers_pushed_text_or_empty() {
         .entry(bid)
         .or_default()
         .insert("greeting".into(), "hi".into());
+    let statusline = ed.statusline();
     let (text, style) = render_element(
         &StatusElement::Custom("greeting".into()),
-        &ed.statusline(),
+        &statusline,
         &colors,
         "",
     );

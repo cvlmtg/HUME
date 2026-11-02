@@ -10,13 +10,16 @@ pub(in crate::statusline) struct PipeElement;
 
 impl StatuslineElement for PipeElement {
     /// The focused buffer's pipe run, if any.
-    type Data = Option<PipeProgress>;
+    type Data<'a> = Option<PipeProgress<'a>>;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor.state.pipe_runs.progress(editor.focused_bid)
     }
 
-    fn format(progress: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(
+        progress: Self::Data<'a>,
+        colors: &EditorColors,
+    ) -> (Cow<'a, str>, ResolvedStyle) {
         let text = match progress {
             None => return (Cow::Borrowed(""), colors.statusline),
             Some(PipeProgress {

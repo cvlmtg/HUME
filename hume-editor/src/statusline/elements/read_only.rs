@@ -8,13 +8,16 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct ReadOnlyElement;
 
 impl StatuslineElement for ReadOnlyElement {
-    type Data = bool;
+    type Data<'a> = bool;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor.doc().is_read_only()
     }
 
-    fn format(read_only: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(
+        read_only: Self::Data<'a>,
+        colors: &EditorColors,
+    ) -> (Cow<'a, str>, ResolvedStyle) {
         let label = if read_only { "[RO]" } else { "" };
         (Cow::Borrowed(label), colors.statusline)
     }

@@ -10,13 +10,13 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct ModeElement;
 
 impl StatuslineElement for ModeElement {
-    type Data = EditorMode;
+    type Data<'a> = EditorMode;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor.state.mode()
     }
 
-    fn format(mode: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(mode: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
         let label = match mode {
             EditorMode::Normal => "NOR",
             EditorMode::Extend => "EXT",

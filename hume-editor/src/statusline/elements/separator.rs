@@ -9,11 +9,11 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct SeparatorElement;
 
 impl StatuslineElement for SeparatorElement {
-    type Data = ();
+    type Data<'a> = ();
 
-    fn read(_editor: &HumeStatusline<'_>) -> Self::Data {}
+    fn read<'a>(_editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {}
 
-    fn format(_data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(_data: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
         (Cow::Borrowed(VERTICAL), colors.statusline_separator)
     }
 }

@@ -263,10 +263,10 @@ impl Default for StatusLineConfig {
 ///
 /// This gives every left section a consistent left margin without requiring
 /// individual elements to be edge-aware.
-fn pad_left(
-    mut spans: Vec<(Cow<'static, str>, ResolvedStyle)>,
+fn pad_left<'a>(
+    mut spans: Vec<(Cow<'a, str>, ResolvedStyle)>,
     colors: &EditorColors,
-) -> Vec<(Cow<'static, str>, ResolvedStyle)> {
+) -> Vec<(Cow<'a, str>, ResolvedStyle)> {
     if !spans.is_empty() {
         spans.insert(0, (Cow::Borrowed(" "), colors.statusline));
     }
@@ -277,10 +277,10 @@ fn pad_left(
 ///
 /// Mirrors [`pad_left`] for the trailing edge; supplies the right-margin
 /// offset used by the placement arithmetic.
-fn pad_right(
-    mut spans: Vec<(Cow<'static, str>, ResolvedStyle)>,
+fn pad_right<'a>(
+    mut spans: Vec<(Cow<'a, str>, ResolvedStyle)>,
     colors: &EditorColors,
-) -> Vec<(Cow<'static, str>, ResolvedStyle)> {
+) -> Vec<(Cow<'a, str>, ResolvedStyle)> {
     if !spans.is_empty() {
         spans.push((Cow::Borrowed(" "), colors.statusline));
     }
@@ -290,7 +290,7 @@ fn pad_right(
 // ── Drawing helpers ───────────────────────────────────────────────────────────
 
 /// Total display-column width of a rendered section.
-fn section_width(spans: &[(Cow<'static, str>, ResolvedStyle)]) -> u16 {
+fn section_width(spans: &[(Cow<'_, str>, ResolvedStyle)]) -> u16 {
     spans
         .iter()
         .map(|(t, _)| chrome_width(t.as_ref()) as u16)
@@ -300,7 +300,7 @@ fn section_width(spans: &[(Cow<'static, str>, ResolvedStyle)]) -> u16 {
 /// Draw a section's spans left-to-right starting at `x`.
 fn draw_section(
     canvas: &mut Canvas,
-    spans: &[(Cow<'static, str>, ResolvedStyle)],
+    spans: &[(Cow<'_, str>, ResolvedStyle)],
     mut x: u16,
     y: u16,
     right_edge: u16,
@@ -465,6 +465,8 @@ fn render_statusline(
     // it again would just reallocate every other element's `Cow` a second
     // time for an identical result.
     let filepath_full = elements::file_path::statusline_display_path(editor);
+    // Outside the branch that sets it: the final spans borrow it.
+    let filepath_display;
     let (left_spans, center_spans, right_spans) = if filepath_full.is_empty() {
         (
             pad_left(render_section(left_elems, editor, colors, ""), colors),
@@ -481,7 +483,7 @@ fn render_statusline(
         // Subtract 1 for the inter-element space that render_section inserts
         // before a non-empty FilePath span (conservatively safe for all cases).
         let budget = (area.width as usize).saturating_sub(fixed_w + 1);
-        let filepath_display = elements::file_path::shorten_path_to_width(&filepath_full, budget);
+        filepath_display = elements::file_path::shorten_path_to_width(&filepath_full, budget);
 
         let left = if left_elems.contains(&StatusElement::FilePath) {
             pad_left(
@@ -546,14 +548,14 @@ fn render_statusline(
 /// checks that a live LSP diagnostics flow produces the right *counts*
 /// without re-asserting their rendering. Pure formatting function, no
 /// mutable state; the crossing carries no risk `pub(in ...)` would avoid.
-pub(crate) fn render_element(
+pub(crate) fn render_element<'a>(
     seg: &StatusElement,
-    editor: &HumeStatusline<'_>,
+    editor: &'a HumeStatusline<'_>,
     colors: &EditorColors,
     // Pre-computed text for the FilePath element. "" = render as empty (measure
     // pass); any other string = use verbatim (already shortened by caller).
-    filepath_text: &str,
-) -> (Cow<'static, str>, ResolvedStyle) {
+    filepath_text: &'a str,
+) -> (Cow<'a, str>, ResolvedStyle) {
     match seg {
         StatusElement::Mode => ModeElement::render(editor, colors),
         StatusElement::Separator => SeparatorElement::render(editor, colors),
@@ -575,13 +577,13 @@ pub(crate) fn render_element(
     }
 }
 
-fn render_section(
+fn render_section<'a>(
     elements: &[StatusElement],
-    editor: &HumeStatusline<'_>,
+    editor: &'a HumeStatusline<'_>,
     colors: &EditorColors,
-    filepath_text: &str,
-) -> Vec<(Cow<'static, str>, ResolvedStyle)> {
-    let mut spans: Vec<(Cow<'static, str>, ResolvedStyle)> = Vec::with_capacity(elements.len() * 2);
+    filepath_text: &'a str,
+) -> Vec<(Cow<'a, str>, ResolvedStyle)> {
+    let mut spans: Vec<(Cow<'a, str>, ResolvedStyle)> = Vec::with_capacity(elements.len() * 2);
 
     for seg in elements {
         let (text, style) = render_element(seg, editor, colors, filepath_text);

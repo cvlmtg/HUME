@@ -13,11 +13,11 @@ use hume_rope::width::{ELLIPSIS, ELLIPSIS_WIDTH, chrome_width, truncate_to_width
 /// `render_statusline`'s two-pass sizing pass (measure with `""`, then
 /// [`shorten_path_to_width`] against the remaining budget) and handed in as
 /// `filepath_text`.
-pub(in crate::statusline) fn render(
-    filepath_text: &str,
+pub(in crate::statusline) fn render<'a>(
+    filepath_text: &'a str,
     colors: &EditorColors,
-) -> (Cow<'static, str>, ResolvedStyle) {
-    (Cow::Owned(filepath_text.to_owned()), colors.statusline)
+) -> (Cow<'a, str>, ResolvedStyle) {
+    (Cow::Borrowed(filepath_text), colors.statusline)
 }
 
 /// Returns the display path for the `FilePath` element: the buffer's

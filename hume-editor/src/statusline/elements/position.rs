@@ -19,9 +19,9 @@ pub(in crate::statusline) struct Position {
 }
 
 impl StatuslineElement for PositionElement {
-    type Data = Position;
+    type Data<'a> = Position;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         let text = editor.doc().text();
         let head = editor.current_view().primary().head();
         let head_line = text.char_to_line(head.offset());
@@ -33,14 +33,14 @@ impl StatuslineElement for PositionElement {
         }
     }
 
-    fn format(
+    fn format<'a>(
         Position {
             line,
             grapheme_col,
             max_line,
-        }: Self::Data,
+        }: Self::Data<'a>,
         colors: &EditorColors,
-    ) -> (Cow<'static, str>, ResolvedStyle) {
+    ) -> (Cow<'a, str>, ResolvedStyle) {
         // Right-align into a field sized for the largest line number this
         // buffer can show (min 3 digits) and a fixed 3-digit column budget,
         // so the element's right edge stays put as the cursor moves and

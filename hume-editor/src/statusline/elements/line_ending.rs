@@ -10,13 +10,13 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct LineEndingElement;
 
 impl StatuslineElement for LineEndingElement {
-    type Data = TextLineEnding;
+    type Data<'a> = TextLineEnding;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor.doc().text().line_ending()
     }
 
-    fn format(ending: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(ending: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
         let label = match ending {
             TextLineEnding::Lf => "LF",
             TextLineEnding::CrLf => "CRLF",

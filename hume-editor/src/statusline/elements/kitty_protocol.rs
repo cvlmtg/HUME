@@ -8,13 +8,13 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct KittyProtocolElement;
 
 impl StatuslineElement for KittyProtocolElement {
-    type Data = bool;
+    type Data<'a> = bool;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor.kitty_enabled
     }
 
-    fn format(enabled: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(enabled: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
         let label = if enabled { "ᓚᘏᗢ" } else { "" };
         (Cow::Borrowed(label), colors.statusline)
     }

@@ -23,9 +23,9 @@ impl StatuslineElement for DiagnosticsElement {
     /// Rust: the statusline renders every frame, so this never goes
     /// through Steel's `(diagnostic-counts …)` builtin (that one is for
     /// plugins, not the render path).
-    type Data = (LspActivity, usize, usize, usize);
+    type Data<'a> = (LspActivity, usize, usize, usize);
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         let bid = editor.focused_buffer_id();
         let counts = editor.diagnostic_counts(bid);
         (
@@ -36,10 +36,10 @@ impl StatuslineElement for DiagnosticsElement {
         )
     }
 
-    fn format(
-        (activity, errors, warnings, frame): Self::Data,
+    fn format<'a>(
+        (activity, errors, warnings, frame): Self::Data<'a>,
         colors: &EditorColors,
-    ) -> (Cow<'static, str>, ResolvedStyle) {
+    ) -> (Cow<'a, str>, ResolvedStyle) {
         let spinner = SPINNER[frame % SPINNER.len()];
         // `Starting` and a percentage-less `Progress` render identically:
         // neither has anything more specific to show than "a server task is

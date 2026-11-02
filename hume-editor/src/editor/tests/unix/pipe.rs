@@ -29,7 +29,7 @@ struct ScriptedConsole {
     events: VecDeque<WaitEvent>,
     deferred: Vec<TerminalEvent>,
     detached: Detached,
-    repaints: Vec<Option<PipeProgress>>,
+    repaints: Vec<Shown>,
     painted_at: Vec<Instant>,
 }
 
@@ -58,8 +58,9 @@ impl PipeConsole for ScriptedConsole {
     }
 
     fn repaint(&mut self, ed: &mut Editor) -> io::Result<()> {
+        let progress = ed.state.pipe_runs.progress(ed.focused_buffer_id());
         self.repaints
-            .push(ed.state.pipe_runs.progress(ed.focused_buffer_id()));
+            .push(progress.map(|p| (p.command.to_owned(), p.done, p.total)));
         self.painted_at.push(Instant::now());
         Ok(())
     }
@@ -75,12 +76,19 @@ fn start_run(ed: &mut Editor, command: &str, kind: PipeKind) -> RunId {
         .start_pipe_run(pid, bid, command.to_string(), kind, None)
 }
 
-fn progress(command: &str, done: usize, total: usize) -> Option<PipeProgress> {
+fn progress(command: &str, done: usize, total: usize) -> Option<PipeProgress<'_>> {
     Some(PipeProgress {
-        command: command.to_string(),
+        command,
         done,
         total,
     })
+}
+
+/// What one repaint showed of the run: its command, processes done, total.
+type Shown = Option<(String, usize, usize)>;
+
+fn shown(command: &str, done: usize, total: usize) -> Shown {
+    Some((command.to_owned(), done, total))
 }
 
 fn run_with(ed: &mut Editor, run: RunId, console: &mut ScriptedConsole) {
@@ -158,9 +166,9 @@ fn progress_repaints_as_processes_finish() {
         .repaints
         .iter()
         .map(|shown| {
-            let shown = shown.as_ref().expect("a repaint shows the run");
-            assert_eq!((shown.command.as_str(), shown.total), (command, 3));
-            shown.done
+            let (shown_command, done, total) = shown.as_ref().expect("a repaint shows the run");
+            assert_eq!((shown_command.as_str(), *total), (command, 3));
+            *done
         })
         .collect();
     assert!(
@@ -200,10 +208,7 @@ fn a_resize_during_the_wait_repaints() {
     run_with(&mut ed, run, &mut console);
     assert_eq!(
         console.repaints,
-        [
-            progress("sleep 0.5; cat", 0, 1),
-            progress("sleep 0.5; cat", 0, 1)
-        ]
+        [shown("sleep 0.5; cat", 0, 1), shown("sleep 0.5; cat", 0, 1)]
     );
 }
 

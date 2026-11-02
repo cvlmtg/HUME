@@ -8,13 +8,13 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct DirtyIndicatorElement;
 
 impl StatuslineElement for DirtyIndicatorElement {
-    type Data = bool;
+    type Data<'a> = bool;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor.state.has_unsaved_changes(editor.focused_bid)
     }
 
-    fn format(dirty: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(dirty: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
         let label = if dirty { "[+]" } else { "" };
         (Cow::Borrowed(label), colors.statusline)
     }

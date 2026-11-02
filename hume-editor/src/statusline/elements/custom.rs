@@ -11,17 +11,17 @@ use crate::statusline::colors::EditorColors;
 /// Renders the focused buffer's last-pushed text for `name` (`(set-
 /// statusline-text! pane source text)`), or empty if nothing has been pushed
 /// yet: same "absent = empty" convention as every other element.
-pub(in crate::statusline) fn render(
-    editor: &HumeStatusline<'_>,
+pub(in crate::statusline) fn render<'a>(
+    editor: &'a HumeStatusline<'_>,
     name: &str,
     colors: &EditorColors,
-) -> (Cow<'static, str>, ResolvedStyle) {
+) -> (Cow<'a, str>, ResolvedStyle) {
     let text = editor
         .state
         .config
         .statusline_text
         .get(&editor.focused_buffer_id())
         .and_then(|by_name| by_name.get(name))
-        .map_or(Cow::Borrowed(""), |s| Cow::Owned(s.to_string()));
-    (text, colors.statusline)
+        .map_or("", Box::as_ref);
+    (Cow::Borrowed(text), colors.statusline)
 }

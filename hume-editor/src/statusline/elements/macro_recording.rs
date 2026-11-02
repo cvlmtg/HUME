@@ -9,13 +9,13 @@ pub(in crate::statusline) struct MacroRecordingElement;
 
 impl StatuslineElement for MacroRecordingElement {
     /// The register being recorded into, if any.
-    type Data = Option<char>;
+    type Data<'a> = Option<char>;
 
-    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+    fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
         editor.state.macros.recording_register()
     }
 
-    fn format(reg: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn format<'a>(reg: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
         match reg {
             Some(reg) => (Cow::Owned(format!("[recording @{reg}]")), colors.statusline),
             None => (Cow::Borrowed(""), colors.statusline),

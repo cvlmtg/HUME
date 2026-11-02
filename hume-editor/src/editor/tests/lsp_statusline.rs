@@ -60,12 +60,9 @@ fn setup(content: &str, publishes: &[&[DiagFixture]]) -> DiagCtx {
 fn diagnostics_element_empty_with_no_diagnostics() {
     let c = setup("abcdefgh\n", &[]);
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = crate::statusline::render_element(
-        &StatusElement::Diagnostics,
-        &c.ed.statusline(),
-        &colors,
-        "",
-    );
+    let statusline = c.ed.statusline();
+    let (text, _) =
+        crate::statusline::render_element(&StatusElement::Diagnostics, &statusline, &colors, "");
     assert!(
         text.is_empty(),
         "expected empty with no diagnostics, got {text:?}"
@@ -90,12 +87,9 @@ fn diagnostics_element_displays_published_error_and_warning_counts() {
     );
 
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = crate::statusline::render_element(
-        &StatusElement::Diagnostics,
-        &c.ed.statusline(),
-        &colors,
-        "",
-    );
+    let statusline = c.ed.statusline();
+    let (text, _) =
+        crate::statusline::render_element(&StatusElement::Diagnostics, &statusline, &colors, "");
     assert!(
         !text.is_empty(),
         "known diagnostic counts must be displayed"
@@ -194,12 +188,9 @@ fn starting_server_displays_a_loading_indicator() {
     assert!(matches!(ed.lsp_activity(bid), LspActivity::Starting));
 
     let colors = crate::statusline::colors::EditorColors::default();
-    let (text, _) = crate::statusline::render_element(
-        &StatusElement::Diagnostics,
-        &ed.statusline(),
-        &colors,
-        "",
-    );
+    let statusline = ed.statusline();
+    let (text, _) =
+        crate::statusline::render_element(&StatusElement::Diagnostics, &statusline, &colors, "");
     assert!(
         !text.is_empty(),
         "a starting server must display a loading indicator"
