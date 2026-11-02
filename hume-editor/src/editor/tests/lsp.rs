@@ -231,7 +231,7 @@ fn server_request_action_gets_exactly_one_response() {
     rig.push(sid, configuration_request(1, &[""]));
 
     // The dispatch table itself (every method, including MethodNotFound) is
-    // unit-tested in `hume_lsp::client::tests` against the pure
+    // unit-tested in `hume_lsp::server_request::tests` against the pure
     // `server_request_response`; this layer owes one answer.
     let responses = rig.responses.borrow();
     assert_eq!(responses.len(), 1);

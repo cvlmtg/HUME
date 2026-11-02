@@ -110,9 +110,10 @@ activated needs no setup; `on-buffer-close` drops the record.
 | Trigger | Pane carried | Handling |
 |---|---|---|
 | `on-viewport-change` | Live pane | Refreshes |
-| `on-diagnostics-changed` | Buffer only | Refreshes |
+| `on-lsp-attach` | Buffer only | Refreshes, so a buffer shown while its server was starting gets hints once the server runs |
+| `on-inlay-hints-refresh` | Buffer only | Refreshes. A server sends `workspace/inlayHint/refresh` when its analysis changes hints that no edit or scroll would reveal, such as once it finishes indexing |
 | `on-lsp-detach` | Buffer only | Refreshes, or clears the hints of a buffer no pane shows |
-| `on-text-changed` | Buffer only | Refreshes. It covers undo, redo and edits that neither scroll nor republish diagnostics, so a hint dropped with its anchor character returns when the edit is undone |
+| `on-text-changed` | Buffer only | Refreshes. It covers undo, redo and edits that do not scroll, so a hint dropped with its anchor character returns when the edit is undone |
 
 Every trigger hands the refresh its value as it came, and a trigger for a buffer whose
 hints are off schedules nothing. The refresh resolves a pane with `lsp/resolve-pane` when
@@ -124,8 +125,8 @@ it still shows its buffer, otherwise the focused pane, then the rest of the acti
 then other tabs (see the
 [core plugins index](../../README.md#pane-values-vs-pane-less-values)).
 
-Refreshes are debounced by 200 ms per buffer (keyed, not global), so a diagnostics batch
-touching two buffers cannot have the second buffer's call cancel the first's pending
+Refreshes are debounced by 200 ms per buffer (keyed, not global), so a server's refresh
+reaching two buffers cannot have the second buffer's call cancel the first's pending
 refresh. A refresh whose request is sent while the same buffer's previous one is still
 unanswered cancels it, so a slow server is never left with a queue of stale requests. A refresh asks every server of the buffer that offers inlay hints and merges their
 hints into one set. It sends nothing when the buffer's hints are off or the request params cannot be

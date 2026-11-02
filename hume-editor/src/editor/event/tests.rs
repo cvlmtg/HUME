@@ -33,6 +33,10 @@ fn all_variants() -> Vec<EditorEvent> {
             server: sample_server(),
         },
         EditorEvent::OnDiagnosticsChanged { buffer },
+        EditorEvent::OnInlayHintsRefresh {
+            buffer,
+            server: sample_server(),
+        },
         EditorEvent::OnViewportChange {
             target,
             lines: hume_rope::offset::ExclusiveRange::new(

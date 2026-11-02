@@ -1,6 +1,6 @@
-// Inlay hints: debounced textDocument/inlayHint on viewport change and
-// diagnostics change, composing `lsp-request!`, `lsp-capabilities`, debounce,
-// `set-inlay-hints!`, `on-viewport-change`, `on-diagnostics-changed`,
+// Inlay hints: debounced textDocument/inlayHint on viewport change and on a
+// server's refresh request, composing `lsp-request!`, `lsp-capabilities`,
+// debounce, `set-inlay-hints!`, `on-viewport-change`, `on-inlay-hints-refresh`,
 // and rendering (not tested here, its own pinned snapshots cover that).
 // Named lsp_inlay_feature.rs because lsp_inlay_hints.rs already covers rendering
 // of the decoration store directly; this file drives the same store through
@@ -17,6 +17,19 @@ use crate::editor::commands::open_pane_in_layout;
 use hume_core::BufferId;
 use hume_engine::pipeline::RenderContext;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
+
+/// Raises the refresh `bid`'s first server asks for with
+/// `workspace/inlayHint/refresh`.
+fn refresh_from_the_server(ed: &mut Editor, bid: BufferId) {
+    let sid = ed
+        .state
+        .buffer_positions
+        .lsp
+        .servers(bid)
+        .next()
+        .expect("buffer must be attached");
+    ed.state.lsp_refresh_inlay_hints(sid);
+}
 
 /// The rig's file, "let x = 1;\n", with the cursor at its start.
 const MARKED_FIXTURE: &str = "-[l]>et x = 1;\n";
@@ -49,17 +62,15 @@ fn setup_configured(
     (rig.ed, guard, rig.requests)
 }
 
-/// Everything [`setup_two_servers`] builds: the rig's `src/main.rs`
-/// (`bid_a`, on `rust-analyzer`) focused, and `main.py` (`bid_b`, on
-/// `pylsp`) shown in `pane_b` beside it.
+/// Everything [`setup_two_servers`] builds: the rig's `src/main.rs` (on
+/// `rust-analyzer`) focused, and `main.py` (on `pylsp`) shown in `pane_b`
+/// beside it.
 struct TwoServers {
     ed: Editor,
     _guard: RealRuntimeDirs,
     requests: RequestLog,
     sid_a: ServerId,
     sid_b: ServerId,
-    bid_a: BufferId,
-    bid_b: BufferId,
     pane_b: hume_core::PaneId,
 }
 
@@ -132,13 +143,11 @@ fn setup_two_servers(
         "sanity: main.py is on pylsp"
     );
     TwoServers {
-        bid_a: rig.bid,
         requests: rig.requests,
         ed: rig.ed,
         _guard: guard,
         sid_a,
         sid_b,
-        bid_b,
         pane_b,
     }
 }
@@ -177,6 +186,20 @@ fn viewport_change_triggers_one_debounced_request() {
     });
 
     fire_viewport_change(&mut ed);
+    settle_until_idle(&mut ed);
+
+    assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
+}
+
+/// A buffer whose viewport was shown while its server was starting gets its
+/// hints once the server attaches, with no scroll or edit after.
+#[test]
+fn hints_are_requested_once_a_server_attaches() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+    });
+
     settle_until_idle(&mut ed);
 
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
@@ -392,8 +415,49 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
     );
 }
 
+/// A server's `workspace/inlayHint/refresh` is answered and re-requests the
+/// hints of the buffers it serves.
 #[test]
-fn diagnostics_changed_also_refreshes_hints() {
+fn a_refresh_request_is_answered_and_refreshes_hints() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = core_lsp_rig_configured(
+        tmp.path(),
+        MARKED_FIXTURE,
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        HINTS_ON,
+        |backend, _sid| {
+            backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+            backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+        },
+    );
+    let sid = rig.sid("rust-analyzer");
+    fire_viewport_change(&mut rig.ed);
+    settle_until_idle(&mut rig.ed);
+    assert_eq!(request_count(&rig.requests, "textDocument/inlayHint"), 1);
+
+    rig.push(
+        sid,
+        hume_lsp::codec::Message::Request {
+            id: hume_lsp::codec::RequestId::Int(7),
+            method: "workspace/inlayHint/refresh".to_string(),
+            params: serde_json::Value::Null,
+        },
+    );
+    settle_until_idle(&mut rig.ed);
+
+    assert_eq!(
+        rig.responses.borrow().as_slice(),
+        [(
+            sid,
+            hume_lsp::codec::RequestId::Int(7),
+            Ok(serde_json::Value::Null)
+        )]
+    );
+    assert_eq!(request_count(&rig.requests, "textDocument/inlayHint"), 2);
+}
+
+#[test]
+fn diagnostics_changed_does_not_refresh_hints() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
@@ -425,15 +489,11 @@ fn diagnostics_changed_also_refreshes_hints() {
         .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
     settle_until_idle(&mut ed);
 
-    assert_eq!(
-        request_count(&requests, "textDocument/inlayHint"),
-        2,
-        "on-diagnostics-changed must also trigger a refresh once a viewport is known"
-    );
+    assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
 }
 
 #[test]
-fn hidden_buffer_skips_diagnostics_triggered_refresh() {
+fn hidden_buffer_skips_a_server_triggered_refresh() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
@@ -446,10 +506,22 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
         .next()
         .expect("buffer must be attached");
     let bid = ed.focused_buffer_id();
+    let hidden_uri = rust_rig_uri(tmp.path());
+    let requests_for_hidden = || {
+        requests
+            .borrow()
+            .iter()
+            .filter(|(_, method, params)| {
+                method == "textDocument/inlayHint" && params["textDocument"]["uri"] == hidden_uri
+            })
+            .count()
+    };
+    settle_until_idle(&mut ed);
 
     // Switch the (only) pane to a second file. `bid` stays open in the
     // buffer list (and stays attached to `sid`) but is no longer shown in
-    // any pane, so `(viewport-range bid)` must be `#f`.
+    // any pane, so `(viewport-range bid)` must be `#f`. The second file
+    // attaches to `sid` too and asks for its own hints.
     let other_file = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other_file, "let y = 2;\n").unwrap();
     ed.execute_typed("e", Some(other_file.to_str().unwrap()))
@@ -459,21 +531,15 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
         bid,
         "test setup: pane must have switched"
     );
+    settle_until_idle(&mut ed);
+    let before = requests_for_hidden();
 
-    ed.ingest_typed_publish_for_test(
-        sid,
-        serde_json::from_value(
-            serde_json::json!({"uri": rust_rig_uri(tmp.path()), "diagnostics": []}),
-        )
-        .unwrap(),
-    );
-    ed.state
-        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
+    ed.state.lsp_refresh_inlay_hints(sid);
     settle_until_idle(&mut ed);
 
     assert_eq!(
-        request_count(&requests, "textDocument/inlayHint"),
-        0,
+        requests_for_hidden(),
+        before,
         "a buffer not shown in any pane must skip the refresh, viewport-range being #f"
     );
 }
@@ -504,10 +570,9 @@ fn an_empty_response_clears_previously_stored_hints() {
         "first response must land the hint"
     );
 
-    // Viewport is already known; on-diagnostics-changed alone re-triggers
+    // Viewport is already known; the server's refresh alone re-triggers
     // the debounced refresh without moving anything.
-    ed.state
-        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
+    refresh_from_the_server(&mut ed, bid);
     settle_until_idle(&mut ed);
 
     assert_eq!(
@@ -615,8 +680,7 @@ fn a_failed_response_keeps_the_stored_hints_and_reports_the_error() {
 
     fire_viewport_change(&mut ed);
     settle_until_idle(&mut ed);
-    ed.state
-        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
+    refresh_from_the_server(&mut ed, bid);
     settle_until_idle(&mut ed);
 
     assert_eq!(
@@ -632,13 +696,13 @@ fn a_failed_response_keeps_the_stored_hints_and_reports_the_error() {
 }
 
 /// Two attached, visible
-/// buffers each get an `on-diagnostics-changed` fire within the same
+/// buffers each get an `on-inlay-hints-refresh` fire within the same
 /// debounce window. A plain `debounce` shares one pending timer across
 /// every call regardless of args, so buffer B's call would cancel buffer A's
 /// still-pending call, and only B would ever refresh. `debounce-by` keys
 /// per buffer, so both must refresh.
 #[test]
-fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
+fn refreshes_for_two_buffers_in_the_same_window_both_refresh() {
     let tmp = tempfile::tempdir().unwrap();
     let TwoServers {
         mut ed,
@@ -646,8 +710,6 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
         requests,
         sid_a,
         sid_b,
-        bid_a,
-        bid_b,
         ..
     } = setup_two_servers(
         tmp.path(),
@@ -666,10 +728,8 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
 
     // Both fires land inside the same 200ms debounce window, with no settle in
     // between.
-    ed.state
-        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid_a });
-    ed.state
-        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid_b });
+    ed.state.lsp_refresh_inlay_hints(sid_a);
+    ed.state.lsp_refresh_inlay_hints(sid_b);
     settle_until_idle(&mut ed);
 
     let sent_to = |sid: ServerId| {
@@ -798,17 +858,19 @@ fn a_refresh_leaves_another_buffers_request_in_flight() {
     let tmp = tempfile::tempdir().unwrap();
     let caps = || serde_json::json!({"capabilities": {"inlayHintProvider": true}});
     let mut t = setup_two_servers(tmp.path(), caps(), caps(), 0);
+    settle_until_idle(&mut t.ed);
+    assert_eq!(
+        request_count(&t.requests, "textDocument/inlayHint"),
+        2,
+        "sanity: each buffer asks once its server attaches"
+    );
 
     t.ed.feed_key(key('i'));
     t.ed.feed_key(key('a'));
     t.ed.feed_key(key_esc());
     settle_until_idle(&mut t.ed);
-    assert_eq!(request_count(&t.requests, "textDocument/inlayHint"), 1);
 
-    t.ed.queue_viewport_change(t.pane_b);
-    settle_until_idle(&mut t.ed);
-
-    assert_eq!(request_count(&t.requests, "textDocument/inlayHint"), 2);
+    assert_eq!(request_count(&t.requests, "textDocument/inlayHint"), 3);
     assert_eq!(t.ed.state.lsp.delivery_count_for_test(), 2);
 }
 

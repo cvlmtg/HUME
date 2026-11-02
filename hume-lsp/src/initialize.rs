@@ -7,12 +7,12 @@ use lsp_types::{
     CompletionItemCapability, CompletionListCapability, DiagnosticWorkspaceClientCapabilities,
     DidChangeConfigurationClientCapabilities, DocumentSymbolClientCapabilities,
     FailureHandlingKind, GeneralClientCapabilities, GotoCapability, HoverClientCapabilities,
-    InitializeParams, MarkupKind, ParameterInformationSettings, PositionEncodingKind,
-    PublishDiagnosticsClientCapabilities, RenameClientCapabilities, ResourceOperationKind,
-    SignatureHelpClientCapabilities, SignatureInformationSettings, SymbolKind,
-    SymbolKindCapability, TextDocumentClientCapabilities, TextDocumentSyncClientCapabilities,
-    WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
-    WorkspaceFolder, WorkspaceSymbolClientCapabilities,
+    InitializeParams, InlayHintWorkspaceClientCapabilities, MarkupKind,
+    ParameterInformationSettings, PositionEncodingKind, PublishDiagnosticsClientCapabilities,
+    RenameClientCapabilities, ResourceOperationKind, SignatureHelpClientCapabilities,
+    SignatureInformationSettings, SymbolKind, SymbolKindCapability, TextDocumentClientCapabilities,
+    TextDocumentSyncClientCapabilities, WindowClientCapabilities, WorkspaceClientCapabilities,
+    WorkspaceEditClientCapabilities, WorkspaceFolder, WorkspaceSymbolClientCapabilities,
 };
 
 use crate::uri;
@@ -126,6 +126,11 @@ fn build_client_capabilities() -> ClientCapabilities {
             // declare `textDocument.diagnostic`: a server that offers both
             // would then stop pushing.
             diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
+                refresh_support: Some(true),
+            }),
+            // A server asks for fresh hints once its analysis changes them,
+            // which no edit or scroll of the client's would reveal.
+            inlay_hint: Some(InlayHintWorkspaceClientCapabilities {
                 refresh_support: Some(true),
             }),
             // Every rename result is a WorkspaceEdit. Some servers

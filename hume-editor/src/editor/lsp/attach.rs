@@ -210,6 +210,22 @@ impl EditorState {
         }
     }
 
+    /// Queues `OnInlayHintsRefresh` for every buffer `sid` gives inlay hints
+    /// to: what its `workspace/inlayHint/refresh` asks for.
+    pub(in crate::editor) fn lsp_refresh_inlay_hints(&mut self, sid: ServerId) {
+        let Some(server) = self.lsp.instances.server_ref(sid) else {
+            return;
+        };
+        for bid in self.buffer_positions.lsp.buffers_of(sid) {
+            if self.lsp_handles(bid, sid, hume_core::LspFeature::InlayHints) {
+                self.queue_event(EditorEvent::OnInlayHintsRefresh {
+                    buffer: bid,
+                    server: server.clone(),
+                });
+            }
+        }
+    }
+
     fn lsp_reconcile_one(&mut self, view: &EngineView, bid: BufferId, pass: &mut Pass) {
         if self.lsp.reconcile == ReconcilePhase::Suspended {
             return;

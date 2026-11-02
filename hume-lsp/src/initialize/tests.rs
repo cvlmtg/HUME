@@ -116,6 +116,19 @@ fn initialize_params_advertise_the_v1_capability_set() {
 }
 
 #[test]
+fn inlay_hint_refresh_is_declared() {
+    let caps = build_client_capabilities();
+
+    assert_eq!(
+        caps.workspace
+            .unwrap()
+            .inlay_hint
+            .and_then(|i| i.refresh_support),
+        Some(true)
+    );
+}
+
+#[test]
 fn diagnostics_refresh_is_declared_and_pull_is_not() {
     let caps = build_client_capabilities();
 

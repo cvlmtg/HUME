@@ -75,7 +75,11 @@
 (register-hook! 'on-viewport-change
   (lambda (pane range) (lsp/refresh-hints pane)))
 
-(register-hook! 'on-diagnostics-changed lsp/refresh-hints)
+(register-hook! 'on-lsp-attach
+  (lambda (pane server) (lsp/refresh-hints pane)))
+
+(register-hook! 'on-inlay-hints-refresh
+  (lambda (pane server) (lsp/refresh-hints pane)))
 
 (register-hook! 'on-text-changed
   (lambda (pane changes) (lsp/refresh-hints pane)))

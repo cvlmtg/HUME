@@ -100,6 +100,13 @@ pub(in crate::editor) enum EditorEvent {
     OnDiagnosticsChanged {
         buffer: BufferId,
     },
+    /// Fires for each buffer `server` gives inlay hints to when it sends
+    /// `workspace/inlayHint/refresh`: its hints changed in a way no edit or
+    /// scroll of the buffer shows, such as after its analysis finished.
+    OnInlayHintsRefresh {
+        buffer: BufferId,
+        server: ServerRef,
+    },
     /// Fires when a pane's visible range changes (scroll, resize, an edit
     /// that moves the EOF-clamped end, a buffer switch), debounced
     /// (`hook-viewport-debounce-ms`) so a burst fires once. `lines` is the range
@@ -263,6 +270,7 @@ impl EditorEvent {
             | EditorEvent::OnLspAttach { buffer, .. }
             | EditorEvent::OnLspDetach { buffer, .. }
             | EditorEvent::OnDiagnosticsChanged { buffer }
+            | EditorEvent::OnInlayHintsRefresh { buffer, .. }
             | EditorEvent::OnTextChanged { buffer, .. }
             | EditorEvent::OnUndoHistoryChanged { buffer } => {
                 Some(PaneHandle::buffer_only(*buffer))
@@ -295,6 +303,7 @@ impl EditorEvent {
             | EditorEvent::OnLspAttach { .. }
             | EditorEvent::OnLspDetach { .. }
             | EditorEvent::OnDiagnosticsChanged { .. }
+            | EditorEvent::OnInlayHintsRefresh { .. }
             | EditorEvent::OnViewportChange { .. }
             | EditorEvent::OnTriggerChar { .. }
             | EditorEvent::OnCompletionAccept { .. }
@@ -322,6 +331,7 @@ impl EditorEvent {
             | EditorEvent::OnLspAttach { .. }
             | EditorEvent::OnLspDetach { .. }
             | EditorEvent::OnDiagnosticsChanged { .. }
+            | EditorEvent::OnInlayHintsRefresh { .. }
             | EditorEvent::OnViewportChange { .. }
             | EditorEvent::OnTriggerChar { .. }
             | EditorEvent::OnCompletionAccept { .. }
@@ -402,6 +412,7 @@ editor_event_names! {
         OnLspAttach => "on-lsp-attach" (2),
         OnLspDetach => "on-lsp-detach" (2),
         OnDiagnosticsChanged => "on-diagnostics-changed" (1),
+        OnInlayHintsRefresh => "on-inlay-hints-refresh" (2),
         OnViewportChange => "on-viewport-change" (2),
         OnTriggerChar => "on-trigger-char" (3),
         OnCompletionAccept => "on-completion-accept" (2),
@@ -453,7 +464,8 @@ impl EditorEvent {
                 ]
             }
             EditorEvent::OnLspAttach { buffer, server }
-            | EditorEvent::OnLspDetach { buffer, server } => {
+            | EditorEvent::OnLspDetach { buffer, server }
+            | EditorEvent::OnInlayHintsRefresh { buffer, server } => {
                 vec![
                     SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val(),
                     server.into_steel_val(),

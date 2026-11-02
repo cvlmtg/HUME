@@ -188,9 +188,9 @@ impl Editor {
                 }
             }
             ClientAction::ServerRequest { id, method, params } => {
-                // `workspace/applyEdit` runs the edit engine and a diagnostics
-                // refresh pulls; every other request answers from the pure
-                // lookup table.
+                // `workspace/applyEdit` runs the edit engine, a diagnostics
+                // refresh pulls and an inlay hint refresh tells the plugins;
+                // every other request answers from the pure lookup table.
                 let result = if method == lsp_types::request::ApplyWorkspaceEdit::METHOD {
                     super::edits::apply_edit_request_response(
                         &mut self.state,
@@ -202,6 +202,9 @@ impl Editor {
                     for bid in self.state.buffer_positions.lsp.buffers_of(server_id) {
                         self.state.lsp_repull_diagnostics(bid, server_id);
                     }
+                    Ok(serde_json::Value::Null)
+                } else if method == lsp_types::request::InlayHintRefreshRequest::METHOD {
+                    self.state.lsp_refresh_inlay_hints(server_id);
                     Ok(serde_json::Value::Null)
                 } else {
                     let settings = self

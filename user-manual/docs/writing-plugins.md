@@ -307,6 +307,7 @@ A plugin reacts to editor events by registering a hook handler with `register-ho
 | `on-language-set` | A buffer's language is detected or changed | `(pane lang)`: `lang` is the language name, or `""` when the buffer has none |
 | `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(pane)`: pull details with `diagnostics-for-buffer` |
 | `on-lsp-attach` | A language server is ready for a buffer, once per server on that buffer | `(pane server)`: `server` is the server value, the same one each time for one running server |
+| `on-inlay-hints-refresh` | A language server asks for fresh inlay hints, once per buffer it gives hints to | `(pane server)`: `server` is the asking server's value |
 | `on-lsp-detach` | A language server stops serving a buffer that stays open: it was stopped or restarted, or the server list or the buffer's language changed so it doesn't include it | `(pane server)` |
 | `on-lsp-notification` | A language server sends a notification HUME doesn't handle itself (it handles `window/logMessage`, `window/showMessage`, `$/progress`, and `publishDiagnostics`) | `(server method params)`: the sending server, the method name, and `params` as a JSON handle. To handle only some methods, use `register-lsp-notification-hook!` |
 | `on-viewport-change` | The visible region of a pane changes | `(pane range)`: `range` is the value `viewport-range` returns, 0-based and end-exclusive; with wrapping on, `'end-line` may run past the bottom edge |

@@ -97,7 +97,8 @@ mutating a captured reference to the old map.
 
 ### Pane values vs. pane-less values
 
-Some hooks (`on-buffer-open`, `on-text-changed`, `on-buffer-close`, `on-diagnostics-changed`)
+Some hooks (`on-buffer-open`, `on-text-changed`, `on-buffer-close`, `on-diagnostics-changed`,
+`on-inlay-hints-refresh`)
 hand their callback a pane-less value that identifies a buffer but names no pane showing
 it. A builtin that needs a pane (to read the cursor, the viewport, or the live selection
 set) raises on a pane-less value. `apply-text-edits!`, `lsp-document-params`,

@@ -361,6 +361,7 @@ impl Editor {
             | EditorEvent::OnLspAttach { .. }
             | EditorEvent::OnLspDetach { .. }
             | EditorEvent::OnDiagnosticsChanged { .. }
+            | EditorEvent::OnInlayHintsRefresh { .. }
             | EditorEvent::OnViewportChange { .. }
             | EditorEvent::OnTriggerChar { .. }
             | EditorEvent::OnCompletionAccept { .. }
