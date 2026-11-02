@@ -49,13 +49,14 @@ pub(crate) fn not_live_err(arg: &str, bid: BufferId) -> SteelErr {
 // (the convention `register_fn_with_ctx` builtins use, not a `&[SteelVal]`
 // slice). `ctx_name` names the argument for the error message.
 
-/// A string. Accepts both strings and symbols, since Scheme callers often
-/// pass unquoted symbol literals where a string is semantically expected.
+/// [`string_ref_arg`], owned.
 pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
     string_ref_arg(&val, ctx_name).map(str::to_owned)
 }
 
-/// [`string_arg`], borrowed from `val` for a caller that only reads it.
+/// A string, borrowed from `val`. Accepts both strings and symbols, since
+/// Scheme callers often pass unquoted symbol literals where a string is
+/// semantically expected.
 pub(crate) fn string_ref_arg<'a>(val: &'a SteelVal, ctx_name: &str) -> Result<&'a str, SteelErr> {
     match val {
         SteelVal::StringV(s) => Ok(s.as_str()),
@@ -965,15 +966,11 @@ pub(crate) struct SourceName(String);
 
 impl FromSteelVal for SourceName {
     fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        let name = match val {
-            SteelVal::StringV(s) => s.to_string(),
-            SteelVal::SymbolV(s) => s.to_string(),
-            _ => steel::stop!(TypeMismatch => "expected a source name string, got {:?}", val),
-        };
+        let name = string_ref_arg(val, "source name")?;
         if name.trim().is_empty() {
             steel::stop!(Generic => "source name must not be empty");
         }
-        Ok(SourceName(name))
+        Ok(SourceName(name.to_owned()))
     }
 }
 

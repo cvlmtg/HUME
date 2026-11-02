@@ -177,7 +177,9 @@ pub struct SharedLineEnds {
 /// their chunks byte for byte, so a line diff of the two only needs to split
 /// and diff the middles. A middle starts at a line start and ends after a
 /// line break or at its text's end, so its [`line_token_strs`] are whole lines
-/// of the text, then an empty token.
+/// of the text, then an empty token. Positions are looked up in `new`, since
+/// the shared bytes are the same in both: a caller diffing a string slice,
+/// where a lookup scans the string, against a rope passes the rope as `new`.
 pub fn shared_line_ends(old: RopeSlice<'_>, new: RopeSlice<'_>) -> SharedLineEnds {
     let (old_len, new_len) = (old.len_bytes(), new.len_bytes());
     let shortest = old_len.min(new_len);
@@ -187,8 +189,8 @@ pub fn shared_line_ends(old: RopeSlice<'_>, new: RopeSlice<'_>) -> SharedLineEnd
         new.chunks().map(str::as_bytes),
         shortest,
     );
-    let first_middle_line = RopeyLine::new(old.byte_to_line(head));
-    let start = old.line_to_byte(first_middle_line.index());
+    let first_middle_line = RopeyLine::new(new.byte_to_line(head));
+    let start = new.line_to_byte(first_middle_line.index());
     let tail = shared_len(
         Edge::End,
         old.chunks_at_byte(old_len).0.reversed().map(str::as_bytes),
@@ -198,21 +200,21 @@ pub fn shared_line_ends(old: RopeSlice<'_>, new: RopeSlice<'_>) -> SharedLineEnd
     // The shared tail's whole lines begin after its first line break: the
     // byte before the tail differs, so the line it is in may start
     // differently in the two texts.
-    let whole_tail = old
-        .byte_slice(old_len - tail..)
+    let whole_tail = new
+        .byte_slice(new_len - tail..)
         .bytes()
         .position(|b| b == b'\n')
         .map_or(0, |at| tail - at - 1);
-    let middle = |text: RopeSlice<'_>, len: usize| {
-        ExclusiveRange::new(
-            CharOffset::new(text.byte_to_char(start)),
-            CharOffset::new(text.byte_to_char(len - whole_tail)),
-        )
-    };
+    let start = CharOffset::new(new.byte_to_char(start));
+    let new_end = CharOffset::new(new.byte_to_char(new_len - whole_tail));
+    // The tail's chars are the same in both, so `old`'s middle ends as many
+    // chars before its end as `new`'s does.
+    let tail_chars = CharOffset::new(new.len_chars()).chars_since(new_end);
+    let old_end = CharOffset::new(old.len_chars()).retreat(tail_chars);
     SharedLineEnds {
         first_middle_line,
-        old_middle: middle(old, old_len),
-        new_middle: middle(new, new_len),
+        old_middle: ExclusiveRange::new(start, old_end),
+        new_middle: ExclusiveRange::new(start, new_end),
     }
 }
 

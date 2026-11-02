@@ -9,13 +9,13 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use hume_editing::diff::{WordHunk, WordHunkKind};
 use hume_editing::hunk::{ChangeHunk, LineSpan, text_hunks};
-use hume_editing::text::BufferText;
+use hume_editing::text::BufferContent;
 
 use hume_core::BufferId;
 
 use super::SteelResult;
 use super::args::{
-    END_CHAR_COL, START_CHAR_COL, char_range_value, list_of, not_live_err, string_arg, string_list,
+    END_CHAR_COL, START_CHAR_COL, char_range_value, list_of, not_live_err, string_list,
     string_ref_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
@@ -29,9 +29,9 @@ use super::ids::BufferGeneration;
 /// as buffer content (see [`text_hunks`]). The end lines are derived here
 /// from the line lists, since [`ChangeHunk`] stores no end.
 pub(crate) fn diff_lines(old: SteelVal, new: SteelVal) -> SteelResult {
-    let old = string_ref_arg(&old, "old-text")?;
-    let new = BufferText::from(string_ref_arg(&new, "new-text")?);
-    Ok(hunks_to_steel(text_hunks(old, &new)))
+    let old = BufferContent::from(string_ref_arg(&old, "old-text")?);
+    let new = BufferContent::from(string_ref_arg(&new, "new-text")?);
+    Ok(hunks_to_steel(text_hunks(&old, &new)))
 }
 
 /// `(diff-buffer-lines pane ref-text)` → same shape as `diff-lines`, diffing
@@ -42,12 +42,12 @@ pub(crate) fn diff_buffer_lines(
     bid: BufferId,
     ref_text: SteelVal,
 ) -> SteelResult {
-    let ref_text = string_ref_arg(&ref_text, "ref-text")?;
+    let ref_text = BufferContent::from(string_ref_arg(&ref_text, "ref-text")?);
     // `LiveBuffer` already checked liveness; `None` would be a host disagreeing with itself.
     let live = require_cap(ctx.host.diff())?
         .live_text(bid)
         .ok_or_else(|| not_live_err("pane", bid))?;
-    Ok(hunks_to_steel(text_hunks(ref_text, &live)))
+    Ok(hunks_to_steel(text_hunks(&ref_text, &live.content())))
 }
 
 /// `(buffer-revision-diff pane id)` → the `(hash 'hunks)` that
@@ -155,9 +155,9 @@ fn line_span_to_steel(span: LineSpan) -> SteelVal {
 /// 'old-text 'new-text)`, char offsets, `Equal` runs dropped; a pure insert or
 /// delete has a zero-width side with empty text.
 pub(crate) fn diff_words(old: SteelVal, new: SteelVal) -> SteelResult {
-    let old = string_arg(old, "old-text")?;
-    let new = string_arg(new, "new-text")?;
-    let hunks = hume_editing::diff::diff_words(&old, &new)
+    let old = string_ref_arg(&old, "old-text")?;
+    let new = string_ref_arg(&new, "new-text")?;
+    let hunks = hume_editing::diff::diff_words(old, new)
         .into_iter()
         .filter_map(word_hunk_to_steel);
     Ok(symbol_hash([("hunks", list_of(hunks))]))

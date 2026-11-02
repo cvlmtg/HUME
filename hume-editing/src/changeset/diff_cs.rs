@@ -22,13 +22,12 @@
 //! The helper takes `&BufferText` on both sides and returns the two `ChangeSet`s; it
 //! does not mutate either buffer. The caller still owns the text swap.
 
-use std::borrow::Cow;
 use std::ops::Range;
 
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::diff::{LineHunk, LineHunkKind};
-use crate::line_diff::text_line_diff;
+use crate::line_diff::{text_line_diff, token_offsets};
 use crate::text::BufferText;
 
 use super::{ChangeSet, ChangeSetBuilder};
@@ -44,7 +43,8 @@ use super::{ChangeSet, ChangeSetBuilder};
 /// The caller still owns the `BufferText` mutation; this helper only produces the
 /// `ChangeSet`s, it does not touch either buffer.
 pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeSet, ChangeSet) {
-    let diff = text_line_diff(old.rope().slice(..), new.rope().slice(..));
+    let (old_content, new_content) = (old.content(), new.content());
+    let diff = text_line_diff(&old_content, &new_content);
     let old_offsets = token_offsets(&diff.old, diff.ends.old_middle);
     let new_offsets = token_offsets(&diff.new, diff.ends.new_middle);
     build_changesets(old, new, &diff.hunks, &old_offsets, &new_offsets)
@@ -52,7 +52,7 @@ pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeS
 
 /// Walk the line-diff hunks and emit the `(forward, inverse)` `ChangeSet` pair.
 ///
-/// `old_offsets` / `new_offsets` are [`token_offsets`] of each side's middle:
+/// `old_offsets` / `new_offsets` are the `token_offsets` of each side's middle:
 /// the first entry is where the middle starts, the last where it ends. The
 /// shared lines before the middle are retained first and the ones after it by
 /// `finish`. Token-derived offsets keep a hunk ending at the middle's trailing
@@ -108,30 +108,6 @@ fn build_changesets(
         }
     }
     (fwd.finish(), inv.finish())
-}
-
-/// The char offset in its text where each of a middle's `tokens` starts, then
-/// where the middle ends: `offsets[i]` is where token `i` starts and
-/// `offsets[tokens.len()]` is `middle.end`. `build_changesets` translates a
-/// hunk's token range into a char range of the rope with it.
-fn token_offsets(tokens: &[Cow<'_, str>], middle: ExclusiveRange<CharOffset>) -> Vec<CharOffset> {
-    let mut offsets = Vec::with_capacity(tokens.len() + 1);
-    offsets.push(middle.start);
-    // Raw `usize` accumulator, minted to `CharOffset` only once each running
-    // total is complete, the same "trusted mint" shape as an ASCII delimiter
-    // scan's own loop variable: `char_acc` never appears anywhere as a
-    // position in its own right until it's pushed.
-    let mut char_acc = middle.start.index();
-    for token in tokens {
-        char_acc += token.chars().count();
-        offsets.push(CharOffset::new(char_acc));
-    }
-    debug_assert_eq!(
-        offsets.last(),
-        Some(&middle.end),
-        "a middle's tokens cover it"
-    );
-    offsets
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

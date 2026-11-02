@@ -5,8 +5,6 @@
 use std::borrow::Cow;
 use std::ops::Range;
 
-use ropey::RopeSlice;
-
 use hume_rope::column::CharCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::lines::strip_line_break;
@@ -14,8 +12,8 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::changeset::{ChangeSet, EditedRegion};
 use crate::diff::{LineHunk, LineHunkKind, word_change_ranges};
-use crate::line_diff::{TextLineDiff, text_line_diff};
-use crate::text::{BufferText, buffer_content};
+use crate::line_diff::{TextLineDiff, text_line_diff, token_offsets};
+use crate::text::{BufferContent, BufferText};
 
 /// Word tokens [`text_hunks`] word-diffs across all its hunks together,
 /// both sides counted. The call runs on the main thread after each debounced
@@ -235,29 +233,33 @@ fn group_hunk(
     })
 }
 
-/// The line hunks of `new` against `old`, `Equal` runs dropped. `old` is read
-/// as buffer content ([`buffer_content`]): line endings become LF and a
-/// missing final newline is added, so a ref blob without one shows no phantom
-/// trailing hunk. It is diffed as the string it is, with no rope built for
-/// it. Only what lies between the lines both texts start and end with is
-/// split and diffed ([`hume_rope::lines::shared_line_ends`]).
+/// The line hunks of `new` against `old`, `Equal` runs dropped. A text made
+/// from a string reads as buffer content ([`BufferContent`]): line endings
+/// become LF and a missing final newline is added, so a ref blob without one
+/// shows no phantom trailing hunk. Only what lies between the lines both texts
+/// start and end with is split and diffed
+/// ([`hume_rope::lines::shared_line_ends`]).
 ///
 /// Word spans come from a word diff of each hunk's two sides joined by line
 /// breaks, so an edit is marked where it is whatever the line counts on
 /// either side. All hunks share `HUNK_WORDS_BUDGET`.
-pub fn text_hunks(old: &str, new: &BufferText) -> Vec<ChangeHunk> {
+pub fn text_hunks(old: &BufferContent<'_>, new: &BufferContent<'_>) -> Vec<ChangeHunk> {
     text_hunks_within(old, new, HUNK_WORDS_BUDGET)
 }
 
 /// [`text_hunks`] with an explicit word budget.
-fn text_hunks_within(old: &str, new: &BufferText, budget: usize) -> Vec<ChangeHunk> {
-    let old = buffer_content(old);
+fn text_hunks_within(
+    old: &BufferContent<'_>,
+    new: &BufferContent<'_>,
+    budget: usize,
+) -> Vec<ChangeHunk> {
     let TextLineDiff {
         ends,
         old: old_tokens,
         new: new_tokens,
         hunks,
-    } = text_line_diff(RopeSlice::from(old.as_ref()), new.rope().slice(..));
+    } = text_line_diff(old, new);
+    let new_offsets = token_offsets(&new_tokens, ends.new_middle);
     let mut left = budget;
     hunks
         .into_iter()
@@ -280,9 +282,8 @@ fn text_hunks_within(old: &str, new: &BufferText, budget: usize) -> Vec<ChangeHu
                     old_start,
                     new_start,
                     words: text_hunk_words(
-                        new,
                         (old_start, &old_lines),
-                        (new_start, &new_lines),
+                        (new_offsets[new_range.start], &new_lines),
                         &mut left,
                     ),
                     old_lines,
@@ -302,13 +303,12 @@ fn token_lines(tokens: &[Cow<'_, str>], range: Range<usize>) -> Vec<String> {
 }
 
 /// Empty when a side has no lines, `None` when its tokens outnumber what is
-/// left of `budget`, which they otherwise come off. Each side is its first
-/// line in its text and its lines; `new_text` is the text the new side's
-/// lines are from.
+/// left of `budget`, which they otherwise come off. The old side is its first
+/// line in its text and its lines, the new side the char offset its lines
+/// start at in its text and its lines.
 fn text_hunk_words(
-    new_text: &BufferText,
     (old_start, old_lines): (ContentLine, &[String]),
-    (new_start, new_lines): (ContentLine, &[String]),
+    (new_start, new_lines): (CharOffset, &[String]),
     budget: &mut usize,
 ) -> Option<WordSpans> {
     if old_lines.is_empty() || new_lines.is_empty() {
@@ -324,7 +324,7 @@ fn text_hunk_words(
         ),
         new: char_ranges(
             clipped(new_lines, &new_ranges, 0..new_lines.len()),
-            new_text.line_to_char(RopeyLine::from(new_start)),
+            new_start,
         ),
     })
 }

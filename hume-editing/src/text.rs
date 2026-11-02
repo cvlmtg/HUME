@@ -304,6 +304,11 @@ impl BufferText {
         &self.rope
     }
 
+    /// This text, for a line diff against another.
+    pub fn content(&self) -> BufferContent<'_> {
+        BufferContent(Content::Rope(self.rope.slice(..)))
+    }
+
     /// Create an empty buffer (contains only the structural trailing newline).
     pub fn empty() -> Self {
         let (version, generation, generations) = new_lineage();
@@ -608,19 +613,50 @@ impl From<&str> for BufferText {
     }
 }
 
+/// Text with the shape a [`BufferText`] holds, LF line endings and a final
+/// line break: what a line diff of two texts reads. Made from a buffer's
+/// text ([`BufferText::content`]), or from a string, normalized as
+/// `BufferText::from` normalizes it, and borrowed when the string already has
+/// that shape, so diffing a string builds no rope.
+pub struct BufferContent<'a>(Content<'a>);
+
+enum Content<'a> {
+    Rope(RopeSlice<'a>),
+    Str(Cow<'a, str>),
+}
+
+impl<'a> From<&'a str> for BufferContent<'a> {
+    fn from(text: &'a str) -> Self {
+        Self(Content::Str(buffer_content(text)))
+    }
+}
+
+impl BufferContent<'_> {
+    pub(crate) fn slice(&self) -> RopeSlice<'_> {
+        match &self.0 {
+            Content::Rope(slice) => *slice,
+            Content::Str(text) => RopeSlice::from(text.as_ref()),
+        }
+    }
+}
+
 /// `text` as buffer content, the text `BufferText::from(text)` holds: LF line
-/// endings and a final line break. Borrowed when `text` already has both, so
-/// a diff can read a text it is handed as a string without building a rope.
-pub fn buffer_content(text: &str) -> Cow<'_, str> {
+/// endings and a final line break. Borrowed when `text` already has both.
+fn buffer_content(text: &str) -> Cow<'_, str> {
     content_and_line_ending(text).0
 }
 
 /// [`buffer_content`], and the line ending `text` was written with.
 fn content_and_line_ending(text: &str) -> (Cow<'_, str>, LineEnding) {
-    let (mut content, line_ending) = normalize_line_endings_detecting(text);
-    if !content.ends_with('\n') {
-        content.to_mut().push('\n');
-    }
+    let (content, line_ending) = normalize_line_endings_detecting(text);
+    let content = match content {
+        content if content.ends_with('\n') => content,
+        Cow::Borrowed(text) => Cow::Owned([text, "\n"].concat()),
+        Cow::Owned(mut text) => {
+            text.push('\n');
+            Cow::Owned(text)
+        }
+    };
     (content, line_ending)
 }
 
