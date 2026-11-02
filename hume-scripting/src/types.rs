@@ -125,15 +125,14 @@ pub struct GrammarReg {
     pub origin: ConfigOrigin,
 }
 
-/// One `(set-virtual-lines! …)` entry, decoded from its Steel hashmap shape
-/// (`hume-scripting/src/builtins/decorations.rs`'s `virtual_line_specs`).
-/// `line` is not yet checked against the buffer; the host does that.
+/// One `(set-virtual-lines! …)` entry but its line, decoded from its Steel
+/// hashmap shape (`hume-scripting/src/builtins/decorations.rs`'s
+/// `virtual_line_specs`).
 #[derive(Debug, Clone)]
 pub struct VirtualLineSpec {
-    pub line: usize,
     /// The text, and the scope name styling each `'segments` part of it.
     pub content: SpannedText<String>,
-    /// `'side 'before` renders above `line`, the default `'after` below.
+    /// `'side 'before` renders above its line, the default `'after` below.
     pub side: Side,
     /// Whole-line base style; chars not covered by a segment fall back to
     /// this (or `ui.virtual` if also absent).

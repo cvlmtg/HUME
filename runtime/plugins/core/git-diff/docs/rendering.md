@@ -33,7 +33,8 @@ the `.line` suffix.
 ## Signs
 
 Signs render at VSCode/gitsigns density: one per changed line, not one per hunk, so a
-20-line paste shows 20 `+` marks.
+20-line paste shows 20 `+` marks. Each hunk hands `set-signs!` one entry whose `'end-line`
+covers its new lines, and the editor marks each line.
 
 ### Sign priority
 
@@ -67,8 +68,8 @@ gutter, since `set-signs!` replaces a source's signs wholesale, so the same func
 
 ## Line background tint
 
-`render-line-bgs!` turns one hunk into `(hash 'line 'scope)` entries, one per new-side
-line: `diff.plus.line` for a pure addition and `diff.delta.line` for a change. A pure
+`render-line-bgs!` turns one hunk into one `(hash 'line 'end-line 'scope)` entry covering
+its new-side lines: `diff.plus.line` for a pure addition and `diff.delta.line` for a change. A pure
 deletion adds nothing, since the inline pass's virtual lines cover the removed content and
 carry `diff.minus.line` on their own scope. `set-line-backgrounds!` has no priority
 argument; this plugin is the only producer of these scopes.

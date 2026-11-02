@@ -1,17 +1,18 @@
 //! `EditorHostImpl`'s inlay hints, signs, virtual lines, extra highlights,
 //! EOL text, statusline text, and the diagnostic pull/count reads.
 //!
-//! `content_line` and `validate_offset` are `pub(super)` because
-//! `host_impl/tests.rs`, a sibling of this module, calls them.
+//! `validate_offset` is `pub(super)` because `host_impl/tests.rs`, a
+//! sibling of this module, calls it.
 
 use hume_core::{BufferId, DiagSeverity, Side};
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
 use crate::statusline::StatusElement;
 
 use super::EditorHostImpl;
-use hume_scripting::host::{DecorationHost, DiagnosticCounts, SetError};
+use hume_scripting::host::{DecorationHost, DiagnosticCounts, MarkedLines, SetError};
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {
     fn set_inlay_hints(
@@ -53,7 +54,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         &mut self,
         source: String,
         bid: BufferId,
-        signs: Vec<(usize, String, String)>,
+        signs: Vec<(MarkedLines, String, String)>,
     ) -> Result<(), SetError> {
         if self
             .state
@@ -67,14 +68,14 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                  (register-sign-source! …) first"
             )));
         }
-        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let entries = each_entry(signs, |(line, sign_text, scope)| {
-            Ok(hume_decorations::SignEntry {
-                line: content_line(text, line)?,
-                text: sign_text.into(),
-                scope: self.view.registry.intern_runtime(&scope),
-            })
-        })?;
+        let signs = signs.into_iter().map(|(lines, sign_text, scope)| {
+            let scope = self.view.registry.intern_runtime(&scope);
+            (lines, (std::sync::Arc::<str>::from(sign_text), scope))
+        });
+        let entries = claim_lines(signs)
+            .into_iter()
+            .map(|(line, (text, scope))| hume_decorations::SignEntry { line, text, scope })
+            .collect();
         self.state
             .config
             .decorations
@@ -86,27 +87,29 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         &mut self,
         source: String,
         bid: BufferId,
-        lines: Vec<hume_scripting::VirtualLineSpec>,
+        lines: Vec<(ContentLine, hume_scripting::VirtualLineSpec)>,
     ) -> Result<(), SetError> {
-        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let entries = each_entry(lines, |spec| {
-            let line = content_line(text, spec.line)?;
-            let scope = match spec.scope.as_deref() {
-                Some(name) => self.view.registry.intern_runtime(name),
-                None => self
-                    .view
-                    .registry
-                    .intern(hume_engine::theme::ui_scopes::VIRTUAL_TEXT),
-            };
-            Ok(hume_decorations::VirtualLineEntry {
-                line,
-                content: spec
-                    .content
-                    .map_payload(|name| self.view.registry.intern_runtime(&name)),
-                side: spec.side,
-                scope,
+        buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = lines
+            .into_iter()
+            .map(|(line, spec)| {
+                let scope = match spec.scope.as_deref() {
+                    Some(name) => self.view.registry.intern_runtime(name),
+                    None => self
+                        .view
+                        .registry
+                        .intern(hume_engine::theme::ui_scopes::VIRTUAL_TEXT),
+                };
+                hume_decorations::VirtualLineEntry {
+                    line,
+                    content: spec
+                        .content
+                        .map_payload(|name| self.view.registry.intern_runtime(&name)),
+                    side: spec.side,
+                    scope,
+                }
             })
-        })?;
+            .collect();
         self.state
             .config
             .decorations
@@ -147,18 +150,19 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         &mut self,
         source: String,
         bid: BufferId,
-        lines: Vec<(usize, String, String)>,
+        lines: Vec<(ContentLine, String, String)>,
         hide_on_insert_line: bool,
     ) -> Result<(), SetError> {
-        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let entries = each_entry(lines, |(line, eol_text, scope)| {
-            Ok(hume_decorations::EolTextEntry {
-                line: content_line(text, line)?,
+        buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = lines
+            .into_iter()
+            .map(|(line, eol_text, scope)| hume_decorations::EolTextEntry {
+                line,
                 text: eol_text,
                 scope: self.view.registry.intern_runtime(&scope),
                 hide_on_insert_line,
             })
-        })?;
+            .collect();
         self.state
             .config
             .decorations
@@ -170,15 +174,16 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         &mut self,
         source: String,
         bid: BufferId,
-        entries: Vec<(usize, String)>,
+        entries: Vec<(MarkedLines, String)>,
     ) -> Result<(), SetError> {
-        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let entries = each_entry(entries, |(line, scope)| {
-            Ok(hume_decorations::LineBgEntry {
-                line: content_line(text, line)?,
-                scope: self.view.registry.intern_runtime(&scope),
-            })
-        })?;
+        buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = entries
+            .into_iter()
+            .map(|(lines, scope)| (lines, self.view.registry.intern_runtime(&scope)));
+        let entries = claim_lines(entries)
+            .into_iter()
+            .map(|(line, scope)| hume_decorations::LineBgEntry { line, scope })
+            .collect();
         self.state
             .config
             .decorations
@@ -262,25 +267,22 @@ fn each_entry<S, T>(
         .collect()
 }
 
-/// `line` as a content line of `text`, or `Err` if it is
-/// out of range: the one place a line-anchored decoration's Steel-facing
-/// line number becomes the line it is stored on.
-///
-/// Rejects the buffer's last *ropey* line, not just any out-of-range line:
-/// the buffer invariant (every buffer ends with a structural `\n`) means
-/// that last line is always the empty phantom line the trailing `\n`
-/// produces: zero-width, nothing to decorate, and no `\n` of its own to
-/// follow through edits. `DisplayLineMap::last_line()` never lays it out.
-pub(super) fn content_line(
-    text: &hume_editing::text::BufferText,
-    line: usize,
-) -> Result<hume_rope::line::ContentLine, String> {
-    hume_rope::line::ContentLine::checked(text.rope(), line).ok_or_else(|| {
-        format!(
-            "line {line} is out of range (buffer has {} content lines)",
-            text.content_line_count().get()
-        )
-    })
+/// Each line of each entry in `entries`, paired with its payload, a line
+/// two entries share going to the first: the overlap rule of every setter
+/// that takes [`MarkedLines`].
+fn claim_lines<T: Clone>(
+    entries: impl IntoIterator<Item = (MarkedLines, T)>,
+) -> Vec<(ContentLine, T)> {
+    let mut claimed = rustc_hash::FxHashSet::default();
+    let mut lines = Vec::new();
+    for (marked, payload) in entries {
+        for line in marked.lines().iter() {
+            if claimed.insert(line) {
+                lines.push((line, payload.clone()));
+            }
+        }
+    }
+    lines
 }
 
 /// `pos` must address a real char in `text` (`<` its length), `Err`
@@ -295,9 +297,10 @@ pub(super) fn content_line(
 /// (`decoration_providers.rs`'s `update_inlay_hint_providers`) anchors an
 /// 'after' hint at `pos + 1`, so a hint on the buffer's last content char
 /// (its trailing structural `\n`) would resolve to the trailing phantom
-/// line, the same unresolvable position `content_line` already refuses
-/// for the line-anchored kinds, but reachable here through a char offset
-/// instead of a line number, so that check alone doesn't catch it.
+/// line, the same unresolvable position the line-anchored kinds' line check
+/// refuses (`hume_scripting`'s `content_line_arg`), but reachable here
+/// through a char offset instead of a line number, so that check alone
+/// doesn't catch it.
 pub(super) fn validate_offset(
     text: &hume_editing::text::BufferText,
     pos: usize,

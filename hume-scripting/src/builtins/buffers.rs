@@ -531,6 +531,22 @@ pub(crate) fn char_offset_to_line(ctx: &mut SteelCtx, bid: BufferId, idx: usize)
     Ok(SteelVal::IntV(line.index() as isize))
 }
 
+/// `line` as a content line of a buffer with `line_count` content lines
+/// (`buffer_line_count`), or `Err` past the last one. The buffer's trailing
+/// phantom line is past it: it has no `\n` of its own and nothing to address.
+pub(super) fn content_line_arg(
+    line: usize,
+    line_count: usize,
+) -> Result<hume_rope::line::ContentLine, String> {
+    if line >= line_count {
+        return Err(format!(
+            "line {line} is out of range (buffer has {line_count} content lines)"
+        ));
+    }
+    // Trusted mint: the check above is what licenses ContentLine::new here.
+    Ok(hume_rope::line::ContentLine::new(line))
+}
+
 /// `(line->char-offset pane line)` → 0-based char offset where 0-based content
 /// `line` starts in `pane`'s buffer's live text. Raises on a stale buffer or
 /// a `line` past the content line count, same bounds contract as
@@ -546,13 +562,7 @@ pub(crate) fn line_to_char_offset(ctx: &mut SteelCtx, bid: BufferId, line: usize
         .buffers()
         .buffer_line_count(bid)
         .ok_or_else(invalid_id)?;
-    if line >= line_count {
-        return Err(generic_err(format!(
-            "line {line} is out of range (buffer has {line_count} content lines)"
-        )));
-    }
-    // Trusted mint: the check above is what licenses ContentLine::new here.
-    let line = hume_rope::line::ContentLine::new(line);
+    let line = content_line_arg(line, line_count).map_err(generic_err)?;
     let offset = ctx
         .host
         .buffers()

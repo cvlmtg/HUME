@@ -144,3 +144,21 @@ fn a_selection_accessor_raises_for_anything_but_an_entry() {
         );
     }
 }
+
+/// A buffer of 3 content lines ("aaa\nbbb\nccc\n"): line 2 is the last
+/// content line, and line 3 is the empty line the trailing `\n` produces.
+#[test]
+fn content_line_arg_accepts_the_last_content_line() {
+    assert_eq!(
+        content_line_arg(2, 3),
+        Ok(hume_rope::line::ContentLine::new(2))
+    );
+}
+
+#[test]
+fn content_line_arg_rejects_the_trailing_phantom_line() {
+    assert_eq!(
+        content_line_arg(3, 3),
+        Err("line 3 is out of range (buffer has 3 content lines)".to_string())
+    );
+}

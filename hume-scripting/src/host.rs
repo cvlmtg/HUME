@@ -35,7 +35,7 @@ pub use completion::{
 };
 pub use cursor::{CursorHost, SelectionInfo};
 pub use decorations::{
-    DecorationHost, DiagnosticCounts, DiagnosticEntry, DiagnosticRange, SetError,
+    DecorationHost, DiagnosticCounts, DiagnosticEntry, DiagnosticRange, MarkedLines, SetError,
 };
 pub use diff::DiffHost;
 pub use edits::{CharTextEdit, EditHost, WireTextEdit};

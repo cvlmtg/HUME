@@ -66,9 +66,9 @@ the result for both the decorations and the drawer:
 - **EOL grouping.** `lsp/group-by` groups adjacent items with equal keys. The EOL
   summary groups by line, relying on the store returning diagnostics start-ascending so
   same-line entries are contiguous, and `lsp/most-severe` picks each line's worst.
-- **Sign lines.** The signs keep one table from line to the worst diagnostic touching it,
-  filled by walking every line each diagnostic covers. The sign store sorts entries by
-  line itself, so the table's order does not matter.
+- **Sign lines.** One sign entry per diagnostic, spanning its lines with `'end-line`, in
+  order of severity: `set-signs!` gives a line two entries share to the first, so the
+  most severe diagnostic on a line wins it.
 
 ## End-of-line summary
 
@@ -93,9 +93,9 @@ rows also use.
 ## Gutter signs
 
 Signs are set with `set-signs!` under the same source, glyph `●`. Every refresh
-registers the source for the buffer with `register-sign-source!` at priority `10`. A diagnostic spanning several lines gets a sign
-on each line from its `'start-line` up to, not including, its `'end-line`, and the most severe
-diagnostic on a line wins. The sign's scope is the bare severity name (`error`, `warning`,
+registers the source for the buffer with `register-sign-source!` at priority `10`. A
+diagnostic spanning several lines gets a sign on each line from its `'start-line` up to,
+not including, its `'end-line`, and the most severe diagnostic on a line wins. The sign's scope is the bare severity name (`error`, `warning`,
 `info`, `hint`) rather than the summary's `.diagnostic.inline` form, because the gutter
 glyph is a separate render surface and must not inherit the text squiggle's underline.
 This plugin is the only place a diagnostic becomes a gutter mark.

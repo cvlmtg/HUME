@@ -141,22 +141,12 @@
          (scope (lsp/severity-scope (hash-ref (lsp/most-severe group) 'severity))))
     (hash 'line (hash-ref leftmost 'start-line) 'text text 'scope scope)))
 
-(define (lsp/keep-more-severe worst line diag)
-  (let ((held (hash-try-get worst line)))
-    (if (and held (<= (hash-ref held 'severity-rank) (hash-ref diag 'severity-rank)))
-        worst
-        (hash-insert worst line diag))))
-
+;; Most severe first: `set-signs!` gives a shared line to the first entry.
 (define (lsp/diagnostic-signs diags)
-  (let ((worst (foldl (lambda (diag worst)
-                        (foldl (lambda (line worst) (lsp/keep-more-severe worst line diag))
-                               worst
-                               (range (hash-ref diag 'start-line) (hash-ref diag 'end-line))))
-                      (hash)
-                      diags)))
-    (map (lambda (kv)
-           (hash 'line (car kv) 'text "●" 'scope (symbol->string (hash-ref (cdr kv) 'severity))))
-         (hash->list worst))))
+  (map (lambda (d)
+         (hash 'line (hash-ref d 'start-line) 'end-line (hash-ref d 'end-line)
+               'text "●" 'scope (symbol->string (hash-ref d 'severity))))
+       (sort diags (lambda (a b) (< (hash-ref a 'severity-rank) (hash-ref b 'severity-rank))))))
 
 (define (lsp/refresh-diagnostic-decorations! pane diags)
   (register-sign-source! pane lsp/diagnostics-source lsp/*sign-priority*)

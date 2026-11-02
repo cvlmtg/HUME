@@ -162,6 +162,44 @@ fn set_signs_accepts_a_multi_codepoint_glyph() {
 }
 
 #[test]
+fn set_signs_accepts_an_end_line() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(1)),
+        ("end-line", SteelVal::IntV(4)),
+        ("text", SteelVal::StringV("!".into())),
+        ("scope", SteelVal::StringV("ui.sign".into())),
+    ]);
+    let result = set_signs(
+        &mut ctx,
+        default_bid(),
+        "test".to_string(),
+        list(vec![entry]),
+    );
+    // Decoding passes, so the call reaches the host lookup and fails there.
+    assert_unsupported(result);
+}
+
+#[test]
+fn set_line_backgrounds_accepts_an_end_line() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("end-line", SteelVal::IntV(2)),
+        ("scope", SteelVal::StringV("diff.plus".into())),
+    ]);
+    let result = set_line_backgrounds(
+        &mut ctx,
+        default_bid(),
+        "test".to_string(),
+        list(vec![entry]),
+    );
+    assert_unsupported(result);
+}
+
+#[test]
 fn set_signs_rejects_a_positional_list_entry() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
@@ -303,8 +341,8 @@ fn virtual_line_spec_decodes_every_field() {
     ]);
     let specs = virtual_line_specs(list(vec![entry])).unwrap();
     assert_eq!(specs.len(), 1);
-    let spec = &specs[0];
-    assert_eq!(spec.line, 12);
+    let (line, spec) = &specs[0];
+    assert_eq!(*line, 12);
     assert_eq!(spec.side, Side::Before);
     assert_eq!(spec.scope.as_deref(), Some("diff.minus"));
     assert_eq!(
@@ -368,7 +406,7 @@ fn virtual_line_spec_defaults_side_to_after_and_scope_to_none() {
         ("text", SteelVal::StringV("x".into())),
     ]);
     let specs = virtual_line_specs(list(vec![entry])).unwrap();
-    let spec = &specs[0];
+    let (_, spec) = &specs[0];
     assert_eq!(spec.side, Side::After, "default side must be 'after");
     assert_eq!(spec.scope, None);
     assert!(spec.content.spans().is_empty());
@@ -510,7 +548,7 @@ fn virtual_line_spec_keeps_a_literal_tab_in_text() {
         ("text", SteelVal::StringV("\tx".into())),
     ]);
     let specs = virtual_line_specs(list(vec![entry])).expect("a tab is accepted");
-    assert_eq!(specs[0].content.text(), "\tx");
+    assert_eq!(specs[0].1.content.text(), "\tx");
 }
 
 #[test]
@@ -529,7 +567,7 @@ fn virtual_line_spec_keeps_a_control_character_verbatim() {
     ]);
     let specs = virtual_line_specs(list(vec![entry])).expect("accepted, not rejected");
     assert_eq!(
-        specs[0].content.text(),
+        specs[0].1.content.text(),
         "a\u{7}b",
         "verbatim, no Steel-side substitution"
     );

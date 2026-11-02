@@ -6,7 +6,7 @@ use hume_scripting::host::{BufferHost, LanguageHost};
 use crate::editor::Editor;
 use crate::editor::tests::{co, init_host};
 
-use super::decorations::{content_line, validate_offset};
+use super::decorations::validate_offset;
 
 #[test]
 fn close_buffer_errs_when_id_unknown() {
@@ -83,27 +83,8 @@ fn validate_offset_snaps_inside_a_zwj_sequence() {
     assert_eq!(validate_offset(&text, 0, Side::After).unwrap(), co(2));
 }
 
-// ── `content_line` / `validate_offset`: a decoration position must address
-// a real line or char, never the buffer's trailing phantom line or
-// one-past-the-end.
-
-#[test]
-fn content_line_accepts_the_last_content_line() {
-    // "aaa\nbbb\nccc\n": line 2 ("ccc") is the last *content* line.
-    let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
-    let line = content_line(&text, 2).expect("last content line must be valid");
-    assert_eq!(line, hume_rope::line::ContentLine::new(2));
-}
-
-#[test]
-fn content_line_rejects_the_trailing_phantom_line() {
-    // Same fixture: line 3 is the empty line the trailing '\n' produces.
-    // `DisplayLineMap::last_line()` (hume-engine/src/display_lines.rs) agrees line 2 is the
-    // last renderable line, so line 3 has no row to decorate.
-    let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
-    let err = content_line(&text, 3).unwrap_err();
-    assert!(err.contains("out of range"), "got: {err}");
-}
+// ── `validate_offset`: a decoration position must address a real char,
+// never the buffer's trailing phantom line or one-past-the-end.
 
 #[test]
 fn validate_offset_accepts_the_last_real_char() {
@@ -140,8 +121,8 @@ fn validate_offset_rejects_after_on_the_trailing_newline() {
     // 3) would render at offset 4, the start of the buffer's trailing
     // phantom line, a position `DisplayLineMap::last_line()` never lays out, so
     // the hint would be silently accepted and then silently never render
-    // (the same failure class `content_line` already rejects for the
-    // line-anchored kinds, reachable here through a char offset instead).
+    // (the same failure class the line-anchored kinds' line check rejects,
+    // reachable here through a char offset instead).
     let text = hume_editing::text::BufferText::from("abc\n");
     let err = validate_offset(&text, 3, Side::After).unwrap_err();
     assert!(err.contains("trailing"), "got: {err}");

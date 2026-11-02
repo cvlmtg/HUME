@@ -648,8 +648,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             // Clamped to the last char, not `len_chars()`: a server can
             // report a diagnostic anchored at end-of-file, and `len_chars()`
             // itself resolves to the buffer's trailing phantom empty line
-            // (every buffer ends with a structural `\n`; see
-            // `host_impl/decorations.rs`'s `content_line`).
+            // (every buffer ends with a structural `\n`).
             // Landing there instead of the last content line would hand
             // plugins a `line` that later fails the fail-fast bound check
             // every decoration setter enforces. The final `\n` is a valid
@@ -669,8 +668,8 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             hume_scripting::host::DiagnosticEntry {
                 start_char: clamped_start.index(),
                 end_char: d.end.index(),
-                start_line: line.index(),
-                end_line: end_line.index(),
+                start_line: line,
+                end_line,
                 grapheme_col: grapheme_col.index(),
                 severity: d.severity,
                 message: d.message.clone(),

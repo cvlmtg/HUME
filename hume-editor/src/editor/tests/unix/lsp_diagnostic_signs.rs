@@ -168,7 +168,7 @@ fn end_line_is_one_past_the_last_line_the_diagnostic_touches() {
             .iter()
             .find(|e| e.message == msg)
             .unwrap_or_else(|| panic!("missing diagnostic {msg:?}"));
-        (entry.start_line, entry.end_line)
+        (entry.start_line.index(), entry.end_line.index())
     };
 
     assert_eq!(lines("single-line"), (0, 1));
@@ -194,7 +194,11 @@ fn start_of(text: &str, diag: DiagFixture) -> (usize, usize, usize) {
         crate::editor::lsp::diagnostics::diagnostics_for_buffer(&mut ed.state, bid, None, None)
             .expect("diagnostics-for-buffer must not error");
     let entry = &entries[0];
-    (entry.start_char, entry.start_line, entry.grapheme_col)
+    (
+        entry.start_char,
+        entry.start_line.index(),
+        entry.grapheme_col,
+    )
 }
 
 /// A diagnostic on the empty line after the final line break is reported on

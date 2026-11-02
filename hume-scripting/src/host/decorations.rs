@@ -4,9 +4,37 @@
 use std::sync::Arc;
 
 use hume_core::{BufferId, DiagSeverity, Side};
+use hume_rope::line::ContentLine;
+use hume_rope::offset::ExclusiveRange;
 use hume_rope::position_encoding::PositionEncoding;
 
 use crate::types::VirtualLineSpec;
+
+/// The lines a line-anchored decoration entry marks, never none: `start`
+/// alone, or every line up to `end` (`'end-line`, exclusive).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MarkedLines {
+    start: ContentLine,
+    end: ContentLine,
+}
+
+impl MarkedLines {
+    pub(crate) fn one(line: ContentLine) -> Self {
+        Self {
+            start: line,
+            end: line.advance(1),
+        }
+    }
+
+    /// `None` when `end` is not after `start`.
+    pub(crate) fn run(start: ContentLine, end: ContentLine) -> Option<Self> {
+        (end > start).then_some(Self { start, end })
+    }
+
+    pub fn lines(self) -> ExclusiveRange<ContentLine> {
+        ExclusiveRange::new(self.start, self.end)
+    }
+}
 
 /// What `diagnostics-for-buffer`'s `#:range` names: a char range of the
 /// buffer as it is, or a request's range, which carries the buffer and text
@@ -69,25 +97,26 @@ pub trait DecorationHost {
     ) -> Result<(), String>;
 
     /// `(set-signs! pane source signs)`: replaces `source`'s signs for `bid`
-    /// wholesale. Each entry is `(line, text, scope)`; `line` converts to
-    /// that line's line-start char offset at this boundary. `Err`, naming
-    /// the builtin, if `line` is out of range or `source` isn't registered
-    /// for `bid`.
+    /// wholesale. Each entry is `(lines, text, scope)`, one sign on each of
+    /// `lines`; a line two entries share goes to the first. Every line is
+    /// caller-validated against `BufferHost::buffer_line_count`. `Err`,
+    /// naming the builtin, if `source` isn't registered for `bid`.
     fn set_signs(
         &mut self,
         source: String,
         bid: BufferId,
-        signs: Vec<(usize, String, String)>,
+        signs: Vec<(MarkedLines, String, String)>,
     ) -> Result<(), SetError>;
 
     /// `(set-virtual-lines! pane source lines)`: replaces `source`'s virtual
-    /// lines for `bid` wholesale. `Err` if a `VirtualLineSpec`'s `line` is
-    /// out of range.
+    /// lines for `bid` wholesale, each entry the line it is anchored to,
+    /// caller-validated against `BufferHost::buffer_line_count`, and its
+    /// spec.
     fn set_virtual_lines(
         &mut self,
         source: String,
         bid: BufferId,
-        lines: Vec<VirtualLineSpec>,
+        lines: Vec<(ContentLine, VirtualLineSpec)>,
     ) -> Result<(), SetError>;
 
     /// `(set-extra-highlights! pane source spans)`: replaces `source`'s
@@ -102,9 +131,8 @@ pub trait DecorationHost {
 
     /// `(set-eol-text! pane source lines)`: replaces `source`'s EOL text for
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
-    /// spliced in at the end of `line`, which converts to that line's
-    /// line-start char offset at this boundary. `Err` if `line` is out of
-    /// range. `hide_on_insert_line` marks every entry
+    /// spliced in at the end of `line`, which is caller-validated against
+    /// `BufferHost::buffer_line_count`. `hide_on_insert_line` marks every entry
     /// to be hidden on the primary cursor's line while the pane types in
     /// Insert mode. Not diagnostics-specific: the diagnostics plugin is its
     /// first client, not its owner.
@@ -112,19 +140,20 @@ pub trait DecorationHost {
         &mut self,
         source: String,
         bid: BufferId,
-        lines: Vec<(usize, String, String)>,
+        lines: Vec<(ContentLine, String, String)>,
         hide_on_insert_line: bool,
     ) -> Result<(), SetError>;
 
     /// `(set-line-backgrounds! pane source entries)`: replaces `source`'s
-    /// line backgrounds for `bid` wholesale. Each entry is `(line, scope)`;
-    /// `line` converts to that line's line-start char offset at this
-    /// boundary. `Err` if `line` is out of range.
+    /// line backgrounds for `bid` wholesale. Each entry is `(lines, scope)`,
+    /// a background on each of `lines`; a line two entries share goes to the
+    /// first. Every line is caller-validated against
+    /// `BufferHost::buffer_line_count`.
     fn set_line_backgrounds(
         &mut self,
         source: String,
         bid: BufferId,
-        entries: Vec<(usize, String)>,
+        entries: Vec<(MarkedLines, String)>,
     ) -> Result<(), SetError>;
 
     /// `(set-statusline-text! pane source text)`: replaces `source`'s
@@ -202,8 +231,8 @@ impl DiagnosticCounts {
 pub struct DiagnosticEntry {
     pub start_char: usize,
     pub end_char: usize,
-    pub start_line: usize,
-    pub end_line: usize,
+    pub start_line: ContentLine,
+    pub end_line: ContentLine,
     pub grapheme_col: usize,
     pub severity: DiagSeverity,
     pub message: String,

@@ -8,16 +8,18 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{DiagnosticEntry, DiagnosticRange, SetError};
+use crate::host::{DiagnosticEntry, DiagnosticRange, MarkedLines, SetError};
 use crate::json::{WireOrigin, to_steel_handle};
 use crate::types::VirtualLineSpec;
 
 use super::SteelResult;
 use super::args::{
     ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry, START_CHAR,
-    START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg, item_label, optional_hash_entry,
-    optional_symbol_arg, spanned_text, string_arg, symbol_enum_arg, symbol_hash,
+    START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg, item_label, not_live_err,
+    optional_hash_entry, optional_symbol_arg, spanned_text, string_arg, symbol_enum_arg,
+    symbol_hash,
 };
+use super::buffers::content_line_arg;
 use super::errors::{generic_err, require_cap};
 use super::ids::DocRange;
 
@@ -72,7 +74,8 @@ pub(crate) fn register_sign_source(
     Ok(SteelVal::Void)
 }
 
-/// `(set-signs! pane source signs)`: `signs`: list of `(hash 'line 'text 'scope)`.
+/// `(set-signs! pane source signs)`: `signs`: list of `(hash 'line 'text
+/// 'scope)`, each with an optional `'end-line` marking `'line` up to it.
 /// `source` selects the already-registered channel (see
 /// `register-sign-source!`) whose slot every entry here renders in; an
 /// unregistered `source` errors rather than being silently dropped.
@@ -83,7 +86,7 @@ pub(crate) fn set_signs(
     signs: SteelVal,
 ) -> SteelResult {
     let list = "signs";
-    let parsed = hash_list(signs, list, LINE_TEXT_SCOPE, |entry| {
+    let parsed = hash_list(signs, list, &["line", END_LINE, "text", "scope"], |entry| {
         let text = entry.string("text")?;
         // A sign is a glyph in a fixed-width gutter lane, where no control
         // character has a meaning: the gutter would draw a tab as one blank
@@ -94,7 +97,11 @@ pub(crate) fn set_signs(
             steel::stop!(Generic =>
                 "'text must not contain a control character, got {:?}", text);
         }
-        Ok((entry.usize("line")?, text, entry.string("scope")?))
+        Ok((entry.line_and_end_line()?, text, entry.string("scope")?))
+    })?;
+    let line_count = decorated_line_count(ctx, bid)?;
+    let parsed = mint_lines(list, parsed, |(lines, text, scope)| {
+        Ok((marked_lines(lines, line_count)?, text, scope))
     })?;
     require_cap(ctx.host.decorations())?
         .set_signs(source, bid, parsed)
@@ -115,15 +122,19 @@ pub(crate) fn set_virtual_lines(
     lines: SteelVal,
 ) -> SteelResult {
     let parsed = virtual_line_specs(lines)?;
+    let line_count = decorated_line_count(ctx, bid)?;
+    let parsed = mint_lines(VIRTUAL_LINES, parsed, |(line, spec)| {
+        Ok((content_line_arg(line, line_count)?, spec))
+    })?;
     require_cap(ctx.host.decorations())?
         .set_virtual_lines(source, bid, parsed)
         .map_err(set_err(VIRTUAL_LINES))?;
     Ok(SteelVal::Void)
 }
 
-/// Decodes `lines` into `VirtualLineSpec`s, each entry's segments fitted to
-/// its text. The host checks each `'line` against the buffer.
-fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr> {
+/// Decodes `lines` into each entry's `'line` and `VirtualLineSpec`, its
+/// segments fitted to its text.
+fn virtual_line_specs(lines: SteelVal) -> Result<Vec<(usize, VirtualLineSpec)>, SteelErr> {
     hash_list(
         lines,
         VIRTUAL_LINES,
@@ -132,7 +143,7 @@ fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr>
     )
 }
 
-fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
+fn virtual_line_spec(entry: &HashEntry) -> Result<(usize, VirtualLineSpec), SteelErr> {
     let line = entry.usize("line")?;
     let text = entry.string("text")?;
     if text.contains(['\n', '\r']) {
@@ -164,12 +175,14 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
         Some(v) => virtual_line_segments(v, &segments_label)?,
     };
 
-    Ok(VirtualLineSpec {
+    Ok((
         line,
-        content: spanned_text(text, segments, &segments_label)?,
-        side,
-        scope,
-    })
+        VirtualLineSpec {
+            content: spanned_text(text, segments, &segments_label)?,
+            side,
+            scope,
+        },
+    ))
 }
 
 /// Decodes `'segments`: each a `(hash 'start-char-col 'end-char-col 'scope)`
@@ -233,6 +246,54 @@ fn set_err(list: &str) -> impl Fn(SetError) -> SteelErr + '_ {
     }
 }
 
+/// `bid`'s content line count, read once the host is known to take
+/// decorations, so a host without them raises that before anything about
+/// the buffer.
+fn decorated_line_count(ctx: &mut SteelCtx, bid: BufferId) -> Result<usize, SteelErr> {
+    require_cap(ctx.host.decorations())?;
+    ctx.host
+        .buffers()
+        .buffer_line_count(bid)
+        .ok_or_else(|| not_live_err("pane", bid))
+}
+
+/// Each of `entries` with its lines minted against the buffer by `mint`, an
+/// `Err` naming the entry by its place in the list `list` labels.
+fn mint_lines<S, T>(
+    list: &str,
+    entries: Vec<S>,
+    mut mint: impl FnMut(S) -> Result<T, String>,
+) -> Result<Vec<T>, SteelErr> {
+    entries
+        .into_iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            mint(entry).map_err(|message| set_err(list)(SetError::Entry { index, message }))
+        })
+        .collect()
+}
+
+/// The lines an entry's `'line` and optional `'end-line` mark in a buffer
+/// of `line_count` content lines.
+fn marked_lines(
+    (line, end): (usize, Option<usize>),
+    line_count: usize,
+) -> Result<MarkedLines, String> {
+    let start = content_line_arg(line, line_count)?;
+    let Some(end) = end else {
+        return Ok(MarkedLines::one(start));
+    };
+    if end > line_count {
+        return Err(format!(
+            "'end-line {end} is past the last line (buffer has {line_count} content lines)"
+        ));
+    }
+    // Trusted mint: `end` is at most the line count, the exclusive bound
+    // one past the last line.
+    MarkedLines::run(start, hume_rope::line::ContentLine::new(end))
+        .ok_or_else(|| format!("'end-line {end} is not after 'line {line}"))
+}
+
 /// `(set-eol-text! pane source lines #:hide-on-insert-line #f)`: `lines`: list
 /// of `(hash 'line 'text 'scope)`. `#:hide-on-insert-line #t` hides every
 /// entry on the primary cursor's line while the pane types in Insert mode.
@@ -255,6 +316,10 @@ pub(crate) fn set_eol_text(
         ))
     })?;
     let hide_on_insert_line = bool_arg(hide_on_insert_line, "#:hide-on-insert-line")?;
+    let line_count = decorated_line_count(ctx, bid)?;
+    let parsed = mint_lines(list, parsed, |(line, text, scope)| {
+        Ok((content_line_arg(line, line_count)?, text, scope))
+    })?;
     require_cap(ctx.host.decorations())?
         .set_eol_text(source, bid, parsed, hide_on_insert_line)
         .map_err(set_err(list))?;
@@ -278,7 +343,8 @@ pub(crate) fn set_extra_highlights(
 }
 
 /// `(set-line-backgrounds! pane source entries)`: `entries`: list of `(hash
-/// 'line 'scope)`. A full-row background tint on each named line. No `priority`
+/// 'line 'scope)`, each with an optional `'end-line` marking `'line` up to it.
+/// A full-row background tint on each named line. No `priority`
 /// field: unlike signs, row tints have no single-slot contention; same-line
 /// entries from different sources break ties by source name.
 pub(crate) fn set_line_backgrounds(
@@ -288,8 +354,12 @@ pub(crate) fn set_line_backgrounds(
     entries: SteelVal,
 ) -> SteelResult {
     let list = "entries";
-    let parsed = hash_list(entries, list, &["line", "scope"], |entry| {
-        Ok((entry.usize("line")?, entry.string("scope")?))
+    let parsed = hash_list(entries, list, &["line", END_LINE, "scope"], |entry| {
+        Ok((entry.line_and_end_line()?, entry.string("scope")?))
+    })?;
+    let line_count = decorated_line_count(ctx, bid)?;
+    let parsed = mint_lines(list, parsed, |(lines, scope)| {
+        Ok((marked_lines(lines, line_count)?, scope))
     })?;
     require_cap(ctx.host.decorations())?
         .set_line_backgrounds(source, bid, parsed)
@@ -352,8 +422,11 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
     symbol_hash([
         (START_CHAR, SteelVal::IntV(entry.start_char as isize)),
         (END_CHAR, SteelVal::IntV(entry.end_char as isize)),
-        (START_LINE, SteelVal::IntV(entry.start_line as isize)),
-        (END_LINE, SteelVal::IntV(entry.end_line as isize)),
+        (
+            START_LINE,
+            SteelVal::IntV(entry.start_line.index() as isize),
+        ),
+        (END_LINE, SteelVal::IntV(entry.end_line.index() as isize)),
         ("grapheme-col", SteelVal::IntV(entry.grapheme_col as isize)),
         ("severity", SteelVal::SymbolV(entry.severity.name().into())),
         (

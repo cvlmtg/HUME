@@ -311,13 +311,13 @@ impl Editor {
                 }
                 let slot = slot as u8;
                 let entries = by_line.entry(e.line).or_default();
-                // Two *different* sources can never contend for one slot
-                // now: a slot is a source's fixed registry rank. This
-                // guards only a same-source duplicate on one line (a source
-                // bug: nothing stops one `set-signs!` call from listing two
-                // entries for the same line): `Err` is the insertion point,
-                // `Ok` means this source's own earlier (line-sorted) entry
-                // for the line already claimed the slot.
+                // Two different sources never contend for one slot: a
+                // slot is a source's fixed registry rank. A source holds one
+                // entry per line (`set-signs!` gives a shared line to its
+                // first entry, and remapping drops the entry whose line break
+                // an edit deletes), so `Ok`, this source's earlier entry for
+                // the line, means a store write that skipped that rule; the
+                // earlier entry keeps the slot. `Err` is the insertion point.
                 if let Err(i) = entries.binary_search_by_key(&slot, |s| s.slot) {
                     entries.insert(
                         i,

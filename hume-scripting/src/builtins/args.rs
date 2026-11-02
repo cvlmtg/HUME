@@ -665,6 +665,17 @@ impl HashEntry<'_> {
         Ok((self.usize(START_CHAR_COL)?, self.usize(END_CHAR_COL)?))
     }
 
+    /// The `'line` of an entry decoded with `'line` and `'end-line` in its key
+    /// set, and its `'end-line` when given.
+    pub(crate) fn line_and_end_line(&self) -> Result<(usize, Option<usize>), SteelErr> {
+        let line = self.usize("line")?;
+        let end = self
+            .optional(END_LINE)
+            .map(|v| usize_arg(v, &self.label(END_LINE)))
+            .transpose()?;
+        Ok((line, end))
+    }
+
     /// The `'start-line`/`'end-line` pair of an entry decoded with both keys
     /// in its key set, both required.
     pub(crate) fn line_range(&self) -> Result<(usize, usize), SteelErr> {

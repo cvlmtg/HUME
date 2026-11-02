@@ -332,6 +332,115 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
     }
 }
 
+/// An entry with `'end-line` marks every line in `['line, 'end-line)`, and a
+/// line two entries share goes to the first entry in the list.
+#[test]
+fn a_span_marks_each_line_and_the_first_entry_wins_a_shared_line() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>\nb\nc\nd\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (register-sign-source! bid "linter" 10)
+             (set-signs! bid "linter" (list (hash 'line 0 'end-line 3 'text "A" 'scope "error")
+                                            (hash 'line 2 'end-line 4 'text "B" 'scope "warning")))
+             (set-line-backgrounds! bid "git-diff" (list (hash 'line 1 'end-line 3 'scope "diff.plus")
+                                                         (hash 'line 0 'end-line 2 'scope "diff.minus")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":arm");
+
+    let decorations = &ed.state.config.decorations;
+    let signs: Vec<(usize, &str)> = decorations
+        .signs_for("linter", bid)
+        .iter()
+        .map(|e| (e.line.index(), &*e.text))
+        .collect();
+    assert_eq!(signs, [(0, "A"), (1, "A"), (2, "A"), (3, "B")]);
+    let plus = ed.view.registry.intern("diff.plus");
+    let minus = ed.view.registry.intern("diff.minus");
+    let backgrounds: Vec<_> = decorations
+        .line_backgrounds_for("git-diff", bid)
+        .iter()
+        .map(|e| (e.line.index(), e.scope))
+        .collect();
+    assert_eq!(backgrounds, [(0, minus), (1, plus), (2, plus)]);
+}
+
+#[test]
+fn a_span_past_the_last_line_is_refused_and_nothing_is_stored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>\nb\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (register-sign-source! bid "linter" 10)
+             (set-signs! bid "linter" (list (hash 'line 0 'text "A" 'scope "error")
+                                            (hash 'line 1 'end-line 3 'text "B" 'scope "error")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":arm");
+
+    assert!(
+        ed.state
+            .config
+            .decorations
+            .signs_for("linter", bid)
+            .is_empty()
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains(
+            "set-signs!: signs 1: 'end-line 3 is past the last line (buffer has 2 content lines)"
+        ),
+        "{log}"
+    );
+}
+
+#[test]
+fn an_end_line_not_after_its_line_is_refused_and_nothing_is_stored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>\nb\nc\nd\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (register-sign-source! bid "linter" 10)
+             (with-handler (lambda (e) (log! 'warning (to-string e)))
+               (set-signs! bid "linter" (list (hash 'line 3 'end-line 3 'text "!" 'scope "error"))))
+             (with-handler (lambda (e) (log! 'warning (to-string e)))
+               (set-line-backgrounds! bid "git-diff" (list (hash 'line 0 'scope "diff.plus")
+                                                           (hash 'line 2 'end-line 1 'scope "diff.plus"))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":arm");
+
+    let decorations = &ed.state.config.decorations;
+    assert!(decorations.signs_for("linter", bid).is_empty());
+    assert!(decorations.line_backgrounds_for("git-diff", bid).is_empty());
+    let log = ed.state.message_log.format_for_display();
+    for expected in [
+        "set-signs!: signs 0: 'end-line 3 is not after 'line 3",
+        "set-line-backgrounds!: entries 1: 'end-line 1 is not after 'line 2",
+    ] {
+        assert!(log.contains(expected), "{expected:?} in {log}");
+    }
+}
+
 #[test]
 fn inlay_hints_remap_through_an_edit() {
     let tmp = tempfile::tempdir().unwrap();

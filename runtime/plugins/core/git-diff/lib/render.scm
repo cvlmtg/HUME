@@ -7,13 +7,6 @@
 (define (git-diff/pure-addition? hunk)
   (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line)))
 
-;;; `(make line)` for each line in `[start, end)`, in order.
-(define (git-diff/per-line start end make)
-  (let loop ([line (- end 1)] [acc '()])
-    (if (< line start)
-        acc
-        (loop (- line 1) (cons (make line) acc)))))
-
 ;;; Where a hunk's removed lines sit, as a `(kind . line)` pair — see docs/rendering.md's "Anchors".
 (define (git-diff/hunk-anchor new-start)
   (if (= new-start 0)
@@ -26,8 +19,7 @@
 (define git-diff/*sign-priority* 0)
 
 (define (git-diff/line-signs new-start new-end text scope)
-  (git-diff/per-line new-start new-end
-                     (lambda (line) (hash 'line line 'text text 'scope scope))))
+  (list (hash 'line new-start 'end-line new-end 'text text 'scope scope)))
 
 ;;; One `diff-buffer-lines` hunk -> a list of `(hash 'line 'text 'scope)` sign entries — see docs/rendering.md.
 (define (git-diff/hunk->signs hunk)
@@ -100,10 +92,14 @@
 
 ;; ── Line background tint ─────────────────────────────────────────────────────
 
+;;; A pure deletion has no new lines to tint.
 (define (git-diff/hunk->line-bgs hunk)
-  (let ([scope (if (git-diff/pure-addition? hunk) "diff.plus.line" "diff.delta.line")])
-    (git-diff/per-line (hash-ref hunk 'new-start-line) (hash-ref hunk 'new-end-line)
-                       (lambda (line) (hash 'line line 'scope scope)))))
+  (let ([new-start (hash-ref hunk 'new-start-line)]
+        [new-end (hash-ref hunk 'new-end-line)])
+    (if (= new-start new-end)
+        '()
+        (list (hash 'line new-start 'end-line new-end
+                    'scope (if (git-diff/pure-addition? hunk) "diff.plus.line" "diff.delta.line"))))))
 
 (define (git-diff/render-line-bgs! pane source hunks)
   (set-line-backgrounds! pane source (call! "stdlib/concat" (map git-diff/hunk->line-bgs hunks))))
