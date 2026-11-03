@@ -1040,6 +1040,15 @@ fn set_cursor(ed: &mut Editor, head: usize) {
 
 /// Move the focused pane's primary cursor to the start of buffer line `line`.
 /// Avoids depending on a specific motion command.
+/// Every logged message as `(severity, text)`, oldest first.
+fn logged(ed: &Editor) -> Vec<(Severity, &str)> {
+    ed.state
+        .message_log
+        .entries()
+        .map(|entry| (entry.severity, entry.text.as_str()))
+        .collect()
+}
+
 fn seek_to_line(ed: &mut Editor, line: usize) {
     let head = hume_rope::lines::line_start_char(
         ed.doc().text().rope(),

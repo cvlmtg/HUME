@@ -129,11 +129,11 @@ fn format_for_display_prefixes() {
         (Severity::Error, "crash"),
         (Severity::Trace, "stack trace here"),
     ]);
-    let out = log.format_for_display();
-    let lines: Vec<&str> = out.lines().collect();
-    assert_eq!(lines[0], "[warning] bad key");
-    assert_eq!(lines[1], "[error] crash");
-    assert_eq!(lines[2], "[trace] stack trace here");
+    insta::assert_snapshot!(log.format_for_display(), @"
+    [warning] bad key
+    [error] crash
+    [trace] stack trace here
+    ");
 }
 
 #[test]
@@ -148,7 +148,10 @@ fn format_with_spans_empty() {
 fn format_with_spans_offsets_and_scopes() {
     let log = make_log(&[(Severity::Warning, "bad key"), (Severity::Error, "crash")]);
     let (text, spans) = log.format_with_spans(SHOW_ALL);
-    assert_eq!(text, "[warning] bad key\n[error] crash\n");
+    insta::assert_snapshot!(text, @"
+    [warning] bad key
+    [error] crash
+    ");
 
     // Expected offsets come from the `[label] text\n` format spec, not from
     // the implementation's own offset bookkeeping:
@@ -177,7 +180,10 @@ fn format_with_spans_counts_chars_not_bytes() {
     // bytes too late (start=15 instead of 13, off by len("café ☕") - 6 = 2).
     let log = make_log(&[(Severity::Info, "café ☕"), (Severity::Warning, "ok")]);
     let (text, spans) = log.format_with_spans(SHOW_ALL);
-    assert_eq!(text, "[info] café ☕\n[warning] ok\n");
+    insta::assert_snapshot!(text, @"
+    [info] café ☕
+    [warning] ok
+    ");
 
     assert_eq!(spans.len(), 4);
     // "[info]" = 6 chars (0..6), " " at 6, "café ☕" = 6 chars (7..13).
@@ -192,7 +198,7 @@ fn format_with_spans_counts_chars_not_bytes() {
 fn format_with_spans_skips_empty_text() {
     let log = make_log(&[(Severity::Warning, "")]);
     let (text, spans) = log.format_with_spans(SHOW_ALL);
-    assert_eq!(text, "[warning] \n");
+    insta::assert_snapshot!(format!("{text:?}"), @r#""[warning] \n""#);
     // Only the badge span, no zero-width span for the empty message text.
     assert_eq!(spans.len(), 1);
     assert_eq!((spans[0].0, spans[0].1), (0, 9));

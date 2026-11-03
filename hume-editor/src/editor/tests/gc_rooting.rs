@@ -14,10 +14,6 @@ pub(super) const CHURN: &str = r#"
     (define-typed-command! "churn" "" (lambda () (churn!)))
 "#;
 
-fn log_text(ed: &Editor) -> String {
-    ed.state.message_log.format_for_display()
-}
-
 #[test]
 fn a_command_keeps_its_captured_state_across_a_collection() {
     let tmp = tempfile::tempdir().unwrap();
@@ -39,8 +35,8 @@ fn a_command_keeps_its_captured_state_across_a_collection() {
     type_cmd(&mut ed, ":churn");
     type_cmd(&mut ed, ":count");
 
-    let log = log_text(&ed);
-    assert!(log.contains("count:2"), "{log}");
+    let log = logged(&ed);
+    assert!(log.contains(&(Severity::Warning, "count:2")), "{log:?}");
 }
 
 /// A `debounce`d call's `after!` thunk, held by the editor's timers, keeps
@@ -63,8 +59,8 @@ fn a_timer_thunk_keeps_its_captured_arguments_across_a_collection() {
     type_cmd(&mut ed, ":churn");
     ed.settle();
 
-    let log = log_text(&ed);
-    assert!(log.contains("[warning] alive"), "{log}");
+    let log = logged(&ed);
+    assert!(log.contains(&(Severity::Warning, "alive")), "{log:?}");
 }
 
 /// A queued callback keeps what it captured while an earlier callback of
@@ -91,8 +87,8 @@ fn a_queued_callback_keeps_its_captured_state_while_the_batch_runs() {
     type_cmd(&mut ed, ":requests");
     ed.settle();
 
-    let log = log_text(&ed);
-    assert!(log.contains("[warning] alive"), "{log}");
+    let log = logged(&ed);
+    assert!(log.contains(&(Severity::Warning, "alive")), "{log:?}");
 }
 
 /// An open picker keeps its keymap's bindings and its items' payloads
@@ -120,13 +116,16 @@ fn an_open_picker_keeps_its_callback_and_payloads_across_a_collection() {
 
     type_cmd(&mut ed, ":open");
     ed.settle();
-    assert!(ed.state.input.picker().is_some(), "{}", log_text(&ed));
+    assert!(ed.state.input.picker().is_some(), "{:?}", logged(&ed));
     ed.feed_key(key_enter());
     ed.settle();
 
-    let log = log_text(&ed);
-    assert!(log.contains("[warning] alive"), "{log}");
-    assert!(log.contains("[warning] payload-alive"), "{log}");
+    let log = logged(&ed);
+    assert!(log.contains(&(Severity::Warning, "alive")), "{log:?}");
+    assert!(
+        log.contains(&(Severity::Warning, "payload-alive")),
+        "{log:?}"
+    );
 }
 
 /// A test editor keeps one engine: a second source evaluates into it, so a
@@ -148,6 +147,6 @@ fn a_second_source_evaluates_into_the_editors_engine() {
     run(&mut ed, tmp.path(), "(define unrelated 1)");
     ed.settle();
 
-    let log = log_text(&ed);
-    assert!(log.contains("[warning] alive"), "{log}");
+    let log = logged(&ed);
+    assert!(log.contains(&(Severity::Warning, "alive")), "{log:?}");
 }

@@ -402,10 +402,12 @@ fn second_registration_replaces_first() {
     rig.eval(RUST_ANALYZER);
     rig.eval(r#"(register-lsp-server! "rust-analyzer" #:command "rust-analyzer-2")"#);
 
-    let log = rig.ed.state.message_log.format_for_display();
+    let log = logged(&rig.ed);
     assert!(
-        !log.contains("already registered") && !log.contains("[error]"),
-        "second registration must not be rejected as a duplicate, got log: {log}"
+        log.iter().all(|&(severity, text)| {
+            severity != Severity::Error && !text.contains("already registered")
+        }),
+        "second registration must not be rejected as a duplicate, got log: {log:?}"
     );
     assert_eq!(
         rig.ed

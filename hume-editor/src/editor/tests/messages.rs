@@ -267,7 +267,10 @@ fn a_message_logged_while_the_view_is_open_appears_on_the_next_frame() {
     ed.report(Severity::Error, "second");
     frame(&mut ed);
 
-    assert_eq!(buffer_text(&ed, bid), "[warning] first\n[error] second\n");
+    insta::assert_snapshot!(buffer_text(&ed, bid), @"
+    [warning] first
+    [error] second
+    ");
     let spans = ed
         .state
         .config
@@ -284,15 +287,18 @@ fn the_open_view_refilters_when_the_floor_changes() {
     ed.report(Severity::Trace, "detail");
     ed.report(Severity::Warning, "careful");
     let bid = open_messages(&mut ed);
-    assert_eq!(buffer_text(&ed, bid), "[warning] careful\n");
+    insta::assert_snapshot!(buffer_text(&ed, bid), @"[warning] careful");
 
     run_set(&mut ed, "global messages-min-severity=trace").expect("trace is a valid floor");
     frame(&mut ed);
-    assert_eq!(buffer_text(&ed, bid), "[trace] detail\n[warning] careful\n");
+    insta::assert_snapshot!(buffer_text(&ed, bid), @"
+    [trace] detail
+    [warning] careful
+    ");
 
     run_set(&mut ed, "global messages-min-severity=error").expect("error is a valid floor");
     frame(&mut ed);
-    assert_eq!(buffer_text(&ed, bid), "\n", "no entry passes the floor");
+    insta::assert_snapshot!(format!("{:?}", buffer_text(&ed, bid)), @r#""\n""#);
     assert!(
         ed.state
             .config
@@ -318,10 +324,11 @@ fn a_cursor_on_the_last_entry_stays_when_a_new_one_arrives() {
     ed.report(Severity::Warning, "c");
     frame(&mut ed);
 
-    assert_eq!(
-        buffer_text(&ed, bid),
-        "[warning] a\n[warning] b\n[warning] c\n"
-    );
+    insta::assert_snapshot!(buffer_text(&ed, bid), @"
+    [warning] a
+    [warning] b
+    [warning] c
+    ");
     assert_eq!(head_line(&ed, pane, bid), 1);
 }
 
@@ -348,10 +355,11 @@ fn every_pane_keeps_its_entry_when_earlier_ones_leave_the_view() {
     run_set(&mut ed, "global messages-min-severity=warning").expect("warning is a valid floor");
     frame(&mut ed);
 
-    assert_eq!(
-        buffer_text(&ed, bid),
-        "[warning] w0\n[warning] w1\n[warning] w2\n"
-    );
+    insta::assert_snapshot!(buffer_text(&ed, bid), @"
+    [warning] w0
+    [warning] w1
+    [warning] w2
+    ");
     assert_eq!(head_line(&ed, left, bid), 0);
     assert_eq!(head_line(&ed, right, bid), 2);
 }
@@ -365,7 +373,10 @@ fn following_the_log_leaves_the_view_unmodified() {
     ed.report(Severity::Warning, "second");
     frame(&mut ed);
 
-    assert_eq!(buffer_text(&ed, bid), "[warning] first\n[warning] second\n");
+    insta::assert_snapshot!(buffer_text(&ed, bid), @"
+    [warning] first
+    [warning] second
+    ");
     assert!(!ed.state.has_unsaved_changes(bid));
 }
 
