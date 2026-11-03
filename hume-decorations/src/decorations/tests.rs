@@ -762,6 +762,28 @@ fn extra_highlights_starting_before_keeps_spans_that_start_before_the_end() {
     assert_eq!(got, vec![(2, 30), (0, 3)]);
 }
 
+#[test]
+fn added_extra_highlights_merge_in_anchor_order_into_their_own_source() {
+    let mut store = DecorationStores::default();
+    let (a, _) = make_two_bids();
+    store.set_extra_highlights("alpha".to_string(), a, vec![extra(0, 2)]);
+    store.set_extra_highlights("zeta".to_string(), a, vec![extra(4, 6), extra(20, 22)]);
+
+    store.add_extra_highlights("zeta".to_string(), a, vec![extra(30, 31), extra(10, 12)]);
+    store.add_extra_highlights("new".to_string(), a, vec![extra(1, 3)]);
+
+    let spans = |source: &str| -> Vec<(usize, usize)> {
+        store
+            .extra_highlights_for(source, a)
+            .iter()
+            .map(|e| (e.start.index(), e.end.index()))
+            .collect()
+    };
+    assert_eq!(spans("zeta"), [(4, 6), (10, 12), (20, 22), (30, 31)]);
+    assert_eq!(spans("alpha"), [(0, 2)]);
+    assert_eq!(spans("new"), [(1, 3)]);
+}
+
 /// The line-anchored remap rule stated per entry: find the line's `\n`,
 /// map it with `Assoc::Before`, drop the entry if a deletion consumed it,
 /// else read the line of the mapped offset. `None` for a dropped entry.

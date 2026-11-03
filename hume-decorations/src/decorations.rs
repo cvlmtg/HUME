@@ -355,11 +355,29 @@ impl<K: Ord, T: Anchored> SourceStore<K, T> {
     /// instead of "whichever source called `set` first this session".
     pub fn set(&mut self, source: K, bid: BufferId, mut entries: Vec<T>) {
         entries.sort_by_key(Anchored::anchor);
+        *self.source_entries(source, bid) = entries;
+    }
+
+    /// Appends `entries` to `source`'s entries for `bid`, keeping them
+    /// sorted by anchor.
+    pub fn extend(&mut self, source: K, bid: BufferId, entries: Vec<T>) {
+        let existing = self.source_entries(source, bid);
+        existing.extend(entries);
+        existing.sort_by_key(Anchored::anchor);
+    }
+
+    /// `source`'s entries for `bid`, inserted empty at its place in the
+    /// ascending source order when absent.
+    fn source_entries(&mut self, source: K, bid: BufferId) -> &mut Vec<T> {
         let slot = self.by_buffer.entry(bid).or_default();
-        match slot.binary_search_by(|(s, _)| s.cmp(&source)) {
-            Ok(idx) => slot[idx].1 = entries,
-            Err(idx) => slot.insert(idx, (source, entries)),
-        }
+        let idx = match slot.binary_search_by(|(s, _)| s.cmp(&source)) {
+            Ok(idx) => idx,
+            Err(idx) => {
+                slot.insert(idx, (source, Vec::new()));
+                idx
+            }
+        };
+        &mut slot[idx].1
     }
 }
 
@@ -784,6 +802,17 @@ impl DecorationStores {
         spans: Vec<ExtraHighlightEntry>,
     ) {
         self.extra_highlights.set(source, bid, spans);
+        self.touch(bid);
+    }
+
+    /// Adds `spans` to `source`'s extra highlights for `bid`.
+    pub fn add_extra_highlights(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        spans: Vec<ExtraHighlightEntry>,
+    ) {
+        self.extra_highlights.extend(source, bid, spans);
         self.touch(bid);
     }
 

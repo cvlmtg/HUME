@@ -151,10 +151,17 @@ fn view_content_follow_does_not_bump_edit_seq() {
         ),
     );
     let before = store.edit_seq();
-    store.get_mut(id).follow_view_content(
+    let mut change = hume_editing::changeset::ChangeSetBuilder::new(store.get(id).text().end());
+    change.insert("followed\n");
+    let change = change.finish();
+    let text = change
+        .apply(store.get(id).text())
+        .expect("the change is built for the view's text");
+    store.get_mut(id).follow_view_change(
         id,
         &mut crate::editor::position_stores::DetachedStores::default().stores(),
-        "followed\n",
+        text,
+        &change,
     );
     assert_eq!(store.edit_seq(), before);
 }

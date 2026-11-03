@@ -247,12 +247,6 @@ fn head_line(ed: &Editor, pane: PaneId, bid: BufferId) -> usize {
         .index()
 }
 
-fn summary(ed: &Editor) -> Option<String> {
-    ed.state
-        .message_log
-        .summary_text(ed.state.settings.messages_min_severity)
-}
-
 #[test]
 fn a_message_logged_while_the_view_is_open_appears_on_the_next_frame() {
     let mut ed = open_headless(None);
@@ -384,7 +378,7 @@ fn a_view_on_the_active_tab_marks_new_messages_seen() {
     ed.report(Severity::Warning, "second");
     frame(&mut ed, 60, 12);
 
-    assert_eq!(summary(&ed), None);
+    assert!(!ed.state.message_log.has_unseen());
 }
 
 #[test]
@@ -400,7 +394,7 @@ fn a_view_open_but_not_shown_leaves_new_messages_unseen() {
     ed.report(Severity::Warning, "second");
     frame(&mut ed, 60, 12);
 
-    assert_eq!(summary(&ed).as_deref(), Some("1 warning (see :messages)"));
+    assert!(ed.state.message_log.has_unseen());
 }
 
 #[test]
@@ -416,7 +410,7 @@ fn a_view_on_another_tab_leaves_new_messages_unseen() {
     ed.report(Severity::Warning, "second");
     frame(&mut ed, 60, 12);
 
-    assert_eq!(summary(&ed).as_deref(), Some("1 warning (see :messages)"));
+    assert!(ed.state.message_log.has_unseen());
 }
 
 #[test]
@@ -450,14 +444,7 @@ fn a_config_reload_keeps_the_open_views_highlights() {
     ed.reset_config_state();
     frame(&mut ed, 60, 12);
 
-    assert_eq!(
-        ed.state
-            .config
-            .decorations
-            .extra_highlights_for("messages", bid)
-            .len(),
-        2
-    );
+    assert_view_is_the_formatted_log(&ed, bid);
 }
 
 #[test]
@@ -473,11 +460,11 @@ fn a_message_below_the_shown_rows_stays_unseen_until_the_end_is_drawn() {
 
     ed.report(Severity::Error, "below");
     frame(&mut ed, 60, 12);
-    assert_eq!(summary(&ed).as_deref(), Some("1 error (see :messages)"));
+    assert!(ed.state.message_log.has_unseen());
 
     seek_to_line(&mut ed, 30);
     frame(&mut ed, 60, 12);
-    assert_eq!(summary(&ed), None);
+    assert!(!ed.state.message_log.has_unseen());
 }
 
 #[test]
@@ -565,4 +552,198 @@ fn a_cursor_on_the_last_entry_the_floor_hides_moves_to_the_entry_before() {
     frame(&mut ed, 60, 12);
 
     assert_eq!(head_line(&ed, pane, bid), 0);
+}
+
+// ── Following rebuilds only what changed ─────────────────────────────────────
+
+/// Assert the open view's text and highlights are what formatting the
+/// whole log at the current floor gives.
+fn assert_view_is_the_formatted_log(ed: &Editor, bid: BufferId) {
+    let floor = ed.state.settings.messages_min_severity;
+    let (text, spans) = ed.state.message_log.format_with_spans(floor);
+    assert_eq!(
+        ed.state.buffers.get(bid).text(),
+        &BufferText::from(text.as_str())
+    );
+    let got: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .extra_highlights_for("messages", bid)
+        .iter()
+        .map(|span| (span.start.index(), span.end.index(), span.scope))
+        .collect();
+    let want: Vec<_> = spans
+        .into_iter()
+        .map(|(start, end, name)| (start, end, scope(ed, name)))
+        .collect();
+    assert_eq!(got, want);
+}
+
+/// The text of every entry the log stores, oldest first.
+fn stored_texts(ed: &Editor) -> Vec<&str> {
+    ed.state
+        .message_log
+        .entries()
+        .map(|entry| entry.text.as_str())
+        .collect()
+}
+
+/// Report warnings `fill<n>` until one evicts the oldest warning, so the
+/// log is full.
+fn fill_log(ed: &mut Editor) {
+    loop {
+        let before = ed.state.message_log.entries().len();
+        ed.report(Severity::Warning, format!("fill{before}"));
+        if ed.state.message_log.entries().len() == before {
+            return;
+        }
+    }
+}
+
+#[test]
+fn entries_logged_while_the_view_is_open_are_appended() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    ed.report(Severity::Error, "second");
+    let bid = open_messages(&mut ed);
+
+    ed.report(Severity::Warning, "third");
+    ed.report(Severity::Error, "fourth");
+    frame(&mut ed, 60, 12);
+
+    assert_view_is_the_formatted_log(&ed, bid);
+}
+
+#[test]
+fn an_entry_evicted_from_the_middle_of_the_view_leaves_it() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Error, "kept error");
+    fill_log(&mut ed);
+    let bid = open_messages(&mut ed);
+
+    ed.report(Severity::Warning, "newest");
+    frame(&mut ed, 60, 12);
+
+    assert_eq!(
+        stored_texts(&ed)[..2],
+        ["kept error", "fill3"],
+        "sanity: the oldest warnings, after the error, were evicted"
+    );
+    assert_view_is_the_formatted_log(&ed, bid);
+}
+
+#[test]
+fn an_entry_evicted_from_the_front_of_the_view_leaves_it() {
+    let mut ed = open_headless(None);
+    fill_log(&mut ed);
+    let bid = open_messages(&mut ed);
+
+    ed.report(Severity::Error, "newest");
+    frame(&mut ed, 60, 12);
+
+    assert_eq!(
+        stored_texts(&ed)[0],
+        "fill2",
+        "sanity: the first warnings were evicted"
+    );
+    assert_view_is_the_formatted_log(&ed, bid);
+}
+
+#[test]
+fn lowering_then_raising_the_floor_inserts_then_removes_hidden_entries() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Trace, "t0");
+    ed.report(Severity::Warning, "w0");
+    ed.report(Severity::Trace, "multi\nline trace");
+    ed.report(Severity::Error, "e0");
+    ed.report(Severity::Trace, "t1");
+    let bid = open_messages(&mut ed);
+
+    run_set(&mut ed, "global messages-min-severity=trace").expect("trace is a valid floor");
+    frame(&mut ed, 60, 12);
+    assert!(buffer_text(&ed, bid).contains("multi\nline trace"));
+    assert_view_is_the_formatted_log(&ed, bid);
+
+    run_set(&mut ed, "global messages-min-severity=warning").expect("warning is a valid floor");
+    frame(&mut ed, 60, 12);
+    assert_view_is_the_formatted_log(&ed, bid);
+}
+
+#[test]
+fn a_view_emptied_by_the_floor_fills_again_from_a_new_entry() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "w0");
+    let bid = open_messages(&mut ed);
+
+    run_set(&mut ed, "global messages-min-severity=error").expect("error is a valid floor");
+    frame(&mut ed, 60, 12);
+    assert_view_is_the_formatted_log(&ed, bid);
+
+    ed.report(Severity::Error, "e0");
+    frame(&mut ed, 60, 12);
+    assert_view_is_the_formatted_log(&ed, bid);
+}
+
+#[test]
+fn a_config_reload_rebuilds_every_highlight_of_the_open_view() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    let bid = open_messages(&mut ed);
+
+    ed.reset_config_state();
+    ed.report(Severity::Error, "second");
+    frame(&mut ed, 60, 12);
+
+    assert_view_is_the_formatted_log(&ed, bid);
+}
+
+#[test]
+fn reopening_messages_after_closing_it_rebuilds_the_view() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    let closed = open_messages(&mut ed);
+    ed.execute_typed("bd", None).expect("the view closes");
+    assert!(
+        ed.state.buffers.try_get(closed).is_none(),
+        "sanity: the view is gone"
+    );
+
+    ed.report(Severity::Error, "second");
+    let bid = open_messages(&mut ed);
+
+    assert_view_is_the_formatted_log(&ed, bid);
+}
+
+#[test]
+fn following_the_log_moves_another_sources_highlights_with_the_text() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "w0");
+    ed.report(Severity::Warning, "w1");
+    let bid = open_messages(&mut ed);
+    // "[warning] w0\n" is 13 chars, so w1's text starts at 23.
+    hume_scripting::host::DecorationHost::set_extra_highlights(
+        &mut crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view),
+        "other".to_string(),
+        bid,
+        vec![(23, 25, "ui.text".to_string())],
+    )
+    .expect("the span lies in the text");
+
+    run_set(&mut ed, "global messages-min-severity=error").expect("error is a valid floor");
+    ed.report(Severity::Error, "e0");
+    run_set(&mut ed, "global messages-min-severity=warning").expect("warning is a valid floor");
+    ed.report(Severity::Error, "e1");
+    frame(&mut ed, 60, 12);
+
+    assert_view_is_the_formatted_log(&ed, bid);
+    let other: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .extra_highlights_for("other", bid)
+        .iter()
+        .map(|span| (span.start.index(), span.end.index()))
+        .collect();
+    assert_eq!(other, [(23, 25)], "w1 kept its place ahead of e0 and e1");
 }

@@ -177,10 +177,10 @@ pub(in crate::editor) enum EditorEvent {
     /// Never fires for: a no-op undo at the history root; an edit refused by
     /// the read-only guard; an edit, insert/paste session, `:e!` reload or
     /// `[messages]` rebuild whose composed `ChangeSet` is the identity
-    /// transform (`Buffer::apply_edit*`, `commit_edit_group`, and
-    /// `install_line_diff` all skip the mutation (or the revision that would
-    /// make undo replay one) entirely in that case, specifically so this
-    /// doesn't fire for one). Does fire, unconditionally and with no
+    /// transform (`Buffer::apply_edit*`, `commit_edit_group`,
+    /// `replace_text_recorded` and `follow_view_change` all skip the mutation (or
+    /// the revision that would make undo replay one) entirely in that case,
+    /// specifically so this doesn't fire for one). Does fire, unconditionally and with no
     /// identity check, for every `:plugin-status`/`:lsp-status` refresh of an
     /// already-open view buffer, even a byte-identical one; a handler that
     /// resolves the buffer's path must handle `#f` (these buffers have none).

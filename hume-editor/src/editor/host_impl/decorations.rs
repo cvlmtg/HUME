@@ -121,22 +121,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         spans: Vec<(usize, usize, String)>,
     ) -> Result<(), SetError> {
-        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let entries = each_entry(spans, |(start, end, scope)| {
-            let fail = |e: String| format!("range {e}");
-            let range = crate::editor::buffer::offsets::checked_char_range(text, start, end)
-                .map_err(fail)?;
-            if range.is_empty() {
-                return Err(fail(format!("{start}..{end} is empty")));
-            }
-            // Widened to whole clusters: the renderer paints a cluster at a time.
-            let range = crate::editor::buffer::offsets::widened_to_clusters(text, range);
-            Ok(hume_decorations::ExtraHighlightEntry {
-                start: range.start,
-                end: range.end,
-                scope: self.view.registry.intern(&scope),
-            })
-        })?;
+        let entries = self.extra_highlight_entries(bid, spans)?;
         self.state
             .config
             .decorations
@@ -228,6 +213,49 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 
     fn diagnostic_counts(&self, bid: BufferId, floor: Option<DiagSeverity>) -> DiagnosticCounts {
         crate::editor::lsp::introspect::diagnostic_counts(self.state, bid, floor)
+    }
+}
+
+impl EditorHostImpl<'_> {
+    /// Adds `spans` to `source`'s extra highlights for `bid`, checked as
+    /// [`DecorationHost::set_extra_highlights`] checks them.
+    pub(in crate::editor) fn add_extra_highlights<S: AsRef<str>>(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        spans: Vec<(usize, usize, S)>,
+    ) -> Result<(), SetError> {
+        let entries = self.extra_highlight_entries(bid, spans)?;
+        self.state
+            .config
+            .decorations
+            .add_extra_highlights(source, bid, entries);
+        Ok(())
+    }
+
+    /// Each `(start, end, scope)` char range of `bid`'s text as an extra
+    /// highlight. Errors on a range outside the text or an empty one.
+    fn extra_highlight_entries<S: AsRef<str>>(
+        &mut self,
+        bid: BufferId,
+        spans: Vec<(usize, usize, S)>,
+    ) -> Result<Vec<hume_decorations::ExtraHighlightEntry>, SetError> {
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        each_entry(spans, |(start, end, scope)| {
+            let fail = |e: String| format!("range {e}");
+            let range = crate::editor::buffer::offsets::checked_char_range(text, start, end)
+                .map_err(fail)?;
+            if range.is_empty() {
+                return Err(fail(format!("{start}..{end} is empty")));
+            }
+            // Widened to whole clusters: the renderer paints a cluster at a time.
+            let range = crate::editor::buffer::offsets::widened_to_clusters(text, range);
+            Ok(hume_decorations::ExtraHighlightEntry {
+                start: range.start,
+                end: range.end,
+                scope: self.view.registry.intern(scope.as_ref()),
+            })
+        })
     }
 }
 

@@ -622,50 +622,10 @@ impl Buffer {
         focused: PaneId,
     ) -> bool {
         self.line_ending_by = Claim::default();
-        let recorded =
-            |stores: &PositionStores<'_>| stores.panes.seeded(focused, id).selections().clone();
-        let pre_sels = recorded(stores);
-        let Some((forward, inverse)) = self.install_line_diff(id, stores, &new_text) else {
+        let (forward, inverse) = changesets_from_line_diff(&self.text, &new_text);
+        if forward.is_identity() {
             self.adopt_line_ending(new_text.line_ending());
             return false;
-        };
-        let post_sels = recorded(stores);
-        self.record_revision(forward, inverse, pre_sels, post_sels);
-        true
-    }
-
-    /// Rebuild a read-only view's text as `content`, carrying every stored
-    /// position through the line diff from its current text instead of
-    /// resetting them as [`set_view_content`](Self::set_view_content) does.
-    /// Records no revision: a view's history stays at its root, so it never
-    /// reads modified.
-    pub(in crate::editor) fn follow_view_content(
-        &mut self,
-        id: BufferId,
-        stores: &mut PositionStores<'_>,
-        content: &str,
-    ) {
-        debug_assert!(
-            self.read_only,
-            "follow_view_content: an edit to a writable buffer belongs in its history"
-        );
-        self.install_line_diff(id, stores, &BufferText::from(content));
-    }
-
-    /// Install `new_text`'s content through the line diff from the current
-    /// text, carrying every stored position, and return the diff's
-    /// `(forward, inverse)` pair. `None`, with nothing installed, when the
-    /// content is the same: a no-op must not move the version, which would
-    /// fire `on-text-changed` and a reparse.
-    fn install_line_diff(
-        &mut self,
-        id: BufferId,
-        stores: &mut PositionStores<'_>,
-        new_text: &BufferText,
-    ) -> Option<(ChangeSet, ChangeSet)> {
-        let (forward, inverse) = changesets_from_line_diff(&self.text, new_text);
-        if forward.is_identity() {
-            return None;
         }
         // Applying the diff keeps the buffer's lineage, so the replacement is
         // the next generation of the same document rather than a new one.
@@ -673,16 +633,47 @@ impl Buffer {
             .apply(&self.text)
             .expect("a line diff of the current text applies to it");
         debug_assert_eq!(
-            &replaced, new_text,
-            "install_line_diff: the line diff must reproduce the new text"
+            replaced, new_text,
+            "replace_text_recorded: the line diff must reproduce the new text"
         );
+        let recorded =
+            |stores: &PositionStores<'_>| stores.panes.seeded(focused, id).selections().clone();
+        let pre_sels = recorded(stores);
         self.install(
             PaneHandle::buffer_only(id),
             stores,
             replaced.with_line_ending(new_text.line_ending()),
             Change::Edit(&forward),
         );
-        Some((forward, inverse))
+        let post_sels = recorded(stores);
+        self.record_revision(forward, inverse, pre_sels, post_sels);
+        true
+    }
+
+    /// Install `text`, `change` applied to a read-only view's text, carrying
+    /// every stored position through `change` instead of resetting them as
+    /// [`set_view_content`](Self::set_view_content) does. Records no
+    /// revision: a view's history stays at its root, so it never reads
+    /// modified. An identity change installs nothing, so the version stays.
+    pub(in crate::editor) fn follow_view_change(
+        &mut self,
+        id: BufferId,
+        stores: &mut PositionStores<'_>,
+        text: BufferText,
+        change: &ChangeSet,
+    ) {
+        debug_assert!(
+            self.read_only,
+            "follow_view_change: an edit to a writable buffer belongs in its history"
+        );
+        if !change.is_identity() {
+            self.install(
+                PaneHandle::buffer_only(id),
+                stores,
+                text,
+                Change::Edit(change),
+            );
+        }
     }
 
     /// `true` if the buffer has unsaved changes.

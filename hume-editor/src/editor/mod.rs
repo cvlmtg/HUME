@@ -83,7 +83,7 @@ use scripting::theme_search_paths;
 
 pub(in crate::editor) use minibuf::MiniBuffer;
 
-use message_log::{MessageLog, MessagesViewStamp};
+use message_log::{MessageLog, MessagesView};
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
 //
@@ -126,10 +126,9 @@ pub(crate) struct ConfigState {
     /// lines, EOL text, extra highlights, line backgrounds). The render
     /// providers read these.
     pub(in crate::editor) decorations: hume_decorations::DecorationStores,
-    /// What `[messages]` and its highlights in `decorations` were last
-    /// built from, `None` before they first are. Kept here so a fresh
-    /// `ConfigState`, which holds none of those highlights, reads stale.
-    pub(in crate::editor) messages_view: Option<MessagesViewStamp>,
+    /// Whether `decorations` holds the `[messages]` highlights. A fresh
+    /// `ConfigState` holds none, so the view reads stale.
+    pub(in crate::editor) messages_highlighted: bool,
     /// Text pushed by `(set-statusline-text! bid source text)`, replaced
     /// whole per `(bid, source)`. Nested so the render side can look up a
     /// borrowed `(bid, &str)` every frame without allocating a key.
@@ -185,7 +184,7 @@ impl ConfigState {
             languages: LanguageRegistry::new(library_wait.clone()),
             triggers: rustc_hash::FxHashMap::default(),
             decorations: hume_decorations::DecorationStores::reset(prior_clock),
-            messages_view: None,
+            messages_highlighted: false,
             statusline_text: rustc_hash::FxHashMap::default(),
             pending_work: VecDeque::new(),
             pending_language_detection: Vec::new(),
@@ -265,6 +264,10 @@ pub(crate) struct EditorState {
     pub(in crate::editor) summary_ttl: u8,
     /// Persistent log of warnings, errors, and trace entries.
     pub(crate) message_log: MessageLog,
+    /// What the `[messages]` text was last built from and holds, so a
+    /// rebuild changes only the entries that changed. `None` before it
+    /// first is.
+    pub(in crate::editor) messages_view: Option<MessagesView>,
     /// All editor settings: global defaults and per-buffer-overridable values.
     pub(crate) settings: EditorSettings,
     /// Name of the theme `EngineView::theme` was loaded from; empty while the
@@ -420,6 +423,7 @@ impl EditorState {
             status_msg: None,
             summary_ttl: 0,
             message_log: MessageLog::new(),
+            messages_view: None,
             settings,
             shown_theme: String::new(),
             last_find: None,

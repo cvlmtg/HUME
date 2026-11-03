@@ -62,6 +62,8 @@ fn editor_state_fields_are_classified() {
             // the reset to decide whether to report success;
             // resetting it would defeat that
             message_log: _,
+            // preserved: describes the `[messages]` text, which survives
+            messages_view: _,
             // config: settings::ops::reset_globals rebuilds
             // EditorSettings wholesale
             settings: _,

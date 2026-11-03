@@ -7,14 +7,16 @@
 use std::collections::VecDeque;
 
 use hume_core::{BufferId, Severity};
+use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::edit::apply_keeping_final_break;
 use hume_editing::text::{BufferText, normalize_line_endings_owned};
 use hume_engine::theme::diagnostic_scopes;
-use hume_scripting::host::DecorationHost;
+use hume_rope::offset::CharOffset;
 
 use super::buffer::{EditorView, ViewLabel, lifecycle};
 use super::error::CommandError;
 use super::host_impl::EditorHostImpl;
-use super::settings::MessagesMinSeverity;
+use super::settings::{MessagesMinSeverity, SettingText};
 use super::{Editor, EditorState};
 
 /// A single entry in the persistent message log.
@@ -22,6 +24,38 @@ use super::{Editor, EditorState};
 pub(in crate::editor) struct LogEntry {
     pub(in crate::editor) severity: Severity,
     pub(in crate::editor) text: String,
+    /// How many entries were pushed before this one. Entries stay in `seq`
+    /// order: eviction removes but never reorders.
+    seq: u64,
+}
+
+/// A `[messages]` highlight: `(start, end, scope name)` in chars.
+type MessageSpan = (usize, usize, &'static str);
+
+/// The extra-highlight source of the `[messages]` highlights.
+const HIGHLIGHT_SOURCE: &str = "messages";
+
+/// The entries a `[messages]` text shows, oldest first, each as its `seq`
+/// and the char length of its line.
+type Layout = Vec<(u64, usize)>;
+
+/// What the `[messages]` text was last built from, and what it holds.
+#[derive(Debug)]
+pub(in crate::editor) struct MessagesView {
+    stamp: MessagesViewStamp,
+    layout: Layout,
+}
+
+/// [`MessageLog::follow_view`]'s result.
+struct ViewFollow {
+    /// What the view's floor shows now.
+    text: BufferText,
+    /// The change from the view's text to `text`.
+    change: ChangeSet,
+    /// `text`'s layout.
+    layout: Layout,
+    /// The inserted entries' highlights, in `text`.
+    spans: Vec<MessageSpan>,
 }
 
 // ── MessageLog ───────────────────────────────────────────────────────────────
@@ -29,8 +63,8 @@ pub(in crate::editor) struct LogEntry {
 /// Maximum number of entries kept in the log.
 ///
 /// A push into a full log searches it for the entry to evict and stops at
-/// the oldest trace, which a trace flood keeps near the front. Only a log of
-/// nearly all errors pays the O(`MAX_ENTRIES`) worst case.
+/// the oldest trace, which a trace flood keeps near the front. A full log
+/// with no trace entry scans every entry before it evicts.
 const MAX_ENTRIES: usize = 1000;
 
 /// Persistent, append-only log of messages from the current editing session.
@@ -54,17 +88,20 @@ pub(crate) struct MessageLog {
     /// or error", and `handle_input` to keep a command's message on the
     /// status line. Both ask what was reported, whether or not
     /// `messages-min-severity` shows it.
-    pushed: [u64; 3],
+    pushed: [u64; LEVELS],
     /// Entries evicted at each level, indexed like `pushed`. What a floor
     /// shows changes only when a level it shows gains a push or an eviction.
-    evicted: [u64; 3],
+    evicted: [u64; LEVELS],
 }
+
+/// How many [`MessagesMinSeverity`] levels there are.
+const LEVELS: usize = <MessagesMinSeverity as SettingText>::VALUES.len();
 
 /// What the `[messages]` buffer was last built from: a floor and the
 /// changes so far at the levels it shows. A different stamp means the
 /// buffer is stale.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::editor) struct MessagesViewStamp {
+struct MessagesViewStamp {
     floor: MessagesMinSeverity,
     shown_changes: u64,
 }
@@ -74,8 +111,8 @@ impl MessageLog {
         Self {
             entries: VecDeque::new(),
             seen_up_to: 0,
-            pushed: [0; 3],
-            evicted: [0; 3],
+            pushed: [0; LEVELS],
+            evicted: [0; LEVELS],
         }
     }
 
@@ -87,8 +124,9 @@ impl MessageLog {
     /// `seen_up_to` moves back when the evicted entry was a seen one.
     ///
     /// The text is stored with LF line endings, as a buffer holds it, so
-    /// [`Self::format_with_spans`]' spans fit the `[messages]` text.
+    /// [`Self::format_view`]'s spans fit the `[messages]` text.
     pub(in crate::editor) fn push(&mut self, severity: Severity, text: String) {
+        let seq = self.pushed.iter().sum();
         self.pushed[MessagesMinSeverity::of(severity) as usize] += 1;
         if self.entries.len() == MAX_ENTRIES {
             let index = self.eviction_index();
@@ -102,11 +140,12 @@ impl MessageLog {
         self.entries.push_back(LogEntry {
             severity,
             text: normalize_line_endings_owned(text),
+            seq,
         });
     }
 
     /// The stamp of the log as `floor` shows it now.
-    pub(in crate::editor) fn view_stamp(&self, floor: MessagesMinSeverity) -> MessagesViewStamp {
+    fn view_stamp(&self, floor: MessagesMinSeverity) -> MessagesViewStamp {
         MessagesViewStamp {
             floor,
             shown_changes: self.pushed[floor as usize..]
@@ -213,9 +252,6 @@ impl MessageLog {
     /// entry `floor` shows is a `Warning` or `Error`: trace messages never
     /// raise a statusline indicator (see [`Severity`] table).
     pub(crate) fn summary_text(&self, floor: MessagesMinSeverity) -> Option<String> {
-        if !self.has_unseen() {
-            return None;
-        }
         let (errors, warnings) = self.unseen_counts(floor);
         let msg = match (errors, warnings) {
             (0, 0) => return None,
@@ -237,7 +273,8 @@ impl MessageLog {
     }
 
     /// The entries `floor` shows, formatted for display in the `:messages`
-    /// scratch buffer, along with the severity-highlight spans for each line.
+    /// scratch buffer, along with the severity-highlight spans for each line
+    /// and the text's layout.
     ///
     /// Each line is `[severity] text\n`. Returns an empty string and no
     /// spans if no entry is shown. Spans are `(start, end, scope name)`
@@ -251,53 +288,126 @@ impl MessageLog {
     /// `[messages]` is a synthetic, path-less buffer, so `detect_language`
     /// never attaches a grammar to it (and a grammar for `[severity] text`
     /// lines would be absurd anyway).
+    fn format_view(&self, floor: MessagesMinSeverity) -> (String, Vec<MessageSpan>, Layout) {
+        let mut out = String::new();
+        let mut spans = Vec::new();
+        let mut layout = Vec::new();
+        let mut pos = 0;
+        for entry in self.shown_from(0, floor) {
+            let chars = format_entry(entry, pos, &mut out, &mut spans);
+            layout.push((entry.seq, chars));
+            pos += chars;
+        }
+        (out, spans, layout)
+    }
+
+    /// [`Self::format_view`]'s text and spans.
+    #[cfg(test)]
     pub(in crate::editor) fn format_with_spans(
         &self,
         floor: MessagesMinSeverity,
-    ) -> (String, Vec<(usize, usize, &'static str)>) {
-        let mut out = String::new();
-        let mut spans = Vec::new();
-        let mut pos = 0;
-        for entry in self.shown_from(0, floor) {
-            let label = entry.severity.name();
-
-            out.push('[');
-            out.push_str(label);
-            out.push(']');
-            let badge_len = label.len() + 2; // '[' + label + ']'
-            spans.push((
-                pos,
-                pos + badge_len,
-                diagnostic_scopes::message_badge(entry.severity),
-            ));
-            pos += badge_len;
-
-            out.push(' ');
-            pos += 1;
-
-            let text_len = entry.text.chars().count();
-            if text_len > 0 {
-                out.push_str(&entry.text);
-                spans.push((
-                    pos,
-                    pos + text_len,
-                    diagnostic_scopes::message_text(entry.severity),
-                ));
-                pos += text_len;
-            }
-
-            out.push('\n');
-            pos += 1;
-        }
-        (out, spans)
+    ) -> (String, Vec<MessageSpan>) {
+        let (text, spans, _) = self.format_view(floor);
+        (text, spans)
     }
 
-    /// Test-only convenience over [`format_with_spans`] for assertions that
+    /// The change that takes the `[messages]` text `text`, laid out as
+    /// `layout`, to [`Self::format_view`]'s for `floor`. An entry the log
+    /// evicted or `floor` hides is deleted, an entry new to the view is
+    /// formatted and inserted in log order, and every other line is kept.
+    fn follow_view(
+        &self,
+        layout: &[(u64, usize)],
+        floor: MessagesMinSeverity,
+        text: &BufferText,
+    ) -> ViewFollow {
+        let end = text.end();
+        debug_assert_eq!(
+            end.index(),
+            layout.iter().map(|&(_, chars)| chars).sum::<usize>().max(1),
+            "follow_view: the layout must describe the text"
+        );
+        let (text, change, (layout, spans)) = apply_keeping_final_break(text, |ceiling| {
+            let stop = |to: usize| ceiling.map_or(to, |c| to.min(c.index()));
+            let mut builder = ChangeSetBuilder::new(end);
+            let mut new_layout = Vec::with_capacity(layout.len());
+            let mut spans = Vec::new();
+            let mut line = String::new();
+            let (mut old, mut new) = (0, 0);
+            let mut viewed = layout.iter().peekable();
+            for entry in self.shown_from(0, floor) {
+                while let Some(&(_, chars)) = viewed.next_if(|&&(seq, _)| seq < entry.seq) {
+                    builder
+                        .retain_to(CharOffset::new(old))
+                        .delete_to(CharOffset::new(stop(old + chars)));
+                    old += chars;
+                }
+                if let Some(&(seq, chars)) = viewed.next_if(|&&(seq, _)| seq == entry.seq) {
+                    new_layout.push((seq, chars));
+                    old += chars;
+                    new += chars;
+                } else {
+                    let chars = format_entry(entry, new, &mut line, &mut spans);
+                    builder.retain_to(CharOffset::new(old)).insert(&line);
+                    line.clear();
+                    new_layout.push((entry.seq, chars));
+                    new += chars;
+                }
+            }
+            let rest_end = stop(end.index());
+            if old < rest_end {
+                builder
+                    .retain_to(CharOffset::new(old))
+                    .delete_to(CharOffset::new(rest_end));
+            }
+            (builder.finish(), (new_layout, spans))
+        });
+        ViewFollow {
+            text,
+            change,
+            layout,
+            spans,
+        }
+    }
+
+    /// Test-only convenience over [`Self::format_view`] for assertions that
     /// only care about the rendered text of every stored entry.
     #[cfg(test)]
     pub(in crate::editor) fn format_for_display(&self) -> String {
-        self.format_with_spans(MessagesMinSeverity::Trace).0
+        self.format_view(MessagesMinSeverity::Trace).0
     }
+}
+
+/// Append `entry`'s line, `[severity] text\n`, to `out`, and its badge and
+/// text highlights to `spans`, the line starting at char offset `start`: no
+/// text span for an empty text. Returns the line's length in chars.
+fn format_entry(
+    entry: &LogEntry,
+    start: usize,
+    out: &mut String,
+    spans: &mut Vec<MessageSpan>,
+) -> usize {
+    out.push('[');
+    out.push_str(entry.severity.name());
+    out.push_str("] ");
+    out.push_str(&entry.text);
+    out.push('\n');
+    let badge_end = start + entry.severity.name().len() + 2; // '[' + label + ']'
+    spans.push((
+        start,
+        badge_end,
+        diagnostic_scopes::message_badge(entry.severity),
+    ));
+    let text_start = badge_end + 1;
+    let text_end = text_start + entry.text.chars().count();
+    if text_end > text_start {
+        spans.push((
+            text_start,
+            text_end,
+            diagnostic_scopes::message_text(entry.severity),
+        ));
+    }
+    text_end + 1 - start
 }
 
 impl Editor {
@@ -325,10 +435,12 @@ impl Editor {
             .any(|pid| self.view.panes[pid].buffer_id() == bid)
     }
 
-    /// The `[messages]` buffer, opened from the log or rebuilt from it at the
-    /// current `messages-min-severity` when it is missing or stale, with its
-    /// severity highlights. A rebuild carries every stored position through
-    /// the change, so no cursor moves on its own.
+    /// The `[messages]` buffer, opened from the log or brought up to date
+    /// with it at the current `messages-min-severity` when it is missing or
+    /// stale, with its severity highlights. Only the entries that changed
+    /// are formatted, except after a config reload drops the highlights,
+    /// when every entry's are rebuilt. The change carries every stored
+    /// position, so no cursor moves on its own.
     pub(in crate::editor) fn sync_messages_view(&mut self) -> BufferId {
         let label = ViewLabel::editor(EditorView::Messages);
         let existing = self.state.buffers.find_by_label(&label);
@@ -338,30 +450,52 @@ impl Editor {
             return bid;
         }
         let floor = self.state.settings.messages_min_severity;
-        let (content, spans) = self.state.message_log.format_with_spans(floor);
-        let bid = match existing {
+        let (bid, layout, spans) = match existing {
             Some(bid) => {
+                let view = self
+                    .state
+                    .messages_view
+                    .take()
+                    .expect("an open `[messages]` was built from the log");
+                let follow = self.state.message_log.follow_view(
+                    &view.layout,
+                    floor,
+                    self.state.buffers.get(bid).text(),
+                );
                 let (buffers, mut stores) = self.state.edit_parts();
-                buffers
-                    .get_mut(bid)
-                    .follow_view_content(bid, &mut stores, &content);
-                bid
+                buffers.get_mut(bid).follow_view_change(
+                    bid,
+                    &mut stores,
+                    follow.text,
+                    &follow.change,
+                );
+                let spans = if self.state.config.messages_highlighted {
+                    follow.spans
+                } else {
+                    // A fresh `ConfigState` holds none of the view's highlights.
+                    self.state.message_log.format_view(floor).1
+                };
+                (bid, follow.layout, spans)
             }
-            None => lifecycle::open_view_buffer(
-                &mut self.state,
-                &mut self.view,
-                BufferText::from(content.as_str()),
-                &label,
-            ),
+            None => {
+                let (content, spans, layout) = self.state.message_log.format_view(floor);
+                let bid = lifecycle::open_view_buffer(
+                    &mut self.state,
+                    &mut self.view,
+                    BufferText::from(content.as_str()),
+                    &label,
+                );
+                (bid, layout, spans)
+            }
         };
-        let spans = spans
-            .into_iter()
-            .map(|(start, end, scope)| (start, end, scope.to_string()))
-            .collect();
         EditorHostImpl::new(&mut self.state, &mut self.view)
-            .set_extra_highlights("messages".to_string(), bid, spans)
-            .expect("the spans lie in the text they were formatted with");
-        self.state.config.messages_view = Some(self.state.message_log.view_stamp(floor));
+            .add_extra_highlights(HIGHLIGHT_SOURCE.to_string(), bid, spans)
+            .expect("the spans lie in the text they were formatted for");
+        self.state.config.messages_highlighted = true;
+        self.state.messages_view = Some(MessagesView {
+            stamp: self.state.message_log.view_stamp(floor),
+            layout,
+        });
         bid
     }
 
@@ -378,13 +512,14 @@ impl Editor {
 
 impl EditorState {
     /// Whether the log or `messages-min-severity` changed since `[messages]`
-    /// was last built, or it never was.
+    /// was last built, it never was, or its highlights are missing.
     pub(in crate::editor) fn messages_view_stale(&self) -> bool {
-        self.config.messages_view
-            != Some(
-                self.message_log
-                    .view_stamp(self.settings.messages_min_severity),
-            )
+        !self.config.messages_highlighted
+            || self.messages_view.as_ref().map(|view| view.stamp)
+                != Some(
+                    self.message_log
+                        .view_stamp(self.settings.messages_min_severity),
+                )
     }
 
     /// Whether `bid` is an up-to-date `[messages]` and the log holds unseen
