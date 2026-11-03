@@ -1,7 +1,7 @@
 //! The value types settings take, and how each reads from and writes to
 //! its text form (`SettingText`).
 
-use hume_core::DiagSeverity;
+use hume_core::{DiagSeverity, Severity};
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::LineEnding;
 use hume_engine::builtins::line_number::LineNumberStyle;
@@ -323,6 +323,32 @@ settings_enum!(WordSelectsWhitespace, [
     Off => "off",
     Before => "before",
     After => "after",
+]);
+
+/// The lowest severity the message log keeps. A message below it is still
+/// reported, and shown on the status line when its severity is shown there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MessagesMinSeverity {
+    Trace,
+    #[default]
+    Warning,
+    Error,
+}
+
+impl MessagesMinSeverity {
+    pub(in crate::editor) fn keeps(self, severity: Severity) -> bool {
+        match self {
+            Self::Trace => true,
+            Self::Warning => matches!(severity, Severity::Warning | Severity::Error),
+            Self::Error => severity == Severity::Error,
+        }
+    }
+}
+
+settings_enum!(MessagesMinSeverity, [
+    Trace => "trace",
+    Warning => "warning",
+    Error => "error",
 ]);
 
 impl SettingText for ShellCommand {

@@ -277,6 +277,6 @@ Commands for a server that's already running. To install, browse the catalog, or
 
 A server stops by itself once no open buffer uses it: after you close its last buffer, or when a change to a server list or a buffer's language leaves it out. Opening a matching file starts it again. A server that crashed stays down for its buffers until you run `:lsp-restart`.
 
-Server output and protocol errors show in `:messages`.
+A server's errors and warnings show in `:messages`. The rest of its output is logged at trace level, which `:messages` keeps when `messages-min-severity` is `trace`.
 
 A plugin can also send a server requests of its own, such as a server extension `core:lsp` doesn't use. See [Sending a custom request](lsp-api.md#sending-a-custom-request).

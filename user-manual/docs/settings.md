@@ -25,6 +25,7 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `lsp-diagnostics-on-insert-line` | bool | `false` | Keep the diagnostic underline and end-of-line summary on the line you are typing on in Insert mode. Off hides them there |
 | `lsp-diagnostics-pull-debounce-ms` | integer ≥ 1 | `250` | Delay after you stop typing before asking a server that only reports on request for its diagnostics |
 | `lsp-request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
+| `messages-min-severity` | `trace` \| `warning` \| `error` | `warning` | Lowest severity `:messages` keeps. `trace` also keeps detail useful for debugging |
 | `mouse` | bool | `true` | Enable mouse support |
 | `mouse-scroll-lines` | integer | `3` | Lines per mouse scroll tick |
 | `mouse-select` | bool | `false` | Mouse drag creates selections |

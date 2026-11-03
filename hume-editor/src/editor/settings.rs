@@ -243,6 +243,7 @@ pub(in crate::editor) const WRAP_MODE_KEY: &str = "wrap-mode";
 #[allow(non_camel_case_types)]
 pub(in crate::editor) enum ResyncKey {
     jump_list_capacity,
+    messages_min_severity,
     prompt_history_levels,
     undo_levels,
     theme,
@@ -797,6 +798,11 @@ define_settings! {
         "lsp-diagnostics-on-insert-line" => lsp_diagnostics_on_insert_line: bool = false,
             scope: [Scope::Global],
             parser: bool;
+        // Read by `MessageLog::push`, through the copy the resync keeps.
+        "messages-min-severity" => messages_min_severity: MessagesMinSeverity = MessagesMinSeverity::default(),
+            scope: [Scope::Global],
+            parser: from_str,
+            resync: true;
     }
     buffer {
         // A buffer-overridable setting like any other (e.g. from an
@@ -1094,8 +1100,8 @@ mod values;
 mod word_list;
 
 pub use values::{
-    CommandCompletion, CursorShape, ObjectJumpAlign, SignColumnConfig, SignColumnMode,
-    TablineVisibility, WordSelectsWhitespace,
+    CommandCompletion, CursorShape, MessagesMinSeverity, ObjectJumpAlign, SignColumnConfig,
+    SignColumnMode, TablineVisibility, WordSelectsWhitespace,
 };
 
 #[cfg(test)]

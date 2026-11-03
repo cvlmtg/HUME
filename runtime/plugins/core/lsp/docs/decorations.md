@@ -4,7 +4,8 @@
 `diagnostics-for-buffer`, which returns a buffer's first 1000 entries by position, and
 turns them into navigation, a drawer, an end-of-line (EOL) summary and gutter signs. Past
 1000 at the `lsp-diagnostics-min-severity` floor, all four stop at the 1000th while
-underlines go on, and the read that cuts them notes it in `:messages` at trace level.
+underlines go on, and the read that cuts them notes it at trace level, which `:messages`
+keeps when `messages-min-severity` is `trace`.
 `inlay.scm` requests inlay hints. Both are covered here.
 
 ## Diagnostics navigation

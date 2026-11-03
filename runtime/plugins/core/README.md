@@ -160,8 +160,9 @@ to the user, not by how verbose the plugin author wants to be:
   cannot tell apart from an expected one (`git-diff`'s fetch for a typed ref, which fails
   the same way for a bad ref and an untracked file).
 - `'trace`: an expected, common failure, such as `git cat-file` failing for an untracked
-  file, which `git-diff` runs for every buffer. It reaches `:messages` but never flashes in
-  the status line or counts toward the unseen-errors summary.
+  file, which `git-diff` runs for every buffer. It reaches `:messages` only when
+  `messages-min-severity` is `trace`, and never flashes in the status line or counts toward
+  the unseen-errors summary.
 - `'info` (via `Severity::Info`) is status-line only and never reaches `:messages`, so it
   suits status that need not outlive the moment it flashed by.
 

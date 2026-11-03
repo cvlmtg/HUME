@@ -88,7 +88,7 @@ takes it and passes it to `handle-fetch-result!`.
 |---|---|---|---|
 | `#f` (none) | anything | `'error` | `git` could not run: an environment fault, not a fact about this file |
 | any other nonzero | a toggle, with a runtime ref override set | `'warning` | A direct answer to a command the user just typed |
-| any other nonzero | anything else | `'trace` | Untracked file, brand-new file, buffer outside any repo, bad `ref` config, or a background refetch against an override already reported. These cannot be told apart without parsing `stderr` further; the line is visible in `:messages` for diagnosis and otherwise quiet |
+| any other nonzero | anything else | `'trace` | Untracked file, brand-new file, buffer outside any repo, bad `ref` config, or a background refetch against an override already reported. These cannot be told apart without parsing `stderr` further; the line is visible in `:messages` for diagnosis when `messages-min-severity` is `trace`, and otherwise quiet |
 
 Either way `"ref-text"` becomes `'unavailable`, not `#f`: with `#f` ("not fetched yet"),
 `refresh!` would respawn a `git cat-file` that fails the same way on every debounced

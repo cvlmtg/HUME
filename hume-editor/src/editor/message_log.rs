@@ -10,6 +10,7 @@ use hume_core::Severity;
 use hume_engine::theme::diagnostic_scopes;
 
 use super::error::CommandError;
+use super::settings::MessagesMinSeverity;
 use super::{Editor, EditorState};
 
 /// A single entry in the persistent message log.
@@ -40,28 +41,40 @@ pub(crate) struct MessageLog {
     /// Index of the first unseen entry. Everything at `index >= seen_up_to` is
     /// "unread". Updated by `mark_all_seen()`.
     seen_up_to: usize,
-    /// Lifetime count of `Error`/`Warning` entries ever pushed: monotonic,
-    /// never decremented by eviction (unlike `unseen_counts`, which reads the
-    /// live `entries` deque and so *can* drop below a value it reported
-    /// earlier once `MAX_ENTRIES` starts evicting). `:reload-config` diffs
-    /// this against a before/after snapshot to detect "did this reload push
-    /// a new warning or error", a question `unseen_counts` alone can't
-    /// answer reliably across a long session.
+    /// Lifetime count of `Error`/`Warning` messages ever pushed, those the
+    /// floor kept out of `entries` included: monotonic, never decremented by
+    /// eviction (unlike `unseen_counts`, which reads the live `entries` deque
+    /// and so *can* drop below a value it reported earlier once `MAX_ENTRIES`
+    /// starts evicting). `:reload-config` diffs this against a before/after
+    /// snapshot to detect "did this reload push a new warning or error", and
+    /// `handle_input` to keep a command's message on the status line. Both
+    /// ask what was reported, which the status line showed whether or not the
+    /// log kept it.
     total_errors: u64,
     total_warnings: u64,
+    /// The `messages-min-severity` setting, kept in step by its resync.
+    floor: MessagesMinSeverity,
 }
 
 impl MessageLog {
-    pub(in crate::editor) fn new() -> Self {
+    pub(in crate::editor) fn new(floor: MessagesMinSeverity) -> Self {
         Self {
             entries: VecDeque::new(),
             seen_up_to: 0,
             total_errors: 0,
             total_warnings: 0,
+            floor,
         }
     }
 
-    /// Append an entry to the log.
+    /// Keep messages at or above `floor` from now on. Entries already in the
+    /// log stay.
+    pub(in crate::editor) fn set_floor(&mut self, floor: MessagesMinSeverity) {
+        self.floor = floor;
+    }
+
+    /// Append an entry to the log, unless its severity is below the floor.
+    /// Either way it counts in [`Self::totals`].
     ///
     /// When the entry count would exceed [`MAX_ENTRIES`], the oldest entry is
     /// evicted and `seen_up_to` is shifted so it stays in bounds.
@@ -71,6 +84,9 @@ impl MessageLog {
             Severity::Warning => self.total_warnings += 1,
             Severity::Info | Severity::Trace => {}
         }
+        if !self.floor.keeps(severity) {
+            return;
+        }
         if self.entries.len() == MAX_ENTRIES {
             self.entries.pop_front();
             self.seen_up_to = self.seen_up_to.saturating_sub(1);
@@ -78,9 +94,10 @@ impl MessageLog {
         self.entries.push_back(LogEntry { severity, text });
     }
 
-    /// Lifetime `(errors, warnings)` pushed so far. See the field docs for
-    /// why this, not `unseen_counts`, is the eviction-proof way to detect
-    /// "were any new warnings/errors logged between two points in time".
+    /// Lifetime `(errors, warnings)` pushed so far, kept or not. See the
+    /// field docs for why this, not `unseen_counts`, is the eviction-proof
+    /// way to detect "were any new warnings/errors reported between two
+    /// points in time".
     pub(crate) fn totals(&self) -> (u64, u64) {
         (self.total_errors, self.total_warnings)
     }

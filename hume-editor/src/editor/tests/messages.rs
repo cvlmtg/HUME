@@ -1,9 +1,11 @@
 // `:messages` severity highlighting: the `format_with_spans` → extra-highlights
 // store → `ScopedHighlighter` Extra tier wiring added alongside the message
-// log's existing `[severity]` prefix formatting.
+// log's existing `[severity]` prefix formatting. Also the
+// `messages-min-severity` floor on what the log keeps.
 //
-// Like `lsp_render.rs`, uses `Editor::open` (not `editor_from`) so `build_pane`
-// has registered the pane's `PaneHighlights` providers.
+// The highlighting tests use `Editor::open` (not `editor_from`), like
+// `lsp_render.rs`, so `build_pane` has registered the pane's `PaneHighlights`
+// providers.
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
@@ -192,4 +194,40 @@ fn repeat_messages_replaces_stale_spans_not_appends() {
     // "[warning] first\n[error] second\n": last body span ends at char 30
     // ("[warning]"=9 + " "=1 + "first"=5 + "\n"=1 + "[error]"=7 + " "=1 + "second"=6).
     assert_eq!(spans[3].end, co(30));
+}
+
+fn logged_texts(ed: &Editor) -> Vec<&str> {
+    ed.state
+        .message_log
+        .entries()
+        .map(|entry| entry.text.as_str())
+        .collect()
+}
+
+#[test]
+fn messages_min_severity_drops_reports_below_it() {
+    let mut ed = editor_from("-[a]>\n");
+    let fp = FocusedPane::current(&ed.view);
+    crate::editor::commands::typed_set(&mut ed, fp, "global messages-min-severity=warning")
+        .expect("the floor is a valid setting");
+    ed.report(Severity::Trace, "trace detail".to_string());
+    ed.report(Severity::Warning, "a warning".to_string());
+    assert_eq!(logged_texts(&ed), ["a warning"]);
+}
+
+#[test]
+fn default_messages_floor_keeps_warnings_and_drops_trace() {
+    let mut ed = Editor::open(
+        None,
+        crate::editor::run::HEADLESS_TERMINAL,
+        no_op_wake(),
+        Dirs::none(),
+        test_cwd(),
+    )
+    .expect("open");
+    ed.report(Severity::Trace, "trace detail".to_string());
+    ed.report(Severity::Warning, "a warning".to_string());
+    let texts = logged_texts(&ed);
+    assert!(texts.contains(&"a warning"));
+    assert!(!texts.contains(&"trace detail"));
 }

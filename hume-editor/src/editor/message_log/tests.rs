@@ -1,7 +1,8 @@
 use super::*;
+use crate::editor::settings::MessagesMinSeverity;
 
 fn make_log(entries: &[(Severity, &str)]) -> MessageLog {
-    let mut log = MessageLog::new();
+    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
     for (sev, text) in entries {
         log.push(*sev, text.to_string());
     }
@@ -33,7 +34,7 @@ fn unseen_counts_initial() {
 
 #[test]
 fn has_unseen_empty_log() {
-    let log = MessageLog::new();
+    let log = MessageLog::new(MessagesMinSeverity::Trace);
     assert!(!log.has_unseen());
 }
 
@@ -105,7 +106,7 @@ fn summary_text_trace_only() {
 
 #[test]
 fn format_for_display_empty() {
-    let log = MessageLog::new();
+    let log = MessageLog::new(MessagesMinSeverity::Trace);
     assert_eq!(log.format_for_display(), "");
 }
 
@@ -125,7 +126,7 @@ fn format_for_display_prefixes() {
 
 #[test]
 fn format_with_spans_empty() {
-    let log = MessageLog::new();
+    let log = MessageLog::new(MessagesMinSeverity::Trace);
     let (text, spans) = log.format_with_spans();
     assert_eq!(text, "");
     assert!(spans.is_empty());
@@ -197,7 +198,7 @@ fn severity_trace_uses_hint_scopes() {
 
 #[test]
 fn push_respects_cap() {
-    let mut log = MessageLog::new();
+    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
     // Push MAX_ENTRIES + 1 entries; the oldest should be evicted.
     for i in 0..=MAX_ENTRIES {
         log.push(Severity::Warning, format!("msg {i}"));
@@ -211,7 +212,7 @@ fn push_respects_cap() {
 
 #[test]
 fn push_cap_adjusts_seen_up_to() {
-    let mut log = MessageLog::new();
+    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
     // Push MAX_ENTRIES entries and mark them all seen.
     for i in 0..MAX_ENTRIES {
         log.push(Severity::Warning, format!("msg {i}"));
@@ -234,7 +235,7 @@ fn push_cap_adjusts_seen_up_to() {
 /// eviction kicks in.
 #[test]
 fn totals_survive_eviction_past_max_entries() {
-    let mut log = MessageLog::new();
+    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
     for i in 0..MAX_ENTRIES + 5 {
         log.push(Severity::Error, format!("e{i}"));
     }
@@ -262,4 +263,36 @@ fn totals_ignore_info_and_trace() {
         (Severity::Trace, "t2"),
     ]);
     assert_eq!(log.totals(), (0, 0));
+}
+
+#[test]
+fn warning_floor_drops_trace_and_keeps_warnings_and_errors() {
+    let mut log = MessageLog::new(MessagesMinSeverity::Warning);
+    log.push(Severity::Trace, "t".to_string());
+    log.push(Severity::Warning, "w".to_string());
+    log.push(Severity::Error, "e".to_string());
+    let kept: Vec<_> = log
+        .entries()
+        .map(|entry| (entry.severity, entry.text.as_str()))
+        .collect();
+    assert_eq!(kept, [(Severity::Warning, "w"), (Severity::Error, "e")]);
+}
+
+/// The totals count what was reported: a warning the floor keeps out of the
+/// log was still shown on the status line.
+#[test]
+fn error_floor_drops_warnings_but_totals_still_count_them() {
+    let mut log = MessageLog::new(MessagesMinSeverity::Error);
+    log.push(Severity::Warning, "w".to_string());
+    assert_eq!(log.entries().len(), 0);
+    assert_eq!(log.totals(), (0, 1));
+}
+
+#[test]
+fn raising_the_floor_keeps_existing_entries() {
+    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    log.push(Severity::Trace, "t".to_string());
+    log.set_floor(MessagesMinSeverity::Error);
+    let kept: Vec<_> = log.entries().map(|entry| entry.text.as_str()).collect();
+    assert_eq!(kept, ["t"]);
 }

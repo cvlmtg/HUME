@@ -108,7 +108,7 @@ Files you open are always editable, whatever their permissions on disk. A write 
 - **A background crash doesn't stop HUME.** If a background task crashes (syntax highlighting, a language server connection), HUME keeps running. The crash appears as an error in `:messages` and is printed on the terminal after you quit. The feature that task ran can stop working until you restart.
 - **UTF-8 only.** Invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it appears as a character at the top of the buffer.
 - **CRLF detected and preserved.** A CRLF file is normalized to LF in the buffer and re-expanded to CRLF on save; the statusline shows `CRLF` or `LF`. To convert a file, run `:set buffer line-ending=lf` or `:set buffer line-ending=crlf` and save. Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in LF. A file with bare CR line endings (pre-OS X Mac) reads correctly, but HUME doesn't preserve that convention: it loads and saves as LF.
-- **No on-disk log file.** `:messages` is the whole logging surface: an in-memory ring capped at 1000 entries, discarded on exit. To keep warnings or errors, copy them out of `:messages` before quitting.
+- **No on-disk log file.** `:messages` is the whole logging surface: an in-memory ring capped at 1000 entries, discarded on exit. It keeps warnings and errors; set `messages-min-severity` to `trace` to also keep the detail useful for debugging, or to `error` to keep errors only. To keep warnings or errors, copy them out of `:messages` before quitting.
 
 ### Crash recovery
 

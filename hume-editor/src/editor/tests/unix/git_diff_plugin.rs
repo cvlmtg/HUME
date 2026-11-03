@@ -1242,6 +1242,7 @@ fn explicit_bad_ref_logs_warning_status_message() {
 fn a_bad_explicit_ref_warns_only_for_the_command_that_gave_it() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), None);
+    keep_trace_messages(&mut ed);
     let repo = tempfile::tempdir().unwrap();
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\n", "v1");
