@@ -48,9 +48,14 @@ impl Editor {
     ///
     /// Work queued since the last settle is `Duration::ZERO`: a frame can
     /// queue some (a list whose `#:render` failed closes and queues its
-    /// callback), and only the next pass's `settle` runs it.
+    /// callback), and only the next pass's `settle` runs it. So is a shown
+    /// `[messages]` that misses what was logged since it was built, such as
+    /// a render proc's message: the next pass's `settle` rebuilds it.
     pub(in crate::editor) fn wake_timeout(&self) -> Option<Duration> {
         if !self.state.config.pending_work.is_empty() {
+            return Some(Duration::ZERO);
+        }
+        if self.state.messages_view_stale() && self.shown_messages_view().is_some() {
             return Some(Duration::ZERO);
         }
         let now = Instant::now();

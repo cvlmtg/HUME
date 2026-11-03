@@ -11,7 +11,7 @@ use hume_editing::text::normalize_line_endings_owned;
 use hume_engine::theme::diagnostic_scopes;
 use hume_scripting::host::DecorationHost;
 
-use super::buffer::{EditorView, ViewLabel};
+use super::buffer::{Buffer, EditorView};
 use super::error::CommandError;
 use super::host_impl::EditorHostImpl;
 use super::settings::MessagesMinSeverity;
@@ -200,9 +200,9 @@ impl MessageLog {
 
     /// Mark all current entries as seen.
     ///
-    /// Called when the user opens `:messages`, on every frame a pane on the
-    /// active tab shows `[messages]`, and after the statusline summary's
-    /// keystroke budget elapses.
+    /// Called on every frame that draws the end of an up-to-date
+    /// `[messages]`, and after the statusline summary's keystroke budget
+    /// elapses.
     pub(in crate::editor) fn mark_all_seen(&mut self) {
         self.seen_up_to = self.entries.len();
     }
@@ -303,25 +303,24 @@ impl MessageLog {
 
 impl Editor {
     /// Bring `[messages]` up to date with the log and `messages-min-severity`
-    /// when either changed since it was last built, and mark the log seen
-    /// while a pane on the active tab shows it. Runs once per frame.
+    /// when either changed since it was last built and a pane on the active
+    /// tab shows it. A hidden view catches up when it is next shown.
     pub(in crate::editor) fn follow_message_log(&mut self) {
-        let label = ViewLabel::editor(EditorView::Messages);
-        let Some(bid) = self.state.buffers.find_by_label(&label) else {
+        if !self.state.messages_view_stale() {
             return;
-        };
-        let floor = self.state.settings.messages_min_severity;
-        if self.state.config.messages_view != Some(self.state.message_log.view_stamp(floor)) {
+        }
+        if let Some(bid) = self.shown_messages_view() {
             self.sync_messages_view(bid);
         }
-        if self
-            .view
+    }
+
+    /// The `[messages]` buffer, if a pane on the active tab shows it.
+    pub(in crate::editor) fn shown_messages_view(&self) -> Option<BufferId> {
+        self.view
             .active_pane_ids()
             .into_iter()
-            .any(|pid| self.view.panes[pid].buffer_id() == bid)
-        {
-            self.state.message_log.mark_all_seen();
-        }
+            .map(|pid| self.view.panes[pid].buffer_id())
+            .find(|&bid| is_messages_view(self.state.buffers.get(bid)))
     }
 
     /// Rebuild `[messages]` (`bid`) from the log at the current
@@ -356,7 +355,24 @@ impl Editor {
     }
 }
 
+/// Whether `buffer` is `[messages]`.
+pub(in crate::editor) fn is_messages_view(buffer: &Buffer) -> bool {
+    buffer
+        .label()
+        .is_some_and(|label| label.is_editor(EditorView::Messages))
+}
+
 impl EditorState {
+    /// Whether the log or `messages-min-severity` changed since `[messages]`
+    /// was last built, or it never was.
+    pub(in crate::editor) fn messages_view_stale(&self) -> bool {
+        self.config.messages_view
+            != Some(
+                self.message_log
+                    .view_stamp(self.settings.messages_min_severity),
+            )
+    }
+
     // ── Status messages ───────────────────────────────────────────────────────
 
     /// Report `e` at its own severity.

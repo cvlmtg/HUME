@@ -90,6 +90,11 @@ impl ViewLabel {
     pub(in crate::editor) fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Whether this is `view`'s label.
+    pub(in crate::editor) fn is_editor(&self, view: EditorView) -> bool {
+        self.0.strip_prefix('[').and_then(|s| s.strip_suffix(']')) == Some(view.name())
+    }
 }
 
 // ── Buffer ────────────────────────────────────────────────────────────────────

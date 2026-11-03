@@ -386,6 +386,7 @@ fn a_view_open_but_not_shown_leaves_new_messages_unseen() {
     let mut ed = open_headless(None);
     ed.report(Severity::Warning, "first");
     let bid = open_messages(&mut ed);
+    frame(&mut ed);
     ed.execute_typed("bp", None)
         .expect("a previous buffer exists");
     assert_ne!(ed.focused_buffer_id(), bid, "sanity: the view is hidden");
@@ -402,6 +403,7 @@ fn a_view_on_another_tab_leaves_new_messages_unseen() {
     ed.report(Severity::Warning, "first");
     ed.execute_typed("tabnew", None).expect("a tab opens");
     open_messages(&mut ed);
+    frame(&mut ed);
     ed.execute_typed("tabprev", None)
         .expect("the first tab exists");
 
@@ -450,4 +452,111 @@ fn a_config_reload_keeps_the_open_views_highlights() {
             .len(),
         2
     );
+}
+
+#[test]
+fn a_message_below_the_shown_rows_stays_unseen_until_the_end_is_drawn() {
+    let mut ed = open_headless(None);
+    for i in 0..30 {
+        ed.report(Severity::Warning, format!("w{i}"));
+    }
+    open_messages(&mut ed);
+    frame(&mut ed);
+    seek_to_line(&mut ed, 0);
+    frame(&mut ed);
+
+    ed.report(Severity::Error, "below");
+    frame(&mut ed);
+    assert_eq!(summary(&ed).as_deref(), Some("1 error (see :messages)"));
+
+    seek_to_line(&mut ed, 30);
+    frame(&mut ed);
+    assert_eq!(summary(&ed), None);
+}
+
+#[test]
+fn a_message_logged_after_the_view_was_built_wakes_the_loop_while_it_is_shown() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    open_messages(&mut ed);
+    frame(&mut ed);
+
+    ed.report(Severity::Warning, "during the frame");
+    assert_eq!(ed.wake_timeout(), Some(std::time::Duration::ZERO));
+}
+
+#[test]
+fn a_hidden_view_does_not_wake_the_loop() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    open_messages(&mut ed);
+    ed.execute_typed("bp", None)
+        .expect("a previous buffer exists");
+    frame(&mut ed);
+
+    ed.report(Severity::Warning, "second");
+    assert_ne!(ed.wake_timeout(), Some(std::time::Duration::ZERO));
+}
+
+#[test]
+fn a_hidden_view_catches_up_when_it_is_shown_again() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    let bid = open_messages(&mut ed);
+    ed.execute_typed("bp", None)
+        .expect("a previous buffer exists");
+    let before = buffer_text(&ed, bid);
+
+    ed.report(Severity::Warning, "second");
+    frame(&mut ed);
+    assert_eq!(buffer_text(&ed, bid), before, "a hidden view waits");
+
+    ed.execute_typed("bn", None).expect("the view is next");
+    assert_eq!(ed.focused_buffer_id(), bid, "sanity: the view is shown");
+    frame(&mut ed);
+    assert!(buffer_text(&ed, bid).contains("second"));
+}
+
+#[test]
+fn settling_brings_a_shown_view_up_to_date() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    let bid = open_messages(&mut ed);
+
+    ed.report(Severity::Warning, "second");
+    ed.settle();
+
+    assert!(buffer_text(&ed, bid).contains("second"));
+}
+
+#[test]
+fn a_cursor_on_an_entry_the_floor_hides_moves_to_the_next_shown_entry() {
+    let mut ed = open_headless(None);
+    run_set(&mut ed, "global messages-min-severity=trace").expect("trace is a valid floor");
+    ed.report(Severity::Warning, "w0");
+    ed.report(Severity::Trace, "t0");
+    ed.report(Severity::Warning, "w1");
+    let bid = open_messages(&mut ed);
+    let pane = ed.view.focused_pane();
+    seek_to_line(&mut ed, 1);
+
+    run_set(&mut ed, "global messages-min-severity=warning").expect("warning is a valid floor");
+    frame(&mut ed);
+
+    assert_eq!(head_line(&ed, pane, bid), 1, "on w1, the entry after t0");
+}
+
+#[test]
+fn a_cursor_on_the_last_entry_the_floor_hides_moves_to_the_entry_before() {
+    let mut ed = open_headless(None);
+    run_set(&mut ed, "global messages-min-severity=trace").expect("trace is a valid floor");
+    ed.report(Severity::Warning, "w0");
+    ed.report(Severity::Trace, "t0");
+    let bid = open_messages(&mut ed);
+    let pane = ed.view.focused_pane();
+
+    run_set(&mut ed, "global messages-min-severity=warning").expect("warning is a valid floor");
+    frame(&mut ed);
+
+    assert_eq!(head_line(&ed, pane, bid), 0);
 }

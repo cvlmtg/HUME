@@ -24,6 +24,7 @@ use hume_engine::types::EditorMode;
 
 use super::buffer::{Buffer, BufferFile};
 use super::input_stack::ResolvedPopupLayout;
+use super::message_log::is_messages_view;
 use super::{Editor, EditorState};
 
 /// Project a pane's selections into its engine mirror, in the model's start
@@ -524,9 +525,6 @@ impl Editor {
         self.resync_mouse_mode();
         self.resync_cwd();
         self.flush_osc52();
-        // After `flush_osc52`, which can log, and before anything below reads
-        // selections, which a rebuilt `[messages]` carries.
-        self.follow_message_log();
 
         // The drawer's model (the `:ls` rows, the scroll clamp) and its view,
         // with the text of its newly visible rows, then the layout, for a band
@@ -604,6 +602,18 @@ impl Editor {
                 .entries
                 .shown_mut(&self.view.panes, pid)
                 .parked = outcome.parked;
+            // A stale view lacks what was logged since it was built, so its
+            // end is not the log's end.
+            if is_messages_view(self.state.buffers.get(buf_id))
+                && !self.state.messages_view_stale()
+                && shows_document_end(
+                    self.state.buffers.get(buf_id),
+                    &mut self.view.panes[pid],
+                    layout_key,
+                )
+            {
+                self.state.message_log.mark_all_seen();
+            }
             if pid == self.view.focused_pane() {
                 ctx.cursor_content_pos = outcome.cursor_screen;
             }
@@ -869,6 +879,27 @@ struct ScrollOutcome {
     cursor_screen: Option<(u16, u16)>,
     /// See [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked)'s own doc.
     parked: bool,
+}
+
+/// Whether `pane`'s viewport reaches `doc`'s last display line.
+fn shows_document_end(
+    doc: &Buffer,
+    pane: &mut Pane,
+    layout_key: super::geometry::LayoutKey,
+) -> bool {
+    let Some(geo) = layout_key.geometry() else {
+        return false;
+    };
+    let (mut dlm, viewport) = super::commands::pane_display_lines(
+        doc,
+        pane,
+        layout_key.format_key(),
+        layout_key.content_width(),
+    );
+    let top = viewport.top_at(&mut dlm);
+    let lines_below_top = isize::try_from(geo.height() - 1).expect("a pane height fits an isize");
+    let bottom = dlm.advance_saturating(top, lines_below_top);
+    dlm.next(bottom).is_none()
 }
 
 /// Scroll the pane viewport so `cursor` stays within the visible area.

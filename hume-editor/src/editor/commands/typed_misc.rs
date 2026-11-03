@@ -21,10 +21,10 @@ use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 /// `:messages`: open the message log in a read-only buffer.
 ///
 /// Displays the entries logged during the session at or above
-/// `messages-min-severity`, and follows the log while open (see
-/// `Editor::follow_message_log`). Cursor starts at the last entry (most
-/// recent); every other pane showing the buffer keeps its cursor. Dismiss
-/// with `:bd` or switch away with `:b#`.
+/// `messages-min-severity`; `Editor::follow_message_log` keeps it current
+/// while shown. Cursor starts at the last entry (most recent); every other
+/// pane showing the buffer keeps its cursor. The entries count as seen once
+/// a frame draws the end. Dismiss with `:bd` or switch away with `:b#`.
 pub(in crate::editor) fn typed_messages(
     ed: &mut Editor,
     fp: FocusedPane,
@@ -47,7 +47,6 @@ pub(in crate::editor) fn typed_messages(
     ed.sync_messages_view(bid);
     // None parks at the bottom (most recent entry).
     lifecycle::present_view(&mut ed.state, &mut ed.view, fp.pane(), bid, None);
-    ed.state.message_log.mark_all_seen();
     Ok(())
 }
 

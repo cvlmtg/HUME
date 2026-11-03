@@ -34,7 +34,7 @@ impl Editor {
     /// `state.config.pending_work` to a fixpoint, then install finished
     /// parses and bring every visible buffer's syntax tree up to its text
     /// (`reparse_stale_buffers`). Each call ends with
-    /// `apply_startup_positions`.
+    /// `apply_startup_positions` and `follow_message_log`.
     ///
     /// This is the single consumer of the merged work queue: a
     /// `Call` (an `lsp-request!` callback, a timer thunk, a prompt/menu/
@@ -73,6 +73,12 @@ impl Editor {
         // After the drain, so the `OnBufferOpen`/`OnLanguageSet` hooks have
         // run: centring counts a band one of them opened.
         self.apply_startup_positions();
+        // Last, after every step above that can log. Outside the fixpoint
+        // like `drain_async_sources`: an `on-text-changed` handler that logs
+        // would otherwise rebuild `[messages]` and fire itself again until
+        // `MAX_EVENT_DRAIN`. The rebuild's `on-text-changed` fires on the
+        // next settle.
+        self.follow_message_log();
     }
 
     /// Fixpoint over `state.config.pending_work` only, with no async sources.
