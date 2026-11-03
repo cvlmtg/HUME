@@ -8,11 +8,10 @@
 //! [`apply_global`](crate::editor::settings::ops::apply_global)/
 //! [`apply_buffer`](crate::editor::settings::ops::apply_buffer) are the only
 //! places production code should write a setting: they write the raw value via
-//! [`write_global`]/[`write_buffer`] and then resync whatever
-//! derived state depends on it (the undo-tree cap on every open buffer, the
-//! minibuffer prompt-history capacity, every open pane's jump-list capacity,
-//! the loaded theme). Calling `write_global`/`write_buffer` alone would
-//! silently skip those, so write and resync must not be split apart.
+//! [`write_global`]/[`write_buffer`] and then resync whatever derived state
+//! depends on it (each [`ResyncKey`]'s effect, applied by
+//! `resync_derived_state`). Calling `write_global`/`write_buffer` alone would
+//! skip those, so write and resync must not be split apart.
 //!
 //! A child module of `settings`, not a sibling. See `settings`'s own doc
 //! for why: it lets `write_global`/`write_buffer` narrow to

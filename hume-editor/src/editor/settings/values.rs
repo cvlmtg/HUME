@@ -325,8 +325,9 @@ settings_enum!(WordSelectsWhitespace, [
     After => "after",
 ]);
 
-/// The lowest severity the message log keeps. A message below it is still
-/// reported, and shown on the status line when its severity is shown there.
+/// The lowest severity `:messages` and its unseen summary show. The log
+/// stores every message whatever this is, so lowering it shows messages
+/// reported while it was higher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MessagesMinSeverity {
     Trace,
@@ -336,7 +337,7 @@ pub enum MessagesMinSeverity {
 }
 
 impl MessagesMinSeverity {
-    pub(in crate::editor) fn keeps(self, severity: Severity) -> bool {
+    pub(in crate::editor) fn shows(self, severity: Severity) -> bool {
         match self {
             Self::Trace => true,
             Self::Warning => matches!(severity, Severity::Warning | Severity::Error),

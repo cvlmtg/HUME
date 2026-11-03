@@ -57,7 +57,7 @@ impl Editor {
             ),
             None => self.report(
                 Severity::Warning,
-                "scripting: no runtime directory found; set HUME_RUNTIME to fix".into(),
+                "scripting: no runtime directory found; set HUME_RUNTIME to fix",
             ),
         }
         match host.data_dir() {
@@ -67,7 +67,7 @@ impl Editor {
             ),
             None => self.report(
                 Severity::Warning,
-                "scripting: no data directory: HOME/APPDATA unset; user plugins unavailable".into(),
+                "scripting: no data directory: HOME/APPDATA unset; user plugins unavailable",
             ),
         }
         // Load runtime/scheme/prelude.scm before init.scm so its macros
@@ -98,7 +98,7 @@ impl Editor {
             ConfigPath::NoConfigDir => {
                 self.report(
                     Severity::Warning,
-                    "scripting: no config directory: HOME/APPDATA unset; init.scm skipped".into(),
+                    "scripting: no config directory: HOME/APPDATA unset; init.scm skipped",
                 );
             }
             ConfigPath::Resolved { path, required } => {

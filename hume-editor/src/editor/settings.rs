@@ -798,7 +798,7 @@ define_settings! {
         "lsp-diagnostics-on-insert-line" => lsp_diagnostics_on_insert_line: bool = false,
             scope: [Scope::Global],
             parser: bool;
-        // Read by `MessageLog::push`, through the copy the resync keeps.
+        // Read by what `:messages` shows, through the copy the resync keeps in `MessageLog`.
         "messages-min-severity" => messages_min_severity: MessagesMinSeverity = MessagesMinSeverity::default(),
             scope: [Scope::Global],
             parser: from_str,

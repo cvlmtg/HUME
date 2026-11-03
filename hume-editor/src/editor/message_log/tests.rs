@@ -265,34 +265,91 @@ fn totals_ignore_info_and_trace() {
     assert_eq!(log.totals(), (0, 0));
 }
 
+fn shown_texts(log: &MessageLog) -> Vec<&str> {
+    log.shown_from(0).map(|entry| entry.text.as_str()).collect()
+}
+
+fn stored_texts(log: &MessageLog) -> Vec<&str> {
+    log.entries().map(|entry| entry.text.as_str()).collect()
+}
+
 #[test]
-fn warning_floor_drops_trace_and_keeps_warnings_and_errors() {
+fn warning_floor_stores_trace_but_does_not_show_it() {
     let mut log = MessageLog::new(MessagesMinSeverity::Warning);
     log.push(Severity::Trace, "t".to_string());
     log.push(Severity::Warning, "w".to_string());
     log.push(Severity::Error, "e".to_string());
-    let kept: Vec<_> = log
-        .entries()
-        .map(|entry| (entry.severity, entry.text.as_str()))
-        .collect();
-    assert_eq!(kept, [(Severity::Warning, "w"), (Severity::Error, "e")]);
+    assert_eq!(stored_texts(&log), ["t", "w", "e"]);
+    assert_eq!(shown_texts(&log), ["w", "e"]);
 }
 
-/// The totals count what was reported: a warning the floor keeps out of the
-/// log was still shown on the status line.
 #[test]
-fn error_floor_drops_warnings_but_totals_still_count_them() {
+fn error_floor_leaves_warnings_out_of_the_unseen_counts() {
     let mut log = MessageLog::new(MessagesMinSeverity::Error);
     log.push(Severity::Warning, "w".to_string());
-    assert_eq!(log.entries().len(), 0);
-    assert_eq!(log.totals(), (0, 1));
+    log.push(Severity::Error, "e".to_string());
+    assert_eq!(log.unseen_counts(), (1, 0));
+    assert_eq!(log.totals(), (1, 1));
 }
 
 #[test]
-fn raising_the_floor_keeps_existing_entries() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+fn changing_the_floor_changes_what_is_shown_of_the_stored_entries() {
+    let mut log = MessageLog::new(MessagesMinSeverity::Warning);
     log.push(Severity::Trace, "t".to_string());
+    log.push(Severity::Warning, "w".to_string());
+    log.set_floor(MessagesMinSeverity::Trace);
+    assert_eq!(shown_texts(&log), ["t", "w"]);
     log.set_floor(MessagesMinSeverity::Error);
-    let kept: Vec<_> = log.entries().map(|entry| entry.text.as_str()).collect();
-    assert_eq!(kept, ["t"]);
+    assert!(shown_texts(&log).is_empty());
+}
+
+#[test]
+fn a_full_log_evicts_the_oldest_trace_then_warning_then_error() {
+    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    log.push(Severity::Error, "e".to_string());
+    log.push(Severity::Warning, "w".to_string());
+    log.push(Severity::Trace, "t".to_string());
+    for i in 0..MAX_ENTRIES - 3 {
+        log.push(Severity::Error, format!("f{i}"));
+    }
+
+    log.push(Severity::Error, "x".to_string());
+    assert_eq!(log.entries().len(), MAX_ENTRIES);
+    assert_eq!(stored_texts(&log)[..3], ["e", "w", "f0"]);
+
+    log.push(Severity::Error, "x".to_string());
+    assert_eq!(stored_texts(&log)[..3], ["e", "f0", "f1"]);
+
+    log.push(Severity::Error, "x".to_string());
+    assert_eq!(stored_texts(&log)[..3], ["f0", "f1", "f2"]);
+}
+
+#[test]
+fn evicting_a_seen_entry_keeps_the_rest_seen() {
+    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    for i in 0..10 {
+        log.push(Severity::Error, format!("e{i}"));
+    }
+    log.push(Severity::Trace, "t".to_string());
+    for i in 0..MAX_ENTRIES - 11 {
+        log.push(Severity::Error, format!("f{i}"));
+    }
+    log.mark_all_seen();
+    log.push(Severity::Error, "new".to_string());
+    assert_eq!(log.unseen_counts(), (1, 0));
+}
+
+#[test]
+fn evicting_an_unseen_entry_leaves_the_seen_ones_alone() {
+    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    for i in 0..10 {
+        log.push(Severity::Error, format!("e{i}"));
+    }
+    log.mark_all_seen();
+    log.push(Severity::Trace, "t".to_string());
+    for i in 0..MAX_ENTRIES - 11 {
+        log.push(Severity::Error, format!("f{i}"));
+    }
+    log.push(Severity::Error, "new".to_string());
+    assert_eq!(log.unseen_counts(), (MAX_ENTRIES - 10, 0));
 }

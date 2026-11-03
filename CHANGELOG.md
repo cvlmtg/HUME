@@ -21,7 +21,7 @@
 - `:ls` and `z b` show the buffer you are in in bold and buffers with unsaved changes in the warning color, and `core:undotree` colors its graph and its `@` and `S` markers.
 - `z m` colors each file's status, and keeps it visible when the path is too long for the picker.
 - `z m` lists files as `git status` reports them, and stays open with git's error when `git status` fails.
-- `:messages` keeps only warnings and errors. Set the new `messages-min-severity` to `trace` to keep debugging detail too, such as a language server's output.
+- `:messages` shows only warnings and errors. Set the new `messages-min-severity` to `trace` to show debugging detail too, such as a language server's output.
 
 ### Plugins & scripting
 - A plugin's picker binds every key itself, and new `picker-move!` moves its selection.

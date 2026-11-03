@@ -164,7 +164,9 @@ See [Hooks](writing-plugins.md#hooks) for every hook name and its lambda signatu
 
 - `'info` only flashes in the statusline and is never kept in `:messages`.
 - `'warning` and `'error` go to both.
-- `'trace` goes to `:messages` only, and only when [`messages-min-severity`](settings.md) is `trace`.
+- `'trace` goes to `:messages` only.
+
+`:messages` shows only the severities [`messages-min-severity`](settings.md) admits: warnings and errors by default.
 
 Report from a plugin with `log!`, and write output the user watches with `print!`. Steel's own print functions (`display`, `displayln`, `newline`, …) write straight to the terminal and draw over the editor's screen.
 

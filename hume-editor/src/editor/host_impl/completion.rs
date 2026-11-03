@@ -171,7 +171,7 @@ impl EditorHostImpl<'_> {
             Some(item) => parsed.push(item),
             None => self.state.report(
                 Severity::Trace,
-                "completion-emit!: skipped malformed item: missing or non-string label".to_string(),
+                "completion-emit!: skipped malformed item: missing or non-string label",
             ),
         }
     }

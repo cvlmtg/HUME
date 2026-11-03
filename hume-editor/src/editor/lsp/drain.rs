@@ -377,8 +377,7 @@ impl EditorState {
             if FocusedPane::resolve(self, view, handle).is_err() {
                 self.report(
                     Severity::Trace,
-                    "lsp-request!: the focused pane moved before the response could open; ignored"
-                        .to_string(),
+                    "lsp-request!: the focused pane moved before the response could open; ignored",
                 );
                 return false;
             }

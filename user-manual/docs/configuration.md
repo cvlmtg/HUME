@@ -84,7 +84,7 @@ The value has the type `get-option` returns for that option, and any other type 
 
 When you and a plugin set the same option:
 
-- A value you set, in your `init.scm`, a hook it registers or with `:set`, beats the plugin's, whichever comes first. A plugin's later `set-option!` is ignored and noted at trace level, which `:messages` keeps when `messages-min-severity` is `trace`.
+- A value you set, in your `init.scm`, a hook it registers or with `:set`, beats the plugin's, whichever comes first. A plugin's later `set-option!` is ignored and noted at trace level, which `:messages` shows when `messages-min-severity` is `trace`.
 - Per-buffer overrides rank the same way among themselves.
 - A buffer override beats the global value, whoever set either.
 

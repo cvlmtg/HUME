@@ -1,7 +1,7 @@
 // `:messages` severity highlighting: the `format_with_spans` → extra-highlights
 // store → `ScopedHighlighter` Extra tier wiring added alongside the message
 // log's existing `[severity]` prefix formatting. Also the
-// `messages-min-severity` floor on what the log keeps.
+// `messages-min-severity` floor on what `:messages` shows.
 //
 // The highlighting tests use `Editor::open` (not `editor_from`), like
 // `lsp_render.rs`, so `build_pane` has registered the pane's `PaneHighlights`
@@ -196,27 +196,21 @@ fn repeat_messages_replaces_stale_spans_not_appends() {
     assert_eq!(spans[3].end, co(30));
 }
 
-fn logged_texts(ed: &Editor) -> Vec<&str> {
-    ed.state
-        .message_log
-        .entries()
-        .map(|entry| entry.text.as_str())
-        .collect()
-}
-
 #[test]
-fn messages_min_severity_drops_reports_below_it() {
+fn messages_min_severity_hides_reports_below_it() {
     let mut ed = editor_from("-[a]>\n");
     let fp = FocusedPane::current(&ed.view);
     crate::editor::commands::typed_set(&mut ed, fp, "global messages-min-severity=warning")
         .expect("the floor is a valid setting");
-    ed.report(Severity::Trace, "trace detail".to_string());
-    ed.report(Severity::Warning, "a warning".to_string());
-    assert_eq!(logged_texts(&ed), ["a warning"]);
+    ed.report(Severity::Trace, "trace detail");
+    ed.report(Severity::Warning, "a warning");
+    let shown = ed.state.message_log.format_for_display();
+    assert!(shown.contains("a warning"));
+    assert!(!shown.contains("trace detail"));
 }
 
 #[test]
-fn default_messages_floor_keeps_warnings_and_drops_trace() {
+fn lowering_the_floor_shows_trace_reported_before_it() {
     let mut ed = Editor::open(
         None,
         crate::editor::run::HEADLESS_TERMINAL,
@@ -225,9 +219,18 @@ fn default_messages_floor_keeps_warnings_and_drops_trace() {
         test_cwd(),
     )
     .expect("open");
-    ed.report(Severity::Trace, "trace detail".to_string());
-    ed.report(Severity::Warning, "a warning".to_string());
-    let texts = logged_texts(&ed);
-    assert!(texts.contains(&"a warning"));
-    assert!(!texts.contains(&"trace detail"));
+    ed.report(Severity::Trace, "trace detail");
+    assert!(
+        !ed.state
+            .message_log
+            .format_for_display()
+            .contains("trace detail")
+    );
+    show_trace_messages(&mut ed);
+    assert!(
+        ed.state
+            .message_log
+            .format_for_display()
+            .contains("trace detail")
+    );
 }

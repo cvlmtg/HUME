@@ -78,8 +78,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
                 if self.state.input.sticky_popup_slot_mut().is_none() {
                     self.state.report(
                         Severity::Trace,
-                        "show-popup!: no mode layer can hold a sticky popup right now, ignored"
-                            .to_string(),
+                        "show-popup!: no mode layer can hold a sticky popup right now, ignored",
                     );
                     return Ok(None);
                 }
@@ -99,10 +98,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
                 // on to something that occludes it before this had a
                 // chance to land.
                 if self.state.input.picker().is_some() {
-                    self.state.report(
-                        Severity::Trace,
-                        "show-popup!: a picker is open, ignored".to_string(),
-                    );
+                    self.state
+                        .report(Severity::Trace, "show-popup!: a picker is open, ignored");
                     return Ok(None);
                 }
                 self.state.push_layer(self.view, model);

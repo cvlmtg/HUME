@@ -155,14 +155,14 @@ to the user, not by how verbose the plugin author wants to be:
 - `'error`: the operation couldn't run (a required tool is missing, a process
   failed to start at all), or a typed argument names nothing the command can act on (an
   unknown name, an invalid or path-traversal name).
-- `'warning`: something worth a persistent record that the user did not just ask for (an
+- `'warning`: something worth the user's attention that they did not just ask for (an
   unsafe name from a catalog or remote source, an orphan directory), or a failure the plugin
   cannot tell apart from an expected one (`git-diff`'s fetch for a typed ref, which fails
   the same way for a bad ref and an untracked file).
 - `'trace`: an expected, common failure, such as `git cat-file` failing for an untracked
-  file, which `git-diff` runs for every buffer. It reaches `:messages` only when
-  `messages-min-severity` is `trace`, and never flashes in the status line or counts toward
-  the unseen-errors summary.
+  file, which `git-diff` runs for every buffer. `:messages` shows it only when
+  `messages-min-severity` is `trace`, and it never flashes in the status line or counts
+  toward the unseen-errors summary.
 - `'info` (via `Severity::Info`) is status-line only and never reaches `:messages`, so it
   suits status that need not outlive the moment it flashed by.
 

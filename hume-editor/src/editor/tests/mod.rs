@@ -106,9 +106,9 @@ fn open_headless(path: Option<PathBuf>) -> Editor {
     .expect("open")
 }
 
-/// Keep trace messages in `ed`'s log, as [`Editor::for_testing`] does, for a
-/// test built on `Editor::open` that reads one.
-fn keep_trace_messages(ed: &mut Editor) {
+/// Show trace messages in `ed`'s `:messages`, as [`Editor::for_testing`]
+/// does, for a test built on `Editor::open` that reads one.
+fn show_trace_messages(ed: &mut Editor) {
     let fp = FocusedPane::current(&ed.view);
     crate::editor::commands::typed_set(ed, fp, "global messages-min-severity=trace")
         .expect("trace is a valid floor");
@@ -1270,7 +1270,7 @@ impl Editor {
     /// sensible defaults (Normal mode, default colors, no file path, etc.).
     /// Use the builder methods below to override specific fields.
     ///
-    /// The message log keeps trace messages, unlike the production default:
+    /// `:messages` shows trace messages, unlike the production default:
     /// tests observe hooks and background work through `(log! 'trace …)`.
     pub(crate) fn for_testing(doc: Buffer) -> Self {
         let theme = crate::editor::theme::fallback_theme();

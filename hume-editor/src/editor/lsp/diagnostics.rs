@@ -393,7 +393,7 @@ impl Editor {
         else {
             self.report(
                 Severity::Trace,
-                "lsp: publishDiagnostics with an unresolvable URI".to_string(),
+                "lsp: publishDiagnostics with an unresolvable URI",
             );
             return Ingest::Done(None);
         };
@@ -503,7 +503,7 @@ impl EditorState {
         let Some((server, encoding)) = self.lsp.instances.origin(server_id) else {
             self.report(
                 Severity::Trace,
-                "lsp: dropping diagnostics from an untracked server".to_string(),
+                "lsp: dropping diagnostics from an untracked server",
             );
             return false;
         };
