@@ -205,13 +205,31 @@ fn a_warning_is_reported_on_stderr_without_failing_the_run() {
     let run = run_headless(r#"(bind-key! 'normal "Z" "no-such-command")"#, "xd", "");
 
     assert_eq!(run.exit_code, Some(0), "stderr:\n{}", run.stderr);
-    let problems: Vec<&str> = run.stderr.lines().collect();
+    let problems: Vec<&str> = run
+        .stderr
+        .lines()
+        .filter(|line| line.starts_with("hume: warning: ") || line.starts_with("hume: error: "))
+        .collect();
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(
         problems[0].starts_with("hume: warning: key bound to unknown command 'no-such-command'"),
         "{problems:?}"
     );
     assert_eq!(run.output.as_deref(), Some("world\n"));
+}
+
+#[test]
+fn a_trace_is_written_to_stderr() {
+    let run = run_headless(r#"(log! 'trace "traced by the test")"#, "xd", "");
+
+    assert_eq!(run.exit_code, Some(0), "stderr:\n{}", run.stderr);
+    assert!(
+        run.stderr
+            .lines()
+            .any(|line| line == "hume: trace: traced by the test"),
+        "stderr:\n{}",
+        run.stderr
+    );
 }
 
 #[test]

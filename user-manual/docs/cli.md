@@ -33,7 +33,7 @@ You can paste a `file:line:col` from a compiler, linter or `grep` straight onto 
 
 ## Headless mode
 
-`--keys` runs HUME without a terminal: it opens `FILE` (which can carry `:LINE` or `:LINE:COLUMN`), types the key stream into it, and writes the resulting text to `--output`. It loads your `init.scm` and plugins as an interactive session does; add `--no-config` for a run that doesn't depend on your config. Warnings and errors go to stderr, and any error makes `hume` exit with status 1. If your config or a plugin fails to load, no keys are replayed and `--output` is not written.
+`--keys` runs HUME without a terminal: it opens `FILE` (which can carry `:LINE` or `:LINE:COLUMN`), types the key stream into it, and writes the resulting text to `--output`. It loads your `init.scm` and plugins as an interactive session does; add `--no-config` for a run that doesn't depend on your config. Every message HUME logs goes to stderr, trace detail included, and any error makes `hume` exit with status 1. If your config or a plugin fails to load, no keys are replayed and `--output` is not written.
 
 In the key stream every character is one keystroke, a space included. Other keys go in angle brackets: `<esc>`, `<ret>` (or `<enter>`), `<tab>`, `<backspace>`, `<up>`, `<pageup>`, `<f1>` and so on, with modifiers as `<c-x>` (Ctrl), `<a-x>` (Alt) and `<s-tab>` (Shift). `<lt>` types a literal `<`.
 

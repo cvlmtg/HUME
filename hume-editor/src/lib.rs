@@ -110,7 +110,7 @@ pub fn run_keys(
     let reported = editor
         .state
         .message_log
-        .write_problems(&mut std::io::stderr().lock());
+        .write_log(&mut std::io::stderr().lock());
     written?;
     reported?;
     match editor.state.message_log.totals().0 {

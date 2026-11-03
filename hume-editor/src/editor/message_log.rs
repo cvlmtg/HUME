@@ -196,14 +196,13 @@ impl MessageLog {
         )
     }
 
-    /// Writes every warning and error still in the log to `w`, oldest first,
-    /// one `hume: <severity>: <text>` line each. This is how headless mode,
-    /// which has no statusline or `:messages`, reports them.
-    pub(crate) fn write_problems(&self, w: &mut impl std::io::Write) -> std::io::Result<()> {
+    /// Writes every entry still in the log to `w`, oldest first, one
+    /// `hume: <severity>: <text>` line each, whatever `messages-min-severity`
+    /// shows. This is how headless mode, which has no statusline or
+    /// `:messages`, reports them.
+    pub(crate) fn write_log(&self, w: &mut impl std::io::Write) -> std::io::Result<()> {
         for entry in &self.entries {
-            if matches!(entry.severity, Severity::Warning | Severity::Error) {
-                writeln!(w, "hume: {}: {}", entry.severity.name(), entry.text)?;
-            }
+            writeln!(w, "hume: {}: {}", entry.severity.name(), entry.text)?;
         }
         Ok(())
     }

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### CLI
+- `--keys` writes every logged message to stderr, including trace detail.
+
 ## [0.18.0] - 2026-11-03
 
 ### Breaking changes
