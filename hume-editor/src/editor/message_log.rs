@@ -55,17 +55,19 @@ pub(crate) struct MessageLog {
     /// `messages-min-severity` shows it.
     total_errors: u64,
     total_warnings: u64,
-    /// Every push ever made, evicting or not. `push` is the only writer of
-    /// `entries`, so this moves whenever they change.
-    pushed: u64,
+    /// Entries pushed plus entries evicted at each [`MessagesMinSeverity`]
+    /// level, indexed by the level. What a floor shows changes only when a
+    /// level it shows moves.
+    changes: [u64; 3],
 }
 
-/// What the `[messages]` buffer was last built from: the log as of a push
-/// count, shown at a floor. A different stamp means the buffer is stale.
+/// What the `[messages]` buffer was last built from: a floor and the
+/// changes so far at the levels it shows. A different stamp means the
+/// buffer is stale.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::editor) struct MessagesViewStamp {
-    pushed: u64,
     floor: MessagesMinSeverity,
+    shown_changes: u64,
 }
 
 impl MessageLog {
@@ -75,7 +77,7 @@ impl MessageLog {
             seen_up_to: 0,
             total_errors: 0,
             total_warnings: 0,
-            pushed: 0,
+            changes: [0; 3],
         }
     }
 
@@ -89,7 +91,7 @@ impl MessageLog {
     /// The text is stored with LF line endings, as a buffer holds it, so
     /// [`Self::format_with_spans`]' spans fit the `[messages]` text.
     pub(in crate::editor) fn push(&mut self, severity: Severity, text: String) {
-        self.pushed += 1;
+        self.changes[MessagesMinSeverity::of(severity) as usize] += 1;
         match severity {
             Severity::Error => self.total_errors += 1,
             Severity::Warning => self.total_warnings += 1,
@@ -97,7 +99,9 @@ impl MessageLog {
         }
         if self.entries.len() == MAX_ENTRIES {
             let index = self.eviction_index();
-            self.entries.remove(index);
+            if let Some(evicted) = self.entries.remove(index) {
+                self.changes[MessagesMinSeverity::of(evicted.severity) as usize] += 1;
+            }
             if index < self.seen_up_to {
                 self.seen_up_to -= 1;
             }
@@ -111,9 +115,14 @@ impl MessageLog {
     /// The stamp of the log as `floor` shows it now.
     pub(in crate::editor) fn view_stamp(&self, floor: MessagesMinSeverity) -> MessagesViewStamp {
         MessagesViewStamp {
-            pushed: self.pushed,
             floor,
+            shown_changes: self.changes[floor as usize..].iter().sum(),
         }
+    }
+
+    /// Whether `floor` shows any entry.
+    pub(in crate::editor) fn shows_any(&self, floor: MessagesMinSeverity) -> bool {
+        self.shown_from(0, floor).next().is_some()
     }
 
     /// The oldest entry of the least severe kind present. A log with no
@@ -236,7 +245,7 @@ impl MessageLog {
     /// char offsets (not bytes), since message text may be non-ASCII. Scope names,
     /// not `ScopeId`s: this type has no registry access (it's not an
     /// `Editor` method), so interning is the caller's job. See
-    /// [`Editor::fill_messages_view`], the sole production caller, which
+    /// [`Editor::sync_messages_view`], the sole production caller, which
     /// turns each name into an `ExtraHighlightEntry`.
     ///
     /// Highlighting goes through the `Extra` tier rather than tree-sitter:
@@ -302,9 +311,8 @@ impl Editor {
             return;
         };
         let floor = self.state.settings.messages_min_severity;
-        if self.state.messages_view != Some(self.state.message_log.view_stamp(floor)) {
-            let (content, spans) = self.state.message_log.format_with_spans(floor);
-            self.fill_messages_view(bid, &content, spans);
+        if self.state.config.messages_view != Some(self.state.message_log.view_stamp(floor)) {
+            self.sync_messages_view(bid);
         }
         if self
             .view
@@ -316,19 +324,17 @@ impl Editor {
         }
     }
 
-    /// Rebuild `[messages]` (`bid`) as `content`, the log formatted at the
-    /// current floor, with its severity `spans`. Every stored position is
-    /// carried through the change, so no cursor moves on its own.
-    pub(in crate::editor) fn fill_messages_view(
-        &mut self,
-        bid: BufferId,
-        content: &str,
-        spans: Vec<(usize, usize, &'static str)>,
-    ) {
+    /// Rebuild `[messages]` (`bid`) from the log at the current
+    /// `messages-min-severity`, with its severity highlights. Every stored
+    /// position is carried through the change, so no cursor moves on its
+    /// own.
+    pub(in crate::editor) fn sync_messages_view(&mut self, bid: BufferId) {
+        let floor = self.state.settings.messages_min_severity;
+        let (content, spans) = self.state.message_log.format_with_spans(floor);
         let (buffers, mut stores) = self.state.edit_parts();
         buffers
             .get_mut(bid)
-            .follow_view_content(bid, &mut stores, content);
+            .follow_view_content(bid, &mut stores, &content);
         let spans = spans
             .into_iter()
             .map(|(start, end, scope)| (start, end, scope.to_string()))
@@ -336,8 +342,7 @@ impl Editor {
         EditorHostImpl::new(&mut self.state, &mut self.view)
             .set_extra_highlights("messages".to_string(), bid, spans)
             .expect("the spans lie in the text they were formatted with");
-        let floor = self.state.settings.messages_min_severity;
-        self.state.messages_view = Some(self.state.message_log.view_stamp(floor));
+        self.state.config.messages_view = Some(self.state.message_log.view_stamp(floor));
     }
 
     /// Report a message through [`EditorState::report`].

@@ -127,8 +127,6 @@ impl Editor {
         let prior_clock = self.state.config.decorations.clock();
         self.state.config =
             super::ConfigState::new(self.kitty_enabled, prior_clock, &self.state.library_wait);
-        // The new `ConfigState` holds none of `[messages]`' highlights.
-        self.state.messages_view = None;
         // The scripts that held these tokens went with the outgoing engine.
         self.state.panes.tracked.clear();
         // Re-baseline so the hooks `init_scripting` registers never see a

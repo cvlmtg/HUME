@@ -380,3 +380,27 @@ fn the_floor_is_part_of_the_view_stamp() {
         log.view_stamp(MessagesMinSeverity::Error)
     );
 }
+
+#[test]
+fn a_push_the_floor_hides_keeps_the_view_stamp() {
+    let mut log = make_log(&[(Severity::Warning, "w")]);
+    let before = log.view_stamp(MessagesMinSeverity::Warning);
+    log.push(Severity::Trace, "t".to_string());
+    assert_eq!(log.view_stamp(MessagesMinSeverity::Warning), before);
+}
+
+#[test]
+fn a_hidden_push_that_evicts_a_shown_entry_changes_the_view_stamp() {
+    let mut log = MessageLog::new();
+    for i in 0..MAX_ENTRIES {
+        log.push(Severity::Warning, format!("w{i}"));
+    }
+    let before = log.view_stamp(MessagesMinSeverity::Warning);
+    log.push(Severity::Trace, "t".to_string());
+    assert_eq!(
+        stored_texts(&log)[0],
+        "w1",
+        "sanity: the oldest warning left"
+    );
+    assert_ne!(log.view_stamp(MessagesMinSeverity::Warning), before);
+}

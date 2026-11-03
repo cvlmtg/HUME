@@ -29,25 +29,22 @@ pub(in crate::editor) fn typed_messages(
     ed: &mut Editor,
     fp: FocusedPane,
 ) -> Result<(), CommandError> {
-    let (content, spans) = ed
+    if !ed
         .state
         .message_log
-        .format_with_spans(ed.state.settings.messages_min_severity);
-    if content.is_empty() {
+        .shows_any(ed.state.settings.messages_min_severity)
+    {
         ed.report(Severity::Info, "No messages");
         return Ok(());
     }
     let label = ViewLabel::editor(EditorView::Messages);
     let bid = match ed.state.buffers.find_by_label(&label) {
         Some(bid) => bid,
-        None => lifecycle::open_view_buffer(
-            &mut ed.state,
-            &mut ed.view,
-            BufferText::from(content.as_str()),
-            &label,
-        ),
+        None => {
+            lifecycle::open_view_buffer(&mut ed.state, &mut ed.view, BufferText::from(""), &label)
+        }
     };
-    ed.fill_messages_view(bid, &content, spans);
+    ed.sync_messages_view(bid);
     // None parks at the bottom (most recent entry).
     lifecycle::present_view(&mut ed.state, &mut ed.view, fp.pane(), bid, None);
     ed.state.message_log.mark_all_seen();
