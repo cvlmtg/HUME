@@ -66,7 +66,7 @@ fn read_only_refusal_does_not_clobber_dot_repeat() {
     );
 
     // Switch focus to a read-only view buffer.
-    ed.report(Severity::Warning, "msg".to_string());
+    ed.report(Severity::Warning, "msg");
     ed.execute_typed("messages", None).unwrap();
     assert!(
         ed.doc().is_read_only(),
@@ -90,7 +90,7 @@ fn read_only_refusal_does_not_clobber_dot_repeat() {
 #[test]
 fn a_refused_repeatable_command_leaves_no_recording_scope() {
     let mut ed = editor_from("-[foo]> bar\n");
-    ed.report(Severity::Warning, "msg".to_string());
+    ed.report(Severity::Warning, "msg");
     ed.execute_typed("messages", None).unwrap();
     assert!(
         ed.doc().is_read_only(),

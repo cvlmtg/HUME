@@ -276,7 +276,7 @@ pub(in crate::editor) fn typed_reload_config(
     ed.drain_pending_work();
     let (errors_after, warnings_after) = ed.state.message_log.totals();
     if errors_after == errors_before && warnings_after == warnings_before {
-        ed.report(Severity::Info, "Config reloaded".to_string());
+        ed.report(Severity::Info, "Config reloaded");
     }
     Ok(())
 }

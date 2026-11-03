@@ -289,8 +289,8 @@ fn sort_bang_is_rejected() {
 #[test]
 fn sort_on_read_only_buffer_is_blocked() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.report(Severity::Warning, "one".to_string());
-    ed.report(Severity::Warning, "two".to_string());
+    ed.report(Severity::Warning, "one");
+    ed.report(Severity::Warning, "two");
     ed.execute_typed("messages", None).unwrap();
     let before = state(&ed);
     ed.state.register_prefix = Some('a');

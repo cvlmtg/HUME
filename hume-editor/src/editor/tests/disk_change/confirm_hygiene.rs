@@ -313,7 +313,7 @@ fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
     // Simulate a dispatch that both logged its own message and populated
     // replay queue: the effect a hypothetical mapping doing both in one
     // `handle_input` call would leave behind.
-    ed.report(Severity::Warning, "sentinel message".to_string());
+    ed.report(Severity::Warning, "sentinel message");
     ed.state.message_logged_this_input = true;
     for ch in ":b #".chars() {
         ed.state.macros.enqueue(&[key(ch)], Count::typed(1));

@@ -109,7 +109,7 @@ fn pressing_ctrl_a_again_keeps_stepping_the_same_date_field() {
 #[test]
 fn a_read_only_buffer_refuses_the_increment() {
     let mut ed = editor_from("-[a]>\n");
-    ed.report(Severity::Warning, "1 test message".to_string());
+    ed.report(Severity::Warning, "1 test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
     let before = ed.doc().text().to_string();

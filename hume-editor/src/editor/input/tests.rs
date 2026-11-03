@@ -19,7 +19,7 @@ fn message_log_summary_ttl() {
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
 
     // report() sets status_msg AND logs to message_log.
-    ed.report(Severity::Error, "boom".to_string());
+    ed.report(Severity::Error, "boom");
     assert!(ed.state.status_msg.is_some());
     assert!(ed.state.message_log.has_unseen());
 

@@ -136,10 +136,7 @@ impl EditorState {
         trigger: Trigger,
     ) {
         let Some(insert) = self.input.insert_session() else {
-            self.report(
-                Severity::Info,
-                "completion-trigger: only in Insert mode".to_string(),
-            );
+            self.report(Severity::Info, "completion-trigger: only in Insert mode");
             return;
         };
         let (pid, bid) = (insert.pane(), insert.buffer());
@@ -149,10 +146,7 @@ impl EditorState {
         };
         if ids.is_empty() {
             if explicit {
-                self.report(
-                    Severity::Info,
-                    "no completion sources registered".to_string(),
-                );
+                self.report(Severity::Info, "no completion sources registered");
             }
             return;
         }
@@ -188,7 +182,7 @@ impl EditorState {
             }),
         );
         if session.is_spent() {
-            self.report(Severity::Info, "no completions".to_string());
+            self.report(Severity::Info, "no completions");
             return;
         }
         self.push_layer(view, BufferCompletionLayer::new(session));
@@ -551,7 +545,7 @@ impl EditorState {
         {
             self.dismiss_completion(view);
             if report_empty && explicit {
-                self.report(Severity::Info, "no completions".to_string());
+                self.report(Severity::Info, "no completions");
             }
         }
     }

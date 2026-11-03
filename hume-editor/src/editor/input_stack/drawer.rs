@@ -538,7 +538,7 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
         DrawerRows::Buffers { buffers, .. } => {
             let target = buffers[drawer.selected];
             if ed.state.buffers.try_get(target).is_none() {
-                ed.report(Severity::Warning, "buffer was closed".to_string());
+                ed.report(Severity::Warning, "buffer was closed");
             } else {
                 ed.enter_buffer(FocusedPane::current(&ed.view), target);
             }

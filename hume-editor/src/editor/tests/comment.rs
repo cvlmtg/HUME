@@ -111,7 +111,7 @@ fn prefer_line_comments_gives_each_line_a_line_comment() {
 #[test]
 fn a_read_only_buffer_refuses_the_toggle() {
     let mut ed = rust_editor("-[a]>\n");
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
     let before = ed.doc().text().to_string();

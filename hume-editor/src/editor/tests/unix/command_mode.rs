@@ -23,7 +23,7 @@ fn colon_b_hash_switches_to_alternate() {
     );
 
     // :messages opens the pathless [messages] view buffer; alternate is now f1.
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     submit(&mut ed, "messages");
     assert_eq!(ed.doc().display_name(), "[messages]");
     assert_eq!(

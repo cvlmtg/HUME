@@ -211,7 +211,7 @@ fn history_step(
         Ok(walk(b, id, stores, pane, count))
     })?;
     if taken < count {
-        state.report(Severity::Info, exhausted_msg.to_string());
+        state.report(Severity::Info, exhausted_msg);
     }
     Ok(())
 }

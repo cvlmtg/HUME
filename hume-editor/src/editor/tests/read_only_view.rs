@@ -9,7 +9,7 @@ use pretty_assertions::assert_eq;
 #[test]
 fn messages_opens_read_only_view_buffer() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(
         ed.doc().is_read_only(),
@@ -23,8 +23,8 @@ fn messages_opens_read_only_view_buffer() {
 #[test]
 fn view_buffer_arrow_keys_move_cursor_not_select() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.report(Severity::Warning, "line one".to_string());
-    ed.report(Severity::Warning, "line two".to_string());
+    ed.report(Severity::Warning, "line one");
+    ed.report(Severity::Warning, "line two");
     ed.execute_typed("messages", None).unwrap();
 
     // Cursor starts at last content line. Move up one line.
@@ -48,7 +48,7 @@ fn view_buffer_arrow_keys_move_cursor_not_select() {
 #[test]
 fn view_buffer_has_no_language() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.report(Severity::Warning, "test".to_string());
+    ed.report(Severity::Warning, "test");
     ed.execute_typed("messages", None).unwrap();
     assert!(
         ed.doc().language.is_none(),
@@ -60,7 +60,7 @@ fn view_buffer_has_no_language() {
 #[test]
 fn messages_reuses_existing_view_buffer() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.report(Severity::Warning, "msg1".to_string());
+    ed.report(Severity::Warning, "msg1");
     ed.execute_typed("messages", None).unwrap();
     // Switch back to the scratch buffer so the second :messages performs a real switch.
     let scratch_id = ed
@@ -71,7 +71,7 @@ fn messages_reuses_existing_view_buffer() {
         .map(|(id, _)| id)
         .expect("scratch buffer must exist");
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), scratch_id);
-    ed.report(Severity::Warning, "msg2".to_string());
+    ed.report(Severity::Warning, "msg2");
     ed.execute_typed("messages", None).unwrap();
 
     assert_eq!(
@@ -85,7 +85,7 @@ fn messages_reuses_existing_view_buffer() {
 #[test]
 fn view_buffer_refuses_edits() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.report(Severity::Warning, "test".to_string());
+    ed.report(Severity::Warning, "test");
     ed.execute_typed("messages", None).unwrap();
     let content_before = ed.doc().text().to_string();
 
@@ -102,7 +102,7 @@ fn view_buffer_refuses_edits() {
 #[test]
 fn view_buffer_blocks_insert_mode() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.report(Severity::Warning, "test".to_string());
+    ed.report(Severity::Warning, "test");
     ed.execute_typed("messages", None).unwrap();
 
     ed.handle_key(key('i'));
@@ -248,7 +248,7 @@ fn view_buffer_blocks_paste() {
     ed.handle_key(key('y'));
     ed.handle_key(key('y'));
 
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
     let content_before = ed.doc().text().to_string();
@@ -296,7 +296,7 @@ fn read_only_buffer_blocks_delete_kill() {
         .map(<[hume_ops::register::Piece]>::to_vec);
     let ring_len_before = ed.state.kill_ring.len();
 
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
     let content_before = ed.doc().text().to_string();
@@ -343,7 +343,7 @@ fn read_only_buffer_blocks_change_kill() {
         .map(<[hume_ops::register::Piece]>::to_vec);
     let stamp_before = ed.state.paste_stamp;
 
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
     let content_before = ed.doc().text().to_string();
@@ -392,7 +392,7 @@ fn read_only_buffer_blocks_change_kill() {
 fn read_only_refusal_clears_register_prefix_on_delete() {
     let mut ed = editor_from("-[hell]>o\n");
 
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
 
@@ -417,7 +417,7 @@ fn read_only_refusal_clears_register_prefix_on_delete() {
 fn read_only_refusal_clears_register_prefix_on_paste() {
     let mut ed = editor_from("-[hell]>o\n");
 
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
 
@@ -437,7 +437,7 @@ fn read_only_refusal_clears_register_prefix_on_paste() {
 fn view_buffer_blocks_write() {
     let mut ed = editor_from("-[h]>ello\n");
 
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
 
@@ -454,7 +454,7 @@ fn view_buffer_blocks_write() {
 #[test]
 fn synthetic_buffer_e_bang_errors() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.report(Severity::Warning, "test message".to_string());
+    ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_synthetic());
 

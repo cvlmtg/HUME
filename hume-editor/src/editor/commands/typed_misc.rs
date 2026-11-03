@@ -33,7 +33,7 @@ pub(in crate::editor) fn typed_messages(
         .message_log
         .format_with_spans(ed.state.settings.messages_min_severity);
     if content.is_empty() {
-        ed.report(Severity::Info, "No messages".to_string());
+        ed.report(Severity::Info, "No messages");
         return Ok(());
     }
     ed.state.message_log.mark_all_seen();
@@ -81,11 +81,11 @@ pub(in crate::editor) fn typed_plugin_status(
     let out = if let Some(host) = ed.scripting.as_ref() {
         host.lazy_status_string(&ed.state.config.registry.lazy_stubs())
     } else {
-        ed.report(Severity::Info, "Scripting disabled".to_string());
+        ed.report(Severity::Info, "Scripting disabled");
         return Ok(());
     };
     if out.is_empty() {
-        ed.report(Severity::Info, "No plugins declared".to_string());
+        ed.report(Severity::Info, "No plugins declared");
         return Ok(());
     }
     ed.open_read_only_view(
@@ -198,7 +198,7 @@ pub(in crate::editor) fn typed_tabclose(
     match ed.run_stopping_pipes(force, |ed| super::close_tab(&mut ed.state, &mut ed.view)) {
         Ok(()) => Ok(()),
         Err(super::CloseRefused::Last) => {
-            ed.report(Severity::Info, "cannot close the last tab page".to_string());
+            ed.report(Severity::Info, "cannot close the last tab page");
             Ok(())
         }
         Err(super::CloseRefused::PipeRunning(running)) => Err(super::pipe_running_refusal(
@@ -555,14 +555,11 @@ pub(in crate::editor) fn typed_sort(
     let edited = match result {
         Ok(edited) => edited,
         Err(SortRefusal::NoAdjacentLines) => {
-            ed.report(
-                Severity::Info,
-                "sort needs at least two adjacent rows".to_string(),
-            );
+            ed.report(Severity::Info, "sort needs at least two adjacent rows");
             return Ok(());
         }
         Err(SortRefusal::AlreadySorted) => {
-            ed.report(Severity::Info, "already sorted".to_string());
+            ed.report(Severity::Info, "already sorted");
             return Ok(());
         }
     };

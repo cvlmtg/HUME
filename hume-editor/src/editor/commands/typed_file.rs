@@ -178,10 +178,7 @@ pub(in crate::editor) fn conclude_write(
     };
     let Ok(pane) = FocusedPane::resolve(&ed.state, &ed.view, handle) else {
         if written.is_ok() {
-            ed.report(
-                Severity::Info,
-                "Written; quit cancelled (focus moved)".to_owned(),
-            );
+            ed.report(Severity::Info, "Written; quit cancelled (focus moved)");
         }
         return written.map_err(Into::into);
     };

@@ -162,7 +162,7 @@ fn a_rejected_line_ending_or_pane_wrap_mode_names_its_key() {
 #[test]
 fn a_read_only_buffer_refuses_a_line_ending_change() {
     let mut ed = editor_from("-[a]>b\n");
-    ed.report(Severity::Warning, "msg".to_string());
+    ed.report(Severity::Warning, "msg");
     ed.execute_typed("messages", None).unwrap();
     assert!(
         ed.doc().is_read_only(),

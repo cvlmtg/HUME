@@ -80,7 +80,7 @@ fn rows_mark_current_alternate_and_dirty() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    ed.report(Severity::Warning, "note".to_string());
+    ed.report(Severity::Warning, "note");
     ed.execute_typed("messages", None).unwrap();
     ed.execute_typed("ls", None).unwrap();
 
@@ -200,7 +200,7 @@ fn enter_switches_buffer_with_a_jump_and_keeps_the_drawer_open() {
 #[test]
 fn enter_moves_the_markers_with_the_switch() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.report(Severity::Warning, "note".to_string());
+    ed.report(Severity::Warning, "note");
     ed.execute_typed("messages", None).unwrap();
     ed.execute_typed("ls", None).unwrap();
     ed.handle_key(key_up());

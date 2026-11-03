@@ -248,9 +248,7 @@ fn push_cap_adjusts_seen_up_to() {
 #[test]
 fn totals_survive_eviction_past_max_entries() {
     let mut log = MessageLog::new();
-    for i in 0..MAX_ENTRIES + 5 {
-        log.push(Severity::Error, format!("e{i}"));
-    }
+    push_errors(&mut log, "e", MAX_ENTRIES + 5);
     assert_eq!(
         log.entries().len(),
         MAX_ENTRIES,
@@ -275,6 +273,13 @@ fn totals_ignore_info_and_trace() {
         (Severity::Trace, "t2"),
     ]);
     assert_eq!(log.totals(), (0, 0));
+}
+
+/// Push `count` errors, `{prefix}0` onward.
+fn push_errors(log: &mut MessageLog, prefix: &str, count: usize) {
+    for i in 0..count {
+        log.push(Severity::Error, format!("{prefix}{i}"));
+    }
 }
 
 fn shown_texts(log: &MessageLog, floor: MessagesMinSeverity) -> Vec<&str> {
@@ -316,9 +321,7 @@ fn a_full_log_evicts_the_oldest_trace_then_warning_then_error() {
     log.push(Severity::Error, "e".to_string());
     log.push(Severity::Warning, "w".to_string());
     log.push(Severity::Trace, "t".to_string());
-    for i in 0..MAX_ENTRIES - 3 {
-        log.push(Severity::Error, format!("f{i}"));
-    }
+    push_errors(&mut log, "f", MAX_ENTRIES - 3);
 
     log.push(Severity::Error, "x".to_string());
     assert_eq!(log.entries().len(), MAX_ENTRIES);
@@ -334,13 +337,9 @@ fn a_full_log_evicts_the_oldest_trace_then_warning_then_error() {
 #[test]
 fn evicting_a_seen_entry_keeps_the_rest_seen() {
     let mut log = MessageLog::new();
-    for i in 0..10 {
-        log.push(Severity::Error, format!("e{i}"));
-    }
+    push_errors(&mut log, "e", 10);
     log.push(Severity::Trace, "t".to_string());
-    for i in 0..MAX_ENTRIES - 11 {
-        log.push(Severity::Error, format!("f{i}"));
-    }
+    push_errors(&mut log, "f", MAX_ENTRIES - 11);
     log.mark_all_seen();
     log.push(Severity::Error, "new".to_string());
     assert_eq!(log.unseen_counts(SHOW_ALL), (1, 0));
@@ -349,14 +348,10 @@ fn evicting_a_seen_entry_keeps_the_rest_seen() {
 #[test]
 fn evicting_an_unseen_entry_leaves_the_seen_ones_alone() {
     let mut log = MessageLog::new();
-    for i in 0..10 {
-        log.push(Severity::Error, format!("e{i}"));
-    }
+    push_errors(&mut log, "e", 10);
     log.mark_all_seen();
     log.push(Severity::Trace, "t".to_string());
-    for i in 0..MAX_ENTRIES - 11 {
-        log.push(Severity::Error, format!("f{i}"));
-    }
+    push_errors(&mut log, "f", MAX_ENTRIES - 11);
     log.push(Severity::Error, "new".to_string());
     assert_eq!(log.unseen_counts(SHOW_ALL), (MAX_ENTRIES - 10, 0));
 }
