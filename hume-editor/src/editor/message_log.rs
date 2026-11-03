@@ -7,11 +7,11 @@
 use std::collections::VecDeque;
 
 use hume_core::{BufferId, Severity};
-use hume_editing::text::normalize_line_endings_owned;
+use hume_editing::text::{BufferText, normalize_line_endings_owned};
 use hume_engine::theme::diagnostic_scopes;
 use hume_scripting::host::DecorationHost;
 
-use super::buffer::{Buffer, EditorView};
+use super::buffer::{EditorView, ViewLabel, lifecycle};
 use super::error::CommandError;
 use super::host_impl::EditorHostImpl;
 use super::settings::MessagesMinSeverity;
@@ -45,20 +45,19 @@ pub(crate) struct MessageLog {
     /// Index of the first unseen entry. Everything at `index >= seen_up_to` is
     /// "unread". Updated by `mark_all_seen()`.
     seen_up_to: usize,
-    /// Lifetime count of `Error`/`Warning` messages ever pushed: monotonic,
-    /// never decremented by eviction (unlike `unseen_counts`, which reads the
-    /// live `entries` deque and so *can* drop below a value it reported
-    /// earlier once `MAX_ENTRIES` starts evicting). `:reload-config` diffs
-    /// this against a before/after snapshot to detect "did this reload push a
-    /// new warning or error", and `handle_input` to keep a command's message
-    /// on the status line. Both ask what was reported, whether or not
+    /// Lifetime count of messages ever pushed at each [`MessagesMinSeverity`]
+    /// level, indexed by the level: monotonic, never decremented by eviction
+    /// (unlike `unseen_counts`, which reads the live `entries` deque and so
+    /// *can* drop below a value it reported earlier once `MAX_ENTRIES` starts
+    /// evicting). `:reload-config` diffs the error and warning counts against
+    /// a before/after snapshot to detect "did this reload push a new warning
+    /// or error", and `handle_input` to keep a command's message on the
+    /// status line. Both ask what was reported, whether or not
     /// `messages-min-severity` shows it.
-    total_errors: u64,
-    total_warnings: u64,
-    /// Entries pushed plus entries evicted at each [`MessagesMinSeverity`]
-    /// level, indexed by the level. What a floor shows changes only when a
-    /// level it shows moves.
-    changes: [u64; 3],
+    pushed: [u64; 3],
+    /// Entries evicted at each level, indexed like `pushed`. What a floor
+    /// shows changes only when a level it shows gains a push or an eviction.
+    evicted: [u64; 3],
 }
 
 /// What the `[messages]` buffer was last built from: a floor and the
@@ -75,9 +74,8 @@ impl MessageLog {
         Self {
             entries: VecDeque::new(),
             seen_up_to: 0,
-            total_errors: 0,
-            total_warnings: 0,
-            changes: [0; 3],
+            pushed: [0; 3],
+            evicted: [0; 3],
         }
     }
 
@@ -91,16 +89,11 @@ impl MessageLog {
     /// The text is stored with LF line endings, as a buffer holds it, so
     /// [`Self::format_with_spans`]' spans fit the `[messages]` text.
     pub(in crate::editor) fn push(&mut self, severity: Severity, text: String) {
-        self.changes[MessagesMinSeverity::of(severity) as usize] += 1;
-        match severity {
-            Severity::Error => self.total_errors += 1,
-            Severity::Warning => self.total_warnings += 1,
-            Severity::Info | Severity::Trace => {}
-        }
+        self.pushed[MessagesMinSeverity::of(severity) as usize] += 1;
         if self.entries.len() == MAX_ENTRIES {
             let index = self.eviction_index();
             if let Some(evicted) = self.entries.remove(index) {
-                self.changes[MessagesMinSeverity::of(evicted.severity) as usize] += 1;
+                self.evicted[MessagesMinSeverity::of(evicted.severity) as usize] += 1;
             }
             if index < self.seen_up_to {
                 self.seen_up_to -= 1;
@@ -116,7 +109,10 @@ impl MessageLog {
     pub(in crate::editor) fn view_stamp(&self, floor: MessagesMinSeverity) -> MessagesViewStamp {
         MessagesViewStamp {
             floor,
-            shown_changes: self.changes[floor as usize..].iter().sum(),
+            shown_changes: self.pushed[floor as usize..]
+                .iter()
+                .chain(&self.evicted[floor as usize..])
+                .sum(),
         }
     }
 
@@ -155,7 +151,10 @@ impl MessageLog {
     /// way to detect "were any new warnings/errors reported between two
     /// points in time".
     pub(crate) fn totals(&self) -> (u64, u64) {
-        (self.total_errors, self.total_warnings)
+        (
+            self.pushed[MessagesMinSeverity::Error as usize],
+            self.pushed[MessagesMinSeverity::Warning as usize],
+        )
     }
 
     /// Writes every warning and error still in the log to `w`, oldest first,
@@ -302,38 +301,59 @@ impl MessageLog {
 }
 
 impl Editor {
-    /// Bring `[messages]` up to date with the log and `messages-min-severity`
-    /// when either changed since it was last built and a pane on the active
-    /// tab shows it. A hidden view catches up when it is next shown.
+    /// Bring `[messages]` up to date when [`Self::messages_view_behind`]. A
+    /// hidden view catches up when it is next shown.
     pub(in crate::editor) fn follow_message_log(&mut self) {
-        if !self.state.messages_view_stale() {
-            return;
-        }
-        if let Some(bid) = self.shown_messages_view() {
-            self.sync_messages_view(bid);
+        if self.messages_view_behind() {
+            self.sync_messages_view();
         }
     }
 
-    /// The `[messages]` buffer, if a pane on the active tab shows it.
-    pub(in crate::editor) fn shown_messages_view(&self) -> Option<BufferId> {
+    /// Whether the log or `messages-min-severity` changed since `[messages]`
+    /// was last built and a pane on the active tab shows it.
+    pub(in crate::editor) fn messages_view_behind(&self) -> bool {
+        if !self.state.messages_view_stale() {
+            return false;
+        }
+        let label = ViewLabel::editor(EditorView::Messages);
+        let Some(bid) = self.state.buffers.find_by_label(&label) else {
+            return false;
+        };
         self.view
             .active_pane_ids()
             .into_iter()
-            .map(|pid| self.view.panes[pid].buffer_id())
-            .find(|&bid| is_messages_view(self.state.buffers.get(bid)))
+            .any(|pid| self.view.panes[pid].buffer_id() == bid)
     }
 
-    /// Rebuild `[messages]` (`bid`) from the log at the current
-    /// `messages-min-severity`, with its severity highlights. Every stored
-    /// position is carried through the change, so no cursor moves on its
-    /// own.
-    pub(in crate::editor) fn sync_messages_view(&mut self, bid: BufferId) {
+    /// The `[messages]` buffer, opened from the log or rebuilt from it at the
+    /// current `messages-min-severity` when it is missing or stale, with its
+    /// severity highlights. A rebuild carries every stored position through
+    /// the change, so no cursor moves on its own.
+    pub(in crate::editor) fn sync_messages_view(&mut self) -> BufferId {
+        let label = ViewLabel::editor(EditorView::Messages);
+        let existing = self.state.buffers.find_by_label(&label);
+        if let Some(bid) = existing
+            && !self.state.messages_view_stale()
+        {
+            return bid;
+        }
         let floor = self.state.settings.messages_min_severity;
         let (content, spans) = self.state.message_log.format_with_spans(floor);
-        let (buffers, mut stores) = self.state.edit_parts();
-        buffers
-            .get_mut(bid)
-            .follow_view_content(bid, &mut stores, &content);
+        let bid = match existing {
+            Some(bid) => {
+                let (buffers, mut stores) = self.state.edit_parts();
+                buffers
+                    .get_mut(bid)
+                    .follow_view_content(bid, &mut stores, &content);
+                bid
+            }
+            None => lifecycle::open_view_buffer(
+                &mut self.state,
+                &mut self.view,
+                BufferText::from(content.as_str()),
+                &label,
+            ),
+        };
         let spans = spans
             .into_iter()
             .map(|(start, end, scope)| (start, end, scope.to_string()))
@@ -342,6 +362,7 @@ impl Editor {
             .set_extra_highlights("messages".to_string(), bid, spans)
             .expect("the spans lie in the text they were formatted with");
         self.state.config.messages_view = Some(self.state.message_log.view_stamp(floor));
+        bid
     }
 
     /// Report a message through [`EditorState::report`].
@@ -355,13 +376,6 @@ impl Editor {
     }
 }
 
-/// Whether `buffer` is `[messages]`.
-pub(in crate::editor) fn is_messages_view(buffer: &Buffer) -> bool {
-    buffer
-        .label()
-        .is_some_and(|label| label.is_editor(EditorView::Messages))
-}
-
 impl EditorState {
     /// Whether the log or `messages-min-severity` changed since `[messages]`
     /// was last built, or it never was.
@@ -371,6 +385,16 @@ impl EditorState {
                 self.message_log
                     .view_stamp(self.settings.messages_min_severity),
             )
+    }
+
+    /// Whether `bid` is an up-to-date `[messages]` and the log holds unseen
+    /// entries, so a frame drawing its end marks them seen. A stale view
+    /// lacks what was logged since it was built, so its end is not the
+    /// log's end.
+    pub(in crate::editor) fn messages_view_awaits_seen(&self, bid: BufferId) -> bool {
+        self.message_log.has_unseen()
+            && self.buffers.get(bid).label() == Some(&ViewLabel::editor(EditorView::Messages))
+            && !self.messages_view_stale()
     }
 
     // ── Status messages ───────────────────────────────────────────────────────

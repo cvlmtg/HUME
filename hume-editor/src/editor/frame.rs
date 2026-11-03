@@ -24,7 +24,6 @@ use hume_engine::types::EditorMode;
 
 use super::buffer::{Buffer, BufferFile};
 use super::input_stack::ResolvedPopupLayout;
-use super::message_log::is_messages_view;
 use super::{Editor, EditorState};
 
 /// Project a pane's selections into its engine mirror, in the model's start
@@ -602,10 +601,7 @@ impl Editor {
                 .entries
                 .shown_mut(&self.view.panes, pid)
                 .parked = outcome.parked;
-            // A stale view lacks what was logged since it was built, so its
-            // end is not the log's end.
-            if is_messages_view(self.state.buffers.get(buf_id))
-                && !self.state.messages_view_stale()
+            if self.state.messages_view_awaits_seen(buf_id)
                 && shows_document_end(
                     self.state.buffers.get(buf_id),
                     &mut self.view.panes[pid],

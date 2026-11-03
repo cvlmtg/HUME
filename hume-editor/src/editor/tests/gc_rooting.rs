@@ -35,7 +35,7 @@ fn a_command_keeps_its_captured_state_across_a_collection() {
     type_cmd(&mut ed, ":churn");
     type_cmd(&mut ed, ":count");
 
-    let log = logged(&ed);
+    let log = log_entries(&ed);
     assert!(log.contains(&(Severity::Warning, "count:2")), "{log:?}");
 }
 
@@ -59,7 +59,7 @@ fn a_timer_thunk_keeps_its_captured_arguments_across_a_collection() {
     type_cmd(&mut ed, ":churn");
     ed.settle();
 
-    let log = logged(&ed);
+    let log = log_entries(&ed);
     assert!(log.contains(&(Severity::Warning, "alive")), "{log:?}");
 }
 
@@ -87,7 +87,7 @@ fn a_queued_callback_keeps_its_captured_state_while_the_batch_runs() {
     type_cmd(&mut ed, ":requests");
     ed.settle();
 
-    let log = logged(&ed);
+    let log = log_entries(&ed);
     assert!(log.contains(&(Severity::Warning, "alive")), "{log:?}");
 }
 
@@ -116,11 +116,11 @@ fn an_open_picker_keeps_its_callback_and_payloads_across_a_collection() {
 
     type_cmd(&mut ed, ":open");
     ed.settle();
-    assert!(ed.state.input.picker().is_some(), "{:?}", logged(&ed));
+    assert!(ed.state.input.picker().is_some(), "{:?}", log_entries(&ed));
     ed.feed_key(key_enter());
     ed.settle();
 
-    let log = logged(&ed);
+    let log = log_entries(&ed);
     assert!(log.contains(&(Severity::Warning, "alive")), "{log:?}");
     assert!(
         log.contains(&(Severity::Warning, "payload-alive")),
@@ -147,6 +147,6 @@ fn a_second_source_evaluates_into_the_editors_engine() {
     run(&mut ed, tmp.path(), "(define unrelated 1)");
     ed.settle();
 
-    let log = logged(&ed);
+    let log = log_entries(&ed);
     assert!(log.contains(&(Severity::Warning, "alive")), "{log:?}");
 }

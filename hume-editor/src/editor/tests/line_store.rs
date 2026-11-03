@@ -56,13 +56,12 @@ fn buffer_tag_changes_within_an_open_insert_session() {
     );
 }
 
-/// `Buffer::set_view_content` (the `:messages`/`:ls` refresh path) rebuilds
-/// `History` from scratch, so `revision_id()` returns to `RevisionId(0)` on
-/// every call, the same value the buffer started at. A tag keyed on the
-/// revision id alone therefore repeats across two refreshes with different
-/// content. Calls `set_view_content` directly (bypassing `:messages`, whose
-/// handler also touches the decoration store on every call, which would mask
-/// this specific hazard) to isolate it.
+/// `Buffer::set_view_content` (the `:plugin-status`/`:lsp-status` refresh
+/// path) rebuilds `History` from scratch, so `revision_id()` returns to
+/// `RevisionId(0)` on every call, the same value the buffer started at. A
+/// tag keyed on the revision id alone therefore repeats across two
+/// refreshes with different content. Calls `set_view_content` directly to
+/// isolate it.
 #[test]
 fn buffer_tag_changes_across_a_set_view_content_refresh() {
     let mut ed = editor_from("-[s]>cratch\n");

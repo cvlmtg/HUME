@@ -65,11 +65,17 @@ hume_core::named_enum! {
 /// The label of a read-only view buffer, `[name]`. A plugin's view can
 /// never take the label of one of the editor's own.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::editor) struct ViewLabel(String);
+pub(in crate::editor) struct ViewLabel(ViewOwner);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ViewOwner {
+    Editor(EditorView),
+    Plugin(String),
+}
 
 impl ViewLabel {
     pub(in crate::editor) fn editor(view: EditorView) -> Self {
-        Self::bracketed(view.name())
+        Self(ViewOwner::Editor(view))
     }
 
     /// Errors on an empty `name` or an [`EditorView`]'s name.
@@ -80,20 +86,20 @@ impl ViewLabel {
         if EditorView::from_name(name).is_some() {
             return Err(format!("[{name}] is one of the editor's own views"));
         }
-        Ok(Self::bracketed(name))
+        Ok(Self(ViewOwner::Plugin(name.to_owned())))
     }
 
-    fn bracketed(name: &str) -> Self {
-        Self(format!("[{name}]"))
+    fn name(&self) -> &str {
+        match &self.0 {
+            ViewOwner::Editor(view) => view.name(),
+            ViewOwner::Plugin(name) => name,
+        }
     }
+}
 
-    pub(in crate::editor) fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Whether this is `view`'s label.
-    pub(in crate::editor) fn is_editor(&self, view: EditorView) -> bool {
-        self.0.strip_prefix('[').and_then(|s| s.strip_suffix(']')) == Some(view.name())
+impl std::fmt::Display for ViewLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}]", self.name())
     }
 }
 
@@ -406,7 +412,7 @@ impl Buffer {
     }
 
     /// Create a read-only view buffer from in-memory content, for
-    /// [`lifecycle::show_read_only_view`]. The buffer has no backing file,
+    /// [`lifecycle::open_view_buffer`]. The buffer has no backing file,
     /// no language detection, and blocks all user edits.
     pub(in crate::editor) fn read_only_view(text: BufferText, label: ViewLabel) -> Self {
         let mut buf = Self::at_start(text);
@@ -585,7 +591,7 @@ impl Buffer {
         match &self.origin {
             Origin::Scratch => Self::SCRATCH_BUFFER_NAME.to_owned(),
             Origin::File(file) => file.file_name().to_string_lossy().into_owned(),
-            Origin::View(label) => label.as_str().to_owned(),
+            Origin::View(label) => label.to_string(),
         }
     }
 
@@ -668,7 +674,7 @@ impl Buffer {
             .expect("a line diff of the current text applies to it");
         debug_assert_eq!(
             &replaced, new_text,
-            "replace: the line diff must reproduce the new text"
+            "install_line_diff: the line diff must reproduce the new text"
         );
         self.install(
             PaneHandle::buffer_only(id),

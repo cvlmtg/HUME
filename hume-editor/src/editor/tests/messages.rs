@@ -226,11 +226,6 @@ fn lowering_the_floor_shows_trace_reported_before_it() {
 
 // ── The open view follows the log ────────────────────────────────────────────
 
-/// Run one frame, which brings an open `[messages]` up to date.
-fn frame(ed: &mut Editor) {
-    ed.render_to_buf(Rect::new(0, 0, 60, 12));
-}
-
 /// Open `:messages` on the focused pane and return the view's buffer.
 fn open_messages(ed: &mut Editor) -> BufferId {
     ed.execute_typed("messages", None)
@@ -265,7 +260,7 @@ fn a_message_logged_while_the_view_is_open_appears_on_the_next_frame() {
     let bid = open_messages(&mut ed);
 
     ed.report(Severity::Error, "second");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     insta::assert_snapshot!(buffer_text(&ed, bid), @"
     [warning] first
@@ -290,14 +285,14 @@ fn the_open_view_refilters_when_the_floor_changes() {
     insta::assert_snapshot!(buffer_text(&ed, bid), @"[warning] careful");
 
     run_set(&mut ed, "global messages-min-severity=trace").expect("trace is a valid floor");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
     insta::assert_snapshot!(buffer_text(&ed, bid), @"
     [trace] detail
     [warning] careful
     ");
 
     run_set(&mut ed, "global messages-min-severity=error").expect("error is a valid floor");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
     insta::assert_snapshot!(format!("{:?}", buffer_text(&ed, bid)), @r#""\n""#);
     assert!(
         ed.state
@@ -322,7 +317,7 @@ fn a_cursor_on_the_last_entry_stays_when_a_new_one_arrives() {
     );
 
     ed.report(Severity::Warning, "c");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     insta::assert_snapshot!(buffer_text(&ed, bid), @"
     [warning] a
@@ -353,7 +348,7 @@ fn every_pane_keeps_its_entry_when_earlier_ones_leave_the_view() {
     seek_to_line(&mut ed, 1);
 
     run_set(&mut ed, "global messages-min-severity=warning").expect("warning is a valid floor");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     insta::assert_snapshot!(buffer_text(&ed, bid), @"
     [warning] w0
@@ -371,7 +366,7 @@ fn following_the_log_leaves_the_view_unmodified() {
     let bid = open_messages(&mut ed);
 
     ed.report(Severity::Warning, "second");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     insta::assert_snapshot!(buffer_text(&ed, bid), @"
     [warning] first
@@ -387,7 +382,7 @@ fn a_view_on_the_active_tab_marks_new_messages_seen() {
     open_messages(&mut ed);
 
     ed.report(Severity::Warning, "second");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     assert_eq!(summary(&ed), None);
 }
@@ -397,13 +392,13 @@ fn a_view_open_but_not_shown_leaves_new_messages_unseen() {
     let mut ed = open_headless(None);
     ed.report(Severity::Warning, "first");
     let bid = open_messages(&mut ed);
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
     ed.execute_typed("bp", None)
         .expect("a previous buffer exists");
     assert_ne!(ed.focused_buffer_id(), bid, "sanity: the view is hidden");
 
     ed.report(Severity::Warning, "second");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     assert_eq!(summary(&ed).as_deref(), Some("1 warning (see :messages)"));
 }
@@ -414,12 +409,12 @@ fn a_view_on_another_tab_leaves_new_messages_unseen() {
     ed.report(Severity::Warning, "first");
     ed.execute_typed("tabnew", None).expect("a tab opens");
     open_messages(&mut ed);
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
     ed.execute_typed("tabprev", None)
         .expect("the first tab exists");
 
     ed.report(Severity::Warning, "second");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     assert_eq!(summary(&ed).as_deref(), Some("1 warning (see :messages)"));
 }
@@ -453,7 +448,7 @@ fn a_config_reload_keeps_the_open_views_highlights() {
     let bid = open_messages(&mut ed);
 
     ed.reset_config_state();
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     assert_eq!(
         ed.state
@@ -472,16 +467,16 @@ fn a_message_below_the_shown_rows_stays_unseen_until_the_end_is_drawn() {
         ed.report(Severity::Warning, format!("w{i}"));
     }
     open_messages(&mut ed);
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
     seek_to_line(&mut ed, 0);
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     ed.report(Severity::Error, "below");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
     assert_eq!(summary(&ed).as_deref(), Some("1 error (see :messages)"));
 
     seek_to_line(&mut ed, 30);
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
     assert_eq!(summary(&ed), None);
 }
 
@@ -490,7 +485,7 @@ fn a_message_logged_after_the_view_was_built_wakes_the_loop_while_it_is_shown() 
     let mut ed = open_headless(None);
     ed.report(Severity::Warning, "first");
     open_messages(&mut ed);
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     ed.report(Severity::Warning, "during the frame");
     assert_eq!(ed.wake_timeout(), Some(std::time::Duration::ZERO));
@@ -503,7 +498,7 @@ fn a_hidden_view_does_not_wake_the_loop() {
     open_messages(&mut ed);
     ed.execute_typed("bp", None)
         .expect("a previous buffer exists");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     ed.report(Severity::Warning, "second");
     assert_ne!(ed.wake_timeout(), Some(std::time::Duration::ZERO));
@@ -519,12 +514,12 @@ fn a_hidden_view_catches_up_when_it_is_shown_again() {
     let before = buffer_text(&ed, bid);
 
     ed.report(Severity::Warning, "second");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
     assert_eq!(buffer_text(&ed, bid), before, "a hidden view waits");
 
     ed.execute_typed("bn", None).expect("the view is next");
     assert_eq!(ed.focused_buffer_id(), bid, "sanity: the view is shown");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
     assert!(buffer_text(&ed, bid).contains("second"));
 }
 
@@ -552,7 +547,7 @@ fn a_cursor_on_an_entry_the_floor_hides_moves_to_the_next_shown_entry() {
     seek_to_line(&mut ed, 1);
 
     run_set(&mut ed, "global messages-min-severity=warning").expect("warning is a valid floor");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     assert_eq!(head_line(&ed, pane, bid), 1, "on w1, the entry after t0");
 }
@@ -567,7 +562,7 @@ fn a_cursor_on_the_last_entry_the_floor_hides_moves_to_the_entry_before() {
     let pane = ed.view.focused_pane();
 
     run_set(&mut ed, "global messages-min-severity=warning").expect("warning is a valid floor");
-    frame(&mut ed);
+    frame(&mut ed, 60, 12);
 
     assert_eq!(head_line(&ed, pane, bid), 0);
 }

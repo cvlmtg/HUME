@@ -754,7 +754,7 @@ fn reload_remaps_jump_entries_through_line_diff() {
 }
 
 /// A view buffer refreshed via `open_read_only_view` (e.g. re-running
-/// `:messages`) resets its history: there is no `ChangeSet` to remap jump
+/// `:plugin-status`) resets its history: there is no `ChangeSet` to remap jump
 /// entries through, so they must be dropped outright rather than left
 /// pointing at arbitrary text in the regenerated content.
 #[test]

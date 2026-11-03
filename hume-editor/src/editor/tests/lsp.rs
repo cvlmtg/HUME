@@ -402,7 +402,7 @@ fn second_registration_replaces_first() {
     rig.eval(RUST_ANALYZER);
     rig.eval(r#"(register-lsp-server! "rust-analyzer" #:command "rust-analyzer-2")"#);
 
-    let log = logged(&rig.ed);
+    let log = log_entries(&rig.ed);
     assert!(
         log.iter().all(|&(severity, text)| {
             severity != Severity::Error && !text.contains("already registered")

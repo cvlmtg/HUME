@@ -236,7 +236,7 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
     );
 }
 
-/// Opening a read-only view (`:messages`/`:ls`) for the first time is silent
+/// Opening a read-only view (`:plugin-status`) for the first time is silent
 /// (fresh `Buffer`, baseline matches); refreshing an existing one via the
 /// same label reuses the buffer and calls `set_view_content`, which must
 /// fire `on-text-changed`: the documented trigger `store/tests.rs`'s

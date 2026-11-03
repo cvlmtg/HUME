@@ -55,7 +55,7 @@ impl Editor {
         if !self.state.config.pending_work.is_empty() {
             return Some(Duration::ZERO);
         }
-        if self.state.messages_view_stale() && self.shown_messages_view().is_some() {
+        if self.messages_view_behind() {
             return Some(Duration::ZERO);
         }
         let now = Instant::now();

@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use hume_core::{BufferId, Severity};
-use hume_editing::text::BufferText;
 use hume_engine::pipeline::{Cycle, Direction, EngineView};
 use hume_grid::Rgb;
 use hume_platform::path::AbsolutePath;
@@ -37,14 +36,7 @@ pub(in crate::editor) fn typed_messages(
         ed.report(Severity::Info, "No messages");
         return Ok(());
     }
-    let label = ViewLabel::editor(EditorView::Messages);
-    let bid = match ed.state.buffers.find_by_label(&label) {
-        Some(bid) => bid,
-        None => {
-            lifecycle::open_view_buffer(&mut ed.state, &mut ed.view, BufferText::from(""), &label)
-        }
-    };
-    ed.sync_messages_view(bid);
+    let bid = ed.sync_messages_view();
     // None parks at the bottom (most recent entry).
     lifecycle::present_view(&mut ed.state, &mut ed.view, fp.pane(), bid, None);
     Ok(())

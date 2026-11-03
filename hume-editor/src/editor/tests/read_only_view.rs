@@ -492,7 +492,7 @@ fn labelled_count(ed: &Editor, label: &str) -> usize {
     ed.state
         .buffers
         .iter()
-        .filter(|(_, buf)| buf.label().map(ViewLabel::as_str) == Some(label))
+        .filter(|(_, buf)| buf.label().is_some_and(|l| l.to_string() == label))
         .count()
 }
 

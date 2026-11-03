@@ -152,7 +152,7 @@ fn view_content_follow_does_not_bump_edit_seq() {
     );
     let before = store.edit_seq();
     store.get_mut(id).follow_view_content(
-        BufferId::default(),
+        id,
         &mut crate::editor::position_stores::DetachedStores::default().stores(),
         "followed\n",
     );

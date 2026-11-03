@@ -147,7 +147,7 @@ fn stopping_an_unknown_name_reports_an_error() {
 
     stop(&mut rig.ed, LspServerTarget::Name(name("no-such-server")));
 
-    let log = logged(&rig.ed);
+    let log = log_entries(&rig.ed);
     assert!(
         log.contains(&(Severity::Error, "lsp: no server named 'no-such-server'")),
         "{log:?}"
@@ -244,7 +244,7 @@ fn stderr_action_is_logged_at_trace_with_the_server_name_prefix() {
 
     ed.dispatch_lsp_action(sid, ClientAction::Stderr("panic: oh no".to_string()));
 
-    let log = logged(&ed);
+    let log = log_entries(&ed);
     assert!(
         log.contains(&(Severity::Trace, "rust-analyzer: panic: oh no")),
         "expected a Trace-prefixed stderr line, got: {log:?}"
@@ -266,7 +266,7 @@ fn log_message_error_type_is_reported_at_error_severity() {
         ),
     );
 
-    let log = logged(&ed);
+    let log = log_entries(&ed);
     assert!(
         log.contains(&(Severity::Error, "rust-analyzer: something broke")),
         "type=1 (Error) must be reported at Error severity, got: {log:?}"
@@ -287,7 +287,7 @@ fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
         ),
     );
 
-    let log = logged(&ed);
+    let log = log_entries(&ed);
     assert!(
         log.contains(&(Severity::Trace, "rust-analyzer: indexing")),
         "type=3 (Info) must be demoted to Trace, not shown, got: {log:?}"
