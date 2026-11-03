@@ -1,3 +1,20 @@
+//! HUME's named editing commands, as pure functions of a buffer text and
+//! its selections.
+//!
+//! A motion, text object or selection command takes an
+//! `hume_editing::state::EditState`, plus its own parameters (a count, a
+//! [`MotionMode`], a character), and returns the next one. An edit returns
+//! an `hume_editing::edit::Edited`, which also carries the changeset it made.
+//! The editor binds keys to these functions by name. This crate does not
+//! depend on `hume-editor`, so no command can see which key ran it.
+//!
+//! - [`motion`], [`text_object`] and [`selection_cmd`] move and reshape
+//!   selections.
+//! - [`edit`] and [`surround`] change text; [`auto_pairs`] decides what
+//!   typing a bracket or quote inserts.
+//! - [`search`] and [`pair`] scan text for regex matches and delimiters.
+//! - [`register`] holds yanked text and recorded macros.
+
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 

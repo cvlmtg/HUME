@@ -1,6 +1,6 @@
 # Syntax Highlighting
 
-HUME colors your code with tree-sitter: accurate highlighting that stays correct as you type and handles partial or malformed code without choking.
+HUME colors your code with tree-sitter, which keeps highlighting correct as you type, even in partial or malformed code.
 
 Highlighting is opt-in per language. HUME recognizes many languages out of the box but ships no grammars. For a language to light up, you install its grammar, a small prebuilt package tree-sitter uses to parse that language. [PLUM](core-plugins.md#core-plum) downloads it for you.
 

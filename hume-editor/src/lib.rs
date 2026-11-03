@@ -1,3 +1,18 @@
+//! The `hume` binary and what makes it an editor: buffers, keymaps,
+//! command dispatch, the scripting and LSP glue, and the event loop.
+//!
+//! [`run`] starts the interactive editor in a terminal, and [`run_keys`]
+//! replays a key sequence against a file with no terminal. [`cli`] holds
+//! the file and config arguments both take.
+//!
+//! Inside, `Editor` keeps the Steel engine apart from `EditorState`, the
+//! data a command can change, so a Steel-backed command can borrow both at
+//! once. A key goes to the top of the input stack (the mode's keymap, or an
+//! overlay that owns the keyboard), resolves to a command name in the
+//! command registry, and runs, for the built-in commands, `hume-ops`'s pure
+//! functions against the buffer. Each frame, the editor syncs its panes and
+//! providers into `hume-engine` and draws.
+
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 

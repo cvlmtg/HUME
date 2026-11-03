@@ -1,6 +1,6 @@
 # Moving Around
 
-Getting the cursor where you want it is most of editing. HUME's motions put the common jumps (a word, a character on this line, a matching bracket, the line you were on a minute ago) one or two keystrokes away.
+HUME's motions put the common jumps (a word, a character on this line, a matching bracket, the line you were on a minute ago) one or two keystrokes away.
 
 Motions move the cursor and replace the current selection. In Extend mode they grow or shrink it instead; see [Extend mode](selections.md#extend-mode).
 

@@ -1,6 +1,6 @@
 # Modes
 
-One keyboard, several meanings. `d` deletes only in the mode where `d` means delete, so HUME can put a whole editor's worth of commands on plain letters, with no modifier gymnastics.
+Each mode gives the keys their own meaning. `d` deletes only in the mode where `d` means delete, so HUME can put most commands on plain letters instead of modifier chords.
 
 The statusline shows the active mode on its right. `Esc` always takes you back to Normal.
 

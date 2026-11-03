@@ -2,9 +2,7 @@
   <img src="/HUME-logo.svg" alt="HUME logo" width="200" />
 </div>
 
-## The pragmatic modal editor.
-
-Zero friction, maximum output. **HUME** rests on a simple premise: the common case should be the short case, and the classic papercuts of text editing should be designed out from the start.
+## The pragmatic modal editor
 
 **HUME** is a modal text editor for the terminal. It follows the select-then-act model: first select what you want to change, then say what to do with it.
 

@@ -96,16 +96,11 @@ When you and a plugin set the same option:
 `init.scm` can also react to what's being opened. The most common case is an option per file type: register an `on-language-set` handler that calls `(set-buffer-option! pane "option" value)` to override the option for that buffer (see [Hooks](writing-plugins.md#hooks) for the full hook API):
 
 ```scheme
-; 2-space indentation for Markdown buffers
+; 2-space indentation and word wrap for Markdown, source code unwrapped
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (when (equal? lang "markdown")
-      (set-buffer-option! pane "indent-width" 2))))
-
-; word-wrap Markdown buffers, leave source code unwrapped
-(register-hook! 'on-language-set
-  (lambda (pane lang)
-    (when (equal? lang "markdown")
+      (set-buffer-option! pane "indent-width" 2)
       (set-buffer-option! pane "wrap-mode" "word"))))
 
 ; treat '-' as a word character in CSS-family buffers, so `w`/`b`/`mm`/`*`
@@ -114,17 +109,9 @@ When you and a plugin set the same option:
   (lambda (pane lang)
     (when (member lang '("css" "scss" "less"))
       (set-buffer-option! pane "word-chars" "-"))))
-
-; keys for Markdown buffers only (see "Keys for one buffer" below)
-(bind-key! 'normal "G H" "markdown-heading" #:keymap "markdown-keys")
-(register-hook! 'on-language-set
-  (lambda (pane lang)
-    (if (equal? lang "markdown")
-        (attach-keymap! pane "markdown-keys")
-        (detach-keymap! pane "markdown-keys"))))
 ```
 
-`markdown-heading` is the command from [Example: Markdown headings](writing-plugins.md#example-markdown-headings).
+The same hook can give a file type keys of its own; see [Keys for one buffer](#keys-for-one-buffer).
 
 ## Key bindings
 
