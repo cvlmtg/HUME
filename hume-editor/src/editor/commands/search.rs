@@ -349,9 +349,11 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     // newline regex; on whitespace, it would expand to the whitespace run itself
     // and set a bare-space pattern (Vim instead scans to the nearest word; HUME
     // no-ops rather than adding that scan).
-    match chars.classify(text.char_at(primary.head().offset()).unwrap_or('\n')) {
-        CharClass::Eol | CharClass::Space => return Ok(()),
-        _ => {}
+    if matches!(
+        chars.classify(text.char_at(primary.head().offset()).unwrap_or('\n')),
+        CharClass::Eol | CharClass::Space
+    ) {
+        return Ok(());
     }
     let Some(range) = inner_word_impl(text, primary.head(), is_word_boundary, chars) else {
         return Ok(());

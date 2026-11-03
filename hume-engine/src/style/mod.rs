@@ -174,7 +174,11 @@ pub(crate) fn style_display_line(
             crate::types::CellContent::Whitespace { .. } => {
                 style = style.layer(theme.ui.whitespace);
             }
-            _ => {}
+            crate::types::CellContent::Grapheme
+            | crate::types::CellContent::TabFill
+            | crate::types::CellContent::WidthContinuation
+            | crate::types::CellContent::Empty
+            | crate::types::CellContent::Virtual { .. } => {}
         }
 
         // Tier 2e: the cell's own scope (inline-insert decorations). Layered

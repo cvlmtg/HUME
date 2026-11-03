@@ -478,16 +478,22 @@ pub(crate) fn lsp_server_registered(ctx: &mut SteelCtx, name: SteelVal) -> Steel
 fn registered_now(ctx: &mut SteelCtx, name: &ServerName) -> Result<bool, SteelErr> {
     let mut held = require_cap(ctx.host.lsp())?.lsp_server_claim(name);
     for queued in ctx.effects.iter() {
-        match &queued.effect {
-            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name == *name => {
+        let Effect::LspServerOp(op) = &queued.effect else {
+            continue;
+        };
+        match op {
+            PendingLspServerOp::Register(reg) if reg.name == *name => {
                 let _ = held.claim(reg.origin);
             }
-            Effect::LspServerOp(PendingLspServerOp::Unregister { name: n, origin })
-                if n == name =>
-            {
+            PendingLspServerOp::Unregister { name: n, origin } if n == name => {
                 let _ = held.clear(*origin);
             }
-            _ => {}
+            PendingLspServerOp::Register(_)
+            | PendingLspServerOp::Unregister { .. }
+            | PendingLspServerOp::SetLanguageServers { .. }
+            | PendingLspServerOp::Stop { .. }
+            | PendingLspServerOp::Restart { .. }
+            | PendingLspServerOp::ShowStatus { .. } => {}
         }
     }
     Ok(held.by().is_some())

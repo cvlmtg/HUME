@@ -165,7 +165,9 @@ pub(crate) fn render_pane(
                     row_bg,
                 );
             }
-            _ => {
+            DisplayLineKind::LineStart { .. }
+            | DisplayLineKind::Wrap { .. }
+            | DisplayLineKind::Filler => {
                 let line = line.get_or_insert_with(|| {
                     LineStyle::enter(
                         pos.line,
