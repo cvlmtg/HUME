@@ -134,8 +134,7 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
 /// Show `content` on pane `t` in the read-only view buffer labelled
 /// `label`, recording no jump. The first call opens the buffer; a later
 /// call replaces its text in place, so the buffer list never holds two
-/// views with one label. The cursor lands on `cursor_line` (clamped to the
-/// last content line), or on the last content line when `None`.
+/// views with one label. The cursor lands as [`present_view`] places it.
 pub(in crate::editor) fn show_read_only_view(
     state: &mut EditorState,
     ev: &mut EngineView,
@@ -155,10 +154,37 @@ pub(in crate::editor) fn show_read_only_view(
         forget_saved_views(ev, existing);
         existing
     } else {
-        let doc = Buffer::read_only_view(BufferText::from(content), label.clone());
-        open_buffer_and_notify(ev, state, doc)
+        open_view_buffer(state, ev, BufferText::from(content), label)
     };
+    present_view(state, ev, t, bid, cursor_line);
+    bid
+}
 
+/// Open a read-only view buffer labelled `label` holding `text`. No buffer
+/// may have that label yet.
+pub(in crate::editor) fn open_view_buffer(
+    state: &mut EditorState,
+    ev: &mut EngineView,
+    text: BufferText,
+    label: &ViewLabel,
+) -> BufferId {
+    debug_assert!(
+        state.buffers.find_by_label(label).is_none(),
+        "open_view_buffer: one buffer per view label"
+    );
+    open_buffer_and_notify(ev, state, Buffer::read_only_view(text, label.clone()))
+}
+
+/// Show view buffer `bid` on pane `t`, recording no jump, with the cursor
+/// on `cursor_line` (clamped to the last content line), or on the last
+/// content line when `None`.
+pub(in crate::editor) fn present_view(
+    state: &mut EditorState,
+    ev: &mut EngineView,
+    t: CommandPane,
+    bid: BufferId,
+    cursor_line: Option<ContentLine>,
+) {
     if t.bid(ev) != bid {
         switch_pane_to_buffer(state, ev, t.pid(), bid);
     }
@@ -174,7 +200,6 @@ pub(in crate::editor) fn show_read_only_view(
         cursor_line,
         GraphemeCol::new(0),
     );
-    bid
 }
 
 /// Remove buffer `id`. Every pane showing it (active tab or not) redirects

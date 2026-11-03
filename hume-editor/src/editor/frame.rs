@@ -524,6 +524,9 @@ impl Editor {
         self.resync_mouse_mode();
         self.resync_cwd();
         self.flush_osc52();
+        // After `flush_osc52`, which can log, and before anything below reads
+        // selections, which a rebuilt `[messages]` carries.
+        self.follow_message_log();
 
         // The drawer's model (the `:ls` rows, the scroll clamp) and its view,
         // with the text of its newly visible rows, then the layout, for a band

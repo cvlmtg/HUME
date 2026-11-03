@@ -83,7 +83,7 @@ use scripting::theme_search_paths;
 
 pub(in crate::editor) use minibuf::MiniBuffer;
 
-use message_log::MessageLog;
+use message_log::{MessageLog, MessagesViewStamp};
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
 //
@@ -260,6 +260,9 @@ pub(crate) struct EditorState {
     pub(in crate::editor) summary_ttl: u8,
     /// Persistent log of warnings, errors, and trace entries.
     pub(crate) message_log: MessageLog,
+    /// What `[messages]` was last built from, `None` before it first is.
+    /// `Editor::follow_message_log` rebuilds it when this goes stale.
+    pub(in crate::editor) messages_view: Option<MessagesViewStamp>,
     /// All editor settings: global defaults and per-buffer-overridable values.
     pub(crate) settings: EditorSettings,
     /// Name of the theme `EngineView::theme` was loaded from; empty while the
@@ -415,6 +418,7 @@ impl EditorState {
             status_msg: None,
             summary_ttl: 0,
             message_log: MessageLog::new(),
+            messages_view: None,
             settings,
             shown_theme: String::new(),
             last_find: None,

@@ -6,10 +6,14 @@
 
 use std::collections::VecDeque;
 
-use hume_core::Severity;
+use hume_core::{BufferId, Severity};
+use hume_editing::text::normalize_line_endings_owned;
 use hume_engine::theme::diagnostic_scopes;
+use hume_scripting::host::DecorationHost;
 
+use super::buffer::{EditorView, ViewLabel};
 use super::error::CommandError;
+use super::host_impl::EditorHostImpl;
 use super::settings::MessagesMinSeverity;
 use super::{Editor, EditorState};
 
@@ -51,6 +55,17 @@ pub(crate) struct MessageLog {
     /// `messages-min-severity` shows it.
     total_errors: u64,
     total_warnings: u64,
+    /// Every push ever made, evicting or not. `push` is the only writer of
+    /// `entries`, so this moves whenever they change.
+    pushed: u64,
+}
+
+/// What the `[messages]` buffer was last built from: the log as of a push
+/// count, shown at a floor. A different stamp means the buffer is stale.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) struct MessagesViewStamp {
+    pushed: u64,
+    floor: MessagesMinSeverity,
 }
 
 impl MessageLog {
@@ -60,6 +75,7 @@ impl MessageLog {
             seen_up_to: 0,
             total_errors: 0,
             total_warnings: 0,
+            pushed: 0,
         }
     }
 
@@ -69,7 +85,11 @@ impl MessageLog {
     /// When the entry count would exceed [`MAX_ENTRIES`], the oldest trace is
     /// evicted, else the oldest warning, else the oldest error, and
     /// `seen_up_to` moves back when the evicted entry was a seen one.
+    ///
+    /// The text is stored with LF line endings, as a buffer holds it, so
+    /// [`Self::format_with_spans`]' spans fit the `[messages]` text.
     pub(in crate::editor) fn push(&mut self, severity: Severity, text: String) {
+        self.pushed += 1;
         match severity {
             Severity::Error => self.total_errors += 1,
             Severity::Warning => self.total_warnings += 1,
@@ -82,7 +102,18 @@ impl MessageLog {
                 self.seen_up_to -= 1;
             }
         }
-        self.entries.push_back(LogEntry { severity, text });
+        self.entries.push_back(LogEntry {
+            severity,
+            text: normalize_line_endings_owned(text),
+        });
+    }
+
+    /// The stamp of the log as `floor` shows it now.
+    pub(in crate::editor) fn view_stamp(&self, floor: MessagesMinSeverity) -> MessagesViewStamp {
+        MessagesViewStamp {
+            pushed: self.pushed,
+            floor,
+        }
     }
 
     /// The oldest entry of the least severe kind present. A log with no
@@ -160,8 +191,9 @@ impl MessageLog {
 
     /// Mark all current entries as seen.
     ///
-    /// Called when the user opens `:messages`, or automatically after the
-    /// statusline summary's keystroke budget elapses.
+    /// Called when the user opens `:messages`, on every frame a pane on the
+    /// active tab shows `[messages]`, and after the statusline summary's
+    /// keystroke budget elapses.
     pub(in crate::editor) fn mark_all_seen(&mut self) {
         self.seen_up_to = self.entries.len();
     }
@@ -204,8 +236,8 @@ impl MessageLog {
     /// char offsets (not bytes), since message text may be non-ASCII. Scope names,
     /// not `ScopeId`s: this type has no registry access (it's not an
     /// `Editor` method), so interning is the caller's job. See
-    /// `commands/typed_misc.rs`'s `typed_messages`, the sole production
-    /// caller, which turns each name into an `ExtraHighlightEntry`.
+    /// [`Editor::fill_messages_view`], the sole production caller, which
+    /// turns each name into an `ExtraHighlightEntry`.
     ///
     /// Highlighting goes through the `Extra` tier rather than tree-sitter:
     /// `[messages]` is a synthetic, path-less buffer, so `detect_language`
@@ -261,6 +293,53 @@ impl MessageLog {
 }
 
 impl Editor {
+    /// Bring `[messages]` up to date with the log and `messages-min-severity`
+    /// when either changed since it was last built, and mark the log seen
+    /// while a pane on the active tab shows it. Runs once per frame.
+    pub(in crate::editor) fn follow_message_log(&mut self) {
+        let label = ViewLabel::editor(EditorView::Messages);
+        let Some(bid) = self.state.buffers.find_by_label(&label) else {
+            return;
+        };
+        let floor = self.state.settings.messages_min_severity;
+        if self.state.messages_view != Some(self.state.message_log.view_stamp(floor)) {
+            let (content, spans) = self.state.message_log.format_with_spans(floor);
+            self.fill_messages_view(bid, &content, spans);
+        }
+        if self
+            .view
+            .active_pane_ids()
+            .into_iter()
+            .any(|pid| self.view.panes[pid].buffer_id() == bid)
+        {
+            self.state.message_log.mark_all_seen();
+        }
+    }
+
+    /// Rebuild `[messages]` (`bid`) as `content`, the log formatted at the
+    /// current floor, with its severity `spans`. Every stored position is
+    /// carried through the change, so no cursor moves on its own.
+    pub(in crate::editor) fn fill_messages_view(
+        &mut self,
+        bid: BufferId,
+        content: &str,
+        spans: Vec<(usize, usize, &'static str)>,
+    ) {
+        let (buffers, mut stores) = self.state.edit_parts();
+        buffers
+            .get_mut(bid)
+            .follow_view_content(bid, &mut stores, content);
+        let spans = spans
+            .into_iter()
+            .map(|(start, end, scope)| (start, end, scope.to_string()))
+            .collect();
+        EditorHostImpl::new(&mut self.state, &mut self.view)
+            .set_extra_highlights("messages".to_string(), bid, spans)
+            .expect("the spans lie in the text they were formatted with");
+        let floor = self.state.settings.messages_min_severity;
+        self.state.messages_view = Some(self.state.message_log.view_stamp(floor));
+    }
+
     /// Report a message through [`EditorState::report`].
     pub(in crate::editor) fn report(&mut self, severity: Severity, text: impl Into<String>) {
         self.state.report(severity, text);

@@ -259,10 +259,7 @@ impl Editor {
     }
 
     /// Show `content` in the read-only view labelled `label` on `fp`; see
-    /// [`lifecycle::show_read_only_view`]. Returns the view buffer's id, e.g.
-    /// for callers attaching decorations (`:messages`'s severity highlights)
-    /// that must target this specific buffer rather than whatever ends up
-    /// focused.
+    /// [`lifecycle::show_read_only_view`]. Returns the view buffer's id.
     pub(in crate::editor) fn open_read_only_view(
         &mut self,
         fp: FocusedPane,

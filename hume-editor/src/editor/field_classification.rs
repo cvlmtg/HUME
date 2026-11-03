@@ -62,6 +62,10 @@ fn editor_state_fields_are_classified() {
             // the reset to decide whether to report success;
             // resetting it would defeat that
             message_log: _,
+            // config: reset_config_state clears it, since the new
+            // ConfigState holds none of `[messages]`' highlights, so the
+            // next frame rebuilds them
+            messages_view: _,
             // config: settings::ops::reset_globals rebuilds
             // EditorSettings wholesale
             settings: _,

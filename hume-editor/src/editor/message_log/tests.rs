@@ -355,3 +355,28 @@ fn evicting_an_unseen_entry_leaves_the_seen_ones_alone() {
     log.push(Severity::Error, "new".to_string());
     assert_eq!(log.unseen_counts(SHOW_ALL), (MAX_ENTRIES - 10, 0));
 }
+
+#[test]
+fn push_stores_text_with_lf_line_endings() {
+    let log = make_log(&[(Severity::Warning, "a\r\nb\rc")]);
+    assert_eq!(stored_texts(&log), ["a\nb\nc"]);
+}
+
+#[test]
+fn a_push_into_a_full_log_changes_the_view_stamp() {
+    let mut log = MessageLog::new();
+    push_errors(&mut log, "e", MAX_ENTRIES);
+    let before = log.view_stamp(SHOW_ALL);
+    log.push(Severity::Error, "more".to_string());
+    assert_eq!(log.entries().len(), MAX_ENTRIES, "sanity: the push evicted");
+    assert_ne!(log.view_stamp(SHOW_ALL), before);
+}
+
+#[test]
+fn the_floor_is_part_of_the_view_stamp() {
+    let log = make_log(&[(Severity::Warning, "w")]);
+    assert_ne!(
+        log.view_stamp(MessagesMinSeverity::Trace),
+        log.view_stamp(MessagesMinSeverity::Error)
+    );
+}

@@ -1,17 +1,16 @@
 use std::time::Duration;
 
 use hume_core::{BufferId, Severity};
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::{Cycle, Direction, EngineView};
 use hume_grid::Rgb;
 use hume_platform::path::AbsolutePath;
-use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
 use super::super::EditorState;
 use super::{CommandPane, FocusedPane, redo_steps, undo_steps};
-use crate::editor::buffer::{Buffer, EditorView, ViewLabel};
+use crate::editor::buffer::{Buffer, EditorView, ViewLabel, lifecycle};
 use crate::editor::error::CommandError;
-use crate::editor::host_impl::EditorHostImpl;
 use crate::editor::input_stack::DrawerLayer;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::settings::THEME_KEY;
@@ -22,8 +21,10 @@ use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 /// `:messages`: open the message log in a read-only buffer.
 ///
 /// Displays the entries logged during the session at or above
-/// `messages-min-severity`. Cursor starts at the last entry (most recent). Dismiss with
-/// `:bd` or switch away with `:b#`.
+/// `messages-min-severity`, and follows the log while open (see
+/// `Editor::follow_message_log`). Cursor starts at the last entry (most
+/// recent); every other pane showing the buffer keeps its cursor. Dismiss
+/// with `:bd` or switch away with `:b#`.
 pub(in crate::editor) fn typed_messages(
     ed: &mut Editor,
     fp: FocusedPane,
@@ -36,23 +37,20 @@ pub(in crate::editor) fn typed_messages(
         ed.report(Severity::Info, "No messages");
         return Ok(());
     }
-    ed.state.message_log.mark_all_seen();
+    let label = ViewLabel::editor(EditorView::Messages);
+    let bid = match ed.state.buffers.find_by_label(&label) {
+        Some(bid) => bid,
+        None => lifecycle::open_view_buffer(
+            &mut ed.state,
+            &mut ed.view,
+            BufferText::from(content.as_str()),
+            &label,
+        ),
+    };
+    ed.fill_messages_view(bid, &content, spans);
     // None parks at the bottom (most recent entry).
-    let bid = ed.open_read_only_view(fp, &ViewLabel::editor(EditorView::Messages), &content, None);
-    let spans = spans
-        .into_iter()
-        .map(|(start, end, scope)| (start, end, scope.to_string()))
-        .collect();
-    // Wholesale replace under a fixed source name: repeat `:messages` calls
-    // route through set_view_content (no ChangeSet), so stale spans from a
-    // prior call can't be remapped and must be overwritten here instead.
-    // Goes through the same `DecorationHost::set_extra_highlights` boundary
-    // `set-extra-highlights!` calls, not a hand-built `ExtraHighlightEntry`
-    // list, so `:messages`' spans get the same range validation as any
-    // other caller instead of a second, unvalidated construction path.
-    EditorHostImpl::new(&mut ed.state, &mut ed.view)
-        .set_extra_highlights("messages".to_string(), bid, spans)
-        .map_err(|e| CommandError::new(e.to_string()))?;
+    lifecycle::present_view(&mut ed.state, &mut ed.view, fp.pane(), bid, None);
+    ed.state.message_log.mark_all_seen();
     Ok(())
 }
 

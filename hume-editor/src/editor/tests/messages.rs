@@ -1,7 +1,8 @@
 // `:messages` severity highlighting: the `format_with_spans` → extra-highlights
 // store → `ScopedHighlighter` Extra tier wiring added alongside the message
 // log's existing `[severity]` prefix formatting. Also the
-// `messages-min-severity` floor on what `:messages` shows.
+// `messages-min-severity` floor on what `:messages` shows, and the open view
+// following the log.
 //
 // The highlighting tests use `Editor::open` (not `editor_from`), like
 // `lsp_render.rs`, so `build_pane` has registered the pane's `PaneHighlights`
@@ -172,9 +173,9 @@ fn repeat_messages_replaces_stale_spans_not_appends() {
         "\"[warning] first\" -> body ends at char 15"
     );
 
-    // set_view_content (the repeat-call path) replaces the rope without a
-    // ChangeSet, so remap_through can't carry these spans forward. The
-    // command handler must recompute and overwrite them wholesale.
+    // A repeat call carries the first call's spans through its edit, then
+    // sets every span again: the new set replaces the carried one, never adds
+    // to it.
     ed.state
         .message_log
         .push(Severity::Error, "second".to_string());
@@ -221,4 +222,232 @@ fn lowering_the_floor_shows_trace_reported_before_it() {
     assert!(!shown_messages(&ed).contains("trace detail"));
     run_set(&mut ed, "global messages-min-severity=trace").expect("trace is a valid floor");
     assert!(shown_messages(&ed).contains("trace detail"));
+}
+
+// ── The open view follows the log ────────────────────────────────────────────
+
+/// Run one frame, which brings an open `[messages]` up to date.
+fn frame(ed: &mut Editor) {
+    ed.render_to_buf(Rect::new(0, 0, 60, 12));
+}
+
+/// Open `:messages` on the focused pane and return the view's buffer.
+fn open_messages(ed: &mut Editor) -> BufferId {
+    ed.execute_typed("messages", None)
+        .expect(":messages opens the view");
+    ed.focused_buffer_id()
+}
+
+fn buffer_text(ed: &Editor, bid: BufferId) -> String {
+    ed.state.buffers.get(bid).text().to_string()
+}
+
+fn head_line(ed: &Editor, pane: PaneId, bid: BufferId) -> usize {
+    let sels = ed
+        .selections_for(pane, bid)
+        .expect("the pane has shown the buffer");
+    EditView::bind(ed.state.buffers.get(bid).text(), sels)
+        .primary()
+        .head_line()
+        .index()
+}
+
+fn summary(ed: &Editor) -> Option<String> {
+    ed.state
+        .message_log
+        .summary_text(ed.state.settings.messages_min_severity)
+}
+
+#[test]
+fn a_message_logged_while_the_view_is_open_appears_on_the_next_frame() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    let bid = open_messages(&mut ed);
+
+    ed.report(Severity::Error, "second");
+    frame(&mut ed);
+
+    assert_eq!(buffer_text(&ed, bid), "[warning] first\n[error] second\n");
+    let spans = ed
+        .state
+        .config
+        .decorations
+        .extra_highlights_for("messages", bid);
+    assert_eq!(spans.len(), 4, "two entries, a badge and a body span each");
+    // "[warning] first\n" is 16 chars, "[error] second" ends 14 later.
+    assert_eq!(spans[3].end, co(30));
+}
+
+#[test]
+fn the_open_view_refilters_when_the_floor_changes() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Trace, "detail");
+    ed.report(Severity::Warning, "careful");
+    let bid = open_messages(&mut ed);
+    assert_eq!(buffer_text(&ed, bid), "[warning] careful\n");
+
+    run_set(&mut ed, "global messages-min-severity=trace").expect("trace is a valid floor");
+    frame(&mut ed);
+    assert_eq!(buffer_text(&ed, bid), "[trace] detail\n[warning] careful\n");
+
+    run_set(&mut ed, "global messages-min-severity=error").expect("error is a valid floor");
+    frame(&mut ed);
+    assert_eq!(buffer_text(&ed, bid), "\n", "no entry passes the floor");
+    assert!(
+        ed.state
+            .config
+            .decorations
+            .extra_highlights_for("messages", bid)
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_cursor_on_the_last_entry_stays_when_a_new_one_arrives() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "a");
+    ed.report(Severity::Warning, "b");
+    let bid = open_messages(&mut ed);
+    let pane = ed.view.focused_pane();
+    assert_eq!(
+        head_line(&ed, pane, bid),
+        1,
+        "sanity: :messages parks on the last entry"
+    );
+
+    ed.report(Severity::Warning, "c");
+    frame(&mut ed);
+
+    assert_eq!(
+        buffer_text(&ed, bid),
+        "[warning] a\n[warning] b\n[warning] c\n"
+    );
+    assert_eq!(head_line(&ed, pane, bid), 1);
+}
+
+#[test]
+fn every_pane_keeps_its_entry_when_earlier_ones_leave_the_view() {
+    let mut ed = open_headless(None);
+    run_set(&mut ed, "global messages-min-severity=trace").expect("trace is a valid floor");
+    for (severity, text) in [
+        (Severity::Trace, "t0"),
+        (Severity::Warning, "w0"),
+        (Severity::Trace, "t1"),
+        (Severity::Warning, "w1"),
+        (Severity::Warning, "w2"),
+    ] {
+        ed.report(severity, text);
+    }
+    let bid = open_messages(&mut ed);
+    let left = ed.view.focused_pane();
+    let right = vsplit_focused(&mut ed);
+    seek_to_line(&mut ed, 4);
+    ed.switch_focused_pane(left);
+    seek_to_line(&mut ed, 1);
+
+    run_set(&mut ed, "global messages-min-severity=warning").expect("warning is a valid floor");
+    frame(&mut ed);
+
+    assert_eq!(
+        buffer_text(&ed, bid),
+        "[warning] w0\n[warning] w1\n[warning] w2\n"
+    );
+    assert_eq!(head_line(&ed, left, bid), 0);
+    assert_eq!(head_line(&ed, right, bid), 2);
+}
+
+#[test]
+fn following_the_log_leaves_the_view_unmodified() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    let bid = open_messages(&mut ed);
+
+    ed.report(Severity::Warning, "second");
+    frame(&mut ed);
+
+    assert_eq!(buffer_text(&ed, bid), "[warning] first\n[warning] second\n");
+    assert!(!ed.state.has_unsaved_changes(bid));
+}
+
+#[test]
+fn a_view_on_the_active_tab_marks_new_messages_seen() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    open_messages(&mut ed);
+
+    ed.report(Severity::Warning, "second");
+    frame(&mut ed);
+
+    assert_eq!(summary(&ed), None);
+}
+
+#[test]
+fn a_view_open_but_not_shown_leaves_new_messages_unseen() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    let bid = open_messages(&mut ed);
+    ed.execute_typed("bp", None)
+        .expect("a previous buffer exists");
+    assert_ne!(ed.focused_buffer_id(), bid, "sanity: the view is hidden");
+
+    ed.report(Severity::Warning, "second");
+    frame(&mut ed);
+
+    assert_eq!(summary(&ed).as_deref(), Some("1 warning (see :messages)"));
+}
+
+#[test]
+fn a_view_on_another_tab_leaves_new_messages_unseen() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    ed.execute_typed("tabnew", None).expect("a tab opens");
+    open_messages(&mut ed);
+    ed.execute_typed("tabprev", None)
+        .expect("the first tab exists");
+
+    ed.report(Severity::Warning, "second");
+    frame(&mut ed);
+
+    assert_eq!(summary(&ed).as_deref(), Some("1 warning (see :messages)"));
+}
+
+#[test]
+fn repeating_messages_keeps_the_other_panes_cursor() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "a");
+    ed.report(Severity::Warning, "b");
+    let bid = open_messages(&mut ed);
+    let left = ed.view.focused_pane();
+    let right = vsplit_focused(&mut ed);
+    seek_to_line(&mut ed, 1);
+    ed.switch_focused_pane(left);
+
+    ed.report(Severity::Warning, "c");
+    open_messages(&mut ed);
+
+    assert_eq!(head_line(&ed, right, bid), 1);
+    assert_eq!(
+        head_line(&ed, left, bid),
+        2,
+        "the pane running :messages parks on the last entry"
+    );
+}
+
+#[test]
+fn a_config_reload_keeps_the_open_views_highlights() {
+    let mut ed = open_headless(None);
+    ed.report(Severity::Warning, "first");
+    let bid = open_messages(&mut ed);
+
+    ed.reset_config_state();
+    frame(&mut ed);
+
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .extra_highlights_for("messages", bid)
+            .len(),
+        2
+    );
 }

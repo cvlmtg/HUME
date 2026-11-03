@@ -161,7 +161,7 @@ pub(in crate::editor) enum EditorEvent {
         origin: hume_scripting::json::WireOrigin,
     },
     /// Fires when a buffer's text changes: user edits, undo, redo, `:e!`
-    /// reload, and read-only view refreshes (`:messages`, `:ls`,
+    /// reload, and read-only view refreshes (`[messages]` following the log,
     /// `:plugin-status`) alike, all of which bump the buffer text's generation. Raised
     /// by diffing the text generation against a per-buffer `announced_generation`
     /// baseline at a drain observation point (`Editor::detect_text_changed`,
@@ -175,13 +175,13 @@ pub(in crate::editor) enum EditorEvent {
     /// not one per mutation.
     ///
     /// Never fires for: a no-op undo at the history root; an edit refused by
-    /// the read-only guard; an edit, insert/paste session, or `:e!` reload
-    /// whose composed `ChangeSet` is the identity transform
-    /// (`Buffer::apply_edit*`, `commit_edit_group`, and `replace_text_recorded` all
-    /// skip the mutation (or the revision that would make undo replay one)
-    /// entirely in that case, specifically so this doesn't fire for one).
-    /// Does fire, unconditionally and with no identity check,
-    /// for every `:messages`/`:ls`/`:plugin-status` refresh of an
+    /// the read-only guard; an edit, insert/paste session, `:e!` reload or
+    /// `[messages]` rebuild whose composed `ChangeSet` is the identity
+    /// transform (`Buffer::apply_edit*`, `commit_edit_group`, and
+    /// `install_line_diff` all skip the mutation (or the revision that would
+    /// make undo replay one) entirely in that case, specifically so this
+    /// doesn't fire for one). Does fire, unconditionally and with no
+    /// identity check, for every `:plugin-status`/`:lsp-status` refresh of an
     /// already-open view buffer, even a byte-identical one; a handler that
     /// resolves the buffer's path must handle `#f` (these buffers have none).
     /// See `Buffer::announced_generation`'s doc.

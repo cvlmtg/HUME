@@ -116,10 +116,10 @@ fn edit_seq_starts_at_zero_and_bumps_explicitly() {
     assert_eq!(store.edit_seq(), 2);
 }
 
-/// `Buffer::set_view_content` (`:messages` refresh) is a system refresh,
-/// not a user edit: it must not advance `edit_seq`, or a `PasteStamp`
-/// stamped by a capture would go stale just from the user glancing at
-/// `:messages` between a kill and a paste.
+/// `Buffer::set_view_content` (a view refresh such as `:plugin-status`) is
+/// a system refresh, not a user edit: it must not advance `edit_seq`, or a
+/// `PasteStamp` stamped by a capture would go stale just from the user
+/// glancing at a view between a kill and a paste.
 #[test]
 fn view_content_refresh_does_not_bump_edit_seq() {
     let (mut store, mut ev) = store_with_engine();
@@ -136,6 +136,27 @@ fn view_content_refresh_does_not_bump_edit_seq() {
         before,
         "set_view_content is a system refresh, not a user edit: edit_seq must not move"
     );
+}
+
+/// A view following its source is a system refresh like `set_view_content`.
+#[test]
+fn view_content_follow_does_not_bump_edit_seq() {
+    let (mut store, mut ev) = store_with_engine();
+    let id = make_id(&mut ev);
+    store.open(
+        id,
+        Buffer::read_only_view(
+            BufferText::from("hello\n"),
+            crate::editor::buffer::ViewLabel::editor(crate::editor::buffer::EditorView::Messages),
+        ),
+    );
+    let before = store.edit_seq();
+    store.get_mut(id).follow_view_content(
+        BufferId::default(),
+        &mut crate::editor::position_stores::DetachedStores::default().stores(),
+        "followed\n",
+    );
+    assert_eq!(store.edit_seq(), before);
 }
 
 /// `Buffer::replace_text_recorded` (`:e!`) is likewise a system refresh, not a

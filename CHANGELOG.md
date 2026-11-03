@@ -22,6 +22,7 @@
 - `z m` colors each file's status, and keeps it visible when the path is too long for the picker.
 - `z m` lists files as `git status` reports them, and stays open with git's error when `git status` fails.
 - `:messages` shows only warnings and errors. Set the new `messages-min-severity` to `trace` to show debugging detail too, such as a language server's output.
+- `:messages` stays up to date while it is open, including when `messages-min-severity` changes.
 
 ### Plugins & scripting
 - A plugin's picker binds every key itself, and new `picker-move!` moves its selection.
