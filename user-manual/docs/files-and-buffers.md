@@ -98,7 +98,7 @@ The statusline shows `[RO]` for them, and editing commands are refused with a wa
 
 In `[messages]`, each entry's `[warning]`/`[error]`/`[trace]` tag and message text are colored by severity, and themes can restyle these independently of everything else.
 
-`[messages]` stays up to date while it is open: new messages appear at the end, and changing `messages-min-severity` shows or hides entries. Your cursor stays on the entry it is on. While `[messages]` is on screen, the statusline doesn't count its messages as unread.
+`[messages]` stays up to date while it is open: new messages appear at the end, and changing `messages-min-severity` shows or hides entries. Your cursor stays on its entry. If that entry is hidden or dropped from the log, the cursor moves to the next entry, or to the one before when it was the last. Messages count as read once the end of `[messages]` is on screen, and the statusline stops counting them.
 
 Files you open are always editable, whatever their permissions on disk. A write you aren't allowed to make fails at `:w` rather than being blocked up front.
 
