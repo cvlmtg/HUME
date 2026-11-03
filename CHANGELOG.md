@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.18.0] - 2026-11-03
+
 ### Breaking changes
 - `diff-lines`, `diff-buffer-lines`, `buffer-revision-diff` and `diff-words` no longer return `'deadline-hit`: drop any code that reads it.
 - `on-text-changed` handlers take the changed lines as a second argument: write `(lambda (pane changes) ...)`.
