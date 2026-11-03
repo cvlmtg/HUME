@@ -612,7 +612,7 @@ fn lsp_stop_keeps_a_sign_where_a_preceding_edit_moved_it() {
     let (mut rig, _sid, bid, _uri) = plain_rig(&tmp, "aa\nbb\ncc\n");
     let ed = &mut rig.ed;
 
-    let scope = ed.view.registry.intern_runtime("x");
+    let scope = ed.view.registry.intern("x");
     ed.state.config.decorations.set_signs(
         "test".to_string(),
         bid,

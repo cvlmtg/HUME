@@ -720,7 +720,10 @@ impl LanguageRegistry {
                 .filter(|(_, minor)| !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit()))
                 .map(|(major, _)| major)
         });
-        let base = dotted.clone().last().unwrap_or(program);
+        let base = dotted
+            .clone()
+            .last()
+            .expect("successors starts from Some(program)");
         let unversioned = base.trim_end_matches(|c: char| c.is_ascii_digit());
         dotted
             .chain((unversioned != base).then_some(unversioned))

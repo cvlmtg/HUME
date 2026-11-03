@@ -460,6 +460,12 @@ impl EditorState {
             != 0
     }
 
+    /// Drop a half-typed key sequence and its count.
+    pub(in crate::editor) fn discard_pending_keys(&mut self) {
+        self.pending.clear();
+        self.count = hume_core::Count::UNTYPED;
+    }
+
     // ── Mode ──────────────────────────────────────────────────────────────────
 
     pub(crate) fn mode(&self) -> Mode {

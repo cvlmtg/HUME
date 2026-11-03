@@ -19,7 +19,6 @@
 //! `Popup` dismisses on any of them. [`Editor::base_mouse`] is the `Base`
 //! layer's policy, reached only after the stack has let the event through.
 
-use hume_core::Count;
 use hume_engine::pipeline::PaneHit;
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -122,8 +121,7 @@ impl Editor {
     /// the case where a stale drag would extend a selection in a pane that
     /// isn't even focused anymore.
     fn clear_pending_input(&mut self) {
-        self.state.pending.clear();
-        self.state.count = Count::UNTYPED;
+        self.state.discard_pending_keys();
         self.state.status_msg = None;
     }
 

@@ -80,7 +80,7 @@ impl TreeSitterHighlighter {
                 if name.starts_with('_') {
                     None
                 } else {
-                    Some(registry.intern_runtime(name))
+                    Some(registry.intern(name))
                 }
             })
             .collect();

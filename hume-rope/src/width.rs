@@ -185,7 +185,7 @@ impl Placeholder {
     pub fn as_str(&self) -> &str {
         // Only ASCII is ever written below, so the slice is valid UTF-8 and
         // its byte length is also its display width.
-        std::str::from_utf8(&self.buf[..self.len]).unwrap_or("<?>")
+        std::str::from_utf8(&self.buf[..self.len]).expect("a placeholder holds only ASCII")
     }
 }
 

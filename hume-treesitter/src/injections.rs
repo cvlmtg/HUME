@@ -573,17 +573,19 @@ impl PriorInjections {
 }
 
 /// `group`'s ranges parsed with its grammar against `old_tree`. `None` when
-/// the parser rejects the grammar or the ranges, or the parse is cancelled.
+/// the parse is cancelled.
 fn parse_group(
     parser: &mut tree_sitter::Parser,
     cx: &InjectionContext<'_>,
     group: &InjectionGroup,
     old_tree: Option<&tree_sitter::Tree>,
 ) -> Option<tree_sitter::Tree> {
-    // An ABI mismatch on the injected grammar.
-    parser.set_language(group.bundle.grammar.language()).ok()?;
-    // Non-monotonic ranges, which normalization rules out.
-    parser.set_included_ranges(&group.ranges).ok()?;
+    parser
+        .set_language(group.bundle.grammar.language())
+        .expect("ABI verified when the grammar loaded, before its bundle existed");
+    parser
+        .set_included_ranges(&group.ranges)
+        .expect("group_sites normalizes every group's ranges");
     run_parse(parser, cx.rope, old_tree, cx.cancel)
 }
 

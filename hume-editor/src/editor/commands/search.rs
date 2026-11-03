@@ -409,7 +409,9 @@ pub(in crate::editor) fn cmd_search_selection(
 /// search register, and set it as `t`'s buffer's active search pattern.
 /// Shared tail of `*` and Ctrl-/. Both set the same (register, pattern) pair
 /// that live search sets on confirm; the match-cache/highlights are rebuilt
-/// lazily per-frame regardless of which path set the pattern.
+/// lazily per-frame regardless of which path set the pattern. Fails,
+/// changing nothing, when `raw` does not compile: a selection past the
+/// regex size limit.
 ///
 /// Callers render `raw` through `render_search_input` rather than handing
 /// over a bare pattern, so `SearchPattern::compile` stays the crate's one
@@ -421,9 +423,8 @@ fn set_search_pattern(
     t: CommandPane,
     raw: String,
 ) -> Result<(), CommandError> {
-    let Some(sp) = SearchPattern::compile(&raw) else {
-        return Ok(());
-    };
+    let sp = SearchPattern::compile(&raw)
+        .ok_or_else(|| CommandError::transient("invalid search pattern"))?;
     state.registers.set_search_register(raw);
     let bid = t.bid(view);
     state.buffers.get_mut(bid).search_pattern = Some(sp);

@@ -125,6 +125,20 @@ fn collapse_if_repeat(state: EditState, values: &[Piece], before: bool) -> EditS
     })
 }
 
+/// Paste `values` before or after `focused`'s selections in `buf`, replacing
+/// what the open Paste session has pasted so far.
+fn paste_values(
+    state: &mut EditorState,
+    focused: PaneId,
+    buf: BufferId,
+    before: bool,
+    values: &[Piece],
+) -> Result<(), CommandError> {
+    let paste_fn = if before { paste_before } else { paste_after };
+    let (buffers, mut stores) = state.edit_parts();
+    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| paste_fn(s, values))
+}
+
 /// A resolved paste, ready for [`do_paste`] to execute.
 struct ResolvedPaste {
     values: Vec<Piece>,
@@ -181,11 +195,7 @@ fn do_paste(
         EditSessionKind::Paste { before },
         || buffers.get(buf).begin_edit_group(base, undo_sels),
     )?;
-    let paste_fn = if before { paste_before } else { paste_after };
-    let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| {
-        paste_fn(s, &values)
-    })?;
+    paste_values(state, focused, buf, before, &values)?;
 
     // An explicit register prefix opts out of the stamp entirely; see
     // PasteStamp's doc for why.
@@ -491,11 +501,7 @@ fn do_paste_cycle(
             "no newer entry"
         })
     })?;
-    let paste_fn = if before { paste_before } else { paste_after };
-    let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| {
-        paste_fn(s, &values)
-    })?;
+    paste_values(state, focused, buf, before, &values)?;
     // Cycling always lands on a ring slot, so reflect it in the stamp so a
     // following bare paste (of either variant) continues from here.
     if let Some(slot) = state.kill_ring.cycle_position() {

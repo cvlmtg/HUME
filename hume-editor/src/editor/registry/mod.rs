@@ -118,6 +118,17 @@ impl CommandRegistry {
         self.commands.get(fold(name).as_ref())
     }
 
+    /// The command `name` (in any case) names, or the typed command it is an
+    /// alias of.
+    fn resolve(&self, name: &str) -> Option<&Command> {
+        let key = fold(name);
+        let canonical = self
+            .alias_map
+            .get(key.as_ref())
+            .map_or(key.as_ref(), |c| c.as_ref());
+        self.commands.get(canonical)
+    }
+
     /// Returns `true` if `name` is registered as either a mappable or typed command.
     ///
     /// Unlike [`Self::get_mappable`], this also matches typed commands. Use it
@@ -214,12 +225,7 @@ impl CommandRegistry {
     /// command: `:` never falls back to a mappable command; see
     /// `run_command_line` in `input_stack/command.rs`.
     pub(in crate::editor) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
-        let key = fold(name);
-        let canonical = self
-            .alias_map
-            .get(key.as_ref())
-            .map_or(key.as_ref(), |c| c.as_ref());
-        match self.commands.get(canonical)? {
+        match self.resolve(name)? {
             Command::Typed(cmd) => Some(cmd),
             Command::Mappable(_) => None,
         }
@@ -322,12 +328,7 @@ impl CommandRegistry {
         name: &str,
     ) -> Option<hume_scripting::host::CommandHolder> {
         use hume_scripting::host::{CommandHolder, CommandKind};
-        let key = fold(name);
-        let canonical = self
-            .alias_map
-            .get(key.as_ref())
-            .map_or(key.as_ref(), |c| c.as_ref());
-        let cmd = self.commands.get(canonical)?;
+        let cmd = self.resolve(name)?;
         Some(if let Some(entry) = lazy_owner_of(cmd) {
             CommandHolder::Lazy {
                 entry: entry.clone(),

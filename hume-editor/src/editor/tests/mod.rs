@@ -465,11 +465,11 @@ fn expected_rows(
             let content = hume_rope::spanned::SpannedText::new(text, spans)
                 .expect("expected spans fit their row")
                 .map_payload(|(scope, selected)| hume_ui::list_row::SpanScopes {
-                    scope: registry.intern_runtime(scope),
-                    selected: selected.map(|selected| registry.intern_runtime(selected)),
+                    scope: registry.intern(scope),
+                    selected: selected.map(|selected| registry.intern(selected)),
                 });
             hume_ui::list_row::ListRow::styled(content)
-                .with_selected_scope(selected_scope.map(|scope| registry.intern_runtime(scope)))
+                .with_selected_scope(selected_scope.map(|scope| registry.intern(scope)))
         })
         .collect()
 }

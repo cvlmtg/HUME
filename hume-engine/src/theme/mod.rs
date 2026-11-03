@@ -42,8 +42,8 @@ impl ScopeRegistry {
         ScopeId(self.names.len() as u16)
     }
 
-    /// Intern `name`, returning its existing [`ScopeId`] or allocating a new one.
-    fn intern_str(&mut self, name: &str) -> ScopeId {
+    /// Return the [`ScopeId`] for `name`, interning it if new.
+    pub fn intern(&mut self, name: &str) -> ScopeId {
         if let Some(&id) = self.map.get(name) {
             return id;
         }
@@ -52,17 +52,6 @@ impl ScopeRegistry {
         self.names.push(boxed.clone());
         self.map.insert(boxed, id);
         id
-    }
-
-    /// Return the [`ScopeId`] for a `&'static str` scope name, interning if new.
-    pub fn intern(&mut self, name: &'static str) -> ScopeId {
-        self.intern_str(name)
-    }
-
-    /// Return the [`ScopeId`] for a runtime scope name (a tree-sitter
-    /// capture name, say), interning if new.
-    pub fn intern_runtime(&mut self, name: &str) -> ScopeId {
-        self.intern_str(name)
     }
 
     /// Look up an already-interned scope without inserting.

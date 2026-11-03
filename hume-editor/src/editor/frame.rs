@@ -441,7 +441,8 @@ impl Editor {
 
     /// Report `state.cwd` to the terminal when it differs from what the
     /// terminal was last told. A cwd with no URL clears the report so the
-    /// terminal does not keep a stale directory.
+    /// terminal does not keep a stale directory. A failed write warns once
+    /// and is not retried until the cwd changes again.
     ///
     /// As in `resync_mouse_mode`, the comparison and update sit outside the
     /// terminal check so they are testable headless.
@@ -449,20 +450,31 @@ impl Editor {
         if self.applied_cwd.as_ref() == Some(&self.state.cwd) {
             return;
         }
-        if let Some(term) = self.tui.terminal() {
-            let _ = hume_platform::terminal::set_working_directory(term, &self.state.cwd);
+        if let Some(term) = self.tui.terminal()
+            && let Err(e) = hume_platform::terminal::set_working_directory(term, &self.state.cwd)
+        {
+            self.state.report(
+                hume_core::Severity::Warning,
+                format!("terminal working directory (OSC 7) update failed ({e})"),
+            );
         }
         self.applied_cwd = Some(self.state.cwd.clone());
     }
 
     /// Send the clipboard text queued for OSC 52, if any. A no-op without a
     /// terminal (tests, headless `run_keys`), which leaves the text queued.
+    /// A failed write warns; the text stays in the in-memory `c` register.
     pub(super) fn flush_osc52(&mut self) {
         let Some(term) = self.tui.terminal() else {
             return;
         };
-        if let Some(text) = self.state.clipboard.take_pending_osc52() {
-            let _ = hume_platform::terminal::set_clipboard(term, &text);
+        if let Some(text) = self.state.clipboard.take_pending_osc52()
+            && let Err(e) = hume_platform::terminal::set_clipboard(term, &text)
+        {
+            self.state.report(
+                hume_core::Severity::Warning,
+                format!("terminal clipboard (OSC 52) write failed ({e}), kept in-memory 'c'"),
+            );
         }
     }
 

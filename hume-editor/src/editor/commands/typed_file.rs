@@ -267,8 +267,11 @@ pub(in crate::editor) fn typed_set(
     // invalid scope on a real key reports "wrong scope for this key" (naming
     // the key's actual valid scopes) rather than a generic "unknown scope"
     // message: the user typed a real key, so that's the more useful error.
-    let parsed_scope = scope_str.parse::<Scope>().ok();
-    if !parsed_scope.is_some_and(|s| scopes.contains(&s)) {
+    let Some(scope) = scope_str
+        .parse::<Scope>()
+        .ok()
+        .filter(|s| scopes.contains(s))
+    else {
         return Err(CommandError::transient(format!(
             "'{key}' cannot be set with :set {scope_str} (valid scopes: {})",
             scopes
@@ -277,8 +280,7 @@ pub(in crate::editor) fn typed_set(
                 .collect::<Vec<_>>()
                 .join(", ")
         )));
-    }
-    let scope = parsed_scope.expect("checked by is_some_and above");
+    };
 
     match scope {
         Scope::Global => settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input, by)

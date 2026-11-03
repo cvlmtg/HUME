@@ -155,11 +155,7 @@ fn config_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 
 #[cfg(not(windows))]
 fn config_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    if let Some(xdg) = env("XDG_CONFIG_HOME") {
-        Some(PathBuf::from(xdg).join("hume"))
-    } else {
-        env("HOME").map(|h| PathBuf::from(h).join(".config").join("hume"))
-    }
+    xdg_dir_with(env, "XDG_CONFIG_HOME", ".config")
 }
 
 #[cfg(windows)]
@@ -175,11 +171,20 @@ fn data_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 
 #[cfg(not(windows))]
 fn data_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    if let Some(xdg) = env("XDG_DATA_HOME") {
-        Some(PathBuf::from(xdg).join("hume"))
-    } else {
-        env("HOME").map(|h| PathBuf::from(h).join(".local").join("share").join("hume"))
-    }
+    xdg_dir_with(env, "XDG_DATA_HOME", ".local/share")
+}
+
+/// `$<xdg_var>/hume`, or `$HOME/<home_default>/hume` when `xdg_var` is unset.
+#[cfg(not(windows))]
+fn xdg_dir_with(
+    env: impl Fn(&str) -> Option<String>,
+    xdg_var: &str,
+    home_default: &str,
+) -> Option<PathBuf> {
+    env(xdg_var)
+        .map(PathBuf::from)
+        .or_else(|| env("HOME").map(|home| PathBuf::from(home).join(home_default)))
+        .map(|base| base.join("hume"))
 }
 
 /// Returns the current user's home directory, if it can be resolved.

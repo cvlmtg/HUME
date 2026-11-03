@@ -129,7 +129,7 @@ pub(in crate::editor) enum SelectionTracking {
 ///
 /// Each field is one independent behaviour read by one dispatch stage. The
 /// variant-to-property mapping lives only in `NativeCommand::meta()` and
-/// `steel_meta`; the struct is `Copy` and carries no name so `meta()` stays
+/// `plain_meta`; the struct is `Copy` and carries no name so `meta()` stays
 /// cheap enough that no caller re-`match`es the variant for a single bit.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::editor) struct CmdMeta {
@@ -296,7 +296,7 @@ impl MappableCommand {
         match self {
             Self::Native(cmd) => cmd.meta(),
             Self::SteelBacked(cmd) => cmd.meta(),
-            Self::Lazy { .. } => steel_meta(false),
+            Self::Lazy { .. } => plain_meta(false),
         }
     }
 
@@ -462,18 +462,7 @@ impl NativeCommand {
                 manages_own_session: false,
                 key_only: false,
             },
-            Self::Edit { repeatable, .. } => CmdMeta {
-                selection_tracking: SelectionTracking::Untracked,
-                is_motion: false,
-                defers_paste_commit: false,
-                is_jump: false,
-                is_visual_move: false,
-                repeatable: *repeatable,
-                clears_extend: false,
-                aligns_view: false,
-                manages_own_session: false,
-                key_only: false,
-            },
+            Self::Edit { repeatable, .. } => plain_meta(*repeatable),
             Self::EditorCmd {
                 defers_paste_commit,
                 repeatable,
@@ -529,12 +518,13 @@ pub(in crate::editor) struct SteelCommand {
 impl SteelCommand {
     /// Declarative metadata for the dispatch pipeline.
     pub(in crate::editor) fn meta(&self) -> CmdMeta {
-        steel_meta(self.body.repeatable)
+        plain_meta(self.body.repeatable)
     }
 }
 
-/// The metadata of a Steel command or `Lazy` stub: only `repeatable` varies.
-fn steel_meta(repeatable: bool) -> CmdMeta {
+/// The metadata of a native edit, a Steel command or a `Lazy` stub: only
+/// `repeatable` varies.
+fn plain_meta(repeatable: bool) -> CmdMeta {
     CmdMeta {
         selection_tracking: SelectionTracking::Untracked,
         is_motion: false,

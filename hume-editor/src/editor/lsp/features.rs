@@ -2,7 +2,13 @@
 
 use hume_core::LspFeature;
 use hume_scripting::CapabilityQuery;
-use lsp_types::request::{DocumentDiagnosticRequest, Request as _};
+use lsp_types::request::{
+    CallHierarchyPrepare, CodeActionRequest, CodeActionResolveRequest, Completion, DocumentColor,
+    DocumentDiagnosticRequest, DocumentHighlightRequest, DocumentLinkRequest,
+    DocumentSymbolRequest, Formatting, GotoDeclaration, GotoDefinition, GotoImplementation,
+    GotoTypeDefinition, HoverRequest, InlayHintRequest, RangeFormatting, References, Rename,
+    Request as _, ResolveCompletionItem, SignatureHelpRequest, WorkspaceSymbolRequest,
+};
 
 /// The value at `path` in `capabilities` (a server's wire
 /// `ServerCapabilities`), or `None` when a step is missing or the value is
@@ -38,38 +44,38 @@ pub(in crate::editor) struct Requirement {
 /// `workspace/executeCommand`).
 pub(in crate::editor) fn requirement(method: &str) -> Option<Requirement> {
     let (feature, capability) = match method {
-        "textDocument/formatting" => (LspFeature::Format, Some(&[FORMATTING][..])),
-        "textDocument/rangeFormatting" => (LspFeature::Format, Some(&[RANGE_FORMATTING][..])),
+        Formatting::METHOD => (LspFeature::Format, Some(&[FORMATTING][..])),
+        RangeFormatting::METHOD => (LspFeature::Format, Some(&[RANGE_FORMATTING][..])),
         "textDocument/rangesFormatting" => (
             LspFeature::Format,
             Some(&[RANGE_FORMATTING, "rangesSupport"][..]),
         ),
-        "textDocument/declaration" => (LspFeature::GotoDeclaration, None),
-        "textDocument/definition" => (LspFeature::GotoDefinition, None),
-        "textDocument/typeDefinition" => (LspFeature::GotoTypeDefinition, None),
-        "textDocument/references" => (LspFeature::GotoReference, None),
-        "textDocument/implementation" => (LspFeature::GotoImplementation, None),
-        "textDocument/signatureHelp" => (LspFeature::SignatureHelp, None),
-        "textDocument/hover" => (LspFeature::Hover, None),
-        "textDocument/documentHighlight" => (LspFeature::DocumentHighlight, None),
-        "textDocument/completion" => (LspFeature::Completion, None),
-        "completionItem/resolve" => (
+        GotoDeclaration::METHOD => (LspFeature::GotoDeclaration, None),
+        GotoDefinition::METHOD => (LspFeature::GotoDefinition, None),
+        GotoTypeDefinition::METHOD => (LspFeature::GotoTypeDefinition, None),
+        References::METHOD => (LspFeature::GotoReference, None),
+        GotoImplementation::METHOD => (LspFeature::GotoImplementation, None),
+        SignatureHelpRequest::METHOD => (LspFeature::SignatureHelp, None),
+        HoverRequest::METHOD => (LspFeature::Hover, None),
+        DocumentHighlightRequest::METHOD => (LspFeature::DocumentHighlight, None),
+        Completion::METHOD => (LspFeature::Completion, None),
+        ResolveCompletionItem::METHOD => (
             LspFeature::Completion,
             Some(&["completionProvider", "resolveProvider"][..]),
         ),
-        "textDocument/codeAction" => (LspFeature::CodeAction, None),
-        "codeAction/resolve" => (
+        CodeActionRequest::METHOD => (LspFeature::CodeAction, None),
+        CodeActionResolveRequest::METHOD => (
             LspFeature::CodeAction,
             Some(&["codeActionProvider", "resolveProvider"][..]),
         ),
-        "textDocument/documentLink" => (LspFeature::DocumentLinks, None),
-        "textDocument/documentSymbol" => (LspFeature::DocumentSymbols, None),
-        "workspace/symbol" => (LspFeature::WorkspaceSymbols, None),
+        DocumentLinkRequest::METHOD => (LspFeature::DocumentLinks, None),
+        DocumentSymbolRequest::METHOD => (LspFeature::DocumentSymbols, None),
+        WorkspaceSymbolRequest::METHOD => (LspFeature::WorkspaceSymbols, None),
         DocumentDiagnosticRequest::METHOD => (LspFeature::PullDiagnostics, None),
-        "textDocument/rename" => (LspFeature::RenameSymbol, None),
-        "textDocument/inlayHint" => (LspFeature::InlayHints, None),
-        "textDocument/documentColor" => (LspFeature::DocumentColors, None),
-        "textDocument/prepareCallHierarchy" => (LspFeature::CallHierarchy, None),
+        Rename::METHOD => (LspFeature::RenameSymbol, None),
+        InlayHintRequest::METHOD => (LspFeature::InlayHints, None),
+        DocumentColor::METHOD => (LspFeature::DocumentColors, None),
+        CallHierarchyPrepare::METHOD => (LspFeature::CallHierarchy, None),
         _ => return None,
     };
     Some(Requirement {

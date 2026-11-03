@@ -126,16 +126,9 @@ pub(in crate::editor) fn cmd_open_line_below(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let entry = begin_insert_session(state, view, fp, std::convert::identity)?;
-    apply_pane_motion(state, view, fp.pane(), |st| {
+    open_line(state, view, fp, LineBreak::AtCursor, |st| {
         cmd_goto_line_end(st, 1, MotionMode::Move, LineEnd::LineBreak)
-    });
-    break_line(state, view, fp, LineBreak::AtCursor, &[]);
-    // Pin after the structural newline, not before: the anchor must mark
-    // the start of typed content, not the blank line's own `\n`.
-    begin_typed_run(state, view, &entry, fp, ExitCursor::StepBack);
-    arm_autoindent(state, view, &entry, fp);
-    Ok(())
+    })
 }
 
 /// Open a new line above the cursor and enter insert mode. The line gets
@@ -148,13 +141,26 @@ pub(in crate::editor) fn cmd_open_line_above(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let entry = begin_insert_session(state, view, fp, std::convert::identity)?;
-    apply_pane_motion(state, view, fp.pane(), |st| {
+    open_line(state, view, fp, LineBreak::AboveLine, |st| {
         cmd_goto_line_start(st, 1, MotionMode::Move)
-    });
-    break_line(state, view, fp, LineBreak::AboveLine, &[]);
-    // Pin after the indent + the structural newline the break leaves
-    // the cursor on, same reasoning as `cmd_open_line_below`.
+    })
+}
+
+/// Move to where the new line breaks, break it as `at` says, and start the
+/// Insert session's typed run on the new line.
+fn open_line(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+    at: LineBreak,
+    to_break: impl FnOnce(EditState) -> EditState,
+) -> Result<(), CommandError> {
+    let entry = begin_insert_session(state, view, fp, std::convert::identity)?;
+    apply_pane_motion(state, view, fp.pane(), to_break);
+    break_line(state, view, fp, at, &[]);
+    // Pin after the structural newline and its indent, not before: the
+    // anchor must mark the start of typed content, not the blank line's
+    // own `\n`.
     begin_typed_run(state, view, &entry, fp, ExitCursor::StepBack);
     arm_autoindent(state, view, &entry, fp);
     Ok(())

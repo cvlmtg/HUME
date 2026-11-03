@@ -19,16 +19,11 @@ use super::stack::Layer;
 /// built here.
 pub(in crate::editor) fn list_row(display: RowDisplay, registry: &mut ScopeRegistry) -> ListRow {
     let content = display.content.map_payload(|scopes| SpanScopes {
-        scope: registry.intern_runtime(&scopes.scope),
-        selected: scopes
-            .selected
-            .map(|selected| registry.intern_runtime(&selected)),
+        scope: registry.intern(&scopes.scope),
+        selected: scopes.selected.map(|selected| registry.intern(&selected)),
     });
-    ListRow::styled(content).with_selected_scope(
-        display
-            .selected_scope
-            .map(|scope| registry.intern_runtime(&scope)),
-    )
+    ListRow::styled(content)
+        .with_selected_scope(display.selected_scope.map(|scope| registry.intern(&scope)))
 }
 
 /// One call to a list's `#:render` proc: each row's item and its place in

@@ -52,7 +52,7 @@ impl PluginId {
         }
         if let Some(rel) = name.strip_prefix("./") {
             let mut segments = rel.rsplit('/');
-            let last = segments.next().unwrap_or_default();
+            let last = segments.next().expect("rsplit yields at least one segment");
             let safe = segments.all(hume_platform::path::is_safe_segment);
             if !safe || EntryFile::parse(last).is_err() {
                 return Err(format!(

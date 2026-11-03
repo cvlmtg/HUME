@@ -336,16 +336,6 @@ impl BufferText {
         self.rope.len_chars()
     }
 
-    /// Index of the last content character: the character just before the
-    /// structural trailing `\n`, for clamping a position onto content.
-    ///
-    /// Degenerate case: on an empty buffer (`"\n"`, one char) this returns 0,
-    /// which is the structural `\n` itself; there is no content character to
-    /// point at.
-    pub fn last_content_char(&self) -> CharOffset {
-        CharOffset::new(self.len_chars().saturating_sub(2))
-    }
-
     /// The last addressable char position, `len_chars() - 1`. Every buffer
     /// has at least the structural trailing `\n`, so this never underflows.
     pub fn last_char(&self) -> CharOffset {

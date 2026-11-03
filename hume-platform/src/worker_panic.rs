@@ -61,6 +61,13 @@ pub fn payload_message(payload: &(dyn Any + Send)) -> &str {
         .unwrap_or("non-string panic payload")
 }
 
+/// The panics past the first `*read`, moving `*read` past them.
+fn take_past(panics: &[WorkerPanic], read: &mut usize) -> Vec<WorkerPanic> {
+    let fresh = panics[*read..].to_vec();
+    *read = panics.len();
+    fresh
+}
+
 #[derive(Default)]
 struct Queue {
     panics: Vec<WorkerPanic>,
@@ -107,9 +114,10 @@ impl WorkerPanics {
     /// The panics not yet returned by an earlier call, oldest first.
     pub fn take_unreported(&self) -> Vec<WorkerPanic> {
         let mut queue = self.lock();
-        let fresh = queue.panics[queue.reported..].to_vec();
-        queue.reported = queue.panics.len();
-        fresh
+        let Queue {
+            panics, reported, ..
+        } = &mut *queue;
+        take_past(panics, reported)
     }
 
     /// The panics not yet returned by an earlier call, oldest first. Counts
@@ -117,9 +125,10 @@ impl WorkerPanics {
     /// the message log, the other the terminal.
     pub fn take_unprinted(&self) -> Vec<WorkerPanic> {
         let mut queue = self.lock();
-        let fresh = queue.panics[queue.printed..].to_vec();
-        queue.printed = queue.panics.len();
-        fresh
+        let Queue {
+            panics, printed, ..
+        } = &mut *queue;
+        take_past(panics, printed)
     }
 
     /// Every panic seen so far, oldest first.

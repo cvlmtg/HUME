@@ -69,7 +69,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             )));
         }
         let signs = signs.into_iter().map(|(lines, sign_text, scope)| {
-            let scope = self.view.registry.intern_runtime(&scope);
+            let scope = self.view.registry.intern(&scope);
             (lines, (std::sync::Arc::<str>::from(sign_text), scope))
         });
         let entries = each_line(signs)
@@ -92,7 +92,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(line, spec)| {
                 let scope = match spec.scope.as_deref() {
-                    Some(name) => self.view.registry.intern_runtime(name),
+                    Some(name) => self.view.registry.intern(name),
                     None => self
                         .view
                         .registry
@@ -102,7 +102,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                     line,
                     content: spec
                         .content
-                        .map_payload(|name| self.view.registry.intern_runtime(&name)),
+                        .map_payload(|name| self.view.registry.intern(&name)),
                     side: spec.side,
                     scope,
                 }
@@ -134,7 +134,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             Ok(hume_decorations::ExtraHighlightEntry {
                 start: range.start,
                 end: range.end,
-                scope: self.view.registry.intern_runtime(&scope),
+                scope: self.view.registry.intern(&scope),
             })
         })?;
         self.state
@@ -156,7 +156,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .map(|(line, eol_text, scope)| hume_decorations::EolTextEntry {
                 line,
                 text: eol_text,
-                scope: self.view.registry.intern_runtime(&scope),
+                scope: self.view.registry.intern(&scope),
                 hide_on_insert_line,
             })
             .collect();
@@ -175,7 +175,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
     ) -> Result<(), SetError> {
         let entries = entries
             .into_iter()
-            .map(|(lines, scope)| (lines, self.view.registry.intern_runtime(&scope)));
+            .map(|(lines, scope)| (lines, self.view.registry.intern(&scope)));
         let entries = each_line(entries)
             .map(|(line, scope)| hume_decorations::LineBgEntry { line, scope })
             .collect();

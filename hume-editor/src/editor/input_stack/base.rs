@@ -166,14 +166,12 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
 
     let buffer = ed.focused_buffer_id();
     if ed.state.pending.started_outside(buffer) {
-        ed.state.pending.clear();
-        ed.state.count = Count::UNTYPED;
+        ed.state.discard_pending_keys();
     }
 
     // ── Hard-reset on Esc ─────────────────────────────────────────────────
     if key.code == KeyCode::Escape {
-        ed.state.pending.clear();
-        ed.state.count = Count::UNTYPED;
+        ed.state.discard_pending_keys();
         ed.state.register_prefix = None; // drop a "<reg> prefix not yet used
         // Esc exits Extend mode; Normal is the reset state.
         ed.state.input.set_extend(false);
@@ -305,8 +303,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                         WalkResult::NoMatch => false,
                     };
                     if !ctrl_extend {
-                        ed.state.pending.clear();
-                        ed.state.count = Count::UNTYPED;
+                        ed.state.discard_pending_keys();
                         return;
                     }
                     (resolved, true)
@@ -367,8 +364,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
             // More keys needed. The pending sequence stays populated.
         }
         WalkResult::NoMatch => {
-            ed.state.pending.clear();
-            ed.state.count = Count::UNTYPED;
+            ed.state.discard_pending_keys();
         }
     }
 }
