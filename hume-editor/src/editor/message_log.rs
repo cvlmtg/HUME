@@ -24,8 +24,9 @@ pub(in crate::editor) struct LogEntry {
 
 /// Maximum number of entries kept in the log.
 ///
-/// A push into a full log scans it once to pick the entry to evict, so it
-/// costs O(`MAX_ENTRIES`), whatever floods the log.
+/// A push into a full log searches it for the entry to evict and stops at
+/// the oldest trace, which a trace flood keeps near the front. Only a log of
+/// nearly all errors pays the O(`MAX_ENTRIES`) worst case.
 const MAX_ENTRIES: usize = 1000;
 
 /// Persistent, append-only log of messages from the current editing session.
@@ -46,33 +47,24 @@ pub(crate) struct MessageLog {
     /// earlier once `MAX_ENTRIES` starts evicting). `:reload-config` diffs
     /// this against a before/after snapshot to detect "did this reload push a
     /// new warning or error", and `handle_input` to keep a command's message
-    /// on the status line. Both ask what was reported, whether or not the
-    /// floor shows it.
+    /// on the status line. Both ask what was reported, whether or not
+    /// `messages-min-severity` shows it.
     total_errors: u64,
     total_warnings: u64,
-    /// The `messages-min-severity` setting, kept in step by its resync. It
-    /// decides what is shown, never what is stored.
-    floor: MessagesMinSeverity,
 }
 
 impl MessageLog {
-    pub(in crate::editor) fn new(floor: MessagesMinSeverity) -> Self {
+    pub(in crate::editor) fn new() -> Self {
         Self {
             entries: VecDeque::new(),
             seen_up_to: 0,
             total_errors: 0,
             total_warnings: 0,
-            floor,
         }
     }
 
-    /// Show the stored entries at or above `floor`, those pushed before this
-    /// call included.
-    pub(in crate::editor) fn set_floor(&mut self, floor: MessagesMinSeverity) {
-        self.floor = floor;
-    }
-
-    /// Append an entry to the log, whatever the floor.
+    /// Append an entry to the log, whatever severity `messages-min-severity`
+    /// shows.
     ///
     /// When the entry count would exceed [`MAX_ENTRIES`], the oldest trace is
     /// evicted, else the oldest warning, else the oldest error, and
@@ -83,9 +75,8 @@ impl MessageLog {
             Severity::Warning => self.total_warnings += 1,
             Severity::Info | Severity::Trace => {}
         }
-        if self.entries.len() == MAX_ENTRIES
-            && let Some(index) = self.eviction_index()
-        {
+        if self.entries.len() == MAX_ENTRIES {
+            let index = self.eviction_index();
             self.entries.remove(index);
             if index < self.seen_up_to {
                 self.seen_up_to -= 1;
@@ -94,29 +85,29 @@ impl MessageLog {
         self.entries.push_back(LogEntry { severity, text });
     }
 
-    /// The oldest entry of the least severe kind present.
-    fn eviction_index(&self) -> Option<usize> {
-        let rank = |severity| match severity {
-            Severity::Info | Severity::Trace => 0,
-            Severity::Warning => 1,
-            Severity::Error => 2,
+    /// The oldest entry of the least severe kind present. A log with no
+    /// trace and no warning holds only errors, so its oldest is the first.
+    fn eviction_index(&self) -> usize {
+        let oldest_at = |level| {
+            self.entries
+                .iter()
+                .position(|entry| MessagesMinSeverity::of(entry.severity) == level)
         };
-        self.entries
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, entry)| rank(entry.severity))
-            .map(|(index, _)| index)
+        oldest_at(MessagesMinSeverity::Trace)
+            .or_else(|| oldest_at(MessagesMinSeverity::Warning))
+            .unwrap_or(0)
     }
 
-    /// The entries from index `start` on that the floor shows.
+    /// The entries from index `start` on that `floor` shows.
     pub(in crate::editor::message_log) fn shown_from(
         &self,
         start: usize,
+        floor: MessagesMinSeverity,
     ) -> impl Iterator<Item = &LogEntry> {
         self.entries
             .iter()
             .skip(start)
-            .filter(|entry| self.floor.shows(entry.severity))
+            .filter(move |entry| floor.shows(entry.severity))
     }
 
     /// Lifetime `(errors, warnings)` pushed so far, evicted or not. See the
@@ -150,13 +141,16 @@ impl MessageLog {
         self.seen_up_to < self.entries.len()
     }
 
-    /// Count of unseen entries the floor shows, by severity: `(errors,
+    /// Count of unseen entries `floor` shows, by severity: `(errors,
     /// warnings)`.
     ///
     /// `Info` entries are never logged; `Trace` entries are not surfaced in
     /// the summary because they are supplemental detail, not actionable items.
-    pub(in crate::editor::message_log) fn unseen_counts(&self) -> (usize, usize) {
-        self.shown_from(self.seen_up_to)
+    pub(in crate::editor::message_log) fn unseen_counts(
+        &self,
+        floor: MessagesMinSeverity,
+    ) -> (usize, usize) {
+        self.shown_from(self.seen_up_to, floor)
             .fold((0, 0), |(e, w), entry| match entry.severity {
                 Severity::Error => (e + 1, w),
                 Severity::Warning => (e, w + 1),
@@ -176,13 +170,13 @@ impl MessageLog {
     /// `Warning` or `Error` entries.
     ///
     /// Returns `None` when everything has been seen, *or* when no unseen
-    /// entry the floor shows is a `Warning` or `Error`: trace messages never
+    /// entry `floor` shows is a `Warning` or `Error`: trace messages never
     /// raise a statusline indicator (see [`Severity`] table).
-    pub(crate) fn summary_text(&self) -> Option<String> {
+    pub(crate) fn summary_text(&self, floor: MessagesMinSeverity) -> Option<String> {
         if !self.has_unseen() {
             return None;
         }
-        let (errors, warnings) = self.unseen_counts();
+        let (errors, warnings) = self.unseen_counts(floor);
         let msg = match (errors, warnings) {
             (0, 0) => return None,
             (e, 0) => {
@@ -202,7 +196,7 @@ impl MessageLog {
         Some(msg)
     }
 
-    /// The entries the floor shows, formatted for display in the `:messages`
+    /// The entries `floor` shows, formatted for display in the `:messages`
     /// scratch buffer, along with the severity-highlight spans for each line.
     ///
     /// Each line is `[severity] text\n`. Returns an empty string and no
@@ -219,11 +213,12 @@ impl MessageLog {
     /// lines would be absurd anyway).
     pub(in crate::editor) fn format_with_spans(
         &self,
+        floor: MessagesMinSeverity,
     ) -> (String, Vec<(usize, usize, &'static str)>) {
         let mut out = String::new();
         let mut spans = Vec::new();
         let mut pos = 0;
-        for entry in self.shown_from(0) {
+        for entry in self.shown_from(0, floor) {
             let label = entry.severity.name();
 
             out.push('[');
@@ -258,10 +253,10 @@ impl MessageLog {
     }
 
     /// Test-only convenience over [`format_with_spans`] for assertions that
-    /// only care about the rendered text.
+    /// only care about the rendered text of every stored entry.
     #[cfg(test)]
     pub(in crate::editor) fn format_for_display(&self) -> String {
-        self.format_with_spans().0
+        self.format_with_spans(MessagesMinSeverity::Trace).0
     }
 }
 

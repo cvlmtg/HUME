@@ -3,7 +3,7 @@
 //! a real file opened through `:e`, and a scripted backend, so every
 //! attachment a test sees was made by the production attach path.
 
-use super::{show_trace_messages, test_cwd};
+use super::test_cwd;
 use hume_platform::dirs::Dirs;
 use hume_platform::path::AbsolutePath;
 use hume_platform::wake::no_op_wake;
@@ -114,8 +114,7 @@ pub(in crate::editor) struct LspRig {
 impl LspRig {
     /// Registers `spec.language`, evaluates `spec.init`, and opens
     /// `spec.file` with `spec.marked`'s selections. Not drained: every
-    /// server spawned for the file is still `Starting`. `:messages` shows trace
-    /// messages, since much of what a server sends is logged at trace.
+    /// server spawned for the file is still `Starting`.
     pub(in crate::editor) fn open(
         tmp: &Path,
         spec: RigSpec<'_>,
@@ -143,7 +142,6 @@ impl LspRig {
             test_cwd(),
         )
         .expect("editor opens");
-        show_trace_messages(&mut ed);
         ed.state.lsp = LspState::with_backend(Box::new(backend));
         ed.state
             .config

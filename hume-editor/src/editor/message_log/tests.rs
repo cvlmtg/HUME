@@ -1,8 +1,11 @@
 use super::*;
 use crate::editor::settings::MessagesMinSeverity;
 
+/// The floor that shows every stored entry.
+const SHOW_ALL: MessagesMinSeverity = MessagesMinSeverity::Trace;
+
 fn make_log(entries: &[(Severity, &str)]) -> MessageLog {
-    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    let mut log = MessageLog::new();
     for (sev, text) in entries {
         log.push(*sev, text.to_string());
     }
@@ -26,7 +29,7 @@ fn unseen_counts_initial() {
         (Severity::Warning, "w2"),
         (Severity::Trace, "t1"),
     ]);
-    let (errors, warnings) = log.unseen_counts();
+    let (errors, warnings) = log.unseen_counts(SHOW_ALL);
     assert_eq!(errors, 1);
     assert_eq!(warnings, 2);
     // Trace entries are not counted in the summary counts.
@@ -34,7 +37,7 @@ fn unseen_counts_initial() {
 
 #[test]
 fn has_unseen_empty_log() {
-    let log = MessageLog::new(MessagesMinSeverity::Trace);
+    let log = MessageLog::new();
     assert!(!log.has_unseen());
 }
 
@@ -44,7 +47,7 @@ fn mark_all_seen_clears_unseen() {
     assert!(log.has_unseen());
     log.mark_all_seen();
     assert!(!log.has_unseen());
-    let (e, w) = log.unseen_counts();
+    let (e, w) = log.unseen_counts(SHOW_ALL);
     assert_eq!((e, w), (0, 0));
 }
 
@@ -56,7 +59,7 @@ fn new_entries_after_mark_seen_become_unseen() {
 
     log.push(Severity::Warning, "new".to_string());
     assert!(log.has_unseen());
-    let (e, w) = log.unseen_counts();
+    let (e, w) = log.unseen_counts(SHOW_ALL);
     assert_eq!((e, w), (0, 1)); // only the new warning
 }
 
@@ -64,25 +67,34 @@ fn new_entries_after_mark_seen_become_unseen() {
 fn summary_text_none_when_all_seen() {
     let mut log = make_log(&[(Severity::Error, "e")]);
     log.mark_all_seen();
-    assert!(log.summary_text().is_none());
+    assert!(log.summary_text(SHOW_ALL).is_none());
 }
 
 #[test]
 fn summary_text_errors_only() {
     let log = make_log(&[(Severity::Error, "e1"), (Severity::Error, "e2")]);
-    assert_eq!(log.summary_text().unwrap(), "2 errors (see :messages)");
+    assert_eq!(
+        log.summary_text(SHOW_ALL).unwrap(),
+        "2 errors (see :messages)"
+    );
 }
 
 #[test]
 fn summary_text_single_error() {
     let log = make_log(&[(Severity::Error, "e")]);
-    assert_eq!(log.summary_text().unwrap(), "1 error (see :messages)");
+    assert_eq!(
+        log.summary_text(SHOW_ALL).unwrap(),
+        "1 error (see :messages)"
+    );
 }
 
 #[test]
 fn summary_text_warnings_only() {
     let log = make_log(&[(Severity::Warning, "w")]);
-    assert_eq!(log.summary_text().unwrap(), "1 warning (see :messages)");
+    assert_eq!(
+        log.summary_text(SHOW_ALL).unwrap(),
+        "1 warning (see :messages)"
+    );
 }
 
 #[test]
@@ -93,7 +105,7 @@ fn summary_text_mixed() {
         (Severity::Warning, "w2"),
     ]);
     assert_eq!(
-        log.summary_text().unwrap(),
+        log.summary_text(SHOW_ALL).unwrap(),
         "1 error, 2 warnings (see :messages)"
     );
 }
@@ -101,12 +113,12 @@ fn summary_text_mixed() {
 #[test]
 fn summary_text_trace_only() {
     let log = make_log(&[(Severity::Trace, "t1"), (Severity::Trace, "t2")]);
-    assert!(log.summary_text().is_none());
+    assert!(log.summary_text(SHOW_ALL).is_none());
 }
 
 #[test]
 fn format_for_display_empty() {
-    let log = MessageLog::new(MessagesMinSeverity::Trace);
+    let log = MessageLog::new();
     assert_eq!(log.format_for_display(), "");
 }
 
@@ -126,8 +138,8 @@ fn format_for_display_prefixes() {
 
 #[test]
 fn format_with_spans_empty() {
-    let log = MessageLog::new(MessagesMinSeverity::Trace);
-    let (text, spans) = log.format_with_spans();
+    let log = MessageLog::new();
+    let (text, spans) = log.format_with_spans(SHOW_ALL);
     assert_eq!(text, "");
     assert!(spans.is_empty());
 }
@@ -135,7 +147,7 @@ fn format_with_spans_empty() {
 #[test]
 fn format_with_spans_offsets_and_scopes() {
     let log = make_log(&[(Severity::Warning, "bad key"), (Severity::Error, "crash")]);
-    let (text, spans) = log.format_with_spans();
+    let (text, spans) = log.format_with_spans(SHOW_ALL);
     assert_eq!(text, "[warning] bad key\n[error] crash\n");
 
     // Expected offsets come from the `[label] text\n` format spec, not from
@@ -164,7 +176,7 @@ fn format_with_spans_counts_chars_not_bytes() {
     // byte-length implementation would place the second entry's spans 2
     // bytes too late (start=15 instead of 13, off by len("café ☕") - 6 = 2).
     let log = make_log(&[(Severity::Info, "café ☕"), (Severity::Warning, "ok")]);
-    let (text, spans) = log.format_with_spans();
+    let (text, spans) = log.format_with_spans(SHOW_ALL);
     assert_eq!(text, "[info] café ☕\n[warning] ok\n");
 
     assert_eq!(spans.len(), 4);
@@ -179,7 +191,7 @@ fn format_with_spans_counts_chars_not_bytes() {
 #[test]
 fn format_with_spans_skips_empty_text() {
     let log = make_log(&[(Severity::Warning, "")]);
-    let (text, spans) = log.format_with_spans();
+    let (text, spans) = log.format_with_spans(SHOW_ALL);
     assert_eq!(text, "[warning] \n");
     // Only the badge span, no zero-width span for the empty message text.
     assert_eq!(spans.len(), 1);
@@ -189,7 +201,7 @@ fn format_with_spans_skips_empty_text() {
 #[test]
 fn severity_trace_uses_hint_scopes() {
     let log = make_log(&[(Severity::Trace, "t")]);
-    let (_, spans) = log.format_with_spans();
+    let (_, spans) = log.format_with_spans(SHOW_ALL);
     let (_, _, scope) = spans[0];
     assert_eq!(scope, "diagnostic.hint.message");
     let (_, _, scope) = spans[1];
@@ -198,7 +210,7 @@ fn severity_trace_uses_hint_scopes() {
 
 #[test]
 fn push_respects_cap() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    let mut log = MessageLog::new();
     // Push MAX_ENTRIES + 1 entries; the oldest should be evicted.
     for i in 0..=MAX_ENTRIES {
         log.push(Severity::Warning, format!("msg {i}"));
@@ -212,7 +224,7 @@ fn push_respects_cap() {
 
 #[test]
 fn push_cap_adjusts_seen_up_to() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    let mut log = MessageLog::new();
     // Push MAX_ENTRIES entries and mark them all seen.
     for i in 0..MAX_ENTRIES {
         log.push(Severity::Warning, format!("msg {i}"));
@@ -224,7 +236,7 @@ fn push_cap_adjusts_seen_up_to() {
     log.push(Severity::Error, "overflow".to_string());
     // The new entry is unseen.
     assert!(log.has_unseen());
-    let (e, w) = log.unseen_counts();
+    let (e, w) = log.unseen_counts(SHOW_ALL);
     assert_eq!((e, w), (1, 0));
 }
 
@@ -235,7 +247,7 @@ fn push_cap_adjusts_seen_up_to() {
 /// eviction kicks in.
 #[test]
 fn totals_survive_eviction_past_max_entries() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    let mut log = MessageLog::new();
     for i in 0..MAX_ENTRIES + 5 {
         log.push(Severity::Error, format!("e{i}"));
     }
@@ -265,8 +277,10 @@ fn totals_ignore_info_and_trace() {
     assert_eq!(log.totals(), (0, 0));
 }
 
-fn shown_texts(log: &MessageLog) -> Vec<&str> {
-    log.shown_from(0).map(|entry| entry.text.as_str()).collect()
+fn shown_texts(log: &MessageLog, floor: MessagesMinSeverity) -> Vec<&str> {
+    log.shown_from(0, floor)
+        .map(|entry| entry.text.as_str())
+        .collect()
 }
 
 fn stored_texts(log: &MessageLog) -> Vec<&str> {
@@ -274,38 +288,31 @@ fn stored_texts(log: &MessageLog) -> Vec<&str> {
 }
 
 #[test]
-fn warning_floor_stores_trace_but_does_not_show_it() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Warning);
-    log.push(Severity::Trace, "t".to_string());
-    log.push(Severity::Warning, "w".to_string());
-    log.push(Severity::Error, "e".to_string());
+fn the_floor_filters_what_is_shown_not_what_is_stored() {
+    let log = make_log(&[
+        (Severity::Trace, "t"),
+        (Severity::Warning, "w"),
+        (Severity::Error, "e"),
+    ]);
     assert_eq!(stored_texts(&log), ["t", "w", "e"]);
-    assert_eq!(shown_texts(&log), ["w", "e"]);
+    assert_eq!(
+        shown_texts(&log, MessagesMinSeverity::Trace),
+        ["t", "w", "e"]
+    );
+    assert_eq!(shown_texts(&log, MessagesMinSeverity::Warning), ["w", "e"]);
+    assert_eq!(shown_texts(&log, MessagesMinSeverity::Error), ["e"]);
 }
 
 #[test]
 fn error_floor_leaves_warnings_out_of_the_unseen_counts() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Error);
-    log.push(Severity::Warning, "w".to_string());
-    log.push(Severity::Error, "e".to_string());
-    assert_eq!(log.unseen_counts(), (1, 0));
+    let log = make_log(&[(Severity::Warning, "w"), (Severity::Error, "e")]);
+    assert_eq!(log.unseen_counts(MessagesMinSeverity::Error), (1, 0));
     assert_eq!(log.totals(), (1, 1));
 }
 
 #[test]
-fn changing_the_floor_changes_what_is_shown_of_the_stored_entries() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Warning);
-    log.push(Severity::Trace, "t".to_string());
-    log.push(Severity::Warning, "w".to_string());
-    log.set_floor(MessagesMinSeverity::Trace);
-    assert_eq!(shown_texts(&log), ["t", "w"]);
-    log.set_floor(MessagesMinSeverity::Error);
-    assert!(shown_texts(&log).is_empty());
-}
-
-#[test]
 fn a_full_log_evicts_the_oldest_trace_then_warning_then_error() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    let mut log = MessageLog::new();
     log.push(Severity::Error, "e".to_string());
     log.push(Severity::Warning, "w".to_string());
     log.push(Severity::Trace, "t".to_string());
@@ -326,7 +333,7 @@ fn a_full_log_evicts_the_oldest_trace_then_warning_then_error() {
 
 #[test]
 fn evicting_a_seen_entry_keeps_the_rest_seen() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    let mut log = MessageLog::new();
     for i in 0..10 {
         log.push(Severity::Error, format!("e{i}"));
     }
@@ -336,12 +343,12 @@ fn evicting_a_seen_entry_keeps_the_rest_seen() {
     }
     log.mark_all_seen();
     log.push(Severity::Error, "new".to_string());
-    assert_eq!(log.unseen_counts(), (1, 0));
+    assert_eq!(log.unseen_counts(SHOW_ALL), (1, 0));
 }
 
 #[test]
 fn evicting_an_unseen_entry_leaves_the_seen_ones_alone() {
-    let mut log = MessageLog::new(MessagesMinSeverity::Trace);
+    let mut log = MessageLog::new();
     for i in 0..10 {
         log.push(Severity::Error, format!("e{i}"));
     }
@@ -351,5 +358,5 @@ fn evicting_an_unseen_entry_leaves_the_seen_ones_alone() {
         log.push(Severity::Error, format!("f{i}"));
     }
     log.push(Severity::Error, "new".to_string());
-    assert_eq!(log.unseen_counts(), (MAX_ENTRIES - 10, 0));
+    assert_eq!(log.unseen_counts(SHOW_ALL), (MAX_ENTRIES - 10, 0));
 }

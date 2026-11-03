@@ -21,14 +21,17 @@ use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 
 /// `:messages`: open the message log in a read-only buffer.
 ///
-/// Displays all logged warnings, errors, and trace entries accumulated during
-/// the session. Cursor starts at the last entry (most recent). Dismiss with
+/// Displays the entries logged during the session at or above
+/// `messages-min-severity`. Cursor starts at the last entry (most recent). Dismiss with
 /// `:bd` or switch away with `:b#`.
 pub(in crate::editor) fn typed_messages(
     ed: &mut Editor,
     fp: FocusedPane,
 ) -> Result<(), CommandError> {
-    let (content, spans) = ed.state.message_log.format_with_spans();
+    let (content, spans) = ed
+        .state
+        .message_log
+        .format_with_spans(ed.state.settings.messages_min_severity);
     if content.is_empty() {
         ed.report(Severity::Info, "No messages".to_string());
         return Ok(());

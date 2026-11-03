@@ -203,12 +203,6 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
                 .set_undo_levels_all(state.settings.undo_levels);
             true
         }
-        ResyncKey::messages_min_severity => {
-            state
-                .message_log
-                .set_floor(state.settings.messages_min_severity);
-            true
-        }
         ResyncKey::jump_list_capacity => {
             for entry in state.panes.entries.values_mut() {
                 entry.jumps.set_capacity(state.settings.jump_list_capacity);

@@ -415,7 +415,10 @@ impl hume_engine::providers::ChromeProvider for HumeStatusline<'_> {
             let display_msg: Option<&str> = if let Some(ref msg) = editor.state.status_msg {
                 Some(msg.as_str())
             } else {
-                summary = editor.state.message_log.summary_text();
+                summary = editor
+                    .state
+                    .message_log
+                    .summary_text(editor.state.settings.messages_min_severity);
                 summary.as_deref()
             };
 

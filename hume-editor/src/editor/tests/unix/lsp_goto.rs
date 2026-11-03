@@ -699,7 +699,6 @@ fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, move |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&other_uri, 0, 3));
     });
-    show_trace_messages(&mut ed);
 
     // Drain the startup OnBufferEnter (no handler registered yet, so
     // nothing gets logged for it) before installing the counting handler.

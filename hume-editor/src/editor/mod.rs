@@ -414,7 +414,7 @@ impl EditorState {
             worker_panics: hume_platform::worker_panic::WorkerPanics::default(),
             status_msg: None,
             summary_ttl: 0,
-            message_log: MessageLog::new(settings.messages_min_severity),
+            message_log: MessageLog::new(),
             settings,
             shown_theme: String::new(),
             last_find: None,

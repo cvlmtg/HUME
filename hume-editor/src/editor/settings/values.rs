@@ -327,8 +327,8 @@ settings_enum!(WordSelectsWhitespace, [
 
 /// The lowest severity `:messages` and its unseen summary show. The log
 /// stores every message whatever this is, so lowering it shows messages
-/// reported while it was higher.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// reported while it was higher. Ordered least to most severe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum MessagesMinSeverity {
     Trace,
     #[default]
@@ -337,12 +337,18 @@ pub enum MessagesMinSeverity {
 }
 
 impl MessagesMinSeverity {
-    pub(in crate::editor) fn shows(self, severity: Severity) -> bool {
-        match self {
-            Self::Trace => true,
-            Self::Warning => matches!(severity, Severity::Warning | Severity::Error),
-            Self::Error => severity == Severity::Error,
+    /// Where `severity` sits on this scale. `Info`, which the log never
+    /// stores, sits with `Trace`.
+    pub(in crate::editor) fn of(severity: Severity) -> Self {
+        match severity {
+            Severity::Info | Severity::Trace => Self::Trace,
+            Severity::Warning => Self::Warning,
+            Severity::Error => Self::Error,
         }
+    }
+
+    pub(in crate::editor) fn shows(self, severity: Severity) -> bool {
+        Self::of(severity) >= self
     }
 }
 

@@ -196,41 +196,29 @@ fn repeat_messages_replaces_stale_spans_not_appends() {
     assert_eq!(spans[3].end, co(30));
 }
 
+fn shown_messages(ed: &Editor) -> String {
+    ed.state
+        .message_log
+        .format_with_spans(ed.state.settings.messages_min_severity)
+        .0
+}
+
 #[test]
 fn messages_min_severity_hides_reports_below_it() {
     let mut ed = editor_from("-[a]>\n");
-    let fp = FocusedPane::current(&ed.view);
-    crate::editor::commands::typed_set(&mut ed, fp, "global messages-min-severity=warning")
-        .expect("the floor is a valid setting");
+    run_set(&mut ed, "global messages-min-severity=warning").expect("the floor is a valid setting");
     ed.report(Severity::Trace, "trace detail");
     ed.report(Severity::Warning, "a warning");
-    let shown = ed.state.message_log.format_for_display();
+    let shown = shown_messages(&ed);
     assert!(shown.contains("a warning"));
     assert!(!shown.contains("trace detail"));
 }
 
 #[test]
 fn lowering_the_floor_shows_trace_reported_before_it() {
-    let mut ed = Editor::open(
-        None,
-        crate::editor::run::HEADLESS_TERMINAL,
-        no_op_wake(),
-        Dirs::none(),
-        test_cwd(),
-    )
-    .expect("open");
+    let mut ed = editor_from("-[a]>\n");
     ed.report(Severity::Trace, "trace detail");
-    assert!(
-        !ed.state
-            .message_log
-            .format_for_display()
-            .contains("trace detail")
-    );
-    show_trace_messages(&mut ed);
-    assert!(
-        ed.state
-            .message_log
-            .format_for_display()
-            .contains("trace detail")
-    );
+    assert!(!shown_messages(&ed).contains("trace detail"));
+    run_set(&mut ed, "global messages-min-severity=trace").expect("trace is a valid floor");
+    assert!(shown_messages(&ed).contains("trace detail"));
 }

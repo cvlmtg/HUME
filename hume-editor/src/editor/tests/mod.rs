@@ -106,14 +106,6 @@ fn open_headless(path: Option<PathBuf>) -> Editor {
     .expect("open")
 }
 
-/// Show trace messages in `ed`'s `:messages`, as [`Editor::for_testing`]
-/// does, for a test built on `Editor::open` that reads one.
-fn show_trace_messages(ed: &mut Editor) {
-    let fp = FocusedPane::current(&ed.view);
-    crate::editor::commands::typed_set(ed, fp, "global messages-min-severity=trace")
-        .expect("trace is a valid floor");
-}
-
 /// Build a kitty-protocol-enabled editor for testing Ctrl-motion bindings.
 /// Mirrors interactive kitty mode: sets the flag AND installs the kitty-only
 /// default keybinds that `Keymap::default()` omits.
@@ -1269,16 +1261,12 @@ impl Editor {
     /// Only `doc` and `view` are meaningful. All other fields are set to
     /// sensible defaults (Normal mode, default colors, no file path, etc.).
     /// Use the builder methods below to override specific fields.
-    ///
-    /// `:messages` shows trace messages, unlike the production default:
-    /// tests observe hooks and background work through `(log! 'trace …)`.
     pub(crate) fn for_testing(doc: Buffer) -> Self {
         let theme = crate::editor::theme::fallback_theme();
         let (mut engine_view, focus_key) = EngineView::new(theme, super::run::HEADLESS_TERMINAL);
         let (views, tabline_view) = super::run::register_chrome(&mut engine_view);
         let buffer_id = engine_view.buffers.insert(());
-        let mut settings = EditorSettings::default();
-        settings.messages_min_severity = crate::editor::settings::MessagesMinSeverity::Trace;
+        let settings = EditorSettings::default();
         let history_capacity = settings.prompt_history_levels;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
@@ -1300,7 +1288,6 @@ impl Editor {
                 wake,
                 buffers,
                 lsp: super::lsp::LspState::new_inline(),
-                message_log: super::message_log::MessageLog::new(settings.messages_min_severity),
                 settings,
                 panes,
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
