@@ -171,7 +171,7 @@ The subsystems LSP touches, where they live, and what LSP work did with each. Re
 | Plugins | `runtime/plugins/core/<name>/plugin.scm`; lazy manifests via `declare-plugin!` (`#:commands` / `#:events` / `#:languages` — wrapper in `builtins/bootstrap.scm`; state machine in `hume-scripting/src/lazy.rs`); `plum` is the biggest example (multi-file via relative `require`) | `runtime/plugins/core/lsp/` ships the same way |
 | Jump list | `editor/jump_list.rs` — `with_jump`, which pushes only when the navigation moved (pushing earlier truncates forward history on abort) | `goto-location!` pushes a jump entry |
 | Message log | `Editor::report(Severity, String)`; `:messages` opens a read-only view that follows the log (`Editor::sync_messages_view`, `editor/message_log.rs`) | stderr/log routing; several defaults report here |
-| Read-only views | `open_read_only_view(label, content, cursor_line)` (`editor/buffer/file_open.rs`) — synthetic read-only buffer | Not the drawer (real chrome), but the fallback pattern for a list surface that doesn't need one |
+| Read-only views | `open_read_only_view(fp, label, content, cursor_line)` (`editor/buffer/file_open.rs`) — synthetic read-only buffer | Not the drawer (real chrome), but the fallback pattern for a list surface that doesn't need one |
 
 ## Steel API index
 
