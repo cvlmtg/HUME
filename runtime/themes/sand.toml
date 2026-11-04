@@ -15,7 +15,7 @@
 "ui.cursor.insert" = { fg = "bg", bg = "sand" }
 "ui.cursor.primary" = { fg = "fg", bg = "dark_plum" }
 "ui.cursor.primary.insert" = { fg = "bg", bg = "gold" }
-"ui.cursor.match" = { fg = "fg", bg = "plum" }
+"ui.cursor.match" = { fg = "bg", bg = "fg" }
 "ui.cursor.match.search" = { fg = "bg", bg = "sand" }
 "ui.cursorline.primary" = { bg = "surface" }
 "ui.linenr" = { fg = "muted" }
