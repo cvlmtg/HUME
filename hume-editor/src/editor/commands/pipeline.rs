@@ -709,10 +709,7 @@ pub(in crate::editor) fn run(
 
     // AFTER
     step_align_view(state, view, pane, meta.aligns_view, moved);
-    // A command that records no history never reaches the
-    // `!selection_changed` early return in update_recipe, so `true` here is
-    // inert filler.
-    let selection_changed = recording.is_none_or(|recording| recording.finish(state, view, pane));
+    let selection_changed = recording.map(|recording| recording.finish(state, view, pane));
     // The recipe belongs to the focused pane's dot-repeat state (see this
     // fn's own doc).
     if focused.is_some() {

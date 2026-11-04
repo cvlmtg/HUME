@@ -685,11 +685,9 @@ impl History {
             RevisionPath::Unknown => unreachable!("a revision's parent is in the tree"),
         };
         let back = to_saved.invert(current);
-        let (saved_text, _) = Transaction::new(to_saved, saved.clone())
-            .apply(current)
-            .expect("the path from the current revision maps its text")
-            .0
-            .into_parts();
+        let saved_text = to_saved
+            .apply_as(current, saved.version())
+            .expect("the path from the current revision maps its text");
         let mut sels = saved.clone();
         sels.translate(&TextChange::new(&saved_text, current, &back));
         Some(sels)

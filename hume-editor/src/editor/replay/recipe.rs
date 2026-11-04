@@ -66,12 +66,17 @@ impl EditorState {
     ///
     /// `selection_changed` gates `Establishes`/`Composes`, so a command that found
     /// nothing (`select-all-matches`, `ms(`) leaves the staged recipe untouched.
+    /// It is `None` for a command that records no selection history, which
+    /// pushes no step.
+    ///
+    /// # Panics
+    /// Panics if a command that could push a step has no `selection_changed`.
     pub(in crate::editor) fn update_recipe(
         &mut self,
         meta: &CmdMeta,
         name: &Rc<str>,
         ctx: &CmdCtx,
-        selection_changed: bool,
+        selection_changed: Option<bool>,
     ) {
         self.selection_recipe_touched = true;
         let Some(SelectionRole { effect, .. }) = meta.selection.filter(|role| role.recipe_step)
@@ -84,7 +89,9 @@ impl EditorState {
             self.selection_recipe.clear();
             return;
         }
-        if !selection_changed {
+        let changed = selection_changed
+            .expect("a command that can push a recipe step records its selections");
+        if !changed {
             return;
         }
         // A Move-mode establish restarts the recipe.

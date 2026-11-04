@@ -188,8 +188,7 @@ pub(in crate::editor) fn split_pane_onto(
     // their history and its scroll position: `open_pane` seeds fresh state at
     // the buffer's initial selection, which would otherwise jump the new pane
     // to the top of the file regardless of where the source pane was
-    // scrolled to. `:split <path>` (a different buffer) intentionally starts
-    // fresh.
+    // scrolled to. `:split <path>` (a different buffer) starts fresh.
     if bid == old_buffer_id {
         state.panes.entries.copy_selections(
             &view.panes,

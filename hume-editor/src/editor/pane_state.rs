@@ -1,7 +1,8 @@
 //! Per-(pane, buffer) and per-pane editor state bundles.
 //!
-//! [`PaneBufferState`] holds all per-(pane, buffer) mutable facts: selections,
-//! the ones built since the pane's last edit and search cursor. Adding a new per-(pane, buffer) field later requires changing
+//! [`PaneBufferState`] holds all per-(pane, buffer) mutable facts: the
+//! selections with those built since the pane's last edit, and the search
+//! cursor. Adding a new per-(pane, buffer) field later requires changing
 //! exactly one struct and one Default impl, not four parallel maps.
 //!
 //! [`PaneEntry`] is one pane's whole editor-side state: its per-buffer
@@ -122,14 +123,15 @@ impl PaneBufferState {
     /// Run `write` on the selections, `text` being the buffer's current
     /// text before and after it, raising [`PaneBufferState::reveal_pending`]
     /// iff the primary head moved.
-    fn write_revealing_moves(
+    fn write_revealing_moves<R>(
         &mut self,
         text: &BufferText,
-        write: impl FnOnce(&mut PaneSelections),
-    ) {
+        write: impl FnOnce(&mut PaneSelections) -> R,
+    ) -> R {
         let head = self.view(text).primary().head();
-        write(&mut self.selections);
+        let written = write(&mut self.selections);
         self.reveal_pending |= self.view(text).primary().head() != head;
+        written
     }
 
     /// Replace the selections outright with `new`, a set for `text`, the
@@ -193,9 +195,7 @@ impl PaneBufferState {
         saved: Option<&SavedSelections<'_>>,
         text: &BufferText,
     ) -> Result<(), TreeRefused> {
-        let mut walked = Ok(());
-        self.write_revealing_moves(text, |sels| walked = sels.walk(walk, count, saved));
-        walked
+        self.write_revealing_moves(text, |sels| sels.walk(walk, count, saved))
     }
 }
 

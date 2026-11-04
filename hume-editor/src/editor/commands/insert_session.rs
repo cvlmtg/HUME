@@ -277,7 +277,7 @@ pub(super) fn begin_insert_session_preserving_register(
         return Ok(entry);
     }
     edit_session::check_can_open(state.open_session(), pid, bid)?;
-    let entered_with = state.panes.entries.seeded(pid, bid).selections().clone();
+    let entered_with = super::pane_selections(state, view, fp.pane()).clone();
     super::apply_pane_motion(state, view, fp.pane(), place);
     // Keep the change whose code opened this session alive for the whole
     // session, so its keystrokes record and a repeatable command mid-session

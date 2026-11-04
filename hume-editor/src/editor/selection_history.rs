@@ -200,31 +200,28 @@ impl PaneSelections {
         saved: Option<&SavedSelections<'_>>,
     ) -> Result<(), TreeRefused> {
         let mut steps = Steps::new(&self.live, saved);
-        let mut at = self.walked.map(|point| steps.index_of(point)).transpose()?;
-        let mut retry_landed = matches!(walk, Walk::Back)
-            && at.is_some_and(|index| {
-                steps.get(index).is_ok_and(|landed| {
-                    landed.is_some_and(|l| !l.eq_ignoring_sticky(&self.current))
-                })
-            });
+        let landed = self.walked.map(|point| steps.index_of(point)).transpose()?;
+        // The index the walk tries next. Back tries the landed step first,
+        // which it skips unless the selections moved off it.
+        let mut next = match walk {
+            Walk::Back => Some(landed.unwrap_or(0)),
+            Walk::Forward => landed.and_then(|index| index.checked_sub(1)),
+        };
         for _ in 0..count {
             loop {
-                let next = match walk {
-                    Walk::Back if retry_landed => at.expect("a landed walk has a point"),
-                    Walk::Back => at.map_or(0, |index| index + 1),
-                    Walk::Forward => match at {
-                        Some(index) if index > 0 => index - 1,
-                        _ => return Ok(()),
-                    },
+                let Some(index) = next else {
+                    return Ok(());
                 };
-                retry_landed = false;
-                at = Some(next);
-                let Some(sels) = steps.get(next)? else {
+                next = match walk {
+                    Walk::Back => Some(index + 1),
+                    Walk::Forward => index.checked_sub(1),
+                };
+                let Some((point, sels)) = steps.get(index)? else {
                     return Ok(());
                 };
                 if !sels.is_single_cursor() && !sels.eq_ignoring_sticky(&self.current) {
                     self.current = sels;
-                    self.walked = Some(steps.point(next));
+                    self.walked = Some(point);
                     break;
                 }
             }
@@ -256,27 +253,29 @@ impl<'a> Steps<'a> {
         Ok(self.tree.get_or_insert_with(|| saved.points()))
     }
 
-    /// The step at `index`, `None` past the oldest.
-    fn get(&mut self, index: usize) -> Result<Option<SelectionSet>, TreeRefused> {
-        let live = self.live.len();
-        if let Some(live_index) = live.checked_sub(index + 1) {
-            return Ok(Some(self.live[live_index].clone()));
-        }
-        let point = self.tree()?.get(index - live).copied();
-        Ok(point.and_then(|point| {
-            self.saved
+    /// The step at `index` and its selections, `None` past the oldest.
+    fn get(&mut self, index: usize) -> Result<Option<(Point, SelectionSet)>, TreeRefused> {
+        let Some(point) = self.point_at(index)? else {
+            return Ok(None);
+        };
+        let sels = match point {
+            Point::Live(live_index) => Some(self.live[live_index].clone()),
+            Point::Tree(point) => self
+                .saved
                 .expect("the tree's points came from it")
-                .at(point)
-        }))
+                .at(point),
+        };
+        Ok(sels.map(|sels| (point, sels)))
     }
 
-    fn point(&self, index: usize) -> Point {
-        match self.live.len().checked_sub(index + 1) {
-            Some(live_index) => Point::Live(live_index),
-            None => Point::Tree(
-                self.tree.as_ref().expect("a tree step was read")[index - self.live.len()],
-            ),
+    /// The point at `index`, `None` past the oldest. The inverse of
+    /// [`Self::index_of`].
+    fn point_at(&mut self, index: usize) -> Result<Option<Point>, TreeRefused> {
+        let live = self.live.len();
+        if index < live {
+            return Ok(Some(Point::Live(live - 1 - index)));
         }
+        Ok(self.tree()?.get(index - live).copied().map(Point::Tree))
     }
 
     /// The index of `point`. A tree point whose revision is gone (trimmed by
@@ -297,6 +296,7 @@ impl<'a> Steps<'a> {
 
 /// A change to a pane's selections that the live list will record: where it
 /// goes, and the selections it starts from.
+#[must_use = "a change records nothing until `finish` runs"]
 pub(in crate::editor) struct PendingRecord {
     placement: Placement,
     before: Tracked<SelectionSet>,
