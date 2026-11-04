@@ -2,7 +2,7 @@
 //! running in the background. Unix-only because every test runs `sh` or
 //! names a file Windows refuses.
 
-use super::super::pipe::{pipe_line_in, press};
+use super::super::pipe::{pipe_line_in, press_key};
 use super::*;
 
 use std::collections::VecDeque;
@@ -873,7 +873,7 @@ fn an_escaped_quote_at_the_end_of_a_word_is_part_of_the_name() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("a\"b"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), r#"cat a\""#);
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), r#"cat a\"b"#);
 }
 
@@ -967,9 +967,7 @@ fn an_undone_run_brings_back_the_selection_it_ran_on() {
     let run = start_run(&mut ed, "sort", PipeKind::Replace);
     let mut console = ScriptedConsole::new(&ed, []);
     run_with(&mut ed, run, &mut console);
-    for k in ['u', ';', 'm', 'u'] {
-        ed.feed_event(key(k));
-    }
+    press(&mut ed, "u;mu");
 
     assert_eq!(state(&ed), "-[b\na]>\nz\n");
 }

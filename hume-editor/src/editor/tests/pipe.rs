@@ -211,7 +211,7 @@ pub(super) fn pipe_line_in(dir: &Path, typed: &str) -> Editor {
 }
 
 /// Presses `key` and lets the completion source it calls answer.
-pub(super) fn press(ed: &mut Editor, key: KeyEvent) {
+pub(super) fn press_key(ed: &mut Editor, key: KeyEvent) {
     ed.handle_key(key);
     ed.settle();
 }
@@ -221,7 +221,7 @@ fn tab_completes_a_path_argument() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("notes.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat no");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat notes.txt");
     assert!(ed.state.input.minibuf_completion().is_none());
 }
@@ -231,7 +231,7 @@ fn tab_completes_only_the_word_under_the_cursor() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("beta.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "diff alpha be");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "diff alpha beta.txt");
 }
 
@@ -241,13 +241,13 @@ fn tab_applies_the_shared_prefix_then_cycles_and_enter_runs_the_command() {
     std::fs::write(dir.path().join("alpha1"), b"").unwrap();
     std::fs::write(dir.path().join("alpha2"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat al");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat alpha");
     assert_eq!(
         ed.state.input.minibuf_completion().map(|s| s.len()),
         Some(2)
     );
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat alpha1");
     ed.handle_key(key_enter());
     assert!(ed.state.minibuf().is_none());
@@ -263,7 +263,7 @@ fn the_shared_prefix_never_ends_between_a_backslash_and_what_it_escapes() {
     std::fs::write(dir.path().join("ab c.txt"), b"").unwrap();
     std::fs::write(dir.path().join("ab$d"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat a");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat ab");
 }
 
@@ -273,7 +273,7 @@ fn escaped_names_sharing_only_the_typed_start_leave_the_line_as_typed() {
     std::fs::write(dir.path().join("ab c.txt"), b"").unwrap();
     std::fs::write(dir.path().join("ab$d"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat ab");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat ab");
     assert_eq!(
         ed.state.input.minibuf_completion().map(|s| s.len()),
@@ -289,10 +289,10 @@ fn enter_on_a_directory_candidate_goes_into_it() {
     std::fs::write(dir.path().join("docs/one.md"), b"").unwrap();
     std::fs::write(dir.path().join("docs/two.md"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat ");
-    press(&mut ed, key_tab());
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat docs/");
-    press(&mut ed, key_enter());
+    press_key(&mut ed, key_enter());
     assert_eq!(prompt_label(&ed).as_deref(), Some("|"));
     assert_eq!(minibuf_input(&ed), "cat docs/");
     assert_eq!(
@@ -307,10 +307,10 @@ fn a_name_with_a_space_is_escaped_and_completes_inside() {
     std::fs::create_dir(dir.path().join("my dir")).unwrap();
     std::fs::write(dir.path().join("my dir/inner.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat my");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), r"cat my\ dir/");
     keys(&mut ed, "in");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), r"cat my\ dir/inner.txt");
 }
 
@@ -319,7 +319,7 @@ fn a_command_word_with_a_separator_completes_as_a_path() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("run.sh"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "./ru");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "./run.sh");
 }
 
@@ -329,7 +329,7 @@ fn an_escaped_directory_is_read_unescaped_and_kept_as_typed() {
     std::fs::create_dir(dir.path().join("a b")).unwrap();
     std::fs::write(dir.path().join("a b/c.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), r"cat a\ b/c");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), r"cat a\ b/c.txt");
 }
 
@@ -338,7 +338,7 @@ fn an_escaped_space_before_the_cursor_stays_in_the_word() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("my notes.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), r"cat my\ n");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), r"cat my\ notes.txt");
 }
 
@@ -348,7 +348,7 @@ fn an_escaped_tilde_names_a_directory_called_tilde() {
     std::fs::create_dir(dir.path().join("~")).unwrap();
     std::fs::write(dir.path().join("~/inside-tilde"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), r"cat \~/");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), r"cat \~/inside-tilde");
 }
 
@@ -357,7 +357,7 @@ fn a_quoted_word_completes_inside_its_quote_and_a_file_closes_it() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("my notes.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat \"my no");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat \"my notes.txt\"");
 }
 
@@ -367,9 +367,9 @@ fn a_quoted_directory_closes_its_quote_and_the_next_tab_completes_inside_it() {
     std::fs::create_dir(dir.path().join("my dir")).unwrap();
     std::fs::write(dir.path().join("my dir/inner.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat 'my d");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat 'my dir/'");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat 'my dir/inner.txt'");
 }
 
@@ -380,12 +380,12 @@ fn tab_after_a_closed_word_with_several_entries_cycles_inside_its_quote() {
     std::fs::write(dir.path().join("my dir/a.txt"), b"").unwrap();
     std::fs::write(dir.path().join("my dir/b.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat \"my dir/\"");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(
         ed.state.input.minibuf_completion().map(|s| s.len()),
         Some(2)
     );
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat \"my dir/a.txt\"");
 }
 
@@ -397,11 +397,11 @@ fn enter_on_a_quoted_directory_candidate_lists_inside_its_quote() {
     std::fs::write(dir.path().join("my dir/one.md"), b"").unwrap();
     std::fs::write(dir.path().join("my dir/two.md"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat \"my d");
-    press(&mut ed, key_tab());
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat \"my dir/\"");
-    press(&mut ed, key_enter());
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_enter());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat \"my dir/one.md\"");
 }
 
@@ -410,7 +410,7 @@ fn a_word_that_only_opens_a_quote_completes_inside_it() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("my notes.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat \"");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat \"my notes.txt\"");
 }
 
@@ -420,7 +420,7 @@ fn the_shared_prefix_of_a_quoted_word_stays_inside_its_quote() {
     std::fs::write(dir.path().join("my notes.txt"), b"").unwrap();
     std::fs::write(dir.path().join("my nothing"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat \"my no");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat \"my not");
 }
 
@@ -430,9 +430,9 @@ fn the_shared_prefix_of_escaped_names_is_written_escaped() {
     std::fs::create_dir(dir.path().join("my dir")).unwrap();
     std::fs::create_dir(dir.path().join("my docs")).unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat my");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), r"cat my\ d");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), r"cat my\ dir/");
 }
 
@@ -449,10 +449,10 @@ fn a_shared_prefix_left_in_an_open_quote_completes_on_the_next_tab() {
     ed.state.settings.shell =
         hume_platform::process::batch::ShellCommand::from_words(vec!["pwsh".into(), "-c".into()])
             .unwrap();
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat 'dir/a b");
     keys(&mut ed, "1");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat 'dir/a b1'");
 }
 
@@ -462,7 +462,7 @@ fn a_quote_opened_after_a_directory_is_continued() {
     std::fs::create_dir(dir.path().join("dir")).unwrap();
     std::fs::write(dir.path().join("dir/my notes.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "cat dir/\"my");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat dir/\"my notes.txt\"");
 }
 
@@ -471,7 +471,7 @@ fn a_word_ending_in_an_escape_completes() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join("my dir")).unwrap();
     let mut ed = pipe_line_in(dir.path(), r"cat my\");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), r"cat my\ dir/");
 }
 
@@ -483,7 +483,7 @@ fn a_shell_with_no_dialect_completes_nothing_and_says_so() {
     ed.state.settings.shell =
         hume_platform::process::batch::ShellCommand::from_words(vec!["nu".into(), "-c".into()])
             .unwrap();
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat no");
     assert!(ed.state.input.minibuf_completion().is_none());
     assert!(
@@ -502,8 +502,8 @@ fn a_shell_with_no_dialect_is_named_once() {
     ed.state.settings.shell =
         hume_platform::process::batch::ShellCommand::from_words(vec!["nu".into(), "-c".into()])
             .unwrap();
-    press(&mut ed, key_tab());
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     let warnings = ed
         .state
         .message_log
@@ -518,7 +518,7 @@ fn tab_with_no_shell_source_registered_warns() {
     let mut ed = editor_from("-[abc]>\n");
     ed.handle_key(key('|'));
     keys(&mut ed, "cat no");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat no");
     assert!(
         ed.state
@@ -535,11 +535,11 @@ fn completion_survives_a_config_reload() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("notes.txt"), b"").unwrap();
     let mut ed = pipe_line_in(dir.path(), "");
-    press(&mut ed, key_esc());
+    press_key(&mut ed, key_esc());
     super::command_mode::submit(&mut ed, "reload-config");
     ed.handle_key(key('|'));
     keys(&mut ed, "cat no");
-    press(&mut ed, key_tab());
+    press_key(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat notes.txt");
 }
 

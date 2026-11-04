@@ -695,9 +695,7 @@ fn picker_keymap_enter_and_ctrl_o_close_and_hand_the_selected_item_over() {
 #[test]
 fn picker_keymap_enter_with_nothing_matching_hands_over_false() {
     let (mut ed, _guard, _init_dir) = picker_keymap_editor();
-    for ch in "zzz".chars() {
-        ed.feed_event(key(ch));
-    }
+    press(&mut ed, "zzz");
 
     ed.feed_event(key_enter());
 
