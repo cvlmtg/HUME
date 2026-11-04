@@ -21,6 +21,7 @@ fn resolve_joins_relative_xdg_dirs_onto_the_startup_cwd() {
         |k| match k {
             "XDG_CONFIG_HOME" => Some("cfg".to_string()),
             "XDG_DATA_HOME" => Some("data".to_string()),
+            "XDG_STATE_HOME" => Some("state".to_string()),
             _ => None,
         },
         None,
@@ -31,6 +32,26 @@ fn resolve_joins_relative_xdg_dirs_onto_the_startup_cwd() {
     .unwrap();
     assert_eq!(dirs.config, Some(cwd.path().join("cfg").join("hume")));
     assert_eq!(dirs.data, Some(cwd.path().join("data").join("hume")));
+    assert_eq!(dirs.state, Some(cwd.path().join("state").join("hume")));
+}
+
+#[test]
+fn state_dir_respects_xdg_state_home() {
+    let result = state_dir_with(|k| match k {
+        "XDG_STATE_HOME" => Some("/xdg/state".to_owned()),
+        "HOME" => Some("/home/alice".to_owned()),
+        _ => None,
+    });
+    assert_eq!(result, Some(PathBuf::from("/xdg/state/hume")));
+}
+
+#[test]
+fn state_dir_falls_back_to_home_local_state() {
+    let result = state_dir_with(|k| match k {
+        "HOME" => Some("/home/alice".to_owned()),
+        _ => None,
+    });
+    assert_eq!(result, Some(PathBuf::from("/home/alice/.local/state/hume")));
 }
 
 #[test]

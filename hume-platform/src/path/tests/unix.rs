@@ -237,3 +237,18 @@ fn absolute_fails_for_a_dot_dot_after_a_missing_directory() {
     let err = absolute(Path::new("missing/../f.txt"), dir.path()).unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
+
+// ── mirrored_under ────────────────────────────────────────────────────────
+
+#[test]
+fn mirrored_under_nests_the_path_and_suffixes_the_file_name() {
+    let mirror = mirrored_under(
+        Path::new("/state/undo"),
+        &AbsolutePath::rooted("/home/alice/src/foo.rs"),
+        ".undo",
+    );
+    assert_eq!(
+        mirror,
+        Some(PathBuf::from("/state/undo/home/alice/src/foo.rs.undo"))
+    );
+}

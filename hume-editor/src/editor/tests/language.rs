@@ -120,8 +120,8 @@ fn detect_and_set_language_matches_extension() {
     assert!(ed.state.buffers.get(bid).language.is_some());
 }
 
-/// A buffer queued for its open announcement by any path is detected and
-/// announced by the next `settle`, with no call from the path that opened it.
+/// A buffer finished by `lifecycle::finish_open` is detected and announced
+/// by the next `settle`, with no call from the path that opened it.
 #[test]
 fn settle_detects_and_announces_a_queued_buffer() {
     let mut ed = editor_from("-[a]>b\n");
@@ -137,7 +137,7 @@ fn settle_detects_and_announces_a_queued_buffer() {
     register_rust(&mut ed, "rust", &["rs"]);
     let before = state(&ed);
 
-    crate::editor::buffer::lifecycle::queue_open_announcement(&mut ed.state, bid);
+    crate::editor::buffer::lifecycle::finish_open(&mut ed.state, bid);
     ed.settle();
 
     assert_eq!(

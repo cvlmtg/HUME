@@ -60,7 +60,7 @@ pub(crate) struct TablineViewState {
 }
 
 /// Engine-facing tab-bar provider: one instance, owned by `EngineView`
-/// (chrome, not per-pane), constructed once at `Editor::open` time.
+/// (chrome, not per-pane), constructed once at `Editor::bootstrap` time.
 pub(crate) struct TablineWidget {
     pub(crate) data: SharedSlot<TablineViewState>,
 }

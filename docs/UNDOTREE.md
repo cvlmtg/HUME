@@ -121,7 +121,7 @@ carries them and needs no `diff-words` call: the plus side as char ranges of
 the current text, the minus side cut at line breaks into char-column ranges
 per line. A span covering a whole line is dropped, since the tint or the
 virtual line already marks that line, so a revision recorded as whole-line
-replacements (`:e!`'s reload, through `changesets_from_line_diff`) carries an
+replacements (`:e!`'s reload, through `changeset_from_line_diff`) carries an
 empty `'words`.
 
 ### Hunks cross the Steel boundary, changesets do not
@@ -224,5 +224,3 @@ builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind
 - A `+N/-M` size summary per row
 - Raw changesets in Steel — see "Hunks cross the Steel boundary, changesets do
   not"
-- Cross-session persistence — `hume-editing` has no serialization story at all
-  today; out of scope for this feature to introduce

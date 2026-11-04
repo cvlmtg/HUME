@@ -15,7 +15,7 @@ use crate::text::{BufferText, TextVersion};
 /// - `Retain` advances through both old and new documents (1:1 mapping)
 /// - `Delete` consumes from the old document only (chars vanish)
 /// - `Insert` produces into the new document only (chars appear)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Operation {
     /// Skip `n` chars unchanged. Advances both old and new cursors by `n`.
     Retain(usize),
@@ -456,6 +456,37 @@ impl ChangeSet {
             len_before: len,
             len_after: len,
         }
+    }
+
+    /// `ops`, applying to a text of `len_before` chars, as a changeset.
+    /// `None` unless they are normalized, consume `len_before` chars and no
+    /// more, and insert no `\r`.
+    pub(crate) fn from_ops(ops: Vec<Operation>, len_before: usize) -> Option<ChangeSet> {
+        let (mut consumed, mut len_after) = (0usize, 0usize);
+        let mut previous = None;
+        for op in &ops {
+            let kind = std::mem::discriminant(op);
+            if previous == Some(kind) {
+                return None;
+            }
+            previous = Some(kind);
+            match op {
+                Operation::Retain(n) if *n > 0 => {
+                    consumed = consumed.checked_add(*n)?;
+                    len_after = len_after.checked_add(*n)?;
+                }
+                Operation::Delete(n) if *n > 0 => consumed = consumed.checked_add(*n)?,
+                Operation::Insert(s) if !s.is_empty() && !s.contains('\r') => {
+                    len_after = len_after.checked_add(s.chars().count())?;
+                }
+                _ => return None,
+            }
+        }
+        (consumed == len_before).then_some(ChangeSet {
+            ops,
+            len_before,
+            len_after,
+        })
     }
 
     /// Returns `true` if this changeset is the identity transform: all
@@ -998,7 +1029,7 @@ mod builder;
 pub use builder::ChangeSetBuilder;
 
 mod diff_cs;
-pub use diff_cs::changesets_from_line_diff;
+pub use diff_cs::changeset_from_line_diff;
 
 #[cfg(test)]
 mod tests;

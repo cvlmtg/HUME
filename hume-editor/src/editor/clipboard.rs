@@ -64,7 +64,7 @@ impl SystemClipboard {
 
     /// The OSC 52 backend, also the inert baseline in `EditorState::default()`
     /// so proptest never reaches the real NSPasteboard (which throws
-    /// uncatchable ObjC exceptions in test threads); `Editor::open` overrides
+    /// uncatchable ObjC exceptions in test threads); `Editor::bootstrap` overrides
     /// it via `new()`.
     pub(in crate::editor) fn osc52() -> Self {
         Self::with_backend(Backend::Osc52)

@@ -1,6 +1,7 @@
 use super::*;
 use hume_core::{ConfigOrigin, DiagSeverity};
 use hume_editing::text::LineEnding;
+use hume_platform::path::AbsolutePath;
 
 // ── Default values match previous hardcoded constants ─────────────────────
 
@@ -1721,4 +1722,60 @@ fn line_ending_values_parse_to_their_own_spelling() {
     for v in LineEnding::VALUES {
         assert_eq!(LineEnding::parse(v).map(|e| e.to_text()).as_deref(), Ok(*v));
     }
+}
+
+// ── UndoDirectory ────────────────────────────────────────────────────────
+
+#[test]
+fn undo_directory_empty_is_undo_under_the_state_dir() {
+    let state = AbsolutePath::rooted("/state/hume");
+    let dirs = hume_platform::dirs::Dirs {
+        state: Some(state.to_path_buf()),
+        ..hume_platform::dirs::Dirs::none()
+    };
+    let parsed = UndoDirectory::parse("").unwrap();
+    assert_eq!(parsed, UndoDirectory::Default);
+    assert_eq!(parsed.to_text(), "");
+    assert_eq!(
+        parsed.location(&dirs, &AbsolutePath::rooted("/work")),
+        Ok(state.join("undo"))
+    );
+}
+
+#[test]
+fn undo_directory_default_has_no_location_without_a_state_dir() {
+    let none = hume_platform::dirs::Dirs::none();
+    assert!(
+        UndoDirectory::Default
+            .location(&none, &AbsolutePath::rooted("/work"))
+            .is_err()
+    );
+}
+
+#[test]
+fn undo_directory_takes_a_path_from_the_home_dir_or_the_root_and_reads_it_back() {
+    let typed = UndoDirectory::parse("~/undo").unwrap();
+    assert_eq!(typed.to_text(), "~/undo");
+    let home = hume_platform::dirs::home_dir().expect("tests run with a home directory");
+    assert_eq!(
+        typed.location(
+            &hume_platform::dirs::Dirs::none(),
+            &AbsolutePath::rooted("/work")
+        ),
+        Ok(home.join("undo"))
+    );
+    let rooted = AbsolutePath::rooted("/var/undo");
+    let at = UndoDirectory::parse(&rooted.to_string_lossy()).unwrap();
+    assert_eq!(
+        at.location(
+            &hume_platform::dirs::Dirs::none(),
+            &AbsolutePath::rooted("/work")
+        ),
+        Ok(rooted.to_path_buf())
+    );
+}
+
+#[test]
+fn undo_directory_rejects_a_relative_path() {
+    assert!(UndoDirectory::parse("undo").is_err());
 }

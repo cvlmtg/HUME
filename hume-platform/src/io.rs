@@ -288,45 +288,64 @@ pub fn check_own_file(path: &Path) -> io::Result<()> {
 }
 
 /// Read `path` as text, refusing anything but a regular file the current
+/// user owns, as [`open_own_file`] does. Content that is not UTF-8 is an
+/// `InvalidData` error.
+pub fn read_own_file(path: &Path) -> io::Result<String> {
+    let mut content = String::new();
+    io::Read::read_to_string(&mut open_own_file(path)?, &mut content)?;
+    Ok(content)
+}
+
+/// Open `path` for reading, refusing anything but a regular file the current
 /// user owns. On Unix the open itself refuses a symlink and the ownership
 /// check runs on the opened handle, so the file cannot be swapped between
 /// the check and the read.
-pub fn read_own_file(path: &Path) -> io::Result<String> {
+pub fn open_own_file(path: &Path) -> io::Result<fs::File> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        let mut file = fs::OpenOptions::new()
+        let file = fs::OpenOptions::new()
             .read(true)
             .custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits())
             .open(path)?;
         require_own_regular_file(&file.metadata()?)?;
-        let mut content = String::new();
-        io::Read::read_to_string(&mut file, &mut content)?;
-        Ok(content)
+        Ok(file)
     }
     #[cfg(not(unix))]
     {
         check_own_file(path)?;
-        fs::read_to_string(path)
+        fs::File::open(path)
     }
 }
 
-/// Write `content` to `path` as a crash dump, replacing any existing file.
+/// Write `content` to `path`, replacing any existing file, readable by the
+/// owner only: a crash dump or a saved undo history holds a copy of a
+/// possibly private file, so it must not come out world-readable like a
+/// freshly created user file. On Unix the temp file keeps `tempfile`'s
+/// owner-only mode.
 ///
 /// Same temp-file-and-rename strategy as [`write_file_new`]. There is no
-/// fsync: a dump has to survive the process ending, which the OS cache
-/// guarantees, and a dump per buffer inside the terminator's grace period
-/// cannot afford one flush each. A machine crash can still lose it. On Unix
-/// the temp file keeps `tempfile`'s owner-only mode: a dump holds a copy of a
-/// possibly private file, so it must not come out world-readable like a
-/// freshly created user file.
-pub fn write_dump(content: &str, path: &Path) -> io::Result<()> {
+/// fsync: the file has to survive the process ending, which the OS cache
+/// guarantees, and a crash dump per buffer inside the terminator's grace
+/// period cannot afford one flush each. A machine crash can still lose it.
+pub fn write_private_file(content: &[u8], path: &Path) -> io::Result<()> {
     let dir = path.parent().unwrap_or(Path::new("."));
 
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
-    io::Write::write_all(&mut tmp, content.as_bytes())?;
+    io::Write::write_all(&mut tmp, content)?;
     tmp.persist(path).map_err(|e| e.error)?;
     Ok(())
+}
+
+/// Create `path` and every missing parent. On Unix each directory this
+/// creates is owner-only (`0700`); directories that already exist keep their
+/// mode.
+pub fn create_private_dir_all(path: &Path) -> io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(path)
 }
 
 #[cfg(test)]

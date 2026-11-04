@@ -126,7 +126,7 @@ impl DocHelper {
     /// selections are carried through the reload like any pane's, and the
     /// history revision records them before and after.
     pub(crate) fn reload_from(&mut self, new_text: BufferText) {
-        let (mut stores, pane, id) = DetachedStores::with_pane(&self.buf, self.sels.clone());
+        let (mut stores, pane, id) = DetachedStores::with_pane(&mut self.buf, self.sels.clone());
         self.buf
             .replace_text_recorded(id, &mut stores.stores(), new_text, pane);
         self.buf.mark_saved();

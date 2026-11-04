@@ -262,6 +262,46 @@ pub fn relative_to(path: &AbsolutePath, base: &AbsolutePath) -> Option<PathBuf> 
     path.strip_prefix(base).ok().map(Path::to_path_buf)
 }
 
+/// Where `path` is mirrored under `base`: each of its components as a nested
+/// directory, with `suffix` appended to the last name. A Windows drive
+/// becomes its letter and a UNC share `UNC/<server>/<share>`, so distinct
+/// paths never share a mirror. `None` for a root, a `.` or `..` component, or
+/// any other prefix.
+pub fn mirrored_under(base: &Path, path: &AbsolutePath, suffix: &str) -> Option<PathBuf> {
+    let mut mirror = base.to_path_buf();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => push_prefix(&mut mirror, prefix.kind())?,
+            Component::RootDir => {}
+            Component::Normal(name) => mirror.push(name),
+            Component::CurDir | Component::ParentDir => return None,
+        }
+    }
+    let mut name = path.file_name()?.to_os_string();
+    name.push(suffix);
+    mirror.set_file_name(name);
+    Some(mirror)
+}
+
+fn push_prefix(mirror: &mut PathBuf, prefix: std::path::Prefix<'_>) -> Option<()> {
+    use std::path::Prefix;
+    match prefix {
+        Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
+            mirror.push(char::from(letter.to_ascii_uppercase()).to_string());
+        }
+        Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => {
+            if [server, share].iter().any(|s| *s == "." || *s == "..") {
+                return None;
+            }
+            mirror.push("UNC");
+            mirror.push(server);
+            mirror.push(share);
+        }
+        Prefix::Verbatim(_) | Prefix::DeviceNS(_) => return None,
+    }
+    Some(())
+}
+
 // ── Separator utilities ───────────────────────────────────────────────────────
 
 /// Returns `true` if `c` is a path-component separator on the current platform.

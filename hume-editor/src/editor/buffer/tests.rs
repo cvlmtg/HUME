@@ -594,7 +594,8 @@ fn identical_content_reload_adopts_the_disk_line_ending() {
     d.buf
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
+    let sels = d.sels().clone();
+    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
     let mutated =
         d.buf
             .replace_text_recorded(id, &mut stores.stores(), BufferText::from("hello\n"), pane);
@@ -623,7 +624,8 @@ fn replacing_the_text_lets_any_origin_set_the_line_ending_again() {
     d.buf
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
+    let sels = d.sels().clone();
+    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
     d.buf
         .replace_text_recorded(id, &mut stores.stores(), BufferText::from("hello\n"), pane);
 
@@ -651,7 +653,8 @@ fn a_read_only_buffer_refuses_a_line_ending_change() {
 fn a_read_only_buffer_still_adopts_the_disk_line_ending_on_reload() {
     let mut d = doc("-[h]>ello\n");
     d.buf.read_only = true;
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
+    let sels = d.sels().clone();
+    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
     let mutated = d.buf.replace_text_recorded(
         id,
         &mut stores.stores(),
@@ -1015,7 +1018,8 @@ fn reload_inverse_is_fine_grained() {
 #[test]
 fn an_edit_leaves_the_acting_panes_selections_to_its_caller() {
     let mut d = doc("-[a]>bc\n");
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
+    let sels = d.sels().clone();
+    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
     let before = stores.selections(pane, id);
 
     d.buf.apply_edit(
@@ -1031,7 +1035,8 @@ fn an_edit_leaves_the_acting_panes_selections_to_its_caller() {
 #[test]
 fn an_edit_carries_the_selections_of_every_other_pane() {
     let mut d = doc("-[a]>bc\n");
-    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels().clone());
+    let sels = d.sels().clone();
+    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
 
     d.buf.apply_edit(
         PaneHandle::with_pane(id, PaneId::default()),

@@ -283,7 +283,11 @@ pub(in crate::editor) fn try_ensure<'a>(
     if !panes.contains_key(pid) {
         return Err(super::commands::TargetError::PaneClosed.to_string());
     }
-    Ok(pane_state[pid].ensure(bid, buffers))
+    Ok(pane_state[pid]
+        .buffers
+        .entry(bid)
+        .expect("bid must be a live BufferId")
+        .or_insert_with(|| fresh_from_buf(buffers.get(bid))))
 }
 
 /// Collapse `pid`'s selection in `bid` onto `pos`, without
@@ -299,9 +303,9 @@ pub(in crate::editor) fn write_cursor(
     bid: BufferId,
     pos: ClusterStart,
 ) {
+    let state = ensure(pane_state, buffers, panes, pid, bid);
     let text = buffers.get(bid).text();
-    ensure(pane_state, buffers, panes, pid, bid)
-        .set_selections(SelectionSet::cursor(text, pos), text);
+    state.set_selections(SelectionSet::cursor(text, pos), text);
 }
 
 /// Resolves a 0-based `(line, grapheme_col)` to its cluster, clamping the
@@ -355,19 +359,6 @@ impl PaneEntry {
     /// The pane's state for `bid`, if it has ever shown it, mutably.
     pub(in crate::editor) fn buffer_mut(&mut self, bid: BufferId) -> Option<&mut PaneBufferState> {
         self.buffers.get_mut(bid)
-    }
-
-    /// The pane's state for `bid`, seeded with [`fresh_from_buf`] if the pane
-    /// has never shown it. Panics if `bid` is not a live key.
-    pub(in crate::editor) fn ensure(
-        &mut self,
-        bid: BufferId,
-        buffers: &BufferStore,
-    ) -> &mut PaneBufferState {
-        self.buffers
-            .entry(bid)
-            .expect("bid must be a live BufferId")
-            .or_insert_with(|| fresh_from_buf(buffers.get(bid)))
     }
 
     /// Drop the pane's state for the closed buffer `bid`.
@@ -498,18 +489,20 @@ pub(in crate::editor) enum PaneChrome {
 impl PaneView {
     /// Create a pane showing `bid` (whose buffer is `buffer`) in `view`'s
     /// pool, and its entry: fresh state for `bid`, an empty jump list, and
-    /// the pane's render handles. The returned token must be spliced into a
-    /// layout.
+    /// the pane's render handles. The pane owns `buffer`'s restored selection
+    /// history when no pane showed it first. The returned token must be
+    /// spliced into a layout.
     pub(in crate::editor) fn open(
         &mut self,
         view: &mut EngineView,
         bid: BufferId,
-        buffer: &Buffer,
+        buffer: &mut Buffer,
         jump_list_capacity: usize,
         chrome: PaneChrome,
     ) -> UnattachedPane {
         let (pane, render) = build_pane(&mut view.registry, bid, chrome);
         let unattached = view.insert_pane(pane);
+        buffer.claim_restored_history(unattached.pane_id());
         let mut per_buffer = SecondaryMap::new();
         per_buffer.insert(bid, fresh_from_buf(buffer));
         let replaced = self.entries.0.insert(

@@ -5,6 +5,7 @@
 //!   appropriate for user-edited config files).
 //! - Data lives under `%LOCALAPPDATA%\hume\` (Local: machine-specific, appropriate
 //!   for plugin binaries and caches that must not roam between machines).
+//! - State shares the data directory, as Neovim's does there.
 //!
 //! All resolvers return `Option<PathBuf>`: `None` means the platform-specific
 //! env vars are unset (no silent fallback to `.config/hume` or `.local/share/hume`).
@@ -37,6 +38,11 @@ pub struct Dirs {
     /// features that need on-disk storage (PLUM install, user plugins,
     /// third-party theme installs).
     pub data: Option<PathBuf>,
+    /// `$XDG_STATE_HOME/hume/`, else `$HOME/.local/state/hume/` (Unix and
+    /// macOS); the data directory (Windows). Holds what should outlive a
+    /// session but is not worth carrying to another machine, such as saved
+    /// undo history. `None` when those variables are unset.
+    pub state: Option<PathBuf>,
     /// Where core plugins, themes and docs live; see `runtime_dir_with` for
     /// the search order. `None` when no candidate exists.
     pub runtime: Option<PathBuf>,
@@ -117,6 +123,7 @@ impl Dirs {
         let dirs = Self {
             config: config_dir_with(&env).map(pin).transpose()?,
             data: data_dir_with(&env).map(pin).transpose()?,
+            state: state_dir_with(&env).map(pin).transpose()?,
             runtime: runtime_dir_with(&env, exe.as_deref(), cwd.as_deref())
                 .map(pin)
                 .transpose()?,
@@ -141,6 +148,7 @@ impl Dirs {
         Self {
             config: None,
             data: None,
+            state: None,
             runtime: None,
             tmp: None,
             search_path: None,
@@ -172,6 +180,16 @@ fn data_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 #[cfg(not(windows))]
 fn data_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     xdg_dir_with(env, "XDG_DATA_HOME", ".local/share")
+}
+
+#[cfg(windows)]
+fn state_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    data_dir_with(env)
+}
+
+#[cfg(not(windows))]
+fn state_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    xdg_dir_with(env, "XDG_STATE_HOME", ".local/state")
 }
 
 /// `$<xdg_var>/hume`, or `$HOME/<home_default>/hume` when `xdg_var` is unset.

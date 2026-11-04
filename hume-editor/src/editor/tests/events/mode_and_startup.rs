@@ -360,7 +360,7 @@ fn on_buffer_open_queued_after_on_language_set() {
 /// a second time for this buffer, and `set_buffer_language_impl`'s
 /// unchanged-value early return keeps that call from appending a third entry.
 ///
-/// `Editor::open` calls `queue_open_announcement` for the startup buffer,
+/// `Editor::open` finishes the startup buffer with `lifecycle::finish_open`,
 /// which sets the `open_hook_pending`/`pending_language_detection`
 /// bookkeeping that `detect_pending_languages` announces from.
 #[test]

@@ -722,5 +722,6 @@ mod search_path;
 mod sync_dispatch;
 mod theme_dirs;
 mod tutor;
+mod undo_persist;
 mod undotree_plugin;
 mod vim_keybind;

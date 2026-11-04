@@ -104,13 +104,26 @@ Files you open are always editable, whatever their permissions on disk. A write 
 
 ## Persistence and safety
 
-- **Undo history is in-memory only.** It's lost when HUME exits; there is no undo across restarts (not yet).
+- **Undo history lasts until HUME exits, unless you save it.** With `undo-persist` on, saving a file saves its undo history too; see [Saved undo history](#saved-undo-history).
 - **No swap or backup files.** HUME writes no swap or backup files while you edit. A save writes to a temporary file and renames it into place, so the file on disk holds either the old content or the new, never a half-written mix.
 - **Unsaved changes survive a crash.** If HUME itself panics, it writes them to disk and offers them back the next time you open the file; see [Crash recovery](#crash-recovery).
 - **A background crash doesn't stop HUME.** If a background task crashes (syntax highlighting, a language server connection), HUME keeps running. The crash appears as an error in `:messages` and is printed on the terminal after you quit. The feature that task ran can stop working until you restart.
 - **UTF-8 only.** Invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it appears as a character at the top of the buffer.
 - **CRLF detected and preserved.** A CRLF file is normalized to LF in the buffer and re-expanded to CRLF on save; the statusline shows `CRLF` or `LF`. To convert a file, run `:set buffer line-ending=lf` or `:set buffer line-ending=crlf` and save. Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in LF. A file with bare CR line endings (pre-OS X Mac) reads correctly, but HUME doesn't preserve that convention: it loads and saves as LF.
 - **No on-disk log file.** `:messages` is the whole logging surface: an in-memory ring capped at 1000 entries, discarded on exit. When it is full, the oldest trace entry goes first, then the oldest warning, then the oldest error. `:messages` shows warnings and errors; set `messages-min-severity` to `trace` to also show the detail useful for debugging, or to `error` to show errors only. The setting changes only what is shown, so lowering it also shows messages reported before. To keep warnings or errors, copy them out of `:messages` before quitting.
+
+### Saved undo history
+
+With `undo-persist` on, every save of a file, and every reload of it from disk, also saves its undo history: every revision, including branches you undid away from. The next time you open the file, `u`, `U`, `:earlier` and `:later` walk that history as if you had never closed it, and `m u` brings back the selections you edited with.
+
+- Turn it on everywhere with `(set-option! "undo-persist" #t)` in `init.scm`, or for one buffer with `:set buffer undo-persist=true`. To keep some files out, such as files holding secrets, set it to `false` for them from an `on-language-set` hook.
+- Opening a file brings its saved history back whatever `undo-persist` says. Turning the option off stops saving new history but deletes nothing.
+- The history comes back only when the file still holds the text it was saved with: a file changed elsewhere since the save opens with fresh history. So does a file whose history file is damaged, can't be read, or isn't a HUME history file, with a warning.
+- When two HUME instances save the same file, the last save's history wins.
+
+Saved history lives in HUME's state directory: `~/.local/state/hume/undo` (or `$XDG_STATE_HOME/hume/undo`), `%LOCALAPPDATA%\hume\undo` on Windows. Set `undo-directory` to keep it elsewhere. Inside it, each file's history sits at the file's own full path with `.undo` added, so the history of `/home/me/notes.txt` is `undo/home/me/notes.txt.undo` (on Windows the drive letter comes first, as in `undo/C/Users/me/notes.txt.undo`). A file opened through a symlink shares its history with the file it points to. Saved history keeps text you deleted, so on Linux and macOS its files and the folders HUME creates for them are readable only by you.
+
+Nothing removes old history files. To forget a file's history, delete its `.undo` file; to forget a whole project's, delete its folder.
 
 ### Crash recovery
 

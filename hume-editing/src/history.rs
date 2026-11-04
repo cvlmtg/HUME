@@ -12,6 +12,9 @@ use crate::transaction::Transaction;
 mod children;
 use children::Children;
 
+mod persist;
+pub use persist::{HistorySnapshot, RestoreError};
+
 // ── Arena index ───────────────────────────────────────────────────────────────
 
 /// A stable key into the History revision arena.
@@ -104,8 +107,7 @@ impl RevisionNode {
 struct Revision {
     /// `None` only for the root.
     link: Option<Link>,
-    /// The pane that made the edit, `None` for one no pane made.
-    owner: Option<PaneId>,
+    owner: Owner,
     /// Child revisions: branches created from this state.
     children: Children,
     /// When this revision was created. Read by the `:earlier`/`:later`
@@ -116,6 +118,19 @@ struct Revision {
     /// (Linux) / `CLOCK_UPTIME_RAW` (macOS), both of which stop advancing
     /// across sleep.
     timestamp: SystemTime,
+}
+
+/// Which pane made a revision's edit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Owner {
+    /// No pane made it, or it was restored from a pane other than the one
+    /// that made the last edit before the history was saved.
+    Nobody,
+    Pane(PaneId),
+    /// Restored from the pane that made the last edit before the history was
+    /// saved. It belongs to [`History::claimed_by`], the first pane to show
+    /// the buffer.
+    Restored,
 }
 
 /// A revision's edge to its parent.
@@ -170,6 +185,9 @@ pub struct History {
     /// revision, so an observer can tell the tree changed without comparing
     /// it.
     change_seq: u64,
+    /// The first pane to show the buffer, which owns the [`Owner::Restored`]
+    /// revisions whether they are restored before or after it shows it.
+    claimed_by: Option<PaneId>,
 }
 
 impl Default for History {
@@ -184,7 +202,7 @@ impl History {
     pub fn new() -> Self {
         let root = Revision {
             link: None,
-            owner: None,
+            owner: Owner::Nobody,
             children: Children::default(),
             timestamp: SystemTime::now(),
         };
@@ -198,6 +216,7 @@ impl History {
             next_id: 1,
             undo_levels: 0,
             change_seq: 0,
+            claimed_by: None,
         }
     }
 
@@ -231,15 +250,15 @@ impl History {
     /// Record a new edit and advance the current position to it.
     ///
     /// Creates a new revision as a child of the current revision and makes
-    /// it the new `current`. The caller provides both the forward and inverse
-    /// changesets. The inverse must have been computed against the pre-edit
-    /// buffer before that buffer was replaced.
+    /// it the new `current`. The inverse that undoes the edit is derived here
+    /// from `forward_cs` and the text it was applied to, so a revision's two
+    /// changesets always describe the same edit.
     ///
     /// # Arguments
     ///
     /// - `owner`: the pane that made the edit, `None` for one no pane made.
     /// - `forward_cs`: the ChangeSet that was applied to produce the new state.
-    /// - `inverse_cs`: `forward_cs.invert(&pre_edit_text)`, which reverses the edit.
+    /// - `pre_edit_text`: the text `forward_cs` was applied to.
     /// - `pre_edit_sels`: cursor positions before the edit (stored in `inverse`
     ///   so undo restores them).
     /// - `post_edit_sels`: cursor positions after the edit (stored in `forward`
@@ -254,14 +273,18 @@ impl History {
     /// itself no longer names the same state after a promotion and must be
     /// invalidated, not left pointing at ROOT. Returns `None` when no
     /// promotion occurred.
+    ///
+    /// # Panics
+    /// Panics if `pre_edit_text` is not as long as `forward_cs` expects.
     pub fn record(
         &mut self,
         owner: Option<PaneId>,
         forward_cs: ChangeSet,
-        inverse_cs: ChangeSet,
+        pre_edit_text: &BufferText,
         pre_edit_sels: SelectionSet,
         post_edit_sels: SelectionSet,
     ) -> Option<RevisionId> {
+        let inverse_cs = forward_cs.invert(pre_edit_text);
         let new_id = RevisionId(self.next_id);
         self.next_id += 1;
         let parent_id = self.current;
@@ -274,7 +297,7 @@ impl History {
                 // forward carries post-edit sels: after redoing, cursors land there.
                 forward: Transaction::new(forward_cs, post_edit_sels),
             }),
-            owner,
+            owner: owner.map_or(Owner::Nobody, Owner::Pane),
             children: Children::default(),
             timestamp: SystemTime::now(),
         };
@@ -644,7 +667,7 @@ impl History {
         let mut links: Vec<(RevisionId, &Link)> = self
             .revisions
             .iter()
-            .filter(|(_, revision)| revision.owner == Some(owner))
+            .filter(|(_, revision)| self.owner_of(revision) == Owner::Pane(owner))
             .filter_map(|(&id, revision)| Some((id, revision.link.as_ref()?)))
             .collect();
         links.sort_by_key(|(id, _)| std::cmp::Reverse(id.0));
@@ -660,6 +683,22 @@ impl History {
                 .map(move |(side, _)| SelectionPoint { revision, side })
             })
             .collect()
+    }
+
+    /// Record `pane` as showing the buffer, so the revisions restored as the
+    /// last editing pane's, now or later, are its own for selection undo.
+    /// Only the first claim counts.
+    pub fn claim_restored(&mut self, pane: PaneId) {
+        self.claimed_by.get_or_insert(pane);
+    }
+
+    /// Who made `revision`. Restored revisions belong to the pane that
+    /// claimed them, once one has.
+    fn owner_of(&self, revision: &Revision) -> Owner {
+        match (revision.owner, self.claimed_by) {
+            (Owner::Restored, Some(pane)) => Owner::Pane(pane),
+            (owner, _) => owner,
+        }
     }
 
     /// The selection at `point`, mapped from the text it was saved for to

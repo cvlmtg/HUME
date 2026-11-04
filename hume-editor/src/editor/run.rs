@@ -18,6 +18,7 @@ use hume_platform::terminal::SharedTerm;
 use hume_platform::wake::WakeCallback;
 
 use super::Editor;
+use super::buffer::lifecycle;
 use super::frame::{FramePacer, FrameTarget};
 use super::pipe_run::{Detached, PipeConsole, ReaderConsole, WaitEvent};
 use super::tui::Tui;
@@ -27,7 +28,7 @@ use crate::cli::{ConfigSource, FileArg};
 pub(crate) enum Driver {
     /// A terminal, with the kitty keyboard protocol when the probe found it.
     /// `wake` is what background threads call to wake `run`'s event loop
-    /// (see `Editor::open`).
+    /// (see `Editor::bootstrap`).
     Terminal {
         kitty_enabled: bool,
         wake: WakeCallback,
@@ -108,7 +109,9 @@ impl Editor {
         self.state.config.keymap = super::keymap::Keymap::with_defaults(kitty_enabled);
     }
 
-    /// Open a file from disk, or create a new empty scratch buffer.
+    /// An editor on a file read from disk, or on a new empty scratch buffer,
+    /// shown by its one pane. The buffer is not finished: it goes through
+    /// [`lifecycle::finish_open`] once the settings that step reads are live.
     ///
     /// The cursor starts at position 0 in Normal mode. Terminal dimensions are
     /// placeholder values replaced on the first event-loop iteration.
@@ -121,7 +124,7 @@ impl Editor {
     /// `dirs` is the session's config, data, runtime and temp directories and
     /// `cwd` its startup working directory; the editor never reads either from
     /// the process.
-    pub(in crate::editor) fn open(
+    fn bootstrap(
         file_path: Option<hume_platform::path::AbsolutePath>,
         terminal: Rect,
         wake: WakeCallback,
@@ -163,13 +166,13 @@ impl Editor {
         let unattached = panes.open(
             &mut engine_view,
             buffer_id,
-            buffers.get(buffer_id),
+            buffers.get_mut(buffer_id),
             settings.jump_list_capacity,
             PaneChrome::Full,
         );
         let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
 
-        let mut editor = Self {
+        Ok(Self {
             state: super::EditorState {
                 dirs,
                 buffers,
@@ -207,23 +210,30 @@ impl Editor {
             input_backlog: VecDeque::new(),
             #[cfg(test)]
             inline_pipe_console: None,
-        };
-        // This buffer predates the scripting host, so it can't route through
-        // `open_buffer_and_notify`, but it must end up in the state that
-        // chokepoint leaves a buffer in, or `detect_pending_languages` never
-        // announces its open. Safe to queue this early: detection waits for
-        // the scripting host `init_scripting` attaches, and `pending_work`
-        // isn't drained until the first `settle()` (`Editor::run`'s loop /
-        // `frame.rs`), after `init_scripting` has registered every hook
-        // handler.
-        super::buffer::lifecycle::queue_open_announcement(&mut editor.state, buffer_id);
+        })
+    }
+
+    /// [`Self::bootstrap`] with its buffer finished at once, before any
+    /// `init_scripting` the test runs.
+    #[cfg(test)]
+    pub(in crate::editor) fn open(
+        file_path: Option<hume_platform::path::AbsolutePath>,
+        terminal: Rect,
+        wake: WakeCallback,
+        dirs: hume_platform::dirs::Dirs,
+        startup_cwd: hume_platform::path::AbsolutePath,
+    ) -> io::Result<Self> {
+        let mut editor = Self::bootstrap(file_path, terminal, wake, dirs, startup_cwd)?;
+        let bid = editor.focused_buffer_id();
+        lifecycle::finish_open(&mut editor.state, bid);
         Ok(editor)
     }
 
     /// Set up an editor on the command line's files, the same way for every
-    /// [`Driver`]: open the first file (or a scratch buffer), configure the
-    /// driver and the config source, run `init_scripting`, then open the
-    /// remaining files so their `OnBufferOpen` hooks fire. Each file's
+    /// [`Driver`]: read the first file (or a scratch buffer), configure the
+    /// driver and the config source, run `init_scripting`, finish opening the
+    /// first file, then open the remaining files. Every file's
+    /// `OnBufferOpen` fires at the first `settle()`, in that order. Each file's
     /// position is queued, and the first `settle()` places it.
     pub(crate) fn start(
         files: &[FileArg],
@@ -247,18 +257,22 @@ impl Editor {
                 (wake, Some(detached), true, true, HEADLESS_TERMINAL)
             }
         };
-        let mut editor = Self::open(
+        let mut editor = Self::bootstrap(
             first.map(|f| f.path.clone()),
             terminal,
             wake,
             dirs,
             startup_cwd,
         )?;
+        let startup = editor.focused_buffer_id();
         editor.detached = detached;
         editor.set_kitty_support(kitty_enabled);
         editor.state.headless = headless;
         editor.set_config_source(config);
         editor.init_scripting(&mut Default::default());
+        // Finished after `init_scripting`, so init.scm has set what it reads,
+        // such as `undo-directory`.
+        lifecycle::finish_open(&mut editor.state, startup);
         if let Some(pos) = first.and_then(|f| f.pos) {
             editor.queue_startup_position(editor.focused_buffer_id(), pos);
         }

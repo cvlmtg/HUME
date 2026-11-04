@@ -511,7 +511,7 @@ fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
     // disk at the new path, but the source buffer must not be touched:
     // no mark_saved, no file repoint, dirty state unchanged.
     // Without the `is_save_as` guard in write_file's save-as branch, every
-    // :w <path> would go through mark_written_and_synced. is_dirty() below
+    // :w <path> would go through Editor::mark_synced. is_dirty() below
     // would then be false and original_path would be replaced by new_path.
     let (mut ed, _original_path) = editor_with_file("-[h]>ello\n", "hello\n");
     let path_before = ed.doc().path().cloned();

@@ -30,7 +30,7 @@ impl Editor {
     /// Initialise the Steel scripting host, then evaluate `init.scm` unless
     /// this session has no `init.scm` to run.
     ///
-    /// Called once at startup, after `Editor::open` returns and before
+    /// Called once at startup, after `Editor::bootstrap` returns and before
     /// `Editor::run` starts (with `snapshot` at its `Default`: nothing to
     /// restore, no pre-reload buffers), and by `typed_reload_config` on
     /// every `:reload-config` (with the `ReloadSnapshot` `reset_config_state`
@@ -148,9 +148,9 @@ impl Editor {
         // `self.state.config.languages` is fully populated by this point.
         let lang_activations = host.activation_languages();
         self.scripting = Some(host);
-        // Every language is registered by now, so the startup buffer queued
-        // by `Editor::open` announces `on-language-set` before
-        // `on-buffer-open`, like any other open.
+        // Every language is registered by now, so the buffers init.scm
+        // opened announce `on-language-set` before `on-buffer-open`, like
+        // any other open.
         self.detect_pending_languages();
         // Post-init lint: warn on keymap leaves that target a name a key
         // binding can't actually reach. Lazy stubs are registered live as
@@ -189,9 +189,9 @@ impl Editor {
             }
         }
         // Re-detect language for every open buffer (a `:reload-config`
-        // cleared every buffer's language in `reset_config_state`; the
-        // startup buffer, detected by the drain above, detects the same
-        // language again, which changes nothing).
+        // cleared every buffer's language in `reset_config_state`; a buffer
+        // the drain above detected detects the same language again, which
+        // changes nothing).
         // A buffer with an explicit assertion, restored from `snapshot`
         // (this is a `:reload-config`) or made by a lazy plugin that the
         // drain above or an earlier iteration activated, keeps it:

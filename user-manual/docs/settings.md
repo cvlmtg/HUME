@@ -42,6 +42,7 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Files larger than this many bytes are not highlighted |
 | `tabline` | `always` \| `never` \| `dynamic` | `dynamic` | When to show the tab bar: always, never, or only once more than one tab is open |
 | `theme` | string | `sand` | Active color [theme](themes.md) name. Empty selects the built-in fallback theme |
+| `undo-directory` | path | `""` | Where saved undo history is kept (see [Saved undo history](files-and-buffers.md#saved-undo-history)). Empty means `undo` in HUME's state directory. Otherwise an absolute path, which may start with `~` |
 | `undo-levels` | integer | `0` | Max undo states kept per buffer; `0` means unlimited. Past the limit, new edits drop the oldest states, including whole abandoned branches |
 
 ## Buffer options
@@ -72,6 +73,7 @@ A buffer option you set, with `:set buffer` or from a hook in your `init.scm`, b
 | `insert-select-on-exit` | bool | `true` | Leaving Insert mode keeps the text you typed selected, instead of leaving a plain cursor |
 | `language` | string | *(auto-detected)* | The buffer's language: picks its syntax highlighting, language server, and language-specific plugins |
 | `line-ending` | `lf` \| `crlf` | *(from the file)* | The line ending a save writes. Changing it marks the buffer modified but is not an undo step, so `u` does not revert it. Setting it back to the file's own ending makes the buffer unmodified again |
+| `undo-persist` | bool | `false` | Saving the file also saves its undo history, so `u` can step back through it after the file is opened again. See [Saved undo history](files-and-buffers.md#saved-undo-history) |
 | `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |
 | `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |

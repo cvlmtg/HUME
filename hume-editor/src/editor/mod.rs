@@ -395,13 +395,13 @@ pub(crate) struct EditorState {
 }
 
 impl EditorState {
-    /// The baseline both `EditorState` constructors (`Editor::open`,
+    /// The baseline both `EditorState` constructors (`Editor::bootstrap`,
     /// `Editor::for_testing`) build on, around the `focus` seeded with the
     /// first pane and the working directory `cwd`.
     ///
     /// Not a usable editor on its own: no buffers, an OSC 52 clipboard, a
     /// no-op waker. A field whose production value differs is set here to an
-    /// inert form and named explicitly by `Editor::open`; a new such field
+    /// inert form and named explicitly by `Editor::bootstrap`; a new such field
     /// needs the same treatment, which the compiler does not ask for.
     pub(in crate::editor) fn base(focus: focus::Focus, cwd: AbsolutePath) -> Self {
         let settings = EditorSettings::default();

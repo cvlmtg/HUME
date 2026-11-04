@@ -43,9 +43,10 @@ Every node except the root, which is the state before any edit, stores:
 - **A forward transaction**: the changeset and cursor positions that get you
   from the parent state to this state.
 - **An inverse transaction**: the changeset and cursor positions that get you
-  from this state back to the parent. It is computed when the edit happens,
-  while the original text is still available, so it never has to be
-  reconstructed.
+  from this state back to the parent. The tree computes it from the forward
+  changeset when the edit is recorded, while the original text is still
+  available, so it never has to be reconstructed and always undoes what the
+  forward one did.
 - A list of child node references.
 - A timestamp, which `:earlier` and `:later` read to travel by age
   (`:earlier 5m` goes back to how the buffer looked five minutes ago). Both
@@ -117,8 +118,8 @@ exist anywhere in the tree.
 ## Reloads join the tree
 
 A reload from disk (`:e!`) does not throw the history away. It derives a
-forward and an inverse transaction from a line-level diff between the buffer
-and the new file content, and records them as a normal revision, branching
+forward transaction from a line-level diff between the buffer and the new file
+content, and records it as a normal revision, branching
 from wherever the buffer currently sits. Undo after `:e!` brings the
 pre-reload text back with its whole undo tree intact beneath it. When the disk
 content matches the buffer, no revision is recorded. Either way the save marker
@@ -162,6 +163,31 @@ changes the text gets the next generation. A walk whose changes cancel out,
 such as undoing an insertion and its own later deletion, keeps the same text
 and the same generation and only relabels it, so nothing downstream sees a
 change that did not happen.
+
+## Saving the tree
+
+With `undo-persist` on, saving a file or reloading it from disk also saves
+its undo tree, and opening the file again brings it back. Version labels
+can't be saved with it: they are counters that start over every time the
+editor runs, so a saved label could match a different text in the next run.
+
+The saved tree stores what can't be recomputed. Selections are plain char
+offsets. Each node keeps one of its two transactions, whichever a walk
+starting at the current node crosses its edge with: the current node and its
+ancestors keep the inverse, since the walk steps up from each of them to its
+parent, and every other node keeps the forward one, since the walk steps down
+into it. A checksum of the text the current node holds comes before the tree.
+
+Opening the file checks that checksum first, before reading the tree: a file
+changed elsewhere since the save makes the tree useless, so it is dropped.
+Otherwise loading walks outward from the current node. Each step applies the
+stored transaction to the text it already holds, computes the opposite
+transaction from that text, and rebuilds the node's selections against the
+texts they belong to. Every
+text the walk makes gets a fresh label, so the loaded tree is the one
+recording those edits in this run would have built. A stored change that
+doesn't fit its text, or a selection that splits a character, means the saved
+tree is damaged, and it is dropped whole.
 
 ---
 

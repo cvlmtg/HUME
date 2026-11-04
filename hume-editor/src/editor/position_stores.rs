@@ -309,7 +309,7 @@ impl DetachedStores {
     /// Stores with one pane holding `selections` of `buf`, that pane, and the
     /// id `buf` goes by in them.
     pub(crate) fn with_pane(
-        buf: &super::buffer::Buffer,
+        buf: &mut super::buffer::Buffer,
         selections: hume_editing::selection::SelectionSet,
     ) -> (Self, PaneId, BufferId) {
         let (mut view, _) = hume_engine::pipeline::EngineView::new(

@@ -6,6 +6,7 @@
 - `--keys` writes every logged message to stderr, including trace detail.
 
 ### Editing
+- New `undo-persist` option: saving a file also saves its undo history, and opening the file again brings it back.
 - New `m u` brings back the selections you built and lost to a later change, all selections included, and `m U` redoes it.
 - `u` after typing from `i` or `a` brings back the selection you pressed them on, and redo after Insert mode lands where `Esc` left you.
 - Extending by word (`w`, `b`, `Ctrl-w`, `Ctrl-b`) keeps the selection's anchor end in place, for example after `ma(` and `Ctrl-e`.

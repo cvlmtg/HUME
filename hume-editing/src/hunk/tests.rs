@@ -4,7 +4,7 @@ use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 
 use super::*;
-use crate::changeset::{ChangeSetBuilder, changesets_from_line_diff};
+use crate::changeset::{ChangeSetBuilder, changeset_from_line_diff};
 use crate::text::{BufferContent, BufferText};
 
 const TEXT: &str = "one\ntwo\nthree\n";
@@ -220,7 +220,7 @@ fn spans_are_char_columns_across_a_zwj_cluster() {
 fn a_whole_line_diff_revision_has_no_word_spans() {
     let old = BufferText::from(TEXT);
     let new = BufferText::from("one\nxyz\nthree\n");
-    let (forward, _) = changesets_from_line_diff(&old, &new);
+    let forward = changeset_from_line_diff(&old, &new);
     let hunks = change_hunks(&forward, &old);
     assert_eq!(hunks, vec![hunk(1, 1, &["xyz"], &["two"])]);
 }

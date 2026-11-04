@@ -1,5 +1,5 @@
 //! The line diff of two whole texts, shared by [`crate::hunk::text_hunks`]
-//! and [`crate::changeset::changesets_from_line_diff`].
+//! and [`crate::changeset::changeset_from_line_diff`].
 
 use std::borrow::Cow;
 

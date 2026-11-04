@@ -19,7 +19,7 @@ fn open_pane(state: &mut EditorState, view: &mut EngineView, bid: BufferId) -> U
     state.panes.open(
         view,
         bid,
-        state.buffers.get(bid),
+        state.buffers.get_mut(bid),
         state.settings.jump_list_capacity,
         PaneChrome::Full,
     )

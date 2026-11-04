@@ -304,14 +304,14 @@ pub(in crate::editor) fn typed_set(
 }
 
 /// Post-write side effects for a buffer that just had its own content
-/// written to its own file: mark it saved, report the result, and sync LSP.
-fn mark_written_and_synced(
+/// written to its own file and was marked synced with it: report the result
+/// and tell LSP about the save.
+fn report_written_and_synced(
     ed: &mut Editor,
     bid: BufferId,
     line_count: hume_rope::line::ContentLineCount,
     retried: bool,
 ) {
-    ed.state.buffers.get_mut(bid).mark_saved();
     ed.report(write_severity(retried), write_msg(line_count, retried));
     ed.queue_buffer_save(bid);
     // Flush any didChange already queued for this buffer first: a
@@ -431,8 +431,8 @@ fn write_file(
     if becomes_file {
         let file =
             BufferFile::on_disk(meta, target).map_err(|e| CommandError::new(e.to_string()))?;
-        ed.set_buffer_file(bid, file);
-        mark_written_and_synced(ed, bid, line_count, retried);
+        ed.mark_synced(bid, file);
+        report_written_and_synced(ed, bid, line_count, retried);
     } else {
         ed.report(write_severity(retried), write_msg(line_count, retried));
     }

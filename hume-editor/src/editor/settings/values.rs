@@ -7,6 +7,10 @@ use hume_editing::text::LineEnding;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceRender, WrapMode};
 use hume_ops::WhitespaceSide;
+use std::path::PathBuf;
+
+use hume_platform::dirs::Dirs;
+use hume_platform::path::{AbsolutePath, is_absolute_typed};
 use hume_platform::process::batch::ShellCommand;
 
 use super::{SettingText, parse_named, word_list};
@@ -367,5 +371,60 @@ impl SettingText for ShellCommand {
 
     fn to_text(&self) -> String {
         word_list::format_word_list(&self.words())
+    }
+}
+
+// ── UndoDirectory ─────────────────────────────────────────────────────────────
+
+/// Where saved undo histories are kept.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum UndoDirectory {
+    /// `undo` in the state directory.
+    #[default]
+    Default,
+    /// A path that is absolute once `~` and environment variables are
+    /// expanded, kept as typed.
+    At(String),
+}
+
+impl UndoDirectory {
+    /// The directory, a typed path resolved as `cwd`'s typed paths are. The
+    /// error says why there is none.
+    pub(in crate::editor) fn location(
+        &self,
+        dirs: &Dirs,
+        cwd: &AbsolutePath,
+    ) -> Result<PathBuf, String> {
+        match self {
+            Self::Default => dirs
+                .state
+                .as_ref()
+                .map(|state| state.join("undo"))
+                .ok_or_else(|| "no state directory to keep undo history in".to_owned()),
+            Self::At(typed) => AbsolutePath::from_typed(typed, cwd)
+                .map(|dir| dir.to_path_buf())
+                .map_err(|e| format!("{typed}: {e}")),
+        }
+    }
+}
+
+impl SettingText for UndoDirectory {
+    const VALUES: &'static [&'static str] = &[];
+
+    fn parse(s: &str) -> Result<Self, String> {
+        if s.is_empty() {
+            Ok(Self::Default)
+        } else if is_absolute_typed(s) {
+            Ok(Self::At(s.to_owned()))
+        } else {
+            Err(format!("expected an absolute path, got '{s}'"))
+        }
+    }
+
+    fn to_text(&self) -> String {
+        match self {
+            Self::Default => String::new(),
+            Self::At(typed) => typed.clone(),
+        }
     }
 }

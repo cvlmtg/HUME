@@ -48,30 +48,31 @@ pub(in crate::editor) fn open_buffer(
     bid
 }
 
-/// Marks `bid` `open_hook_pending` and queues it for language detection:
-/// every fresh `BufferId` must go through this exactly once, or
-/// `Editor::detect_pending_languages` never announces its `OnBufferOpen`
-/// (see that function's doc). Does **not** run detection
-/// inline: that needs `set_buffer_language`, which can activate lazy
-/// language plugins via `self.scripting`, a full `&mut Editor`/Steel-eval
-/// capability neither of this function's callers hold. The drain runs at the
-/// end of the Steel eval that queued `bid`, or else at the next
-/// `Editor::settle`. Also leaves `open_hook_pending` set until that drain
-/// fires its `OnBufferOpen`, read by [`close_buffer_and_notify`] so a
+/// Everything a fresh `BufferId` needs once the settings are live: restore
+/// its file's undo history, mark it `open_hook_pending` and queue it for
+/// language detection. Every fresh `BufferId` must go through this once and
+/// only once, or `Editor::detect_pending_languages` never announces its
+/// `OnBufferOpen` (see that function's doc).
+///
+/// Does **not** run detection inline: that needs `set_buffer_language`,
+/// which can activate lazy language plugins via `self.scripting`, a full
+/// `&mut Editor`/Steel-eval capability this function's callers do not hold.
+/// The drain runs at the end of the Steel eval that queued `bid`, or else at
+/// the next `Editor::settle`. Also leaves `open_hook_pending` set until that
+/// drain fires its `OnBufferOpen`, read by [`close_buffer_and_notify`] so a
 /// buffer closed before the drain runs announces neither hook, rather than
 /// an `OnBufferClose` with no matching open.
 ///
-/// Two callers: [`open_buffer_and_notify`] below, and `Editor::open`, which
-/// builds the startup buffer inline (bootstrapping the very
-/// `EngineView`/pane-state maps `open_buffer` needs, so it can't call that
-/// helper) but must leave the buffer in the same state.
-pub(in crate::editor) fn queue_open_announcement(state: &mut EditorState, bid: BufferId) {
+/// The undo history is restored here rather than at the drain, so a script
+/// that opens a buffer and edits it in one eval edits the restored history.
+pub(in crate::editor) fn finish_open(state: &mut EditorState, bid: BufferId) {
+    state.restore_undo(bid);
     state.buffers.get_mut(bid).open_hook_pending = true;
     state.config.pending_language_detection.push(bid);
 }
 
-/// [`open_buffer`] plus [`queue_open_announcement`]. See the latter for why
-/// detection doesn't run inline. `Editor::detect_pending_languages` fires
+/// [`open_buffer`] plus [`finish_open`]. See the latter for why detection
+/// doesn't run inline. `Editor::detect_pending_languages` fires
 /// `OnBufferOpen` once detection (and `OnLanguageSet`) for `bid` has run, so
 /// plugins observing both hooks see `OnLanguageSet` first.
 pub(in crate::editor::buffer) fn open_buffer_and_notify(
@@ -80,7 +81,7 @@ pub(in crate::editor::buffer) fn open_buffer_and_notify(
     doc: Buffer,
 ) -> BufferId {
     let bid = open_buffer(ev, &mut state.buffers, doc, state.settings.undo_levels);
-    queue_open_announcement(state, bid);
+    finish_open(state, bid);
     bid
 }
 
@@ -213,8 +214,8 @@ pub(in crate::editor) fn present_view(
 /// whose bid outlived the close.
 ///
 /// Returns, only when the last-buffer branch fired, the freshly allocated
-/// scratch buffer's id, for [`close_buffer_and_notify`] to announce with
-/// [`queue_open_announcement`] exactly like any other open.
+/// scratch buffer's id, for [`close_buffer_and_notify`] to finish with
+/// [`finish_open`] like any other open.
 ///
 /// # Panics
 /// Panics when `id` is busy: [`close_buffer_and_notify`] refuses that.
@@ -296,7 +297,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     // `id`'s place and must announce its own `OnBufferOpen` like any other
     // open: it is a fresh `BufferId`, not `id` reused.
     if let Some(bid) = opened {
-        queue_open_announcement(state, bid);
+        finish_open(state, bid);
     }
     if open_announced {
         // Fire with the ID that was closed, not the new current buffer.

@@ -1564,3 +1564,38 @@ fn applying_an_edit_advances_the_generation_by_one() {
     let applied = b.finish().apply(&text).expect("insert applies");
     assert_eq!(applied.generation(), text.generation() + 1);
 }
+
+// ── from_ops ─────────────────────────────────────────────────────────────
+
+#[test]
+fn from_ops_takes_normalized_ops_that_fit_the_length() {
+    use Operation::{Delete, Insert, Retain};
+    let cs = ChangeSet::from_ops(vec![Retain(2), Delete(1), Insert("xy".into())], 3)
+        .expect("normalized ops consuming 3 chars");
+    assert_eq!((cs.len_before, cs.len_after), (3, 4));
+}
+
+#[test]
+fn from_ops_rejects_ops_that_do_not_fit_or_are_not_normalized() {
+    use Operation::{Delete, Insert, Retain};
+    assert_eq!(ChangeSet::from_ops(vec![Retain(2)], 3), None, "too short");
+    assert_eq!(
+        ChangeSet::from_ops(vec![Retain(1), Retain(2)], 3),
+        None,
+        "unmerged"
+    );
+    assert_eq!(
+        ChangeSet::from_ops(vec![Retain(3), Delete(0)], 3),
+        None,
+        "empty op"
+    );
+    assert_eq!(
+        ChangeSet::from_ops(vec![Insert("\r".into()), Retain(3)], 3),
+        None,
+        "carriage return"
+    );
+    assert_eq!(
+        ChangeSet::from_ops(vec![Retain(usize::MAX), Retain(1)], 3),
+        None
+    );
+}

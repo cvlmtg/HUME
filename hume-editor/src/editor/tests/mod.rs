@@ -1311,7 +1311,7 @@ impl Editor {
         let unattached = panes.open(
             &mut engine_view,
             buffer_id,
-            buffers.get(buffer_id),
+            buffers.get_mut(buffer_id),
             settings.jump_list_capacity,
             crate::editor::pane_state::PaneChrome::Bare,
         );
@@ -1490,6 +1490,7 @@ fn load_with_init_in_runtime(
     ed.state.dirs = Dirs {
         config: Some(hume_config),
         data: Some(data_dir.join("hume")),
+        state: None,
         runtime: Some(runtime_dir.to_path_buf()),
         tmp: None,
         search_path: ed.state.dirs.search_path.clone(),
@@ -1935,6 +1936,7 @@ mod theme_loading;
 mod timers;
 mod triggers;
 mod undo_levels;
+mod undo_persist;
 #[cfg(unix)]
 mod unix;
 mod unsaved;

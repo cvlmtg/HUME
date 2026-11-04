@@ -64,7 +64,7 @@ impl ReloadSnapshot {
 
 impl Editor {
     /// Reset every piece of editor-side state a Steel builtin, `set-option!`,
-    /// or `init.scm` can write back to `Editor::open`'s defaults, and return
+    /// or `init.scm` can write back to `Editor::bootstrap`'s defaults, and return
     /// the [`ReloadSnapshot`] the rest of the reload uses. Runs right before
     /// the old `ScriptingHost` is dropped: dropping the host wipes the
     /// Steel-side registries, and this wipes what those builtins wrote into

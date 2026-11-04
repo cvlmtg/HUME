@@ -15,8 +15,10 @@ imara-diff.workspace = true
 rustc-hash.workspace = true
 hume-rope = { path = "../hume-rope" }
 hume-core = { path = "../hume-core" }
+serde.workspace = true
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
 proptest = "1.11.0"
+slotmap = "1"
 test-fixtures = { path = "../test-fixtures" }

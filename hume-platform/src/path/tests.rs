@@ -206,3 +206,14 @@ fn relative_to_the_base_itself_is_empty() {
 mod unix;
 #[cfg(windows)]
 mod windows;
+
+// ── mirrored_under ────────────────────────────────────────────────────────
+
+#[test]
+fn mirrored_under_has_no_mirror_for_a_root() {
+    let base = Path::new("/undo");
+    assert_eq!(
+        mirrored_under(base, &AbsolutePath::rooted("/"), ".undo"),
+        None
+    );
+}

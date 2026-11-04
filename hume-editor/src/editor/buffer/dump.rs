@@ -244,14 +244,14 @@ fn dump_one(
     let mut in_scratch_dir = |stem: &str| {
         *scratch_count += 1;
         let dest = data_dir_dump_path(scratch_dir, stem, *scratch_count)?;
-        hume_platform::io::write_dump(&content, &dest)?;
+        hume_platform::io::write_private_file(content.as_bytes(), &dest)?;
         Ok(dest)
     };
     let Some(file) = buf.file() else {
         return in_scratch_dir("scratch");
     };
     let beside = dump_path_for(file.resolved());
-    let beside_err = match hume_platform::io::write_dump(&content, &beside) {
+    let beside_err = match hume_platform::io::write_private_file(content.as_bytes(), &beside) {
         Ok(()) => return Ok(beside),
         Err(e) => e,
     };

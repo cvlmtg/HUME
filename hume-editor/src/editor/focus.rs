@@ -72,7 +72,8 @@ pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &Engi
 ///
 /// Saves the pane's scroll for the old buffer, restores `target`'s saved scroll
 /// (zero on first visit), and seeds the pane's state for `target` if it has
-/// never shown `target` before.
+/// never shown `target` before. The first pane to show `target` owns its
+/// restored selection history.
 pub(in crate::editor) fn switch_pane_to_buffer(
     state: &mut EditorState,
     ev: &mut EngineView,
@@ -88,6 +89,7 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     if is_focused_switch {
         state.buffers.touch_mru(target);
     }
+    state.buffers.get_mut(target).claim_restored_history(pid);
     // `frame.rs`'s scroll step indexes the pane's state for `target`
     // directly, so it must exist from the first visit.
     super::pane_state::ensure(

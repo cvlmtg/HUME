@@ -146,3 +146,33 @@ fn absolute_resolves_dot_dot_by_name() {
     let got = absolute(Path::new(r"missing\..\f.txt"), Path::new(r"C:\home\u")).unwrap();
     assert_eq!(got, Path::new(r"C:\home\u\f.txt"));
 }
+
+// ── mirrored_under ────────────────────────────────────────────────────────
+
+#[test]
+fn mirrored_under_names_a_drive_by_its_letter() {
+    let mirror = mirrored_under(
+        Path::new(r"C:\state\undo"),
+        &AbsolutePath::rooted(r"d:\src\foo.rs"),
+        ".undo",
+    );
+    assert_eq!(
+        mirror,
+        Some(PathBuf::from(r"C:\state\undo\D\src\foo.rs.undo"))
+    );
+}
+
+#[test]
+fn mirrored_under_nests_a_unc_share_under_unc() {
+    let mirror = mirrored_under(
+        Path::new(r"C:\state\undo"),
+        &AbsolutePath::rooted(r"\\server\share\src\foo.rs"),
+        ".undo",
+    );
+    assert_eq!(
+        mirror,
+        Some(PathBuf::from(
+            r"C:\state\undo\UNC\server\share\src\foo.rs.undo"
+        ))
+    );
+}

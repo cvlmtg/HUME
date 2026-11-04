@@ -8,7 +8,7 @@ use crate::editor::position_stores::PositionStores;
 use crate::editor::settings::BufferOverrides;
 use hume_core::{BufferId, BufferLanguageTie, Claim, ConfigOrigin, LaterWins, PaneHandle, PaneId};
 use hume_editing::change_log::ChangeLog;
-use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
+use hume_editing::changeset::{ChangeSet, changeset_from_line_diff};
 use hume_editing::edit::{Edited, TextChange};
 use hume_editing::history::{History, RevisionId};
 use hume_editing::hunk::ChangeHunk;
@@ -47,6 +47,7 @@ mod history;
 pub(in crate::editor) mod lifecycle;
 pub(in crate::editor) mod offsets;
 pub(in crate::editor) mod store;
+mod undo_file;
 use hume_treesitter::layers::SyntaxLayers;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::Syntax;
@@ -246,17 +247,12 @@ pub(crate) struct Buffer {
     pub(in crate::editor) read_only: bool,
     /// The [`TextHold`] keeping the text as it is, if one is alive.
     hold: Weak<()>,
-    /// True from chokepoint open (`lifecycle::open_buffer_and_notify`, or
-    /// `lifecycle::close_buffer_and_notify`'s own `queue_open_announcement`
-    /// call for the fresh scratch buffer a last-buffer close allocates)
-    /// until `Editor::detect_pending_languages` fires this buffer's
+    /// True from `lifecycle::finish_open`, which every fresh buffer goes
+    /// through, until `Editor::detect_pending_languages` fires this buffer's
     /// `OnBufferOpen`. Read by `lifecycle::close_buffer_and_notify`: a still-
     /// pending buffer (opened and closed before that drain ran, e.g. within
     /// one Steel eval) announced no open, so it must announce no close
-    /// either. The startup buffer, built inline by `Editor::open` (which
-    /// can't call the chokepoint, since it's what bootstraps the very
-    /// `EngineView`/pane-state maps the chokepoint needs), is the one buffer
-    /// that defaults to `false`: its close always announces.
+    /// either.
     pub(in crate::editor) open_hook_pending: bool,
     /// The buffer's disk state as of the last check, set by
     /// `Editor::check_buffer_disk_state`, cleared to `InSync` by a reload or
@@ -604,13 +600,14 @@ impl Buffer {
     /// re-applies it. It leaves `saved_revision` and `disk_state` alone, so
     /// the replacement reads as dirty unless it was a no-op.
     ///
-    /// The `ChangeSet` pair is line-diff-derived ([`changesets_from_line_diff`])
-    /// so the inverse carries only the changed lines, not a full-buffer
-    /// delete-all + insert-all. `install` carries every stored position
-    /// through the diff. The history revision records `focused`'s selections
-    /// for the buffer before and after, for undo and redo. No pane made the
-    /// replacement: every pane keeps the selections it built since its last
-    /// edit, and selection undo offers none of the revision's.
+    /// The `ChangeSet` is line-diff-derived ([`changeset_from_line_diff`]), so
+    /// it and the inverse the history derives from it carry only the changed
+    /// lines, not a full-buffer delete-all + insert-all. `install` carries
+    /// every stored position through the diff. The history revision records
+    /// `focused`'s selections for the buffer before and after, for undo and
+    /// redo. No pane made the replacement: every pane keeps the selections it
+    /// built since its last edit, and selection undo offers none of the
+    /// revision's.
     ///
     /// Returns whether the content changed (`install` ran, the version moved),
     /// `false` when `new_text` has the same content. The line ending is
@@ -624,7 +621,7 @@ impl Buffer {
         focused: PaneId,
     ) -> bool {
         self.line_ending_by = Claim::default();
-        let (forward, inverse) = changesets_from_line_diff(&self.text, &new_text);
+        let forward = changeset_from_line_diff(&self.text, &new_text);
         if forward.is_identity() {
             self.adopt_line_ending(new_text.line_ending());
             return false;
@@ -641,6 +638,7 @@ impl Buffer {
         let recorded =
             |stores: &PositionStores<'_>| stores.panes.seeded(focused, id).selections().clone();
         let pre_sels = recorded(stores);
+        let pre_text = self.text.clone();
         let target = PaneHandle::buffer_only(id);
         self.install(
             target,
@@ -649,7 +647,7 @@ impl Buffer {
             Change::Edit(&forward),
         );
         let post_sels = recorded(stores);
-        self.record_revision(target.pane(), forward, inverse, pre_sels, post_sels);
+        self.record_revision(target.pane(), forward, &pre_text, pre_sels, post_sels);
         true
     }
 
@@ -700,7 +698,7 @@ impl Buffer {
     /// Record the current revision as the saved state.
     ///
     /// Call this immediately after a successful file write.
-    pub(in crate::editor) fn mark_saved(&mut self) {
+    pub(in crate::editor::buffer) fn mark_saved(&mut self) {
         self.saved_revision = Some(self.history.current_id());
         self.saved_line_ending = self.text.line_ending();
         self.disk_state = disk::DiskState::InSync;
@@ -772,13 +770,13 @@ impl Buffer {
         &mut self,
         owner: Option<PaneId>,
         forward: ChangeSet,
-        inverse: ChangeSet,
+        pre_text: &BufferText,
         pre_sels: SelectionSet,
         post_sels: SelectionSet,
     ) {
         if let Some(promoted) = self
             .history
-            .record(owner, forward, inverse, pre_sels, post_sels)
+            .record(owner, forward, pre_text, pre_sels, post_sels)
         {
             if self.saved_revision == Some(promoted) {
                 self.saved_revision = Some(History::ROOT);
@@ -828,11 +826,10 @@ impl Buffer {
             return Applied::Unchanged(post.into_selections());
         }
 
-        // self.text is still pre-edit here, so it's safe to call invert.
-        let inverse_cs = cs.invert(&self.text);
+        let pre_text = self.text.clone();
         let (post_text, post_sels) = post.into_parts();
         self.install(target, stores, post_text, Change::Edit(&cs));
-        self.record_revision(target.pane(), cs, inverse_cs, pre_sels, post_sels.clone());
+        self.record_revision(target.pane(), cs, &pre_text, pre_sels, post_sels.clone());
         Applied::Changed(post_sels)
     }
 
@@ -954,12 +951,18 @@ impl Buffer {
         // no text, and print no exhaustion message either. See
         // `apply_transactions`'s doc for why its own identity guard is a
         // different one, protecting a different case.
-        let (Some(inverse_cs), Some(cs)) = (group.inverse(), group.cs) else {
+        if group.edits().is_none() {
             return;
-        };
-        let pre_sels = group.undo_sels;
+        }
+        let cs = group.cs.expect("the group holds edits");
         let post_sels = EditState::bind(self.text.clone(), post_sels).into_selections();
-        self.record_revision(Some(owner), cs, inverse_cs, pre_sels, post_sels);
+        self.record_revision(
+            Some(owner),
+            cs,
+            group.snapshot.text(),
+            group.undo_sels,
+            post_sels,
+        );
     }
 
     /// Apply an ordered Transaction list (from `History::undo_n`/`redo_n`/

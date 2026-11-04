@@ -151,34 +151,34 @@ fn write_file_new_on_plain_missing_path_is_unaffected() {
 }
 
 #[test]
-fn write_dump_round_trips_content() {
+fn write_private_file_round_trips_content() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("f.txt.dump");
 
-    write_dump("a\r\nb\n", &path).unwrap();
+    write_private_file(b"a\r\nb\n", &path).unwrap();
 
     assert_eq!(std::fs::read(&path).unwrap(), b"a\r\nb\n");
 }
 
 #[test]
-fn write_dump_replaces_an_existing_dump() {
+fn write_private_file_replaces_an_existing_file() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("f.txt.dump");
     std::fs::write(&path, "older crash\n").unwrap();
 
-    write_dump("newer crash\n", &path).unwrap();
+    write_private_file(b"newer crash\n", &path).unwrap();
 
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "newer crash\n");
 }
 
 #[cfg(unix)]
 #[test]
-fn write_dump_is_private_to_the_owner() {
+fn write_private_file_is_private_to_the_owner() {
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("f.txt.dump");
 
-    write_dump("secret\n", &path).unwrap();
+    write_private_file(b"secret\n", &path).unwrap();
 
     let mode = std::fs::metadata(&path).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o600);
@@ -208,4 +208,41 @@ fn read_own_file_refuses_a_symlink() {
         std::io::ErrorKind::PermissionDenied
     );
     assert!(read_own_file(&link).is_err());
+}
+
+#[test]
+fn open_own_file_reads_content_that_is_not_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("f.undo");
+    std::fs::write(&path, [0xff, 0x00, 0xfe]).unwrap();
+
+    let mut content = Vec::new();
+    std::io::Read::read_to_end(&mut open_own_file(&path).unwrap(), &mut content).unwrap();
+    assert_eq!(content, vec![0xff, 0x00, 0xfe]);
+}
+
+#[test]
+fn create_private_dir_all_creates_every_missing_level() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("a").join("b");
+
+    create_private_dir_all(&nested).unwrap();
+
+    assert!(nested.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn create_private_dir_all_makes_new_levels_private_and_leaves_existing_ones() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let nested = dir.path().join("a").join("b");
+
+    create_private_dir_all(&nested).unwrap();
+
+    let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(dir.path()), 0o755);
+    assert_eq!(mode(&dir.path().join("a")), 0o700);
+    assert_eq!(mode(&nested), 0o700);
 }

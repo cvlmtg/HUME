@@ -722,6 +722,11 @@ define_settings! {
             scope: [Scope::Global],
             parser: usize,
             resync: true;
+        // Where a save writes the undo history of a buffer whose
+        // `undo-persist` is on, and where opening a file looks for one.
+        "undo-directory" => undo_directory: UndoDirectory = UndoDirectory::Default,
+            scope: [Scope::Global],
+            parser: from_str;
         "steel-init-budget-ms" => steel_init_budget_ms: usize = 10_000,
             scope: [Scope::Global],
             parser: usize_nonzero;
@@ -883,6 +888,9 @@ define_settings! {
         // `:w`'s write guard, which reads the file itself at write time
         // regardless of this setting.
         "file-reload-prompt" => file_reload_prompt: bool = true,
+            scope: [Scope::Global, Scope::Buffer],
+            parser: bool;
+        "undo-persist" => undo_persist: bool = false,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
     }
@@ -1098,7 +1106,7 @@ mod word_list;
 
 pub use values::{
     CommandCompletion, CursorShape, MessagesMinSeverity, ObjectJumpAlign, SignColumnConfig,
-    SignColumnMode, TablineVisibility, WordSelectsWhitespace,
+    SignColumnMode, TablineVisibility, UndoDirectory, WordSelectsWhitespace,
 };
 
 #[cfg(test)]

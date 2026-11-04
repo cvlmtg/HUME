@@ -174,10 +174,9 @@ fn recorded_replacement_does_not_bump_edit_seq() {
     let id = make_id(&mut ev);
     store.open(id, make_buf());
     let before = store.edit_seq();
-    let (mut stores, pane, stored_as) = crate::editor::position_stores::DetachedStores::with_pane(
-        store.get(id),
-        store.get(id).initial_sels(),
-    );
+    let sels = store.get(id).initial_sels();
+    let (mut stores, pane, stored_as) =
+        crate::editor::position_stores::DetachedStores::with_pane(store.get_mut(id), sels);
     assert!(store.get_mut(id).replace_text_recorded(
         stored_as,
         &mut stores.stores(),

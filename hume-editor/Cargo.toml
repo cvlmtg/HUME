@@ -22,6 +22,8 @@ hume-decorations = { path = "../hume-decorations" }
 lsp-types = "0.97"
 serde.workspace = true
 serde_json.workspace = true
+postcard.workspace = true
+md-5 = "0.10"
 slotmap = "1"
 rustc-hash.workspace = true
 steel-core.workspace = true

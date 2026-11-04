@@ -51,18 +51,23 @@ impl EditorState {
 impl Editor {
     // ── Buffer choke-points ───────────────────────────────────────────────────
 
-    /// Binds `bid` to `file`. A buffer whose resolved path changes is a
-    /// different document to its language servers: the reconcile closes it
-    /// under the old URI and reopens it under the new one, keeping each
-    /// instance, so `didSave` afterwards names a document every attached
-    /// server has open.
-    pub(in crate::editor) fn set_buffer_file(&mut self, bid: BufferId, file: BufferFile) {
+    /// Record that `bid`'s text is the one `file` holds, after a write or a
+    /// reload: `file` becomes its file, the buffer reads as saved, and its
+    /// undo history is saved under `file` when its `undo-persist` is on.
+    ///
+    /// A buffer whose resolved path changes is a different document to its
+    /// language servers: the reconcile closes it under the old URI and
+    /// reopens it under the new one, keeping each instance, so `didSave`
+    /// afterwards names a document every attached server has open.
+    pub(in crate::editor) fn mark_synced(&mut self, bid: BufferId, file: BufferFile) {
         let buf = self.state.buffers.get_mut(bid);
         let changed = buf.path() != Some(file.resolved());
         buf.set_file(file);
         if changed {
             self.state.lsp_reconcile_buffer(&self.view, bid);
         }
+        self.state.buffers.get_mut(bid).mark_saved();
+        self.state.save_undo_history(bid);
     }
 
     /// `{name} [new file]`, the message reported when a newly opened `buf`
@@ -165,18 +170,17 @@ impl Editor {
         let (buffers, mut stores) = self.state.edit_parts();
         let buf = buffers.get_mut(id);
         let (mutated, read_file) = match source {
-            ReplaceSource::Disk { text, file } => {
-                let mutated = buf.replace_text_recorded(id, &mut stores, text, fp.pid());
-                buf.mark_saved();
-                (mutated, Some(file))
-            }
+            ReplaceSource::Disk { text, file } => (
+                buf.replace_text_recorded(id, &mut stores, text, fp.pid()),
+                Some(file),
+            ),
             ReplaceSource::Dump(text) => (
                 buf.replace_text_recorded(id, &mut stores, text, fp.pid()),
                 None,
             ),
         };
         if let Some(file) = read_file {
-            self.set_buffer_file(id, file);
+            self.mark_synced(id, file);
         }
         // The replacement went through `install` as a line-diff change, so
         // the buffer's servers get it as an ordinary queued `didChange`. A

@@ -13,7 +13,7 @@ use hume_core::Severity;
 /// colors: each input-stack layer handles its own
 /// ([`InputStack::theme_changed`]). The single chokepoint for replacing a
 /// *live* `view.theme`, so no replacement site can skip that step.
-/// `Editor::open`'s initial construction bypasses this: there is no layer
+/// `Editor::bootstrap`'s initial construction bypasses this: there is no layer
 /// yet to rebuild.
 pub(in crate::editor) fn set_theme(
     view: &mut EngineView,
