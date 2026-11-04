@@ -717,8 +717,11 @@ fn a_half_page_scroll_is_navigation() {
     assert_eq!(state(&ed), copied);
 }
 
+/// An edit's name, the state it starts from and the keys or call that make it.
+type NamedEdit = (&'static str, &'static str, fn(&mut Editor));
+
 /// Each edit that acts on the selections, run on the selections of a state.
-fn edits() -> [(&'static str, &'static str, fn(&mut Editor)); 9] {
+fn edits() -> [NamedEdit; 9] {
     [
         ("delete", "-[foo]> 12 bar\n", |ed| press(ed, "d")),
         ("change", "-[foo]> 12 bar\n", |ed| {
@@ -793,6 +796,26 @@ fn indenting_offers_the_selection_it_moved() {
     undo_selection(&mut ed);
 
     assert_eq!(state(&ed), indented);
+}
+
+#[test]
+fn redo_from_the_undo_tree_stays_while_the_text_is_held() {
+    let mut ed = editor_from("-[a]>bc\ndef\n");
+    press(&mut ed, "miw>jmiw>;miw");
+    let live = state(&ed);
+    undo_selection(&mut ed);
+    let landed = state(&ed);
+    assert_ne!(landed, live);
+    let bid = ed.focused_buffer_id();
+    let _hold = ed.state.buffers.get_mut(bid).hold_text();
+
+    redo_selection(&mut ed);
+
+    assert_eq!(state(&ed), landed);
+    assert_eq!(
+        status(&ed),
+        format!("{} is busy: a pipe is running", ed.doc().display_name())
+    );
 }
 
 #[test]

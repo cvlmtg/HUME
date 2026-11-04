@@ -308,6 +308,24 @@ fn session_refuses_walk() -> CommandError {
     CommandError::transient("cannot move through undo history while an edit session is open")
 }
 
+/// An admitted read or walk of a buffer's undo history through a pane,
+/// which only [`admit_history_walk`] returns. Reading the selections the
+/// history saved takes one.
+pub(in crate::editor) struct HistoryAdmitted {
+    pane: PaneId,
+    buffer: BufferId,
+}
+
+impl HistoryAdmitted {
+    pub(in crate::editor) fn pane(&self) -> PaneId {
+        self.pane
+    }
+
+    pub(in crate::editor) fn buffer(&self) -> BufferId {
+        self.buffer
+    }
+}
+
 /// Admit a read or walk of `buf_id`'s undo history through `pane_id`, for
 /// undo and redo and for `undo-selection-change` alike. Once admitted, the
 /// buffer's text is the history's current revision's.
@@ -326,7 +344,7 @@ pub(in crate::editor) fn admit_history_walk(
     stores: &mut PositionStores<'_>,
     pane_id: PaneId,
     buf_id: BufferId,
-) -> Result<(), CommandError> {
+) -> Result<HistoryAdmitted, CommandError> {
     admit(buffers, stores, PaneHandle::with_pane(buf_id, pane_id))?;
     if stores.insert_at_mut(pane_id, buf_id).is_some() {
         return Err(session_refuses_walk());
@@ -337,13 +355,16 @@ pub(in crate::editor) fn admit_history_walk(
         .filter(|s| s.owned_by(pane_id, buf_id))
         .map(EditSession::kind)
     {
-        None => Ok(()),
+        None => {}
         Some(EditSessionKind::Paste { .. }) => {
             commit_paste_group(buffers, stores.panes, stores.session);
-            Ok(())
         }
-        Some(EditSessionKind::Replay) => Err(session_refuses_walk()),
+        Some(EditSessionKind::Replay) => return Err(session_refuses_walk()),
     }
+    Ok(HistoryAdmitted {
+        pane: pane_id,
+        buffer: buf_id,
+    })
 }
 
 /// Run one history walk on `buf_id` through `pane_id` (`walk`, typically

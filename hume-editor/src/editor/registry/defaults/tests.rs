@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 
-use crate::editor::commands::typed_quit;
+use super::builder::ecmd_pane;
+use crate::editor::commands::{cmd_undo_selection_change, typed_quit};
 use crate::editor::registry::{
-    ArgExpansion, CommandRegistry, NativeTyped, TypedBody, TypedCommand,
+    ArgExpansion, CommandRegistry, NativeTyped, SelectionEffect, TypedBody, TypedCommand,
 };
 
 fn typed(name: &'static str, aliases: &'static [&'static str]) -> TypedCommand {
@@ -55,4 +56,22 @@ fn a_typed_built_in_alias_repeating_its_name_panics() {
 #[should_panic(expected = "\"QA2\" is listed twice")]
 fn a_typed_built_in_alias_listed_twice_panics() {
     CommandRegistry::with_defaults().register_builtin_typed(typed("quit-again", &["qa2", "QA2"]));
+}
+
+#[test]
+#[should_panic(expected = "\"two-roles\" declares a selection role twice")]
+fn a_command_with_two_selection_roles_panics() {
+    let _ = ecmd_pane("two-roles", "", cmd_undo_selection_change)
+        .establishes_selection()
+        .selection_effect(SelectionEffect::Composes);
+}
+
+#[test]
+#[should_panic(expected = "\"extends-twice\" is extendable through its Extends effect")]
+fn an_extends_command_marked_extendable_panics() {
+    let mut reg = CommandRegistry::with_defaults();
+    ecmd_pane("extends-twice", "", cmd_undo_selection_change)
+        .extendable()
+        .selection_effect(SelectionEffect::Extends)
+        .reg(&mut reg);
 }

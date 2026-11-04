@@ -1320,6 +1320,20 @@ fn record_edit(
     insert: &str,
     before: SelectionSet,
 ) -> BufferText {
+    record_edit_leaving(h, owner, text, (from, to), insert, before, (from, from))
+}
+
+/// [`record_edit`], with the selection the edit left running from
+/// `anchor` to `head` of the text it produces.
+fn record_edit_leaving(
+    h: &mut History,
+    owner: Option<PaneId>,
+    text: &BufferText,
+    (from, to): (usize, usize),
+    insert: &str,
+    before: SelectionSet,
+    (anchor, head): (usize, usize),
+) -> BufferText {
     let mut b = ChangeSetBuilder::new(text.end());
     b.retain_to(CharOffset::new(from));
     b.delete_to(CharOffset::new(to));
@@ -1327,7 +1341,7 @@ fn record_edit(
     let cs = b.finish();
     let after = cs.apply(text).expect("built for text");
     let inverse = cs.invert(text);
-    let left = selected(&after, from, from);
+    let left = selected(&after, anchor, head);
     h.record(owner, cs, inverse, before, left);
     after
 }
@@ -1400,10 +1414,11 @@ fn a_saved_selection_is_mapped_through_later_edits() {
 fn selection_points_are_one_owners_newest_first() {
     let mut h = History::new();
     let t0 = BufferText::from("abcdef\n");
-    let t1 = record_edit(&mut h, pane(), &t0, (0, 0), "X", selected(&t0, 1, 2));
+    let left = (0, 1);
+    let t1 = record_edit_leaving(&mut h, pane(), &t0, (0, 0), "X", selected(&t0, 1, 2), left);
     let first = h.current_id();
-    let t2 = record_edit(&mut h, None, &t1, (0, 0), "Y", selected(&t1, 1, 2));
-    record_edit(&mut h, pane(), &t2, (0, 0), "Z", selected(&t2, 1, 2));
+    let t2 = record_edit_leaving(&mut h, None, &t1, (0, 0), "Y", selected(&t1, 1, 2), left);
+    record_edit_leaving(&mut h, pane(), &t2, (0, 0), "Z", selected(&t2, 1, 2), left);
     let third = h.current_id();
     let point = |revision, side| SelectionPoint { revision, side };
 
@@ -1414,6 +1429,33 @@ fn selection_points_are_one_owners_newest_first() {
             point(third, Side::Before),
             point(first, Side::After),
             point(first, Side::Before),
+        ]
+    );
+}
+
+#[test]
+fn selection_points_leave_out_single_cursors() {
+    let mut h = History::new();
+    let t0 = BufferText::from("abcdef\n");
+    let t1 = record_edit(&mut h, pane(), &t0, (0, 0), "X", selected(&t0, 1, 2));
+    let left_cursor = h.current_id();
+    record_edit_leaving(
+        &mut h,
+        pane(),
+        &t1,
+        (0, 0),
+        "Y",
+        selected(&t1, 2, 2),
+        (0, 1),
+    );
+    let made_at_cursor = h.current_id();
+    let point = |revision, side| SelectionPoint { revision, side };
+
+    assert_eq!(
+        h.selection_points(PaneId::default()),
+        vec![
+            point(made_at_cursor, Side::After),
+            point(left_cursor, Side::Before),
         ]
     );
 }

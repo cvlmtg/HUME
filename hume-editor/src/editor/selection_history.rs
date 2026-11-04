@@ -190,8 +190,9 @@ impl PaneSelections {
     /// off where the last walk landed lands there first.
     ///
     /// # Errors
-    /// [`TreeRefused`] when a step back needed the undo tree and `saved` is
-    /// `None`. The steps taken before it stay.
+    /// [`TreeRefused`] when the walk starts from an undo-tree step or a
+    /// step back needed the undo tree, and `saved` is `None`. The steps
+    /// taken before it stay.
     pub(in crate::editor) fn walk(
         &mut self,
         walk: Walk,
@@ -199,7 +200,7 @@ impl PaneSelections {
         saved: Option<&SavedSelections<'_>>,
     ) -> Result<(), TreeRefused> {
         let mut steps = Steps::new(&self.live, saved);
-        let mut at = self.walked.map(|point| steps.index_of(point));
+        let mut at = self.walked.map(|point| steps.index_of(point)).transpose()?;
         let mut retry_landed = matches!(walk, Walk::Back)
             && at.is_some_and(|index| {
                 steps.get(index).is_ok_and(|landed| {
@@ -280,16 +281,15 @@ impl<'a> Steps<'a> {
 
     /// The index of `point`. A tree point whose revision is gone (trimmed by
     /// `undo-levels`) resumes from the newest tree step.
-    fn index_of(&mut self, point: Point) -> usize {
+    ///
+    /// # Errors
+    /// [`TreeRefused`] for a tree point while the walk may not read the tree.
+    fn index_of(&mut self, point: Point) -> Result<usize, TreeRefused> {
         match point {
-            Point::Live(live_index) => self.live.len() - 1 - live_index,
+            Point::Live(live_index) => Ok(self.live.len() - 1 - live_index),
             Point::Tree(point) => {
-                let offset = self
-                    .tree()
-                    .ok()
-                    .and_then(|tree| tree.iter().position(|&p| p == point))
-                    .unwrap_or(0);
-                self.live.len() + offset
+                let offset = self.tree()?.iter().position(|&p| p == point);
+                Ok(self.live.len() + offset.unwrap_or(0))
             }
         }
     }

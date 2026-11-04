@@ -7,9 +7,9 @@ use crate::editor::registry::{
 };
 
 // Builder for EditorCmd registration. Each method sets one field (a bool),
-// except the three selection-effect setters below; .reg(registry)
-// terminates the chain. Adding a new flag costs one method; existing call
-// sites are unaffected.
+// except the three selection-role setters below, of which a command calls
+// at most one; .reg(registry) terminates the chain. Adding a new flag costs
+// one method; existing call sites are unaffected.
 pub(super) struct EditorCmdBuilder {
     name: &'static str,
     doc: &'static str,
@@ -82,33 +82,47 @@ impl EditorCmdBuilder {
     /// selection extent on its own but can't be a pure `Selection` variant
     /// (needs `EditorState`/`EngineView` access); see
     /// [`crate::editor::registry::CmdMeta::selection`].
-    pub(super) fn establishes_selection(mut self) -> Self {
-        self.selection = Some(SelectionRole {
+    pub(super) fn establishes_selection(self) -> Self {
+        self.selection_role(SelectionRole {
             effect: SelectionEffect::Establishes,
             recipe_step: true,
-        });
-        self
+        })
     }
     /// Opt this command into the dot-repeat selection recipe as a composing
     /// step. See [`SelectionEffect::Composes`].
-    pub(super) fn composes_selection(mut self) -> Self {
-        self.selection = Some(SelectionRole {
+    pub(super) fn composes_selection(self) -> Self {
+        self.selection_role(SelectionRole {
             effect: SelectionEffect::Composes,
             recipe_step: true,
-        });
-        self
+        })
     }
     /// Declare what this command does to the selections without making it a
     /// dot-repeat recipe step: it takes an operand or cannot be replayed
     /// from a fresh cursor. See [`SelectionRole::recipe_step`].
-    pub(super) fn selection_effect(mut self, effect: SelectionEffect) -> Self {
-        self.selection = Some(SelectionRole {
+    pub(super) fn selection_effect(self, effect: SelectionEffect) -> Self {
+        self.selection_role(SelectionRole {
             effect,
             recipe_step: false,
-        });
+        })
+    }
+    fn selection_role(mut self, role: SelectionRole) -> Self {
+        assert!(
+            self.selection.is_none(),
+            "{:?} declares a selection role twice",
+            self.name
+        );
+        self.selection = Some(role);
         self
     }
     pub(super) fn reg(self, r: &mut CommandRegistry) {
+        assert!(
+            !(self.extendable
+                && self
+                    .selection
+                    .is_some_and(|role| role.effect == SelectionEffect::Extends)),
+            "{:?} is extendable through its Extends effect",
+            self.name
+        );
         r.register_builtin(MappableCommand::Native(NativeCommand::EditorCmd {
             name: self.name.into(),
             doc: Cow::Borrowed(self.doc),

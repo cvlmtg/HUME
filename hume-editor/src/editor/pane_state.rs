@@ -183,8 +183,9 @@ impl PaneBufferState {
     /// the buffer's current text.
     ///
     /// # Errors
-    /// [`TreeRefused`] when a step needed the undo tree and `saved` is
-    /// `None`. The steps taken before it stay.
+    /// [`TreeRefused`] when the walk starts from an undo-tree step or a step
+    /// needed the undo tree, and `saved` is `None`. The steps taken before it
+    /// stay.
     pub(in crate::editor) fn walk_selection_history(
         &mut self,
         count: usize,

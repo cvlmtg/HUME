@@ -13,7 +13,8 @@ use hume_editing::hunk::ChangeHunk;
 use hume_engine::pipeline::Cycle;
 use hume_platform::path::AbsolutePath;
 
-use crate::editor::buffer::{Buffer, ViewLabel};
+use crate::editor::buffer::{Buffer, SavedSelections, ViewLabel};
+use crate::editor::doc_ops::HistoryAdmitted;
 
 /// Who is changing text: the user, through a key, a command or a callback
 /// answering their input, or background work (a pipe landing, a language
@@ -129,6 +130,17 @@ impl BufferStore {
         self.buffers
             .get(id)
             .expect("BufferStore: unseeded BufferId")
+    }
+
+    /// What the admitted pane's edits of the admitted buffer saved in its
+    /// undo history, the only way to read them: admission guarantees the
+    /// text is the history's current revision's.
+    pub(in crate::editor) fn saved_selections(
+        &self,
+        admitted: HistoryAdmitted,
+    ) -> SavedSelections<'_> {
+        self.get(admitted.buffer())
+            .saved_selections(admitted.pane())
     }
 
     /// Infallible mutable getter.

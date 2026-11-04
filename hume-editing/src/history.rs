@@ -638,18 +638,26 @@ impl History {
 
     /// The selections `owner`'s edits were made with and left, newest
     /// revision first, each revision's [`Side::After`] before its
-    /// [`Side::Before`].
+    /// [`Side::Before`]. A single cursor is left out: mapped through any
+    /// change it stays one.
     pub fn selection_points(&self, owner: PaneId) -> Vec<SelectionPoint> {
-        let mut ids: Vec<RevisionId> = self
+        let mut links: Vec<(RevisionId, &Link)> = self
             .revisions
             .iter()
-            .filter(|(_, revision)| revision.link.is_some() && revision.owner == Some(owner))
-            .map(|(&id, _)| id)
+            .filter(|(_, revision)| revision.owner == Some(owner))
+            .filter_map(|(&id, revision)| Some((id, revision.link.as_ref()?)))
             .collect();
-        ids.sort_by_key(|id| std::cmp::Reverse(id.0));
-        ids.into_iter()
-            .flat_map(|revision| {
-                [Side::After, Side::Before].map(|side| SelectionPoint { revision, side })
+        links.sort_by_key(|(id, _)| std::cmp::Reverse(id.0));
+        links
+            .into_iter()
+            .flat_map(|(revision, link)| {
+                [
+                    (Side::After, link.forward.selection()),
+                    (Side::Before, link.inverse.selection()),
+                ]
+                .into_iter()
+                .filter(|(_, sels)| !sels.is_single_cursor())
+                .map(move |(side, _)| SelectionPoint { revision, side })
             })
             .collect()
     }

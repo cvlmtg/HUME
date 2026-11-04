@@ -42,10 +42,14 @@ fn walk_selection_history(
         let (buffers, mut stores) = state.edit_parts();
         doc_ops::admit_history_walk(buffers, &mut stores, pid, bid)
     };
-    let buffer = state.buffers.get(bid);
-    let saved = admitted.is_ok().then(|| buffer.saved_selections(pid));
+    let saved = admitted.map(|admitted| state.buffers.saved_selections(admitted));
     let walked = t
         .state_mut(&mut state.panes.entries, view)
-        .walk_selection_history(count.get(), walk, saved.as_ref(), buffer.text());
-    walked.or(admitted)
+        .walk_selection_history(
+            count.get(),
+            walk,
+            saved.as_ref().ok(),
+            state.buffers.get(bid).text(),
+        );
+    walked.or(saved.map(|_| ()))
 }

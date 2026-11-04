@@ -405,8 +405,9 @@ pub(in crate::editor) enum NativeCommand {
         visual_move: bool,
         /// Whether a Ctrl-key may run this command as a one-shot extend.
         /// `Motion`/`Selection` always may and `Edit` never may, so only
-        /// `EditorCmd` carries the flag. A [`SelectionEffect::Extends`]
-        /// command may whatever the flag says.
+        /// `EditorCmd` carries the flag. It is the opt-in of a command whose
+        /// role is not [`SelectionEffect::Extends`]: an `Extends` command
+        /// always may, and its registration leaves the flag unset.
         extendable: bool,
         clears_extend: bool,
         /// `None` unless the registration sets one.

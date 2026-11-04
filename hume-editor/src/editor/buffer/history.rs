@@ -24,7 +24,7 @@ pub(in crate::editor) struct SavedSelections<'a> {
 }
 
 impl SavedSelections<'_> {
-    /// Every one, newest first.
+    /// Every one but single cursors, newest first.
     pub(in crate::editor) fn points(&self) -> Vec<SelectionPoint> {
         self.history.selection_points(self.owner)
     }
@@ -36,10 +36,8 @@ impl SavedSelections<'_> {
 }
 
 impl Buffer {
-    /// What `owner`'s edits of this buffer saved. Read only once
-    /// `doc_ops::admit_history_walk` admitted a walk, so the text is the
-    /// history's current revision's.
-    pub(in crate::editor) fn saved_selections(&self, owner: PaneId) -> SavedSelections<'_> {
+    /// What `owner`'s edits of this buffer saved.
+    pub(in crate::editor::buffer) fn saved_selections(&self, owner: PaneId) -> SavedSelections<'_> {
         SavedSelections {
             history: &self.history,
             text: &self.text,
