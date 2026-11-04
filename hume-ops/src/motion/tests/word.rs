@@ -1020,7 +1020,51 @@ fn extend_select_next_word_around_chained_grows_past_two_words() {
     );
 }
 
+#[test]
+fn extend_select_prev_word_around_keeps_anchor_edge() {
+    // The anchor `)` belongs to the word "),", whose unit takes the space
+    // after it. The selection grows only on the head's side.
+    assert_state!(
+        "foo bar <[(something here)]-, and there\n",
+        |(text, sels)| cmd_select_prev_word(
+            test_fixtures::testing::state(text, sels),
+            1,
+            WordCtx::before(MotionMode::Extend)
+        ),
+        "foo<[ bar (something here)]-, and there\n"
+    );
+}
+
+#[test]
+fn extend_select_next_word_around_keeps_anchor_edge() {
+    // The anchor `(`'s unit takes the space before it. The selection grows
+    // only on the head's side.
+    assert_state!(
+        "foo bar -[(something here)]>, and there\n",
+        |(text, sels)| cmd_select_next_word(
+            test_fixtures::testing::state(text, sels),
+            1,
+            WordCtx::before(MotionMode::Extend)
+        ),
+        "foo bar -[(something here), and]> there\n"
+    );
+}
+
 // ── extend_select word motions (anchor-unit grow/shrink) ──────────────────
+
+#[test]
+fn extend_select_prev_word_keeps_anchor_edge() {
+    // The anchor `)` belongs to the word "),": the `,` stays unselected.
+    assert_state!(
+        "foo bar <[(something here)]-, and there\n",
+        |(text, sels)| cmd_select_prev_word(
+            test_fixtures::testing::state(text, sels),
+            1,
+            WordCtx::bare(MotionMode::Extend)
+        ),
+        "foo <[bar (something here)]-, and there\n"
+    );
+}
 
 #[test]
 fn extend_select_next_word_from_cursor() {

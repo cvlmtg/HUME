@@ -9,6 +9,7 @@ use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars, is_uppercase_word_boundary, is_word_boundary};
 use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
+use std::cmp::Ordering;
 
 // ── Word motions (inner) ──────────────────────────────────────────────────────
 
@@ -195,6 +196,25 @@ fn expand_in_text(
     })
 }
 
+/// `unit` cut back to the selection's edge on the anchor's side, so the
+/// selection never grows past its anchor. A cursor (`anchor == head`) keeps
+/// its whole unit. A unit lying wholly beyond the anchor leaves the bare
+/// anchor cluster.
+fn clip_to_anchor_edge(
+    text: &BufferText,
+    unit: ClusterRange,
+    anchor: ClusterStart,
+    head: ClusterStart,
+) -> ClusterRange {
+    let slice = text.full_slice();
+    let clipped = match anchor.cmp(&head) {
+        Ordering::Equal => return unit,
+        Ordering::Greater => ClusterRange::through(slice, unit.start(), unit.last().min(anchor)),
+        Ordering::Less => ClusterRange::through(slice, unit.start().max(anchor), unit.last()),
+    };
+    clipped.unwrap_or_else(|| ClusterRange::of(slice, anchor))
+}
+
 /// Apply a word-select motion in extend mode: grow toward the target word if
 /// it lies beyond the anchor's unit, shrink toward it if it has crossed back
 /// onto or past that unit. Replaces the old selection rather than unioning.
@@ -209,8 +229,11 @@ fn expand_in_text(
 /// the target's raw bounds against the expanded anchor unit, so the
 /// one-space overlap between adjacent units is never double-counted.
 ///
-/// A target lies wholly beyond, behind, or on the anchor's unit, so that unit
-/// is always kept whole: crossing it flips direction without truncating.
+/// The anchor's unit stops at the selection's edge on the anchor's side
+/// ([`clip_to_anchor_edge`]), so an anchor placed mid-word by another command
+/// stays where it is. A target lies wholly beyond, behind, or on that unit,
+/// so it is always kept whole: crossing it flips direction without
+/// truncating.
 /// `None` from `motion` stops early and keeps the last selection.
 pub(super) fn apply_word_select_extend(
     state: EditState,
@@ -244,6 +267,7 @@ pub(super) fn apply_word_select_extend(
                 // word (e.g. indentation at the very start of the buffer):
                 // the bare anchor cluster stands in.
                 .unwrap_or_else(|| anchor_unit(text, anchor, is_boundary, chars));
+            let unit = clip_to_anchor_edge(text, unit, anchor, head);
             current = if target.start() > unit.last() {
                 Selection::covering(
                     unit.hull(expand_in_text(text, target, whitespace)),

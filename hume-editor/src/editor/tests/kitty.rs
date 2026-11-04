@@ -221,6 +221,30 @@ fn kitty_ctrl_b_extends_prev_word() {
     assert_eq!(state(&ed), "<[hello world]-\n");
 }
 
+/// After `mi(` and a flip, the anchor sits on the last `e` of "here". Ctrl-b
+/// grows the head over " (" and the anchor end stays put.
+#[test]
+fn kitty_ctrl_b_after_inner_object_flip_keeps_anchor_edge() {
+    let mut ed = editor_from_kitty("foo bar (somethi-[n]>g here), and there\n");
+    keys(&mut ed, "mi(");
+    ed.handle_key(key_ctrl('e'));
+    ed.handle_key(key_ctrl('b'));
+    keys(&mut ed, "d");
+    assert_eq!(text(&ed), "foo bar), and there\n");
+}
+
+/// After `ma(` and a flip, the anchor sits on `)`, whose word continues into
+/// `,`. Ctrl-b grows the head over " bar" without growing past the `)`.
+#[test]
+fn kitty_ctrl_b_after_around_object_flip_keeps_anchor_edge() {
+    let mut ed = editor_from_kitty("foo bar (somethi-[n]>g here), and there\n");
+    keys(&mut ed, "ma(");
+    ed.handle_key(key_ctrl('e'));
+    ed.handle_key(key_ctrl('b'));
+    keys(&mut ed, "d");
+    assert_eq!(text(&ed), "foo, and there\n");
+}
+
 /// Without kitty, Ctrl-h is a no-op: legacy terminals can't reliably
 /// distinguish Ctrl-letter from control codes, so implicit Ctrl-motion
 /// is suppressed entirely.
