@@ -1459,3 +1459,20 @@ fn selection_points_leave_out_single_cursors() {
         ]
     );
 }
+
+#[test]
+fn a_selection_saved_on_a_text_promoted_into_the_root_is_mapped_from_it() {
+    let mut h = History::new();
+    h.set_undo_levels(1);
+    let t0 = BufferText::from("abcdef\n");
+    let t1 = record_edit(&mut h, pane(), &t0, (0, 0), "X", selected(&t0, 1, 2));
+    let t2 = record_edit(&mut h, pane(), &t1, (0, 0), "Y", selected(&t1, 1, 2));
+    let t3 = record_edit(&mut h, pane(), &t2, (0, 0), "Z", selected(&t2, 1, 2));
+    let point = SelectionPoint {
+        revision: h.current_id(),
+        side: Side::Before,
+    };
+    assert_eq!(h.len(), 2, "sanity: the first two revisions were promoted");
+
+    assert_eq!(h.selection_at(point, &t3), Some(selected(&t3, 2, 3)));
+}

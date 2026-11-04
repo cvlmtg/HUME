@@ -141,7 +141,7 @@ Each selection command, such as `x`, `%`, `C`, `,`, `s`, `*` or a text object, s
 
 An edit keeps two selections in the undo history: the ones you made it with and the ones it left, such as the text a paste or `r` wrote, or the text you typed in Insert mode. `i` and `a` keep the selection you pressed them on. Once you edit, `m u` goes back through these, newest edit first, so `d` then `u` brings back what you deleted even after you collapse it. Selections you built but did not edit with are dropped at your next edit. A single cursor is never a step.
 
-After you move away, the first `m u` returns to the selections you last saved, and each further one steps back. A count steps back that many (`3 m u`). Saving new selections after stepping back drops the ones `m U` would have returned to. Each pane keeps its own selections for each buffer and offers only the edits it made; edits from another pane move them along with the text. In Insert mode and in a read-only buffer, `m u` goes back only as far as your last edit, as `u` cannot run there.
+After you move away, the first `m u` returns to the selections you last saved, and each further one steps back. A count steps back that many (`3 m u`). Saving new selections after stepping back drops the ones `m U` would have returned to. Each pane keeps its own selections for each buffer and offers only the edits it made; edits from another pane move them along with the text. In a read-only buffer, `m u` goes back only as far as your last edit, as `u` cannot run there.
 
 ## Multiple selections
 

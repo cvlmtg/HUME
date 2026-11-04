@@ -29,9 +29,14 @@ impl SavedSelections<'_> {
         self.history.selection_points(self.owner)
     }
 
-    /// The selections at `point`, `None` once its revision is trimmed.
-    pub(in crate::editor) fn at(&self, point: SelectionPoint) -> Option<SelectionSet> {
-        self.history.selection_at(point, self.text)
+    /// The selections at `point`.
+    ///
+    /// # Panics
+    /// Panics if `point` was not read from this history by [`Self::points`].
+    pub(in crate::editor) fn at(&self, point: SelectionPoint) -> SelectionSet {
+        self.history
+            .selection_at(point, self.text)
+            .expect("a point read from this history")
     }
 }
 

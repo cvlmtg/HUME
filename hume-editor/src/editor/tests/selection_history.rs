@@ -930,6 +930,54 @@ fn selection_undo_offers_only_the_edits_its_pane_made() {
 }
 
 #[test]
+fn a_walk_whose_tree_step_was_trimmed_resumes_from_the_newest_tree_step() {
+    let mut ed = editor_from("top\n-[a]>bc\ndef\n");
+    ed.doc_mut().set_undo_levels(2);
+    let pane_a = ed.view.focused_pane();
+    press(&mut ed, "miw>jmiw>");
+    let second_edit = state(&ed);
+    press(&mut ed, ";");
+    press(&mut ed, "2mu");
+    assert!(state(&ed).contains("-[abc]>"), "sanity: on the first edit");
+    vsplit_focused(&mut ed);
+    press(&mut ed, "gg");
+    press(&mut ed, "iQQ");
+    ed.feed_event(key_esc());
+    ed.switch_focused_pane(pane_a);
+    ed.settle();
+    assert!(
+        ed.doc().revision(1).is_none(),
+        "sanity: the first edit was trimmed"
+    );
+
+    undo_selection(&mut ed);
+
+    assert_eq!(state(&ed), format!("QQ{second_edit}"));
+}
+
+#[test]
+fn a_reload_keeps_the_selection_history_in_order() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let path = dir.path().join("reload.txt");
+    std::fs::write(&path, "one\ntwo\nthree\n").expect("the file is written");
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
+    ed.execute_typed("e", path.to_str())
+        .expect(":e opens the file");
+    press(&mut ed, "x");
+    let first = state(&ed);
+    press(&mut ed, "jx");
+    assert_ne!(state(&ed), first, "sanity: a second selection");
+    std::fs::write(&path, "zero\none\ntwo\nthree\n").expect("the file is rewritten");
+    ed.execute_typed("e!", None).expect(":e! reloads the file");
+
+    undo_selection(&mut ed);
+    assert_eq!(state(&ed), format!("zero\n{first}"));
+    undo_selection(&mut ed);
+
+    assert_eq!(state(&ed), format!("zero\n{first}"));
+}
+
+#[test]
 fn selection_undo_in_a_read_only_buffer_stops_before_the_undo_tree() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.report(Severity::Warning, "test message");

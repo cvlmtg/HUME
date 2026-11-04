@@ -310,13 +310,13 @@ impl<'a> Steps<'a> {
             return Ok(None);
         };
         let sels = match point {
-            Point::Live(live_index) => Some(self.live[live_index].clone()),
+            Point::Live(live_index) => self.live[live_index].clone(),
             Point::Tree(point) => self
                 .saved
                 .expect("the tree's points came from it")
                 .at(point),
         };
-        Ok(sels.map(|sels| (point, sels)))
+        Ok(Some((point, sels)))
     }
 
     /// The point at `index`, `None` past the oldest. The inverse of

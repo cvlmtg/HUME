@@ -608,7 +608,9 @@ impl Buffer {
     /// so the inverse carries only the changed lines, not a full-buffer
     /// delete-all + insert-all. `install` carries every stored position
     /// through the diff. The history revision records `focused`'s selections
-    /// for the buffer before and after.
+    /// for the buffer before and after, for undo and redo. No pane made the
+    /// replacement: every pane keeps the selections it built since its last
+    /// edit, and selection undo offers none of the revision's.
     ///
     /// Returns whether the content changed (`install` ran, the version moved),
     /// `false` when `new_text` has the same content. The line ending is
@@ -639,14 +641,15 @@ impl Buffer {
         let recorded =
             |stores: &PositionStores<'_>| stores.panes.seeded(focused, id).selections().clone();
         let pre_sels = recorded(stores);
+        let target = PaneHandle::buffer_only(id);
         self.install(
-            PaneHandle::buffer_only(id),
+            target,
             stores,
             replaced.with_line_ending(new_text.line_ending()),
             Change::Edit(&forward),
         );
         let post_sels = recorded(stores);
-        self.record_revision(Some(focused), forward, inverse, pre_sels, post_sels);
+        self.record_revision(target.pane(), forward, inverse, pre_sels, post_sels);
         true
     }
 

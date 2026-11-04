@@ -327,7 +327,7 @@ impl HistoryAdmitted {
 }
 
 /// Admit a read or walk of `buf_id`'s undo history through `pane_id`, for
-/// undo and redo and for `undo-selection-change` alike. Once admitted, the
+/// undo and redo and for selection undo and redo alike. Once admitted, the
 /// buffer's text is the history's current revision's.
 ///
 /// Session handling lives here, as in [`apply_doc_edit`]: a Paste session open
