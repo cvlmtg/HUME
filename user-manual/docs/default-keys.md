@@ -93,6 +93,8 @@ Text objects (use the `m` prefix):
 | `m s` + char | `surround-paren` (and other `surround-*` delimiters) |  | Select surrounding delimiter pair |
 | `m w` + char | `surround-add` |  | Wrap each selection with a delimiter pair |
 | `m /` | `select-all-matches` |  | Turn all search matches in the buffer into selections |
+| `m u` | `undo-selection-change` |  | Go back to the selections last built, then to earlier ones |
+| `m U` | `redo-selection-change` |  | Go forward through the selections `m u` stepped back over |
 
 ### Editing
 

@@ -960,3 +960,16 @@ fn tab_lists_the_programs_of_every_search_path_directory() {
         ["hume-probe-alpha", "hume-probe-alpine"]
     );
 }
+
+#[test]
+fn an_undone_run_brings_back_the_selection_it_ran_on() {
+    let mut ed = editor_from("-[b\na]>\nz\n");
+    let run = start_run(&mut ed, "sort", PipeKind::Replace);
+    let mut console = ScriptedConsole::new(&ed, []);
+    run_with(&mut ed, run, &mut console);
+    for k in ['u', ';', 'm', 'u'] {
+        ed.feed_event(key(k));
+    }
+
+    assert_eq!(state(&ed), "-[b\na]>\nz\n");
+}

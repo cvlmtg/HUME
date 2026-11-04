@@ -2,7 +2,7 @@ use crate::editor::commands::{cmd_visual_move_down, cmd_visual_move_up};
 use std::borrow::Cow;
 
 use crate::editor::registry::{
-    CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionTracking,
+    CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionEffect,
 };
 use hume_ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
@@ -34,16 +34,16 @@ impl CommandRegistry {
             "Move cursors down one visual line (one buffer line with a count).",
             cmd_visual_move_down,
         )
-        .extendable()
         .visual_move()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
             "move-up",
             "Move cursors up one visual line (one buffer line with a count).",
             cmd_visual_move_up,
         )
-        .extendable()
         .visual_move()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
 
         // ── BufferText-level goto motions ─────────────────────────────────────────

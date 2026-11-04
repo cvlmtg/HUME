@@ -74,3 +74,8 @@ hume-engine = { path = "../hume-engine", features = ["test-util"] }
 hume-ui = { path = "../hume-ui", features = ["test-util"] }
 hume-core = { path = "../hume-core", features = ["test-util"] }
 test-fixtures = { path = "../test-fixtures" }
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "selection_history"
+harness = false

@@ -183,16 +183,17 @@ pub(in crate::editor) fn check_can_open(
 /// holds `recording`, its source on the change whose code opens it, if any,
 /// until it ends.
 ///
-/// A fresh session snapshots the pane's current selections as its
-/// `undo_sels`, what undo restores: cloned, not taken, since the pane keeps
-/// editing with them. A [`EditSessionKind::Replay`] placeholder already open
+/// A fresh session snapshots `entered_with`, the selections Insert mode was
+/// entered with before they were placed where typing starts, as its
+/// `undo_sels`: what undo restores, and the revision's pre-edit selections.
+/// A [`EditSessionKind::Replay`] placeholder already open
 /// here (`Editor::replay_dot`'s own pre-open, about to be superseded by
 /// whatever the replayed body actually needs) is taken over with its group
 /// instead; see [`open_or_retarget`] for why that costs nothing and when an
 /// open refuses. The only way to create an [`InsertSession`].
 pub(in crate::editor) fn open_insert(
     buffers: &BufferStore,
-    pane_state: &PaneEntries,
+    entered_with: SelectionSet,
     insert: Option<&InsertSession>,
     other: &mut Option<EditSession>,
     pane: PaneId,
@@ -202,10 +203,9 @@ pub(in crate::editor) fn open_insert(
     check_can_open(open_session(insert, other), pane, buffer)?;
     let group = match other.take() {
         Some(placeholder) => placeholder.group,
-        None => {
-            let sels = pane_state.seeded(pane, buffer).selections().clone();
-            buffers.get(buffer).begin_edit_group(sels.clone(), sels)
-        }
+        None => buffers
+            .get(buffer)
+            .begin_edit_group(entered_with.clone(), entered_with),
     };
     Ok(InsertSession {
         pane,
@@ -351,7 +351,9 @@ fn commit_group(
     group: EditGroup,
 ) {
     let post_sels = pane_state.seeded(pane, buffer).selections().clone();
-    buffers.get_mut(buffer).commit_edit_group(group, post_sels);
+    buffers
+        .get_mut(buffer)
+        .commit_edit_group(group, post_sels, pane);
 }
 
 /// Which kind of session [`EditSession`] is.

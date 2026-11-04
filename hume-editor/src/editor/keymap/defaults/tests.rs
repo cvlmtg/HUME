@@ -16,6 +16,17 @@ fn no_match() {
     ));
 }
 
+#[test]
+fn m_u_and_m_shift_u_walk_the_selection_history() {
+    let trie = default_normal_keymap();
+    assert!(
+        matches!(trie.walk(&[key!('m'), key!('u')]), Some(WalkResult::Leaf(ref cmd)) if &*cmd.name == "undo-selection-change")
+    );
+    assert!(
+        matches!(trie.walk(&[key!('m'), key!('U')]), Some(WalkResult::Leaf(ref cmd)) if &*cmd.name == "redo-selection-change")
+    );
+}
+
 // ── Insert keymap ─────────────────────────────────────────────────────────
 
 #[test]

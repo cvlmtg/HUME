@@ -5,7 +5,6 @@
 
 use std::rc::Rc;
 
-use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::EngineView;
 
 use crate::editor::EditorState;
@@ -13,9 +12,10 @@ use crate::editor::dispatch::CmdCtx;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::{
     CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
-    PaneTextCmdFn, SelectionBody, SelectionTracking, TextPrompt,
+    PaneTextCmdFn, SelectionBody, TextPrompt,
 };
 use crate::editor::replay::{Answer, InputOpener, NewChange, record_change};
+use crate::editor::selection_history::Record;
 use crate::editor::settings::ObjectJumpAlign;
 use hume_core::{CommandArg, PaneHandle, Severity};
 use hume_ops::{MotionMode, WordCtx};
@@ -24,9 +24,7 @@ use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};
 
 use super::structural::object_spans;
 use super::target::{CommandPane, FocusedPane, TargetError};
-use super::{
-    apply_pane_edit, apply_pane_motion, effective_word_chars, line_end_for, pane_selections,
-};
+use super::{apply_pane_edit, apply_pane_motion, effective_word_chars, line_end_for};
 
 /// A native command's target: the pane its body acts through, typed by
 /// whether it is the focused pane. Private to this module: the only way to
@@ -659,7 +657,7 @@ pub(in crate::editor) fn run(
     // begin below and update_recipe would both fire. This is a property
     // of the registry, fixed at registration time, so it's checked once for
     // every command by
-    // `registry::tests::no_command_is_both_repeatable_and_selection_tracking`
+    // `registry::tests::no_command_is_both_repeatable_and_a_selection_builder`
     // rather than re-probed here on every dispatch.
     let pane = bound.pane();
     let focused = bound.target_focused();
@@ -670,8 +668,8 @@ pub(in crate::editor) fn run(
     let pre_recipe = focused.and_then(|_| state.take_recipe(meta.repeatable));
     // `pre_recipe` is the new change's selection recipe, and is dropped
     // rather than restored into `state.selection_recipe`: every repeatable
-    // command is `SelectionTracking::Untracked` (enforced by
-    // `registry::tests::no_command_is_both_repeatable_and_selection_tracking`),
+    // command builds no selections (enforced by
+    // `registry::tests::no_command_is_both_repeatable_and_a_selection_builder`),
     // so `update_recipe` below clears it unconditionally.
     let change = pre_recipe.map(|recipe| NewChange {
         command: name.clone(),
@@ -679,19 +677,14 @@ pub(in crate::editor) fn run(
         seed: bound.operand_answer(),
         recipe,
     });
-    // Only snapshot the selection when update_recipe could push a step:
-    // a Move-mode Motion (the overwhelming majority of keypresses) always
-    // clears without needing one. Cloning here, not comparing, since the body
-    // below mutates the live selection set in place. A dispatch through a
-    // pane other than focus never snapshots. The recipe belongs to the
-    // focused pane's dot-repeat state (see this fn's own doc).
-    let needs_selection_snapshot = meta.selection_tracking != SelectionTracking::Untracked
-        && (ctx.extend || meta.selection_tracking != SelectionTracking::Extends);
-    let pre_sels = focused.filter(|_| needs_selection_snapshot).map(|fp| {
-        let t = fp.pane();
-        let text = state.buffers.get(t.bid(view)).text();
-        Tracked::new(pane_selections(state, view, t).clone(), text)
-    });
+    // Only snapshot the selection when the command records into the
+    // selection history, which is also every case update_recipe could push
+    // a step in: a Move-mode Motion (the overwhelming majority of
+    // keypresses) needs none.
+    let recording = meta
+        .selection
+        .and_then(|role| Record::of(role.effect, ctx.extend))
+        .map(|record| state.begin_selection_record(view, pane, record));
 
     // BODY: bound moved in; meta + name captured above so no further clone needed.
     // A cursor-moving command runs inside the jump list's capture. Selection
@@ -716,17 +709,13 @@ pub(in crate::editor) fn run(
 
     // AFTER
     step_align_view(state, view, pane, meta.aligns_view, moved);
-    if let Some(fp) = focused {
-        // A command whose own snapshot is `None` never reaches the `!selection_changed`
-        // early return in update_recipe, so `true` here is inert filler.
-        let selection_changed = match &pre_sels {
-            Some(pre) => {
-                let t = fp.pane();
-                let text = state.buffers.get(t.bid(view)).text();
-                pre.get(text) != Some(pane_selections(state, view, t))
-            }
-            None => true,
-        };
+    // A command that records no history never reaches the
+    // `!selection_changed` early return in update_recipe, so `true` here is
+    // inert filler.
+    let selection_changed = recording.is_none_or(|recording| recording.finish(state, view, pane));
+    // The recipe belongs to the focused pane's dot-repeat state (see this
+    // fn's own doc).
+    if focused.is_some() {
         state.update_recipe(&meta, &name, &ctx, selection_changed);
         step_clear_extend(state, meta.clears_extend);
     }

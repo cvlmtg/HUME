@@ -6,12 +6,47 @@ use std::time::{Duration, SystemTime};
 
 use hume_core::{BufferId, OnUnsaved, PaneId};
 use hume_editing::changeset::ChangeSet;
-use hume_editing::history::{RevisionId, RevisionNode, RevisionPath};
+use hume_editing::history::{History, RevisionId, RevisionNode, RevisionPath, SelectionPoint};
 use hume_editing::hunk::{ChangeHunk, change_hunks};
+use hume_editing::selection::SelectionSet;
+use hume_editing::text::BufferText;
 
 use super::{Buffer, HistoryMark, HistoryWalkResult};
 use crate::editor::EditorState;
 use crate::editor::position_stores::PositionStores;
+
+/// The selections one pane's edits of a buffer were made with and left,
+/// mapped to the buffer's text.
+pub(in crate::editor) struct SavedSelections<'a> {
+    history: &'a History,
+    text: &'a BufferText,
+    owner: PaneId,
+}
+
+impl SavedSelections<'_> {
+    /// Every one, newest first.
+    pub(in crate::editor) fn points(&self) -> Vec<SelectionPoint> {
+        self.history.selection_points(self.owner)
+    }
+
+    /// The selections at `point`, `None` once its revision is trimmed.
+    pub(in crate::editor) fn at(&self, point: SelectionPoint) -> Option<SelectionSet> {
+        self.history.selection_at(point, self.text)
+    }
+}
+
+impl Buffer {
+    /// What `owner`'s edits of this buffer saved. Read only once
+    /// `doc_ops::admit_history_walk` admitted a walk, so the text is the
+    /// history's current revision's.
+    pub(in crate::editor) fn saved_selections(&self, owner: PaneId) -> SavedSelections<'_> {
+        SavedSelections {
+            history: &self.history,
+            text: &self.text,
+            owner,
+        }
+    }
+}
 
 impl Buffer {
     /// Undo up to `count` steps as one composed transform: the production

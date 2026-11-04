@@ -1,9 +1,12 @@
 use std::time::{Duration, SystemTime};
 
+use hume_core::PaneId;
 use rustc_hash::FxHashMap;
 
 use crate::changeset::ChangeSet;
+use crate::edit::TextChange;
 use crate::selection::SelectionSet;
+use crate::text::BufferText;
 use crate::transaction::Transaction;
 
 mod children;
@@ -47,6 +50,22 @@ pub enum RevisionPath {
     Changes(ChangeSet),
 }
 
+/// Which of the two selections a revision keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    /// The selections the edit was made with, on its parent's text.
+    Before,
+    /// The selections the edit left, on its own text.
+    After,
+}
+
+/// One selection the tree keeps: a revision's, on one side of its edit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectionPoint {
+    pub revision: RevisionId,
+    pub side: Side,
+}
+
 /// One revision as seen from outside the crate: where it sits in the tree
 /// and how old it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +104,8 @@ impl RevisionNode {
 struct Revision {
     /// `None` only for the root.
     link: Option<Link>,
+    /// The pane that made the edit, `None` for one no pane made.
+    owner: Option<PaneId>,
     /// Child revisions: branches created from this state.
     children: Children,
     /// When this revision was created. Read by the `:earlier`/`:later`
@@ -163,6 +184,7 @@ impl History {
     pub fn new() -> Self {
         let root = Revision {
             link: None,
+            owner: None,
             children: Children::default(),
             timestamp: SystemTime::now(),
         };
@@ -215,6 +237,7 @@ impl History {
     ///
     /// # Arguments
     ///
+    /// - `owner`: the pane that made the edit, `None` for one no pane made.
     /// - `forward_cs`: the ChangeSet that was applied to produce the new state.
     /// - `inverse_cs`: `forward_cs.invert(&pre_edit_text)`, which reverses the edit.
     /// - `pre_edit_sels`: cursor positions before the edit (stored in `inverse`
@@ -233,6 +256,7 @@ impl History {
     /// promotion occurred.
     pub fn record(
         &mut self,
+        owner: Option<PaneId>,
         forward_cs: ChangeSet,
         inverse_cs: ChangeSet,
         pre_edit_sels: SelectionSet,
@@ -250,6 +274,7 @@ impl History {
                 // forward carries post-edit sels: after redoing, cursors land there.
                 forward: Transaction::new(forward_cs, post_edit_sels),
             }),
+            owner,
             children: Children::default(),
             timestamp: SystemTime::now(),
         };
@@ -609,6 +634,57 @@ impl History {
             Some(cs) => RevisionPath::Changes(cs),
             None => RevisionPath::Here,
         }
+    }
+
+    /// The selections `owner`'s edits were made with and left, newest
+    /// revision first, each revision's [`Side::After`] before its
+    /// [`Side::Before`].
+    pub fn selection_points(&self, owner: PaneId) -> Vec<SelectionPoint> {
+        let mut ids: Vec<RevisionId> = self
+            .revisions
+            .iter()
+            .filter(|(_, revision)| revision.link.is_some() && revision.owner == Some(owner))
+            .map(|(&id, _)| id)
+            .collect();
+        ids.sort_by_key(|id| std::cmp::Reverse(id.0));
+        ids.into_iter()
+            .flat_map(|revision| {
+                [Side::After, Side::Before].map(|side| SelectionPoint { revision, side })
+            })
+            .collect()
+    }
+
+    /// The selection at `point`, mapped from the text it was saved for to
+    /// `current`, the text of the current revision. Exact when `current` is
+    /// that text, as it is after undoing the edit or redoing it. `None` when
+    /// the revision is not in the tree.
+    ///
+    /// # Panics
+    /// Panics if `current` is not the current revision's text.
+    pub fn selection_at(
+        &self,
+        point: SelectionPoint,
+        current: &BufferText,
+    ) -> Option<SelectionSet> {
+        let link = self.revisions.get(&point.revision)?.link.as_ref()?;
+        let (text_of, saved) = match point.side {
+            Side::Before => (link.parent, link.inverse.selection()),
+            Side::After => (point.revision, link.forward.selection()),
+        };
+        let to_saved = match self.changes_to(text_of) {
+            RevisionPath::Changes(cs) => cs,
+            RevisionPath::Here => ChangeSet::identity(current.len_chars()),
+            RevisionPath::Unknown => unreachable!("a revision's parent is in the tree"),
+        };
+        let back = to_saved.invert(current);
+        let (saved_text, _) = Transaction::new(to_saved, saved.clone())
+            .apply(current)
+            .expect("the path from the current revision maps its text")
+            .0
+            .into_parts();
+        let mut sels = saved.clone();
+        sels.translate(&TextChange::new(&saved_text, current, &back));
+        Some(sels)
     }
 
     /// Jump to an arbitrary revision in the undo tree, the general case

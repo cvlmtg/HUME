@@ -16,7 +16,7 @@ comment; this page only says where to look.
 | `EditView`, `SelectionView` (`selection/view.rs`) | Reads of a set against its text: every extent a command needs | `EditState::view`, `EditView::bind` |
 | `EditBuilder`, `NewPos`, `Mark` (`edit/builder.rs`) | The operations of one edit, recorded against the old text, and positions in the text it produces | `edit::edit` |
 | `Landing`, `Landings` (`edit/builder.rs`) | The selections an edit leaves, described before the new text exists | A command's `edit` closure |
-| `Edited`, `TextChange` (`edit.rs`) | A finished edit; a change seen with the texts on both sides | `edit::edit`, `Edited::from_changes`, `Edited::rebased`; `TextChange::new` |
+| `Edited`, `TextChange` (`edit.rs`) | A finished edit; a change seen with the texts on both sides | `edit::edit`, `Edited::from_changes`, `Edited::rebase`; `TextChange::new` |
 | `Resolver` (`selection/resolver.rs`) | Maps old-text positions into the new text | `Landings` resolution, `SelectionSet::translate` |
 | `Transaction`, `History` (`transaction.rs`, `history.rs`) | A changeset with the selections it lands on; the undo tree | `History::record` |
 | `Tracked<T>` (`tracked.rs`) | A value readable only against the text it was computed for | `Tracked::new` |
@@ -57,7 +57,7 @@ text it lands on, and `Transaction::apply` gives the text it produces that
 version through `ChangeSet::apply_as`, then pairs the two. A walk whose
 changes cancel out keeps the text and its generation and relabels it; every
 other walk gets the next generation, so what orders texts never goes back.
-`Edited::rebased` uses the same step to land a paste cycle's result on the
+`Edited::rebase` uses the same step to land a paste cycle's result on the
 live text.
 
 A revision keeps its children in creation order, which trimming relies on,

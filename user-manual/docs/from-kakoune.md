@@ -147,6 +147,7 @@ HUME's `x` re-anchors instead: each press selects one line and moves on, rather 
 | `S` (split on a regex) | *(none)*: `s` narrows to regex matches instead |
 | `<a-C>` (copy selection onto the line above) | no default key: bind `copy-selection-on-prev-line` (see below) |
 | `<a-_>` (merge contiguous selections) | automatic: selections that share a character merge; touching ones stay separate |
+| `<a-u>` / `<a-U>` (undo / redo a selection change) | `m u` / `m U` |
 
 To get `<a-C>` back, bind the command in your `init.scm`:
 
@@ -227,7 +228,6 @@ Language server support is a core plugin rather than a separate process you conf
 - `!` and `%sh{}` expansions: Normal-mode command output, and shelling out from config
 - The client/server model, and multiple clients on one session
 - Marks (Kakoune's `^` register)
-- Selection undo and redo (`<c-h>` / `<c-k>`)
 - Adding a selection at the next match (`N`)
 - Splitting selections on a regex (`S`)
 - Rotating selection *contents* (`<a-)>`), as opposed to rotating which selection is primary

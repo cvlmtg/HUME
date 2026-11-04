@@ -124,24 +124,28 @@ impl<'a> PositionStores<'a> {
 
     /// Carry every position stored for `target`'s buffer through `change`:
     /// the selections of each pane that has shown the buffer, whether or not
-    /// it shows it now, every jump list, the open Insert session's typed run
-    /// and autoindent records, every position a script is tracking,
-    /// every open prompt's snapshot, the open completion session, the
-    /// buffer's diagnostics and decorations, and its last insertion. The
-    /// change is also queued for the buffer's language servers.
+    /// it shows it now, with those it built since its last edit, every jump
+    /// list, the open Insert session's typed run and autoindent records,
+    /// every position a script is tracking, every open prompt's snapshot,
+    /// the open completion session, the buffer's diagnostics and
+    /// decorations, and its last insertion. The change is also queued for
+    /// the buffer's language servers.
     ///
     /// `target`'s pane, if any, is the one whose caller replaces its
     /// selections with the edit's own once this returns, so a real change
-    /// does not carry them. An identity change carries them too: it only
-    /// retags them for the relabeled text.
+    /// does not carry them and drops those it built since its last edit. An
+    /// identity change carries them too: it only retags them for the
+    /// relabeled text.
     pub(in crate::editor) fn carry(&mut self, target: PaneHandle, change: &TextChange<'_>) {
         let buffer = target.buffer();
         let acting = target.pane().filter(|_| !change.changes().is_identity());
         for (pane, entry) in self.panes.iter_mut() {
-            if Some(pane) != acting
-                && let Some(state) = entry.buffer_mut(buffer)
-            {
-                state.carry_selections(change);
+            if let Some(state) = entry.buffer_mut(buffer) {
+                if Some(pane) == acting {
+                    state.forget_live_selections();
+                } else {
+                    state.carry_selections(change);
+                }
             }
             // Every pane's list, not only those showing `buffer`: a list
             // holds entries for buffers its pane is not showing right now,

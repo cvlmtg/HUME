@@ -252,9 +252,9 @@ pub(super) fn begin_insert_session(
 /// as those commands require.
 ///
 /// `place` moves the cursors to where typing starts. It runs after every
-/// refusal (read-only, another pane's session) and before the undo group
-/// opens, so a refused entry moves nothing and undo restores the placed
-/// selections. Returns the entry the rest of the command's setup takes.
+/// refusal (read-only, another pane's session), so a refused entry moves
+/// nothing, and undo restores the selections from before it. Returns the
+/// entry the rest of the command's setup takes.
 pub(super) fn begin_insert_session_preserving_register(
     state: &mut EditorState,
     view: &EngineView,
@@ -272,13 +272,13 @@ pub(super) fn begin_insert_session_preserving_register(
         .input
         .insert_entry()
         .filter(|entry| state.input.entered(entry).owned_by(pid, bid));
-    if joined.is_none() {
-        edit_session::check_can_open(state.open_session(), pid, bid)?;
-    }
-    super::apply_pane_motion(state, view, fp.pane(), place);
     if let Some(entry) = joined {
+        super::apply_pane_motion(state, view, fp.pane(), place);
         return Ok(entry);
     }
+    edit_session::check_can_open(state.open_session(), pid, bid)?;
+    let entered_with = state.panes.entries.seeded(pid, bid).selections().clone();
+    super::apply_pane_motion(state, view, fp.pane(), place);
     // Keep the change whose code opened this session alive for the whole
     // session, so its keystrokes record and a repeatable command mid-session
     // can't replace it. `None` outside a recorded change's code (during `.`,
@@ -286,7 +286,7 @@ pub(super) fn begin_insert_session_preserving_register(
     let recording = state.open_scope_source();
     let session = crate::editor::edit_session::open_insert(
         &state.buffers,
-        &state.panes.entries,
+        entered_with,
         state.input.insert_session(),
         &mut state.active_session,
         pid,
@@ -379,14 +379,6 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: 
         .seeded(pid, bid)
         .view(state.buffers.get(bid).text())
         .len();
-    crate::editor::edit_session::commit_insert(&mut state.buffers, &state.panes.entries, session);
-    // `cmd_change` stamped `PasteStamp` right after the deletion, but every
-    // keystroke since has bumped `edit_seq`. Refresh the stamp to the
-    // session's final `seq` (source unchanged) so `c <text> <Esc> p` still
-    // reads the ring. See `InsertSession::kill_opened_session`'s doc.
-    if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
-        stamp.seq = state.buffers.edit_seq();
-    }
     let valid_run = typed_run
         .and_then(|run| run.into_inner(state.buffers.get(bid).text()))
         .filter(|r| r.anchors.len() == sel_count);
@@ -430,6 +422,16 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: 
                 })
             },
         );
+    }
+    // After the exit motion, so the revision's post-edit selections are the
+    // ones leaving Insert mode lands on.
+    crate::editor::edit_session::commit_insert(&mut state.buffers, &state.panes.entries, session);
+    // `cmd_change` stamped `PasteStamp` right after the deletion, but every
+    // keystroke since has bumped `edit_seq`. Refresh the stamp to the
+    // session's final `seq` (source unchanged) so `c <text> <Esc> p` still
+    // reads the ring. See `InsertSession::kill_opened_session`'s doc.
+    if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
+        stamp.seq = state.buffers.edit_seq();
     }
 }
 

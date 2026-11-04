@@ -60,34 +60,34 @@ macro_rules! motion {
 }
 macro_rules! selection {
     (@build $reg:expr, $name:literal, $doc:literal, $body:expr,
-     jump: $jump:literal, tracking: $tracking:ident) => {
+     jump: $jump:literal, effect: $effect:ident) => {
         $reg.register_builtin(MappableCommand::Native(NativeCommand::Selection {
             name: $name.into(),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new($body),
             jump: $jump,
-            selection_tracking: SelectionTracking::$tracking,
+            selection_effect: SelectionEffect::$effect,
         }))
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun), jump: false, tracking: Establishes)
+            SelectionBody::Plain($fun), jump: false, effect: Establishes)
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun), jump: true, tracking: Establishes)
+            SelectionBody::Plain($fun), jump: true, effect: Establishes)
     };
     // Transforms whatever extent is already staged instead of establishing
-    // one; see `SelectionTracking::Composes`.
+    // one; see `SelectionEffect::Composes`.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, composes) => {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun), jump: false, tracking: Composes)
+            SelectionBody::Plain($fun), jump: false, effect: Composes)
     };
     // Word-family selections/text objects (`mm`/`MM`, `miw`/`maw`); see
     // [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
-            SelectionBody::Word($fun), jump: false, tracking: Establishes)
+            SelectionBody::Word($fun), jump: false, effect: Establishes)
     };
 }
 macro_rules! edit {

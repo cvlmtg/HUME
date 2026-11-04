@@ -118,6 +118,24 @@ impl SelectionSet {
         (self.selections, self.primary)
     }
 
+    /// Whether `other` holds the same selections and primary for the same
+    /// text, whatever sticky columns either has latched.
+    pub fn eq_ignoring_sticky(&self, other: &SelectionSet) -> bool {
+        self.version == other.version
+            && self.primary == other.primary
+            && self.selections.len() == other.selections.len()
+            && self
+                .selections
+                .iter()
+                .map(|s| s.without_sticky())
+                .eq(other.selections.iter().map(|s| s.without_sticky()))
+    }
+
+    /// Whether the set is one selection whose anchor is its head.
+    pub fn is_single_cursor(&self) -> bool {
+        matches!(&self.selections[..], [only] if only.is_cursor())
+    }
+
     /// Sort by first cluster and merge selections that share a cluster,
     /// keeping the primary on the merged selection that holds it. A merged
     /// selection's head is a new position, so its sticky column is cleared.

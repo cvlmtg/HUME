@@ -308,14 +308,9 @@ fn session_refuses_walk() -> CommandError {
     CommandError::transient("cannot move through undo history while an edit session is open")
 }
 
-/// Run one history walk on `buf_id` through `pane_id` (`walk`, typically
-/// `|b, id, stores, pane| b.undo_n(id, stores, pane, count)`), which carries every stored
-/// position through the net `ChangeSet`.
-///
-/// `walk` already composes every revision it crosses into one transform (see
-/// `Buffer::apply_transactions`), so there is a single `finish_edit` call and
-/// panes, jump lists, tree-sitter, and LSP see one edit. An unbounded
-/// `:earlier`/`:later` costs the same as one `u`.
+/// Admit a read or walk of `buf_id`'s undo history through `pane_id`, for
+/// undo and redo and for `undo-selection-change` alike. Once admitted, the
+/// buffer's text is the history's current revision's.
 ///
 /// Session handling lives here, as in [`apply_doc_edit`]: a Paste session open
 /// on this (pane, buffer) is committed first, so the walk sees its revision
@@ -323,10 +318,45 @@ fn session_refuses_walk() -> CommandError {
 /// open there is an `Err`: its group is mid-composition, and a walk underneath
 /// it would desync the group from the text.
 ///
-/// Returns the steps actually taken, fewer than requested at the root/leaf.
 /// `Err` when the text may not change ([`text_gate`]), when
 /// [`check_no_conflicting_session`] finds another pane's session on this
 /// buffer, or when this pane has an Insert or Replay session open on it.
+pub(in crate::editor) fn admit_history_walk(
+    buffers: &mut BufferStore,
+    stores: &mut PositionStores<'_>,
+    pane_id: PaneId,
+    buf_id: BufferId,
+) -> Result<(), CommandError> {
+    admit(buffers, stores, PaneHandle::with_pane(buf_id, pane_id))?;
+    if stores.insert_at_mut(pane_id, buf_id).is_some() {
+        return Err(session_refuses_walk());
+    }
+    match stores
+        .session
+        .as_ref()
+        .filter(|s| s.owned_by(pane_id, buf_id))
+        .map(EditSession::kind)
+    {
+        None => Ok(()),
+        Some(EditSessionKind::Paste { .. }) => {
+            commit_paste_group(buffers, stores.panes, stores.session);
+            Ok(())
+        }
+        Some(EditSessionKind::Replay) => Err(session_refuses_walk()),
+    }
+}
+
+/// Run one history walk on `buf_id` through `pane_id` (`walk`, typically
+/// `|b, id, stores, pane| b.undo_n(id, stores, pane, count)`), which carries every stored
+/// position through the net `ChangeSet`, once [`admit_history_walk`] admits
+/// it.
+///
+/// `walk` already composes every revision it crosses into one transform (see
+/// `Buffer::apply_transactions`), so there is a single `finish_edit` call and
+/// panes, jump lists, tree-sitter, and LSP see one edit. An unbounded
+/// `:earlier`/`:later` costs the same as one `u`.
+///
+/// Returns the steps actually taken, fewer than requested at the root/leaf.
 pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
@@ -339,23 +369,8 @@ pub(in crate::editor) fn apply_doc_history_walk(
         PaneId,
     ) -> Result<HistoryWalkResult, CommandError>,
 ) -> Result<usize, CommandError> {
+    admit_history_walk(buffers, stores, pane_id, buf_id)?;
     let target = PaneHandle::with_pane(buf_id, pane_id);
-    admit(buffers, stores, target)?;
-    if stores.insert_at_mut(pane_id, buf_id).is_some() {
-        return Err(session_refuses_walk());
-    }
-    match stores
-        .session
-        .as_ref()
-        .filter(|s| s.owned_by(pane_id, buf_id))
-        .map(EditSession::kind)
-    {
-        None => {}
-        Some(EditSessionKind::Paste { .. }) => {
-            commit_paste_group(buffers, stores.panes, stores.session);
-        }
-        Some(EditSessionKind::Replay) => return Err(session_refuses_walk()),
-    }
     let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores, pane_id)?
     else {
         return Ok(0);

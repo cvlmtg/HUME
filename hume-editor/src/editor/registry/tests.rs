@@ -345,7 +345,7 @@ fn runtime_register_and_lookup() {
         visual_move: false,
         extendable: false,
         clears_extend: false,
-        selection_tracking: SelectionTracking::Untracked,
+        selection: None,
         manages_own_session: false,
         key_only: false,
     });
@@ -554,7 +554,7 @@ fn steel_backed_names_filters_by_variant() {
         visual_move: false,
         extendable: false,
         clears_extend: false,
-        selection_tracking: SelectionTracking::Untracked,
+        selection: None,
         manages_own_session: false,
         key_only: false,
     }))
@@ -702,86 +702,70 @@ fn clears_extend_flag_matches_expected_commands() {
 }
 
 #[test]
-fn selection_tracking_matches_expected_commands() {
+fn selection_effect_and_recipe_step_match_expected_commands() {
+    use SelectionEffect::{Composes, Establishes, Extends};
     let reg = CommandRegistry::with_defaults();
-
-    // `Composes`: transforms or reduces whatever extent is already staged
-    // rather than establishing one of its own. See `SelectionTracking::Composes`.
-    for name in &[
-        "collapse-selection",
-        "flip-selections",
-        "keep-primary-selection",
-        "remove-primary-selection",
-        "cycle-primary-forward",
-        "cycle-primary-backward",
-        "split-selection-on-newlines",
-        "trim-selection-whitespace",
-        "copy-selection-on-next-line",
-        "copy-selection-on-prev-line",
-    ] {
-        let meta = reg
-            .get_mappable(name)
+    let meta = |name: &str| {
+        reg.get_mappable(name)
             .unwrap_or_else(|| panic!("command '{name}' not found"))
-            .meta();
+            .meta()
+    };
+
+    let cases: &[(&str, SelectionEffect, bool)] = &[
+        // `Composes`: transforms or reduces whatever extent is already
+        // staged rather than establishing one of its own.
+        ("collapse-selection", Composes, true),
+        ("flip-selections", Composes, true),
+        ("keep-primary-selection", Composes, true),
+        ("remove-primary-selection", Composes, true),
+        ("cycle-primary-forward", Composes, true),
+        ("cycle-primary-backward", Composes, true),
+        ("split-selection-on-newlines", Composes, true),
+        ("trim-selection-whitespace", Composes, true),
+        ("copy-selection-on-next-line", Composes, true),
+        ("copy-selection-on-prev-line", Composes, true),
+        // `Establishes`, replayable on its own from a fresh cursor.
+        // `select-all` is whole-buffer and position-independent, unlike its
+        // `Composes` siblings despite sharing their `Selection` variant.
+        // `select-word-nearest-on-line` and `select-all-matches` are
+        // `EditorCmd`s that opt in via `.establishes_selection()`.
+        ("select-line", Establishes, true),
+        ("select-all", Establishes, true),
+        ("select-all-matches", Establishes, true),
+        ("surround-paren", Establishes, true),
+        ("select-word-nearest-on-line", Establishes, true),
+        ("inner-function", Establishes, true),
+        // `Establishes`, but taking an operand or reading editor state a
+        // replay from a fresh cursor would not reproduce.
+        ("sift-within", Establishes, false),
+        ("select-last-insertion", Establishes, false),
+        ("search-word-under-cursor", Establishes, false),
+        // `Extends`: every `Motion`.
+        ("move-left", Extends, true),
+        ("select-next-word", Extends, true),
+        ("goto-next-function", Extends, true),
+        // `Extends`, but an `EditorCmd` dot-repeat does not replay.
+        ("find-forward", Extends, false),
+        ("till-backward", Extends, false),
+        ("repeat-find-forward", Extends, false),
+        ("page-down", Extends, false),
+        ("half-page-up", Extends, false),
+        ("move-down", Extends, false),
+        ("search-forward", Extends, false),
+        ("search-next", Extends, false),
+    ];
+    for &(name, effect, recipe_step) in cases {
         assert_eq!(
-            meta.selection_tracking,
-            SelectionTracking::Composes,
-            "'{name}' should have selection_tracking = Composes"
+            meta(name).selection,
+            Some(SelectionRole {
+                effect,
+                recipe_step
+            }),
+            "'{name}'"
         );
     }
-
-    // `Establishes`: replayable on its own from a fresh cursor.
-    // `select-all` is whole-buffer and position-independent, unlike its
-    // `Composes` siblings above despite sharing their `Selection` variant.
-    // `surround-paren` is a plain `selection!`-registered text object (the
-    // macro's default arm); `select-word-nearest-on-line` is the one
-    // `EditorCmd` that opts in via `.establishes_selection()` instead of a
-    // `Selection` variant's own hardcoded field.
-    for name in &[
-        "select-line",
-        "select-all",
-        "select-all-matches",
-        "surround-paren",
-        "select-word-nearest-on-line",
-        "inner-function",
-    ] {
-        let meta = reg
-            .get_mappable(name)
-            .unwrap_or_else(|| panic!("command '{name}' not found"))
-            .meta();
-        assert_eq!(
-            meta.selection_tracking,
-            SelectionTracking::Establishes,
-            "'{name}' should have selection_tracking = Establishes"
-        );
-    }
-
-    // `Extends`: every `Motion`. A Move-mode result is a bare cursor (or,
-    // for the word motions, a selection reached by navigating away from the
-    // cursor), so it never establishes a step of its own.
-    for name in &["move-left", "select-next-word", "goto-next-function"] {
-        let meta = reg
-            .get_mappable(name)
-            .unwrap_or_else(|| panic!("command '{name}' not found"))
-            .meta();
-        assert_eq!(
-            meta.selection_tracking,
-            SelectionTracking::Extends,
-            "'{name}' should have selection_tracking = Extends"
-        );
-    }
-
-    // `Untracked`: not a selection builder.
-    for name in &["delete", "undo", "search-word-under-cursor"] {
-        let meta = reg
-            .get_mappable(name)
-            .unwrap_or_else(|| panic!("command '{name}' not found"))
-            .meta();
-        assert_eq!(
-            meta.selection_tracking,
-            SelectionTracking::Untracked,
-            "'{name}' should have selection_tracking = Untracked"
-        );
+    for name in ["delete", "undo", "jump-backward"] {
+        assert_eq!(meta(name).selection, None, "'{name}' builds no selections");
     }
 }
 
@@ -792,7 +776,7 @@ fn selection_tracking_matches_expected_commands() {
 /// time, so it is checked once here for every registered command rather than
 /// re-probed on every dispatch.
 #[test]
-fn no_command_is_both_repeatable_and_selection_tracking() {
+fn no_command_is_both_repeatable_and_a_selection_builder() {
     let reg = CommandRegistry::with_defaults();
 
     for name in reg.names() {
@@ -801,8 +785,8 @@ fn no_command_is_both_repeatable_and_selection_tracking() {
         };
         let meta = cmd.meta();
         assert!(
-            !(meta.repeatable && meta.selection_tracking != SelectionTracking::Untracked),
-            "command '{name}' is both repeatable and selection-tracking"
+            !(meta.repeatable && meta.selection.is_some()),
+            "command '{name}' is both repeatable and a selection builder"
         );
     }
 }

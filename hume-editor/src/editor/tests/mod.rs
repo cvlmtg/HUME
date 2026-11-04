@@ -805,6 +805,26 @@ fn mouse_left_down(x: u16, y: u16) -> TerminalEvent {
     })
 }
 
+fn mouse_drag(x: u16, y: u16) -> TerminalEvent {
+    TerminalEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Drag(MouseButton::Left),
+        column: x,
+        row: y,
+        modifiers: Modifiers::NONE,
+    })
+}
+
+/// A left-button-release mouse event: the tail of a gesture that began
+/// before whatever's on top of the stack right now, unlike `mouse_left_down`.
+fn mouse_left_up(x: u16, y: u16) -> TerminalEvent {
+    TerminalEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: x,
+        row: y,
+        modifiers: Modifiers::NONE,
+    })
+}
+
 /// A wheel-scroll event at terminal-absolute `(x, y)`. `Editor::mouse_scroll`
 /// hit-tests these against the panes the last frame drew (`editor/mouse.rs`)
 /// to pick which pane to scroll. `down` picks the direction, matching
@@ -846,6 +866,14 @@ fn keys(ed: &mut Editor, text: &str) {
     }
 }
 
+/// Types each character of `text` through `feed_event`, which settles after
+/// each one as the run loop does.
+fn press(ed: &mut Editor, text: &str) {
+    for ch in text.chars() {
+        ed.feed_event(key(ch));
+    }
+}
+
 /// Types `|command` Enter through `handle_key`, which starts a Normal-mode
 /// pipe run and leaves it in flight.
 fn type_pipe(ed: &mut Editor, command: &str) {
@@ -872,9 +900,7 @@ fn busy(ed: &Editor, bid: BufferId) -> bool {
 /// instead of `feed_key`/`step`. Use when the test needs the buffer-enter
 /// disk check to run on the command's own dispatch, not just its keystrokes.
 fn type_cmd_event(ed: &mut Editor, cmd: &str) {
-    for ch in cmd.chars() {
-        ed.feed_event(key(ch));
-    }
+    press(ed, cmd);
     ed.feed_event(key_enter());
 }
 
@@ -1893,6 +1919,7 @@ mod scripting_grammar;
 mod scripting_host_globals;
 mod search;
 mod select_all;
+mod selection_history;
 mod settings_effects;
 mod shells;
 mod shift_punctuation;

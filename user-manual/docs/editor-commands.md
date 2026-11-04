@@ -101,12 +101,14 @@ Create, refine, or manipulate the selection set.
 | `cycle-primary-forward` | `)` | Cycle the primary selection forward. |
 | `flip-selections` | `Ctrl-e` | Swap anchor and head for each selection. |
 | `keep-primary-selection` | `,` | Remove all selections except the primary. |
+| `redo-selection-change` | `m U` | Go forward through the selections `undo-selection-change` stepped back over. |
 | `remove-primary-selection` | `Ctrl-,` *(kitty)* | Remove the primary selection, promoting the next. |
 | `select-all` | `%` | Select the entire buffer. |
 | `select-last-insertion` | `m i i` | Select the text typed during the most recently completed insert session. |
 | `sift-within` | `s` | Narrow each selection down to its regex matches. From `call!`, the pattern is required. |
 | `split-selection-on-newlines` | `S` | Split each multi-line selection into one per line. |
 | `trim-selection-whitespace` | `_` | Trim leading and trailing whitespace from each selection. |
+| `undo-selection-change` | `m u` | Go back to the selections last built, then to earlier ones. |
 
 ## Text objects
 

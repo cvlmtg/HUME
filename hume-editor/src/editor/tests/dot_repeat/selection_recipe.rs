@@ -72,7 +72,7 @@ fn dot_repeats_extend_select_delete() {
 /// leaving "aaa\nccc\nddd\n". `.` must re-select line 1 ("ccc\n") and delete
 /// it, giving "aaa\nddd\n".
 ///
-/// The `!ctx.extend` check in `update_recipe`'s `SelectionTracking::Extends`
+/// The `!ctx.extend` check in `update_recipe`'s `SelectionEffect::Extends`
 /// arm keeps `j` (a Motion in Move mode) out of the recipe.
 #[test]
 fn dot_repeat_navigation_not_in_recipe() {
@@ -175,8 +175,8 @@ fn dot_repeats_change_reselects_line() {
 /// `undo` must clear the selection-recipe buffer so a stale `select-line` does
 /// not leak into the next edit's recipe.
 ///
-/// `undo` is `Untracked`, and the `SelectionTracking::Untracked` early-return
-/// in `update_recipe` (`replay/recipe.rs`) is what clears the recipe.
+/// `undo` is no recipe step, and `update_recipe` (`replay/recipe.rs`) clears
+/// the recipe for any command that is not one.
 #[test]
 fn undo_clears_selection_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
@@ -204,7 +204,7 @@ fn undo_clears_selection_recipe() {
 ///
 /// `copy-selection-on-next-line` duplicates whatever selection is already
 /// there: it establishes nothing on its own. It is registered with
-/// `.composes_selection()` (`SelectionTracking::Composes`) because it
+/// `.composes_selection()` (`SelectionEffect::Composes`) because it
 /// transforms the staged extent, so the `x` that built that extent stays in
 /// the recipe (see `registry/defaults/selections.rs`, and
 /// `dot_repeat_of_copy_selection_replays_the_whole_recipe` below for the
@@ -326,7 +326,7 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
 /// recipe. A bare `.` then deletes the *current* selection, NOT the next word.
 ///
 /// The `!ctx.extend` exclusion in `update_recipe`'s
-/// `SelectionTracking::Extends` arm keeps `w` (a `Motion`, always `Extends`)
+/// `SelectionEffect::Extends` arm keeps `w` (a `Motion`, always `Extends`)
 /// out of the recipe, so `.` never re-runs `select-next-word` past the
 /// intended word.
 ///

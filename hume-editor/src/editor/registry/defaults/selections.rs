@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::editor::commands::{cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line};
 use crate::editor::registry::{
-    CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionTracking,
+    CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionEffect,
 };
 use hume_ops::selection_cmd::{
     cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
@@ -18,7 +18,7 @@ impl CommandRegistry {
         // The eight below are `composes`, not the macro's default
         // `Establishes`: each transforms or reduces whatever extent is
         // already staged rather than building a fresh one replayable on its
-        // own from a bare cursor; see `SelectionTracking::Composes`.
+        // own from a bare cursor; see `SelectionEffect::Composes`.
         // `select-all` is not among them: whole-buffer and
         // position-independent, it establishes.
         super::selection!(
@@ -91,7 +91,7 @@ impl CommandRegistry {
         // restores the extendability `Selection` carries implicitly. Without
         // it, a one-shot Ctrl-key extend of this command is silently dropped
         // (see the Ctrl-key guard in `input_stack/base.rs`). `.composes_selection()`:
-        // see `SelectionTracking::Composes`. The recorded step's `extend`
+        // see `SelectionEffect::Composes`. The recorded step's `extend`
         // flag is inert on replay (`cmd_copy_selection_on_next_line` ignores
         // `MotionMode`), but is still recorded faithfully for the recipe's
         // own bookkeeping.

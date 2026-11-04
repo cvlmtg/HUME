@@ -127,6 +127,23 @@ fn a_merge_that_extends_a_selection_clears_its_sticky_column() {
 }
 
 #[test]
+fn eq_ignoring_sticky_compares_positions_and_the_primary_only() {
+    let state = parse("-[a]>bcdefghij\n");
+    let at = |n| Selection::cursor(start_at(state.text(), n));
+    let set = |sels: Vec<Selection>, primary| {
+        state
+            .clone()
+            .with_selections(sels, primary)
+            .into_selections()
+    };
+    let plain = set(vec![at(1), at(5)], 0);
+
+    assert!(plain.eq_ignoring_sticky(&set(vec![at(1).with_sticky(sticky(3)), at(5)], 0)));
+    assert!(!plain.eq_ignoring_sticky(&set(vec![at(1), at(6)], 0)));
+    assert!(!plain.eq_ignoring_sticky(&set(vec![at(1), at(5)], 1)));
+}
+
+#[test]
 fn the_primary_follows_the_selection_that_holds_it_through_a_merge() {
     let state = parse("-[a]>bcdefghij\n");
     let sels = vec![

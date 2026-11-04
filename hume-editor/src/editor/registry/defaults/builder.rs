@@ -3,11 +3,11 @@ use std::borrow::Cow;
 use crate::editor::commands::NativeBody;
 use crate::editor::registry::{
     CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, NativeCommand, PaneCharCmdFn,
-    PaneCmdFn, PaneTextCmdFn, SelectionTracking, TextPrompt,
+    PaneCmdFn, PaneTextCmdFn, SelectionEffect, SelectionRole, TextPrompt,
 };
 
-// Builder for EditorCmd registration. Each method sets one field (a bool,
-// except the two `selection_tracking` setters below); .reg(registry)
+// Builder for EditorCmd registration. Each method sets one field (a bool),
+// except the three selection-effect setters below; .reg(registry)
 // terminates the chain. Adding a new flag costs one method; existing call
 // sites are unaffected.
 pub(super) struct EditorCmdBuilder {
@@ -20,7 +20,7 @@ pub(super) struct EditorCmdBuilder {
     visual_move: bool,
     extendable: bool,
     clears_extend: bool,
-    selection_tracking: SelectionTracking,
+    selection: Option<SelectionRole>,
     manages_own_session: bool,
     key_only: bool,
 }
@@ -81,15 +81,31 @@ impl EditorCmdBuilder {
     /// establishing step. Use only for a command that builds a replayable
     /// selection extent on its own but can't be a pure `Selection` variant
     /// (needs `EditorState`/`EngineView` access); see
-    /// [`crate::editor::registry::CmdMeta::selection_tracking`].
+    /// [`crate::editor::registry::CmdMeta::selection`].
     pub(super) fn establishes_selection(mut self) -> Self {
-        self.selection_tracking = SelectionTracking::Establishes;
+        self.selection = Some(SelectionRole {
+            effect: SelectionEffect::Establishes,
+            recipe_step: true,
+        });
         self
     }
     /// Opt this command into the dot-repeat selection recipe as a composing
-    /// step. See [`SelectionTracking::Composes`].
+    /// step. See [`SelectionEffect::Composes`].
     pub(super) fn composes_selection(mut self) -> Self {
-        self.selection_tracking = SelectionTracking::Composes;
+        self.selection = Some(SelectionRole {
+            effect: SelectionEffect::Composes,
+            recipe_step: true,
+        });
+        self
+    }
+    /// Declare what this command does to the selections without making it a
+    /// dot-repeat recipe step: it takes an operand or cannot be replayed
+    /// from a fresh cursor. See [`SelectionRole::recipe_step`].
+    pub(super) fn selection_effect(mut self, effect: SelectionEffect) -> Self {
+        self.selection = Some(SelectionRole {
+            effect,
+            recipe_step: false,
+        });
         self
     }
     pub(super) fn reg(self, r: &mut CommandRegistry) {
@@ -103,7 +119,7 @@ impl EditorCmdBuilder {
             visual_move: self.visual_move,
             extendable: self.extendable,
             clears_extend: self.clears_extend,
-            selection_tracking: self.selection_tracking,
+            selection: self.selection,
             manages_own_session: self.manages_own_session,
             key_only: self.key_only,
         }));
@@ -121,7 +137,7 @@ fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> Ed
         visual_move: false,
         extendable: false,
         clears_extend: false,
-        selection_tracking: SelectionTracking::Untracked,
+        selection: None,
         manages_own_session: false,
         key_only: false,
     }

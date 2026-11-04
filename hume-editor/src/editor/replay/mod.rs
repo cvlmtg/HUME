@@ -28,6 +28,7 @@ use std::rc::{Rc, Weak};
 
 use super::dispatch::CmdCtx;
 use super::edit_session::{self, EditSessionKind, InsertSession};
+use super::input_stack::PaneSnapshot;
 use super::input_stack::char::{AfterRead, CharRead};
 use super::keymap::CanonicalKey;
 use super::pipe_run::RunId;
@@ -1208,17 +1209,13 @@ impl Editor {
 
         // Rebuild the selection extent the command acted on. Every
         // recipe step names a native command taking no operand (a `Composes`/
-        // `Establishes` selection command): `SteelBacked`/`Lazy` are always
-        // `Untracked`, native entries can never be unregistered, so the lookup
+        // `Establishes` selection command): `SteelBacked`/`Lazy` are never a
+        // recipe step, native entries can never be unregistered, so the lookup
         // and bind always succeed. A refused step cancels the replay before
-        // the edit runs, with the selections put back as they were.
-        let pre_recipe = self
-            .state
-            .panes
-            .entries
-            .shown(&self.view.panes, pid)
-            .selections()
-            .clone();
+        // the edit runs, with the selections put back as they were. Recipe
+        // steps change no text, so the snapshot needs no carry.
+        let mut pre_recipe = PaneSnapshot::new(pid);
+        pre_recipe.capture(&self.state, &self.view);
         for step in &action.selection_recipe {
             let Some(MappableCommand::Native(cmd)) = self
                 .state
@@ -1236,11 +1233,7 @@ impl Editor {
             };
             let ran = commands::run_body(&mut self.state, &mut self.view, bound, &step.ctx);
             if !ran {
-                self.state
-                    .panes
-                    .entries
-                    .seeded_mut(pid, bid)
-                    .set_selections(pre_recipe, self.state.buffers.get(bid).text());
+                pre_recipe.take_restore(&mut self.state.panes.entries, &self.state.buffers);
                 self.finish_replay_session();
                 return;
             }

@@ -2,7 +2,7 @@ use crate::editor::commands::*;
 use crate::editor::registry::CommandRegistry;
 
 use super::builder::{ecmd_focused, ecmd_pane, ecmd_pane_char, ecmd_pane_text};
-use crate::editor::registry::TextPrompt;
+use crate::editor::registry::{SelectionEffect, TextPrompt};
 use hume_ops::search::SearchDirection;
 
 impl CommandRegistry {
@@ -109,6 +109,7 @@ impl CommandRegistry {
             cmd_select_last_insertion,
         )
         .extendable()
+        .selection_effect(SelectionEffect::Establishes)
         .reg(self);
         ecmd_pane(
             "yank",
@@ -259,12 +260,14 @@ impl CommandRegistry {
             "Collapse each selection to its cursor and exit extend mode.",
             cmd_collapse_to_head_and_exit_extend,
         )
+        .selection_effect(SelectionEffect::Composes)
         .reg(self);
         ecmd_focused(
             "collapse-to-anchor-and-exit-extend",
             "Collapse each selection to its anchor and exit extend mode.",
             cmd_collapse_to_anchor_and_exit_extend,
         )
+        .selection_effect(SelectionEffect::Composes)
         .reg(self);
 
         // ── Editor commands — find / till (take a character) ──────────────────
@@ -273,42 +276,42 @@ impl CommandRegistry {
             "Find next occurrence of a character (inclusive, forward). From `call!`, pass the character as an argument.",
             cmd_find_forward,
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane_char(
             "find-backward",
             "Find previous occurrence of a character (inclusive, backward). From `call!`, pass the character as an argument.",
             cmd_find_backward,
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane_char(
             "till-forward",
             "Move to just before next occurrence of a character (exclusive). From `call!`, pass the character as an argument.",
             cmd_till_forward,
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane_char(
             "till-backward",
             "Move to just after previous occurrence of a character (exclusive). From `call!`, pass the character as an argument.",
             cmd_till_backward,
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
             "repeat-find-forward",
             "Repeat the last find/till motion forward.",
             cmd_repeat_find_forward,
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
             "repeat-find-backward",
             "Repeat the last find/till motion backward.",
             cmd_repeat_find_backward,
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
 
         // ── Editor commands — replace (takes a character) ────────────────────
@@ -327,12 +330,12 @@ impl CommandRegistry {
             "Scroll down by one viewport height.",
             cmd_page_down,
         )
-        .extendable()
         .jump()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane("page-up", "Scroll up by one viewport height.", cmd_page_up)
-            .extendable()
             .jump()
+            .selection_effect(SelectionEffect::Extends)
             .reg(self);
 
         // ── Editor commands — half-page scroll ────────────────────────────────
@@ -341,14 +344,14 @@ impl CommandRegistry {
             "Scroll down by half a viewport height.",
             cmd_half_page_down,
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
             "half-page-up",
             "Scroll up by half a viewport height.",
             cmd_half_page_up,
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
 
         // ── Editor commands — view-trie scroll (z z / z k / z j) ──────────────
@@ -400,7 +403,7 @@ impl CommandRegistry {
             cmd_search_forward,
             TextPrompt::Search(SearchDirection::Forward),
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane_text(
             "search-backward",
@@ -408,23 +411,23 @@ impl CommandRegistry {
             cmd_search_backward,
             TextPrompt::Search(SearchDirection::Backward),
         )
-        .extendable()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
             "search-next",
             "Jump to the next search match.",
             cmd_search_next,
         )
-        .extendable()
         .jump()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
             "search-prev",
             "Jump to the previous search match.",
             cmd_search_prev,
         )
-        .extendable()
         .jump()
+        .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane("clear-search", "Clear search highlights.", cmd_clear_search).reg(self);
 
@@ -435,6 +438,7 @@ impl CommandRegistry {
             cmd_sift_within,
             TextPrompt::Sift,
         )
+        .selection_effect(SelectionEffect::Establishes)
         .reg(self);
 
         // ── Editor commands — shell ───────────────────────────────────────────
@@ -473,6 +477,7 @@ impl CommandRegistry {
             "Search the whole word under the cursor.",
             cmd_search_word_under_cursor,
         )
+        .selection_effect(SelectionEffect::Establishes)
         .reg(self);
         ecmd_pane(
             "search-selection",
@@ -492,6 +497,18 @@ impl CommandRegistry {
             "jump-forward",
             "Navigate to the next position in the jump list.",
             cmd_jump_forward,
+        )
+        .reg(self);
+        ecmd_pane(
+            "undo-selection-change",
+            "Go back to the selections last built, then to earlier ones.",
+            cmd_undo_selection_change,
+        )
+        .reg(self);
+        ecmd_pane(
+            "redo-selection-change",
+            "Go forward through the selections undo-selection-change stepped back over.",
+            cmd_redo_selection_change,
         )
         .reg(self);
         ecmd_pane(

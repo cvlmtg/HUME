@@ -391,11 +391,10 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
     ed.feed_key(key('A'));
     type_chars(&mut ed, "Q");
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open on A");
-    let sels_a_at_commit = ed.selections_for(pid_a, bid).cloned().expect("A seeded");
-    let committed_text = ed.state.buffers.get(bid).text().clone();
+    let sels_a_typing = ed.selections_for(pid_a, bid).cloned().expect("A seeded");
     let sels_b = ed.selections_for(pid_b, bid).cloned().expect("B seeded");
     assert_ne!(
-        sels_a_at_commit, sels_b,
+        sels_a_typing, sels_b,
         "sanity: the two panes must be distinguishable"
     );
 
@@ -423,6 +422,8 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
         )),
         "A (the session's own pane) must select what was typed on exit"
     );
+    let sels_a_on_exit = ed.selections_for(pid_a, bid).cloned().expect("A seeded");
+    let committed_text = ed.state.buffers.get(bid).text().clone();
 
     let (buffers, mut stores) = ed.state.edit_parts();
     buffers
@@ -438,7 +439,7 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
     let buf = ed.state.buffers.get(bid);
     assert_eq!(
         test_fixtures::testing::serialize_state(buf.text(), &redo_sels),
-        test_fixtures::testing::serialize_state(&committed_text, &sels_a_at_commit),
+        test_fixtures::testing::serialize_state(&committed_text, &sels_a_on_exit),
         "the revision's post-selections must be A's, not the focused pane's"
     );
 }

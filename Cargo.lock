@@ -810,6 +810,7 @@ version = "0.19.0"
 dependencies = [
  "arboard",
  "clap",
+ "criterion",
  "hume-core",
  "hume-decorations",
  "hume-editing",

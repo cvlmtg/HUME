@@ -184,23 +184,19 @@ pub(in crate::editor) fn split_pane_onto(
     let old_buffer_id = view.panes[old_focused].buffer_id();
     let new_pid = open_pane_in_layout(state, view, bid, direction);
 
-    // A bare split (same buffer as the source pane) inherits its cursor and
-    // scroll position: `open_pane` seeds fresh state at the buffer's initial
-    // selection, which would otherwise jump the new pane to the top of the
-    // file regardless of where the source pane was scrolled to. `:split
-    // <path>` (a different buffer) intentionally starts fresh.
+    // A bare split (same buffer as the source pane) inherits its selections,
+    // their history and its scroll position: `open_pane` seeds fresh state at
+    // the buffer's initial selection, which would otherwise jump the new pane
+    // to the top of the file regardless of where the source pane was
+    // scrolled to. `:split <path>` (a different buffer) intentionally starts
+    // fresh.
     if bid == old_buffer_id {
-        let selections = state
-            .panes
-            .entries
-            .shown(&view.panes, old_focused)
-            .selections()
-            .clone();
-        state
-            .panes
-            .entries
-            .shown_mut(&view.panes, new_pid)
-            .set_selections(selections, state.buffers.get(bid).text());
+        state.panes.entries.copy_selections(
+            &view.panes,
+            old_focused,
+            new_pid,
+            state.buffers.get(bid).text(),
+        );
         // A same-buffer split inherits the source pane's live view state
         // (viewport, scroll memory, wrap mode) so the new pane matches where
         // the source was instead of falling back to fresh/global seeds. A

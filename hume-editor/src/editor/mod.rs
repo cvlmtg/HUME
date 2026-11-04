@@ -25,6 +25,8 @@ use self::keymap::{Keymap, LocalKeymaps};
 mod async_job;
 mod async_source;
 mod before_save;
+#[cfg(any(test, feature = "test-util"))]
+pub(crate) mod bench;
 mod decoration_providers;
 mod edit_session;
 mod error;
@@ -67,6 +69,7 @@ mod register_ops;
 mod registry;
 mod replay;
 pub(crate) mod search;
+mod selection_history;
 pub(crate) mod settings;
 mod syntax;
 pub(crate) mod tab;

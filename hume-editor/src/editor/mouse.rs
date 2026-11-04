@@ -28,6 +28,7 @@ use super::cursor;
 use hume_ops::MotionMode;
 
 use super::Editor;
+use super::selection_history::Record;
 use hume_editing::selection::{EditView, Selection, SelectionSet};
 
 /// Whether `kind` is a *fresh* user action rather than the tail of a gesture
@@ -151,7 +152,14 @@ impl Editor {
             let anchor = EditView::bind(self.doc().text(), self.current_selections())
                 .primary()
                 .anchor();
+            let t = commands::FocusedPane::current(&self.view).pane();
+            // A drag grows the selection like an Extend-mode motion, so the
+            // whole gesture is one history entry.
+            let recording = self
+                .state
+                .begin_selection_record(&self.view, t, Record::Continue);
             self.select_only(Selection::new(anchor, head));
+            recording.finish(&mut self.state, &self.view, t);
         }
     }
 

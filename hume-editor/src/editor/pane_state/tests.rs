@@ -9,7 +9,7 @@ fn fresh_from_buf_seeds_initial_sels() {
     let expected = test_fixtures::testing::serialize_state(buf.text(), &buf.initial_sels());
     let state = fresh_from_buf(&buf);
     assert_eq!(
-        test_fixtures::testing::serialize_state(buf.text(), &state.selections),
+        test_fixtures::testing::serialize_state(buf.text(), state.selections()),
         expected
     );
     assert!(state.search_cursor.match_count.is_none());

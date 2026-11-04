@@ -76,7 +76,9 @@ macro_rules! key {
 ///    │      └─ …
 ///    ├─ s ─┬─ (  → surround-paren
 ///    │      └─ …
-///    └─ /       → select-all-matches
+///    ├─ /       → select-all-matches
+///    ├─ u       → undo-selection-change
+///    └─ U       → redo-selection-change
 /// ```
 fn build_text_object_trie() -> KeyTrie {
     // Table: (object chars, inner name, around name).
@@ -156,6 +158,8 @@ fn build_text_object_trie() -> KeyTrie {
     match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
     match_trie.bind_leaf(key!('w'), cmd!("surround-add"));
     match_trie.bind_leaf(key!('/'), cmd!("select-all-matches"));
+    match_trie.bind_leaf(key!('u'), cmd!("undo-selection-change"));
+    match_trie.bind_leaf(key!('U'), cmd!("redo-selection-change"));
     // `mm`: select the word under the cursor, the same command as `maw`
     // above. Both follow `word-selects-whitespace`; `miw` never does.
     match_trie.bind_leaf(key!('m'), cmd!("select-word"));
@@ -449,7 +453,8 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind(key!('z'), KeyTrieNode::Node(build_view_trie()));
 
     // ── Match prefix (`m` / `M`) ───────────────────────────────────────────────
-    // `m` → text objects (`mi`/`ma`), surround (`ms`), and `m/` (select-all-matches).
+    // `m` → text objects (`mi`/`ma`), surround (`ms`), `m/` (select-all-matches),
+    // and `mu`/`mU` (selection undo/redo).
     // `M` mirrors `m` and only contains `MM` (select-uppercase-word): the WORD
     // under the cursor, the same command as `maW`, following
     // `word-selects-whitespace` like `mm`.

@@ -5,12 +5,12 @@ use std::rc::Rc;
 
 use crate::editor::EditorState;
 use crate::editor::dispatch::CmdCtx;
-use crate::editor::registry::{CmdMeta, SelectionTracking};
+use crate::editor::registry::{CmdMeta, SelectionEffect, SelectionRole};
 
 /// One selection-building step in a dot-repeat recipe.
 ///
 /// Recorded by `update_recipe` as Motion/Selection commands (or
-/// EditorCmds opting into `SelectionTracking::Establishes`/`Composes`) run,
+/// EditorCmds opting in as a `SelectionRole::recipe_step`) run,
 /// so that `replay_dot` can replay them before the edit, rebuilding the
 /// extent the edit acted on.
 #[derive(Debug, Clone)]
@@ -58,7 +58,7 @@ impl EditorState {
     ///   Establishes + move (+ change)       → reset + push establish
     ///   Establishes + extend (+ change)     → append step
     ///   Composes (+ change)                 → append step
-    ///   Untracked                           → clear
+    ///   not a recipe step                   → clear
     ///
     /// `Extends` covers every `Motion`, word motions included: a Move-mode word
     /// motion looks replayable but would advance past the word on replay. Extend
@@ -74,12 +74,13 @@ impl EditorState {
         selection_changed: bool,
     ) {
         self.selection_recipe_touched = true;
-        if meta.selection_tracking == SelectionTracking::Untracked {
+        let Some(SelectionRole { effect, .. }) = meta.selection.filter(|role| role.recipe_step)
+        else {
             self.selection_recipe.clear();
             return;
-        }
+        };
         // A Move-mode motion has no replayable extent to restart the recipe with.
-        if meta.selection_tracking == SelectionTracking::Extends && !ctx.extend {
+        if effect == SelectionEffect::Extends && !ctx.extend {
             self.selection_recipe.clear();
             return;
         }
@@ -87,7 +88,7 @@ impl EditorState {
             return;
         }
         // A Move-mode establish restarts the recipe.
-        if meta.selection_tracking == SelectionTracking::Establishes && !ctx.extend {
+        if effect == SelectionEffect::Establishes && !ctx.extend {
             self.selection_recipe.clear();
         }
         self.selection_recipe.push(SelectionStep {
@@ -114,8 +115,8 @@ impl EditorState {
     /// a partial inner dispatch wrote undone. Otherwise the live recipe is
     /// cleared when this outer command owns the decision: a repeatable
     /// command's recipe was just consumed, and a body that dispatched nothing
-    /// natively is a non-selection command that clears it like any
-    /// `Untracked` one. A body that did dispatch natively already got the
+    /// natively is a non-selection command that clears it like any command
+    /// that is no recipe step. A body that did dispatch natively already got the
     /// right decision from that inner call, which this must not override.
     pub(in crate::editor) fn close_steel_recipe(
         &mut self,

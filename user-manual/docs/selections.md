@@ -128,6 +128,21 @@ call<span class="sel">(one, two<span class="head">)</span></span>
 | `Ctrl-;` | Collapse selection to anchor and exit Extend mode (kitty only) |
 | `Ctrl-e` | Swap anchor and head of each selection (Normal and Extend mode, any terminal) |
 
+## Undoing a selection change
+
+| Key | Effect |
+|-----|--------|
+| `m u` | Go back to the selections you last built, then to earlier ones |
+| `m U` | Go forward again through the selections `m u` stepped back over |
+
+`m u` brings back selections you built and then lost to a later change: a set of lines, several cursors, a text object, a drag. It restores every selection, not just the primary one.
+
+Each selection command, such as `x`, `%`, `C`, `,`, `s`, `*` or a text object, saves the selections it leaves. Extending, in Extend mode or with a `Ctrl` key, updates the selections it started from, so a run of extensions is saved once, and so is a mouse drag. Moving around saves nothing: a motion such as `j`, `w` or `f`, a search with `/`, `?` or `n`, a click, scrolling or the jump list.
+
+An edit keeps two selections in the undo history: the ones you made it with and the ones it left, such as the text a paste or `r` wrote, or the text you typed in Insert mode. `i` and `a` keep the selection you pressed them on. Once you edit, `m u` goes back through these, newest edit first, so `d` then `u` brings back what you deleted even after you collapse it. Selections you built but did not edit with are dropped at your next edit. A single cursor is never a step.
+
+After you move away, the first `m u` returns to the selections you last saved, and each further one steps back. A count steps back that many (`3 m u`). Saving new selections after stepping back drops the ones `m U` would have returned to. Each pane keeps its own selections for each buffer and offers only the edits it made; edits from another pane move them along with the text. In Insert mode and in a read-only buffer, `m u` goes back only as far as your last edit, as `u` cannot run there.
+
 ## Multiple selections
 
 HUME can hold several selections at once. Editing commands act on all of them, each independently.

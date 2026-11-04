@@ -101,27 +101,35 @@ pub(in crate::editor) enum EditorCmdBody {
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
 
-/// How a command's resulting selection updates the dot-repeat selection
-/// recipe (`EditorState::selection_recipe`): the selection-building steps
-/// dot-repeat replays to re-establish the selection before an edit.
+/// What a selection command does to the selections. The dot-repeat
+/// selection recipe (`EditorState::update_recipe`, for a
+/// [`SelectionRole::recipe_step`] command) and the selection history
+/// (`selection_history::Record::of`) both read it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) enum SelectionTracking {
-    /// Not a selection builder: clears the recipe.
-    Untracked,
-    /// A motion's Move-mode result is a bare cursor with nothing to replay,
-    /// so the recipe clears; an Extend-mode step grows the selection by a
-    /// relative amount and appends. Every `Motion` carries this, including
-    /// the word motions, whose Move-mode result lands on a selected word but
-    /// would advance past it on replay.
+pub(in crate::editor) enum SelectionEffect {
+    /// Moves the selections in Move mode and grows them in Extend mode.
+    /// Every `Motion` carries this.
     Extends,
-    /// Establishes an extent that is replayable on its own from a fresh
-    /// cursor (`select-line`, `ms(`, `m/`): resets the recipe to a single
-    /// step in Move mode, appends a step in Extend mode.
+    /// Establishes an extent of its own (`select-line`, `ms(`, `m/`).
     Establishes,
     /// Transforms the extent already staged
-    /// (`copy-selection-on-next-line`/`-prev-line`). Always appends: replayed
-    /// alone from a fresh cursor it would rebuild nothing.
+    /// (`copy-selection-on-next-line`/`-prev-line`, `keep-primary-selection`).
+    /// Replayed alone from a fresh cursor it would rebuild nothing, so as a
+    /// recipe step it always appends.
     Composes,
+}
+
+/// What a command that builds selections does to them, and whether
+/// dot-repeat replays it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) struct SelectionRole {
+    pub effect: SelectionEffect,
+    /// Whether dot-repeat records this command as a selection-recipe step,
+    /// to replay before the edit. `true` for every `Motion` and
+    /// `Selection`; an `EditorCmd` opts in. A command that takes an operand
+    /// or cannot be replayed from a fresh cursor (`find-forward`,
+    /// `sift-within`) is no step, and clears the recipe.
+    pub recipe_step: bool,
 }
 
 /// A command's bookkeeping properties, which the dispatch pipeline reads
@@ -133,11 +141,12 @@ pub(in crate::editor) enum SelectionTracking {
 /// cheap enough that no caller re-`match`es the variant for a single bit.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::editor) struct CmdMeta {
-    /// How this command updates the selection recipe after it runs.
-    /// `Extends` for every motion; `Selection` and `EditorCmd` set it per
-    /// command. An `EditorCmd` can build a replayable extent from editor
-    /// state, as `select-all-matches` (`m/`) does from the search pattern.
-    pub selection_tracking: SelectionTracking,
+    /// What this command does to the selections, `None` for a command that
+    /// builds none. `Extends` for every motion; `Selection` and `EditorCmd`
+    /// set it per command. An `EditorCmd` can build a replayable extent from
+    /// editor state, as `select-all-matches` (`m/`) does from the search
+    /// pattern.
+    pub selection: Option<SelectionRole>,
     /// Whether this command is a cursor motion rather than a selection
     /// builder, edit, or editor action. Selection commands are not: staging
     /// a text object is not navigation the jump list records.
@@ -359,7 +368,7 @@ pub(in crate::editor) enum NativeCommand {
         jump: bool,
         /// `Establishes` for most selection commands, `Composes` for the few
         /// that transform what is already staged.
-        selection_tracking: SelectionTracking,
+        selection_effect: SelectionEffect,
     },
     /// Buffer edit with no extra arguments. Never extendable: it takes no
     /// `MotionMode`.
@@ -392,16 +401,16 @@ pub(in crate::editor) enum NativeCommand {
         /// Whether this command records a jump-list entry however far the
         /// cursor moves. Used for search jumps and page scrolls.
         jump: bool,
-        /// Whether this command is a visual-line motion (`move-down`/`-up`,
-        /// `extend-down`/`-up`).
+        /// Whether this command is a visual-line motion (`move-down`/`-up`).
         visual_move: bool,
         /// Whether a Ctrl-key may run this command as a one-shot extend.
         /// `Motion`/`Selection` always may and `Edit` never may, so only
-        /// `EditorCmd` carries the flag.
+        /// `EditorCmd` carries the flag. A [`SelectionEffect::Extends`]
+        /// command may whatever the flag says.
         extendable: bool,
         clears_extend: bool,
-        /// `Untracked` unless the registration opts in.
-        selection_tracking: SelectionTracking,
+        /// `None` unless the registration sets one.
+        selection: Option<SelectionRole>,
         manages_own_session: bool,
         key_only: bool,
     },
@@ -435,7 +444,10 @@ impl NativeCommand {
             Self::Motion {
                 jump, aligns_view, ..
             } => CmdMeta {
-                selection_tracking: SelectionTracking::Extends,
+                selection: Some(SelectionRole {
+                    effect: SelectionEffect::Extends,
+                    recipe_step: true,
+                }),
                 is_motion: true,
                 defers_paste_commit: false,
                 is_jump: *jump,
@@ -448,10 +460,13 @@ impl NativeCommand {
             },
             Self::Selection {
                 jump,
-                selection_tracking,
+                selection_effect,
                 ..
             } => CmdMeta {
-                selection_tracking: *selection_tracking,
+                selection: Some(SelectionRole {
+                    effect: *selection_effect,
+                    recipe_step: true,
+                }),
                 is_motion: false,
                 defers_paste_commit: false,
                 is_jump: *jump,
@@ -469,12 +484,12 @@ impl NativeCommand {
                 jump,
                 visual_move,
                 clears_extend,
-                selection_tracking,
+                selection,
                 manages_own_session,
                 key_only,
                 ..
             } => CmdMeta {
-                selection_tracking: *selection_tracking,
+                selection: *selection,
                 is_motion: false,
                 defers_paste_commit: *defers_paste_commit,
                 is_jump: *jump,
@@ -493,7 +508,13 @@ impl NativeCommand {
         match self {
             Self::Motion { .. } | Self::Selection { .. } => true,
             Self::Edit { .. } => false,
-            Self::EditorCmd { extendable, .. } => *extendable,
+            Self::EditorCmd {
+                extendable,
+                selection,
+                ..
+            } => {
+                *extendable || selection.is_some_and(|role| role.effect == SelectionEffect::Extends)
+            }
         }
     }
 }
@@ -526,7 +547,7 @@ impl SteelCommand {
 /// `repeatable` varies.
 fn plain_meta(repeatable: bool) -> CmdMeta {
     CmdMeta {
-        selection_tracking: SelectionTracking::Untracked,
+        selection: None,
         is_motion: false,
         defers_paste_commit: false,
         is_jump: false,

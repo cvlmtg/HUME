@@ -2,7 +2,7 @@ use crate::editor::commands::cmd_visual_select_word_nearest_on_line;
 use std::borrow::Cow;
 
 use crate::editor::registry::{
-    CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionTracking,
+    CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionEffect,
 };
 use hume_ops::text_object::{
     cmd_around_angle, cmd_around_backtick, cmd_around_brace, cmd_around_bracket,

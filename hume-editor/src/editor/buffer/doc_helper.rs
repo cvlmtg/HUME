@@ -69,7 +69,8 @@ impl DocHelper {
             .edit_group
             .take()
             .expect("commit_edit_group called without an open group");
-        self.buf.commit_edit_group(group, post_sels);
+        self.buf
+            .commit_edit_group(group, post_sels, PaneId::default());
     }
 
     pub(crate) fn undo(&mut self) {

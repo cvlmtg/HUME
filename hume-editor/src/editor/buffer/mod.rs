@@ -40,7 +40,7 @@ pub(in crate::editor) use disk::{DiskCheckTrigger, ReloadError};
 pub(in crate::editor) use dump::dump_path_for;
 pub(crate) use dump::{print_worker_panics, report_dumps};
 pub(in crate::editor) use file_open::ReplaceSource;
-pub(in crate::editor) use history::Unsaved;
+pub(in crate::editor) use history::{SavedSelections, Unsaved};
 mod buffer_file;
 mod file_open;
 mod history;
@@ -646,7 +646,7 @@ impl Buffer {
             Change::Edit(&forward),
         );
         let post_sels = recorded(stores);
-        self.record_revision(forward, inverse, pre_sels, post_sels);
+        self.record_revision(Some(focused), forward, inverse, pre_sels, post_sels);
         true
     }
 
@@ -767,12 +767,16 @@ impl Buffer {
     /// ROOT's new (different) content.
     fn record_revision(
         &mut self,
+        owner: Option<PaneId>,
         forward: ChangeSet,
         inverse: ChangeSet,
         pre_sels: SelectionSet,
         post_sels: SelectionSet,
     ) {
-        if let Some(promoted) = self.history.record(forward, inverse, pre_sels, post_sels) {
+        if let Some(promoted) = self
+            .history
+            .record(owner, forward, inverse, pre_sels, post_sels)
+        {
             if self.saved_revision == Some(promoted) {
                 self.saved_revision = Some(History::ROOT);
             } else if self.saved_revision == Some(History::ROOT) {
@@ -825,7 +829,7 @@ impl Buffer {
         let inverse_cs = cs.invert(&self.text);
         let (post_text, post_sels) = post.into_parts();
         self.install(target, stores, post_text, Change::Edit(&cs));
-        self.record_revision(cs, inverse_cs, pre_sels, post_sels.clone());
+        self.record_revision(target.pane(), cs, inverse_cs, pre_sels, post_sels.clone());
         Applied::Changed(post_sels)
     }
 
@@ -932,10 +936,12 @@ impl Buffer {
     /// composed `ChangeSet` cancelled out to the identity transform (e.g. type
     /// a char, then backspace it), no revision is recorded. Takes `group` by
     /// value: the caller has already closed the session that held it.
+    /// `owner` is the pane the session edited through.
     pub(in crate::editor) fn commit_edit_group(
         &mut self,
         group: EditGroup,
         post_sels: SelectionSet,
+        owner: PaneId,
     ) {
         // An identity `cs` moved no bytes: recording it would put a no-op
         // revision on the undo stack, and undoing that revision would
@@ -950,7 +956,7 @@ impl Buffer {
         };
         let pre_sels = group.undo_sels;
         let post_sels = EditState::bind(self.text.clone(), post_sels).into_selections();
-        self.record_revision(cs, inverse_cs, pre_sels, post_sels);
+        self.record_revision(Some(owner), cs, inverse_cs, pre_sels, post_sels);
     }
 
     /// Apply an ordered Transaction list (from `History::undo_n`/`redo_n`/

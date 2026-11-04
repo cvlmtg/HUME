@@ -1,7 +1,8 @@
 //! A mode layer's snapshot of one pane's selections, captured on entry and
 //! restored on exit: the shape `SearchLayer` and `SiftLayer` both need for
 //! cancel-restore, factored out so the capture/restore/take rules live in one
-//! place instead of being re-derived in each layer.
+//! place instead of being re-derived in each layer. A dot-repeat's selection
+//! recipe uses it too, to put the selections back when a step is refused.
 //!
 //! Not `edit_session.rs`: that module's `EditGroup` already has a `pre_sels`
 //! field meaning something unrelated (an undo group's pre-*edit* selections,
@@ -27,8 +28,9 @@ use super::super::pane_state::PaneEntries;
 /// stays open). The buffer is recorded rather than re-read from the pane,
 /// because the pane may show another buffer by the time the snapshot is
 /// used. `None` once restored by `take_restore`, so a second restore is a
-/// no-op. A text change to the buffer carries the
-/// selections (see `PositionStores::carry`).
+/// no-op. While a mode layer holds the snapshot, a text change to the buffer
+/// carries the selections (see `PositionStores::carry`); one held anywhere
+/// else is not carried.
 pub(in crate::editor) struct PaneSnapshot {
     pane: PaneId,
     captured: Option<(BufferId, SelectionSet)>,

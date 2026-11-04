@@ -4,27 +4,6 @@ use crate::editor::input_stack::MenuLayer;
 use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 use steel::rvals::SteelVal;
-use termina::event::{Event as TerminalEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
-
-fn mouse_drag(x: u16, y: u16) -> TerminalEvent {
-    TerminalEvent::Mouse(MouseEvent {
-        kind: MouseEventKind::Drag(MouseButton::Left),
-        column: x,
-        row: y,
-        modifiers: Modifiers::NONE,
-    })
-}
-
-/// A left-button-release mouse event: the tail of a gesture that began
-/// before whatever's on top of the stack right now, unlike `mouse_left_down`.
-fn mouse_left_up(x: u16, y: u16) -> TerminalEvent {
-    TerminalEvent::Mouse(MouseEvent {
-        kind: MouseEventKind::Up(MouseButton::Left),
-        column: x,
-        row: y,
-        modifiers: Modifiers::NONE,
-    })
-}
 
 fn marker(name: &str) -> SteelVal {
     SteelVal::StringV(name.into())

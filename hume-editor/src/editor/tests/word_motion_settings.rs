@@ -247,7 +247,7 @@ fn mm_and_maw_with_setting_after_select_trailing_space() {
     assert_eq!(state(&ed2), "foo -[bar ]>baz\n");
 }
 
-/// `select-word` (`mm`) is a Selection command (`SelectionTracking::Establishes`),
+/// `select-word` (`mm`) is a Selection command (`SelectionEffect::Establishes`),
 /// so it pushes an establish step onto the dot-repeat recipe (unlike the word
 /// motions, which are `Extends`), and replay re-runs it via `run_body`,
 /// which must re-resolve

@@ -1,7 +1,7 @@
 //! Per-(pane, buffer) and per-pane editor state bundles.
 //!
-//! [`PaneBufferState`] holds all per-(pane, buffer) mutable facts: selections
-//! and search cursor. Adding a new per-(pane, buffer) field later requires changing
+//! [`PaneBufferState`] holds all per-(pane, buffer) mutable facts: selections,
+//! the ones built since the pane's last edit and search cursor. Adding a new per-(pane, buffer) field later requires changing
 //! exactly one struct and one Default impl, not four parallel maps.
 //!
 //! [`PaneEntry`] is one pane's whole editor-side state: its per-buffer
@@ -20,8 +20,9 @@ use super::commands::FocusedPane;
 use super::geometry::LayoutKey;
 use super::jump_list::JumpList;
 use super::search::SearchCursor;
-use crate::editor::buffer::Buffer;
+use super::selection_history::{PaneSelections, Placement, Record, TreeRefused, Walk};
 use crate::editor::buffer::store::BufferStore;
+use crate::editor::buffer::{Buffer, SavedSelections};
 use hume_editing::edit::TextChange;
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::state::EditState;
@@ -33,12 +34,10 @@ use hume_rope::cluster::ClusterStart;
 /// Stored in [`PaneEntry::buffers`]. Every seed site goes through [`fresh_from_buf`], which starts from the
 /// buffer's initial selections.
 pub(crate) struct PaneBufferState {
-    /// This pane's selections for this buffer. Private: every write goes
-    /// through [`PaneBufferState::set_selections`],
-    /// [`PaneBufferState::set_selections_after_edit`] or
-    /// [`PaneBufferState::carry_selections`]; the first two raise
-    /// [`PaneBufferState::reveal_pending`].
-    selections: SelectionSet,
+    /// This pane's selections for this buffer and their history. Every
+    /// write but a carry raises [`PaneBufferState::reveal_pending`]: an
+    /// edit's always, any other when the primary head moves.
+    selections: PaneSelections,
     /// Per-pane cursor through the buffer's shared match list.
     pub search_cursor: SearchCursor,
     /// A fact worth re-settling the viewport for happened since the last
@@ -106,34 +105,44 @@ impl PaneBufferState {
     /// The stored selections, for a caller that keeps or hands them on
     /// whole; reading them takes a text ([`Self::view`]).
     pub(crate) fn selections(&self) -> &SelectionSet {
-        &self.selections
+        self.selections.current()
     }
 
     /// The selections bound to `text`, the buffer's current text.
     pub(crate) fn view<'a>(&'a self, text: &'a BufferText) -> EditView<'a> {
-        EditView::bind(text, &self.selections)
+        EditView::bind(text, self.selections())
     }
 
     /// The selections paired with `text`, the buffer's current text, as the
     /// input to a command.
     pub(in crate::editor) fn state(&self, text: &BufferText) -> EditState {
-        EditState::bind(text.clone(), self.selections.clone())
+        EditState::bind(text.clone(), self.selections().clone())
+    }
+
+    /// Run `write` on the selections, `text` being the buffer's current
+    /// text before and after it, raising [`PaneBufferState::reveal_pending`]
+    /// iff the primary head moved.
+    fn write_revealing_moves(
+        &mut self,
+        text: &BufferText,
+        write: impl FnOnce(&mut PaneSelections),
+    ) {
+        let head = self.view(text).primary().head();
+        write(&mut self.selections);
+        self.reveal_pending |= self.view(text).primary().head() != head;
     }
 
     /// Replace the selections outright with `new`, a set for `text`, the
-    /// buffer's current text, raising [`PaneBufferState::reveal_pending`] iff
-    /// the primary head actually moved.
+    /// buffer's current text.
     pub(in crate::editor) fn set_selections(&mut self, new: SelectionSet, text: &BufferText) {
-        let moved = EditView::bind(text, &new).primary().head() != self.view(text).primary().head();
-        self.reveal_pending |= moved;
-        self.selections = new;
+        self.write_revealing_moves(text, |sels| sels.set(new));
     }
 
     /// Replace this pane's selections with those of an edit it made, and
     /// raise a reveal: the buffer under the pane changed whether or not the
     /// primary head moved.
     pub(in crate::editor) fn set_selections_after_edit(&mut self, new: SelectionSet) {
-        self.selections = new;
+        self.selections.set(new);
         self.reveal_pending = true;
     }
 
@@ -145,7 +154,47 @@ impl PaneBufferState {
     /// not snap back just because the head it can't currently see also
     /// moved). The pane that made an edit raises its own in `finish_edit`.
     pub(in crate::editor) fn carry_selections(&mut self, change: &TextChange<'_>) {
-        self.selections.translate(change);
+        self.selections.carry(change);
+    }
+
+    /// Forget the selections built since this pane's last edit of the
+    /// buffer: it just made another, whose selections the caller writes.
+    pub(in crate::editor) fn forget_live_selections(&mut self) {
+        self.selections.edited();
+    }
+
+    /// Where a change of `record` starting from the current selections puts
+    /// the selections it leaves among those built since this pane's last
+    /// edit. Decided before the change and handed to
+    /// [`Self::record_selections`] after it.
+    pub(in crate::editor) fn selection_placement(&self, record: Record) -> Placement {
+        self.selections.placement(record)
+    }
+
+    /// Store the current selections among those built since this pane's
+    /// last edit, at `placement`.
+    pub(in crate::editor) fn record_selections(&mut self, placement: Placement) {
+        self.selections.record(placement);
+    }
+
+    /// Take `count` steps through the selection history in direction
+    /// `walk`, as far as they go, and show where that lands. `saved` is the
+    /// undo tree's part, `None` while the walk may not read it; `text` is
+    /// the buffer's current text.
+    ///
+    /// # Errors
+    /// [`TreeRefused`] when a step needed the undo tree and `saved` is
+    /// `None`. The steps taken before it stay.
+    pub(in crate::editor) fn walk_selection_history(
+        &mut self,
+        count: usize,
+        walk: Walk,
+        saved: Option<&SavedSelections<'_>>,
+        text: &BufferText,
+    ) -> Result<(), TreeRefused> {
+        let mut walked = Ok(());
+        self.write_revealing_moves(text, |sels| walked = sels.walk(walk, count, saved));
+        walked
     }
 }
 
@@ -154,7 +203,7 @@ impl PaneBufferState {
     /// as though it had first shown the buffer on them.
     #[cfg(test)]
     pub(in crate::editor) fn seed_selections(&mut self, sels: SelectionSet) {
-        self.selections = sels;
+        self.selections.set(sels);
     }
 }
 
@@ -166,7 +215,7 @@ impl PaneBufferState {
 /// only one edit here.
 pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
     PaneBufferState {
-        selections: buf.initial_sels(),
+        selections: PaneSelections::new(buf.initial_sels()),
         search_cursor: SearchCursor::default(),
         reveal_pending: false,
         last_layout_key: None,
@@ -358,6 +407,20 @@ impl PaneEntries {
         bid: BufferId,
     ) -> &mut PaneBufferState {
         self.0[pid].buffers.get_mut(bid).expect(PAIR_UNSEEDED)
+    }
+
+    /// Give `to` the selections `from` has for the buffer both show, with
+    /// those it built since its last edit, `text` being its current text.
+    pub(in crate::editor) fn copy_selections(
+        &mut self,
+        panes: &PanePool,
+        from: PaneId,
+        to: PaneId,
+        text: &BufferText,
+    ) {
+        let selections = self.shown(panes, from).selections.split();
+        self.shown_mut(panes, to)
+            .write_revealing_moves(text, |sels| *sels = selections);
     }
 
     pub(in crate::editor) fn iter_mut(&mut self) -> impl Iterator<Item = (PaneId, &mut PaneEntry)> {

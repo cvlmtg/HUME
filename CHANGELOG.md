@@ -5,6 +5,10 @@
 ### CLI
 - `--keys` writes every logged message to stderr, including trace detail.
 
+### Editing
+- New `m u` brings back the selections you built and lost to a later change, all selections included, and `m U` redoes it.
+- `u` after typing from `i` or `a` brings back the selection you pressed them on, and redo after Insert mode lands where `Esc` left you.
+
 ## [0.18.0] - 2026-11-03
 
 ### Breaking changes

@@ -38,7 +38,7 @@ fn dot_repeat_of_match_surround_deletes_both_parens() {
 /// `ma(` (select around `()`, including the delimiters) on `(foo)` leaves a
 /// non-collapsed selection, unlike `ms(`
 /// (`dot_repeat_of_match_surround_deletes_both_parens` above). This pins that
-/// it replays correctly under `SelectionTracking::Establishes`, which
+/// it replays correctly under `SelectionEffect::Establishes`, which
 /// restarts the dot-repeat recipe in Move mode (see `update_recipe`).
 #[test]
 fn dot_repeat_of_match_around_deletes_content() {
@@ -67,7 +67,7 @@ fn dot_repeat_of_match_around_deletes_content() {
 /// `mi(` (select inner `()`, excluding the delimiters). Same characterization
 /// note as `dot_repeat_of_match_around_deletes_content` above: on `(foo)` it
 /// already leaves a non-collapsed selection, so this is coverage for
-/// `SelectionTracking::Establishes` rather than a regression test for it.
+/// `SelectionEffect::Establishes` rather than a regression test for it.
 #[test]
 fn dot_repeat_of_match_inner_deletes_content() {
     let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
