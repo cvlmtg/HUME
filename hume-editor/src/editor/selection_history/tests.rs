@@ -243,3 +243,109 @@ fn another_panes_edit_carries_the_live_list() {
     assert_eq!(sels.current(), &at(&post, 4));
     assert_eq!(step(&mut sels, Walk::Back), Some(at(&post, 3)));
 }
+
+/// Defers a change of `record` that moves the selections to `to`, as a
+/// command in a script session does.
+fn defer_move(sels: &mut PaneSelections, text: &BufferText, record: Record, to: SelectionSet) {
+    let placement = sels.placement(record);
+    let before = Tracked::new(sels.current().clone(), text);
+    sels.set(to);
+    sels.defer(placement, before, record);
+}
+
+#[test]
+fn deferred_continues_replace_the_entry_they_started_from_once() {
+    let text = BufferText::from("abcdefghij\n");
+    let mut sels = recorded(&text, &[1, 2]);
+
+    defer_move(&mut sels, &text, Record::Continue, at(&text, 3));
+    defer_move(&mut sels, &text, Record::Continue, at(&text, 4));
+    sels.record_deferred(&text);
+
+    assert_eq!(sels.current(), &at(&text, 4));
+    assert_eq!(step(&mut sels, Walk::Back), Some(at(&text, 1)));
+}
+
+#[test]
+fn a_deferred_continue_then_insert_inserts() {
+    let text = BufferText::from("abcdefghij\n");
+    let mut sels = recorded(&text, &[1, 2]);
+
+    defer_move(&mut sels, &text, Record::Continue, at(&text, 3));
+    defer_move(&mut sels, &text, Record::Insert, at(&text, 4));
+    sels.record_deferred(&text);
+
+    assert_eq!(step(&mut sels, Walk::Back), Some(at(&text, 2)));
+}
+
+#[test]
+fn a_deferral_that_ends_where_it_started_records_nothing() {
+    let text = BufferText::from("abcdefghij\n");
+    let mut sels = recorded(&text, &[1, 2, 3]);
+    step(&mut sels, Walk::Back);
+
+    defer_move(&mut sels, &text, Record::Insert, at(&text, 6));
+    defer_move(&mut sels, &text, Record::Insert, at(&text, 2));
+    sels.record_deferred(&text);
+
+    assert_eq!(step(&mut sels, Walk::Forward), Some(at(&text, 3)));
+}
+
+#[test]
+fn an_edit_of_the_pane_drops_the_deferred_record() {
+    let text = BufferText::from("abcdefghij\n");
+    let mut sels = recorded(&text, &[1, 2]);
+
+    defer_move(&mut sels, &text, Record::Insert, at(&text, 3));
+    sels.edited();
+    sels.record_deferred(&text);
+    sels.set(at(&text, 5));
+
+    assert_eq!(step(&mut sels, Walk::Back), None);
+}
+
+#[test]
+fn a_walk_drops_the_deferred_record() {
+    let text = BufferText::from("abcdefghij\n");
+    let mut sels = recorded(&text, &[1, 2, 3]);
+
+    defer_move(&mut sels, &text, Record::Continue, at(&text, 4));
+    step(&mut sels, Walk::Back);
+    step(&mut sels, Walk::Back);
+    sels.record_deferred(&text);
+
+    assert_eq!(sels.current(), &at(&text, 2));
+    assert_eq!(step(&mut sels, Walk::Forward), Some(at(&text, 3)));
+}
+
+#[test]
+fn another_panes_edit_carries_the_deferred_start() {
+    let pre = BufferText::from("abcdefghij\n");
+    let mut sels = recorded(&pre, &[1, 2, 3]);
+    step(&mut sels, Walk::Back);
+    defer_move(&mut sels, &pre, Record::Insert, at(&pre, 6));
+    defer_move(&mut sels, &pre, Record::Insert, at(&pre, 2));
+    let mut b = ChangeSetBuilder::new(pre.end());
+    b.insert("XX");
+    let cs = b.finish();
+    let post = cs.apply(&pre).expect("built for pre");
+
+    sels.carry(&TextChange::new(&pre, &post, &cs));
+    sels.record_deferred(&post);
+
+    // "XX" lands before every stored selection, so each moves two right.
+    assert_eq!(step(&mut sels, Walk::Forward), Some(at(&post, 5)));
+}
+
+#[test]
+fn a_split_does_not_copy_the_deferred_record() {
+    let text = BufferText::from("abcdefghij\n");
+    let mut sels = recorded(&text, &[1, 2]);
+    defer_move(&mut sels, &text, Record::Insert, at(&text, 3));
+
+    let mut copy = sels.split();
+    copy.record_deferred(&text);
+    copy.set(at(&text, 5));
+
+    assert_eq!(step(&mut copy, Walk::Back), Some(at(&text, 2)));
+}

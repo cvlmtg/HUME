@@ -371,6 +371,8 @@ impl CommandHost for MockHost {
         self.dispatched_native.push((name.to_owned(), pane, call));
         Ok(true)
     }
+    fn open_dispatch_group(&mut self) {}
+    fn close_dispatch_group(&mut self) {}
     fn command_holder(&self, name: &str) -> Option<CommandHolder> {
         if self.native_names.contains(name) {
             return Some(CommandHolder::Native);

@@ -28,6 +28,7 @@ use hume_editing::edit::TextChange;
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
+use hume_editing::tracked::Tracked;
 use hume_rope::cluster::ClusterStart;
 
 /// All per-(pane, buffer) editor state bundled into one struct.
@@ -177,6 +178,23 @@ impl PaneBufferState {
     /// last edit, at `placement`.
     pub(in crate::editor) fn record_selections(&mut self, placement: Placement) {
         self.selections.record(placement);
+    }
+
+    /// Note a change of `record` a Steel session made to the selections,
+    /// stored when the session ends.
+    pub(in crate::editor) fn defer_selections(
+        &mut self,
+        placement: Placement,
+        before: Tracked<SelectionSet>,
+        record: Record,
+    ) {
+        self.selections.defer(placement, before, record);
+    }
+
+    /// Store the selections the ended Steel session changed, `text` being
+    /// the buffer's current text.
+    pub(in crate::editor) fn record_deferred_selections(&mut self, text: &BufferText) {
+        self.selections.record_deferred(text);
     }
 
     /// Take `count` steps through the selection history in direction
@@ -399,6 +417,17 @@ impl PaneEntries {
     /// has shown until the buffer closes, which ends what recorded the pair.
     pub(in crate::editor) fn seeded(&self, pid: PaneId, bid: BufferId) -> &PaneBufferState {
         self.0[pid].buffers.get(bid).expect(PAIR_UNSEEDED)
+    }
+
+    /// `pid`'s state for `bid`, `None` once the pane or the buffer closed:
+    /// a pair recorded by something that can outlive them (a Steel
+    /// session's selection group).
+    pub(in crate::editor) fn pair_mut(
+        &mut self,
+        pid: PaneId,
+        bid: BufferId,
+    ) -> Option<&mut PaneBufferState> {
+        self.0.get_mut(pid)?.buffer_mut(bid)
     }
 
     /// [`Self::seeded`]'s mutable counterpart.

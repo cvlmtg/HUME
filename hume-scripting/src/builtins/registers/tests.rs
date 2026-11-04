@@ -231,6 +231,12 @@ impl crate::host::CommandHost for ValidNameHost {
     ) -> Result<bool, String> {
         self.inner.run_command_sync(name, pane, call)
     }
+    fn open_dispatch_group(&mut self) {
+        self.inner.open_dispatch_group();
+    }
+    fn close_dispatch_group(&mut self) {
+        self.inner.close_dispatch_group();
+    }
     fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {
         self.inner.register_command(def)
     }
@@ -324,6 +330,12 @@ impl crate::host::CommandHost for RegisterCapableHost {
         call: NativeCall,
     ) -> Result<bool, String> {
         self.inner.run_command_sync(name, pane, call)
+    }
+    fn open_dispatch_group(&mut self) {
+        self.inner.open_dispatch_group();
+    }
+    fn close_dispatch_group(&mut self) {
+        self.inner.close_dispatch_group();
     }
     fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {
         self.inner.register_command(def)

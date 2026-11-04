@@ -514,25 +514,122 @@ fn extending_in_a_split_continues_the_entry_it_copied() {
     assert_eq!(state(&ed), line);
 }
 
+const TWO_COPIES: &str = r#"(define-command! "two-copies" "" (lambda (pane)
+     (call! "copy-selection-on-next-line" pane)
+     (call! "copy-selection-on-next-line" pane)))"#;
+
 #[test]
-fn a_script_command_records_each_selection_command_it_calls() {
+fn a_script_command_records_one_entry() {
     let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\n");
-    attach_steel(
-        &mut ed,
-        r#"(define-command! "two-copies" "" (lambda (pane)
-             (call! "copy-selection-on-next-line" pane)
-             (call! "copy-selection-on-next-line" pane)))"#,
-    );
-    let mut reference = editor_from("-[a]>bc\ndef\nghi\njkl\n");
-    press(&mut reference, "xC");
-    let one_copy = state(&reference);
+    attach_steel(&mut ed, TWO_COPIES);
     press(&mut ed, "x");
     let selected = state(&ed);
     call(&mut ed, "two-copies");
     ed.settle();
 
     undo_selection(&mut ed);
-    assert_eq!(state(&ed), one_copy);
+
+    assert_eq!(state(&ed), selected);
+}
+
+#[test]
+fn two_script_commands_record_two_entries() {
+    let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\nmno\n");
+    attach_steel(&mut ed, TWO_COPIES);
+    let mut reference = editor_from("-[a]>bc\ndef\nghi\njkl\nmno\n");
+    press(&mut reference, "xCC");
+    let two_copies = state(&reference);
+    press(&mut ed, "x");
+    let selected = state(&ed);
+    for _ in 0..2 {
+        call(&mut ed, "two-copies");
+        ed.settle();
+    }
+
+    undo_selection(&mut ed);
+    assert_eq!(state(&ed), two_copies);
+    undo_selection(&mut ed);
+
+    assert_eq!(state(&ed), selected);
+}
+
+#[test]
+fn extending_then_copying_in_a_script_keeps_the_selection_it_started_from() {
+    let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\n");
+    attach_steel(
+        &mut ed,
+        r#"(define-command! "grow-and-copy" "" (lambda (pane)
+             (call! "move-right" pane 1 #t)
+             (call! "copy-selection-on-next-line" pane)))"#,
+    );
+    press(&mut ed, "x");
+    let selected = state(&ed);
+    call(&mut ed, "grow-and-copy");
+    ed.settle();
+
+    undo_selection(&mut ed);
+
+    assert_eq!(state(&ed), selected);
+}
+
+#[test]
+fn a_failed_script_command_records_one_entry() {
+    let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\n");
+    attach_steel(
+        &mut ed,
+        r#"(define-command! "copies-then-fails" "" (lambda (pane)
+             (call! "copy-selection-on-next-line" pane)
+             (call! "copy-selection-on-next-line" pane)
+             (error "boom")))"#,
+    );
+    press(&mut ed, "x");
+    let selected = state(&ed);
+    call(&mut ed, "copies-then-fails");
+    ed.settle();
+
+    undo_selection(&mut ed);
+
+    assert_eq!(state(&ed), selected);
+}
+
+#[test]
+fn a_timer_callback_records_one_entry() {
+    let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\n");
+    attach_steel(
+        &mut ed,
+        r#"(define-command! "copies-later" "" (lambda (pane)
+             (after! 0 (lambda ()
+               (call! "copy-selection-on-next-line" pane)
+               (call! "copy-selection-on-next-line" pane)))))"#,
+    );
+    press(&mut ed, "x");
+    let selected = state(&ed);
+    call(&mut ed, "copies-later");
+    ed.settle();
+    assert_ne!(state(&ed), selected, "the timer ran");
+
+    undo_selection(&mut ed);
+
+    assert_eq!(state(&ed), selected);
+}
+
+#[test]
+fn a_script_that_closes_the_pane_it_selected_in_leaves_the_other_pane_alone() {
+    let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\n");
+    attach_steel(
+        &mut ed,
+        r#"(define-command! "copy-and-close" "" (lambda (pane)
+             (call! "copy-selection-on-next-line" pane)
+             (call! "pane-close" pane)))"#,
+    );
+    press(&mut ed, "x");
+    let selected = state(&ed);
+    vsplit_focused(&mut ed);
+    ed.settle();
+    call(&mut ed, "copy-and-close");
+    ed.settle();
+    assert_eq!(state(&ed), selected);
+
     undo_selection(&mut ed);
 
     assert_eq!(state(&ed), selected);

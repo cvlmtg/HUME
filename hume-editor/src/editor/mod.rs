@@ -323,6 +323,10 @@ pub(crate) struct EditorState {
     /// Comparing the recipe before and after cannot stand in for it: a body
     /// may re-establish the step it started with.
     pub(super) selection_recipe_touched: bool,
+    /// The (pane, buffer) pairs whose selections the running Steel session
+    /// changed through native commands, recorded as one selection-undo step
+    /// each when it ends; `None` outside a session.
+    pub(super) selection_group: Option<Vec<(PaneId, BufferId)>>,
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
@@ -441,6 +445,7 @@ impl EditorState {
             recording_scope: replay::ScopeSlot::default(),
             selection_recipe: Vec::new(),
             selection_recipe_touched: false,
+            selection_group: None,
             pending_repeat: None,
             pipe_runs: pipe_run::PipeRuns::new(),
             sift_reuse: None,

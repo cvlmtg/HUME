@@ -283,6 +283,8 @@ impl CommandHost for NullHost {
     ) -> Result<bool, String> {
         Err("stub host has no native command registry".into())
     }
+    fn open_dispatch_group(&mut self) {}
+    fn close_dispatch_group(&mut self) {}
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
         Err(format!(
             "NullHost: '{}' rejected, no command registry",
@@ -507,6 +509,12 @@ impl CommandHost for CommandStoreHost {
         call: crate::host::NativeCall,
     ) -> Result<bool, String> {
         self.inner.run_command_sync(name, pane, call)
+    }
+    fn open_dispatch_group(&mut self) {
+        self.inner.open_dispatch_group();
+    }
+    fn close_dispatch_group(&mut self) {
+        self.inner.close_dispatch_group();
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
         self.register_defined(&def.name, CommandProc::Mappable(def.body.proc))

@@ -117,6 +117,8 @@ impl CommandHost for ReadOnlyHost<'_> {
     ) -> Result<bool, String> {
         Err(self.refuse("run_command_sync"))
     }
+    fn open_dispatch_group(&mut self) {}
+    fn close_dispatch_group(&mut self) {}
     fn register_command(&mut self, _def: SteelCmdDef) -> Result<(), String> {
         Err(self.refuse("register_command"))
     }

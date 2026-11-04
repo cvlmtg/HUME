@@ -137,6 +137,15 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             .map(MappableCommand::is_native)
     }
 
+    fn open_dispatch_group(&mut self) {
+        let previous = self.state.selection_group.replace(Vec::new());
+        assert!(previous.is_none(), "Steel sessions never nest");
+    }
+
+    fn close_dispatch_group(&mut self) {
+        self.state.close_selection_group();
+    }
+
     fn run_command_sync(
         &mut self,
         name: &str,

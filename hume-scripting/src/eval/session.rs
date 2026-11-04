@@ -9,8 +9,9 @@ use crate::HUME_CTX;
 use crate::context::SteelCtx;
 use crate::watchdog::EvalWatchdog;
 
-/// Arm the watchdog, run `body` against `steel` with `ctx` visible as
-/// `*hume.ctx*`, then cancel the watchdog, resume the VM, and truncate any
+/// Open the host's native dispatch group, arm the watchdog, run `body`
+/// against `steel` with `ctx` visible as `*hume.ctx*`, then cancel the
+/// watchdog, close the dispatch group, resume the VM, and truncate any
 /// unrestored inline-output frame back to zero
 /// (`OutputHost::truncate_inline_output`): the backstop for a `call!`-armed
 /// bracket (`bootstrap.scm`'s `%apply-command!`) whose body raised before
@@ -30,6 +31,7 @@ pub(super) fn run_steel_session<'a, R>(
     body: impl FnOnce(&mut Engine) -> Result<R, SteelErr>,
 ) -> Result<(), SessionError> {
     let open_depth = ctx.attribution.len();
+    ctx.host.commands().open_dispatch_group();
     watchdog.arm(
         steel.get_thread_state_controller(),
         std::time::Duration::from_millis(budget_ms),
@@ -53,6 +55,7 @@ pub(super) fn run_steel_session<'a, R>(
     let interrupted = watchdog.cancel();
     // Released whether the session returned, raised or was stopped.
     ctx.file_locks.clear();
+    ctx.host.commands().close_dispatch_group();
     // An expired budget leaves the VM raising at every instruction; the next
     // session must start running.
     steel.get_thread_state_controller().resume();

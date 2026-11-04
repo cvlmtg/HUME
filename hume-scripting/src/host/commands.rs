@@ -139,6 +139,16 @@ pub trait CommandHost {
         call: NativeCall,
     ) -> Result<bool, String>;
 
+    /// Opens the group of native commands one Steel session runs through
+    /// [`Self::run_command_sync`]: together they change each pane's
+    /// selections by one selection-undo step. Called once per session,
+    /// before its body; sessions never nest.
+    fn open_dispatch_group(&mut self);
+
+    /// Closes the group [`Self::open_dispatch_group`] opened, whether the
+    /// session returned, raised or ran out of budget.
+    fn close_dispatch_group(&mut self);
+
     /// What holds `name` (in any case), or `None` for a free name.
     fn command_holder(&self, name: &str) -> Option<CommandHolder>;
 

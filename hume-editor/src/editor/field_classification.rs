@@ -85,6 +85,7 @@ fn editor_state_fields_are_classified() {
             recording_scope: _,
             selection_recipe: _,         // preserved
             selection_recipe_touched: _, // preserved
+            selection_group: _,          // preserved: `None`, as no session runs a reload
             pending_repeat: _,           // preserved
             // preserved: a run holds no Steel value; its shell and command
             // were read when it started

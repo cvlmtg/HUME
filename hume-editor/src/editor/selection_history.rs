@@ -10,12 +10,16 @@
 //! and another pane's edit carries it. Past the live list, the walk reads the
 //! buffer's undo tree: the selections each edit this pane made was made with
 //! and left ([`SavedSelections`]). A single cursor is never a step.
+//!
+//! The native commands one Steel session runs record one entry per pane and
+//! buffer, when the session ends ([`EditorState::close_selection_group`]).
 
 use std::collections::VecDeque;
 
 use hume_editing::edit::TextChange;
 use hume_editing::history::SelectionPoint;
 use hume_editing::selection::SelectionSet;
+use hume_editing::text::BufferText;
 use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::EngineView;
 
@@ -92,6 +96,17 @@ pub(in crate::editor) struct PaneSelections {
     generation: u64,
     /// Where the last walk landed, until a record or the pane's own edit.
     walked: Option<Point>,
+    /// The running Steel session's change, until the session ends, the
+    /// pane edits the buffer or a walk lands.
+    deferred: Option<Deferred>,
+}
+
+/// The first change a Steel session made to a pane's selections: where its
+/// entry goes and the selections it started from.
+#[derive(Debug, Clone)]
+struct Deferred {
+    placement: Placement,
+    before: Tracked<SelectionSet>,
 }
 
 impl PaneSelections {
@@ -102,6 +117,7 @@ impl PaneSelections {
             live: VecDeque::new(),
             generation: 0,
             walked: None,
+            deferred: None,
         }
     }
 
@@ -122,18 +138,25 @@ impl PaneSelections {
         for sels in &mut self.live {
             sels.translate(change);
         }
+        if let Some(deferred) = &mut self.deferred {
+            deferred.before.translate(change, |sels| {
+                sels.translate(change);
+            });
+        }
     }
 
     /// Forget the live list and the walk: this pane edited the buffer.
     pub(in crate::editor) fn edited(&mut self) {
         self.live.clear();
         self.walked = None;
+        self.deferred = None;
     }
 
     /// A copy for a pane split off this one, which walks from the present.
     pub(in crate::editor) fn split(&self) -> Self {
         Self {
             walked: None,
+            deferred: None,
             ..self.clone()
         }
     }
@@ -182,6 +205,33 @@ impl PaneSelections {
         }
     }
 
+    /// Note a change of `record` a Steel session made, `placement` and
+    /// `before` taken before it ran. The session's first change stands for
+    /// all of them, and inserts when any of them does.
+    pub(in crate::editor) fn defer(
+        &mut self,
+        placement: Placement,
+        before: Tracked<SelectionSet>,
+        record: Record,
+    ) {
+        let deferred = self.deferred.get_or_insert(Deferred { placement, before });
+        if record == Record::Insert {
+            deferred.placement.replaces = None;
+        }
+    }
+
+    /// Store the selections at the deferred change's placement if they
+    /// differ from the ones it started from, `text` being the buffer's
+    /// current text.
+    pub(in crate::editor) fn record_deferred(&mut self, text: &BufferText) {
+        let Some(Deferred { placement, before }) = self.deferred.take() else {
+            return;
+        };
+        if before.get(text) != Some(&self.current) {
+            self.record(placement);
+        }
+    }
+
     /// Take `count` steps (at least one) in direction `walk`, as far as the
     /// steps go, and make the selections the one it lands on. `saved` is
     /// the undo tree's part, `None` while the walk may not read it. A step
@@ -222,6 +272,7 @@ impl PaneSelections {
                 if !sels.is_single_cursor() && !sels.eq_ignoring_sticky(&self.current) {
                     self.current = sels;
                     self.walked = Some(point);
+                    self.deferred = None;
                     break;
                 }
             }
@@ -294,28 +345,39 @@ impl<'a> Steps<'a> {
     }
 }
 
-/// A change to a pane's selections that the live list will record: where it
-/// goes, and the selections it starts from.
+/// A change to a pane's selections that the live list will record: how it
+/// enters the list, where it goes, and the selections it starts from.
 #[must_use = "a change records nothing until `finish` runs"]
 pub(in crate::editor) struct PendingRecord {
+    record: Record,
     placement: Placement,
     before: Tracked<SelectionSet>,
 }
 
 impl PendingRecord {
     /// Store `pane`'s selections at the placement if the change moved them,
-    /// and return whether it did.
+    /// or defer them to the end of the running Steel session, and return
+    /// whether it did.
     pub(in crate::editor) fn finish(
         self,
         state: &mut EditorState,
         view: &EngineView,
         pane: CommandPane,
     ) -> bool {
-        let text = state.buffers.get(pane.bid(view)).text();
+        let pair @ (_, bid) = (pane.pid(), pane.bid(view));
+        let text = state.buffers.get(bid).text();
         let pane_state = pane.state_mut(&mut state.panes.entries, view);
         let changed = self.before.get(text) != Some(pane_state.selections());
         if changed {
-            pane_state.record_selections(self.placement);
+            match &mut state.selection_group {
+                None => pane_state.record_selections(self.placement),
+                Some(group) => {
+                    pane_state.defer_selections(self.placement, self.before, self.record);
+                    if !group.contains(&pair) {
+                        group.push(pair);
+                    }
+                }
+            }
         }
         changed
     }
@@ -333,8 +395,27 @@ impl EditorState {
         let text = self.buffers.get(pane.bid(view)).text();
         let state = pane.state(&self.panes.entries, view);
         PendingRecord {
+            record,
             placement: state.selection_placement(record),
             before: Tracked::new(state.selections().clone(), text),
+        }
+    }
+
+    /// End the running Steel session's group: store the selections each
+    /// pane it changed through native commands deferred, for the panes and
+    /// buffers still open.
+    ///
+    /// # Panics
+    /// Panics if no group is open.
+    pub(in crate::editor) fn close_selection_group(&mut self) {
+        let group = self
+            .selection_group
+            .take()
+            .expect("a Steel session's group is open");
+        for (pid, bid) in group {
+            if let Some(pane_state) = self.panes.entries.pair_mut(pid, bid) {
+                pane_state.record_deferred_selections(self.buffers.get(bid).text());
+            }
         }
     }
 }
