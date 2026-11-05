@@ -1066,3 +1066,61 @@ fn reload_config_keeps_init_scm_programs_off_the_live_screen() {
         "the forms before it apply"
     );
 }
+
+/// The servers a lazy `#:languages` plugin registers keep running across
+/// `:reload-config`: the reload's re-detect activates the plugin again,
+/// which registers them before `resync_config_state` reconciles, so the
+/// buffer stays attached to the same instance without a `didClose`.
+#[test]
+fn reload_keeps_the_servers_a_language_plugin_registers() {
+    let fixture = ReloadFixture::new(
+        r#"(%define-language! "rust" '("rs") '() '())
+           (declare-plugin! "user/ra" #:languages '("rust"))"#,
+    );
+    let plugin_dir = fixture.data_dir.join("plugins/user/ra");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.scm"),
+        r#"(register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
+           (set-language-servers! "rust" '("rust-analyzer"))"#,
+    )
+    .unwrap();
+    let file_tmp = tempfile::tempdir().unwrap();
+    let file = file_tmp.path().join("main.rs");
+    std::fs::write(&file, "fn main() {}\n").unwrap();
+
+    let backend = super::super::lsp_rig::answering(2);
+    let notifications = backend.server_notification_log();
+    let mut ed = editor_from("-[a]>\n");
+    ed.state.lsp = crate::editor::lsp::LspState::with_backend(Box::new(backend));
+    ed.state.dirs = fixture.dirs();
+    ed.init_scripting(&mut Default::default());
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    ed.settle();
+    ed.drain_lsp();
+    let bid = ed.focused_buffer_id();
+    let started = ed.state.lsp.instances_named_for_test("rust-analyzer");
+    assert_eq!(started.len(), 1, "sanity: the plugin's server must start");
+
+    type_cmd(&mut ed, ":reload-config");
+    ed.settle();
+
+    assert_eq!(
+        ed.state.lsp.instances_named_for_test("rust-analyzer"),
+        started
+    );
+    assert_eq!(
+        ed.state
+            .buffer_positions
+            .lsp
+            .servers(bid)
+            .collect::<Vec<_>>(),
+        started
+    );
+    let methods: Vec<String> = notifications
+        .borrow()
+        .iter()
+        .map(|(_, method, _)| method.clone())
+        .collect();
+    assert_eq!(methods, ["initialized", "textDocument/didOpen"]);
+}

@@ -158,6 +158,13 @@ impl Editor {
             language: lang_name,
         });
         if let Some(id) = new_lang {
+            // Plugins activate inside the change, not when the event is
+            // dispatched as `#:events` plugins do, so that what their bodies
+            // set is in place for the syntax setup and reconcile below.
+            // `configure-language!` roots reconcile nothing on their own. On
+            // `:reload-config`, a plugin's servers are registered before
+            // `resync_config_state` reconciles, which keeps them running. A
+            // script that sets a language sees the plugin in the same eval.
             self.activate_lazy_language_plugins(id);
             // An activated plugin may have closed the buffer, or changed its
             // language, which already set up syntax and servers for the

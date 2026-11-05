@@ -74,7 +74,10 @@ The funnel does five things in order:
    the first time a buffer becomes Rust. A body may change the buffer's
    language again, which queues a second hook after the first, so every
    plugin sees each language the buffer took, in order. A body may also
-   close the buffer, which ends the change there.
+   close the buffer, which ends the change there. Plugins activate here,
+   inside the change, not later when the hook runs, so steps 4 and 5 already
+   see what a plugin's body set up, such as its servers and the project
+   roots they start in.
 4. Sets up (or tears down) syntax parsing for the new language.
 5. Attaches the buffer to every language server the new language's list
    names, starting any that is not running yet (see [LSP](lsp.md)).
