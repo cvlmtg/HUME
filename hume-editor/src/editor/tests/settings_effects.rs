@@ -395,7 +395,7 @@ fn set_buffer_option_from_hook_writes_target_override() {
     );
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     assert_eq!(ed.state.buffers.get(bid).overrides.indent_width, Some(8));
@@ -419,7 +419,7 @@ fn on_language_set_hook_configures_word_chars() {
     );
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("css");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     assert_eq!(
@@ -556,7 +556,7 @@ fn set_buffer_option_wrap_mode_from_hook_changes_the_open_pane() {
 
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     assert_eq!(
@@ -582,7 +582,7 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid2, Some(lang));
+    ed.set_buffer_language(bid2, Some(lang)).expect_open();
     ed.settle();
 
     assert_eq!(ed.state.buffers.get(bid2).overrides.indent_width, Some(8));
@@ -612,7 +612,7 @@ fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid2, Some(lang));
+    ed.set_buffer_language(bid2, Some(lang)).expect_open();
     ed.settle();
 
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
@@ -667,7 +667,7 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
     );
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     assert_eq!(

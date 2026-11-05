@@ -215,7 +215,7 @@ fn run_with_test_keys(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
 fn set_language(ed: &mut Editor, name: &str) {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern(name);
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 }
 

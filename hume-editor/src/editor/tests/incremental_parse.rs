@@ -26,7 +26,7 @@ fn json_editor(source: &str) -> (Editor, hume_core::BufferId) {
     super::language::attach_host(&mut ed, "");
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.reparse_stale_buffers(); // drains the initial parse (posted by setup_buffer_syntax)
     (ed, bid)
 }
@@ -343,10 +343,10 @@ fn grammar_swap_clears_pending_and_full_reparses() {
     // set_buffer_language(None) drops the whole Syntax attachment (and its
     // pending_edits with it). Then re-attaching creates a fresh Syntax that
     // starts with empty pending_edits.
-    ed.set_buffer_language(bid, None);
+    ed.set_buffer_language(bid, None).expect_open();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
 
     // After re-attach, pending_edits must be empty (fresh Syntax attachment).
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();

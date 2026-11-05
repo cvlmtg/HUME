@@ -439,7 +439,8 @@ fn p6_reload_preserves_cursor_same_content() {
         FocusedPane::current(&ed.view),
         ReplaceSource::Dump(BufferText::from(content)),
     )
-    .expect("the buffer is not held");
+    .expect("the buffer is not held")
+    .expect_open();
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -475,7 +476,8 @@ fn p6_reload_clamps_cursor_to_last_line() {
         FocusedPane::current(&ed.view),
         ReplaceSource::Dump(BufferText::from("short\n")),
     )
-    .expect("the buffer is not held");
+    .expect("the buffer is not held")
+    .expect_open();
 
     // last_line=0, target_line=0, col=0 → head=0.
     assert_eq!(
@@ -496,7 +498,8 @@ fn p6_reload_cursor_follows_its_line_when_a_line_is_added_above() {
         FocusedPane::current(&ed.view),
         ReplaceSource::Dump(BufferText::from("new\nabc\ndef\n")),
     )
-    .expect("the buffer is not held");
+    .expect("the buffer is not held")
+    .expect_open();
 
     assert_eq!(state(&ed), "new\nabc\nd-[e]>f\n");
 }
@@ -511,7 +514,8 @@ fn p6_reload_cursor_on_a_rewritten_line_lands_at_its_start() {
         FocusedPane::current(&ed.view),
         ReplaceSource::Dump(BufferText::from("abc\nhi\n")),
     )
-    .expect("the buffer is not held");
+    .expect("the buffer is not held")
+    .expect_open();
 
     assert_eq!(state(&ed), "abc\n-[h]>i\n");
 }
@@ -526,7 +530,8 @@ fn p6_reload_keeps_every_selection() {
         FocusedPane::current(&ed.view),
         ReplaceSource::Dump(BufferText::from("top\nline0\nline1\nline2\n")),
     )
-    .expect("the buffer is not held");
+    .expect("the buffer is not held")
+    .expect_open();
 
     assert_eq!(state(&ed), "top\nline0\n-{l}>ine1\n-[l]>ine2\n");
 }

@@ -170,7 +170,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
     // Kick off the ping-pong: aaa → handler sets bbb → handler sets aaa → …
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("aaa");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle(); // must return, not hang
 
     assert!(
@@ -218,7 +218,7 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
 
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("start");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle(); // must return promptly, not after 2^100 evals
 
     assert!(
@@ -361,8 +361,8 @@ fn on_buffer_open_queued_after_on_language_set() {
 /// unchanged-value early return keeps that call from appending a third entry.
 ///
 /// `Editor::open` finishes the startup buffer with `lifecycle::finish_open`,
-/// which sets the `open_hook_pending`/`pending_language_detection`
-/// bookkeeping that `detect_pending_languages` announces from.
+/// which queues it on the `pending_language_detection` that
+/// `detect_pending_languages` announces from.
 #[test]
 fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     use crate::testing::MockHost;
@@ -417,10 +417,9 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
 /// `OnBufferOpen` was already announced: the pairing invariant
 /// `close_buffer_and_notify` documents and
 /// `unix::scripting_effects::buffer_opened_and_closed_in_one_eval_fires_neither_hook`
-/// already asserts for a buffer opened mid-eval. The startup buffer never
-/// goes through `open_buffer_and_notify`, so `Editor::open` sets its
-/// `open_hook_pending` itself, and closing the buffer before the
-/// `detect_pending_languages` drain fires no unpaired `on-buffer-close`.
+/// already asserts for a buffer opened mid-eval. Closing the startup buffer
+/// before the `detect_pending_languages` drain fires no unpaired
+/// `on-buffer-close`.
 #[test]
 fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
     let dir = tempfile::tempdir().unwrap();
@@ -430,7 +429,7 @@ fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
     let mut ed = open_headless(Some(file));
     let bid = ed.focused_buffer_id();
     assert!(
-        ed.state.buffers.get(bid).open_hook_pending,
+        !ed.state.buffers.get(bid).open_announced,
         "sanity: the startup buffer's open hasn't been announced yet"
     );
 

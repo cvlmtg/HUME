@@ -31,7 +31,7 @@ fn set_buffer_language_writes_language_field() {
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     assert_eq!(
         ed.state.buffers.get(bid).language,
         ed.state.config.languages.id_of("rust")
@@ -49,7 +49,7 @@ fn changing_a_language_without_a_scripting_host_panics() {
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
 }
 
 #[test]
@@ -58,8 +58,8 @@ fn set_buffer_language_to_none_clears_language() {
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
-    ed.set_buffer_language(bid, None);
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
+    ed.set_buffer_language(bid, None).expect_open();
     assert!(ed.state.buffers.get(bid).language.is_none());
 }
 
@@ -70,14 +70,14 @@ fn set_buffer_language_no_op_when_unchanged() {
     // panic because scripting is None. This test verifies no-op short-circuit.
     let bid = ed.focused_buffer_id();
     // Start with no language: setting to None must not panic.
-    ed.set_buffer_language(bid, None);
+    ed.set_buffer_language(bid, None).expect_open();
     assert!(ed.state.buffers.get(bid).language.is_none());
     // Now set a language and repeat: second set must short-circuit without panic.
     ed.scripting = Some(ScriptingHost::for_testing(&Dirs::none()));
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang)); // no-op, no double-fire
+    ed.set_buffer_language(bid, Some(lang)).expect_open(); // no-op, no double-fire
     assert_eq!(
         ed.state.buffers.get(bid).language,
         ed.state.config.languages.id_of("rust")
@@ -111,7 +111,7 @@ fn detect_and_set_language_matches_extension() {
         .get_mut(bid)
         .set_file(crate::editor::buffer::BufferFile::at("/tmp/foo.rs"));
     register_rust(&mut ed, "rust", &["rs"]);
-    ed.detect_and_set_language(bid);
+    ed.detect_and_set_language(bid).expect_open();
     assert_eq!(
         ed.state.buffers.get(bid).language,
         ed.state.config.languages.id_of("rust")
@@ -154,7 +154,7 @@ fn detect_and_set_language_no_match_leaves_none() {
     let bid = ed.focused_buffer_id();
     // Buffer has no path, so no detection possible.
     assert!(ed.state.buffers.get(bid).path().is_none());
-    ed.detect_and_set_language(bid);
+    ed.detect_and_set_language(bid).expect_open();
     assert!(ed.state.buffers.get(bid).language.is_none());
 }
 
@@ -328,7 +328,7 @@ fn typed_set_language_empty_value_clears_language() {
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     run_set(&mut ed, "buffer language=").expect(":set buffer language= failed");
     assert!(ed.state.buffers.get(bid).language.is_none());
 }
@@ -363,7 +363,7 @@ fn on_language_set_hook_fires_on_set_buffer_language() {
     let bid = ed.focused_buffer_id();
     let before = state(&ed);
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
     // move-right from hook must have moved the cursor.
     assert_ne!(state(&ed), before, "on-language-set hook must have fired");
@@ -379,11 +379,11 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
     let bid = ed.focused_buffer_id();
     // Set once to establish baseline.
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     let after_first = state(&ed);
     // Set same value again: should be a no-op; hook must not fire.
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     assert_eq!(
         state(&ed),
         after_first,

@@ -220,7 +220,7 @@ impl Editor {
                 // Steel eval runs between the two), but `survives` also
                 // checks `bid` predates this reload; see its own doc.
                 if snapshot.survives(bid, &self.state.buffers) {
-                    match name {
+                    let _ = match name {
                         Some(name) => match self.state.config.languages.id_of(name) {
                             Some(lang_id) => {
                                 self.set_buffer_language_explicit(bid, Some(lang_id), *by)
@@ -234,15 +234,15 @@ impl Editor {
                                          falling back to detection"
                                     ),
                                 );
-                                self.detect_and_set_language(bid);
+                                self.detect_and_set_language(bid)
                             }
                         },
                         None => self.set_buffer_language_explicit(bid, None, *by),
-                    }
+                    };
                     continue;
                 }
             }
-            self.detect_and_set_language(bid);
+            let _ = self.detect_and_set_language(bid);
         }
     }
 

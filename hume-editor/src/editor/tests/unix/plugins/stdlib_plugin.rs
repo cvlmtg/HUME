@@ -834,7 +834,7 @@ fn heading_editor_after(
     );
     let bid = ed.focused_buffer_id();
     let language = ed.state.config.languages.intern(language);
-    ed.set_buffer_language(bid, Some(language));
+    ed.set_buffer_language(bid, Some(language)).expect_open();
     ed.settle();
     for ch in keys.chars() {
         ed.feed_key(key(ch));

@@ -242,7 +242,7 @@ pub(in crate::editor) fn typed_set(
         }
         return match opt {
             BufferIntrinsicOption::Language => {
-                ed.set_buffer_language_by_name(bid, LanguageOptionText::decode(value), by);
+                let _ = ed.set_buffer_language_by_name(bid, LanguageOptionText::decode(value), by);
                 Ok(())
             }
             BufferIntrinsicOption::LineEnding => {

@@ -48,7 +48,7 @@ pub struct DrawerViewState {
 }
 
 /// Engine-facing drawer provider: one instance, owned by `EngineView`
-/// (chrome, not per-pane), constructed once at `Editor::open` time.
+/// (chrome, not per-pane), constructed once at `Editor::bootstrap` time.
 pub(crate) struct DrawerWidget {
     pub(crate) data: SharedSlot<Option<DrawerViewState>>,
 }

@@ -9,6 +9,7 @@ use crate::editor::Editor;
 use crate::editor::error::CommandError;
 use crate::editor::input_stack::{ConfirmAction, ConfirmLayer, ConfirmPermit};
 use crate::editor::pipe_run::{PipeRefusal, PipeRunning};
+use crate::editor::syntax::BufferFate;
 use hume_core::{BufferId, OnUnsaved, Severity};
 
 use super::{Buffer, BufferFile, ReplaceSource, TextRefusal, Unsaved};
@@ -322,8 +323,14 @@ impl Editor {
         let read_error = |e| ReloadError::Read(CommandError::new(format!("{display}: {e}")));
         let (text, file) = BufferFile::read(typed).map_err(read_error)?;
         let source = ReplaceSource::Disk { text, file };
-        self.reload_buffer_in_place(fp, source)
+        let fate = self
+            .reload_buffer_in_place(fp, source)
             .map_err(ReloadError::PipeRunning)?;
+        // A plugin the reloaded text's language activated closed the buffer:
+        // there is no buffer left to report reloaded.
+        if fate == BufferFate::Closed {
+            return Ok(());
+        }
         let name = self.state.buffers.get(bid).display_name();
         self.report(Severity::Info, format!("Reloaded {name}"));
         Ok(())

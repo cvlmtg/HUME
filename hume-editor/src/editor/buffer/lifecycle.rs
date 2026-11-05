@@ -49,25 +49,21 @@ pub(in crate::editor) fn open_buffer(
 }
 
 /// Everything a fresh `BufferId` needs once the settings are live: restore
-/// its file's undo history, mark it `open_hook_pending` and queue it for
-/// language detection. Every fresh `BufferId` must go through this once and
-/// only once, or `Editor::detect_pending_languages` never announces its
-/// `OnBufferOpen` (see that function's doc).
+/// its file's undo history and queue it for language detection. Every fresh
+/// `BufferId` must go through this, or `Editor::detect_pending_languages`
+/// never announces its `OnBufferOpen` (see that function's doc).
 ///
 /// Does **not** run detection inline: that needs `set_buffer_language`,
 /// which can activate lazy language plugins via `self.scripting`, a full
 /// `&mut Editor`/Steel-eval capability this function's callers do not hold.
 /// The drain runs at the end of the Steel eval that queued `bid`, or else at
-/// the next `Editor::settle`. Also leaves `open_hook_pending` set until that
-/// drain fires its `OnBufferOpen`, read by [`close_buffer_and_notify`] so a
-/// buffer closed before the drain runs announces neither hook, rather than
-/// an `OnBufferClose` with no matching open.
+/// the next `Editor::settle`. A buffer closed before the drain announced its
+/// open announces neither hook (see [`close_buffer_and_notify`]).
 ///
 /// The undo history is restored here rather than at the drain, so a script
 /// that opens a buffer and edits it in one eval edits the restored history.
 pub(in crate::editor) fn finish_open(state: &mut EditorState, bid: BufferId) {
     state.restore_undo(bid);
-    state.buffers.get_mut(bid).open_hook_pending = true;
     state.config.pending_language_detection.push(bid);
 }
 
@@ -265,11 +261,11 @@ fn close_buffer(state: &mut EditorState, ev: &mut EngineView, id: BufferId) -> O
 /// `open_buffer_and_notify`, this runs identically from both paths, no
 /// deferred effect needed.
 ///
-/// `OnBufferClose` is queued only when `id`'s `OnBufferOpen` already fired
-/// (`!open_hook_pending`): hooks announce as a pair or not at all. A buffer
-/// opened and closed before `Editor::detect_pending_languages`'s drain ran
-/// (e.g. within one Steel eval) never announced its open, so it must not
-/// announce a close either.
+/// `OnBufferClose` is queued only when `id`'s `OnBufferOpen` was
+/// (`open_announced`): hooks announce as a pair or not at all. A buffer
+/// closed before `Editor::detect_pending_languages`'s drain announced it
+/// (within the Steel eval that opened it, or by a plugin during startup)
+/// announces no close either.
 ///
 /// Refused, with nothing changed, when `id` has unsaved changes and
 /// `on_unsaved` does not consent to dropping them, and while a pipe runs in
@@ -291,7 +287,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     // buffer's URI.
     state.lsp_buffer_closing(ev, id);
     // Read before the slot is freed by `close_buffer` below.
-    let open_announced = !state.buffers.get(id).open_hook_pending;
+    let open_announced = state.buffers.get(id).open_announced;
     let opened = close_buffer(state, ev, id);
     // The last-buffer branch fired: a fresh scratch buffer was allocated in
     // `id`'s place and must announce its own `OnBufferOpen` like any other

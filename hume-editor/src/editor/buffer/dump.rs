@@ -10,6 +10,7 @@ use super::{Buffer, DiskCheckTrigger, ReplaceSource, TextRefusal};
 use crate::editor::Editor;
 use crate::editor::input_stack::{ConfirmAction, ConfirmLayer};
 use crate::editor::pipe_run::PipeRunning;
+use crate::editor::syntax::BufferFate;
 
 /// The crash-dump file for the buffer backed by `path`: the same path with
 /// `.dump` appended to the full file name.
@@ -186,10 +187,17 @@ impl Editor {
             }
         };
         let text = BufferText::from(content.as_str());
-        if let Err(PipeRunning(bid)) = self.reload_buffer_in_place(fp, ReplaceSource::Dump(text)) {
-            let message = TextRefusal::Busy.message(self.state.buffers.get(bid));
-            self.report(Severity::Warning, message);
-            return;
+        match self.reload_buffer_in_place(fp, ReplaceSource::Dump(text)) {
+            Ok(BufferFate::Open) => {}
+            // A plugin the restored text's language activated closed the
+            // buffer, and the restored text with it: the dump is its only
+            // copy, so it stays.
+            Ok(BufferFate::Closed) => return,
+            Err(PipeRunning(bid)) => {
+                let message = TextRefusal::Busy.message(self.state.buffers.get(bid));
+                self.report(Severity::Warning, message);
+                return;
+            }
         }
         self.take_pending_dump(bid);
         self.remove_dump(&name, &dump);

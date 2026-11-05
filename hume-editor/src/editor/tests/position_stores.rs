@@ -37,7 +37,8 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
         FocusedPane::current(&ed.view),
         ReplaceSource::Dump(BufferText::from("short\n")),
     )
-    .expect("the buffer is not held");
+    .expect("the buffer is not held")
+    .expect_open();
 
     ed.feed_event(key_ctrl('p'));
     ed.feed_event(key('p'));
@@ -245,7 +246,8 @@ fn a_tracked_position_follows_a_reload() {
         FocusedPane::current(&ed.view),
         ReplaceSource::Dump(BufferText::from("zero\none\ntwo\nthree\n")),
     )
-    .expect("the buffer is not held");
+    .expect("the buffer is not held")
+    .expect_open();
 
     assert_eq!(
         ed.state.panes.tracked.position(token, &ed.state.buffers),

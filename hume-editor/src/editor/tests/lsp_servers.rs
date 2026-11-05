@@ -142,7 +142,7 @@ fn clearing_a_buffers_language_detaches_every_server() {
     let mut rig = two_servers(&tmp);
     let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
 
-    rig.ed.set_buffer_language(rig.bid, None);
+    rig.ed.set_buffer_language(rig.bid, None).expect_open();
 
     assert!(rig.attached().is_empty());
     for sid in [ra, lint] {
@@ -374,7 +374,8 @@ fn a_language_change_reopens_the_document_on_the_same_instance() {
     let sid = rig.sid("tsls");
 
     rig.ed
-        .set_buffer_language_by_name(rig.bid, Some("tsx"), hume_core::ConfigOrigin::User);
+        .set_buffer_language_by_name(rig.bid, Some("tsx"), hume_core::ConfigOrigin::User)
+        .expect_open();
 
     assert_eq!(rig.sid("tsls"), sid);
     assert_eq!(rig.attached(), vec![sid]);

@@ -235,7 +235,7 @@ fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
 
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("definitely-not-seeded");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
 
     type_cmd(&mut ed, ":lsp-install");
 

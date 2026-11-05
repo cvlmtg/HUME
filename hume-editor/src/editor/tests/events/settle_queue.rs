@@ -211,7 +211,7 @@ fn handler_queued_event_drains_within_the_same_settle_call() {
 
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("first");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     let fires: Vec<&str> = ed

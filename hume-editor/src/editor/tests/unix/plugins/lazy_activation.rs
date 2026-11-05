@@ -3,6 +3,7 @@
 use super::*;
 use crate::editor::event::EditorEvent;
 use crate::editor::registry::{MappableCommand, TypedBody};
+use crate::editor::syntax::BufferFate;
 use hume_platform::dirs::Dirs;
 use hume_scripting::PluginStatus;
 
@@ -390,30 +391,9 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
     );
 }
 
-/// A lazily-activated `#:languages` plugin body that itself calls
-/// `set-buffer-option!`'s `"language"` on the very buffer whose language-set triggered
-/// its own activation: the nested call (applied inline, before activation
-/// returns) must win. The outer `set_buffer_language` call must detect the
-/// buffer no longer holds the value it's about to fire `OnLanguageSet` for,
-/// and bail out rather than enqueue a second, stale hook.
-#[test]
-fn set_buffer_language_reentrant_activation_uses_final_value() {
-    let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
-        r#"(set-buffer-option! (car (buffers)) "language" "python")"#,
-    );
-    let bid = ed.focused_buffer_id();
-
-    let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
-
-    assert_eq!(
-        ed.state.buffers.get(bid).language,
-        ed.state.config.languages.id_of("python"),
-        "the plugin's own language set-buffer-option! call inside its activation body must win"
-    );
-    let queued_events: Vec<&EditorEvent> = ed
-        .state
+/// The events queued so far, in order.
+fn queued_events(ed: &Editor) -> Vec<&EditorEvent> {
+    ed.state
         .config
         .pending_work
         .iter()
@@ -421,21 +401,108 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
             crate::editor::event::PendingWork::Event(e) => Some(e),
             crate::editor::event::PendingWork::Call { .. } => None,
         })
+        .collect()
+}
+
+/// A `#:languages` plugin that sets the language of the buffer whose
+/// language activated it: both languages are announced, in the order the
+/// buffer took them, and the buffer ends on the plugin's.
+#[test]
+fn a_plugin_that_changes_the_language_while_activating_announces_both_in_order() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
+        r#"(set-buffer-option! (car (buffers)) "language" "python")"#,
+    );
+    let bid = ed.focused_buffer_id();
+
+    let lang = ed.state.config.languages.intern("rust");
+    assert_eq!(ed.set_buffer_language(bid, Some(lang)), BufferFate::Open);
+
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.config.languages.id_of("python"),
+    );
+    let announced: Vec<_> = queued_events(&ed)
+        .into_iter()
+        .map(|e| match e {
+            EditorEvent::OnLanguageSet { language, .. } => language.clone(),
+            other => panic!("only language changes were queued, got {other:?}"),
+        })
         .collect();
     assert_eq!(
-        queued_events.len(),
-        1,
-        "exactly one OnLanguageSet hook must be queued, not a stale duplicate; got: {queued_events:?}"
+        announced,
+        [Some("rust".to_owned()), Some("python".to_owned())]
     );
-    assert!(
-        matches!(
-            queued_events[0],
-            EditorEvent::OnLanguageSet { language, .. } if language.as_deref() == Some("python")
-        ),
-        "the queued OnLanguageSet hook must carry the final ('python') value, not the stale \
-         ('rust') one that triggered activation; got: {:?}",
-        queued_events[0]
+}
+
+/// A `#:languages` plugin may close the buffer whose language activated it.
+#[test]
+fn a_plugin_may_close_the_buffer_whose_language_activated_it() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
+        "(close-buffer! (focused-pane))",
     );
+    let bid = ed.focused_buffer_id();
+
+    let lang = ed.state.config.languages.intern("rust");
+    assert_eq!(ed.set_buffer_language(bid, Some(lang)), BufferFate::Closed);
+    assert!(ed.state.buffers.try_get(bid).is_none());
+}
+
+/// A buffer whose open is announced after its language is detected, and
+/// which the plugin that language activates closes, announces neither its
+/// open nor its close.
+#[test]
+fn a_buffer_closed_by_the_plugin_its_language_activates_announces_nothing() {
+    let (mut ed, dir) = setup_lazy_editor(
+        r#"(%define-language! "rust" '("rs") '() '())
+           (declare-plugin! "user/tp" #:languages '("rust"))"#,
+        "(close-buffer! (focused-pane))",
+    );
+    let file = dir.path().join("main.rs");
+    std::fs::write(&file, "fn main() {}\n").unwrap();
+    let bid = open_path(&mut ed, &file);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.state.config.pending_work.clear();
+
+    ed.detect_pending_languages();
+
+    assert!(ed.state.buffers.try_get(bid).is_none());
+    let announced: Vec<_> = queued_events(&ed)
+        .into_iter()
+        .filter(|e| {
+            matches!(
+                e,
+                EditorEvent::OnBufferOpen { buffer } | EditorEvent::OnBufferClose { buffer }
+                    if *buffer == bid
+            )
+        })
+        .collect();
+    assert!(announced.is_empty(), "{announced:?}");
+}
+
+/// `:e!` that gives a buffer the language of a plugin that closes it ends
+/// without reporting a reload, since the buffer is gone.
+#[test]
+fn a_reload_whose_language_activates_a_plugin_that_closes_the_buffer() {
+    let (mut ed, dir) = setup_lazy_editor(
+        r#"(%define-language! "python" '() '() '("python3"))
+           (declare-plugin! "user/tp" #:languages '("python"))"#,
+        "(close-buffer! (focused-pane))",
+    );
+    let file = dir.path().join("script");
+    std::fs::write(&file, "hello\n").unwrap();
+    let bid = open_path(&mut ed, &file);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.detect_pending_languages();
+    assert!(ed.state.buffers.get(bid).language.is_none());
+    std::fs::write(&file, "#!/usr/bin/env python3\n").unwrap();
+    ed.state.status_msg = None;
+
+    ed.execute_typed("e!", None).expect(":e! reloads the file");
+
+    assert!(ed.state.buffers.try_get(bid).is_none());
+    assert!(!status(&ed).contains("Reloaded"), "{}", status(&ed));
 }
 
 /// Body-error path: if the plugin body raises an error, the state becomes

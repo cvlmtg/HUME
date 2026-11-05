@@ -620,7 +620,8 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
         FocusedPane::current(&ed.view),
         ReplaceSource::Dump(BufferText::from("hi\n")),
     )
-    .expect("the buffer is not held");
+    .expect("the buffer is not held")
+    .expect_open();
 
     ed.settle();
     assert!(ed.state.input.buffer_completion().is_none());

@@ -116,7 +116,7 @@ fn markdown_editor_with_rust_queries(
 
     ed.scripting = Some(ScriptingHost::for_testing(dirs));
     let lang = ed.state.config.languages.intern("markdown");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.reparse_stale_buffers(); // drains the initial full parse
     (ed, bid)
 }

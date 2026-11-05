@@ -390,7 +390,7 @@ impl Drop for ThreadedParseBackend {
 /// Gated behind `test-util` (not just `#[cfg(test)]`): `hume-editor`'s own test
 /// suite constructs this across the crate boundary, so crate-local `cfg(test)`
 /// alone isn't enough, same reasoning as `LanguageRegistry::register_identity`
-/// in `registry.rs`. Never constructed in production: `Editor::open` always
+/// in `registry.rs`. Never constructed in production: `Editor::bootstrap` always
 /// builds `ThreadedParseBackend` directly.
 #[cfg(any(test, feature = "test-util"))]
 pub struct InlineParseBackend {

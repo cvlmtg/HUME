@@ -271,10 +271,13 @@ impl Editor {
         editor.set_config_source(config);
         editor.init_scripting(&mut Default::default());
         // Finished after `init_scripting`, so init.scm has set what it reads,
-        // such as `undo-directory`.
-        lifecycle::finish_open(&mut editor.state, startup);
+        // such as `undo-directory`. A plugin its language activated during
+        // `init_scripting` may have closed it.
+        if editor.state.buffers.try_get(startup).is_some() {
+            lifecycle::finish_open(&mut editor.state, startup);
+        }
         if let Some(pos) = first.and_then(|f| f.pos) {
-            editor.queue_startup_position(editor.focused_buffer_id(), pos);
+            editor.queue_startup_position(startup, pos);
         }
         for arg in rest {
             if let (Some(bid), Some(pos)) = (editor.open_extra_file(&arg.path), arg.pos) {
@@ -341,7 +344,9 @@ impl Editor {
     ///
     /// Runs at the end of every `settle()`. Only [`Self::start`] queues, so
     /// the first `settle()` drains the queue and every later one finds it
-    /// empty. A headless run centres against its fixed 80x25 screen.
+    /// empty. A placement for a buffer closed since it was queued (by a
+    /// plugin, during startup or at this settle's drain) is dropped. A
+    /// headless run centres against its fixed 80x25 screen.
     pub(in crate::editor) fn apply_startup_positions(&mut self) {
         let placements = std::mem::take(&mut self.startup_positions);
         if placements.is_empty() {
@@ -352,6 +357,9 @@ impl Editor {
         let pid = self.view.focused_pane();
         let mut center_focused = false;
         for (bid, pos) in placements {
+            if self.state.buffers.try_get(bid).is_none() {
+                continue;
+            }
             crate::editor::pane_state::park_cursor_at(
                 &mut self.state.panes.entries,
                 &self.state.buffers,

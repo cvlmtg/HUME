@@ -8,6 +8,7 @@ use crate::editor::buffer::{Buffer, BufferFile, ViewLabel};
 use crate::editor::commands::FocusedPane;
 use crate::editor::event::EditorEvent;
 use crate::editor::pipe_run::PipeRunning;
+use crate::editor::syntax::BufferFate;
 
 use super::lifecycle;
 use crate::editor::{Editor, EditorState};
@@ -151,11 +152,13 @@ impl Editor {
     /// (`PositionStores::forget_content`).
     ///
     /// `Err`, with nothing changed, while a pipe runs in the buffer.
+    /// [`BufferFate::Closed`] when a plugin the reloaded text's language
+    /// activated closed the buffer.
     pub(in crate::editor) fn reload_buffer_in_place(
         &mut self,
         fp: FocusedPane,
         source: ReplaceSource,
-    ) -> Result<(), PipeRunning> {
+    ) -> Result<BufferFate, PipeRunning> {
         let id = fp.bid(&self.view);
         if self.state.buffers.get(id).is_busy() {
             return Err(PipeRunning(id));
@@ -197,7 +200,9 @@ impl Editor {
         // (shebang/extension) regardless of `mutated`, re-running setup via
         // `set_buffer_language` itself, and leaves an asserted language as it
         // is.
-        self.detect_and_set_language(id);
+        if self.detect_and_set_language(id) == BufferFate::Closed {
+            return Ok(BufferFate::Closed);
+        }
 
         // Drop stale saved scrolls for the reloaded buffer on every pane:
         // `Pane::show_buffer` clamps the top's line to the buffer's current last
@@ -206,7 +211,7 @@ impl Editor {
         // outright rather than recalling a clamped-but-arbitrary spot.
         // Every pane, active tab or not.
         lifecycle::forget_saved_views(&mut self.view, id);
-        Ok(())
+        Ok(BufferFate::Open)
     }
 
     /// Redirect `fp` to `target` without recording a jump.

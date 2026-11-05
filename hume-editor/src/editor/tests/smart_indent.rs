@@ -37,7 +37,7 @@ fn indent_editor(name: &str, queries: &QueryFiles, source: &str) -> Editor {
     attach_fixture_grammar_with(&mut ed, name, &format!("tree_sitter_{name}"), queries);
     super::language::attach_host(&mut ed, "");
     let lang = ed.state.config.languages.intern(name);
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.reparse_stale_buffers();
     ed
 }
@@ -326,7 +326,7 @@ fn a_grammar_without_an_indents_query_copies_the_indent() {
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     super::language::attach_host(&mut ed, "");
     let lang = ed.state.config.languages.intern("json");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.reparse_stale_buffers();
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
@@ -415,7 +415,7 @@ fn enter_in_a_fenced_block_starts_from_the_fences_indent() {
     }
     ed.scripting = Some(ScriptingHost::for_testing(&Dirs::none()));
     let lang = ed.state.config.languages.intern("markdown");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.reparse_stale_buffers();
 
     // Cursor on the `}` of the fenced `fn f() {}`.

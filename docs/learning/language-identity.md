@@ -67,11 +67,14 @@ directly. Clearing the option removes the language.
 The funnel does five things in order:
 
 1. Writes the new language name to the buffer.
-2. Activates any lazy plugins that listed this language as an activation
+2. Queues the `on-language-set` hook so plugins can react. Queued hooks run
+   at the end of the current event, after the steps below.
+3. Activates any lazy plugins that listed this language as an activation
    entry, so a plugin declared with `#:languages '("rust")` loads its body
-   the first time a buffer becomes Rust.
-3. Queues the `on-language-set` hook so plugins can react. Queued hooks run
-   at the end of the current event, after syntax setup.
+   the first time a buffer becomes Rust. A body may change the buffer's
+   language again, which queues a second hook after the first, so every
+   plugin sees each language the buffer took, in order. A body may also
+   close the buffer, which ends the change there.
 4. Sets up (or tears down) syntax parsing for the new language.
 5. Attaches the buffer to every language server the new language's list
    names, starting any that is not running yet (see [LSP](lsp.md)).

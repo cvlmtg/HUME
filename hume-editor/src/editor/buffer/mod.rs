@@ -247,13 +247,12 @@ pub(crate) struct Buffer {
     pub(in crate::editor) read_only: bool,
     /// The [`TextHold`] keeping the text as it is, if one is alive.
     hold: Weak<()>,
-    /// True from `lifecycle::finish_open`, which every fresh buffer goes
-    /// through, until `Editor::detect_pending_languages` fires this buffer's
-    /// `OnBufferOpen`. Read by `lifecycle::close_buffer_and_notify`: a still-
-    /// pending buffer (opened and closed before that drain ran, e.g. within
-    /// one Steel eval) announced no open, so it must announce no close
+    /// Set once `Editor::detect_pending_languages` queues this buffer's
+    /// `OnBufferOpen`. Read by `lifecycle::close_buffer_and_notify`: a buffer
+    /// closed before then (within the Steel eval that opened it, or by a
+    /// plugin during startup) announced no open, so it announces no close
     /// either.
-    pub(in crate::editor) open_hook_pending: bool,
+    pub(in crate::editor) open_announced: bool,
     /// The buffer's disk state as of the last check, set by
     /// `Editor::check_buffer_disk_state`, cleared to `InSync` by a reload or
     /// a successful write. Always `InSync` for scratch/synthetic buffers,
@@ -343,7 +342,7 @@ impl Buffer {
             syntax: None,
             read_only: false,
             hold: Weak::new(),
-            open_hook_pending: false,
+            open_announced: false,
             disk_state: disk::DiskState::InSync,
             pending_dump: None,
         }

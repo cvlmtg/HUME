@@ -487,7 +487,8 @@ fn doc_box_fences_detail_in_the_buffers_language() {
                         "documentation" (hash "kind" "markdown" "value" "Does foo.")))"#,
     );
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language_explicit(bid, Some(rust), hume_core::ConfigOrigin::User);
+    ed.set_buffer_language_explicit(bid, Some(rust), hume_core::ConfigOrigin::User)
+        .expect_open();
 
     frame(&mut ed, 60, 10);
     let view = ed.state.views.completion_doc.read();

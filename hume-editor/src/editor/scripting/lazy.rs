@@ -93,8 +93,9 @@ impl Editor {
 
     /// Activate every still-`Declared` lazy plugin registered for language `lang`.
     ///
-    /// Called from `set_buffer_language` before `OnLanguageSet` fires so a plugin's
-    /// `register-hook!` handlers are installed in time to run on this very transition.
+    /// Called from `set_buffer_language` after it queues `OnLanguageSet` and
+    /// before that event is dispatched, so a plugin's `register-hook!`
+    /// handlers are installed in time to run on this very transition.
     pub(in crate::editor) fn activate_lazy_language_plugins(&mut self, lang: &str) {
         let pending = match self.scripting.as_ref() {
             Some(host) => {

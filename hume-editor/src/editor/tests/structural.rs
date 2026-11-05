@@ -34,7 +34,7 @@ fn grammar_editor_undrained(name: &str, symbol: &str, source: &str) -> Editor {
     );
     super::language::attach_host(&mut ed, "");
     let lang = ed.state.config.languages.intern(name);
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed
 }
 
@@ -554,7 +554,7 @@ fn inner_argument_with_a_grammar_but_no_textobjects_query_falls_back_to_the_lexi
     super::language::attach_host(&mut ed, "");
     attach_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.reparse_stale_buffers();
 
     for ch in "mia".chars() {

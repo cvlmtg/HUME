@@ -30,7 +30,7 @@ fn rust_buffer() -> (crate::editor::Editor, BufferId) {
     let bid = ed.focused_buffer_id();
     super::language::attach_host(&mut ed, "");
     let rust = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(rust));
+    ed.set_buffer_language(bid, Some(rust)).expect_open();
     (ed, bid)
 }
 

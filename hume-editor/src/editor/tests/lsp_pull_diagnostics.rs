@@ -427,7 +427,7 @@ fn a_config_reload_pulls_again_from_a_server_it_keeps() {
         tmp.path(),
     );
     rig.ed.scripting = Some(host);
-    rig.ed.detect_and_set_language(rig.bid);
+    rig.ed.detect_and_set_language(rig.bid).expect_open();
     rig.ed.resync_config_state(&snapshot);
     settle(&mut rig.ed);
 

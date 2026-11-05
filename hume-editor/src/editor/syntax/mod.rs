@@ -21,17 +21,43 @@ use super::Editor;
 use super::event::EditorEvent;
 use super::host_impl::EditorHostImpl;
 
+/// Whether a buffer is still open after a language change, which runs the
+/// plugins the new language activates; one of them may close it.
+#[must_use = "a plugin the language change activated may have closed the buffer"]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) enum BufferFate {
+    Open,
+    Closed,
+}
+
+#[cfg(test)]
+impl BufferFate {
+    /// Panics unless the buffer is still open, for a test whose language
+    /// change activates no plugin that closes it.
+    pub(in crate::editor) fn expect_open(self) {
+        assert_eq!(
+            self,
+            Self::Open,
+            "a plugin the language change activated closed the buffer"
+        );
+    }
+}
+
 impl Editor {
     /// Set the language identity for buffer `bid`, via plain detection:
     /// records no origin. A buffer whose language a user or script asserted
     /// (`language_by`) never gets here (see `set_buffer_language_explicit`
     /// for the user/script write paths).
-    pub(super) fn set_buffer_language(&mut self, bid: BufferId, new_lang: Option<LanguageId>) {
+    pub(super) fn set_buffer_language(
+        &mut self,
+        bid: BufferId,
+        new_lang: Option<LanguageId>,
+    ) -> BufferFate {
         debug_assert!(
             self.state.buffers.get(bid).language_by.by().is_none(),
             "detection must leave an asserted language alone"
         );
-        self.set_buffer_language_impl(bid, new_lang);
+        self.set_buffer_language_impl(bid, new_lang)
     }
 
     /// A user or script `language` option value from `by`: `None` clears the
@@ -44,9 +70,9 @@ impl Editor {
         bid: BufferId,
         name: Option<&str>,
         by: ConfigOrigin,
-    ) {
+    ) -> BufferFate {
         if !self.claim_language(bid, by) {
-            return;
+            return BufferFate::Open;
         }
         let new_lang = name.map(|name| {
             if self.state.config.languages.defined_id(name).is_none() {
@@ -57,7 +83,7 @@ impl Editor {
             }
             self.state.config.languages.intern(name)
         });
-        self.set_buffer_language_impl(bid, new_lang);
+        self.set_buffer_language_impl(bid, new_lang)
     }
 
     /// Set the language identity for buffer `bid` from a user or script
@@ -71,9 +97,11 @@ impl Editor {
         bid: BufferId,
         new_lang: Option<LanguageId>,
         by: ConfigOrigin,
-    ) {
+    ) -> BufferFate {
         if self.claim_language(bid, by) {
-            self.set_buffer_language_impl(bid, new_lang);
+            self.set_buffer_language_impl(bid, new_lang)
+        } else {
+            BufferFate::Open
         }
     }
 
@@ -98,10 +126,16 @@ impl Editor {
     }
 
     /// No-op when the value is unchanged (avoids spurious hook fires).
-    /// On change: writes `Buffer.language`, fires `OnLanguageSet` with `(bid, name-or-#f)`.
-    fn set_buffer_language_impl(&mut self, bid: BufferId, new_lang: Option<LanguageId>) {
+    /// On change: writes `Buffer.language`, queues `OnLanguageSet` with
+    /// `(bid, name-or-#f)`, then activates the plugins the new language
+    /// declares.
+    fn set_buffer_language_impl(
+        &mut self,
+        bid: BufferId,
+        new_lang: Option<LanguageId>,
+    ) -> BufferFate {
         if self.state.buffers.get(bid).language == new_lang {
-            return;
+            return BufferFate::Open;
         }
         // Bundled data and lazy plugin activation both run through the host;
         // a change made without one would be recorded without either.
@@ -114,30 +148,32 @@ impl Editor {
         if let Some(id) = new_lang {
             self.load_bundled_language(id);
         }
-        // Activate language-matched plugins after the write so handlers are
-        // registered in time for the OnLanguageSet fire below.
-        if let Some(name) = lang_name.as_deref() {
-            self.activate_lazy_language_plugins(name);
-            // A lazy plugin's own body can call `set-buffer-option!`'s `"language"` on
-            // this same buffer (applied inline via `apply_script_effects`
-            // before `activate_lazy_language_plugins` returns); that nested
-            // call already ran this function to completion for the newer
-            // value. Ours is stale: bail out rather than fire a second,
-            // out-of-order `OnLanguageSet` and re-derive syntax/LSP state
-            // for a language the buffer no longer has.
-            if self.state.buffers.get(bid).language != new_lang {
-                return;
-            }
-        }
+        // Queued before the activation below: a plugin that changes this
+        // buffer's language while activating queues its change after this
+        // one, so every language the buffer takes is announced in order. The
+        // hooks fire at dispatch, once every activated plugin has registered
+        // its handlers.
         self.state.queue_event(EditorEvent::OnLanguageSet {
             buffer: bid,
-            language: lang_name,
+            language: lang_name.clone(),
         });
+        if let Some(name) = lang_name.as_deref() {
+            self.activate_lazy_language_plugins(name);
+            // An activated plugin may have closed the buffer, or changed its
+            // language, which already set up syntax and servers for the
+            // newer value.
+            match self.state.buffers.try_get(bid) {
+                None => return BufferFate::Closed,
+                Some(buf) if buf.language != new_lang => return BufferFate::Open,
+                Some(_) => {}
+            }
+        }
         // Wire up (or tear down) tree-sitter highlighting for this buffer.
         self.setup_buffer_syntax(bid);
         // Attach this buffer to the servers its (possibly new, possibly
         // absent) language plans, detaching any it no longer does.
         self.state.lsp_reconcile_buffer(&self.view, bid);
+        BufferFate::Open
     }
 
     /// Read `id`'s bundled data file (`<runtime>/scheme/languages/<name>.scm`)
@@ -169,16 +205,16 @@ impl Editor {
         self.state.config.languages.fill_bundled(id, lang);
     }
 
-    pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {
+    pub(super) fn detect_and_set_language(&mut self, bid: BufferId) -> BufferFate {
         // A view's text is generated, not a file, so nothing in it names a
         // language.
         if self.state.buffers.get(bid).is_synthetic() {
-            return;
+            return BufferFate::Open;
         }
         // A user or script asserted this buffer's language: detection leaves
         // it as it is.
         if self.state.buffers.get(bid).language_by.by().is_some() {
-            return;
+            return BufferFate::Open;
         }
         let detected = {
             let buf = self.state.buffers.get(bid);
@@ -188,11 +224,11 @@ impl Editor {
             });
             detect_language(paths, buf.text().rope(), &self.state.config.languages)
         };
-        self.set_buffer_language(bid, detected);
+        self.set_buffer_language(bid, detected)
     }
 
     /// Detect and set the language for every buffer
-    /// `buffer::lifecycle::open_buffer_and_notify` queued onto
+    /// `buffer::lifecycle::finish_open` queued onto
     /// `state.config.pending_language_detection`. The disjoint-borrow open
     /// chokepoint can't do this inline (see that function's doc). Every pass
     /// of `drain_pending_work` drains it, so a buffer opened by any path is
@@ -203,7 +239,7 @@ impl Editor {
     /// runs after attaching: setting a language needs the host.
     ///
     /// Also fires `OnBufferOpen` for each buffer, after its `OnLanguageSet`
-    /// (queued by `detect_and_set_language` above); `open_buffer_and_notify`
+    /// (queued by `detect_and_set_language` above); `finish_open`
     /// itself doesn't fire it, since both hooks share the FIFO `pending_work`
     /// queue and plugins registering both handlers expect `on-language-set`
     /// to run first.
@@ -231,7 +267,7 @@ impl Editor {
                 .state
                 .buffers
                 .try_get(bid)
-                .is_some_and(|b| b.open_hook_pending)
+                .is_some_and(|b| !b.open_announced)
             {
                 // A `SetBufferLanguage` effect for this same bid, applied
                 // earlier in this same `apply_script_effects` call (e.g.
@@ -239,9 +275,13 @@ impl Editor {
                 // "language" "notes")` in one eval), already stamped
                 // `language_by`, which detection leaves as it is.
                 // `OnBufferOpen` still fires either way: the buffer was
-                // still opened.
-                self.detect_and_set_language(bid);
-                self.state.buffers.get_mut(bid).open_hook_pending = false;
+                // still opened. A buffer that a plugin its language
+                // activated closed announces no open, as
+                // `close_buffer_and_notify` announced no close for it.
+                if self.detect_and_set_language(bid) == BufferFate::Closed {
+                    continue;
+                }
+                self.state.buffers.get_mut(bid).open_announced = true;
                 self.state
                     .queue_event(EditorEvent::OnBufferOpen { buffer: bid });
             }

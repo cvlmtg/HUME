@@ -120,7 +120,8 @@ fn tsx(ed: &Editor) -> LanguageId {
 /// bundled data and activates `#:languages` plugins.
 fn open_as_tsx(ed: &mut Editor) {
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language_by_name(bid, Some("tsx"), hume_core::ConfigOrigin::User);
+    ed.set_buffer_language_by_name(bid, Some("tsx"), hume_core::ConfigOrigin::User)
+        .expect_open();
 }
 
 fn roots(ed: &Editor) -> Vec<String> {
@@ -740,7 +741,7 @@ fn language(ed: &Editor) -> Option<String> {
 fn detect_as_tsx(ed: &mut Editor) {
     let bid = ed.focused_buffer_id();
     let tsx = tsx(ed);
-    ed.set_buffer_language(bid, Some(tsx));
+    ed.set_buffer_language(bid, Some(tsx)).expect_open();
     ed.settle();
 }
 

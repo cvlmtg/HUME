@@ -539,7 +539,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
         "precondition: buffer must be unattached before core:lsp-install activates"
     );
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
 
     let expected_cmd = install_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
     assert_eq!(
@@ -582,7 +582,7 @@ fn language_set_loads_the_registration_entry_and_leaves_the_commands_entry_lazy(
 
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
 
     assert_eq!(status(&ed, &registration), Some(PluginStatus::Loaded));
     assert_eq!(status(&ed, &commands), Some(PluginStatus::Declared));

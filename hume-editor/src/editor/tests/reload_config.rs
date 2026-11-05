@@ -315,7 +315,7 @@ fn reset_clears_stale_buffer_language_ids() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     super::language::attach_host(&mut ed, "");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
 
     assert_eq!(
         ed.state.buffers.get(bid).language,
@@ -768,7 +768,7 @@ fn reload_that_changes_a_kept_filter_fires_lsp_attach_once() {
         tmp.path(),
     );
     ed.scripting = Some(host);
-    ed.detect_and_set_language(bid);
+    ed.detect_and_set_language(bid).expect_open();
 
     ed.resync_config_state(&snapshot);
     ed.settle();
@@ -807,7 +807,7 @@ fn reload_keeps_an_instance_the_new_config_still_plans() {
     );
     ed.scripting = Some(host);
     // `init_scripting`'s post-reload re-detect sweep.
-    ed.detect_and_set_language(bid);
+    ed.detect_and_set_language(bid).expect_open();
     let before = state(&ed);
 
     ed.resync_config_state(&snapshot);

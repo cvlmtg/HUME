@@ -18,7 +18,7 @@ fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
 
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     let log = ed.state.message_log.format_for_display();
@@ -33,10 +33,10 @@ fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
     );
 
     // Revisit the same language later in the session: must not repeat.
-    ed.set_buffer_language(bid, None);
+    ed.set_buffer_language(bid, None).expect_open();
     ed.settle();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
     let log2 = ed.state.message_log.format_for_display();
     assert_eq!(
@@ -56,7 +56,7 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
     // nil (cargo-git stub) is never installable, so the hint must never
     // suggest a command that would fail.
     let lang = ed.state.config.languages.intern("nix");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     let log = ed.state.message_log.format_for_display();
@@ -81,7 +81,7 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
     ed.state.dirs.search_path = Some(empty_path_dir.path().into());
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("systemverilog");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     let log = ed.state.message_log.format_for_display();
@@ -102,7 +102,7 @@ fn discovery_hint_fires_for_cargo_kind() {
     // guaranteed on $PATH since this test suite itself runs under cargo.
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("pest");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     let log = ed.state.message_log.format_for_display();
@@ -128,7 +128,7 @@ fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
     ed.state.dirs.search_path = Some(empty_path_dir.path().into());
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("pest");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     let log = ed.state.message_log.format_for_display();
@@ -149,7 +149,7 @@ fn discovery_hint_does_not_fire_for_download_kind_when_download_tools_missing_fr
     ed.state.dirs.search_path = Some(empty_path_dir.path().into());
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     let log = ed.state.message_log.format_for_display();
@@ -174,7 +174,7 @@ fn discovery_hint_does_not_fire_when_already_registered() {
 
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     let log = ed.state.message_log.format_for_display();
@@ -197,7 +197,7 @@ fn discovery_hint_does_not_fire_when_a_later_default_server_is_installed() {
         load_lsp_install(&mut ed, data_tmp.path());
         let bid = ed.focused_buffer_id();
         let lang = ed.state.config.languages.intern("python");
-        ed.set_buffer_language(bid, Some(lang));
+        ed.set_buffer_language(bid, Some(lang)).expect_open();
         ed.settle();
         ed.state.message_log.format_for_display()
     };

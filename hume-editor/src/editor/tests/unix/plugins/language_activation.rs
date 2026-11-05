@@ -47,7 +47,7 @@ fn language_trigger_activates_on_set() {
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     assert_ne!(
@@ -95,7 +95,7 @@ fn language_trigger_idempotent_on_round_trip() {
     let bid = ed.focused_buffer_id();
 
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang)); // first set: activates
+    ed.set_buffer_language(bid, Some(lang)).expect_open(); // first set: activates
     ed.settle();
     assert!(
         ed.scripting
@@ -108,10 +108,10 @@ fn language_trigger_idempotent_on_round_trip() {
 
     let after_first = state(&ed);
     let lang = ed.state.config.languages.intern("toml");
-    ed.set_buffer_language(bid, Some(lang)); // round-trip out
+    ed.set_buffer_language(bid, Some(lang)).expect_open(); // round-trip out
     ed.settle();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang)); // round-trip back: handler runs, no re-activation
+    ed.set_buffer_language(bid, Some(lang)).expect_open(); // round-trip back: handler runs, no re-activation
     ed.settle();
 
     assert_ne!(
@@ -190,7 +190,7 @@ fn language_trigger_one_to_many_activates_all() {
     };
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
 
     assert!(
         matches!(
@@ -238,7 +238,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
     let bid = ed.focused_buffer_id();
 
     let lang = ed.state.config.languages.intern("toml");
-    ed.set_buffer_language(bid, Some(lang)); // unrelated language
+    ed.set_buffer_language(bid, Some(lang)).expect_open(); // unrelated language
 
     assert!(
         matches!(
@@ -291,7 +291,7 @@ fn language_wildcard_trigger_activates_on_any_language() {
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("toml");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed.settle();
 
     assert_ne!(
@@ -358,7 +358,7 @@ fn language_wildcard_and_specific_entry_coexist() {
     };
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("toml");
-    ed.set_buffer_language(bid, Some(lang));
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
 
     assert!(
         matches!(
@@ -421,5 +421,130 @@ fn command_trigger_logs_trace_on_activation() {
             .entries()
             .map(|e| format!("{:?}: {}", e.severity, e.text))
             .collect::<Vec<_>>()
+    );
+}
+
+/// The editor `hume <args>` starts in a directory holding `files`, with a
+/// `#:languages '("rust")` plugin whose body is `plugin`. The directories
+/// live as long as the returned guard; the files' is first, the cwd.
+fn start_with_rust_plugin(
+    plugin: &str,
+    files: &[(&str, &str)],
+    args: &[&str],
+) -> (Editor, [tempfile::TempDir; 3]) {
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let file_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(
+        hume_config.join("init.scm"),
+        r#"(%define-language! "rust" '("rs") '() '())
+           (declare-plugin! "user/rusty" #:languages '("rust"))"#,
+    )
+    .unwrap();
+    let plugin_dir = data_tmp.path().join("hume/plugins/user/rusty");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), plugin).unwrap();
+    for (name, content) in files {
+        std::fs::write(file_tmp.path().join(name), content).unwrap();
+    }
+    let cwd = AbsolutePath::canonicalize(file_tmp.path()).unwrap();
+    let args: Vec<_> = args
+        .iter()
+        .map(|arg| crate::cli::parse_file_arg(std::path::Path::new(arg), &cwd).unwrap())
+        .collect();
+
+    let ed = Editor::start(
+        &args,
+        crate::editor::Driver::Headless,
+        Dirs {
+            config: Some(hume_config),
+            data: Some(data_tmp.path().join("hume")),
+            ..Dirs::none()
+        },
+        crate::cli::ConfigSource::Default,
+        cwd,
+    )
+    .unwrap();
+    (ed, [file_tmp, config_tmp, data_tmp])
+}
+
+/// A `#:languages` plugin that the file `hume` starts on activates may close
+/// that file while activating: the editor starts on the scratch buffer the
+/// close leaves.
+#[test]
+fn a_plugin_the_startup_file_activates_may_close_it() {
+    let (mut ed, _dirs) = start_with_rust_plugin(
+        "(close-buffer! (focused-pane))\n",
+        &[("main.rs", "fn main() {}\n")],
+        &["main.rs"],
+    );
+    let closes: Vec<_> = ed
+        .state
+        .config
+        .pending_work
+        .iter()
+        .filter(|w| {
+            matches!(
+                w,
+                crate::editor::event::PendingWork::Event(
+                    crate::editor::event::EditorEvent::OnBufferClose { .. }
+                )
+            )
+        })
+        .collect();
+    assert!(
+        closes.is_empty(),
+        "the startup buffer never announced its open, so it announces no close: {closes:?}"
+    );
+    ed.settle();
+
+    assert!(ed.doc().path().is_none(), "{:?}", ed.doc().path());
+    assert_eq!(text(&ed), "\n");
+}
+
+/// A command-line file whose plugin closes it before the first settle drops
+/// the position given for it.
+#[test]
+fn a_position_for_a_file_its_plugin_closes_is_dropped() {
+    let (mut ed, _dirs) = start_with_rust_plugin(
+        r#"(for-each (lambda (b) (when (equal? (buffer-name b) "b.rs") (close-buffer! b)))
+                     (buffers))"#,
+        &[("a.txt", "a\n"), ("b.rs", "fn b() {}\n")],
+        &["a.txt", "b.rs:10"],
+    );
+    ed.settle();
+
+    let names: Vec<_> = ed
+        .state
+        .buffers
+        .iter()
+        .map(|(_, b)| b.display_name())
+        .collect();
+    assert_eq!(names, ["a.txt"]);
+}
+
+/// The first command-line file's position goes to that file, not to the
+/// buffer focused once startup is done, and is dropped when a plugin closed
+/// the file.
+#[test]
+fn the_first_files_position_never_lands_on_another_buffer() {
+    let (mut ed, _dirs) = start_with_rust_plugin(
+        r#"(define main (focused-pane))
+           (switch-to-buffer! main (open-buffer! "other.txt"))
+           (close-buffer! main)"#,
+        &[
+            ("main.rs", "fn main() {}\n"),
+            ("other.txt", "1\n2\n3\n4\n5\n6\n7\n"),
+        ],
+        &["main.rs:5"],
+    );
+    ed.settle();
+
+    assert_eq!(ed.doc().display_name(), "other.txt");
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        hume_rope::offset::CharOffset::default()
     );
 }

@@ -58,7 +58,8 @@ impl Editor {
                     // the panicking `get_mut`, so this must check first rather
                     // than let it panic.
                     if !self.effect_buffer_gone("set-buffer-option!", buffer) {
-                        self.set_buffer_language_by_name(buffer, language.as_deref(), origin)
+                        let _ =
+                            self.set_buffer_language_by_name(buffer, language.as_deref(), origin);
                     }
                 }
                 Effect::GrammarSweep(name) => {

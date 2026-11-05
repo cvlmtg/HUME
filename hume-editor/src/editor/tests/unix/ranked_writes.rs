@@ -134,7 +134,8 @@ const LANGUAGES: [&str; 2] = ["la", "lb"];
 
 fn write_buffer_language(ed: &mut Editor, by: ConfigOrigin, label: u8) {
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language_by_name(bid, Some(LANGUAGES[label as usize - 1]), by);
+    ed.set_buffer_language_by_name(bid, Some(LANGUAGES[label as usize - 1]), by)
+        .expect_open();
 }
 
 fn read_buffer_language(ed: &Editor) -> Option<u8> {
@@ -447,10 +448,12 @@ fn a_users_equal_language_write_records_its_origin() {
              (lambda (pane) (set-buffer-option! pane "language" "la")))"#,
     );
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::Plugin);
+    ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::Plugin)
+        .expect_open();
 
     call(&mut ed, "assert-la");
-    ed.set_buffer_language_by_name(bid, Some("lb"), ConfigOrigin::Plugin);
+    ed.set_buffer_language_by_name(bid, Some("lb"), ConfigOrigin::Plugin)
+        .expect_open();
 
     assert_eq!(language_name(&ed).as_deref(), Some("la"));
 }
@@ -468,7 +471,8 @@ fn a_hooks_language_read_back_ignores_a_write_the_editor_will_shadow() {
     let (mut ed, _fixture) = boot("", &[], r#"(load-plugin! "user/tp")"#, PROBING_HOOK);
     let bid = ed.focused_buffer_id();
 
-    ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::User);
+    ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::User)
+        .expect_open();
     ed.settle();
 
     assert_eq!(language_name(&ed).as_deref(), Some("la"));
@@ -502,7 +506,8 @@ fn a_registration_read_back_agrees_with_the_registry_for_every_origin_pair() {
             write_registration(&mut ed, held_by, 1);
             let bid = ed.focused_buffer_id();
 
-            ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::User);
+            ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::User)
+                .expect_open();
             ed.settle();
 
             let stays = winner(held_by, hook_by, OnTie::LaterWins) == 1;
@@ -547,7 +552,8 @@ fn a_server_list_read_back_agrees_with_the_registry_for_every_origin_pair() {
             write_server_list(&mut ed, held_by, 1);
             let bid = ed.focused_buffer_id();
 
-            ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::User);
+            ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::User)
+                .expect_open();
             ed.settle();
 
             let kept = winner(held_by, hook_by, OnTie::LaterWins);

@@ -32,7 +32,7 @@ fn editor_in(src: &str, name: &str, line: &[&str], block: &[(&str, &str)]) -> Ed
         "{outcomes:?}"
     );
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language(bid, Some(id));
+    ed.set_buffer_language(bid, Some(id)).expect_open();
     ed
 }
 
