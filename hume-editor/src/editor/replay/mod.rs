@@ -250,7 +250,7 @@ pub(in crate::editor) fn with_recording_scope<H: AsMut<EditorState>, R>(
 
 /// Dispatches `cmd` as an Insert key's binding, `scope` its own
 /// [`RecordingScope`] (`None` when nothing records it), restoring what it
-/// replaced afterward. Always an explicit count of 1, never extending.
+/// replaced afterward. Always with no count, never extending.
 /// Shared by `handle_insert`'s trie-leaf dispatch and the replay of a
 /// recorded [`Input::Binding`] entry, so a binding re-run on `.` sees the
 /// same context it saw live. Set for the whole dispatch regardless of what
@@ -271,8 +271,8 @@ pub(in crate::editor) fn dispatch_insert_key(
 }
 
 /// Dispatches `cmd` as a key's binding in the command mode prompt, with
-/// [`Running::CommandLineKey`] set for the whole dispatch. Always an
-/// explicit count of 1, never extending.
+/// [`Running::CommandLineKey`] set for the whole dispatch. Always with no
+/// count, never extending.
 pub(in crate::editor) fn dispatch_command_line_key(ed: &mut Editor, cmd: Dispatchable) {
     dispatch_key_binding(ed, Running::CommandLineKey, cmd);
 }
@@ -289,11 +289,12 @@ pub(in crate::editor) fn run_picker_key(
     with_running(ed, Some(Running::PickerKey(run)), f);
 }
 
-/// Dispatches `cmd` at an explicit count of 1, never extending, with
-/// `running` set for the whole dispatch.
+/// Dispatches `cmd` with no count, never extending, with `running` set for
+/// the whole dispatch. Neither Insert mode nor the prompt reads a count
+/// prefix, so `move-down`/`move-up` walk display lines as a bare `j` does.
 fn dispatch_key_binding(ed: &mut Editor, running: Running, cmd: Dispatchable) -> bool {
     let ctx = CmdCtx {
-        count: Count::typed(1),
+        count: Count::UNTYPED,
         extend: false,
     };
     with_running(ed, Some(running), |ed| ed.dispatch(cmd, ctx))

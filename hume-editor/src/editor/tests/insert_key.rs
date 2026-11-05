@@ -108,3 +108,21 @@ fn insert_key_errors_when_not_dispatched_from_a_bound_key() {
     let msg = status(&ed);
     assert!(msg.contains("only from a command bound"), "got: {msg}");
 }
+
+/// A command bound to an Insert key runs with no count, so its `count` is
+/// `0`, as a Normal-mode key press with no count prefix passes.
+#[test]
+fn insert_key_binding_runs_with_no_count() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "count-probe" ""
+             (lambda (pane count) (insert-key! pane (number->string count))))
+           (bind-key! 'insert "ctrl-x" "count-probe")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('x'));
+    assert_eq!(state(&ed), "0-[h]>ello\n");
+}

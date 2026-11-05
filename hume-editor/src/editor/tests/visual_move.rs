@@ -142,6 +142,37 @@ fn visual_move_down_at_bottom_stays_put() {
     );
 }
 
+/// Insert-mode Down walks display lines as `j` does: no count was typed.
+#[test]
+fn insert_mode_down_moves_one_display_line() {
+    let mut ed = visual_test_editor(0);
+    ed.handle_key(key('i'));
+    ed.handle_key(key_down());
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        co(76),
+        "Down: display line 0 → display line 1, col 0 → char 76"
+    );
+    assert_eq!(
+        ed.current_view().primary().selection().sticky_display_col(),
+        Some(sticky_display_line(0))
+    );
+}
+
+/// Insert-mode Up enters the last display line of the previous buffer line,
+/// as `k` does.
+#[test]
+fn insert_mode_up_moves_one_display_line() {
+    let mut ed = visual_test_editor(81); // start of "short"
+    ed.handle_key(key('i'));
+    ed.handle_key(key_up());
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        co(76),
+        "Up: buffer line n+1 → last display line of line n, col 0 → char 76"
+    );
+}
+
 /// The preferred display column is preserved across consecutive j/k presses
 /// and used to find the closest grapheme when the target display line is shorter.
 #[test]
