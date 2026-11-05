@@ -34,7 +34,7 @@ use crate::edits::input_edits_from_changeset;
 use crate::layers::{LayerField, LayerMismatch, LayerShape, SyntaxLayer, first_layer_mismatch};
 use crate::parse_worker::{MAX_INJECTION_DEPTH, ParseDone, ParseOutcome, run_parse};
 use crate::registry::{GrammarBundle, GrammarSnapshot};
-use crate::test_support::{fresh_bid, make_bundle};
+use crate::test_support::make_bundle;
 
 type Langs = Arc<GrammarSnapshot>;
 
@@ -196,7 +196,7 @@ impl Session {
     /// A buffer of `root`'s grammar holding `source`.
     fn open_in(grammars: Grammars, root: Arc<GrammarBundle>, source: &str) -> Self {
         let text = BufferText::from(source);
-        let bid = fresh_bid();
+        let [bid] = hume_core::fresh_ids();
         let (syntax, _full_parse) = Syntax::attach(Arc::clone(&root), bid, &text, &grammars.langs);
         let mut session = Self {
             grammars,

@@ -122,8 +122,7 @@ fn virtual_display_line_resolves_grapheme_scope_and_falls_back_to_virtual_text()
     theme.bake(&registry);
 
     let rope = ropey::Rope::from_str("z\n");
-    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
-    let bid = bids.insert(());
+    let [bid] = hume_core::fresh_ids();
     let mut pane = Pane::new(bid);
     pane.providers
         .add_decoration_source(Box::new(ScopedVirtualLine { scope: hint_scope }));
@@ -208,8 +207,7 @@ fn virtual_display_line_resolves_scopes_from_segments_given_out_of_order() {
     theme.bake(&registry);
 
     let rope = ropey::Rope::from_str("z\n");
-    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
-    let bid = bids.insert(());
+    let [bid] = hume_core::fresh_ids();
     let mut pane = Pane::new(bid);
     pane.providers
         .add_decoration_source(Box::new(UnsortedScopedVirtualLine { scopes }));
@@ -257,8 +255,7 @@ fn render_wrapped_pane_with_virtual_text(
     text: &'static str,
 ) -> Grid {
     let rope = ropey::Rope::from_str("aaaabbbbcccc\nz\n");
-    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
-    let bid = bids.insert(());
+    let [bid] = hume_core::fresh_ids();
 
     let mut pane = Pane::new(bid);
     pane.viewport
@@ -401,8 +398,7 @@ fn after_virtual_line_renders_below_skipped_display_lines() {
 /// tall.
 fn render_pane_with_n_before_lines(top_slot: u16, n: usize, height: u16) -> Grid {
     let rope = ropey::Rope::from_str("x\ny\n");
-    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
-    let bid = bids.insert(());
+    let [bid] = hume_core::fresh_ids();
 
     let mut pane = Pane::new(bid);
     pane.viewport
@@ -500,8 +496,7 @@ impl crate::providers::GutterColumn for ProviderIdReportingGutter {
 #[test]
 fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     let rope = ropey::Rope::from_str("a\n");
-    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
-    let bid = bids.insert(());
+    let [bid] = hume_core::fresh_ids();
     let mut pane = Pane::new(bid);
     pane.providers
         .add_gutter_column(Box::new(ProviderIdReportingGutter));
@@ -550,8 +545,7 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     // for tilde fillers.
     let line: String = "中".repeat(20);
     let rope = ropey::Rope::from_str(&format!("{line}\n{line}\n"));
-    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
-    let bid = bids.insert(());
+    let [bid] = hume_core::fresh_ids();
 
     let mut pane = Pane::new(bid);
 
@@ -583,8 +577,7 @@ fn scrolled_pane_renders_from_top_line_onward() {
     // `viewport.top_line`, not `top_slot` (which only sub-scrolls
     // within a wrapped `top_line`'s own display lines).
     let rope = ropey::Rope::from_str("ab\ncd\n");
-    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
-    let bid = bids.insert(());
+    let [bid] = hume_core::fresh_ids();
 
     let mut pane = Pane::new(bid);
     pane.viewport
@@ -637,8 +630,7 @@ fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
     }
 
     let rope = ropey::Rope::from_str("x\n");
-    let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
-    let bid = bids.insert(());
+    let [bid] = hume_core::fresh_ids();
 
     let mut pane = Pane::new(bid);
     pane.providers.add_gutter_column(Box::new(MarkerGutter));
@@ -816,7 +808,7 @@ fn find_rect_matches_collect_rects_into_for_each_pane() {
     // the tree below). Per `pane_ids`'s own doc, a *fresh* map's first key can
     // coincide with another fresh map's first key, so "unknown" must come
     // from this same call, not a separate one.
-    let [id_a, id_b, id_c, unknown] = pane_ids();
+    let [id_a, id_b, id_c, unknown] = hume_core::fresh_ids();
     // A 3-pane tree: (a | (b / c)), a horizontal split whose right side is
     // itself split vertically.
     let tree = LayoutTree::Split {
@@ -893,7 +885,7 @@ fn column_of_two(top: PaneId, bottom: PaneId) -> LayoutTree {
 
 #[test]
 fn a_new_layout_is_its_pane_alone_and_focused() {
-    let [a] = pane_ids();
+    let [a] = hume_core::fresh_ids();
     let layout = FocusedLayout::new(UnattachedPane::for_test(a));
     assert_eq!(layout.tree(), &LayoutTree::Leaf(a));
     assert_eq!(layout.focused(), a);
@@ -901,7 +893,7 @@ fn a_new_layout_is_its_pane_alone_and_focused() {
 
 #[test]
 fn focus_moves_to_a_leaf() {
-    let [a, b] = pane_ids();
+    let [a, b] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(column_of_two(a, b), a);
 
     layout.focus(b);
@@ -912,7 +904,7 @@ fn focus_moves_to_a_leaf() {
 #[test]
 #[should_panic(expected = "a focus target is a leaf of the tree")]
 fn focus_refuses_a_pane_outside_the_tree() {
-    let [a, b, missing] = pane_ids();
+    let [a, b, missing] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(column_of_two(a, b), a);
 
     layout.focus(missing);
@@ -920,7 +912,7 @@ fn focus_refuses_a_pane_outside_the_tree() {
 
 #[test]
 fn next_cycled_pane_follows_leaf_order_and_wraps() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), a);
     assert_eq!(layout.pane_cycled_from_focused(Cycle::Next), Some(b));
 
@@ -931,7 +923,7 @@ fn next_cycled_pane_follows_leaf_order_and_wraps() {
 
 #[test]
 fn prev_cycled_pane_follows_reverse_leaf_order_and_wraps() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), c);
     assert_eq!(layout.pane_cycled_from_focused(Cycle::Prev), Some(b));
 
@@ -942,7 +934,7 @@ fn prev_cycled_pane_follows_reverse_leaf_order_and_wraps() {
 
 #[test]
 fn cycled_pane_is_none_for_a_sole_pane() {
-    let [a] = pane_ids();
+    let [a] = hume_core::fresh_ids();
     let layout = FocusedLayout::new(UnattachedPane::for_test(a));
     assert_eq!(layout.pane_cycled_from_focused(Cycle::Next), None);
     assert_eq!(layout.pane_cycled_from_focused(Cycle::Prev), None);
@@ -954,7 +946,7 @@ fn cycled_pane_is_none_for_a_sole_pane() {
 /// panes' top rows instead (0 for `b`, 15 for `c`) would pick `b`.
 #[test]
 fn focused_neighbor_tie_breaks_on_center_distance() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let tree = split(
         Direction::Horizontal,
         0.5,
@@ -986,7 +978,7 @@ fn a_focus_key_from_another_view_is_refused() {
 
 #[test]
 fn split_focused_adds_the_pane_beside_the_focus_and_keeps_focus() {
-    let [a, b] = pane_ids();
+    let [a, b] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
 
     let new_pane = layout.split_focused(UnattachedPane::for_test(b), Direction::Vertical);
@@ -998,7 +990,7 @@ fn split_focused_adds_the_pane_beside_the_focus_and_keeps_focus() {
 
 #[test]
 fn rotate_forward_moves_each_pane_one_place_along_its_row() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), b);
     let area = rect(0, 0, 100, 50);
     let mut before = Vec::new();
@@ -1016,7 +1008,7 @@ fn rotate_forward_moves_each_pane_one_place_along_its_row() {
 
 #[test]
 fn rotate_backward_moves_each_pane_one_place_back_along_its_row() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), b);
     assert_eq!(layout.rotate_focused(Rotation::Backward, 1), Ok(()));
     assert_eq!(layout.tree(), &row_of_three(b, c, a));
@@ -1024,7 +1016,7 @@ fn rotate_backward_moves_each_pane_one_place_back_along_its_row() {
 
 #[test]
 fn rotate_by_a_count_moves_each_pane_that_many_places() {
-    let [a, b, c, d] = pane_ids();
+    let [a, b, c, d] = hume_core::fresh_ids();
     let mut forward = FocusedLayout::from_parts(row_of_four(a, b, c, d), a);
     assert_eq!(forward.rotate_focused(Rotation::Forward, 2), Ok(()));
     assert_eq!(forward.tree(), &row_of_four(c, d, a, b));
@@ -1036,7 +1028,7 @@ fn rotate_by_a_count_moves_each_pane_that_many_places() {
 
 #[test]
 fn rotate_by_the_member_count_leaves_the_row_unchanged() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), a);
     assert_eq!(layout.rotate_focused(Rotation::Forward, 3), Ok(()));
     assert_eq!(layout.tree(), &row_of_three(a, b, c));
@@ -1044,7 +1036,7 @@ fn rotate_by_the_member_count_leaves_the_row_unchanged() {
 
 #[test]
 fn rotate_treats_a_left_nested_chain_as_one_row() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let left_nested = |x, y, z| {
         split(
             Direction::Horizontal,
@@ -1067,7 +1059,7 @@ fn rotate_treats_a_left_nested_chain_as_one_row() {
 
 #[test]
 fn rotate_moves_a_perpendicular_split_as_one_member() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(
         split(
             Direction::Horizontal,
@@ -1093,7 +1085,7 @@ fn rotate_moves_a_perpendicular_split_as_one_member() {
 
 #[test]
 fn rotate_inside_a_perpendicular_split_rotates_only_that_column() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(
         split(
             Direction::Horizontal,
@@ -1119,7 +1111,7 @@ fn rotate_inside_a_perpendicular_split_rotates_only_that_column() {
 
 #[test]
 fn rotate_two_levels_below_a_perpendicular_split_rotates_only_the_innermost_row() {
-    let [a, b, c, d] = pane_ids();
+    let [a, b, c, d] = hume_core::fresh_ids();
     let nested = |x, y| {
         split(
             Direction::Horizontal,
@@ -1147,7 +1139,7 @@ fn rotate_two_levels_below_a_perpendicular_split_rotates_only_the_innermost_row(
 
 #[test]
 fn rotate_refuses_a_sole_pane() {
-    let [a] = pane_ids();
+    let [a] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
     assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Err(SinglePane));
     assert_eq!(layout.tree(), &LayoutTree::Leaf(a));
@@ -1182,7 +1174,7 @@ fn collect_seams_one_split_yields_one_seam() {
 
 #[test]
 fn collect_seams_nested_splits_yield_one_seam_per_split_node() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let tree = LayoutTree::Split {
         direction: Direction::Horizontal,
         ratio: 0.5,
@@ -1294,13 +1286,6 @@ fn focused_pane_corners_at_screen_origin_drops_origin_corners() {
     assert_eq!(corners[3], Some((10, 10)), "bottom-right");
 }
 
-/// `PaneId::default()` is the slotmap null key: every default is equal,
-/// so tests that assert on distinct ids mint real ones off a throwaway map.
-fn pane_ids<const N: usize>() -> [PaneId; N] {
-    let mut sm: SlotMap<PaneId, ()> = SlotMap::with_key();
-    std::array::from_fn(|_| sm.insert(()))
-}
-
 // ── junction_glyph ───────────────────────────────────────────────────
 
 #[test]
@@ -1346,7 +1331,7 @@ fn collect_seam_arms_t_junction() {
     // split_rect_vertical_half); the nested horizontal split of the
     // 100x50 bottom half lands its vertical seam at column 49 (see
     // split_rect_horizontal_half applied to a 100-wide area).
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let tree = LayoutTree::Split {
         direction: Direction::Vertical,
         ratio: 0.5,
@@ -1375,7 +1360,7 @@ fn collect_seam_arms_cross_junction() {
     // (A|D) over (B|C), both rows split at the same ratio so their
     // vertical seams land in the same column (49). The horizontal seam
     // between the rows is sandwiched by both, producing a full cross.
-    let [a, b, c, d] = pane_ids();
+    let [a, b, c, d] = hume_core::fresh_ids();
     let tree = LayoutTree::Split {
         direction: Direction::Vertical,
         ratio: 0.5,
@@ -1408,7 +1393,7 @@ fn junction_glyph_at_t_and_cross_scenarios_matches_collect_seam_arms() {
     // Integration check bridging the two unit-tested pieces: feed real
     // arms-map output through `junction_glyph` and confirm the resolved
     // glyphs match what a human reading the layout would expect.
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let t_tree = LayoutTree::Split {
         direction: Direction::Vertical,
         ratio: 0.5,
@@ -1433,7 +1418,7 @@ fn junction_glyph_at_t_and_cross_scenarios_matches_collect_seam_arms() {
 
 #[test]
 fn split_focused_on_a_nested_leaf() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(
         split(
             Direction::Horizontal,
@@ -1468,7 +1453,7 @@ fn split_focused_on_a_nested_leaf() {
 
 #[test]
 fn split_focused_twice_gives_equal_thirds() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
     layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
     layout.split_focused(UnattachedPane::for_test(c), Direction::Horizontal);
@@ -1509,7 +1494,7 @@ fn split_focused_twice_gives_equal_thirds() {
 
 #[test]
 fn split_focused_counts_perpendicular_subtree_as_one_share() {
-    let [a, b, c, d] = pane_ids();
+    let [a, b, c, d] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(
         split(
             Direction::Horizontal,
@@ -1539,7 +1524,7 @@ fn split_focused_counts_perpendicular_subtree_as_one_share() {
 
 #[test]
 fn close_focused_collapses_the_parent_onto_the_sibling() {
-    let [a, b] = pane_ids();
+    let [a, b] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(column_of_two(a, b), a);
     let detached = layout.close_focused().expect("two panes");
     assert_eq!(detached.pane_id(), a);
@@ -1549,7 +1534,7 @@ fn close_focused_collapses_the_parent_onto_the_sibling() {
 
 #[test]
 fn close_focused_moves_focus_to_the_promoted_subtree_leftmost_leaf() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(
         split(
             Direction::Horizontal,
@@ -1567,7 +1552,7 @@ fn close_focused_moves_focus_to_the_promoted_subtree_leftmost_leaf() {
 
 #[test]
 fn close_focused_refuses_a_sole_pane() {
-    let [a] = pane_ids();
+    let [a] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
     assert_eq!(layout.close_focused().err(), Some(SinglePane));
     assert_eq!(layout.tree(), &LayoutTree::Leaf(a));
@@ -1576,7 +1561,7 @@ fn close_focused_refuses_a_sole_pane() {
 
 #[test]
 fn close_focused_equalizes_survivors() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
     layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
     let new_pane = layout.split_focused(UnattachedPane::for_test(c), Direction::Horizontal);
@@ -1600,7 +1585,7 @@ fn close_focused_equalizes_survivors() {
 /// levels down is still found.
 #[test]
 fn contains_leaf_finds_a_leaf_at_any_depth() {
-    let [a, b, c, missing] = pane_ids();
+    let [a, b, c, missing] = hume_core::fresh_ids();
     let tree = LayoutTree::Split {
         direction: Direction::Horizontal,
         ratio: 0.5,
@@ -1622,7 +1607,7 @@ fn contains_leaf_finds_a_leaf_at_any_depth() {
 /// every nested leaf, not just the top level.
 #[test]
 fn into_detached_yields_one_token_per_leaf() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let tree = LayoutTree::Split {
         direction: Direction::Horizontal,
         ratio: 0.5,
@@ -1648,7 +1633,7 @@ fn into_detached_yields_one_token_per_leaf() {
 
 #[test]
 fn leaves_collects_every_pane_in_a_split_tree() {
-    let [a, b, c] = pane_ids();
+    let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
     layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
     layout.split_focused(UnattachedPane::for_test(c), Direction::Vertical);
@@ -1662,7 +1647,7 @@ fn leaves_collects_every_pane_in_a_split_tree() {
 
 #[test]
 fn leaves_of_a_sole_leaf_is_just_itself() {
-    let [a] = pane_ids();
+    let [a] = hume_core::fresh_ids();
     let tree = LayoutTree::Leaf(a);
 
     assert_eq!(tree.leaves(), vec![a]);

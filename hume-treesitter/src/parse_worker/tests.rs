@@ -9,7 +9,7 @@ use hume_platform::wake::{counting_wake, no_op_wake};
 use super::ParseBackend as _;
 use super::{BufferText, ParseOutcome, ParseRequest, ThreadedParseBackend, coalesce_one};
 use crate::registry::{GrammarBundle, GrammarSnapshot};
-use crate::test_support::{empty_langs, fresh_bid};
+use crate::test_support::empty_langs;
 use test_fixtures::require_grammars;
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
@@ -21,7 +21,7 @@ fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
 #[test]
 fn coalesce_one_keeps_higher_gen() {
     require_grammars(&["json"]);
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let bundle = make_bundle("json", "tree_sitter_json");
     let mut batch: FxHashMap<BufferId, ParseRequest> = FxHashMap::default();
 
@@ -96,7 +96,7 @@ fn coalesce_one_keeps_higher_gen() {
 #[test]
 fn coalesce_one_same_gen_different_lang_replaces() {
     require_grammars(&["json", "rust"]);
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let bundle_a = make_bundle("json", "tree_sitter_json");
     let bundle_b = make_bundle("rust", "tree_sitter_rust");
     let mut batch: FxHashMap<BufferId, ParseRequest> = FxHashMap::default();
@@ -176,7 +176,7 @@ fn worker_language_switch_produces_trees_for_both() {
     let json_bundle = make_bundle("json", "tree_sitter_json");
     let rust_bundle = make_bundle("rust", "tree_sitter_rust");
     let mut worker = ThreadedParseBackend::with_waker(no_op_wake());
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
 
     worker.post(ParseRequest {
         bid,
@@ -225,9 +225,10 @@ fn parse_completion_fires_waker() {
     let (wake, rx_wake) = counting_wake();
     let mut worker = ThreadedParseBackend::with_waker(wake);
     let bundle = make_bundle("json", "tree_sitter_json");
+    let [bid] = hume_core::fresh_ids();
 
     worker.post(ParseRequest {
-        bid: fresh_bid(),
+        bid,
         generation: 1,
         bundle,
         text: BufferText::from("{}\n"),
@@ -246,7 +247,7 @@ fn parse_completion_fires_waker() {
 #[test]
 fn coalesce_one_same_gen_newer_snapshot_replaces() {
     require_grammars(&["json"]);
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let bundle = make_bundle("json", "tree_sitter_json");
     let request = |langs: Arc<GrammarSnapshot>| ParseRequest {
         bid,

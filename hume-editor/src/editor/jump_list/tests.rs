@@ -318,18 +318,10 @@ fn entry_in(text: &BufferText, char_pos: usize, bid: BufferId) -> JumpEntry {
     JumpEntry::new(single(text, cursor(text, char_pos)), text, bid)
 }
 
-/// Helper: allocate two distinct real BufferIds via a temporary SlotMap.
-fn two_buffer_ids() -> (BufferId, BufferId) {
-    let mut sm: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();
-    let a = sm.insert(());
-    let b = sm.insert(());
-    (a, b)
-}
-
 /// Cursor decrements by the number of pruned entries that were before it.
 #[test]
 fn prune_buffer_decrements_cursor_by_removed_before_count() {
-    let (bid_a, bid_b) = two_buffer_ids();
+    let [bid_a, bid_b] = hume_core::fresh_ids();
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     // [A:0, B:1, A:2, B:3]  cursor=4 (at present)
     jl.push(entry_for(0, 0, bid_a));
@@ -353,7 +345,7 @@ fn prune_buffer_decrements_cursor_by_removed_before_count() {
 /// the cursor position is unchanged.
 #[test]
 fn prune_buffer_leaves_cursor_unchanged_when_removed_entries_are_after() {
-    let (bid_a, bid_b) = two_buffer_ids();
+    let [bid_a, bid_b] = hume_core::fresh_ids();
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     // [B:0, B:1, A:2, A:3]  cursor=2 (mid-list, pointing at A:2)
     jl.push(entry_for(0, 0, bid_b));
@@ -373,7 +365,7 @@ fn prune_buffer_leaves_cursor_unchanged_when_removed_entries_are_after() {
 /// `saturating_sub` prevents underflow: removing all entries before cursor=0 is a no-op.
 #[test]
 fn prune_buffer_saturating_sub_at_zero_cursor() {
-    let (bid_a, bid_b) = two_buffer_ids();
+    let [bid_a, bid_b] = hume_core::fresh_ids();
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry_for(0, 0, bid_b));
     jl.push(entry_for(1, 1, bid_a));
@@ -392,7 +384,7 @@ fn prune_buffer_saturating_sub_at_zero_cursor() {
 /// When all entries belong to the pruned buffer, list and cursor both become 0.
 #[test]
 fn prune_buffer_all_entries_removed_resets_cursor() {
-    let (bid_a, _bid_b) = two_buffer_ids();
+    let [bid_a] = hume_core::fresh_ids();
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry_for(0, 0, bid_a));
     jl.push(entry_for(1, 1, bid_a));
@@ -418,7 +410,7 @@ fn line_of(text: &str, pos: usize) -> usize {
 /// cached `primary_line`.
 #[test]
 fn translate_in_place_shifts_offset_and_primary_line() {
-    let (bid, _other) = two_buffer_ids();
+    let [bid] = hume_core::fresh_ids();
     let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry_in(&text_pre, 7, bid)); // head=7 sits inside "bbbb" on line 1
@@ -448,7 +440,7 @@ fn translate_in_place_shifts_offset_and_primary_line() {
 /// comes back naming the text it was captured from.
 #[test]
 fn a_pending_entry_is_carried_through_an_edit() {
-    let (bid, _other) = two_buffer_ids();
+    let [bid] = hume_core::fresh_ids();
     let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     let pending = jl.begin_pending(entry_in(&text_pre, 7, bid));
@@ -469,7 +461,7 @@ fn a_pending_entry_is_carried_through_an_edit() {
 /// an inner one leaves the outer one held.
 #[test]
 fn pending_entries_nest() {
-    let (bid, _other) = two_buffer_ids();
+    let [bid] = hume_core::fresh_ids();
     let text = BufferText::from("aaaa\nbbbb");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     let outer = jl.begin_pending(entry_in(&text, 1, bid));
@@ -483,7 +475,7 @@ fn pending_entries_nest() {
 /// against the original.
 #[test]
 fn a_clone_holds_no_pending_entries() {
-    let (bid, _other) = two_buffer_ids();
+    let [bid] = hume_core::fresh_ids();
     let text = BufferText::from("aaaa\nbbbb");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry_in(&text, 6, bid));
@@ -498,7 +490,7 @@ fn a_clone_holds_no_pending_entries() {
 /// A pending entry for a buffer whose text was replaced reads as absent.
 #[test]
 fn a_pending_entry_is_dropped_when_its_buffer_is_pruned() {
-    let (bid, other) = two_buffer_ids();
+    let [bid, other] = hume_core::fresh_ids();
     let text = BufferText::from("aaaa\nbbbb");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     let kept = jl.begin_pending(entry_in(&text, 1, other));
@@ -515,7 +507,7 @@ fn a_pending_entry_is_dropped_when_its_buffer_is_pruned() {
 /// touch entries for the buffer that was actually edited.
 #[test]
 fn translate_in_place_skips_entries_for_other_buffers() {
-    let (edited_bid, other_bid) = two_buffer_ids();
+    let [edited_bid, other_bid] = hume_core::fresh_ids();
     let text_pre = BufferText::from("aaaa\nbbbb");
     let other_text = BufferText::from("aaaa\nbbbb");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
@@ -542,7 +534,7 @@ fn translate_in_place_skips_entries_for_other_buffers() {
 /// already gives sibling panes' cursors.
 #[test]
 fn translate_in_place_collapses_entry_inside_a_full_deletion() {
-    let (bid, _other) = two_buffer_ids();
+    let [bid] = hume_core::fresh_ids();
     let text_pre = BufferText::from("abcdef");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry_in(&text_pre, 1, bid));
@@ -564,7 +556,7 @@ fn translate_in_place_collapses_entry_inside_a_full_deletion() {
 /// the present) to the new length.
 #[test]
 fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
-    let (bid, _other) = two_buffer_ids();
+    let [bid] = hume_core::fresh_ids();
     // line0 = "aaaa\n" [0,5), line1 = "bbbb\n" [5,10), line2 = "cccc" [10,14)
     let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
@@ -601,7 +593,7 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
 /// an edit just created (the case the previous test covers).
 #[test]
 fn translate_in_place_preserves_a_backward_created_duplicate_pair() {
-    let (bid, _other) = two_buffer_ids();
+    let [bid] = hume_core::fresh_ids();
     let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
 
@@ -638,7 +630,7 @@ fn translate_in_place_preserves_a_backward_created_duplicate_pair() {
 /// present" (`cursor == entries.len()`).
 #[test]
 fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
-    let (bid, _other) = two_buffer_ids();
+    let [bid] = hume_core::fresh_ids();
     // line0="aaaa\n"[0,5) line1="bbbb\n"[5,10) line2="cccc\n"[10,15) line3="dddd"[15,19)
     let text_pre = BufferText::from("aaaa\nbbbb\ncccc\ndddd");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
@@ -698,7 +690,7 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
 /// After pruning, backward/forward still work correctly on the remaining entries.
 #[test]
 fn prune_buffer_remaining_entries_navigable() {
-    let (bid_a, bid_b) = two_buffer_ids();
+    let [bid_a, bid_b] = hume_core::fresh_ids();
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry_for(0, 0, bid_b));
     jl.push(entry_for(1, 1, bid_a));

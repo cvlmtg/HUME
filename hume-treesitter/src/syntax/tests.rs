@@ -12,7 +12,7 @@ use super::{InjectionLoader, Syntax};
 use crate::injections::InjectionSites;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParseRequest, ParsedLayers};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
-use crate::test_support::{empty_langs, fixture_markdown, fresh_bid};
+use crate::test_support::{empty_langs, fixture_markdown};
 use test_fixtures::{grammar_query_path, require_grammars};
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
@@ -92,7 +92,7 @@ fn generation(text: &BufferText) -> u64 {
 fn attach_nonempty_text_returns_request_and_sets_in_flight() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let (syn, req) = Syntax::attach(bundle, bid, &BufferText::from("{}\n"), &empty_langs());
     assert!(
         req.is_some(),
@@ -145,7 +145,7 @@ fn attach_sync_parses_immediately_and_produces_real_highlight_spans() {
 fn frame_tick_up_to_date_returns_no_request() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let text = BufferText::from("");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &text, &empty_langs());
     // parsed_gen == the text's generation already: up to date.
@@ -160,7 +160,7 @@ fn frame_tick_up_to_date_returns_no_request() {
 fn frame_tick_dedups_while_in_flight_at_same_gen() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let text = BufferText::from("{}\n");
     let (mut syn, req) = Syntax::attach(Arc::clone(&bundle), bid, &text, &empty_langs());
     assert!(req.is_some());
@@ -177,7 +177,7 @@ fn frame_tick_dedups_while_in_flight_at_same_gen() {
 fn frame_tick_reposts_after_further_edit() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let text = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &text, &empty_langs());
     // The text moves on before the first result arrives.
@@ -194,7 +194,7 @@ fn frame_tick_reposts_after_further_edit() {
 fn frame_tick_prior_present_iff_chain_baked() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -242,7 +242,7 @@ fn frame_tick_prior_present_iff_chain_baked() {
 fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -282,7 +282,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
 fn bake_accepts_a_chain_whose_generations_skip_numbers() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -313,7 +313,7 @@ fn bake_accepts_a_chain_whose_generations_skip_numbers() {
 fn bake_mid_chain_gap_rejected() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -368,7 +368,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
         Arc::clone(&rust),
     )]));
 
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let source = "```rust\nfn main() {}\n```\n";
     let t0 = BufferText::from(source);
     let (mut syn, _req) = Syntax::attach(Arc::clone(&markdown), bid, &t0, &langs);
@@ -460,7 +460,7 @@ fn edited_regions(syn: &Syntax) -> Vec<std::ops::RangeInclusive<usize>> {
 fn bakes_accumulate_edited_bytes_until_an_install_resets_them() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -493,7 +493,7 @@ fn bakes_accumulate_edited_bytes_until_an_install_resets_them() {
 fn a_failed_parse_keeps_the_edited_bytes() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -525,7 +525,7 @@ fn a_failed_parse_keeps_the_edited_bytes() {
 fn install_stale_generation_discarded() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let (mut syn, _req) = Syntax::attach(
         Arc::clone(&bundle),
         bid,
@@ -550,7 +550,7 @@ fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
     require_grammars(&["json"]);
     let old_bundle = make_bundle("json", "tree_sitter_json");
     let new_bundle = make_bundle("json", "tree_sitter_json"); // distinct config_gen
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     // Attach with the NEW bundle (simulating a grammar swap already applied).
     let (mut syn, _req) = Syntax::attach(
         Arc::clone(&new_bundle),
@@ -587,7 +587,7 @@ fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
 fn install_matching_done_clears_in_flight_and_drains_pending() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req0) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     assert!(
@@ -634,7 +634,7 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
 fn install_parse_failed_advances_parsed_gen_only() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let (mut syn, _req) = Syntax::attach(
         Arc::clone(&bundle),
         bid,
@@ -676,7 +676,7 @@ fn install_parse_failed_advances_parsed_gen_only() {
 fn install_recovers_from_a_parse_failed_for_the_same_generation() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let (mut syn, _req) = Syntax::attach(
         Arc::clone(&bundle),
         bid,
@@ -720,7 +720,7 @@ fn install_recovers_from_a_parse_failed_for_the_same_generation() {
 fn baked_then_failed() -> (Arc<GrammarBundle>, BufferId, Syntax, BufferText) {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -793,7 +793,7 @@ fn ensure_current_parses_again_after_a_failed_parse_of_the_same_text() {
 fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     // The first text lands: layers installed, tree_gen == parsed_gen.
@@ -835,7 +835,7 @@ fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers
 fn ensure_current_parses_a_never_parsed_attachment() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let text = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &text, &empty_langs());
 
@@ -867,7 +867,7 @@ fn ensure_current_parses_a_never_parsed_attachment() {
 fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -904,7 +904,7 @@ fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
 fn ensure_current_up_to_date_does_not_reparse() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -940,7 +940,7 @@ fn ensure_current_up_to_date_does_not_reparse() {
 fn ensure_current_reports_a_broken_chain_and_full_reparses() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     syn.install(
@@ -975,7 +975,7 @@ fn ensure_current_reports_a_broken_chain_and_full_reparses() {
 fn install_discards_a_result_for_an_already_installed_generation() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     // Reach the next text synchronously, as a structural command would.
@@ -1118,7 +1118,7 @@ fn an_inline_parse_adds_the_layers_of_what_its_loader_loads() {
 #[test]
 fn installing_a_result_whose_loader_loads_resolves_injections_again() {
     let g = late_rust();
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let text = BufferText::from(FENCED_RUST);
     let (mut syn, request) = Syntax::attach(Arc::clone(&g.markdown), bid, &text, &g.unloaded);
     let request = request.expect("non-empty text posts a parse");
@@ -1159,7 +1159,7 @@ fn reresolving_keeps_the_layers_and_reparses_against_them() {
 #[test]
 fn a_result_resolved_before_a_reresolve_installs_but_is_not_current() {
     let g = late_rust();
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let text = BufferText::from(FENCED_RUST);
     let (mut syn, request) = Syntax::attach(Arc::clone(&g.markdown), bid, &text, &g.unloaded);
     let request = request.expect("non-empty text posts a parse");
@@ -1176,7 +1176,7 @@ fn a_result_resolved_before_a_reresolve_installs_but_is_not_current() {
 #[test]
 fn a_result_resolved_with_an_older_snapshot_keeps_the_layers_of_a_newer_one() {
     let g = late_rust();
-    let bid = fresh_bid();
+    let [bid] = hume_core::fresh_ids();
     let text = BufferText::from(FENCED_RUST);
     let (mut syn, request) = Syntax::attach(Arc::clone(&g.markdown), bid, &text, &g.unloaded);
     let request = request.expect("non-empty text posts a parse");

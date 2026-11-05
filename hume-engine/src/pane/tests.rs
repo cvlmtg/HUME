@@ -87,18 +87,9 @@ fn pane_new_has_no_wrap_override_and_nothing_to_restore() {
 
 // ── show_buffer ─────────────────────────────────────────────────────────
 
-/// Two distinct real (non-null) `BufferId`s. `BufferId::default()` is
-/// slotmap's null key, which `SecondaryMap::insert` ignores, so
-/// `saved_scrolls` (a `SecondaryMap`) needs minted keys for `show_buffer` to
-/// persist anything.
-fn two_buffer_ids() -> (BufferId, BufferId) {
-    let mut sm: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();
-    (sm.insert(()), sm.insert(()))
-}
-
 #[test]
 fn show_buffer_clamps_the_restored_top_line_to_the_buffers_current_last_content_line() {
-    let (bid, other) = two_buffer_ids();
+    let [bid, other] = hume_core::fresh_ids();
     let mut pane = Pane::new(bid);
 
     // Scrolled deep into a buffer that was, at the time, tall.
@@ -115,7 +106,7 @@ fn show_buffer_clamps_the_restored_top_line_to_the_buffers_current_last_content_
 
 #[test]
 fn show_buffer_restores_an_in_range_top_line_untouched() {
-    let (bid, other) = two_buffer_ids();
+    let [bid, other] = hume_core::fresh_ids();
     let mut pane = Pane::new(bid);
 
     pane.viewport

@@ -85,6 +85,8 @@ pub use comment::{
     BlockCommentPair, BlockCommentTokens, CommentTokenError, CommentTokens, LineCommentTokens,
 };
 pub use completion::{AnswerEnd, FirstTab, MatchKind, NamedPrefix};
+#[cfg(any(test, feature = "test-util"))]
+pub use ids::fresh_ids;
 pub use ids::{BufferId, HostToken, PaneHandle, PaneId};
 pub use keymap::BindMode;
 pub use language::{

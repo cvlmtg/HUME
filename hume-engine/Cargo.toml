@@ -19,5 +19,6 @@ rustc-hash.workspace = true
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 
 [dev-dependencies]
+hume-core = { path = "../hume-core", features = ["test-util"] }
 tempfile = "3"
 ropey.workspace = true

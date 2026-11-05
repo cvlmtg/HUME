@@ -1,4 +1,4 @@
-use hume_core::{BufferId, PaneHandle, PaneId};
+use hume_core::{BufferId, PaneHandle};
 use hume_scripting::ServerRef;
 use steel::rvals::SteelVal;
 
@@ -9,7 +9,8 @@ use super::*;
 /// below can tell fields apart if `into_steel_args` ever swaps two of them.
 fn all_variants() -> Vec<EditorEvent> {
     let buffer = BufferId::default();
-    let target = PaneHandle::with_pane(buffer, sample_pane_id());
+    let [pane] = hume_core::fresh_ids();
+    let target = PaneHandle::with_pane(buffer, pane);
     vec![
         EditorEvent::OnBufferOpen { buffer },
         EditorEvent::OnBufferClose { buffer },
@@ -77,14 +78,6 @@ fn sample_server() -> ServerRef {
         id: hume_lsp::backend::ServerId(7),
         name: hume_core::ServerName::parse("rust-analyzer").expect("valid name"),
     }
-}
-
-/// A distinctive, non-default `PaneId` for the pane-carrying variants: a
-/// fresh slotmap allocation, not `PaneId::default()`, so a test comparing
-/// against `PaneHandle::buffer_only`'s `None` pane can't pass by accident.
-fn sample_pane_id() -> PaneId {
-    let mut sm: slotmap::SlotMap<PaneId, ()> = slotmap::SlotMap::with_key();
-    sm.insert(())
 }
 
 /// Every variant, queued or held, has a name, that name is in
@@ -226,7 +219,7 @@ fn text_changed_carries_a_pane_less_handle_and_its_hunks() {
 #[test]
 fn on_buffer_enter_carries_its_pane() {
     let buffer = BufferId::default();
-    let pane = sample_pane_id();
+    let [pane] = hume_core::fresh_ids();
     let target = PaneHandle::with_pane(buffer, pane);
     let event = EditorEvent::OnBufferEnter { target };
     let args = event.into_steel_args();
@@ -239,8 +232,9 @@ fn on_buffer_enter_carries_its_pane() {
 #[test]
 fn on_before_buffer_save_passes_its_target_through() {
     let buffer = BufferId::default();
+    let [pane] = hume_core::fresh_ids();
     for target in [
-        PaneHandle::with_pane(buffer, sample_pane_id()),
+        PaneHandle::with_pane(buffer, pane),
         PaneHandle::buffer_only(buffer),
     ] {
         let args = HeldEvent::OnBeforeBufferSave { target }.into_steel_args();
@@ -323,7 +317,7 @@ fn on_lsp_attach_and_detach_carry_buffer_and_server() {
 #[test]
 fn on_viewport_change_carries_pane_and_line_range() {
     let buffer = BufferId::default();
-    let pane = sample_pane_id();
+    let [pane] = hume_core::fresh_ids();
     let target = PaneHandle::with_pane(buffer, pane);
     let event = EditorEvent::OnViewportChange {
         target,
@@ -349,7 +343,7 @@ fn on_viewport_change_carries_pane_and_line_range() {
 #[test]
 fn on_trigger_char_sends_a_steel_char() {
     let buffer = BufferId::default();
-    let pane = sample_pane_id();
+    let [pane] = hume_core::fresh_ids();
     let target = PaneHandle::with_pane(buffer, pane);
     let event = EditorEvent::OnTriggerChar {
         target,
@@ -368,7 +362,7 @@ fn on_trigger_char_sends_a_steel_char() {
 #[test]
 fn on_completion_accept_item_crosses_as_a_json_handle() {
     let buffer = BufferId::default();
-    let pane = sample_pane_id();
+    let [pane] = hume_core::fresh_ids();
     let target = PaneHandle::with_pane(buffer, pane);
     let item = serde_json::json!({"label": "foo", "kind": 3});
     let event = EditorEvent::OnCompletionAccept {

@@ -4,8 +4,8 @@ version.workspace = true
 edition = "2024"
 
 [features]
-# The comment-token constructors tests spell tokens with, and a grammar
-# source whose files do not exist.
+# The comment-token constructors tests spell tokens with, a grammar source
+# whose files do not exist, and distinct buffer and pane ids.
 test-util = []
 
 [dependencies]

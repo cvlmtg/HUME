@@ -21,7 +21,6 @@ rustc-hash.workspace = true
 hume-core = { path = "../hume-core", features = ["test-util"] }
 hume-treesitter = { path = ".", features = ["test-util"] }
 hume-platform = { path = "../hume-platform", features = ["test-util"] }
-slotmap = "1"
 tempfile = "3"
 test-fixtures = { path = "../test-fixtures" }
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }

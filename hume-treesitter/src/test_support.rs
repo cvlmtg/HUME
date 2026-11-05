@@ -5,9 +5,7 @@
 
 use std::sync::{Arc, LazyLock, Mutex};
 
-use slotmap::SlotMap;
-
-use hume_core::{BufferId, OptionalQuery};
+use hume_core::OptionalQuery;
 use hume_engine::theme::ScopeRegistry;
 
 use crate::grammar::LoadedGrammar;
@@ -75,12 +73,6 @@ pub(crate) fn fixture_markdown() -> Arc<GrammarBundle> {
         &read(&highlights),
         &[(OptionalQuery::Injections, &read(&injections))],
     )
-}
-
-/// A fresh, never-before-seen `BufferId`.
-pub(crate) fn fresh_bid() -> BufferId {
-    let mut sm: SlotMap<BufferId, ()> = SlotMap::with_key();
-    sm.insert(())
 }
 
 /// A snapshot with no grammars, for tests with no injections to resolve.

@@ -6,7 +6,7 @@ use test_fixtures::{require_grammars, require_helix_query};
 use super::*;
 use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
-use crate::test_support::{empty_langs, fresh_bid, make_bundle};
+use crate::test_support::{empty_langs, make_bundle};
 use hume_core::OptionalQuery;
 use hume_editing::changeset::ChangeSetBuilder;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
@@ -686,7 +686,8 @@ fn for_selector_cache_does_not_survive_a_bake() {
         .apply(&original)
         .expect("an insertion applies to its own text");
     syn.record_edit(&hume_editing::edit::TextChange::new(&original, &text, &cs));
-    let _req = syn.frame_tick(fresh_bid(), &text, &empty_langs());
+    let [bid] = hume_core::fresh_ids();
+    let _req = syn.frame_tick(bid, &text, &empty_langs());
 
     let layers = syn.layers().expect("layers installed");
     let after = ObjectSpans::for_selector(layers, &text, sel);

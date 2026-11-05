@@ -64,12 +64,7 @@ fn equal_compares_by_value_through_a_real_steel_eval() {
     let mut steel = steel::steel_vm::engine::Engine::new();
     crate::builtins::register_all(&mut steel);
     let id = BufferId::default();
-    let other = {
-        // A distinct slotmap key: allocate through a fresh slotmap so it
-        // differs from `BufferId::default()`.
-        let mut sm: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();
-        sm.insert(())
-    };
+    let [other] = hume_core::fresh_ids();
     assert_ne!(id, other, "test setup: need two distinct BufferIds");
 
     steel.register_value("a", pane_val(PaneHandle::buffer_only(id)));

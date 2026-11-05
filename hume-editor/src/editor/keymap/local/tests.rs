@@ -2,11 +2,6 @@ use super::*;
 use hume_core::ConfigOrigin;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-fn buffers() -> (BufferId, BufferId) {
-    let mut ids: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();
-    (ids.insert(()), ids.insert(()))
-}
-
 fn global_with(mode: BindMode, keys: &[KeyEvent], command: &'static str) -> Keymap {
     let mut global = Keymap::empty();
     global.bind(mode, keys, command.into(), false, ConfigOrigin::User);
@@ -61,7 +56,7 @@ fn resolved(
 
 #[test]
 fn a_new_keymap_has_no_bindings_of_its_own() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let local = attached_with(buf, BindMode::Normal, &[key!('z')], "zed");
     let global = Keymap::empty();
     assert_eq!(
@@ -76,7 +71,7 @@ fn a_new_keymap_has_no_bindings_of_its_own() {
 
 #[test]
 fn an_attached_binding_hides_the_global_one() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = global_with(BindMode::Normal, &[key!('h')], "move-left");
     let local = attached_with(buf, BindMode::Normal, &[key!('h')], "local-h");
     assert_eq!(
@@ -87,7 +82,7 @@ fn an_attached_binding_hides_the_global_one() {
 
 #[test]
 fn an_attached_binding_hides_a_global_prefix() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = global_with(BindMode::Normal, &[key!('g'), key!('g')], "goto-file-start");
     let local = attached_with(buf, BindMode::Normal, &[key!('g')], "local-g");
     assert_eq!(
@@ -98,7 +93,7 @@ fn an_attached_binding_hides_a_global_prefix() {
 
 #[test]
 fn an_attached_prefix_hides_a_global_binding() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = global_with(BindMode::Normal, &[key!('Z')], "global-z");
     let local = attached_with(buf, BindMode::Normal, &[key!('Z'), key!('a')], "local-za");
     assert_eq!(
@@ -119,7 +114,7 @@ fn an_attached_prefix_hides_a_global_binding() {
 
 #[test]
 fn local_and_global_prefixes_combine() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = global_with(BindMode::Normal, &[key!('G'), key!('G')], "toggle-comment");
     let local = attached_with(buf, BindMode::Normal, &[key!('G'), key!('H')], "heading");
     assert_eq!(
@@ -146,7 +141,7 @@ fn local_and_global_prefixes_combine() {
 
 #[test]
 fn the_newest_attached_keymap_wins() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = Keymap::empty();
     let mut local = LocalKeymaps::default();
     bind(&mut local, "old", BindMode::Normal, &[key!('z')], "old-z");
@@ -161,7 +156,7 @@ fn the_newest_attached_keymap_wins() {
 
 #[test]
 fn attaching_again_keeps_the_keymap_in_place() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = Keymap::empty();
     let mut local = LocalKeymaps::default();
     bind(&mut local, "old", BindMode::Normal, &[key!('z')], "old-z");
@@ -177,7 +172,7 @@ fn attaching_again_keeps_the_keymap_in_place() {
 
 #[test]
 fn attaching_an_unknown_name_changes_nothing_even_after_it_is_bound() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = Keymap::empty();
     let mut local = LocalKeymaps::default();
     assert_eq!(local.attach(buf, "later"), Err(UnknownKeymap));
@@ -196,14 +191,14 @@ fn attaching_an_unknown_name_changes_nothing_even_after_it_is_bound() {
 
 #[test]
 fn detaching_an_unknown_name_is_reported() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let mut local = LocalKeymaps::default();
     assert_eq!(local.detach(buf, "nothing"), Err(UnknownKeymap));
 }
 
 #[test]
 fn detaching_a_keymap_that_is_not_attached_is_fine() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let mut local = LocalKeymaps::default();
     bind(&mut local, "k", BindMode::Normal, &[key!('z')], "zed");
     assert_eq!(local.detach(buf, "k"), Ok(()));
@@ -211,7 +206,7 @@ fn detaching_a_keymap_that_is_not_attached_is_fine() {
 
 #[test]
 fn unbinding_never_creates_a_keymap() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let mut local = LocalKeymaps::default();
     local.unbind("k", BindMode::Normal, &[key!('z')], ConfigOrigin::User);
     assert_eq!(local.attach(buf, "k"), Err(UnknownKeymap));
@@ -219,7 +214,7 @@ fn unbinding_never_creates_a_keymap() {
 
 #[test]
 fn a_plugins_bind_into_a_named_keymap_stays_below_the_users() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = Keymap::empty();
     let mut local = attached_with(buf, BindMode::Normal, &[key!('z')], "user-z");
     local.bind(
@@ -238,7 +233,7 @@ fn a_plugins_bind_into_a_named_keymap_stays_below_the_users() {
 
 #[test]
 fn unbinding_in_a_named_keymap_lets_the_global_binding_apply() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = global_with(BindMode::Normal, &[key!('z')], "global-z");
     let mut local = attached_with(buf, BindMode::Normal, &[key!('z')], "local-z");
     local.unbind("k", BindMode::Normal, &[key!('z')], ConfigOrigin::User);
@@ -250,7 +245,7 @@ fn unbinding_in_a_named_keymap_lets_the_global_binding_apply() {
 
 #[test]
 fn detaching_one_keymap_keeps_the_others() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = global_with(BindMode::Normal, &[key!('z')], "global-z");
     let mut local = LocalKeymaps::default();
     bind(&mut local, "a", BindMode::Normal, &[key!('a')], "local-a");
@@ -270,7 +265,7 @@ fn detaching_one_keymap_keeps_the_others() {
 
 #[test]
 fn a_forgotten_buffer_has_only_the_global_keys() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = global_with(BindMode::Normal, &[key!('z')], "global-z");
     let mut local = attached_with(buf, BindMode::Normal, &[key!('z')], "local-z");
     local.forget_buffer(buf);
@@ -282,7 +277,7 @@ fn a_forgotten_buffer_has_only_the_global_keys() {
 
 #[test]
 fn another_buffer_has_only_the_global_keys() {
-    let (buf, other) = buffers();
+    let [buf, other] = hume_core::fresh_ids();
     let global = global_with(BindMode::Normal, &[key!('z')], "global-z");
     let local = attached_with(buf, BindMode::Normal, &[key!('z')], "local-z");
     assert_eq!(
@@ -293,7 +288,7 @@ fn another_buffer_has_only_the_global_keys() {
 
 #[test]
 fn a_binding_added_after_attaching_applies() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = Keymap::empty();
     let mut local = attached_with(buf, BindMode::Normal, &[key!('a')], "local-a");
     bind(&mut local, "k", BindMode::Normal, &[key!('z')], "local-z");
@@ -305,7 +300,7 @@ fn a_binding_added_after_attaching_applies() {
 
 #[test]
 fn extend_mode_tries_each_keymap_whole_before_the_next() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = global_with(BindMode::Extend, &[key!('o')], "global-extend-o");
     let local = attached_with(buf, BindMode::Normal, &[key!('o')], "local-o");
     let found = local.resolve(&global, buf, BindMode::Extend, &[key!('o')]);
@@ -315,7 +310,7 @@ fn extend_mode_tries_each_keymap_whole_before_the_next() {
 
 #[test]
 fn an_extend_override_wins_over_normal_in_its_own_keymap() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = Keymap::empty();
     let mut local = LocalKeymaps::default();
     bind(&mut local, "k", BindMode::Normal, &[key!('o')], "local-o");
@@ -334,7 +329,7 @@ fn an_extend_override_wins_over_normal_in_its_own_keymap() {
 
 #[test]
 fn normal_mode_ignores_extend_overrides() {
-    let (buf, _) = buffers();
+    let [buf, _] = hume_core::fresh_ids();
     let global = global_with(BindMode::Normal, &[key!('o')], "global-o");
     let local = attached_with(buf, BindMode::Extend, &[key!('o')], "local-extend-o");
     assert_eq!(

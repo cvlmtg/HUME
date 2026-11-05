@@ -1,16 +1,10 @@
 use std::time::SystemTime;
 
-use hume_core::PaneId;
-use slotmap::SlotMap;
+use hume_core::{PaneId, fresh_ids};
 
 use super::super::Side;
 use super::super::tests::{record_edit, selected};
 use super::*;
-
-fn pane_ids<const N: usize>() -> [PaneId; N] {
-    let mut sm: SlotMap<PaneId, ()> = SlotMap::with_key();
-    std::array::from_fn(|_| sm.insert(()))
-}
 
 /// The text a walk of `txns` from `text` lands on, and the selections it
 /// leaves as anchor/head offsets.
@@ -50,7 +44,7 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
-    let [a, b] = pane_ids();
+    let [a, b] = fresh_ids();
     let mut h = History::new();
     let t0 = BufferText::from("abc\n");
     let t1 = record_edit(&mut h, Some(a), &t0, (0, 0), "X", selected(&t0, 0, 2));
@@ -126,7 +120,7 @@ fn restore_keeps_the_redo_choice_and_the_ages() {
 fn restore_leaves_the_last_editor_s_revisions_for_the_first_pane_to_claim() {
     let f = fixture();
     let (mut h, _) = restored(&f);
-    let [_, _, c] = pane_ids();
+    let [_, _, c] = fresh_ids();
 
     assert!(h.selection_points(f.b).is_empty());
     h.claim_restored(c);
@@ -145,7 +139,7 @@ fn restore_leaves_the_last_editor_s_revisions_for_the_first_pane_to_claim() {
 #[test]
 fn restore_gives_the_last_editor_s_revisions_to_a_pane_that_claimed_before() {
     let f = fixture();
-    let [_, _, c] = pane_ids();
+    let [_, _, c] = fresh_ids();
     let text = BufferText::from(f.current.to_string().as_str());
     let mut h = History::new();
     h.claim_restored(c);
@@ -162,7 +156,7 @@ fn owned(h: &History) -> Vec<bool> {
 
 #[test]
 fn snapshot_keeps_the_newest_editor_s_revisions_when_no_pane_made_the_current_one() {
-    let [a] = pane_ids();
+    let [a] = fresh_ids();
     let mut h = History::new();
     let t0 = BufferText::from("abc\n");
     let t1 = record_edit(&mut h, Some(a), &t0, (0, 0), "X", selected(&t0, 0, 2));
@@ -173,7 +167,7 @@ fn snapshot_keeps_the_newest_editor_s_revisions_when_no_pane_made_the_current_on
 
 #[test]
 fn snapshot_keeps_the_newest_editor_s_revisions_at_the_root() {
-    let [a] = pane_ids();
+    let [a] = fresh_ids();
     let mut h = History::new();
     let t0 = BufferText::from("abc\n");
     let t1 = record_edit(&mut h, Some(a), &t0, (0, 0), "X", selected(&t0, 0, 2));

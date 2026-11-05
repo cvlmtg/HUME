@@ -822,7 +822,6 @@ dependencies = [
  "ropey",
  "rustc-hash",
  "serde",
- "slotmap",
  "test-fixtures",
  "unicode-segmentation",
 ]
@@ -996,7 +995,6 @@ dependencies = [
  "proptest",
  "ropey",
  "rustc-hash",
- "slotmap",
  "streaming-iterator",
  "tempfile",
  "test-fixtures",

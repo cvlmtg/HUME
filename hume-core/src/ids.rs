@@ -13,6 +13,14 @@ new_key_type! {
     pub struct PaneId;
 }
 
+/// `N` distinct keys: `K::default()` is slotmap's null key, equal to every
+/// other default, so a test needing distinct ids mints them here.
+#[cfg(any(test, feature = "test-util"))]
+pub fn fresh_ids<K: slotmap::Key, const N: usize>() -> [K; N] {
+    let mut keys = slotmap::SlotMap::<K, ()>::with_key();
+    std::array::from_fn(|_| keys.insert(()))
+}
+
 /// A buffer paired with the pane it was invoked or observed through, if
 /// any: the target a command runs against, and the value hooks, completion
 /// sources and every buffer-taking builtin name a buffer by.
