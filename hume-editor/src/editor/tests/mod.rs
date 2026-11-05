@@ -274,13 +274,14 @@ pub(crate) fn editor_with_read_only_view(content: &str, name: &str) -> Editor {
 }
 
 /// `statusline::tests`' third cross-boundary shape: a buffer with an
-/// explicit path, without handing that suite `Buffer::set_file` itself.
+/// explicit path, without handing that suite `Buffer::set_file_for_test`
+/// itself.
 pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor {
     let text = BufferText::from(content);
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.doc_mut()
-        .set_file(crate::editor::buffer::BufferFile::at(path));
+        .set_file_for_test(crate::editor::buffer::BufferFile::at(path));
     ed
 }
 
@@ -1201,7 +1202,7 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     let (path, tmp_path) = temp_file(file_content);
     let mut ed = editor_from(initial_state);
     ed.doc_mut()
-        .set_file(crate::editor::buffer::BufferFile::on_disk_at(path));
+        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(path));
     (ed, tmp_path)
 }
 
@@ -1730,7 +1731,7 @@ fn popup_lines(n: usize) -> String {
 fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(content);
     let mut buf = Buffer::at_start(BufferText::from(content));
-    buf.set_file(crate::editor::buffer::BufferFile::on_disk_at(path));
+    buf.set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(path));
     (buf, tmp_path)
 }
 

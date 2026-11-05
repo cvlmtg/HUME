@@ -542,9 +542,16 @@ impl Buffer {
 
     /// Bind the buffer to `file`. A view buffer is never bound to one: a
     /// write of it is an export (see `WriteKind::classify`).
-    pub(in crate::editor) fn set_file(&mut self, file: BufferFile) {
+    pub(in crate::editor::buffer) fn set_file(&mut self, file: BufferFile) {
         debug_assert!(!self.is_synthetic(), "a view buffer is bound to a file");
         self.origin = Origin::File(file);
+    }
+
+    /// [`Self::set_file`] for a test that binds a file without the sync
+    /// `Editor::mark_synced` does.
+    #[cfg(test)]
+    pub(in crate::editor) fn set_file_for_test(&mut self, file: BufferFile) {
+        self.set_file(file);
     }
 
     /// The backing file, or `None` for scratch/synthetic buffers.
