@@ -52,14 +52,14 @@ impl CommandRegistry {
         .reg(self);
         ecmd_focused(
             "open-line-below",
-            "Open a new line below the cursor and enter insert mode.",
+            "Open a new line below each selection and enter insert mode.",
             cmd_open_line_below,
         )
         .repeatable()
         .reg(self);
         ecmd_focused(
             "open-line-above",
-            "Open a new line above the cursor and enter insert mode.",
+            "Open a new line above each selection and enter insert mode.",
             cmd_open_line_above,
         )
         .repeatable()

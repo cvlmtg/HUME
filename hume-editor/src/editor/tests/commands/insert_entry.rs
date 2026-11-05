@@ -183,6 +183,32 @@ fn capital_o_then_esc_trims_unused_indent() {
     assert_eq!(state(&ed), "-[\n]>    bar\n");
 }
 
+/// `O` on a selection of several lines opens above the selection's first
+/// line, wherever its head is.
+#[test]
+fn capital_o_on_line_selection_opens_above_its_first_line() {
+    let mut ed = editor_from("foo\n-[b]>ar\nbaz\n");
+    ed.handle_key(key_ctrl('x'));
+    ed.handle_key(key_ctrl('x'));
+    ed.handle_key(key('O'));
+
+    assert_eq!(ed.state.mode(), Mode::Insert);
+    assert_eq!(ed.doc().text().to_string(), "foo\n\nbar\nbaz\n");
+    assert_eq!(state(&ed), "foo\n-[\n]>bar\nbaz\n");
+}
+
+/// `o` on a selection of several lines opens below the selection's last
+/// line, wherever its head is.
+#[test]
+fn o_on_backward_line_selection_opens_below_its_last_line() {
+    let mut ed = editor_from("foo\n<[bar\nbaz\n]-qux\n");
+    ed.handle_key(key('o'));
+
+    assert_eq!(ed.state.mode(), Mode::Insert);
+    assert_eq!(ed.doc().text().to_string(), "foo\nbar\nbaz\n\nqux\n");
+    assert_eq!(state(&ed), "foo\nbar\nbaz\n-[\n]>qux\n");
+}
+
 // ── Insert-entry variants position the cursor correctly ────────────────────
 
 /// `a` collapses to one past the end of the selection and enters Insert mode.

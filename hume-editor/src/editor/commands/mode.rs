@@ -5,9 +5,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use hume_ops::edit::LineBreak;
-use hume_ops::motion::{
-    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_right,
-};
+use hume_ops::motion::{cmd_goto_first_nonblank, cmd_goto_line_end, cmd_move_right};
 use hume_ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 use hume_ops::{LineEnd, MotionMode};
 
@@ -110,8 +108,8 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
     })
 }
 
-/// Open a new line below the cursor and enter insert mode. The line gets
-/// the indent `break_line` computes, as for Enter.
+/// Open a new line below each selection's last line and enter insert mode.
+/// The line gets the indent `break_line` computes, as for Enter.
 ///
 /// `begin_insert_session` opens the edit group so the structural `\n` and
 /// everything typed before Esc form one undo step, the same pattern as
@@ -127,13 +125,13 @@ pub(in crate::editor) fn cmd_open_line_below(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     open_line(state, view, fp, LineBreak::AtCursor, |st| {
-        cmd_goto_line_end(st, 1, MotionMode::Move, LineEnd::LineBreak)
+        st.map(|sel| Selection::cursor(sel.text().lines().newline(sel.lines().end)))
     })
 }
 
-/// Open a new line above the cursor and enter insert mode. The line gets
-/// the indent `break_line` computes for a break above, and the session
-/// ownership rules are those of `cmd_open_line_below`.
+/// Open a new line above each selection's first line and enter insert mode.
+/// The line gets the indent `break_line` computes for a break above, and the
+/// session ownership rules are those of `cmd_open_line_below`.
 pub(in crate::editor) fn cmd_open_line_above(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -142,7 +140,7 @@ pub(in crate::editor) fn cmd_open_line_above(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     open_line(state, view, fp, LineBreak::AboveLine, |st| {
-        cmd_goto_line_start(st, 1, MotionMode::Move)
+        st.map(|sel| Selection::cursor(sel.text().lines().start(sel.lines().start)))
     })
 }
 
