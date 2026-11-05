@@ -137,7 +137,8 @@ pub(crate) fn buffer_display_path(
     }
 }
 
-/// `(buffer-name pane)` → display name (filename or `"*scratch*"`). `pane`'s
+/// `(buffer-name pane)` → display name (filename, or a scratch buffer's
+/// `"*scratch*"`/`"*scratch-N*"`). `pane`'s
 /// buffer liveness is already checked at resolve time (`LiveBuffer`), so a
 /// `None` here would mean the host answered inconsistently with
 /// `buffer_exists`. Never observed, but the trait still returns `Option`,

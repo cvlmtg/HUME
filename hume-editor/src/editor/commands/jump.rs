@@ -4,6 +4,7 @@ use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::{CommandPane, FocusedPane, set_pane_selections};
+use crate::editor::buffer::lifecycle::open_scratch_on;
 use crate::editor::error::CommandError;
 use crate::editor::focus::focus_pane;
 use crate::editor::focus::switch_pane_to_buffer;
@@ -123,6 +124,20 @@ pub(in crate::editor) fn cmd_goto_prev_buffer(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     goto_buffer_in_order(state, view, t, Cycle::Prev);
+    Ok(())
+}
+
+// ── New scratch buffer ───────────────────────────────────────────────────────
+
+/// `buffer-new`: open a new empty scratch buffer in the pane.
+pub(in crate::editor) fn cmd_buffer_new(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: CommandPane,
+    _count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    open_scratch_on(state, view, t);
     Ok(())
 }
 

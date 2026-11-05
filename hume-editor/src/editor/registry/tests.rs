@@ -832,6 +832,7 @@ fn jump_and_visual_move_flags_are_correct() {
         "goto-alternate-buffer",
         "goto-next-buffer",
         "goto-prev-buffer",
+        "buffer-new",
     ];
     for name in buffer_switches {
         assert_eq!(

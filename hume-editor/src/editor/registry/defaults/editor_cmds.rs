@@ -533,6 +533,13 @@ impl CommandRegistry {
         )
         .jump(JumpRule::Selections)
         .reg(self);
+        ecmd_pane(
+            "buffer-new",
+            "Open a new empty scratch buffer.",
+            cmd_buffer_new,
+        )
+        .jump(JumpRule::Selections)
+        .reg(self);
 
         // ── Editor commands — tab pages ─────────────────────────────────────────
         // No `.jump(..)`: switching tabs changes the focused pane itself (a

@@ -278,6 +278,7 @@ Split, focus, and close panes; switch buffers; switch tabs.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
+| `buffer-new` | — | Open a new empty scratch buffer. |
 | `goto-alternate-buffer` | — | Switch to the most-recently-focused other buffer. |
 | `goto-next-buffer` | — | Switch to the next buffer, in the order they were opened. |
 | `goto-next-tab` | `Ctrl-p t` | Switch to the next tab in display order. |

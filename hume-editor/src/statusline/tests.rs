@@ -685,9 +685,15 @@ fn shorten_path_actually_abbreviates_when_too_wide() {
 
 #[test]
 fn statusline_display_path_scratch_buffer_shows_scratch_name() {
-    // test_editor()'s Buffer::new has no path and no label: the scratch case.
+    // test_editor()'s buffer has no path and no label: the scratch case.
     let ed = test_editor();
     assert_eq!(statusline_display_path(&ed.statusline()), "*scratch*");
+}
+
+#[test]
+fn statusline_display_path_names_a_later_scratch_buffer_by_its_number() {
+    let ed = crate::editor::tests::editor_on_a_second_scratch();
+    assert_eq!(statusline_display_path(&ed.statusline()), "*scratch-2*");
 }
 
 #[test]

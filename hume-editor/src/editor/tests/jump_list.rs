@@ -1023,6 +1023,11 @@ fn goto_alternate_buffer_records_every_selection() {
     assert_buffer_switch_records_every_selection("goto-alternate-buffer");
 }
 
+#[test]
+fn buffer_new_records_every_selection() {
+    assert_buffer_switch_records_every_selection("buffer-new");
+}
+
 /// `switch-to-buffer!` records the same entry as a key-bound buffer switch.
 #[test]
 fn switch_to_buffer_records_every_selection() {

@@ -54,10 +54,11 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:b <name>`, `:buffer <name>` | Switch buffer. Accepts a name, a unique filename prefix, a full path, a number from `:ls`, or `#` for the previous buffer (`:b#` and `:b #` both work) |
 | `:bn`, `:bnext` | Next buffer |
 | `:bp`, `:bprev` | Previous buffer |
+| `:n`, `:new` | Open a new empty scratch buffer in the current pane |
 | `:bd`, `:buffer-delete` | Close the buffer. Refuses if there are unsaved changes; closing the last one leaves a scratch buffer |
 | `:bd!` | Close the buffer, discarding unsaved changes |
 
-To switch buffers from a key, bind the editor commands `goto-prev-buffer`, `goto-next-buffer` and `goto-alternate-buffer` in `init.scm`; `core:vim-keybind` binds `goto-alternate-buffer` to `Ctrl-6`.
+To switch buffers from a key, bind the editor commands `goto-prev-buffer`, `goto-next-buffer` and `goto-alternate-buffer` in `init.scm`; `core:vim-keybind` binds `goto-alternate-buffer` to `Ctrl-6`. `buffer-new` opens a new scratch buffer, as `:new` does.
 
 ```scheme
 (bind-key! 'normal "ctrl-h" "goto-prev-buffer")

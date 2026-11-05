@@ -49,7 +49,8 @@ pub enum StatusElement {
     ///
     /// Place this explicitly between elements that need a visual divider.
     Separator,
-    /// The file's basename, or `"*scratch*"` for unnamed buffers.
+    /// The file's basename, or `"*scratch*"`/`"*scratch-N*"` for unnamed
+    /// buffers.
     FileName,
     /// Full path to the focused file, with the home prefix collapsed to `~`.
     ///
@@ -60,7 +61,7 @@ pub enum StatusElement {
     ///
     /// Intended for the `left` section where it has the most available space.
     /// For scratch and synthetic buffers (no path) this falls back to the
-    /// buffer's display name: its label, or `*scratch*`.
+    /// buffer's display name: its label, or the scratch buffer's name.
     FilePath,
     /// Current working directory, with the home prefix replaced by `~`.
     ///

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::io;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
@@ -47,6 +48,7 @@ mod history;
 pub(in crate::editor) mod lifecycle;
 pub(in crate::editor) mod offsets;
 pub(in crate::editor) mod store;
+use store::ScratchNumber;
 mod undo_file;
 use hume_treesitter::layers::SyntaxLayers;
 use hume_treesitter::registry::{LanguageId, LanguageRegistry};
@@ -155,8 +157,8 @@ impl HistoryMark {
 
 /// What a buffer's text belongs to.
 enum Origin {
-    /// Nothing: `*scratch*`.
-    Scratch,
+    /// Nothing: a scratch buffer, named by its number.
+    Scratch(ScratchNumber),
     File(BufferFile),
     /// A read-only view of text the editor or a plugin built, such as
     /// `[messages]`, named by its label in the statusline and `:ls`.
@@ -348,9 +350,6 @@ enum Change<'a> {
 }
 
 impl Buffer {
-    /// Display name used for buffers that have no backing file.
-    pub(in crate::editor) const SCRATCH_BUFFER_NAME: &'static str = "*scratch*";
-
     /// The syntax layers parsed from the buffer's current text; `None` when
     /// it has no syntax or the tree describes an older text.
     pub(in crate::editor) fn current_layers(&self) -> Option<&SyntaxLayers> {
@@ -359,18 +358,10 @@ impl Buffer {
             .and_then(|syn| syn.current_layers(self.text().generation()))
     }
 
-    /// Build the buffer `new` describes, for [`store::BufferStore::open`]. A
-    /// pane showing it starts with a cursor on its first cluster.
-    fn new(new: NewBuffer) -> Self {
-        let (text, origin, pending_dump) = match new {
-            NewBuffer::Scratch(text) => (text, Origin::Scratch, None),
-            NewBuffer::File {
-                text,
-                file,
-                pending_dump,
-            } => (text, Origin::File(file), pending_dump),
-            NewBuffer::View { text, label } => (text, Origin::View(label), None),
-        };
+    /// A buffer holding `text`, for [`store::BufferStore::open`], which
+    /// builds `origin` from the [`NewBuffer`] it was handed. A pane showing it
+    /// starts with a cursor on its first cluster.
+    fn new(text: BufferText, origin: Origin, pending_dump: Option<PathBuf>) -> Self {
         let read_only = matches!(origin, Origin::View(_));
         let history = History::new();
         let saved_revision = Some(history.current_id());
@@ -545,7 +536,7 @@ impl Buffer {
     pub(in crate::editor) fn file(&self) -> Option<&BufferFile> {
         match &self.origin {
             Origin::File(file) => Some(file),
-            Origin::Scratch | Origin::View(_) => None,
+            Origin::Scratch(_) | Origin::View(_) => None,
         }
     }
 
@@ -553,7 +544,7 @@ impl Buffer {
     pub(in crate::editor) fn label(&self) -> Option<&ViewLabel> {
         match &self.origin {
             Origin::View(label) => Some(label),
-            Origin::Scratch | Origin::File(_) => None,
+            Origin::Scratch(_) | Origin::File(_) => None,
         }
     }
 
@@ -574,11 +565,18 @@ impl Buffer {
         SelectionSet::at_text_start(&self.text)
     }
 
+    /// [`Self::display_path`], or [`Self::display_name`] for a buffer with no
+    /// file.
+    pub(crate) fn display_path_or_name(&self) -> Cow<'_, str> {
+        self.display_path()
+            .map_or_else(|| Cow::Owned(self.display_name()), Cow::Borrowed)
+    }
+
     /// The name shown in the UI: label for view buffers, basename for named
-    /// buffers, `*scratch*` for unnamed ones.
+    /// buffers, `*scratch*` or `*scratch-N*` for scratch ones.
     pub(crate) fn display_name(&self) -> String {
         match &self.origin {
-            Origin::Scratch => Self::SCRATCH_BUFFER_NAME.to_owned(),
+            Origin::Scratch(number) => number.to_string(),
             Origin::File(file) => file.file_name().to_string_lossy().into_owned(),
             Origin::View(label) => label.to_string(),
         }

@@ -122,6 +122,14 @@ impl CommandRegistry {
         .jump(JumpRule::Selections)
         .reg(self);
         typed(
+            "new",
+            "Open a new empty scratch buffer.",
+            &["n"],
+            NativeTyped::Bare(typed_new),
+        )
+        .jump(JumpRule::Selections)
+        .reg(self);
+        typed(
             "split",
             "Split the focused pane, stacking the new pane below it.",
             &["sp"],

@@ -53,6 +53,7 @@
 (#%register-global "buffer-lines")
 (#%register-global "buffer-live?")
 (#%register-global "buffer-name")
+(#%register-global "buffer-new")
 (#%register-global "buffer-panes")
 (#%register-global "buffer-path")
 (#%register-global "buffer-revision-diff")

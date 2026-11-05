@@ -284,6 +284,15 @@ pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor 
     )
 }
 
+/// `statusline::tests`' fourth cross-boundary shape: the second scratch
+/// buffer of the session, opened by `:new` and focused.
+pub(crate) fn editor_on_a_second_scratch() -> Editor {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("new", None)
+        .expect(":new opens a scratch buffer");
+    ed
+}
+
 /// Attach the real `markdown` grammar fixture, no injections. Its callers
 /// only check that top-level spans reach a popup, not fenced-code
 /// injection (covered end-to-end for buffers by `injections_editor.rs`).

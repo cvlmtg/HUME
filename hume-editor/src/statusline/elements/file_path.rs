@@ -22,13 +22,12 @@ pub(in crate::statusline) fn render<'a>(
 
 /// Returns the display path for the `FilePath` element: the buffer's
 /// display-ready path string, printed verbatim, falling back to the buffer's
-/// display name (label, or `*scratch*`) for scratch and synthetic buffers.
+/// display name (label, or the scratch buffer's name) for scratch and
+/// synthetic buffers.
 pub(in crate::statusline) fn statusline_display_path<'a>(
     editor: &'a HumeStatusline<'_>,
 ) -> Cow<'a, str> {
-    let doc = editor.doc();
-    doc.display_path()
-        .map_or_else(|| Cow::Owned(doc.display_name()), Cow::Borrowed)
+    editor.doc().display_path_or_name()
 }
 
 /// Shorten `display` (a `~`-collapsed path string) to fit within `max_display_cols`

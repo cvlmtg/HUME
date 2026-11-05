@@ -72,6 +72,17 @@ pub(in crate::editor) fn open_and_notify(
     bid
 }
 
+/// Open a new empty scratch buffer and show it on pane `t`: what `:new`
+/// and `buffer-new` do. Their dispatcher records the jump.
+pub(in crate::editor) fn open_scratch_on(
+    state: &mut EditorState,
+    ev: &mut EngineView,
+    t: CommandPane,
+) {
+    let bid = open_and_notify(ev, state, NewBuffer::Scratch(BufferText::empty()));
+    switch_pane_to_buffer(state, ev, t.pid(), bid);
+}
+
 /// Dedup-open the file `typed` names: if a buffer already has its resolved
 /// path, returns `(existing_id, false)`; otherwise reads the file (or opens
 /// an empty new-file buffer if it doesn't exist yet; see

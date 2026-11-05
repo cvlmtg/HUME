@@ -8,7 +8,7 @@ HUME differs from Vim and Neovim in many ways. This page covers the key differen
 
 `hume file.txt` opens a file, and several names open several buffers. To start on a given line, append it to the name: `hume file.txt:42` (or `file.txt:42:5` for a column) instead of `vim +42 file.txt`. With no file, you get an empty `*scratch*` buffer.
 
-Inside the editor, `:e path` works as in Vim, even on a path that doesn't exist yet: the first `:w` creates the file. Bare `:e` reloads the file from disk, and `:e!` reloads it, discarding your changes.
+Inside the editor, `:e path` works as in Vim, even on a path that doesn't exist yet: the first `:w` creates the file. Bare `:e` reloads the file from disk, and `:e!` reloads it, discarding your changes. `:new` (or `:n`, which is not Vim's `:next`) opens an empty buffer in the current pane, as Vim's `:enew` does.
 
 There is no file explorer, and the fuzzy finder is a plugin. Load `core:pickers` (the [starter config](configuration.md#example-init-scm) already does) and `z f` finds a file, `z b` an open buffer. See [Fuzzy Finder](pickers.md).
 

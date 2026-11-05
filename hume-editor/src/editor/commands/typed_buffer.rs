@@ -195,7 +195,7 @@ pub(in crate::editor) fn typed_buffer_delete(
 /// 1. Numeric 1-based index matching `:ls` output.
 /// 2. Absolute path (after `~`/env-var expansion), resolved via canonicalize
 ///    then looked up in the store.
-/// 3. Exact display-name match (basename or `*scratch*`).
+/// 3. Exact display-name match (basename, `*scratch*` or `*scratch-N*`).
 /// 4. Unique basename prefix.
 pub(in crate::editor) fn typed_buffer(
     ed: &mut Editor,
@@ -221,16 +221,11 @@ fn find_buffer_named(ed: &Editor, typed: &AbsolutePath) -> Option<BufferId> {
 /// Resolve a `:b` argument to a `BufferId`.  See [`typed_buffer`] for the
 /// four-step resolution order.
 fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> {
-    use crate::editor::buffer::Buffer;
-
-    // Label used in ambiguity messages: full path when available, literal
-    // `*scratch*` otherwise. Unambiguous regardless of whether the collision
-    // was on basename or prefix.
-    let label = |buf: &Buffer| -> String {
-        buf.display_path()
-            .map(str::to_owned)
-            .unwrap_or_else(|| Buffer::SCRATCH_BUFFER_NAME.to_owned())
-    };
+    // Label used in ambiguity messages: full path when available, the
+    // display name otherwise, which no other pathless buffer shares.
+    // Unambiguous regardless of whether the collision was on basename or
+    // prefix.
+    let label = |id: BufferId| ed.state.buffers.get(id).display_path_or_name();
 
     // 0. `#`: the alternate buffer (Vim's `<C-^>` equivalent). Resolved by
     //    ID, not by path, so pathless buffers (scratch, [messages],
@@ -280,10 +275,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     match exact.len() {
         1 => return Ok(exact[0]),
         n if n > 1 => {
-            let labels: Vec<String> = exact
-                .iter()
-                .map(|&id| label(ed.state.buffers.get(id)))
-                .collect();
+            let labels: Vec<_> = exact.iter().map(|&id| label(id)).collect();
             return Err(CommandError::transient(format!(
                 "ambiguous buffer name '{arg}': {}",
                 labels.join(", ")
@@ -306,16 +298,19 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
         ))),
         1 => Ok(prefix_matches[0]),
         _ => {
-            let labels: Vec<String> = prefix_matches
-                .iter()
-                .map(|&id| label(ed.state.buffers.get(id)))
-                .collect();
+            let labels: Vec<_> = prefix_matches.iter().map(|&id| label(id)).collect();
             Err(CommandError::transient(format!(
                 "ambiguous prefix '{arg}': {}",
                 labels.join(", ")
             )))
         }
     }
+}
+
+/// `:new` / `:n`: open a new empty scratch buffer in the focused pane.
+pub(in crate::editor) fn typed_new(ed: &mut Editor, fp: FocusedPane) -> Result<(), CommandError> {
+    lifecycle::open_scratch_on(&mut ed.state, &mut ed.view, fp.pane());
+    Ok(())
 }
 
 /// `:bnext` / `:bn`: switch to the next buffer in open-order.

@@ -80,9 +80,11 @@ HUME has one working directory, which `:pwd` shows and `:cd` changes. Relative p
 
 Unsaved changes block closing a buffer or quitting, and so does a running shell command (started with `|`) that closing would stop; `:q!` discards the changes and stops the command. `:qa` quits everything at once. See [Quitting and saving](command-mode.md#quitting-and-saving).
 
-## The scratch buffer
+## Scratch buffers
 
 Launched with no arguments, HUME opens a scratch buffer named `*scratch*`. It has no file, so a bare `:w` fails with "no file name". Give it one with `:w <path>`.
+
+`:new` (or `:n`) opens another empty scratch buffer in the current pane. Each one gets the next number, `*scratch-2*`, `*scratch-3*` and so on, and a number is not used again in the session, even after its buffer is closed or saved to a file.
 
 ## Read-only buffers
 

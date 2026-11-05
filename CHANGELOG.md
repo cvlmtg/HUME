@@ -19,6 +19,9 @@
 - `u` after typing from `i` or `a` brings back the selection you pressed them on, and redo after Insert mode lands where `Esc` left you.
 - Extending by word (`w`, `b`, `Ctrl-w`, `Ctrl-b`) keeps the selection's anchor end in place, for example after `ma(` and `Ctrl-e`.
 
+### Files & buffers
+- New `:new` command (and `buffer-new` editor command) opens an empty scratch buffer. Scratch buffers are numbered: `*scratch*`, `*scratch-2*` and so on.
+
 ### Plugins & scripting
 - New `unregister-sign-source!` gives back a plugin's gutter sign slot on a buffer.
 - `focused-pane` takes `#:in-scope #t`, returning `#f` when the focused buffer is outside the calling plugin's `#:languages`.

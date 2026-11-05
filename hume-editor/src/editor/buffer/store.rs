@@ -6,6 +6,8 @@
 //! always go through the `lifecycle::open_and_notify` /
 //! `lifecycle::close_buffer_and_notify` choke-points.
 
+use std::fmt;
+
 use slotmap::SecondaryMap;
 
 use hume_core::BufferId;
@@ -13,7 +15,7 @@ use hume_editing::hunk::ChangeHunk;
 use hume_engine::pipeline::Cycle;
 use hume_platform::path::AbsolutePath;
 
-use crate::editor::buffer::{Buffer, NewBuffer, SavedSelections, ViewLabel};
+use crate::editor::buffer::{Buffer, NewBuffer, Origin, SavedSelections, ViewLabel};
 use crate::editor::doc_ops::HistoryAdmitted;
 
 /// Who is changing text: the user, through a key, a command or a callback
@@ -24,6 +26,22 @@ use crate::editor::doc_ops::HistoryAdmitted;
 pub(in crate::editor) enum EditOrigin {
     User,
     Background,
+}
+
+/// Which scratch buffer of the session a buffer is, counted from 1. Only
+/// [`BufferStore::open`] mints one, never the same number twice, so no two
+/// scratch buffers share a name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) struct ScratchNumber(u32);
+
+impl fmt::Display for ScratchNumber {
+    /// The buffer's name: `*scratch*` for the first, `*scratch-N*` after.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            1 => f.write_str("*scratch*"),
+            n => write!(f, "*scratch-{n}*"),
+        }
+    }
 }
 
 /// Mirrors the engine's `SlotMap<BufferId, ()>` with the full
@@ -55,6 +73,10 @@ pub(crate) struct BufferStore {
     /// Who the edits made now come from. Background work sets it for its
     /// own extent through `Editor::with_edit_origin`.
     edit_origin: EditOrigin,
+    /// How many scratch buffers this store has made, the last
+    /// [`ScratchNumber`] minted. A closed or saved scratch buffer keeps its
+    /// number used.
+    scratch_count: u32,
 }
 
 impl BufferStore {
@@ -65,6 +87,7 @@ impl BufferStore {
             mru: Vec::new(),
             edit_seq: 0,
             edit_origin: EditOrigin::User,
+            scratch_count: 0,
         }
     }
 
@@ -102,8 +125,23 @@ impl BufferStore {
     /// recent`/`mru_excluding` (`Ctrl-6`, `:b#`, `close`'s replacement
     /// target) would otherwise treat it as the most-recent "other" buffer,
     /// ahead of whatever the user actually last looked at.
+    ///
+    /// A scratch buffer gets the next [`ScratchNumber`] here.
     pub(in crate::editor) fn open(&mut self, id: BufferId, new: NewBuffer) {
-        self.buffers.insert(id, Buffer::new(new));
+        let buffer = match new {
+            NewBuffer::Scratch(text) => {
+                self.scratch_count += 1;
+                let number = ScratchNumber(self.scratch_count);
+                Buffer::new(text, Origin::Scratch(number), None)
+            }
+            NewBuffer::File {
+                text,
+                file,
+                pending_dump,
+            } => Buffer::new(text, Origin::File(file), pending_dump),
+            NewBuffer::View { text, label } => Buffer::new(text, Origin::View(label), None),
+        };
+        self.buffers.insert(id, buffer);
         self.order.push(id);
         self.mru.insert(0, id);
     }
