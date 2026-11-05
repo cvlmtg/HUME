@@ -274,7 +274,12 @@ fn data_dir_dump_path(dir: Option<&Path>, stem: &str, index: usize) -> io::Resul
             "no data directory for scratch dumps",
         )
     })?;
-    std::fs::create_dir_all(dir)?;
+    // The parent is the data directory other features share, so only the
+    // dump folder is made owner-only.
+    if let Some(parent) = dir.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    hume_platform::io::create_private_dir_all(dir)?;
     Ok(dir.join(format!("{stem}-{}-{index}.dump", std::process::id())))
 }
 

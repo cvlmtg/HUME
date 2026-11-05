@@ -681,6 +681,7 @@ mod cd;
 mod column_display_agreement;
 mod command_mode;
 mod completion;
+mod crash_dump;
 mod dot_repeat;
 mod editor_cwd;
 mod file_io;
