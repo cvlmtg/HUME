@@ -204,4 +204,5 @@ callback only while its job still owns its slot, which needs the entry.
 
 That check is reliable, even in a debounce timer or a `spawn-async!` callback that fires
 after the buffer closes, because `on-buffer-close` removes the entry synchronously before
-either can run: a missing entry means the buffer is gone.
+either can run. A missing entry means the plugin does not track the buffer: it closed, or
+its language left the plugin's `#:languages`, which reaches the plugin as the same close.

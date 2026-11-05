@@ -23,8 +23,9 @@
 use std::ops::Range;
 
 use super::{CompletionCtx, CompletionItem};
-use crate::editor::EditorState;
+use crate::editor::buffer::store::BufferStore;
 use hume_core::{BufferId, MatchKind};
+use hume_treesitter::registry::LanguageRegistry;
 
 /// A native minibuffer source that enumerates a stable universe: the
 /// session's own matcher narrows it, and the orchestrator supplies the
@@ -275,15 +276,19 @@ impl SourceRegistry {
         (0..self.buffer.len() as u32).map(BufferSourceId).collect()
     }
 
-    /// The sources of `ids` that act on buffer `bid`
-    /// ([`EditorState::buffer_visible_to`]).
+    /// The sources of `ids` that act on open buffer `bid`
+    /// ([`Buffer::visible_to`](crate::editor::buffer::Buffer::visible_to)).
+    /// Takes the fields it reads rather than `&EditorState`, so a caller can
+    /// hold a completion session borrowed across the call.
     pub(in crate::editor) fn visible_in(
         &self,
         mut ids: Vec<BufferSourceId>,
         bid: BufferId,
-        state: &EditorState,
+        buffers: &BufferStore,
+        languages: &LanguageRegistry,
     ) -> VisibleSources {
-        ids.retain(|&id| state.buffer_visible_to(bid, &self.buffer_get(id).visibility));
+        let buf = buffers.get(bid);
+        ids.retain(|&id| buf.visible_to(languages, &self.buffer_get(id).visibility));
         VisibleSources { buffer: bid, ids }
     }
 }

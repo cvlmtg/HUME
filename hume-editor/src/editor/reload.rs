@@ -113,7 +113,9 @@ impl Editor {
             .iter()
             .filter_map(|(bid, buf)| {
                 let by = buf.language_by.by()?;
-                let name = self.state.language_name(buf).map(str::to_owned);
+                let name = buf
+                    .language_name(&self.state.config.languages)
+                    .map(str::to_owned);
                 Some((bid, ExplicitLanguage { name, by }))
             })
             .collect();

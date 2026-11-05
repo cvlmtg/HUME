@@ -148,7 +148,12 @@ impl EditorState {
             Trigger::Explicit(_) => (self.config.completion_sources.buffer_sources(), true),
             Trigger::Sources(ids) => (ids, false),
         };
-        let visible = self.config.completion_sources.visible_in(ids, bid, self);
+        let visible = self.config.completion_sources.visible_in(
+            ids,
+            bid,
+            &self.buffers,
+            &self.config.languages,
+        );
         if visible.is_empty() {
             if explicit {
                 self.report(Severity::Info, "no completion sources for this buffer");
@@ -231,12 +236,12 @@ impl EditorState {
             Reconciled::Unchanged => {}
             Reconciled::Changed { text_changed } => {
                 if text_changed {
-                    let ids = session.sources_to_reinvoke();
-                    let to_reinvoke = self.config.completion_sources.visible_in(ids, bid, self);
-                    let session = self
-                        .input
-                        .buffer_completion_mut()
-                        .expect("found above and not removed since");
+                    let to_reinvoke = self.config.completion_sources.visible_in(
+                        session.sources_to_reinvoke(),
+                        bid,
+                        &self.buffers,
+                        &self.config.languages,
+                    );
                     let calls = invoke_buffer_sources(
                         &self.config.completion_sources,
                         &self.buffers,

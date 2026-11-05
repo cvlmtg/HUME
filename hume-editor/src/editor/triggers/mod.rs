@@ -83,7 +83,7 @@ impl EditorState {
         let language_table = self
             .buffers
             .try_get(bid)
-            .and_then(|buffer| self.language_name(buffer))
+            .and_then(|buffer| buffer.language_name(&self.config.languages))
             .and_then(|name| self.config.triggers.get(name));
         let mut listeners: Vec<&TriggerListener> = language_table
             .into_iter()

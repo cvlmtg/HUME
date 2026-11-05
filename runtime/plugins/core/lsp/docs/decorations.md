@@ -52,7 +52,7 @@ refreshing them.
 
 ## Refresh path
 
-Two hooks keep every decoration current, and each fetches the diagnostics once and uses
+These hooks keep every decoration current. The first two fetch the diagnostics once and use
 the result for both the decorations and the drawer:
 
 | Hook | Effect |

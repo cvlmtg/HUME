@@ -49,7 +49,7 @@ pub(in crate::editor) mod offsets;
 pub(in crate::editor) mod store;
 mod undo_file;
 use hume_treesitter::layers::SyntaxLayers;
-use hume_treesitter::registry::LanguageId;
+use hume_treesitter::registry::{LanguageId, LanguageRegistry};
 use hume_treesitter::syntax::Syntax;
 
 hume_core::named_enum! {
@@ -1045,6 +1045,21 @@ impl Buffer {
             LineEnding::CrLf => self.text.to_string().replace('\n', "\r\n"),
             LineEnding::Lf => self.text.to_string(),
         }
+    }
+
+    /// The registered name of the buffer's language, `None` for none.
+    pub(crate) fn language_name<'a>(&self, languages: &'a LanguageRegistry) -> Option<&'a str> {
+        self.language.map(|id| languages.name_of(id))
+    }
+
+    /// Whether code of `visibility` acts on this buffer, judged by the
+    /// language it has now.
+    pub(in crate::editor) fn visible_to(
+        &self,
+        languages: &LanguageRegistry,
+        visibility: &hume_scripting::BufferVisibility,
+    ) -> bool {
+        visibility.sees(self.language_name(languages))
     }
 }
 

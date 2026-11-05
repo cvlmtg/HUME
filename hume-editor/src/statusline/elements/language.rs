@@ -11,10 +11,7 @@ impl StatuslineElement for LanguageElement {
     type Data<'a> = Option<&'a str>;
 
     fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
-        editor
-            .doc()
-            .language
-            .map(|id| editor.state.config.languages.name_of(id))
+        editor.doc().language_name(&editor.state.config.languages)
     }
 
     fn format<'a>(lang: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {

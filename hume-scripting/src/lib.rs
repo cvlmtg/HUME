@@ -397,7 +397,7 @@ impl ScriptingHost {
 
     /// Every entry declared with `#:languages`, with its list, in
     /// declaration order.
-    pub fn declared_languages(&self) -> Vec<(attribution::EntryId, std::rc::Rc<[String]>)> {
+    pub fn entries_with_languages(&self) -> Vec<(attribution::EntryId, std::rc::Rc<[String]>)> {
         self.state.registries.lazy_registry.languages.clone()
     }
 

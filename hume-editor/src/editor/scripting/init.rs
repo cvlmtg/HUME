@@ -160,7 +160,7 @@ impl Editor {
         host: hume_scripting::ScriptingHost,
         snapshot: &mut ReloadSnapshot,
     ) {
-        let declared_languages = host.declared_languages();
+        let declared_languages = host.entries_with_languages();
         self.scripting = Some(host);
         // Every language is registered by now, so the startup buffer and
         // the buffers init.scm opened announce `on-language-set` before

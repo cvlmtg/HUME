@@ -120,8 +120,8 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
 }
 
 /// Every event's declared arg count is the one its own `into_steel_args`
-/// produces, it is about a buffer exactly when it names one, and only the
-/// held event is marked held.
+/// produces, it is about a buffer when it names one and only then, and only
+/// the held event is marked held.
 #[test]
 fn every_event_declares_the_args_it_passes_and_its_subject() {
     for event in all_variants() {

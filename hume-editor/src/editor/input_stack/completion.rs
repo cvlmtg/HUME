@@ -298,8 +298,8 @@ impl Editor {
                 .state
                 .buffers
                 .get(bid)
-                .language
-                .map_or("", |id| self.state.config.languages.name_of(id));
+                .language_name(&self.state.config.languages)
+                .unwrap_or("");
             let text = item.doc_box_text(fence_lang);
             let mut loads =
                 GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry);

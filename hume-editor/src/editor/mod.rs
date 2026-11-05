@@ -483,13 +483,8 @@ impl EditorState {
         self.count = hume_core::Count::UNTYPED;
     }
 
-    /// The registered name of `buf`'s language, `None` for none.
-    pub(in crate::editor) fn language_name(&self, buf: &Buffer) -> Option<&str> {
-        buf.language.map(|id| self.config.languages.name_of(id))
-    }
-
-    /// Whether code of `visibility` acts on buffer `bid`, judged by the
-    /// language the buffer has now; `false` for a closed buffer.
+    /// Whether code of `visibility` acts on buffer `bid`
+    /// ([`Buffer::visible_to`]); `false` for a closed buffer.
     pub(in crate::editor) fn buffer_visible_to(
         &self,
         bid: BufferId,
@@ -497,7 +492,7 @@ impl EditorState {
     ) -> bool {
         self.buffers
             .try_get(bid)
-            .is_some_and(|buf| visibility.sees(self.language_name(buf)))
+            .is_some_and(|buf| buf.visible_to(&self.config.languages, visibility))
     }
 
     // ── Mode ──────────────────────────────────────────────────────────────────

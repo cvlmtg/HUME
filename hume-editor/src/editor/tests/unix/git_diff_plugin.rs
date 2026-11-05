@@ -1966,3 +1966,28 @@ fn a_statusline_change_skips_a_focused_buffer_outside_git_diffs_languages() {
     drain_until(&mut ed, |ed| has_branch(ed, main_bid));
     assert!(!has_branch(&ed, notes_bid));
 }
+
+/// Regaining focus neither tracks a pane's buffer outside the languages
+/// `core:git-diff` is declared for nor fetches the branch of a focused one.
+#[test]
+fn focus_gained_skips_buffers_outside_git_diffs_languages() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_with_init(
+        tmp.path(),
+        &format!("{}\n{BRANCH_PLACED}", rust_only_git_diff(None)),
+    );
+    let (_repo, notes) = commit_and_checkout("notes.md", "a\n", "topic");
+    let main = notes.with_file_name("main.rs");
+    std::fs::write(&main, "fn main() {}\n").unwrap();
+    let notes_bid = open(&mut ed, &notes);
+    ed.settle();
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnFocusGained);
+    ed.settle();
+
+    // A Rust buffer's branch fetch, scheduled after any for the notes,
+    // marks when that one would have landed.
+    let main_bid = open(&mut ed, &main);
+    drain_until(&mut ed, |ed| has_branch(ed, main_bid));
+    assert!(!has_branch(&ed, notes_bid));
+}

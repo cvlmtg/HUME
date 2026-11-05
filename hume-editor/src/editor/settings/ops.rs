@@ -196,7 +196,7 @@ pub(in crate::editor) fn intrinsic_text(
 ) -> String {
     match opt {
         BufferIntrinsicOption::Language => {
-            LanguageOptionText::encode(state.language_name(buf)).to_owned()
+            LanguageOptionText::encode(buf.language_name(&state.config.languages)).to_owned()
         }
         BufferIntrinsicOption::LineEnding => buf.text().line_ending().to_text(),
     }
