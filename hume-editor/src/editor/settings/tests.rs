@@ -1178,28 +1178,20 @@ fn all_setting_keys_are_recognized_by_apply_setting() {
     }
 }
 
-// ── Pane-scope chokepoint lint ───────────────────────────────────────────────
+// ── Pane scope ───────────────────────────────────────────────────────────────
 
+/// A key is pane-scoped when, and only when, its `pane:` clause names a
+/// `PaneSetting`, so a `Scope::Pane` written into a `scope:` list by hand
+/// fails here instead of reading as an invalid scope at `:set pane` time.
 #[test]
-fn every_pane_scoped_key_has_a_typed_set_arm() {
-    // `typed_file::typed_set`'s `Scope::Pane` match arm only handles
-    // "wrap-mode" by name and `unreachable!()`s on anything else declared
-    // `scope: [.., Scope::Pane]` here. This test is the forcing function:
-    // add a second pane-scoped key without adding its `typed_set` arm, and
-    // this fails immediately instead of panicking a live editor at `:set`
-    // time.
-    let pane_scoped: Vec<&str> = all_setting_keys()
-        .iter()
-        .copied()
-        .filter(|k| setting_scopes(k).contains(&Scope::Pane))
-        .collect();
-    assert_eq!(
-        pane_scoped,
-        vec!["wrap-mode"],
-        "typed_file::typed_set's Scope::Pane match only has an arm for \
-         \"wrap-mode\", so a new pane-scoped key here needs a matching arm \
-         added there too"
-    );
+fn pane_scope_and_pane_setting_name_the_same_keys() {
+    for key in all_setting_keys() {
+        assert_eq!(
+            setting_scopes(key).contains(&Scope::Pane),
+            pane_setting(key).is_some(),
+            "{key}"
+        );
+    }
 }
 
 /// Scope is a lattice, not a set of alternatives: a pane override is the

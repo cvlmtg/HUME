@@ -16,6 +16,8 @@ use hume_editing::text::LineEnding;
 
 pub(in crate::editor) const SET_SOURCE: &str = "set";
 
+pub(in crate::editor) const GET_SOURCE: &str = "get";
+
 /// Prefix-filter `items` and wrap each into a `CompletionItem`, sorted
 /// alphabetically. A `Delegated` source's own order is what the session's
 /// rank key preserves (see `MatchKind::Delegated`'s doc), so the order is
@@ -203,6 +205,20 @@ pub(super) fn complete_set(
             }
         }
     }
+}
+
+/// Completes `:get <scope> <key>` arguments: [`complete_set`]'s scope and
+/// key phases. `:get` takes no value, so text after a `=` gets no candidates.
+pub(super) fn complete_get(
+    input: &str,
+    cursor: usize,
+    ctx: &CompletionCtx<'_>,
+) -> (Range<usize>, Vec<CompletionItem>) {
+    if arg_prefix(input, cursor).1.contains('=') {
+        let at = cursor.min(input.len());
+        return (at..at, Vec::new());
+    }
+    complete_set(input, cursor, ctx)
 }
 
 #[cfg(test)]

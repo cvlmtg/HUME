@@ -9,7 +9,11 @@ use crate::editor::buffer::lifecycle::{self, CloseBufferRefused};
 use crate::editor::buffer::{Buffer, BufferFile, TextRefusal};
 use crate::editor::error::CommandError;
 use crate::editor::settings::ops as settings_ops;
-use crate::editor::settings::{WRAP_MODE_KEY, parse_setting_text};
+use crate::editor::settings::{
+    PaneSetting, Scope, SettingText, WRAP_MODE_KEY, pane_setting, parse_setting_text,
+    setting_scopes, setting_text,
+};
+use hume_core::{BufferIntrinsicOption, LanguageOptionText};
 
 const STALE_WRITE_MSG: &str = "file has changed on disk (add ! to override)";
 
@@ -207,21 +211,112 @@ pub(in crate::editor) fn typed_toggle_soft_wrap(
 /// What `:set` takes.
 pub(in crate::editor) const SET_USAGE: &str = "global|buffer|pane key=value";
 
+/// What `:get` takes.
+pub(in crate::editor) const GET_USAGE: &str = "global|buffer|pane key";
+
+/// The typed command that names a setting by scope and key.
+#[derive(Clone, Copy)]
+enum SettingCommand {
+    Set,
+    Get,
+}
+
+impl SettingCommand {
+    fn usage_error(self) -> CommandError {
+        let (name, usage) = match self {
+            Self::Set => ("set", SET_USAGE),
+            Self::Get => ("get", GET_USAGE),
+        };
+        CommandError::transient(format!("Usage: :{name} {usage}"))
+    }
+
+    /// The command line that names `key` in buffer scope.
+    fn buffer_form(self, key: &str) -> String {
+        match self {
+            Self::Set => format!(":set buffer {key}=<value>"),
+            Self::Get => format!(":get buffer {key}"),
+        }
+    }
+
+    /// What the command does to a setting, as its errors say it.
+    fn action(self) -> &'static str {
+        match self {
+            Self::Set => "set with :set",
+            Self::Get => "read with :get",
+        }
+    }
+}
+
+/// Where a setting `:set` or `:get` names lives.
+enum SettingTarget {
+    /// An option the buffer stores itself, valid only in buffer scope.
+    Intrinsic(BufferIntrinsicOption),
+    /// A settings-table key's global value.
+    Global,
+    /// A settings-table key's buffer override.
+    Buffer,
+    /// A setting's pane override.
+    Pane(PaneSetting),
+}
+
+/// `arg`'s scope token and the text after it, or `cmd`'s usage.
+fn split_scope(cmd: SettingCommand, arg: &str) -> Result<(&str, &str), CommandError> {
+    // Stray extra whitespace before the key is tolerated, as `complete_set`
+    // tolerates it, or Tab could complete through a double space into a
+    // command line that errors on Enter.
+    arg.split_once(' ')
+        .map(|(scope, rest)| (scope, rest.trim_start()))
+        .ok_or_else(|| cmd.usage_error())
+}
+
+/// Resolve `key` in the scope `scope_str` names. The key is checked before
+/// the scope, so an invalid scope on a real key names that key's scopes.
+/// Buffer-intrinsic options are matched first: they have no
+/// `setting_scopes` entry and would read as unknown.
+fn resolve_setting(
+    cmd: SettingCommand,
+    scope_str: &str,
+    key: &str,
+) -> Result<SettingTarget, CommandError> {
+    let scope = scope_str.parse::<Scope>().ok();
+    if let Some(opt) = BufferIntrinsicOption::from_name(key) {
+        if scope != Some(Scope::Buffer) {
+            return Err(CommandError::transient(format!(
+                "'{key}' is per-buffer: use '{}'",
+                cmd.buffer_form(key)
+            )));
+        }
+        return Ok(SettingTarget::Intrinsic(opt));
+    }
+    let scopes = setting_scopes(key);
+    if scopes.is_empty() {
+        return Err(CommandError::transient(format!("unknown setting '{key}'")));
+    }
+    let target = match scope.filter(|s| scopes.contains(s)) {
+        Some(Scope::Global) => Some(SettingTarget::Global),
+        Some(Scope::Buffer) => Some(SettingTarget::Buffer),
+        Some(Scope::Pane) => pane_setting(key).map(SettingTarget::Pane),
+        None => None,
+    };
+    target.ok_or_else(|| {
+        CommandError::transient(format!(
+            "'{key}' cannot be {} {scope_str} (valid scopes: {})",
+            cmd.action(),
+            scopes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    })
+}
+
 pub(in crate::editor) fn typed_set(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: &str,
 ) -> Result<(), CommandError> {
-    use crate::editor::settings::Scope;
-    use hume_core::{BufferIntrinsicOption, LanguageOptionText};
-
-    let Some((scope_str, rest)) = arg.split_once(' ') else {
-        return Err(CommandError::transient(format!("Usage: :set {SET_USAGE}")));
-    };
-    // Tolerate stray extra whitespace before the key, matching
-    // `complete_set`'s tolerance. Otherwise Tab can complete
-    // through a double space into a command line that errors on Enter.
-    let rest = rest.trim_start();
+    let (scope_str, rest) = split_scope(SettingCommand::Set, arg)?;
     let Some((key, value)) = rest.split_once('=') else {
         return Err(CommandError::transient("Expected key=value"));
     };
@@ -230,77 +325,54 @@ pub(in crate::editor) fn typed_set(
     let by = hume_core::ConfigOrigin::User;
     let input = OptionInput::Text(value.to_string());
 
-    // Buffer-intrinsic options live on the buffer, not in `EditorSettings`/
-    // `BufferOverrides`, so they have no `scope:` entry in
-    // `settings::setting_scopes`. Checked here first, or they would fall
-    // through to "unknown setting" below.
-    if let Some(opt) = BufferIntrinsicOption::from_name(key) {
-        if scope_str.parse::<Scope>() != Ok(Scope::Buffer) {
-            return Err(CommandError::transient(format!(
-                "'{key}' is per-buffer: use ':set buffer {key}=<value>'"
-            )));
+    match resolve_setting(SettingCommand::Set, scope_str, key)? {
+        SettingTarget::Intrinsic(BufferIntrinsicOption::Language) => {
+            let _ = ed.set_buffer_language_by_name(bid, LanguageOptionText::decode(value), by);
+            Ok(())
         }
-        return match opt {
-            BufferIntrinsicOption::Language => {
-                let _ = ed.set_buffer_language_by_name(bid, LanguageOptionText::decode(value), by);
-                Ok(())
-            }
-            BufferIntrinsicOption::LineEnding => {
-                settings_ops::set_line_ending(&mut ed.state, bid, &input, by)
-                    .map_err(CommandError::new)
-            }
-        };
+        SettingTarget::Intrinsic(BufferIntrinsicOption::LineEnding) => {
+            settings_ops::set_line_ending(&mut ed.state, bid, &input, by).map_err(CommandError::new)
+        }
+        SettingTarget::Global => {
+            settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input, by)
+                .map_err(CommandError::new)
+        }
+        SettingTarget::Buffer => settings_ops::apply_buffer(&mut ed.state, bid, key, &input, by)
+            .map_err(CommandError::new),
+        SettingTarget::Pane(PaneSetting::WrapMode) => {
+            let mode = parse_setting_text::<hume_engine::pane::WrapMode>(WRAP_MODE_KEY, value)
+                .map_err(CommandError::new)?;
+            ed.set_wrap_override(fp, mode);
+            Ok(())
+        }
     }
+}
 
-    // Every other setting declares its valid `:set` scopes on its
-    // `define_settings!` line: one data-driven check instead of per-scope
-    // special-casing.
-    let scopes = crate::editor::settings::setting_scopes(key);
-    if scopes.is_empty() {
-        return Err(CommandError::transient(format!("unknown setting '{key}'")));
-    }
-
-    // Parse the scope token *after* confirming the key is real, so an
-    // invalid scope on a real key reports "wrong scope for this key" (naming
-    // the key's actual valid scopes) rather than a generic "unknown scope"
-    // message: the user typed a real key, so that's the more useful error.
-    let Some(scope) = scope_str
-        .parse::<Scope>()
-        .ok()
-        .filter(|s| scopes.contains(s))
-    else {
-        return Err(CommandError::transient(format!(
-            "'{key}' cannot be set with :set {scope_str} (valid scopes: {})",
-            scopes
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )));
+/// Report a setting's effective value in `scope` as `key=value`, the text
+/// `:set` takes back.
+pub(in crate::editor) fn typed_get(
+    ed: &mut Editor,
+    fp: FocusedPane,
+    arg: &str,
+) -> Result<(), CommandError> {
+    let (scope_str, key) = split_scope(SettingCommand::Get, arg)?;
+    let bid = fp.bid(&ed.view);
+    let buf = ed.state.buffers.get(bid);
+    let settings = &ed.state.settings;
+    let table_text = |overrides| {
+        setting_text(key, settings, overrides)
+            .expect("setting_text and setting_scopes are generated from the same keys")
     };
-
-    match scope {
-        Scope::Global => settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input, by)
-            .map_err(CommandError::new),
-        Scope::Buffer => settings_ops::apply_buffer(&mut ed.state, bid, key, &input, by)
-            .map_err(CommandError::new),
-        Scope::Pane => {
-            // Only pane-scoped setting today: `scopes.contains(&scope)` above
-            // already proved `key == "wrap-mode"` (it's the only line whose
-            // `scope:` list contains `Scope::Pane`). A future pane-scoped
-            // setting gets its own `if key == "..."` arm here, and
-            // `every_pane_scoped_key_has_a_typed_set_arm`
-            // (`settings/tests.rs`) fails immediately if one is added
-            // without a matching arm.
-            if key == WRAP_MODE_KEY {
-                let mode = parse_setting_text::<hume_engine::pane::WrapMode>(WRAP_MODE_KEY, value)
-                    .map_err(CommandError::new)?;
-                ed.set_wrap_override(fp, mode);
-                return Ok(());
-            }
-            unreachable!("'{key}' has scope Pane in setting_scopes() but no pane handler here")
+    let value = match resolve_setting(SettingCommand::Get, scope_str, key)? {
+        SettingTarget::Intrinsic(opt) => settings_ops::intrinsic_text(&ed.state, buf, opt),
+        SettingTarget::Global => table_text(None),
+        SettingTarget::Buffer => table_text(Some(&buf.overrides)),
+        SettingTarget::Pane(PaneSetting::WrapMode) => {
+            super::effective_wrap_mode(buf, settings, &ed.view.panes[fp.pid()]).to_text()
         }
-    }
+    };
+    ed.report(Severity::Info, format!("{key}={value}"));
+    Ok(())
 }
 
 /// Writes `content` to the file at `target`, as it resolves now, creating it

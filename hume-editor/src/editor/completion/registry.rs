@@ -194,6 +194,7 @@ impl SourceRegistry {
                 delegated(path::PATH_SOURCE, path::complete_path),
                 delegated(path::PATH_DIRS_ONLY_SOURCE, path::complete_path_dirs_only),
                 delegated(set::SET_SOURCE, set::complete_set),
+                delegated(set::GET_SOURCE, set::complete_get),
             ],
         }
     }

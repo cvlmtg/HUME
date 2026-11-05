@@ -124,6 +124,9 @@ kai&nbsp;&nbsp;&nbsp;52
 | `:set global <option>=<value>` | Set an option everywhere |
 | `:set buffer <option>=<value>` | Set an option for this buffer only |
 | `:set pane <option>=<value>` | Set an option for this pane only (`wrap-mode` only) |
+| `:get global <option>` | Show an option's global value |
+| `:get buffer <option>` | Show the value an option has in this buffer |
+| `:get pane <option>` | Show the value an option has in this pane (`wrap-mode` only) |
 
 See [Settings](settings.md) for every option.
 

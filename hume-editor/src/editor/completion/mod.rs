@@ -34,7 +34,7 @@ pub(in crate::editor) use registry::{
     SourceRegistry,
 };
 pub(in crate::editor) use session::{BufferSession, ItemKey, MinibufSession};
-pub(in crate::editor) use set::SET_SOURCE;
+pub(in crate::editor) use set::{GET_SOURCE, SET_SOURCE};
 pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOURCE};
 
 // ── Context ──────────────────────────────────────────────────────────────────

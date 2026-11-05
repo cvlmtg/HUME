@@ -1891,6 +1891,7 @@ mod find;
 mod frame_pacing;
 mod gc_rooting;
 mod geometry_replaces_caret;
+mod get_setting;
 mod goto_revision;
 mod horizontal_scroll_follow;
 mod increment;

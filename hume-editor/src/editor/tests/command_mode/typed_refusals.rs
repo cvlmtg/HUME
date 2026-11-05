@@ -4,6 +4,7 @@ use crate::editor::registry::TypedBody;
 /// Every native typed command that reads its argument.
 const TAKES_ARG: &[&str] = &[
     "set",
+    "get",
     "split",
     "vsplit",
     "tabnew",
@@ -23,6 +24,7 @@ const TAKES_ARG: &[&str] = &[
 /// usage its refusal names.
 const REQUIRES_ARG: &[(&str, &str)] = &[
     ("set", "global|buffer|pane key=value"),
+    ("get", "global|buffer|pane key"),
     ("buffer", "<name|#|index>"),
     ("goto", "<line>"),
 ];

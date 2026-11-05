@@ -8,6 +8,9 @@
 ### CLI
 - `--keys` writes every logged message to stderr, including trace detail.
 
+### Configuration & options
+- New `:get` command shows an option's value, globally, for the current buffer or for the current pane.
+
 ### Editing
 - New `undo-persist` option: saving a file also saves its undo history, and opening the file again brings it back.
 - New `m u` brings back the selections you built and lost to a later change, all selections included, and `m U` redoes it.

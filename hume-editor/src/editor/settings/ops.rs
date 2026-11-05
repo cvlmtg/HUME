@@ -12,17 +12,21 @@
 //! depends on it (each [`ResyncKey`]'s effect, applied by
 //! `resync_derived_state`). Calling `write_global`/`write_buffer` alone would
 //! skip those, so write and resync must not be split apart.
+//! [`intrinsic_text`](crate::editor::settings::ops::intrinsic_text) reads
+//! back what [`set_line_ending`](crate::editor::settings::ops::set_line_ending)
+//! and the language write set on a buffer.
 //!
 //! A child module of `settings`, not a sibling. See `settings`'s own doc
 //! for why: it lets `write_global`/`write_buffer` narrow to
 //! `pub(in crate::editor::settings)`, reachable from exactly this module and
 //! `settings::tests`, rather than from every file under `crate::editor`.
 
-use hume_core::{BufferId, BufferIntrinsicOption, ConfigOrigin, OptionInput};
+use hume_core::{BufferId, BufferIntrinsicOption, ConfigOrigin, LanguageOptionText, OptionInput};
 use hume_engine::pipeline::EngineView;
 
-use super::{ResyncKey, THEME_KEY, parse_setting_text, resync_key};
+use super::{ResyncKey, SettingText, THEME_KEY, parse_setting_text, resync_key};
 use crate::editor::EditorState;
+use crate::editor::buffer::Buffer;
 use crate::editor::theme;
 
 /// Write a global setting from `by` and resync every piece of derived
@@ -181,6 +185,21 @@ pub(in crate::editor) fn set_line_ending(
         state.report_shadowed("option", format_args!("'{key}' value"));
     }
     Ok(())
+}
+
+/// `opt`'s value on `buf` as the text `:set buffer` takes back: the one
+/// reader for `:get` and the host's `buffer_line_ending`.
+pub(in crate::editor) fn intrinsic_text(
+    state: &EditorState,
+    buf: &Buffer,
+    opt: BufferIntrinsicOption,
+) -> String {
+    match opt {
+        BufferIntrinsicOption::Language => {
+            LanguageOptionText::encode(state.language_name(buf)).to_owned()
+        }
+        BufferIntrinsicOption::LineEnding => buf.text().line_ending().to_text(),
+    }
 }
 
 /// Resync derived state after a successful [`super::write_global`]

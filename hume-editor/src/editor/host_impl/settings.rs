@@ -1,11 +1,10 @@
 //! `EditorHostImpl`'s global settings, statusline config, and the Steel
 //! eval budget.
 
-use hume_core::{BufferId, OptionInput};
+use hume_core::{BufferId, BufferIntrinsicOption, OptionInput};
 
 use super::EditorHostImpl;
 use crate::editor::buffer::Buffer;
-use crate::editor::settings::SettingText;
 use crate::editor::settings::ops;
 use hume_scripting::host::{OptionValue, SettingsHost};
 
@@ -62,7 +61,11 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
     }
 
     fn buffer_line_ending(&self, bid: BufferId) -> Result<String, String> {
-        Ok(self.live_buffer(bid)?.text().line_ending().to_text())
+        Ok(ops::intrinsic_text(
+            self.state,
+            self.live_buffer(bid)?,
+            BufferIntrinsicOption::LineEnding,
+        ))
     }
 
     fn steel_command_budget_ms(&self) -> u64 {

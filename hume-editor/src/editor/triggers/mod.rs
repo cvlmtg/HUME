@@ -83,8 +83,8 @@ impl EditorState {
         let language_table = self
             .buffers
             .try_get(bid)
-            .and_then(|buffer| buffer.language)
-            .and_then(|id| self.config.triggers.get(self.config.languages.name_of(id)));
+            .and_then(|buffer| self.language_name(buffer))
+            .and_then(|name| self.config.triggers.get(name));
         let mut listeners: Vec<&TriggerListener> = language_table
             .into_iter()
             .chain(self.buffer_positions.lsp.trigger_tables(bid))

@@ -238,7 +238,6 @@ pub(in crate::editor) fn typed_theme(
 ) -> Result<(), CommandError> {
     let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
         let current = active_theme_name(ed);
-        // NLL: `current` borrow of ed.state.settings.theme ends inside format!(), before report().
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
     };

@@ -78,9 +78,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             return StoredLanguage::default();
         };
         StoredLanguage {
-            name: buffer
-                .language
-                .map(|lang_id| self.state.config.languages.name_of(lang_id).to_owned()),
+            name: self.state.language_name(buffer).map(str::to_owned),
             by: buffer.language_by,
         }
     }

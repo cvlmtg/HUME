@@ -301,3 +301,29 @@ fn set_completer_value_language_includes_an_exact_match() {
     assert!(names.contains(&"rust"));
     assert!(names.contains(&"ru"));
 }
+
+// ── complete_get ──────────────────────────────────────────────────────────
+
+fn get_result(input: &str) -> (Range<usize>, Vec<CompletionItem>) {
+    let (reg, store, dir) = make_ctx_parts();
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
+    complete_get(input, input.len(), &ctx)
+}
+
+#[test]
+fn get_completer_offers_scopes_then_keys() {
+    assert_eq!(
+        names_of(&get_result("get ")),
+        vec!["buffer", "global", "pane"]
+    );
+    let result = get_result("get global undo-p");
+    assert_eq!(result.0, "get global ".len().."get global undo-p".len());
+    assert_eq!(names_of(&result), vec!["undo-persist"]);
+    assert!(names_of(&get_result("get buffer lang")).contains(&"language"));
+}
+
+#[test]
+fn get_completer_offers_no_values() {
+    assert!(get_result("get global undo-persist=").1.is_empty());
+}

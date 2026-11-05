@@ -4,6 +4,8 @@ Every option HUME has, how text wrap works, the statusline elements, and how a f
 
 An option's name starts with the area it belongs to: `indent-`, `insert-`, `gutter-`, `lsp-`, and so on. Type the area after `:set global ` and press `Tab` to list every option in it.
 
+`:get` shows an option's value as `<option>=<value>`, written the way `:set` takes it: `:get global <option>` for the global value, `:get buffer <option>` for the value in the current buffer, its override or else the global value, and `:get pane wrap-mode` for the current pane's.
+
 ## Global options
 
 Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All of these are global-only.

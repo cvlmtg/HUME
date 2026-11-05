@@ -83,6 +83,13 @@ impl CommandRegistry {
             completer: Some(completion::SET_SOURCE)
         );
         typed_cmd!(
+            "get",
+            "Show a configuration value: :get global|buffer|pane key.",
+            &[],
+            ArgRequired(typed_get, GET_USAGE),
+            completer: Some(completion::GET_SOURCE)
+        );
+        typed_cmd!(
             "messages",
             "Show the message log in a read-only scratch buffer.",
             &["mes"],
