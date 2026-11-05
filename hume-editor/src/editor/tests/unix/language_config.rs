@@ -45,35 +45,17 @@ fn stage(languages_scm: &str, bundled: &[(&str, &str)], init: &str, plugin: &str
     fixture
 }
 
-/// Start a session the way `hume <file>` does: `Editor::open` with `file`
-/// as the startup buffer, then `init_scripting` over `dirs`.
+/// Start a session the way `hume <file>` does, over `dirs`.
 fn boot_with_file(file: &str, dirs: Dirs, fixture: &ReloadFixture) -> Editor {
     let path = fixture.data_dir.join(file);
     std::fs::create_dir_all(&fixture.data_dir).unwrap();
     std::fs::write(&path, "x\n").unwrap();
-    let mut ed = Editor::open(
-        Some(AbsolutePath::rooted(path)),
-        crate::editor::run::HEADLESS_TERMINAL,
-        no_op_wake(),
+    start_headless(
+        &[path],
+        &test_cwd(),
         dirs,
-        test_cwd(),
+        crate::cli::ConfigSource::Default,
     )
-    .expect("open");
-    ed.init_scripting(&mut Default::default());
-    ed
-}
-
-fn queued_hook_names(ed: &Editor) -> Vec<&'static str> {
-    ed.state
-        .config
-        .pending_work
-        .iter()
-        .filter_map(|w| match w {
-            crate::editor::event::PendingWork::Event(e) => Some(e.name()),
-            crate::editor::event::PendingWork::Call { .. } => None,
-        })
-        .filter(|name| matches!(*name, "on-language-set" | "on-buffer-open"))
-        .collect()
 }
 
 const TSX_LANGUAGES: &str = r#"(define-language! "tsx" '("tsx"))"#;
@@ -416,13 +398,16 @@ fn configuring_a_language_defined_earlier_in_the_same_init_succeeds() {
 }
 
 #[test]
-fn the_startup_buffer_queues_on_language_set_before_on_buffer_open() {
-    let fixture = stage(TSX_LANGUAGES, &[TSX_BUNDLED], "", "");
-    let ed = boot_with_file("main.tsx", fixture.dirs(), &fixture);
+fn the_startup_buffer_announces_on_language_set_before_on_buffer_open() {
+    let init = r#"(register-hook! 'on-language-set (lambda (bid lang) (log! 'warning "on-language-set")))
+                  (register-hook! 'on-buffer-open (lambda (bid) (log! 'warning "on-buffer-open")))"#;
+    let fixture = stage(TSX_LANGUAGES, &[TSX_BUNDLED], init, "");
+    let mut ed = boot_with_file("main.tsx", fixture.dirs(), &fixture);
+    ed.settle();
 
     assert_no_errors(&ed);
     assert_eq!(
-        queued_hook_names(&ed),
+        messages(&ed, Severity::Warning),
         ["on-language-set", "on-buffer-open"]
     );
 }

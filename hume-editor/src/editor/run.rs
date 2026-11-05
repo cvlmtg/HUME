@@ -101,7 +101,7 @@ impl Editor {
     /// `:reload-config`. Called once, from [`Self::start`], so the binds can
     /// never diverge from the flag.
     ///
-    /// Must run before `init_scripting`: it replaces the keymap wholesale,
+    /// Must run before `load_config`: it replaces the keymap wholesale,
     /// so calling it after `init.scm` has evaluated would discard any user
     /// `bind-key!` on top of it.
     pub(in crate::editor) fn set_kitty_support(&mut self, kitty_enabled: bool) {
@@ -213,8 +213,8 @@ impl Editor {
         })
     }
 
-    /// [`Self::bootstrap`] with its buffer finished at once, before any
-    /// `init_scripting` the test runs.
+    /// [`Self::bootstrap`] with its buffer finished at once. A test that
+    /// starts the way `hume <file>` does goes through [`Self::start`].
     #[cfg(test)]
     pub(in crate::editor) fn open(
         file_path: Option<hume_platform::path::AbsolutePath>,
@@ -231,10 +231,11 @@ impl Editor {
 
     /// Set up an editor on the command line's files, the same way for every
     /// [`Driver`]: read the first file (or a scratch buffer), configure the
-    /// driver and the config source, run `init_scripting`, finish opening the
-    /// first file, then open the remaining files. Every file's
-    /// `OnBufferOpen` fires at the first `settle()`, in that order. Each file's
-    /// position is queued, and the first `settle()` places it.
+    /// driver and the config source, load the config, finish opening the
+    /// first file, attach the scripting host, then open the remaining files.
+    /// Every file's `OnBufferOpen` fires at the first `settle()`, in that
+    /// order. Each file's position is queued, and the first `settle()` places
+    /// it.
     pub(crate) fn start(
         files: &[FileArg],
         driver: Driver,
@@ -269,13 +270,16 @@ impl Editor {
         editor.set_kitty_support(kitty_enabled);
         editor.state.headless = headless;
         editor.set_config_source(config);
-        editor.init_scripting(&mut Default::default());
-        // Finished after `init_scripting`, so init.scm has set what it reads,
-        // such as `undo-directory`. A plugin its language activated during
-        // `init_scripting` may have closed it.
+        let host = editor.load_config();
+        // Finished once init.scm has set what it reads, such as
+        // `undo-directory`, and before the drain that detects its language,
+        // so its plugins edit the restored history. What init.scm itself does
+        // to it comes first. A plugin activated while init.scm ran may have
+        // closed it.
         if editor.state.buffers.try_get(startup).is_some() {
             lifecycle::finish_open(&mut editor.state, startup);
         }
+        editor.attach_scripting(host, &mut Default::default());
         if let Some(pos) = first.and_then(|f| f.pos) {
             editor.queue_startup_position(startup, pos);
         }
@@ -314,11 +318,11 @@ impl Editor {
         }
     }
 
-    /// Set where `init_scripting` (and every later `:reload-config`) reads
+    /// Set where `load_config` (at startup and on every `:reload-config`) reads
     /// its config from (`--config` / `--no-config`), instead of the default
     /// `<config_dir>/init.scm`.
     ///
-    /// Must run before `init_scripting`, same as `set_kitty_support`: the
+    /// Must run before `load_config`, same as `set_kitty_support`: the
     /// source is read once resolution starts.
     pub(in crate::editor) fn set_config_source(&mut self, source: ConfigSource) {
         self.config_source = source;

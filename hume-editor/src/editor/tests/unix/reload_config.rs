@@ -401,15 +401,12 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
-    let mut ed = Editor::open(
-        Some(hume_platform::path::AbsolutePath::rooted(file)),
-        crate::editor::run::HEADLESS_TERMINAL,
-        no_op_wake(),
+    let mut ed = start_headless(
+        &[file],
+        &test_cwd(),
         fixture.dirs(),
-        test_cwd(),
-    )
-    .unwrap();
-    ed.init_scripting(&mut Default::default());
+        crate::cli::ConfigSource::Default,
+    );
     ed.settle();
 
     let bid = ed.focused_buffer_id();
@@ -583,15 +580,12 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 
-    let mut ed = Editor::open(
-        Some(hume_platform::path::AbsolutePath::rooted(file)),
-        crate::editor::run::HEADLESS_TERMINAL,
-        no_op_wake(),
+    let mut ed = start_headless(
+        &[file],
+        &test_cwd(),
         fixture.dirs(),
-        test_cwd(),
-    )
-    .unwrap();
-    ed.init_scripting(&mut Default::default());
+        crate::cli::ConfigSource::Default,
+    );
 
     let bid = ed.focused_buffer_id();
     type_cmd(&mut ed, ":set buffer language=notes");
@@ -655,15 +649,12 @@ fn reload_config_keeps_a_startup_grammar_registered() {
     let file = file_tmp.path().join("data.json");
     std::fs::write(&file, "{\"x\": 1}\n").unwrap();
 
-    let mut ed = Editor::open(
-        Some(hume_platform::path::AbsolutePath::rooted(file)),
-        crate::editor::run::HEADLESS_TERMINAL,
-        no_op_wake(),
+    let mut ed = start_headless(
+        &[file],
+        &test_cwd(),
         fixture.dirs(),
-        test_cwd(),
-    )
-    .unwrap();
-    ed.init_scripting(&mut Default::default());
+        crate::cli::ConfigSource::Default,
+    );
 
     let bid = ed.focused_buffer_id();
     assert!(
@@ -716,8 +707,8 @@ fn reload_config_keeps_a_startup_grammar_registered() {
 fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
     let mut ed = editor_from("-[a]>b\n");
     // No scripting host at all, mirroring what a real editor looks like when
-    // `Editor::open`'s caller never resolved a config dir either. Still has
-    // a live keymap override from `Editor::open`'s own `ConfigState::new`,
+    // `Editor::start`'s caller never resolved a config dir either. Still has
+    // a live keymap override from `Editor::bootstrap`'s own `ConfigState::new`,
     // which the failed reload must leave untouched.
     ed.state.config.keymap.bind(
         BindMode::Normal,
@@ -828,15 +819,12 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 
-    let mut ed = Editor::open(
-        Some(hume_platform::path::AbsolutePath::rooted(file)),
-        crate::editor::run::HEADLESS_TERMINAL,
-        no_op_wake(),
+    let mut ed = start_headless(
+        &[file],
+        &test_cwd(),
         fixture.dirs(),
-        test_cwd(),
-    )
-    .unwrap();
-    ed.init_scripting(&mut Default::default());
+        crate::cli::ConfigSource::Default,
+    );
     let bid = ed.focused_buffer_id();
     type_cmd(&mut ed, ":set buffer language=notes");
     assert_eq!(

@@ -550,8 +550,6 @@ fn reparse_reattaches_after_shrink_under_cap() {
 /// incremental parse; the second tick drains and installs the new tree.
 #[test]
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
-    use hume_editing::text::BufferText;
-
     require_grammars(&["json"]);
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -597,12 +595,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // (10) from the original one (9).
     let new_text = "[1, 2, 3]\n";
     let new_byte_len = new_text.len();
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from(new_text)),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, new_text);
     assert!(
         ed.state
             .buffers
@@ -644,12 +637,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // A second reload with byte-identical content: `replace_text_recorded`'s
     // `forward.is_identity()` branch returns `false` (no mutation) without
     // touching the text version, and the tree installed above stays.
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from(new_text)),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, new_text);
     ed.reparse_stale_buffers();
     ed.reparse_stale_buffers();
 

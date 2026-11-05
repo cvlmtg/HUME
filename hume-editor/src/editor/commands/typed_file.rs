@@ -303,26 +303,6 @@ pub(in crate::editor) fn typed_set(
     }
 }
 
-/// Post-write side effects for a buffer that just had its own content
-/// written to its own file and was marked synced with it: report the result
-/// and tell LSP about the save.
-fn report_written_and_synced(
-    ed: &mut Editor,
-    bid: BufferId,
-    line_count: hume_rope::line::ContentLineCount,
-    retried: bool,
-) {
-    ed.report(write_severity(retried), write_msg(line_count, retried));
-    ed.queue_buffer_save(bid);
-    // Flush any didChange already queued for this buffer first: a
-    // save-triggered server action (e.g. lint-on-save) must see a
-    // document state at least as current as the file just written,
-    // not one edit behind (didSave itself carries no text).
-    ed.state.lsp_flush_pending();
-    ed.state.lsp_did_save(bid);
-    ed.state.lsp_repull_diagnostics_all(bid);
-}
-
 /// Writes `content` to the file at `target`, as it resolves now, creating it
 /// when it does not exist. Returns the written file's metadata and whether
 /// the write was retried (see [`hume_platform::io::write_file_atomic`]).
@@ -432,7 +412,15 @@ fn write_file(
         let file =
             BufferFile::on_disk(meta, target).map_err(|e| CommandError::new(e.to_string()))?;
         ed.mark_synced(bid, file);
-        report_written_and_synced(ed, bid, line_count, retried);
+        ed.report(write_severity(retried), write_msg(line_count, retried));
+        ed.queue_buffer_save(bid);
+        // Flush any didChange already queued for this buffer first: a
+        // save-triggered server action (e.g. lint-on-save) must see a
+        // document state at least as current as the file just written,
+        // not one edit behind (didSave itself carries no text).
+        ed.state.lsp_flush_pending();
+        ed.state.lsp_did_save(bid);
+        ed.state.lsp_repull_diagnostics_all(bid);
     } else {
         ed.report(write_severity(retried), write_msg(line_count, retried));
     }

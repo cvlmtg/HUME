@@ -27,16 +27,22 @@ impl Editor {
         self.apply_script_result(result, err_prefix);
     }
 
-    /// Initialise the Steel scripting host, then evaluate `init.scm` unless
-    /// this session has no `init.scm` to run.
+    /// [`Self::load_config`], then [`Self::attach_scripting`] with its host.
     ///
-    /// Called once at startup, after `Editor::bootstrap` returns and before
-    /// `Editor::run` starts (with `snapshot` at its `Default`: nothing to
-    /// restore, no pre-reload buffers), and by `typed_reload_config` on
-    /// every `:reload-config` (with the `ReloadSnapshot` `reset_config_state`
-    /// just produced). Any error from `init.scm` is reported as
-    /// `Severity::Error` and shown in the statusline.
+    /// `typed_reload_config` calls it on every `:reload-config`, with the
+    /// `ReloadSnapshot` `reset_config_state` just produced. `Editor::start`
+    /// calls the two halves itself, with `snapshot` at its `Default`, to
+    /// finish the startup buffer between them.
     pub(in crate::editor) fn init_scripting(&mut self, snapshot: &mut ReloadSnapshot) {
+        let host = self.load_config();
+        self.attach_scripting(host, snapshot);
+    }
+
+    /// A new Steel scripting host with the runtime files evaluated, then
+    /// `init.scm` unless this session has no `init.scm` to run, each eval's
+    /// effects applied. Any error from `init.scm` is reported as
+    /// `Severity::Error` and shown in the statusline.
+    pub(in crate::editor) fn load_config(&mut self) -> hume_scripting::ScriptingHost {
         let mut host =
             hume_scripting::ScriptingHost::new(&self.state.dirs, &self.state.library_wait);
         // Pre-register every native command name as a callable Steel binding before
@@ -142,15 +148,27 @@ impl Editor {
             }
         }
         crate::editor::settings::ops::apply_pending_theme(&mut self.state, &mut self.view);
+        host
+    }
+
+    /// Install `host` as the session's scripting host, then detect and
+    /// announce the languages of the buffers waiting for it, lint the
+    /// config, and detect every open buffer's language again, restoring the
+    /// explicit languages `snapshot` holds.
+    pub(in crate::editor) fn attach_scripting(
+        &mut self,
+        host: hume_scripting::ScriptingHost,
+        snapshot: &mut ReloadSnapshot,
+    ) {
         // Snapshot language activation entries for the post-init lint below:
         // every eval's effects (identities, grammars, LSP server ops) are
-        // already applied above, each right after its own eval, so
+        // already applied by `load_config`, each right after its own eval, so
         // `self.state.config.languages` is fully populated by this point.
         let lang_activations = host.activation_languages();
         self.scripting = Some(host);
-        // Every language is registered by now, so the buffers init.scm
-        // opened announce `on-language-set` before `on-buffer-open`, like
-        // any other open.
+        // Every language is registered by now, so the startup buffer and
+        // the buffers init.scm opened announce `on-language-set` before
+        // `on-buffer-open`, like any other open.
         self.detect_pending_languages();
         // Post-init lint: warn on keymap leaves that target a name a key
         // binding can't actually reach. Lazy stubs are registered live as

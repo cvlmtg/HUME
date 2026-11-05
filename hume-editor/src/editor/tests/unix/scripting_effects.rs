@@ -498,16 +498,7 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
         "close-buffer! must have closed the just-opened buffer"
     );
 
-    let pending: Vec<&EditorEvent> = ed
-        .state
-        .config
-        .pending_work
-        .iter()
-        .filter_map(|w| match w {
-            crate::editor::event::PendingWork::Event(e) => Some(e),
-            crate::editor::event::PendingWork::Call { .. } => None,
-        })
-        .collect();
+    let pending = queued_events(&ed);
     assert!(
         !pending
             .iter()

@@ -49,7 +49,7 @@ fn changing_a_language_without_a_scripting_host_panics() {
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang)).expect_open();
+    let _ = ed.set_buffer_language(bid, Some(lang));
 }
 
 #[test]

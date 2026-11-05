@@ -106,6 +106,28 @@ fn open_headless(path: Option<PathBuf>) -> Editor {
     .expect("open")
 }
 
+/// The editor `hume <args>` starts in `cwd` with `dirs` and `config`, not
+/// yet settled.
+fn start_headless(
+    args: &[impl AsRef<std::path::Path>],
+    cwd: &AbsolutePath,
+    dirs: Dirs,
+    config: crate::cli::ConfigSource,
+) -> Editor {
+    let files: Vec<_> = args
+        .iter()
+        .map(|arg| crate::cli::parse_file_arg(arg.as_ref(), cwd).expect("a usable file argument"))
+        .collect();
+    Editor::start(
+        &files,
+        crate::editor::Driver::Headless,
+        dirs,
+        config,
+        cwd.clone(),
+    )
+    .expect("start")
+}
+
 /// Build a kitty-protocol-enabled editor for testing Ctrl-motion bindings.
 /// Mirrors interactive kitty mode: sets the flag AND installs the kitty-only
 /// default keybinds that `Keymap::default()` omits.
@@ -381,6 +403,30 @@ fn has_layer_of(ed: &Editor, bid: BufferId, name: &str) -> bool {
 /// Serialize the editor's current buffer + selection state.
 fn state(ed: &Editor) -> String {
     serialize_state(ed.doc().text(), ed.current_selections())
+}
+
+/// The events queued so far, in order.
+fn queued_events(ed: &Editor) -> Vec<&crate::editor::event::EditorEvent> {
+    ed.state
+        .config
+        .pending_work
+        .iter()
+        .filter_map(|w| match w {
+            crate::editor::event::PendingWork::Event(e) => Some(e),
+            crate::editor::event::PendingWork::Call { .. } => None,
+        })
+        .collect()
+}
+
+/// Replace the focused buffer's text with `text`, as restoring a crash dump
+/// does, on a buffer no pipe holds and whose language closes nothing.
+fn reload_from_dump(ed: &mut Editor, text: &str) {
+    ed.reload_buffer_in_place(
+        FocusedPane::current(&ed.view),
+        ReplaceSource::Dump(BufferText::from(text)),
+    )
+    .expect("the buffer is not held")
+    .expect_open();
 }
 
 /// Every queued `PendingWork::Call` in `pending_work`, in FIFO order,

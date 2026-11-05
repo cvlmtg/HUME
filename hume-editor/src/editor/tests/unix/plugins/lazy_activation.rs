@@ -391,19 +391,6 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
     );
 }
 
-/// The events queued so far, in order.
-fn queued_events(ed: &Editor) -> Vec<&EditorEvent> {
-    ed.state
-        .config
-        .pending_work
-        .iter()
-        .filter_map(|w| match w {
-            crate::editor::event::PendingWork::Event(e) => Some(e),
-            crate::editor::event::PendingWork::Call { .. } => None,
-        })
-        .collect()
-}
-
 /// A `#:languages` plugin that sets the language of the buffer whose
 /// language activated it: both languages are announced, in the order the
 /// buffer took them, and the buffer ends on the plugin's.

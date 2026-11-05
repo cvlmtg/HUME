@@ -179,41 +179,43 @@ fn a_reload_from_disk_saves_the_undo_history() {
     assert_eq!(text(&again), edited);
 }
 
-#[test]
-fn selection_undo_reaches_the_selections_of_the_saved_edits() {
-    let disk = Disk::new("one two\n");
-    let mut ed = editor_on(&disk, &disk.file, &["global undo-persist=true"]);
+/// Edit `two` in `disk`'s file to `X` and save it with `undo-persist` on,
+/// then walk selection undo once: the state that walk reaches.
+fn saved_selection_walk(disk: &Disk) -> String {
+    let mut ed = editor_on(disk, &disk.file, &["global undo-persist=true"]);
     select(&mut ed, &[(4, 6)], 0);
     type_text(&mut ed, "X");
     type_cmd(&mut ed, ":w");
+    selection_undo(&mut ed);
+    state(&ed)
+}
+
+fn selection_undo(ed: &mut Editor) {
     ed.feed_key(key('m'));
     ed.feed_key(key('u'));
-    let walked = state(&ed);
+}
+
+#[test]
+fn selection_undo_reaches_the_selections_of_the_saved_edits() {
+    let disk = Disk::new("one two\n");
+    let walked = saved_selection_walk(&disk);
 
     let mut again = editor_on(&disk, &disk.file, &[]);
-    again.feed_key(key('m'));
-    again.feed_key(key('u'));
+    selection_undo(&mut again);
     assert_eq!(state(&again), walked);
 }
 
 #[test]
 fn a_split_opened_on_a_saved_file_reaches_its_selection_history() {
     let disk = Disk::new("one two\n");
-    let mut ed = editor_on(&disk, &disk.file, &["global undo-persist=true"]);
-    select(&mut ed, &[(4, 6)], 0);
-    type_text(&mut ed, "X");
-    type_cmd(&mut ed, ":w");
-    ed.feed_key(key('m'));
-    ed.feed_key(key('u'));
-    let walked = state(&ed);
+    let walked = saved_selection_walk(&disk);
 
     let mut split = editor_from("-[x]>\n");
     split.state.dirs.state = Some(disk.state());
     split
         .execute_typed(&format!("vsplit {}", disk.file.display()), None)
         .expect("the split opens the file");
-    split.feed_key(key('m'));
-    split.feed_key(key('u'));
+    selection_undo(&mut split);
     assert_eq!(state(&split), walked);
 }
 
@@ -233,22 +235,15 @@ fn undo_directory_moves_where_history_is_saved() {
     assert_eq!(text(&again), "one\n");
 }
 
-/// The editor `hume <disk's file>` starts, with `disk`'s state directory
-/// and no config, settled as before the first key.
-fn started_on(disk: &Disk) -> Editor {
+/// The editor `hume <args>` starts in `disk`'s directory, with its state
+/// directory and no config, settled as before the first key.
+fn started_on(disk: &Disk, args: &[impl AsRef<Path>]) -> Editor {
     let cwd = AbsolutePath::canonicalize(disk.dir.path()).unwrap();
-    let file = crate::cli::parse_file_arg(&disk.file, &cwd).unwrap();
-    let mut started = Editor::start(
-        &[file],
-        crate::editor::Driver::Headless,
-        hume_platform::dirs::Dirs {
-            state: Some(disk.state()),
-            ..hume_platform::dirs::Dirs::none()
-        },
-        crate::cli::ConfigSource::Skip,
-        cwd,
-    )
-    .unwrap();
+    let dirs = hume_platform::dirs::Dirs {
+        state: Some(disk.state()),
+        ..hume_platform::dirs::Dirs::none()
+    };
+    let mut started = start_headless(args, &cwd, dirs, crate::cli::ConfigSource::Skip);
     started.settle();
     started
 }
@@ -260,7 +255,7 @@ fn the_file_hume_starts_on_brings_back_its_history() {
     type_text(&mut ed, "a");
     type_cmd(&mut ed, ":w");
 
-    let mut started = started_on(&disk);
+    let mut started = started_on(&disk, &[&disk.file]);
     started.feed_key(key('u'));
     assert_eq!(text(&started), "one\n");
 }
@@ -268,17 +263,10 @@ fn the_file_hume_starts_on_brings_back_its_history() {
 #[test]
 fn selection_undo_on_the_file_hume_starts_on_reaches_the_saved_selections() {
     let disk = Disk::new("one two\n");
-    let mut ed = editor_on(&disk, &disk.file, &["global undo-persist=true"]);
-    select(&mut ed, &[(4, 6)], 0);
-    type_text(&mut ed, "X");
-    type_cmd(&mut ed, ":w");
-    ed.feed_key(key('m'));
-    ed.feed_key(key('u'));
-    let walked = state(&ed);
+    let walked = saved_selection_walk(&disk);
 
-    let mut started = started_on(&disk);
-    started.feed_key(key('m'));
-    started.feed_key(key('u'));
+    let mut started = started_on(&disk, &[&disk.file]);
+    selection_undo(&mut started);
     assert_eq!(state(&started), walked);
 }
 
@@ -288,38 +276,15 @@ fn selection_undo_on_the_file_hume_starts_on_reaches_the_saved_selections() {
 #[test]
 fn a_cursor_parked_for_a_saved_file_leaves_its_selection_history_to_the_pane_showing_it() {
     let disk = Disk::new("one two\n");
-    let mut ed = editor_on(&disk, &disk.file, &["global undo-persist=true"]);
-    select(&mut ed, &[(4, 6)], 0);
-    type_text(&mut ed, "X");
-    type_cmd(&mut ed, ":w");
-    ed.feed_key(key('m'));
-    ed.feed_key(key('u'));
-    let walked = state(&ed);
+    let walked = saved_selection_walk(&disk);
 
-    let cwd = AbsolutePath::canonicalize(disk.dir.path()).unwrap();
     std::fs::write(disk.dir.path().join("other.txt"), "other\n").unwrap();
-    let args = [
-        std::path::PathBuf::from("other.txt"),
-        std::path::PathBuf::from(format!("{}:1", disk.file.display())),
-    ]
-    .map(|arg| crate::cli::parse_file_arg(&arg, &cwd).unwrap());
-    let mut started = Editor::start(
-        &args,
-        crate::editor::Driver::Headless,
-        hume_platform::dirs::Dirs {
-            state: Some(disk.state()),
-            ..hume_platform::dirs::Dirs::none()
-        },
-        crate::cli::ConfigSource::Skip,
-        cwd,
-    )
-    .unwrap();
-    started.settle();
+    let parked = PathBuf::from(format!("{}:1", disk.file.display()));
+    let mut started = started_on(&disk, &[Path::new("other.txt"), &parked]);
     started
         .execute_typed(&format!("vsplit {}", disk.file.display()), None)
         .expect("the split opens the file");
-    started.feed_key(key('m'));
-    started.feed_key(key('u'));
+    selection_undo(&mut started);
     assert_eq!(state(&started), walked);
 }
 

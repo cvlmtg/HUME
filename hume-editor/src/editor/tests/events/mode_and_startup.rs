@@ -330,16 +330,7 @@ fn on_buffer_open_queued_after_on_language_set() {
     ed.detect_pending_languages();
 
     // Inspect the queue before draining: settle() would empty it.
-    let hook_order: Vec<&str> = ed
-        .state
-        .config
-        .pending_work
-        .iter()
-        .filter_map(|w| match w {
-            crate::editor::event::PendingWork::Event(e) => Some(e.name()),
-            crate::editor::event::PendingWork::Call { .. } => None,
-        })
-        .collect();
+    let hook_order: Vec<&str> = queued_events(&ed).iter().map(|e| e.name()).collect();
     assert_eq!(
         hook_order,
         vec!["on-language-set", "on-buffer-open"],
@@ -395,16 +386,7 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     // sibling test above.
     ed.detect_pending_languages();
 
-    let hook_order: Vec<&str> = ed
-        .state
-        .config
-        .pending_work
-        .iter()
-        .filter_map(|w| match w {
-            crate::editor::event::PendingWork::Event(e) => Some(e.name()),
-            crate::editor::event::PendingWork::Call { .. } => None,
-        })
-        .collect();
+    let hook_order: Vec<&str> = queued_events(&ed).iter().map(|e| e.name()).collect();
     assert_eq!(
         hook_order,
         vec!["on-language-set", "on-buffer-open"],
@@ -439,9 +421,9 @@ fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
     ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
 
-    let queued_close = ed.state.config.pending_work.iter().any(|w| {
-        matches!(w, crate::editor::event::PendingWork::Event(e) if e.name() == "on-buffer-close")
-    });
+    let queued_close = queued_events(&ed)
+        .iter()
+        .any(|e| e.name() == "on-buffer-close");
     assert!(
         !queued_close,
         "on-buffer-close must not fire for a buffer whose on-buffer-open never did"

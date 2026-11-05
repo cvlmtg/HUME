@@ -4,6 +4,7 @@
 use crate::editor::{Editor, host_impl::EditorHostImpl};
 use hume_core::Severity;
 use hume_scripting::PluginStatus;
+use hume_treesitter::registry::LanguageId;
 
 impl Editor {
     // ── Command execution ─────────────────────────────────────────────────────
@@ -96,18 +97,17 @@ impl Editor {
     /// Called from `set_buffer_language` after it queues `OnLanguageSet` and
     /// before that event is dispatched, so a plugin's `register-hook!`
     /// handlers are installed in time to run on this very transition.
-    pub(in crate::editor) fn activate_lazy_language_plugins(&mut self, lang: &str) {
-        let pending = match self.scripting.as_ref() {
-            Some(host) => {
-                let plugins = host.activation_language_plugins(lang);
-                if plugins.is_empty() {
-                    return;
-                }
-                plugins
-            }
-            None => return,
+    pub(in crate::editor) fn activate_lazy_language_plugins(&mut self, lang: LanguageId) {
+        let Some(host) = self.scripting.as_ref() else {
+            return;
         };
-        self.activate_pending_plugins(pending, &format!("by language '{lang}'"));
+        let name = self.state.config.languages.name_of(lang);
+        let pending = host.activation_language_plugins(name);
+        if pending.is_empty() {
+            return;
+        }
+        let activation = format!("by language '{name}'");
+        self.activate_pending_plugins(pending, &activation);
     }
 
     fn activate_pending_plugins(

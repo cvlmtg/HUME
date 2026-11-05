@@ -1134,18 +1134,12 @@ fn open_extra_file_nonexistent_opens_new_file_buffer() {
 
 /// The editor `hume <args>` starts in `cwd`, with no config.
 fn started_with(args: &[&std::ffi::OsStr], cwd: &AbsolutePath) -> Editor {
-    let files: Vec<crate::cli::FileArg> = args
-        .iter()
-        .map(|arg| crate::cli::parse_file_arg(std::path::Path::new(arg), cwd).unwrap())
-        .collect();
-    Editor::start(
-        &files,
-        crate::editor::Driver::Headless,
+    start_headless(
+        args,
+        cwd,
         hume_platform::dirs::Dirs::none(),
         crate::cli::ConfigSource::Skip,
-        cwd.clone(),
     )
-    .unwrap()
 }
 
 #[test]

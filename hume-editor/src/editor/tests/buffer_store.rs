@@ -435,12 +435,7 @@ fn p6_reload_preserves_cursor_same_content() {
     );
 
     // Reload with identical content.
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from(content)),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, content);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -472,12 +467,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
     );
 
     // Reload with a 1-line file.
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from("short\n")),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, "short\n");
 
     // last_line=0, target_line=0, col=0 → head=0.
     assert_eq!(
@@ -494,12 +484,7 @@ fn p6_reload_cursor_follows_its_line_when_a_line_is_added_above() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("abc\ndef\n")));
     set_cursor(&mut ed, 5);
 
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from("new\nabc\ndef\n")),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, "new\nabc\ndef\n");
 
     assert_eq!(state(&ed), "new\nabc\nd-[e]>f\n");
 }
@@ -510,12 +495,7 @@ fn p6_reload_cursor_on_a_rewritten_line_lands_at_its_start() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("abc\nhello world\n")));
     set_cursor(&mut ed, 14);
 
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from("abc\nhi\n")),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, "abc\nhi\n");
 
     assert_eq!(state(&ed), "abc\n-[h]>i\n");
 }
@@ -526,12 +506,7 @@ fn p6_reload_keeps_every_selection() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("line0\nline1\nline2\n")));
     select(&mut ed, &[(6, 6), (12, 12)], 0);
 
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from("top\nline0\nline1\nline2\n")),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, "top\nline0\nline1\nline2\n");
 
     assert_eq!(state(&ed), "top\nline0\n-{l}>ine1\n-[l]>ine2\n");
 }

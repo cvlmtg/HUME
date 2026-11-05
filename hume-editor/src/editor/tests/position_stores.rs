@@ -33,12 +33,7 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
         bid,
         "setup: back on the reloading pane"
     );
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from("short\n")),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, "short\n");
 
     ed.feed_event(key_ctrl('p'));
     ed.feed_event(key('p'));
@@ -242,12 +237,7 @@ fn a_tracked_position_follows_a_reload() {
     let text = ed.doc().text().clone();
     let token = ed.state.panes.tracked.track(bid, &text, head);
 
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from("zero\none\ntwo\nthree\n")),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, "zero\none\ntwo\nthree\n");
 
     assert_eq!(
         ed.state.panes.tracked.position(token, &ed.state.buffers),

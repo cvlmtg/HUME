@@ -4,7 +4,6 @@
 
 use super::*;
 use crate::editor::host_impl::EditorHostImpl;
-use hume_editing::text::BufferText;
 use hume_scripting::host::{PopupKind, UiHost};
 use termina::event::{KeyCode, Modifiers};
 
@@ -616,12 +615,7 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
         "sanity: the token is deep in the buffer"
     );
 
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::Dump(BufferText::from("hi\n")),
-    )
-    .expect("the buffer is not held")
-    .expect_open();
+    reload_from_dump(&mut ed, "hi\n");
 
     ed.settle();
     assert!(ed.state.input.buffer_completion().is_none());

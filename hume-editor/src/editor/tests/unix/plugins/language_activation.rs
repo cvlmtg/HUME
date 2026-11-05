@@ -426,48 +426,31 @@ fn command_trigger_logs_trace_on_activation() {
 
 /// The editor `hume <args>` starts in a directory holding `files`, with a
 /// `#:languages '("rust")` plugin whose body is `plugin`. The directories
-/// live as long as the returned guard; the files' is first, the cwd.
+/// live as long as the returned guards; the files' is the cwd.
 fn start_with_rust_plugin(
     plugin: &str,
     files: &[(&str, &str)],
     args: &[&str],
-) -> (Editor, [tempfile::TempDir; 3]) {
-    let config_tmp = tempfile::tempdir().unwrap();
-    let data_tmp = tempfile::tempdir().unwrap();
-    let file_tmp = tempfile::tempdir().unwrap();
-    let hume_config = config_tmp.path().join("hume");
-    std::fs::create_dir_all(&hume_config).unwrap();
-    std::fs::write(
-        hume_config.join("init.scm"),
+) -> (Editor, (ReloadFixture, tempfile::TempDir)) {
+    let fixture = ReloadFixture::new(
         r#"(%define-language! "rust" '("rs") '() '())
            (declare-plugin! "user/rusty" #:languages '("rust"))"#,
-    )
-    .unwrap();
-    let plugin_dir = data_tmp.path().join("hume/plugins/user/rusty");
+    );
+    let plugin_dir = fixture.data_dir.join("plugins/user/rusty");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), plugin).unwrap();
+    let file_tmp = tempfile::tempdir().unwrap();
     for (name, content) in files {
         std::fs::write(file_tmp.path().join(name), content).unwrap();
     }
     let cwd = AbsolutePath::canonicalize(file_tmp.path()).unwrap();
-    let args: Vec<_> = args
-        .iter()
-        .map(|arg| crate::cli::parse_file_arg(std::path::Path::new(arg), &cwd).unwrap())
-        .collect();
-
-    let ed = Editor::start(
-        &args,
-        crate::editor::Driver::Headless,
-        Dirs {
-            config: Some(hume_config),
-            data: Some(data_tmp.path().join("hume")),
-            ..Dirs::none()
-        },
-        crate::cli::ConfigSource::Default,
-        cwd,
-    )
-    .unwrap();
-    (ed, [file_tmp, config_tmp, data_tmp])
+    let dirs = Dirs {
+        config: Some(fixture.config_dir.clone()),
+        data: Some(fixture.data_dir.clone()),
+        ..Dirs::none()
+    };
+    let ed = start_headless(args, &cwd, dirs, crate::cli::ConfigSource::Default);
+    (ed, (fixture, file_tmp))
 }
 
 /// A `#:languages` plugin that the file `hume` starts on activates may close
@@ -480,19 +463,9 @@ fn a_plugin_the_startup_file_activates_may_close_it() {
         &[("main.rs", "fn main() {}\n")],
         &["main.rs"],
     );
-    let closes: Vec<_> = ed
-        .state
-        .config
-        .pending_work
-        .iter()
-        .filter(|w| {
-            matches!(
-                w,
-                crate::editor::event::PendingWork::Event(
-                    crate::editor::event::EditorEvent::OnBufferClose { .. }
-                )
-            )
-        })
+    let closes: Vec<_> = queued_events(&ed)
+        .into_iter()
+        .filter(|e| matches!(e, crate::editor::event::EditorEvent::OnBufferClose { .. }))
         .collect();
     assert!(
         closes.is_empty(),
@@ -547,4 +520,43 @@ fn the_first_files_position_never_lands_on_another_buffer() {
         ed.current_view().primary().head().offset(),
         hume_rope::offset::CharOffset::default()
     );
+}
+
+/// A `#:languages` plugin that edits the file `hume` starts on while
+/// activating edits it on top of the file's saved undo history: `u` undoes
+/// the plugin's edit, then the edit saved before.
+#[test]
+fn a_plugin_the_startup_file_activates_edits_it_after_its_history_is_restored() {
+    use super::super::super::undo_persist::{Disk, editor_on};
+
+    let disk = Disk::new("one\n");
+    let mut first = editor_on(&disk, &disk.file, &["global undo-persist=true"]);
+    type_text(&mut first, "a");
+    type_cmd(&mut first, ":w");
+
+    let fixture = ReloadFixture::new(
+        r#"(%define-language! "notes" '("txt") '() '())
+           (declare-plugin! "user/stamp" #:languages '("notes"))"#,
+    );
+    let plugin_dir = fixture.data_dir.join("plugins/user/stamp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.scm"),
+        r#"(edit-text! (focused-pane) (list (hash 'start-char 0 'end-char 0 'text "// ")))"#,
+    )
+    .unwrap();
+    let cwd = AbsolutePath::canonicalize(disk.dir.path()).unwrap();
+    let dirs = Dirs {
+        config: Some(fixture.config_dir.clone()),
+        data: Some(fixture.data_dir.clone()),
+        state: Some(disk.state()),
+        ..Dirs::none()
+    };
+    let mut ed = start_headless(&[&disk.file], &cwd, dirs, crate::cli::ConfigSource::Default);
+    ed.settle();
+    assert_eq!(text(&ed), "// aone\n", "sanity: the plugin's edit applies");
+
+    ed.feed_key(key('u'));
+    ed.feed_key(key('u'));
+    assert_eq!(text(&ed), "one\n");
 }

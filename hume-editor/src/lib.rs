@@ -124,7 +124,7 @@ pub fn run_keys(
 /// Start the editor.
 ///
 /// `config` is the validated `ConfigSource` from `main.rs`'s `resolve`; it is
-/// set on the editor before `init_scripting` runs. `cwd` is the startup
+/// set on the editor before the config loads. `cwd` is the startup
 /// working directory.
 ///
 /// Scripting init (Steel VM boot and `init.scm`, ~150-200 ms) runs before raw

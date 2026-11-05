@@ -155,10 +155,10 @@ impl Editor {
         // its handlers.
         self.state.queue_event(EditorEvent::OnLanguageSet {
             buffer: bid,
-            language: lang_name.clone(),
+            language: lang_name,
         });
-        if let Some(name) = lang_name.as_deref() {
-            self.activate_lazy_language_plugins(name);
+        if let Some(id) = new_lang {
+            self.activate_lazy_language_plugins(id);
             // An activated plugin may have closed the buffer, or changed its
             // language, which already set up syntax and servers for the
             // newer value.

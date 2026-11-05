@@ -64,10 +64,10 @@ impl Editor {
         let buf = self.state.buffers.get_mut(bid);
         let changed = buf.path() != Some(file.resolved());
         buf.set_file(file);
+        buf.mark_saved();
         if changed {
             self.state.lsp_reconcile_buffer(&self.view, bid);
         }
-        self.state.buffers.get_mut(bid).mark_saved();
         self.state.save_undo_history(bid);
     }
 
