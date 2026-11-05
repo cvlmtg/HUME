@@ -982,7 +982,7 @@ fn an_unreadable_index_fails_cleanly() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains(r#"no language "nosuchlang""#)),
         "a later command must still run: {:?}",
         ed.state.status_msg

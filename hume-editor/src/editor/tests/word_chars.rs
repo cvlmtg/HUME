@@ -100,7 +100,7 @@ fn symbol_under_cursor_returns_whole_hyphenated_word() {
              (log! 'info (symbol-under-cursor bid))))"#,
     );
     type_cmd(&mut ed, ":check");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "foo-bar");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "foo-bar");
 }
 
 #[test]

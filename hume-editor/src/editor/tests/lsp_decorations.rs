@@ -1295,48 +1295,48 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
 
     type_cmd(&mut ed, ":counts");
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "1 1 0 1",
         "one count per severity, under the option's floor (hint)"
     );
     type_cmd(&mut ed, ":floored-counts");
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "1 1 0 0",
         "#:severity drops the counts below it"
     );
 
     type_cmd(&mut ed, ":all");
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "3",
         "no floor/range must return all three"
     );
 
     type_cmd(&mut ed, ":floored");
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "2",
         "a warning floor keeps error+warning, drops the hint"
     );
 
     type_cmd(&mut ed, ":ranged");
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "1",
         "range 5..10 must keep only the hint at char 8"
     );
 
     type_cmd(&mut ed, ":first");
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "an error @ 0 #true",
         "an entry's fields are read by symbol key, its severity a symbol"
     );
 
     type_cmd(&mut ed, ":hint-rank");
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "hint 3",
         "an entry carries its severity as a symbol and its rank, 0 for error to 3 for hint"
     );

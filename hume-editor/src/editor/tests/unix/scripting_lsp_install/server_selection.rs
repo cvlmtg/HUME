@@ -143,7 +143,7 @@ fn install_by_server_name_runs_the_same_pipeline() {
     type_cmd(&mut ed, ":lsp-install ruff");
 
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some(format!("LSP: ruff already installed (v{version}) — up to date").as_str())
     );
     assert!(ed.state.lsp.registered_command_for_test("ruff").is_some());
@@ -170,7 +170,7 @@ fn an_install_command_keeps_the_users_list() {
     type_cmd(&mut ed, ":lsp-install ruff");
 
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some(format!("LSP: ruff already installed (v{version}) — up to date").as_str())
     );
     assert_eq!(effective(&ed, "python"), ["ty"]);

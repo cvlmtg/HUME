@@ -26,7 +26,7 @@ fn write_refuses_on_externally_changed_file_but_bang_overrides() {
 
     type_cmd(&mut ed, ":w");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("file has changed on disk (add ! to override)")
     );
     assert_eq!(
@@ -77,7 +77,7 @@ fn write_percent_refuses_on_externally_changed_own_file() {
     type_cmd(&mut ed, ":w %");
 
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("file has changed on disk (add ! to override)")
     );
     assert_eq!(
@@ -206,7 +206,7 @@ fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
     assert!(ed.state.has_unsaved_changes(bid_a), "A's write was skipped");
     assert!(!ed.state.has_unsaved_changes(bid_b));
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some(format!("Skipped (changed on disk): {name_a}").as_str())
     );
 

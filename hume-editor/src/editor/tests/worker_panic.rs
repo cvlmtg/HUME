@@ -19,7 +19,7 @@ fn a_worker_panic_is_reported_as_one_error() {
         errors[0],
         @"thread 'hume-lsp-reader' panicked at hume-lsp/src/transport.rs:150:9: bad frame"
     );
-    assert_eq!(ed.state.status_msg.as_deref(), Some(errors[0].as_str()));
+    assert_eq!(ed.state.status_msg.text(), Some(errors[0].as_str()));
 }
 
 #[test]

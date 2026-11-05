@@ -268,10 +268,7 @@ fn search_selection_too_large_to_compile_reports_an_error() {
     let mut ed = editor_from(&format!("-[{}]>\n", "a".repeat(1_000_000)));
     ed.handle_key(key_ctrl('/'));
 
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("invalid search pattern")
-    );
+    assert_eq!(ed.state.status_msg.text(), Some("invalid search pattern"));
     assert!(reg(&ed, 's').is_empty());
     assert!(ed.search_pattern().is_none());
 }

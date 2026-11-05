@@ -222,7 +222,7 @@ fn colon_enter_empty_silently_dismisses() {
     assert_eq!(ed.state.mode(), Mode::Normal, "must return to Normal mode");
     assert!(ed.state.minibuf().is_none(), "minibuf must be closed");
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "must not show 'unknown command', got: {:?}",
         ed.state.status_msg
     );
@@ -263,7 +263,7 @@ fn colon_capital_w_writes_file() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .unwrap_or("")
             .starts_with("Written")
     );
@@ -341,7 +341,7 @@ fn colon_editor_command_name_in_another_case_does_not_dispatch() {
     let before = state(&ed);
     type_cmd(&mut ed, ":SELECT-NEXT-WORD");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some(
             "'select-next-word' is an editor command; bind it to a key, or run it with call!, not `:`"
         )

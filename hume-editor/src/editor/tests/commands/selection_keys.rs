@@ -13,12 +13,12 @@ fn undo_at_root_shows_message() {
     ed.handle_key(key_esc());
     ed.handle_key(key('u'));
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "first undo should succeed with no message"
     );
     ed.handle_key(key('u'));
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Already at oldest change"),
         "second undo at root should show message"
     );
@@ -32,13 +32,10 @@ fn undo_message_cleared_on_next_keypress() {
     ed.handle_key(key_esc());
     ed.handle_key(key('u'));
     ed.handle_key(key('u'));
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Already at oldest change")
-    );
+    assert_eq!(ed.state.status_msg.text(), Some("Already at oldest change"));
     ed.handle_key(key('l'));
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "next keypress clears the undo-at-root message"
     );
 }
@@ -52,12 +49,12 @@ fn redo_at_newest_shows_message() {
     ed.handle_key(key('u'));
     ed.handle_key(key_ctrl('r'));
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "first redo should succeed with no message"
     );
     ed.handle_key(key_ctrl('r'));
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Already at newest change"),
         "second redo at newest should show message"
     );
@@ -73,7 +70,7 @@ fn undo_with_count_shows_message_on_exhaustion() {
     ed.handle_key(key('2'));
     ed.handle_key(key('u'));
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Already at oldest change"),
         "count=2 with only 1 undo step should show message on final step"
     );
@@ -90,7 +87,7 @@ fn redo_with_count_shows_message_on_exhaustion() {
     ed.handle_key(key('2'));
     ed.handle_key(key_ctrl('r'));
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Already at newest change"),
         "count=2 with only 1 redo step should show message on final step"
     );

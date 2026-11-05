@@ -24,7 +24,7 @@ fn prompt_confirm_calls_callback_with_typed_text() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "hi");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "hi");
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
     assert!(ed.state.minibuf().is_none());
 }
@@ -45,7 +45,7 @@ fn prompt_esc_calls_callback_with_false_exactly_once() {
     ed.feed_key(key_esc());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert!(ed.state.minibuf().is_none());
 }
 
@@ -74,7 +74,7 @@ fn prompt_prefill_is_visible_and_editable() {
     ed.feed_key(key('a'));
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "ola");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "ola");
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn second_prompt_while_one_is_open_errors() {
     assert_eq!(ed.state.minibuf().unwrap().prompt, "a");
     // The command's overall failure (from the second prompt!'s error) is
     // reported rather than silently swallowed.
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("already open") || msg.to_lowercase().contains("error"),
         "expected an error message, got {msg:?}"
@@ -329,7 +329,7 @@ fn exit_insert_outside_insert_does_not_cancel_an_unrelated_prompt() {
     type_cmd(&mut ed, ":go");
     assert!(ed.state.minibuf().is_some(), "sanity: prompt is open");
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "sanity: on-confirm hasn't fired yet"
     );
 
@@ -340,7 +340,7 @@ fn exit_insert_outside_insert_does_not_cancel_an_unrelated_prompt() {
         "exit-insert outside Insert must not cancel the open prompt"
     );
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "the prompt's on-confirm must not fire from an unrelated exit-insert"
     );
 }
@@ -462,7 +462,8 @@ fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     let msg = ed
         .state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("symbol-under-cursor on a paneless handle must raise");
     assert!(
         msg.contains("symbol-under-cursor: needs a pane, but was given none"),

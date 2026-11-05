@@ -54,7 +54,7 @@ fn deleted_file_warns_and_never_prompts() {
     assert!(ed.doc().is_disk_stale());
     assert!(ed.state.input.confirm().is_none());
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some(format!("{name}: file no longer exists on disk").as_str())
     );
 }

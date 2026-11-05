@@ -130,7 +130,7 @@ fn a_buffer_without_a_language_refuses_the_toggle() {
 
     assert_eq!(state(&ed), "-[a]>\n");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("No comment tokens: buffer has no language")
     );
 }
@@ -143,7 +143,7 @@ fn a_language_without_comment_tokens_refuses_the_toggle() {
 
     assert_eq!(state(&ed), "-[a]>\n");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("No comment tokens for language 'plain'")
     );
 }
@@ -156,7 +156,7 @@ fn a_span_holding_the_block_end_refuses_the_toggle_without_line_comments() {
 
     assert_eq!(state(&ed), "-[a <!-- x -->\nb]>\n");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Cannot comment: the text already holds the block comment end '-->'")
     );
 }

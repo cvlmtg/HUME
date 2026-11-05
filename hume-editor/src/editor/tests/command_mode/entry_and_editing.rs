@@ -255,7 +255,7 @@ fn colon_w_no_path_sets_error() {
     ed.handle_key(key_enter());
     assert!(!ed.state.should_quit);
     assert_eq!(ed.state.mode(), Mode::Normal);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no file name"));
+    assert_eq!(ed.state.status_msg.text(), Some("no file name"));
 }
 
 #[test]
@@ -270,7 +270,7 @@ fn colon_w_writes_file() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .unwrap_or("")
             .starts_with("Written")
     );
@@ -298,7 +298,7 @@ fn colon_unknown_sets_error() {
     }
     ed.handle_key(key_enter());
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("unknown command: nonsense")
     );
     assert!(!ed.state.should_quit);
@@ -345,7 +345,7 @@ fn colon_editor_command_name_is_unknown_and_does_not_dispatch() {
     }
     ed.handle_key(key_enter());
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some(
             "'select-next-word' is an editor command; bind it to a key, or run it with call!, not `:`"
         )
@@ -360,10 +360,10 @@ fn status_msg_cleared_on_next_keypress() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(ed.state.status_msg.is_some());
+    assert!(ed.state.status_msg.text().is_some());
     // Any keypress clears it.
     ed.handle_key(key('l'));
-    assert!(ed.state.status_msg.is_none());
+    assert!(ed.state.status_msg.text().is_none());
 }
 
 // ── Ctrl-w delete-word in the minibuffer ─────────────────────────────────────

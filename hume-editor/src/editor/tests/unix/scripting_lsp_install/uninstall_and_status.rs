@@ -121,7 +121,7 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
     // written to `:messages` (see message_log.rs's Severity table), so the
     // confirmation shows up in `status_msg`, not `message_log`.
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("LSP: nothing to uninstall for rust-analyzer"),
         "must report there was nothing to do"
     );
@@ -265,7 +265,7 @@ fn lsp_stop_with_no_matching_server_reports_nothing_to_stop() {
     type_cmd(&mut ed, ":lsp-stop");
 
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("lsp: no matching server to stop")
     );
 }
@@ -279,7 +279,7 @@ fn lsp_restart_with_no_matching_server_reports_nothing_to_restart() {
     type_cmd(&mut ed, ":lsp-restart");
 
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("lsp: no matching server to restart")
     );
 }

@@ -156,7 +156,7 @@ fn null_result_logs_and_shows_no_popup() {
         popup_lines(&ed).is_none(),
         "null hover result must not open a popup"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("no hover info"),
         "expected a 'no hover info' message, got {msg:?}"
@@ -184,7 +184,7 @@ fn error_reports_via_the_message_log() {
         popup_lines(&ed).is_none(),
         "a protocol error must not open a popup"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("boom"),
         "expected the server's error message surfaced, got {msg:?}"
@@ -402,7 +402,7 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
 
     run_hover(&mut ed);
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("not supported"),
         "expected a not-supported message, got {msg:?}"
@@ -423,7 +423,7 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
 
     run_hover(&mut ed);
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("not supported"),
         "expected a not-supported message, got {msg:?}"
@@ -538,7 +538,7 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
 
     assert!(popup_lines(&ed).is_none());
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("lsp hover: no LSP server attached to this buffer")
     );
 }

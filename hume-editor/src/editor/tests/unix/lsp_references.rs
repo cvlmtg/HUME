@@ -111,7 +111,7 @@ fn null_result_reports_no_references() {
 
     run_references(&mut ed);
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("no references"),
         "expected a no-references message, got {msg:?}"
@@ -171,7 +171,7 @@ fn buffer_with_no_path_reports_and_tracks_nothing() {
     assert_eq!(ed.state.panes.tracked.len(), 0);
     assert!(ed.state.views.drawer.read().is_none());
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("lsp references: no LSP server attached to this buffer")
     );
 }

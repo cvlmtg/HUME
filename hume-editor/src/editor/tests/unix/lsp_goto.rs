@@ -68,7 +68,7 @@ fn null_result_reports_no_definition_found() {
 
     run_goto(&mut ed, "lsp/goto-definition");
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("no definition found"),
         "expected a no-definition message, got {msg:?}"
@@ -294,7 +294,7 @@ fn a_goto_whose_only_target_is_not_a_file_does_not_claim_no_definition() {
 
     assert_eq!(state(&ed), before);
     assert_eq!(warnings(&ed), 1);
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert_ne!(msg, "No definition found");
 }
 
@@ -579,7 +579,7 @@ fn goto_target_is_directory_errors_without_moving_the_cursor() {
     run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(state(&ed), before, "a failed goto must not move the cursor");
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("error") || msg.to_lowercase().contains("goto-location"),
         "expected an error message, got {msg:?}"
@@ -612,7 +612,7 @@ fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
         ed.doc().is_new_file(),
         "target buffer must be a pending new-file buffer, not an error"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         !msg.to_lowercase().contains("error"),
         "must not report an error, got {msg:?}"
@@ -639,7 +639,7 @@ fn location_missing_range_errors_instead_of_jumping() {
         before,
         "a malformed location must not move the cursor"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("lsp-locations->merged-places") && msg.contains("missing range"),
         "expected an error naming the builtin and the missing field, got {msg:?}"
@@ -837,7 +837,7 @@ fn buffer_with_no_path_reports_and_tracks_nothing() {
 
     assert_eq!(ed.state.panes.tracked.len(), 0);
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("lsp goto: no LSP server attached to this buffer")
     );
 }

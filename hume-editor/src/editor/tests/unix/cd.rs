@@ -215,7 +215,7 @@ fn typed_pwd_reports_current_directory() {
     let msg = ed
         .state
         .status_msg
-        .as_deref()
+        .text()
         .expect(":pwd must report a message");
     let expected = hume_platform::path::display_form(&canonical);
     assert_eq!(msg, expected, ":pwd must report display_form(cwd)");
@@ -235,7 +235,7 @@ fn typed_pwd_long_alias_works() {
     let msg = ed
         .state
         .status_msg
-        .as_deref()
+        .text()
         .expect(":print-working-directory must report a message");
     let expected = hume_platform::path::display_form(&canonical);
     assert_eq!(msg, expected, "long alias must match :pwd output");

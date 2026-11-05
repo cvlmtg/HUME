@@ -68,7 +68,7 @@ fn no_target_refuses_and_records_no_revision() {
 
     assert_eq!(state(&ed), "-[x]>\n");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("No number, date or time to change")
     );
     assert!(!ed.state.buffers.get(bid).can_undo());
@@ -82,7 +82,7 @@ fn a_result_out_of_range_refuses_and_records_no_revision() {
     call_counted(&mut ed, "increment", Count::UNTYPED);
 
     assert_eq!(state(&ed), "-[9]>999-12-31\n");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("Result out of range"));
+    assert_eq!(ed.state.status_msg.text(), Some("Result out of range"));
     assert!(!ed.state.buffers.get(bid).can_undo());
 }
 
@@ -112,6 +112,7 @@ fn a_read_only_buffer_refuses_the_increment() {
     ed.report(Severity::Warning, "1 test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
+    ed.state.status_msg.clear();
     let before = ed.doc().text().to_string();
 
     call_counted(&mut ed, "increment", Count::UNTYPED);

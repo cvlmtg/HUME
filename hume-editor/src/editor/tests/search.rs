@@ -179,7 +179,7 @@ fn search_no_match_behaviour() {
 
     // n: "no match" status message.
     ed.handle_key(key('n'));
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no match"));
+    assert_eq!(ed.state.status_msg.text(), Some("no match"));
     // "no match" is a boundary condition, not a failure. It must not reach
     // `:messages` or raise the unread-message statusline nudge.
     assert_eq!(ed.state.message_log.totals(), (0, 0));
@@ -965,7 +965,7 @@ fn multi_flag_no_selection_matches_reports_transient() {
     let before = state(&ed);
 
     ed.handle_key(key('n'));
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no match"));
+    assert_eq!(ed.state.status_msg.text(), Some("no match"));
     assert_eq!(state(&ed), before, "selections must be left untouched");
 }
 

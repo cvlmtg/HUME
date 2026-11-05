@@ -44,7 +44,7 @@ fn expect_focus(ed: &mut Editor, start: PaneId, expected: PaneId, cmd: Cmd) {
     )
     .unwrap();
     assert_eq!(ed.view.focused_pane(), expected);
-    assert!(ed.state.status_msg.is_none());
+    assert!(ed.state.status_msg.text().is_none());
 }
 
 /// Assert the directional command is a silent no-op from `start` (focused pane
@@ -105,7 +105,7 @@ fn t4_pane_focus_next_cycles_dfs_order_and_wraps() {
         )
         .unwrap();
         assert_eq!(ed.view.focused_pane(), expected);
-        assert!(ed.state.status_msg.is_none());
+        assert!(ed.state.status_msg.text().is_none());
     }
 }
 
@@ -123,7 +123,7 @@ fn t4_pane_focus_next_single_pane_is_noop() {
     )
     .unwrap();
     assert_eq!(ed.view.focused_pane(), before);
-    assert!(ed.state.status_msg.is_none());
+    assert!(ed.state.status_msg.text().is_none());
 }
 
 #[test]
@@ -146,6 +146,6 @@ fn t4_directional_no_neighbour_is_noop() {
         )
         .unwrap();
         assert_eq!(ed.view.focused_pane(), before);
-        assert!(ed.state.status_msg.is_none());
+        assert!(ed.state.status_msg.text().is_none());
     }
 }

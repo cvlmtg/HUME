@@ -29,7 +29,7 @@ fn stale_token_returns_false_without_spawning() {
     call(&mut ed, "spawn-stale");
 
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "#false",
         "a stale token must return #f, not raise; the bogus binary name proves nothing was spawned"
     );
@@ -48,7 +48,7 @@ fn no_open_picker_returns_false_without_spawning() {
     );
     call(&mut ed, "spawn-none");
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert!(ed.state.input.picker().is_none());
 }
 
@@ -66,7 +66,7 @@ fn spawn_failure_raises_and_leaves_the_picker_open() {
     type_cmd(&mut ed, ":go");
     call(&mut ed, "spawn-bad");
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("picker-source-spawn!") && msg.contains("cannot run"),
         "error should name the builtin and the failure, got {msg:?}"
@@ -91,7 +91,7 @@ fn empty_cmd_raises_naming_the_arg() {
     type_cmd(&mut ed, ":go");
     call(&mut ed, "spawn-empty");
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("picker-source-spawn!") && msg.contains("cmd"),
         "error should name the builtin and the empty cmd, got {msg:?}"
@@ -119,7 +119,7 @@ fn ok_exit_codes_rejects_a_value_outside_i32_range() {
     type_cmd(&mut ed, ":go");
     call(&mut ed, "spawn-it");
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("ok-exit-codes") && msg.contains("range"),
         "error should name the offending argument, got {msg:?}"

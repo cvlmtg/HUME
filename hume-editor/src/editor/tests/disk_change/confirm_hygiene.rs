@@ -335,7 +335,8 @@ fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
         "B's stale-file warning must still land in :messages"
     );
     assert_eq!(
-        ed.state.status_msg, None,
+        ed.state.status_msg.text(),
+        None,
         "the disk warning must land in :messages only (report_disk_state's \
          silent-push branch), not overwrite status_msg via Editor::report. \
          status_msg must stay whatever the last replayed key (`:b #`'s own \
@@ -383,7 +384,7 @@ fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("has unsaved changes")),
         "the :qa error must stay on screen, got: {:?}",
         ed.state.status_msg
@@ -429,7 +430,7 @@ fn quit_all_focus_move_still_logs_the_disk_change_without_shadowing_the_error() 
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("has unsaved changes")),
         "status_msg must still be :qa's own error, not the disk warning"
     );

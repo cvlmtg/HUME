@@ -392,13 +392,14 @@ fn files_picker_without_git_or_fd_names_fd() {
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     ed.state.dirs.search_path = Some(empty_bin.path().into());
 
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     call(&mut ed, "pickers/files");
 
     let msg = ed
         .state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("error must surface as a status message");
     assert!(msg.contains("fd"), "error must name fd; got: {msg}");
     assert!(ed.state.input.picker().is_none());
@@ -853,13 +854,14 @@ fn git_modified_picker_not_a_repo_names_git() {
         .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
         .unwrap();
 
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     call(&mut ed, "pickers/git-modified");
 
     let msg = ed
         .state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("error must surface as a status message");
     assert!(msg.contains("git"), "error must name git; got: {msg}");
     assert!(ed.state.input.picker().is_none());
@@ -880,14 +882,15 @@ fn git_modified_picker_git_status_failure_reports_gits_error() {
         .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
         .unwrap();
 
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     call(&mut ed, "pickers/git-modified");
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
     let msg = ed
         .state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("error must surface as a status message");
     assert!(
         msg.contains("fatal"),
@@ -928,7 +931,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
 
     assert!(ed.state.input.picker().is_none());
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "closing the picker must not report the stopped `git status` as a failure"
     );
     assert_eq!(

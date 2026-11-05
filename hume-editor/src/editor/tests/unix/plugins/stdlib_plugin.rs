@@ -466,7 +466,7 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("probe-cmd") && m.contains("no language given")),
         "the no-fallback case must report a status message naming the calling command, got: {:?}",
         ed.state.status_msg
@@ -674,7 +674,7 @@ fn picker_keymap_moves_by_rows_pages_and_half_pages() {
         assert_eq!(picker_selected(&ed), expected, "after {key:?}");
     }
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "moving never calls the handler"
     );
 }
@@ -688,7 +688,7 @@ fn picker_keymap_enter_and_ctrl_o_close_and_hand_the_selected_item_over() {
         ed.feed_event(accept);
 
         assert!(ed.state.input.picker().is_none(), "{accept:?} closes it");
-        assert_eq!(ed.state.status_msg.as_deref(), Some("1"), "{accept:?}");
+        assert_eq!(ed.state.status_msg.text(), Some("1"), "{accept:?}");
     }
 }
 
@@ -700,7 +700,7 @@ fn picker_keymap_enter_with_nothing_matching_hands_over_false() {
     ed.feed_event(key_enter());
 
     assert!(ed.state.input.picker().is_none());
-    assert_eq!(ed.state.status_msg.as_deref(), Some("none"));
+    assert_eq!(ed.state.status_msg.text(), Some("none"));
 }
 
 #[test]
@@ -710,7 +710,7 @@ fn picker_keymap_esc_closes_without_calling_the_handler() {
     ed.feed_event(key_esc());
 
     assert!(ed.state.input.picker().is_none());
-    assert!(ed.state.status_msg.is_none());
+    assert!(ed.state.status_msg.text().is_none());
 }
 
 #[test]
@@ -734,7 +734,7 @@ fn picker_keymap_ctrl_s_splits_the_pane_then_hands_the_item_over() {
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(ed.view.panes.len(), panes_before + 1);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("0"));
+    assert_eq!(ed.state.status_msg.text(), Some("0"));
 }
 
 /// A plugin changes one default key by `hash-insert`ing its own binding
@@ -761,7 +761,7 @@ fn picker_keymap_takes_an_overriding_key_through_hash_insert() {
     ed.feed_event(key_esc());
 
     assert!(ed.state.input.picker().is_none());
-    assert_eq!(ed.state.status_msg.as_deref(), Some("custom esc"));
+    assert_eq!(ed.state.status_msg.text(), Some("custom esc"));
 }
 
 // ── The markdown-heading example in writing-plugins.md ───────────────────────

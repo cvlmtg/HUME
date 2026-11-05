@@ -113,7 +113,7 @@ fn command_error_severity_routes_transient_vs_logged() {
 
     submit(&mut ed, "b nosuchbuffer");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("no buffer matching 'nosuchbuffer'")
     );
     assert_eq!(

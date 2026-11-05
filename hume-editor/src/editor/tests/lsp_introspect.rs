@@ -237,7 +237,8 @@ fn buffer_generation_changes_after_an_edit() {
     let before_gen = ed
         .state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("log! set the status message");
 
     ed.feed_key(key('i'));
@@ -247,7 +248,8 @@ fn buffer_generation_changes_after_an_edit() {
     let after_gen = ed
         .state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("log! set the status message");
 
     assert_ne!(
@@ -636,7 +638,8 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
     let msg = ed
         .state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("viewport-range on a paneless handle must raise");
     assert!(
         msg.contains("viewport-range: needs a pane, but was given none"),
@@ -722,7 +725,7 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
 
     type_cmd(&mut ed, ":probe");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("range: 0..1"),
         "viewport-range on a background-tab pane must succeed, not raise"
     );
@@ -770,7 +773,8 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
         .ed
         .state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("lsp-position-params on a paneless handle must raise");
     assert!(
         msg.contains("lsp-position-params: needs a pane, but was given none"),
@@ -1444,7 +1448,7 @@ fn a_released_position_answers_false() {
     type_cmd(&mut rig.ed, ":disarm");
 
     type_cmd(&mut rig.ed, ":report");
-    assert_eq!(rig.ed.state.status_msg.as_deref(), Some("none"));
+    assert_eq!(rig.ed.state.status_msg.text(), Some("none"));
 }
 
 #[test]

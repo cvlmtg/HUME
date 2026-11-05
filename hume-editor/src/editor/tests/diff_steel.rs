@@ -204,7 +204,7 @@ fn buffer_changes_since_returns_the_hunks_since_a_generation() {
 
     type_cmd(&mut ed, ":now");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("()"),
         "nothing separates the live text from itself"
     );
@@ -226,10 +226,10 @@ fn a_buffer_generation_compares_equal_until_the_buffer_changes() {
     );
     type_cmd(&mut ed, ":snap");
     type_cmd(&mut ed, ":same");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("same"));
+    assert_eq!(ed.state.status_msg.text(), Some("same"));
     ed.feed_key(key('d'));
     type_cmd(&mut ed, ":same");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("moved"));
+    assert_eq!(ed.state.status_msg.text(), Some("moved"));
 }
 
 /// A generation of another buffer raises: its number means nothing for this

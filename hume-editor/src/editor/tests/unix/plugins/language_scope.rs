@@ -522,7 +522,7 @@ fn ctrl_space_does_not_call_a_scoped_source_in_a_buffer_of_another_language() {
 #[test]
 fn a_trigger_char_does_not_call_a_scoped_source_outside_its_languages() {
     let (mut ed, _dir, _bid) = inserting_in("markdown");
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     ed.feed_key(key('.'));
     ed.settle();
     assert!(tp_log(&ed).is_empty(), "{:?}", tp_log(&ed));

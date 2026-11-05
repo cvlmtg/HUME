@@ -66,9 +66,9 @@ fn path_programs_lists_the_programs_on_the_editor_search_path() {
     );
 
     call(&mut ed, "go");
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), PROBE);
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), PROBE);
 }
 
 #[test]
@@ -87,9 +87,9 @@ fn spawn_async_runs_a_program_on_the_editor_search_path() {
     );
     call(&mut ed, "go");
 
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "found");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "found");
 }
 
 #[test]

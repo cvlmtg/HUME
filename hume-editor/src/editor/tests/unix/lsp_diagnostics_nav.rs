@@ -166,7 +166,7 @@ fn empty_buffer_reports_no_diagnostics() {
     call_and_settle(&mut ed, "lsp/goto-next-diagnostic");
 
     assert_eq!(state(&ed), before, "no diagnostics means no movement");
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("no diagnostics"),
         "expected a no-diagnostics message, got {msg:?}"

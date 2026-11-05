@@ -481,7 +481,7 @@ fn a_reload_whose_language_activates_a_plugin_that_closes_the_buffer() {
     ed.detect_pending_languages();
     assert!(ed.state.buffers.get(bid).language.is_none());
     std::fs::write(&file, "#!/usr/bin/env python3\n").unwrap();
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
 
     ed.execute_typed("e!", None).expect(":e! reloads the file");
 

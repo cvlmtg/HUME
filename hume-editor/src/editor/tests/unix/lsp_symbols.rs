@@ -209,7 +209,7 @@ fn a_file_with_no_symbols_reports_it_and_opens_no_picker() {
     call_and_pump(&mut ed, "lsp/document-symbols");
 
     assert!(ed.state.input.picker().is_none());
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(msg.to_lowercase().contains("no symbols"), "got {msg:?}");
 }
 
@@ -223,7 +223,7 @@ fn document_symbols_without_a_provider_report_unsupported() {
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(request_count(&requests, "textDocument/documentSymbol"), 0);
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(msg.contains("not supported"), "got {msg:?}");
 }
 
@@ -396,7 +396,7 @@ fn workspace_symbols_without_a_provider_name_the_server_that_lacks_it() {
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("lsp workspace symbols: workspace-symbols is not supported by rust-analyzer")
     );
 }

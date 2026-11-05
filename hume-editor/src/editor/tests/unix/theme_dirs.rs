@@ -128,7 +128,7 @@ fn load_theme_by_name_loads_despite_a_malformed_key_and_warns() {
     // The status line is the half the user actually reads without opening
     // `:messages`, and the one bad key here makes it the singular branch.
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("theme 'flawed' loaded with 1 warning"),
         "a partial load must say so on the status line"
     );

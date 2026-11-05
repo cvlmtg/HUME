@@ -48,7 +48,7 @@ fn end_to_end_drain_streams_lines_into_the_store() {
         "source must detach once the reader disconnects"
     );
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "a clean exit must not report anything"
     );
 }
@@ -107,9 +107,9 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
 
     attach_sh(&mut ed, "echo boom >&2; exit 2", vec![0]);
 
-    drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_sources_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    let msg = ed.state.status_msg.as_ref().expect("status set");
+    let msg = ed.state.status_msg.text().expect("status set");
     assert!(msg.contains("boom"), "got: {msg}");
     let error_entries = error_log(&ed).len();
     assert_eq!(error_entries, 1);
@@ -126,7 +126,7 @@ fn exit_code_in_the_allowlist_reports_nothing() {
     drain_sources_until(&mut ed, source_detached);
 
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "exit 1 is in the allowlist, must not report anything"
     );
     let error_entries = error_log(&ed).len();
@@ -142,9 +142,9 @@ fn exit_code_outside_the_allowlist_still_reports() {
     // allowlisted for "no matches".
     attach_sh(&mut ed, "echo boom >&2; exit 2", vec![0, 1]);
 
-    drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_sources_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    let msg = ed.state.status_msg.as_ref().expect("status set");
+    let msg = ed.state.status_msg.text().expect("status set");
     assert!(msg.contains("boom"), "got: {msg}");
 }
 
@@ -160,9 +160,9 @@ fn allowlist_omitting_zero_reports_a_successful_exit() {
     // as a bug to "fix" later.
     attach_sh(&mut ed, "exit 0", vec![1]);
 
-    drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_sources_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    let msg = ed.state.status_msg.as_ref().expect("status set");
+    let msg = ed.state.status_msg.text().expect("status set");
     assert!(
         msg.contains("failed"),
         "an allowlist omitting 0 must report a successful exit, got: {msg}"
@@ -175,9 +175,9 @@ fn a_failed_source_with_no_stderr_reports_only_its_exit() {
     open_test_picker(&mut ed, &[]);
     attach_sh(&mut ed, "exit 3", vec![0]);
 
-    drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_sources_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    insta::assert_snapshot!(ed.state.status_msg.as_deref().unwrap_or_default(), @"sh failed (exit code 3)");
+    insta::assert_snapshot!(ed.state.status_msg.text().unwrap_or_default(), @"sh failed (exit code 3)");
 }
 
 #[test]

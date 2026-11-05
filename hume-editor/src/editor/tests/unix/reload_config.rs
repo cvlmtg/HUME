@@ -91,7 +91,7 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
          proves nothing"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Config reloaded"),
         "a reload whose only new log output is Trace-level must still \
          report success (regression test for MessageLog::totals \
@@ -265,7 +265,7 @@ fn config_override_missing_at_reload_reports_error_and_does_not_report_success()
             .collect::<Vec<_>>()
     );
     assert_ne!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Config reloaded"),
         "a reload that just errored must not also report success"
     );
@@ -311,7 +311,7 @@ fn config_override_works_with_no_config_dir() {
          even with no config directory"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Config reloaded"),
         "reload must report success, not the no-config-dir failure"
     );
@@ -371,7 +371,7 @@ fn reload_config_under_no_config_errors() {
             .collect::<Vec<_>>()
     );
     assert_ne!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Config reloaded"),
         "a reload that just errored must not also report success"
     );
@@ -559,7 +559,7 @@ fn reload_config_does_not_report_success_when_init_scm_errors() {
             .collect::<Vec<_>>()
     );
     assert_ne!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Config reloaded"),
         "the reload must not report success when init.scm failed to evaluate"
     );
@@ -745,7 +745,7 @@ fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
         "the failure must be reported, not silent"
     );
     assert_ne!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Config reloaded"),
         "a failed reload must not report success"
     );

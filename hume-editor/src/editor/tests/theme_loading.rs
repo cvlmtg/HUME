@@ -306,7 +306,7 @@ fn theme_debug_cursor_rows_show_a_real_chain_not_a_placeholder() {
     let text = ed
         .state
         .status_msg
-        .as_ref()
+        .text()
         .expect(":theme-debug reports Info, which lands in status_msg");
     assert!(
         text.contains("cursor (normal): chain=ui.cursor.normal"),
@@ -338,4 +338,21 @@ fn load_theme_by_name_fails_gracefully() {
         ed.state.message_log.has_unseen(),
         "expected a warning message"
     );
+}
+
+#[test]
+fn a_failed_theme_load_leaves_an_error_already_on_the_statusline() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.status_msg.show(Severity::Error, "earlier failure");
+    let ok = crate::editor::theme::load_theme_by_name(
+        &mut ed.view,
+        &mut ed.state.shown_theme,
+        &mut ed.state.message_log,
+        &mut ed.state.status_msg,
+        &mut ed.state.input,
+        &ed.state.dirs,
+        "no_such_theme_xyz",
+    );
+    assert!(!ok);
+    assert_eq!(ed.state.status_msg.text(), Some("earlier failure"));
 }

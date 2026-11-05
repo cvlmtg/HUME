@@ -86,7 +86,7 @@ use scripting::theme_search_paths;
 
 pub(in crate::editor) use minibuf::MiniBuffer;
 
-use message_log::{MessageLog, MessagesView};
+use message_log::{MessageLog, MessagesView, StatusMsg};
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
 //
@@ -259,7 +259,7 @@ pub(crate) struct EditorState {
     /// Error; empty (and never filled) when no hook is installed.
     pub(super) worker_panics: hume_platform::worker_panic::WorkerPanics,
     /// Transient one-line message shown in the statusline after an action.
-    pub(crate) status_msg: Option<String>,
+    pub(crate) status_msg: StatusMsg,
     /// Keystrokes the message-log summary stays visible. Armed when
     /// `status_msg` clears with unseen entries; ticked down in `handle_key`
     /// only while no minibuf-mode layer is open, so typing a long `:`
@@ -427,7 +427,7 @@ impl EditorState {
             terminate_exit_code: Arc::new(AtomicI32::new(0)),
             headless: false,
             worker_panics: hume_platform::worker_panic::WorkerPanics::default(),
-            status_msg: None,
+            status_msg: StatusMsg::default(),
             summary_ttl: 0,
             message_log: MessageLog::new(),
             messages_view: None,

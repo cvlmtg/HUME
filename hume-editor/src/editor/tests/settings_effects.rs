@@ -445,7 +445,7 @@ fn get_buffer_option_round_trips_word_chars() {
              (log! 'info (get-buffer-option bid "word-chars"))))"#,
     );
     type_cmd(&mut ed, ":check");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "-");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "-");
 }
 
 /// A named value reads back as the string it was written as: a bare
@@ -471,7 +471,10 @@ fn option_values_read_back_as_the_strings_written() {
                  " "))))"#,
     );
     type_cmd(&mut ed, ":check");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "word soft lf none");
+    assert_eq!(
+        ed.state.status_msg.text().unwrap().to_owned(),
+        "word soft lf none"
+    );
 }
 
 /// An option value has one spelling: a symbol is not a string.

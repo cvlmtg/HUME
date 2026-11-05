@@ -336,7 +336,7 @@ fn a_malformed_location_aborts_the_batch_instead_of_a_degraded_row() {
         "a malformed location must abort before the drawer ever opens, \
          not open it with the good rows and drop the bad one"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("lsp-locations->merged-places") && msg.contains("missing range"),
         "expected an error naming the builtin and the missing field, got {msg:?}"

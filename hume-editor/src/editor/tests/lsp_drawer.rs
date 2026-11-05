@@ -49,7 +49,7 @@ fn enter_passes_the_selected_rows_payload() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.as_deref(), Some("second"));
+    assert_eq!(ed.state.status_msg.text(), Some("second"));
 }
 
 /// A row is a `(display . payload)` pair; a bare string raises.
@@ -630,7 +630,8 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
         "the menu must stay open: it is unrelated to the drawer beneath it, not collateral"
     );
     assert_eq!(
-        ed.state.status_msg, None,
+        ed.state.status_msg.text(),
+        None,
         "the menu's callback must not fire: it has not been answered"
     );
 }
@@ -660,7 +661,7 @@ fn replace_fires_false_to_the_outgoing_callback() {
     // parsed as a count, which would just re-run `go`.)
     type_cmd(&mut ed, ":go");
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "opening must not fire the callback"
     );
 
@@ -668,7 +669,7 @@ fn replace_fires_false_to_the_outgoing_callback() {
     ed.settle();
 
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "#false",
         "the outgoing drawer's callback must fire with #f on replace"
     );
@@ -697,7 +698,10 @@ fn enter_passes_the_drawers_token() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "a:#true:#false");
+    assert_eq!(
+        ed.state.status_msg.text().unwrap().to_owned(),
+        "a:#true:#false"
+    );
 }
 
 #[test]
@@ -710,7 +714,10 @@ fn esc_passes_the_drawers_token() {
     ed.feed_key(key_esc());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false:#true:#false");
+    assert_eq!(
+        ed.state.status_msg.text().unwrap().to_owned(),
+        "#false:#true:#false"
+    );
 }
 
 #[test]
@@ -722,7 +729,10 @@ fn replace_passes_the_outgoing_drawers_token() {
     type_cmd(&mut ed, ":other");
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false:#true:#false");
+    assert_eq!(
+        ed.state.status_msg.text().unwrap().to_owned(),
+        "#false:#true:#false"
+    );
 }
 
 // ── update-drawer-list! / drawer-selection ───────────────────────────────────
@@ -757,7 +767,7 @@ fn update_replaces_rows_callback_and_selection_in_place() {
     ed.feed_key(key_ctrl('d'));
     type_cmd(&mut ed, ":sel");
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "b 1");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "b 1");
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
         1,
@@ -767,7 +777,7 @@ fn update_replaces_rows_callback_and_selection_in_place() {
     type_cmd(&mut ed, ":upd");
     ed.settle();
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "#true",
         "update must report it applied"
     );
@@ -788,13 +798,13 @@ fn update_replaces_rows_callback_and_selection_in_place() {
     // payload, and the drawer stays open.
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "y");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "y");
     assert!(ed.state.input.drawer().is_some());
 
     // Out-of-range selection clamps to the last row, same as the Ctrl-d keys.
     type_cmd(&mut ed, ":upd-big");
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#true");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#true");
     assert_eq!(ed.state.input.drawer().unwrap().selected, 1);
 }
 
@@ -816,7 +826,7 @@ fn update_and_selection_with_none_open_report_false() {
     );
     type_cmd(&mut ed, ":upd");
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert!(
         ed.state.input.drawer().is_none(),
         "an update must never open a drawer"
@@ -824,7 +834,7 @@ fn update_and_selection_with_none_open_report_false() {
 
     type_cmd(&mut ed, ":sel");
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
 }
 
 #[test]
@@ -1093,7 +1103,7 @@ fn esc_calls_back_with_false_and_closes() {
     ed.feed_key(key_esc());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert!(ed.state.input.drawer().is_none());
     assert!(ed.state.views.drawer.read().is_none());
 }
@@ -1109,7 +1119,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
 
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "one.rs:1");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "one.rs:1");
     assert!(
         ed.state.input.drawer().is_some(),
         "must stay open after Enter"
@@ -1120,7 +1130,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
     ed.feed_key(key_ctrl('d'));
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "two.rs:2");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "two.rs:2");
     assert!(ed.state.input.drawer().is_some());
 }
 
@@ -1136,7 +1146,7 @@ fn selection_clamps_at_the_top() {
     ed.feed_key(key_ctrl('u'));
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "one.rs:1");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "one.rs:1");
 }
 
 #[test]
@@ -1152,7 +1162,7 @@ fn selection_clamps_at_the_bottom() {
     ed.feed_key(key_enter());
     ed.settle();
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "three.rs:3",
         "clamped, not wrapped"
     );
@@ -1175,7 +1185,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
         "stray key must not close the drawer"
     );
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "stray key must not invoke the callback"
     );
     assert_ne!(
@@ -1226,7 +1236,7 @@ fn j_and_k_fall_through_leaving_the_drawer_selection_untouched() {
         "vertical motion must not move the drawer's selection"
     );
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "vertical motion must not invoke the callback"
     );
 }

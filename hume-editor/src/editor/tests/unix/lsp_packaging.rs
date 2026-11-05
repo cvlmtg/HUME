@@ -282,14 +282,14 @@ fn every_default_lsp_binding_dispatches_without_error() {
         &['g', 'p'],
     ];
     for keys in bindings {
-        ed.state.status_msg = None;
+        ed.state.status_msg.clear();
         for &k in *keys {
             ed.handle_key(key(k));
         }
         ed.settle();
         ed.drain_lsp();
         ed.settle();
-        if let Some(msg) = &ed.state.status_msg {
+        if let Some(msg) = ed.state.status_msg.text() {
             assert!(
                 !msg.to_lowercase().contains("error")
                     && !msg.to_lowercase().contains("unknown command"),

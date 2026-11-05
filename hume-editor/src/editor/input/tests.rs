@@ -20,12 +20,12 @@ fn message_log_summary_ttl() {
 
     // report() sets status_msg AND logs to message_log.
     ed.report(Severity::Error, "boom");
-    assert!(ed.state.status_msg.is_some());
+    assert!(ed.state.status_msg.text().is_some());
     assert!(ed.state.message_log.has_unseen());
 
     // Key 1: status_msg clears, TTL armed, summary visible.
     ed.handle_key(noop);
-    assert!(ed.state.status_msg.is_none());
+    assert!(ed.state.status_msg.text().is_none());
     assert!(
         ed.state.message_log.has_unseen(),
         "summary should still be visible after key 1"

@@ -233,7 +233,7 @@ fn confirm_paste_is_swallowed_and_the_confirm_stays_open() {
 #[test]
 fn menu_paste_is_swallowed_but_clears_the_status_message() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.status_msg = Some("previous message".to_string());
+    ed.state.status_msg.show(Severity::Info, "previous message");
     ed.state.push_layer(
         &ed.view,
         MenuLayer::for_test(
@@ -246,13 +246,13 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
 
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert!(ed.state.input.menu().is_some(), "the menu stays open");
-    assert!(ed.state.status_msg.is_none());
+    assert!(ed.state.status_msg.text().is_none());
 }
 
 #[test]
 fn drawer_paste_is_swallowed_but_clears_the_status_message() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.status_msg = Some("previous message".to_string());
+    ed.state.status_msg.show(Severity::Info, "previous message");
     ed.state
         .push_layer(&ed.view, plain_drawer(&["d0"], marker("drawer-cb")));
 
@@ -260,7 +260,7 @@ fn drawer_paste_is_swallowed_but_clears_the_status_message() {
 
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert!(ed.state.input.drawer().is_some(), "the drawer stays open");
-    assert!(ed.state.status_msg.is_none());
+    assert!(ed.state.status_msg.text().is_none());
 }
 
 /// Enters Insert mode and opens a scrollable popup over it.

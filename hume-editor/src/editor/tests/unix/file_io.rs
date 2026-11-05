@@ -55,7 +55,7 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
     std::fs::remove_file(&canonical).unwrap();
     assert!(!canonical.exists(), "precondition: file must be gone");
 
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     ed.execute_typed("e", Some(canonical.to_str().unwrap()))
         .unwrap();
     assert_eq!(
@@ -64,9 +64,9 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
         ":e <deleted-path> must switch to the open buffer"
     );
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "a no-op :e on the already-focused buffer must not run a disk check, got: {:?}",
-        ed.state.status_msg.as_deref()
+        ed.state.status_msg.text()
     );
 
     // A genuine buffer-enter (switch away, then back) still surfaces it.
@@ -83,10 +83,10 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("no longer exists")),
         "the deferred warning must arrive on a genuine buffer-enter, got: {:?}",
-        ed.state.status_msg.as_deref()
+        ed.state.status_msg.text()
     );
 }
 
@@ -139,7 +139,7 @@ fn edit_missing_file_shows_raw_typed_display_path() {
         Some("~/no-such-file-xyz.txt"),
         "display path must be the raw typed (collapsed) form"
     );
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(
         msg.contains("[new file]"),
         "status message must flag the buffer as new, got: {msg:?}"
@@ -200,7 +200,7 @@ fn edit_no_arg_on_new_file_buffer_is_noop() {
         "buffer must still be a pending new-file buffer"
     );
     assert_eq!(ed.doc().text().to_string(), "\n");
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(
         msg.contains("new file"),
         "must report the no-op, got: {msg:?}"
@@ -904,7 +904,7 @@ fn wa_saves_all_dirty_buffers() {
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid1);
     ed.execute_typed("wa", None).unwrap();
 
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(msg.starts_with("Written"), "got: {msg}");
     assert!(!ed.state.has_unsaved_changes(bid1));
     assert_eq!(ed.focused_buffer_id(), bid1);
@@ -935,7 +935,7 @@ fn wa_saves_new_file_buffers() {
 
     ed.execute_typed("wa", None).unwrap();
 
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(msg.starts_with("Written 2"), "got: {msg}");
     assert!(!ed.state.has_unsaved_changes(bid1));
     assert!(!ed.state.has_unsaved_changes(bid2));
@@ -962,7 +962,7 @@ fn wa_skips_clean_buffers() {
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid1);
     ed.execute_typed("wa", None).unwrap();
 
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(
         msg.starts_with("Written 2"),
         "expected 2 files written, got: {msg}"
@@ -993,7 +993,7 @@ fn wa_skips_pathless_buffers() {
 
     ed.execute_typed("wa", None).unwrap();
 
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(msg.starts_with("Written 1"), "expected 1 file, got: {msg}");
     assert!(ed.state.has_unsaved_changes(scratch_bid));
     assert!(!ed.state.has_unsaved_changes(bid1));
@@ -1006,7 +1006,7 @@ fn wa_is_noop_if_nothing_dirty() {
         .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
 
     ed.execute_typed("wa", None).unwrap();
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(
         !msg.starts_with("Written"),
         "no-op must not report written, got: {msg}"
@@ -1125,7 +1125,7 @@ fn open_extra_file_nonexistent_opens_new_file_buffer() {
     );
     // Info severity reports to `status_msg`, not `message_log` (see
     // `Severity::Info`'s routing).
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(
         msg.contains("hume_test_nonexistent_xyz_404.txt") && msg.contains("[new file]"),
         "must report the new-file buffer, matching :e's own message, got: {msg:?}"
@@ -1278,7 +1278,7 @@ fn write_preserves_permissions() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .unwrap_or("")
             .starts_with("Written")
     );
@@ -1321,7 +1321,7 @@ fn write_follows_symlink() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .unwrap_or("")
             .starts_with("Written")
     );
@@ -1727,7 +1727,7 @@ fn colon_w_bang_on_readonly_file_preserves_perms() {
 
     // On POSIX rename succeeds without triggering the chmod-retry path, so the
     // message has no "(forced)" suffix.
-    assert_eq!(ed.state.status_msg.as_deref(), Some("Written 1 lines"));
+    assert_eq!(ed.state.status_msg.text(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
     // Permissions must be preserved at 0o444.
     let mode = std::fs::metadata(&tmp).unwrap().permissions().mode() & 0o777;

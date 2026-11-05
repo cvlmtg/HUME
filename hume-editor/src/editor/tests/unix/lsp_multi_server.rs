@@ -699,7 +699,13 @@ fn unsupported_feature_reports_at_info() {
 
     call_and_pump(&mut rig.ed, "lsp/hover");
 
-    let status = rig.ed.state.status_msg.clone().unwrap_or_default();
+    let status = rig
+        .ed
+        .state
+        .status_msg
+        .text()
+        .unwrap_or_default()
+        .to_owned();
     assert!(status.contains("hover is not supported"), "{status:?}");
     let errors = error_log(&rig.ed);
     assert!(errors.is_empty(), "{errors:?}");

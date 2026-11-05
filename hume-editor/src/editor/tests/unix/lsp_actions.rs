@@ -271,7 +271,7 @@ fn empty_response_reports_no_code_actions_and_opens_no_menu() {
     run_actions(&mut ed);
 
     assert!(ed.state.input.menu().is_none());
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("no code actions"),
         "expected a no-code-actions message, got {msg:?}"
@@ -450,7 +450,7 @@ fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
             .all(|(_sid, m, _params)| m != "codeAction/resolve"),
         "must never send codeAction/resolve when the server didn't advertise it"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("no edit or command"),
         "expected an unsupported-action message, got {msg:?}"
@@ -495,7 +495,7 @@ fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() 
         resolve_requests, 1,
         "a still-bare resolved action must not trigger a second codeAction/resolve"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("no edit or command"),
         "expected an unsupported-action message after the single resolve, got {msg:?}"

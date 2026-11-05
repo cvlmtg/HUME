@@ -62,9 +62,10 @@ fn open(ed: &mut Editor, tmp: &Path, items: &str, extra: &str) {
 
 /// The status line after running the keymap command `name`.
 fn shown(ed: &mut Editor, name: &str) -> String {
+    ed.state.status_msg.clear();
     ed.execute_keymap_command(name, Count::UNTYPED, false);
     ed.settle();
-    ed.state.status_msg.clone().unwrap()
+    ed.state.status_msg.text().unwrap().to_owned()
 }
 
 /// `(count, budget, query)` per render call, in call order.
@@ -291,7 +292,7 @@ fn matching_ranking_and_bindings_use_the_original_item() {
 
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "37");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "37");
 }
 
 #[test]

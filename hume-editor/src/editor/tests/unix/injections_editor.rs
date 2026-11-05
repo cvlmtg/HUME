@@ -183,7 +183,7 @@ fn plum_install_grammar_no_arg_no_language_warns() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("no language given")),
         "expected 'no language given' status message, got: {:?}",
         ed.state.status_msg
@@ -204,7 +204,7 @@ fn plum_install_grammar_unknown_name_warns() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains(r#"no language "nosuchlang""#)),
         "expected a no-language message naming 'nosuchlang', got: {:?}",
         ed.state.status_msg
@@ -224,7 +224,7 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains(r#"no language "nosuchlang""#)),
         "typed arg must win over buffer language 'rust', got: {:?}",
         ed.state.status_msg
@@ -295,7 +295,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
         "print! output off the event loop must not enter the real terminal bracket"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("printed"),
         "the command must run past its print"
     );

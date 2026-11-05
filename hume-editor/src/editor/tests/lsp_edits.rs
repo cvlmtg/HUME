@@ -499,7 +499,7 @@ fn apply_workspace_edit_with_nothing_to_apply_reports_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = workspace_edit_editor(tmp.path(), serde_json::json!({"changes": {}}));
     apply_wire_workspace_edit(&mut ed, tmp.path());
-    assert_eq!(ed.state.status_msg, None);
+    assert_eq!(ed.state.status_msg.text(), None);
 }
 
 #[test]
@@ -1095,7 +1095,7 @@ fn goto_location_answers_the_pane_after_a_jump_and_keeps_an_open_buffer_on_false
     );
 
     type_cmd(&mut ed, ":missing");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("#false"));
+    assert_eq!(ed.state.status_msg.text(), Some("#false"));
     assert_eq!(
         ed.state.buffers.find_by_path(&canonical),
         Some(other),
@@ -1103,7 +1103,7 @@ fn goto_location_answers_the_pane_after_a_jump_and_keeps_an_open_buffer_on_false
     );
 
     type_cmd(&mut ed, ":hit");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("other.txt"));
+    assert_eq!(ed.state.status_msg.text(), Some("other.txt"));
     assert_eq!(ed.focused_buffer_id(), other);
 }
 
@@ -1299,7 +1299,7 @@ fn goto_location_wire_shape_past_the_last_line_answers_false() {
     ed.drain_lsp();
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.as_deref(), Some("#false"));
+    assert_eq!(ed.state.status_msg.text(), Some("#false"));
     assert!(ed.state.buffers.find_by_path(&canonical).is_none());
     assert_eq!(ed.doc().text().to_string(), "abcdef\n");
 }

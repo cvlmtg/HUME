@@ -16,7 +16,7 @@
                         (print! (string-append "LSP: installed " name))))))
     (lsp-install/register-installed-servers!)
     (when (and (not installed?) (lsp-install/read-receipt name))
-      (log! 'info (string-append "LSP: kept the installed " name)))))
+      (log! 'warning (string-append "LSP: kept the installed " name)))))
 
 ;;; See docs/install.md's "Installing a server".
 (define-command! "lsp-install/install-server"

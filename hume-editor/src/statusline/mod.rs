@@ -412,8 +412,8 @@ impl hume_engine::providers::ChromeProvider for HumeStatusline<'_> {
             // Evaluate summary_text lazily to avoid allocating a String every
             // frame when there is nothing to show.
             let summary;
-            let display_msg: Option<&str> = if let Some(ref msg) = editor.state.status_msg {
-                Some(msg.as_str())
+            let display_msg: Option<&str> = if let Some(msg) = editor.state.status_msg.text() {
+                Some(msg)
             } else {
                 summary = editor
                     .state

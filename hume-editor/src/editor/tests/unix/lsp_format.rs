@@ -418,7 +418,7 @@ fn no_attached_server_reports_and_sends_nothing() {
         before,
         "no attached server must format nothing"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("no lsp server attached"),
         "expected a no-server warning, got {msg:?}"
@@ -448,7 +448,7 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
         "a pathless buffer must format nothing"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("lsp format: no LSP server attached to this buffer")
     );
 }
@@ -480,7 +480,7 @@ fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
         before,
         "a mixed linewise/partial selection set must format nothing"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("mixed"),
         "expected a warning naming the mixed selection, got {msg:?}"
@@ -546,7 +546,7 @@ fn fan_out_past_the_cap_warns_and_formats_nothing() {
         before,
         "exceeding the cap must format nothing, not narrow to the primary selection"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("format-max-ranges") && msg.contains('1'),
         "expected a warning naming the config key and its value, got {msg:?}"
@@ -645,7 +645,7 @@ fn null_result_reports_already_formatted() {
 
     run_fmt(&mut ed);
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("already formatted"),
         "expected an already-formatted message, got {msg:?}"
@@ -848,7 +848,13 @@ fn lsp_fmt_document_without_a_server_reports_nothing() {
     rig.ed.drain_lsp();
     rig.ed.settle();
 
-    let status = rig.ed.state.status_msg.clone().unwrap_or_default();
+    let status = rig
+        .ed
+        .state
+        .status_msg
+        .text()
+        .unwrap_or_default()
+        .to_owned();
     assert!(!status.contains("lsp"), "unexpected report: {status:?}");
 }
 
@@ -868,7 +874,13 @@ fn lsp_fmt_document_on_a_buffer_with_no_file_calls_done_and_reports_nothing() {
     rig.ed.drain_lsp();
     rig.ed.settle();
 
-    let status = rig.ed.state.status_msg.clone().unwrap_or_default();
+    let status = rig
+        .ed
+        .state
+        .status_msg
+        .text()
+        .unwrap_or_default()
+        .to_owned();
     assert!(!status.contains("format"), "unexpected report: {status:?}");
     rig.probe(r#"(log! 'warning (if *done* "done" "pending"))"#);
     assert_eq!(rig.warnings(), vec!["done".to_string()]);

@@ -55,8 +55,9 @@ fn picker_bang_opens_session_and_returns_its_token() {
     let logged_token: u64 = ed
         .state
         .status_msg
-        .clone()
+        .text()
         .unwrap()
+        .to_owned()
         .parse()
         .expect("picker! must return the token as an integer");
     assert_eq!(
@@ -111,7 +112,7 @@ fn picker_bang_truncate_rejects_an_unknown_symbol() {
         ed.state.input.picker().is_none(),
         "an unrecognized #:truncate value must not open a picker"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("'head") && msg.contains("'tail"),
         "error should name both accepted values, got {msg:?}"
@@ -155,7 +156,7 @@ fn a_binding_gets_the_selected_item_and_the_token_and_leaves_the_picker_open() {
         ed.state.input.picker().is_some(),
         "a binding that does not call picker-close! leaves the picker open"
     );
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#true p1");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#true p1");
 }
 
 #[test]
@@ -173,7 +174,7 @@ fn a_binding_closes_the_picker_with_picker_close() {
     ed.settle();
 
     assert!(ed.state.input.picker().is_none());
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "p1");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "p1");
 }
 
 #[test]
@@ -211,7 +212,7 @@ fn picker_move_rejects_an_unknown_step() {
     ed.feed_key(key('j'));
     ed.settle();
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("'row") && msg.contains("'page") && msg.contains("'half-page"),
         "error should name every accepted step, got {msg:?}"
@@ -233,7 +234,7 @@ fn keymap_accepts_the_short_modifier_form() {
     ed.feed_key(key_ctrl('v'));
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "p1");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "p1");
 }
 
 /// Opens `:go`, whose picker takes `keymap`, and returns the error it raised.
@@ -247,7 +248,7 @@ fn keymap_error(keymap: &str) -> String {
         ed.state.input.picker().is_none(),
         "a bad keymap must not open a picker"
     );
-    ed.state.status_msg.clone().unwrap_or_default()
+    ed.state.status_msg.text().unwrap_or_default().to_owned()
 }
 
 #[test]
@@ -297,7 +298,7 @@ fn picker_bang_without_a_keymap_raises() {
 
     assert!(ed.state.input.picker().is_none());
     assert!(
-        ed.state.status_msg.is_some(),
+        ed.state.status_msg.text().is_some(),
         "the missing argument is reported"
     );
 }
@@ -317,7 +318,7 @@ fn an_empty_keymap_leaves_only_typing() {
 
     let session = ed.state.input.picker().expect("no key closes it");
     assert_eq!(session.query(), "o");
-    assert!(ed.state.status_msg.is_none());
+    assert!(ed.state.status_msg.text().is_none());
 }
 
 // ── #:on-close ───────────────────────────────────────────────────────────
@@ -338,7 +339,10 @@ fn on_close_fires_once_after_the_closing_binding() {
     ed.settle();
 
     assert!(ed.state.input.picker().is_none());
-    assert_eq!(ed.state.status_msg.clone().unwrap(), r#"("p1" closed)"#);
+    assert_eq!(
+        ed.state.status_msg.text().unwrap().to_owned(),
+        r#"("p1" closed)"#
+    );
 }
 
 #[test]
@@ -350,7 +354,7 @@ fn on_close_must_take_no_arguments() {
     type_cmd(&mut ed, ":go");
 
     assert!(ed.state.input.picker().is_none());
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("#:on-close"),
         "error names #:on-close, got {msg:?}"
@@ -378,19 +382,19 @@ fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "p2");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "p2");
     assert!(ed.state.input.picker().is_none());
 
     // Don't stop at the terminal action: keep interacting
     // and confirm ordinary editing resumes with no further callback fire.
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());
     ed.settle();
 
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "no further callback should fire after the picker already closed"
     );
     let bid = ed.focused_buffer_id();
@@ -420,11 +424,11 @@ fn picker_push_bang_applies_matching_token_and_rejects_stale_or_no_picker() {
     assert_eq!(ed.state.input.picker().unwrap().total_len(), 1);
 
     call(&mut ed, "push-real");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#true");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#true");
     assert_eq!(ed.state.input.picker().unwrap().total_len(), 2);
 
     call(&mut ed, "push-stale");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert_eq!(
         ed.state.input.picker().unwrap().total_len(),
         2,
@@ -437,7 +441,7 @@ fn picker_push_bang_applies_matching_token_and_rejects_stale_or_no_picker() {
 
     call(&mut ed, "push-real");
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "#false",
         "pushing after the picker closed must be a silent #f, not an error"
     );
@@ -464,12 +468,12 @@ fn opening_a_second_picker_fires_the_first_on_close_exactly_once() {
         "replacing the open picker must queue exactly one callback (the old one's #:on-close)"
     );
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "A closed");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "A closed");
 
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "B: pb");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "B: pb");
     assert!(ed.state.input.picker().is_none());
 }
 
@@ -499,17 +503,17 @@ fn picker_close_bang_fires_on_close_once_and_is_idempotent() {
     );
 
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "closed");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "closed");
 
     // Keep interacting past the terminal action.
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     ed.feed_key(key('i'));
     ed.feed_key(key('Z'));
     ed.feed_key(key_esc());
     ed.settle();
 
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "no further callback must fire"
     );
     let bid = ed.focused_buffer_id();
@@ -538,7 +542,7 @@ fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
     // Replaces A with B.
     call(&mut ed, "go-b");
     ed.settle();
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
 
     // A's stale token must not touch B's picker, even though B is what's
     // open right now: the bug this token exists to prevent.
@@ -548,14 +552,14 @@ fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
         "a stale #:token close must be a no-op, not close whatever picker is open"
     );
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "no callback should fire for a stale-token close"
     );
 
     ed.feed_key(key_enter());
     ed.settle();
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "B: pb",
         "B's own Enter binding must still run normally"
     );
@@ -575,7 +579,7 @@ fn picker_bang_rejects_proper_list_items_naming_the_arg() {
         ed.state.input.picker().is_none(),
         "malformed items must not open a picker"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("picker!: items"),
         "error should name the offending argument, got {msg:?}"
@@ -596,7 +600,7 @@ fn picker_bang_rejects_hash_f_payload() {
         ed.state.input.picker().is_none(),
         "a #f payload must not open a picker"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("reserved"),
         "error should explain #f is reserved for no item, got {msg:?}"
@@ -866,13 +870,13 @@ fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
                #:query "seed" #:debounce-ms 100000
                #:source (picker-command-source (lambda (q) (log! 'info (string-append "q=" q)) #f)))))"#,
     );
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     type_cmd(&mut ed, ":go");
 
     // No settle() at all: the seed spawn runs synchronously inside
     // live-picker! itself, before the command that called it even returns.
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "q=seed",
         "the #:query seed must run #:source synchronously, not wait out a \
          100000ms debounce window or a settle() drain"
@@ -888,7 +892,7 @@ fn live_picker_empty_seed_runs_no_source() {
     );
     type_cmd(&mut ed, ":go");
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "an empty (default) #:query must not run #:source on open"
     );
 }
@@ -927,7 +931,7 @@ fn live_picker_keystroke_keeps_previous_rows_until_the_new_search_delivers() {
          stale rows are still the only ones on screen"
     );
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "the debounced #:source itself must not have run yet"
     );
 }
@@ -995,7 +999,7 @@ fn live_picker_debounced_requery_native_raise_clears_rows_and_reaches_the_user()
     let picker = ed.state.input.picker().unwrap();
     assert_eq!(picker.total_len(), 0);
     assert!(!picker.is_pending());
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("picker-source-spawn!") && msg.contains("cannot run"),
         "the spawn failure must reach the user, got {msg:?}"
@@ -1138,7 +1142,7 @@ fn live_picker_rejects_a_non_callable_source() {
         ed.state.input.picker().is_none(),
         "a non-callable #:source must be rejected before opening a picker"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("#:source"),
         "error should name the offending argument, got {msg:?}"
@@ -1192,7 +1196,7 @@ fn command_source_rejects_a_non_callable_argv_for() {
         ed.state.input.picker().is_none(),
         "a non-callable argv-for must be rejected before opening a picker"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("argv-for"),
         "error should name the offending argument, got {msg:?}"
@@ -1223,7 +1227,7 @@ fn command_source_rejects_an_argv_for_return_that_is_not_an_argv_list() {
     );
     type_cmd(&mut ed, ":go");
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains("picker-command-source"),
         "an argv-for return that isn't #f or an argv list must raise naming picker-command-source, got {msg:?}"
@@ -1261,7 +1265,11 @@ fn live_picker_feeds_through_a_superseded_query_token_are_refused() {
 
     for command in ["push-old", "replace-old"] {
         call(&mut ed, command);
-        assert_eq!(ed.state.status_msg.clone().unwrap(), "#false", "{command}");
+        assert_eq!(
+            ed.state.status_msg.text().unwrap().to_owned(),
+            "#false",
+            "{command}"
+        );
         let picker = ed.state.input.picker().unwrap();
         assert_eq!(
             picker.total_len(),
@@ -1365,7 +1373,7 @@ fn picker_replace_bang_swaps_items_instead_of_appending() {
     assert_eq!(ed.state.input.picker().unwrap().total_len(), 1);
 
     call(&mut ed, "replace-real");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#true");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#true");
     assert_eq!(
         ed.state.input.picker().unwrap().total_len(),
         1,
@@ -1373,7 +1381,7 @@ fn picker_replace_bang_swaps_items_instead_of_appending() {
     );
 
     call(&mut ed, "replace-stale");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert_eq!(
         ed.state.input.picker().unwrap().total_len(),
         1,
@@ -1401,14 +1409,14 @@ fn picker_source_stop_bang_matches_the_real_token_and_rejects_a_stale_one() {
     type_cmd(&mut ed, ":go");
 
     call(&mut ed, "stop-stale");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert!(
         ed.state.input.picker().is_some(),
         "a stale-token stop must not touch the open picker"
     );
 
     call(&mut ed, "stop-real");
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#true");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#true");
     assert!(
         ed.state.input.picker().is_some(),
         "picker-source-stop! must not close the picker, only detach its source"

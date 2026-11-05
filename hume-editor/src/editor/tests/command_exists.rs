@@ -24,7 +24,7 @@ fn exists(ed: &mut Editor, tmp: &std::path::Path, setup: &str, names: &[&str]) -
     host.register_command_names(&native);
     install_source(ed, host, &source, tmp);
     type_cmd(ed, ":check");
-    let msg = ed.state.status_msg.clone().unwrap();
+    let msg = ed.state.status_msg.text().unwrap().to_owned();
     msg.trim_matches(|c| c == '(' || c == ')')
         .split_whitespace()
         .map(|w| w == "#true")

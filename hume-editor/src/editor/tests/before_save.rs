@@ -154,7 +154,7 @@ fn second_write_while_one_is_pending_is_refused() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("in progress")),
         "got {:?}",
         ed.state.status_msg
@@ -233,7 +233,7 @@ fn pathless_buffer_is_refused_without_holding() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("no file name")),
         "got {:?}",
         ed.state.status_msg
@@ -360,7 +360,7 @@ fn write_quit_released_after_focus_moved_does_not_quit_the_other_buffer() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("quit cancelled")),
         "got {:?}",
         ed.state.status_msg
@@ -447,12 +447,12 @@ fn write_all_reports_its_summary_once_every_held_write_is_done() {
             .count(),
         1
     );
-    insta::assert_snapshot!(ed.state.status_msg.as_deref().unwrap_or_default(), @"Written 1 lines");
+    insta::assert_snapshot!(ed.state.status_msg.text().unwrap_or_default(), @"Written 1 lines");
 
     type_cmd(&mut ed, ":release");
     ed.settle();
     assert!(written(&file_a, "zz\n") && written(&file_b, "yy\n"));
-    insta::assert_snapshot!(ed.state.status_msg.as_deref().unwrap_or_default(), @"Written 2 file(s)");
+    insta::assert_snapshot!(ed.state.status_msg.text().unwrap_or_default(), @"Written 2 file(s)");
 }
 
 #[test]

@@ -6,6 +6,7 @@
 use super::*;
 use crate::editor::buffer::Buffer;
 use crate::editor::settings::CommandCompletion;
+use crate::editor::tests::before_save::warning_texts;
 use hume_editing::text::BufferText;
 use pretty_assertions::assert_eq;
 
@@ -1051,13 +1052,13 @@ fn a_streamed_answer_that_ends_empty_dismisses() {
 
 /// `:greet b` with Tab pressed, completed by a `'minibuf` source whose
 /// call runs `body` with its request `id` bound, and whose `#:cancel` logs
-/// `cancelled`.
+/// `cancelled` as a warning.
 fn greet_with_cancel(body: &str) -> Editor {
     tab(greet_source(
         "b",
         "",
         body,
-        r#"#:match 'string #:cancel (lambda (id) (log! 'info "cancelled"))"#,
+        r#"#:match 'string #:cancel (lambda (id) (log! 'warning "cancelled"))"#,
     ))
 }
 
@@ -1065,7 +1066,7 @@ fn greet_with_cancel(body: &str) -> Editor {
 fn a_source_that_raises_after_a_part_ends_its_answer_there() {
     let ed = greet_with_cancel(r#"(completion-emit! id (list "bobby") #:more #t) (error "boom")"#);
     assert!(has_error(&ed, "boom"));
-    assert_eq!(status(&ed), "cancelled");
+    assert_eq!(warning_texts(&ed), ["cancelled"]);
     assert_eq!(minibuf_input(&ed), "greet bobby");
     assert!(ed.state.input.minibuf_completion().is_none());
 }
@@ -1139,7 +1140,7 @@ fn a_dropped_call_is_cancelled() {
     let ed = greet_with_cancel(r#"(error "boom")"#);
     assert!(has_error(&ed, "boom"));
     assert!(ed.state.input.minibuf_completion().is_none());
-    assert_eq!(status(&ed), "cancelled");
+    assert_eq!(warning_texts(&ed), ["cancelled"]);
 }
 
 #[test]

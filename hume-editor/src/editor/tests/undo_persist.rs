@@ -302,3 +302,18 @@ fn a_save_as_saves_the_history_under_the_new_file() {
     again.feed_key(key('u'));
     assert_eq!(text(&again), "one\n");
 }
+
+#[test]
+fn a_history_that_cannot_be_saved_leaves_its_warning_on_the_statusline() {
+    let disk = Disk::new("one\n");
+    let blocker = disk.dir.path().join("blocker");
+    std::fs::write(&blocker, "").unwrap();
+    let setting = format!("global undo-directory={}", blocker.join("undo").display());
+    let mut ed = editor_on(&disk, &disk.file, &["global undo-persist=true", &setting]);
+    type_text(&mut ed, "a");
+    type_cmd(&mut ed, ":w");
+
+    assert_eq!(std::fs::read_to_string(&disk.file).unwrap(), text(&ed));
+    let status = ed.state.status_msg.text().unwrap_or_default();
+    assert!(status.starts_with("undo history not saved: "), "{status:?}");
+}

@@ -456,7 +456,7 @@ fn colon_w_path_creates_new_file() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .unwrap_or("")
             .starts_with("Written")
     );
@@ -498,7 +498,7 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .unwrap_or("")
             .starts_with("Written")
     );
@@ -567,7 +567,7 @@ fn colon_w_bang_writes_writable_file() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.state.status_msg.as_deref(), Some("Written 1 lines"));
+    assert_eq!(ed.state.status_msg.text(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
     assert!(!ed.state.should_quit);
 }

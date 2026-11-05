@@ -78,7 +78,7 @@ fn view_rows(ed: &Editor) -> Vec<Option<String>> {
 /// The status line after running the typed command `name`.
 fn shown(ed: &mut Editor, name: &str) -> String {
     type_cmd(ed, &format!(":{name}"));
-    ed.state.status_msg.clone().unwrap()
+    ed.state.status_msg.text().unwrap().to_owned()
 }
 
 /// `(count, budget)` per render call, in call order.

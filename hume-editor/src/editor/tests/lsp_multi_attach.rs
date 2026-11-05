@@ -459,7 +459,7 @@ fn restarting_through_the_value_a_stop_used_starts_that_server_again() {
         vec![rig.sid("rust-analyzer"), rig.sid("ra-lint")]
     );
     assert_eq!(
-        rig.ed.state.status_msg.as_deref(),
+        rig.ed.state.status_msg.text(),
         Some("lsp: restarted 1 server(s)")
     );
 }

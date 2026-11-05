@@ -572,7 +572,7 @@ fn minibuf_candidates(ed: &Editor) -> Vec<String> {
 
 /// The last status-line message, `""` when none is set.
 fn status(ed: &Editor) -> String {
-    ed.state.status_msg.clone().unwrap_or_default()
+    ed.state.status_msg.text().unwrap_or_default().to_owned()
 }
 
 /// The refusal of a change to `ed`'s focused buffer while it is read-only.
@@ -1692,7 +1692,7 @@ fn log_probe(ed: &mut Editor, tmp: &std::path::Path, expr: &str) -> String {
         format!(r#"(define-typed-command! "check" "" (lambda (bid) (log! 'info {expr})))"#);
     run(ed, tmp, &source);
     type_cmd(ed, ":check");
-    ed.state.status_msg.clone().unwrap()
+    ed.state.status_msg.text().unwrap().to_owned()
 }
 
 /// Write `content` to a temp file and return its path (kept alive by the

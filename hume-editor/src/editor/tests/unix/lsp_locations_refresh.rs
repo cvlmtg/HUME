@@ -235,7 +235,7 @@ fn a_refresh_that_finds_nothing_closes_the_drawer_with_a_message() {
     assert_eq!(reference_requests(&requests), 2);
     assert!(!drawer_is_open(&ed), "nothing left to list");
     assert_eq!(ed.state.panes.tracked.len(), 0);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("No references found"));
+    assert_eq!(ed.state.status_msg.text(), Some("No references found"));
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn a_refresh_that_finds_only_unopenable_places_closes_the_drawer_without_claimin
     assert!(!drawer_is_open(&ed), "nothing left to list");
     assert_eq!(ed.state.panes.tracked.len(), 0);
     assert_eq!(warnings(&ed), 1, "the close reports the skip");
-    assert_ne!(ed.state.status_msg.as_deref(), Some("No references found"));
+    assert_ne!(ed.state.status_msg.text(), Some("No references found"));
 }
 
 #[test]
@@ -283,7 +283,7 @@ fn a_refresh_whose_places_are_all_past_their_buffers_end_closes_with_the_skip_wa
     let warned = warning_texts(&ed);
     assert_eq!(warned.len(), 1, "{warned:?}");
     assert!(warned[0].contains("cannot jump to"), "{warned:?}");
-    assert_ne!(ed.state.status_msg.as_deref(), Some("No references found"));
+    assert_ne!(ed.state.status_msg.text(), Some("No references found"));
 }
 
 #[test]

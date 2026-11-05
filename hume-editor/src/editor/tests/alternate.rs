@@ -128,7 +128,7 @@ fn goto_alternate_buffer_warns_when_no_alternate() {
     let msg = ed
         .state
         .status_msg
-        .as_deref()
+        .text()
         .expect("warning should be reported");
     assert!(
         msg.contains("No alternate buffer"),
@@ -145,7 +145,7 @@ fn colon_e_hash_errors_with_no_alternate() {
     let msg = ed
         .state
         .status_msg
-        .as_deref()
+        .text()
         .expect("error should be reported");
     assert!(
         msg.contains("No alternate buffer"),
@@ -160,7 +160,7 @@ fn colon_e_percent_errors_with_no_path() {
     let msg = ed
         .state
         .status_msg
-        .as_deref()
+        .text()
         .expect("error should be reported");
     assert!(msg.contains("No file name"), "unexpected status: {msg:?}");
 }

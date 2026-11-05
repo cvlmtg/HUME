@@ -123,7 +123,7 @@ impl Editor {
     /// isn't even focused anymore.
     fn clear_pending_input(&mut self) {
         self.state.discard_pending_keys();
-        self.state.status_msg = None;
+        self.state.status_msg.clear();
     }
 
     // ── Drag ──────────────────────────────────────────────────────────────────

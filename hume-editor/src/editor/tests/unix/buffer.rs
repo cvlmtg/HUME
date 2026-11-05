@@ -266,10 +266,10 @@ fn buffer_switch_to_deleted_file_by_path() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("no longer exists")),
         "must warn that the file is gone, got: {:?}",
-        ed.state.status_msg.as_deref()
+        ed.state.status_msg.text()
     );
 }
 
@@ -295,10 +295,10 @@ fn buffer_switch_to_deleted_file_by_basename() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("no longer exists")),
         "must warn that the file is gone, got: {:?}",
-        ed.state.status_msg.as_deref()
+        ed.state.status_msg.text()
     );
 }
 
@@ -316,10 +316,10 @@ fn buffer_switch_to_live_file_no_warning() {
     assert!(
         !ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("no longer exists")),
         ":b on a live file must not warn 'no longer exists', got: {:?}",
-        ed.state.status_msg.as_deref()
+        ed.state.status_msg.text()
     );
 }
 

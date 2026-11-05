@@ -70,7 +70,7 @@ fn colon_goto_zero_is_error() {
     type_cmd(&mut ed, ":goto 0");
     assert_eq!(state(&ed), before, ":goto 0 must not move the cursor");
     assert!(
-        ed.state.status_msg.is_some(),
+        ed.state.status_msg.text().is_some(),
         ":goto 0 must report an error"
     );
 }
@@ -85,7 +85,7 @@ fn colon_goto_invalid_arg_is_error() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .unwrap_or("")
             .contains("invalid line number"),
         ":goto abc must report 'invalid line number', got: {:?}",
@@ -105,7 +105,7 @@ fn colon_goto_no_arg_is_error() {
         ":goto with no arg must not move the cursor"
     );
     assert!(
-        ed.state.status_msg.is_some(),
+        ed.state.status_msg.text().is_some(),
         ":goto with no arg must report an error"
     );
 }
@@ -215,7 +215,7 @@ fn sort_no_adjacent_lines_reports_info_without_logging() {
     ed.execute_typed("sort", None)
         .expect("a single line is refused, not an error");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("sort needs at least two adjacent rows")
     );
     assert_eq!(
@@ -232,7 +232,7 @@ fn sort_already_sorted_reports_info_without_logging() {
     let mut ed = editor_from("-{a}>\n-[b]>\n");
     ed.execute_typed("sort", None)
         .expect("already-sorted input is refused, not an error");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("already sorted"));
+    assert_eq!(ed.state.status_msg.text(), Some("already sorted"));
     assert_eq!(
         ed.state.message_log.totals(),
         (0, 0),

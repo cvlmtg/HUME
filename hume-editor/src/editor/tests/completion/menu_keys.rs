@@ -254,7 +254,7 @@ fn enter_at_zero_matches_inserts_a_newline_instead_of_erroring() {
 
     ed.feed_key(key_enter());
 
-    assert_eq!(ed.state.status_msg, None);
+    assert_eq!(ed.state.status_msg.text(), None);
     assert_eq!(ed.doc().text().to_string(), "z\n\n");
 }
 

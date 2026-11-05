@@ -131,7 +131,7 @@ fn stop_by_name_stops_every_root_of_that_server() {
     assert!(servers_of(&rig, rig.bid).is_empty());
     assert!(servers_of(&rig, other).is_empty());
     assert_eq!(
-        rig.ed.state.status_msg.as_deref(),
+        rig.ed.state.status_msg.text(),
         Some("lsp: stopped 2 server(s)")
     );
 }
@@ -444,7 +444,7 @@ fn restarting_a_stopped_server_by_name_starts_it_for_its_buffers() {
     assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 1);
     assert_eq!(rig.attached(), vec![rig.sid("rust-analyzer")]);
     assert_eq!(
-        rig.ed.state.status_msg.as_deref(),
+        rig.ed.state.status_msg.text(),
         Some("lsp: restarted 1 server(s)")
     );
 }

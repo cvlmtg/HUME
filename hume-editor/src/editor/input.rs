@@ -111,7 +111,7 @@ impl Editor {
         // so arm its countdown. On later keypresses tick it down and auto-dismiss
         // at zero. The countdown only runs when the minibuffer is closed so
         // typing a long `:` command doesn't burn the budget invisibly.
-        let had_status = self.state.status_msg.take().is_some();
+        let had_status = self.state.status_msg.clear();
         if self.state.input.minibuf().is_none() {
             if had_status {
                 if self.state.message_log.has_unseen() {
@@ -159,7 +159,7 @@ impl Editor {
         // since the paste itself decides whether it does anything (a
         // swallow, e.g. under Confirm, still dismisses the previous message
         // as a real input event).
-        self.state.status_msg.take();
+        self.state.status_msg.clear();
         if let Err(e) = self.state.paste(&self.view, text) {
             self.state.report_error(&e);
         }

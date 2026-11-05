@@ -15,7 +15,7 @@ fn colon_wq_bang_force_writes_and_quits() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.state.status_msg.as_deref(), Some("Written 1 lines"));
+    assert_eq!(ed.state.status_msg.text(), Some("Written 1 lines"));
     assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "hello\n");
     assert!(ed.state.should_quit);
 }

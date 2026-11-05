@@ -16,7 +16,8 @@ fn probe(ed: &mut Editor, tmp: &std::path::Path, expr: &str) -> String {
     type_cmd(ed, ":probe");
     ed.state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("the probe logged its value")
 }
 
@@ -145,7 +146,7 @@ fn a_word_pattern_finds_the_word_alone() {
              (log! 'info (to-string (hash-ref (buffer-search bid (word-search-pattern bid "foo")) 'start-char)))))"#,
     );
     type_cmd(&mut ed, ":found");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("7"));
+    assert_eq!(ed.state.status_msg.text(), Some("7"));
 }
 
 /// An edge character that is a word character only through `word-chars` is
@@ -164,7 +165,7 @@ fn a_word_pattern_follows_the_buffers_word_chars() {
                                           (hash-ref (buffer-search bid (word-search-pattern bid "$x")) 'start-char))))))"#,
     );
     type_cmd(&mut ed, ":found");
-    assert_eq!(ed.state.status_msg.as_deref(), Some(r#"("\\$x\\b" 2)"#));
+    assert_eq!(ed.state.status_msg.text(), Some(r#"("\\$x\\b" 2)"#));
 }
 
 #[test]

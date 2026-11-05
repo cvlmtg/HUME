@@ -132,7 +132,7 @@ fn install_theme_rejects_unsafe_slugs() {
     for (bad_slug, loud) in cases {
         type_cmd(&mut ed, &format!(":plum-install-theme {bad_slug}"));
         if !loud {
-            let status = ed.state.status_msg.as_deref().unwrap_or_default();
+            let status = ed.state.status_msg.text().unwrap_or_default();
             assert!(
                 status.contains("expected a \"user/repo\" slug"),
                 "slug {bad_slug:?} must be rejected: {status:?}"
@@ -188,7 +188,7 @@ fn update_themes_fetches_and_syncs_copies() {
         "a theme added upstream must be copied into the data-dir"
     );
 
-    let status = ed.state.status_msg.as_deref().unwrap_or_default();
+    let status = ed.state.status_msg.text().unwrap_or_default();
     assert!(
         status.contains("1 updated theme repo"),
         "expected an update summary in status_msg: {status:?}"
@@ -462,7 +462,7 @@ fn remove_theme_deletes_copies_and_clone() {
     );
     assert!(!src_dir.exists(), "removed theme's clone must be deleted");
 
-    let status = ed.state.status_msg.as_deref().unwrap_or_default();
+    let status = ed.state.status_msg.text().unwrap_or_default();
     assert!(
         status.contains("removed acme/theme.hume: acme_dark"),
         "expected a removal confirmation in status_msg: {status:?}"
@@ -509,7 +509,7 @@ fn remove_theme_survives_a_failed_sync() {
         !src_dir.exists(),
         "remove must delete a repo whose sync failed, not report it as never installed"
     );
-    let status = ed.state.status_msg.as_deref().unwrap_or_default();
+    let status = ed.state.status_msg.text().unwrap_or_default();
     assert!(
         status.contains("removed acme/theme.hume"),
         "expected a removal confirmation in status_msg: {status:?}"
@@ -546,7 +546,7 @@ fn remove_theme_not_installed_is_a_noop() {
     let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-remove-theme acme/theme.hume");
 
-    let status = ed.state.status_msg.as_deref().unwrap_or_default();
+    let status = ed.state.status_msg.text().unwrap_or_default();
     assert!(
         status.contains("acme/theme.hume is not installed"),
         "expected a not-installed notice in status_msg: {status:?}"

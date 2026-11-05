@@ -5,7 +5,7 @@ use hume_engine::theme::error::ThemeError;
 use hume_engine::theme::loader::{LoadedTheme, load_theme};
 
 use crate::editor::input_stack::InputStack;
-use crate::editor::message_log::MessageLog;
+use crate::editor::message_log::{MessageLog, StatusMsg};
 use hume_core::Severity;
 
 /// Replace `view.theme`, record the name it came from in `shown_theme` (empty
@@ -39,7 +39,7 @@ pub(in crate::editor) fn set_theme(
 /// theme before the next render.
 ///
 /// Each warning goes to `message_log`, with a one-line count in `status_msg`.
-/// A document-level failure writes its own message to `status_msg` and
+/// A document-level failure shows its own message in `status_msg` and
 /// leaves `input` untouched. Returns `true` unless the load failed outright.
 ///
 /// The `Editor` fields are passed separately so the caller can borrow
@@ -48,7 +48,7 @@ pub(in crate::editor) fn load_theme_by_name(
     engine_view: &mut EngineView,
     shown_theme: &mut String,
     message_log: &mut MessageLog,
-    status_msg: &mut Option<String>,
+    status_msg: &mut StatusMsg,
     input: &mut InputStack,
     dirs: &hume_platform::dirs::Dirs,
     name: &str,
@@ -73,7 +73,7 @@ pub(in crate::editor) fn load_default_theme(
     engine_view: &mut EngineView,
     shown_theme: &mut String,
     message_log: &mut MessageLog,
-    status_msg: &mut Option<String>,
+    status_msg: &mut StatusMsg,
     input: &mut InputStack,
     dirs: &hume_platform::dirs::Dirs,
     name: &str,
@@ -104,7 +104,7 @@ fn install_load_result(
     engine_view: &mut EngineView,
     shown_theme: &mut String,
     message_log: &mut MessageLog,
-    status_msg: &mut Option<String>,
+    status_msg: &mut StatusMsg,
     input: &mut InputStack,
     name: &str,
 ) -> bool {
@@ -116,16 +116,19 @@ fn install_load_result(
                 for warning in &loaded.warnings {
                     message_log.push(Severity::Warning, warning.to_string());
                 }
-                *status_msg = Some(format!(
-                    "theme '{name}' loaded with {count} warning{}",
-                    if count == 1 { "" } else { "s" }
-                ));
+                status_msg.show(
+                    Severity::Warning,
+                    format!(
+                        "theme '{name}' loaded with {count} warning{}",
+                        if count == 1 { "" } else { "s" }
+                    ),
+                );
             }
             true
         }
         Err(e) => {
             let text = e.to_string();
-            *status_msg = Some(text.clone());
+            status_msg.show(Severity::Warning, text.clone());
             message_log.push(Severity::Warning, text);
             false
         }

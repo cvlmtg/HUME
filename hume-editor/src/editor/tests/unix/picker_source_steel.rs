@@ -40,7 +40,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
     ed.settle();
 
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "a",
         "on-select must receive the raw streamed line as payload (display == payload)"
     );
@@ -115,12 +115,12 @@ fn nonzero_exit_reports_a_status_message() {
         "#,
     );
     type_cmd(&mut ed, ":go");
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     call(&mut ed, "spawn-it");
 
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    let msg = ed.state.status_msg.clone().unwrap();
+    let msg = ed.state.status_msg.text().unwrap().to_owned();
     assert!(msg.contains("boom"), "got: {msg}");
 }
 
@@ -146,13 +146,13 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
     );
     drain_until(&mut ed, source_detached);
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "an allowlisted exit code (rg's 'no matches') must not report"
     );
 
     call(&mut ed, "spawn-bad-regex");
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
-    let msg = ed.state.status_msg.clone().unwrap();
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
+    let msg = ed.state.status_msg.text().unwrap().to_owned();
     assert!(
         msg.contains("boom"),
         "a non-allowlisted exit code must still report, got: {msg}"
@@ -226,7 +226,7 @@ fn respawn_reports_an_already_exited_outgoing_source() {
         "#,
     );
     type_cmd(&mut ed, ":go");
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     call(&mut ed, "spawn-first");
 
     // Poll the child's own OS exit status directly, never `ed.settle()`
@@ -249,7 +249,8 @@ fn respawn_reports_an_already_exited_outgoing_source() {
     let msg = ed
         .state
         .status_msg
-        .clone()
+        .text()
+        .map(str::to_owned)
         .expect("a re-spawn must report the outgoing source's exit if it had already exited");
     assert!(msg.contains("boom"), "got: {msg}");
 }
@@ -268,13 +269,13 @@ fn respawn_does_not_report_a_still_running_outgoing_source() {
         "#,
     );
     type_cmd(&mut ed, ":go");
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     call(&mut ed, "spawn-first");
 
     call(&mut ed, "spawn-second"); // supersedes the still-running `sleep 30`
 
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "a still-running source superseded mid-stream must not report a spurious exit"
     );
 }
@@ -301,7 +302,7 @@ fn picker_close_kills_the_source_child() {
         .source_pid_for_test()
         .expect("source attached");
 
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     let started = Instant::now();
     ed.feed_key(key_esc());
     ed.settle();
@@ -317,7 +318,7 @@ fn picker_close_kills_the_source_child() {
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "#false",
         "on-select must fire with #f exactly once on close"
     );
@@ -439,7 +440,7 @@ fn live_picker_spawn_through_a_superseded_query_token_is_refused() {
     ed.settle();
     call(&mut ed, "spawn-old");
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert!(!ed.state.input.picker().unwrap().has_source());
 }
 

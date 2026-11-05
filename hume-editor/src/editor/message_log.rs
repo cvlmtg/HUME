@@ -29,6 +29,45 @@ pub(in crate::editor) struct LogEntry {
     seq: u64,
 }
 
+/// The transient one-line message the statusline shows after an action.
+/// Until the next input clears it, a message only gives way to one at least
+/// as severe, so an Info confirmation never hides a Warning or an Error the
+/// same input reported.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct StatusMsg(Option<(Severity, String)>);
+
+impl StatusMsg {
+    pub(crate) fn text(&self) -> Option<&str> {
+        self.0.as_ref().map(|(_, text)| text.as_str())
+    }
+
+    /// Show `text` unless the shown message is more severe. `Trace` is
+    /// never shown.
+    pub(in crate::editor) fn show(&mut self, severity: Severity, text: impl Into<String>) {
+        if self
+            .0
+            .as_ref()
+            .is_none_or(|(shown, _)| shown_rank(*shown) <= shown_rank(severity))
+        {
+            self.0 = Some((severity, text.into()));
+        }
+    }
+
+    /// Clear the message, returning whether one was shown.
+    pub(in crate::editor) fn clear(&mut self) -> bool {
+        self.0.take().is_some()
+    }
+}
+
+fn shown_rank(severity: Severity) -> u8 {
+    match severity {
+        Severity::Info => 0,
+        Severity::Warning => 1,
+        Severity::Error => 2,
+        Severity::Trace => unreachable!("a Trace message is never shown in the statusline"),
+    }
+}
+
 /// A `[messages]` highlight: `(start, end, scope name)` in chars.
 type MessageSpan = (usize, usize, &'static str);
 
@@ -549,19 +588,21 @@ impl EditorState {
 
     /// Report a message, routing it based on severity:
     ///
-    /// - `Info`    → set `status_msg` only (ephemeral, not logged)
-    /// - `Warning` → push to `message_log` AND set `status_msg`
-    /// - `Error`   → push to `message_log` AND set `status_msg`
+    /// - `Info`    → show in `status_msg` only (ephemeral, not logged)
+    /// - `Warning` → push to `message_log` AND show in `status_msg`
+    /// - `Error`   → push to `message_log` AND show in `status_msg`
     /// - `Trace`   → push to `message_log` only (not shown in statusline)
+    ///
+    /// [`StatusMsg::show`] decides whether a shown message gives way.
     pub(super) fn report(&mut self, severity: Severity, text: impl Into<String>) {
         match severity {
             Severity::Info => {
-                self.status_msg = Some(text.into());
+                self.status_msg.show(severity, text);
             }
             Severity::Warning | Severity::Error => {
                 let text = text.into();
                 self.message_log.push(severity, text.clone());
-                self.status_msg = Some(text);
+                self.status_msg.show(severity, text);
             }
             Severity::Trace => {
                 self.message_log.push(severity, text.into());

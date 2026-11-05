@@ -591,7 +591,7 @@ fn picker_torn_down_by_a_reload_fires_on_close_and_records_a_dismissal() {
         "no binding runs for a torn-down picker"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("closed"),
         "#:on-close must have run, not been skipped"
     );

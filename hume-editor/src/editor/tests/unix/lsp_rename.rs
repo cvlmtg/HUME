@@ -62,7 +62,7 @@ fn buffer_with_no_path_reports_without_prompting() {
 
     assert!(ed.state.minibuf().is_none());
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("lsp rename: no LSP server attached to this buffer")
     );
 }
@@ -97,8 +97,9 @@ fn cancel_sends_no_rename_request() {
     assert!(
         !ed.state
             .status_msg
-            .clone()
+            .text()
             .unwrap_or_default()
+            .to_owned()
             .contains(" modified — :wa"),
         "cancel must not send the rename request at all"
     );
@@ -118,7 +119,7 @@ fn null_result_reports_nothing_to_rename() {
     ed.drain_lsp();
     ed.settle();
 
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("nothing to rename"),
         "expected a nothing-to-rename message, got {msg:?}"
@@ -164,7 +165,7 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
         "fn main() {\n    renamed();\n}\n",
         "the currently-open file's edit must apply"
     );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.contains('2') && msg.contains("buffers modified"),
         "expected the 2-buffer summary, got {msg:?}"

@@ -103,7 +103,7 @@ fn tabclose_is_refused_on_the_last_tab() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("last tab")),
         "refusal must report a status message, got {:?}",
         ed.state.status_msg
@@ -265,10 +265,7 @@ fn close_pane_is_refused_on_a_tab_s_last_pane_with_other_tabs_open() {
 
     assert_eq!(ed.state.tabs.len(), 2, "no tab was closed");
     assert_eq!(ed.state.tabs.current(), tab_b);
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("cannot close last pane")
-    );
+    assert_eq!(ed.state.status_msg.text(), Some("cannot close last pane"));
 }
 
 #[test]

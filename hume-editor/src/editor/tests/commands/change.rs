@@ -407,7 +407,7 @@ fn mii_reports_info_when_nothing_ever_typed() {
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());
     mii(&mut ed);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+    assert_eq!(ed.state.status_msg.text(), Some("no last insertion"));
 }
 
 #[test]
@@ -418,7 +418,7 @@ fn mii_reports_info_when_fully_backspaced_away() {
     ed.handle_key(key_backspace());
     ed.handle_key(key_esc());
     mii(&mut ed);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+    assert_eq!(ed.state.status_msg.text(), Some("no last insertion"));
 }
 
 /// An edit after the session that leaves the insertion alone carries it
@@ -446,7 +446,7 @@ fn mii_stash_goes_stale_after_undo() {
     ed.handle_key(key_esc());
     ed.handle_key(key('u'));
     mii(&mut ed);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+    assert_eq!(ed.state.status_msg.text(), Some("no last insertion"));
 }
 
 /// A selection-count mismatch mid-session (cursors merging via Backspace)
@@ -458,7 +458,7 @@ fn mii_reports_info_when_cursors_merge_mid_session() {
     ed.handle_key(key_backspace());
     ed.handle_key(key_esc());
     mii(&mut ed);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+    assert_eq!(ed.state.status_msg.text(), Some("no last insertion"));
 }
 
 /// A read-only buffer never opens an edit group, so `i` is refused outright;
@@ -474,7 +474,7 @@ fn mii_reports_info_on_read_only_buffer() {
         "read-only buffer refuses Insert"
     );
     mii(&mut ed);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+    assert_eq!(ed.state.status_msg.text(), Some("no last insertion"));
 }
 
 /// The span ends on a cluster boundary: a typed base char and combining mark
@@ -505,5 +505,5 @@ fn esc_after_combining_mark_merges_with_pre_existing_char_selects_nothing() {
     // one grapheme, so the cursor lands on the whole cluster.
     assert_eq!(state(&ed), "-[e\u{301}]>\n");
     mii(&mut ed);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+    assert_eq!(ed.state.status_msg.text(), Some("no last insertion"));
 }

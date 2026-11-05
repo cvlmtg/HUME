@@ -28,9 +28,9 @@ fn happy_path_delivers_run_captures_result_hash() {
     );
     call(&mut ed, "go");
 
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "hi||0");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "hi||0");
 }
 
 #[test]
@@ -49,9 +49,9 @@ fn cwd_keyword_sets_the_child_working_directory() {
     );
     call(&mut ed, "go");
 
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "/");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "/");
 }
 
 #[test]
@@ -71,9 +71,9 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
     );
     call(&mut ed, "go");
 
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "boom\n|3");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "boom\n|3");
 }
 
 #[test]
@@ -97,7 +97,10 @@ fn missing_binary_fires_the_callback_with_no_exit_code() {
     // queued-call drain.
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "no exit code");
+    assert_eq!(
+        ed.state.status_msg.text().unwrap().to_owned(),
+        "no exit code"
+    );
 }
 
 #[test]
@@ -121,7 +124,7 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
     ed.settle();
 
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "no exit code",
         "an empty cmd must fire the documented failure result, never raise"
     );
@@ -193,7 +196,7 @@ fn cancel_async_prevents_the_callback_and_kills_the_child() {
     ed.drain_async_sources();
     ed.settle();
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "a cancelled job's callback must never fire"
     );
 }
@@ -257,6 +260,7 @@ fn cancel_timer_raises_for_a_job_and_leaves_the_timer_scheduled() {
         "errors: {:?}",
         error_log(&ed)
     );
+    ed.state.status_msg.clear();
     ed.drain_async_sources();
     ed.settle();
     assert_eq!(status(&ed), "fired", "a job handle must not cancel a timer");

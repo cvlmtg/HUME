@@ -261,7 +261,7 @@ fn enter_on_a_closed_buffer_reports_and_drops_its_row() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("closed")),
         "{:?}",
         ed.state.status_msg
@@ -289,5 +289,5 @@ fn replacing_a_steel_drawer_tells_its_owner() {
     ed.settle();
     type_cmd(&mut ed, ":selections");
 
-    assert_eq!(ed.state.status_msg.as_deref(), Some("#f;"));
+    assert_eq!(ed.state.status_msg.text(), Some("#f;"));
 }

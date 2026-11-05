@@ -200,7 +200,7 @@ fn read_only_buffer_blocks_undo_and_redo() {
     ed.handle_key(key('u'));
     let after_undo = ed.doc().text().to_string();
     ed.doc_mut().read_only = true;
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
 
     ed.handle_key(key_ctrl('r'));
     assert_eq!(
@@ -440,6 +440,7 @@ fn view_buffer_blocks_write() {
     ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
+    ed.state.status_msg.clear();
 
     ed.execute_typed("w", None).unwrap_err();
     assert_eq!(
@@ -523,7 +524,7 @@ fn show_read_only_buffer_returns_the_pane_now_showing_the_view() {
              (log! 'info (buffer-name view)))"#,
     );
 
-    assert_eq!(ed.state.status_msg.as_deref(), Some("[report]"));
+    assert_eq!(ed.state.status_msg.text(), Some("[report]"));
 }
 
 /// `switch-to-buffer!` and a cross-buffer `goto-location!` return the pane
@@ -542,7 +543,7 @@ fn pane_repointing_calls_return_the_pane_now_showing_the_target() {
     );
 
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some(format!("{original}|[report]").as_str())
     );
 }

@@ -631,7 +631,7 @@ fn enter_on_a_search_with_no_match_reports_it() {
     type_keys(&mut ed, "/xyz");
     ed.feed_key(key_enter());
     assert_eq!(state(&ed), "-[h]>ello\n");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no match"));
+    assert_eq!(ed.state.status_msg.text(), Some("no match"));
     assert_eq!(reg(&ed, 's'), vec!["xyz"]);
 }
 

@@ -905,17 +905,17 @@ fn mappable_inline_toggle_flips_the_rendering_and_the_query_follows() {
     let (bid, _repo) = open_dirty_buffer_signs_only(&mut ed);
 
     type_cmd(&mut ed, ":probe-state");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("inline=off"));
+    assert_eq!(ed.state.status_msg.text(), Some("inline=off"));
 
     type_cmd(&mut ed, ":probe-inline");
     drain_until(&mut ed, |ed| !vlines(ed, bid).is_empty());
     type_cmd(&mut ed, ":probe-state");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("inline=on"));
+    assert_eq!(ed.state.status_msg.text(), Some("inline=on"));
 
     type_cmd(&mut ed, ":probe-inline");
     assert!(own_inline_is_empty(&ed, bid));
     type_cmd(&mut ed, ":probe-state");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("inline=off"));
+    assert_eq!(ed.state.status_msg.text(), Some("inline=off"));
 }
 
 #[test]
@@ -1225,9 +1225,9 @@ fn explicit_bad_ref_logs_warning_status_message() {
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
     type_cmd(&mut ed, ":toggle-git-signs not-a-real-ref-xyz");
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
-    let msg = ed.state.status_msg.clone().unwrap();
+    let msg = ed.state.status_msg.text().unwrap().to_owned();
     assert!(
         msg.contains("git-diff"),
         "a bad ref given explicitly must surface a status message; got {msg:?}"
@@ -1717,7 +1717,7 @@ fn the_first_signs_toggle_on_an_untracked_buffer_turns_signs_on() {
     type_cmd(&mut ed, ":toggle-git-signs");
     drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("git-diff: signs on (HEAD)")
     );
 }
@@ -1739,7 +1739,7 @@ fn toggling_signs_on_after_both_renderings_were_off_paints_the_current_diff() {
     delete_from_third_line(&mut ed);
     type_cmd(&mut ed, ":toggle-git-signs");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("git-diff: signs on (HEAD)"),
         "the toggle must complete instead of painting hunks for lines that are gone"
     );
@@ -1773,7 +1773,8 @@ fn drawing_another_sources_hunks_while_signs_wait_for_a_fetch_paints_no_old_sign
     type_cmd(&mut ed, ":toggle-git-signs HEAD");
     type_cmd(&mut ed, ":render-probe");
     assert_eq!(
-        ed.state.status_msg, None,
+        ed.state.status_msg.text(),
+        None,
         "the draw must succeed instead of painting hunks for lines that are gone"
     );
     assert!(

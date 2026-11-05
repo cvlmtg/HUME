@@ -937,7 +937,7 @@ fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
 
     for _ in 0..15 {
         ed.settle();
-        if let Some(msg) = &ed.state.status_msg {
+        if let Some(msg) = ed.state.status_msg.text() {
             assert!(
                 !msg.contains("buffer-lines"),
                 "the stale walk's backward window must clamp instead of raising: {msg}"

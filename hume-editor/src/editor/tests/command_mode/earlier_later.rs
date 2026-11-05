@@ -44,10 +44,7 @@ fn earlier_past_root_clamps_and_reports() {
     type_text(&mut ed, "X");
     submit(&mut ed, "earlier 99");
     assert_eq!(state(&ed), initial, ":earlier past root must clamp at root");
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Already at oldest change")
-    );
+    assert_eq!(ed.state.status_msg.text(), Some("Already at oldest change"));
 }
 
 #[test]
@@ -62,10 +59,7 @@ fn later_past_tip_clamps_and_reports() {
         after_one_text,
         ":later past tip must clamp at tip"
     );
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Already at newest change")
-    );
+    assert_eq!(ed.state.status_msg.text(), Some("Already at newest change"));
 }
 
 #[test]
@@ -77,7 +71,7 @@ fn earlier_zero_duration_is_noop_and_hour_walks_to_root() {
     submit(&mut ed, "earlier 0s");
     assert_eq!(state(&ed), after_one, ":earlier 0s must take no steps");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         None,
         ":earlier 0s is satisfied: no report"
     );
@@ -88,7 +82,7 @@ fn earlier_zero_duration_is_noop_and_hour_walks_to_root() {
         ":earlier 1h must walk every revision back to the root"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Already at oldest change"),
         ":earlier past the root by age must clamp with a message"
     );
@@ -140,7 +134,7 @@ fn earlier_and_later_agree_with_undo_and_redo_on_a_read_only_buffer() {
         read_only_refusal(&ed),
         ":earlier must report the same refusal as u"
     );
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
 
     submit(&mut ed, "later");
     assert_eq!(
@@ -169,7 +163,7 @@ fn later_zero_duration_walks_to_tip_and_reports() {
         ":later 0s must walk every revision forward to the tip"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("Already at newest change"),
         ":later past the tip by age must clamp with a message"
     );
@@ -182,7 +176,7 @@ fn later_old_age_is_noop_and_silent() {
     type_text(&mut ed, "Y");
     submit(&mut ed, "earlier");
     let mid = state(&ed);
-    ed.state.status_msg = None;
+    ed.state.status_msg.clear();
     submit(&mut ed, "later 1h");
     assert_eq!(
         state(&ed),
@@ -190,7 +184,7 @@ fn later_old_age_is_noop_and_silent() {
         ":later 1h from a mid-chain revision is already satisfied: no steps"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         None,
         "a satisfied :later must not report"
     );
@@ -216,7 +210,7 @@ fn later_at_the_tip_with_no_prior_earlier_is_silent() {
         ":later at the tip must not move: nothing exists to redo onto"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         None,
         "a satisfied :later must not report"
     );

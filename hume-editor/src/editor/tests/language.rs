@@ -240,19 +240,19 @@ fn language_option_parses_like_set_and_reads_back_a_queued_change() {
     let bid = ed.focused_buffer_id();
 
     type_cmd(&mut ed, ":to-rust");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("rust"));
+    assert_eq!(ed.state.status_msg.text(), Some("rust"));
     assert_eq!(
         ed.state.buffers.get(bid).language,
         ed.state.config.languages.id_of("rust")
     );
 
     type_cmd(&mut ed, ":to-none");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("[]"));
+    assert_eq!(ed.state.status_msg.text(), Some("[]"));
     assert_eq!(ed.state.buffers.get(bid).language, None, "\"\" clears");
 
     type_cmd(&mut ed, ":to-unknown");
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("language 'no-such-lang' is not registered"),
         "an unregistered name must be reported"
     );
@@ -283,12 +283,12 @@ fn line_ending_option_round_trips_through_scripts() {
     let bid = ed.focused_buffer_id();
 
     type_cmd(&mut ed, ":read-ending");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("lf"));
+    assert_eq!(ed.state.status_msg.text(), Some("lf"));
 
     type_cmd(&mut ed, ":to-crlf");
     assert!(ed.state.has_unsaved_changes(bid));
     type_cmd(&mut ed, ":read-ending");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("crlf"));
+    assert_eq!(ed.state.status_msg.text(), Some("crlf"));
 
     type_cmd(&mut ed, ":to-lf");
     assert!(!ed.state.has_unsaved_changes(bid));

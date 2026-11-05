@@ -141,7 +141,7 @@ fn show_popup_rejects_an_unknown_anchor() {
         r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hi" #:anchor 'top)))"#,
     );
     type_cmd(&mut ed, ":go");
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    let msg = ed.state.status_msg.text().unwrap_or_default().to_owned();
     assert!(
         msg.to_lowercase().contains("anchor") || msg.to_lowercase().contains("error"),
         "expected an error about the unsupported anchor, got {msg:?}"

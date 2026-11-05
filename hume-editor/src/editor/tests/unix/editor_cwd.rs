@@ -20,10 +20,10 @@ fn spawn_async_defaults_to_the_editor_cwd() {
     );
     call(&mut ed, "go");
 
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         canonical(tmp.path()).to_str().unwrap()
     );
 }
@@ -45,10 +45,10 @@ fn spawn_async_joins_a_relative_cwd_onto_the_editor_cwd() {
     );
     call(&mut ed, "go");
 
-    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+    drain_until(&mut ed, |ed| ed.state.status_msg.text().is_some());
 
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         canonical(&tmp.path().join("sub")).to_str().unwrap()
     );
 }

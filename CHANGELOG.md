@@ -22,6 +22,7 @@
 - In Insert mode, Up and Down move by screen line on wrapped lines, as `j` and `k` do.
 - A command bound to an Insert-mode or command prompt key gets a `count` of `0`, as a Normal-mode key press does.
 - `O` opens the new line above the whole selection and `o` below it, instead of beside the line the cursor is on.
+- A confirmation such as "Written 3 lines" no longer hides a warning or an error reported by the same key in the statusline.
 
 ## [0.18.0] - 2026-11-03
 

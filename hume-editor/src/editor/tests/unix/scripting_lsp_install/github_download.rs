@@ -345,7 +345,7 @@ fn install_status_with_command_on_path(server: &str, lang: &str, command: &str) 
     let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
     ed.state.dirs.search_path = Some(path.into());
     type_cmd(&mut ed, &format!(":lsp-install {lang}"));
-    ed.state.status_msg.clone().unwrap_or_default()
+    ed.state.status_msg.text().unwrap_or_default().to_owned()
 }
 
 /// A server whose catalog record has no `command` field runs a command
@@ -670,10 +670,9 @@ fn lsp_install_failed_reinstall_keeps_the_installed_server() {
         "{log}"
     );
     assert_installed(data_tmp.path(), &ed, "marksman", "0.0.1", "marksman-fake");
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("LSP: kept the installed marksman")
-    );
+    assert!(log.contains("LSP: kept the installed marksman"), "{log}");
+    let status = ed.state.status_msg.text().unwrap_or_default();
+    assert!(status.contains("sha256 mismatch"), "{status:?}");
     assert_only_install(data_tmp.path(), "marksman");
 }
 

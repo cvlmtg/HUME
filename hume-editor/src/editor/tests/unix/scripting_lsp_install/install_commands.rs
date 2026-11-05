@@ -78,7 +78,7 @@ fn lsp_install_no_language_buffer_and_no_arg_warns() {
     // Fresh test buffer has no language set.
     type_cmd(&mut ed, ":lsp-install");
 
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(
         msg.contains("no language given") || msg.contains("no language set"),
         "no arg + no buffer language must report a status message: {msg}"
@@ -183,10 +183,12 @@ fn a_refused_reinstall_registers_the_installed_server_again() {
 
     let log = ed.state.message_log.format_for_display();
     assert!(log.contains("already in progress"), "{log}");
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("LSP: kept the installed rust-analyzer")
+    assert!(
+        log.contains("LSP: kept the installed rust-analyzer"),
+        "{log}"
     );
+    let status = ed.state.status_msg.text().unwrap_or_default();
+    assert!(status.contains("already in progress"), "{status:?}");
     assert_installed(
         data_tmp.path(),
         &ed,
@@ -239,7 +241,7 @@ fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
 
     type_cmd(&mut ed, ":lsp-install");
 
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let msg = ed.state.status_msg.text().unwrap_or("");
     assert!(
         msg.contains("definitely-not-seeded"),
         "no-arg :lsp-install must resolve to the buffer's language, not misread the \
@@ -278,7 +280,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
     type_cmd(&mut ed, ":lsp-install rust");
 
     assert_eq!(
-        ed.state.status_msg.as_deref(),
+        ed.state.status_msg.text(),
         Some("LSP: rust-analyzer already installed (v2026-10-05) — up to date"),
         "must report the up-to-date status"
     );

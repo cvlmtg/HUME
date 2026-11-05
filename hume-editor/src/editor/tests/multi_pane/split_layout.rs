@@ -367,10 +367,7 @@ fn rotate_with_a_single_pane_is_refused() {
     ed.handle_key(key('r'));
 
     assert_eq!(*ed.view.layout(), LayoutTree::Leaf(pid_a));
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("no other pane to rotate")
-    );
+    assert_eq!(ed.state.status_msg.text(), Some("no other pane to rotate"));
 }
 
 // ── T4: Split-too-small guard ────────────────────────────────────────────────
@@ -404,10 +401,7 @@ fn vsplit_too_narrow_is_noop_with_warning() {
         matches!(*ed.view.layout(), LayoutTree::Leaf(_)),
         "layout is unchanged"
     );
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("pane too small to split")
-    );
+    assert_eq!(ed.state.status_msg.text(), Some("pane too small to split"));
 }
 
 /// `:split` on a pane too short likewise refuses with an `Err`.
@@ -438,10 +432,7 @@ fn split_too_short_is_noop_with_warning() {
         matches!(*ed.view.layout(), LayoutTree::Leaf(_)),
         "layout is unchanged"
     );
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("pane too small to split")
-    );
+    assert_eq!(ed.state.status_msg.text(), Some("pane too small to split"));
 }
 
 /// The guard is a threshold, not a blanket restriction: a pane at exactly
@@ -517,10 +508,7 @@ fn fifth_pane_split_succeeds_when_post_equalize_size_still_fits() {
         5,
         "the split producing a 5th pane must succeed: post-equalize height still fits"
     );
-    assert_ne!(
-        ed.state.status_msg.as_deref(),
-        Some("pane too small to split"),
-    );
+    assert_ne!(ed.state.status_msg.text(), Some("pane too small to split"),);
 }
 
 /// A zero-height render area (e.g. a terminal reporting height 0 on early

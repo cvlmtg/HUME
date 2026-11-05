@@ -99,7 +99,7 @@ fn lsp_stop_by_name_detaches_the_buffer_and_stops_the_server() {
     assert!(rig.attached().is_empty(), "the buffer must be detached");
     assert_eq!(rig.sent(sid, "textDocument/didClose").len(), 1);
     assert_eq!(
-        rig.ed.state.status_msg.as_deref(),
+        rig.ed.state.status_msg.text(),
         Some("lsp: stopped 1 server(s)")
     );
 }
@@ -134,7 +134,7 @@ fn lsp_stop_with_no_matching_server_stops_nothing() {
     stop(&mut rig.ed, LspServerTarget::Buffer(scratch));
 
     assert_eq!(
-        rig.ed.state.status_msg.as_deref(),
+        rig.ed.state.status_msg.text(),
         Some("lsp: no matching server to stop")
     );
     assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 1);
@@ -201,7 +201,7 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
     assert_eq!(rig.attached(), vec![new_sid]);
     assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 1);
     assert_eq!(
-        rig.ed.state.status_msg.as_deref(),
+        rig.ed.state.status_msg.text(),
         Some("lsp: restarted 1 server(s)")
     );
 }
@@ -310,7 +310,7 @@ fn show_message_is_reported_at_info_severity() {
 
     // Info severity is never pushed to the persistent log (see
     // Editor::report); it is only shown as the transient status message.
-    assert_eq!(ed.state.status_msg.as_deref(), Some("rust-analyzer: ready"));
+    assert_eq!(ed.state.status_msg.text(), Some("rust-analyzer: ready"));
 }
 
 #[test]

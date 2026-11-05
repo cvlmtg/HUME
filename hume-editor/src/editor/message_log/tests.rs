@@ -410,3 +410,56 @@ fn a_hidden_push_that_evicts_a_shown_entry_changes_the_view_stamp() {
     );
     assert_ne!(log.view_stamp(MessagesMinSeverity::Warning), before);
 }
+
+/// The text shown after showing each of `messages` in order.
+fn shown_after(messages: &[(Severity, &str)]) -> Option<String> {
+    let mut status = StatusMsg::default();
+    for (severity, text) in messages {
+        status.show(*severity, *text);
+    }
+    status.text().map(str::to_owned)
+}
+
+#[test]
+fn a_less_severe_status_leaves_the_shown_one() {
+    let cases = [
+        (Severity::Warning, Severity::Info),
+        (Severity::Error, Severity::Info),
+        (Severity::Error, Severity::Warning),
+    ];
+    for (shown, later) in cases {
+        assert_eq!(
+            shown_after(&[(shown, "first"), (later, "second")]).as_deref(),
+            Some("first"),
+            "{shown:?} then {later:?}"
+        );
+    }
+}
+
+#[test]
+fn an_equally_or_more_severe_status_replaces_the_shown_one() {
+    let cases = [
+        (Severity::Info, Severity::Info),
+        (Severity::Warning, Severity::Warning),
+        (Severity::Error, Severity::Error),
+        (Severity::Info, Severity::Warning),
+        (Severity::Warning, Severity::Error),
+    ];
+    for (shown, later) in cases {
+        assert_eq!(
+            shown_after(&[(shown, "first"), (later, "second")]).as_deref(),
+            Some("second"),
+            "{shown:?} then {later:?}"
+        );
+    }
+}
+
+#[test]
+fn a_cleared_status_shows_the_next_message_whatever_its_severity() {
+    let mut status = StatusMsg::default();
+    status.show(Severity::Error, "failed");
+    assert!(status.clear());
+    assert!(!status.clear());
+    status.show(Severity::Info, "done");
+    assert_eq!(status.text(), Some("done"));
+}

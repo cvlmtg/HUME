@@ -873,7 +873,7 @@ fn undotree_without_git_diff_opens_with_a_notice_and_no_diff() {
     assert!(
         ed.state
             .status_msg
-            .as_deref()
+            .text()
             .is_some_and(|m| m.contains("core:git-diff")),
         "status: {:?}",
         ed.state.status_msg

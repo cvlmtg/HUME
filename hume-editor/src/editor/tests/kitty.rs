@@ -76,7 +76,7 @@ fn ctrl_p_p_is_noop_with_single_pane() {
         "single pane: cursor must not move"
     );
     assert!(
-        ed.state.status_msg.is_none(),
+        ed.state.status_msg.text().is_none(),
         "single pane: silent no-op, got {:?}",
         ed.state.status_msg,
     );
@@ -182,10 +182,7 @@ fn ctrl_p_c_is_noop_with_single_pane() {
     assert_eq!(ed.view.panes.len(), 1, "sole pane is not closed");
     assert_eq!(ed.view.focused_pane(), pid_a);
     assert!(!ed.state.should_quit, "pane-close must not quit the editor");
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("cannot close last pane")
-    );
+    assert_eq!(ed.state.status_msg.text(), Some("cannot close last pane"));
 }
 
 /// Ctrl-p, h/j/k/l → directional pane focus. Single-pane no-op: no neighbour in
@@ -202,7 +199,7 @@ fn ctrl_p_directionals_are_noop_with_single_pane() {
             "Ctrl-p {second_key}: single pane: cursor must not move",
         );
         assert!(
-            ed.state.status_msg.is_none(),
+            ed.state.status_msg.text().is_none(),
             "Ctrl-p {second_key}: single pane: silent no-op, got {:?}",
             ed.state.status_msg,
         );

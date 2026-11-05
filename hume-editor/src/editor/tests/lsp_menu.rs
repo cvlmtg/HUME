@@ -163,7 +163,7 @@ fn select_second_item_calls_back_with_its_payload() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "inline");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "inline");
     assert!(
         ed.state.input.menu().is_none(),
         "menu must close after Enter"
@@ -180,7 +180,7 @@ fn esc_calls_back_with_false() {
     ed.feed_key(key_esc());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert!(ed.state.input.menu().is_none());
 }
 
@@ -196,7 +196,7 @@ fn selection_clamps_at_the_top() {
     ed.feed_key(key_enter());
     ed.settle();
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "extract",
         "clamped at the top"
     );
@@ -215,7 +215,7 @@ fn selection_clamps_at_the_bottom() {
     ed.feed_key(key_enter());
     ed.settle();
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
+        ed.state.status_msg.text().unwrap().to_owned(),
         "rename",
         "clamped at the bottom, not wrapped"
     );
@@ -230,7 +230,7 @@ fn arrow_keys_also_move_the_selection() {
     ed.feed_key(key_down());
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "inline");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "inline");
 }
 
 // ── Stray key dismisses and still executes ───────────────────────────────────
@@ -250,7 +250,7 @@ fn stray_key_dismisses_the_menu_and_still_executes() {
         ed.state.input.menu().is_none(),
         "the stray key must dismiss the menu"
     );
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert_eq!(ed.state.status_msg.text().unwrap().to_owned(), "#false");
     assert_ne!(
         ed.current_view().primary().head().offset(),
         head_before,
