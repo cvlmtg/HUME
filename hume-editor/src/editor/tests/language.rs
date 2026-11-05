@@ -102,14 +102,9 @@ fn a_reload_from_disk_keeps_an_asserted_language() {
 
 #[test]
 fn detect_and_set_language_matches_extension() {
-    let mut ed = editor_from("-[a]>b\n");
+    let mut ed = editor_with_path("ab\n", std::path::Path::new("/tmp/foo.rs"));
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
-    // Give the buffer a .rs path so detection can match it.
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_file_for_test(crate::editor::buffer::BufferFile::at("/tmp/foo.rs"));
     register_rust(&mut ed, "rust", &["rs"]);
     ed.detect_and_set_language(bid).expect_open();
     assert_eq!(
@@ -124,16 +119,12 @@ fn detect_and_set_language_matches_extension() {
 /// by the next `settle`, with no call from the path that opened it.
 #[test]
 fn settle_detects_and_announces_a_queued_buffer() {
-    let mut ed = editor_from("-[a]>b\n");
+    let mut ed = editor_with_path("ab\n", std::path::Path::new("/tmp/foo.rs"));
     attach_host(
         &mut ed,
         r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" (focused-pane))))"#,
     );
     let bid = ed.focused_buffer_id();
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_file_for_test(crate::editor::buffer::BufferFile::at("/tmp/foo.rs"));
     register_rust(&mut ed, "rust", &["rs"]);
     let before = state(&ed);
 
@@ -407,7 +398,7 @@ fn set_buffer_language_then_close_in_one_eval_does_not_panic() {
     let mut ed = editor_from("-[a]>b\n");
     // A second buffer so closing `bid` frees its slot outright rather than
     // hitting the unrelated last-buffer scratch-replacement branch.
-    ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
+    ed.open_scratch(BufferText::from("x\n"));
     run(
         &mut ed,
         tmp.path(),

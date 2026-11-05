@@ -3,7 +3,6 @@
 //! several sources rank together.
 
 use super::*;
-use crate::editor::buffer::Buffer;
 use hume_editing::text::BufferText;
 use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
@@ -124,7 +123,7 @@ fn an_edit_to_another_buffer_leaves_the_open_menu_alone() {
         "setup: `fo` narrows the menu"
     );
 
-    let other = ed.open_buffer(Buffer::at_start(BufferText::from("abc\n")));
+    let other = ed.open_scratch(BufferText::from("abc\n"));
     let pid = ed.view.focused_pane();
     crate::editor::pane_state::try_ensure(
         &mut ed.state.panes.entries,
@@ -1156,7 +1155,7 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
     open_completion_session(&mut ed, &["candidate"]);
     assert!(ed.state.input.buffer_completion().is_some(), "sanity: open");
 
-    let other = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    let other = ed.open_scratch(BufferText::from("other\n"));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), other);
     ed.settle();
     assert!(

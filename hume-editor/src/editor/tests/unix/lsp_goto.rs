@@ -562,7 +562,7 @@ fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
 }
 
 /// A target whose path can't be opened (here: it's a directory,
-/// not a file; `Buffer::from_file_or_new` only tolerates `NotFound`) must
+/// not a file; `NewBuffer::file_or_new` only tolerates `NotFound`) must
 /// still error and leave the cursor untouched.
 #[test]
 fn goto_target_is_directory_errors_without_moving_the_cursor() {
@@ -589,7 +589,7 @@ fn goto_target_is_directory_errors_without_moving_the_cursor() {
 /// A target whose file doesn't exist yet (but whose path is otherwise valid)
 /// must open a new-file buffer and jump to it: the same `:e newfile.txt`
 /// tolerance `resolve_or_open` shares with `:e` through
-/// `Buffer::from_file_or_new`, not an error. Covers a server-driven
+/// `NewBuffer::file_or_new`, not an error. Covers a server-driven
 /// definition/rename that points at a file it expects the client to create.
 #[test]
 fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {

@@ -87,9 +87,7 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.open_buffer(Buffer::at_start(hume_editing::text::BufferText::from(
-        "x\n",
-    )));
+    ed.open_scratch(hume_editing::text::BufferText::from("x\n"));
     let bid = ed.focused_buffer_id();
 
     let mut host = ScriptingHost::for_testing(&Dirs::none());

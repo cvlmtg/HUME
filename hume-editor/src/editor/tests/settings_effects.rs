@@ -2,7 +2,6 @@ use super::*;
 use hume_grid::{Rect, Rgb};
 use hume_platform::dirs::Dirs;
 
-use crate::editor::buffer::Buffer;
 use crate::editor::minibuf::history::HistoryKind;
 use hume_core::Severity;
 use hume_editing::text::BufferText;
@@ -705,7 +704,7 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
         r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "indent-width" 8)))"#,
     );
     let focused_bid = ed.focused_buffer_id();
-    let bid2 = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
+    let bid2 = ed.open_scratch(BufferText::from("x\n"));
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
     let lang = ed.state.config.languages.intern("rust");
@@ -736,7 +735,7 @@ fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
         r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "indent-width" 8)))"#,
     );
     let focused_bid = ed.focused_buffer_id();
-    let bid2 = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
+    let bid2 = ed.open_scratch(BufferText::from("x\n"));
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
     let lang = ed.state.config.languages.intern("rust");
@@ -769,7 +768,7 @@ fn get_buffer_option_closed_bid_errors() {
     use hume_scripting::host::EditorHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let bid2 = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
+    let bid2 = ed.open_scratch(BufferText::from("x\n"));
     ed.close_buffer(bid2)
         .expect("the buffer has no unsaved changes and runs no pipe");
 

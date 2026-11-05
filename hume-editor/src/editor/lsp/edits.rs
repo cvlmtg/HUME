@@ -291,7 +291,7 @@ fn resolve_or_open(
 ) -> Result<(BufferId, bool), String> {
     // A server-driven rename or workspace edit may target a file that
     // doesn't exist yet, openable here as `:e` opens a missing path
-    // (see `Buffer::from_file_or_new`).
+    // (see `NewBuffer::file_or_new`).
     AbsolutePath::from_path(path, &state.cwd)
         .and_then(|typed| {
             crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, typed)

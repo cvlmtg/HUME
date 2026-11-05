@@ -364,7 +364,7 @@ fn core_lsp_rig_from(
 
 /// Focuses a new scratch buffer: it has no file, so no server attaches to it.
 fn focus_scratch_buffer(ed: &mut Editor) {
-    let scratch = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+    let scratch = ed.open_scratch(hume_editing::text::BufferText::empty());
     ed.switch_to_buffer_without_jump(
         crate::editor::commands::FocusedPane::current(&ed.view),
         scratch,

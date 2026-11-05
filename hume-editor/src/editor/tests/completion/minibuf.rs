@@ -4,7 +4,7 @@
 //! match policy, cycling, directory descent, and what dismisses.
 
 use super::*;
-use crate::editor::buffer::Buffer;
+use crate::editor::buffer::NewBuffer;
 use crate::editor::settings::CommandCompletion;
 use crate::editor::tests::before_save::warning_texts;
 use hume_editing::text::BufferText;
@@ -788,9 +788,11 @@ fn tab_on_buffer_arg_completes_buffer_names() {
 
     let mut ed = editor_from("-[h]>ello\n");
     for path in [path_a, path_b] {
-        let mut buf = Buffer::at_start(BufferText::from("a\n"));
-        buf.set_file_for_test(crate::editor::buffer::BufferFile::at(path));
-        ed.open_buffer(buf);
+        ed.open_buffer(NewBuffer::File {
+            text: BufferText::from("a\n"),
+            file: crate::editor::buffer::BufferFile::at(path),
+            pending_dump: None,
+        });
     }
 
     command_line(&mut ed, "b alpha");
@@ -818,9 +820,11 @@ fn tab_mid_alias_with_no_space_completes_the_declared_arg_not_the_command_name()
     std::fs::write(&path, "a\n").unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
-    let mut buf = Buffer::at_start(BufferText::from("a\n"));
-    buf.set_file_for_test(crate::editor::buffer::BufferFile::at(path));
-    ed.open_buffer(buf);
+    ed.open_buffer(NewBuffer::File {
+        text: BufferText::from("a\n"),
+        file: crate::editor::buffer::BufferFile::at(path),
+        pending_dump: None,
+    });
 
     command_line(&mut ed, "b1");
     ed.handle_key(key_tab());

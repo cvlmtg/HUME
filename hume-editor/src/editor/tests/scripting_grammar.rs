@@ -551,16 +551,11 @@ fn reparse_reattaches_after_shrink_under_cap() {
 #[test]
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
     require_grammars(&["json"]);
-    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    // A path, so detect_and_set_language keeps returning "json" after reload
+    // (pathless buffers re-detect to None, which is a language *change*, a
+    // different code path than the one we're testing here).
+    let mut ed = editor_with_path("{\"x\": 1}\n", std::path::Path::new("/tmp/data.json"));
     let bid = ed.focused_buffer_id();
-
-    // Give the buffer a path so detect_and_set_language keeps returning "json"
-    // after reload (pathless buffers re-detect to None, which is a language
-    // *change*, a different code path than the one we're testing here).
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_file_for_test(crate::editor::buffer::BufferFile::at("/tmp/data.json"));
 
     ed.state
         .config

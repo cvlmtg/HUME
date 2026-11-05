@@ -1,8 +1,6 @@
 use super::*;
 use hume_platform::dirs::Dirs;
 
-use crate::editor::buffer::Buffer;
-
 /// Type 'x' then 'y' as two separate insert sessions (Escape between them,
 /// so each records its own undo revision), returning the buffer state
 /// captured right after the first session.
@@ -42,14 +40,14 @@ fn typed_set_applies_to_open_buffers() {
 fn new_buffer_inherits_undo_levels() {
     // A buffer opened after the :set must pick up the already-configured
     // cap, not start at History's unlimited default.
-    // lifecycle::open_buffer must thread undo_levels through, or this second
+    // lifecycle::open_and_notify must thread undo_levels through, or this second
     // buffer would keep both edits undoable.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.view);
     crate::editor::commands::typed_set(&mut ed, fp, "global undo-levels=1")
         .expect("set undo-levels");
 
-    let bid2 = ed.open_buffer(Buffer::scratch());
+    let bid2 = ed.open_scratch(hume_editing::text::BufferText::empty());
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid2);
 
     let after_first_edit = two_edits(&mut ed);

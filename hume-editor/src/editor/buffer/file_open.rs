@@ -80,7 +80,7 @@ impl Editor {
 
     /// Open an additional file without switching focus; an error is logged
     /// as a warning and yields `None`. A path that doesn't exist opens a
-    /// new-file buffer instead of erroring (see `Buffer::from_file_or_new`) and
+    /// new-file buffer instead of erroring (see `NewBuffer::file_or_new`) and
     /// reports Info `[new file]`, matching `:e`. Otherwise a mistyped
     /// trailing CLI argument would silently open an empty buffer with no
     /// feedback at all.
@@ -105,13 +105,19 @@ impl Editor {
         }
     }
 
-    /// Tests' entry point to [`lifecycle::open_buffer_and_notify`], the
-    /// production open chokepoint: allocates the buffer slot and queues its
-    /// open announcement, which the next `settle` delivers. See
-    /// `lifecycle::open_buffer`'s doc for why no pane is seeded yet.
+    /// Tests' entry point to [`lifecycle::open_and_notify`], the production
+    /// open chokepoint: allocates the buffer slot and queues its open
+    /// announcement, which the next `settle` delivers. No pane shows the
+    /// buffer yet.
     #[cfg(test)]
-    pub(in crate::editor) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
-        lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc)
+    pub(in crate::editor) fn open_buffer(&mut self, new: super::NewBuffer) -> BufferId {
+        lifecycle::open_and_notify(&mut self.view, &mut self.state, new)
+    }
+
+    /// [`Self::open_buffer`] for a scratch buffer holding `text`.
+    #[cfg(test)]
+    pub(in crate::editor) fn open_scratch(&mut self, text: BufferText) -> BufferId {
+        self.open_buffer(super::NewBuffer::Scratch(text))
     }
 
     /// Tests' entry point to [`lifecycle::close_buffer_and_notify`], the

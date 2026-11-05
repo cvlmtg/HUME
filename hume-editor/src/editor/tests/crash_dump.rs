@@ -184,9 +184,11 @@ fn one_failed_dump_does_not_skip_the_other_buffers() {
     let mut ed = editor_with_path("one\n", &bad);
     dirty_focused(&mut ed);
 
-    let mut second = Buffer::at_start(BufferText::from("two\n"));
-    second.set_file_for_test(crate::editor::buffer::BufferFile::at(&good));
-    let second = ed.open_buffer(second);
+    let second = ed.open_buffer(NewBuffer::File {
+        text: BufferText::from("two\n"),
+        file: crate::editor::buffer::BufferFile::at(&good),
+        pending_dump: None,
+    });
     let fp = crate::editor::commands::FocusedPane::current(&ed.view);
     ed.switch_to_buffer_without_jump(fp, second);
     dirty_focused(&mut ed);

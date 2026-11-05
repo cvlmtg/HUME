@@ -19,7 +19,7 @@ use hume_scripting::host::NativeCall;
 fn split_two_buffers(ed: &mut Editor, b: &str) -> (PaneId, BufferId, PaneId, BufferId) {
     let bid_a = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from(b)));
+    let bid_b = ed.open_scratch(BufferText::from(b));
     let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid_b, Direction::Horizontal);
     // `open_pane_in_layout` itself does not move focus (unlike
     // `split_pane_onto`/`:vsplit` in production), so pin it back to A
@@ -63,7 +63,7 @@ fn pane_category_remote_call_edits_target_pane_leaves_focus_untouched() {
 #[test]
 fn pane_category_paneless_handle_errors_no_pane() {
     let mut ed = editor_from("-[a]>bc\n");
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
+    let bid_b = ed.open_scratch(BufferText::from("bbb\n"));
 
     let err = live_host!(ed)
         .run_command_sync(
@@ -257,7 +257,7 @@ fn toggle_extend_runs_on_the_focused_pane() {
 #[test]
 fn closed_buffer_errors_for_every_command() {
     let mut ed = editor_from("-[a]>bc\n");
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
+    let bid_b = ed.open_scratch(BufferText::from("bbb\n"));
     ed.close_buffer(bid_b)
         .expect("the buffer has no unsaved changes and runs no pipe");
     assert!(ed.state.buffers.try_get(bid_b).is_none());

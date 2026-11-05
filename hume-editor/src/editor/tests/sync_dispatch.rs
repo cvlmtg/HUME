@@ -727,9 +727,7 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     use crate::editor::event::EditorEvent;
     use termina::event::Event as TerminalEvent;
 
-    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
-        hume_editing::text::BufferText::from("hello\n"),
-    ));
+    let mut ed = Editor::for_testing(hume_editing::text::BufferText::from("hello\n"));
 
     // Seed a pending hook (OnBufferSave, no handler registered, so
     // settle() skips the Steel call but still removes it from the queue).

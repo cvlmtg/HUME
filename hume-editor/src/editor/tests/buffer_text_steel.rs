@@ -163,9 +163,7 @@ fn buffer_lines_range_missing_an_end_raises() {
 #[test]
 fn buffer_text_normalizes_crlf_to_lf() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(BufferText::from(
-        "a\r\nb\r\n",
-    )));
+    let mut ed = Editor::for_testing(BufferText::from("a\r\nb\r\n"));
 
     let fired = run_probe(
         &mut ed,

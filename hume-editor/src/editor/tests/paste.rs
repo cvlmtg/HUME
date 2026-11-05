@@ -542,7 +542,7 @@ fn edit_in_other_buffer_invalidates_ring_stamp() {
     ed.feed_key(key('d')); // delete "ab" in buffer A → ring = ["ab"], stamp fresh
 
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("xy\n")));
+    let bid_b = ed.open_scratch(BufferText::from("xy\n"));
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_b);
     // `i`/type/`Esc`, not `d`/`c`/`y`. A capturing edit in B would legitimately
     // write a *fresh* stamp pointing at B's own capture, which isn't what this

@@ -160,7 +160,7 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
         &[(shared_head.index(), shared_head.index())],
         0,
     );
-    let second_bid = ed.open_buffer(Buffer::at_start(second_text));
+    let second_bid = ed.open_scratch(second_text);
     ed.seed_selections(second_bid, second_sels);
 
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), second_bid);
@@ -456,7 +456,7 @@ fn a_revisit_with_nothing_changed_leaves_a_parked_view_parked() {
     );
     let top_before = ed.view.panes[pid].viewport.top();
 
-    let second_bid = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
+    let second_bid = ed.open_scratch(BufferText::from("x\n"));
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), second_bid);
     frame(&mut ed, 80, 20);
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid);

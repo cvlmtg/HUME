@@ -91,7 +91,6 @@ fn settle_with_no_focus_change_raises_no_further_on_buffer_enter() {
 /// write to the focused pane or `pane.buffer_id`.
 #[test]
 fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buffer() {
-    use crate::editor::buffer::Buffer;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
@@ -114,8 +113,8 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
         .count();
     assert_eq!(baseline, 1, "sanity: the startup buffer fires once");
 
-    let buf1 = ed.open_buffer(Buffer::scratch());
-    let buf2 = ed.open_buffer(Buffer::scratch());
+    let buf1 = ed.open_scratch(hume_editing::text::BufferText::empty());
+    let buf2 = ed.open_scratch(hume_editing::text::BufferText::empty());
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), buf1);
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), buf2);
 
@@ -145,7 +144,6 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
 /// independent things to diff separately).
 #[test]
 fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
-    use crate::editor::buffer::Buffer;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
@@ -176,7 +174,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
         bid,
         hume_engine::pipeline::Direction::Horizontal,
     );
-    let buf2 = ed.open_buffer(Buffer::scratch());
+    let buf2 = ed.open_scratch(hume_editing::text::BufferText::empty());
 
     // Bare `focus` write (no settle() in between)...
     ed.state.focus.set_for_test(&mut ed.view, pid_b);

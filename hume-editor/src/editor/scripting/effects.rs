@@ -21,7 +21,7 @@ impl Editor {
     ///
     /// Finishes by draining `state.config.pending_language_detection`, which covers every
     /// buffer a disjoint-borrow Steel path opened via `buffer::lifecycle::
-    /// open_buffer_and_notify` this eval (`(open-buffer! …)`, workspace edits,
+    /// open_and_notify` this eval (`(open-buffer! …)`, workspace edits,
     /// goto-definition). `drain_pending_work` would reach them on its next
     /// pass; draining here lets the next item of the same batch see their
     /// language. *After* the effect loop, not before: a script that opens a

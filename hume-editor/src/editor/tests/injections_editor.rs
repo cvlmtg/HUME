@@ -48,7 +48,7 @@ fn require_fixtures() {
 /// fixture directory, no renaming needed), and rust, then attach markdown as
 /// the buffer's language and drain the initial parse.
 ///
-/// Builds the buffer directly (cursor at 0 via `Buffer::at_start`)
+/// Builds the buffer directly (cursor at 0 via `Editor::for_testing`)
 /// rather than through the `editor_from` marker DSL: this file's tests
 /// mostly care about byte-offset edits at position 0, not cursor placement.
 fn markdown_editor(source: &str) -> (Editor, hume_core::BufferId) {
@@ -79,8 +79,7 @@ fn markdown_editor_with_rust_queries(
     registered: &[&str],
     rust_helix: &[OptionalQuery],
 ) -> (Editor, hume_core::BufferId) {
-    let buf = crate::editor::buffer::Buffer::at_start(hume_editing::text::BufferText::from(source));
-    let mut ed = Editor::for_testing(buf);
+    let mut ed = Editor::for_testing(hume_editing::text::BufferText::from(source));
     let bid = ed.focused_buffer_id();
 
     ed.state

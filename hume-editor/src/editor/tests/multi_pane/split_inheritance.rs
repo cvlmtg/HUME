@@ -225,7 +225,6 @@ fn split_inherits_focused_panes_selection_and_scroll() {
 /// instead of recalling where the source pane last left it.
 #[test]
 fn same_buffer_split_inherits_saved_scrolls() {
-    use crate::editor::buffer::lifecycle::open_buffer;
     use hume_engine::pane::Viewport;
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -234,7 +233,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
     // A second buffer the source pane visited (and scrolled) before the
     // split, then switched away from. This is what populates
     // `saved_scrolls` in real usage (see `Pane::show_buffer`).
-    let bid2 = open_buffer(&mut ed.view, &mut ed.state.buffers, Buffer::scratch(), 0);
+    let bid2 = ed.open_scratch(hume_editing::text::BufferText::empty());
     let mut scrolled = Viewport::default();
     scrolled.seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
         hume_rope::line::ContentLine::new(42),

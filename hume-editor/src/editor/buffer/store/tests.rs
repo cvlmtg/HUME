@@ -8,8 +8,8 @@ fn make_id(ev: &mut EngineView) -> BufferId {
     ev.buffers.insert(())
 }
 
-fn make_buf() -> Buffer {
-    Buffer::at_start(BufferText::from("hello\n"))
+fn make_buf() -> NewBuffer {
+    NewBuffer::Scratch(BufferText::from("hello\n"))
 }
 
 fn store_with_engine() -> (BufferStore, EngineView) {
@@ -77,9 +77,14 @@ fn step_is_a_noop_with_one_buffer() {
 fn find_by_path_dedup() {
     let (mut store, mut ev) = store_with_engine();
     let id = make_id(&mut ev);
-    let mut buf = make_buf();
-    buf.set_file(crate::editor::buffer::BufferFile::at("/tmp/foo.txt"));
-    store.open(id, buf);
+    store.open(
+        id,
+        NewBuffer::File {
+            text: BufferText::from("hello\n"),
+            file: crate::editor::buffer::BufferFile::at("/tmp/foo.txt"),
+            pending_dump: None,
+        },
+    );
     assert_eq!(
         store.find_by_path(&AbsolutePath::rooted("/tmp/foo.txt")),
         Some(id)
@@ -145,10 +150,12 @@ fn view_content_follow_does_not_bump_edit_seq() {
     let id = make_id(&mut ev);
     store.open(
         id,
-        Buffer::read_only_view(
-            BufferText::from("hello\n"),
-            crate::editor::buffer::ViewLabel::editor(crate::editor::buffer::EditorView::Messages),
-        ),
+        NewBuffer::View {
+            text: BufferText::from("hello\n"),
+            label: crate::editor::buffer::ViewLabel::editor(
+                crate::editor::buffer::EditorView::Messages,
+            ),
+        },
     );
     let before = store.edit_seq();
     let mut change = hume_editing::changeset::ChangeSetBuilder::new(store.get(id).text().end());

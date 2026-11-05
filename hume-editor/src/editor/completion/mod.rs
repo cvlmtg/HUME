@@ -154,7 +154,7 @@ mod testing {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::editor::buffer::Buffer;
+    use crate::editor::buffer::NewBuffer;
     use hume_core::BufferId;
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::EngineView;
@@ -209,13 +209,15 @@ mod testing {
         ev.buffers.insert(())
     }
 
-    pub(in crate::editor::completion) fn make_buf() -> Buffer {
-        Buffer::at_start(BufferText::from("a\n"))
+    pub(in crate::editor::completion) fn make_buf() -> NewBuffer {
+        NewBuffer::Scratch(BufferText::from("a\n"))
     }
 
-    pub(in crate::editor::completion) fn buf_with_path(path: &str) -> Buffer {
-        let mut b = make_buf();
-        b.set_file_for_test(crate::editor::buffer::BufferFile::at(path));
-        b
+    pub(in crate::editor::completion) fn buf_with_path(path: &str) -> NewBuffer {
+        NewBuffer::File {
+            text: BufferText::from("a\n"),
+            file: crate::editor::buffer::BufferFile::at(path),
+            pending_dump: None,
+        }
     }
 }

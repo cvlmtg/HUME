@@ -9,31 +9,44 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 
-use super::Buffer;
+use super::store::BufferStore;
+use super::{Buffer, NewBuffer};
 use crate::editor::edit_session::EditGroup;
 use crate::editor::position_stores::DetachedStores;
 
 pub(crate) struct DocHelper {
-    pub(super) buf: Buffer,
+    store: BufferStore,
+    id: BufferId,
     sels: SelectionSet,
     edit_group: Option<EditGroup>,
 }
 
 impl DocHelper {
     pub(crate) fn new(text: BufferText, sels: SelectionSet) -> Self {
+        let (store, id) = BufferStore::holding(NewBuffer::Scratch(text));
         Self {
-            buf: Buffer::at_start(text),
+            store,
+            id,
             sels,
             edit_group: None,
         }
     }
 
+    pub(super) fn buf(&self) -> &Buffer {
+        self.store.get(self.id)
+    }
+
+    pub(super) fn buf_mut(&mut self) -> &mut Buffer {
+        self.store.get_mut(self.id)
+    }
+
     pub(crate) fn apply_edit(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
         let sels = self.sels.clone();
         self.sels = self
-            .buf
+            .store
+            .get_mut(self.id)
             .apply_edit(
-                PaneHandle::with_pane(BufferId::default(), PaneId::default()),
+                PaneHandle::with_pane(self.id, PaneId::default()),
                 &mut DetachedStores::default().stores(),
                 sels,
                 cmd,
@@ -47,8 +60,8 @@ impl DocHelper {
             .edit_group
             .as_mut()
             .expect("apply_edit_grouped called without an open group");
-        let (new_sels, cs) = self.buf.apply_edit_grouped(
-            BufferId::default(),
+        let (new_sels, cs) = self.store.get_mut(self.id).apply_edit_grouped(
+            self.id,
             &mut DetachedStores::default().stores(),
             PaneId::default(),
             sels,
@@ -60,7 +73,7 @@ impl DocHelper {
 
     pub(crate) fn begin_edit_group(&mut self) {
         let pre_sels = self.sels.clone();
-        self.edit_group = Some(self.buf.begin_edit_group(pre_sels.clone(), pre_sels));
+        self.edit_group = Some(self.buf_mut().begin_edit_group(pre_sels.clone(), pre_sels));
     }
 
     pub(crate) fn commit_edit_group(&mut self) {
@@ -69,7 +82,7 @@ impl DocHelper {
             .edit_group
             .take()
             .expect("commit_edit_group called without an open group");
-        self.buf
+        self.buf_mut()
             .commit_edit_group(group, post_sels, PaneId::default());
     }
 
@@ -84,8 +97,8 @@ impl DocHelper {
     /// Returns the number of steps actually taken (short of `count` at the
     /// root).
     pub(crate) fn undo_n(&mut self, count: usize) -> usize {
-        let Some((new_sels, _cs, steps)) = self.buf.undo_n(
-            BufferId::default(),
+        let Some((new_sels, _cs, steps)) = self.store.get_mut(self.id).undo_n(
+            self.id,
             &mut DetachedStores::default().stores(),
             PaneId::default(),
             count,
@@ -99,8 +112,8 @@ impl DocHelper {
     /// Returns the number of steps actually taken (short of `count` at the
     /// tip).
     pub(crate) fn redo_n(&mut self, count: usize) -> usize {
-        let Some((new_sels, _cs, steps)) = self.buf.redo_n(
-            BufferId::default(),
+        let Some((new_sels, _cs, steps)) = self.store.get_mut(self.id).redo_n(
+            self.id,
             &mut DetachedStores::default().stores(),
             PaneId::default(),
             count,
@@ -112,8 +125,8 @@ impl DocHelper {
     }
 
     pub(crate) fn goto_revision(&mut self, target: RevisionId) {
-        if let Some((new_sels, _cs, _steps)) = self.buf.goto_revision(
-            BufferId::default(),
+        if let Some((new_sels, _cs, _steps)) = self.store.get_mut(self.id).goto_revision(
+            self.id,
             &mut DetachedStores::default().stores(),
             PaneId::default(),
             target,
@@ -126,29 +139,30 @@ impl DocHelper {
     /// selections are carried through the reload like any pane's, and the
     /// history revision records them before and after.
     pub(crate) fn reload_from(&mut self, new_text: BufferText) {
-        let (mut stores, pane, id) = DetachedStores::with_pane(&mut self.buf, self.sels.clone());
-        self.buf
+        let (mut stores, pane, id) =
+            DetachedStores::with_pane(self.store.get_mut(self.id), self.sels.clone());
+        self.buf_mut()
             .replace_text_recorded(id, &mut stores.stores(), new_text, pane);
-        self.buf.mark_saved();
+        self.buf_mut().mark_saved();
         self.sels = stores.selections(pane, id);
     }
 
     pub(crate) fn text(&self) -> &BufferText {
-        self.buf.text()
+        self.buf().text()
     }
     pub(crate) fn sels(&self) -> &SelectionSet {
         &self.sels
     }
     pub(crate) fn revision_dirty(&self) -> bool {
-        self.buf.revision_dirty()
+        self.buf().revision_dirty()
     }
     pub(crate) fn mark_saved(&mut self) {
-        self.buf.mark_saved();
+        self.buf_mut().mark_saved();
     }
     pub(crate) fn can_undo(&self) -> bool {
-        self.buf.can_undo()
+        self.buf().can_undo()
     }
     pub(crate) fn set_undo_levels(&mut self, levels: usize) {
-        self.buf.set_undo_levels(levels);
+        self.buf_mut().set_undo_levels(levels);
     }
 }

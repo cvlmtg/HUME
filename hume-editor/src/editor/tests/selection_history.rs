@@ -4,7 +4,6 @@
 //! loop does.
 
 use super::*;
-use crate::editor::buffer::Buffer;
 use crate::editor::focus::switch_pane_to_buffer;
 use hume_scripting::host::EditHost;
 use pretty_assertions::assert_eq;
@@ -470,7 +469,7 @@ fn each_buffer_in_a_pane_keeps_its_own_history() {
     press(&mut ed, "h");
     let pane = ed.view.focused_pane();
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
+    let bid_b = ed.open_scratch(BufferText::from("xyz\n"));
     switch_pane_to_buffer(&mut ed.state, &mut ed.view, pane, bid_b);
     ed.settle();
 
@@ -744,7 +743,7 @@ fn a_wheel_notch_that_moves_nothing_keeps_a_drag_recorded() {
 #[test]
 fn placing_the_cursor_in_a_buffer_the_pane_never_showed_records_nothing() {
     let mut ed = editor_from("-[a]>bc\n");
-    let bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
+    let bid = ed.open_scratch(BufferText::from("xyz\n"));
     let pane = focused_pane(&ed);
     live_host!(ed)
         .goto_location_buffer(hume_scripting::host::ShownHandle::for_test(pane), bid, 2)
@@ -960,7 +959,7 @@ fn a_reload_keeps_the_selection_history_in_order() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let path = dir.path().join("reload.txt");
     std::fs::write(&path, "one\ntwo\nthree\n").expect("the file is written");
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
+    let mut ed = Editor::for_testing(BufferText::from("scratch\n"));
     ed.execute_typed("e", path.to_str())
         .expect(":e opens the file");
     press(&mut ed, "x");

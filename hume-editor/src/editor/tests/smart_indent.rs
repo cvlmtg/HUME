@@ -391,10 +391,9 @@ fn enter_bound_through_insert_key_matches_the_enter_key() {
 #[test]
 fn enter_in_a_fenced_block_starts_from_the_fences_indent() {
     require_fixtures();
-    let buf = crate::editor::buffer::Buffer::at_start(hume_editing::text::BufferText::from(
+    let mut ed = Editor::for_testing(hume_editing::text::BufferText::from(
         "- item\n\n  ```rust\n  fn f() {}\n  ```\n",
     ));
-    let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
     for (name, symbol, exts) in [
         ("markdown", "tree_sitter_markdown", &["md"][..]),

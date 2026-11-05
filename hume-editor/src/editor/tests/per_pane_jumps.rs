@@ -49,7 +49,7 @@ fn p7_cross_buffer_ctrl_o() {
     std::fs::write(&file1, &content).unwrap();
     std::fs::write(&file2, &content).unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
+    let mut ed = Editor::for_testing(BufferText::from("scratch\n"));
     ed.execute_typed("e", Some(file1.to_str().unwrap()))
         .unwrap();
     let buf1 = ed.focused_buffer_id();
@@ -113,7 +113,7 @@ fn p7_close_buffer_prunes_pane_jumps() {
     std::fs::write(&file1, &content).unwrap();
     std::fs::write(&file2, &content).unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
+    let mut ed = Editor::for_testing(BufferText::from("scratch\n"));
     ed.execute_typed("e", Some(file1.to_str().unwrap()))
         .unwrap();
     let buf1 = ed.focused_buffer_id();

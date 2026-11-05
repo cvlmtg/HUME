@@ -10,9 +10,7 @@ use super::decorations::validate_offset;
 
 #[test]
 fn close_buffer_errs_when_id_unknown() {
-    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
-        hume_editing::text::BufferText::empty(),
-    ));
+    let mut ed = Editor::for_testing(hume_editing::text::BufferText::empty());
     let mut host = init_host!(ed);
     // BufferId::default() is a zeroed key, not present in any live store.
     let err = host
@@ -23,9 +21,7 @@ fn close_buffer_errs_when_id_unknown() {
 
 #[test]
 fn switch_to_buffer_noop_when_same() {
-    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
-        hume_editing::text::BufferText::empty(),
-    ));
+    let mut ed = Editor::for_testing(hume_editing::text::BufferText::empty());
     let bid = ed.focused_buffer_id();
     let pane = hume_core::PaneHandle::with_pane(bid, ed.view.focused_pane());
     let mut host = init_host!(ed);
@@ -36,9 +32,7 @@ fn switch_to_buffer_noop_when_same() {
 
 #[test]
 fn attach_grammar_errs_for_bad_path() {
-    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
-        hume_editing::text::BufferText::empty(),
-    ));
+    let mut ed = Editor::for_testing(hume_editing::text::BufferText::empty());
     let mut host = init_host!(ed);
     let err = host
         .attach_grammar(&hume_scripting::GrammarReg {

@@ -929,7 +929,7 @@ fn undotree_follows_buffer_switch() {
     toggle(&mut ed);
     assert_eq!(drawer_rows(&ed).len(), 3);
 
-    ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    ed.open_scratch(BufferText::from("other\n"));
     ed.execute_typed("bn", None).unwrap();
     drain_frames_until(&mut ed, |ed| drawer_rows(ed).len() == 1);
 

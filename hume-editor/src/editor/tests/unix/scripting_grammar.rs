@@ -11,7 +11,7 @@
 use super::*;
 use hume_platform::dirs::Dirs;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::super::scripting_grammar::{grammar_warnings, prelude_source, runtime_scheme_dir};
@@ -292,9 +292,7 @@ fn passive_load_registers_grammar_and_an_unknown_call_raises() {
         data: Some(data_dir.clone()),
         ..Dirs::none()
     });
-    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
-        hume_editing::text::BufferText::empty(),
-    ));
+    let mut ed = Editor::for_testing(hume_editing::text::BufferText::empty());
     let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih)
@@ -364,14 +362,7 @@ fn setup_editor_with_languages_scm(
     std::fs::write(scheme_dir.join("prelude.scm"), prelude_src).unwrap();
     std::fs::write(scheme_dir.join("languages.scm"), languages_scm).unwrap();
 
-    let mut ed = editor_from("-[{]>\"x\": 1}\n");
-    let bid = ed.focused_buffer_id();
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_file_for_test(crate::editor::buffer::BufferFile::at(
-            PathBuf::from("/tmp").join(file_name),
-        ));
+    let mut ed = editor_with_path("{\"x\": 1}\n", &PathBuf::from("/tmp").join(file_name));
 
     ed.state.dirs = Dirs {
         config: Some(hume_config),
@@ -573,13 +564,9 @@ fn grammar_registration_survives_plum_absence() {
     // No core:plum anywhere in init.scm.
     let fixture = StagedGrammarFixture::new("json", "");
 
-    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let mut ed = editor_with_path("{\"x\": 1}\n", Path::new("/tmp/test.json"));
     ed.state.dirs = fixture.dirs();
     let bid = ed.focused_buffer_id();
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_file_for_test(crate::editor::buffer::BufferFile::at("/tmp/test.json"));
     ed.init_scripting(&mut Default::default());
     drop(fixture);
 
@@ -633,13 +620,9 @@ fn define_language_override_in_init_keeps_startup_grammar() {
     let fixture =
         StagedGrammarFixture::new("json", r#"(define-language! "json" '("json" "jsonc"))"#);
 
-    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let mut ed = editor_with_path("{\"x\": 1}\n", Path::new("/tmp/test.jsonc"));
     ed.state.dirs = fixture.dirs();
     let bid = ed.focused_buffer_id();
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_file_for_test(crate::editor::buffer::BufferFile::at("/tmp/test.jsonc"));
     ed.init_scripting(&mut Default::default());
     drop(fixture);
 

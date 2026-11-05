@@ -19,7 +19,6 @@ fn alternate_buffer_none_with_single_buffer() {
 /// toggle back, since B's own touches are now part of that same history.
 #[test]
 fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on_repeat() {
-    use crate::editor::buffer::Buffer;
     use crate::editor::commands::open_pane_in_layout;
     use hume_core::PaneHandle;
     use hume_editing::text::BufferText;
@@ -29,8 +28,8 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
     let bar_bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
 
-    let baz_bid = ed.open_buffer(Buffer::at_start(BufferText::from("baz\n")));
-    let foo_bid = ed.open_buffer(Buffer::at_start(BufferText::from("foo\n")));
+    let baz_bid = ed.open_scratch(BufferText::from("baz\n"));
+    let foo_bid = ed.open_scratch(BufferText::from("foo\n"));
     // `open` seeds `mru` at open time regardless of whether a pane ever
     // shows the buffer; re-touch bar then foo directly (bypassing real
     // focus events, which this test doesn't need) so `mru` ends at

@@ -11,7 +11,6 @@ use super::*;
 use hume_treesitter::grammar::LoadedGrammar;
 use test_fixtures::{grammar_parser_path, require_grammars};
 
-use crate::editor::buffer::Buffer;
 use hume_editing::text::BufferText;
 
 /// Create an editor with `source` as buffer text and a JSON grammar attached.
@@ -20,8 +19,7 @@ use hume_editing::text::BufferText;
 /// `reparse_stale_buffers` call: InlineParseBackend resolves it immediately,
 /// so the first drain installs it.
 fn json_editor(source: &str) -> (Editor, hume_core::BufferId) {
-    let buf = Buffer::at_start(BufferText::from(source));
-    let mut ed = Editor::for_testing(buf);
+    let mut ed = Editor::for_testing(BufferText::from(source));
     let bid = ed.focused_buffer_id();
     super::language::attach_host(&mut ed, "");
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");

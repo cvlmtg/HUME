@@ -300,9 +300,9 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
 fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
     use hume_editing::text::BufferText;
 
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("aaa\n")));
+    let mut ed = Editor::for_testing(BufferText::from("aaa\n"));
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
+    let bid_b = ed.open_scratch(BufferText::from("bbb\n"));
     // `open_buffer` does not move focus, nor show the buffer in any pane:
     // A stays focused, B is paneless.
     assert_eq!(ed.focused_buffer_id(), bid_a, "setup: A stays focused");
@@ -353,10 +353,10 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::Direction;
 
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("aaa\n")));
+    let mut ed = Editor::for_testing(BufferText::from("aaa\n"));
     let bid_a = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
+    let bid_b = ed.open_scratch(BufferText::from("bbb\n"));
     open_pane_in_layout(&mut ed.state, &mut ed.view, bid_b, Direction::Horizontal);
     // The split moves focus onto the new pane in production
     // (`split_pane_onto`/`:vsplit`), but `open_pane_in_layout` itself does

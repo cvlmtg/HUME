@@ -839,7 +839,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     // A second buffer so `bid`'s close below frees its slot outright instead
     // of hitting the last-buffer scratch-replacement branch.
     use hume_editing::text::BufferText;
-    ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
+    ed.open_scratch(BufferText::from("x\n"));
 
     let mut snapshot = ed.reset_config_state();
     ed.scripting = None;

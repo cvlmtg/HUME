@@ -110,9 +110,7 @@ fn lsp_stop_by_name_detaches_the_buffer_and_stops_the_server() {
 fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
-    let other = rig
-        .ed
-        .open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    let other = rig.ed.open_scratch(BufferText::from("other\n"));
     let fp = FocusedPane::current(&rig.ed.view);
     rig.ed.switch_to_buffer_without_jump(fp, other);
     assert_ne!(rig.ed.focused_buffer_id(), rig.bid);
@@ -127,9 +125,7 @@ fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
 fn lsp_stop_with_no_matching_server_stops_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
-    let scratch = rig
-        .ed
-        .open_buffer(Buffer::at_start(BufferText::from("x\n")));
+    let scratch = rig.ed.open_scratch(BufferText::from("x\n"));
 
     stop(&mut rig.ed, LspServerTarget::Buffer(scratch));
 

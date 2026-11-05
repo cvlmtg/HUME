@@ -672,7 +672,7 @@ fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
     std::fs::write(&file1, &content).unwrap();
     std::fs::write(&file2, "other\nfile\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
+    let mut ed = Editor::for_testing(BufferText::from("scratch\n"));
     ed.execute_typed("e", Some(file1.to_str().unwrap()))
         .unwrap();
     let buf1 = ed.focused_buffer_id();
@@ -723,7 +723,7 @@ fn reload_remaps_jump_entries_through_line_diff() {
     let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
     std::fs::write(&path, &content).unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
+    let mut ed = Editor::for_testing(BufferText::from("scratch\n"));
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
 
     for _ in 0..10 {
@@ -949,13 +949,12 @@ fn search_confirm_records_the_jump_in_the_pane_the_search_started_in() {
 /// pane moving to another buffer still counts as a move.
 #[test]
 fn a_pending_jump_into_a_buffer_the_navigation_closed_is_dropped() {
-    use crate::editor::buffer::Buffer;
     use crate::editor::commands::CommandPane;
     use crate::editor::jump_list::{JumpRule, with_jump};
 
     let mut ed = editor_from("-[a]>\n");
     let pid = ed.view.focused_pane();
-    let closing = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    let closing = ed.open_scratch(BufferText::from("other\n"));
     ed.execute_typed("bn", None).unwrap();
     assert_eq!(ed.focused_buffer_id(), closing, "setup: the pane shows it");
     let before = ed.state.panes.entries[pid].jumps.len();

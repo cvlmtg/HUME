@@ -163,6 +163,49 @@ enum Origin {
     View(ViewLabel),
 }
 
+/// What a new buffer is made from. [`store::BufferStore::open`] builds the
+/// [`Buffer`] from it, and nothing else builds one.
+pub(in crate::editor) enum NewBuffer {
+    /// A scratch buffer holding this text.
+    Scratch(BufferText),
+    /// A buffer bound to `file`, offering `pending_dump` (see
+    /// [`Buffer::pending_dump`]).
+    File {
+        text: BufferText,
+        file: BufferFile,
+        pending_dump: Option<PathBuf>,
+    },
+    /// A read-only view of text the editor or a plugin built. It has no
+    /// language detection and refuses user edits.
+    View { text: BufferText, label: ViewLabel },
+}
+
+impl NewBuffer {
+    /// The file `target` names, read from disk, or an empty buffer bound to
+    /// it if it doesn't exist yet (Vim's `:e newfile` semantics: `:w` creates
+    /// it). A missing file's resolved path is the target's, the form
+    /// `find_by_path` dedup looks it up by.
+    ///
+    /// The single decision point for "is a missing path openable", shared by
+    /// every open chokepoint, so they can't diverge on tolerance. A path with
+    /// no file name (`/`) errors (see [`BufferFile::new_file`]).
+    pub(in crate::editor) fn file_or_new(target: FileTarget) -> io::Result<Self> {
+        let (text, file) = match BufferFile::read(target.typed().clone()) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                (BufferText::empty(), target.into_new_file()?)
+            }
+            other => other?,
+        };
+        let pending_dump = Some(dump::dump_path_for(file.resolved().as_path()))
+            .filter(|dump| std::fs::symlink_metadata(dump).is_ok());
+        Ok(Self::File {
+            text,
+            file,
+            pending_dump,
+        })
+    }
+}
+
 /// Content-only document: text, undo history, search state, and per-buffer overrides.
 ///
 /// `Buffer` is the SSOT for everything intrinsic to an open file and shared
@@ -261,7 +304,7 @@ pub(crate) struct Buffer {
     /// which the check skips.
     pub(in crate::editor) disk_state: disk::DiskState,
     /// The crash dump found next to this buffer's file when it was opened
-    /// (`from_file_or_new`, not a reload), until the user answers the
+    /// (`NewBuffer::file_or_new`, not a reload), until the user answers the
     /// restore prompt for it. Kept as a path, not re-derived from `path`: a
     /// save-as changes `path` but not which dump the prompt is about.
     pub(in crate::editor) pending_dump: Option<PathBuf>,
@@ -316,9 +359,19 @@ impl Buffer {
             .and_then(|syn| syn.current_layers(self.text().generation()))
     }
 
-    /// Create a new buffer holding `text`. A pane showing it starts with a
-    /// cursor on its first cluster.
-    pub(crate) fn at_start(text: BufferText) -> Self {
+    /// Build the buffer `new` describes, for [`store::BufferStore::open`]. A
+    /// pane showing it starts with a cursor on its first cluster.
+    fn new(new: NewBuffer) -> Self {
+        let (text, origin, pending_dump) = match new {
+            NewBuffer::Scratch(text) => (text, Origin::Scratch, None),
+            NewBuffer::File {
+                text,
+                file,
+                pending_dump,
+            } => (text, Origin::File(file), pending_dump),
+            NewBuffer::View { text, label } => (text, Origin::View(label), None),
+        };
+        let read_only = matches!(origin, Origin::View(_));
         let history = History::new();
         let saved_revision = Some(history.current_id());
         let saved_line_ending = text.line_ending();
@@ -329,7 +382,7 @@ impl Buffer {
             history,
             saved_revision,
             saved_line_ending,
-            origin: Origin::Scratch,
+            origin,
             search_pattern: None,
             search_matches: SearchMatches::default(),
             #[cfg(test)]
@@ -342,81 +395,19 @@ impl Buffer {
             change_log: ChangeLog::default(),
             announced_history,
             syntax: None,
-            read_only: false,
+            read_only,
             hold: Weak::new(),
             open_announced: false,
             plugin_view: PluginView::default(),
             disk_state: disk::DiskState::InSync,
-            pending_dump: None,
+            pending_dump,
         }
     }
 
-    /// Load the file the user named `typed` from disk, returning a
-    /// ready-to-use `Buffer` whose file is the one the read resolved.
-    /// `search_pattern` and `search_matches` are left at their defaults (no
-    /// active search).
-    pub(in crate::editor::buffer) fn from_file(typed: &AbsolutePath) -> io::Result<Self> {
-        let (text, file) = BufferFile::read(typed.clone())?;
-        let mut buf = Self::at_start(text);
-        buf.origin = Origin::File(file);
-        Ok(buf)
-    }
-
-    /// Empty buffer bound to a file that doesn't exist on disk yet: `:e` on
-    /// a missing file, matching Vim's `:e newfile` semantics: `:w` creates it
-    /// (see `is_new_file`). The file is set so the buffer participates in
-    /// `find_by_path` dedup and displays its intended name.
-    pub(in crate::editor::buffer) fn new_file(file: BufferFile) -> Self {
-        let mut buf = Self::at_start(BufferText::empty());
-        buf.origin = Origin::File(file);
-        buf
-    }
-
-    /// `true` for a buffer bound to a file not on disk yet, opened via
-    /// [`Self::new_file`] and not yet written.
+    /// `true` for a buffer bound to a file not on disk yet, opened by
+    /// [`NewBuffer::file_or_new`] on a missing path and not yet written.
     pub(in crate::editor) fn is_new_file(&self) -> bool {
         self.file().is_some_and(|file| file.file_meta().is_none())
-    }
-
-    /// Load the file `target` names, or open an empty [`Self::new_file`]
-    /// buffer bound to it if it doesn't exist yet (Vim's `:e newfile`
-    /// semantics: `:w` creates it). A missing file's resolved path is the
-    /// target's, the form `find_by_path` dedup looks it up by.
-    ///
-    /// The single decision point for "is a missing path openable", shared by
-    /// every open chokepoint, so they can't diverge on tolerance. A path with
-    /// no file name (`/`) errors (see [`BufferFile::new_file`]).
-    pub(in crate::editor) fn from_file_or_new(target: FileTarget) -> io::Result<Self> {
-        let mut buf = match Self::from_file(target.typed()) {
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                Self::new_file(target.into_new_file()?)
-            }
-            other => other?,
-        };
-        buf.pending_dump = buf
-            .path()
-            .map(AbsolutePath::as_path)
-            .map(dump::dump_path_for)
-            .filter(|dump| std::fs::symlink_metadata(dump).is_ok());
-        Ok(buf)
-    }
-
-    /// Empty scratch buffer (single structural `\n`, no path, default overrides).
-    ///
-    /// Used when closing the last buffer to keep the "always ≥1 buffer open"
-    /// invariant without leaving the editor in an invalid state.
-    pub(in crate::editor) fn scratch() -> Self {
-        Self::at_start(BufferText::empty())
-    }
-
-    /// Create a read-only view buffer from in-memory content, for
-    /// [`lifecycle::open_view_buffer`]. The buffer has no backing file,
-    /// no language detection, and blocks all user edits.
-    pub(in crate::editor) fn read_only_view(text: BufferText, label: ViewLabel) -> Self {
-        let mut buf = Self::at_start(text);
-        buf.read_only = true;
-        buf.origin = Origin::View(label);
-        buf
     }
 
     /// Replace the content of a read-only view buffer with new text.
@@ -548,13 +539,6 @@ impl Buffer {
     pub(in crate::editor::buffer) fn set_file(&mut self, file: BufferFile) {
         debug_assert!(!self.is_synthetic(), "a view buffer is bound to a file");
         self.origin = Origin::File(file);
-    }
-
-    /// [`Self::set_file`] for a test that binds a file without the sync
-    /// `Editor::mark_synced` does.
-    #[cfg(test)]
-    pub(in crate::editor) fn set_file_for_test(&mut self, file: BufferFile) {
-        self.set_file(file);
     }
 
     /// The backing file, or `None` for scratch/synthetic buffers.

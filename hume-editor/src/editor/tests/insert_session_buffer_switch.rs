@@ -26,7 +26,7 @@ use pretty_assertions::assert_eq;
 fn switch_to_buffer_ends_insert_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let old_bid = ed.focused_buffer_id();
-    let new_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
+    let new_bid = ed.open_scratch(BufferText::from("xyz\n"));
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Q");
@@ -63,7 +63,7 @@ fn switch_to_buffer_ends_insert_session_on_focused_pane() {
 fn goto_location_to_another_buffer_ends_insert_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let old_bid = ed.focused_buffer_id();
-    let new_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
+    let new_bid = ed.open_scratch(BufferText::from("xyz\n"));
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Q");
@@ -152,7 +152,7 @@ fn goto_location_within_the_focused_buffer_invalidates_the_typed_run() {
 fn close_buffer_ends_insert_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let old_bid = ed.focused_buffer_id();
-    let other_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
+    let other_bid = ed.open_scratch(BufferText::from("xyz\n"));
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Q");
@@ -182,7 +182,7 @@ fn close_buffer_ends_insert_session_on_focused_pane() {
 fn goto_alternate_buffer_call_ends_insert_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let old_bid = ed.focused_buffer_id();
-    let other_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
+    let other_bid = ed.open_scratch(BufferText::from("xyz\n"));
     // `open_buffer` seeds `mru` at open time, making `other_bid` the most
     // recent entry; re-touch `old_bid` (the focused buffer) so it becomes
     // most recent again and `other_bid` is the alternate (second-most-recent).
@@ -286,7 +286,7 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let old_bid = ed.focused_buffer_id();
     ed.feed_key(key('d')); // delete "a" → ring head = ["a"], buffer now "bc\n"
-    let new_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
+    let new_bid = ed.open_scratch(BufferText::from("xyz\n"));
 
     ed.feed_key(key('p')); // bare paste-after: ring head, opens a paste session
     assert!(
@@ -327,12 +327,12 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
     let mut ed = editor_from("-[a]>bc\n");
     let pid_a = ed.view.focused_pane();
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("baz\n")));
+    let bid_b = ed.open_scratch(BufferText::from("baz\n"));
     let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid_b, Direction::Horizontal);
     // `open_pane_in_layout` does not move focus itself; pin it back to A
     // explicitly so the premise below holds regardless.
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
-    let bid_c = ed.open_buffer(Buffer::at_start(BufferText::from("qux\n")));
+    let bid_c = ed.open_scratch(BufferText::from("qux\n"));
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Q");
@@ -451,7 +451,7 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
 fn insert_on_an_auto_indented_blank_line() -> (Editor, BufferId, BufferId) {
     let mut ed = editor_from("  x-[\n]>");
     let old_bid = ed.focused_buffer_id();
-    let new_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
+    let new_bid = ed.open_scratch(BufferText::from("xyz\n"));
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     assert_eq!(

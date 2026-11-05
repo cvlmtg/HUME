@@ -539,7 +539,7 @@ fn identity_reload_fires_no_on_text_changed() {
 fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("hello\n")));
+    let bid_b = ed.open_scratch(BufferText::from("hello\n"));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_b);
 
     let mut host = hume_scripting::ScriptingHost::for_testing(&Dirs::none());

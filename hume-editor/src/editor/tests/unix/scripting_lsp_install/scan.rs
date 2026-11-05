@@ -530,8 +530,10 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     // Set the path *after* init_scripting (which re-detects language for
     // every already-open buffer and would otherwise activate core:lsp-install early,
     // before this test's own explicit `set_buffer_language` call below).
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::at(file));
+    ed.mark_synced(
+        ed.focused_buffer_id(),
+        crate::editor::buffer::BufferFile::at(file),
+    );
 
     let bid = ed.focused_buffer_id();
     assert!(

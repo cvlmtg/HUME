@@ -132,19 +132,19 @@ impl Editor {
         startup_cwd: hume_platform::path::AbsolutePath,
     ) -> io::Result<Self> {
         use super::clipboard;
-        use crate::editor::buffer::Buffer;
+        use crate::editor::buffer::NewBuffer;
         use crate::editor::buffer::store::BufferStore;
         use crate::editor::pane_state::{PaneChrome, PaneView};
         use crate::editor::settings::EditorSettings;
         use hume_editing::text::BufferText;
 
-        let doc = match file_path {
+        let new = match file_path {
             // Missing file, valid basename: `hume newfile.txt` opens an
             // empty buffer bound to the path instead of exiting, same
             // `:w`-creates-it semantics as `:e` on a missing file (see
-            // `Buffer::from_file_or_new`, `lifecycle::open_or_dedup_and_notify`).
-            Some(path) => Buffer::from_file_or_new(crate::editor::buffer::FileTarget::new(path)?)?,
-            None => Buffer::at_start(BufferText::empty()),
+            // `NewBuffer::file_or_new`, `lifecycle::open_or_dedup_and_notify`).
+            Some(path) => NewBuffer::file_or_new(crate::editor::buffer::FileTarget::new(path)?)?,
+            None => NewBuffer::Scratch(BufferText::empty()),
         };
 
         // ── Engine view setup ─────────────────────────────────────────────────
@@ -161,7 +161,7 @@ impl Editor {
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
         let mut buffers = BufferStore::new();
-        buffers.open(buffer_id, doc);
+        buffers.open(buffer_id, new);
         let mut panes = PaneView::default();
         let unattached = panes.open(
             &mut engine_view,

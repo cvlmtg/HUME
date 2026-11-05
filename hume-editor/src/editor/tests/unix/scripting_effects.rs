@@ -297,14 +297,14 @@ fn a_failing_init_scms_log_lands_before_its_error() {
 
 /// `(open-buffer! path)` can't run language detection inline: the host it
 /// executes against has no Steel-eval capability for lazy-plugin activation
-/// (see `buffer::lifecycle::open_buffer_and_notify`'s doc), so the open
+/// (see `buffer::lifecycle::open_and_notify`'s doc), so the open
 /// chokepoint queues the buffer id onto `EditorState.pending_language_
 /// detection` instead, drained once the eval returns. This is the full
 /// pipeline: `:go` → `call_steel_cmd` → `open-buffer!` opens (queuing the
 /// bid) → `apply_script_effects`'s tail drain runs `detect_and_set_language`.
 ///
 /// Both the `state.config.pending_language_detection.push(bid)` line in
-/// `open_buffer_and_notify` and the tail drain in `apply_script_effects` are
+/// `open_and_notify` and the tail drain in `apply_script_effects` are
 /// needed. Without either, the opened buffer's `language` stays `None`.
 #[test]
 fn steel_open_buffer_detects_language() {

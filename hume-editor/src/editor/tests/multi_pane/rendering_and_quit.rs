@@ -364,7 +364,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     );
 
     // Switch the same pane to a fresh buffer with no virtual lines set.
-    let bid_b = ed.open_buffer(Buffer::scratch());
+    let bid_b = ed.open_scratch(hume_editing::text::BufferText::empty());
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_b);
     ed.resize_terminal(80, 25);
     ed.settle();

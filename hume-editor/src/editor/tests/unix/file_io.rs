@@ -70,7 +70,7 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
     );
 
     // A genuine buffer-enter (switch away, then back) still surfaces it.
-    let scratch = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+    let scratch = ed.open_scratch(hume_editing::text::BufferText::empty());
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), scratch);
     ed.settle();
     let bid = ed
@@ -349,7 +349,7 @@ fn write_new_file_buffer_rekeys_path_to_resolved_target() {
 
 /// A directory target must still error, not silently open a new-file
 /// buffer: the one case in `:e`'s open path that's still a genuine
-/// failure (`Buffer::from_file_or_new` only tolerates `NotFound`). Also
+/// failure (`NewBuffer::file_or_new` only tolerates `NotFound`). Also
 /// proves the error echoes the raw typed path (`~`), not its expanded
 /// `$HOME` form, matching `:e`'s missing-path message
 /// (`edit_missing_file_shows_raw_typed_display_path`), using `~` alone
@@ -851,7 +851,7 @@ fn settle_clamps_a_startup_line_past_the_end() {
 }
 
 /// `hume newfile.txt` (the *first* CLI file argument, `Editor::open`'s own
-/// `Buffer::from_file(path)?` branch, distinct from `open_extra_file`,
+/// `NewBuffer::file_or_new` branch, distinct from `open_extra_file`,
 /// which only handles trailing args) must open a new-file buffer instead of
 /// exiting on ENOENT.
 #[test]
@@ -892,8 +892,6 @@ fn open_extra_file_deduplicates() {
 fn wa_saves_all_dirty_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
     assert!(focused_unsaved(&ed));
 
@@ -920,8 +918,6 @@ fn wa_saves_new_file_buffers() {
 
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
 
     ed.execute_typed("e", Some(new_path.to_str().unwrap()))
@@ -947,8 +943,6 @@ fn wa_saves_new_file_buffers() {
 fn wa_skips_clean_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     // bid1 stays clean.
 
     let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
@@ -976,14 +970,11 @@ fn wa_skips_clean_buffers() {
 fn wa_skips_pathless_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
 
     // Only one file buffer: scratch shouldn't add to the count.
     let scratch_bid = {
-        let scratch = Buffer::at_start(BufferText::from("scratch\n"));
-        let bid = ed.open_buffer(scratch);
+        let bid = ed.open_scratch(BufferText::from("scratch\n"));
         ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid);
         dirty_focused(&mut ed);
         bid
@@ -1002,8 +993,6 @@ fn wa_skips_pathless_buffers() {
 #[test]
 fn wa_is_noop_if_nothing_dirty() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
 
     ed.execute_typed("wa", None).unwrap();
     let msg = ed.state.status_msg.text().unwrap_or("");
@@ -1017,8 +1006,6 @@ fn wa_is_noop_if_nothing_dirty() {
 fn wa_does_not_change_focus() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
 
     let (_tmp2, bid2) = open_file_buffer(&mut ed, "two\n");
@@ -1035,8 +1022,6 @@ fn wa_does_not_change_focus() {
 fn wa_preserves_focus_on_single_buffer() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
 
     let before = ed.focused_buffer_id();
@@ -1267,8 +1252,10 @@ fn write_preserves_permissions() {
     // Set a non-default permission that differs from the tempfile default (0600).
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
     // Re-read metadata so the buffer's file captures the new permissions.
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&tmp));
+    ed.mark_synced(
+        ed.focused_buffer_id(),
+        crate::editor::buffer::BufferFile::on_disk_at(&tmp),
+    );
 
     for ch in ":w".chars() {
         ed.handle_key(key(ch));
@@ -1308,8 +1295,9 @@ fn write_follows_symlink() {
         std::fs::canonicalize(real.path()).unwrap()
     );
 
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.doc_mut().set_file_for_test(
+    let (text, sels) = parse_state("-[h]>ello\n");
+    let mut ed = Editor::for_testing_file(
+        test_fixtures::testing::state(text, sels),
         crate::editor::buffer::BufferFile::on_disk(meta, AbsolutePath::rooted(&link_path)).unwrap(),
     );
 
@@ -1717,8 +1705,10 @@ fn colon_w_bang_on_readonly_file_preserves_perms() {
 
     // Make the target readonly and update the buffer's file metadata to match.
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o444)).unwrap();
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(&tmp));
+    ed.mark_synced(
+        ed.focused_buffer_id(),
+        crate::editor::buffer::BufferFile::on_disk_at(&tmp),
+    );
 
     for ch in ":w!".chars() {
         ed.handle_key(key(ch));

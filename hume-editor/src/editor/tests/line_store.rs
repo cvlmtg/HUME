@@ -289,7 +289,7 @@ fn the_two_frame_passes_format_each_visible_line_once() {
     let text: String = (0..6)
         .map(|i| format!("line{i} with enough text to wrap\n"))
         .collect();
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(text.as_str())));
+    let mut ed = Editor::for_testing(BufferText::from(text.as_str()));
     let pid = ed.view.focused_pane();
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 0 };
 

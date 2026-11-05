@@ -4,7 +4,6 @@
 // store is out of view, then reads the store back.
 
 use super::*;
-use crate::editor::buffer::Buffer;
 use hume_core::PaneHandle;
 
 /// A pane that showed a buffer and moved to another one keeps its selections
@@ -18,7 +17,7 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
     ed.execute_typed("split", None).unwrap();
     let away = ed.view.focused_pane();
     select(&mut ed, &[(24, 24)], 0);
-    ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    ed.open_scratch(BufferText::from("other\n"));
     ed.execute_typed("bn", None).unwrap();
     assert_ne!(
         ed.view.panes[away].buffer_id(),
@@ -54,7 +53,7 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
 fn closing_the_buffer_a_search_prompt_snapshotted_leaves_the_prompt_usable() {
     let mut ed = editor_from("-[h]>ello\n");
     let closed = ed.focused_buffer_id();
-    ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    ed.open_scratch(BufferText::from("other\n"));
     ed.handle_key(key('/'));
     assert_eq!(ed.state.mode(), Mode::Search, "setup: search is open");
 
@@ -284,7 +283,7 @@ fn a_tracked_position_is_dropped_when_its_buffer_is_replaced() {
 #[test]
 fn a_tracked_position_is_dropped_when_its_buffer_closes() {
     let mut ed = editor_from("-[a]>\n");
-    let other = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    let other = ed.open_scratch(BufferText::from("other\n"));
     let head = ed.state.buffers.get(other).text().snap(co(0));
     let token = ed
         .state

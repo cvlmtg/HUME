@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::editor::EditorState;
 use crate::editor::buffer::ReplaceSource;
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::buffer::{Buffer, ViewLabel};
+use crate::editor::buffer::{NewBuffer, ViewLabel};
 use crate::editor::commands::FocusedPane;
 use crate::editor::pane_state::PaneView;
 use crate::editor::search::SearchPattern;
@@ -265,24 +265,23 @@ fn view_label(name: &str) -> ViewLabel {
 }
 
 /// `statusline::tests`' other cross-boundary shape: a read-only view
-/// buffer, without handing that suite `Buffer::read_only_view` itself.
+/// buffer, without handing that suite `NewBuffer` itself.
 pub(crate) fn editor_with_read_only_view(content: &str, name: &str) -> Editor {
-    Editor::for_testing(Buffer::read_only_view(
-        BufferText::from(content),
-        view_label(name),
-    ))
+    Editor::for_testing_on(NewBuffer::View {
+        text: BufferText::from(content),
+        label: view_label(name),
+    })
 }
 
 /// `statusline::tests`' third cross-boundary shape: a buffer with an
-/// explicit path, without handing that suite `Buffer::set_file_for_test`
-/// itself.
+/// explicit path, without handing that suite `NewBuffer` itself.
 pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor {
     let text = BufferText::from(content);
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::at(path));
-    ed
+    Editor::for_testing_file(
+        test_fixtures::testing::state(text, sels),
+        crate::editor::buffer::BufferFile::at(path),
+    )
 }
 
 /// Attach the real `markdown` grammar fixture, no injections. Its callers
@@ -590,7 +589,7 @@ fn has_error(ed: &Editor, needle: &str) -> bool {
 
 /// Open a buffer holding `text` and switch the focused pane to it.
 fn open_other_buffer(ed: &mut Editor, text: &str) -> BufferId {
-    let bid = ed.open_buffer(Buffer::at_start(BufferText::from(text)));
+    let bid = ed.open_scratch(BufferText::from(text));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
     bid
 }
@@ -1198,9 +1197,11 @@ fn jump_editor(cursor_line: usize) -> Editor {
 /// canonical one.
 fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(file_content);
-    let mut ed = editor_from(initial_state);
-    ed.doc_mut()
-        .set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(path));
+    let (text, sels) = parse_state(initial_state);
+    let ed = Editor::for_testing_file(
+        test_fixtures::testing::state(text, sels),
+        crate::editor::buffer::BufferFile::on_disk_at(path),
+    );
     (ed, tmp_path)
 }
 
@@ -1316,10 +1317,27 @@ impl Editor {
     /// [`Self::for_testing`] on `state`'s text, the pane starting on
     /// `state`'s selections.
     pub(crate) fn for_testing_with(state: hume_editing::state::EditState) -> Self {
-        let mut ed = Self::for_testing(Buffer::at_start(state.text().clone()));
-        let bid = ed.focused_buffer_id();
-        ed.seed_selections(bid, state.into_selections());
-        ed
+        Self::for_testing(state.text().clone()).seeded(state.into_selections())
+    }
+
+    /// [`Self::for_testing_with`] on a buffer bound to `file`, as opening the
+    /// file makes one.
+    pub(in crate::editor) fn for_testing_file(
+        state: hume_editing::state::EditState,
+        file: crate::editor::buffer::BufferFile,
+    ) -> Self {
+        Self::for_testing_on(NewBuffer::File {
+            text: state.text().clone(),
+            file,
+            pending_dump: None,
+        })
+        .seeded(state.into_selections())
+    }
+
+    fn seeded(mut self, sels: SelectionSet) -> Self {
+        let bid = self.focused_buffer_id();
+        self.seed_selections(bid, sels);
+        self
     }
 
     /// Start the focused pane on `sels` for `bid`, as though it had first
@@ -1336,12 +1354,18 @@ impl Editor {
         .seed_selections(sels);
     }
 
-    /// Construct a minimal `Editor` for renderer unit tests.
+    /// Construct a minimal `Editor` on a scratch buffer holding `text`, made
+    /// in the editor's own store as startup makes one.
     ///
-    /// Only `doc` and `view` are meaningful. All other fields are set to
+    /// Only the buffer and `view` are meaningful. All other fields are set to
     /// sensible defaults (Normal mode, default colors, no file path, etc.).
     /// Use the builder methods below to override specific fields.
-    pub(crate) fn for_testing(doc: Buffer) -> Self {
+    pub(crate) fn for_testing(text: BufferText) -> Self {
+        Self::for_testing_on(NewBuffer::Scratch(text))
+    }
+
+    /// [`Self::for_testing`] on the buffer `new` describes.
+    pub(in crate::editor) fn for_testing_on(new: NewBuffer) -> Self {
         let theme = crate::editor::theme::fallback_theme();
         let (mut engine_view, focus_key) = EngineView::new(theme, super::run::HEADLESS_TERMINAL);
         let (views, tabline_view) = super::run::register_chrome(&mut engine_view);
@@ -1351,7 +1375,7 @@ impl Editor {
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
         let mut buffers = BufferStore::new();
-        buffers.open(buffer_id, doc);
+        buffers.open(buffer_id, new);
         let mut panes = PaneView::default();
         let unattached = panes.open(
             &mut engine_view,
@@ -1723,14 +1747,16 @@ fn popup_lines(n: usize) -> String {
         .join("\\n")
 }
 
-/// Build a fresh file-backed `Buffer` from `content`, written to a temp file.
-/// Its typed path is the raw tempfile path, its resolved path the canonical
-/// one.
-fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
+/// A file-backed buffer holding `content`, written to a temp file. Its typed
+/// path is the raw tempfile path, its resolved path the canonical one.
+fn file_buffer(content: &str) -> (NewBuffer, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(content);
-    let mut buf = Buffer::at_start(BufferText::from(content));
-    buf.set_file_for_test(crate::editor::buffer::BufferFile::on_disk_at(path));
-    (buf, tmp_path)
+    let new = NewBuffer::File {
+        text: BufferText::from(content),
+        file: crate::editor::buffer::BufferFile::on_disk_at(path),
+        pending_dump: None,
+    };
+    (new, tmp_path)
 }
 
 // ── Event-loop faithful helpers ───────────────────────────────────────────────

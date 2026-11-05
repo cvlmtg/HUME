@@ -65,10 +65,9 @@ fn pad_right_empty_is_noop() {
 // ── MacroRecording element ────────────────────────────────────────────────
 
 fn test_editor() -> crate::editor::Editor {
-    use crate::editor::buffer::Buffer;
     use hume_editing::text::BufferText;
     let text = BufferText::from("hello\n");
-    crate::editor::Editor::for_testing(Buffer::at_start(text))
+    crate::editor::Editor::for_testing(text)
 }
 
 #[test]
@@ -251,10 +250,9 @@ fn macro_recording_uses_row_style() {
 // ── LineEnding element ────────────────────────────────────────────────────
 
 fn test_editor_with_text(s: &str) -> crate::editor::Editor {
-    use crate::editor::buffer::Buffer;
     use hume_editing::text::BufferText;
     let text = BufferText::from(s);
-    crate::editor::Editor::for_testing(Buffer::at_start(text))
+    crate::editor::Editor::for_testing(text)
 }
 
 #[test]

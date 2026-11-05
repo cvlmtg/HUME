@@ -12,13 +12,12 @@ use hume_scripting::host::CommandHost;
 /// `open_buffer` allocates a new BufferId and tracks MRU, but seeds no
 /// pane's `pane_state` yet. No pane shows the buffer until something
 /// switches to it, and that switch is what seeds it (lazily, on first
-/// visit; see `lifecycle::open_buffer`'s doc).
+/// visit; see `lifecycle::open_and_notify`'s doc).
 #[test]
 fn p6_open_buffer_defers_pane_state_seeding() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello\n")));
+    let mut ed = Editor::for_testing(BufferText::from("hello\n"));
     let initial_bid = ed.focused_buffer_id();
-    let doc2 = Buffer::at_start(BufferText::from("world\n"));
-    let bid2 = ed.open_buffer(doc2);
+    let bid2 = ed.open_scratch(BufferText::from("world\n"));
     assert_ne!(bid2, initial_bid);
     assert!(
         ed.selections_for(ed.view.focused_pane(), bid2).is_none(),
@@ -35,10 +34,9 @@ fn p6_open_buffer_defers_pane_state_seeding() {
 /// `close_buffer` with one other buffer redirects panes and frees the slot.
 #[test]
 fn p6_close_buffer_redirects_to_mru() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("alpha\n")));
+    let mut ed = Editor::for_testing(BufferText::from("alpha\n"));
     let bid_alpha = ed.focused_buffer_id();
-    let doc_beta = Buffer::at_start(BufferText::from("beta\n"));
-    let bid_beta = ed.open_buffer(doc_beta);
+    let bid_beta = ed.open_scratch(BufferText::from("beta\n"));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_beta);
     assert_eq!(ed.focused_buffer_id(), bid_beta);
     // Close beta: should redirect focused pane back to alpha.
@@ -60,7 +58,7 @@ fn p6_close_buffer_redirects_to_mru() {
 /// under the closed id, which a captured `bid` could then alias.
 #[test]
 fn p6_close_last_buffer_becomes_scratch() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("only\n")));
+    let mut ed = Editor::for_testing(BufferText::from("only\n"));
     let bid = ed.focused_buffer_id();
     ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
@@ -90,7 +88,7 @@ fn p6_close_last_buffer_becomes_scratch() {
 /// instead of raising "invalid buffer id".
 #[test]
 fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("only\n")));
+    let mut ed = Editor::for_testing(BufferText::from("only\n"));
     let tmp = tempfile::tempdir().unwrap();
     // `bid` is the typed command's own injected leading param, the only
     // buffer, so it's the one `close-buffer!` below closes. Reusing that
@@ -119,7 +117,7 @@ fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {
 /// already pins.
 #[test]
 fn p6_close_last_buffer_reseeds_selections() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("old content\n")));
+    let mut ed = Editor::for_testing(BufferText::from("old content\n"));
     let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
     let focused = ed.view.focused_pane();
@@ -149,10 +147,10 @@ fn p6_close_last_buffer_reseeds_selections() {
 /// `:bnext` / `:bprev` cycle through buffers in open-order.
 #[test]
 fn p6_bnext_bprev_cycle() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("a\n")));
+    let mut ed = Editor::for_testing(BufferText::from("a\n"));
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
-    let bid_c = ed.open_buffer(Buffer::at_start(BufferText::from("c\n")));
+    let bid_b = ed.open_scratch(BufferText::from("b\n"));
+    let bid_c = ed.open_scratch(BufferText::from("c\n"));
     // Still focused on a. bnext → b.
     let _ = ed.execute_typed("bn", None);
     assert_eq!(ed.focused_buffer_id(), bid_b, "bnext advances to b");
@@ -171,10 +169,10 @@ fn p6_bnext_bprev_cycle() {
 /// the mappable, key-bindable siblings of `:bnext`/`:bprev`.
 #[test]
 fn goto_next_prev_buffer_cycle() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("a\n")));
+    let mut ed = Editor::for_testing(BufferText::from("a\n"));
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
-    let bid_c = ed.open_buffer(Buffer::at_start(BufferText::from("c\n")));
+    let bid_b = ed.open_scratch(BufferText::from("b\n"));
+    let bid_c = ed.open_scratch(BufferText::from("c\n"));
     // Still focused on a. goto-next-buffer → b.
     let pane = focused_pane(&ed);
     live_host!(ed)
@@ -256,9 +254,9 @@ fn goto_next_prev_buffer_registered_as_jump() {
 /// `:bd` closes the current buffer.
 #[test]
 fn p6_bd_closes_focused_buffer() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("first\n")));
+    let mut ed = Editor::for_testing(BufferText::from("first\n"));
     let bid_first = ed.focused_buffer_id();
-    let bid_second = ed.open_buffer(Buffer::at_start(BufferText::from("second\n")));
+    let bid_second = ed.open_scratch(BufferText::from("second\n"));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_second);
     let _ = ed.execute_typed("bd", None);
     assert_eq!(
@@ -275,9 +273,9 @@ fn p6_bd_closes_focused_buffer() {
 /// `:bd!` closes a dirty buffer without error.
 #[test]
 fn p6_bd_force_closes_dirty_buffer() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
+    let mut ed = Editor::for_testing(BufferText::from("clean\n"));
     let bid_clean = ed.focused_buffer_id();
-    let bid_dirty = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
+    let bid_dirty = ed.open_scratch(BufferText::from("dirty\n"));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_dirty);
     // Make it dirty by inserting a character.
     ed.handle_key(key('i'));
@@ -298,8 +296,8 @@ fn p6_bd_force_closes_dirty_buffer() {
 
 /// An editor focused on its second buffer, which has unsaved changes.
 fn editor_on_a_dirty_second_buffer() -> (Editor, BufferId) {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
-    let bid = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
+    let mut ed = Editor::for_testing(BufferText::from("clean\n"));
+    let bid = ed.open_scratch(BufferText::from("dirty\n"));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
     keys(&mut ed, "ix");
     ed.handle_key(key_esc());
@@ -364,10 +362,10 @@ fn close_buffer_from_steel_discards_unsaved_changes_when_asked() {
 /// redirect branch: both the focused and a non-focused pane must be redirected.
 #[test]
 fn p6_close_buffer_redirects_all_panes_to_mru() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("a\n")));
+    let mut ed = Editor::for_testing(BufferText::from("a\n"));
     let bid_a = ed.focused_buffer_id();
     // open_buffer seeds pane_state for the focused pane but doesn't switch the pane view.
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
+    let bid_b = ed.open_scratch(BufferText::from("b\n"));
 
     let pid_1 = ed.view.focused_pane();
     // Second pane also views A.
@@ -417,7 +415,7 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
 fn p6_reload_preserves_cursor_same_content() {
     // Five content lines: line 0..4, each "lineN\n" (6 chars).
     let content = "line0\nline1\nline2\nline3\nline4\n";
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
+    let mut ed = Editor::for_testing(BufferText::from(content));
     let bid = ed.focused_buffer_id();
     let focused = ed.view.focused_pane();
 
@@ -450,7 +448,7 @@ fn p6_reload_preserves_cursor_same_content() {
 fn p6_reload_clamps_cursor_to_last_line() {
     // Five content lines; cursor on line 4.
     let content = "line0\nline1\nline2\nline3\nline4\n";
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
+    let mut ed = Editor::for_testing(BufferText::from(content));
     let bid = ed.focused_buffer_id();
     let focused = ed.view.focused_pane();
 
@@ -481,7 +479,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
 /// so a line added above leaves it on the same characters.
 #[test]
 fn p6_reload_cursor_follows_its_line_when_a_line_is_added_above() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("abc\ndef\n")));
+    let mut ed = Editor::for_testing(BufferText::from("abc\ndef\n"));
     set_cursor(&mut ed, 5);
 
     reload_from_dump(&mut ed, "new\nabc\ndef\n");
@@ -492,7 +490,7 @@ fn p6_reload_cursor_follows_its_line_when_a_line_is_added_above() {
 /// A cursor on a line the reload rewrote lands where that line starts.
 #[test]
 fn p6_reload_cursor_on_a_rewritten_line_lands_at_its_start() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("abc\nhello world\n")));
+    let mut ed = Editor::for_testing(BufferText::from("abc\nhello world\n"));
     set_cursor(&mut ed, 14);
 
     reload_from_dump(&mut ed, "abc\nhi\n");
@@ -503,7 +501,7 @@ fn p6_reload_cursor_on_a_rewritten_line_lands_at_its_start() {
 /// Every selection follows its text, not only the primary.
 #[test]
 fn p6_reload_keeps_every_selection() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("line0\nline1\nline2\n")));
+    let mut ed = Editor::for_testing(BufferText::from("line0\nline1\nline2\n"));
     select(&mut ed, &[(6, 6), (12, 12)], 0);
 
     reload_from_dump(&mut ed, "top\nline0\nline1\nline2\n");
@@ -526,12 +524,8 @@ fn p6_reload_keeps_every_selection() {
 #[cfg(windows)]
 #[test]
 fn find_by_path_matches_verbatim_prefixed_stored_path_against_a_plain_query() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello\n")));
+    let ed = editor_with_path("hello\n", std::path::Path::new(r"\\?\C:\tmp\foo.txt"));
     let bid = ed.focused_buffer_id();
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_file_for_test(crate::editor::buffer::BufferFile::at(r"\\?\C:\tmp\foo.txt"));
 
     let found = ed
         .state
@@ -550,14 +544,10 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
     // `\\?\UNC\…` (verbatim network share) is not equivalent to a plain
     // `\\server\share\…` form: `AbsolutePath` keeps its prefix, so these
     // two remain distinct buffers.
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello\n")));
-    let bid = ed.focused_buffer_id();
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_file_for_test(crate::editor::buffer::BufferFile::at(
-            r"\\?\UNC\server\share\foo.txt",
-        ));
+    let ed = editor_with_path(
+        "hello\n",
+        std::path::Path::new(r"\\?\UNC\server\share\foo.txt"),
+    );
 
     let found = ed
         .state
@@ -575,11 +565,11 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
 /// way, unlike a `LiveBid`-checked builtin.
 #[test]
 fn buffer_live_reflects_open_and_closed_state() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("a\n")));
+    let mut ed = Editor::for_testing(BufferText::from("a\n"));
     // A second buffer so the probe's own close below frees its slot
     // outright rather than hitting the last-buffer scratch-replacement
     // branch.
-    ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
+    ed.open_scratch(BufferText::from("b\n"));
 
     let tmp = tempfile::tempdir().unwrap();
     run(

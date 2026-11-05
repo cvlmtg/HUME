@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use super::doc_helper::DocHelper;
+use super::store::BufferStore;
 use super::*;
 use crate::editor::position_stores::DetachedStores;
 use crate::editor::tests::co;
@@ -259,10 +260,10 @@ fn redo_n_clamps_at_tip_and_reports_short_count() {
 fn undo_n_zero_count_is_noop() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'a'));
-    let before_gen = d.buf.text().generation();
+    let before_gen = d.buf().text().generation();
     let steps = d.undo_n(0);
     assert_eq!(steps, 0);
-    assert_eq!(d.buf.text().generation(), before_gen);
+    assert_eq!(d.buf().text().generation(), before_gen);
     assert_eq!(state(&d), "a-[h]>ello\n");
 }
 
@@ -273,18 +274,18 @@ fn undo_n_zero_count_is_noop() {
 #[test]
 fn undo_n_net_identity_walk_restores_the_version_and_keeps_the_generation() {
     let mut d = doc("-[h]>ello\n");
-    let root = d.buf.text().version();
+    let root = d.buf().text().version();
     d.apply_edit(|s| insert_char(s, 'x')); // "x-[h]>ello\n"
     d.apply_edit(delete_char_backward); // removes the 'x', back to "-[h]>ello\n"
-    let before_gen = d.buf.text().generation();
+    let before_gen = d.buf().text().generation();
     let steps = d.undo_n(2);
     assert_eq!(steps, 2);
     assert_eq!(
-        d.buf.text().generation(),
+        d.buf().text().generation(),
         before_gen,
         "net-identity composed walk must not change the text generation"
     );
-    assert_eq!(d.buf.text().version(), root);
+    assert_eq!(d.buf().text().version(), root);
     assert_eq!(
         state(&d),
         "-[h]>ello\n",
@@ -323,7 +324,7 @@ fn goto_revision_same_is_noop() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
     let buf_before = state(&d);
-    d.goto_revision(d.buf.history.current_id());
+    d.goto_revision(d.buf().history.current_id());
     assert_eq!(state(&d), buf_before);
 }
 
@@ -339,7 +340,7 @@ fn goto_revision_across_branches_restores_buffer() {
         let cs = csb.finish();
         hume_editing::edit::Edited::from_changes(s, cs).unwrap()
     });
-    let b1_id = d.buf.history.current_id();
+    let b1_id = d.buf().history.current_id();
     assert_eq!(d.text().to_string(), "Lorem dolor sit amet\n");
 
     d.apply_edit(|s| {
@@ -362,12 +363,12 @@ fn goto_revision_across_branches_restores_buffer() {
         let cs = csb.finish();
         hume_editing::edit::Edited::from_changes(s, cs).unwrap()
     });
-    let b3_id = d.buf.history.current_id();
+    let b3_id = d.buf().history.current_id();
     assert_eq!(d.text().to_string(), "Lorem foo bar amet\n");
 
     d.undo();
     d.undo();
-    assert_eq!(d.buf.history.current_id(), b1_id);
+    assert_eq!(d.buf().history.current_id(), b1_id);
     assert_eq!(d.text().to_string(), "Lorem dolor sit amet\n");
 
     d.apply_edit(|s| {
@@ -382,7 +383,7 @@ fn goto_revision_across_branches_restores_buffer() {
 
     d.goto_revision(b3_id);
     assert_eq!(d.text().to_string(), "Lorem foo bar amet\n");
-    assert_eq!(d.buf.history.current_id(), b3_id);
+    assert_eq!(d.buf().history.current_id(), b3_id);
 }
 
 #[test]
@@ -390,7 +391,7 @@ fn goto_revision_then_edit_creates_new_branch() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'a'));
     d.apply_edit(|s| insert_char(s, 'b'));
-    let rev2 = d.buf.history.current_id();
+    let rev2 = d.buf().history.current_id();
 
     d.undo();
     d.undo();
@@ -400,11 +401,11 @@ fn goto_revision_then_edit_creates_new_branch() {
     d.goto_revision(rev2);
     assert!(d.text().to_string().starts_with("ab"));
 
-    let before_new_edit = d.buf.history.current_id();
+    let before_new_edit = d.buf().history.current_id();
     d.apply_edit(|s| insert_char(s, 'z'));
-    let new_rev = d.buf.history.current_id();
+    let new_rev = d.buf().history.current_id();
     assert_ne!(new_rev, before_new_edit);
-    assert_eq!(d.buf.history.parent(new_rev), Some(rev2));
+    assert_eq!(d.buf().history.parent(new_rev), Some(rev2));
 }
 
 #[test]
@@ -541,78 +542,83 @@ fn undo_past_saved_revision_is_dirty() {
 #[test]
 fn changing_line_ending_marks_buffer_changed_without_a_revision() {
     let mut d = doc("-[h]>ello\n");
-    d.buf
+    d.buf_mut()
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
-    assert!(d.buf.line_ending_changed());
+    assert!(d.buf().line_ending_changed());
     assert!(!d.revision_dirty());
     assert!(!d.can_undo());
-    assert_eq!(d.buf.serialized(), "hello\r\n");
+    assert_eq!(d.buf().serialized(), "hello\r\n");
 }
 
 #[test]
 fn restoring_the_saved_line_ending_reads_unchanged() {
     let mut d = doc("-[h]>ello\n");
-    d.buf
+    d.buf_mut()
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
-    d.buf
+    d.buf_mut()
         .set_line_ending(LineEnding::Lf, ConfigOrigin::User)
         .expect("writable buffer");
-    assert!(!d.buf.line_ending_changed());
+    assert!(!d.buf().line_ending_changed());
 }
 
 #[test]
 fn undo_leaves_the_line_ending_alone() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
-    d.buf
+    d.buf_mut()
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
     d.undo();
     assert_eq!(d.text().line_ending(), LineEnding::CrLf);
-    assert!(d.buf.line_ending_changed());
+    assert!(d.buf().line_ending_changed());
 }
 
 #[test]
 fn mark_saved_records_the_line_ending() {
     let mut d = doc("-[h]>ello\n");
-    d.buf
+    d.buf_mut()
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
     d.mark_saved();
-    assert!(!d.buf.line_ending_changed());
-    d.buf
+    assert!(!d.buf().line_ending_changed());
+    d.buf_mut()
         .set_line_ending(LineEnding::Lf, ConfigOrigin::User)
         .expect("writable buffer");
-    assert!(d.buf.line_ending_changed());
+    assert!(d.buf().line_ending_changed());
 }
 
 #[test]
 fn identical_content_reload_adopts_the_disk_line_ending() {
     let mut d = doc("-[h]>ello\n");
-    d.buf
+    d.buf_mut()
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
     let sels = d.sels().clone();
-    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
-    let mutated =
-        d.buf
-            .replace_text_recorded(id, &mut stores.stores(), BufferText::from("hello\n"), pane);
+    let (mut stores, pane, id) = DetachedStores::with_pane(d.buf_mut(), sels);
+    let mutated = d.buf_mut().replace_text_recorded(
+        id,
+        &mut stores.stores(),
+        BufferText::from("hello\n"),
+        pane,
+    );
     assert!(!mutated);
     assert_eq!(d.text().line_ending(), LineEnding::Lf);
-    assert!(!d.buf.line_ending_changed());
+    assert!(!d.buf().line_ending_changed());
 }
 
 #[test]
 fn a_line_ending_ranks_by_its_writers_origin() {
     let mut d = doc("-[h]>ello\n");
     assert_eq!(
-        d.buf.set_line_ending(LineEnding::CrLf, ConfigOrigin::User),
+        d.buf_mut()
+            .set_line_ending(LineEnding::CrLf, ConfigOrigin::User),
         Ok(true)
     );
     assert_eq!(
-        d.buf.set_line_ending(LineEnding::Lf, ConfigOrigin::Plugin),
+        d.buf_mut()
+            .set_line_ending(LineEnding::Lf, ConfigOrigin::Plugin),
         Ok(false)
     );
     assert_eq!(d.text().line_ending(), LineEnding::CrLf);
@@ -621,16 +627,16 @@ fn a_line_ending_ranks_by_its_writers_origin() {
 #[test]
 fn replacing_the_text_lets_any_origin_set_the_line_ending_again() {
     let mut d = doc("-[h]>ello\n");
-    d.buf
+    d.buf_mut()
         .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
     let sels = d.sels().clone();
-    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
-    d.buf
+    let (mut stores, pane, id) = DetachedStores::with_pane(d.buf_mut(), sels);
+    d.buf_mut()
         .replace_text_recorded(id, &mut stores.stores(), BufferText::from("hello\n"), pane);
 
     assert_eq!(
-        d.buf
+        d.buf_mut()
             .set_line_ending(LineEnding::CrLf, ConfigOrigin::Plugin),
         Ok(true)
     );
@@ -639,23 +645,23 @@ fn replacing_the_text_lets_any_origin_set_the_line_ending_again() {
 #[test]
 fn a_read_only_buffer_refuses_a_line_ending_change() {
     let mut d = doc("-[h]>ello\n");
-    d.buf.read_only = true;
+    d.buf_mut().read_only = true;
     assert!(
-        d.buf
+        d.buf_mut()
             .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
             .is_err()
     );
     assert_eq!(d.text().line_ending(), LineEnding::Lf);
-    assert!(!d.buf.line_ending_changed());
+    assert!(!d.buf().line_ending_changed());
 }
 
 #[test]
 fn a_read_only_buffer_still_adopts_the_disk_line_ending_on_reload() {
     let mut d = doc("-[h]>ello\n");
-    d.buf.read_only = true;
+    d.buf_mut().read_only = true;
     let sels = d.sels().clone();
-    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
-    let mutated = d.buf.replace_text_recorded(
+    let (mut stores, pane, id) = DetachedStores::with_pane(d.buf_mut(), sels);
+    let mutated = d.buf_mut().replace_text_recorded(
         id,
         &mut stores.stores(),
         BufferText::from("hello\r\n"),
@@ -777,14 +783,16 @@ fn yank_paste_undo() {
 
 #[test]
 fn set_file_names_the_buffer_after_its_file() {
-    let mut b = Buffer::at_start(BufferText::empty());
+    let (mut store, id) = BufferStore::holding(NewBuffer::Scratch(BufferText::empty()));
+    let b = store.get_mut(id);
     b.set_file(BufferFile::at("/tmp/file.txt"));
     assert_eq!(b.display_name(), "file.txt");
 }
 
 #[test]
 fn display_path_is_the_typed_path_display_form() {
-    let mut b = Buffer::at_start(BufferText::empty());
+    let (mut store, id) = BufferStore::holding(NewBuffer::Scratch(BufferText::empty()));
+    let b = store.get_mut(id);
     assert!(b.display_path().is_none());
     let resolved = AbsolutePath::rooted("/real/file.txt");
     let typed = AbsolutePath::rooted("/link/file.txt");
@@ -819,26 +827,26 @@ fn buffer_file_rejects_a_typed_path_with_no_file_name() {
 
 #[test]
 fn text_generation_starts_at_zero() {
-    let b = Buffer::at_start(BufferText::empty());
-    assert_eq!(b.text().generation(), 0);
+    let (store, id) = BufferStore::holding(NewBuffer::Scratch(BufferText::empty()));
+    assert_eq!(store.get(id).text().generation(), 0);
 }
 
 #[test]
 fn text_generation_advances_on_apply_edit() {
     let mut d = doc("-[h]>ello\n");
-    let before = d.buf.text().generation();
+    let before = d.buf().text().generation();
     d.apply_edit(|s| insert_char(s, 'x'));
-    assert_eq!(d.buf.text().generation(), before + 1);
+    assert_eq!(d.buf().text().generation(), before + 1);
 }
 
 #[test]
 fn text_generation_advances_on_apply_edit_grouped() {
     let mut d = doc("-[h]>ello\n");
     d.begin_edit_group();
-    let before = d.buf.text().generation();
+    let before = d.buf().text().generation();
     d.apply_edit_grouped(|s| insert_char(s, 'x'));
     assert_eq!(
-        d.buf.text().generation(),
+        d.buf().text().generation(),
         before + 1,
         "each grouped edit bumps gen"
     );
@@ -848,9 +856,9 @@ fn text_generation_advances_on_apply_edit_grouped() {
 fn text_generation_advances_on_undo() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
-    let before = d.buf.text().generation();
+    let before = d.buf().text().generation();
     d.undo();
-    assert_eq!(d.buf.text().generation(), before + 1);
+    assert_eq!(d.buf().text().generation(), before + 1);
 }
 
 #[test]
@@ -858,43 +866,43 @@ fn text_generation_advances_on_redo() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
     d.undo();
-    let before = d.buf.text().generation();
+    let before = d.buf().text().generation();
     d.redo();
-    assert_eq!(d.buf.text().generation(), before + 1);
+    assert_eq!(d.buf().text().generation(), before + 1);
 }
 
 #[test]
 fn undo_restores_the_version_of_the_text_it_returns_to() {
     let mut d = doc("-[h]>ello\n");
-    let before = d.buf.text().version();
+    let before = d.buf().text().version();
     d.apply_edit(|s| insert_char(s, 'x'));
-    let edited = d.buf.text().generation();
+    let edited = d.buf().text().generation();
     d.undo();
-    assert_eq!(d.buf.text().version(), before);
-    assert!(d.buf.text().generation() > edited);
+    assert_eq!(d.buf().text().version(), before);
+    assert!(d.buf().text().generation() > edited);
 }
 
 #[test]
 fn a_value_tracked_before_an_edit_reads_again_after_undoing_it() {
     let mut d = doc("-[h]>ello\n");
-    let tracked = hume_editing::tracked::Tracked::new(7, d.buf.text());
+    let tracked = hume_editing::tracked::Tracked::new(7, d.buf().text());
     d.apply_edit(|s| insert_char(s, 'x'));
     assert_eq!(
-        tracked.get(d.buf.text()),
+        tracked.get(d.buf().text()),
         None,
         "setup: the edit moved the text"
     );
     d.undo();
-    assert_eq!(tracked.get(d.buf.text()), Some(&7));
+    assert_eq!(tracked.get(d.buf().text()), Some(&7));
 }
 
 #[test]
 fn text_generation_unchanged_when_undo_at_root() {
     let mut d = doc("-[h]>ello\n");
-    let before = d.buf.text().generation();
+    let before = d.buf().text().generation();
     d.undo(); // nothing to undo, no-op
     assert_eq!(
-        d.buf.text().generation(),
+        d.buf().text().generation(),
         before,
         "no-op undo must not bump gen"
     );
@@ -951,24 +959,24 @@ fn reload_then_edit_branches_off_old_tree() {
     // history.rs.
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, '1'));
-    let after_first_edit = d.buf.history.current_id();
+    let after_first_edit = d.buf().history.current_id();
     d.reload_from(BufferText::from("hello world\n"));
-    let reload_rev = d.buf.history.current_id();
+    let reload_rev = d.buf().history.current_id();
     assert_ne!(reload_rev, after_first_edit);
 
     // Undo the reload (back to the first-edit revision), then make a new
     // edit. It becomes a sibling of the reload.
     d.undo();
-    assert_eq!(d.buf.history.current_id(), after_first_edit);
+    assert_eq!(d.buf().history.current_id(), after_first_edit);
     d.apply_edit(|s| insert_char(s, '2'));
-    let branched_rev = d.buf.history.current_id();
+    let branched_rev = d.buf().history.current_id();
     assert_ne!(branched_rev, reload_rev);
-    assert_eq!(d.buf.history.parent(branched_rev), Some(after_first_edit));
+    assert_eq!(d.buf().history.parent(branched_rev), Some(after_first_edit));
 
     // Redo from here jumps to the new branch, not the reload.
     d.undo();
     d.redo();
-    assert_eq!(d.buf.history.current_id(), branched_rev);
+    assert_eq!(d.buf().history.current_id(), branched_rev);
 }
 
 #[test]
@@ -977,10 +985,10 @@ fn reload_noop_when_unchanged() {
     // (a no-op `:e!` must not litter the undo tree) and leaves the buffer
     // clean and at the same revision it started on.
     let mut d = doc("-[s]>ame\ncontent\n");
-    let before = d.buf.history.current_id();
+    let before = d.buf().history.current_id();
     d.reload_from(BufferText::from("same\ncontent\n"));
     assert!(!d.can_undo(), "no-op reload records no undo step");
-    assert_eq!(d.buf.history.current_id(), before, "revision unchanged");
+    assert_eq!(d.buf().history.current_id(), before, "revision unchanged");
     assert!(!d.revision_dirty());
     assert_eq!(d.text().to_string(), "same\ncontent\n");
 }
@@ -994,7 +1002,7 @@ fn reload_inverse_is_fine_grained() {
     let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
     d.reload_from(BufferText::from("alpha\nBETA\ngamma\n"));
     let (_, inv_cs, _steps) = d
-        .buf
+        .buf_mut()
         .undo_n(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
@@ -1019,13 +1027,13 @@ fn reload_inverse_is_fine_grained() {
 fn an_edit_leaves_the_acting_panes_selections_to_its_caller() {
     let mut d = doc("-[a]>bc\n");
     let sels = d.sels().clone();
-    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
+    let (mut stores, pane, id) = DetachedStores::with_pane(d.buf_mut(), sels.clone());
     let before = stores.selections(pane, id);
 
-    d.buf.apply_edit(
+    d.buf_mut().apply_edit(
         PaneHandle::with_pane(id, pane),
         &mut stores.stores(),
-        d.sels().clone(),
+        sels,
         |s| insert_char(s, 'x'),
     );
 
@@ -1036,19 +1044,19 @@ fn an_edit_leaves_the_acting_panes_selections_to_its_caller() {
 fn an_edit_carries_the_selections_of_every_other_pane() {
     let mut d = doc("-[a]>bc\n");
     let sels = d.sels().clone();
-    let (mut stores, pane, id) = DetachedStores::with_pane(&mut d.buf, sels);
+    let (mut stores, pane, id) = DetachedStores::with_pane(d.buf_mut(), sels.clone());
 
-    d.buf.apply_edit(
+    d.buf_mut().apply_edit(
         PaneHandle::with_pane(id, PaneId::default()),
         &mut stores.stores(),
-        d.sels().clone(),
+        sels,
         |s| insert_char(s, 'x'),
     );
 
     let carried = stores.selections(pane, id);
-    assert_eq!(carried.version(), d.buf.text().version());
+    assert_eq!(carried.version(), d.buf().text().version());
     assert_eq!(
-        serialize_state(d.buf.text(), &carried),
+        serialize_state(d.buf().text(), &carried),
         "x-[a]>bc\n",
         "the other pane's cursor moves past the inserted char"
     );
@@ -1058,28 +1066,30 @@ fn an_edit_carries_the_selections_of_every_other_pane() {
 
 #[test]
 fn serialized_writes_lf_text_unchanged() {
-    let buf = Buffer::at_start(BufferText::from("a\nb\n"));
-    assert_eq!(buf.serialized(), "a\nb\n");
+    let (store, id) = BufferStore::holding(NewBuffer::Scratch(BufferText::from("a\nb\n")));
+    assert_eq!(store.get(id).serialized(), "a\nb\n");
 }
 
 #[test]
 fn serialized_restores_crlf_line_endings() {
-    let buf = Buffer::at_start(BufferText::from("a\r\nb\r\n"));
-    assert_eq!(buf.serialized(), "a\r\nb\r\n");
+    let (store, id) = BufferStore::holding(NewBuffer::Scratch(BufferText::from("a\r\nb\r\n")));
+    assert_eq!(store.get(id).serialized(), "a\r\nb\r\n");
 }
 
 // ── pending_dump ──────────────────────────────────────────────────────────
 
-/// The file an open of `path`, an absolute path, names.
-fn opened(path: &Path) -> FileTarget {
-    FileTarget::new(AbsolutePath::rooted(path)).expect("a test path resolves")
+/// A store holding the buffer an open of `path`, an absolute path, makes.
+fn opened(path: &Path) -> (BufferStore, BufferId) {
+    let target = FileTarget::new(AbsolutePath::rooted(path)).expect("a test path resolves");
+    BufferStore::holding(NewBuffer::file_or_new(target).expect("the file opens"))
 }
 
 #[test]
 fn opening_a_file_with_a_dump_records_the_pending_dump() {
     let (_dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), Some("crashed\n"));
 
-    let buf = Buffer::from_file_or_new(opened(&path)).unwrap();
+    let (store, id) = opened(&path);
+    let buf = store.get(id);
 
     assert_eq!(
         buf.pending_dump.as_deref().and_then(Path::file_name),
@@ -1091,7 +1101,8 @@ fn opening_a_file_with_a_dump_records_the_pending_dump() {
 fn opening_a_file_without_a_dump_has_no_pending_dump() {
     let (_dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), None);
 
-    let buf = Buffer::from_file_or_new(opened(&path)).unwrap();
+    let (store, id) = opened(&path);
+    let buf = store.get(id);
 
     assert_eq!(buf.pending_dump, None);
 }
@@ -1102,7 +1113,8 @@ fn opening_a_missing_file_with_a_dump_records_the_pending_dump() {
     let path = dir.path().join("gone.txt");
     std::fs::write(dir.path().join("gone.txt.dump"), "crashed\n").unwrap();
 
-    let buf = Buffer::from_file_or_new(opened(&path)).unwrap();
+    let (store, id) = opened(&path);
+    let buf = store.get(id);
 
     assert!(buf.is_new_file());
     assert_eq!(
@@ -1115,39 +1127,47 @@ fn opening_a_missing_file_with_a_dump_records_the_pending_dump() {
 fn rereading_a_file_has_no_pending_dump() {
     let (_dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), Some("crashed\n"));
 
-    let buf = Buffer::from_file(&AbsolutePath::rooted(&path)).unwrap();
+    let (text, sels) = parse_state("-[s]>tale\n");
+    let mut ed = crate::editor::Editor::for_testing_file(
+        test_fixtures::testing::state(text, sels),
+        BufferFile::on_disk_at(&path),
+    );
 
-    assert_eq!(buf.pending_dump, None);
+    ed.execute_typed("e", None).expect("the file reloads");
+
+    assert_eq!(ed.doc().text().to_string(), "disk\n");
+    assert_eq!(ed.doc().pending_dump, None);
 }
 
 #[test]
 fn a_hold_makes_the_buffer_busy_until_it_drops() {
     let mut d = doc("-[a]>\n");
-    assert_eq!(d.buf.text_refusal(), None);
-    let hold = d.buf.hold_text();
-    assert_eq!(d.buf.text_refusal(), Some(TextRefusal::Busy));
+    assert_eq!(d.buf().text_refusal(), None);
+    let hold = d.buf_mut().hold_text();
+    assert_eq!(d.buf().text_refusal(), Some(TextRefusal::Busy));
     drop(hold);
-    assert_eq!(d.buf.text_refusal(), None);
+    assert_eq!(d.buf().text_refusal(), None);
 }
 
 #[test]
 #[should_panic(expected = "a held buffer's text changed")]
 fn changing_a_held_buffers_text_panics() {
     let mut d = doc("-[a]>\n");
-    let _hold = d.buf.hold_text();
+    let _hold = d.buf_mut().hold_text();
     d.apply_edit(|s| insert_char(s, 'x'));
 }
 
 #[test]
 fn a_held_buffer_refuses_a_line_ending_change() {
     let mut d = doc("-[a]>\n");
-    let _hold = d.buf.hold_text();
+    let _hold = d.buf_mut().hold_text();
     assert_eq!(
-        d.buf.set_line_ending(LineEnding::CrLf, ConfigOrigin::User),
+        d.buf_mut()
+            .set_line_ending(LineEnding::CrLf, ConfigOrigin::User),
         Err(format!(
             "{} is busy: a pipe is running",
-            d.buf.display_name()
+            d.buf().display_name()
         ))
     );
-    assert_eq!(d.buf.text().line_ending(), LineEnding::Lf);
+    assert_eq!(d.buf().text().line_ending(), LineEnding::Lf);
 }

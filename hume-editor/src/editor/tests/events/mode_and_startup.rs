@@ -300,11 +300,11 @@ fn queued_hooks_require_explicit_settle() {
 /// `on-buffer-open` handler then reads).
 ///
 /// `detect_pending_languages` runs `detect_and_set_language` before it fires
-/// `OnBufferOpen`, and `open_buffer_and_notify` does not push `OnBufferOpen`
+/// `OnBufferOpen`, and `open_and_notify` does not push `OnBufferOpen`
 /// at open time.
 #[test]
 fn on_buffer_open_queued_after_on_language_set() {
-    use crate::editor::buffer::Buffer;
+    use crate::editor::buffer::NewBuffer;
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
@@ -324,9 +324,11 @@ fn on_buffer_open_queued_after_on_language_set() {
         .register_identity("rust", &["rs"], &[], &[])
         .expect("a test identity registers");
 
-    let mut doc = Buffer::scratch();
-    doc.set_file_for_test(crate::editor::buffer::BufferFile::at("/tmp/foo.rs"));
-    ed.open_buffer(doc);
+    ed.open_buffer(NewBuffer::File {
+        text: hume_editing::text::BufferText::empty(),
+        file: crate::editor::buffer::BufferFile::at("/tmp/foo.rs"),
+        pending_dump: None,
+    });
     ed.detect_pending_languages();
 
     // Inspect the queue before draining: settle() would empty it.
@@ -341,7 +343,7 @@ fn on_buffer_open_queued_after_on_language_set() {
 // ── Startup buffer: OnBufferOpen ──────────────────────────────────────────────
 
 /// The startup buffer (`Editor::open`'s `file_path` argument) predates the
-/// scripting host, so it can't route through `open_buffer_and_notify` like
+/// scripting host, so it can't route through `open_and_notify` like
 /// every other buffer, but it must still announce `on-buffer-open`, after
 /// `on-language-set`, once `detect_pending_languages` runs.
 ///

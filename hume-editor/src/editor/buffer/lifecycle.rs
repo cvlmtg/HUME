@@ -18,8 +18,7 @@ use hume_rope::column::GraphemeCol;
 use hume_rope::line::ContentLine;
 
 use crate::editor::EditorState;
-use crate::editor::buffer::store::BufferStore;
-use crate::editor::buffer::{Buffer, FileTarget, Unsaved, ViewLabel};
+use crate::editor::buffer::{FileTarget, NewBuffer, Unsaved, ViewLabel};
 use crate::editor::commands::CommandPane;
 use crate::editor::event::EditorEvent;
 use crate::editor::focus::switch_pane_to_buffer;
@@ -27,26 +26,7 @@ use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::pane_state;
 use crate::editor::pipe_run::{PipeRefusal, PipeRunning};
 
-// ── open_or_dedup_and_notify / open_buffer ────────────────────────────────────
-
-/// Allocate a new buffer slot (engine + BufferStore) and return the
-/// allocated `BufferId`. No pane shows it yet; whichever pane first
-/// switches to it seeds its own `pane_state` entry lazily, via
-/// `switch_pane_to_buffer`/`write_cursor`'s own `pane_state::ensure` calls.
-///
-/// `undo_levels` seeds `doc`'s `undo-levels` cap: the current global
-/// setting, since new buffers always start out tracking it.
-pub(in crate::editor) fn open_buffer(
-    ev: &mut EngineView,
-    buffers: &mut BufferStore,
-    mut doc: Buffer,
-    undo_levels: usize,
-) -> BufferId {
-    doc.set_undo_levels(undo_levels);
-    let bid = ev.buffers.insert(());
-    buffers.open(bid, doc);
-    bid
-}
+// ── open_and_notify / open_or_dedup_and_notify ────────────────────────────────
 
 /// Everything a fresh `BufferId` needs once the settings are live: restore
 /// its file's undo history and queue it for language detection. Every fresh
@@ -67,16 +47,28 @@ pub(in crate::editor) fn finish_open(state: &mut EditorState, bid: BufferId) {
     state.config.pending_language_detection.push(bid);
 }
 
-/// [`open_buffer`] plus [`finish_open`]. See the latter for why detection
-/// doesn't run inline. `Editor::detect_pending_languages` fires
-/// `OnBufferOpen` once detection (and `OnLanguageSet`) for `bid` has run, so
-/// plugins observing both hooks see `OnLanguageSet` first.
-pub(in crate::editor::buffer) fn open_buffer_and_notify(
+/// Open the buffer `new` describes, the chokepoint every open after startup
+/// goes through: allocate its slot (engine + BufferStore), seed its
+/// `undo-levels` cap from the current global setting, and
+/// [`finish_open`] it. See the latter for why detection doesn't run inline.
+/// `Editor::detect_pending_languages` fires `OnBufferOpen` once detection
+/// (and `OnLanguageSet`) for the buffer has run, so plugins observing both
+/// hooks see `OnLanguageSet` first.
+///
+/// No pane shows the buffer yet; whichever pane first switches to it seeds
+/// its own `pane_state` entry lazily, via
+/// `switch_pane_to_buffer`/`write_cursor`'s own `pane_state::ensure` calls.
+pub(in crate::editor) fn open_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
-    doc: Buffer,
+    new: NewBuffer,
 ) -> BufferId {
-    let bid = open_buffer(ev, &mut state.buffers, doc, state.settings.undo_levels);
+    let bid = ev.buffers.insert(());
+    state.buffers.open(bid, new);
+    state
+        .buffers
+        .get_mut(bid)
+        .set_undo_levels(state.settings.undo_levels);
     finish_open(state, bid);
     bid
 }
@@ -84,8 +76,7 @@ pub(in crate::editor::buffer) fn open_buffer_and_notify(
 /// Dedup-open the file `typed` names: if a buffer already has its resolved
 /// path, returns `(existing_id, false)`; otherwise reads the file (or opens
 /// an empty new-file buffer if it doesn't exist yet; see
-/// `Buffer::from_file_or_new`) and allocates via [`open_buffer_and_notify`]
-/// (which seeds the `undo-levels` cap from `state.settings`), returning
+/// [`NewBuffer::file_or_new`]) and opens it via [`open_and_notify`], returning
 /// `(new_id, true)`. The new buffer's typed path is `typed`, symlinks kept.
 /// Dedup-opening an already-open path enqueues no hook and detects no
 /// language. The caller is responsible for any other post-open work (pane
@@ -99,8 +90,8 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
     if let Some(existing) = state.buffers.find_by_path(target.resolved()) {
         return Ok((existing, false));
     }
-    let doc = Buffer::from_file_or_new(target)?;
-    Ok((open_buffer_and_notify(ev, state, doc), true))
+    let new = NewBuffer::file_or_new(target)?;
+    Ok((open_and_notify(ev, state, new), true))
 }
 
 /// Redirect the focused pane to `target`, pushing the outgoing position onto
@@ -169,7 +160,8 @@ pub(in crate::editor) fn open_view_buffer(
         state.buffers.find_by_label(label).is_none(),
         "open_view_buffer: one buffer per view label"
     );
-    open_buffer_and_notify(ev, state, Buffer::read_only_view(text, label.clone()))
+    let label = label.clone();
+    open_and_notify(ev, state, NewBuffer::View { text, label })
 }
 
 /// Show view buffer `bid` on pane `t`, recording no jump, with the cursor
@@ -200,38 +192,24 @@ pub(in crate::editor) fn present_view(
 }
 
 /// Remove buffer `id`. Every pane showing it (active tab or not) redirects
-/// to the MRU replacement buffer (or, when `id` was the only buffer, to a
-/// freshly allocated scratch buffer via [`open_buffer`], seeded with
-/// `undo_levels`, the current global `undo-levels` setting), the same way
-/// any other buffer open would be. `id`'s own slot is always freed: a
-/// versioned key is never reused for different content, so a captured `id`
-/// can never silently start naming the replacement; a same-slot in-place
-/// replace would leave that failure mode open for any pane-taking builtin
-/// whose bid outlived the close.
-///
-/// Returns, only when the last-buffer branch fired, the freshly allocated
-/// scratch buffer's id, for [`close_buffer_and_notify`] to finish with
-/// [`finish_open`] like any other open.
+/// to the MRU replacement buffer, or, when `id` was the only buffer, to a
+/// new empty scratch buffer opened through [`open_and_notify`] like any
+/// other open. `id`'s own slot is always freed: a versioned key is never
+/// reused for different content, so a captured `id` never comes to name the
+/// replacement; a same-slot in-place replace would leave that failure mode
+/// open for any pane-taking builtin whose bid outlived the close.
 ///
 /// # Panics
 /// Panics when `id` is busy: [`close_buffer_and_notify`] refuses that.
-fn close_buffer(state: &mut EditorState, ev: &mut EngineView, id: BufferId) -> Option<BufferId> {
+fn close_buffer(state: &mut EditorState, ev: &mut EngineView, id: BufferId) {
     assert!(
         !state.buffers.get(id).is_busy(),
         "close_buffer: a busy buffer's run would stop"
     );
-    let (next, opened) = match state.buffers.mru_excluding(id) {
-        Some(next) => (next, None),
-        None => {
-            let bid = open_buffer(
-                ev,
-                &mut state.buffers,
-                Buffer::scratch(),
-                state.settings.undo_levels,
-            );
-            (bid, Some(bid))
-        }
-    };
+    let next = state
+        .buffers
+        .mru_excluding(id)
+        .unwrap_or_else(|| open_and_notify(ev, state, NewBuffer::Scratch(BufferText::empty())));
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
     // Every pane showing `id` must redirect, active tab or not. In the
     // last-buffer case this is *every* pane, since `id` was the only buffer
@@ -248,7 +226,6 @@ fn close_buffer(state: &mut EditorState, ev: &mut EngineView, id: BufferId) -> O
     state.buffers.close(id);
     ev.buffers.remove(id);
     forget_closed_buffer(state, ev, id);
-    opened
 }
 
 /// Close buffer `id`, the chokepoint every close goes through:
@@ -258,7 +235,7 @@ fn close_buffer(state: &mut EditorState, ev: &mut EngineView, id: BufferId) -> O
 ///
 /// Unlike buffer open, none of this needs Steel eval (`didClose` is pure
 /// protocol, diagnostics/decorations are plain state), so, unlike
-/// `open_buffer_and_notify`, this runs identically from both paths, no
+/// [`open_and_notify`], this runs identically from both paths, no
 /// deferred effect needed.
 ///
 /// `OnBufferClose` is queued only when `id`'s `OnBufferOpen` was
@@ -289,13 +266,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = state.buffers.get(id).open_announced;
     let language = state.buffers.get(id).plugin_view.language.clone();
-    let opened = close_buffer(state, ev, id);
-    // The last-buffer branch fired: a fresh scratch buffer was allocated in
-    // `id`'s place and must announce its own `OnBufferOpen` like any other
-    // open: it is a fresh `BufferId`, not `id` reused.
-    if let Some(bid) = opened {
-        finish_open(state, bid);
-    }
+    close_buffer(state, ev, id);
     if open_announced {
         // Fire with the ID that was closed, not the new current buffer.
         state.queue_event(EditorEvent::OnBufferClose {

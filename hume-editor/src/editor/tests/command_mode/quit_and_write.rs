@@ -131,7 +131,7 @@ fn colon_q_real_buffer_with_clean_scratch_quits() {
     // exit rather than parking on the scratch.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
-    ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+    ed.open_scratch(hume_editing::text::BufferText::empty());
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), file_buf);
 
     type_cmd(&mut ed, ":q");
@@ -148,7 +148,7 @@ fn colon_q_with_dirty_scratch_remaining_stays() {
     // buffer must switch to the dirty scratch rather than discard it.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
-    let scratch_id = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+    let scratch_id = ed.open_scratch(hume_editing::text::BufferText::empty());
 
     // Dirty the scratch by switching to it and typing into it.
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), scratch_id);
@@ -263,7 +263,7 @@ fn colon_qa_quits_single_clean_buffer() {
 fn colon_qa_quits_with_multiple_clean_buffers() {
     // :qa must exit even when :q would only close the focused buffer.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    let _scratch = ed.open_buffer(Buffer::scratch());
+    let _scratch = ed.open_scratch(hume_editing::text::BufferText::empty());
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), ed.focused_buffer_id()); // stay on file buf
 
     type_cmd(&mut ed, ":qa");

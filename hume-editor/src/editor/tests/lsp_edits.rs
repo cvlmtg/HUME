@@ -4,7 +4,6 @@
 
 use super::lsp_rig::{LspRig, RigSpec, file_uri};
 use super::*;
-use crate::editor::buffer::Buffer;
 use crate::editor::lsp::edits::apply_edit_request_response;
 use hume_lsp::test_util::RecordingLspBackend;
 
@@ -609,7 +608,7 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
 
 /// The invalid entry is a directory, not a missing path: `resolve_or_open`
 /// tolerates a missing path (opens a new-file buffer, same as `:e`), so only
-/// a target that can't be opened (`Buffer::from_file_or_new` only
+/// a target that can't be opened (`NewBuffer::file_or_new` only
 /// tolerates `NotFound`) still triggers this abort.
 #[test]
 fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
@@ -691,7 +690,7 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
     // A second, unrelated pane issues the workspace edit, "remote" relative
     // to the focused pane's own open session, the same shape a `call!`
     // targeting a different pane would produce.
-    let other_bid = ed.open_buffer(Buffer::at_start(BufferText::from("misc\n")));
+    let other_bid = ed.open_scratch(BufferText::from("misc\n"));
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -1161,7 +1160,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     );
 }
 
-/// A directory target can't be opened (`Buffer::from_file_or_new`
+/// A directory target can't be opened (`NewBuffer::file_or_new`
 /// only tolerates `NotFound`, not `IsADirectory`). A plain missing path
 /// would not do here: `resolve_or_open` shares `:e`'s tolerance for those
 /// (see `goto_missing_path_opens_new_file_buffer` below).
@@ -1307,7 +1306,7 @@ fn goto_location_wire_shape_past_the_last_line_answers_false() {
 /// `(goto-location! bid (hash 'target path 'line line 'char-col char-col))` on a path that doesn't exist yet
 /// must open a new-file buffer and jump to it, the same tolerance `:e` has:
 /// both go through `lifecycle::open_or_dedup_and_notify` and its
-/// `Buffer::from_file_or_new` chokepoint.
+/// `NewBuffer::file_or_new` chokepoint.
 #[test]
 fn goto_missing_path_opens_new_file_buffer() {
     let tmp = tempfile::tempdir().unwrap();

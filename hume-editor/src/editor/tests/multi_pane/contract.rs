@@ -659,10 +659,8 @@ fn ensure_seeds_new_entry_with_initial_sels() {
     let pid = ed.view.focused_pane();
 
     // Open a second buffer; the focused pane has never viewed it.
-    let doc2 = Buffer::scratch();
-    let expected_sels = doc2.initial_sels();
-    let bid2 =
-        crate::editor::buffer::lifecycle::open_buffer(&mut ed.view, &mut ed.state.buffers, doc2, 0);
+    let bid2 = ed.open_scratch(hume_editing::text::BufferText::empty());
+    let expected_sels = ed.state.buffers.get(bid2).initial_sels();
 
     // The focused pane has never viewed `bid2`, so this is its first-visit seed.
     let state = pane_state::ensure(

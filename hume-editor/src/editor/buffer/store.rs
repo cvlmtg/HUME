@@ -3,7 +3,7 @@
 //! `BufferStore` holds the authoritative `Buffer` structs keyed by `BufferId`.
 //! IDs are allocated by the engine's `SlotMap<BufferId, ()>`; this
 //! store mirrors that slotmap. **Never insert/remove through only one side**:
-//! always go through the `Editor::open_buffer` /
+//! always go through the `lifecycle::open_and_notify` /
 //! `lifecycle::close_buffer_and_notify` choke-points.
 
 use slotmap::SecondaryMap;
@@ -13,7 +13,7 @@ use hume_editing::hunk::ChangeHunk;
 use hume_engine::pipeline::Cycle;
 use hume_platform::path::AbsolutePath;
 
-use crate::editor::buffer::{Buffer, SavedSelections, ViewLabel};
+use crate::editor::buffer::{Buffer, NewBuffer, SavedSelections, ViewLabel};
 use crate::editor::doc_ops::HistoryAdmitted;
 
 /// Who is changing text: the user, through a key, a command or a callback
@@ -102,10 +102,20 @@ impl BufferStore {
     /// recent`/`mru_excluding` (`Ctrl-6`, `:b#`, `close`'s replacement
     /// target) would otherwise treat it as the most-recent "other" buffer,
     /// ahead of whatever the user actually last looked at.
-    pub(in crate::editor) fn open(&mut self, id: BufferId, doc: Buffer) {
-        self.buffers.insert(id, doc);
+    pub(in crate::editor) fn open(&mut self, id: BufferId, new: NewBuffer) {
+        self.buffers.insert(id, Buffer::new(new));
         self.order.push(id);
         self.mru.insert(0, id);
+    }
+
+    /// A store holding one buffer built from `new`, and that buffer's id, for
+    /// a test of a single buffer with no editor around it.
+    #[cfg(test)]
+    pub(in crate::editor) fn holding(new: NewBuffer) -> (Self, BufferId) {
+        let id = slotmap::SlotMap::<BufferId, ()>::with_key().insert(());
+        let mut store = Self::new();
+        store.open(id, new);
+        (store, id)
     }
 
     /// Find a buffer by its resolved path: the first `BufferId` whose

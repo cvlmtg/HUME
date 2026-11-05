@@ -178,7 +178,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
 
     // Buffer B ("python", registered ","): "." must not fire, "," must.
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_b);
-    let mut plain_b = Editor::for_testing(Buffer::at_start(BufferText::from("x\n")));
+    let mut plain_b = Editor::for_testing(BufferText::from("x\n"));
     ed.feed_key(key('i'));
     ed.settle();
     plain_b.feed_key(key('i'));

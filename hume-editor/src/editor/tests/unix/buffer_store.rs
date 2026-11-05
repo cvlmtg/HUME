@@ -8,7 +8,7 @@ fn p6_edit_opens_new_buffer() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "file content\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
+    let mut ed = Editor::for_testing(BufferText::from("scratch\n"));
     let initial_bid = ed.focused_buffer_id();
     let canonical = AbsolutePath::canonicalize(&path).unwrap();
     let result = ed.execute_typed("e", Some(path.to_str().unwrap()));
@@ -30,7 +30,7 @@ fn p6_edit_deduplicates_open_file() {
     let path = dir.path().join("dedup.txt");
     std::fs::write(&path, "dedup\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
+    let mut ed = Editor::for_testing(BufferText::from("scratch\n"));
     // Open the file once.
     let r1 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r1.is_ok());
@@ -61,7 +61,7 @@ fn p6_edit_force_reloads_current_file() {
     let path = dir.path().join("reload.txt");
     std::fs::write(&path, "original\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
+    let mut ed = Editor::for_testing(BufferText::from("scratch\n"));
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
     // Dirty the buffer.
     ed.handle_key(key('i'));
