@@ -320,7 +320,7 @@ fn confirm_opens_despite_a_sequence_left_in_another_buffer() {
     let bid = ed.focused_buffer_id();
     open_other_buffer(&mut ed, "other\n");
     ed.feed_key(key('g'));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);

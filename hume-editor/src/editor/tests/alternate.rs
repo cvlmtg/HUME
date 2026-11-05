@@ -216,17 +216,3 @@ fn execute_typed_expands_percent_for_a_steel_typed_command() {
 
     assert_eq!(status(&ed), path);
 }
-
-// ── goto-alternate-buffer in registry ──────────────────────────────────────────
-
-#[test]
-fn goto_alternate_buffer_is_registered_as_jump() {
-    let reg = super::super::registry::CommandRegistry::with_defaults();
-    let cmd = reg
-        .get_mappable("goto-alternate-buffer")
-        .expect("goto-alternate-buffer must be registered");
-    assert!(
-        cmd.meta().is_jump,
-        "goto-alternate-buffer must have jump:true"
-    );
-}

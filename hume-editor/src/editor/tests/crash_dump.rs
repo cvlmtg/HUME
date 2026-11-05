@@ -190,7 +190,7 @@ fn one_failed_dump_does_not_skip_the_other_buffers() {
         pending_dump: None,
     });
     let fp = crate::editor::commands::FocusedPane::current(&ed.view);
-    ed.switch_to_buffer_without_jump(fp, second);
+    ed.enter_buffer(fp, second);
     dirty_focused(&mut ed);
 
     let outcomes = ed.dump_dirty_buffers(None);

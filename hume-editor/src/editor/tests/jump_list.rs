@@ -334,8 +334,8 @@ fn select_all_from_last_char_still_records_jump() {
 
 /// A no-op `#` (cursor not on a bracket or tag) must not truncate forward
 /// jump-list history. `JumpList::push` truncates forward history
-/// unconditionally, so `is_jump` alone must not record an entry when the
-/// command did not move.
+/// unconditionally, so a declared jump alone must not record an entry when
+/// the command did not move.
 #[test]
 fn goto_matching_pair_noop_does_not_clobber_forward_history() {
     let mut ed = jump_editor(10);
@@ -364,9 +364,9 @@ fn goto_matching_pair_noop_does_not_clobber_forward_history() {
 }
 
 /// `}` (goto-next-paragraph) records a jump even for a one-line hop:
-/// unlike a plain motion, it's registered `jump: true`, the same as the
-/// structural `goto-next-<kind>` family, since it now selects a whole
-/// object exactly like they do.
+/// unlike a plain motion, it declares a `JumpRule::Primary` jump, the same
+/// as the structural `goto-next-<kind>` family, since it selects a whole
+/// object as they do.
 #[test]
 fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
     let text = BufferText::from("hello\n\nworld\n");
@@ -386,7 +386,7 @@ fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
 }
 
 /// `{` (goto-prev-paragraph) records a jump even for a one-line hop: the same
-/// `jump: true` registration as `}`, checked separately since the two are
+/// `JumpRule::Primary` jump as `}`, checked separately since the two are
 /// driven by distinct start-finding code (`next_paragraph_start` vs
 /// `prev_paragraph_start`).
 #[test]
@@ -877,7 +877,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
 
     // Pane A switches away to a different buffer: it is no longer a viewer
     // of the view buffer when it gets refreshed below.
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_scratch);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_scratch);
 
     // Refresh from pane B, with content too short for pane A's stale cached
     // selection to remain valid.
@@ -892,7 +892,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     // Pane A switches back to the view buffer. Its cached selection for
     // `bid` must have been reseeded by the refresh, not left stale.
     ed.switch_focused_pane(pid_a);
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     let text = ed.state.buffers.get(bid).text();
     assert_eq!(
         test_fixtures::testing::serialize_state(text, ed.current_selections()),
@@ -964,7 +964,7 @@ fn a_pending_jump_into_a_buffer_the_navigation_closed_is_dropped() {
         &mut ed.state,
         &mut ed.view,
         t,
-        JumpRule::IfMoved,
+        JumpRule::Selections,
         |state, view| {
             crate::editor::buffer::lifecycle::close_buffer_and_notify(
                 view,
@@ -983,4 +983,75 @@ fn a_pending_jump_into_a_buffer_the_navigation_closed_is_dropped() {
             .jumps
             .entries_for_buffer(closing)
     );
+}
+
+// ── Buffer switches ──────────────────────────────────────────────────────────
+
+/// Run editor command `name`, which must leave the first buffer, then
+/// `Ctrl-o`, which must bring back every selection the first buffer had.
+fn assert_buffer_switch_records_every_selection(name: &str) {
+    use hume_scripting::host::CommandHost;
+
+    let mut ed = editor_from("-{a}>b\n-[c]>d\n");
+    let first = ed.focused_buffer_id();
+    let before = state(&ed);
+    ed.open_scratch(BufferText::from("other\n"));
+
+    let pane = focused_pane(&ed);
+    live_host!(ed)
+        .run_command_sync(name, pane, NativeCall::default())
+        .unwrap_or_else(|e| panic!("{name} must not error: {e:?}"));
+    assert_ne!(ed.focused_buffer_id(), first, "setup: {name} switched away");
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(ed.focused_buffer_id(), first);
+    assert_eq!(state(&ed), before);
+}
+
+#[test]
+fn goto_next_buffer_records_every_selection() {
+    assert_buffer_switch_records_every_selection("goto-next-buffer");
+}
+
+#[test]
+fn goto_prev_buffer_records_every_selection() {
+    assert_buffer_switch_records_every_selection("goto-prev-buffer");
+}
+
+#[test]
+fn goto_alternate_buffer_records_every_selection() {
+    assert_buffer_switch_records_every_selection("goto-alternate-buffer");
+}
+
+/// `switch-to-buffer!` records the same entry as a key-bound buffer switch.
+#[test]
+fn switch_to_buffer_records_every_selection() {
+    use hume_scripting::host::BufferHost;
+
+    let mut ed = editor_from("-{a}>b\n-[c]>d\n");
+    let first = ed.focused_buffer_id();
+    let before = state(&ed);
+    let other = ed.open_scratch(BufferText::from("other\n"));
+
+    let pane = focused_pane(&ed);
+    live_host!(ed)
+        .switch_to_buffer(hume_scripting::host::ShownHandle::for_test(pane), other)
+        .expect("the switch succeeds");
+    assert_eq!(ed.focused_buffer_id(), other, "setup: the pane switched");
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(ed.focused_buffer_id(), first);
+    assert_eq!(state(&ed), before);
+}
+
+/// The `:` spelling of a buffer switch records the same entry as its key.
+#[test]
+fn bnext_records_every_selection() {
+    let mut ed = editor_from("-{a}>b\n-[c]>d\n");
+    let before = state(&ed);
+    ed.open_scratch(BufferText::from("other\n"));
+    ed.execute_typed("bn", None).unwrap();
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
 }

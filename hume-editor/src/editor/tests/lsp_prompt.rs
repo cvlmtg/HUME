@@ -445,7 +445,7 @@ fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     let other_bid = ed
         .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra))
         .expect("extra file must open");
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), other_bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), other_bid);
 
     let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(

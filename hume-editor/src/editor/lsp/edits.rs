@@ -25,6 +25,7 @@ use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::commands::{FocusedPane, shown_through};
 use crate::editor::doc_ops;
+use crate::editor::jump_list::{JumpRule, with_jump};
 
 /// Shared precondition check for every edit entry point in this module: the
 /// buffer exists, is writable, and hasn't moved since the caller computed its
@@ -500,11 +501,9 @@ fn resolve_goto_target(
 }
 
 /// Moves `t`'s own pane to the destination `target` names, recording a jump
-/// entry only if it exists and the jump actually lands somewhere else: same
-/// "commit point" discipline as `:goto` (`typed_misc.rs`) and buffer
-/// switches (`switch_to_buffer_with_jump`). `Ok(Some(handle))` names the
-/// pane and the buffer it now shows; `Ok(None)` when the destination's line
-/// no longer exists, with nothing moved.
+/// entry only if it exists and the jump actually lands somewhere else.
+/// `Ok(Some(handle))` names the pane and the buffer it now shows; `Ok(None)`
+/// when the destination's line no longer exists, with nothing moved.
 pub(in crate::editor) fn goto_location(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -535,8 +534,8 @@ pub(in crate::editor) fn goto_buffer_offset(
     Ok(land(state, view, t, bid, pos))
 }
 
-/// Jumps `t`'s own pane to `pos` in `bid`, and names the pane and the buffer
-/// it now shows.
+/// Jumps `t`'s own pane to `pos` in `bid`, recording where it started, and
+/// names the pane and the buffer it now shows.
 fn land(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -545,7 +544,9 @@ fn land(
     pos: ClusterStart,
 ) -> PaneHandle {
     let pid = t.pid();
-    crate::editor::commands::jump_pane_to(state, view, t, bid, pos);
+    with_jump(state, view, t, JumpRule::Selections, |state, view| {
+        crate::editor::commands::land_pane_at(state, view, pid, bid, pos);
+    });
     PaneHandle::with_pane(bid, pid)
 }
 

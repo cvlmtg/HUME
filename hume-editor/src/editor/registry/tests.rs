@@ -341,7 +341,7 @@ fn runtime_register_and_lookup() {
         fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Pane(dummy_fn)),
         defers_paste_commit: false,
         repeatable: false,
-        jump: false,
+        jump: None,
         visual_move: false,
         extendable: false,
         clears_extend: false,
@@ -405,7 +405,10 @@ fn runtime_register_typed_and_lookup() {
         name: Cow::Owned("steel-typed-cmd".to_string()),
         doc: Cow::Borrowed("A dummy Steel typed command for testing."),
         aliases: &["stc"],
-        body: TypedBody::Native(NativeTyped::Bare(dummy_typed)),
+        body: TypedBody::Native {
+            native: NativeTyped::Bare(dummy_typed),
+            jump: None,
+        },
         completer: None,
         arg_expansion: ArgExpansion::Paths,
     })
@@ -435,7 +438,10 @@ fn register_typed_rejects_a_name_or_alias_the_colon_line_cannot_reach() {
             .register_typed(typed_cmd(
                 name,
                 aliases,
-                TypedBody::Native(NativeTyped::Bare(dummy_typed)),
+                TypedBody::Native {
+                    native: NativeTyped::Bare(dummy_typed),
+                    jump: None,
+                },
             ))
             .expect_err(name);
         assert!(err.contains("'b7'"), "unexpected message: {err}");
@@ -489,7 +495,10 @@ fn lookups_ignore_case() {
     reg.register_typed(typed_cmd(
         "Probe",
         &[],
-        TypedBody::Native(NativeTyped::Bare(dummy_typed)),
+        TypedBody::Native {
+            native: NativeTyped::Bare(dummy_typed),
+            jump: None,
+        },
     ))
     .expect("a valid typed command name");
 
@@ -550,7 +559,7 @@ fn steel_backed_names_filters_by_variant() {
         fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Pane(noop)),
         defers_paste_commit: false,
         repeatable: false,
-        jump: false,
+        jump: None,
         visual_move: false,
         extendable: false,
         clears_extend: false,
@@ -791,15 +800,18 @@ fn no_command_is_both_repeatable_and_a_selection_builder() {
     }
 }
 
-/// Guard: every jump command has `meta().is_jump == true` in the registry.
+/// Guard: every jump command declares its rule in the registry, and every
+/// buffer switch restores the whole selection set.
 ///
 /// The registry is the single source of truth: there is no separate
 /// `JUMP_COMMANDS` list to keep in sync.
 #[test]
 fn jump_and_visual_move_flags_are_correct() {
+    use crate::editor::jump_list::JumpRule;
+
     let reg = CommandRegistry::with_defaults();
 
-    let must_be_jump = [
+    let primary = [
         "goto-first-line",
         "goto-last-line",
         "search-next",
@@ -808,10 +820,24 @@ fn jump_and_visual_move_flags_are_correct() {
         "page-up",
         "select-all",
     ];
-    for name in must_be_jump {
-        assert!(
-            reg.get_mappable(name).expect(name).meta().is_jump,
-            "'{name}' should have jump: true"
+    for name in primary {
+        assert_eq!(
+            reg.get_mappable(name).expect(name).meta().jump,
+            Some(JumpRule::Primary),
+            "'{name}'"
+        );
+    }
+
+    let buffer_switches = [
+        "goto-alternate-buffer",
+        "goto-next-buffer",
+        "goto-prev-buffer",
+    ];
+    for name in buffer_switches {
+        assert_eq!(
+            reg.get_mappable(name).expect(name).meta().jump,
+            Some(JumpRule::Selections),
+            "'{name}'"
         );
     }
 
@@ -825,9 +851,10 @@ fn jump_and_visual_move_flags_are_correct() {
 
     // Spot-check non-jump commands.
     for name in ["move-left", "move-right", "delete", "undo", "insert-before"] {
-        assert!(
-            !reg.get_mappable(name).expect(name).meta().is_jump,
-            "'{name}' should have jump: false"
+        assert_eq!(
+            reg.get_mappable(name).expect(name).meta().jump,
+            None,
+            "'{name}'"
         );
         assert!(
             !reg.get_mappable(name).expect(name).meta().is_visual_move,

@@ -229,13 +229,17 @@ fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
     };
 
     let body = match &tc.body {
-        TypedBody::Native(native) => {
-            let native = *native;
+        TypedBody::Native { native, jump } => {
+            let (native, jump) = (*native, *jump);
             let input = native
                 .takes()
                 .accept(&name, arg, force, |a| expand(ed, a))?;
             let fp = commands::FocusedPane::current(&ed.view);
-            return native.run(&name, ed, fp, &input);
+            let run = |ed: &mut Editor| native.run(&name, ed, fp, &input);
+            return match jump {
+                Some(rule) => ed.with_jump(fp.pane(), rule, run),
+                None => run(ed),
+            };
         }
         TypedBody::Steel(body) => body.clone(),
         // Activated before the refusal, which reads the lambda's arity.

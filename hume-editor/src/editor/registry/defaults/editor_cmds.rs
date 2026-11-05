@@ -1,4 +1,5 @@
 use crate::editor::commands::*;
+use crate::editor::jump_list::JumpRule;
 use crate::editor::registry::CommandRegistry;
 
 use super::builder::{ecmd_focused, ecmd_pane, ecmd_pane_char, ecmd_pane_text};
@@ -330,11 +331,11 @@ impl CommandRegistry {
             "Scroll down by one viewport height.",
             cmd_page_down,
         )
-        .jump()
+        .jump(JumpRule::Primary)
         .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane("page-up", "Scroll up by one viewport height.", cmd_page_up)
-            .jump()
+            .jump(JumpRule::Primary)
             .selection_effect(SelectionEffect::Extends)
             .reg(self);
 
@@ -418,7 +419,7 @@ impl CommandRegistry {
             "Jump to the next search match.",
             cmd_search_next,
         )
-        .jump()
+        .jump(JumpRule::Primary)
         .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
@@ -426,7 +427,7 @@ impl CommandRegistry {
             "Jump to the previous search match.",
             cmd_search_prev,
         )
-        .jump()
+        .jump(JumpRule::Primary)
         .selection_effect(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane("clear-search", "Clear search highlights.", cmd_clear_search).reg(self);
@@ -516,28 +517,28 @@ impl CommandRegistry {
             "Switch to the most-recently-focused other buffer.",
             cmd_goto_alternate_buffer,
         )
-        .jump()
+        .jump(JumpRule::Selections)
         .reg(self);
         ecmd_pane(
             "goto-next-buffer",
             "Switch to the next buffer in open-order.",
             cmd_goto_next_buffer,
         )
-        .jump()
+        .jump(JumpRule::Selections)
         .reg(self);
         ecmd_pane(
             "goto-prev-buffer",
             "Switch to the previous buffer in open-order.",
             cmd_goto_prev_buffer,
         )
-        .jump()
+        .jump(JumpRule::Selections)
         .reg(self);
 
         // ── Editor commands — tab pages ─────────────────────────────────────────
-        // No `.jump()`: switching tabs changes the focused pane itself (a
+        // No `.jump(..)`: switching tabs changes the focused pane itself (a
         // different pane, possibly in a different tab), same as the
         // pane-focus commands below; see `commands::tab`'s module doc for
-        // why that disqualifies the jump-list recording `.jump()` triggers.
+        // why that disqualifies the jump-list recording `.jump(..)` triggers.
         ecmd_focused(
             "goto-next-tab",
             "Switch to the next tab in display order.",

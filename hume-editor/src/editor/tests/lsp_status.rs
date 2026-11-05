@@ -112,7 +112,7 @@ fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
     let mut rig = rust_rig(&tmp);
     let other = rig.ed.open_scratch(BufferText::from("other\n"));
     let fp = FocusedPane::current(&rig.ed.view);
-    rig.ed.switch_to_buffer_without_jump(fp, other);
+    rig.ed.enter_buffer(fp, other);
     assert_ne!(rig.ed.focused_buffer_id(), rig.bid);
 
     stop(&mut rig.ed, LspServerTarget::Buffer(rig.bid));

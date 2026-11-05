@@ -115,8 +115,8 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
 
     let buf1 = ed.open_scratch(hume_editing::text::BufferText::empty());
     let buf2 = ed.open_scratch(hume_editing::text::BufferText::empty());
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), buf1);
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), buf2);
+    ed.enter_buffer(FocusedPane::current(&ed.view), buf1);
+    ed.enter_buffer(FocusedPane::current(&ed.view), buf2);
 
     ed.settle();
 
@@ -179,7 +179,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
     // Bare `focus` write (no settle() in between)...
     ed.state.focus.set_for_test(&mut ed.view, pid_b);
     // ...then a `pane.buffer_id` write on the pane that write just focused.
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), buf2);
+    ed.enter_buffer(FocusedPane::current(&ed.view), buf2);
     assert_ne!(pid_a, pid_b, "sanity: a genuinely different pane");
 
     ed.settle();

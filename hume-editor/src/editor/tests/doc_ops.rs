@@ -39,6 +39,6 @@ fn an_edit_from_given_selections_lands_when_the_pane_shows_another_buffer() {
     uppercase_from(&mut ed, bid, given);
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "AB cd\n");
 
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     assert_eq!(state(&ed), "-[AB]> cd\n");
 }

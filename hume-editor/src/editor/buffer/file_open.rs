@@ -220,57 +220,9 @@ impl Editor {
         Ok(BufferFate::Open)
     }
 
-    /// Redirect `fp` to `target` without recording a jump.
-    #[cfg(test)]
-    pub(in crate::editor) fn switch_to_buffer_without_jump(
-        &mut self,
-        fp: FocusedPane,
-        target: BufferId,
-    ) {
-        crate::editor::focus::switch_pane_to_buffer(
-            &mut self.state,
-            &mut self.view,
-            fp.pid(),
-            target,
-        );
-    }
-
-    /// Redirect `fp` to `target`, recording the outgoing position in
-    /// `panes.entries[fp].jumps`.
-    ///
-    /// Caller contract: all fallible steps (path resolution, file read, etc.)
-    /// must succeed before calling this: `push()` truncates forward history.
-    pub(in crate::editor) fn switch_to_buffer_with_jump(
-        &mut self,
-        fp: FocusedPane,
-        target: BufferId,
-    ) {
-        lifecycle::switch_to_buffer_with_jump(&mut self.state, &mut self.view, fp.pid(), target);
-    }
-
-    /// Switch `fp` to `target`, or no-op if it already shows it: the
-    /// `:e`/`:b` entry point. Unlike `switch_to_buffer_with_jump`, safe
-    /// to call with a target that might already be the focused buffer: that
-    /// primitive's `push()` truncates forward jump history unconditionally,
-    /// so a same-buffer call would corrupt it for nothing.
-    ///
-    /// External-change detection does not run here: every genuine switch
-    /// this produces raises `EditorEvent::OnBufferEnter`, observed by
-    /// `Editor::settle`'s diff regardless of caller, interactive or not. A
-    /// no-op call raises nothing, matching Vim's `BufEnter`, which doesn't
-    /// re-fire for re-entering the buffer you're already viewing.
-    ///
-    /// Accepted cost of that parity: `:e`/`:b` re-targeting the
-    /// already-focused buffer runs no disk stat at all: it's a
-    /// no-op, not a deferred one. An external change to that file still
-    /// surfaces the moment any of terminal `FocusIn`, a genuine buffer-enter
-    /// (switch away and back), or `:checktime` runs; see
-    /// `Editor::enter_buffer_disk_check`'s doc for the full list of paths
-    /// that *do* stat.
+    /// [`lifecycle::enter_buffer`] on `fp`'s pane.
     pub(in crate::editor) fn enter_buffer(&mut self, fp: FocusedPane, target: BufferId) {
-        if target != fp.bid(&self.view) {
-            self.switch_to_buffer_with_jump(fp, target);
-        }
+        lifecycle::enter_buffer(&mut self.state, &mut self.view, fp.pid(), target);
     }
 
     /// Show `content` in the read-only view labelled `label` on `fp`; see

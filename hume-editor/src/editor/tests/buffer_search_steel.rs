@@ -115,7 +115,7 @@ fn a_pane_less_value_searches_its_buffer() {
         .iter()
         .map(|(id, _)| id)
         .find(|&id| id != other);
-    ed.switch_to_buffer_with_jump(
+    ed.enter_buffer(
         FocusedPane::current(&ed.view),
         first.expect("the first buffer is still open"),
     );

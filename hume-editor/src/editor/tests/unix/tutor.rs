@@ -101,6 +101,30 @@ fn tutor_is_idempotent() {
     );
 }
 
+/// Both of `:tutor`'s switches, to a fresh copy and to the copy already
+/// open, record a jump back.
+#[test]
+fn tutor_records_a_jump() {
+    let guard = TutorGuard::new();
+    write_stub_tutor(guard.runtime());
+
+    let mut ed = guard.editor("-[h]>ello\n");
+    let first = ed.focused_buffer_id();
+    ed.execute_typed("tutor", None).unwrap();
+    let tutor = ed.focused_buffer_id();
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(ed.focused_buffer_id(), first, "Ctrl-o after a fresh :tutor");
+
+    ed.execute_typed("tutor", None).unwrap();
+    assert_eq!(ed.focused_buffer_id(), tutor);
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(
+        ed.focused_buffer_id(),
+        first,
+        "Ctrl-o after :tutor reopens it"
+    );
+}
+
 // ── after :bd!, :tutor opens a fresh buffer ───────────────────────────────────
 
 #[test]

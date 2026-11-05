@@ -381,7 +381,7 @@ fn another_buffers_generation_is_refused() {
     let first = ed.focused_buffer_id();
     open_other_buffer(&mut ed, "other\n");
     type_cmd(&mut ed, ":snap");
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), first);
+    ed.enter_buffer(FocusedPane::current(&ed.view), first);
     let msg = error_in(
         &mut ed,
         tmp.path(),

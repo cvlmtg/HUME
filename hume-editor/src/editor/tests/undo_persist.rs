@@ -38,7 +38,7 @@ pub(super) fn editor_on(disk: &Disk, file: &Path, settings: &[&str]) -> Editor {
         run_set(&mut ed, arg).expect("the setting applies");
     }
     let bid = open_path(&mut ed, file);
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     ed
 }
 

@@ -28,7 +28,6 @@ use super::EditorState;
 use super::buffer::lifecycle::CloseBufferRefused;
 use super::buffer::{Buffer, TextRefusal};
 use super::doc_ops;
-use super::jump_list::{JumpRule, with_jump};
 use super::pipe_run::{PipeRunning, STOP_KEY_NAME};
 use super::register_ops;
 use crate::editor::error::CommandError;
@@ -338,37 +337,29 @@ pub(super) fn pane_display_lines<'a>(
     (dlm, viewport)
 }
 
-/// Move `t`'s pane to `(bid, char_pos)`, recording a jump entry (only if it
-/// actually lands somewhere else) and centering the viewport by display
-/// line, the same way `zz` does. Shared tail of every navigation that jumps
-/// to an already-resolved buffer/position pair: `goto_location`
-/// (`lsp/edits.rs`) and `:e`'s own `path:line[:col]` suffix
-/// (`typed_buffer::typed_edit`).
-///
-/// Caller contract: `t` must still be showing its pre-jump buffer when this
-/// is called. This is the only switch to `bid`; a caller that already
-/// switched (`enter_buffer`, `switch_to_buffer_with_jump`) would make the
-/// jump entry this function records snapshot `bid`'s own position instead of
-/// the buffer the jump actually started from.
-pub(super) fn jump_pane_to(
+/// Move pane `pid` to `(bid, pos)` and center the viewport by display line,
+/// the same way `zz` does, recording no jump. Shared tail of every
+/// navigation that lands on an already-resolved buffer/position pair:
+/// `goto_location` (`lsp/edits.rs`) and `:e`'s own `path:line[:col]` suffix
+/// (`typed_buffer::typed_edit`). Each records its jump around this call, so
+/// this is its only switch to `bid`: the recorded start is the buffer the
+/// pane left.
+pub(super) fn land_pane_at(
     state: &mut EditorState,
     view: &mut EngineView,
-    t: CommandPane,
-    bid: hume_core::BufferId,
+    pid: PaneId,
+    bid: BufferId,
     pos: hume_rope::cluster::ClusterStart,
 ) {
-    let pid = t.pid();
-    with_jump(state, view, t, JumpRule::IfMoved, |state, view| {
-        crate::editor::focus::switch_pane_to_buffer(state, view, pid, bid);
-        crate::editor::pane_state::write_cursor(
-            &mut state.panes.entries,
-            &state.buffers,
-            &view.panes,
-            pid,
-            bid,
-            pos,
-        );
-    });
+    crate::editor::focus::switch_pane_to_buffer(state, view, pid, bid);
+    crate::editor::pane_state::write_cursor(
+        &mut state.panes.entries,
+        &state.buffers,
+        &view.panes,
+        pid,
+        bid,
+        pos,
+    );
     view_center(state, view, pid);
 }
 

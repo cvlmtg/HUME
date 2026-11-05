@@ -238,7 +238,7 @@ impl LspRig {
             .open_extra_file(&AbsolutePath::rooted(&other))
             .expect("the file opens");
         let fp = crate::editor::commands::FocusedPane::current(&self.ed.view);
-        self.ed.switch_to_buffer_without_jump(fp, other);
+        self.ed.enter_buffer(fp, other);
     }
 
     /// The text of every Warning the log holds, oldest first: what a probe

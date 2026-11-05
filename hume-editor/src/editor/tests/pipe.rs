@@ -804,7 +804,7 @@ fn q_refuses_to_close_the_busy_buffer() {
     let busy = ed.focused_buffer_id();
     let (other, _other_file) = temp_file("b\n");
     type_cmd(&mut ed, &format!(":e {}", other.display()));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), busy);
+    ed.enter_buffer(FocusedPane::current(&ed.view), busy);
     start_sort(&mut ed);
     type_cmd(&mut ed, ":q");
     assert_eq!(status(&ed), pipe_running(&ed, busy, ":q!"));

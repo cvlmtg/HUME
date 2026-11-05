@@ -152,7 +152,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
     let ed = &mut rig.ed;
 
     // Buffer A ("rust", registered "."): "," must not fire, "." must.
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_a);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_a);
     let mut plain_a = editor_from("-[a]>bcdef\n");
     ed.feed_key(key('i'));
     ed.settle();
@@ -177,7 +177,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
     ed.settle();
 
     // Buffer B ("python", registered ","): "." must not fire, "," must.
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_b);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_b);
     let mut plain_b = Editor::for_testing(BufferText::from("x\n"));
     ed.feed_key(key('i'));
     ed.settle();
@@ -445,7 +445,7 @@ fn set_attachment_hook_triggers_fires_for_that_buffer_only() {
         rig.ed.settle();
         let rust = rig.bid;
         rig.ed
-            .switch_to_buffer_without_jump(FocusedPane::current(&rig.ed.view), rust);
+            .enter_buffer(FocusedPane::current(&rig.ed.view), rust);
     }
 
     assert_eq!(rig.warnings(), vec!["test".to_string()]);

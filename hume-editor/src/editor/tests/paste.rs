@@ -543,7 +543,7 @@ fn edit_in_other_buffer_invalidates_ring_stamp() {
 
     let bid_a = ed.focused_buffer_id();
     let bid_b = ed.open_scratch(BufferText::from("xy\n"));
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_b);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_b);
     // `i`/type/`Esc`, not `d`/`c`/`y`. A capturing edit in B would legitimately
     // write a *fresh* stamp pointing at B's own capture, which isn't what this
     // test is isolating: it must be an edit that bumps `edit_seq` without
@@ -552,7 +552,7 @@ fn edit_in_other_buffer_invalidates_ring_stamp() {
     ed.feed_key(key('z'));
     ed.feed_key(key_esc()); // bumps the global edit_seq, writes no stamp
 
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_a);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_a);
     ed.feed_key(key('p')); // bare smart-p in A → stamp stale → clipboard
     let buf = ed.doc().text().to_string();
     assert!(

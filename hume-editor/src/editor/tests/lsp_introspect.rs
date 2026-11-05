@@ -755,7 +755,7 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
         .find_by_path(&AbsolutePath::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
     rig.ed
-        .switch_to_buffer_with_jump(FocusedPane::current(&rig.ed.view), other_bid);
+        .enter_buffer(FocusedPane::current(&rig.ed.view), other_bid);
 
     let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(

@@ -70,7 +70,7 @@ fn messages_reuses_existing_view_buffer() {
         .find(|(_, buf)| buf.label().is_none() && buf.path().is_none())
         .map(|(id, _)| id)
         .expect("scratch buffer must exist");
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), scratch_id);
+    ed.enter_buffer(FocusedPane::current(&ed.view), scratch_id);
     ed.report(Severity::Warning, "msg2");
     ed.execute_typed("messages", None).unwrap();
 

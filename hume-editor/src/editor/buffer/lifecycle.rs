@@ -6,8 +6,8 @@
 //! host through `SteelCtx`), just never the same `Editor` these live on, so
 //! they take `state`/`ev` directly instead of `&mut self`.
 //!
-//! The `impl Editor` choke-points (`switch_to_buffer_with_jump`,
-//! `open_read_only_view`) are thin delegators; all logic lives here.
+//! The `impl Editor` choke-points (`enter_buffer`, `open_read_only_view`)
+//! are thin delegators; all logic lives here.
 //! Production closes call [`close_buffer_and_notify`] directly.
 
 use hume_core::{BufferId, OnUnsaved, PaneId};
@@ -22,7 +22,6 @@ use crate::editor::buffer::{FileTarget, NewBuffer, Unsaved, ViewLabel};
 use crate::editor::commands::CommandPane;
 use crate::editor::event::EditorEvent;
 use crate::editor::focus::switch_pane_to_buffer;
-use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::pane_state;
 use crate::editor::pipe_run::{PipeRefusal, PipeRunning};
 
@@ -94,29 +93,32 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
     Ok((open_and_notify(ev, state, new), true))
 }
 
-/// Redirect the focused pane to `target`, pushing the outgoing position onto
-/// `pane_jumps[focused_pane_id]`, unless `target` is the buffer already
-/// focused, which would be a no-op switch (e.g. `:tutor` run a second time
-/// while already viewing it): `push` truncates forward history
-/// unconditionally, so recording a jump to nowhere would corrupt it for
-/// nothing. Most callers already avoid this (`enter_buffer` gates on it
-/// explicitly), but not all do, so the guard lives here instead of being
-/// re-derived at each one.
+/// Switch pane `pid` to `target`, or do nothing if it already shows it,
+/// recording no jump: the entry point that runs it (a key, `:`, the buffer
+/// drawer, `switch-to-buffer!`) records the jump around this call.
 ///
-/// Caller contract: all fallible steps must succeed before calling this:
-/// `push` truncates forward history.
-pub(in crate::editor) fn switch_to_buffer_with_jump(
+/// External-change detection does not run here: every genuine switch
+/// this produces raises `EditorEvent::OnBufferEnter`, observed by
+/// `Editor::settle`'s diff regardless of caller, interactive or not. A
+/// no-op call raises nothing, matching Vim's `BufEnter`, which doesn't
+/// re-fire for re-entering the buffer you're already viewing.
+///
+/// Accepted cost of that parity: `:e`/`:b` re-targeting the
+/// already-focused buffer runs no disk stat at all: it's a
+/// no-op, not a deferred one. An external change to that file still
+/// surfaces the moment any of terminal `FocusIn`, a genuine buffer-enter
+/// (switch away and back), or `:checktime` runs; see
+/// `Editor::enter_buffer_disk_check`'s doc for the full list of paths
+/// that *do* stat.
+pub(in crate::editor) fn enter_buffer(
     state: &mut EditorState,
     ev: &mut EngineView,
     pid: PaneId,
     target: BufferId,
 ) {
-    let Some(t) = CommandPane::existing(ev, pid).filter(|t| t.bid(ev) != target) else {
-        return;
-    };
-    with_jump(state, ev, t, JumpRule::IfMoved, |state, ev| {
+    if ev.panes[pid].buffer_id() != target {
         switch_pane_to_buffer(state, ev, pid, target);
-    });
+    }
 }
 
 /// Show `content` on pane `t` in the read-only view buffer labelled

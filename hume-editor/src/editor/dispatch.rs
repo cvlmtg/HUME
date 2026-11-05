@@ -106,8 +106,8 @@ impl Editor {
             return false;
         }
         // Outer Steel commands skip with_jump, step_clear_extend, and
-        // step_align_view: their meta hardcodes is_jump = clears_extend =
-        // aligns_view = false. An inner native (call! …) still fires all three
+        // step_align_view: their meta declares no jump and hardcodes
+        // clears_extend = aligns_view = false. An inner native (call! …) still fires all three
         // because it routes through `commands::run` with its own meta.
         true
     }

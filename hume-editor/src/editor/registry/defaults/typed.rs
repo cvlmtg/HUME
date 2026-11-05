@@ -1,258 +1,269 @@
-use std::borrow::Cow;
-
+use super::builder::typed;
 use crate::editor::commands::*;
 use crate::editor::completion;
-use crate::editor::registry::{
-    ArgExpansion, CommandRegistry, NativeTyped, TypedBody, TypedCommand,
-};
+use crate::editor::jump_list::JumpRule;
+use crate::editor::registry::{CommandRegistry, NativeTyped};
 
 impl CommandRegistry {
     pub(super) fn register_typed_commands(&mut self) {
         // ── Typed commands (`:` command line) ─────────────────────────────────
-        macro_rules! typed_cmd {
-            ($name:literal, $doc:literal, $aliases:expr, $shape:ident($($fun:expr),+)) => {
-                typed_cmd!($name, $doc, $aliases, $shape($($fun),+), completer: None)
-            };
-            ($name:literal, $doc:literal, $aliases:expr, $shape:ident($($fun:expr),+), completer: $completer:expr) => {
-                typed_cmd!(
-                    $name,
-                    $doc,
-                    $aliases,
-                    $shape($($fun),+),
-                    completer: $completer,
-                    expansion: ArgExpansion::Paths
-                )
-            };
-            (
-                $name:literal,
-                $doc:literal,
-                $aliases:expr,
-                $shape:ident($($fun:expr),+),
-                completer: $completer:expr,
-                expansion: $expansion:expr
-            ) => {
-                self.register_builtin_typed(TypedCommand {
-                    name: Cow::Borrowed($name),
-                    doc: Cow::Borrowed($doc),
-                    aliases: $aliases,
-                    body: TypedBody::Native(NativeTyped::$shape($($fun),+)),
-                    completer: $completer.map(Cow::Borrowed),
-                    arg_expansion: $expansion,
-                })
-            };
-        }
-
-        typed_cmd!("quit", "Close the editor.", &["q"], Force(typed_quit));
-        typed_cmd!(
+        typed(
+            "quit",
+            "Close the editor.",
+            &["q"],
+            NativeTyped::Force(typed_quit),
+        )
+        .reg(self);
+        typed(
             "quit-all",
             "Quit the editor, closing all buffers.",
             &["qa"],
-            Force(typed_quit_all)
-        );
-        typed_cmd!(
+            NativeTyped::Force(typed_quit_all),
+        )
+        .jump(JumpRule::Selections)
+        .reg(self);
+        typed(
             "write",
             "Write changes to disk.",
             &["w"],
-            ArgForce(typed_write),
-            completer: Some(completion::PATH_SOURCE)
-        );
-        typed_cmd!(
+            NativeTyped::ArgForce(typed_write),
+        )
+        .completer(completion::PATH_SOURCE)
+        .reg(self);
+        typed(
             "write-quit",
             "Write changes and quit.",
             &["wq"],
-            ArgForce(typed_write_quit),
-            completer: Some(completion::PATH_SOURCE)
-        );
-        typed_cmd!(
+            NativeTyped::ArgForce(typed_write_quit),
+        )
+        .completer(completion::PATH_SOURCE)
+        .reg(self);
+        typed(
             "write-all",
             "Write all modified buffers to disk.",
             &["wa"],
-            Force(typed_write_all)
-        );
-        typed_cmd!(
+            NativeTyped::Force(typed_write_all),
+        )
+        .reg(self);
+        typed(
             "toggle-soft-wrap",
             "Toggle soft line wrapping.",
             &["wrap"],
-            Bare(typed_toggle_soft_wrap)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_toggle_soft_wrap),
+        )
+        .reg(self);
+        typed(
             "set",
             "Set a configuration value: :set global|buffer|pane key=value.",
             &[],
-            ArgRequired(typed_set, "global|buffer|pane key=value"),
-            completer: Some(completion::SET_SOURCE)
-        );
-        typed_cmd!(
+            NativeTyped::ArgRequired(typed_set, "global|buffer|pane key=value"),
+        )
+        .completer(completion::SET_SOURCE)
+        .reg(self);
+        typed(
             "get",
             "Show a configuration value: :get global|buffer|pane key.",
             &[],
-            ArgRequired(typed_get, "global|buffer|pane key"),
-            completer: Some(completion::GET_SOURCE)
-        );
-        typed_cmd!(
+            NativeTyped::ArgRequired(typed_get, "global|buffer|pane key"),
+        )
+        .completer(completion::GET_SOURCE)
+        .reg(self);
+        typed(
             "messages",
             "Show the message log in a read-only scratch buffer.",
             &["mes"],
-            Bare(typed_messages)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_messages),
+        )
+        .reg(self);
+        typed(
             "reload-config",
             "Reload init.scm from scratch.",
             &[],
-            Bare(crate::editor::reload::typed_reload_config)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(crate::editor::reload::typed_reload_config),
+        )
+        .reg(self);
+        typed(
             "edit",
             "Open a file or reload current file.",
             &["e"],
-            ArgOrForce(typed_edit),
-            completer: Some(completion::PATH_SOURCE)
-        );
-        typed_cmd!(
+            NativeTyped::ArgOrForce(typed_edit),
+        )
+        .completer(completion::PATH_SOURCE)
+        .jump(JumpRule::Selections)
+        .reg(self);
+        typed(
             "checktime",
             "Check every open buffer against its file on disk, right now.",
             &[],
-            Bare(typed_checktime)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_checktime),
+        )
+        .reg(self);
+        typed(
             "buffer-delete",
             "Close the focused buffer.",
             &["bd"],
-            Force(typed_buffer_delete)
-        );
-        typed_cmd!(
+            NativeTyped::Force(typed_buffer_delete),
+        )
+        .reg(self);
+        typed(
             "bnext",
             "Switch to next buffer in open-order.",
             &["bn"],
-            Bare(typed_bnext)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_bnext),
+        )
+        .jump(JumpRule::Selections)
+        .reg(self);
+        typed(
             "bprev",
             "Switch to previous buffer in open-order.",
             &["bp"],
-            Bare(typed_bprev)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_bprev),
+        )
+        .jump(JumpRule::Selections)
+        .reg(self);
+        typed(
             "split",
             "Split the focused pane, stacking the new pane below it.",
             &["sp"],
-            Arg(typed_split)
-        );
-        typed_cmd!(
+            NativeTyped::Arg(typed_split),
+        )
+        .reg(self);
+        typed(
             "vsplit",
             "Split the focused pane side by side.",
             &["vsp"],
-            Arg(typed_vsplit)
-        );
-        typed_cmd!(
+            NativeTyped::Arg(typed_vsplit),
+        )
+        .reg(self);
+        typed(
             "tabnew",
             "Open a new tab.",
             &["tabe"],
-            Arg(typed_tabnew),
-            completer: Some(completion::PATH_SOURCE)
-        );
-        typed_cmd!(
+            NativeTyped::Arg(typed_tabnew),
+        )
+        .completer(completion::PATH_SOURCE)
+        .reg(self);
+        typed(
             "tabclose",
             "Close the current tab and every pane it owns.",
             &["tabc"],
-            Force(typed_tabclose)
-        );
-        typed_cmd!(
+            NativeTyped::Force(typed_tabclose),
+        )
+        .reg(self);
+        typed(
             "tabnext",
             "Switch to the next tab in display order.",
             &["tabn"],
-            Bare(typed_tabnext)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_tabnext),
+        )
+        .reg(self);
+        typed(
             "tabprev",
             "Switch to the previous tab in display order.",
             &["tabp"],
-            Bare(typed_tabprev)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_tabprev),
+        )
+        .reg(self);
+        typed(
             "theme",
             "Load a theme by name: :theme <name>. No arg shows current theme.",
             &[],
-            Arg(typed_theme),
-            completer: Some(completion::THEME_SOURCE)
-        );
-        typed_cmd!(
+            NativeTyped::Arg(typed_theme),
+        )
+        .completer(completion::THEME_SOURCE)
+        .reg(self);
+        typed(
             "theme-debug",
             "Show resolved styles for key UI scopes of the active theme.",
             &[],
-            Bare(typed_theme_debug)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_theme_debug),
+        )
+        .reg(self);
+        typed(
             "change-directory",
             "Change the working directory.",
             &["cd"],
-            Arg(typed_cd),
-            completer: Some(completion::PATH_DIRS_ONLY_SOURCE)
-        );
-        typed_cmd!(
+            NativeTyped::Arg(typed_cd),
+        )
+        .completer(completion::PATH_DIRS_ONLY_SOURCE)
+        .reg(self);
+        typed(
             "print-working-directory",
             "Print the current working directory.",
             &["pwd"],
-            Bare(typed_pwd)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_pwd),
+        )
+        .reg(self);
+        typed(
             "list-buffers",
             "List all open buffers.",
             &["ls"],
-            Bare(typed_list_buffers)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_list_buffers),
+        )
+        .reg(self);
+        typed(
             "plugin-status",
             "Show declared plugins and their load state.",
             &["plugins"],
-            Bare(typed_plugin_status)
-        );
+            NativeTyped::Bare(typed_plugin_status),
+        )
+        .reg(self);
         // `#` is the alternate-buffer specifier itself, not a filename token:
         // expanding it to a path would lose pathless alternates (scratch,
         // [messages], [plugin-status]).
-        typed_cmd!(
+        typed(
             "buffer",
             "Switch to an open buffer.",
             &["b"],
-            ArgRequired(typed_buffer, "<name|#|index>"),
-            completer: Some(completion::BUFFER_NAME_SOURCE),
-            expansion: ArgExpansion::Verbatim
-        );
-        typed_cmd!(
+            NativeTyped::ArgRequired(typed_buffer, "<name|#|index>"),
+        )
+        .completer(completion::BUFFER_NAME_SOURCE)
+        .verbatim()
+        .jump(JumpRule::Selections)
+        .reg(self);
+        typed(
             "version",
             "Print the editor version.",
             &["ver"],
-            Bare(typed_version)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_version),
+        )
+        .reg(self);
+        typed(
             "tutor",
             "Open the interactive tutorial.",
             &[],
-            Bare(typed_tutor)
-        );
-        typed_cmd!(
+            NativeTyped::Bare(typed_tutor),
+        )
+        .jump(JumpRule::Selections)
+        .reg(self);
+        typed(
             "goto",
             "Jump to a 1-based line number: :goto 42.",
             &[],
-            ArgRequired(typed_goto_line, "<line>")
-        );
-        typed_cmd!(
+            NativeTyped::ArgRequired(typed_goto_line, "<line>"),
+        )
+        .jump(JumpRule::Selections)
+        .reg(self);
+        typed(
             "sort",
             "Sort adjacent rows by their selected text. Flags: -r, -i.",
             &[],
-            Arg(typed_sort)
-        );
-        typed_cmd!(
+            NativeTyped::Arg(typed_sort),
+        )
+        .reg(self);
+        typed(
             "earlier",
             "Step back N revisions (:earlier 3) or to the state as of an age ago (:earlier 5m).",
             &[],
-            Arg(typed_earlier)
-        );
-        typed_cmd!(
+            NativeTyped::Arg(typed_earlier),
+        )
+        .reg(self);
+        typed(
             "later",
             "Step forward N revisions (:later 3) or to the state as of an age ago (:later 5m).",
             &[],
-            Arg(typed_later)
-        );
+            NativeTyped::Arg(typed_later),
+        )
+        .reg(self);
     }
 }

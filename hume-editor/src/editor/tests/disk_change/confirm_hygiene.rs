@@ -134,7 +134,7 @@ fn a_second_confirm_never_replaces_a_live_one() {
 
     // Switch focus to B directly, bypassing input dispatch (and so the live
     // `Confirm` layer), the same way a Steel `switch-to-buffer!` would.
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_b);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_b);
     rewrite_externally(&tmp_b, "world, externally changed!\n");
 
     let (_, warnings_before) = ed.state.message_log.totals();

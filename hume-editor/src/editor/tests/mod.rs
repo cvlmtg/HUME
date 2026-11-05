@@ -590,7 +590,7 @@ fn has_error(ed: &Editor, needle: &str) -> bool {
 /// Open a buffer holding `text` and switch the focused pane to it.
 fn open_other_buffer(ed: &mut Editor, text: &str) -> BufferId {
     let bid = ed.open_scratch(BufferText::from(text));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     bid
 }
 

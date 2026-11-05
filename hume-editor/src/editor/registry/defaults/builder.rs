@@ -1,22 +1,24 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::NativeBody;
+use crate::editor::jump_list::JumpRule;
 use crate::editor::registry::{
-    CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, NativeCommand, PaneCharCmdFn,
-    PaneCmdFn, PaneTextCmdFn, SelectionEffect, SelectionRole, TextPrompt,
+    ArgExpansion, CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, NativeCommand,
+    NativeTyped, PaneCharCmdFn, PaneCmdFn, PaneTextCmdFn, SelectionEffect, SelectionRole,
+    TextPrompt, TypedBody, TypedCommand,
 };
 
-// Builder for EditorCmd registration. Each method sets one field (a bool),
-// except the three selection-role setters below, of which a command calls
-// at most one; .reg(registry) terminates the chain. Adding a new flag costs
-// one method; existing call sites are unaffected.
+// Builder for EditorCmd registration. Each method sets one field, except the
+// three selection-role setters below, of which a command calls at most one;
+// .reg(registry) terminates the chain. Adding a new flag costs one method;
+// existing call sites are unaffected.
 pub(super) struct EditorCmdBuilder {
     name: &'static str,
     doc: &'static str,
     fun: EditorCmdBody,
     defers_paste_commit: bool,
     repeatable: bool,
-    jump: bool,
+    jump: Option<JumpRule>,
     visual_move: bool,
     extendable: bool,
     clears_extend: bool,
@@ -29,8 +31,8 @@ impl EditorCmdBuilder {
         self.repeatable = true;
         self
     }
-    pub(super) fn jump(mut self) -> Self {
-        self.jump = true;
+    pub(super) fn jump(mut self, rule: JumpRule) -> Self {
+        self.jump = Some(rule);
         self
     }
     pub(super) fn visual_move(mut self) -> Self {
@@ -147,7 +149,7 @@ fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> Ed
         fun,
         defers_paste_commit: false,
         repeatable: false,
-        jump: false,
+        jump: None,
         visual_move: false,
         extendable: false,
         clears_extend: false,
@@ -200,4 +202,66 @@ pub(super) fn ecmd_pane_text(
     prompt: TextPrompt,
 ) -> EditorCmdBuilder {
     ecmd_builder(name, doc, EditorCmdBody::PaneText(fun, prompt))
+}
+
+// Builder for a built-in typed command's registration, the `:` counterpart
+// of `EditorCmdBuilder`: an argument completer, verbatim arguments and a jump
+// are each one method, and .reg(registry) terminates the chain.
+pub(super) struct TypedCmdBuilder {
+    name: &'static str,
+    doc: &'static str,
+    aliases: &'static [&'static str],
+    native: NativeTyped,
+    completer: Option<&'static str>,
+    arg_expansion: ArgExpansion,
+    jump: Option<JumpRule>,
+}
+impl TypedCmdBuilder {
+    /// Complete this command's argument from the source named `source`.
+    pub(super) fn completer(mut self, source: &'static str) -> Self {
+        self.completer = Some(source);
+        self
+    }
+    /// Pass the argument as typed, without `%`/`#` path expansion.
+    pub(super) fn verbatim(mut self) -> Self {
+        self.arg_expansion = ArgExpansion::Verbatim;
+        self
+    }
+    /// Record `rule`'s jump in the focused pane's jump list when the
+    /// command moves it.
+    pub(super) fn jump(mut self, rule: JumpRule) -> Self {
+        self.jump = Some(rule);
+        self
+    }
+    pub(super) fn reg(self, r: &mut CommandRegistry) {
+        r.register_builtin_typed(TypedCommand {
+            name: Cow::Borrowed(self.name),
+            doc: Cow::Borrowed(self.doc),
+            aliases: self.aliases,
+            body: TypedBody::Native {
+                native: self.native,
+                jump: self.jump,
+            },
+            completer: self.completer.map(Cow::Borrowed),
+            arg_expansion: self.arg_expansion,
+        });
+    }
+}
+
+/// A built-in typed command run as `native`.
+pub(super) fn typed(
+    name: &'static str,
+    doc: &'static str,
+    aliases: &'static [&'static str],
+    native: NativeTyped,
+) -> TypedCmdBuilder {
+    TypedCmdBuilder {
+        name,
+        doc,
+        aliases,
+        native,
+        completer: None,
+        arg_expansion: ArgExpansion::Paths,
+        jump: None,
+    }
 }

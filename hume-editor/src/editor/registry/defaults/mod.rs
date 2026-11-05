@@ -24,7 +24,7 @@ mod typed;
 // reason: a bare `motion!` is not in scope at the invoking file.
 macro_rules! motion {
     (@build $reg:expr, $name:literal, $doc:literal, $body:expr,
-     jump: $jump:literal, aligns_view: $aligns:literal) => {
+     jump: $jump:expr, aligns_view: $aligns:literal) => {
         $reg.register_builtin(MappableCommand::Native(NativeCommand::Motion {
             name: $name.into(),
             doc: Cow::Borrowed($doc),
@@ -37,30 +37,32 @@ macro_rules! motion {
     // `CmdMeta::aligns_view`'s doc for why only this direction opts in.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump, aligns_view) => {
         $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun), jump: true, aligns_view: true)
+            SelectionBody::Plain($fun),
+            jump: Some($crate::editor::jump_list::JumpRule::Primary), aligns_view: true)
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
         $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun), jump: true, aligns_view: false)
+            SelectionBody::Plain($fun),
+            jump: Some($crate::editor::jump_list::JumpRule::Primary), aligns_view: false)
     };
     // Word-family motions (`w`/`W`/`b`/`B`); see [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
         $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
-            SelectionBody::Word($fun), jump: false, aligns_view: false)
+            SelectionBody::Word($fun), jump: None, aligns_view: false)
     };
     // `goto-line-end`; see [`SelectionBody::LineEnd`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, line_end) => {
         $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
-            SelectionBody::LineEnd($fun), jump: false, aligns_view: false)
+            SelectionBody::LineEnd($fun), jump: None, aligns_view: false)
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
         $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun), jump: false, aligns_view: false)
+            SelectionBody::Plain($fun), jump: None, aligns_view: false)
     };
 }
 macro_rules! selection {
     (@build $reg:expr, $name:literal, $doc:literal, $body:expr,
-     jump: $jump:literal, effect: $effect:ident) => {
+     jump: $jump:expr, effect: $effect:ident) => {
         $reg.register_builtin(MappableCommand::Native(NativeCommand::Selection {
             name: $name.into(),
             doc: Cow::Borrowed($doc),
@@ -71,23 +73,24 @@ macro_rules! selection {
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun), jump: false, effect: Establishes)
+            SelectionBody::Plain($fun), jump: None, effect: Establishes)
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun), jump: true, effect: Establishes)
+            SelectionBody::Plain($fun),
+            jump: Some($crate::editor::jump_list::JumpRule::Primary), effect: Establishes)
     };
     // Transforms whatever extent is already staged instead of establishing
     // one; see `SelectionEffect::Composes`.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, composes) => {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun), jump: false, effect: Composes)
+            SelectionBody::Plain($fun), jump: None, effect: Composes)
     };
     // Word-family selections/text objects (`mm`/`MM`, `miw`/`maw`); see
     // [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
-            SelectionBody::Word($fun), jump: false, effect: Establishes)
+            SelectionBody::Word($fun), jump: None, effect: Establishes)
     };
 }
 macro_rules! edit {

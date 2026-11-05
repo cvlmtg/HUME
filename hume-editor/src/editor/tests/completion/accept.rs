@@ -322,7 +322,7 @@ fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
 
 /// A *real* Insert entry (`i`, pairing the session with an open edit group)
 /// ends in full (Insert layer, edit group, and the completion session
-/// riding on top of it) the moment `switch_to_buffer_without_jump` swaps
+/// riding on top of it) the moment `enter_buffer` swaps
 /// the focused pane's buffer out from under it
 /// (`focus::switch_pane_to_buffer`'s teardown). Nothing survives
 /// for a later `completion-accept!` to act on stale state; it errors on the
@@ -344,7 +344,7 @@ fn accept_after_the_pane_switched_buffers_errors() {
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     let scratch = ed.open_scratch(hume_editing::text::BufferText::empty());
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), scratch);
+    ed.enter_buffer(FocusedPane::current(&ed.view), scratch);
     assert_eq!(
         ed.state.mode(),
         Mode::Normal,

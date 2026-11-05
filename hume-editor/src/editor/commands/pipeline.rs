@@ -9,7 +9,7 @@ use hume_engine::pipeline::EngineView;
 
 use crate::editor::EditorState;
 use crate::editor::dispatch::CmdCtx;
-use crate::editor::jump_list::{JumpRule, with_jump};
+use crate::editor::jump_list::with_jump;
 use crate::editor::registry::{
     CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
     PaneTextCmdFn, SelectionBody, TextPrompt,
@@ -689,20 +689,13 @@ pub(in crate::editor) fn run(
     // BODY: bound moved in; meta + name captured above so no further clone needed.
     // A cursor-moving command runs inside the jump list's capture. Selection
     // commands are excluded from that rule: a large text-object selection is
-    // a select-then-act staging step, so only jump-flagged ones record.
+    // a select-then-act staging step, so only those declaring a jump record.
     let (ran, moved) = record_change(state, change, |state| {
-        let (ran, moved) = if meta.moves_cursor() {
-            with_jump(
-                state,
-                view,
-                pane,
-                JumpRule::Threshold {
-                    is_jump: meta.is_jump,
-                },
-                |state, view| run_body(state, view, bound, &ctx),
-            )
-        } else {
-            (run_body(state, view, bound, &ctx), false)
+        let (ran, moved) = match meta.jump_rule() {
+            Some(rule) => with_jump(state, view, pane, rule, |state, view| {
+                run_body(state, view, bound, &ctx)
+            }),
+            None => (run_body(state, view, bound, &ctx), false),
         };
         ((ran, moved), ran)
     });

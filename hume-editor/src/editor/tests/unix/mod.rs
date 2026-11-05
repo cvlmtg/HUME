@@ -365,7 +365,7 @@ fn core_lsp_rig_from(
 /// Focuses a new scratch buffer: it has no file, so no server attaches to it.
 fn focus_scratch_buffer(ed: &mut Editor) {
     let scratch = ed.open_scratch(hume_editing::text::BufferText::empty());
-    ed.switch_to_buffer_without_jump(
+    ed.enter_buffer(
         crate::editor::commands::FocusedPane::current(&ed.view),
         scratch,
     );
@@ -734,7 +734,7 @@ fn edited_notes(ed: &mut Editor, dir: &Path) -> (BufferId, PathBuf) {
     std::fs::write(&path, "old\n").unwrap();
     let bid = open_path(ed, &path);
     ed.settle();
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     type_chars(ed, "ix");
     ed.feed_key(key_esc());
     ed.settle();

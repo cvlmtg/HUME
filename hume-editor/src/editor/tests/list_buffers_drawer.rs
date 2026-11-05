@@ -213,6 +213,32 @@ fn enter_moves_the_markers_with_the_switch() {
     ");
 }
 
+/// `Enter` records the jump a key-bound buffer switch does: `Ctrl-o` brings
+/// back every selection the departed buffer had.
+#[test]
+fn enter_records_every_selection_of_the_departed_buffer() {
+    let mut ed = editor_from("-{a}>b\n-[c]>d\n");
+    let departed = ed.focused_buffer_id();
+    let before = state(&ed);
+    let other = ed.open_scratch(BufferText::from("other\n"));
+    ed.execute_typed("ls", None).unwrap();
+    let row = listed(&ed)
+        .iter()
+        .position(|&id| id == other)
+        .expect("the drawer lists every buffer");
+    while selected(&ed) < row {
+        ed.handle_key(key_down());
+    }
+
+    ed.handle_key(key_enter());
+    assert_eq!(ed.focused_buffer_id(), other, "setup: Enter switched");
+    ed.handle_key(key_esc());
+    ed.handle_key(key_ctrl('o'));
+
+    assert_eq!(ed.focused_buffer_id(), departed);
+    assert_eq!(state(&ed), before);
+}
+
 #[test]
 fn row_numbers_name_the_buffer_b_resolves() {
     let (mut ed, _tmp) = three_buffers();

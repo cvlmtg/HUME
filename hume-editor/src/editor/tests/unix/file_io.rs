@@ -71,14 +71,14 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
 
     // A genuine buffer-enter (switch away, then back) still surfaces it.
     let scratch = ed.open_scratch(hume_editing::text::BufferText::empty());
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), scratch);
+    ed.enter_buffer(FocusedPane::current(&ed.view), scratch);
     ed.settle();
     let bid = ed
         .state
         .buffers
         .find_by_path(&AbsolutePath::rooted(&canonical))
         .expect("deleted file's buffer stays open");
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     ed.settle();
     assert!(
         ed.state
@@ -896,10 +896,10 @@ fn wa_saves_all_dirty_buffers() {
     assert!(focused_unsaved(&ed));
 
     let (_tmp2, bid2) = open_file_buffer(&mut ed, "two\n");
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid2);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid2);
     dirty_focused(&mut ed);
 
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid1);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid1);
     ed.execute_typed("wa", None).unwrap();
 
     let msg = ed.state.status_msg.text().unwrap_or("");
@@ -946,14 +946,14 @@ fn wa_skips_clean_buffers() {
     // bid1 stays clean.
 
     let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid2);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid2);
     dirty_focused(&mut ed);
 
     let (tmp3_path, _bid3) = open_file_buffer(&mut ed, "three\n");
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), _bid3);
+    ed.enter_buffer(FocusedPane::current(&ed.view), _bid3);
     dirty_focused(&mut ed);
 
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid1);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid1);
     ed.execute_typed("wa", None).unwrap();
 
     let msg = ed.state.status_msg.text().unwrap_or("");
@@ -975,7 +975,7 @@ fn wa_skips_pathless_buffers() {
     // Only one file buffer: scratch shouldn't add to the count.
     let scratch_bid = {
         let bid = ed.open_scratch(BufferText::from("scratch\n"));
-        ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid);
+        ed.enter_buffer(FocusedPane::current(&ed.view), bid);
         dirty_focused(&mut ed);
         bid
     };
@@ -1009,10 +1009,10 @@ fn wa_does_not_change_focus() {
     dirty_focused(&mut ed);
 
     let (_tmp2, bid2) = open_file_buffer(&mut ed, "two\n");
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid2);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid2);
     dirty_focused(&mut ed);
 
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid1);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid1);
     let before = ed.focused_buffer_id();
     ed.execute_typed("wa", None).unwrap();
     assert_eq!(ed.focused_buffer_id(), before);
@@ -1041,20 +1041,20 @@ fn wa_skips_read_only_dirty_buffer() {
     let mut ed = open_headless(None);
     // bid1: writable dirty buffer backed by a file.
     let (tmp1_path, bid1) = open_file_buffer(&mut ed, "one\n");
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid1);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid1);
     dirty_focused(&mut ed);
     assert!(ed.state.has_unsaved_changes(bid1));
 
     // bid2: a buffer that's been made read-only while dirty.
     let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid2);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid2);
     dirty_focused(&mut ed);
     // Simulate the unusual case: set read_only after editing (e.g. set-text path).
     ed.state.buffers.get_mut(bid2).read_only = true;
     assert!(ed.state.has_unsaved_changes(bid2));
     assert!(ed.state.buffers.get(bid2).is_read_only());
 
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid1);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid1);
     ed.execute_typed("wa", None).unwrap();
 
     // bid1 must be saved; bid2 must remain dirty (was skipped, not aborted).

@@ -11,7 +11,6 @@ use super::{CommandPane, FocusedPane, redo_steps, undo_steps};
 use crate::editor::buffer::{Buffer, EditorView, ViewLabel, lifecycle};
 use crate::editor::error::CommandError;
 use crate::editor::input_stack::DrawerLayer;
-use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::ArgError;
 use crate::editor::settings::{THEME, TableKey};
 use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
@@ -412,7 +411,7 @@ pub(in crate::editor) fn typed_tutor(ed: &mut Editor, fp: FocusedPane) -> Result
     // If a buffer is already open at the tmp path, switch. No re-copy, so that
     // unsaved in-memory edits are preserved.
     if let Some(bid) = ed.state.buffers.find_by_path(&canonical_tmp) {
-        ed.switch_to_buffer_with_jump(fp, bid);
+        ed.enter_buffer(fp, bid);
         return Ok(());
     }
 
@@ -426,7 +425,7 @@ pub(in crate::editor) fn typed_tutor(ed: &mut Editor, fp: FocusedPane) -> Result
         canonical_tmp,
     )
     .map_err(|e| CommandError::new(format!("could not open tutor copy: {e}")))?;
-    ed.switch_to_buffer_with_jump(fp, bid);
+    ed.enter_buffer(fp, bid);
     Ok(())
 }
 
@@ -449,23 +448,14 @@ pub(in crate::editor) fn typed_goto_line(
         .ok_or_else(|| CommandError::transient(crate::cli::LINE_NUMBERS_START_AT_1))?;
 
     let t = fp.pane();
-    with_jump(
-        &mut ed.state,
-        &mut ed.view,
-        t,
-        JumpRule::IfMoved,
-        |state, view| {
-            let (pid, bid) = (t.pid(), t.bid(view));
-            crate::editor::pane_state::park_cursor_at(
-                &mut state.panes.entries,
-                &state.buffers,
-                &view.panes,
-                pid,
-                bid,
-                line0,
-                hume_rope::column::GraphemeCol::new(0),
-            );
-        },
+    crate::editor::pane_state::park_cursor_at(
+        &mut ed.state.panes.entries,
+        &ed.state.buffers,
+        &ed.view.panes,
+        t.pid(),
+        t.bid(&ed.view),
+        line0,
+        hume_rope::column::GraphemeCol::new(0),
     );
     Ok(())
 }

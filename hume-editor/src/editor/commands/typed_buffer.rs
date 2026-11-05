@@ -4,10 +4,9 @@ use hume_platform::path::AbsolutePath;
 
 use super::super::Editor;
 use super::jump::goto_buffer_in_order;
-use super::{FocusedPane, jump_pane_to};
+use super::{FocusedPane, land_pane_at};
 use crate::editor::buffer::{DiskCheckTrigger, ReloadError, lifecycle};
 use crate::editor::error::CommandError;
-use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::{ArgError, ArgOrForceInput};
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
@@ -23,9 +22,8 @@ use crate::editor::registry::{ArgError, ArgOrForceInput};
 ///   instead of erroring: `:w` creates the file (Vim's `:e newfile` semantics).
 /// - `path` may carry a trailing `:line[:col]` position, split the same way
 ///   as the CLI's `hume path:line:col` (`cli::split_path_position`).
-///   Landing on the position goes through `jump_pane_to`, so it records a
-///   jump entry (`Ctrl-o` returns) and centers the viewport, same as
-///   `:goto`/`goto-location!`.
+///   Landing on the position centers the viewport, same as
+///   `goto-location!`.
 ///
 /// Dedup uses `find_by_path` on the file the path names (see
 /// [`AbsolutePath::resolve`](hume_platform::path::AbsolutePath::resolve)), which a not-yet-existing path has too. `force` (`!`
@@ -65,8 +63,8 @@ pub(in crate::editor) fn typed_edit(
                     .unwrap_or_else(|| format!("Opened {}", buf.display_name()))
             });
 
-            // `jump_pane_to` does the only switch when a position is given; see
-            // its caller contract.
+            // `land_pane_at` does the only switch when a position is given, so
+            // the jump the `:` dispatcher records starts in the pre-`:e` buffer.
             match pos {
                 Some(pos) => {
                     let target = crate::editor::pane_state::line_grapheme_to_cluster(
@@ -74,7 +72,7 @@ pub(in crate::editor) fn typed_edit(
                         pos.line,
                         pos.grapheme_col,
                     );
-                    jump_pane_to(&mut ed.state, &mut ed.view, fp.pane(), bid, target);
+                    land_pane_at(&mut ed.state, &mut ed.view, fp.pid(), bid, target);
                 }
                 None => ed.enter_buffer(fp, bid),
             }
@@ -320,29 +318,14 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     }
 }
 
-/// Take one open-order buffer step for `:bnext`/`:bprev`, recording by hand
-/// the jump the mappable `goto-next-buffer`/`goto-prev-buffer` siblings get
-/// from their `.jump()` meta: the `:` dispatcher reads no `CmdMeta`.
-fn typed_buffer_step(ed: &mut Editor, fp: FocusedPane, cycle: Cycle) -> Result<(), CommandError> {
-    let t = fp.pane();
-    with_jump(
-        &mut ed.state,
-        &mut ed.view,
-        t,
-        JumpRule::IfMoved,
-        |state, view| {
-            goto_buffer_in_order(state, view, t, cycle);
-        },
-    );
-    Ok(())
-}
-
 /// `:bnext` / `:bn`: switch to the next buffer in open-order.
 pub(in crate::editor) fn typed_bnext(ed: &mut Editor, fp: FocusedPane) -> Result<(), CommandError> {
-    typed_buffer_step(ed, fp, Cycle::Next)
+    goto_buffer_in_order(&mut ed.state, &mut ed.view, fp.pane(), Cycle::Next);
+    Ok(())
 }
 
 /// `:bprev` / `:bp`: switch to the previous buffer in open-order.
 pub(in crate::editor) fn typed_bprev(ed: &mut Editor, fp: FocusedPane) -> Result<(), CommandError> {
-    typed_buffer_step(ed, fp, Cycle::Prev)
+    goto_buffer_in_order(&mut ed.state, &mut ed.view, fp.pane(), Cycle::Prev);
+    Ok(())
 }

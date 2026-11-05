@@ -11,7 +11,10 @@ fn typed(name: &'static str, aliases: &'static [&'static str]) -> TypedCommand {
         name: Cow::Borrowed(name),
         doc: Cow::Borrowed(""),
         aliases,
-        body: TypedBody::Native(NativeTyped::Force(typed_quit)),
+        body: TypedBody::Native {
+            native: NativeTyped::Force(typed_quit),
+            jump: None,
+        },
         completer: None,
         arg_expansion: ArgExpansion::Paths,
     }

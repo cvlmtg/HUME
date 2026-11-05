@@ -105,9 +105,7 @@ pub(in crate::editor) fn typed_quit_all(
                 // The focused buffer is named first, so this jumps only when it
                 // is clean: a user already on an unsaved buffer stays there, and
                 // a save + :qa cycle walks through dirty buffers one at a time.
-                if unsaved.0 != fp.bid(&ed.view) {
-                    ed.switch_to_buffer_with_jump(fp, unsaved.0);
-                }
+                ed.enter_buffer(fp, unsaved.0);
                 // Stays Error, not transient: `EditorState::message_logged_this_input`
                 // (input.rs) keys off `message_log.totals()` moving, and
                 // `Editor::confirm_permit` (input_stack/confirm.rs) reads that flag to refuse a

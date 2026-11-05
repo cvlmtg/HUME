@@ -67,10 +67,6 @@ pub(in crate::editor) fn cmd_jump_forward(
 /// needs no notion of a current buffer. The target pane's outgoing buffer is
 /// touched first, then the target, so a second call from any pane toggles
 /// back. Both touches are no-ops when `t` is the focused pane.
-///
-/// Uses `switch_pane_to_buffer`, not `switch_to_buffer_with_jump`:
-/// `execute_keymap_command` already records a jump for `is_jump=true`
-/// commands, and a second entry would corrupt the next Ctrl-o.
 pub(in crate::editor) fn cmd_goto_alternate_buffer(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -93,15 +89,9 @@ pub(in crate::editor) fn cmd_goto_alternate_buffer(
 
 /// The one place an open-order buffer step is taken, shared by the mappable
 /// `goto-next-buffer`/`goto-prev-buffer` and their typed `:bnext`/`:bprev`
-/// spellings.
-///
-/// Switches via `switch_pane_to_buffer` directly for the same reason as
-/// `cmd_goto_alternate_buffer` above: the mappable half carries `.jump()`, so
-/// `with_jump` already snapshots the outgoing position; the typed half
-/// has no `CmdMeta` to read and pushes its own entry instead. Needs no
-/// same-buffer guard: with one buffer open `step` returns it unchanged and
-/// the switch is inert, and both jump-recording paths gate on the cursor
-/// having actually moved.
+/// spellings. Needs no same-buffer guard: with one buffer open `step`
+/// returns it unchanged and the switch is inert, and `with_jump` records
+/// only a move.
 pub(super) fn goto_buffer_in_order(
     state: &mut EditorState,
     view: &mut EngineView,

@@ -48,7 +48,7 @@ fn native_typed_names(ed: &Editor) -> Vec<String> {
         .filter(|name| {
             matches!(
                 registry.get_typed(name).map(|tc| &tc.body),
-                Some(TypedBody::Native(_))
+                Some(TypedBody::Native { .. })
             )
         })
         .map(str::to_owned)

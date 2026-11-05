@@ -12,6 +12,7 @@ use crate::editor::buffer::lifecycle::CloseBufferRefused;
 use crate::editor::buffer::offsets::checked_char_range;
 use crate::editor::buffer::{TextRefusal, ViewLabel};
 use crate::editor::commands::{CommandPane, FocusedPane, effective_word_chars, word_search_input};
+use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::search::SearchPattern;
 use hume_ops::search::{SearchDirection, find_next_match};
 use hume_scripting::host::{BufferHost, ShownHandle, StoredLanguage};
@@ -142,11 +143,14 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         target: BufferId,
     ) -> Result<PaneHandle, String> {
         let t = self.shown(pane)?;
-        crate::editor::buffer::lifecycle::switch_to_buffer_with_jump(
+        with_jump(
             self.state,
             self.view,
-            t.pid(),
-            target,
+            t,
+            JumpRule::Selections,
+            |state, view| {
+                crate::editor::buffer::lifecycle::enter_buffer(state, view, t.pid(), target);
+            },
         );
         Ok(PaneHandle::with_pane(target, t.pid()))
     }

@@ -24,7 +24,7 @@ fn p6_open_buffer_defers_pane_state_seeding() {
         "pane_state not yet seeded for a buffer no pane shows"
     );
 
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid2);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid2);
     assert!(
         ed.selections_for(ed.view.focused_pane(), bid2).is_some(),
         "pane_state seeded once the focused pane switches to it"
@@ -37,7 +37,7 @@ fn p6_close_buffer_redirects_to_mru() {
     let mut ed = Editor::for_testing(BufferText::from("alpha\n"));
     let bid_alpha = ed.focused_buffer_id();
     let bid_beta = ed.open_scratch(BufferText::from("beta\n"));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_beta);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_beta);
     assert_eq!(ed.focused_buffer_id(), bid_beta);
     // Close beta: should redirect focused pane back to alpha.
     ed.close_buffer(bid_beta)
@@ -165,6 +165,30 @@ fn p6_bnext_bprev_cycle() {
     assert_eq!(ed.focused_buffer_id(), bid_b, "bprev to b");
 }
 
+/// Run typed command `cmd`, which leaves the first buffer's pane on the
+/// other one, then `Ctrl-o`, which must come back to the first.
+fn assert_typed_step_records_a_jump(cmd: &str) {
+    let mut ed = Editor::for_testing(BufferText::from("a\n"));
+    let first = ed.focused_buffer_id();
+    let other = ed.open_scratch(BufferText::from("other\n"));
+    ed.execute_typed(cmd, None).unwrap();
+    assert_eq!(ed.focused_buffer_id(), other, "setup: :{cmd} switched");
+
+    ed.handle_key(key_ctrl('o'));
+
+    assert_eq!(ed.focused_buffer_id(), first);
+}
+
+#[test]
+fn bnext_records_a_jump() {
+    assert_typed_step_records_a_jump("bn");
+}
+
+#[test]
+fn bprev_records_a_jump() {
+    assert_typed_step_records_a_jump("bp");
+}
+
 /// `goto-next-buffer`/`goto-prev-buffer` cycle through buffers in open-order:
 /// the mappable, key-bindable siblings of `:bnext`/`:bprev`.
 #[test]
@@ -237,27 +261,13 @@ fn goto_next_prev_buffer_cycle() {
     assert_eq!(ed.focused_buffer_id(), bid_b, "back to b");
 }
 
-/// Both directions are registered as mappable, key-bindable commands that
-/// record a jump-list entry on switch (mirrors
-/// `goto_alternate_buffer_is_registered_as_jump`).
-#[test]
-fn goto_next_prev_buffer_registered_as_jump() {
-    let reg = super::super::registry::CommandRegistry::with_defaults();
-    for name in ["goto-next-buffer", "goto-prev-buffer"] {
-        let cmd = reg
-            .get_mappable(name)
-            .unwrap_or_else(|| panic!("{name} must be registered"));
-        assert!(cmd.meta().is_jump, "{name} must have jump:true");
-    }
-}
-
 /// `:bd` closes the current buffer.
 #[test]
 fn p6_bd_closes_focused_buffer() {
     let mut ed = Editor::for_testing(BufferText::from("first\n"));
     let bid_first = ed.focused_buffer_id();
     let bid_second = ed.open_scratch(BufferText::from("second\n"));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_second);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_second);
     let _ = ed.execute_typed("bd", None);
     assert_eq!(
         ed.focused_buffer_id(),
@@ -276,7 +286,7 @@ fn p6_bd_force_closes_dirty_buffer() {
     let mut ed = Editor::for_testing(BufferText::from("clean\n"));
     let bid_clean = ed.focused_buffer_id();
     let bid_dirty = ed.open_scratch(BufferText::from("dirty\n"));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_dirty);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_dirty);
     // Make it dirty by inserting a character.
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
@@ -298,7 +308,7 @@ fn p6_bd_force_closes_dirty_buffer() {
 fn editor_on_a_dirty_second_buffer() -> (Editor, BufferId) {
     let mut ed = Editor::for_testing(BufferText::from("clean\n"));
     let bid = ed.open_scratch(BufferText::from("dirty\n"));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     keys(&mut ed, "ix");
     ed.handle_key(key_esc());
     (ed, bid)

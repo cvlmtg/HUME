@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::jump_list::JumpRule;
 use pretty_assertions::assert_eq;
 
 // ── Per-pane pane_jumps ─────────────────────────────────────────────
@@ -55,7 +56,7 @@ fn p7_cross_buffer_ctrl_o() {
     let buf1 = ed.focused_buffer_id();
     let line0_state_f1 = state(&ed);
 
-    // Open file2: switch_to_buffer_with_jump records {file1, line 0} before switching.
+    // Open file2: the `:` dispatcher records {file1, line 0} before switching.
     ed.execute_typed("e", Some(file2.to_str().unwrap()))
         .unwrap();
     let buf2 = ed.focused_buffer_id();
@@ -68,11 +69,11 @@ fn p7_cross_buffer_ctrl_o() {
     assert_eq!(state(&ed), line0_state_f1, "cursor restored in file1");
 }
 
-/// `switch_to_buffer_with_jump` to the buffer already focused (e.g. `:tutor`
-/// run a second time while already viewing it) is a no-op and must not
-/// truncate forward jump-list history.
+/// A recorded switch to the buffer already focused (e.g. the buffer drawer's
+/// row for the buffer on screen) is a no-op and must not truncate forward
+/// jump-list history.
 #[test]
-fn p7_switch_to_buffer_with_jump_same_buffer_is_noop() {
+fn p7_recorded_switch_to_the_focused_buffer_keeps_forward_history() {
     let mut ed = jump_editor(10);
 
     // `gg`: records a jump, puts us at line 0.
@@ -87,7 +88,10 @@ fn p7_switch_to_buffer_with_jump_same_buffer_is_noop() {
 
     // Switch to the buffer already focused, a no-op.
     let current = ed.focused_buffer_id();
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), current);
+    let fp = FocusedPane::current(&ed.view);
+    ed.with_jump(fp.pane(), JumpRule::Selections, |ed| {
+        ed.enter_buffer(fp, current);
+    });
     assert_eq!(
         state(&ed),
         back_at_start,
@@ -99,8 +103,25 @@ fn p7_switch_to_buffer_with_jump_same_buffer_is_noop() {
     assert_eq!(
         state(&ed),
         at_top,
-        "a no-op switch_to_buffer_with_jump must not have truncated forward jump-list history"
+        "a no-op recorded switch must not have truncated forward jump-list history"
     );
+}
+
+/// `:b` naming the focused buffer moves nothing and keeps forward history.
+#[test]
+fn p7_colon_b_on_the_focused_buffer_keeps_forward_history() {
+    let mut ed = jump_editor(10);
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    let at_top = state(&ed);
+    ed.handle_key(key_ctrl('o'));
+    let back_at_start = state(&ed);
+
+    ed.execute_typed("b", Some("1")).unwrap();
+    assert_eq!(state(&ed), back_at_start);
+
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(state(&ed), at_top);
 }
 
 /// Closing a buffer prunes its entries from pane_jumps.

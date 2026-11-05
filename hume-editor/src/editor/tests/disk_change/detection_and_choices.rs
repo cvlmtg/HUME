@@ -404,7 +404,7 @@ fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
     // dispatch. The confirm is left open, still targeting A.
     let (tmp_b, _tmp_b_guard) = temp_file("world\n");
     let bid_b = crate::editor::tests::open_path(&mut ed, &tmp_b);
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_b);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_b);
     assert_ne!(
         ed.focused_buffer_id(),
         bid_a,

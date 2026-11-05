@@ -534,7 +534,7 @@ fn wrap_off_pin_is_restored_on_switching_back() {
     assert_eq!(focused_pane(&ed).wrap().mode, Some(WrapMode::None));
 
     open_other_buffer(&mut ed, "other buffer\n");
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_first);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_first);
     assert_eq!(
         focused_pane(&ed).wrap().mode,
         Some(WrapMode::None),

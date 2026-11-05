@@ -95,7 +95,7 @@ fn non_interactive_switch_to_buffer_onto_a_stale_buffer_opens_the_reload_confirm
     // The non-interactive primitive: Steel's `switch-to-buffer!` and every
     // LSP goto-definition call go through exactly this, never a typed
     // command.
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_b);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_b);
     ed.settle();
 
     assert_eq!(ed.focused_buffer_id(), bid_b);

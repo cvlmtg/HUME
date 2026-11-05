@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::NativeBody;
+use crate::editor::jump_list::JumpRule;
 use crate::editor::registry::{
     CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionEffect, StructuralBody,
 };
@@ -151,10 +152,10 @@ impl CommandRegistry {
     ///
     /// `Select`/`Argument` register as `Selection` (`Establishes`: each
     /// replayable on its own from a fresh cursor, same as `select-line`/
-    /// `ms(`); `Goto` registers as `Motion` (`jump: true`, since a goto records a
-    /// jump-list entry, and `Motion` always carries `SelectionEffect::
-    /// Extends`, so a Move-mode press is not replayed by `.` while an Extend
-    /// step is).
+    /// `ms(`); `Goto` registers as `Motion` (a `JumpRule::Primary` jump, since
+    /// a goto records a jump-list entry, and `Motion` always carries
+    /// `SelectionEffect::Extends`, so a Move-mode press is not replayed by `.`
+    /// while an Extend step is).
     pub(super) fn register_structural(&mut self) {
         for obj in STRUCTURAL_OBJECTS {
             let (inner_body, around_body) = if obj.kind == ObjectKind::Parameter {
@@ -179,14 +180,14 @@ impl CommandRegistry {
                 name: obj.inner.into(),
                 doc: Cow::Borrowed(obj.inner_doc),
                 fun: NativeBody::new(SelectionBody::Structural(inner_body)),
-                jump: false,
+                jump: None,
                 selection_effect: SelectionEffect::Establishes,
             }));
             self.register_builtin(MappableCommand::Native(NativeCommand::Selection {
                 name: obj.around.into(),
                 doc: Cow::Borrowed(obj.around_doc),
                 fun: NativeBody::new(SelectionBody::Structural(around_body)),
-                jump: false,
+                jump: None,
                 selection_effect: SelectionEffect::Establishes,
             }));
             self.register_builtin(MappableCommand::Native(NativeCommand::Motion {
@@ -196,7 +197,7 @@ impl CommandRegistry {
                     kind: obj.kind,
                     dir: Direction::Forward,
                 })),
-                jump: true,
+                jump: Some(JumpRule::Primary),
                 // Same forward-object-jump problem as `}`; see
                 // `CmdMeta::aligns_view`'s doc.
                 aligns_view: true,
@@ -208,7 +209,7 @@ impl CommandRegistry {
                     kind: obj.kind,
                     dir: Direction::Backward,
                 })),
-                jump: true,
+                jump: Some(JumpRule::Primary),
                 aligns_view: false,
             }));
         }

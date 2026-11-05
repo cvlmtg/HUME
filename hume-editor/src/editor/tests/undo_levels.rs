@@ -48,7 +48,7 @@ fn new_buffer_inherits_undo_levels() {
         .expect("set undo-levels");
 
     let bid2 = ed.open_scratch(hume_editing::text::BufferText::empty());
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid2);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid2);
 
     let after_first_edit = two_edits(&mut ed);
     assert!(ed.doc().can_undo());

@@ -23,6 +23,7 @@ use super::super::Editor;
 use super::super::EditorState;
 use super::super::buffer::store::BufferStore;
 use super::super::commands::{FocusedPane, half_page};
+use super::super::jump_list::JumpRule;
 use super::paste::ignore_paste;
 use super::popup::half_page_key;
 use super::stack::{
@@ -540,7 +541,10 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
             if ed.state.buffers.try_get(target).is_none() {
                 ed.report(Severity::Warning, "buffer was closed");
             } else {
-                ed.enter_buffer(FocusedPane::current(&ed.view), target);
+                let fp = FocusedPane::current(&ed.view);
+                ed.with_jump(fp.pane(), JumpRule::Selections, |ed| {
+                    ed.enter_buffer(fp, target);
+                });
             }
             let focused = ed.focused_buffer_id();
             ed.state

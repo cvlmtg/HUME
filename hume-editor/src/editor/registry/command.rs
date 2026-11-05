@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use crate::editor::commands::{CommandPane, FocusedPane, NativeBody};
 use crate::editor::error::CommandError;
+use crate::editor::jump_list::JumpRule;
 use hume_core::Count;
 use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
@@ -155,11 +156,11 @@ pub(in crate::editor) struct CmdMeta {
     /// the ring-cycle commands (`[`/`]`), which fold into one undo step with
     /// the original paste.
     pub defers_paste_commit: bool,
-    /// Whether this command records a jump-list entry before it runs,
-    /// however far the cursor moves (goto, search, page scroll, `select-all`).
-    pub is_jump: bool,
+    /// The jump this command declares, recorded however far the cursor
+    /// moves (goto, search, page scroll, `select-all`, buffer switches).
+    pub jump: Option<JumpRule>,
     /// Whether this command is a visual-line motion (`move-down`/`move-up`).
-    /// Read only by [`Self::moves_cursor`]. It does not gate the sticky
+    /// Read only by [`Self::jump_rule`]. It does not gate the sticky
     /// display column, which a `Selection` keeps and clears itself.
     pub is_visual_move: bool,
     /// Whether `.` replays this command, and so whether the interactive
@@ -197,16 +198,19 @@ pub(in crate::editor) struct CmdMeta {
 }
 
 impl CmdMeta {
-    /// Whether this command moves the cursor rather than editing. The
-    /// pipeline runs these commands, and only these, inside `with_jump`,
-    /// which snapshots the pre-body position for the jump list and
-    /// invalidates a still-open Insert session's pinned typed run.
+    /// The rule the pipeline records this command's jump under: its
+    /// declared [`Self::jump`], else [`JumpRule::PrimaryPastThreshold`] for a
+    /// motion. `None` for a command that does not move the cursor, which
+    /// the pipeline runs outside `with_jump`: no jump-list snapshot, and a
+    /// still-open Insert session keeps its pinned typed run.
     ///
     /// A Steel command or `Lazy` stub cannot declare motion semantics, so it
-    /// answers `false`: the jump list does not record a Steel motion, and a
+    /// answers `None`: the jump list does not record a Steel motion, and a
     /// pinned typed run survives it.
-    pub(in crate::editor) fn moves_cursor(&self) -> bool {
-        self.is_motion || self.is_jump || self.is_visual_move
+    pub(in crate::editor) fn jump_rule(&self) -> Option<JumpRule> {
+        self.jump.or_else(|| {
+            (self.is_motion || self.is_visual_move).then_some(JumpRule::PrimaryPastThreshold)
+        })
     }
 }
 
@@ -349,9 +353,9 @@ pub(in crate::editor) enum NativeCommand {
         #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: NativeBody<SelectionBody>,
-        /// Whether this motion records a jump-list entry however far the
-        /// cursor moves. Used for goto commands.
-        jump: bool,
+        /// The jump this motion declares, recorded however far the cursor
+        /// moves. Used for goto commands.
+        jump: Option<JumpRule>,
         /// Whether this motion's landing spot is re-aligned after it runs.
         aligns_view: bool,
     },
@@ -363,9 +367,9 @@ pub(in crate::editor) enum NativeCommand {
         #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: NativeBody<SelectionBody>,
-        /// Whether this command records a jump-list entry however far the
-        /// cursor moves. Used for `select-all` (`%`).
-        jump: bool,
+        /// The jump this command declares, recorded however far the cursor
+        /// moves. Used for `select-all` (`%`).
+        jump: Option<JumpRule>,
         /// `Establishes` for most selection commands, `Composes` for the few
         /// that transform what is already staged.
         selection_effect: SelectionEffect,
@@ -398,9 +402,9 @@ pub(in crate::editor) enum NativeCommand {
         /// `true` only for the ring-cycle commands (`[`/`]`).
         defers_paste_commit: bool,
         repeatable: bool,
-        /// Whether this command records a jump-list entry however far the
-        /// cursor moves. Used for search jumps and page scrolls.
-        jump: bool,
+        /// The jump this command declares, recorded however far the cursor
+        /// moves. Used for search jumps, page scrolls and buffer switches.
+        jump: Option<JumpRule>,
         /// Whether this command is a visual-line motion (`move-down`/`-up`).
         visual_move: bool,
         /// Whether a Ctrl-key may run this command as a one-shot extend.
@@ -451,7 +455,7 @@ impl NativeCommand {
                 }),
                 is_motion: true,
                 defers_paste_commit: false,
-                is_jump: *jump,
+                jump: *jump,
                 is_visual_move: false,
                 repeatable: false,
                 clears_extend: false,
@@ -470,7 +474,7 @@ impl NativeCommand {
                 }),
                 is_motion: false,
                 defers_paste_commit: false,
-                is_jump: *jump,
+                jump: *jump,
                 is_visual_move: false,
                 repeatable: false,
                 clears_extend: false,
@@ -493,7 +497,7 @@ impl NativeCommand {
                 selection: *selection,
                 is_motion: false,
                 defers_paste_commit: *defers_paste_commit,
-                is_jump: *jump,
+                jump: *jump,
                 is_visual_move: *visual_move,
                 repeatable: *repeatable,
                 clears_extend: *clears_extend,
@@ -551,7 +555,7 @@ fn plain_meta(repeatable: bool) -> CmdMeta {
         selection: None,
         is_motion: false,
         defers_paste_commit: false,
-        is_jump: false,
+        jump: None,
         is_visual_move: false,
         repeatable,
         clears_extend: false,
@@ -626,7 +630,12 @@ pub(in crate::editor) enum TypedBody {
     /// never runs while the Steel engine is borrowed, and `:e` and
     /// `:set buffer language=` need shell-level fields (`scripting`,
     /// `parse_worker`).
-    Native(NativeTyped),
+    Native {
+        native: NativeTyped,
+        /// The jump this command declares, which the `:` dispatcher records
+        /// in the focused pane's jump list.
+        jump: Option<JumpRule>,
+    },
     /// The lambda receives `(arg force)`, `(arg)`, or `()` by its declared
     /// arity.
     Steel(hume_scripting::SteelTypedCmdBody),

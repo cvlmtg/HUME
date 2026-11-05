@@ -446,7 +446,7 @@ fn a_buffer_closed_by_the_plugin_its_language_activates_announces_nothing() {
     let file = dir.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
     let bid = open_path(&mut ed, &file);
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     ed.state.config.pending_work.clear();
 
     ed.detect_pending_languages();
@@ -477,7 +477,7 @@ fn a_reload_whose_language_activates_a_plugin_that_closes_the_buffer() {
     let file = dir.path().join("script");
     std::fs::write(&file, "hello\n").unwrap();
     let bid = open_path(&mut ed, &file);
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
     ed.detect_pending_languages();
     assert!(ed.state.buffers.get(bid).language.is_none());
     std::fs::write(&file, "#!/usr/bin/env python3\n").unwrap();

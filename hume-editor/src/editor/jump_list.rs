@@ -2,9 +2,9 @@
 //!
 //! Records the cursor position (as a full [`SelectionSet`]) before "jump"
 //! commands like `goto-first-line`, `goto-last-line`, `search-next`,
-//! `search-prev`, page scroll, and any motion that crosses more than
-//! `EditorSettings::jump_line_threshold` lines. The user navigates the
-//! history with `jump-backward` and `jump-forward`.
+//! `search-prev`, page scroll, buffer switches, and any motion that crosses
+//! more than `EditorSettings::jump_list_min_lines` lines. The user navigates
+//! the history with `jump-backward` and `jump-forward`.
 //!
 //! Internally this is a [`VecDeque<JumpEntry>`] with a cursor index, capped
 //! at `EditorSettings::jump_list_capacity`. When the user navigates backward
@@ -13,7 +13,7 @@
 
 use std::collections::VecDeque;
 
-use hume_core::BufferId;
+use hume_core::{BufferId, PaneId};
 use hume_engine::pipeline::EngineView;
 
 use hume_editing::edit::TextChange;
@@ -21,8 +21,8 @@ use hume_editing::selection::{EditView, Selection, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 
-use super::EditorState;
 use super::commands::{CommandPane, pane_view};
+use super::{Editor, EditorState};
 
 /// Default capacity, used in tests to construct jump lists without importing `EditorSettings`.
 #[cfg(test)]
@@ -334,19 +334,21 @@ impl JumpList {
     }
 }
 
-/// When a navigation's starting position is recorded in the pane's jump
-/// list.
-#[derive(Clone, Copy)]
+/// What a navigation records in the pane's jump list, and when. A command
+/// declares it at registration and its dispatcher applies it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::editor) enum JumpRule {
     /// The whole selection set, whenever the pane's buffer or selections
-    /// changed.
-    IfMoved,
-    /// The primary selection only, when it changed and either `is_jump` or
-    /// its line moved further than `EditorSettings::jump_line_threshold`.
-    /// Selection commands are left out of this rule by their callers: a
-    /// large text-object selection is a select-then-act staging step, not
-    /// deliberate navigation.
-    Threshold { is_jump: bool },
+    /// changed. Every buffer switch records this.
+    Selections,
+    /// The primary selection only, whenever the buffer or that selection
+    /// changed: goto, search, page scroll, `select-all`.
+    Primary,
+    /// The primary selection only, when it changed and its line moved
+    /// further than `EditorSettings::jump_list_min_lines`: any other
+    /// motion. Selection commands never get it: a large text-object
+    /// selection is a select-then-act staging step, not navigation.
+    PrimaryPastThreshold,
 }
 
 /// Snapshot `t`'s pane's current selections as a `JumpEntry`.
@@ -362,25 +364,14 @@ pub(in crate::editor) fn current_jump_entry(
 
 /// Runs `body`, a navigation of `t`'s pane, and records where it started in
 /// the pane's jump list according to `rule`. Returns `body`'s result and
-/// whether the pane moved (its buffer or, under `Threshold`, its primary
-/// selection changed).
+/// whether the pane moved (its buffer, or the selections `rule` compares,
+/// changed). See [`JumpCapture`] for how the start is held and
+/// recorded.
 ///
-/// The start is held by the jump list while `body` runs, so an edit the
-/// navigation makes to that buffer (leaving Insert trims auto-indent)
-/// carries it and it still names the text it was captured from. `moved`
-/// guards every push: `JumpList::push` truncates forward history
-/// unconditionally, so a navigation that turned out to be a no-op (`:42`
-/// already on line 42, `goto-first-line` already on line 1, a search confirmed
-/// on the match already under the cursor) must not push at all. The whole
-/// `Selection` is compared, not just its head: `select-all` from the buffer's
-/// own last char moves only the anchor.
-///
-/// An Insert session's typed run on `t`'s pane is invalidated before `body`
-/// runs: it would otherwise select across text the cursor jumped away from
-/// once Insert exits. Checked before the body, since an entry command
-/// (`i`/`a`/`o`/`c`) has opened its session by the time its own body
-/// returns and would wipe the pins `begin_typed_run` just installed.
-/// A pane `body` closed has no list left to record in.
+/// The only recorder: the entry point that runs a navigation (the key
+/// pipeline, the `:` dispatcher, the buffer drawer, `switch-to-buffer!`, a
+/// goto landing) calls it, and the switch and landing primitives it wraps
+/// record nothing themselves.
 pub(in crate::editor) fn with_jump<R>(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -388,59 +379,125 @@ pub(in crate::editor) fn with_jump<R>(
     rule: JumpRule,
     body: impl FnOnce(&mut EditorState, &mut EngineView) -> R,
 ) -> (R, bool) {
-    let pid = t.pid();
-    let pre_bid = t.bid(view);
-    let entry = match rule {
-        JumpRule::IfMoved => current_jump_entry(state, view, t),
-        JumpRule::Threshold { .. } => {
-            let text = state.buffers.get(pre_bid).text();
-            let selections = t.state(&state.panes.entries, view).selections().clone();
-            JumpEntry::new(
-                EditState::bind(text.clone(), selections)
-                    .keep_primary()
-                    .into_selections(),
-                text,
-                pre_bid,
-            )
-        }
-    };
-    if let Some(insert) = state
-        .input
-        .insert_session_mut()
-        .filter(|s| s.owned_by(pid, pre_bid))
-    {
-        insert.typed_run = None;
-    }
-    let pending = state.panes.entries[pid].jumps.begin_pending(entry);
+    let capture = JumpCapture::begin(state, view, t, rule);
     let result = body(state, view);
-    let Some(t) = CommandPane::existing(view, pid) else {
-        return (result, false);
-    };
-    let entry = state.panes.entries[pid].jumps.end_pending(pending);
-    let post_bid = t.bid(view);
-    let moved = match (rule, entry) {
-        (JumpRule::IfMoved, Some(entry)) => record_if_moved(state, view, t, entry),
-        (JumpRule::Threshold { is_jump }, Some(entry)) => {
-            let post = pane_view(state, view, t).primary();
-            let moved = post_bid != pre_bid
-                || entry.primary_selection(state.buffers.get(pre_bid).text()) != post.selection();
-            if moved
-                && (is_jump
-                    || entry.primary_line.abs_diff(post.head_line())
-                        > state.settings.jump_list_min_lines)
-            {
-                state.panes.entries[pid].jumps.push(entry);
+    (result, capture.finish(state, view))
+}
+
+impl Editor {
+    /// [`with_jump`] for a body that needs the whole editor, such as a native
+    /// typed command run from `:`.
+    pub(in crate::editor) fn with_jump<R>(
+        &mut self,
+        t: CommandPane,
+        rule: JumpRule,
+        body: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let capture = JumpCapture::begin(&mut self.state, &self.view, t, rule);
+        let result = body(self);
+        capture.finish(&mut self.state, &self.view);
+        result
+    }
+}
+
+/// A navigation's starting position, held by the pane's jump list from
+/// [`Self::begin`] until [`Self::finish`] records it. While held, an edit the
+/// navigation makes to that buffer (leaving Insert trims auto-indent)
+/// carries it, so it still names the text it was captured from.
+#[must_use = "the start stays pending in the pane's jump list until `finish` takes it"]
+struct JumpCapture {
+    pid: PaneId,
+    pre_bid: BufferId,
+    rule: JumpRule,
+    pending: PendingJump,
+}
+
+impl JumpCapture {
+    /// Capture where `t`'s pane stands under `rule`.
+    ///
+    /// An Insert session's typed run on the pane is invalidated here: it
+    /// would otherwise select across text the cursor jumped away from once
+    /// Insert exits. Done before the navigation, since an entry command
+    /// (`i`/`a`/`o`/`c`) has opened its session by the time its own body
+    /// returns and would wipe the pins `begin_typed_run` just installed.
+    fn begin(state: &mut EditorState, view: &EngineView, t: CommandPane, rule: JumpRule) -> Self {
+        let pid = t.pid();
+        let pre_bid = t.bid(view);
+        let entry = match rule {
+            JumpRule::Selections => current_jump_entry(state, view, t),
+            JumpRule::Primary | JumpRule::PrimaryPastThreshold => {
+                let text = state.buffers.get(pre_bid).text();
+                let selections = t.state(&state.panes.entries, view).selections().clone();
+                JumpEntry::new(
+                    EditState::bind(text.clone(), selections)
+                        .keep_primary()
+                        .into_selections(),
+                    text,
+                    pre_bid,
+                )
             }
-            moved
+        };
+        if let Some(insert) = state
+            .input
+            .insert_session_mut()
+            .filter(|s| s.owned_by(pid, pre_bid))
+        {
+            insert.typed_run = None;
         }
-        (_, None) => post_bid != pre_bid,
-    };
-    (result, moved)
+        let pending = state.panes.entries[pid].jumps.begin_pending(entry);
+        Self {
+            pid,
+            pre_bid,
+            rule,
+            pending,
+        }
+    }
+
+    /// Record the start if the pane moved, and return whether it did.
+    ///
+    /// `moved` guards every push: `JumpList::push` truncates forward history
+    /// unconditionally, so a navigation that turned out to be a no-op (`:42`
+    /// already on line 42, `goto-first-line` already on line 1, a search
+    /// confirmed on the match already under the cursor) must not push at
+    /// all. The whole `Selection` is compared, not just its head:
+    /// `select-all` from the buffer's own last char moves only the anchor.
+    /// A pane the navigation closed has no list left to record in.
+    fn finish(self, state: &mut EditorState, view: &EngineView) -> bool {
+        let Self {
+            pid,
+            pre_bid,
+            rule,
+            pending,
+        } = self;
+        let Some(t) = CommandPane::existing(view, pid) else {
+            return false;
+        };
+        let entry = state.panes.entries[pid].jumps.end_pending(pending);
+        let post_bid = t.bid(view);
+        match (rule, entry) {
+            (JumpRule::Selections, Some(entry)) => record_if_moved(state, view, t, entry),
+            (rule @ (JumpRule::Primary | JumpRule::PrimaryPastThreshold), Some(entry)) => {
+                let post = pane_view(state, view, t).primary();
+                let moved = post_bid != pre_bid
+                    || entry.primary_selection(state.buffers.get(pre_bid).text())
+                        != post.selection();
+                if moved
+                    && (rule == JumpRule::Primary
+                        || entry.primary_line.abs_diff(post.head_line())
+                            > state.settings.jump_list_min_lines)
+                {
+                    state.panes.entries[pid].jumps.push(entry);
+                }
+                moved
+            }
+            (_, None) => post_bid != pre_bid,
+        }
+    }
 }
 
 /// Pushes `pre`, a position captured before some navigation however long
 /// ago, when `t`'s buffer or selections have changed since. Returns whether
-/// they did. [`with_jump`]'s `IfMoved` rule, and the one entry point for a
+/// they did. [`with_jump`]'s `Selections` rule, and the one entry point for a
 /// navigation whose start was captured outside a single call (a search
 /// confirmed after many keystrokes).
 pub(in crate::editor) fn record_if_moved(

@@ -59,7 +59,7 @@ fn insert_round_trip(ed: &mut Editor) {
 }
 
 fn switch_to(ed: &mut Editor, bid: BufferId) {
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid);
 }
 
 /// `user/tp`, running `plugin_body`, declared for `languages` and
