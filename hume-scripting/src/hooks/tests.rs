@@ -16,6 +16,18 @@ fn body(id: &str) -> Option<Rc<EntryId>> {
     Some(Rc::new(pid(id)))
 }
 
+fn unscoped() -> BufferVisibility {
+    BufferVisibility::default()
+}
+
+fn scoped(langs: &[&str]) -> BufferVisibility {
+    BufferVisibility::declared(langs.iter().map(|l| l.to_string()).collect())
+}
+
+fn procs<'a>(entries: impl Iterator<Item = &'a HookEntry>) -> Vec<SteelVal> {
+    entries.map(|e| e.handler.proc().value().clone()).collect()
+}
+
 fn keys(ks: &[&str]) -> Option<Box<[String]>> {
     Some(ks.iter().map(|k| k.to_string()).collect())
 }
@@ -24,7 +36,14 @@ fn keys(ks: &[&str]) -> Option<Box<[String]>> {
 #[test]
 fn register_records_activation() {
     let mut reg = HookRegistry::default();
-    reg.register("on-buffer-save", handler(1), body("core:a"), None, false);
+    reg.register(
+        "on-buffer-save",
+        handler(1),
+        body("core:a"),
+        unscoped(),
+        None,
+        false,
+    );
     assert_eq!(
         reg.handlers_for("on-buffer-save")[0].activation.as_deref(),
         Some(&pid("core:a"))
@@ -36,9 +55,23 @@ fn register_records_activation() {
 #[test]
 fn remove_registered_in_removes_only_that_bodys_entries() {
     let mut reg = HookRegistry::default();
-    reg.register("on-buffer-save", handler(1), body("core:a"), None, false);
-    reg.register("on-buffer-save", handler(2), body("core:b"), None, false);
-    reg.register("on-buffer-save", handler(3), None, None, false);
+    reg.register(
+        "on-buffer-save",
+        handler(1),
+        body("core:a"),
+        unscoped(),
+        None,
+        false,
+    );
+    reg.register(
+        "on-buffer-save",
+        handler(2),
+        body("core:b"),
+        unscoped(),
+        None,
+        false,
+    );
+    reg.register("on-buffer-save", handler(3), None, unscoped(), None, false);
 
     reg.remove_registered_in(&pid("core:a"));
 
@@ -58,7 +91,7 @@ fn remove_registered_in_removes_only_that_bodys_entries() {
 #[test]
 fn handlers_are_isolated_per_name() {
     let mut reg = HookRegistry::default();
-    reg.register("on-buffer-save", handler(1), None, None, false);
+    reg.register("on-buffer-save", handler(1), None, unscoped(), None, false);
 
     assert_eq!(reg.handlers_for("on-buffer-save").len(), 1);
     assert!(reg.handlers_for("on-buffer-open").is_empty());
@@ -69,14 +102,14 @@ fn handlers_are_isolated_per_name() {
 #[test]
 fn keyed_entry_matches_only_its_keys() {
     let mut reg = HookRegistry::default();
-    reg.register("ev", handler(1), None, keys(&["a", "b"]), false);
+    reg.register("ev", handler(1), None, unscoped(), keys(&["a", "b"]), false);
 
-    assert_eq!(reg.matching("ev", Some("a")).count(), 1);
-    assert_eq!(reg.matching("ev", Some("b")).count(), 1);
-    assert_eq!(reg.matching("ev", Some("c")).count(), 0);
-    assert_eq!(reg.matching("ev", None).count(), 0);
-    assert!(reg.has_match("ev", Some("a")));
-    assert!(!reg.has_match("ev", Some("c")));
+    assert_eq!(reg.matching("ev", Some("a"), Audience::Everyone).count(), 1);
+    assert_eq!(reg.matching("ev", Some("b"), Audience::Everyone).count(), 1);
+    assert_eq!(reg.matching("ev", Some("c"), Audience::Everyone).count(), 0);
+    assert_eq!(reg.matching("ev", None, Audience::Everyone).count(), 0);
+    assert!(reg.has_match("ev", Some("a"), Audience::Everyone));
+    assert!(!reg.has_match("ev", Some("c"), Audience::Everyone));
 }
 
 /// An unkeyed entry matches every key and a keyless event alike, and sits
@@ -84,17 +117,16 @@ fn keyed_entry_matches_only_its_keys() {
 #[test]
 fn unkeyed_entry_matches_any_key() {
     let mut reg = HookRegistry::default();
-    reg.register("ev", handler(1), None, keys(&["a"]), false);
-    reg.register("ev", handler(2), None, None, false);
+    reg.register("ev", handler(1), None, unscoped(), keys(&["a"]), false);
+    reg.register("ev", handler(2), None, unscoped(), None, false);
 
-    let procs = |key| {
-        reg.matching("ev", key)
-            .map(|e| e.handler.proc().value().clone())
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(procs(Some("a")), vec![SteelVal::IntV(1), SteelVal::IntV(2)]);
-    assert_eq!(procs(Some("z")), vec![SteelVal::IntV(2)]);
-    assert_eq!(procs(None), vec![SteelVal::IntV(2)]);
+    let matched = |key| procs(reg.matching("ev", key, Audience::Everyone));
+    assert_eq!(
+        matched(Some("a")),
+        vec![SteelVal::IntV(1), SteelVal::IntV(2)]
+    );
+    assert_eq!(matched(Some("z")), vec![SteelVal::IntV(2)]);
+    assert_eq!(matched(None), vec![SteelVal::IntV(2)]);
 }
 
 /// Rollback removes a keyed entry like any other, so a failed plugin's
@@ -102,9 +134,73 @@ fn unkeyed_entry_matches_any_key() {
 #[test]
 fn remove_registered_in_drops_keyed_entries() {
     let mut reg = HookRegistry::default();
-    reg.register("ev", handler(1), body("core:a"), keys(&["a"]), false);
+    reg.register(
+        "ev",
+        handler(1),
+        body("core:a"),
+        unscoped(),
+        keys(&["a"]),
+        false,
+    );
 
     reg.remove_registered_in(&pid("core:a"));
 
-    assert!(!reg.has_match("ev", Some("a")));
+    assert!(!reg.has_match("ev", Some("a"), Audience::Everyone));
+}
+
+// ── Language scope ────────────────────────────────────────────────────
+
+#[test]
+fn seeing_skips_an_entry_scoped_to_another_language() {
+    let mut reg = HookRegistry::default();
+    reg.register(
+        "ev",
+        handler(1),
+        body("core:a"),
+        scoped(&["rust"]),
+        None,
+        false,
+    );
+    reg.register("ev", handler(2), body("core:b"), unscoped(), None, false);
+
+    assert_eq!(
+        procs(reg.matching("ev", None, Audience::Seeing(Some("markdown")))),
+        vec![SteelVal::IntV(2)]
+    );
+    assert_eq!(
+        procs(reg.matching("ev", None, Audience::Seeing(Some("rust")))),
+        vec![SteelVal::IntV(1), SteelVal::IntV(2)]
+    );
+}
+
+#[test]
+fn everyone_reaches_every_entry() {
+    let mut reg = HookRegistry::default();
+    reg.register(
+        "ev",
+        handler(1),
+        body("core:a"),
+        scoped(&["rust"]),
+        None,
+        false,
+    );
+    assert_eq!(
+        procs(reg.matching("ev", None, Audience::Everyone)),
+        vec![SteelVal::IntV(1)]
+    );
+}
+
+#[test]
+fn has_match_honours_the_audience() {
+    let mut reg = HookRegistry::default();
+    reg.register(
+        "ev",
+        handler(1),
+        body("core:a"),
+        scoped(&["rust"]),
+        None,
+        false,
+    );
+    assert!(reg.has_match("ev", None, Audience::Seeing(Some("rust"))));
+    assert!(!reg.has_match("ev", None, Audience::Seeing(None)));
 }

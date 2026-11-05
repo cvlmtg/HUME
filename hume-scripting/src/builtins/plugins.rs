@@ -13,8 +13,9 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::{
-    Rooted, SteelCtx,
+    BufferVisibility, Rooted, SteelCtx,
     attribution::{EntryFile, EntryId, Owner, PluginId},
+    host::{EventShape, EventSubject},
     lazy::PluginState,
     plugin_record::{GitRef, LoadCall, Resolution},
 };
@@ -165,8 +166,9 @@ fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
 /// entry could never activate. Every trigger list is validated before any
 /// state is recorded; `#:events` goes through `hooks::event_name_arg`, the
 /// decoder `register-hook!` uses. A plugin's config comes from `load-plugin!`
-/// only. A second declaration of the entry, and a command name that is
-/// already taken or listed twice, raise.
+/// only. A second declaration of the entry, a command name that is
+/// already taken or listed twice, and an `#:events` event about a buffer
+/// beside a `#:languages` that limits the entry, raise.
 pub(crate) fn declare_plugin(
     ctx: &mut SteelCtx,
     name: String,
@@ -218,11 +220,28 @@ pub(crate) fn declare_plugin(
     let typed_cmd_list =
         list_to_strings(typed_commands, &declare_arg_label(ctx, "#:typed-commands"))?;
     let evt_label = declare_arg_label(ctx, "#:events");
-    let evt_list: Vec<String> = list_items(events, &evt_label)?
+    let evt_shapes: Vec<(String, EventShape)> = list_items(events, &evt_label)?
         .iter()
-        .map(|v| super::hooks::event_name_arg(ctx, v, &evt_label).map(|(name, _)| name))
+        .map(|v| super::hooks::event_name_arg(ctx, v, &evt_label))
         .collect::<Result<_, _>>()?;
     let lang_list = list_to_strings(languages, &declare_arg_label(ctx, "#:languages"))?;
+    // Setting a buffer to one of the languages loads the entry, before any
+    // event about that buffer can reach it.
+    if BufferVisibility::limits(&lang_list) {
+        let buffer_events: Vec<&str> = evt_shapes
+            .iter()
+            .filter(|(_, shape)| shape.subject == EventSubject::Buffer)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        if !buffer_events.is_empty() {
+            return Err(generic_err(format!(
+                "'{name}' lists {} in #:events with #:languages: setting one of its \
+                 languages loads it before any event about that buffer; drop it from #:events",
+                buffer_events.join(", ")
+            )));
+        }
+    }
+    let evt_list: Vec<String> = evt_shapes.into_iter().map(|(name, _)| name).collect();
 
     // Malformed name (not a collision) → hard error, same rules as
     // define-command!/define-typed-command!.  A name that can't survive
@@ -274,7 +293,7 @@ pub(crate) fn declare_plugin(
 
     // When the plugin file is absent on disk, it can never be activated:
     // claiming its names in the editor's registry would leave them claimed
-    // with no path to clean them up via drop_activations_for's usual
+    // with no path to clean them up via unregister_lazy_stubs_of's usual
     // load/fail transition. For user/ plugins, log Info, since absent is
     // expected before :plum-install-plugins. For core: plugins, absent means
     // a typo or broken HUME_RUNTIME; PLUM never installs core: plugins, so

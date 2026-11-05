@@ -10,6 +10,7 @@ fn steel_buffer_entry(name: &str) -> BufferSourceEntry {
         resolve: false,
         cancel: None,
         token_chars: "".into(),
+        visibility: Default::default(),
     }
 }
 

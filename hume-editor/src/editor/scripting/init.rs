@@ -160,11 +160,7 @@ impl Editor {
         host: hume_scripting::ScriptingHost,
         snapshot: &mut ReloadSnapshot,
     ) {
-        // Snapshot language activation entries for the post-init lint below:
-        // every eval's effects (identities, grammars, LSP server ops) are
-        // already applied by `load_config`, each right after its own eval, so
-        // `self.state.config.languages` is fully populated by this point.
-        let lang_activations = host.activation_languages();
+        let declared_languages = host.declared_languages();
         self.scripting = Some(host);
         // Every language is registered by now, so the startup buffer and
         // the buffers init.scm opened announce `on-language-set` before
@@ -184,23 +180,25 @@ impl Editor {
                 self.report_unbound_key_command(&name);
             }
         }
-        // Post-init lint: warn on #:languages activation entries whose language name
-        // is not in the final LanguageRegistry.  Runs after the message flush above
-        // so both languages.scm and init.scm's own define-language! calls are visible.
-        // Uses defined_id() (identity or grammar registered), not has_grammar() (grammar
-        // attached): an activation entry is valid for any defined language even without a
-        // grammar.  Not a hard error: inert but harmless, and language sets are
-        // open/dynamic (a future define-language! + reload may make the name valid).
-        for (lang, plugins) in &lang_activations {
+        // Post-init lint: warn on a #:languages name that is not in the final
+        // LanguageRegistry.  Runs after the message flush above so both
+        // languages.scm and init.scm's own define-language! calls are visible.
+        // Uses defined_id() (identity or grammar registered), not has_grammar()
+        // (grammar attached): a #:languages name is valid for any defined
+        // language, grammar or not.  Not a hard error: language sets are
+        // open/dynamic (a future define-language! + reload may make the name
+        // valid), but until then the entry neither activates on nor acts in
+        // a buffer of that name.
+        for (plugin, langs) in &declared_languages {
             // "*" is the any-language wildcard (manifest.scm can't enumerate every
             // language it might ever support), not a language identity to look up.
-            if lang != "*" && self.state.config.languages.defined_id(lang).is_none() {
-                for plugin in plugins {
+            for lang in langs.iter().filter(|lang| *lang != "*") {
+                if self.state.config.languages.defined_id(lang).is_none() {
                     self.report(
                         Severity::Warning,
                         format!(
-                            "plugin '{plugin}' declares #:languages activation for unknown \
-                             language '{lang}': typo, or missing (define-language!)?"
+                            "plugin '{plugin}' declares unknown language '{lang}' in \
+                             #:languages: typo, or missing (define-language!)?"
                         ),
                     );
                 }

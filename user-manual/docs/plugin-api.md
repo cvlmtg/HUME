@@ -116,7 +116,7 @@ Don't compare `'commit` values: hashes have no order.
 
 | Call | Effect |
 |------|--------|
-| `declare-plugin!` | `(declare-plugin! name [#:entry file] [#:commands names] [#:typed-commands names] [#:events events] [#:languages languages])`{.sig} Declare the triggers that load a plugin lazily: in its own `manifest.scm`, or in `init.scm` for a local `./file.scm` or to give an installed plugin custom triggers. `#:entry` names another file of the plugin to load on its own triggers. Raise cases are listed below the table |
+| `declare-plugin!` | `(declare-plugin! name [#:entry file] [#:commands names] [#:typed-commands names] [#:events events] [#:languages languages])`{.sig} Declare the triggers that load a plugin lazily: in its own `manifest.scm`, or in `init.scm` for a local `./file.scm` or to give an installed plugin custom triggers. `#:entry` names another file of the plugin to load on its own triggers. `#:languages` also limits the buffers that file's hooks, `'buffer` completion sources, `(buffers)` and `(panes)` reach to those languages; `"*"` limits nothing. Raise cases are listed below the table |
 | `load-plugin!` | `(load-plugin! name [#:config hash] [#:ref ref])`{.sig} Bring in an installed or core plugin: lazily when it ships a `manifest.scm`, at startup otherwise. `#:config`, a hash with symbol keys, is the only way to pass configuration; `#:ref` pins an installed plugin to a tag, branch or commit (see [Pinning a version](plugins.md#pinning-a-version)). Raise cases are listed below the table |
 | `resolve-plugin-path` | `(resolve-plugin-path name)`{.sig} The path of an installed plugin's `plugin.scm` if it exists on disk, else `#f`; raises for a malformed name and for a local `./file.scm` name |
 | `loaded-plugins` | `(loaded-plugins)`{.sig} A list of the names of the plugins whose `plugin.scm` has finished loading, local files included; a plugin with only another `#:entry` file loaded is not listed |
@@ -131,6 +131,7 @@ Don't compare `'commit` values: hashes have no order.
 - `#:entry` on a local `./file.scm`, or `#:config` (configuration comes only from `load-plugin!`);
 - an entry declared twice, or a declaration after the plugin's `load-plugin!`;
 - a command name already taken, or listed twice;
+- an event about a buffer in `#:events` together with a `#:languages` list that does not include `"*"`;
 - an installed plugin that has no file for the entry;
 - in a `manifest.scm`, a declaration of any plugin but the manifest's own.
 
@@ -196,10 +197,10 @@ Only `buffer-key`, `buffer-live?`, `pane-live?`, `diagnostic-counts`, and `diagn
 | Call | Pane | Effect |
 |------|------|--------|
 | `focused-pane` |  | `(focused-pane)`{.sig} The pane focused right now, paired with its buffer: a live read, for code with no pane of its own, such as a response callback or a timer |
-| `buffers` |  | `(buffers)`{.sig} A list of every open buffer, as pane-less pane values, in the order they were opened |
+| `buffers` |  | `(buffers)`{.sig} A list of every open buffer the calling plugin works in (all of them unless it was declared with `#:languages`), as pane-less pane values, in the order they were opened |
 | `buffer-live?` |  | `(buffer-live? pane)`{.sig} `#t` if `pane`'s buffer is still open, `#f` otherwise; never raises. A timer, debounce, or async callback whose captured value may have closed should check this before calling anything that raises on a closed buffer |
 | `pane-live?` |  | `(pane-live? pane)`{.sig} `#t` if `pane` names a pane that still exists and still shows its own buffer, `#f` otherwise (including for a value that carries no pane); never raises. Use it like `buffer-live?`, in a callback that calls a pane-aware editor function such as `lsp-request!` |
-| `panes` |  | `(panes)`{.sig} A list of every open pane, including panes in other tabs |
+| `panes` |  | `(panes)`{.sig} A list of every open pane on a buffer the calling plugin works in (all of them unless it was declared with `#:languages`), including panes in other tabs |
 | `buffer-panes` |  | `(buffer-panes pane)`{.sig} Every pane showing `pane`'s buffer: the focused pane first if it shows that buffer, then the rest of the active tab, then other tabs. `(car (buffer-panes pane))` is the default pick when you need *some* pane on the buffer |
 | `buffer-key` |  | `(buffer-key pane)`{.sig} An opaque, comparable value naming only `pane`'s buffer: pane values for the same buffer give equal keys, whatever pane they carry, if any. Use it, not the pane value, to key a hash table of per-buffer plugin state |
 | `buffer-path` |  | `(buffer-path pane)`{.sig} The buffer's absolute path, or `#f` for an unsaved buffer |

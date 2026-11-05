@@ -84,6 +84,13 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             by: buffer.language_by,
         }
     }
+    fn buffer_visible_to(
+        &self,
+        id: BufferId,
+        visibility: &hume_scripting::BufferVisibility,
+    ) -> bool {
+        self.state.buffer_visible_to(id, visibility)
+    }
 
     // ── Working directory ────────────────────────────────────────────────────
     fn cwd(&self) -> AbsolutePath {

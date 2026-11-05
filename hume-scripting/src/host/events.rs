@@ -11,6 +11,17 @@ pub struct EventShape {
     /// event takes `args` and counts as finished when it returns, or takes
     /// one more, `done`, and holds the raiser until it calls `(done)`.
     pub held: bool,
+    pub subject: EventSubject,
+}
+
+/// What an event is about.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EventSubject {
+    /// One buffer: a plugin declared with `#:languages` hears of it only
+    /// for buffers of those languages (`crate::visibility`).
+    Buffer,
+    /// The editor as a whole: every handler hears of it.
+    Editor,
 }
 
 /// Event-name introspection, accessed through [`EditorHost::events`](super::EditorHost::events).

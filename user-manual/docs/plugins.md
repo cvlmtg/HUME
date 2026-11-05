@@ -58,7 +58,7 @@ A commit id can be the short form `git log --oneline` shows, as long as the comm
 :plugin-status
 ```
 
-Shows one row per plugin entry: whether it is declared (waiting), loaded or failed, and for a declared entry the commands, events and languages still waiting to trigger it. A plugin that loads in pieces has a row for each file, and a local file shows under its `./` path. A plugin named in `init.scm` but not installed shows as `absent`, so you can tell what `:plum-install-plugins` still has to fetch.
+Shows one row per plugin entry: whether it is declared (waiting), loaded or failed, for a declared entry the commands, events and languages still waiting to trigger it, and for a loaded entry the languages it works in. A plugin that loads in pieces has a row for each file, and a local file shows under its `./` path. A plugin named in `init.scm` but not installed shows as `absent`, so you can tell what `:plum-install-plugins` still has to fetch.
 
 ## Recovering from a failed plugin
 
@@ -100,16 +100,16 @@ A directory with neither `manifest.scm` nor `plugin.scm` is an error. A missing 
   (load-plugin! "cvlmtg/grep.hume")
   ; typing :grep the first time loads cvlmtg/grep.hume, then runs grep
   ```
-- **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
-- **`#:languages`**: buffer language names that trigger loading when a buffer's language is set to one of them. Detection only finds languages HUME already knows, so for a language a plugin defines itself, put the `define-language!` in your `init.scm` (see [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language)) and let the plugin load lazily on that name.
+- **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`). Next to `#:languages` it takes only hooks that are about no buffer, such as `on-focus-gained`, unless the languages include `"*"`: a hook about a buffer raises an error, since setting the buffer's language loads the plugin first.
+- **`#:languages`**: buffer language names that trigger loading when a buffer's language is set to one of them. Once loaded, the plugin works only in buffers of those languages: in any other buffer its hooks and completions stay silent, as if the buffer were not open. Its commands still run anywhere. `'("*")` loads the plugin for any language and limits nothing. Detection only finds languages HUME already knows, so for a language a plugin defines itself, put the `define-language!` in your `init.scm` (see [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language)) and let the plugin load lazily on that name.
 
 A plugin that already has a declared entry keeps those triggers when `load-plugin!` runs: the manifest is not read and the plugin stays lazy. Put `load-plugin!` right after the `declare-plugin!`, because a plugin that activates during startup before its `load-plugin!` line sees an empty config. A `declare-plugin!` placed after the plugin's `load-plugin!` raises an error.
 
-For example, to start `core:lsp` only for Rust buffers, or when you use one of its commands:
+For example, to use `core:lsp` only in Rust buffers, and load it when you use one of its commands:
 
 ```scheme
 (declare-plugin! "core:lsp"
-  #:languages '("rust")   ; only activate for languages you name here
+  #:languages '("rust")   ; load for, and work in, only the languages you name here
   #:commands '("lsp/hover" "lsp/goto-definition" "lsp/goto-declaration"
                "lsp/goto-type-definition" "lsp/goto-implementation" "lsp/references"
                "lsp/goto-next-diagnostic" "lsp/goto-prev-diagnostic"
@@ -120,6 +120,8 @@ For example, to start `core:lsp` only for Rust buffers, or when you use one of i
                       "toggle-inlay-hints"))
 (load-plugin! "core:lsp")
 ```
+
+Opening a file of another language still starts the servers its [server list](lsp.md#choosing-which-server-a-language-uses) names, but that buffer shows no diagnostic marks, completions or inlay hints from them. `core:lsp`'s commands, such as `lsp/hover`, still work there.
 
 ::: warning
 `#:events '(on-lsp-attach)` by itself never activates the plugin: no server attaches before the plugin loads, so the event never fires. List the languages you want servers for in `#:languages`, or list the commands in `#:commands`/`#:typed-commands` (as above).

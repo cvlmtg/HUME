@@ -6,6 +6,7 @@ use hume_core::{BufferId, OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
 
 use super::ShownHandle;
+use crate::BufferVisibility;
 
 /// One revision of a buffer's undo history, as `(buffer-undo-tree pane)`
 /// reports it. `id` and `parent` are the raw integers Steel sees; the only
@@ -79,6 +80,9 @@ pub trait BufferHost {
     /// Language stored on the buffer, not counting a pending
     /// `set-buffer-option!` `"language"`. The default for an unknown id.
     fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage;
+    /// Whether `visibility` sees buffer `id` by the language the buffer
+    /// has now; `false` for an unknown id.
+    fn buffer_visible_to(&self, id: BufferId, visibility: &BufferVisibility) -> bool;
 
     // ── Working directory and search path ───────────────────────────────────
     /// The editor's working directory: the base for relative paths and the

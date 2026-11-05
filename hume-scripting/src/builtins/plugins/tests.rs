@@ -132,6 +132,51 @@ fn declare_plugin_rejected_events_records_nothing() {
     );
 }
 
+/// A `#:languages` that limits the plugin loads it when a buffer of those
+/// languages gets its language, before any event about that buffer, so an
+/// event about a buffer in `#:events` could never be what loads it.
+#[test]
+fn declare_plugin_rejects_a_buffer_event_with_limiting_languages() {
+    use crate::ScriptingHost;
+    use crate::null_host::CommandStoreHost;
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
+    let mut editor_host = CommandStoreHost::default();
+    let err = host
+        .eval_source(
+            r#"(declare-plugin! "user/tp"
+                 #:events '(on-lsp-notification on-buffer-save on-buffer-open)
+                 #:languages '("rust"))"#,
+            &mut editor_host,
+        )
+        .expect_err("a buffer event beside a limiting #:languages must be rejected");
+    assert!(
+        err.contains("on-buffer-save, on-buffer-open") && !err.contains("on-lsp-notification"),
+        "the error must name the buffer events only; got: {err}"
+    );
+    assert!(
+        !host.declared_plugins().iter().any(|d| d == "user/tp"),
+        "a rejected declaration must not be recorded: {:?}",
+        host.declared_plugins()
+    );
+}
+
+/// An event about no buffer can load a plugin `#:languages` limits, and a
+/// list naming `"*"` limits nothing.
+#[test]
+fn declare_plugin_accepts_events_its_languages_do_not_preempt() {
+    use crate::ScriptingHost;
+    use crate::null_host::CommandStoreHost;
+    for src in [
+        r#"(declare-plugin! "user/one" #:events '(on-lsp-notification) #:languages '("rust"))"#,
+        r#"(declare-plugin! "user/two" #:events '(on-buffer-save) #:languages '("rust" "*"))"#,
+    ] {
+        let mut host = ScriptingHost::for_testing(&Dirs::none());
+        let mut editor_host = CommandStoreHost::default();
+        let result = host.eval_source(src, &mut editor_host);
+        assert!(result.is_ok(), "{src}: {result:?}");
+    }
+}
+
 // ── Command-name character validation ─────────────────────────────────────
 
 /// `declare-plugin!` hard-errors on a malformed name, under the rules

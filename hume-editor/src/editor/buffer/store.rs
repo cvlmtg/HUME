@@ -277,6 +277,14 @@ impl BufferStore {
         }
     }
 
+    /// Forget what every buffer's plugins were told: a fresh Steel engine
+    /// has been told nothing.
+    pub(in crate::editor) fn reset_plugin_views_all(&mut self) {
+        for buf in self.buffers.values_mut() {
+            buf.plugin_view = super::PluginView::default();
+        }
+    }
+
     /// Remove `id` from the store.
     pub(in crate::editor) fn close(&mut self, id: BufferId) {
         self.buffers.remove(id);

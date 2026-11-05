@@ -38,6 +38,7 @@ fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
             resolve: false,
             cancel: Some(hume_scripting::Callback::for_test(SteelVal::Void)),
             token_chars: "".into(),
+            visibility: Default::default(),
         });
     }
     reg
@@ -384,6 +385,7 @@ fn dotted_session_with(
         resolve: false,
         cancel: None,
         token_chars: "".into(),
+        visibility: Default::default(),
     });
     let (mut session, text) = buffer_session("> foo.ba\n");
     let id = session.invoke(
@@ -749,6 +751,7 @@ fn a_sources_token_chars_decide_what_typing_at_the_end_does() {
         resolve: false,
         cancel: None,
         token_chars: "-".into(),
+        visibility: Default::default(),
     });
     let (mut session, text) = buffer_session("fo\n");
     invoke_and_answer(&mut session, &reg, id_of(&reg, "plain"), &text, 0, &["foo"]);
@@ -1022,6 +1025,7 @@ fn a_source_without_a_cancel_gets_no_call() {
         resolve: false,
         cancel: None,
         token_chars: "".into(),
+        visibility: Default::default(),
     });
     let (mut session, text) = buffer_session("foo\n");
     buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);

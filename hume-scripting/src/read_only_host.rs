@@ -258,6 +258,12 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage {
         self.inner.borrow_mut().buffers().buffer_stored_language(id)
     }
+    fn buffer_visible_to(&self, id: BufferId, visibility: &crate::BufferVisibility) -> bool {
+        self.inner
+            .borrow_mut()
+            .buffers()
+            .buffer_visible_to(id, visibility)
+    }
     fn cwd(&self) -> AbsolutePath {
         self.inner.borrow_mut().buffers().cwd()
     }

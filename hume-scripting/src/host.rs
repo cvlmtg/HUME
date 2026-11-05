@@ -40,7 +40,7 @@ pub use decorations::{
 };
 pub use diff::DiffHost;
 pub use edits::{CharTextEdit, EditHost, WireTextEdit};
-pub use events::{EventHost, EventShape};
+pub use events::{EventHost, EventShape, EventSubject};
 pub use language::LanguageHost;
 pub use lsp::{
     LocationPlace, LspHost, Place, PlaceCol, PositionParams, RangeParams, RangesParams,

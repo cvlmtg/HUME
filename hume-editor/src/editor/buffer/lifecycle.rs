@@ -288,6 +288,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     state.lsp_buffer_closing(ev, id);
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = state.buffers.get(id).open_announced;
+    let language = state.buffers.get(id).plugin_view.language.clone();
     let opened = close_buffer(state, ev, id);
     // The last-buffer branch fired: a fresh scratch buffer was allocated in
     // `id`'s place and must announce its own `OnBufferOpen` like any other
@@ -297,7 +298,10 @@ pub(in crate::editor) fn close_buffer_and_notify(
     }
     if open_announced {
         // Fire with the ID that was closed, not the new current buffer.
-        state.queue_event(EditorEvent::OnBufferClose { buffer: id });
+        state.queue_event(EditorEvent::OnBufferClose {
+            buffer: id,
+            language,
+        });
     }
     Ok(())
 }

@@ -73,23 +73,24 @@ impl Editor {
     }
 
     /// Activate every still-`Declared` lazy plugin registered for the event
-    /// named `name`.
+    /// named `name`, and return whether any plugin body ran: one can close
+    /// the buffer the event is about.
     ///
-    /// Called by `settle`'s `Event` arm for each queued event, before the
-    /// handler check, so a plugin's `register-hook!` handlers are installed
-    /// before the hook fires.
-    pub(in crate::editor) fn activate_lazy_event_plugins(&mut self, name: &str) {
+    /// Called before an event's handlers are looked up, so a plugin's
+    /// `register-hook!` handlers are installed before the hook fires.
+    pub(in crate::editor) fn activate_lazy_event_plugins(&mut self, name: &str) -> bool {
         let pending = match self.scripting.as_ref() {
             Some(host) => {
                 let plugins = host.activation_event_plugins(name);
                 if plugins.is_empty() {
-                    return;
+                    return false;
                 }
                 plugins
             }
-            None => return,
+            None => return false,
         };
         self.activate_pending_plugins(pending, &format!("by event '{name}'"));
+        true
     }
 
     /// Activate every still-`Declared` lazy plugin registered for language `lang`.

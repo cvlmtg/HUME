@@ -22,6 +22,7 @@ use super::error::CommandError;
 use super::event::{BEFORE_BUFFER_SAVE, HeldEvent};
 use super::timer_bridge::TimerPayload;
 use hume_core::TimerId;
+use hume_scripting::Audience;
 
 /// Names the writes of one `:wa`.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -264,9 +265,18 @@ impl Editor {
         force: bool,
         after: AfterWrite,
     ) -> Result<(), CommandError> {
-        let reaches_own_file =
-            WriteKind::classify(self.state.buffers.get(bid), arg).reaches_own_file();
-        if !(reaches_own_file && self.has_event_handlers(BEFORE_BUFFER_SAVE, None)) {
+        if !WriteKind::classify(self.state.buffers.get(bid), arg).reaches_own_file() {
+            return write_and_continue(self, bid, arg, force, after);
+        }
+        // Activated first, so their handlers count below. A body can close
+        // the buffer, which drops the save as a close while it waits does.
+        if self.activate_lazy_event_plugins(BEFORE_BUFFER_SAVE)
+            && self.state.buffers.try_get(bid).is_none()
+        {
+            return Ok(());
+        }
+        let language = self.state.buffers.get(bid).plugin_view.language.as_deref();
+        if !self.has_event_handlers(BEFORE_BUFFER_SAVE, None, Audience::Seeing(language)) {
             return write_and_continue(self, bid, arg, force, after);
         }
         if self.state.pending_writes.contains(bid) {
@@ -362,7 +372,12 @@ impl Editor {
         let event = HeldEvent::OnBeforeBufferSave { target };
         let name = event.name();
         let args = event.into_steel_args();
-        let Some(handlers) = self.scripting.as_ref().map(|s| s.held_handlers(name)) else {
+        let language = self.state.buffers.get(bid).plugin_view.language.as_deref();
+        let Some(handlers) = self
+            .scripting
+            .as_ref()
+            .map(|s| s.held_handlers(name, Audience::Seeing(language)))
+        else {
             self.state.pending_writes.release(bid);
             self.commit_ready_writes();
             return;

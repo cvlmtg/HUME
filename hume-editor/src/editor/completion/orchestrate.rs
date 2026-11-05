@@ -14,14 +14,16 @@
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
 //! called again as the user types.
 
-use hume_core::{AnswerEnd, BufferId, HostToken, PaneId, Severity};
+use hume_core::{AnswerEnd, HostToken, PaneId, Severity};
 use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 use hume_scripting::SteelCall;
 use hume_scripting::host::{EmittedWord, token_to_steel};
 use steel::rvals::SteelVal;
 
-use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
+use super::registry::{
+    BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry, VisibleSources,
+};
 use super::session::{
     BufferSession, EndingSession, Invocation, LiveDoc, MinibufSession, Reconciled,
 };
@@ -38,11 +40,13 @@ use crate::editor::settings::{CommandCompletion, EditorSettings};
 /// What set an Insert-mode trigger in motion, and so which sources it
 /// invokes.
 pub(in crate::editor) enum Trigger {
-    /// Ctrl-Space / the `completion-trigger` command: every `Buffer` source.
+    /// Ctrl-Space / the `completion-trigger` command: every `Buffer` source
+    /// that acts on the buffer's language.
     /// An interactive input, so it carries the proof it may open now.
     Explicit(Interactive),
-    /// A char landed in Insert mode: these `Buffer` sources
-    /// `(set-completion-triggers! …)` registered it for
+    /// A char landed in Insert mode: these `Buffer` sources, of those that
+    /// act on the buffer's language, `(set-completion-triggers! …)`
+    /// registered it for
     /// (`EditorState::triggered_by`). Separate from `set-hook-triggers!`'s
     /// sets, which only feed the generic `on-trigger-char` hook.
     Sources(Vec<BufferSourceId>),
@@ -144,9 +148,10 @@ impl EditorState {
             Trigger::Explicit(_) => (self.config.completion_sources.buffer_sources(), true),
             Trigger::Sources(ids) => (ids, false),
         };
-        if ids.is_empty() {
+        let visible = self.config.completion_sources.visible_in(ids, bid, self);
+        if visible.is_empty() {
             if explicit {
-                self.report(Severity::Info, "no completion sources registered");
+                self.report(Severity::Info, "no completion sources for this buffer");
             }
             return;
         }
@@ -169,8 +174,8 @@ impl EditorState {
             &self.buffers,
             &self.settings,
             &mut session,
-            &ids,
-            (pid, bid),
+            &visible,
+            pid,
             head.offset(),
         );
         self.queue_source_calls(calls);
@@ -226,14 +231,19 @@ impl EditorState {
             Reconciled::Unchanged => {}
             Reconciled::Changed { text_changed } => {
                 if text_changed {
-                    let to_reinvoke = session.sources_to_reinvoke();
+                    let ids = session.sources_to_reinvoke();
+                    let to_reinvoke = self.config.completion_sources.visible_in(ids, bid, self);
+                    let session = self
+                        .input
+                        .buffer_completion_mut()
+                        .expect("found above and not removed since");
                     let calls = invoke_buffer_sources(
                         &self.config.completion_sources,
                         &self.buffers,
                         &self.settings,
                         session,
                         &to_reinvoke,
-                        (pid, bid),
+                        pid,
                         head,
                     );
                     self.queue_source_calls(calls);
@@ -558,8 +568,9 @@ impl EditorState {
     }
 }
 
-/// Mints one invocation per source in `ids` into `session` and returns the
-/// Steel calls to queue, each with its request id. Each source's token is the run before the cursor
+/// Mints one invocation per source of `visible` into `session`, for its
+/// buffer shown in pane `pid`, and returns the Steel calls to queue, each
+/// with its request id. Each source's token is the run before the cursor
 /// of its own token characters (`BufferSourceEntry::token_chars_over`). Every `Buffer` source is Steel, by design (see
 /// `registry.rs`'s module doc). Takes the fields it needs rather than
 /// `&mut EditorState` so a caller can hand it a session still borrowed
@@ -569,15 +580,18 @@ fn invoke_buffer_sources(
     buffers: &BufferStore,
     settings: &EditorSettings,
     session: &mut BufferSession,
-    ids: &[BufferSourceId],
-    (pid, bid): (PaneId, BufferId),
+    visible: &VisibleSources,
+    pid: PaneId,
     head: CharOffset,
 ) -> Vec<(HostToken, SteelCall)> {
+    let bid = visible.buffer();
     let buf = buffers.get(bid);
     let text = buf.text();
     let word_chars = buf.overrides.word_chars(settings);
     let pane = hume_core::PaneHandle::with_pane(bid, pid);
-    ids.iter()
+    visible
+        .ids()
+        .iter()
         .map(|&id| {
             let entry = sources.buffer_get(id);
             let start = entry.token_start(text, head, word_chars);

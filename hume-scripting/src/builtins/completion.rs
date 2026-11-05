@@ -180,6 +180,10 @@ pub(crate) fn register_completion_source(
             priority,
             resolve,
             token_chars,
+            visibility: ctx
+                .registries
+                .lazy_registry
+                .visibility_of(&proc.provenance().owner),
         },
         CompletionSourceTarget::Minibuf => crate::host::PendingTarget::Minibuf,
     };

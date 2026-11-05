@@ -32,6 +32,7 @@ impl crate::editor::Editor {
                 priority,
                 resolve,
                 token_chars,
+                visibility,
             } => self
                 .state
                 .config
@@ -44,6 +45,7 @@ impl crate::editor::Editor {
                     resolve,
                     cancel: reg.cancel,
                     token_chars: token_chars.into(),
+                    visibility,
                 }),
             hume_scripting::PendingTarget::Minibuf => self
                 .state

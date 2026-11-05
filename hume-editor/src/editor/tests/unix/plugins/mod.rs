@@ -5,6 +5,7 @@ mod dispatch_parity;
 mod event_and_declare;
 mod keymap_and_language_lint;
 mod language_activation;
+mod language_scope;
 mod lazy_activation;
 mod manifest_e2e;
 mod stdlib_plugin;

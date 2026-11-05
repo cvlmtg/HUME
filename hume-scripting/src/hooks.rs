@@ -16,6 +16,7 @@ use rustc_hash::FxHashMap;
 
 use crate::Callback;
 use crate::attribution::EntryId;
+use crate::visibility::{Audience, BufferVisibility};
 
 // ── HookRegistry ──────────────────────────────────────────────────────────────
 
@@ -24,6 +25,9 @@ use crate::attribution::EntryId;
 /// `activation` is the plugin body that was running when it was registered
 /// (`None`: none was), which removes it if that body fails; see
 /// `remove_registered_in`.
+///
+/// `visibility` is the buffers its owner acts on, which an [`Audience`]
+/// reads.
 ///
 /// `keys` narrows the entry to events carrying one of those keys (the
 /// editor decides what an event's key is: an LSP notification's method).
@@ -37,16 +41,18 @@ use crate::attribution::EntryId;
 pub(crate) struct HookEntry {
     pub(crate) handler: Callback,
     pub(crate) activation: Option<Rc<EntryId>>,
+    visibility: BufferVisibility,
     pub(crate) keys: Option<Box<[String]>>,
     pub(crate) takes_done: bool,
 }
 
 impl HookEntry {
-    fn matches(&self, key: Option<&str>) -> bool {
-        match &self.keys {
+    fn matches(&self, key: Option<&str>, audience: Audience<'_>) -> bool {
+        let keyed = match &self.keys {
             None => true,
             Some(keys) => key.is_some_and(|k| keys.iter().any(|x| x == k)),
-        }
+        };
+        keyed && audience.admits(&self.visibility)
     }
 }
 
@@ -57,13 +63,15 @@ pub(crate) struct HookRegistry {
 }
 
 impl HookRegistry {
-    /// Append `handler` (narrowed to `keys`, registered while
-    /// `activation`'s body ran) to the handler list for `name`.
+    /// Append `handler` (narrowed to `keys` and to the buffers
+    /// `visibility` sees, registered while `activation`'s body ran) to the
+    /// handler list for `name`.
     pub(crate) fn register(
         &mut self,
         name: &str,
         handler: Callback,
         activation: Option<Rc<EntryId>>,
+        visibility: BufferVisibility,
         keys: Option<Box<[String]>>,
         takes_done: bool,
     ) {
@@ -73,6 +81,7 @@ impl HookRegistry {
             .push(HookEntry {
                 handler,
                 activation,
+                visibility,
                 keys,
                 takes_done,
             });
@@ -84,23 +93,25 @@ impl HookRegistry {
         self.handlers.get(name).map(Vec::as_slice).unwrap_or(&[])
     }
 
-    /// The entries for `name` that fire for an event carrying `key`, in
-    /// registration order.
+    /// The entries for `name` that fire for an event carrying `key`
+    /// delivered to `audience`, in registration order.
     pub(crate) fn matching<'a>(
         &'a self,
         name: &str,
         key: Option<&'a str>,
+        audience: Audience<'a>,
     ) -> impl Iterator<Item = &'a HookEntry> {
         self.handlers
             .get(name)
             .into_iter()
             .flatten()
-            .filter(move |e| e.matches(key))
+            .filter(move |e| e.matches(key, audience))
     }
 
-    /// `true` if at least one entry for `name` fires for `key`.
-    pub(crate) fn has_match(&self, name: &str, key: Option<&str>) -> bool {
-        self.matching(name, key).next().is_some()
+    /// `true` if at least one entry for `name` fires for `key` delivered to
+    /// `audience`.
+    pub(crate) fn has_match(&self, name: &str, key: Option<&str>, audience: Audience<'_>) -> bool {
+        self.matching(name, key, audience).next().is_some()
     }
 
     /// Remove every handler registered while `activation`'s body ran,

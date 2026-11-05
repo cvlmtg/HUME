@@ -115,8 +115,8 @@ fn failed_secondary_entry_keeps_the_main_entrys_footprint() {
         Some(CommandProc::Mappable(_))
     ));
     assert!(store.defined_command("extra-cmd").is_none());
-    assert!(host.has_hook_handlers("on-buffer-save", None));
-    assert!(!host.has_hook_handlers("on-buffer-open", None));
+    assert!(host.has_hook_handlers("on-buffer-save", None, crate::Audience::Everyone));
+    assert!(!host.has_hook_handlers("on-buffer-open", None, crate::Audience::Everyone));
 }
 
 #[test]

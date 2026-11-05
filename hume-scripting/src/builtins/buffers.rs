@@ -36,26 +36,36 @@ pub(crate) fn focused_pane(ctx: &mut SteelCtx) -> SteelResult {
 
 // ── Enumeration builtins ───────────────────────────────────────────────────────
 
-/// `(buffers)` → list of every open buffer, as `(bid . #f)`-paned handles
-/// (no pane of its own) in open-order.
+/// `(buffers)` → list of every open buffer the calling code acts on
+/// (`crate::visibility`), as `(bid . #f)`-paned handles (no pane of its
+/// own) in open-order.
 pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
-    let list = ctx
-        .host
-        .buffers()
-        .buffer_ids()
+    let ids = ctx.host.buffers().buffer_ids();
+    let sees = caller_sees(ctx);
+    let list = ids
         .into_iter()
+        .filter(|&id| sees(id))
         .map(|id| SteelPane(PaneHandle::buffer_only(id)).into_steel_val());
     Ok(list_of(list))
 }
 
-/// `(panes)` → list of every open pane, across every tab, including panes
-/// in inactive tabs, not just the ones currently on screen.
+/// Whether the calling code acts on a buffer (`crate::visibility`), judged
+/// by the language the buffer has now.
+fn caller_sees<'a>(ctx: &'a mut SteelCtx) -> impl Fn(BufferId) -> bool + 'a {
+    let visibility = ctx.registries.lazy_registry.visibility_of(ctx.owner());
+    let host = ctx.host.buffers();
+    move |id| host.buffer_visible_to(id, &visibility)
+}
+
+/// `(panes)` → list of every open pane on a buffer the calling code acts
+/// on (`crate::visibility`), across every tab, including panes in inactive
+/// tabs, not just the ones currently on screen.
 pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
-    let list = ctx
-        .host
-        .buffers()
-        .panes()
+    let panes = ctx.host.buffers().panes();
+    let sees = caller_sees(ctx);
+    let list = panes
         .into_iter()
+        .filter(|h| sees(h.buffer()))
         .map(|h| SteelPane(h).into_steel_val());
     Ok(list_of(list))
 }

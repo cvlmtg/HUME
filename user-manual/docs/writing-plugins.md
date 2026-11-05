@@ -348,6 +348,8 @@ Closing the buffer while its save waits drops the save; `:reload-config` lets it
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within one command fires neither.
 
+A plugin declared with `#:languages` (see [Shipping a manifest](#shipping-a-manifest)) hears only about buffers of those languages: none of its hooks fire for any other buffer. The hooks about no buffer (`on-focus-gained`, `on-mode-change`, `on-option-change` and `on-lsp-notification`) fire as usual. When a buffer's language changes to one in the list, the plugin gets `on-language-set` and then `on-buffer-open` for it, as for a buffer just opened. When it changes to one outside the list, the plugin gets `on-buffer-close`, as for a buffer just closed. So the pairing above holds for each plugin.
+
 `on-text-changed` covers edits, undo, redo, `:e!` reload, and refreshes of read-only view buffers (`:messages`, `:plugin-status`). Those buffers have no file, so a handler that looks up a path must handle a missing one. All changes one command makes (a multi-cursor edit, a macro, a paste) fire it once, but each keystroke while typing is its own command and fires on its own. To react only after typing settles, pair it with `debounce`.
 
 `changes` is `#f` after a refresh of a read-only view buffer, and after a long run of edits, or edits that change a lot of text, since the previous fire. Treat `#f` as "anything may have changed" and rebuild from the whole buffer. A debounced handler runs once for several fires and sees only the last one's `changes`. To get everything, keep the `(buffer-generation pane)` value from when you last caught up and pass it to `buffer-changes-since`.
@@ -519,7 +521,7 @@ If the user keeps typing or closes the menu before `git` answers, the request is
 
 ### Source options
 
-- **`#:target`** (required): `'buffer` serves Insert mode and calls `(proc id pane prefix)`; its token is the run of word characters before the cursor. `'minibuf` serves the `:` and `|` prompts and calls `(proc id input cursor)`, with `input` the whole line and `cursor` counted in characters; its token is the whitespace-delimited argument the cursor is in, unless the answer names its own with `#:span`. The token is what items are matched against and what accepting one replaces.
+- **`#:target`** (required): `'buffer` serves Insert mode and calls `(proc id pane prefix)`, only in buffers of the languages a plugin declared with `#:languages` works in (see [Shipping a manifest](#shipping-a-manifest)); its token is the run of word characters before the cursor. `'minibuf` serves the `:` and `|` prompts and calls `(proc id input cursor)`, with `input` the whole line and `cursor` counted in characters; its token is the whitespace-delimited argument the cursor is in, unless the answer names its own with `#:span`. The token is what items are matched against and what accepting one replaces.
 - **`#:match`**: how items are scored against the token. `'fuzzy` (default) keeps items containing the typed characters in order, not necessarily adjacent. `'string` keeps only items that start with the token, all scored equally, so once something is typed, fuzzy matches from other sources rank above them. `'delegated` treats the answer as already filtered and keeps the source's own order.
 - **`#:priority`** (`'buffer` sources only, default `0`): breaks score ties between sources, higher first.
 - **`#:token-chars`** (`'buffer` sources only, default `""`): characters added to the token on top of the buffer's `word-chars`. With `#:token-chars "-$"`, `foo-bar` is one token: it is what `prefix` holds and what accepting an item replaces, and typing `-` keeps the menu open. It cannot contain whitespace.
@@ -737,7 +739,9 @@ A plugin that ships a `manifest.scm` next to its main file is lazy. The manifest
 
 A plugin with no `manifest.scm` loads eagerly. A user who wants different triggers declares them before their `load-plugin!` line (see [Choosing your own triggers](plugins.md#choosing-your-own-triggers)), and their list replaces the manifest's instead of merging with it.
 
-If your plugin reacts to a language but can't predict which ones a user cares about, `#:languages '("*")` matches any buffer with a detected language:
+`#:languages` also decides where the plugin works once loaded. Its hooks skip every buffer of another language (see [Hooks](#hooks)), its `'buffer` completion sources are not called there, and `(buffers)` and `(panes)` leave those buffers out. Its commands run in any buffer. A user who declares their own languages changes both when the plugin loads and where it works. Setting a buffer to one of those languages loads the plugin before any hook about that buffer could, so next to `#:languages` the `#:events` list takes only the hooks that are about no buffer (`on-focus-gained`, `on-mode-change`, `on-option-change` and `on-lsp-notification`); any other raises an error.
+
+If your plugin reacts to a language but can't predict which ones a user cares about, `#:languages '("*")` matches any buffer with a detected language, and limits nothing once the plugin is loaded:
 
 ```scheme
 ; manifest.scm

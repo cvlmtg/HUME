@@ -353,6 +353,9 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage {
         self.inner.buffer_stored_language(id)
     }
+    fn buffer_visible_to(&self, id: BufferId, visibility: &crate::BufferVisibility) -> bool {
+        self.inner.buffer_visible_to(id, visibility)
+    }
     fn cwd(&self) -> hume_platform::path::AbsolutePath {
         self.inner.cwd()
     }

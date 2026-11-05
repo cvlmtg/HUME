@@ -191,9 +191,10 @@ pub(in crate::editor) fn cmd_exit_insert(
 }
 
 /// `completion-trigger` (Ctrl-Space in Insert mode): invoke every
-/// registered completion source at the cursor. A native command rather
-/// than a plugin's, since the orchestration is the editor's own; the
-/// sources it invokes are whatever plugins registered.
+/// registered completion source that acts on the buffer's language at the
+/// cursor. A native command rather than a plugin's, since the orchestration
+/// is the editor's own; the sources it invokes are whatever plugins
+/// registered.
 ///
 /// An interactive input (see `EditorState::interactive_input`'s own doc):
 /// opening the popup writes nothing itself, and `.` replays the edit that

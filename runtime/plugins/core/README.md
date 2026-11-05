@@ -55,7 +55,8 @@ place before anything could trigger it:
 A config can activate a plugin on a narrower trigger than its manifest's by calling
 `declare-plugin!` with an explicit `#:commands`/`#:events`/`#:languages`/`#:typed-commands`
 list before the plugin's `load-plugin!` line. `load-plugin!` then keeps that declaration,
-skips the manifest, and does not force the plugin eager. The pitfall under
+skips the manifest, and does not force the plugin eager. A narrower `#:languages` also
+narrows the buffers the plugin works in. The pitfall under
 [Depending on `core:stdlib`](#depending-on-corestdlib) applies when other code depends on
 that plugin.
 

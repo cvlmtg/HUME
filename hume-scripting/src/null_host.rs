@@ -24,9 +24,9 @@ use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, ClaimRefused, CommandHolder, CommandHost, CommandKind, CursorHost, EditorHost,
-    EventHost, EventShape, LanguageHost, LocationPlace, LspHost, OptionValue, OutputHost,
-    PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost, ShownHandle,
-    StoredLanguage, TrackedHold, check_lazy_claim,
+    EventHost, EventShape, EventSubject, LanguageHost, LocationPlace, LspHost, OptionValue,
+    OutputHost, PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost,
+    ShownHandle, StoredLanguage, TrackedHold, check_lazy_claim,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -36,8 +36,9 @@ use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 /// editor never defines. That divergence from the editor's real event set is
 /// deliberate: it lets tests prove that `register-hook!`/`declare-plugin!`
 /// validate through `EditorHost::events()` rather than a compiled-in table.
-/// Each passes one arg, except `on-lsp-notification`'s three, as the
-/// editor's events of those names do.
+/// Each passes one arg and is about a buffer, except `on-lsp-notification`,
+/// which passes three and is about the editor, as the editor's events of
+/// those names do.
 const NULL_HOST_EVENT_NAMES: &[&str] = &[
     "on-buffer-open",
     "on-buffer-save",
@@ -88,9 +89,15 @@ impl EventHost for NullHost {
             _ if NULL_HOST_EVENT_NAMES.contains(&name) => 1,
             _ => return None,
         };
+        let subject = if name == LSP_NOTIFICATION_EVENT {
+            EventSubject::Editor
+        } else {
+            EventSubject::Buffer
+        };
         Some(EventShape {
             args,
             held: name == HELD_EVENT,
+            subject,
         })
     }
     fn finish_hold(&mut self, _hold: HostToken) {}
@@ -133,6 +140,9 @@ impl BufferHost for NullHost {
     }
     fn buffer_stored_language(&self, _id: BufferId) -> StoredLanguage {
         StoredLanguage::default()
+    }
+    fn buffer_visible_to(&self, _id: BufferId, _visibility: &crate::BufferVisibility) -> bool {
+        false
     }
     fn cwd(&self) -> AbsolutePath {
         AbsolutePath::current_dir().expect("the test process has a working directory")

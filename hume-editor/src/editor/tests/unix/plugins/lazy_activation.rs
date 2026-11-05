@@ -416,10 +416,7 @@ fn a_plugin_that_changes_the_language_while_activating_announces_both_in_order()
             other => panic!("only language changes were queued, got {other:?}"),
         })
         .collect();
-    assert_eq!(
-        announced,
-        [Some("rust".to_owned()), Some("python".to_owned())]
-    );
+    assert_eq!(announced, [Some("rust".into()), Some("python".into())]);
 }
 
 /// A `#:languages` plugin may close the buffer whose language activated it.
@@ -460,7 +457,7 @@ fn a_buffer_closed_by_the_plugin_its_language_activates_announces_nothing() {
         .filter(|e| {
             matches!(
                 e,
-                EditorEvent::OnBufferOpen { buffer } | EditorEvent::OnBufferClose { buffer }
+                EditorEvent::OnBufferOpen { buffer } | EditorEvent::OnBufferClose { buffer, .. }
                     if *buffer == bid
             )
         })

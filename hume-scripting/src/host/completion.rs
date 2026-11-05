@@ -46,6 +46,9 @@ pub enum PendingTarget {
         /// `#:token-chars`: characters that belong to this source's token on
         /// top of the buffer's word characters.
         token_chars: String,
+        /// The buffers the code that registered the source acts on: the
+        /// source is never called for another.
+        visibility: crate::BufferVisibility,
     },
     Minibuf,
 }

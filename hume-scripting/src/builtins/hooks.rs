@@ -50,11 +50,9 @@ pub(crate) fn known_event(ctx: &mut SteelCtx, name: &str) -> Result<EventShape, 
 /// `PluginLoad`, or `PluginActivation`).
 ///
 /// `on-language-set` fires `(lambda (pane lang) …)` on every language
-/// transition, `lang` `""` for no language. For lazy-loaded language
-/// plugins the typical pattern is:
-/// `#:languages '("lang")` in `declare-plugin!` *activates* the body on the
-/// first matching transition; the body then calls `(register-hook! 'on-language-set …)`
-/// to install a *hook* that reacts on every subsequent transition.
+/// transition, `lang` `""` for no language. A handler registered by a
+/// plugin entry declared with `#:languages` only hears of buffers of those
+/// languages (`crate::visibility`).
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {
     let (name_str, shape) = event_name_arg(ctx, &name, "name")?;
     let proc = callable_arg(proc, "proc")?;
@@ -103,8 +101,9 @@ pub(crate) fn held_done(ctx: &mut SteelCtx, hold: SteelVal) -> SteelResult {
 
 /// The one registration path behind `register-hook!` and
 /// `register-lsp-notification-hook!`: the handler runs as the code that
-/// registered it, and leaves with the plugin body running then if that body
-/// fails. `proc` is checked against `shape`, what event `name` hands it.
+/// registered it, reaches only the buffers that code acts on, and leaves
+/// with the plugin body running then if that body fails. `proc` is checked
+/// against `shape`, what event `name` hands it.
 pub(crate) fn register_entry(
     ctx: &mut SteelCtx,
     name: &str,
@@ -115,9 +114,13 @@ pub(crate) fn register_entry(
     let takes_done = handler_takes_done(name, shape, proc.value())?;
     let handler = crate::Callback::capture(ctx, proc);
     let activation = ctx.activation();
+    let visibility = ctx
+        .registries
+        .lazy_registry
+        .visibility_of(&handler.provenance().owner);
     ctx.registries
         .hooks
-        .register(name, handler, activation, keys, takes_done);
+        .register(name, handler, activation, visibility, keys, takes_done);
     Ok(())
 }
 

@@ -1124,3 +1124,33 @@ fn reload_keeps_the_servers_a_language_plugin_registers() {
         .collect();
     assert_eq!(methods, ["initialized", "textDocument/didOpen"]);
 }
+
+/// After `:reload-config`, a plugin scoped to a buffer's language hears of
+/// that buffer the way it does at startup: its language set, then one open.
+#[test]
+fn reload_config_replays_one_open_per_buffer_in_scope() {
+    let fixture = ReloadFixture::new(
+        r#"(%define-language! "rust" '("rs") '() '())
+           (declare-plugin! "./scoped.scm" #:languages '("rust"))"#,
+    );
+    std::fs::write(
+        fixture.config_dir.join("scoped.scm"),
+        r#"(register-hook! 'on-language-set (lambda (p l) (log! 'trace "tp set")))
+           (register-hook! 'on-buffer-open (lambda (p) (log! 'trace "tp open")))
+           (register-hook! 'on-buffer-close (lambda (p) (log! 'trace "tp close")))"#,
+    )
+    .unwrap();
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
+    ed.init_scripting(&mut Default::default());
+    let file = fixture.config_dir.join("main.rs");
+    std::fs::write(&file, "fn main() {}\n").unwrap();
+    open_path(&mut ed, &file);
+    ed.settle();
+    assert_eq!(tp_log(&ed), ["set", "open"]);
+
+    type_cmd(&mut ed, ":reload-config");
+    ed.settle();
+
+    assert_eq!(tp_log(&ed), ["set", "open", "set", "open"]);
+}

@@ -77,7 +77,7 @@ Each entry has up to four optional lists:
 | `#:commands` | Command names the plugin will register |
 | `#:typed-commands` | Command-line (`:`) command names the plugin will register |
 | `#:events` | Lifecycle hooks that should trigger loading, as quoted symbols |
-| `#:languages` | Buffer languages that should trigger loading |
+| `#:languages` | Buffer languages that should trigger loading, and the only ones the plugin then works in |
 
 When one of those is used for the first time (a listed command is
 dispatched, a listed hook fires, a listed language is set), HUME loads the
@@ -128,7 +128,7 @@ the named languages. It is the usual pattern for language-specific plugins
 ```
 
 The name `"*"` matches any language: the body runs the first time a buffer's
-language is set to anything.
+language is set to anything, and the plugin then works in every buffer.
 
 Prefer `#:languages` to `#:events '(on-language-set)` when you care about
 particular languages. An `on-language-set` event fires for every language, so
@@ -170,17 +170,23 @@ in `init.scm`, then declare the tooling lazily.
 (load-plugin! "alice/mylang-tools")
 ```
 
-`#:languages` is a one-time load trigger, not a filter. A plugin that needs
-to respond to every later language change registers `on-language-set` inside
-its body:
+`#:languages` is also a filter. Once its body has run, the plugin works
+only in buffers of the listed languages, and every other buffer looks closed
+to it: its hooks never fire for one, its completion sources are never asked
+about one, and `(buffers)` and `(panes)` leave it out. Its commands still
+run anywhere, since running one is something the user asked for.
+
+A buffer that changes language moves into or out of the plugin's view. A
+Rust plugin sees a buffer switched from Rust to Markdown close, and sees it
+open again when it is switched back, so anything the plugin keeps per buffer
+is set up and torn down by the same two hooks it uses for real opens and
+closes:
 
 ```scheme
 ; alice/rust-tools/plugin.scm
 (define-command! "rust-check" "Run cargo check" (lambda (pane) ...))
-(register-hook! 'on-language-set
-  (lambda (pane lang)
-    (when (equal? lang "rust")
-      (call! "rust-check" pane))))
+(register-hook! 'on-buffer-save
+  (lambda (pane) (call! "rust-check" pane)))   ; Rust buffers only
 ```
 
 ## Module isolation

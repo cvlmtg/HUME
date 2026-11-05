@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Breaking changes
+- A plugin declared with `#:languages` works only in buffers of those languages: its hooks and completions skip every other buffer. If you narrow a plugin such as `core:lsp` with your own `#:languages`, list every language you use it in, or use `'("*")`. Such a declaration can no longer list in `#:events` a hook about a buffer, such as `on-buffer-open`: remove it.
+
 ### CLI
 - `--keys` writes every logged message to stderr, including trace detail.
 

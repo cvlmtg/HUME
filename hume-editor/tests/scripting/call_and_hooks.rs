@@ -1,6 +1,7 @@
 //! `call!` and `register-hook!`/`fire_hook` tests.
 
 use super::*;
+use hume_scripting::Audience;
 
 /// A mock whose native commands are `names`, so a `call!` to one is
 /// recorded in `dispatched_native`.
@@ -155,8 +156,14 @@ fn register_hook_fires_on_buffer_open() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
-    h.fire_hook("on-buffer-open", None, &[val], &mut mock)
-        .unwrap();
+    h.fire_hook(
+        "on-buffer-open",
+        None,
+        Audience::Everyone,
+        &[val],
+        &mut mock,
+    )
+    .unwrap();
     assert_eq!(
         dispatched(&mock),
         ["move-right"],
@@ -176,8 +183,14 @@ fn register_hook_fires_on_buffer_close() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
-    h.fire_hook("on-buffer-close", None, &[val], &mut mock)
-        .unwrap();
+    h.fire_hook(
+        "on-buffer-close",
+        None,
+        Audience::Everyone,
+        &[val],
+        &mut mock,
+    )
+    .unwrap();
     assert_eq!(
         dispatched(&mock),
         ["move-left"],
@@ -197,8 +210,14 @@ fn register_hook_fires_on_buffer_save() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
-    h.fire_hook("on-buffer-save", None, &[val], &mut mock)
-        .unwrap();
+    h.fire_hook(
+        "on-buffer-save",
+        None,
+        Audience::Everyone,
+        &[val],
+        &mut mock,
+    )
+    .unwrap();
     assert_eq!(
         dispatched(&mock),
         ["move-right"],
@@ -220,8 +239,14 @@ fn register_hook_fires_on_mode_change() {
     .unwrap();
     let old_val = SteelVal::SymbolV("normal".into());
     let new_val = SteelVal::SymbolV("insert".into());
-    h.fire_hook("on-mode-change", None, &[old_val, new_val], &mut mock)
-        .unwrap();
+    h.fire_hook(
+        "on-mode-change",
+        None,
+        Audience::Everyone,
+        &[old_val, new_val],
+        &mut mock,
+    )
+    .unwrap();
     assert_eq!(
         dispatched(&mock),
         ["move-right"],
@@ -235,7 +260,8 @@ fn register_hook_no_fire_if_no_handlers() {
     let mut mock = MockHost::new();
 
     // No handlers registered: fire_hook must succeed without dispatching anything.
-    h.fire_hook("on-buffer-open", None, &[], &mut mock).unwrap();
+    h.fire_hook("on-buffer-open", None, Audience::Everyone, &[], &mut mock)
+        .unwrap();
 
     // Proves no native dispatch occurred (would have been recorded in dispatched_native).
     assert!(
@@ -259,8 +285,14 @@ fn register_hook_multiple_handlers_all_fire() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
-    h.fire_hook("on-buffer-save", None, &[val], &mut mock)
-        .unwrap();
+    h.fire_hook(
+        "on-buffer-save",
+        None,
+        Audience::Everyone,
+        &[val],
+        &mut mock,
+    )
+    .unwrap();
     assert_eq!(
         dispatched(&mock),
         ["move-right", "move-left"],
@@ -323,6 +355,7 @@ fn fire_hook_globals_cleared_between_fires() {
     h.fire_hook(
         "on-mode-change",
         None,
+        Audience::Everyone,
         &[old_val.clone(), new_val],
         &mut mock,
     )
@@ -335,8 +368,14 @@ fn fire_hook_globals_cleared_between_fires() {
 
     // Second fire with different args: any stale first-fire arg would give a wrong result.
     let new_val2 = SteelVal::SymbolV("normal".into());
-    h.fire_hook("on-mode-change", None, &[old_val, new_val2], &mut mock)
-        .unwrap();
+    h.fire_hook(
+        "on-mode-change",
+        None,
+        Audience::Everyone,
+        &[old_val, new_val2],
+        &mut mock,
+    )
+    .unwrap();
     assert_eq!(
         dispatched(&mock),
         ["insert", "normal"],

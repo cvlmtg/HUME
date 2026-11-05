@@ -781,7 +781,7 @@ fn hook_registered_before_failure_is_rolled_back() {
         "plugin must be Failed after mid-body error"
     );
     assert!(
-        !host.has_hook_handlers("on-buffer-save", None),
+        !host.has_hook_handlers("on-buffer-save", None, crate::Audience::Everyone),
         "a Failed plugin's hook must not survive rollback"
     );
 }
@@ -848,7 +848,7 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
         "C must be Loaded: its activation succeeded before B's own failure"
     );
     assert!(
-        host.has_hook_handlers("on-buffer-save", None),
+        host.has_hook_handlers("on-buffer-save", None, crate::Audience::Everyone),
         "C's hook must survive B's failure: rollback is scoped to B's own id"
     );
 }
@@ -903,7 +903,7 @@ fn registrations_a_called_command_makes_in_a_failing_body_are_rolled_back() {
         "B must be Failed"
     );
     assert!(
-        !host.has_hook_handlers("on-buffer-save", None),
+        !host.has_hook_handlers("on-buffer-save", None, crate::Audience::Everyone),
         "the hook a-setup registered inside B's body must leave with B"
     );
     assert!(
@@ -1365,17 +1365,13 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
     );
 }
 
-/// `%begin-lazy-activation!` failing at the depth cap must clean up exactly
-/// like `%finish-lazy-activation!`'s failure branch does (dropping the
-/// plugin's activation-event/language entries and its `Lazy` command stub),
-/// even though the body never ran and `%finish-lazy-activation!` never fires
-/// for it.
-///
-/// The depth-cap branch gets this cleanup from `fail_plugin_activation`, so
-/// no leftover event/language entry or stub re-triggers a no-op activation
-/// attempt on every later matching event.
+/// `%begin-lazy-activation!` failing at the depth cap leaves the entry as
+/// `%finish-lazy-activation!`'s failure branch does, even though the body
+/// never ran and `%finish-lazy-activation!` never fires for it: `Failed`, so
+/// neither its event nor its language activates it again, and without its
+/// `Lazy` command stub.
 #[test]
-fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
+fn begin_lazy_activation_depth_cap_fails_the_entry_and_drops_its_stub() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
     use crate::null_host::CommandStoreHost;
@@ -1416,24 +1412,22 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
     assert!(result.is_err(), "depth cap must raise; got Ok");
 
     assert!(
-        host.state
+        !host
+            .state
             .registries
             .lazy_registry
-            .activation_events
-            .get("on-buffer-save")
-            .map(|plugins| !plugins.contains(&id))
-            .unwrap_or(true),
-        "Failed plugin's event-activation entry must be dropped, not leaked"
+            .event_plugins("on-buffer-save")
+            .contains(&id),
+        "a failed plugin must not activate on its event again"
     );
     assert!(
-        host.state
+        !host
+            .state
             .registries
             .lazy_registry
-            .activation_languages
-            .get("rust")
-            .map(|plugins| !plugins.contains(&id))
-            .unwrap_or(true),
-        "Failed plugin's language-activation entry must be dropped, not leaked"
+            .language_plugins("rust")
+            .contains(&id),
+        "a failed plugin must not activate on its language again"
     );
     assert!(
         editor_host

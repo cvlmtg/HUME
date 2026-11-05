@@ -23,7 +23,8 @@
 use std::ops::Range;
 
 use super::{CompletionCtx, CompletionItem};
-use hume_core::MatchKind;
+use crate::editor::EditorState;
+use hume_core::{BufferId, MatchKind};
 
 /// A native minibuffer source that enumerates a stable universe: the
 /// session's own matcher narrows it, and the orchestrator supplies the
@@ -76,6 +77,9 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// `#:token-chars`: characters that belong to this source's token on top
     /// of the buffer's word characters ([`Self::token_chars_over`]).
     pub(in crate::editor) token_chars: Box<str>,
+    /// The buffers the code that registered the source acts on: it is never
+    /// called for another ([`SourceRegistry::visible_in`]).
+    pub(in crate::editor) visibility: hume_scripting::BufferVisibility,
 }
 
 impl BufferSourceEntry {
@@ -129,6 +133,28 @@ pub(in crate::editor) struct BufferSourceId(u32);
 /// [`BufferSourceId`]'s counterpart into [`SourceRegistry::minibuf`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) struct MinibufSourceId(u32);
+
+/// `Buffer` sources that act on one buffer, minted only by
+/// [`SourceRegistry::visible_in`]: the only sources a buffer's completion
+/// invokes, so a source never runs for a buffer outside its scope.
+pub(in crate::editor) struct VisibleSources {
+    buffer: BufferId,
+    ids: Vec<BufferSourceId>,
+}
+
+impl VisibleSources {
+    pub(in crate::editor) fn buffer(&self) -> BufferId {
+        self.buffer
+    }
+
+    pub(in crate::editor) fn ids(&self) -> &[BufferSourceId] {
+        &self.ids
+    }
+
+    pub(in crate::editor) fn is_empty(&self) -> bool {
+        self.ids.is_empty()
+    }
+}
 
 pub(in crate::editor) struct SourceRegistry {
     buffer: Vec<BufferSourceEntry>,
@@ -246,6 +272,18 @@ impl SourceRegistry {
     /// explicit Insert-mode trigger invokes.
     pub(in crate::editor) fn buffer_sources(&self) -> Vec<BufferSourceId> {
         (0..self.buffer.len() as u32).map(BufferSourceId).collect()
+    }
+
+    /// The sources of `ids` that act on buffer `bid`
+    /// ([`EditorState::buffer_visible_to`]).
+    pub(in crate::editor) fn visible_in(
+        &self,
+        mut ids: Vec<BufferSourceId>,
+        bid: BufferId,
+        state: &EditorState,
+    ) -> VisibleSources {
+        ids.retain(|&id| state.buffer_visible_to(bid, &self.buffer_get(id).visibility));
+        VisibleSources { buffer: bid, ids }
     }
 }
 

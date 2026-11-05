@@ -51,6 +51,8 @@ mod test_support;
 #[cfg(any(test, feature = "test-util"))]
 pub use test_scm::eager_load_scm;
 mod types;
+mod visibility;
+pub use visibility::{Audience, BufferVisibility};
 pub(crate) mod watchdog;
 
 // ── Public API re-exports ─────────────────────────────────────────────────────
@@ -387,29 +389,27 @@ impl ScriptingHost {
     }
 
     /// Returns `true` if at least one handler for `name` fires for an event
-    /// carrying `key`: an unkeyed handler always does, a keyed one only when
-    /// `key` is among its keys.
-    pub fn has_hook_handlers(&self, name: &str, key: Option<&str>) -> bool {
-        self.state.registries.hooks.has_match(name, key)
+    /// carrying `key` delivered to `audience`: an unkeyed handler fires for
+    /// every key, a keyed one only when `key` is among its keys.
+    pub fn has_hook_handlers(&self, name: &str, key: Option<&str>, audience: Audience<'_>) -> bool {
+        self.state.registries.hooks.has_match(name, key, audience)
     }
 
-    /// A snapshot of the language activation entries declared during init (language → plugins).
-    pub fn activation_languages(&self) -> rustc_hash::FxHashMap<String, Vec<attribution::EntryId>> {
-        self.state
-            .registries
-            .lazy_registry
-            .activation_languages
-            .clone()
+    /// Every entry declared with `#:languages`, with its list, in
+    /// declaration order.
+    pub fn declared_languages(&self) -> Vec<(attribution::EntryId, std::rc::Rc<[String]>)> {
+        self.state.registries.lazy_registry.languages.clone()
     }
 
-    /// Plugin ids that should be activated when the event named `name` fires.
+    /// Plugin ids that should be activated when the event named `name` fires:
+    /// the `Declared` entries declared with it.
     pub fn activation_event_plugins(&self, name: &str) -> Vec<attribution::EntryId> {
         self.state.registries.lazy_registry.event_plugins(name)
     }
 
     /// Plugin ids that should be activated when `language` is set on a buffer:
-    /// those keyed by `language`, then those keyed by the wildcard `"*"`, each
-    /// once.
+    /// the `Declared` entries listing `language`, then those listing the
+    /// wildcard `"*"`, each once.
     pub fn activation_language_plugins(&self, language: &str) -> Vec<attribution::EntryId> {
         self.state
             .registries

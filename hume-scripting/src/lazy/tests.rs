@@ -1,4 +1,5 @@
 use super::*;
+use crate::attribution::Owner;
 
 fn fake_path() -> PathBuf {
     PathBuf::from("/fake/plugin.scm")
@@ -92,16 +93,72 @@ fn activation_events_are_one_to_many() {
 }
 
 #[test]
-fn activation_languages_are_one_to_many() {
+fn language_plugins_are_one_to_many() {
     let mut reg = LazyRegistry::default();
     let a = id_user("a", "x");
     let b = id_user("b", "y");
     reg.declare(a.clone(), fake_path(), vec![], vec!["rust".to_string()]);
     reg.declare(b.clone(), fake_path(), vec![], vec!["rust".to_string()]);
-    let handlers = &reg.activation_languages["rust"];
-    assert_eq!(handlers.len(), 2);
-    assert!(handlers.contains(&a));
-    assert!(handlers.contains(&b));
+    assert_eq!(reg.language_plugins("rust"), [a, b]);
+}
+
+#[test]
+fn language_plugins_skips_an_entry_that_is_not_declared() {
+    let mut reg = LazyRegistry::default();
+    let (loaded, failed, waiting) = (id_core("loaded"), id_core("failed"), id_core("waiting"));
+    for id in [&loaded, &failed, &waiting] {
+        reg.declare(id.clone(), fake_path(), vec![], vec!["rust".to_string()]);
+    }
+    reg.plugins.insert(loaded, PluginState::Loaded);
+    reg.plugins.insert(failed, PluginState::Failed);
+    assert_eq!(reg.language_plugins("rust"), [waiting]);
+}
+
+#[test]
+fn event_plugins_skips_an_entry_that_is_not_declared() {
+    let mut reg = LazyRegistry::default();
+    let (loaded, failed, waiting) = (id_core("loaded"), id_core("failed"), id_core("waiting"));
+    for id in [&loaded, &failed, &waiting] {
+        reg.declare(
+            id.clone(),
+            fake_path(),
+            vec!["on-buffer-save".to_string()],
+            vec![],
+        );
+    }
+    reg.plugins.insert(loaded, PluginState::Loaded);
+    reg.plugins.insert(failed, PluginState::Failed);
+    assert_eq!(reg.event_plugins("on-buffer-save"), [waiting]);
+}
+
+#[test]
+fn declared_languages_are_kept_once_the_entry_loads() {
+    let mut reg = LazyRegistry::default();
+    let id = id_core("p");
+    reg.declare(
+        id.clone(),
+        fake_path(),
+        vec![],
+        vec!["rust".to_string(), "toml".to_string()],
+    );
+    reg.plugins.insert(id.clone(), PluginState::Loaded);
+    assert_eq!(
+        reg.declared_languages(&id).map(|langs| langs.to_vec()),
+        Some(vec!["rust".to_string(), "toml".to_string()])
+    );
+}
+
+#[test]
+fn an_entry_declared_without_languages_has_none() {
+    let mut reg = LazyRegistry::default();
+    let id = id_core("p");
+    reg.declare(
+        id.clone(),
+        fake_path(),
+        vec!["on-buffer-open".to_string()],
+        vec![],
+    );
+    assert_eq!(reg.declared_languages(&id), None);
 }
 
 #[test]
@@ -161,7 +218,7 @@ fn format_status_waiting_with_triggers() {
     reg.declare(
         id.clone(),
         fake_path(),
-        vec!["on-buffer-save".to_string()],
+        vec!["on-focus-gained".to_string()],
         vec!["rust".to_string()],
     );
     let lazy_cmds = vec![("my-cmd".to_string(), id, false)];
@@ -173,7 +230,7 @@ fn format_status_waiting_with_triggers() {
         "command activation entry must appear"
     );
     assert!(
-        out.contains("event:on-buffer-save"),
+        out.contains("event:on-focus-gained"),
         "event activation entry must appear"
     );
     assert!(
@@ -224,6 +281,50 @@ fn format_status_loaded_shows_no_triggers() {
         !out.contains("eager-cmd"),
         "loaded plugin must not show its old activation entry"
     );
+}
+
+/// A loaded entry's `#:languages` still decide which buffers it acts on.
+#[test]
+fn format_status_loaded_entry_shows_its_languages() {
+    let mut reg = LazyRegistry::default();
+    let id = id_user("carol", "scoped");
+    reg.declare(
+        id.clone(),
+        fake_path(),
+        vec!["on-focus-gained".to_string()],
+        vec!["toml".to_string(), "rust".to_string()],
+    );
+    *reg.plugins.get_mut(&id).unwrap() = PluginState::Loaded;
+
+    let out = reg.format_status([], &[]);
+    let row = out
+        .lines()
+        .find(|line| line.contains("carol/scoped"))
+        .expect("the entry has a row");
+    assert!(row.ends_with("lang:rust,toml"), "{row}");
+    assert!(!row.contains("event:"), "{row}");
+}
+
+/// A loaded entry whose `#:languages` names `"*"` acts on every buffer,
+/// whatever else the list names.
+#[test]
+fn format_status_loaded_wildcard_entry_shows_every_language() {
+    let mut reg = LazyRegistry::default();
+    let id = id_user("carol", "wild");
+    reg.declare(
+        id.clone(),
+        fake_path(),
+        vec![],
+        vec!["rust".to_string(), "*".to_string()],
+    );
+    *reg.plugins.get_mut(&id).unwrap() = PluginState::Loaded;
+
+    let out = reg.format_status([], &[]);
+    let row = out
+        .lines()
+        .find(|line| line.contains("carol/wild"))
+        .expect("the entry has a row");
+    assert!(row.ends_with("lang:*"), "{row}");
 }
 
 #[test]
@@ -305,4 +406,52 @@ fn language_plugins_lists_the_language_then_the_wildcard_each_once() {
         [rust, both.clone(), any.clone()]
     );
     assert_eq!(reg.language_plugins("go"), [both, any]);
+}
+
+// ── Language scope ─────────────────────────────────────────────────────
+
+#[test]
+fn visibility_of_a_scoped_entry_lists_its_languages() {
+    let mut reg = LazyRegistry::default();
+    let id = id_core("p");
+    reg.declare(id.clone(), fake_path(), vec![], vec!["rust".to_string()]);
+    let v = reg.visibility_of(&Owner::Plugin(id));
+    assert!(v.sees(Some("rust")));
+    assert!(!v.sees(Some("markdown")));
+    assert!(!v.sees(None));
+}
+
+#[test]
+fn visibility_of_a_wildcard_entry_is_unscoped() {
+    let mut reg = LazyRegistry::default();
+    let id = id_core("p");
+    reg.declare(
+        id.clone(),
+        fake_path(),
+        vec![],
+        vec!["rust".to_string(), "*".to_string()],
+    );
+    let v = reg.visibility_of(&Owner::Plugin(id));
+    assert!(v.sees(Some("markdown")));
+    assert!(v.sees(None));
+}
+
+#[test]
+fn visibility_of_an_entry_without_languages_is_unscoped() {
+    let mut reg = LazyRegistry::default();
+    let id = id_core("p");
+    reg.declare(
+        id.clone(),
+        fake_path(),
+        vec!["on-buffer-open".to_string()],
+        vec![],
+    );
+    assert!(reg.visibility_of(&Owner::Plugin(id)).sees(None));
+}
+
+#[test]
+fn visibility_of_user_and_core_code_is_unscoped() {
+    let reg = LazyRegistry::default();
+    assert!(reg.visibility_of(&Owner::User).sees(None));
+    assert!(reg.visibility_of(&Owner::Core).sees(None));
 }

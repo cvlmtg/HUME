@@ -1626,12 +1626,11 @@ fn register_lsp_notification_hook_rejects_an_empty_method_list() {
             .expect_err("an empty list must be rejected")
             .to_string();
     assert!(msg.contains("must not be empty"), "got: {msg}");
-    assert!(
-        !h.state
-            .registries
-            .hooks
-            .has_match("on-lsp-notification", None)
-    );
+    assert!(!h.state.registries.hooks.has_match(
+        "on-lsp-notification",
+        None,
+        crate::Audience::Everyone
+    ));
 }
 
 #[test]

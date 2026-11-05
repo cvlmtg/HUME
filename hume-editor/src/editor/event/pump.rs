@@ -9,7 +9,9 @@ use crate::editor::buffer::store::EditOrigin;
 use crate::editor::commands::CommandPane;
 use crate::editor::input_stack::picker;
 use crate::editor::replay;
-use hume_core::{PaneHandle, Severity};
+use hume_core::{BufferId, PaneHandle, Severity};
+use hume_scripting::Audience;
+use std::rc::Rc;
 
 /// Upper bound on total work items processed per `settle()` boundary.
 ///
@@ -272,42 +274,7 @@ impl Editor {
         while let Some(item) = items.pop_front() {
             match item {
                 PendingWork::Event(event) => {
-                    // Any buffer-scoped event is queued from a point earlier
-                    // than this drain (a live-buffer sweep, an LSP dispatch,
-                    // a completion accept), but fires behind whatever `Call`
-                    // items (timer thunks, async callbacks) or earlier
-                    // `Event`s were already queued ahead of it in the same
-                    // batch, and one of those can close the buffer first.
-                    // Checked here, ahead of both `react_to_event` and
-                    // `fire_one_event`, so neither ever sees a dead id.
-                    // `OnBufferClose` is exempt: it is raised
-                    // for an id that's already gone by design (see
-                    // `buffer/lifecycle.rs`'s pairing check); checking it here
-                    // would drop every `OnBufferClose` outright.
-                    //
-                    // A pane-carrying event (`OnBufferEnter`,
-                    // `OnViewportChange`, `OnTriggerChar`,
-                    // `OnCompletionAccept`) goes stale the same way: a
-                    // handler earlier in this same batch (a timer's
-                    // `pane-close`, a buffer switch) can close that pane or
-                    // repoint it at another buffer before this event's own
-                    // turn, and the builtin its handler goes on to call
-                    // would otherwise raise on a pane it never asked for.
-                    // A buffer-only event just needs its buffer still live;
-                    // a pane-carrying one needs that pane to still show it:
-                    // the same dual check `EditorEvent::handle`'s own doc
-                    // describes.
-                    let live = |handle: hume_core::PaneHandle| {
-                        if handle.pane().is_some() {
-                            CommandPane::resolve(&self.state, &self.view, handle).is_ok()
-                        } else {
-                            self.state.buffers.try_get(handle.buffer()).is_some()
-                        }
-                    };
-                    if !matches!(event, EditorEvent::OnBufferClose { .. })
-                        && let Some(handle) = event.handle()
-                        && !live(handle)
-                    {
+                    if !self.event_is_live(&event) {
                         continue;
                     }
                     self.react_to_event(&event);
@@ -340,6 +307,35 @@ impl Editor {
                     self.with_edit_origin(origin, |ed| ed.run_call_batch(calls));
                 }
             }
+        }
+    }
+
+    /// Whether `event` still names live state. Any buffer-scoped event is
+    /// queued from a point earlier than its dispatch (a live-buffer sweep,
+    /// an LSP dispatch, a completion accept), and whatever runs before it
+    /// (a `Call` or `Event` queued ahead of it, a plugin its own dispatch
+    /// activates) can close the buffer first. `OnBufferClose` is exempt: it
+    /// is raised for an id that's already gone by design (see
+    /// `buffer/lifecycle.rs`'s pairing check).
+    ///
+    /// A pane-carrying event (`OnBufferEnter`, `OnViewportChange`,
+    /// `OnTriggerChar`, `OnCompletionAccept`) goes stale the same way: a
+    /// timer's `pane-close` or a buffer switch can close that pane or
+    /// repoint it at another buffer, and the builtin its handler goes on to
+    /// call would otherwise raise on a pane it never asked for. A
+    /// buffer-only event just needs its buffer still live; a pane-carrying
+    /// one needs that pane to still show it: the same dual check
+    /// `EditorEvent::handle`'s own doc describes.
+    fn event_is_live(&self, event: &EditorEvent) -> bool {
+        if matches!(event, EditorEvent::OnBufferClose { .. }) {
+            return true;
+        }
+        match event.handle() {
+            None => true,
+            Some(handle) if handle.pane().is_some() => {
+                CommandPane::resolve(&self.state, &self.view, handle).is_ok()
+            }
+            Some(handle) => self.state.buffers.try_get(handle.buffer()).is_some(),
         }
     }
 
@@ -378,22 +374,71 @@ impl Editor {
         }
     }
 
-    /// Whether a handler is registered for `name` and `key`. Lazy event
-    /// plugins activate first so their `register-hook!` calls land before
-    /// the check.
-    pub(in crate::editor) fn has_event_handlers(&mut self, name: &str, key: Option<&str>) -> bool {
-        self.activate_lazy_event_plugins(name);
+    /// Whether a handler is registered for `name` and `key` that
+    /// `audience` reaches.
+    pub(in crate::editor) fn has_event_handlers(
+        &self,
+        name: &str,
+        key: Option<&str>,
+        audience: Audience<'_>,
+    ) -> bool {
         self.scripting
             .as_ref()
-            .is_some_and(|h| h.has_hook_handlers(name, key))
+            .is_some_and(|h| h.has_hook_handlers(name, key, audience))
     }
 
-    /// Fire every handler registered for one `EditorEvent`, if any are:
-    /// the per-item body of `settle`'s `Event` arm.
+    /// Fire every handler registered for one `EditorEvent` that the
+    /// event's buffer reaches: the per-item body of `settle`'s `Event` arm.
+    /// A language set for a buffer whose open was dispatched also delivers
+    /// that buffer's close to the plugins it leaves and its open to the
+    /// plugins it enters. Only the event itself activates lazy `#:events`
+    /// plugins, and an event whose buffer an activated body closed is
+    /// dropped.
     fn fire_one_event(&mut self, event: EditorEvent) {
+        if self.activate_lazy_event_plugins(event.name()) && !self.event_is_live(&event) {
+            return;
+        }
+        match self.state.plugin_view_at_dispatch(&event) {
+            Shown::NoBuffer => self.fire_to(event, Audience::Everyone),
+            Shown::Buffer(language) => self.fire_to(event, Audience::Seeing(language.as_deref())),
+            Shown::Moved { buffer, from, to } => {
+                let (from_lang, to_lang) = (from.as_deref(), to.as_deref());
+                self.fire_to(
+                    EditorEvent::OnBufferClose {
+                        buffer,
+                        language: from.clone(),
+                    },
+                    Audience::Crossing {
+                        sees: from_lang,
+                        misses: to_lang,
+                    },
+                );
+                // A handler can close the buffer; what follows would name
+                // a dead one.
+                if !self.event_is_live(&event) {
+                    return;
+                }
+                self.fire_to(event, Audience::Seeing(to_lang));
+                let open = EditorEvent::OnBufferOpen { buffer };
+                if !self.event_is_live(&open) {
+                    return;
+                }
+                self.fire_to(
+                    open,
+                    Audience::Crossing {
+                        sees: to_lang,
+                        misses: from_lang,
+                    },
+                );
+            }
+        }
+    }
+
+    /// Fire the handlers of `event` that `audience` reaches, if any.
+    fn fire_to(&mut self, event: EditorEvent, audience: Audience<'_>) {
         let name = event.name();
         let key = event.hook_key();
-        if !self.has_event_handlers(name, key) {
+        if !self.has_event_handlers(name, key, audience) {
             if let Some(message) = event.unhandled_trace() {
                 self.report(Severity::Trace, message);
             }
@@ -405,7 +450,7 @@ impl Editor {
         let args = event.into_steel_args();
         let result = {
             let (host_scr, mut impl_host) = self.scripting_with_host().expect("checked above");
-            host_scr.fire_hook(name, key.as_deref(), &args, &mut impl_host)
+            host_scr.fire_hook(name, key.as_deref(), audience, &args, &mut impl_host)
         };
         // A hook body's own `call!` to an `#:inline-output` command is
         // closed here too.
@@ -508,5 +553,60 @@ impl Editor {
         let result = f(self);
         self.state.buffers.set_edit_origin(outer);
         result
+    }
+}
+
+/// What one dispatched event shows its buffer's plugins
+/// (`Buffer::plugin_view`).
+enum Shown {
+    /// An event about no buffer.
+    NoBuffer,
+    /// An event about a buffer its plugins know as being of this language.
+    Buffer(Option<Rc<str>>),
+    /// A language set for a buffer whose open was dispatched.
+    Moved {
+        buffer: BufferId,
+        from: Option<Rc<str>>,
+        to: Option<Rc<str>>,
+    },
+}
+
+impl crate::editor::EditorState {
+    /// What `event` shows its buffer's plugins, advancing the buffer's
+    /// plugin view past it. Called for every event dispatched, after its
+    /// liveness check, so a dropped event never advances the view.
+    fn plugin_view_at_dispatch(&mut self, event: &EditorEvent) -> Shown {
+        match event {
+            EditorEvent::OnBufferClose { language, .. } => Shown::Buffer(language.clone()),
+            EditorEvent::OnBufferOpen { buffer } => {
+                let view = &mut self.buffers.get_mut(*buffer).plugin_view;
+                view.opened = true;
+                Shown::Buffer(view.language.clone())
+            }
+            EditorEvent::OnLanguageSet { buffer, language } => {
+                let to = language.clone();
+                let view = &mut self.buffers.get_mut(*buffer).plugin_view;
+                let from = std::mem::replace(&mut view.language, to.clone());
+                if view.opened {
+                    Shown::Moved {
+                        buffer: *buffer,
+                        from,
+                        to,
+                    }
+                } else {
+                    Shown::Buffer(to)
+                }
+            }
+            _ => match event.handle() {
+                None => Shown::NoBuffer,
+                Some(handle) => Shown::Buffer(
+                    self.buffers
+                        .get(handle.buffer())
+                        .plugin_view
+                        .language
+                        .clone(),
+                ),
+            },
+        }
     }
 }

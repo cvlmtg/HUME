@@ -169,6 +169,13 @@ impl BufferHost for MockHost {
     fn buffer_stored_language(&self, _id: BufferId) -> StoredLanguage {
         StoredLanguage::default()
     }
+    fn buffer_visible_to(
+        &self,
+        _id: BufferId,
+        _visibility: &hume_scripting::BufferVisibility,
+    ) -> bool {
+        false
+    }
     fn cwd(&self) -> hume_platform::path::AbsolutePath {
         hume_platform::path::AbsolutePath::current_dir()
             .expect("the test process has a working directory")

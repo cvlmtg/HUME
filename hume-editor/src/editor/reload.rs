@@ -124,6 +124,7 @@ impl Editor {
         // transition, whose hooks `resync_config_state` relies on.
         self.state.buffers.clear_languages_all();
         self.state.buffers.clear_overrides_all();
+        self.state.buffers.reset_plugin_views_all();
         let prior_clock = self.state.config.decorations.clock();
         self.state.config =
             super::ConfigState::new(self.kitty_enabled, prior_clock, &self.state.library_wait);

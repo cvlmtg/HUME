@@ -4,6 +4,7 @@ use super::*;
 use crate::ScriptingHost;
 use crate::null_host::NullHost;
 use crate::test_support::SteelCtxTestHarness;
+use crate::visibility::Audience;
 
 fn noop_proc(_args: &[SteelVal]) -> SteelResult {
     Ok(SteelVal::Void)
@@ -121,7 +122,12 @@ fn register_hook_valid_during_plugin_load() {
             "register-hook! must succeed during plugin load"
         );
     }
-    assert!(h.state.registries.hooks.has_match("on-buffer-open", None));
+    assert!(
+        h.state
+            .registries
+            .hooks
+            .has_match("on-buffer-open", None, Audience::Everyone)
+    );
     assert_eq!(
         *h.state.registries.hooks.handlers_for("on-buffer-open")[0]
             .handler
@@ -223,8 +229,9 @@ mod held {
         BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, SettingsHost,
     };
     use crate::null_host::{HELD_EVENT, NullHost};
-    use crate::{EvalError, ScriptingHost};
+    use crate::{Audience, EvalError, ScriptingHost};
     use hume_core::HostToken;
+    use hume_platform::dirs::Dirs;
 
     /// A [`NullHost`] whose event capability keeps the holds open and the
     /// ones finished, as the editor's does for a parked write.
@@ -283,7 +290,7 @@ mod held {
         host: &mut ScriptingHost,
         hosts: &mut HoldHost,
     ) -> (Vec<HostToken>, Result<(), EvalError>) {
-        let handlers = host.held_handlers(HELD_EVENT);
+        let handlers = host.held_handlers(HELD_EVENT, Audience::Everyone);
         let holds: Vec<HostToken> = (0..handlers.holds_needed())
             .map(|_| HostToken::mint())
             .collect();
@@ -316,9 +323,17 @@ mod held {
     #[test]
     fn only_a_held_event_handler_taking_done_needs_a_hold() {
         let host = register("(lambda (pane) 0)").unwrap();
-        assert_eq!(host.held_handlers(HELD_EVENT).holds_needed(), 0);
+        assert_eq!(
+            host.held_handlers(HELD_EVENT, Audience::Everyone)
+                .holds_needed(),
+            0
+        );
         let host = register("(lambda (pane done) 0)").unwrap();
-        assert_eq!(host.held_handlers(HELD_EVENT).holds_needed(), 1);
+        assert_eq!(
+            host.held_handlers(HELD_EVENT, Audience::Everyone)
+                .holds_needed(),
+            1
+        );
     }
 
     #[test]
@@ -374,7 +389,44 @@ mod held {
     #[should_panic(expected = "fire_held_hook")]
     fn a_handler_taking_done_is_never_fired_as_a_plain_hook() {
         let mut host = register("(lambda (pane done) 0)").unwrap();
-        let result = host.fire_hook(HELD_EVENT, None, &[SteelVal::IntV(0)], &mut NullHost);
+        let result = host.fire_hook(
+            HELD_EVENT,
+            None,
+            Audience::Everyone,
+            &[SteelVal::IntV(0)],
+            &mut NullHost,
+        );
         assert!(result.is_ok(), "{:?}", result.err().map(|e| e.message));
+    }
+
+    /// A held handler of a plugin entry declared for other languages gets
+    /// no hold for a buffer it does not act on, so the save never waits on it.
+    #[test]
+    fn held_handlers_leaves_out_a_handler_that_does_not_see_the_buffer() {
+        use crate::attribution::{EntryId, PluginId};
+        let mut host = ScriptingHost::for_testing(&Dirs::none());
+        let id = EntryId::main(PluginId::parse("core:scoped").unwrap());
+        host.state.registries.lazy_registry.declare(
+            id.clone(),
+            std::path::PathBuf::from("/fake/plugin.scm"),
+            vec![],
+            vec!["rust".to_string()],
+        );
+        host.push_plugin_for_test(id);
+        host.eval_source(
+            &format!("(register-hook! '{HELD_EVENT} (lambda (pane done) 0))"),
+            &mut NullHost,
+        )
+        .unwrap();
+        assert_eq!(
+            host.held_handlers(HELD_EVENT, Audience::Seeing(Some("markdown")))
+                .holds_needed(),
+            0
+        );
+        assert_eq!(
+            host.held_handlers(HELD_EVENT, Audience::Seeing(Some("rust")))
+                .holds_needed(),
+            1
+        );
     }
 }

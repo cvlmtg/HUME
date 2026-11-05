@@ -17,6 +17,7 @@ fn source(name: &str) -> BufferSourceEntry {
         resolve: false,
         cancel: None,
         token_chars: "".into(),
+        visibility: Default::default(),
     }
 }
 

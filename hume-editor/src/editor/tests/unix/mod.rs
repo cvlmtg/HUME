@@ -643,10 +643,24 @@ fn setup_lazy_editor_on(
     init_body: &str,
     plugin_body: &str,
 ) -> (Editor, tempfile::TempDir) {
+    setup_plugin_editor_on(text, None, init_body, plugin_body)
+}
+
+/// [`setup_lazy_editor_on`], with `manifest` written beside the plugin's
+/// `plugin.scm` when given.
+fn setup_plugin_editor_on(
+    text: &str,
+    manifest: Option<&str>,
+    init_body: &str,
+    plugin_body: &str,
+) -> (Editor, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).unwrap();
+    if let Some(manifest) = manifest {
+        std::fs::write(plugin_dir.join("manifest.scm"), manifest).unwrap();
+    }
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, init_body).unwrap();
 
@@ -668,6 +682,31 @@ fn setup_lazy_editor_on(
 /// [`setup_lazy_editor_on`] over `-[a]>b`.
 fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::TempDir) {
     setup_lazy_editor_on("-[a]>b\n", init_body, plugin_body)
+}
+
+/// Every `tp …` trace line logged, oldest first, without the prefix: what
+/// the test plugins and hooks here log.
+fn tp_log(ed: &Editor) -> Vec<String> {
+    ed.state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == hume_core::Severity::Trace)
+        .filter_map(|e| e.text.strip_prefix("tp ").map(str::to_owned))
+        .collect()
+}
+
+/// Opens `dir/notes`, holding `old`, through the open-notify funnel,
+/// focuses it and edits it to `xold`. Returns the buffer and the file.
+fn edited_notes(ed: &mut Editor, dir: &Path) -> (BufferId, PathBuf) {
+    let path = dir.join("notes");
+    std::fs::write(&path, "old\n").unwrap();
+    let bid = open_path(ed, &path);
+    ed.settle();
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    type_chars(ed, "ix");
+    ed.feed_key(key_esc());
+    ed.settle();
+    (bid, path)
 }
 
 mod alternate;

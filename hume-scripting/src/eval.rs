@@ -15,6 +15,7 @@ use crate::context::SteelCtx;
 use crate::host::{EditorHost, token_to_steel};
 use crate::read_only_host::ReadOnlyHost;
 use crate::types::{Effect, EvalError};
+use crate::visibility::Audience;
 use crate::{Callback, HostBundle, Rooted, ScriptingHost, SteelCall, attribution, builtins};
 use hume_core::{HostToken, Severity};
 
@@ -297,7 +298,7 @@ impl ScriptingHost {
     /// have full access to HUME builtins (`focused-pane`, `call!`, etc.).
     ///
     /// Returns immediately (no Steel engine call, no watchdog) if no handler
-    /// for `name` matches `key`.
+    /// for `name` matches `key` and `audience`.
     ///
     /// # Panics
     ///
@@ -307,6 +308,7 @@ impl ScriptingHost {
         &'a mut self,
         name: &str,
         key: Option<&str>,
+        audience: Audience<'_>,
         args: &[SteelVal],
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
@@ -317,7 +319,7 @@ impl ScriptingHost {
             .state
             .registries
             .hooks
-            .matching(name, key)
+            .matching(name, key, audience)
             .map(|e| {
                 assert!(
                     !e.takes_done,
@@ -335,14 +337,14 @@ impl ScriptingHost {
     }
 
     /// The handlers registered for the held event `name`
-    /// (`EventShape::held`).
-    pub fn held_handlers(&self, name: &str) -> HeldHandlers {
+    /// (`EventShape::held`) that `audience` reaches: only these get a hold.
+    pub fn held_handlers(&self, name: &str, audience: Audience<'_>) -> HeldHandlers {
         HeldHandlers {
             handlers: self
                 .state
                 .registries
                 .hooks
-                .matching(name, None)
+                .matching(name, None, audience)
                 .map(|e| (e.handler.clone(), e.takes_done))
                 .collect(),
         }

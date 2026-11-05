@@ -515,7 +515,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 }
 
 /// `(declare-plugin! "user/tp" #:languages '("rust"))` → plugin stays lazy,
-/// `activation_languages["rust"]` contains the plugin, body not evaluated.
+/// The plugin is pending on "rust", body not evaluated.
 #[test]
 fn on_language_trigger_populates_registry_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
@@ -540,7 +540,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
     );
     assert!(
         h.activation_language_plugins("rust").contains(&id),
-        "activation_languages must map \"rust\" to the plugin"
+        "the plugin must be pending on rust"
     );
     assert!(
         !mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
@@ -548,10 +548,8 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
     );
 }
 
-/// `activate_plugin` on a language-matched plugin drops the activation entry on success.
-///
-/// The success branch's `drop_activations_for` does the removal, so the entry
-/// does not look pending on every later language set.
+/// A language-matched plugin is not pending on its language once it loads,
+/// so it does not look pending on every later language set.
 #[test]
 fn activate_plugin_drops_language_activation_on_loaded() {
     let (dir, init_path) = plugin_fixture(

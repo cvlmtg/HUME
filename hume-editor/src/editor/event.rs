@@ -6,9 +6,10 @@
 
 use hume_core::{BufferId, PaneHandle};
 use hume_editing::hunk::ChangeHunk;
-use hume_scripting::host::{EventShape, OptionValue};
+use hume_scripting::host::{EventShape, EventSubject, OptionValue};
 use hume_scripting::json::JsonHandle;
 use hume_scripting::{ServerRef, SteelPane};
+use std::rc::Rc;
 use steel::rvals::SteelVal;
 
 use super::Mode;
@@ -27,8 +28,12 @@ pub(in crate::editor) enum EditorEvent {
     OnBufferOpen {
         buffer: BufferId,
     },
+    /// `language` is the one the buffer's plugins were last told of
+    /// (`Buffer::plugin_view`), read before the buffer's slot is freed: it
+    /// decides which plugins see the close.
     OnBufferClose {
         buffer: BufferId,
+        language: Option<Rc<str>>,
     },
     OnBufferSave {
         buffer: BufferId,
@@ -63,15 +68,13 @@ pub(in crate::editor) enum EditorEvent {
     /// registry before this drains, so resolving early is the only
     /// consistent read.
     ///
-    /// **For lazy-loading:** use `#:languages` in `declare-plugin!` instead.
-    /// `#:languages` *activates* the plugin on the *first* matching transition;
-    /// the body then registers an `on-language-set` *hook* to react on every
-    /// subsequent transition. Using `on-language-set` as a `#:events` activation
-    /// entry would activate the plugin on *any* language transition, not just the
-    /// ones it cares about.
+    /// For a buffer whose open was dispatched, the transition reaches a
+    /// plugin whose `#:languages` it leaves as that buffer's close, and one
+    /// whose `#:languages` it enters, the one it activates included, as
+    /// this event then the buffer's open.
     OnLanguageSet {
         buffer: BufferId,
-        language: Option<String>,
+        language: Option<Rc<str>>,
     },
     /// Fires when a server is `Running` for a buffer attached to it: for
     /// every attached buffer when the server's handshake completes, for
@@ -264,7 +267,7 @@ impl EditorEvent {
     pub(in crate::editor) fn handle(&self) -> Option<PaneHandle> {
         match self {
             EditorEvent::OnBufferOpen { buffer }
-            | EditorEvent::OnBufferClose { buffer }
+            | EditorEvent::OnBufferClose { buffer, .. }
             | EditorEvent::OnBufferSave { buffer }
             | EditorEvent::OnLanguageSet { buffer, .. }
             | EditorEvent::OnLspAttach { buffer, .. }
@@ -343,13 +346,14 @@ impl EditorEvent {
 }
 
 /// Pairs each `EditorEvent` and `HeldEvent` variant with its Steel-facing
-/// name and the number of args its handlers get, once, and generates both
+/// name, the number of args its handlers get and its `EventSubject`, once,
+/// and generates both
 /// `name` matches, `EVENT_NAMES` and `EVENT_SHAPES` from those lists.
 /// Still an explicit table of names (string literals, or a const for one
 /// the write path asks for without an event), not a PascalCase→kebab-case
 /// computation: writing each name out means a variant rename can never
 /// silently rename the Steel-facing event too; this macro only removes
-/// writing each pair twice. A held entry's count is of the args its
+/// writing each entry twice. A held entry's count is of the args its
 /// handlers get ahead of `done`.
 ///
 /// A variant not listed here would make `name`'s match non-exhaustive and
@@ -360,8 +364,8 @@ impl EditorEvent {
 /// (no `=> $name`) mapping to `None` if one appears.
 macro_rules! editor_event_names {
     (
-        queued { $($variant:ident => $name:tt ($args:literal)),+ $(,)? }
-        held { $($held_variant:ident => $held_name:tt ($held_args:literal)),+ $(,)? }
+        queued { $($variant:ident => $name:tt ($args:literal, $subject:ident)),+ $(,)? }
+        held { $($held_variant:ident => $held_name:tt ($held_args:literal, $held_subject:ident)),+ $(,)? }
     ) => {
         impl EditorEvent {
             /// The Steel symbol name for this event. An exhaustive match
@@ -389,10 +393,17 @@ macro_rules! editor_event_names {
         /// validate names without `hume-scripting` compiling in `EditorEvent`.
         const EVENT_NAMES: &[&str] = &[$($name,)+ $($held_name,)+];
 
-        /// What each event hands its handlers, by name.
+        /// What each event hands its handlers and what it is about, by
+        /// name.
         const EVENT_SHAPES: &[(&str, EventShape)] = &[
-            $(($name, EventShape { args: $args, held: false }),)+
-            $(($held_name, EventShape { args: $held_args, held: true }),)+
+            $((
+                $name,
+                EventShape { args: $args, held: false, subject: EventSubject::$subject },
+            ),)+
+            $((
+                $held_name,
+                EventShape { args: $held_args, held: true, subject: EventSubject::$held_subject },
+            ),)+
         ];
     };
 }
@@ -402,27 +413,27 @@ pub(in crate::editor) const BEFORE_BUFFER_SAVE: &str = "on-before-buffer-save";
 
 editor_event_names! {
     queued {
-        OnBufferOpen => "on-buffer-open" (1),
-        OnBufferClose => "on-buffer-close" (1),
-        OnBufferSave => "on-buffer-save" (1),
-        OnBufferEnter => "on-buffer-enter" (1),
-        OnFocusGained => "on-focus-gained" (0),
-        OnModeChange => "on-mode-change" (2),
-        OnLanguageSet => "on-language-set" (2),
-        OnLspAttach => "on-lsp-attach" (2),
-        OnLspDetach => "on-lsp-detach" (2),
-        OnDiagnosticsChanged => "on-diagnostics-changed" (1),
-        OnInlayHintsRefresh => "on-inlay-hints-refresh" (2),
-        OnViewportChange => "on-viewport-change" (2),
-        OnTriggerChar => "on-trigger-char" (3),
-        OnCompletionAccept => "on-completion-accept" (2),
-        OnLspNotification => "on-lsp-notification" (3),
-        OnOptionChange => "on-option-change" (2),
-        OnTextChanged => "on-text-changed" (2),
-        OnUndoHistoryChanged => "on-undo-history-changed" (1),
+        OnBufferOpen => "on-buffer-open" (1, Buffer),
+        OnBufferClose => "on-buffer-close" (1, Buffer),
+        OnBufferSave => "on-buffer-save" (1, Buffer),
+        OnBufferEnter => "on-buffer-enter" (1, Buffer),
+        OnFocusGained => "on-focus-gained" (0, Editor),
+        OnModeChange => "on-mode-change" (2, Editor),
+        OnLanguageSet => "on-language-set" (2, Buffer),
+        OnLspAttach => "on-lsp-attach" (2, Buffer),
+        OnLspDetach => "on-lsp-detach" (2, Buffer),
+        OnDiagnosticsChanged => "on-diagnostics-changed" (1, Buffer),
+        OnInlayHintsRefresh => "on-inlay-hints-refresh" (2, Buffer),
+        OnViewportChange => "on-viewport-change" (2, Buffer),
+        OnTriggerChar => "on-trigger-char" (3, Buffer),
+        OnCompletionAccept => "on-completion-accept" (2, Buffer),
+        OnLspNotification => "on-lsp-notification" (3, Editor),
+        OnOptionChange => "on-option-change" (2, Editor),
+        OnTextChanged => "on-text-changed" (2, Buffer),
+        OnUndoHistoryChanged => "on-undo-history-changed" (1, Buffer),
     }
     held {
-        OnBeforeBufferSave => BEFORE_BUFFER_SAVE (1),
+        OnBeforeBufferSave => BEFORE_BUFFER_SAVE (1, Buffer),
     }
 }
 
@@ -435,7 +446,7 @@ impl EditorEvent {
     pub(in crate::editor) fn into_steel_args(self) -> Vec<SteelVal> {
         match self {
             EditorEvent::OnBufferOpen { buffer }
-            | EditorEvent::OnBufferClose { buffer }
+            | EditorEvent::OnBufferClose { buffer, .. }
             | EditorEvent::OnBufferSave { buffer }
             | EditorEvent::OnDiagnosticsChanged { buffer }
             | EditorEvent::OnUndoHistoryChanged { buffer } => {
@@ -460,7 +471,7 @@ impl EditorEvent {
             EditorEvent::OnLanguageSet { buffer, language } => {
                 vec![
                     SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val(),
-                    SteelVal::StringV(language.unwrap_or_default().into()),
+                    SteelVal::StringV(language.as_deref().unwrap_or("").into()),
                 ]
             }
             EditorEvent::OnLspAttach { buffer, server }

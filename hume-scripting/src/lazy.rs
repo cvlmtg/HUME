@@ -2,16 +2,19 @@
 //!
 //! [`LazyRegistry`] is held on [`super::ScriptingHost`] and borrowed into
 //! [`super::SteelCtx`] during every eval.  It tracks each plugin's lifecycle
-//! state and the two activation maps consulted by event firing and
-//! language-set to activate lazy plugins on demand.  Command activation
+//! state, the event activation map consulted by event firing, and each
+//! entry's declared languages, consulted by language-set to activate lazy
+//! plugins on demand and kept as the entry's language scope.  Command activation
 //! routing is *not* tracked here: the editor's `CommandRegistry` is the sole
 //! owner of `Lazy` command stubs (see `CommandHost::register_lazy_commands`),
 //! reached through the host rather than a parallel map.
 
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
+use std::rc::Rc;
 
-use super::attribution::{EntryId, PluginId};
+use super::attribution::{EntryId, Owner, PluginId};
+use super::visibility::BufferVisibility;
 
 /// The activations column of a row with nothing waiting to trigger it.
 const NO_ACTIVATIONS: &str = "\u{2014}";
@@ -56,7 +59,7 @@ pub enum PluginStatus {
     Failed,
 }
 
-/// Persistent plugin state and activation maps.
+/// Persistent plugin state, activation map and declared languages.
 ///
 /// Borrowed into [`super::SteelCtx`] for the duration of each eval so that
 /// `%declare-plugin!` can write directly.
@@ -72,10 +75,14 @@ pub(crate) struct LazyRegistry {
     /// manifest fails after declaring it; an entry whose file is absent has no
     /// row (see `PluginRecords` for the plugin as a whole).
     pub(crate) plugins: FxHashMap<EntryId, PluginState>,
-    /// 1:many map: event name → plugins that activate on that event.
+    /// 1:many map: event name → the entries declared with it in
+    /// `#:events`, for the whole session. Only a `Declared` one activates.
     pub(crate) activation_events: FxHashMap<String, Vec<EntryId>>,
-    /// 1:many map: language name → plugins that activate when the language is set.
-    pub(crate) activation_languages: FxHashMap<String, Vec<EntryId>>,
+    /// Each entry's `#:languages`, in declaration order, for the whole
+    /// session: what activates the entry while it is `Declared`, and its
+    /// language scope once its code runs. An entry declared with none has
+    /// no row.
+    pub(crate) languages: Vec<(EntryId, Rc<[String]>)>,
 }
 
 impl LazyRegistry {
@@ -84,7 +91,8 @@ impl LazyRegistry {
     /// Command activation entries are registered separately, directly in the
     /// editor's `CommandRegistry` via `CommandHost::register_lazy_commands`
     /// (see `declare_plugin` in `builtins/plugins.rs`); this method only
-    /// records plugin lifecycle state and the event/language activation maps.
+    /// records plugin lifecycle state, the event activation map and the
+    /// entry's declared languages.
     ///
     /// - Each `id` (case-insensitive) is declared once: `declare_plugin`
     ///   raises for a second declaration before it gets here.
@@ -107,11 +115,8 @@ impl LazyRegistry {
                 .or_default()
                 .push(id.clone());
         }
-        for lang in languages {
-            self.activation_languages
-                .entry(lang)
-                .or_default()
-                .push(id.clone());
+        if !languages.is_empty() {
+            self.languages.push((id, languages.into()));
         }
     }
 
@@ -129,25 +134,30 @@ impl LazyRegistry {
             .collect()
     }
 
-    /// Plugins to activate when the event named `name` fires.
+    /// `Declared` entries to activate when the event named `name` fires.
     pub(crate) fn event_plugins(&self, name: &str) -> Vec<EntryId> {
         self.activation_events
             .get(name)
+            .into_iter()
+            .flatten()
+            .filter(|id| self.is_declared(id))
             .cloned()
-            .unwrap_or_default()
+            .collect()
     }
 
-    /// Plugins to activate when `language` is set on a buffer: the entries
-    /// keyed by `language`, then those keyed by the wildcard `"*"` (a
+    /// Whether `id` is waiting to activate: once it loads or fails, its
+    /// events and languages activate it no more.
+    fn is_declared(&self, id: &EntryId) -> bool {
+        matches!(self.plugins.get(id), Some(PluginState::Declared { .. }))
+    }
+
+    /// `Declared` entries to activate when `language` is set on a buffer:
+    /// those listing `language`, then those listing the wildcard `"*"` (a
     /// manifest that can't enumerate every language it might support), each
-    /// once.
+    /// once, in declaration order.
     pub(crate) fn language_plugins(&self, language: &str) -> Vec<EntryId> {
-        let mut plugins = self
-            .activation_languages
-            .get(language)
-            .cloned()
-            .unwrap_or_default();
-        for id in self.activation_languages.get("*").into_iter().flatten() {
+        let mut plugins: Vec<EntryId> = self.declared_listing(language).cloned().collect();
+        for id in self.declared_listing("*") {
             if !plugins.contains(id) {
                 plugins.push(id.clone());
             }
@@ -155,22 +165,33 @@ impl LazyRegistry {
         plugins
     }
 
-    /// Drop all activation-map entries owned by `id` (called on load or fail).
-    ///
-    /// After `finish_lazy_activation` completes (success or error), the
-    /// plugin's lazy stubs are superseded by real commands or cleaned up entirely.
-    /// Dangling activation entries would re-fire activation, so they must be
-    /// removed unconditionally on both code paths. Command stubs are dropped
-    /// separately via `CommandHost::unregister_lazy_stubs_of`.
-    pub(super) fn drop_activations_for(&mut self, id: &EntryId) {
-        self.activation_events.retain(|_, plugins| {
-            plugins.retain(|p| p != id);
-            !plugins.is_empty()
-        });
-        self.activation_languages.retain(|_, plugins| {
-            plugins.retain(|p| p != id);
-            !plugins.is_empty()
-        });
+    /// The `Declared` entries whose `#:languages` names `lang`.
+    fn declared_listing<'a>(&'a self, lang: &'a str) -> impl Iterator<Item = &'a EntryId> {
+        self.languages
+            .iter()
+            .filter(move |(id, langs)| self.is_declared(id) && langs.iter().any(|l| l == lang))
+            .map(|(id, _)| id)
+    }
+
+    /// The `#:languages` `id` was declared with, or `None` for an entry
+    /// declared with none.
+    pub(crate) fn declared_languages(&self, id: &EntryId) -> Option<&Rc<[String]>> {
+        self.languages
+            .iter()
+            .find(|(entry, _)| entry == id)
+            .map(|(_, langs)| langs)
+    }
+
+    /// The buffers code `owner` wrote acts on: a plugin entry's declared
+    /// languages, or every buffer for an entry declared with none or with
+    /// `"*"`, and for `init.scm` and HUME's own code.
+    pub(crate) fn visibility_of(&self, owner: &Owner) -> BufferVisibility {
+        let Owner::Plugin(entry) = owner else {
+            return BufferVisibility::default();
+        };
+        self.declared_languages(entry)
+            .map(|langs| BufferVisibility::declared(Rc::clone(langs)))
+            .unwrap_or_default()
     }
 
     /// Build a human-readable status table for `:plugin-status`.
@@ -178,10 +199,9 @@ impl LazyRegistry {
     /// One row per plugin entry, sorted by id for stable output: a secondary
     /// entry reads `plugin (file)` and sorts right after its plugin's main
     /// entry.  For entries still in the `Declared` state (not yet loaded), the
-    /// pending activation entries are read from the live maps: the
-    /// triggers the entry is still waiting on.  Once an entry loads or fails,
-    /// `finish_lazy_activation` drops its triggers from the maps, so
-    /// `Loaded`/`Failed` rows show no activations.
+    /// pending activation entries are the triggers the entry is still
+    /// waiting on.  A `Loaded` row shows the languages it acts on, if it was
+    /// declared with any; a `Failed` row shows nothing.
     ///
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
     /// entry, `is_typed`), the sole source of pending command activations;
@@ -207,10 +227,10 @@ impl LazyRegistry {
                     PluginState::Loaded => "loaded",
                     PluginState::Failed => "failed",
                 };
-                let activations = if matches!(state, PluginState::Declared { .. }) {
-                    self.pending_activations(id, lazy_cmds)
-                } else {
-                    String::new()
+                let activations = match state {
+                    PluginState::Declared { .. } => self.pending_activations(id, lazy_cmds),
+                    PluginState::Loaded => self.scope_column(id).unwrap_or_default(),
+                    PluginState::Loading | PluginState::Failed => String::new(),
                 };
                 (id_s, state_label, activations)
             })
@@ -262,12 +282,10 @@ impl LazyRegistry {
         out
     }
 
-    /// Invert the live activation maps (plus the caller-supplied `Lazy`-stub
-    /// list) to collect the pending entries for `id`.
-    ///
-    /// Only meaningful for `Declared` plugins: on load/fail
-    /// `finish_lazy_activation` drops the plugin's entries, so a non-`Declared`
-    /// id yields nothing.
+    /// Collect the pending activation entries for `id` from the event map,
+    /// its declared languages and the caller-supplied `Lazy`-stub list.
+    /// Called for a `Declared` entry only: once an entry loads or fails,
+    /// nothing is pending.
     fn pending_activations(&self, id: &EntryId, lazy_cmds: &[(String, EntryId, bool)]) -> String {
         let mut parts = Vec::new();
 
@@ -305,16 +323,7 @@ impl LazyRegistry {
             parts.push(format!("event:{}", evts.join(",")));
         }
 
-        let mut langs: Vec<&str> = self
-            .activation_languages
-            .iter()
-            .filter(|(_, ps)| ps.contains(id))
-            .map(|(l, _)| l.as_str())
-            .collect();
-        langs.sort_unstable();
-        if !langs.is_empty() {
-            parts.push(format!("lang:{}", langs.join(",")));
-        }
+        parts.extend(self.languages_column(id));
 
         if parts.is_empty() {
             // Defensive fallback: policy in declare_plugin rejects zero-activation-entry
@@ -323,6 +332,30 @@ impl LazyRegistry {
         } else {
             parts.join("  ")
         }
+    }
+
+    /// The buffers loaded entry `id` acts on: `lang:*` when its
+    /// `#:languages` does not limit it, else its languages as for
+    /// [`Self::languages_column`]. `None` for an entry declared with none.
+    fn scope_column(&self, id: &EntryId) -> Option<String> {
+        let langs = self.declared_languages(id)?;
+        if BufferVisibility::limits(langs) {
+            self.languages_column(id)
+        } else {
+            Some("lang:*".to_string())
+        }
+    }
+
+    /// `id`'s declared languages as `lang:a,b`, sorted, or `None` for an
+    /// entry declared with none.
+    fn languages_column(&self, id: &EntryId) -> Option<String> {
+        let mut langs: Vec<&str> = self
+            .declared_languages(id)?
+            .iter()
+            .map(String::as_str)
+            .collect();
+        langs.sort_unstable();
+        Some(format!("lang:{}", langs.join(",")))
     }
 }
 

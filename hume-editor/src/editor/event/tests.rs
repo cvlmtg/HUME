@@ -13,7 +13,10 @@ fn all_variants() -> Vec<EditorEvent> {
     let target = PaneHandle::with_pane(buffer, pane);
     vec![
         EditorEvent::OnBufferOpen { buffer },
-        EditorEvent::OnBufferClose { buffer },
+        EditorEvent::OnBufferClose {
+            buffer,
+            language: None,
+        },
         EditorEvent::OnBufferSave { buffer },
         EditorEvent::OnBufferEnter { target },
         EditorEvent::OnFocusGained,
@@ -23,7 +26,7 @@ fn all_variants() -> Vec<EditorEvent> {
         },
         EditorEvent::OnLanguageSet {
             buffer,
-            language: Some("rust".to_string()),
+            language: Some("rust".into()),
         },
         EditorEvent::OnLspAttach {
             buffer,
@@ -117,15 +120,24 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
 }
 
 /// Every event's declared arg count is the one its own `into_steel_args`
-/// produces, and only the held event is marked held.
+/// produces, it is about a buffer exactly when it names one, and only the
+/// held event is marked held.
 #[test]
-fn every_event_declares_the_args_it_passes() {
+fn every_event_declares_the_args_it_passes_and_its_subject() {
     for event in all_variants() {
         let name = event.name();
+        let subject = match event.handle() {
+            Some(_) => EventSubject::Buffer,
+            None => EventSubject::Editor,
+        };
         let args = event.into_steel_args().len();
         assert_eq!(
             event_shape(name),
-            Some(EventShape { args, held: false }),
+            Some(EventShape {
+                args,
+                held: false,
+                subject
+            }),
             "{name}"
         );
     }
@@ -134,7 +146,14 @@ fn every_event_declares_the_args_it_passes() {
     };
     let name = held.name();
     let args = held.into_steel_args().len();
-    assert_eq!(event_shape(name), Some(EventShape { args, held: true }));
+    assert_eq!(
+        event_shape(name),
+        Some(EventShape {
+            args,
+            held: true,
+            subject: EventSubject::Buffer
+        })
+    );
     assert_eq!(EVENT_SHAPES.len(), EVENT_NAMES.len());
     assert_eq!(event_shape("on-no-such-event"), None);
 }
@@ -167,7 +186,10 @@ fn buffer_only_events_carry_one_pane_less_handle_arg() {
     let buffer = BufferId::default();
     for event in [
         EditorEvent::OnBufferOpen { buffer },
-        EditorEvent::OnBufferClose { buffer },
+        EditorEvent::OnBufferClose {
+            buffer,
+            language: None,
+        },
         EditorEvent::OnBufferSave { buffer },
         EditorEvent::OnDiagnosticsChanged { buffer },
         EditorEvent::OnUndoHistoryChanged { buffer },
@@ -273,7 +295,7 @@ fn on_language_set_carries_buffer_and_language_name() {
     let buffer = BufferId::default();
     let event = EditorEvent::OnLanguageSet {
         buffer,
-        language: Some("python".to_string()),
+        language: Some("python".into()),
     };
     let args = event.into_steel_args();
     assert_eq!(args.len(), 2);

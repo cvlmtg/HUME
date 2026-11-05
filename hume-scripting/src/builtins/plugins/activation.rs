@@ -40,9 +40,9 @@ use crate::plugin_record::Resolution;
 /// `Loading` guard from recursing until the stack overflows.
 const MAX_ACTIVATION_DEPTH: usize = 16;
 
-/// Marks `id` `Failed` and runs the same cleanup `finish_lazy_activation`
-/// would on failure: `drop_activations_for` (expired activation-event/language
-/// entries) and `unregister_lazy_stubs_of` (dead `Lazy` command stub).
+/// Marks `id` `Failed`, which keeps its events and languages from
+/// activating it again, and runs the same cleanup `finish_lazy_activation`
+/// would on failure: `unregister_lazy_stubs_of` (dead `Lazy` command stub).
 ///
 /// Shared by `begin_lazy_activation`'s two pre-body-eval raise paths (depth
 /// limit, unquotable path) and `finish_lazy_activation`'s failure branch.
@@ -55,7 +55,6 @@ fn fail_plugin_activation(ctx: &mut SteelCtx, id: &EntryId) {
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Failed);
-    ctx.registries.lazy_registry.drop_activations_for(id);
     ctx.host.commands().unregister_lazy_stubs_of(id);
 }
 
@@ -152,7 +151,6 @@ pub(crate) fn finish_lazy_activation(ctx: &mut SteelCtx, error: SteelVal) -> Ste
     if let Some(err) = error {
         fail_activation_body(ctx, id, err);
     } else {
-        ctx.registries.lazy_registry.drop_activations_for(&id);
         // Drop any `Lazy` stub the plugin didn't replace via `define-command!`:
         // dead weight now that the plugin is Loaded and won't re-run its body.
         ctx.host.commands().unregister_lazy_stubs_of(&id);

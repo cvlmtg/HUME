@@ -143,7 +143,8 @@ impl Editor {
             self.scripting.is_some(),
             "a buffer's language changes only with a scripting host attached"
         );
-        let lang_name = new_lang.map(|id| self.state.config.languages.name_of(id).to_owned());
+        let lang_name =
+            new_lang.map(|id| std::rc::Rc::from(self.state.config.languages.name_of(id)));
         self.state.buffers.get_mut(bid).language = new_lang;
         if let Some(id) = new_lang {
             self.load_bundled_language(id);

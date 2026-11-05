@@ -41,7 +41,7 @@ fn language_trigger_activates_on_set() {
             .unwrap()
             .activation_language_plugins("rust")
             .is_empty(),
-        "activation_languages must be populated before first set"
+        "the plugin must be pending on rust before the first set"
     );
 
     let before = state(&ed);
@@ -71,14 +71,14 @@ fn language_trigger_activates_on_set() {
             .unwrap()
             .activation_language_plugins("rust")
             .is_empty(),
-        "activation_languages must be cleared after plugin loads"
+        "a loaded plugin must not be pending on rust"
     );
 }
 
 /// Second set to the same language: handler still runs; no re-activation.
 ///
-/// With `activation_languages` left uncleared on load, a second matching set
-/// would attempt activation again. `activate_plugin`'s `Loaded` guard keeps
+/// A loaded plugin still pending on its language would see a second matching
+/// set attempt activation again. `activate_plugin`'s `Loaded` guard keeps
 /// that harmless, so this test is about the intended fast path.
 #[test]
 fn language_trigger_idempotent_on_round_trip() {
@@ -103,7 +103,7 @@ fn language_trigger_idempotent_on_round_trip() {
             .unwrap()
             .activation_language_plugins("rust")
             .is_empty(),
-        "activation_languages must be empty after first set"
+        "no plugin may be pending on rust after the first set"
     );
 
     let after_first = state(&ed);
@@ -135,7 +135,7 @@ fn language_trigger_idempotent_on_round_trip() {
             .unwrap()
             .activation_language_plugins("rust")
             .is_empty(),
-        "activation_languages must remain cleared after round-trip"
+        "no plugin may be pending on rust after the round-trip"
     );
 }
 
@@ -218,7 +218,7 @@ fn language_trigger_one_to_many_activates_all() {
             .unwrap()
             .activation_language_plugins("rust")
             .is_empty(),
-        "activation_languages must be fully cleared after both plugins load"
+        "neither loaded plugin may be pending on rust"
     );
 }
 
@@ -256,7 +256,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
             .unwrap()
             .activation_language_plugins("rust")
             .is_empty(),
-        "activation_languages[\"rust\"] must remain intact after an unrelated set"
+        "the plugin must stay pending on rust after an unrelated set"
     );
 }
 

@@ -166,7 +166,7 @@ fn ctrl_space_with_no_buffer_source_registered_reports() {
     ed.feed_key(key('i'));
     trigger(&mut ed);
     assert!(ed.state.input.buffer_completion().is_none());
-    assert_eq!(status(&ed), "no completion sources registered");
+    assert_eq!(status(&ed), "no completion sources for this buffer");
 }
 
 // ── Token rules: what the filter is seeded from, what accept replaces ─────

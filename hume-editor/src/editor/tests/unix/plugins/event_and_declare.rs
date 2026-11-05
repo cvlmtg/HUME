@@ -4,7 +4,7 @@
 use super::*;
 use crate::editor::registry::MappableCommand;
 use hume_platform::dirs::Dirs;
-use hume_scripting::PluginStatus;
+use hume_scripting::{Audience, PluginStatus};
 
 // ── Lazy plugin loading — event activations ──────────────────────────
 
@@ -39,7 +39,7 @@ fn event_trigger_activates_on_first_fire() {
             .unwrap()
             .activation_event_plugins("on-buffer-save")
             .is_empty(),
-        "activation_events must be populated before first fire"
+        "the declared plugin must activate on its event before first fire"
     );
 
     let before = state(&ed);
@@ -68,7 +68,7 @@ fn event_trigger_activates_on_first_fire() {
             .unwrap()
             .activation_event_plugins("on-buffer-save")
             .is_empty(),
-        "activation_events must be cleared after plugin loads"
+        "a loaded plugin must not activate on its event again"
     );
 }
 
@@ -99,7 +99,7 @@ fn event_trigger_idempotent_on_second_fire() {
             .unwrap()
             .activation_event_plugins("on-buffer-save")
             .is_empty(),
-        "activation_events must be empty after first fire"
+        "a loaded plugin must not activate on its event again"
     );
 
     let after_first = state(&ed);
@@ -202,7 +202,7 @@ fn event_trigger_one_to_many_activates_all() {
             .unwrap()
             .activation_event_plugins("on-buffer-save")
             .is_empty(),
-        "activation_events must be fully cleared after both plugins load"
+        "neither loaded plugin may activate on the event again"
     );
 }
 
@@ -243,7 +243,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
             .unwrap()
             .activation_event_plugins("on-buffer-save")
             .is_empty(),
-        "activation_events must be cleared even after failure"
+        "a failed plugin must not activate on its event again"
     );
     assert!(
         ed.state
@@ -272,6 +272,37 @@ fn event_plugin_failure_marks_failed_no_retry() {
         msg_count,
         "no new error must be logged on second fire (no retry)"
     );
+}
+
+#[test]
+fn an_event_whose_buffer_the_activated_body_closes_is_dropped() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-buffer-save))"#,
+        r#"(close-buffer! (focused-pane))
+           (register-hook! 'on-buffer-save (lambda (p) (log! 'trace "tp save")))"#,
+    );
+    let bid = open_other_buffer(&mut ed, "a\n");
+    ed.settle();
+    ed.queue_buffer_save(bid);
+    ed.settle();
+    assert!(ed.state.buffers.try_get(bid).is_none());
+    assert!(tp_log(&ed).is_empty(), "{:?}", tp_log(&ed));
+}
+
+#[test]
+fn a_save_whose_buffer_the_activated_body_closes_is_dropped() {
+    let (mut ed, dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-before-buffer-save))"#,
+        r#"(close-buffer! (focused-pane) #:discard-unsaved #t)
+           (register-hook! 'on-before-buffer-save
+             (lambda (p done) (log! 'trace "tp held") (done)))"#,
+    );
+    let (bid, path) = edited_notes(&mut ed, dir.path());
+    type_cmd(&mut ed, ":w");
+    ed.settle();
+    assert!(ed.state.buffers.try_get(bid).is_none());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old\n");
+    assert!(tp_log(&ed).is_empty(), "{:?}", tp_log(&ed));
 }
 
 // ── load-plugin! / declare-plugin! interaction (editor-level) ────────
@@ -799,10 +830,11 @@ fn plugin_hook_rolled_back_on_failed_activation() {
         "plugin must be Failed after intentional error"
     );
     assert!(
-        !ed.scripting
-            .as_ref()
-            .unwrap()
-            .has_hook_handlers("on-buffer-save", None),
+        !ed.scripting.as_ref().unwrap().has_hook_handlers(
+            "on-buffer-save",
+            None,
+            Audience::Everyone
+        ),
         "the failed plugin's register-hook! must not survive rollback"
     );
 }
@@ -822,10 +854,11 @@ fn plugin_lsp_notification_hook_rolled_back_on_failed_activation() {
     type_cmd(&mut ed, ":trigger");
 
     assert!(
-        !ed.scripting
-            .as_ref()
-            .unwrap()
-            .has_hook_handlers("on-lsp-notification", Some("m/a")),
+        !ed.scripting.as_ref().unwrap().has_hook_handlers(
+            "on-lsp-notification",
+            Some("m/a"),
+            Audience::Everyone
+        ),
         "the failed plugin's method-filtered handler must not survive rollback"
     );
 }

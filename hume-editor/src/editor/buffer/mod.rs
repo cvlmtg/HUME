@@ -253,6 +253,8 @@ pub(crate) struct Buffer {
     /// plugin during startup) announced no open, so it announces no close
     /// either.
     pub(in crate::editor) open_announced: bool,
+    /// The buffer as dispatched events have shown it to plugins.
+    pub(in crate::editor) plugin_view: PluginView,
     /// The buffer's disk state as of the last check, set by
     /// `Editor::check_buffer_disk_state`, cleared to `InSync` by a reload or
     /// a successful write. Always `InSync` for scratch/synthetic buffers,
@@ -343,6 +345,7 @@ impl Buffer {
             read_only: false,
             hold: Weak::new(),
             open_announced: false,
+            plugin_view: PluginView::default(),
             disk_state: disk::DiskState::InSync,
             pending_dump: None,
         }
@@ -1043,6 +1046,17 @@ impl Buffer {
             LineEnding::Lf => self.text.to_string(),
         }
     }
+}
+
+/// What the plugins have been told of a buffer: whether its open was
+/// dispatched, and the language its last dispatched language set named.
+/// Hooks reach a plugin by this language, not the buffer's current one, so
+/// a buffer's close reaches the same plugins its open or language set
+/// did, even when it closes before a queued language set is dispatched.
+#[derive(Debug, Default)]
+pub(in crate::editor) struct PluginView {
+    pub(in crate::editor) opened: bool,
+    pub(in crate::editor) language: Option<Rc<str>>,
 }
 
 #[cfg(test)]
