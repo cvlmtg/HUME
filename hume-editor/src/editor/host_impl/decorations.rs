@@ -50,6 +50,13 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    fn unregister_sign_source(&mut self, source: &str, bid: BufferId) {
+        self.state
+            .config
+            .decorations
+            .unregister_sign_source(source, bid);
+    }
+
     fn set_signs(
         &mut self,
         source: String,

@@ -981,3 +981,39 @@ fn a_refresh_for_a_buffer_closed_before_it_fires_sends_nothing() {
     );
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 0);
 }
+
+/// A buffer leaving the languages `core:lsp` is declared for keeps none of
+/// its inlay hints: the plugin clears them, as the buffer's close would.
+#[test]
+fn a_buffer_leaving_core_lsps_languages_loses_its_hints() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (rig, _guard) = rust_only_core_lsp_rig(
+        tmp.path(),
+        MARKED_FIXTURE,
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        HINTS_ON,
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/inlayHint",
+                inlay_hint_response(&[(0, 5, serde_json::json!(": i32"))]),
+            );
+        },
+    );
+    let (mut ed, bid) = (rig.ed, rig.bid);
+    fire_viewport_change(&mut ed);
+    settle_until_idle(&mut ed);
+    let hints = |ed: &Editor| {
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count()
+    };
+    assert_eq!(hints(&ed), 1, "sanity: the hint is drawn");
+
+    let markdown = ed.state.config.languages.intern("markdown");
+    ed.set_buffer_language(bid, Some(markdown)).expect_open();
+    pump_lsp(&mut ed);
+
+    assert_eq!(hints(&ed), 0);
+}

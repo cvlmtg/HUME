@@ -37,12 +37,21 @@ use crate::test_support::SteelCtxTestHarness;
 fn focused_pane_command_mode_returns_steel_pane_id() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = focused_pane(&mut ctx);
+    let result = focused_pane(&mut ctx, SteelVal::BoolV(false));
     assert!(result.is_ok(), "focused-pane must succeed in command mode");
     assert!(
         matches!(result.unwrap(), SteelVal::Custom(_)),
         "focused-pane must return a SteelVal::Custom (PaneId)"
     );
+}
+
+/// `#:in-scope` takes a boolean, and says so when it gets anything else.
+#[test]
+fn focused_pane_refuses_a_non_boolean_in_scope() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = focused_pane(&mut ctx, SteelVal::IntV(1)).expect_err("1 is not a boolean");
+    assert!(err.to_string().contains("#:in-scope"), "{err}");
 }
 
 /// `buffers` in command mode returns an empty list (NullHost has no buffers).

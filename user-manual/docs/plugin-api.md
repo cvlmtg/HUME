@@ -196,7 +196,7 @@ Only `buffer-key`, `buffer-live?`, `pane-live?`, `diagnostic-counts`, and `diagn
 
 | Call | Pane | Effect |
 |------|------|--------|
-| `focused-pane` |  | `(focused-pane)`{.sig} The pane focused right now, paired with its buffer: a live read, for code with no pane of its own, such as a response callback or a timer |
+| `focused-pane` |  | `(focused-pane [#:in-scope #t])`{.sig} The pane focused right now, paired with its buffer: a live read, for code with no pane of its own, such as a response callback or a timer. With `#:in-scope #t`, `#f` when the calling plugin was declared with `#:languages` and the focused buffer is of another language |
 | `buffers` |  | `(buffers)`{.sig} A list of every open buffer the calling plugin works in (all of them unless it was declared with `#:languages`), as pane-less pane values, in the order they were opened |
 | `buffer-live?` |  | `(buffer-live? pane)`{.sig} `#t` if `pane`'s buffer is still open, `#f` otherwise; never raises. A timer, debounce, or async callback whose captured value may have closed should check this before calling anything that raises on a closed buffer |
 | `pane-live?` |  | `(pane-live? pane)`{.sig} `#t` if `pane` names a pane that still exists and still shows its own buffer, `#f` otherwise (including for a value that carries no pane); never raises. Use it like `buffer-live?`, in a callback that calls a pane-aware editor function such as `lsp-request!` |
@@ -337,6 +337,7 @@ Any plugin can populate these, though LSP diagnostics and inlay hints are the he
 | `diagnostic-glyph` | `(diagnostic-glyph severity)`{.sig} The mark the status line shows for a severity symbol: `"✘"` for `'error`, `"⚠"` for `'warning`, `"ℹ"` for `'info`, `"·"` for `'hint`. Raises on any other symbol |
 | `set-inlay-hints!` | `(set-inlay-hints! pane source hints)`{.sig} Replace `source`'s inlay hints for the buffer. `hints`: a list of `(hash 'char-offset o 'text t 'side 'before)`, `'side` `'before` or `'after`. An offset inside a character puts a `'before` hint before the whole character and an `'after` hint after it |
 | `register-sign-source!` | `(register-sign-source! pane source priority)`{.sig} Reserve a gutter sign slot for `source` on the buffer, ordered among every source registered for it by priority, higher first, ties broken by source name |
+| `unregister-sign-source!` | `(unregister-sign-source! pane source)`{.sig} Give back `source`'s gutter sign slot on the buffer and remove its signs there; the sources after it move up a slot. Does nothing for a source not registered on the buffer |
 | `set-signs!` | `(set-signs! pane source signs)`{.sig} Replace `source`'s gutter signs for the buffer. `signs`: a list of `(hash 'line l 'text t 'scope s)`; add `'end-line e` to put the sign on every line from `l` up to, not including, `e`. When two entries cover the same line, the first one in the list wins it. `source` must already be registered, and a control character in `'text` raises |
 | `set-virtual-lines!` | `(set-virtual-lines! pane source lines)`{.sig} Replace `source`'s virtual (ghost) lines for the buffer. `lines`: a list of hashes with `'line` and `'text` required, and optional `'side` (`'before` or `'after`, default `'after`), `'scope` and `'segments`. A line break in `'text` raises. `'segments` is a list of `(hash 'start-char-col 'end-char-col 'scope)` char-column ranges in `'text`; an edge inside a character widens the segment to the whole character, and two segments sharing a character raise |
 | `set-eol-text!` | `(set-eol-text! pane source lines [#:hide-on-insert-line bool])`{.sig} Replace `source`'s end-of-line text for the buffer. `lines`: a list of `(hash 'line l 'text t 'scope s)`. When two entries name the same line, the first one in the list wins it. With `#:hide-on-insert-line #t` (default `#f`), the text hides on the cursor's line while you type in Insert mode |
@@ -354,7 +355,7 @@ Each `diagnostics-for-buffer` entry is a hash with:
 
 [Hooks](writing-plugins.md#hooks) shows `diagnostics-for-buffer` and the hook that feeds it.
 
-A sign source's gutter slot is reserved the first time it registers for a buffer, before it places any sign, so the gutter's width stays stable as signs come and go. The slot stays reserved across `:e!` until the buffer closes. There's no `unregister-sign-source!`, and re-registering the same `source` for the same buffer only replaces its priority.
+A sign source's gutter slot is reserved the first time it registers for a buffer, before it places any sign, so the gutter's width stays stable as signs come and go. The slot stays reserved across `:e!` until the buffer closes or `unregister-sign-source!` gives it back, and re-registering the same `source` for the same buffer only replaces its priority.
 
 Line backgrounds have no priority: same-line entries from different sources break ties by source name.
 

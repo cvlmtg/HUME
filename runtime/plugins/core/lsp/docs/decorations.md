@@ -59,6 +59,7 @@ the result for both the decorations and the drawer:
 |---|---|
 | `on-diagnostics-changed` | Refreshes the EOL summary, signs and drawer for that buffer |
 | `on-option-change` for `lsp-diagnostics-min-severity` or `lsp-diagnostics-on-insert-line` | Refreshes every buffer. The store applies a new floor only when it is read, so without this each buffer would keep the previous cut until its next diagnostics change |
+| `on-buffer-close` for a buffer still open | Clears the EOL summary, gives back the sign slot with its signs, and closes the drawer listing the buffer. Such a close comes from a language change that took the buffer out of the plugin's `#:languages`; no later hook about the buffer would reach the plugin to clear them |
 
 ## Grouping and severity
 
@@ -107,7 +108,8 @@ This plugin is the only place a diagnostic becomes a gutter mark.
 Hints are requested for the visible lines. Each buffer starts with the `inlay-hints`
 config value (default off), and `:toggle-inlay-hints` flips the current buffer. Only
 toggled buffers are recorded, keyed by `buffer-key`, so a buffer open before the plugin
-activated needs no setup; `on-buffer-close` drops the record.
+activated needs no setup; `on-buffer-close` drops the record, and clears the hints of a
+buffer that stays open (see [Refresh path](#refresh-path)).
 
 | Trigger | Pane carried | Handling |
 |---|---|---|

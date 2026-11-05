@@ -35,10 +35,10 @@ handle-fetch-result! ──▶ diff-buffer-lines                       │
 |---|---|
 | `on-buffer-open` | Track the buffer, schedule a refresh |
 | `on-buffer-enter` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
-| `on-focus-gained` | The same for every buffer a pane shows, with the branch refresh for the focused one |
+| `on-focus-gained` | The same for every buffer a pane shows, with the branch refresh for the focused one when the plugin works in it |
 | `on-text-changed` | Schedule a refresh when the buffer can diff |
 | `on-buffer-save` | Schedule a refresh and a branch refresh |
-| `on-buffer-close` | `remove-buffer!` cancels any in-flight diff and branch fetch and drops the entry |
+| `on-buffer-close` | `remove-buffer!` cancels any in-flight diff and branch fetch and drops the entry. A buffer still open, one whose language left the plugin's `#:languages`, also loses its signs and sign slot, its inline diff and its branch text |
 
 A commit or checkout in another terminal moves the ref without any event, so
 `on-buffer-enter` and `on-focus-gained` refetch through `invalidate-ref!`: it clears the
@@ -173,8 +173,10 @@ save for work nobody can see.
 
 `plugin.scm`'s `on-option-change` hook re-runs `schedule-branch-refresh!` whenever the
 `statusline` option changes, so placing the element starts the first fetch at once. It
-reads `(focused-pane)` at that moment: the hook fires for a global setting write with no
-buffer of its own, and the branch shown is the one on screen.
+reads `(focused-pane #:in-scope #t)` at that moment: the hook fires for a global setting
+write with no buffer of its own, and the branch shown is the one on screen. The keyword
+skips a focused buffer outside the plugin's `#:languages`, which the plugin would otherwise
+track without ever hearing it close. `on-focus-gained` takes the focused pane the same way.
 
 The text comes from the `'branch-style` config value, which `plugin.scm` passes down
 through `schedule-branch-refresh!` the way the diff pipeline receives `ref`;

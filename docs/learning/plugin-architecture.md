@@ -180,13 +180,21 @@ A buffer that changes language moves into or out of the plugin's view. A
 Rust plugin sees a buffer switched from Rust to Markdown close, and sees it
 open again when it is switched back, so anything the plugin keeps per buffer
 is set up and torn down by the same two hooks it uses for real opens and
-closes:
+closes. One difference remains: after a language change the buffer is still
+open, and what the plugin drew in it stays until the plugin clears it.
+Changing a buffer's language by hand is rare, so the editor leaves that to
+the plugin rather than tracking who drew what:
 
 ```scheme
 ; alice/rust-tools/plugin.scm
-(define-command! "rust-check" "Run cargo check" (lambda (pane) ...))
-(register-hook! 'on-buffer-save
-  (lambda (pane) (call! "rust-check" pane)))   ; Rust buffers only
+(define checked (hash))                          ; per-buffer state
+(register-hook! 'on-buffer-open
+  (lambda (pane) (set! checked (hash-insert checked (buffer-key pane) #f))))
+(register-hook! 'on-buffer-close
+  (lambda (pane)
+    (set! checked (hash-remove checked (buffer-key pane)))
+    (when (buffer-live? pane)                    ; a language change, not a close
+      (unregister-sign-source! pane "rust-tools"))))
 ```
 
 ## Module isolation

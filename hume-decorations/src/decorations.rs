@@ -283,15 +283,16 @@ impl<K, T> SourceStore<K, T> {
 
     /// Drops `source`'s entries for `bid` alone; a buffer left with no
     /// source is forgotten. `false` when `source` had nothing for `bid`.
-    pub fn remove_source_for_buffer(&mut self, source: &K, bid: BufferId) -> bool
+    pub fn remove_source_for_buffer<Q>(&mut self, source: &Q, bid: BufferId) -> bool
     where
-        K: PartialEq,
+        K: std::borrow::Borrow<Q>,
+        Q: PartialEq + ?Sized,
     {
         let Some(entry) = self.by_buffer.get_mut(&bid) else {
             return false;
         };
         let before = entry.len();
-        entry.retain(|(k, _)| k != source);
+        entry.retain(|(k, _)| k.borrow() != source);
         let removed = entry.len() != before;
         if entry.is_empty() {
             self.by_buffer.remove(&bid);
@@ -515,9 +516,10 @@ pub struct DecorationStores {
     /// time, the first time it becomes relevant there (a plugin calls
     /// `register-sign-source!` from inside the same function that renders
     /// its signs, e.g. `core:lsp` on first diagnostic placement,
-    /// `core:git-diff` on first tracked render), and holds it for that
-    /// buffer's life. There is no withdrawal; a source that stops having
-    /// anything to show still keeps its (now blank) slot via
+    /// `core:git-diff` on first tracked render), and holds it until the
+    /// buffer closes or the source withdraws it
+    /// (`unregister_sign_source`). A source that stops having anything to
+    /// show still keeps its (now blank) slot via
     /// `(set-signs! pane source '())`, same as any other empty `set-signs!`
     /// call. This is what keeps a buffer neither source ever touches (a
     /// plain buffer with no LSP server and no git repo) from ever reserving
@@ -641,7 +643,8 @@ impl DecorationStores {
     /// `SourceStore::groups_in_range`, not once per entry. `set-signs!`
     /// already rejects a source unregistered for `bid` at write time, and a
     /// source never loses its registration for a buffer without that
-    /// buffer's signs being cleared alongside it (`Self::remove_buffer`),
+    /// buffer's signs being cleared alongside it (`Self::remove_buffer`,
+    /// `Self::unregister_sign_source`),
     /// so every group this sees has a real slot; the `expect` documents that
     /// invariant at the one place it's owned, rather than at every caller.
     pub fn signs_in_range(
@@ -684,6 +687,24 @@ impl DecorationStores {
             (std::cmp::Reverse(*p), n.as_str()) < (std::cmp::Reverse(priority), source.as_str())
         });
         sources.insert(idx, (source, priority));
+    }
+
+    /// Withdraws `source`'s registration for `bid` and drops its signs
+    /// there, so the sources ranked after it move up a slot and the gutter
+    /// narrows. A no-op for a source not registered for `bid`.
+    pub fn unregister_sign_source(&mut self, source: &str, bid: BufferId) {
+        let Some(sources) = self.sign_sources.get_mut(&bid) else {
+            return;
+        };
+        let Some(idx) = sources.iter().position(|(n, _)| n == source) else {
+            return;
+        };
+        sources.remove(idx);
+        if sources.is_empty() {
+            self.sign_sources.remove(&bid);
+        }
+        self.signs.remove_source_for_buffer(source, bid);
+        self.touch(bid);
     }
 
     /// `name`'s gutter slot in `bid` (its index in that buffer's

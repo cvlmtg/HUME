@@ -444,3 +444,41 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
         "no stale sign should remain after reload clears diagnostics"
     );
 }
+
+/// A buffer leaving the languages `core:lsp` is declared for keeps none of
+/// its diagnostic marks: the plugin clears them and gives back its sign
+/// slot, as the buffer's close would.
+#[test]
+fn a_buffer_leaving_core_lsps_languages_loses_its_diagnostic_marks() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = rust_only_core_lsp_rig(
+        root.path(),
+        &marked_at_start("abcdefgh\n"),
+        serde_json::json!({ "capabilities": {} }),
+        None,
+        |_, _| {},
+    );
+    let sid = rig.sid("rust-analyzer");
+    let diag: DiagFixture = ((0, 2), (0, 5), 1, "boom");
+    let msg = publish_diagnostics_notification(&rig.uri(), &[diag]);
+    rig.push(sid, msg);
+    rig.ed.settle();
+    let bid = rig.bid;
+    let marks = |ed: &Editor| {
+        let store = &ed.state.config.decorations;
+        (
+            store.signs_for("lsp-diagnostics", bid).len(),
+            store.eol_text_for_buffer(bid).count(),
+            store.sign_source_count(bid),
+        )
+    };
+    assert_eq!(marks(&rig.ed), (1, 1, 1), "sanity: the diagnostic is drawn");
+
+    let markdown = rig.ed.state.config.languages.intern("markdown");
+    rig.ed
+        .set_buffer_language(bid, Some(markdown))
+        .expect_open();
+    pump_lsp(&mut rig.ed);
+
+    assert_eq!(marks(&rig.ed), (0, 0, 0));
+}

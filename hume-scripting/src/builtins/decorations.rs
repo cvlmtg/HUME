@@ -56,9 +56,9 @@ pub(crate) fn set_inlay_hints(
 /// a source registers for a buffer, even before it's placed any signs there.
 /// This is what keeps the gutter width stable as signs come and go,
 /// instead of tracking whichever priorities happen to be live right now.
-/// There is no `unregister-sign-source!`: a source holds its slot in a
-/// buffer for that buffer's life, across a reload or a replaced text, until
-/// the buffer closes. Re-registering `source` for the same buffer
+/// A source holds its slot in a buffer across a reload or a replaced text,
+/// until the buffer closes or `unregister-sign-source!` withdraws it.
+/// Re-registering `source` for the same buffer
 /// replaces its priority and re-sorts it, same as `register-lsp-server!`'s
 /// last-wins semantics.
 pub(crate) fn register_sign_source(
@@ -71,6 +71,20 @@ pub(crate) fn register_sign_source(
     require_cap(ctx.host.decorations())?
         .register_sign_source(source, bid, priority)
         .map_err(generic_err)?;
+    Ok(SteelVal::Void)
+}
+
+/// `(unregister-sign-source! pane source)`: withdraws `source`'s sign slot
+/// for `pane`'s buffer and drops its signs there, as closing the buffer
+/// would: the sources ranked after it move up and the gutter narrows. For a
+/// plugin that stops decorating a buffer that stays open. A no-op for a
+/// source not registered there.
+pub(crate) fn unregister_sign_source(
+    ctx: &mut SteelCtx,
+    bid: BufferId,
+    source: String,
+) -> SteelResult {
+    require_cap(ctx.host.decorations())?.unregister_sign_source(&source, bid);
     Ok(SteelVal::Void)
 }
 

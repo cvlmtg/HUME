@@ -403,6 +403,10 @@ impl Editor {
             Shown::Buffer(language) => self.fire_to(event, Audience::Seeing(language.as_deref())),
             Shown::Moved { buffer, from, to } => {
                 let (from_lang, to_lang) = (from.as_deref(), to.as_deref());
+                // The buffer stays open, so the leaving plugins clear what
+                // they drew in it from their own close handlers: a language
+                // change is rare enough that the editor tracks no writer per
+                // decoration.
                 self.fire_to(
                     EditorEvent::OnBufferClose {
                         buffer,

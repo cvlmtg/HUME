@@ -461,6 +461,30 @@ fn buffers_in_the_body_lists_the_buffer_whose_change_activated_it() {
     assert_eq!(tp_log(&ed).first().map(String::as_str), Some("body 1"));
 }
 
+// ── `(focused-pane)` ──────────────────────────────────────────────────
+
+/// Logs, from a hook about no buffer, whether `(focused-pane #:in-scope #t)`
+/// and `(focused-pane)` name a pane.
+const FOCUS_PLUGIN: &str = r#"
+(define (tp-yes? p) (if p "pane" "none"))
+(register-hook! 'on-mode-change
+  (lambda (from to)
+    (log! 'trace (string-append "tp " (tp-yes? (focused-pane #:in-scope #t))
+                                " " (tp-yes? (focused-pane))))))
+"#;
+
+#[test]
+fn focused_pane_in_scope_is_false_for_a_buffer_outside_the_callers_languages() {
+    let (mut ed, _dir, bid) = activated(r#""rust""#, "rust", FOCUS_PLUGIN);
+    insert_round_trip(&mut ed);
+    set_language(&mut ed, bid, Some("markdown"));
+    insert_round_trip(&mut ed);
+    assert_eq!(
+        tp_log(&ed),
+        ["pane pane", "pane pane", "none pane", "none pane"]
+    );
+}
+
 // ── Buffer completion sources ─────────────────────────────────────────
 
 /// A `'buffer` source that logs each call and asks to be called again on

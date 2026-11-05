@@ -418,6 +418,7 @@
 (#%register-global "unindent")
 (#%register-global "unlock-file!")
 (#%register-global "unregister-lsp-server!")
+(#%register-global "unregister-sign-source!")
 (#%register-global "untrack-position!")
 (#%register-global "update-drawer-list!")
 (#%register-global "viewport-range")

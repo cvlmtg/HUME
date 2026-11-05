@@ -1882,3 +1882,86 @@ fn a_ref_that_looks_like_a_git_option_is_not_run_as_one() {
         "git must not have taken the ref as its --output option"
     );
 }
+
+/// Places the `steel:git-branch` statusline element.
+const BRANCH_PLACED: &str =
+    r#"(set-option! "statusline" (hash 'left '("steel:git-branch") 'center '() 'right '()))"#;
+
+/// Init source loading `core:git-diff`, with `config`, declared for Rust
+/// buffers only.
+fn rust_only_git_diff(config: Option<&str>) -> String {
+    format!(
+        "(%define-language! \"rust\" '(\"rs\") '() '())\n\
+         (declare-plugin! \"core:git-diff\" #:languages '(\"rust\"))\n{}",
+        hume_scripting::eager_load_scm("core:git-diff", config)
+    )
+}
+
+/// Whether `bid` shows a branch name in the `steel:git-branch` element.
+fn has_branch(ed: &Editor, bid: BufferId) -> bool {
+    ed.state
+        .config
+        .statusline_text
+        .get(&bid)
+        .and_then(|texts| texts.get("git-branch"))
+        .is_some_and(|text| !text.is_empty())
+}
+
+/// A buffer leaving the languages `core:git-diff` is declared for keeps
+/// none of its marks: the plugin clears its signs, inline diff and branch
+/// text and gives back its sign slot, as the buffer's close would.
+#[test]
+fn a_buffer_leaving_git_diffs_languages_loses_its_marks() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_with_init(
+        tmp.path(),
+        &format!(
+            "{}\n{BRANCH_PLACED}",
+            rust_only_git_diff(Some("(hash 'signs #t 'inline #t)"))
+        ),
+    );
+    let (_repo, path) = commit_and_checkout("f.rs", "one\ntwo\nthree\n", "topic");
+    std::fs::write(&path, "one\nALPHA\ntwo\nTHREE\n").unwrap();
+    let bid = open(&mut ed, &path);
+    drain_until(&mut ed, |ed| {
+        !signs(ed, bid).is_empty() && !line_bgs(ed, bid).is_empty() && has_branch(ed, bid)
+    });
+    assert!(
+        !vlines(&ed, bid).is_empty(),
+        "sanity: the inline diff is drawn"
+    );
+
+    let markdown = ed.state.config.languages.intern("markdown");
+    ed.set_buffer_language(bid, Some(markdown)).expect_open();
+    ed.settle();
+
+    assert!(signs(&ed, bid).is_empty());
+    assert!(line_bgs(&ed, bid).is_empty());
+    assert!(vlines(&ed, bid).is_empty());
+    assert!(highlights(&ed, bid).is_empty());
+    assert!(!has_branch(&ed, bid));
+    assert_eq!(ed.state.config.decorations.sign_source_count(bid), 0);
+}
+
+/// A focused buffer outside the languages `core:git-diff` is declared for
+/// gets no branch name when the statusline changes.
+#[test]
+fn a_statusline_change_skips_a_focused_buffer_outside_git_diffs_languages() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_with_init(tmp.path(), &rust_only_git_diff(None));
+    let (_repo, notes) = commit_and_checkout("notes.md", "a\n", "topic");
+    let main = notes.with_file_name("main.rs");
+    std::fs::write(&main, "fn main() {}\n").unwrap();
+    let notes_bid = open(&mut ed, &notes);
+    ed.settle();
+    let mut host = ed.scripting.take().expect("setup installs a host");
+    eval_with_real_host(&mut ed, &mut host, BRANCH_PLACED, tmp.path());
+    ed.scripting = Some(host);
+    ed.settle();
+
+    // A Rust buffer's branch fetch, scheduled after any for the notes,
+    // marks when that one would have landed.
+    let main_bid = open(&mut ed, &main);
+    drain_until(&mut ed, |ed| has_branch(ed, main_bid));
+    assert!(!has_branch(&ed, notes_bid));
+}

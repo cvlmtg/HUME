@@ -14,6 +14,10 @@
 - `u` after typing from `i` or `a` brings back the selection you pressed them on, and redo after Insert mode lands where `Esc` left you.
 - Extending by word (`w`, `b`, `Ctrl-w`, `Ctrl-b`) keeps the selection's anchor end in place, for example after `ma(` and `Ctrl-e`.
 
+### Plugins & scripting
+- New `unregister-sign-source!` gives back a plugin's gutter sign slot on a buffer.
+- `focused-pane` takes `#:in-scope #t`, returning `#f` when the focused buffer is outside the calling plugin's `#:languages`.
+
 ### Fixes
 - In Insert mode, Up and Down move by screen line on wrapped lines, as `j` and `k` do.
 - A command bound to an Insert-mode or command prompt key gets a `count` of `0`, as a Normal-mode key press does.

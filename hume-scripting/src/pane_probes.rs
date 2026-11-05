@@ -45,6 +45,7 @@ const PANE_PROBES: &[&str] = &[
     r#"(set-attachment-completion-triggers! p "src" "server" 'completion (list #\.))"#,
     r#"(set-inlay-hints! p "src" (list))"#,
     r#"(register-sign-source! p "src" 0)"#,
+    r#"(unregister-sign-source! p "src")"#,
     r#"(set-signs! p "src" (list))"#,
     r#"(set-virtual-lines! p "src" (list))"#,
     r#"(set-eol-text! p "src" (list))"#,

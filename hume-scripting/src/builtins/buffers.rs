@@ -30,8 +30,16 @@ use hume_platform::path::AbsolutePath;
 /// parameter receives the pane it was invoked through that way (dispatch
 /// injects it, same mechanism as `count`/`extend`/`arg`/`force`) instead of
 /// reading this. It exists for code with no pane of its own to act on.
-pub(crate) fn focused_pane(ctx: &mut SteelCtx) -> SteelResult {
-    Ok(SteelPane(ctx.host.buffers().focused_pane()).into_steel_val())
+/// With `#:in-scope #t` it is `#f` when the calling code does not act on
+/// the focused buffer (`crate::visibility`), for a hook about no buffer
+/// that would otherwise act on a buffer its plugin never hears of.
+pub(crate) fn focused_pane(ctx: &mut SteelCtx, in_scope: SteelVal) -> SteelResult {
+    let in_scope = bool_arg(in_scope, "#:in-scope")?;
+    let pane = ctx.host.buffers().focused_pane();
+    if in_scope && !caller_sees(ctx)(pane.buffer()) {
+        return Ok(SteelVal::BoolV(false));
+    }
+    Ok(SteelPane(pane).into_steel_val())
 }
 
 // ── Enumeration builtins ───────────────────────────────────────────────────────

@@ -286,6 +286,10 @@ fn every_source_name_refuses_an_empty_name_through_real_registration() {
             "register-sign-source!",
             "(register-sign-source! (focused-pane) {src} 0)",
         ),
+        (
+            "unregister-sign-source!",
+            "(unregister-sign-source! (focused-pane) {src})",
+        ),
         ("set-signs!", "(set-signs! (focused-pane) {src} (list))"),
         (
             "set-virtual-lines!",

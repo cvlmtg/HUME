@@ -317,13 +317,45 @@ fn core_lsp_rig_configured(
     config: Option<&str>,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (LspRig, RealRuntimeDirs) {
+    core_lsp_rig_from(
+        tmp,
+        marked,
+        initialize_result,
+        &core_lsp_init(config),
+        configure,
+    )
+}
+
+/// [`core_lsp_rig_configured`] with `core:lsp` declared for Rust buffers
+/// only.
+fn rust_only_core_lsp_rig(
+    tmp: &Path,
+    marked: &str,
+    initialize_result: serde_json::Value,
+    config: Option<&str>,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (LspRig, RealRuntimeDirs) {
+    let init = format!(
+        "(declare-plugin! \"core:lsp\" #:languages '(\"rust\"))\n{}",
+        core_lsp_init(config)
+    );
+    core_lsp_rig_from(tmp, marked, initialize_result, &init, configure)
+}
+
+/// [`core_lsp_rig`] over the init source `init`.
+fn core_lsp_rig_from(
+    tmp: &Path,
+    marked: &str,
+    initialize_result: serde_json::Value,
+    init: &str,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (LspRig, RealRuntimeDirs) {
     let guard = RealRuntimeDirs::new();
     let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
     backend.respond_to("initialize", initialize_result);
     configure(&mut backend, ServerId(0));
-    let init = core_lsp_init(config);
     let spec = RigSpec::rust(marked)
-        .with_init(&init)
+        .with_init(init)
         .with_dirs(guard.dirs());
     let mut rig = LspRig::drained(tmp, spec, backend);
     rig.ed.settle();

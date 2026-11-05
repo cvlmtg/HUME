@@ -166,6 +166,9 @@
 (define (close-buffer! pane #:discard-unsaved [discard-unsaved #f])
   (%close-buffer! pane discard-unsaved))
 
+(define (focused-pane #:in-scope [in-scope #f])
+  (%focused-pane in-scope))
+
 (define (apply-text-edits! pane edits #:expect-generation [gen #f])
   (%apply-text-edits! pane edits gen))
 

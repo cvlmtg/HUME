@@ -237,6 +237,29 @@ fn sign_source_registration_does_not_cross_buffers() {
     assert_eq!(store.sign_source_count(b), 1);
 }
 
+/// Unregistering a sign source frees its slot in that one buffer, moves
+/// the sources ranked after it up, and drops its signs there.
+#[test]
+fn unregistering_a_sign_source_frees_its_slot_and_drops_its_signs() {
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids();
+    store.register_sign_source("vcs".to_string(), a, 9);
+    store.register_sign_source("linter".to_string(), a, 5);
+    store.register_sign_source("vcs".to_string(), b, 9);
+    store.set_signs("vcs".to_string(), a, vec![sign(0, "+")]);
+    store.set_signs("vcs".to_string(), b, vec![sign(0, "+")]);
+    let before = store.generation(a);
+
+    store.unregister_sign_source("vcs", a);
+
+    assert_eq!(store.sign_slot(a, "vcs"), None);
+    assert_eq!(store.sign_slot(a, "linter"), Some(0));
+    assert_eq!(store.sign_source_count(a), 1);
+    assert!(sign_lines(&store, "vcs", a).is_empty());
+    assert_ne!(store.generation(a), before, "dropped signs must redraw");
+    assert_eq!(sign_lines(&store, "vcs", b), [(0, "+")], "b keeps its own");
+}
+
 /// `remove_buffer`, for a closed buffer, drops its sign-source registry
 /// along with its decoration entries.
 #[test]

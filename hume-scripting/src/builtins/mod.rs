@@ -437,7 +437,7 @@ builtins! {
     plain "string-width" words::string_width(s: SteelVal);
 
     // Multi-buffer read-only builtins
-    cmd "focused-pane" buffers::focused_pane();
+    cmd "%focused-pane" => "focused-pane" buffers::focused_pane(in_scope: SteelVal);
     cmd "buffers" buffers::buffers();
     cmd "panes" buffers::panes();
     cmd "buffer-panes" buffers::buffer_panes(pane: args::LiveBuffer);
@@ -522,6 +522,7 @@ builtins! {
     // Decoration stores + diagnostics pull.
     cmd "set-inlay-hints!" decorations::set_inlay_hints(pane: args::LiveBuffer, source: args::SourceName, hints: SteelVal);
     cmd "register-sign-source!" decorations::register_sign_source(pane: args::LiveBuffer, source: args::SourceName, priority: SteelVal);
+    cmd "unregister-sign-source!" decorations::unregister_sign_source(pane: args::LiveBuffer, source: args::SourceName);
     cmd "set-signs!" decorations::set_signs(pane: args::LiveBuffer, source: args::SourceName, signs: SteelVal);
     cmd "set-virtual-lines!" decorations::set_virtual_lines(pane: args::LiveBuffer, source: args::SourceName, lines: SteelVal);
     cmd "%set-eol-text!" => "set-eol-text!" decorations::set_eol_text(pane: args::LiveBuffer, source: args::SourceName, lines: SteelVal, hide_on_insert_line: SteelVal);

@@ -89,7 +89,9 @@
 
 (register-hook! 'on-buffer-close
   (lambda (pane)
-    (set! lsp/*inlay-overrides* (hash-remove lsp/*inlay-overrides* (buffer-key pane)))))
+    (set! lsp/*inlay-overrides* (hash-remove lsp/*inlay-overrides* (buffer-key pane)))
+    (when (buffer-live? pane)
+      (set-inlay-hints! pane lsp/inlay-source '()))))
 
 (define-typed-command! "toggle-inlay-hints"
   "Toggle LSP inlay hints for the current buffer."

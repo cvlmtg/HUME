@@ -113,6 +113,14 @@ fn register_sign_source_without_decoration_host_errors() {
 }
 
 #[test]
+fn unregister_sign_source_without_decoration_host_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = unregister_sign_source(&mut ctx, default_bid(), "test".to_string());
+    assert_unsupported(result);
+}
+
+#[test]
 fn set_signs_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();

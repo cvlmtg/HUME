@@ -159,3 +159,11 @@
   (lambda (key value)
     (when (member key '("lsp-diagnostics-min-severity" "lsp-diagnostics-on-insert-line"))
       (for-each lsp/refresh-diagnostics! (buffers)))))
+
+;; A buffer that stays open after its close — see docs/decorations.md's "Refresh path".
+(register-hook! 'on-buffer-close
+  (lambda (pane)
+    (when (buffer-live? pane)
+      (set-eol-text! pane lsp/diagnostics-source '())
+      (unregister-sign-source! pane lsp/diagnostics-source)
+      (lsp/refresh-diagnostics-drawer! pane '()))))

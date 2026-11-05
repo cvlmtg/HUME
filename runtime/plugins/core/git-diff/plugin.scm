@@ -38,15 +38,18 @@
 (register-hook! 'on-focus-gained
   (lambda ()
     (for-each git-diff/refetch-ref! (panes))
-    (git-diff/schedule-branch-refresh! (focused-pane) git-diff/branch-style)))
+    (let ([pane (focused-pane #:in-scope #t)])
+      (when pane
+        (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))))
 
 ;;; Drives the branch fetch — see docs/pipeline.md's "Branch tracking (`branch.scm`)".
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "statusline")
-      (let ([pane (focused-pane)])
-        (git-diff/track! pane)
-        (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))))
+      (let ([pane (focused-pane #:in-scope #t)])
+        (when pane
+          (git-diff/track! pane)
+          (git-diff/schedule-branch-refresh! pane git-diff/branch-style))))))
 
 (register-hook! 'on-text-changed
   (lambda (pane changes)
@@ -60,7 +63,14 @@
     (git-diff/schedule-refresh! pane git-diff/ref)
     (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))
 
-(register-hook! 'on-buffer-close git-diff/remove-buffer!)
+;;; A buffer that stays open after its close — see docs/pipeline.md's "Hooks".
+(register-hook! 'on-buffer-close
+  (lambda (pane)
+    (git-diff/remove-buffer! pane)
+    (when (buffer-live? pane)
+      (unregister-sign-source! pane git-diff/*source*)
+      (git-diff/render-diff! pane git-diff/*source* '())
+      (set-statusline-text! pane "git-branch" ""))))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
