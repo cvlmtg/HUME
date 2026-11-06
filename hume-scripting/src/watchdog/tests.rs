@@ -1,21 +1,41 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use steel::steel_vm::ThreadStateController;
 use steel::steel_vm::engine::Engine;
 
-use super::EvalWatchdog;
+use super::{Budget, EvalWatchdog};
 
 /// A VM handle to arm with, for tests about the watchdog's own timing.
 fn vm() -> ThreadStateController {
     Engine::new().get_thread_state_controller()
 }
 
+/// Arms `dog` on `engine`'s VM with a budget it runs out of at once, and
+/// waits until the watchdog has interrupted it: from then on every program
+/// the VM runs raises.
+fn arm_until_interrupted(dog: &EvalWatchdog, engine: &mut Engine) {
+    dog.arm(
+        engine.get_thread_state_controller(),
+        Duration::from_millis(20),
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while engine.compile_and_run_raw_program("(+ 1 2)").is_ok() {
+        assert!(
+            Instant::now() < deadline,
+            "the budget never interrupted the VM"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn ms(n: u64) -> Duration {
+    Duration::from_millis(n)
+}
+
 #[test]
 fn expiry_is_reported_by_cancel() {
     let dog = EvalWatchdog::new();
-    dog.arm(vm(), Duration::from_millis(20));
-    // Sleep 10× the budget to rule out timing races on slow CI.
-    std::thread::sleep(Duration::from_millis(200));
+    arm_until_interrupted(&dog, &mut Engine::new());
     // cancel-after-expiry must ack from idle, not hang
     assert!(dog.cancel(), "the budget must have expired");
 }
@@ -48,8 +68,7 @@ fn rearming_after_cancel_still_fires() {
     dog.arm(vm(), Duration::from_secs(30));
     assert!(!dog.cancel());
 
-    dog.arm(vm(), Duration::from_millis(20));
-    std::thread::sleep(Duration::from_millis(200));
+    arm_until_interrupted(&dog, &mut Engine::new());
     assert!(dog.cancel(), "second arm must fire after its budget");
 }
 
@@ -57,8 +76,7 @@ fn rearming_after_cancel_still_fires() {
 #[test]
 fn a_fire_is_reported_once() {
     let dog = EvalWatchdog::new();
-    dog.arm(vm(), Duration::from_millis(20));
-    std::thread::sleep(Duration::from_millis(200));
+    arm_until_interrupted(&dog, &mut Engine::new());
     assert!(dog.cancel());
 
     dog.arm(vm(), Duration::from_secs(30));
@@ -87,38 +105,60 @@ fn drop_while_armed_does_not_fire() {
 /// during the wait has not when the wait ends.
 #[test]
 fn a_wait_pauses_the_budget() {
-    let dog = EvalWatchdog::new();
-    let clock = dog.clock();
-    dog.arm(vm(), Duration::from_millis(200));
-    clock.waiting(|| std::thread::sleep(Duration::from_millis(500)));
-    assert!(!dog.cancel(), "the wait must not use up the budget");
+    let t = Instant::now();
+    let mut budget = Budget::new(t, ms(200));
+    budget.pause(t + ms(50));
+    assert_eq!(
+        budget.left(t + ms(700)),
+        None,
+        "no clock runs during a wait"
+    );
+    budget.resume(t + ms(550));
+    assert_eq!(budget.left(t + ms(550)), Some(ms(150)));
 }
 
 /// The budget left when a wait began runs out after the wait ends.
 #[test]
 fn the_budget_left_runs_out_after_a_wait() {
-    let dog = EvalWatchdog::new();
-    let clock = dog.clock();
-    dog.arm(vm(), Duration::from_millis(50));
-    clock.waiting(|| std::thread::sleep(Duration::from_millis(100)));
-    std::thread::sleep(Duration::from_millis(300));
-    assert!(dog.cancel(), "the remaining budget must expire");
+    let t = Instant::now();
+    let mut budget = Budget::new(t, ms(50));
+    budget.pause(t);
+    budget.resume(t + ms(100));
+    assert_eq!(budget.left(t + ms(149)), Some(ms(1)));
+    assert_eq!(budget.left(t + ms(150)), Some(Duration::ZERO));
 }
 
 /// Scheme time spent before a wait stays spent: the wait resumes with only
 /// what was left when it began.
 #[test]
 fn time_before_a_wait_counts() {
+    let t = Instant::now();
+    let mut budget = Budget::new(t, ms(600));
+    budget.pause(t + ms(500));
+    budget.resume(t + ms(520));
+    assert_eq!(budget.left(t + ms(520)), Some(ms(100)));
+}
+
+/// A wait that starts inside another keeps the outer wait's start.
+#[test]
+fn a_wait_inside_a_wait_keeps_the_outer_start() {
+    let t = Instant::now();
+    let mut budget = Budget::new(t, ms(100));
+    budget.pause(t + ms(40));
+    budget.pause(t + ms(90));
+    budget.resume(t + ms(200));
+    assert_eq!(budget.left(t + ms(200)), Some(ms(60)));
+}
+
+/// A wait through the watchdog's own clock is not counted, end to end: the
+/// wait outlasts the whole budget.
+#[test]
+fn a_wait_through_the_clock_does_not_use_up_the_budget() {
     let dog = EvalWatchdog::new();
     let clock = dog.clock();
-    dog.arm(vm(), Duration::from_millis(600));
-    std::thread::sleep(Duration::from_millis(500));
-    clock.waiting(|| std::thread::sleep(Duration::from_millis(20)));
-    std::thread::sleep(Duration::from_millis(350));
-    assert!(
-        dog.cancel(),
-        "100 ms were left when the wait began, so 350 ms after it the budget is spent"
-    );
+    dog.arm(vm(), Duration::from_secs(1));
+    clock.waiting(|| std::thread::sleep(Duration::from_secs(3)));
+    assert!(!dog.cancel(), "the wait must not use up the budget");
 }
 
 /// A wait with nothing armed changes nothing for the next arm.
@@ -126,8 +166,7 @@ fn time_before_a_wait_counts() {
 fn a_wait_while_idle_is_ignored() {
     let dog = EvalWatchdog::new();
     dog.clock().waiting(|| {});
-    dog.arm(vm(), Duration::from_millis(20));
-    std::thread::sleep(Duration::from_millis(200));
+    arm_until_interrupted(&dog, &mut Engine::new());
     assert!(dog.cancel());
 }
 

@@ -19,9 +19,10 @@ use steel::steel_vm::ThreadStateController;
 /// so the script stops whatever it is doing, even inside a `with-handler`
 /// that catches everything.
 ///
-/// The armed wait loops on `recv_timeout`, re-checking the deadline on every
-/// wake, so an early or spurious wake can never fire the interrupt before the
-/// budget has actually elapsed.
+/// The armed wait loops on `recv_timeout`, and fires only on a timeout with
+/// the [`Budget`] spent: a message already waiting, a pause or a cancel sent
+/// before the deadline, is handled first however late the thread wakes, and
+/// an early or spurious wake re-checks the budget.
 ///
 /// [`EvalWatchdog::cancel`] is synchronous: it blocks until the thread
 /// acknowledges it is disarmed and answers whether the budget expired, so no
@@ -43,7 +44,7 @@ pub struct EvalWatchdog {
 
 enum WatchdogMsg {
     Arm {
-        deadline: Instant,
+        budget: Budget,
         vm: ThreadStateController,
     },
     Cancel,
@@ -120,7 +121,7 @@ impl EvalWatchdog {
             "EvalWatchdog::arm called while already armed: missing cancel() after the previous eval"
         );
         self.send(WatchdogMsg::Arm {
-            deadline: Instant::now() + budget,
+            budget: Budget::new(Instant::now(), budget),
             vm,
         });
     }
@@ -177,67 +178,93 @@ impl Default for EvalWatchdog {
     }
 }
 
+/// An armed budget: how long the script may still run, with the time it
+/// spends waiting on the OS left out.
+#[derive(Debug)]
+struct Budget {
+    deadline: Instant,
+    /// The budget left when the current wait began, `None` while the script
+    /// runs.
+    paused: Option<Duration>,
+}
+
+impl Budget {
+    /// A budget of `budget` from `now`.
+    fn new(now: Instant, budget: Duration) -> Self {
+        Self {
+            deadline: now + budget,
+            paused: None,
+        }
+    }
+
+    /// A wait began at `at`: the clock stops. A wait inside a wait keeps the
+    /// outer one's start.
+    fn pause(&mut self, at: Instant) {
+        self.paused
+            .get_or_insert(self.deadline.saturating_duration_since(at));
+    }
+
+    /// The wait ended at `at`: the clock runs again with what was left.
+    fn resume(&mut self, at: Instant) {
+        if let Some(left) = self.paused.take() {
+            self.deadline = at + left;
+        }
+    }
+
+    /// How much is left at `now`, zero once spent; `None` during a wait.
+    fn left(&self, now: Instant) -> Option<Duration> {
+        self.paused
+            .is_none()
+            .then(|| self.deadline.saturating_duration_since(now))
+    }
+}
+
 fn watchdog_loop(rx: Receiver<WatchdogMsg>, ack_tx: Sender<bool>) {
     // Whether the last arm's budget expired, answered by the next Cancel.
     let mut fired = false;
     loop {
         match rx.recv() {
             // Idle → armed.
-            Ok(WatchdogMsg::Arm {
-                mut deadline,
-                mut vm,
-            }) => {
-                // The budget left when the current wait began.
-                let mut paused: Option<Duration> = None;
-                loop {
-                    let now = Instant::now();
-                    if paused.is_none() && now >= deadline {
-                        // Every instruction the VM runs from here on raises,
-                        // until the session resumes it.
-                        vm.interrupt();
-                        fired = true;
-                        // Back to idle.  The caller's unconditional cancel
-                        // arrives later and is acknowledged from the idle arm below.
-                        break;
-                    }
-                    let next = if paused.is_none() {
-                        rx.recv_timeout(deadline - now)
-                    } else {
-                        rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
-                    };
-                    match next {
-                        Ok(WatchdogMsg::Pause { at }) => {
-                            paused.get_or_insert(deadline.saturating_duration_since(at));
-                        }
-                        Ok(WatchdogMsg::Resume { at }) => {
-                            if let Some(left) = paused.take() {
-                                deadline = at + left;
-                            }
-                        }
-                        Ok(WatchdogMsg::Cancel) => {
-                            let _ = ack_tx.send(false);
+            Ok(WatchdogMsg::Arm { mut budget, mut vm }) => loop {
+                let next = match budget.left(Instant::now()) {
+                    Some(left) => rx.recv_timeout(left),
+                    None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+                };
+                match next {
+                    Err(RecvTimeoutError::Timeout) => {
+                        if budget.left(Instant::now()) == Some(Duration::ZERO) {
+                            // Every instruction the VM runs from here on
+                            // raises, until the session resumes it.
+                            vm.interrupt();
+                            fired = true;
+                            // Back to idle. The caller's unconditional
+                            // cancel arrives later and is acknowledged from
+                            // the idle arm below.
                             break;
                         }
-                        // A second Arm while armed cannot happen (arm/cancel are
-                        // strictly paired by run_steel_session; `EvalWatchdog::arm`
-                        // debug_asserts this on the caller's own thread), but
-                        // re-arming is the sensible recovery if it ever does. Never
-                        // panic here: this thread is detached, so a panic wouldn't
-                        // surface at the call site; it would instead unwind this
-                        // thread and turn the *next* unrelated `send` into a
-                        // misleading "watchdog thread alive" panic.
-                        Ok(WatchdogMsg::Arm { deadline: d, vm: v }) => {
-                            deadline = d;
-                            vm = v;
-                            paused = None;
-                        }
-                        Ok(WatchdogMsg::Shutdown) => return,
-                        // Woke early: the outer loop re-checks the deadline.
-                        Err(RecvTimeoutError::Timeout) => {}
-                        Err(RecvTimeoutError::Disconnected) => return,
                     }
+                    Ok(WatchdogMsg::Pause { at }) => budget.pause(at),
+                    Ok(WatchdogMsg::Resume { at }) => budget.resume(at),
+                    Ok(WatchdogMsg::Cancel) => {
+                        let _ = ack_tx.send(false);
+                        break;
+                    }
+                    // A second Arm while armed cannot happen (arm/cancel are
+                    // strictly paired by run_steel_session; `EvalWatchdog::arm`
+                    // debug_asserts this on the caller's own thread), but
+                    // re-arming is the sensible recovery if it ever does. Never
+                    // panic here: this thread is detached, so a panic wouldn't
+                    // surface at the call site; it would instead unwind this
+                    // thread and turn the *next* unrelated `send` into a
+                    // misleading "watchdog thread alive" panic.
+                    Ok(WatchdogMsg::Arm { budget: b, vm: v }) => {
+                        budget = b;
+                        vm = v;
+                    }
+                    Ok(WatchdogMsg::Shutdown) => return,
+                    Err(RecvTimeoutError::Disconnected) => return,
                 }
-            }
+            },
             // Cancel while idle: the previous arm already fired (or there was
             // nothing armed), so acknowledge so the caller's cancel() unblocks.
             Ok(WatchdogMsg::Cancel) => {
