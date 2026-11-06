@@ -69,12 +69,13 @@ The quick brown fox jumps over the lazy dog.
 | B | select the previous WORD                                         |
 +---+------------------------------------------------------------------+
 
-The difference: in "config.toml log-file", pressing ``w`` repeatedly
-selects "config", then ``.``, then "toml" (plus the space after it),
-then "log" (plus the space before it), then ``-``, then "file" (six
-steps, since dots and dashes are boundaries). Pressing ``W`` instead
-selects "config.toml" (plus its trailing space), then "log-file" (two
-steps, since only whitespace divides WORDs).
+The difference: starting on the line above "config.toml log-file",
+pressing ``w`` repeatedly selects "config", then ``.``, then "toml"
+(plus the space after it), then "log" (plus the space before it), then
+``-``, then "file" (six steps, since dots and dashes are boundaries).
+Pressing ``W`` instead selects "config.toml" (plus its trailing
+space), then "log-file" (two steps, since only whitespace divides
+WORDs).
 
 By default ``w``/``W``/``b``/``B`` also pick up the space *before* the
 destination word or token. When no space precedes it (the first word
@@ -88,9 +89,9 @@ after the word instead, or ``=off`` for bare-word selections.
 Exercise
 ~~~~~~~~
 
-Try ``w`` on the line below and watch it step through each piece.
-Then navigate back to the start of the line with ``b`` and try
-``W``, then navigate back once more with ``B``.
+Go to the empty line just above the line below, then press ``w``
+repeatedly and watch it step through each piece. Then press ``k`` to
+return to that empty line and try ``W``, then walk back with ``B``.
 
 config.toml log-file backup.zip
 
@@ -171,16 +172,16 @@ this buffer. Then press ``Ctrl-o`` to return here.
 | PageUp   | scroll up a full page   |
 +----------+-------------------------+
 
-Scrolling moves the viewport without changing the cursor position.
-To reposition the viewport around the cursor:
+Scrolling moves the cursor along with the viewport, so it keeps its
+place on the screen. To reposition the viewport around the cursor:
 
-+----+--------------------------------------+
-| zk | place the cursor's line at the top      |
-+----+--------------------------------------+
-| zz | center the viewport on the cursor    |
-+----+--------------------------------------+
-| zj | place the cursor's line at the bottom   |
-+----+--------------------------------------+
++----+---------------------------------------+
+| zk | place the cursor's line at the top    |
++----+---------------------------------------+
+| zz | center the viewport on the cursor     |
++----+---------------------------------------+
+| zj | place the cursor's line at the bottom |
++----+---------------------------------------+
 
 ``k`` is up and ``j`` is down, the same axis the motion keys use.
 
@@ -798,9 +799,9 @@ to paste the deleted text, without switching registers manually.
 
 If the clipboard is empty the first time ``p`` would read it since
 your last edit, it falls back to the most recent kill so there is
-always something to paste. Pressing ``p`` again right after that
-still reads the clipboard, not the kill ring. It only refuses to
-paste if the clipboard is still empty.
+always something to paste, and pressing ``p`` again pastes that kill
+again. Once a press has read the clipboard, a further ``p`` pastes
+nothing if the clipboard has become empty since.
 
 Summary
 -------
@@ -887,11 +888,12 @@ well-known open-source command-line text-editor
 | . | repeats the last edit action (delete, change, insert sequence) |
 +---+----------------------------------------------------------------+
 
-Important: ``.`` replays the edit together with any whole-line select
-(``x``/``X``) or extend steps you used to build the selection, but
-it does **not** replay a word, find, or navigation motion. So after
-an edit that followed a motion like ``w``, move and re-select manually
-before pressing ``.`` (as shown below).
+Important: ``.`` replays the edit together with the steps you used to
+build the selection: whole-line selects (``x``/``X``), text objects
+(``mi(``, ``mm``, see Lesson 8), ``%``, ``m/``, ``C``, ``,`` and extend
+steps. It does **not** replay a word, find, or navigation motion. So
+after an edit that followed a motion like ``w``, move and re-select
+manually before pressing ``.`` (as shown below).
 
 The idiomatic pattern for repeating an edit across several words:
 
@@ -1432,14 +1434,19 @@ argument), then ``Enter``. Many have short aliases.
 +-----------+-----------------------------------------------------------------+
 | :w <path> | save to a different path (save-as)                              |
 +-----------+-----------------------------------------------------------------+
-| :q        | close the current buffer; quit when no real file buffers remain |
+| :q        | close the focused pane, its tab, or the buffer (see below)      |
 +-----------+-----------------------------------------------------------------+
 | :q!       | close and discard unsaved changes                               |
 +-----------+-----------------------------------------------------------------+
-| :wq       | save and quit                                                   |
+| :wq       | save, then close as :q does                                     |
 +-----------+-----------------------------------------------------------------+
 | :qa       | quit the editor (refuses if any buffer is unsaved; use :qa!)    |
 +-----------+-----------------------------------------------------------------+
+
+``:q`` closes the smallest thing that is open: the focused pane when
+the tab has several, the tab when only one pane is left and other
+tabs are open, and otherwise the buffer. When no other file, and no
+other buffer with unsaved changes, is open, it quits HUME instead.
 
 The tutor is opened as a sandboxed copy in a temporary directory
 (something like ``/tmp/hume-1234/tutor.rst``), so ``:w`` saves only to
@@ -1477,7 +1484,7 @@ buffer instead of opening a duplicate.
 +------------+---------------------------------------------------+
 | :bprev :bp | switch to the previous buffer                     |
 +------------+---------------------------------------------------+
-| :b <name>  | switch to a buffer by name, path prefix, or index |
+| :b <name>  | switch to a buffer by name, name prefix, or index |
 +------------+---------------------------------------------------+
 | :bd        | close (delete) the current buffer                 |
 +------------+---------------------------------------------------+
@@ -1496,7 +1503,7 @@ file's path. For example: ``:e #`` reopens the alternate buffer.
 +----------------+---------------------------------------------------------+
 | :messages :mes | review the message and error log                        |
 +----------------+---------------------------------------------------------+
-| :theme <name>  | load a theme (sand / gruvbox / gruvbox_light)           |
+| :theme <name>  | load a theme (for example sand or gruvbox)              |
 +----------------+---------------------------------------------------------+
 | :reload-config | reload the editor configuration file without restarting |
 +----------------+---------------------------------------------------------+
@@ -1525,11 +1532,11 @@ Summary
 +----------------+------------------------+
 | :w / :w <path> | save / save-as         |
 +----------------+------------------------+
-| :q / :q!       | close buffer / discard |
+| :q / :q!       | close / discard        |
 +----------------+------------------------+
 | :qa / :qa!     | quit all / force       |
 +----------------+------------------------+
-| :wq            | save and quit          |
+| :wq            | save and close         |
 +----------------+------------------------+
 | :ls            | list buffers           |
 +----------------+------------------------+
@@ -1603,6 +1610,13 @@ Soft Wrap
 
 Syntax Highlighting
 -------------------
+
+Grammars are installed by the ``core:plum`` plugin. If
+``:plum-install-grammar`` is an unknown command, add these two lines
+to your ``init.scm`` and restart HUME::
+
+   (load-plugin! "core:stdlib")
+   (load-plugin! "core:plum")
 
 Run ``:plum-install-grammar`` to install the grammar for the current
 buffer's language. You can type the whole command, or type a prefix
