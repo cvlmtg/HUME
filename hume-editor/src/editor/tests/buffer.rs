@@ -95,10 +95,6 @@ fn buffer_bang_is_refused() {
     assert_eq!(ed.focused_buffer_id(), before_id);
 }
 
-// ── :b on a buffer whose backing file has been deleted ───────────────────────
-
-// ── Ctrl-o restores position after :b ────────────────────────────────────────
-
 // ── :new ─────────────────────────────────────────────────────────────────────
 
 fn display_name(ed: &Editor, bid: BufferId) -> String {

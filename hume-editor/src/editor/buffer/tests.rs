@@ -644,8 +644,9 @@ fn replacing_the_text_lets_any_origin_set_the_line_ending_again() {
 
 #[test]
 fn a_read_only_buffer_refuses_a_line_ending_change() {
-    let mut d = doc("-[h]>ello\n");
-    d.buf_mut().read_only = true;
+    let (text, sels) = parse_state("-[h]>ello\n");
+    let label = ViewLabel::editor(EditorView::Messages);
+    let mut d = DocHelper::on(NewBuffer::View { text, label }, sels);
     assert!(
         d.buf_mut()
             .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
@@ -653,22 +654,6 @@ fn a_read_only_buffer_refuses_a_line_ending_change() {
     );
     assert_eq!(d.text().line_ending(), LineEnding::Lf);
     assert!(!d.buf().line_ending_changed());
-}
-
-#[test]
-fn a_read_only_buffer_still_adopts_the_disk_line_ending_on_reload() {
-    let mut d = doc("-[h]>ello\n");
-    d.buf_mut().read_only = true;
-    let sels = d.sels().clone();
-    let (mut stores, pane, id) = DetachedStores::with_pane(d.buf_mut(), sels);
-    let mutated = d.buf_mut().replace_text_recorded(
-        id,
-        &mut stores.stores(),
-        BufferText::from("hello\r\n"),
-        pane,
-    );
-    assert!(!mutated);
-    assert_eq!(d.text().line_ending(), LineEnding::CrLf);
 }
 
 // ── undo-levels ───────────────────────────────────────────────────────────

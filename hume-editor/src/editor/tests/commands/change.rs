@@ -465,8 +465,7 @@ fn mii_reports_info_when_cursors_merge_mid_session() {
 /// `mii` must find nothing stashed rather than panicking or stale-reading.
 #[test]
 fn mii_reports_info_on_read_only_buffer() {
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.doc_mut().read_only = true;
+    let mut ed = editor_with_read_only_view("hello\n", "view");
     ed.handle_key(key('i'));
     assert_eq!(
         ed.state.mode(),

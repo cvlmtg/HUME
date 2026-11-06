@@ -4,13 +4,11 @@
 use super::*;
 use pretty_assertions::assert_eq;
 
-/// `-[ab]> cd\n` with `ab` yanked, a change made and undone so undo and
-/// redo each have a step, then made read-only.
+/// `-[ab]> cd\n` in a view buffer, with `ab` yanked.
 fn read_only_editor() -> Editor {
-    let mut ed = editor_from("-[ab]> cd\n");
-    type_chars(&mut ed, "ydu");
+    let mut ed = read_only_editor_from("-[ab]> cd\n");
+    type_chars(&mut ed, "y");
     assert_eq!(state(&ed), "-[ab]> cd\n", "setup");
-    ed.doc_mut().read_only = true;
     ed
 }
 
@@ -108,9 +106,9 @@ fn a_macro_of_motions_records_and_replays() {
 /// Replaying a macro that edits refuses its edit, as typing it would.
 #[test]
 fn replaying_an_editing_macro_is_refused() {
-    let mut ed = editor_from("-[ab]> cd\n");
+    let mut ed = read_only_editor();
     type_chars(&mut ed, "QQdQ");
-    ed.doc_mut().read_only = true;
+    ed.state.status_msg.clear();
     let before = state(&ed);
 
     type_chars(&mut ed, "qq");

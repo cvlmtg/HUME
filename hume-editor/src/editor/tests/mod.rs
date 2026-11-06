@@ -273,6 +273,14 @@ pub(crate) fn editor_with_read_only_view(content: &str, name: &str) -> Editor {
     })
 }
 
+/// An editor on a read-only view buffer holding `initial`'s text, its pane
+/// on `initial`'s selections.
+fn read_only_editor_from(initial: &str) -> Editor {
+    let (text, sels) = parse_state(initial);
+    let label = view_label("view");
+    Editor::for_testing_on(NewBuffer::View { text, label }).seeded(sels)
+}
+
 /// `statusline::tests`' third cross-boundary shape: a buffer with an
 /// explicit path, without handing that suite `NewBuffer` itself.
 pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor {

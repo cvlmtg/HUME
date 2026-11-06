@@ -125,8 +125,7 @@ fn insert_entry_on_a_read_only_buffer_leaves_the_selection_in_place() {
         "insert-at-selection-start",
         "insert-at-selection-end",
     ] {
-        let mut ed = editor_from("  he-[ll]>o world\n");
-        ed.doc_mut().read_only = true;
+        let mut ed = read_only_editor_from("  he-[ll]>o world\n");
         let before = state(&ed);
 
         ed.execute_keymap_command(cmd, Count::UNTYPED, false);
@@ -167,62 +166,26 @@ fn insert_entry_beside_another_panes_insert_session_leaves_the_selection_in_plac
 /// and mark the command refused.
 #[test]
 fn read_only_buffer_blocks_undo_and_redo() {
-    let mut ed = editor_from("-[h]>ello\n");
+    for (press, name) in [(key('u'), "undo"), (key_ctrl('r'), "redo")] {
+        let mut ed = read_only_editor_from("-[h]>ello\n");
 
-    // Make an edit to create undo history.
-    ed.handle_key(key('d'));
-    let after_delete = ed.doc().text().to_string();
+        ed.handle_key(press);
+        assert_eq!(ed.doc().text().to_string(), "hello\n", "{name}");
+        assert_eq!(status(&ed), read_only_refusal(&ed), "{name}");
 
-    // Flip the buffer to read-only (simulates the condition where a view buffer
-    // somehow has undo history, e.g. from a future API path).
-    ed.doc_mut().read_only = true;
-
-    // u (undo) must be a no-op, and must report why.
-    ed.handle_key(key('u'));
-    assert_eq!(
-        ed.doc().text().to_string(),
-        after_delete,
-        "u must not undo on a read-only buffer"
-    );
-    assert_eq!(
-        status(&ed),
-        read_only_refusal(&ed),
-        "u must report the refusal, same as :earlier does"
-    );
-    let pane = focused_pane(&ed);
-    let ran = live_host!(ed)
-        .run_command_sync("undo", pane, hume_scripting::host::NativeCall::default())
-        .expect("undo must dispatch");
-    assert!(!ran, "a refused undo reports the dispatch as refused");
-
-    // Ctrl-r (redo) must also be a no-op.
-    ed.doc_mut().read_only = false; // undo first to create redo history
-    ed.handle_key(key('u'));
-    let after_undo = ed.doc().text().to_string();
-    ed.doc_mut().read_only = true;
-    ed.state.status_msg.clear();
-
-    ed.handle_key(key_ctrl('r'));
-    assert_eq!(
-        ed.doc().text().to_string(),
-        after_undo,
-        "Ctrl-r must not redo on a read-only buffer"
-    );
-    assert_eq!(
-        status(&ed),
-        read_only_refusal(&ed),
-        "Ctrl-r must report the refusal, same as :later does"
-    );
+        let pane = focused_pane(&ed);
+        let ran = live_host!(ed)
+            .run_command_sync(name, pane, hume_scripting::host::NativeCall::default())
+            .expect("the command must dispatch");
+        assert!(!ran, "a refused {name} reports the dispatch as refused");
+    }
 }
 
-/// `apply_doc_history_walk` refuses a read-only buffer with real undo
-/// history: the refusal is an `Err`, not the `0` steps a walk at the root
-/// takes.
+/// `apply_doc_history_walk` refuses a read-only buffer: the refusal is an
+/// `Err`, not the `0` steps a walk at the root takes.
 #[test]
 fn apply_doc_history_walk_refuses_a_read_only_buffer() {
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.handle_key(key('d')); // creates one undo step, not exhausted
-    ed.doc_mut().read_only = true;
+    let mut ed = read_only_editor_from("-[h]>ello\n");
 
     let focused = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
@@ -457,7 +420,7 @@ fn synthetic_buffer_e_bang_errors() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
-    assert!(ed.doc().is_synthetic());
+    assert!(ed.doc().is_read_only());
 
     let err = ed.execute_typed("e!", None).unwrap_err();
     assert!(
@@ -466,7 +429,7 @@ fn synthetic_buffer_e_bang_errors() {
     );
 
     // Buffer must be untouched.
-    assert!(ed.doc().is_synthetic(), "buffer must still be synthetic");
+    assert!(ed.doc().is_read_only(), "buffer must still be a view");
     assert_eq!(
         ed.doc().display_name(),
         "[messages]",

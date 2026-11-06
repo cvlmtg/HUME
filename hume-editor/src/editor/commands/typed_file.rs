@@ -70,18 +70,16 @@ pub(in crate::editor) fn typed_quit(
     }
 
     let current = fp.bid(&ed.view);
-    // Stay only for a buffer worth returning to: a real editable file, or any
-    // buffer with unsaved edits (rescues a scratch the user has typed into).
-    // Empty scratch buffers and read-only views (e.g. [messages]) are disposable:
-    // :q exits rather than parking on them.
+    // Stay only for a buffer worth returning to: a file, or any buffer with
+    // unsaved edits (rescues a scratch the user has typed into). Empty
+    // scratch buffers and views (e.g. [messages]), which have no file, are
+    // disposable: :q exits rather than parking on them.
     let stays = ed
         .state
         .buffers
         .iter()
         .filter(|(id, _)| *id != current)
-        .any(|(id, buf)| {
-            (buf.path().is_some() && !buf.is_read_only()) || ed.state.has_unsaved_changes(id)
-        });
+        .any(|(id, buf)| buf.path().is_some() || ed.state.has_unsaved_changes(id));
     let closed = if stays {
         let on_unsaved = OnUnsaved::from_force(force);
         ed.run_stopping_pipes(force, |ed| {
@@ -241,9 +239,9 @@ pub(in crate::editor) enum WriteKind<'a> {
     Save(&'a BufferFile),
     /// `:w <path>` on a writable buffer: it becomes the file at the path.
     SaveAs(&'a str),
-    /// `:w <path>` on a read-only or synthetic buffer (e.g. `[messages]`): the
-    /// content is written to the path, but the buffer's file and dirty state
-    /// are left alone, since it did not become that file.
+    /// `:w <path>` on a read-only buffer (e.g. `[messages]`): the content is
+    /// written to the path, but the buffer's file and dirty state are left
+    /// alone, since it did not become that file.
     Export(&'a str),
     /// No write happens; the message says why.
     Refused(String),
@@ -253,7 +251,7 @@ impl<'a> WriteKind<'a> {
     pub(in crate::editor) fn classify(buf: &'a Buffer, arg: Option<&'a str>) -> Self {
         let read_only = buf.is_read_only();
         match arg {
-            Some(path) if read_only || buf.is_synthetic() => Self::Export(path),
+            Some(path) if read_only => Self::Export(path),
             Some(path) => Self::SaveAs(path),
             None if read_only => Self::Refused(TextRefusal::ReadOnly.message(buf)),
             None => buf

@@ -117,16 +117,13 @@ fn earlier_bang_is_rejected() {
 /// counterpart).
 #[test]
 fn earlier_and_later_agree_with_undo_and_redo_on_a_read_only_buffer() {
-    let mut ed = editor_from("-[h]>ello\n");
-    type_text(&mut ed, "X");
-    let after_edit = state(&ed);
-
-    ed.doc_mut().read_only = true;
+    let mut ed = editor_with_read_only_view("hello\n", "view");
+    let before = state(&ed);
 
     submit(&mut ed, "earlier");
     assert_eq!(
         state(&ed),
-        after_edit,
+        before,
         ":earlier must not undo on a read-only buffer"
     );
     assert_eq!(
@@ -139,7 +136,7 @@ fn earlier_and_later_agree_with_undo_and_redo_on_a_read_only_buffer() {
     submit(&mut ed, "later");
     assert_eq!(
         state(&ed),
-        after_edit,
+        before,
         ":later must not redo on a read-only buffer"
     );
     assert_eq!(

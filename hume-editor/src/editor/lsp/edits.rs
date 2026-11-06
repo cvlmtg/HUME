@@ -545,7 +545,7 @@ fn land(
 ) -> PaneHandle {
     let pid = t.pid();
     with_jump(state, view, t, JumpRule::Selections, |state, view| {
-        crate::editor::commands::land_pane_at(state, view, pid, bid, pos);
+        crate::editor::commands::land_pane_at(state, view, t, bid, pos);
     });
     PaneHandle::with_pane(bid, pid)
 }

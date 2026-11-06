@@ -286,10 +286,6 @@ pub(crate) struct Buffer {
     /// place. `None` when no grammar is attached or the buffer exceeds
     /// `syntax-highlight-max-bytes`.
     pub(in crate::editor) syntax: Option<Syntax>,
-    /// When `true`, all forward text mutations are blocked at the `doc_ops`
-    /// layer. Entering Insert mode is also refused. Read-only is orthogonal to
-    /// language/syntax: a read-only buffer may still be highlighted.
-    pub(in crate::editor) read_only: bool,
     /// The [`TextHold`] keeping the text as it is, if one is alive.
     hold: Weak<()>,
     /// Set once `Editor::detect_pending_languages` queues this buffer's
@@ -362,7 +358,6 @@ impl Buffer {
     /// builds `origin` from the [`NewBuffer`] it was handed. A pane showing it
     /// starts with a cursor on its first cluster.
     fn new(text: BufferText, origin: Origin, pending_dump: Option<PathBuf>) -> Self {
-        let read_only = matches!(origin, Origin::View(_));
         let history = History::new();
         let saved_revision = Some(history.current_id());
         let saved_line_ending = text.line_ending();
@@ -386,7 +381,6 @@ impl Buffer {
             change_log: ChangeLog::default(),
             announced_history,
             syntax: None,
-            read_only,
             hold: Weak::new(),
             open_announced: false,
             plugin_view: PluginView::default(),
@@ -405,7 +399,7 @@ impl Buffer {
     ///
     /// Resets history to a clean root and clears search state so the refreshed
     /// buffer is non-dirty and has no stale match data. This is a system
-    /// refresh: it intentionally bypasses the `read_only` guard in `doc_ops`.
+    /// refresh: it bypasses the read-only guard in `doc_ops`.
     pub(in crate::editor) fn set_view_content(
         &mut self,
         id: BufferId,
@@ -421,9 +415,11 @@ impl Buffer {
         self.install(PaneHandle::buffer_only(id), stores, text, Change::Replace);
     }
 
-    /// `true` when the buffer blocks user edits.
+    /// `true` for a view buffer (`[messages]`, `[plugin-status]`, a plugin's
+    /// view), which blocks user edits: `doc_ops` refuses every text change
+    /// and Insert mode is refused. It may still be highlighted.
     pub(crate) fn is_read_only(&self) -> bool {
-        self.read_only
+        matches!(self.origin, Origin::View(_))
     }
 
     /// `true` while a [`TextHold`] on this buffer is alive.
@@ -433,7 +429,7 @@ impl Buffer {
 
     /// Why the text may not change now, `None` when it may.
     pub(in crate::editor) fn text_refusal(&self) -> Option<TextRefusal> {
-        if self.read_only {
+        if self.is_read_only() {
             Some(TextRefusal::ReadOnly)
         } else if self.is_busy() {
             Some(TextRefusal::Busy)
@@ -463,11 +459,6 @@ impl Buffer {
         let alive = Rc::new(());
         self.hold = Rc::downgrade(&alive);
         TextHold { _alive: alive }
-    }
-
-    /// `true` for in-memory view buffers (e.g. `[messages]`, `[plugin-status]`).
-    pub(in crate::editor) fn is_synthetic(&self) -> bool {
-        matches!(self.origin, Origin::View(_))
     }
 
     /// Replace the buffer text and carry every stored position with it:
@@ -528,7 +519,7 @@ impl Buffer {
     /// Bind the buffer to `file`. A view buffer is never bound to one: a
     /// write of it is an export (see `WriteKind::classify`).
     pub(in crate::editor::buffer) fn set_file(&mut self, file: BufferFile) {
-        debug_assert!(!self.is_synthetic(), "a view buffer is bound to a file");
+        debug_assert!(!self.is_read_only(), "a view buffer is bound to a file");
         self.origin = Origin::File(file);
     }
 
@@ -655,7 +646,7 @@ impl Buffer {
         change: &ChangeSet,
     ) {
         debug_assert!(
-            self.read_only,
+            self.is_read_only(),
             "follow_view_change: an edit to a writable buffer belongs in its history"
         );
         if !change.is_identity() {
@@ -712,8 +703,8 @@ impl Buffer {
         Ok(true)
     }
 
-    /// Take the line ending of text read from disk, which a read-only buffer
-    /// accepts too.
+    /// Take the line ending of text read from disk, or one
+    /// [`Self::set_line_ending`] admitted.
     fn adopt_line_ending(&mut self, line_ending: LineEnding) {
         assert!(
             !self.is_busy(),

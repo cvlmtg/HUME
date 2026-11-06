@@ -23,7 +23,12 @@ pub(crate) struct DocHelper {
 
 impl DocHelper {
     pub(crate) fn new(text: BufferText, sels: SelectionSet) -> Self {
-        let (store, id) = BufferStore::holding(NewBuffer::Scratch(text));
+        Self::on(NewBuffer::Scratch(text), sels)
+    }
+
+    /// A helper on the buffer `new` describes, its pane on `sels`.
+    pub(super) fn on(new: NewBuffer, sels: SelectionSet) -> Self {
+        let (store, id) = BufferStore::holding(new);
         Self {
             store,
             id,

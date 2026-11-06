@@ -1514,9 +1514,8 @@ fn smart_paste_appends_after_plain_paste() {
 /// Plain paste on a read-only buffer reports and makes no edit.
 #[test]
 fn plain_paste_refuses_read_only_buffer() {
-    let mut ed = editor_from("-[x]>\n");
+    let mut ed = editor_with_read_only_view("x\n", "view");
     seed_ring(&mut ed, &["RING"]);
-    ed.doc_mut().read_only = true;
 
     call(&mut ed, "paste-after");
 

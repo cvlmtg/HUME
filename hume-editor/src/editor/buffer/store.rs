@@ -3,8 +3,8 @@
 //! `BufferStore` holds the authoritative `Buffer` structs keyed by `BufferId`.
 //! IDs are allocated by the engine's `SlotMap<BufferId, ()>`; this
 //! store mirrors that slotmap. **Never insert/remove through only one side**:
-//! always go through the `lifecycle::open_and_notify` /
-//! `lifecycle::close_buffer_and_notify` choke-points.
+//! every open after startup goes through the `lifecycle::open_and_notify`
+//! choke-point, and every close through `lifecycle::close_buffer_and_notify`.
 
 use std::fmt;
 

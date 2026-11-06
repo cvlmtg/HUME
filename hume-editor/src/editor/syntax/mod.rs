@@ -216,7 +216,7 @@ impl Editor {
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) -> BufferFate {
         // A view's text is generated, not a file, so nothing in it names a
         // language.
-        if self.state.buffers.get(bid).is_synthetic() {
+        if self.state.buffers.get(bid).is_read_only() {
             return BufferFate::Open;
         }
         // A user or script asserted this buffer's language: detection leaves

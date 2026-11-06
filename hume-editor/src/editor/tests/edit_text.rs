@@ -261,10 +261,8 @@ fn edges_widened_into_each_other_raise_as_overlapping() {
 #[test]
 fn a_read_only_buffer_raises() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[a]>bc\n");
+    let mut ed = editor_with_read_only_view("abc\n", "view");
     define_probe(&mut ed, tmp.path(), &edits(&[edit(0, 0, "X")]));
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).read_only = true;
     run_probe(&mut ed);
     assert_eq!(state(&ed), "-[a]>bc\n");
     let errors = error_log(&ed);
@@ -296,10 +294,8 @@ fn an_insert_mode_binding_edits_without_leaving_insert_mode() {
 #[test]
 fn an_empty_list_changes_nothing_in_a_read_only_buffer_either() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[a]>bc\n");
+    let mut ed = editor_with_read_only_view("abc\n", "view");
     define_probe(&mut ed, tmp.path(), "(list)");
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).read_only = true;
     run_probe(&mut ed);
     assert_eq!(state(&ed), "-[a]>bc\n");
     assert_eq!(error_log(&ed), Vec::<String>::new());

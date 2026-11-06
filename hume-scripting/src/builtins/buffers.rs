@@ -355,7 +355,7 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -
 ///
 /// Language detection can't run inline here (it needs Steel-eval capability
 /// this builtin's host doesn't hold), so the editor-side open chokepoint
-/// (`buffer::lifecycle::open_buffer_and_notify`) queues it onto
+/// (`buffer::lifecycle::open_and_notify`) queues it onto
 /// `EditorState.pending_language_detection` instead; `Editor::
 /// apply_script_effects` drains it once this eval returns.
 pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult {

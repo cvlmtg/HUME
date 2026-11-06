@@ -72,7 +72,7 @@ pub(in crate::editor) fn typed_edit(
                         pos.line,
                         pos.grapheme_col,
                     );
-                    land_pane_at(&mut ed.state, &mut ed.view, fp.pid(), bid, target);
+                    land_pane_at(&mut ed.state, &mut ed.view, fp.pane(), bid, target);
                 }
                 None => ed.enter_buffer(fp, bid),
             }

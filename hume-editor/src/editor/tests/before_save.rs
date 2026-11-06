@@ -211,10 +211,9 @@ fn write_all_raises_the_event_for_each_dirty_buffer_only() {
 
 #[test]
 fn export_of_a_read_only_buffer_does_not_hold_for_handlers() {
-    let (mut ed, _file, dir) = dirty_editor();
+    let mut ed = editor_with_read_only_view("ab\n", "view");
+    let dir = tempfile::tempdir().unwrap();
     run(&mut ed, dir.path(), ASYNC_HANDLER);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).read_only = true;
     let (target, _guard) = temp_file("old\n");
 
     type_cmd(&mut ed, &format!(":w! {}", target.display()));

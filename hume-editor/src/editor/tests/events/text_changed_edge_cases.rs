@@ -43,9 +43,8 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
-    let mut ed = editor_from("-[a]>b\n");
+    let mut ed = editor_with_read_only_view("ab\n", "view");
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).read_only = true;
 
     let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();

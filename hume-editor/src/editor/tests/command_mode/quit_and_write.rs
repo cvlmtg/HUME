@@ -264,7 +264,6 @@ fn colon_qa_quits_with_multiple_clean_buffers() {
     // :qa must exit even when :q would only close the focused buffer.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let _scratch = ed.open_scratch(hume_editing::text::BufferText::empty());
-    ed.enter_buffer(FocusedPane::current(&ed.view), ed.focused_buffer_id()); // stay on file buf
 
     type_cmd(&mut ed, ":qa");
 
@@ -517,18 +516,8 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
 #[test]
 fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
     // :w <path> on a read-only buffer is an export: the content lands on
-    // disk at the new path, but the source buffer must not be touched:
-    // no mark_saved, no file repoint, dirty state unchanged.
-    // Without the `is_save_as` guard in write_file's save-as branch, every
-    // :w <path> would go through Editor::mark_synced. is_dirty() below
-    // would then be false and original_path would be replaced by new_path.
-    let (mut ed, _original_path) = editor_with_file("-[h]>ello\n", "hello\n");
-    let path_before = ed.doc().path().cloned();
-    ed.handle_key(key('i'));
-    ed.handle_key(key('x'));
-    ed.handle_key(key_esc());
-    assert!(focused_unsaved(&ed), "pre-condition: buffer must be dirty");
-    ed.doc_mut().read_only = true;
+    // disk at the new path, and the buffer does not become that file.
+    let mut ed = editor_with_read_only_view("hello\n", "view");
 
     let tmp_dir = tempfile::tempdir().unwrap();
     let new_path = tmp_dir.path().join("exported.txt");
@@ -539,16 +528,13 @@ fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
     ed.handle_key(key_enter());
 
     assert!(new_path.exists(), "export target must be written");
-    assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "xhello\n");
-    assert!(
-        focused_unsaved(&ed),
-        "export must not mark the read-only source buffer saved"
-    );
+    assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "hello\n");
     assert_eq!(
-        ed.doc().path().cloned(),
-        path_before,
-        "export must not repoint the source buffer's path"
+        ed.doc().path(),
+        None,
+        "export must not bind the source buffer to the path"
     );
+    assert!(ed.doc().is_read_only());
 }
 
 #[test]

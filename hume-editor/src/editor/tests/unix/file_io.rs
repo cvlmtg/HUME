@@ -1030,51 +1030,6 @@ fn wa_preserves_focus_on_single_buffer() {
     assert!(!ed.state.has_unsaved_changes(bid1));
 }
 
-/// `:wa` must skip a read-only dirty buffer (e.g. one dirtied by set-text) and
-/// still save the remaining writable dirty buffers, no mid-batch abort.
-///
-/// The `&& !buf.is_read_only()` filter in typed_write_all matters: otherwise
-/// write_buffer_by_id returns the read-only refusal, the loop propagates
-/// it via `?`, and bid2 stays unsaved.
-#[test]
-fn wa_skips_read_only_dirty_buffer() {
-    let mut ed = open_headless(None);
-    // bid1: writable dirty buffer backed by a file.
-    let (tmp1_path, bid1) = open_file_buffer(&mut ed, "one\n");
-    ed.enter_buffer(FocusedPane::current(&ed.view), bid1);
-    dirty_focused(&mut ed);
-    assert!(ed.state.has_unsaved_changes(bid1));
-
-    // bid2: a buffer that's been made read-only while dirty.
-    let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
-    ed.enter_buffer(FocusedPane::current(&ed.view), bid2);
-    dirty_focused(&mut ed);
-    // Simulate the unusual case: set read_only after editing (e.g. set-text path).
-    ed.state.buffers.get_mut(bid2).read_only = true;
-    assert!(ed.state.has_unsaved_changes(bid2));
-    assert!(ed.state.buffers.get(bid2).is_read_only());
-
-    ed.enter_buffer(FocusedPane::current(&ed.view), bid1);
-    ed.execute_typed("wa", None).unwrap();
-
-    // bid1 must be saved; bid2 must remain dirty (was skipped, not aborted).
-    assert!(
-        !ed.state.has_unsaved_changes(bid1),
-        "writable buffer must be saved"
-    );
-    assert!(
-        ed.state.has_unsaved_changes(bid2),
-        "read-only buffer must remain dirty"
-    );
-    // File on disk: bid2 content unchanged.
-    assert_eq!(
-        std::fs::read_to_string(&*tmp2_path).unwrap(),
-        "two\n",
-        "read-only buffer file must not be touched"
-    );
-    drop((tmp1_path, tmp2_path));
-}
-
 #[test]
 fn open_extra_file_nonexistent_opens_new_file_buffer() {
     let f1 = tempfile::NamedTempFile::new().unwrap();
@@ -1384,6 +1339,26 @@ fn a_symlinked_file_is_named_by_its_typed_path() {
     assert_eq!(ed.focused_buffer_id(), linked);
 }
 
+/// `:e` and `:e!` reload the buffer in place: the selections follow the
+/// reloaded text, and the jump list gets no entry for the text before it.
+#[test]
+fn reload_records_no_jump() {
+    let (mut ed, file) = editor_with_file("a\n-[b]>\n-{c}>\n", "a\nb\nc\n");
+    let pid = ed.view.focused_pane();
+    let jumps = ed.state.panes.entries[pid].jumps.len();
+
+    std::fs::write(&file, "a\nB\nc\n").unwrap();
+    ed.execute_typed("e", None).unwrap();
+    assert_eq!(ed.doc().text().to_string(), "a\nB\nc\n");
+    assert_eq!(ed.state.panes.entries[pid].jumps.len(), jumps, ":e");
+
+    dirty_focused(&mut ed);
+    std::fs::write(&file, "a\nbb\nc\n").unwrap();
+    ed.execute_typed("e!", None).unwrap();
+    assert_eq!(ed.doc().text().to_string(), "a\nbb\nc\n");
+    assert_eq!(ed.state.panes.entries[pid].jumps.len(), jumps, ":e!");
+}
+
 /// A reload reads the file the buffer's path resolves to now: once that
 /// file is a symlink, the buffer's identity is the link's target.
 #[test]
@@ -1631,8 +1606,7 @@ fn export_steps_out_of_a_symlink_target_on_dot_dot() {
     let dir = dir_with_a_link_into_a_sibling();
     let typed = dir.path().join("a/link/../g.txt");
 
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.doc_mut().read_only = true;
+    let mut ed = editor_with_read_only_view("hello\n", "view");
     ed.execute_typed("w", Some(typed.to_str().unwrap()))
         .unwrap();
 

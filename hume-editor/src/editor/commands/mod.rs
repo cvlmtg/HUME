@@ -337,7 +337,7 @@ pub(super) fn pane_display_lines<'a>(
     (dlm, viewport)
 }
 
-/// Move pane `pid` to `(bid, pos)` and center the viewport by display line,
+/// Move `t`'s pane to `(bid, pos)` and center the viewport by display line,
 /// the same way `zz` does, recording no jump. Shared tail of every
 /// navigation that lands on an already-resolved buffer/position pair:
 /// `goto_location` (`lsp/edits.rs`) and `:e`'s own `path:line[:col]` suffix
@@ -347,10 +347,11 @@ pub(super) fn pane_display_lines<'a>(
 pub(super) fn land_pane_at(
     state: &mut EditorState,
     view: &mut EngineView,
-    pid: PaneId,
+    t: CommandPane,
     bid: BufferId,
     pos: hume_rope::cluster::ClusterStart,
 ) {
+    let pid = t.pid();
     crate::editor::focus::switch_pane_to_buffer(state, view, pid, bid);
     crate::editor::pane_state::write_cursor(
         &mut state.panes.entries,

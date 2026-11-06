@@ -140,17 +140,18 @@ fn goto_revision_unknown_id_errors_and_leaves_history() {
     assert_eq!(ed.doc().revision_id().index(), br.b.1);
 }
 
+/// The root is the one revision a read-only buffer has: a walk to it would
+/// take `0` steps, and the refusal comes first.
 #[test]
 fn goto_revision_on_read_only_buffer_is_refused() {
-    let mut ed = editor_from("-[h]>ello\n");
-    let br = two_branches(&mut ed);
-    ed.doc_mut().read_only = true;
+    let mut ed = editor_with_read_only_view("hello\n", "view");
+    let before = state(&ed);
 
-    let refusal = goto(&mut ed, br.a.1).expect_err("a read-only buffer refuses the walk");
+    let refusal = goto(&mut ed, 0).expect_err("a read-only buffer refuses the walk");
 
     assert_eq!(refusal.message(), read_only_refusal(&ed));
-    assert_eq!(state(&ed), br.b.0);
-    assert_eq!(ed.doc().revision_id().index(), br.b.1);
+    assert_eq!(state(&ed), before);
+    assert_eq!(ed.doc().revision_id().index(), 0);
 }
 
 /// Deletes the first char of `abcdef` (revision 1), splits the pane, and moves
@@ -258,13 +259,15 @@ fn goto_revision_host_errors_on_read_only_and_unknown_id() {
     );
     assert_eq!(state(&ed), br.b.0);
 
-    ed.doc_mut().read_only = true;
+    let mut ed = editor_with_read_only_view("hello\n", "view");
+    let before = state(&ed);
+    let handle = focused_pane(&ed);
     assert!(
         live_host!(ed)
-            .goto_revision(hume_scripting::host::ShownHandle::for_test(handle), br.a.1)
+            .goto_revision(hume_scripting::host::ShownHandle::for_test(handle), 0)
             .is_err()
     );
-    assert_eq!(state(&ed), br.b.0, "a read-only buffer is left alone");
+    assert_eq!(state(&ed), before, "a read-only buffer is left alone");
 }
 
 #[test]
@@ -300,9 +303,7 @@ fn goto_revision_host_acts_on_the_given_pane_not_focus() {
 
 #[test]
 fn goto_revision_on_read_only_buffer_refuses_before_resolving_the_id() {
-    let mut ed = editor_from("-[h]>ello\n");
-    two_branches(&mut ed);
-    ed.doc_mut().read_only = true;
+    let mut ed = editor_with_read_only_view("hello\n", "view");
 
     let refusal = goto(&mut ed, 999).expect_err("a read-only buffer refuses the walk");
 
