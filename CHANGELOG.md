@@ -20,6 +20,7 @@
 - Extending by word (`w`, `b`, `Ctrl-w`, `Ctrl-b`) keeps the selection's anchor end in place, for example after `ma(` and `Ctrl-e`.
 
 ### Files & buffers
+- New `session-persist` option: quitting saves the open files, tabs, splits, cursor positions, macros and prompt history of the working directory, and starting `hume` there with no files brings them back.
 - New `:new` command (and `buffer-new` editor command) opens an empty scratch buffer. Scratch buffers are numbered: `*scratch*`, `*scratch-2*` and so on.
 
 ### Plugins & scripting

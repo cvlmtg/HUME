@@ -151,3 +151,398 @@ fn a_session_that_cannot_be_written_is_reported_on_exit() {
         "reported: {out}"
     );
 }
+
+// ── Restore ──────────────────────────────────────────────────────────────
+
+/// Each tab's layout, the file every pane shows and the focused pane
+/// marked `*`, the current tab marked `>`.
+fn layout(ed: &Editor) -> Vec<String> {
+    fn tree(ed: &Editor, node: &hume_engine::pipeline::LayoutTree, focus: PaneId) -> String {
+        match node {
+            hume_engine::pipeline::LayoutTree::Leaf(pid) => {
+                let name = ed
+                    .state
+                    .buffers
+                    .get(ed.view.panes[*pid].buffer_id())
+                    .display_name();
+                if *pid == focus {
+                    format!("*{name}")
+                } else {
+                    name
+                }
+            }
+            hume_engine::pipeline::LayoutTree::Split {
+                direction,
+                children,
+                ..
+            } => format!(
+                "{direction:?}({}, {})",
+                tree(ed, &children.0, focus),
+                tree(ed, &children.1, focus)
+            ),
+        }
+    }
+    let current = ed.state.tabs.current_pos();
+    ed.state
+        .tabs
+        .layouts(ed.view.focused_layout())
+        .enumerate()
+        .map(|(n, l)| {
+            let mark = if n == current { ">" } else { "" };
+            format!("{mark}{}", tree(ed, l.tree(), l.focused()))
+        })
+        .collect()
+}
+
+/// The open buffers' names, in open order.
+fn buffer_names(ed: &Editor) -> Vec<String> {
+    ed.state
+        .buffers
+        .iter()
+        .map(|(_, buf)| buf.display_name())
+        .collect()
+}
+
+fn alternate(ed: &Editor) -> Option<String> {
+    let bid = ed.state.buffers.second_most_recent()?;
+    Some(ed.state.buffers.get(bid).display_name())
+}
+
+/// Quit `ed`, then start again in the same project the way `hume` does.
+fn restart(project: &Project, mut ed: Editor) -> Editor {
+    quit(&mut ed).expect("the session saves");
+    project.start(&[], PERSIST)
+}
+
+fn session_warnings(ed: &Editor) -> Vec<String> {
+    super::before_save::warning_texts(ed)
+        .into_iter()
+        .filter(|w| w.contains("session"))
+        .collect()
+}
+
+fn lines(n: usize) -> String {
+    (0..n).map(|i| format!("line {i}\n")).collect()
+}
+
+#[test]
+fn buffers_come_back_in_open_order_with_the_same_alternate() {
+    let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":e b.txt");
+    type_cmd(&mut ed, ":e c.txt");
+    type_cmd(&mut ed, ":e a.txt");
+    assert_eq!(alternate(&ed).as_deref(), Some("c.txt"), "sanity");
+
+    let again = restart(&project, ed);
+    assert_eq!(buffer_names(&again), ["a.txt", "b.txt", "c.txt"]);
+    assert_eq!(again.doc().display_name(), "a.txt");
+    assert_eq!(alternate(&again).as_deref(), Some("c.txt"));
+    assert!(session_warnings(&again).is_empty());
+}
+
+#[test]
+fn tabs_splits_and_focus_come_back() {
+    let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":vsplit b.txt");
+    type_cmd(&mut ed, ":split c.txt");
+    type_cmd(&mut ed, ":tabnew b.txt");
+    type_cmd(&mut ed, ":tabnew c.txt");
+    type_cmd(&mut ed, ":vsplit a.txt");
+    let unrotated = layout(&ed);
+    ed.feed_key(key_ctrl('p'));
+    ed.feed_key(key('r'));
+    assert_ne!(layout(&ed), unrotated, "sanity: the rotate moved the panes");
+    type_cmd(&mut ed, ":tabprev");
+    let before = layout(&ed);
+    assert_eq!(before.len(), 3, "sanity: {before:?}");
+
+    let again = restart(&project, ed);
+    assert_eq!(layout(&again), before);
+}
+
+#[test]
+fn selections_scroll_and_wrap_pins_come_back_per_pane() {
+    let project = Project::new(&[("a.txt", &lines(200)), ("b.txt", &lines(200))]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e b.txt");
+    ed.feed_key(key_ctrl('d'));
+    type_cmd(&mut ed, ":e a.txt");
+    ed.feed_key(key_ctrl('d'));
+    ed.feed_key(key_ctrl('d'));
+    press(&mut ed, "C");
+    let a_state = state(&ed);
+    let a_top = ed.view.panes[ed.view.focused_pane()].viewport.top();
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 20 });
+    let pid = ed.view.focused_pane();
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&AbsolutePath::canonicalize(&project.file("b.txt")).unwrap())
+        .unwrap();
+    let b_top = ed.view.panes[pid].saved_scrolls[bid].top();
+    assert_ne!(b_top, a_top, "sanity: the two buffers scrolled apart");
+
+    let mut again = restart(&project, ed);
+    let pid = again.view.focused_pane();
+    assert_eq!(state(&again), a_state);
+    assert_eq!(again.view.panes[pid].viewport.top(), a_top);
+    assert_eq!(
+        again.view.panes[pid].wrap().mode,
+        Some(hume_engine::pane::WrapMode::Soft { width: 20 })
+    );
+    type_cmd(&mut again, ":e b.txt");
+    let pid = again.view.focused_pane();
+    assert_eq!(again.view.panes[pid].viewport.top(), b_top);
+    assert_eq!(again.view.panes[pid].wrap().mode, None);
+}
+
+#[test]
+fn the_jump_list_comes_back_where_it_stood() {
+    let project = Project::new(&[("a.txt", &lines(100))]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":50");
+    type_cmd(&mut ed, ":90");
+    type_cmd(&mut ed, ":20");
+    ed.feed_key(key_ctrl('o'));
+    let back = state(&ed);
+
+    let mut again = restart(&project, ed);
+    assert_eq!(state(&again), back);
+    again.feed_key(key_ctrl('o'));
+    let older = state(&again);
+    again.feed_key(key_ctrl('i'));
+    assert_eq!(state(&again), back);
+    again.feed_key(key_ctrl('i'));
+    assert_ne!(state(&again), back);
+    assert_ne!(state(&again), older);
+}
+
+#[test]
+fn macros_and_numbered_registers_come_back() {
+    let project = Project::new(&[]);
+    let mut ed = project.start(&[], PERSIST);
+    let keys = vec![
+        key_ctrl('w'),
+        key_esc(),
+        key_shift_tab(),
+        KeyEvent::from(KeyCode::Function(5)),
+        key('é'),
+    ];
+    ed.state.registers.write_macro('q', keys.clone());
+    let pieces = vec![
+        hume_ops::register::Piece::new("one\n", hume_ops::register::Shape::Linewise),
+        hume_ops::register::Piece::new("two", hume_ops::register::Shape::Charwise),
+    ];
+    ed.state.registers.write_text('3', pieces.clone());
+    ed.state.registers.write_macro('7', vec![key('x')]);
+
+    let again = restart(&project, ed);
+    let read = |name| again.state.registers.read(name);
+    assert_eq!(read('q').and_then(|r| r.as_macro()), Some(&keys[..]));
+    assert_eq!(read('3').and_then(|r| r.as_pieces()), Some(&pieces[..]));
+    assert_eq!(read('7').and_then(|r| r.as_macro()), Some(&[key('x')][..]));
+}
+
+/// Every prompt's history, oldest entry first, in `entries_by_kind` order.
+fn histories(ed: &Editor) -> Vec<Vec<String>> {
+    ed.state
+        .history
+        .entries_by_kind()
+        .iter()
+        .map(|(_, entries)| entries.iter().cloned().collect())
+        .collect()
+}
+
+#[test]
+fn prompt_history_and_the_last_search_come_back() {
+    let project = Project::new(&[("a.txt", "one two\nthree two\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, "?one");
+    type_cmd(&mut ed, "/two");
+    ed.state
+        .history
+        .get_mut(crate::editor::minibuf::history::HistoryKind::Pipe)
+        .push("sort".to_owned());
+    quit(&mut ed).expect("the session saves");
+    let saved = histories(&ed);
+    assert!(
+        saved.iter().all(|ring| !ring.is_empty()),
+        "sanity: {saved:?}"
+    );
+
+    let mut again = project.start(&[], PERSIST);
+    assert_eq!(histories(&again), saved);
+    assert_eq!(again.state.registers.search_register(), Some("two"));
+    let before = state(&again);
+    again.feed_key(key('n'));
+    assert_ne!(state(&again), before);
+}
+
+#[test]
+fn a_restored_file_keeps_its_saved_undo_history() {
+    let project = Project::new(&[("a.txt", "one\n")]);
+    let init = format!("{PERSIST}\n(set-option! \"undo-persist\" #t)");
+    let mut ed = project.start(&[], &init);
+    type_cmd(&mut ed, ":e a.txt");
+    type_text(&mut ed, "x");
+    type_cmd(&mut ed, ":w");
+    quit(&mut ed).expect("the session saves");
+
+    let mut again = project.start(&[], &init);
+    assert_eq!(text(&again), "xone\n");
+    again.feed_key(key('u'));
+    assert_eq!(text(&again), "one\n");
+}
+
+#[test]
+fn the_scratch_buffer_hume_starts_on_is_replaced() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    let again = restart(&project, ed);
+    assert!(
+        again
+            .state
+            .buffers
+            .iter()
+            .all(|(_, buf)| buf.file().is_some())
+    );
+}
+
+// ── When nothing is restored ─────────────────────────────────────────────
+
+/// A project whose saved session shows `a.txt` beside `b.txt`.
+fn saved_two_files() -> Project {
+    let project = Project::new(&[("a.txt", &lines(100)), ("b.txt", &lines(100))]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":vsplit b.txt");
+    type_cmd(&mut ed, ":50");
+    quit(&mut ed).expect("the session saves");
+    project
+}
+
+#[test]
+fn a_run_started_with_a_file_restores_nothing() {
+    let project = saved_two_files();
+    let ed = project.start(&["a.txt"], PERSIST);
+    assert_eq!(buffer_names(&ed), ["a.txt"]);
+    assert_eq!(layout(&ed), [">*a.txt"]);
+}
+
+#[test]
+fn with_session_persist_off_nothing_is_restored() {
+    let project = saved_two_files();
+    let ed = project.start(&[], "");
+    assert!(ed.state.buffers.iter().all(|(_, buf)| buf.file().is_none()));
+    assert!(
+        project.session_file().is_file(),
+        "turning it off deletes nothing"
+    );
+}
+
+#[test]
+fn a_damaged_session_warns_and_starts_fresh() {
+    let project = saved_two_files();
+    let mut bytes = std::fs::read(project.session_file()).unwrap();
+    bytes.truncate(bytes.len() - 3);
+    std::fs::write(project.session_file(), &bytes).unwrap();
+
+    let ed = project.start(&[], PERSIST);
+    assert!(ed.state.buffers.iter().all(|(_, buf)| buf.file().is_none()));
+    let warnings = session_warnings(&ed);
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.starts_with("session not restored: ")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn a_file_that_is_not_a_session_warns() {
+    let project = saved_two_files();
+    std::fs::write(project.session_file(), "not a session").unwrap();
+    let ed = project.start(&[], PERSIST);
+    assert!(
+        session_warnings(&ed)
+            .iter()
+            .any(|w| w.contains("not a session file")),
+        "{:?}",
+        session_warnings(&ed)
+    );
+}
+
+#[test]
+fn a_session_of_another_format_is_ignored_without_a_warning() {
+    let project = saved_two_files();
+    let mut bytes = std::fs::read(project.session_file()).unwrap();
+    bytes[8..12].copy_from_slice(&2u32.to_le_bytes());
+    std::fs::write(project.session_file(), &bytes).unwrap();
+
+    let ed = project.start(&[], PERSIST);
+    assert!(ed.state.buffers.iter().all(|(_, buf)| buf.file().is_none()));
+    assert!(session_warnings(&ed).is_empty());
+}
+
+#[test]
+fn a_file_changed_since_the_save_opens_at_its_start() {
+    let project = saved_two_files();
+    project.write("b.txt", &lines(120));
+    let mut ed = project.start(&[], PERSIST);
+    assert_eq!(layout(&ed), [">Horizontal(a.txt, *b.txt)"]);
+    assert_eq!(ed.current_view().primary().head().offset(), co(0));
+    assert_eq!(
+        ed.view.panes[ed.view.focused_pane()].viewport.top(),
+        Default::default()
+    );
+    type_cmd(&mut ed, ":e a.txt");
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        co(0),
+        "a.txt never moved"
+    );
+}
+
+#[test]
+fn a_missing_file_is_skipped_and_its_pane_shows_another() {
+    let project = saved_two_files();
+    std::fs::remove_file(project.file("b.txt")).unwrap();
+    let ed = project.start(&[], PERSIST);
+    assert_eq!(buffer_names(&ed), ["a.txt"]);
+    assert_eq!(layout(&ed), [">Horizontal(a.txt, *a.txt)"]);
+    let (jumps, _) = ed.state.panes.entries[ed.view.focused_pane()]
+        .jumps
+        .history();
+    assert!(jumps.is_empty());
+    assert!(session_warnings(&ed).is_empty());
+}
+
+#[test]
+fn with_every_file_gone_the_scratch_stays_and_registers_come_back() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    ed.state.registers.write_macro('q', vec![key('x')]);
+    quit(&mut ed).expect("the session saves");
+    std::fs::remove_file(project.file("a.txt")).unwrap();
+
+    let again = project.start(&[], PERSIST);
+    assert!(
+        again
+            .state
+            .buffers
+            .iter()
+            .all(|(_, buf)| buf.file().is_none())
+    );
+    assert_eq!(
+        again.state.registers.read('q').and_then(|r| r.as_macro()),
+        Some(&[key('x')][..])
+    );
+}

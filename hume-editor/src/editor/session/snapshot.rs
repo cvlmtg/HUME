@@ -9,7 +9,7 @@ use hume_core::{BufferId, PaneId};
 use hume_editing::selection::SelectionsSnapshot;
 use hume_engine::pane::{Pane, WrapMode, WrapOverride};
 use hume_engine::pipeline::{Direction, EngineView, LayoutTree};
-use hume_ops::register::MACRO_REGISTER;
+use hume_ops::register::{MACRO_REGISTERS, Shape};
 use serde::{Deserialize, Serialize};
 use slotmap::SecondaryMap;
 
@@ -22,7 +22,7 @@ use crate::editor::minibuf::history::HistoryKind;
 pub(super) struct SessionSnapshot {
     /// The file buffers, in open order.
     pub(super) buffers: Vec<BufferSnapshot>,
-    /// Buffer indices, least recently shown first.
+    /// Every buffer index once, least recently shown first.
     pub(super) mru: Vec<usize>,
     /// The tabs in display order.
     pub(super) tabs: Vec<TabSnapshot>,
@@ -106,15 +106,15 @@ pub(super) enum WrapModeSnapshot {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) enum RegisterSnapshot {
-    /// Each piece's text and whether it is linewise.
-    Text(Vec<(String, bool)>),
+    /// Each piece's text and shape.
+    Text(Vec<(String, ShapeSnapshot)>),
     Macro(Vec<SavedKey>),
 }
 
-/// The registers a session keeps: those a macro can be recorded into, which
-/// are also the ones only the user writes.
-pub(super) fn kept_registers() -> impl Iterator<Item = char> {
-    std::iter::once(MACRO_REGISTER).chain('0'..='9')
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub(super) enum ShapeSnapshot {
+    Charwise,
+    Linewise,
 }
 
 impl SessionSnapshot {
@@ -159,14 +159,16 @@ impl SessionSnapshot {
                 }
             })
             .collect();
-        let registers = kept_registers()
+        // The macro registers are the ones only the user writes.
+        let registers = MACRO_REGISTERS
+            .into_iter()
             .filter_map(|name| {
                 let register = state.registers.read(name)?;
                 let text = register.as_pieces().map(|pieces| {
                     RegisterSnapshot::Text(
                         pieces
                             .iter()
-                            .map(|p| (p.text().to_owned(), p.is_linewise()))
+                            .map(|p| (p.text().to_owned(), p.shape().into()))
                             .collect(),
                     )
                 });
@@ -332,6 +334,24 @@ impl From<WrapModeSnapshot> for WrapMode {
             WrapModeSnapshot::Soft(width) => Self::Soft { width },
             WrapModeSnapshot::Word(width) => Self::Word { width },
             WrapModeSnapshot::Indent(width) => Self::Indent { width },
+        }
+    }
+}
+
+impl From<Shape> for ShapeSnapshot {
+    fn from(shape: Shape) -> Self {
+        match shape {
+            Shape::Charwise => Self::Charwise,
+            Shape::Linewise => Self::Linewise,
+        }
+    }
+}
+
+impl From<ShapeSnapshot> for Shape {
+    fn from(shape: ShapeSnapshot) -> Self {
+        match shape {
+            ShapeSnapshot::Charwise => Self::Charwise,
+            ShapeSnapshot::Linewise => Self::Linewise,
         }
     }
 }

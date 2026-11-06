@@ -17,7 +17,9 @@ use ropey::Rope;
 ///
 /// `top` is written from outside this crate only through the scroll verbs
 /// in [`crate::display_lines::scroll`] (`scroll_by`/`reveal`/`align`), so no
-/// caller resolves a `DisplayLinePos` independently of them.
+/// caller resolves a `DisplayLinePos` independently of them, and through
+/// [`Pane::resume_scroll`], which puts back a top those verbs resolved in an
+/// earlier run.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Viewport {
     pub(crate) top: DisplayLinePos,
@@ -335,6 +337,23 @@ impl Pane {
             top: DisplayLinePos::new(saved.top.line.min(last_content_line), saved.top.slot),
             ..saved
         };
+    }
+
+    /// Scroll back to `top` in `bid`, a top this pane had for it in an
+    /// earlier run: at once for the buffer it shows, on the next
+    /// [`EngineView::show_buffer`](crate::pipeline::EngineView::show_buffer)
+    /// for any other. Like that restore, the slot is
+    /// unvalidated and the next `Viewport::top_at` read heals a stale one.
+    pub fn resume_scroll(&mut self, bid: BufferId, top: DisplayLinePos) {
+        let viewport = Viewport {
+            top,
+            ..Viewport::default()
+        };
+        if bid == self.buffer_id {
+            self.viewport = viewport;
+        } else {
+            self.saved_scrolls.insert(bid, viewport);
+        }
     }
 
     /// Drop the saved scroll and wrap-mode override entries for `id` (called

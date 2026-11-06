@@ -713,3 +713,36 @@ fn prune_buffer_remaining_entries_navigable() {
         "backward again reaches the oldest entry"
     );
 }
+
+#[test]
+fn a_resumed_list_walks_from_where_it_stood() {
+    let line = |e: Option<&JumpEntry>| e.map(|e| e.primary_line.index());
+    let mut jl = JumpList::resumed(10, vec![entry(0, 0), entry(10, 5), entry(20, 10)], 1);
+    assert_eq!(line(jl.forward()), Some(10));
+    assert_eq!(line(jl.forward()), None);
+
+    let mut jl = JumpList::resumed(10, vec![entry(0, 0), entry(10, 5), entry(20, 10)], 1);
+    assert_eq!(line(jl.backward(entry(30, 15))), Some(0));
+}
+
+#[test]
+fn a_resumed_list_at_the_present_saves_the_current_position_on_backward() {
+    let mut jl = JumpList::resumed(10, vec![entry(0, 0), entry(10, 5)], 2);
+    assert_eq!(
+        jl.backward(entry(30, 15)).map(|e| e.primary_line.index()),
+        Some(5)
+    );
+    assert_eq!(jl.len(), 3);
+}
+
+#[test]
+fn a_resumed_list_keeps_its_newest_entries_within_capacity() {
+    let jl = JumpList::resumed(2, vec![entry(0, 0), entry(10, 5), entry(20, 10)], 3);
+    let (entries, cursor) = jl.history();
+    let lines: Vec<_> = entries.iter().map(|e| e.primary_line.index()).collect();
+    assert_eq!(lines, [5, 10]);
+    assert_eq!(cursor, 2);
+
+    let jl = JumpList::resumed(2, vec![entry(0, 0), entry(10, 5), entry(20, 10)], 0);
+    assert_eq!(jl.history().1, 0);
+}

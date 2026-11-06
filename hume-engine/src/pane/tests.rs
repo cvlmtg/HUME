@@ -117,6 +117,28 @@ fn show_buffer_restores_an_in_range_top_line_untouched() {
     assert_eq!(pane.viewport.top().line.index(), 4);
 }
 
+// ── resume_scroll ───────────────────────────────────────────────────────
+
+#[test]
+fn resume_scroll_on_the_shown_buffer_moves_its_viewport() {
+    let [bid] = hume_core::fresh_ids();
+    let mut pane = Pane::new(bid);
+    let top = DisplayLinePos::new(ContentLine::new(7), 1);
+    pane.resume_scroll(bid, top);
+    assert_eq!(pane.viewport.top(), top);
+}
+
+#[test]
+fn resume_scroll_on_a_hidden_buffer_is_where_showing_it_lands() {
+    let [bid, other] = hume_core::fresh_ids();
+    let mut pane = Pane::new(bid);
+    let top = DisplayLinePos::new(ContentLine::new(7), 0);
+    pane.resume_scroll(other, top);
+    assert_eq!(pane.viewport.top(), DisplayLinePos::default());
+    pane.show_buffer(other, ContentLine::new(100));
+    assert_eq!(pane.viewport.top(), top);
+}
+
 #[test]
 fn whitespace_config_defaults() {
     let wc = WhitespaceConfig::default();

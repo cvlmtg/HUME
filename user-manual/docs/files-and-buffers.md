@@ -107,6 +107,7 @@ Files you open are always editable, whatever their permissions on disk. A write 
 ## Persistence and safety
 
 - **Undo history lasts until HUME exits, unless you save it.** With `undo-persist` on, saving a file saves its undo history too; see [Saved undo history](#saved-undo-history).
+- **Open files and layout last until HUME exits, unless you save the session.** With `session-persist` on, quitting saves them for the working directory; see [Saved sessions](#saved-sessions).
 - **No swap or backup files.** HUME writes no swap or backup files while you edit. A save writes to a temporary file and renames it into place, so the file on disk holds either the old content or the new, never a half-written mix.
 - **Unsaved changes survive a crash.** If HUME itself panics, it writes them to disk and offers them back the next time you open the file; see [Crash recovery](#crash-recovery).
 - **A background crash doesn't stop HUME.** If a background task crashes (syntax highlighting, a language server connection), HUME keeps running. The crash appears as an error in `:messages` and is printed on the terminal after you quit. The feature that task ran can stop working until you restart.
@@ -126,6 +127,29 @@ With `undo-persist` on, every save of a file, and every reload of it from disk, 
 Saved history lives in HUME's state directory: `~/.local/state/hume/undo` (or `$XDG_STATE_HOME/hume/undo`), `%LOCALAPPDATA%\hume\undo` on Windows. Set `undo-directory` to keep it elsewhere. Inside it, each file's history sits at the file's own full path with `.undo` added, so the history of `/home/me/notes.txt` is `undo/home/me/notes.txt.undo` (on Windows the drive letter comes first, as in `undo/C/Users/me/notes.txt.undo`). A file opened through a symlink shares its history with the file it points to. Saved history keeps text you deleted, so on Linux and macOS its files and the folders HUME creates for them are readable only by you.
 
 Nothing removes old history files. To forget a file's history, delete its `.undo` file; to forget a whole project's, delete its folder.
+
+### Saved sessions
+
+With `session-persist` on, quitting HUME saves the session of the directory you are working in, and starting `hume` there with no files brings it back:
+
+- the files you had open, and the one you saw before the current one, so `:b#` still goes back to it;
+- your tabs and splits, and which pane had focus;
+- in each pane, the selections, scroll position and wrap setting of every file it showed, and its jump list;
+- the registers `q` and `0`–`9`, recorded macros included;
+- what you typed at the `:`, `/`, `?` and `|` prompts, and the last search, so `n` works at once.
+
+Scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill ring `k` and the clipboard `c` are not kept.
+
+- Turn it on with `(set-option! "session-persist" #t)` in `init.scm`. Turning it off stops both saving and restoring, and deletes nothing.
+- Starting HUME with files, as in `hume notes.txt`, opens just those files and leaves the saved session alone: quitting that run doesn't save over it.
+- The session belongs to the directory you are in when you quit, so after `:cd` it is saved for the new directory.
+- HUME saves it however it ends, including when you close the terminal window, but not when HUME itself crashes.
+- A file changed since the session was saved comes back in its place in the layout, at its top. A file that has been deleted since is left out. A damaged session file is ignored, with a warning.
+- When two HUME instances quit in the same directory, the last one's session wins.
+
+Saved sessions live in HUME's state directory: `~/.local/state/hume/sessions` (or `$XDG_STATE_HOME/hume/sessions`), `%LOCALAPPDATA%\hume\sessions` on Windows. Set `session-directory` to keep them elsewhere. Each directory's session sits at that directory's own full path with `.session` added, so the session of `/home/me/project` is `sessions/home/me/project.session`. On Linux and macOS its files and the folders HUME creates for them are readable only by you.
+
+Nothing removes old sessions. To forget one, delete its `.session` file.
 
 ### Crash recovery
 

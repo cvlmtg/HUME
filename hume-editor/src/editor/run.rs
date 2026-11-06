@@ -235,7 +235,8 @@ impl Editor {
     /// Set up an editor on the command line's files, the same way for every
     /// [`Driver`]: read the first file (or a scratch buffer), configure the
     /// driver and the config source, load the config, finish opening the
-    /// first file, attach the scripting host, then open the remaining files.
+    /// first file, restore the session when there are no files, attach the
+    /// scripting host, then open the remaining files.
     /// Every file's `OnBufferOpen` fires at the first `settle()`, in that
     /// order. Each file's position is queued, and the first `settle()` places
     /// it.
@@ -282,6 +283,9 @@ impl Editor {
         // closed it.
         if editor.state.buffers.try_get(startup).is_some() {
             lifecycle::finish_open(&mut editor.state, startup);
+        }
+        if editor.keeps_session {
+            editor.restore_session(startup);
         }
         editor.attach_scripting(host, &mut Default::default());
         if let Some(pos) = first.and_then(|f| f.pos) {

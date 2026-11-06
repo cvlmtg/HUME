@@ -96,12 +96,30 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
     state: &mut EditorState,
     typed: AbsolutePath,
 ) -> std::io::Result<(BufferId, bool)> {
+    open_or_dedup_with(ev, state, typed, NewBuffer::file_or_new)
+}
+
+/// [`open_or_dedup_and_notify`] for a file that must already exist: a
+/// missing one is a `NotFound` error and opens nothing.
+pub(in crate::editor) fn open_existing_or_dedup_and_notify(
+    ev: &mut EngineView,
+    state: &mut EditorState,
+    typed: AbsolutePath,
+) -> std::io::Result<(BufferId, bool)> {
+    open_or_dedup_with(ev, state, typed, NewBuffer::existing_file)
+}
+
+fn open_or_dedup_with(
+    ev: &mut EngineView,
+    state: &mut EditorState,
+    typed: AbsolutePath,
+    read: fn(FileTarget) -> std::io::Result<NewBuffer>,
+) -> std::io::Result<(BufferId, bool)> {
     let target = FileTarget::new(typed)?;
     if let Some(existing) = state.buffers.find_by_path(target.resolved()) {
         return Ok((existing, false));
     }
-    let new = NewBuffer::file_or_new(target)?;
-    Ok((open_and_notify(ev, state, new), true))
+    Ok((open_and_notify(ev, state, read(target)?), true))
 }
 
 /// Switch pane `pid` to `target`, or do nothing if it already shows it,

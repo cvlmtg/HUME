@@ -446,13 +446,8 @@ pub(in crate::editor) use insert_session::{
 pub(in crate::editor) use pane::CloseRefused;
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};
+pub(in crate::editor) use pane::{open_pane_as_new_tab, open_pane_in_layout};
 pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe, is_blank_command};
-// `open_pane_in_layout` has no non-test caller outside `pane.rs` itself
-// (which reaches it directly too). Only `editor::tests` calls it through
-// this path, so the re-export is test-only to avoid an "unused import"
-// warning on every non-test build.
-#[cfg(test)]
-pub(in crate::editor) use pane::open_pane_in_layout;
 use pipeline::MissingOperand;
 pub(in crate::editor) use pipeline::{
     BoundCommand, FocusedBindError, Missing, NativeBody, PendingDispatch, report_arg_error, run,

@@ -135,6 +135,25 @@ impl JumpList {
         }
     }
 
+    /// A list holding `entries`, oldest first, standing at `cursor` in them
+    /// (`entries.len()` at the present), as an earlier run left it. Past
+    /// `capacity` the oldest entries drop and the cursor moves with them.
+    pub(in crate::editor) fn resumed(
+        capacity: usize,
+        entries: Vec<JumpEntry>,
+        cursor: usize,
+    ) -> Self {
+        debug_assert!(capacity > 0, "JumpList capacity must be non-zero");
+        debug_assert!(cursor <= entries.len(), "the cursor stands within the list");
+        let dropped = entries.len().saturating_sub(capacity);
+        Self {
+            entries: entries.into_iter().skip(dropped).collect(),
+            cursor: cursor.saturating_sub(dropped),
+            capacity,
+            pending: Vec::new(),
+        }
+    }
+
     /// Change the capacity limit. Takes effect on the *next* `push`, not
     /// immediately, matching Vim's `undolevels` semantics (see
     /// `hume_editing::history::UndoTree::set_undo_levels`): lowering the cap

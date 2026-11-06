@@ -8,6 +8,7 @@
 //! text's MD5, and its positions are restored only onto that same text.
 
 mod keys;
+mod restore;
 mod snapshot;
 
 use std::io;

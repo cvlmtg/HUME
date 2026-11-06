@@ -200,13 +200,24 @@ impl NewBuffer {
             }
             other => other?,
         };
+        Ok(Self::file(text, file))
+    }
+
+    /// The file `target` names, read from disk. A missing file is a
+    /// `NotFound` error, for an open that has nothing to create.
+    pub(in crate::editor) fn existing_file(target: FileTarget) -> io::Result<Self> {
+        let (text, file) = BufferFile::read(target.typed().clone())?;
+        Ok(Self::file(text, file))
+    }
+
+    fn file(text: BufferText, file: BufferFile) -> Self {
         let pending_dump = Some(dump::dump_path_for(file.resolved().as_path()))
             .filter(|dump| std::fs::symlink_metadata(dump).is_ok());
-        Ok(Self::File {
+        Self::File {
             text,
             file,
             pending_dump,
-        })
+        }
     }
 }
 

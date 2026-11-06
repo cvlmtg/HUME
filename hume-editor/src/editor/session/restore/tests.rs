@@ -1,0 +1,110 @@
+use hume_editing::selection::SelectionsSnapshot;
+use hume_editing::text::BufferText;
+
+use super::super::snapshot::{
+    BufferSnapshot, JumpSnapshot, PaneBufferSnapshot, PaneSnapshot, SessionSnapshot,
+    SplitDirection, SplitStep, TabSnapshot,
+};
+use super::check;
+
+/// A session of one buffer shown in two side-by-side panes.
+fn valid() -> SessionSnapshot {
+    let text = BufferText::from("a\n");
+    let selections =
+        || SelectionsSnapshot::of(&hume_editing::selection::SelectionSet::at_text_start(&text));
+    let pane = || PaneSnapshot {
+        shown: Some(0),
+        buffers: vec![PaneBufferSnapshot {
+            buffer: 0,
+            selections: selections(),
+            top: (0, 0),
+            wrap: None,
+        }],
+        jumps: vec![JumpSnapshot {
+            buffer: 0,
+            selections: selections(),
+        }],
+        jump_cursor: 1,
+    };
+    SessionSnapshot {
+        buffers: vec![BufferSnapshot {
+            path: "/a.txt".into(),
+            md5: [0; 16],
+        }],
+        mru: vec![0],
+        tabs: vec![TabSnapshot {
+            panes: vec![pane(), pane()],
+            splits: vec![SplitStep {
+                pane: 0,
+                direction: SplitDirection::Horizontal,
+            }],
+            focused: 1,
+        }],
+        current_tab: 0,
+        registers: vec![],
+        search: None,
+        history: vec![],
+    }
+}
+
+#[test]
+fn a_session_whose_indices_all_hold_passes() {
+    assert_eq!(check(&valid()), Ok(()));
+}
+
+#[test]
+fn every_index_past_what_the_session_holds_is_refused() {
+    let broken: [fn(&mut SessionSnapshot); 9] = [
+        |s| s.mru = vec![1],
+        |s| s.current_tab = 1,
+        |s| s.tabs.clear(),
+        |s| s.tabs[0].splits[0].pane = 1,
+        |s| {
+            s.tabs[0].panes.pop();
+        },
+        |s| s.tabs[0].focused = 2,
+        |s| s.tabs[0].panes[1].shown = Some(1),
+        |s| s.tabs[0].panes[1].jumps[0].buffer = 1,
+        |s| s.tabs[0].panes[0].jump_cursor = 2,
+    ];
+    for (n, break_it) in broken.into_iter().enumerate() {
+        let mut snapshot = valid();
+        break_it(&mut snapshot);
+        assert!(check(&snapshot).is_err(), "case {n}");
+    }
+}
+
+#[test]
+fn an_mru_that_does_not_list_each_buffer_once_is_refused() {
+    let broken: [fn(&mut SessionSnapshot); 2] = [
+        |s| s.mru.clear(),
+        |s| {
+            s.buffers.push(BufferSnapshot {
+                path: "/b.txt".into(),
+                md5: [0; 16],
+            });
+            s.mru = vec![0, 0];
+        },
+    ];
+    for (n, break_it) in broken.into_iter().enumerate() {
+        let mut snapshot = valid();
+        break_it(&mut snapshot);
+        assert!(check(&snapshot).is_err(), "case {n}");
+    }
+}
+
+#[test]
+fn a_register_no_session_keeps_is_refused() {
+    let mut snapshot = valid();
+    snapshot
+        .registers
+        .push(('c', super::super::snapshot::RegisterSnapshot::Text(vec![])));
+    assert!(check(&snapshot).is_err());
+}
+
+#[test]
+fn a_pane_buffer_index_past_the_buffers_is_refused() {
+    let mut snapshot = valid();
+    snapshot.tabs[0].panes[0].buffers[0].buffer = 3;
+    assert!(check(&snapshot).is_err());
+}

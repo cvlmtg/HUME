@@ -50,12 +50,26 @@ pub const MACRO_REGISTER: char = 'q';
 /// storage with a warning when the clipboard is unavailable (headless CI/SSH).
 pub const CLIPBOARD_REGISTER: char = 'c';
 
-/// Returns `true` if `ch` is a valid register name for macro recording/replay.
-///
-/// Accepts the default macro register (`q`) and the numbered storage registers
-/// (`0`–`9`). Special registers (`b`, `c`, `s`) are not valid macro targets.
+/// The registers a macro can be recorded into and replayed from: the default
+/// macro register (`q`) and the numbered storage registers (`0`–`9`).
+/// Special registers (`b`, `c`, `s`) are not valid macro targets.
+pub const MACRO_REGISTERS: [char; 11] = [
+    MACRO_REGISTER,
+    '0',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+];
+
+/// Returns `true` if `ch` is one of [`MACRO_REGISTERS`].
 pub fn is_valid_macro_register(ch: char) -> bool {
-    ch == MACRO_REGISTER || ch.is_ascii_digit()
+    MACRO_REGISTERS.contains(&ch)
 }
 
 /// Returns `true` if `ch` is a valid register name for the `"<reg>` prefix.
