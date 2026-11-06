@@ -219,9 +219,10 @@ pub(in crate::editor) enum EditorEvent {
     /// of those funnels through, so this is the one place to raise it.
     /// Buffer-scoped overrides (`:set`/`set-buffer-option!` without
     /// `global`) don't raise this: the payload has no `BufferId` to name,
-    /// and `apply_buffer_target` has no per-key resync effects to piggyback on (see
-    /// its doc). `value` is the setting's new value as `(get-option key)`
-    /// reports it: a bool, integer, string, or list of strings.
+    /// and `apply_buffer_target` has no per-key resync effects to piggyback
+    /// on (see its doc). `value` is the setting's new value as
+    /// `(get-option key)` reports it: a bool, integer, string, list of
+    /// strings, or the statusline's sections hash.
     OnOptionChange {
         key: String,
         value: OptionValue,

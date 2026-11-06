@@ -4,10 +4,10 @@ use hume_core::{ConfigOrigin, DiagSeverity, OptionType, OptionValue, StatuslineS
 use hume_editing::text::LineEnding;
 use hume_platform::path::AbsolutePath;
 
-// ── Default values match previous hardcoded constants ─────────────────────
+// ── Default values ──────────────────────────────────────────────────────────
 
 #[test]
-fn editor_settings_default_matches_old_constants() {
+fn editor_settings_default_values() {
     let s = EditorSettings::default();
     assert_eq!(s.scroll_margin, 3);
     assert_eq!(s.mouse_scroll_lines, 3);
