@@ -1,11 +1,13 @@
 mod fit;
 mod resolver;
 mod single;
+mod snapshot;
 mod view;
 
 pub(crate) use fit::{assert_fits, assert_positions, check_fit};
 pub(crate) use resolver::Resolver;
 pub use single::{Facing, Selection, StickyDisplayCol};
+pub use snapshot::SelectionsSnapshot;
 pub use view::{EditView, LineSpan, SelectionView};
 
 use hume_rope::cluster::ClusterStart;

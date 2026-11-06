@@ -3,6 +3,7 @@ use hume_core::{PaneId, fresh_ids};
 use super::super::Side;
 use super::super::tests::{record_edit, selected, start_time};
 use super::*;
+use crate::selection::SelectionSet;
 
 /// The text a walk of `txns` from `text` lands on, and the selections it
 /// leaves as anchor/head offsets.
@@ -242,9 +243,13 @@ fn restore_rejects_a_change_stored_for_the_wrong_direction() {
 fn restore_rejects_a_selection_inside_a_cluster_or_past_the_end() {
     let f = fixture();
     let text = f.current.to_string();
-    let inside = rejected(&f, &text, |s| link(s, 4).after.ranges = vec![(4, 4)]);
+    let inside = rejected(&f, &text, |s| {
+        link(s, 4).after = SelectionsSnapshot::from_ranges(vec![(4, 4)], 0);
+    });
     assert!(matches!(inside, RestoreError::Selections(4)));
-    let past = rejected(&f, &text, |s| link(s, 4).after.ranges = vec![(0, 99)]);
+    let past = rejected(&f, &text, |s| {
+        link(s, 4).after = SelectionsSnapshot::from_ranges(vec![(0, 99)], 0);
+    });
     assert!(matches!(past, RestoreError::Selections(4)));
 }
 

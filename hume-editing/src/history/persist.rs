@@ -13,14 +13,12 @@
 use std::borrow::Cow;
 use std::time::{Duration, UNIX_EPOCH};
 
-use hume_rope::cluster::ClusterStart;
-use hume_rope::offset::CharOffset;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
 use super::{Children, History, Link, Owner, Revision, RevisionId};
 use crate::changeset::{ChangeSet, Operation};
-use crate::selection::{Selection, SelectionSet};
+use crate::selection::SelectionsSnapshot;
 use crate::text::BufferText;
 use crate::transaction::Transaction;
 
@@ -58,46 +56,6 @@ struct LinkSnapshot<'a> {
     before: SelectionsSnapshot,
     /// The selections the edit left, on the revision's own text.
     after: SelectionsSnapshot,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct SelectionsSnapshot {
-    /// Each selection's anchor and head, as char offsets.
-    ranges: Vec<(usize, usize)>,
-    primary: usize,
-}
-
-impl SelectionsSnapshot {
-    fn of(sels: &SelectionSet) -> Self {
-        let offset = |at: ClusterStart| at.offset().index();
-        Self {
-            ranges: sels
-                .selections()
-                .iter()
-                .map(|s| (offset(s.anchor()), offset(s.head())))
-                .collect(),
-            primary: sels.primary_pos(),
-        }
-    }
-
-    /// These selections on `text`, `None` unless the primary is one of them
-    /// and every end starts a cluster of `text`.
-    fn on(&self, text: &BufferText) -> Option<SelectionSet> {
-        if self.primary >= self.ranges.len() {
-            return None;
-        }
-        let at = |offset: usize| {
-            let pos = CharOffset::new(offset);
-            let at = (offset < text.len_chars()).then(|| text.snap(pos))?;
-            (at.offset() == pos).then_some(at)
-        };
-        let selections = self
-            .ranges
-            .iter()
-            .map(|&(anchor, head)| Some(Selection::new(at(anchor)?, at(head)?)))
-            .collect::<Option<Vec<_>>>()?;
-        Some(SelectionSet::new(text, selections, self.primary))
-    }
 }
 
 /// Why a snapshot cannot be restored. The number names the revision.
