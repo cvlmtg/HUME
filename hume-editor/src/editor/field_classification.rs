@@ -114,6 +114,7 @@ fn editor_state_fields_are_classified() {
             last_observed_mode: _,
             mouse_drag: _,             // preserved
             cwd: _,                    // preserved
+            startup_dir: _,            // preserved: where the run started
             views: _, // preserved: Arc views, self-healing per-frame regardless of config
             tabline_view: _, // preserved: self-healing per-frame regardless of config
             last_tabline_signature: _, // preserved

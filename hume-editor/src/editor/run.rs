@@ -155,7 +155,7 @@ impl Editor {
         // Insert a buffer: just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(());
 
-        let settings = EditorSettings::default();
+        let settings = EditorSettings::new(&startup_cwd);
 
         let history_capacity = settings.prompt_history_levels;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);

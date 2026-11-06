@@ -67,7 +67,9 @@ pub struct MockHost {
 impl MockHost {
     pub fn new() -> Self {
         Self {
-            settings: hume::editor::settings::EditorSettings::default(),
+            settings: hume::editor::settings::EditorSettings::new(
+                &hume_platform::path::AbsolutePath::rooted("/"),
+            ),
             grammars: rustc_hash::FxHashSet::default(),
             registered_cmds: Vec::new(),
             registered_typed_cmds: Vec::new(),

@@ -130,7 +130,7 @@ Nothing removes old history files. To forget a file's history, delete its `.undo
 
 ### Saved sessions
 
-With `session-persist` on, quitting HUME saves the session of the directory you are working in, and starting `hume` there with no files brings it back:
+With `session-persist` on, quitting HUME saves the session of its session root, by default the directory HUME started in, and starting `hume` with no files and the same root brings it back:
 
 - the files you had open, and the one you saw before the current one, so `:b#` still goes back to it;
 - your tabs and splits, and which pane had focus;
@@ -142,12 +142,19 @@ Scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill
 
 - Turn it on with `(set-option! "session-persist" #t)` in `init.scm`. Turning it off stops both saving and restoring, and deletes nothing.
 - Starting HUME with files, as in `hume notes.txt`, opens just those files and leaves the saved session alone: quitting that run doesn't save over it.
-- The session belongs to the directory you are in when you quit, so after `:cd` it is saved for the new directory.
+- `:cd` doesn't move the session: it stays with the session root, and restoring one leaves you in the directory you started in.
+- To share one session across a project, set `session-root` from `init.scm`. With `core:stdlib` loaded, this keys sessions by git repository, and by the starting directory outside one:
+
+  ```scheme
+  (set-option! "session-root" (or (call! "stdlib/git-toplevel") (cwd)))
+  ```
+
+  Only the value `init.scm` sets decides which session comes back. A session root that isn't a directory is reported at startup, and nothing is saved to it.
 - HUME saves it however it ends, including when you close the terminal window, but not when HUME itself crashes.
 - A file changed since the session was saved comes back in its place in the layout, at its top. A file that has been deleted since is left out. A damaged session file is ignored, with a warning.
-- When two HUME instances quit in the same directory, the last one's session wins.
+- When two HUME instances with the same session root quit, the last one's session wins, wherever under the root each was started.
 
-Saved sessions live in HUME's state directory: `~/.local/state/hume/sessions` (or `$XDG_STATE_HOME/hume/sessions`), `%LOCALAPPDATA%\hume\sessions` on Windows. Set `session-directory` to keep them elsewhere. Each directory's session sits at that directory's own full path with `.session` added, so the session of `/home/me/project` is `sessions/home/me/project.session`. On Linux and macOS its files and the folders HUME creates for them are readable only by you.
+Saved sessions live in HUME's state directory: `~/.local/state/hume/sessions` (or `$XDG_STATE_HOME/hume/sessions`), `%LOCALAPPDATA%\hume\sessions` on Windows. Set `session-directory` to keep them elsewhere. Each session sits at its root's own full path with `.session` added, so the session of `/home/me/project` is `sessions/home/me/project.session`. A root reached through a symlink shares its session with the directory it points to. On Linux and macOS its files and the folders HUME creates for them are readable only by you.
 
 Nothing removes old sessions. To forget one, delete its `.session` file.
 

@@ -28,19 +28,17 @@ struct Opened {
 }
 
 impl Editor {
-    /// Restore the session saved for the working directory, when
-    /// `session-persist` is on. `startup` is the scratch buffer the run
-    /// started on, closed once the session shows its own buffers. Runs
-    /// before the drain that announces opened buffers, so the scratch
-    /// announces neither its open nor its close.
+    /// Restore the session saved for `session-root`, when `session-persist`
+    /// is on. A session that cannot be located or read is a warning.
+    /// `startup` is the scratch buffer the run started on, closed once the
+    /// session shows its own buffers. Runs before the drain that announces
+    /// opened buffers, so the scratch announces neither its open nor its
+    /// close.
     pub(in crate::editor) fn restore_session(&mut self, startup: BufferId) {
         if !self.state.settings.session_persist {
             return;
         }
-        let Ok(path) = self.state.session_path() else {
-            return;
-        };
-        match read(&path) {
+        match self.state.session_path().and_then(|path| read(&path)) {
             Ok(Some(snapshot)) => self.apply(snapshot, startup),
             Ok(None) => {}
             Err(e) => self.report(Severity::Warning, format!("session not restored: {e}")),

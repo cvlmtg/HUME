@@ -43,3 +43,9 @@
 ;;   (lambda (pane lang)
 ;;     (when (member lang '("css" "scss" "less"))
 ;;       (set-buffer-option! pane "word-chars" "-"))))
+
+;; Sessions: quitting saves your open files and layout, and starting `hume`
+;; with no files brings them back. One session per git repository, or per
+;; starting directory outside one (uses core:stdlib, loaded above):
+;; (set-option! "session-persist" #t)
+;; (set-option! "session-root" (or (call! "stdlib/git-toplevel") (cwd)))

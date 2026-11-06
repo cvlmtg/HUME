@@ -54,12 +54,20 @@ impl Project {
     /// The editor `hume <args>` starts in the project with `init` as its
     /// `init.scm`, settled as before the first key.
     pub(super) fn start(&self, args: &[&str], init: &str) -> Editor {
+        self.start_in(&self.work(), args, init)
+    }
+
+    /// [`Self::start`] in `dir` instead of the project directory, with the
+    /// bundled runtime, so `init` can load core plugins.
+    pub(super) fn start_in(&self, dir: &Path, args: &[&str], init: &str) -> Editor {
         let config = self.dir.path().join("config");
         std::fs::write(config.join("init.scm"), init).unwrap();
-        let cwd = AbsolutePath::canonicalize(&self.work()).unwrap();
+        let cwd = AbsolutePath::canonicalize(dir).unwrap();
         let dirs = Dirs {
             config: Some(config),
             state: Some(self.state()),
+            runtime: Some(repo_runtime_dir()),
+            search_path: std::env::var_os("PATH"),
             ..Dirs::none()
         };
         let args: Vec<_> = args.iter().map(|name| self.file(name)).collect();
@@ -123,16 +131,97 @@ fn session_directory_moves_where_the_session_is_saved() {
 }
 
 #[test]
-fn the_session_is_saved_under_the_working_directory_at_quit() {
+fn a_cd_before_quitting_keeps_the_session_at_the_directory_hume_started_in() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    let sub = project.work().join("sub");
+    std::fs::create_dir(&sub).unwrap();
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":cd sub");
+    quit(&mut ed).expect("the session saves");
+
+    assert!(!project.session_of(&sub).exists());
+    let again = project.start(&[], PERSIST);
+    assert_eq!(again.doc().display_name(), "a.txt");
+}
+
+#[test]
+fn runs_under_one_session_root_share_its_session_and_keep_their_own_cwd() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    let sub = project.work().join("sub");
+    std::fs::create_dir(&sub).unwrap();
+    let init = format!(
+        "{PERSIST}\n(set-option! \"session-root\" {})",
+        steel_path(&project.work())
+    );
+    let mut ed = project.start(&[], &init);
+    type_cmd(&mut ed, ":e a.txt");
+    quit(&mut ed).expect("the session saves");
+
+    let again = project.start_in(&sub, &[], &init);
+    assert_eq!(again.doc().display_name(), "a.txt");
+    assert_eq!(again.state.cwd, AbsolutePath::canonicalize(&sub).unwrap());
+    assert!(!project.session_of(&sub).exists());
+}
+
+#[test]
+fn the_example_config_keys_the_session_by_the_git_repository() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    git_init(&project.work());
+    let sub = project.work().join("sub");
+    std::fs::create_dir(&sub).unwrap();
+    let init = format!(
+        "(load-plugin! \"core:stdlib\")\n{PERSIST}\n\
+         (set-option! \"session-root\" (or (call! \"stdlib/git-toplevel\") (cwd)))"
+    );
+    let mut ed = project.start_in(&sub, &[], &init);
+    assert!(
+        session_warnings(&ed).is_empty(),
+        "{:?}",
+        session_warnings(&ed)
+    );
+    type_cmd(&mut ed, ":e ../a.txt");
+    quit(&mut ed).expect("the session saves");
+
+    assert!(project.session_file().is_file());
+    let again = project.start(&[], &init);
+    assert_eq!(again.doc().display_name(), "a.txt");
+}
+
+#[test]
+fn a_session_root_that_is_not_a_directory_warns_and_saves_nothing() {
+    let project = Project::new(&[]);
+    let missing = project.work().join("missing");
+    let init = format!(
+        "{PERSIST}\n(set-option! \"session-root\" {})",
+        steel_path(&missing)
+    );
+    let mut ed = project.start(&[], &init);
+    let warnings = session_warnings(&ed);
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.starts_with("session not restored: ")),
+        "{warnings:?}"
+    );
+    assert!(quit(&mut ed).is_err());
+    assert!(!project.state().join("sessions").exists());
+}
+
+#[test]
+fn reloading_the_config_puts_the_session_root_back_where_hume_started() {
     let project = Project::new(&[]);
     let sub = project.work().join("sub");
     std::fs::create_dir(&sub).unwrap();
     let mut ed = project.start(&[], PERSIST);
     type_cmd(&mut ed, ":cd sub");
-    quit(&mut ed).expect("the session saves");
-
-    assert!(project.session_of(&sub).is_file());
-    assert!(!project.session_file().exists());
+    run_set(&mut ed, &format!("global session-root={}", sub.display())).unwrap();
+    type_cmd(&mut ed, ":reload-config");
+    let root = ed.state.settings.session_root.location(&ed.state.cwd);
+    assert_eq!(
+        root,
+        Ok(AbsolutePath::canonicalize(&project.work()).unwrap())
+    );
 }
 
 #[test]

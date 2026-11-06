@@ -302,7 +302,7 @@ fn on_viewport_change_fires_when_an_edit_moves_the_clamped_end() {
     let bid = ed.focused_buffer_id();
     assert_eq!(
         ed.state.buffers.get(bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "a buffer shorter than the pane that gains a line changes the visible range's end, so the hook must fire once"
     );
 }

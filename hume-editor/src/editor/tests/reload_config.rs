@@ -148,7 +148,7 @@ fn reset_reinstalls_kitty_defaults_after_a_config_override() {
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 /// `set-option!` (as `init.scm` or `:set global` would call it) must revert
-/// to `EditorSettings::default()`, not the previous session's value.
+/// to `EditorSettings::new(&test_cwd())`, not the previous session's value.
 #[test]
 fn reset_reverts_set_option_to_compiled_in_default() {
     let tmp = tempfile::tempdir().unwrap();
@@ -171,7 +171,7 @@ fn reset_reverts_set_option_to_compiled_in_default() {
 
     assert_eq!(
         ed.state.settings.scroll_margin,
-        EditorSettings::default().scroll_margin,
+        EditorSettings::new(&test_cwd()).scroll_margin,
         "runtime overrides must not survive a reset any more than init.scm ones do"
     );
 }
@@ -193,7 +193,7 @@ fn reset_reverts_runtime_set_command_too() {
 
     assert_eq!(
         ed.state.settings.scroll_margin,
-        EditorSettings::default().scroll_margin
+        EditorSettings::new(&test_cwd()).scroll_margin
     );
 }
 
@@ -951,12 +951,12 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
 
     assert_eq!(
         ed.state.buffers.get(first_bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "on-buffer-open must re-fire exactly once for the first pre-reload buffer"
     );
     assert_eq!(
         ed.state.buffers.get(second_bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "on-buffer-open must re-fire exactly once for the second pre-reload buffer too"
     );
 }
@@ -1018,7 +1018,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
 
     assert_eq!(
         ed.state.buffers.get(new_bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "sanity: the ordinary open path must have fired on-buffer-open once for the new buffer"
     );
     assert_eq!(
@@ -1032,12 +1032,12 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
 
     assert_eq!(
         ed.state.buffers.get(old_bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "on-buffer-open must fire exactly once for a buffer that predates the reload"
     );
     assert_eq!(
         ed.state.buffers.get(new_bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "on-buffer-open must NOT fire again for a buffer this reload's init.scm itself opened"
     );
 }
@@ -1233,12 +1233,12 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
 
     assert_eq!(
         ed.state.buffers.get(first_bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "on-viewport-change must re-fire exactly once for the first pane's buffer"
     );
     assert_eq!(
         ed.state.buffers.get(second_bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "on-viewport-change must re-fire exactly once for the second pane's buffer too"
     );
 }
@@ -1290,7 +1290,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
 
     assert_eq!(
         ed.state.buffers.get(first_bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "sanity: the surviving pane's buffer must still fire"
     );
     assert_eq!(
@@ -1340,7 +1340,7 @@ fn resync_refires_buffer_enter_for_the_focused_buffer() {
 
     assert_eq!(
         ed.state.buffers.get(bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "on-buffer-enter must re-fire exactly once for the focused buffer on resync"
     );
 }

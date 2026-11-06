@@ -1387,7 +1387,7 @@ impl Editor {
         let (mut engine_view, focus_key) = EngineView::new(theme, super::run::HEADLESS_TERMINAL);
         let (views, tabline_view) = super::run::register_chrome(&mut engine_view);
         let buffer_id = engine_view.buffers.insert(());
-        let settings = EditorSettings::default();
+        let settings = EditorSettings::new(&test_cwd());
         let history_capacity = settings.prompt_history_levels;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 

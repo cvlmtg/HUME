@@ -1,7 +1,7 @@
 //! The session of a run started with no files: its buffers, tabs, splits,
 //! positions, registers and prompt history, saved under the session
-//! directory at the working directory's path mirrored there with `.session`
-//! appended, and restored by the next such run in that directory.
+//! directory at the `session-root` directory's path mirrored there with
+//! `.session` appended, and restored by the next such run with that root.
 //!
 //! The file is a stamped file (`HUMESESS`) whose body is a postcard-encoded
 //! [`SessionSnapshot`]. Buffer text is not saved: each buffer records its
@@ -27,15 +27,16 @@ const STAMP: Stamp = Stamp {
 };
 
 impl EditorState {
-    /// Where the session of the working directory is saved. The error says
-    /// why there is no such place.
+    /// Where the session of `session-root` is saved. The error says why
+    /// there is no such place.
     fn session_path(&self) -> Result<PathBuf, String> {
         let dir = self
             .settings
             .session_directory
             .location(&self.dirs, &self.cwd, "sessions")?;
-        mirrored_under(&dir, &self.cwd, ".session")
-            .ok_or_else(|| "the working directory has no place in the session directory".to_owned())
+        let root = self.settings.session_root.location(&self.cwd)?;
+        mirrored_under(&dir, &root, ".session")
+            .ok_or_else(|| "the session root has no place in the session directory".to_owned())
     }
 }
 

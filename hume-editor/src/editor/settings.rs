@@ -33,6 +33,7 @@ use hume_core::{BufferIntrinsicOption, Claim, ConfigOrigin, DiagSeverity, LaterW
 use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
+use hume_platform::path::AbsolutePath;
 use hume_platform::process::batch::ShellCommand;
 use rustc_hash::FxHashMap;
 
@@ -465,6 +466,7 @@ macro_rules! buffer_accessor {
 /// the field's type: how the value parses, completes and reads back.
 macro_rules! define_settings {
     (
+        new($start:ident)
         global {
             $( $gkey:literal => $gname:ident : $gtype:ty = $gdefault:expr, parser: $gparser:ident $(, resync: $gresync:literal)?; )*
         }
@@ -488,7 +490,7 @@ macro_rules! define_settings {
         /// Global editor settings: the authoritative defaults for all
         /// configurable editor behaviour.
         ///
-        /// The [`Default`] impl is the single source of truth for these
+        /// [`EditorSettings::new`] is the single source of truth for these
         /// default values.
         #[derive(Clone)]
         pub struct EditorSettings {
@@ -500,8 +502,9 @@ macro_rules! define_settings {
             origins: SettingOrigins<TableKey>,
         }
 
-        impl Default for EditorSettings {
-            fn default() -> Self {
+        impl EditorSettings {
+            /// Every setting at its default, for a run started in `$start`.
+            pub fn new($start: &AbsolutePath) -> Self {
                 Self {
                     $( $gname: $gdefault, )*
                     $( $bname: $bdefault, )*
@@ -772,6 +775,7 @@ macro_rules! define_settings {
 // A key names its area first (`indent-…`, `insert-…`, `lsp-…`), so `:set`'s
 // prefix completion lists an area's settings together.
 define_settings! {
+    new(startup)
     global {
         "scroll-margin" => scroll_margin: usize = 3,
             parser: Usize;
@@ -818,6 +822,9 @@ define_settings! {
             parser: Bool;
         // Where sessions are saved and looked for.
         "session-directory" => session_directory: StoreDirectory = StoreDirectory::Default,
+            parser: Typed;
+        // The directory a session belongs to, whatever the working directory.
+        "session-root" => session_root: SessionRoot = SessionRoot::Path(startup.clone()),
             parser: Typed;
         "steel-init-budget-ms" => steel_init_budget_ms: usize = 10_000,
             parser: UsizeNonzero;
@@ -1030,8 +1037,8 @@ mod word_list;
 pub(in crate::editor) use kind::Shape;
 
 pub use values::{
-    CommandCompletion, CursorShape, MessagesMinSeverity, ObjectJumpAlign, SignColumnConfig,
-    SignColumnMode, StoreDirectory, TablineVisibility, WordSelectsWhitespace,
+    CommandCompletion, CursorShape, MessagesMinSeverity, ObjectJumpAlign, SessionRoot,
+    SignColumnConfig, SignColumnMode, StoreDirectory, TablineVisibility, WordSelectsWhitespace,
 };
 
 #[cfg(test)]

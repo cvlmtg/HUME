@@ -137,18 +137,18 @@ pub(crate) fn buffer_option_for_test(
     }
 }
 
-/// Reset every global setting to its compiled-in default and rerun every
+/// Reset every global setting to its default and rerun every
 /// `resync: true` effect against the reset values. Called by
 /// `:reload-config`'s reset so a runtime `:set global`/`:theme` change (or
 /// one applied by the previous `init.scm`) never survives a reload.
 ///
-/// `state.settings = EditorSettings::default()` alone would leave
+/// Resetting `state.settings` alone would leave
 /// `view.theme` still baked with the old theme, so the view gets the
 /// compiled-in fallback `Editor::bootstrap` starts with. The default theme is not
 /// loaded here: `init_scripting` applies it after `init.scm`, so a configured
 /// theme that fails to load ends on the fallback rather than on the default.
 pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
-    state.settings = crate::editor::settings::EditorSettings::default();
+    state.settings = crate::editor::settings::EditorSettings::new(&state.startup_dir);
     theme::set_theme(
         view,
         &mut state.shown_theme,

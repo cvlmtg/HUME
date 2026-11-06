@@ -60,7 +60,7 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
     );
     assert_eq!(
         ed.state.settings.scroll_margin,
-        EditorSettings::default().scroll_margin,
+        EditorSettings::new(&test_cwd()).scroll_margin,
         "set-option! from the old init.scm must not survive the reload"
     );
     assert!(
@@ -245,7 +245,7 @@ fn config_override_missing_at_reload_reports_error_and_does_not_report_success()
 
     assert_eq!(
         ed.state.settings.scroll_margin,
-        EditorSettings::default().scroll_margin,
+        EditorSettings::new(&test_cwd()).scroll_margin,
         "reset_config_state must still have reverted settings to defaults; \
          the missing override must not leave the pre-reload value in place \
          either"
@@ -335,7 +335,7 @@ fn no_config_skips_init_scm_but_keeps_bundled_runtime() {
 
     assert_eq!(
         ed.state.settings.scroll_margin,
-        EditorSettings::default().scroll_margin,
+        EditorSettings::new(&test_cwd()).scroll_margin,
         "--no-config must skip the fixture's init.scm entirely"
     );
     assert!(
@@ -509,7 +509,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
         .expect("the plugin-opened buffer must be open");
     assert_eq!(
         ed.state.buffers.get(companion_bid).overrides.indent_width,
-        Some(EditorSettings::default().indent_width + 1),
+        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
         "on-buffer-open must fire exactly once for the buffer this reload's own plugin \
          opened, not twice"
     );

@@ -381,6 +381,9 @@ pub(crate) struct EditorState {
     pub(super) mouse_drag: Option<PaneId>,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: AbsolutePath,
+    /// The working directory HUME started in, which `session-root`
+    /// defaults to on every reset of the settings.
+    pub(in crate::editor) startup_dir: AbsolutePath,
     /// Every overlay view shared between the per-frame write side and the
     /// engine's render side: minibuf completion, popup (cursor and docked),
     /// menu, completion menu, drawer, picker.
@@ -410,7 +413,7 @@ impl EditorState {
     /// inert form and named explicitly by `Editor::bootstrap`; a new such field
     /// needs the same treatment, which the compiler does not ask for.
     pub(in crate::editor) fn base(focus: focus::Focus, cwd: AbsolutePath) -> Self {
-        let settings = EditorSettings::default();
+        let settings = EditorSettings::new(&cwd);
         let history_capacity = settings.prompt_history_levels;
         let library_wait = hume_core::OsWait::default();
         let clock = clock::Clock::default();
@@ -467,6 +470,7 @@ impl EditorState {
             pending_writes: before_save::PendingWrites::default(),
             last_observed_mode: Mode::Normal,
             mouse_drag: None,
+            startup_dir: cwd.clone(),
             cwd,
             views: hume_ui::OverlayViews::default(),
             tabline_view: hume_engine::lock::SharedSlot::default(),

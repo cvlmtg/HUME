@@ -431,3 +431,53 @@ impl SettingText for StoreDirectory {
         }
     }
 }
+
+// ── SessionRoot ───────────────────────────────────────────────────────────────
+
+/// The directory a session belongs to. Never empty: the default is the
+/// directory HUME started in, held as the path itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionRoot {
+    /// A directory known as a path, such as the one HUME started in.
+    Path(AbsolutePath),
+    /// A path that is absolute once `~` and environment variables are
+    /// expanded, kept as typed.
+    Typed(String),
+}
+
+impl SessionRoot {
+    /// The directory, symlinks resolved so every name of one directory
+    /// keys one session. The error says why there is none.
+    pub(in crate::editor) fn location(&self, cwd: &AbsolutePath) -> Result<AbsolutePath, String> {
+        let shown = self.to_text();
+        let dir = match self {
+            Self::Path(dir) => AbsolutePath::canonicalize(dir),
+            Self::Typed(typed) => AbsolutePath::from_typed(typed, cwd)
+                .and_then(|dir| AbsolutePath::canonicalize(&dir)),
+        }
+        .map_err(|e| format!("{shown}: {e}"))?;
+        if !dir.is_dir() {
+            return Err(format!("{shown}: not a directory"));
+        }
+        Ok(dir)
+    }
+}
+
+impl SettingText for SessionRoot {
+    const VALUES: &'static [&'static str] = &[];
+
+    fn parse(s: &str) -> Result<Self, String> {
+        if is_absolute_typed(s) {
+            Ok(Self::Typed(s.to_owned()))
+        } else {
+            Err(format!("expected an absolute path, got '{s}'"))
+        }
+    }
+
+    fn to_text(&self) -> String {
+        match self {
+            Self::Path(dir) => dir.to_string_lossy().into_owned(),
+            Self::Typed(typed) => typed.clone(),
+        }
+    }
+}
