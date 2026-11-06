@@ -561,6 +561,26 @@ fn an_unreadable_list_or_hash_raises_naming_its_fault() {
     }
 }
 
+/// An option value has one spelling: a symbol inside a list or a statusline
+/// section is refused as a bare symbol is.
+#[test]
+fn a_symbol_inside_a_list_or_section_raises() {
+    for (source, refusal) in [
+        (
+            r#"(set-option! "shell" '(sh -c))"#,
+            "invalid value for 'shell': list item: expected a string, got the symbol 'sh",
+        ),
+        (
+            r#"(set-option! "statusline" (hash 'left '(Mode) 'center '() 'right '()))"#,
+            "invalid value for 'statusline': sections 'left: expected a string, got the symbol 'Mode",
+        ),
+    ] {
+        let mut ed = editor_from("-[a]>b\n");
+        let err = eval_set_option(&mut ed, source).expect_err(source);
+        assert!(err.contains(refusal), "{source}: {err}");
+    }
+}
+
 /// The error of `(set-buffer-option! bid key value)`, run from a typed
 /// command on `ed`'s focused buffer.
 fn set_buffer_option_error(ed: &mut Editor, key: &str, value: &str) -> String {

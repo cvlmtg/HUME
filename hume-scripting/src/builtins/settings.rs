@@ -1,6 +1,7 @@
 //! `(set-option! key value)` / `(get-option key)` / `(set-buffer-option! pane
 //! key value)` / `(get-buffer-option pane key)` builtins.
 
+use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use hume_core::{
@@ -13,7 +14,7 @@ use crate::host::option_value_to_steel;
 use crate::types::{Effect, QueuedEffect};
 
 use super::SteelResult;
-use super::args::{hash_entry, list_to_strings, string_list, symbol_hash};
+use super::args::{hash_entry, list_items, string_list, symbol_hash};
 use super::errors::{generic_err, message};
 
 /// `value` as the editor's option layer takes it. Nothing is refused here: a
@@ -35,15 +36,38 @@ fn option_input(value: SteelVal) -> OptionInput {
         SteelVal::StringV(s) => OptionInput::Value(OptionValue::Str(s.to_string())),
         value @ SteelVal::ListV(_) => decoded(
             OptionType::List,
-            list_to_strings(value, "list item").map(OptionValue::List),
+            option_strings(value, "list item").map(OptionValue::List),
         ),
         value @ SteelVal::HashMapV(_) => decoded(
             OptionType::Sections,
             decode_sections(value).map(OptionValue::Sections),
         ),
-        SteelVal::SymbolV(s) => OptionInput::Foreign(format!("the symbol '{s}")),
-        value => OptionInput::Foreign(value.to_string()),
+        value => OptionInput::Foreign(value_name(&value)),
     }
+}
+
+/// A script value of no option type, as an error names it.
+fn value_name(value: &SteelVal) -> String {
+    match value {
+        SteelVal::SymbolV(s) => format!("the symbol '{s}"),
+        value => value.to_string(),
+    }
+}
+
+/// The list `value`'s items, each a string, `ctx_name` labelling an item an
+/// error names. An option value has one spelling, so a symbol item is
+/// refused as a symbol value is, unlike the builtins' other string lists.
+fn option_strings(value: SteelVal, ctx_name: &str) -> Result<Vec<String>, SteelErr> {
+    list_items(value, ctx_name)?
+        .into_iter()
+        .map(|item| match item {
+            SteelVal::StringV(s) => Ok(s.to_string()),
+            item => Err(generic_err(format!(
+                "{ctx_name}: expected a string, got {}",
+                value_name(&item)
+            ))),
+        })
+        .collect()
 }
 
 /// The keys of the statusline's `(hash 'left 'center 'right)`, each a list of
@@ -51,9 +75,9 @@ fn option_input(value: SteelVal) -> OptionInput {
 const SECTION_KEYS: &[&str] = &["left", "center", "right"];
 
 /// Decodes a statusline sections hash; every section is required.
-fn decode_sections(value: SteelVal) -> Result<StatuslineSections, steel::rerrs::SteelErr> {
+fn decode_sections(value: SteelVal) -> Result<StatuslineSections, SteelErr> {
     let entry = hash_entry(value, "sections", SECTION_KEYS)?;
-    let section = |key: &str| list_to_strings(entry.required(key)?, &entry.label(key));
+    let section = |key: &str| option_strings(entry.required(key)?, &entry.label(key));
     Ok(StatuslineSections {
         left: section("left")?,
         center: section("center")?,

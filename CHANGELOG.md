@@ -5,6 +5,7 @@
 ### Breaking changes
 - A plugin declared with `#:languages` works only in buffers of those languages: its hooks and completions skip every other buffer. If you narrow a plugin such as `core:lsp` with your own `#:languages`, list every language you use it in, or use `'("*")`. Such a declaration can no longer list in `#:events` a hook about a buffer, such as `on-buffer-open`: remove it.
 - `get-buffer-option` raises for a global-only option such as `theme`, as `set-buffer-option!` does: read it with `get-option`.
+- An option value's list items must be strings, as a single value must: write `(set-option! "shell" '("sh" "-c"))`, not `'(sh -c)`. The same goes for the statusline sections given to `set-option!` and `configure-statusline!`.
 
 ### CLI
 - `--keys` writes every logged message to stderr, including trace detail.

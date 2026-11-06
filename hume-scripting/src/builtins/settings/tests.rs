@@ -101,26 +101,41 @@ fn a_one_value_reaches_the_host_in_its_own_type() {
     );
 }
 
-/// A list of strings or symbols reaches the host as its words. A symbol in a
-/// list is a word, as a symbol on its own is the text.
+/// A list of strings reaches the host as its words.
 #[test]
-fn a_list_value_is_forwarded_as_words() {
-    let forms: [fn(&str) -> SteelVal; 2] = [
-        |word| SteelVal::StringV(word.into()),
-        |word| SteelVal::SymbolV(word.into()),
-    ];
-    for form in forms {
-        let list = vec![form("/opt/my sh"), form("-c")]
-            .into_steelval()
-            .unwrap();
-        assert_eq!(
-            forwarded(list),
-            OptionInput::Value(OptionValue::List(vec![
-                "/opt/my sh".to_string(),
-                "-c".to_string()
-            ]))
-        );
-    }
+fn a_list_of_strings_is_forwarded_as_words() {
+    let list = vec![
+        SteelVal::StringV("/opt/my sh".into()),
+        SteelVal::StringV("-c".into()),
+    ]
+    .into_steelval()
+    .unwrap();
+    assert_eq!(
+        forwarded(list),
+        OptionInput::Value(OptionValue::List(vec![
+            "/opt/my sh".to_string(),
+            "-c".to_string()
+        ]))
+    );
+}
+
+/// An option value has one spelling, so a symbol in a list is no word, as a
+/// symbol on its own is no named value.
+#[test]
+fn a_symbol_in_a_list_is_forwarded_as_unreadable() {
+    let list = vec![
+        SteelVal::SymbolV("sh".into()),
+        SteelVal::SymbolV("-c".into()),
+    ]
+    .into_steelval()
+    .unwrap();
+    assert_eq!(
+        forwarded(list),
+        OptionInput::Unreadable {
+            ty: OptionType::List,
+            error: "list item: expected a string, got the symbol 'sh".to_string(),
+        }
+    );
 }
 
 /// A list whose items are not all strings reaches the host as an unreadable
