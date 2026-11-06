@@ -47,26 +47,24 @@ impl Buffer {
         if self.history.len() != 1 {
             return Ok(());
         }
-        let Some(mut file) = STAMP.open(path)? else {
-            return Ok(());
-        };
-        let fail = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
-        let mut md5 = [0; 16];
-        file.read_exact(&mut md5).map_err(|e| match e.kind() {
-            std::io::ErrorKind::UnexpectedEof => fail(&"the file ends inside its header"),
-            _ => fail(&e),
+        STAMP.load(path, |file| {
+            let mut md5 = [0; 16];
+            file.read_exact(&mut md5).map_err(|e| match e.kind() {
+                std::io::ErrorKind::UnexpectedEof => "the file ends inside its header".to_owned(),
+                _ => e.to_string(),
+            })?;
+            if md5 != self.text_md5() {
+                return Ok(());
+            }
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+            let history = stamped_file::decode_whole::<HistorySnapshot<'_>>(&bytes)?;
+            self.history
+                .restore(history, &self.text)
+                .map_err(|e| e.to_string())?;
+            self.saved_revision = Some(self.history.current_id());
+            Ok(())
         })?;
-        if md5 != self.text_md5() {
-            return Ok(());
-        }
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes).map_err(|e| fail(&e))?;
-        let history =
-            stamped_file::decode_whole::<HistorySnapshot<'_>>(&bytes).map_err(|e| fail(&e))?;
-        self.history
-            .restore(history, &self.text)
-            .map_err(|e| fail(&e))?;
-        self.saved_revision = Some(self.history.current_id());
         Ok(())
     }
 

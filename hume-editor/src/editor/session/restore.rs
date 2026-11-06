@@ -231,15 +231,13 @@ impl Editor {
 /// The session saved at `path`, checked. `None` when there is none or it
 /// holds another format version. An error names `path`.
 fn read(path: &Path) -> Result<Option<SessionSnapshot>, String> {
-    let Some(mut file) = STAMP.open(path)? else {
-        return Ok(None);
-    };
-    let fail = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).map_err(|e| fail(&e))?;
-    let snapshot: SessionSnapshot = stamped_file::decode_whole(&bytes).map_err(|e| fail(&e))?;
-    check(&snapshot).map_err(|e| fail(&e))?;
-    Ok(Some(snapshot))
+    STAMP.load(path, |file| {
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+        let snapshot: SessionSnapshot = stamped_file::decode_whole(&bytes)?;
+        check(&snapshot)?;
+        Ok(snapshot)
+    })
 }
 
 /// Whether every index in `snapshot` names something it holds.

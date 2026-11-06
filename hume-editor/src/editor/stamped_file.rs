@@ -28,27 +28,34 @@ impl Stamp {
         bytes
     }
 
-    /// Open the file at `path` past its header. `None` when there is no
-    /// file or it holds another format version. An error names `path`.
-    pub(in crate::editor) fn open(&self, path: &Path) -> Result<Option<File>, String> {
-        let fail = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
+    /// Read the file at `path` with `body`, handed the file past its
+    /// header. `None` when there is no file or it holds another format
+    /// version. An error, `body`'s included, names `path`.
+    pub(in crate::editor) fn load<R>(
+        &self,
+        path: &Path,
+        body: impl FnOnce(&mut File) -> Result<R, String>,
+    ) -> Result<Option<R>, String> {
         let mut file = match hume_platform::io::open_own_file(path) {
             Ok(file) => file,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(fail(&e)),
+            Err(e) => return Err(named(path, e)),
         };
         let mut header = Vec::new();
         file.by_ref()
             .take(HEADER_LEN)
             .read_to_end(&mut header)
-            .map_err(|e| fail(&e))?;
+            .map_err(|e| named(path, e))?;
         let Some(rest) = header.strip_prefix(self.magic.as_slice()) else {
-            return Err(fail(&format_args!("not {}", self.kind)));
+            return Err(named(path, format_args!("not {}", self.kind)));
         };
         let Ok(format) = <[u8; 4]>::try_from(rest) else {
-            return Err(fail(&"the file ends inside its header"));
+            return Err(named(path, "the file ends inside its header"));
         };
-        Ok((u32::from_le_bytes(format) == self.format).then_some(file))
+        if u32::from_le_bytes(format) != self.format {
+            return Ok(None);
+        }
+        body(&mut file).map(Some).map_err(|e| named(path, e))
     }
 }
 
@@ -60,7 +67,12 @@ pub(in crate::editor) fn write(path: &Path, bytes: &[u8]) -> Result<(), String> 
         }
         hume_platform::io::write_private_file(bytes, path)
     };
-    write().map_err(|e| format!("{}: {e}", path.display()))
+    write().map_err(|e| named(path, e))
+}
+
+/// `e` as the error of the file at `path`.
+fn named(path: &Path, e: impl std::fmt::Display) -> String {
+    format!("{}: {e}", path.display())
 }
 
 /// Decode `bytes` as one postcard value that takes all of them.
