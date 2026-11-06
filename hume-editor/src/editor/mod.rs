@@ -72,6 +72,7 @@ mod replay;
 pub(crate) mod search;
 mod selection_history;
 pub(crate) mod settings;
+mod stamped_file;
 mod syntax;
 pub(crate) mod tab;
 mod theme;

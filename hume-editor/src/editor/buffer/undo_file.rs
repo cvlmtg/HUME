@@ -2,37 +2,27 @@
 //! resolved path mirrored there with `.undo` appended, so every name of one
 //! file shares one history.
 //!
-//! The file is the bytes `HUMEUNDO`, a little-endian `u32` format version,
-//! the MD5 of the text the history's current revision holds, then a
-//! postcard-encoded [`HistorySnapshot`]. A file of another format version
-//! reads as no history, so a format change needs no migration. The MD5 comes
-//! first so a file changed elsewhere skips reading the history.
+//! The file is a stamped file (`HUMEUNDO`) whose body is the MD5 of the
+//! text the history's current revision holds, then a postcard-encoded
+//! [`HistorySnapshot`]. The MD5 comes first so a file changed elsewhere
+//! skips reading the history.
 
-use std::io::{self, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use hume_core::{BufferId, PaneId, Severity};
 use hume_editing::history::HistorySnapshot;
-use hume_editing::text::BufferText;
 use hume_platform::path::mirrored_under;
-use md5::{Digest, Md5};
 
 use super::Buffer;
 use crate::editor::EditorState;
+use crate::editor::stamped_file::{self, Stamp};
 
-const MAGIC: &[u8; 8] = b"HUMEUNDO";
-const FORMAT: u32 = 1;
-const HEADER_LEN: usize = MAGIC.len() + size_of::<u32>() + 16;
-
-/// MD5 here only tells whether the file still holds the text the history
-/// ends on; nothing relies on it resisting a deliberate collision.
-fn text_md5(text: &BufferText) -> [u8; 16] {
-    let mut hasher = Md5::new();
-    for chunk in text.rope().chunks() {
-        hasher.update(chunk.as_bytes());
-    }
-    hasher.finalize().into()
-}
+const STAMP: Stamp = Stamp {
+    magic: b"HUMEUNDO",
+    format: 1,
+    kind: "an undo history file",
+};
 
 impl Buffer {
     /// Write this buffer's undo history to `path`, its text being the one
@@ -42,18 +32,11 @@ impl Buffer {
         if self.history.len() == 1 {
             return Ok(());
         }
-        let mut bytes = MAGIC.to_vec();
-        bytes.extend_from_slice(&FORMAT.to_le_bytes());
-        bytes.extend_from_slice(&text_md5(&self.text));
+        let mut bytes = STAMP.header();
+        bytes.extend_from_slice(&self.text_md5());
         let bytes =
             postcard::to_extend(&self.history.snapshot(), bytes).map_err(|e| e.to_string())?;
-        let write = || {
-            if let Some(parent) = path.parent() {
-                hume_platform::io::create_private_dir_all(parent)?;
-            }
-            hume_platform::io::write_private_file(&bytes, path)
-        };
-        write().map_err(|e| format!("{}: {e}", path.display()))
+        stamped_file::write(path, &bytes)
     }
 
     /// Replace this buffer's untouched history with the one saved at `path`,
@@ -64,39 +47,22 @@ impl Buffer {
         if self.history.len() != 1 {
             return Ok(());
         }
+        let Some(mut file) = STAMP.open(path)? else {
+            return Ok(());
+        };
         let fail = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
-        let mut file = match hume_platform::io::open_own_file(path) {
-            Ok(file) => file,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => return Err(fail(&e)),
-        };
+        let mut md5 = [0; 16];
+        file.read_exact(&mut md5).map_err(|e| match e.kind() {
+            std::io::ErrorKind::UnexpectedEof => fail(&"the file ends inside its header"),
+            _ => fail(&e),
+        })?;
+        if md5 != self.text_md5() {
+            return Ok(());
+        }
         let mut bytes = Vec::new();
-        file.by_ref()
-            .take(HEADER_LEN as u64)
-            .read_to_end(&mut bytes)
-            .map_err(|e| fail(&e))?;
-        let Some(rest) = bytes.strip_prefix(MAGIC.as_slice()) else {
-            return Err(fail(&"not an undo history file"));
-        };
-        let Some((format, rest)) = rest.split_first_chunk::<4>() else {
-            return Err(fail(&"the file ends inside its header"));
-        };
-        if u32::from_le_bytes(*format) != FORMAT {
-            return Ok(());
-        }
-        let Some((md5, _)) = rest.split_first_chunk::<16>() else {
-            return Err(fail(&"the file ends inside its header"));
-        };
-        if *md5 != text_md5(&self.text) {
-            return Ok(());
-        }
         file.read_to_end(&mut bytes).map_err(|e| fail(&e))?;
-        let encoded = &bytes[HEADER_LEN..];
-        let history = match postcard::take_from_bytes::<HistorySnapshot<'_>>(encoded) {
-            Ok((history, [])) => history,
-            Ok(_) => return Err(fail(&"trailing bytes after the history")),
-            Err(e) => return Err(fail(&e)),
-        };
+        let history =
+            stamped_file::decode_whole::<HistorySnapshot<'_>>(&bytes).map_err(|e| fail(&e))?;
         self.history
             .restore(history, &self.text)
             .map_err(|e| fail(&e))?;

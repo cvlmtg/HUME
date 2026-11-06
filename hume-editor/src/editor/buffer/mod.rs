@@ -20,6 +20,7 @@ use hume_editing::text::{BufferText, LineEnding};
 use hume_editing::transaction::Transaction;
 use hume_platform::path::AbsolutePath;
 use hume_rope::cluster::ClusterRange;
+use md5::{Digest, Md5};
 
 mod disk;
 mod dump;
@@ -1003,6 +1004,17 @@ impl Buffer {
     /// The current buffer contents.
     pub(crate) fn text(&self) -> &BufferText {
         &self.text
+    }
+
+    /// The MD5 of the current text, which tells whether a file saved
+    /// alongside it (undo history, a session) still describes it. Nothing
+    /// relies on it resisting a deliberate collision.
+    pub(in crate::editor) fn text_md5(&self) -> [u8; 16] {
+        let mut hasher = Md5::new();
+        for chunk in self.text.rope().chunks() {
+            hasher.update(chunk.as_bytes());
+        }
+        hasher.finalize().into()
     }
 
     /// The text beside its syntax tree, which reads it while it changes.
