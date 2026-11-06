@@ -816,8 +816,9 @@ define_settings! {
         // `undo-persist` is on, and where opening a file looks for one.
         "undo-directory" => undo_directory: StoreDirectory = StoreDirectory::Default,
             parser: Typed;
-        // Whether a run started with no files restores the session saved
-        // for its working directory, and saves its own when it ends.
+        // Whether a run keeping a session (started with no files, or after
+        // `:save-session`) restores the one saved for `session-root` and
+        // saves its own when it ends.
         "session-persist" => session_persist: bool = false,
             parser: Bool;
         // Where sessions are saved and looked for.

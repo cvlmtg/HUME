@@ -513,6 +513,25 @@ fn the_scratch_buffer_hume_starts_on_is_replaced() {
     );
 }
 
+#[test]
+fn a_scratch_holding_unsaved_text_is_kept() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    quit(&mut ed).expect("the session saves");
+
+    let mut again = project.start(&[], "");
+    type_text(&mut again, "kept");
+    type_cmd(&mut again, ":set global session-persist=true");
+    let scratch = again.focused_buffer_id();
+    again.restore_session(scratch);
+    assert_eq!(layout(&again), [">*a.txt"]);
+    assert_eq!(
+        again.state.buffers.get(scratch).text().to_string(),
+        "kept\n"
+    );
+}
+
 // ── When nothing is restored ─────────────────────────────────────────────
 
 /// A project whose saved session shows `a.txt` beside `b.txt`.
@@ -609,6 +628,58 @@ fn a_file_changed_since_the_save_opens_at_its_start() {
 }
 
 #[test]
+fn a_file_changed_since_the_save_keeps_its_wrap_pin_and_drops_its_jumps() {
+    let project = Project::new(&[("a.txt", &lines(100)), ("b.txt", &lines(100))]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":50");
+    type_cmd(&mut ed, ":e b.txt");
+    type_cmd(&mut ed, ":30");
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 20 });
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":90");
+    ed.feed_key(key_ctrl('o'));
+    let a = AbsolutePath::canonicalize(&project.file("a.txt")).unwrap();
+    let names_a = |ed: &Editor, bid| ed.state.buffers.find_by_path(&a) == Some(bid);
+    let (saved, cursor) = ed.state.panes.entries[ed.view.focused_pane()]
+        .jumps
+        .history();
+    assert!(
+        saved.iter().any(|j| !names_a(&ed, j.buffer_id)) && 0 < cursor && cursor < saved.len(),
+        "sanity: the list holds b.txt entries and stands mid-list"
+    );
+    let kept_lines: Vec<_> = saved
+        .iter()
+        .filter(|j| names_a(&ed, j.buffer_id))
+        .map(|j| j.primary_line)
+        .collect();
+    let kept_before = saved
+        .iter()
+        .take(cursor)
+        .filter(|j| names_a(&ed, j.buffer_id))
+        .count();
+    quit(&mut ed).expect("the session saves");
+    project.write("b.txt", &lines(120));
+
+    let again = project.start(&[], PERSIST);
+    let pid = again.view.focused_pane();
+    let b = again
+        .state
+        .buffers
+        .find_by_path(&AbsolutePath::canonicalize(&project.file("b.txt")).unwrap())
+        .unwrap();
+    assert_eq!(
+        again.view.panes[pid].wrap_in(b).and_then(|w| w.mode),
+        Some(hume_engine::pane::WrapMode::Soft { width: 20 })
+    );
+    let (jumps, cursor) = again.state.panes.entries[pid].jumps.history();
+    let lines: Vec<_> = jumps.iter().map(|j| j.primary_line).collect();
+    assert_eq!(lines, kept_lines);
+    assert!(jumps.iter().all(|j| names_a(&again, j.buffer_id)));
+    assert_eq!(cursor, kept_before);
+}
+
+#[test]
 fn a_missing_file_is_skipped_and_its_pane_shows_another() {
     let project = saved_two_files();
     std::fs::remove_file(project.file("b.txt")).unwrap();
@@ -620,6 +691,21 @@ fn a_missing_file_is_skipped_and_its_pane_shows_another() {
         .history();
     assert!(jumps.is_empty());
     assert!(session_warnings(&ed).is_empty());
+}
+
+#[test]
+fn a_saved_file_that_fails_to_open_warns_and_its_pane_shows_another() {
+    let project = saved_two_files();
+    std::fs::remove_file(project.file("b.txt")).unwrap();
+    std::fs::create_dir(project.file("b.txt")).unwrap();
+    let ed = project.start(&[], PERSIST);
+    assert_eq!(layout(&ed), [">Horizontal(a.txt, *a.txt)"]);
+    let failed: Vec<_> = super::before_save::warning_texts(&ed)
+        .into_iter()
+        .filter(|w| w.contains("Failed to open"))
+        .collect();
+    assert_eq!(failed.len(), 1, "{failed:?}");
+    assert!(failed[0].contains("b.txt"), "{failed:?}");
 }
 
 #[test]

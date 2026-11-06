@@ -9,7 +9,7 @@ use hume_core::{BufferId, PaneId};
 use hume_editing::selection::SelectionsSnapshot;
 use hume_engine::pane::{WrapMode, WrapOverride};
 use hume_engine::pipeline::{Direction, EngineView, LayoutTree};
-use hume_ops::register::{MACRO_REGISTERS, Shape};
+use hume_ops::register::{MACRO_REGISTERS, RegisterContent, Shape};
 use serde::{Deserialize, Serialize};
 use slotmap::SecondaryMap;
 
@@ -163,21 +163,17 @@ impl SessionSnapshot {
         let registers = MACRO_REGISTERS
             .into_iter()
             .filter_map(|name| {
-                let register = state.registers.read(name)?;
-                let text = register.as_pieces().map(|pieces| {
-                    RegisterSnapshot::Text(
+                let content = match state.registers.read(name)?.content() {
+                    RegisterContent::Text(pieces) => RegisterSnapshot::Text(
                         pieces
                             .iter()
                             .map(|p| (p.text().to_owned(), p.shape().into()))
                             .collect(),
-                    )
-                });
-                let content = text.or_else(|| {
-                    let keys = register.as_macro()?;
-                    Some(RegisterSnapshot::Macro(
-                        keys.iter().copied().map(SavedKey::from).collect(),
-                    ))
-                })?;
+                    ),
+                    RegisterContent::Macro(keys) => {
+                        RegisterSnapshot::Macro(keys.iter().copied().map(SavedKey::from).collect())
+                    }
+                };
                 Some((name, content))
             })
             .collect();

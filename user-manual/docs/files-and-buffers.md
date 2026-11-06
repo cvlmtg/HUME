@@ -107,7 +107,7 @@ Files you open are always editable, whatever their permissions on disk. A write 
 ## Persistence and safety
 
 - **Undo history lasts until HUME exits, unless you save it.** With `undo-persist` on, saving a file saves its undo history too; see [Saved undo history](#saved-undo-history).
-- **Open files and layout last until HUME exits, unless you save the session.** With `session-persist` on, quitting saves them for the working directory; see [Saved sessions](#saved-sessions).
+- **Open files and layout last until HUME exits, unless you save the session.** With `session-persist` on, quitting saves them for the session root, by default the directory HUME started in; see [Saved sessions](#saved-sessions).
 - **No swap or backup files.** HUME writes no swap or backup files while you edit. A save writes to a temporary file and renames it into place, so the file on disk holds either the old content or the new, never a half-written mix.
 - **Unsaved changes survive a crash.** If HUME itself panics, it writes them to disk and offers them back the next time you open the file; see [Crash recovery](#crash-recovery).
 - **A background crash doesn't stop HUME.** If a background task crashes (syntax highlighting, a language server connection), HUME keeps running. The crash appears as an error in `:messages` and is printed on the terminal after you quit. The feature that task ran can stop working until you restart.

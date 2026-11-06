@@ -50,7 +50,9 @@ impl Buffer {
         STAMP.load(path, |file| {
             let mut md5 = [0; 16];
             file.read_exact(&mut md5).map_err(|e| match e.kind() {
-                std::io::ErrorKind::UnexpectedEof => "the file ends inside its header".to_owned(),
+                std::io::ErrorKind::UnexpectedEof => {
+                    "the file ends inside its text digest".to_owned()
+                }
                 _ => e.to_string(),
             })?;
             if md5 != self.text_md5() {

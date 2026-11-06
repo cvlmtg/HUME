@@ -2,7 +2,7 @@
 
 ## Editor — new features
 
-- [x] Persistent sessions — save and restore open buffers, splits/tabs and cursor positions across restarts, per working directory, with recorded macros and the numbered registers.
+- [x] Persistent sessions — save and restore open buffers, splits/tabs and cursor positions across restarts, per session root (by default the directory HUME started in), with recorded macros and the numbered registers.
 - [ ] Code folding — tree-sitter-powered collapse/expand.
 - [ ] Resizable panes — grow or shrink the focused pane along a split, with a count. Every pane sharing a split axis is equal-sized today: `equalize` (`hume-engine/src/pipeline/layout.rs`) rewrites every split's ratio in the tree on each split and close, so a resized ratio has to survive an unrelated split or close elsewhere. Undecided: keys under the `Ctrl-p` prefix, an equalize command to undo a resize, and resizing by dragging a pane border with the mouse.
 - [ ] Sticky scope headers — while the top of a pane is inside a class or function whose first line has scrolled out of view, pin that first line (the class, then the method) above the pane's text, so the body on screen keeps its context (`nvim-treesitter-context`). The enclosing nodes can come from the `class.around`/`function.around` captures `textobjects.scm` already defines for text objects (`hume-treesitter/src/textobjects.rs`). Undecided: the most header lines shown before the outer ones drop, whether the headers cover text lines or push them down, and what clicking or jumping to a header does.

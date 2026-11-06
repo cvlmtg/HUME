@@ -27,8 +27,8 @@ pub(in crate::editor) enum HistoryKind {
 }
 
 impl HistoryKind {
-    /// Every kind. The match names each variant, so a new kind is a compile
-    /// error here until it is listed.
+    /// Every kind. A new kind fails to compile in the match below; it then
+    /// joins the list, whose length `entries_by_kind`'s array repeats.
     pub(in crate::editor) const ALL: [Self; 4] = {
         let all = [
             Self::Command,

@@ -14,7 +14,7 @@ use termina::event::KeyEvent;
 
 use super::STAMP;
 use super::snapshot::{PaneSnapshot, RegisterSnapshot, SessionSnapshot, TabSnapshot};
-use crate::editor::buffer::lifecycle;
+use crate::editor::buffer::lifecycle::{self, CloseBufferRefused};
 use crate::editor::commands::{open_pane_as_new_tab, open_pane_in_layout};
 use crate::editor::jump_list::{JumpEntry, JumpList, kept_with_cursor};
 use crate::editor::{Editor, focus, pane_state, stamped_file, tab};
@@ -106,13 +106,17 @@ impl Editor {
         let shown = self.view.panes[self.view.focused_pane()].buffer_id();
         self.state.buffers.touch_mru(shown);
         if self.state.buffers.try_get(startup).is_some() {
-            // A scratch init.scm wrote into is kept.
-            let _ = lifecycle::close_buffer_and_notify(
+            // A scratch holding unsaved text, or one a pipe still writes
+            // into, is kept.
+            match lifecycle::close_buffer_and_notify(
                 &mut self.view,
                 &mut self.state,
                 startup,
                 OnUnsaved::Refuse,
-            );
+            ) {
+                Ok(())
+                | Err(CloseBufferRefused::Unsaved(_) | CloseBufferRefused::PipeRunning(_)) => {}
+            }
         }
     }
 

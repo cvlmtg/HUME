@@ -223,6 +223,11 @@ impl Register {
         Self { content }
     }
 
+    /// This register's text or macro.
+    pub fn content(&self) -> &RegisterContent {
+        &self.content
+    }
+
     /// If this register holds text, borrow its pieces. Returns `None` for macro registers.
     ///
     /// Callers that try to paste a macro register get `None` and treat it as a no-op.
