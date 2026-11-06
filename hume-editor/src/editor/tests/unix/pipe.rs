@@ -32,7 +32,7 @@ struct ScriptedConsole {
     detached: Detached,
     repaints: Vec<Shown>,
     painted_at: Vec<Instant>,
-    gates: Vec<(fn(&[Shown]) -> bool, ShellGate)>,
+    gates: Vec<(Repainted, ShellGate)>,
 }
 
 impl ScriptedConsole {
@@ -52,7 +52,7 @@ impl ScriptedConsole {
     }
 
     /// Opens `gate` once the repaints so far satisfy `when`.
-    fn opening(mut self, gate: ShellGate, when: fn(&[Shown]) -> bool) -> Self {
+    fn opening(mut self, gate: ShellGate, when: Repainted) -> Self {
         self.gates.push((when, gate));
         self
     }
@@ -106,6 +106,9 @@ fn progress(command: &str, done: usize, total: usize) -> Option<PipeProgress<'_>
 
 /// What one repaint showed of the run: its command, processes done, total.
 type Shown = Option<(String, usize, usize)>;
+
+/// When a gate opens, judged on the repaints so far.
+type Repainted = fn(&[Shown]) -> bool;
 
 fn shown(command: &str, done: usize, total: usize) -> Shown {
     Some((command.to_owned(), done, total))
