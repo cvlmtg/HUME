@@ -106,8 +106,8 @@ pub use os_wait::OsWait;
 pub use picker::TruncateEnd;
 pub use popup::PopupLayout;
 pub use setting::{
-    BufferIntrinsicOption, LanguageOptionText, OptionInput, OptionType, OptionValue,
-    StatuslineSections,
+    BufferIntrinsicOption, BufferOptionWrite, LanguageOptionText, OptionInput, OptionType,
+    OptionValue, StatuslineSections,
 };
 pub use severity::{DiagSeverity, Severity};
 pub use side::Side;

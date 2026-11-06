@@ -1,6 +1,6 @@
 //! Global settings and the Steel eval budget.
 
-use hume_core::{BufferId, OptionInput, OptionValue};
+use hume_core::{BufferId, BufferOptionWrite, OptionInput, OptionValue};
 
 /// `value` as a script reads it back: a word list as a list of strings, the
 /// statusline as `(hash 'left 'center 'right)`, the hash `set-option!` takes.
@@ -37,8 +37,8 @@ pub trait SettingsHost {
 
     /// `(set-buffer-option! pane key value)`: writes `key` on `pane`'s
     /// buffer: its per-buffer override, or for `line-ending` the line ending
-    /// a save writes. Every buffer option but `language`, whose write the
-    /// builtin queues. Command/hook context (`cmd` kind), unlike
+    /// a save writes. A `language` value is returned as the change it names,
+    /// for the builtin to queue. Command/hook context (`cmd` kind), unlike
     /// `set_global_option`. `Err` for a stale buffer, a bad value, or a
     /// read-only buffer's line ending. Only the buffer matters: the builtin
     /// declares its `pane` a `LiveBuffer`, which resolves to a plain `bid`.
@@ -50,7 +50,7 @@ pub trait SettingsHost {
         value: OptionInput,
         bid: BufferId,
         origin: hume_core::ConfigOrigin,
-    ) -> Result<(), String>;
+    ) -> Result<BufferOptionWrite, String>;
 
     /// `(get-option key)`: `key`'s global value, ignoring any buffer
     /// override even if one exists. No eval-mode gate (`open` kind),

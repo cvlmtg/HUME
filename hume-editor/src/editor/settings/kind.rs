@@ -6,16 +6,13 @@
 //! as. [`Kind::Script`] is the type a script writes the value in; [`parse_as`]
 //! refuses a script value of any other type before reading what it holds.
 
+use std::fmt;
+
 use hume_core::{OptionInput, OptionType, OptionValue, StatuslineSections};
 use hume_platform::process::batch::ShellCommand;
 
-use super::{
-    SHOW_NEWLINE_VALUES, SettingText, at_least_one, for_key, format_show_newline,
-    format_statusline, parse_bool, parse_show_newline, parse_statusline, parse_tab_width,
-    parse_usize, parse_word_chars, script_count, script_tab_width, statusline_sections,
-    statusline_text_sections,
-};
-use crate::statusline::StatusLineConfig;
+use super::{SettingText, parse_named};
+use crate::statusline::{StatusElement, StatusLineConfig};
 
 /// A setting's value as it reads back: as the [`OptionValue`] a script gets,
 /// or as the text `:set` takes.
@@ -48,7 +45,12 @@ impl Shape {
             Self::Int(value) => value.to_string(),
             Self::Text(text) => text,
             Self::Shell(shell) => shell.to_text(),
-            Self::Statusline(cfg) => format_statusline(&cfg),
+            Self::Statusline(cfg) => {
+                let sections = statusline_sections(&cfg);
+                [sections.left, sections.center, sections.right]
+                    .map(|names| names.join(","))
+                    .join("|")
+            }
         }
     }
 }
@@ -105,9 +107,10 @@ pub(super) trait Kind<T> {
 }
 
 /// Parse `input` for the setting `key`, whose kind is `K`. Every setting
-/// write parses through here, so every parse error names its setting, and a
-/// script value of another type than `K` takes is refused naming both types,
-/// before a list's or hash's contents are read.
+/// write parses through here, so every parse error names its setting and the
+/// kinds' parsers stay key-free. A script value of another type than `K`
+/// takes is refused naming both types, before a list's or hash's contents
+/// are read.
 pub(super) fn parse_as<K: Kind<T>, T>(key: &str, input: &OptionInput) -> Result<T, String> {
     let takes = <K::Script as Payload>::TYPE;
     let expected = |given: &str| format!("expected {}, got {given}", takes.name());
@@ -121,7 +124,7 @@ pub(super) fn parse_as<K: Kind<T>, T>(key: &str, input: &OptionInput) -> Result<
         OptionInput::Unreadable { ty, .. } => Err(expected(ty.name())),
         OptionInput::Foreign(given) => Err(expected(given)),
     };
-    for_key(key, parsed)
+    parsed.map_err(|e| format!("invalid value for '{key}': {e}"))
 }
 
 pub(super) struct Bool;
@@ -131,7 +134,11 @@ impl Kind<bool> for Bool {
     const NAMES: &'static [&'static str] = &["true", "false"];
 
     fn parse_text(text: &str) -> Result<bool, String> {
-        parse_bool(text)
+        match text {
+            "true" | "on" | "yes" | "1" => Ok(true),
+            "false" | "off" | "no" | "0" => Ok(false),
+            _ => Err(format!("expected true/false, got '{text}'")),
+        }
     }
 
     fn parse_script(value: &bool) -> Result<bool, String> {
@@ -190,11 +197,15 @@ impl Kind<u8> for TabWidth {
     const NAMES: &'static [&'static str] = &[];
 
     fn parse_text(text: &str) -> Result<u8, String> {
-        parse_tab_width(text)
+        text.parse::<u8>()
+            .map_err(|_| not_a_tab_width(text))
+            .and_then(at_least_one)
     }
 
     fn parse_script(value: &i64) -> Result<u8, String> {
-        script_tab_width(*value)
+        u8::try_from(*value)
+            .map_err(|_| not_a_tab_width(value))
+            .and_then(at_least_one)
     }
 
     fn shape(value: &u8) -> Shape {
@@ -242,27 +253,30 @@ impl Kind<String> for FreeText {
     }
 }
 
-/// Whether newlines render, written `none` or `all`.
+/// Whether newlines render, written `none` or `all`. Unlike spaces and
+/// tabs, a newline is always at the end of its line, so there is no
+/// `trailing` value.
 pub(super) struct ShowNewline;
 
 impl Kind<bool> for ShowNewline {
     type Script = String;
-    const NAMES: &'static [&'static str] = SHOW_NEWLINE_VALUES;
+    const NAMES: &'static [&'static str] = &["none", "all"];
 
     fn parse_text(text: &str) -> Result<bool, String> {
-        parse_show_newline(text)
+        parse_named(text, Self::NAMES, [false, true])
     }
 
     fn parse_script(value: &String) -> Result<bool, String> {
-        parse_show_newline(value)
+        Self::parse_text(value)
     }
 
     fn shape(value: &bool) -> Shape {
-        Shape::Text(format_show_newline(*value).to_owned())
+        Shape::Text(Self::NAMES[usize::from(*value)].to_owned())
     }
 }
 
-/// Extra word characters, validated unlike [`FreeText`].
+/// Extra word characters, validated unlike [`FreeText`]: whitespace is
+/// refused, since a word run must end at whitespace.
 pub(super) struct WordChars;
 
 impl Kind<String> for WordChars {
@@ -270,11 +284,12 @@ impl Kind<String> for WordChars {
     const NAMES: &'static [&'static str] = &[];
 
     fn parse_text(text: &str) -> Result<String, String> {
-        parse_word_chars(text)
+        hume_editing::word::WordChars::validate(text)?;
+        Ok(text.to_owned())
     }
 
     fn parse_script(value: &String) -> Result<String, String> {
-        parse_word_chars(value)
+        Self::parse_text(value)
     }
 
     fn shape(value: &String) -> Shape {
@@ -309,8 +324,28 @@ impl Kind<StatusLineConfig> for Statusline {
     type Script = StatuslineSections;
     const NAMES: &'static [&'static str] = &[];
 
+    /// Three `|`-separated sections, no more, each a comma-separated list of
+    /// element names.
     fn parse_text(text: &str) -> Result<StatusLineConfig, String> {
-        statusline_text_sections(text).and_then(|sections| parse_statusline(&sections))
+        let names = |section: &str| -> Vec<String> {
+            if section.is_empty() {
+                Vec::new()
+            } else {
+                section.split(',').map(str::to_string).collect()
+            }
+        };
+        let parts: Vec<&str> = text.splitn(4, '|').collect();
+        let [left, center, right] = parts.as_slice() else {
+            return Err(format!(
+                "expected three sections separated by '|' \
+                 (e.g. 'Mode,FileName||Position'), got '{text}'"
+            ));
+        };
+        parse_statusline(&StatuslineSections {
+            left: names(left),
+            center: names(center),
+            right: names(right),
+        })
     }
 
     fn parse_script(value: &StatuslineSections) -> Result<StatusLineConfig, String> {
@@ -319,5 +354,69 @@ impl Kind<StatusLineConfig> for Statusline {
 
     fn shape(value: &StatusLineConfig) -> Shape {
         Shape::Statusline(value.clone())
+    }
+}
+
+// ── Value parsers ─────────────────────────────────────────────────────────────
+
+/// The error for a count that is not a non-negative integer.
+fn not_a_count(value: impl fmt::Display) -> String {
+    format!("expected a non-negative integer, got '{value}'")
+}
+
+fn parse_usize(value: &str) -> Result<usize, String> {
+    value.parse::<usize>().map_err(|_| not_a_count(value))
+}
+
+/// A script's integer as a count, held to [`parse_usize`]'s rule.
+fn script_count(value: i64) -> Result<usize, String> {
+    usize::try_from(value).map_err(|_| not_a_count(value))
+}
+
+/// `n`, refused when it is 0.
+fn at_least_one<T: PartialEq + Default>(n: T) -> Result<T, String> {
+    if n == T::default() {
+        return Err("must be at least 1".into());
+    }
+    Ok(n)
+}
+
+/// The error for a tab width outside `u8`.
+fn not_a_tab_width(value: impl fmt::Display) -> String {
+    format!("expected 1–255, got '{value}'")
+}
+
+/// The statusline `sections` name. An empty section is allowed, an empty
+/// name inside one (`Mode,,FileName`) is not.
+fn parse_statusline(sections: &StatuslineSections) -> Result<StatusLineConfig, String> {
+    let elements = |names: &[String]| -> Result<Vec<StatusElement>, String> {
+        names
+            .iter()
+            .map(|name| {
+                if name.is_empty() {
+                    return Err(format!(
+                        "section '{}' has an empty element name",
+                        names.join(",")
+                    ));
+                }
+                name.parse::<StatusElement>()
+            })
+            .collect()
+    };
+    Ok(StatusLineConfig {
+        left: elements(&sections.left)?,
+        center: elements(&sections.center)?,
+        right: elements(&sections.right)?,
+    })
+}
+
+/// The element names of each of `cfg`'s sections, as `get-option` reads them:
+/// [`parse_statusline`]'s inverse.
+fn statusline_sections(cfg: &StatusLineConfig) -> StatuslineSections {
+    let names = |elems: &[StatusElement]| elems.iter().map(ToString::to_string).collect();
+    StatuslineSections {
+        left: names(&cfg.left),
+        center: names(&cfg.center),
+        right: names(&cfg.right),
     }
 }

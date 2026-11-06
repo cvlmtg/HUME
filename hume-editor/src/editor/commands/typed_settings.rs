@@ -1,6 +1,6 @@
 //! `:set` and `:get`: the typed commands that name a setting by scope and key.
 
-use hume_core::{BufferIntrinsicOption, LanguageOptionText, OptionInput, Severity};
+use hume_core::{BufferOptionWrite, OptionInput, Severity};
 
 use super::super::Editor;
 use super::FocusedPane;
@@ -8,8 +8,8 @@ use crate::editor::error::CommandError;
 use crate::editor::registry::ArgError;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{
-    BufferTarget, PaneSetting, PaneValue, Scope, SettingKey, SettingTarget, pane_text, parse_pane,
-    read_global, unknown_setting,
+    PaneSetting, PaneValue, Scope, SettingKey, SettingTarget, pane_text, parse_pane, read_global,
+    unknown_setting,
 };
 
 /// The typed command that names a setting by scope and key.
@@ -78,12 +78,15 @@ pub(in crate::editor) fn typed_set(
         SettingTarget::Global(key) => {
             settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input, by)
         }
-        SettingTarget::Buffer(BufferTarget::Intrinsic(BufferIntrinsicOption::Language)) => {
-            let _ = ed.set_buffer_language_by_name(bid, LanguageOptionText::decode(value), by);
-            Ok(())
-        }
         SettingTarget::Buffer(target) => {
-            settings_ops::apply_buffer_target(&mut ed.state, bid, target, &input, by)
+            settings_ops::apply_buffer_target(&mut ed.state, bid, target, &input, by).map(
+                |written| match written {
+                    BufferOptionWrite::Applied => {}
+                    BufferOptionWrite::Language(name) => {
+                        let _ = ed.set_buffer_language_by_name(bid, name.as_deref(), by);
+                    }
+                },
+            )
         }
         SettingTarget::Pane(setting) => parse_pane(setting, &input).map(|value| match value {
             PaneValue::WrapMode(mode) => ed.set_wrap_override(fp, mode),

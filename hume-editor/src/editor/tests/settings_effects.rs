@@ -541,6 +541,75 @@ fn a_value_of_another_type_raises_and_changes_nothing() {
     assert_eq!(ed.state.settings.indent_width, indent_width);
 }
 
+/// A list or hash whose contents do not decode is refused by the option that
+/// takes it, naming what inside it is wrong.
+#[test]
+fn an_unreadable_list_or_hash_raises_naming_its_fault() {
+    for (source, refusal) in [
+        (
+            r#"(set-option! "shell" '("sh" 1))"#,
+            "invalid value for 'shell': list item: expected a string",
+        ),
+        (
+            r#"(set-option! "statusline" (hash 'left '()))"#,
+            "invalid value for 'statusline': sections: missing 'center",
+        ),
+    ] {
+        let mut ed = editor_from("-[a]>b\n");
+        let err = eval_set_option(&mut ed, source).expect_err(source);
+        assert!(err.contains(refusal), "{source}: {err}");
+    }
+}
+
+/// The error of `(set-buffer-option! bid key value)`, run from a typed
+/// command on `ed`'s focused buffer.
+fn set_buffer_option_error(ed: &mut Editor, key: &str, value: &str) -> String {
+    let tmp = tempfile::tempdir().unwrap();
+    run(
+        ed,
+        tmp.path(),
+        &format!(
+            r#"(define-typed-command! "set-it" "" (lambda (bid)
+                 (set-buffer-option! bid "{key}" {value})))"#
+        ),
+    );
+    ed.execute_typed("set-it", None)
+        .expect_err("the value is refused")
+        .message()
+        .to_owned()
+}
+
+/// A buffer option the buffer stores itself refuses a value of another type
+/// as every other option does, naming both types, and changes nothing.
+#[test]
+fn a_stored_buffer_option_refuses_a_value_of_another_type() {
+    for (key, value, given) in [
+        ("language", "#f", "a boolean"),
+        ("language", "'rust", "the symbol 'rust"),
+        ("line-ending", "#t", "a boolean"),
+        ("line-ending", "1", "an integer"),
+        ("line-ending", r#"'("lf")"#, "a list of strings"),
+        (
+            "line-ending",
+            "(hash 'left '() 'center '() 'right '())",
+            "a statusline sections hash",
+        ),
+    ] {
+        let mut ed = editor_from("-[a]>b\n");
+        let line_ending = ed.doc().text().line_ending();
+        let err = set_buffer_option_error(&mut ed, key, value);
+        assert!(
+            err.contains(&format!(
+                "invalid value for '{key}': expected a string, got {given}"
+            )),
+            "{key}={value}: {err}"
+        );
+        ed.settle();
+        assert_eq!(ed.doc().text().line_ending(), line_ending);
+        assert_eq!(ed.doc().language, None, "{key}={value}");
+    }
+}
+
 /// An option the buffer stores itself has no global value: the global
 /// builtins refuse it, naming the per-buffer builtin, and set nothing.
 #[test]

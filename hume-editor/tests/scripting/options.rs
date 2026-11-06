@@ -173,6 +173,39 @@ fn get_option_unknown_key_errors() {
     assert!(err.message.contains("unknown setting"), "got: {err:?}");
 }
 
+/// The test host refuses a key in the scope it lacks as the editor does,
+/// naming the builtin to use instead.
+#[test]
+fn a_key_outside_the_builtins_scope_is_refused_as_the_editor_refuses_it() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+    mock.live_buffer_ids.insert(BufferId::default());
+    let bid = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
+
+    h.eval_source(
+        r#"(define-command! "read-theme" "" (lambda (bid) (get-buffer-option bid "theme")))
+           (define-command! "read-language" "" (lambda () (get-option "language")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    let err = h
+        .call_steel_cmd_by_name("read-theme", vec![bid], &mut mock)
+        .unwrap_err();
+    assert!(
+        err.message
+            .contains("'theme' is global-only: use get-option"),
+        "got: {err:?}"
+    );
+    let err = h
+        .call_steel_cmd_by_name("read-language", vec![], &mut mock)
+        .unwrap_err();
+    assert!(
+        err.message
+            .contains("'language' is per-buffer: use get-buffer-option"),
+        "got: {err:?}"
+    );
+}
+
 /// `(get-buffer-option bid key)` reads back a value the same as `get-option`
 /// (MockHost ignores `bid`, so this proves the call reaches the host at
 /// all, not bid-specific routing; that's covered at the host layer by

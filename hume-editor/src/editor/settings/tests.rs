@@ -284,9 +284,8 @@ fn read_key_subfield_key_falls_back_to_global_whitespace() {
 
 #[test]
 fn read_key_whitespace_newline_round_trips_through_write_global() {
-    // Write the wire string, read it back: they must match, proving
-    // format_show_newline is parse_show_newline's inverse.
-    for wire in SHOW_NEWLINE_VALUES {
+    // Write the wire string, read it back: they must match.
+    for wire in <kind::ShowNewline as kind::Kind<bool>>::NAMES {
         let mut s = EditorSettings::default();
         write_global_for_test(
             "whitespace-newline",
@@ -826,18 +825,13 @@ fn set_global_whitespace_newline_trailing_rejected() {
 }
 
 #[test]
-fn show_newline_values_round_trip_through_parse_show_newline() {
-    // Mirrors `whitespace_render_values_round_trip_through_parse`: every
-    // completion-offered value must actually parse, so `SHOW_NEWLINE_VALUES` can't drift from
-    // `parse_show_newline`.
-    for v in SHOW_NEWLINE_VALUES {
-        let parsed = parse_show_newline(v);
-        assert!(parsed.is_ok(), "'{v}' should parse via parse_show_newline");
-        assert_eq!(
-            format_show_newline(parsed.unwrap()),
-            *v,
-            "format_show_newline should be parse_show_newline's inverse for '{v}'"
-        );
+fn show_newline_values_round_trip_through_its_kind() {
+    // Every completion-offered value must parse, and read back as itself.
+    use kind::{Kind, ShowNewline};
+    for v in <ShowNewline as Kind<bool>>::NAMES {
+        let parsed = <ShowNewline as Kind<bool>>::parse_text(v)
+            .unwrap_or_else(|e| panic!("'{v}' should parse: {e}"));
+        assert_eq!(<ShowNewline as Kind<bool>>::shape(&parsed).text(), *v);
     }
 }
 
@@ -1708,6 +1702,15 @@ fn every_completed_value_parses() {
 
 // ── Script values ───────────────────────────────────────────────────────────
 
+/// Every script value type.
+const SCRIPT_TYPES: [OptionType; 5] = [
+    OptionType::Bool,
+    OptionType::Int,
+    OptionType::Str,
+    OptionType::List,
+    OptionType::Sections,
+];
+
 /// A script value of type `ty`.
 fn script_value(ty: OptionType) -> OptionValue {
     match ty {
@@ -1739,7 +1742,7 @@ fn a_setting_takes_a_script_value_of_the_type_it_reads_back_as() {
         );
         assert_eq!(written, Ok(true), "'{}' takes back {own:?}", key.name());
         let takes = own.option_type();
-        for ty in OptionType::ALL.into_iter().filter(|&ty| ty != takes) {
+        for ty in SCRIPT_TYPES.into_iter().filter(|&ty| ty != takes) {
             let refused = write_global(
                 key,
                 &OptionInput::Value(script_value(ty)),

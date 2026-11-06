@@ -1,7 +1,7 @@
 use super::*;
 use crate::host::StoredLanguage;
 use crate::test_support::{SteelCtxTestHarness, default_bid};
-use hume_core::{BufferId, ConfigOrigin, OnUnsaved, OptionInput};
+use hume_core::{BufferId, BufferOptionWrite, ConfigOrigin, OnUnsaved, OptionInput};
 use steel::rvals::IntoSteelVal as _;
 
 /// `set-option!` is registered `open` (`builtins/mod.rs`): no eval-mode
@@ -186,13 +186,16 @@ fn set_buffer_option_line_ending_reaches_the_host_as_a_buffer_write() {
     );
 }
 
-/// `set-buffer-option!`'s `"language"` queues each write as an effect
-/// instead of writing through the host, a repeat of the same value
-/// included: the editor ranks every write and records the origin of each.
+/// A language change the host returns for `set-buffer-option!` is queued,
+/// each time it is returned, with the caller's origin: the editor ranks every
+/// write when it makes the change.
 #[test]
-fn set_buffer_option_language_queues_every_write_with_its_origin() {
+fn set_buffer_option_queues_each_language_change_the_host_returns() {
     let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
+    let mut host = RecordingBufferOptionHost {
+        answer: Some(BufferOptionWrite::Language(Some("rust".to_string()))),
+        ..RecordingBufferOptionHost::default()
+    };
     let mut ctx = h.ctx_with_host(&mut host);
     for _ in 0..2 {
         set_buffer_option(
@@ -201,7 +204,7 @@ fn set_buffer_option_language_queues_every_write_with_its_origin() {
             "language".into(),
             SteelVal::StringV("rust".into()),
         )
-        .expect("a string language is accepted");
+        .expect("the host accepts the write");
     }
     drop(ctx);
     let writes: Vec<(Option<&str>, hume_core::ConfigOrigin)> = h
@@ -222,24 +225,13 @@ fn set_buffer_option_language_queues_every_write_with_its_origin() {
             (Some("rust"), hume_core::ConfigOrigin::User)
         ]
     );
-}
-
-#[test]
-fn set_buffer_option_language_rejects_a_non_string() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
-    let mut ctx = h.ctx_with_host(&mut host);
-    let msg = set_buffer_option(
-        &mut ctx,
-        default_bid(),
-        "language".into(),
-        SteelVal::BoolV(false),
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(
-        msg.contains("invalid value for 'language': expected a string"),
-        "got: {msg}"
+    let sent = OptionInput::Value(OptionValue::Str("rust".to_string()));
+    assert_eq!(
+        host.calls,
+        vec![
+            ("language".to_string(), sent.clone(), default_bid()),
+            ("language".to_string(), sent, default_bid())
+        ]
     );
 }
 
@@ -262,6 +254,8 @@ struct RecordingBufferOptionHost {
     pub(crate) calls: Vec<(String, OptionInput, BufferId)>,
     /// The origin each global or buffer write arrived with, in order.
     pub(crate) origins: Vec<ConfigOrigin>,
+    /// What every buffer write answers, `Applied` when unset.
+    answer: Option<BufferOptionWrite>,
 }
 
 impl crate::host::EditorHost for RecordingBufferOptionHost {
@@ -435,10 +429,10 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
         value: OptionInput,
         bid: BufferId,
         origin: ConfigOrigin,
-    ) -> Result<(), String> {
+    ) -> Result<BufferOptionWrite, String> {
         self.calls.push((key.to_string(), value, bid));
         self.origins.push(origin);
-        Ok(())
+        Ok(self.answer.clone().unwrap_or(BufferOptionWrite::Applied))
     }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
         crate::host::SettingsHost::get_global_option(&self.inner, key)

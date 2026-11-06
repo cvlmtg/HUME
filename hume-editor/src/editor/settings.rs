@@ -21,24 +21,22 @@
 //!
 //! The `BufferIntrinsicOption`s have no macro entry: they have no global
 //! default and live on the buffer. `language` needs `Editor`-level access
-//! (`OnLanguageSet` hook, registry lookup), so `typed_set` and the
-//! `set-buffer-option!` builtin handle its write; `ops::apply_buffer_target`
-//! writes `line-ending`, and `ops::read_buffer_target` reads either back.
+//! (`OnLanguageSet` hook, registry lookup), so `ops::apply_buffer_target`
+//! parses its value and returns the change, which `typed_set` makes and the
+//! `set-buffer-option!` builtin queues. `ops::apply_buffer_target` writes
+//! `line-ending`, and `ops::read_buffer_target` reads either back.
 
 use std::fmt;
 use std::hash::Hash;
 
-use hume_core::{
-    BufferIntrinsicOption, Claim, ConfigOrigin, DiagSeverity, LaterWins, OptionInput,
-    StatuslineSections,
-};
+use hume_core::{BufferIntrinsicOption, Claim, ConfigOrigin, DiagSeverity, LaterWins, OptionInput};
 use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 use hume_platform::process::batch::ShellCommand;
 use rustc_hash::FxHashMap;
 
-use crate::statusline::{StatusElement, StatusLineConfig};
+use crate::statusline::StatusLineConfig;
 use hume_ops::auto_pairs::Pair;
 
 // ── settings_enum! ────────────────────────────────────────────────────────────
@@ -117,12 +115,6 @@ impl<K: Copy + Eq + Hash> SettingOrigins<K> {
     pub(in crate::editor::settings) fn restore(&mut self, key: K, slot: Claim<LaterWins>) {
         self.0.insert(key, slot);
     }
-}
-
-/// Name the setting `key` in a parse error. Every `:set` value parse goes
-/// through here, so the parsers themselves stay key-free.
-fn for_key<T>(key: &str, parsed: Result<T, String>) -> Result<T, String> {
-    parsed.map_err(|e| format!("invalid value for '{key}': {e}"))
 }
 
 /// Generate a closed `:set` enum's [`SettingText`] from one list of
@@ -364,6 +356,56 @@ impl SettingKey {
 /// The error for a key no setting has, whichever command or builtin named it.
 pub(in crate::editor) fn unknown_setting(key: &str) -> String {
     format!("unknown setting '{key}'")
+}
+
+/// Whether a script reads or writes an option: which builtin a refusal of a
+/// key in the wrong scope names instead.
+#[derive(Clone, Copy)]
+pub(in crate::editor) enum OptionAccess {
+    Read,
+    Write,
+}
+
+impl OptionAccess {
+    /// The builtin that reaches an option's global value.
+    fn global_builtin(self) -> &'static str {
+        match self {
+            Self::Read => "get-option",
+            Self::Write => "set-option!",
+        }
+    }
+
+    /// The builtin that reaches an option on one buffer.
+    fn buffer_builtin(self) -> &'static str {
+        match self {
+            Self::Read => "get-buffer-option",
+            Self::Write => "set-buffer-option!",
+        }
+    }
+}
+
+/// The setting a script's `key` names. `Err` for an unknown key.
+fn script_setting(key: &str) -> Result<SettingKey, String> {
+    SettingKey::named(key).ok_or_else(|| unknown_setting(key))
+}
+
+/// The global value a global builtin's `key` names. An option the buffer
+/// stores itself has none, and its refusal names the buffer builtin.
+pub(in crate::editor) fn global_key(key: &str, access: OptionAccess) -> Result<TableKey, String> {
+    script_setting(key)?
+        .global()
+        .ok_or_else(|| format!("'{key}' is per-buffer: use {}", access.buffer_builtin()))
+}
+
+/// What a buffer builtin's `key` names on a buffer. A global-only option
+/// has nothing there, and its refusal names the global builtin.
+pub(in crate::editor) fn buffer_target(
+    key: &str,
+    access: OptionAccess,
+) -> Result<BufferTarget, String> {
+    script_setting(key)?
+        .buffer()
+        .ok_or_else(|| format!("'{key}' is global-only: use {}", access.global_builtin()))
 }
 
 /// Dispatch from a parser kind to a `BufferOverrides` accessor.
@@ -636,10 +678,10 @@ macro_rules! define_settings {
         /// writing nothing, when a higher origin wrote the override
         /// ([`SettingOrigins`]).
         ///
-        /// `pub(in crate::editor::settings)`: `ops::apply_buffer`, behind
-        /// [`ops::apply_buffer_target`], is the only caller. `testing::MockHost` models no buffers, so it has no
-        /// per-buffer override to write and needs no forwarding shim here
-        /// (contrast [`write_global`]'s `write_global_for_test`).
+        /// `ops::apply_buffer`, behind [`ops::apply_buffer_target`], is the
+        /// only production caller. `testing::MockHost` models no buffers, so
+        /// it writes no override and needs no test entry point here, unlike
+        /// [`write_global`].
         pub(in crate::editor::settings) fn write_buffer(
             key: BufferKey,
             value: &OptionInput,
@@ -907,10 +949,6 @@ define_settings! {
             parser: Bool;
     }
     extra_global {
-        // `statusline` is declared directly on the struct template above,
-        // not here: `extra_global` fields are all `pub`, and `statusline`
-        // must not be.
-        //
         // Full whitespace config lives on EditorSettings; per-sub-field buffer
         // overrides are declared in `subfield` below.
         whitespace: WhitespaceConfig = WhitespaceConfig::default();
@@ -930,92 +968,6 @@ define_settings! {
     private_global {
         "statusline" => statusline: StatusLineConfig, parser: Statusline;
     }
-}
-
-/// The sections of `:set`'s `"left|center|right"` statusline text: three
-/// `|`-separated sections, no more, each a comma-separated list of element
-/// names.
-fn statusline_text_sections(text: &str) -> Result<StatuslineSections, String> {
-    let names = |section: &str| -> Vec<String> {
-        if section.is_empty() {
-            Vec::new()
-        } else {
-            section.split(',').map(str::to_string).collect()
-        }
-    };
-    let parts: Vec<&str> = text.splitn(4, '|').collect();
-    let [left, center, right] = parts.as_slice() else {
-        return Err(format!(
-            "expected three sections separated by '|' \
-             (e.g. 'Mode,FileName||Position'), got '{text}'"
-        ));
-    };
-    Ok(StatuslineSections {
-        left: names(left),
-        center: names(center),
-        right: names(right),
-    })
-}
-
-/// The statusline `sections` name. An empty section is allowed, an empty
-/// name inside one (`Mode,,FileName`) is not.
-fn parse_statusline(sections: &StatuslineSections) -> Result<StatusLineConfig, String> {
-    let elements = |names: &[String]| -> Result<Vec<StatusElement>, String> {
-        names
-            .iter()
-            .map(|name| {
-                if name.is_empty() {
-                    return Err(format!(
-                        "section '{}' has an empty element name",
-                        names.join(",")
-                    ));
-                }
-                name.parse::<StatusElement>()
-            })
-            .collect()
-    };
-    Ok(StatusLineConfig {
-        left: elements(&sections.left)?,
-        center: elements(&sections.center)?,
-        right: elements(&sections.right)?,
-    })
-}
-
-/// The element names of each of `cfg`'s sections, as `get-option` reads them:
-/// [`parse_statusline`]'s inverse.
-fn statusline_sections(cfg: &StatusLineConfig) -> StatuslineSections {
-    let names = |elems: &[StatusElement]| elems.iter().map(ToString::to_string).collect();
-    StatuslineSections {
-        left: names(&cfg.left),
-        center: names(&cfg.center),
-        right: names(&cfg.right),
-    }
-}
-
-/// The `left|center|right` text [`statusline_text_sections`] and
-/// [`parse_statusline`] read back as `cfg`.
-fn format_statusline(cfg: &StatusLineConfig) -> String {
-    let sections = statusline_sections(cfg);
-    [sections.left, sections.center, sections.right]
-        .map(|names| names.join(","))
-        .join("|")
-}
-
-/// The wire-format strings [`parse_show_newline`] accepts, which
-/// [`kind::ShowNewline`] offers to `:set buffer whitespace-newline=<Tab>`.
-const SHOW_NEWLINE_VALUES: &[&str] = &["none", "all"];
-
-/// Parse the `whitespace-newline` wire format. Unlike `space`/`tab`, a
-/// newline is inherently always at end-of-line, so there's no meaningful
-/// "trailing" distinction, only `none`/`all`.
-fn parse_show_newline(s: &str) -> Result<bool, String> {
-    parse_named(s, SHOW_NEWLINE_VALUES, [false, true])
-}
-
-/// Render a `whitespace-newline` value back to the wire format
-/// [`parse_show_newline`] accepts: the inverse.
-fn format_show_newline(value: bool) -> &'static str {
-    if value { "all" } else { "none" }
 }
 
 // ── BufferOverrides: manual accessors ─────────────────────────────────────────
@@ -1050,66 +1002,6 @@ impl BufferOverrides {
             hume_ops::auto_pairs::DEFAULT_PAIRS,
         )
     }
-}
-
-// ── Value parsers ─────────────────────────────────────────────────────────────
-
-/// The error for a count that is not a non-negative integer.
-fn not_a_count(value: impl fmt::Display) -> String {
-    format!("expected a non-negative integer, got '{value}'")
-}
-
-fn parse_usize(value: &str) -> Result<usize, String> {
-    value.parse::<usize>().map_err(|_| not_a_count(value))
-}
-
-/// A script's integer as a count, held to [`parse_usize`]'s rule.
-fn script_count(value: i64) -> Result<usize, String> {
-    usize::try_from(value).map_err(|_| not_a_count(value))
-}
-
-/// `n`, refused when it is 0.
-fn at_least_one<T: PartialEq + Default>(n: T) -> Result<T, String> {
-    if n == T::default() {
-        return Err("must be at least 1".into());
-    }
-    Ok(n)
-}
-
-fn parse_bool(value: &str) -> Result<bool, String> {
-    match value {
-        "true" | "on" | "yes" | "1" => Ok(true),
-        "false" | "off" | "no" | "0" => Ok(false),
-        _ => Err(format!("expected true/false, got '{value}'")),
-    }
-}
-
-/// The error for a tab width outside `u8`.
-fn not_a_tab_width(value: impl fmt::Display) -> String {
-    format!("expected 1–255, got '{value}'")
-}
-
-fn parse_tab_width(value: &str) -> Result<u8, String> {
-    value
-        .parse::<u8>()
-        .map_err(|_| not_a_tab_width(value))
-        .and_then(at_least_one)
-}
-
-/// A script's integer as a tab width, held to [`parse_tab_width`]'s rule.
-fn script_tab_width(value: i64) -> Result<u8, String> {
-    u8::try_from(value)
-        .map_err(|_| not_a_tab_width(value))
-        .and_then(at_least_one)
-}
-
-/// `parser: FreeText` (`Ok(value.to_owned())`, unconditionally) is not usable
-/// here: a `word-chars` value must reject whitespace/newline (see
-/// `WordChars::validate`), so it gets its own parser kind instead of the
-/// generic unvalidated string one.
-fn parse_word_chars(value: &str) -> Result<String, String> {
-    hume_editing::word::WordChars::validate(value)?;
-    Ok(value.to_owned())
 }
 
 /// Applying a setting change: the single production path

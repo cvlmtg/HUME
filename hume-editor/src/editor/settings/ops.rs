@@ -12,6 +12,8 @@
 //! derived state depends on it (each [`ResyncKey`]'s effect, applied by
 //! `resync_derived_state`). Calling `write_global`/`write_buffer` alone would
 //! skip those, so write and resync must not be split apart.
+//! A language write is the exception: `apply_buffer_target` parses it and
+//! returns the change for its caller to make, since it activates plugins.
 //! [`read_buffer_target`](crate::editor::settings::ops::read_buffer_target)
 //! reads back what a buffer holds, the line ending and language included.
 //!
@@ -22,10 +24,15 @@
 
 #[cfg(any(test, feature = "test-util"))]
 use hume_core::OptionValue;
-use hume_core::{BufferId, BufferIntrinsicOption, ConfigOrigin, LanguageOptionText, OptionInput};
+use hume_core::{
+    BufferId, BufferIntrinsicOption, BufferOptionWrite, ConfigOrigin, LanguageOptionText,
+    OptionInput,
+};
 use hume_editing::text::LineEnding;
 use hume_engine::pipeline::EngineView;
 
+#[cfg(any(test, feature = "test-util"))]
+use super::OptionAccess;
 use super::{
     BufferKey, BufferTarget, GlobalKey, ResyncKey, SettingText, Shape, THEME, TableKey, kind,
 };
@@ -86,16 +93,6 @@ pub(in crate::editor) fn apply_global(
     Ok(())
 }
 
-/// The settings-table key a raw `key` names, for the test-only raw-key
-/// writer and reader below.
-#[cfg(any(test, feature = "test-util"))]
-fn table_key_for_test(key: &str) -> Result<TableKey, String> {
-    super::SettingKey::named(key)
-        .ok_or_else(|| super::unknown_setting(key))?
-        .global()
-        .ok_or_else(|| format!("'{key}' has no global value"))
-}
-
 /// Write the global setting a raw `key` names with no resync, for
 /// `testing::MockHost`, which has no editor state to resync, and
 /// `settings::tests`.
@@ -106,7 +103,8 @@ pub(crate) fn write_global_for_test(
     settings: &mut crate::editor::settings::EditorSettings,
     by: ConfigOrigin,
 ) -> Result<bool, String> {
-    super::write_global(table_key_for_test(key)?, value, settings, by)
+    let key = super::global_key(key, OptionAccess::Write)?;
+    super::write_global(key, value, settings, by)
 }
 
 /// The global value a raw `key` names as `get-option` reads it, for
@@ -116,7 +114,27 @@ pub(crate) fn global_option(
     key: &str,
     settings: &crate::editor::settings::EditorSettings,
 ) -> Result<OptionValue, String> {
-    table_key_for_test(key).map(|key| super::read_global(key, settings).value())
+    super::global_key(key, OptionAccess::Read).map(|key| super::read_global(key, settings).value())
+}
+
+/// The value a raw `key` names on a buffer with no overrides, as
+/// `get-buffer-option` reads it, for `testing::MockHost`, which models no
+/// buffers.
+#[cfg(any(test, feature = "test-util"))]
+pub(crate) fn buffer_option_for_test(
+    key: &str,
+    settings: &crate::editor::settings::EditorSettings,
+) -> Result<OptionValue, String> {
+    match super::buffer_target(key, OptionAccess::Read)? {
+        BufferTarget::Override(key) => {
+            let overrides = crate::editor::settings::BufferOverrides::default();
+            Ok(super::read_buffer(key, settings, &overrides).value())
+        }
+        BufferTarget::Intrinsic(opt) => Err(format!(
+            "'{}' is stored on a buffer, which the test host does not model",
+            opt.name()
+        )),
+    }
 }
 
 /// Reset every global setting to its compiled-in default and rerun every
@@ -167,25 +185,28 @@ pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut
 }
 
 /// Write `target` on `bid` from `by`: the one write path for `:set buffer`
-/// and `set-buffer-option!`. `language` is refused: its write runs the
-/// language change, which activates plugins, so `:set` runs it and a
-/// script's write is queued.
+/// and `set-buffer-option!`. A `language` value is parsed and returned as
+/// the change it names, not written: the change activates plugins, so `:set`
+/// makes it and a script's write is queued, both ranked as `by` then.
 pub(in crate::editor) fn apply_buffer_target(
     state: &mut EditorState,
     bid: BufferId,
     target: BufferTarget,
     value: &OptionInput,
     by: ConfigOrigin,
-) -> Result<(), String> {
+) -> Result<BufferOptionWrite, String> {
     match target {
-        BufferTarget::Override(key) => apply_buffer(state, bid, key, value, by),
-        BufferTarget::Intrinsic(BufferIntrinsicOption::LineEnding) => {
-            set_line_ending(state, bid, value, by)
+        BufferTarget::Override(key) => {
+            apply_buffer(state, bid, key, value, by).map(|()| BufferOptionWrite::Applied)
         }
-        BufferTarget::Intrinsic(opt @ BufferIntrinsicOption::Language) => Err(format!(
-            "'{}' is set by the language change, not as an option",
-            opt.name()
-        )),
+        BufferTarget::Intrinsic(BufferIntrinsicOption::LineEnding) => {
+            set_line_ending(state, bid, value, by).map(|()| BufferOptionWrite::Applied)
+        }
+        BufferTarget::Intrinsic(opt @ BufferIntrinsicOption::Language) => {
+            let text = kind::parse_as::<kind::FreeText, String>(opt.name(), value)?;
+            let language = LanguageOptionText::decode(&text).map(str::to_owned);
+            Ok(BufferOptionWrite::Language(language))
+        }
     }
 }
 

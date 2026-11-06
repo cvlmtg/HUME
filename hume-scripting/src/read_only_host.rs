@@ -4,7 +4,9 @@
 
 use std::cell::{Cell, RefCell};
 
-use hume_core::{BufferId, HostToken, OnUnsaved, OptionInput, OptionValue, PaneHandle};
+use hume_core::{
+    BufferId, BufferOptionWrite, HostToken, OnUnsaved, OptionInput, OptionValue, PaneHandle,
+};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
@@ -189,7 +191,7 @@ impl SettingsHost for ReadOnlyHost<'_> {
         _value: OptionInput,
         _bid: BufferId,
         _origin: hume_core::ConfigOrigin,
-    ) -> Result<(), String> {
+    ) -> Result<BufferOptionWrite, String> {
         Err(self.refuse("set_buffer_option"))
     }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {

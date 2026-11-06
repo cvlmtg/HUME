@@ -49,6 +49,16 @@ pub enum OptionInput {
     Foreign(String),
 }
 
+/// What writing a buffer option did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BufferOptionWrite {
+    /// The value was written, or a higher origin's value shadows it.
+    Applied,
+    /// The language change the value names, `None` for no language. Only
+    /// the caller can make it, since it activates plugins.
+    Language(Option<String>),
+}
+
 /// An option's value as scripts write and read it. `Str` is every named
 /// value, free text and `name:N` forms alike, in the spelling `:set` takes;
 /// `List` is a word list (`shell`); `Sections` is the `statusline`.
@@ -84,9 +94,6 @@ pub enum OptionType {
 }
 
 impl OptionType {
-    /// Every type, in [`OptionValue`]'s order.
-    pub const ALL: [Self; 5] = [Self::Bool, Self::Int, Self::Str, Self::List, Self::Sections];
-
     /// The type as an error names it.
     pub fn name(self) -> &'static str {
         match self {

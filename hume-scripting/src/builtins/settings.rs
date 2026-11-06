@@ -4,8 +4,8 @@
 use steel::rvals::SteelVal;
 
 use hume_core::{
-    BufferId, BufferIntrinsicOption, LanguageOptionText, OptionInput, OptionType, OptionValue,
-    StatuslineSections,
+    BufferId, BufferIntrinsicOption, BufferOptionWrite, LanguageOptionText, OptionInput,
+    OptionType, OptionValue, StatuslineSections,
 };
 
 use crate::SteelCtx;
@@ -35,7 +35,7 @@ fn option_input(value: SteelVal) -> OptionInput {
         SteelVal::StringV(s) => OptionInput::Value(OptionValue::Str(s.to_string())),
         value @ SteelVal::ListV(_) => decoded(
             OptionType::List,
-            list_to_strings(value, "value").map(OptionValue::List),
+            list_to_strings(value, "list item").map(OptionValue::List),
         ),
         value @ SteelVal::HashMapV(_) => decoded(
             OptionType::Sections,
@@ -52,7 +52,7 @@ const SECTION_KEYS: &[&str] = &["left", "center", "right"];
 
 /// Decodes a statusline sections hash; every section is required.
 fn decode_sections(value: SteelVal) -> Result<StatuslineSections, steel::rerrs::SteelErr> {
-    let entry = hash_entry(value, "value", SECTION_KEYS)?;
+    let entry = hash_entry(value, "sections", SECTION_KEYS)?;
     let section = |key: &str| list_to_strings(entry.required(key)?, &entry.label(key));
     Ok(StatuslineSections {
         left: section("left")?,
@@ -69,12 +69,6 @@ pub(crate) fn sections_value(sections: StatuslineSections) -> SteelVal {
         ("center", string_list(sections.center)),
         ("right", string_list(sections.right)),
     ])
-}
-
-/// Whether `key` names the `language` option, which a script's write queues
-/// and a script's read ranks against that queue, so neither reaches the host.
-fn is_language(key: &str) -> bool {
-    key == BufferIntrinsicOption::Language.name()
 }
 
 /// `(set-option! key value)`
@@ -107,9 +101,10 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 ///
 /// `"line-ending"` takes `"lf"` or `"crlf"` and sets the line ending a save writes; it errors on a read-only buffer.
 ///
-/// `"language"` takes a string, `""` meaning no language, and is queued as
-/// `Effect::SetBufferLanguage` rather than written here: setting it can
-/// activate plugins, which must not happen inside the current eval.
+/// `"language"` takes a string, `""` meaning no language. The host returns
+/// the change, which is queued as `Effect::SetBufferLanguage` rather than
+/// made here: it can activate plugins, which must not happen inside the
+/// current eval.
 ///
 /// A global-only option has no buffer value and raises, naming
 /// `set-option!`.
@@ -125,24 +120,17 @@ pub(crate) fn set_buffer_option(
     value: SteelVal,
 ) -> SteelResult {
     let origin = ctx.registration_origin();
-    if is_language(&key) {
-        let SteelVal::StringV(language) = value else {
-            return Err(generic_err(format!(
-                "invalid value for '{key}': expected {}, got {value}",
-                OptionType::Str.name()
-            )));
-        };
-        let language = LanguageOptionText::decode(&language).map(str::to_string);
+    let written = ctx
+        .host
+        .settings()
+        .set_buffer_option(&key, option_input(value), bid, origin)
+        .map_err(generic_err)?;
+    if let BufferOptionWrite::Language(language) = written {
         ctx.push_effect(Effect::SetBufferLanguage {
             buffer: bid,
             language,
             origin,
         });
-    } else {
-        ctx.host
-            .settings()
-            .set_buffer_option(&key, option_input(value), bid, origin)
-            .map_err(generic_err)?;
     }
     Ok(SteelVal::Void)
 }
@@ -174,7 +162,9 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// live read that may differ from the buffer whose language just changed), same
 /// reasoning as `set-buffer-option!`.
 pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, bid: BufferId, key: String) -> SteelResult {
-    if is_language(&key) {
+    // The language changes queued so far this eval live here, not on the
+    // host, so this read ranks them onto the buffer's own.
+    if key == BufferIntrinsicOption::Language.name() {
         let language = effective_language(ctx, bid);
         return Ok(SteelVal::StringV(
             LanguageOptionText::encode(language.as_deref()).into(),

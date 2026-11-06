@@ -15,7 +15,8 @@
 //! accessors/methods that make them distinct.
 
 use hume_core::{
-    BufferId, ConfigOrigin, HostToken, OnUnsaved, OptionInput, OptionValue, PaneHandle,
+    BufferId, BufferOptionWrite, ConfigOrigin, HostToken, OnUnsaved, OptionInput, OptionValue,
+    PaneHandle,
 };
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
@@ -242,7 +243,7 @@ impl SettingsHost for NullHost {
         _value: OptionInput,
         _bid: BufferId,
         _origin: ConfigOrigin,
-    ) -> Result<(), String> {
+    ) -> Result<BufferOptionWrite, String> {
         Err("NullHost: set_buffer_option not available".into())
     }
     fn get_global_option(&self, _key: &str) -> Result<OptionValue, String> {
