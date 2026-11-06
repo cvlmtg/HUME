@@ -35,15 +35,15 @@ macro_rules! motion {
     };
     // Forward object-jump family (`}`, `goto-next-<kind>`); see
     // `CmdMeta::aligns_view`'s doc for why only this direction opts in.
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump, aligns_view) => {
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump($rule:ident), aligns_view) => {
         $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
             SelectionBody::Plain($fun),
-            jump: Some($crate::editor::jump_list::JumpRule::Primary), aligns_view: true)
+            jump: Some($crate::editor::jump_list::JumpRule::$rule), aligns_view: true)
     };
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump($rule:ident)) => {
         $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
             SelectionBody::Plain($fun),
-            jump: Some($crate::editor::jump_list::JumpRule::Primary), aligns_view: false)
+            jump: Some($crate::editor::jump_list::JumpRule::$rule), aligns_view: false)
     };
     // Word-family motions (`w`/`W`/`b`/`B`); see [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
@@ -75,10 +75,10 @@ macro_rules! selection {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
             SelectionBody::Plain($fun), jump: None, effect: Establishes)
     };
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump($rule:ident)) => {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
             SelectionBody::Plain($fun),
-            jump: Some($crate::editor::jump_list::JumpRule::Primary), effect: Establishes)
+            jump: Some($crate::editor::jump_list::JumpRule::$rule), effect: Establishes)
     };
     // Transforms whatever extent is already staged instead of establishing
     // one; see `SelectionEffect::Composes`.

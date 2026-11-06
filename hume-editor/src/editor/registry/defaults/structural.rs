@@ -152,7 +152,7 @@ impl CommandRegistry {
     ///
     /// `Select`/`Argument` register as `Selection` (`Establishes`: each
     /// replayable on its own from a fresh cursor, same as `select-line`/
-    /// `ms(`); `Goto` registers as `Motion` (a `JumpRule::Primary` jump, since
+    /// `ms(`); `Goto` registers as `Motion` (a `JumpRule::Selections` jump, since
     /// a goto records a jump-list entry, and `Motion` always carries
     /// `SelectionEffect::Extends`, so a Move-mode press is not replayed by `.`
     /// while an Extend step is).
@@ -197,7 +197,7 @@ impl CommandRegistry {
                     kind: obj.kind,
                     dir: Direction::Forward,
                 })),
-                jump: Some(JumpRule::Primary),
+                jump: Some(JumpRule::Selections),
                 // Same forward-object-jump problem as `}`; see
                 // `CmdMeta::aligns_view`'s doc.
                 aligns_view: true,
@@ -209,7 +209,7 @@ impl CommandRegistry {
                     kind: obj.kind,
                     dir: Direction::Backward,
                 })),
-                jump: Some(JumpRule::Primary),
+                jump: Some(JumpRule::Selections),
                 aligns_view: false,
             }));
         }

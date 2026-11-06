@@ -278,8 +278,9 @@ fn colon_qa_quits_with_multiple_clean_buffers() {
 fn colon_qa_refused_when_a_background_buffer_is_dirty() {
     // :qa must check ALL buffers, not just the focused one, and it must switch
     // focus to the first unsaved buffer so the user knows where to look.
-    let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
+    let (mut ed, _tmp1) = editor_with_file("-[h]>el-{l}>o\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
+    let departed = state(&ed);
 
     // Open a second file buffer and dirty it.
     let bg_buf = open_second_file_buffer(&mut ed);
@@ -314,6 +315,7 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
         file_buf,
         "Ctrl-o returns to the buffer :qa left"
     );
+    assert_eq!(state(&ed), departed, "and to every selection it had");
 }
 
 #[test]

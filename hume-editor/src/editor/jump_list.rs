@@ -339,10 +339,10 @@ impl JumpList {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::editor) enum JumpRule {
     /// The whole selection set, whenever the pane's buffer or selections
-    /// changed. Every buffer switch records this.
+    /// changed. Every goto and buffer switch records this.
     Selections,
     /// The primary selection only, whenever the buffer or that selection
-    /// changed: goto, search, page scroll, `select-all`.
+    /// changed: search, page scroll, `select-all`.
     Primary,
     /// The primary selection only, when it changed and its line moved
     /// further than `EditorSettings::jump_list_min_lines`: any other

@@ -47,7 +47,7 @@ impl CommandRegistry {
             "select-all",
             "Select the entire buffer.",
             cmd_select_all,
-            jump
+            jump(Primary)
         );
         super::selection!(
             self,

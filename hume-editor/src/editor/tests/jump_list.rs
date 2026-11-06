@@ -364,7 +364,7 @@ fn goto_matching_pair_noop_does_not_clobber_forward_history() {
 }
 
 /// `}` (goto-next-paragraph) records a jump even for a one-line hop:
-/// unlike a plain motion, it declares a `JumpRule::Primary` jump, the same
+/// unlike a plain motion, it declares a `JumpRule::Selections` jump, the same
 /// as the structural `goto-next-<kind>` family, since it selects a whole
 /// object as they do.
 #[test]
@@ -386,7 +386,7 @@ fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
 }
 
 /// `{` (goto-prev-paragraph) records a jump even for a one-line hop: the same
-/// `JumpRule::Primary` jump as `}`, checked separately since the two are
+/// `JumpRule::Selections` jump as `}`, checked separately since the two are
 /// driven by distinct start-finding code (`next_paragraph_start` vs
 /// `prev_paragraph_start`).
 #[test]
@@ -1059,4 +1059,56 @@ fn bnext_records_every_selection() {
 
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
+}
+
+// ── Gotos ────────────────────────────────────────────────────────────────────
+
+/// Run editor command `name` on `initial`, which holds two selections, then
+/// `Ctrl-o`, which must bring back both of them.
+fn assert_goto_records_every_selection(name: &str, initial: &str) {
+    use hume_scripting::host::CommandHost;
+
+    let mut ed = editor_from(initial);
+    let before = state(&ed);
+
+    let pane = focused_pane(&ed);
+    live_host!(ed)
+        .run_command_sync(name, pane, NativeCall::default())
+        .unwrap_or_else(|e| panic!("{name} must not error: {e:?}"));
+    assert_ne!(state(&ed), before, "setup: {name} moved");
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
+}
+
+#[test]
+fn goto_first_line_records_every_selection() {
+    assert_goto_records_every_selection("goto-first-line", "a\n-{b}>\n-[c]>\n");
+}
+
+#[test]
+fn goto_last_line_records_every_selection() {
+    assert_goto_records_every_selection("goto-last-line", "-{a}>\n-[b]>\nc\n");
+}
+
+#[test]
+fn goto_matching_pair_records_every_selection() {
+    assert_goto_records_every_selection("goto-matching-pair", "-{(}>a) -[(]>b)\n");
+}
+
+#[test]
+fn goto_next_paragraph_records_every_selection() {
+    assert_goto_records_every_selection("goto-next-paragraph", "-{a}>\n\n-[b]>\n\nc\n");
+}
+
+#[test]
+fn goto_prev_paragraph_records_every_selection() {
+    assert_goto_records_every_selection("goto-prev-paragraph", "a\n\n-{b}>\n\n-[c]>\n");
+}
+
+/// A structural goto, through the lexical tag scan a buffer with no grammar
+/// uses.
+#[test]
+fn goto_next_tag_records_every_selection() {
+    assert_goto_records_every_selection("goto-next-tag", "-{a}> -[b]> <p>1</p>\n");
 }

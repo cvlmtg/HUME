@@ -801,7 +801,7 @@ fn no_command_is_both_repeatable_and_a_selection_builder() {
 }
 
 /// Guard: every jump command declares its rule in the registry, and every
-/// buffer switch restores the whole selection set.
+/// goto and buffer switch restores the whole selection set.
 ///
 /// The registry is the single source of truth: there is no separate
 /// `JUMP_COMMANDS` list to keep in sync.
@@ -812,8 +812,6 @@ fn jump_and_visual_move_flags_are_correct() {
     let reg = CommandRegistry::with_defaults();
 
     let primary = [
-        "goto-first-line",
-        "goto-last-line",
         "search-next",
         "search-prev",
         "page-down",
@@ -828,18 +826,36 @@ fn jump_and_visual_move_flags_are_correct() {
         );
     }
 
-    let buffer_switches = [
+    let gotos_and_buffer_switches = [
+        "goto-first-line",
+        "goto-last-line",
+        "goto-matching-pair",
+        "goto-next-paragraph",
+        "goto-prev-paragraph",
         "goto-alternate-buffer",
         "goto-next-buffer",
         "goto-prev-buffer",
         "buffer-new",
-    ];
-    for name in buffer_switches {
+    ]
+    .into_iter()
+    .chain(STRUCTURAL_OBJECTS.iter().flat_map(|o| [o.next, o.prev]));
+    for name in gotos_and_buffer_switches {
         assert_eq!(
             reg.get_mappable(name).expect(name).meta().jump,
             Some(JumpRule::Selections),
             "'{name}'"
         );
+    }
+
+    let typed_gotos_and_buffer_switches = [
+        "buffer", "bnext", "bprev", "new", "edit", "tutor", "quit-all", "goto",
+    ];
+    for name in typed_gotos_and_buffer_switches {
+        let jump = match reg.get_typed(name).expect(name).body {
+            TypedBody::Native { jump, .. } => jump,
+            _ => panic!("'{name}' is a native typed command"),
+        };
+        assert_eq!(jump, Some(JumpRule::Selections), "':{name}'");
     }
 
     let must_be_visual_move = ["move-down", "move-up"];

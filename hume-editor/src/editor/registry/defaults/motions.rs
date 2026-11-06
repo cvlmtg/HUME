@@ -52,14 +52,14 @@ impl CommandRegistry {
             "goto-first-line",
             "Move cursors to the first character of the buffer.",
             cmd_goto_first_line,
-            jump
+            jump(Selections)
         );
         super::motion!(
             self,
             "goto-last-line",
             "Move cursors to the first character of the last line.",
             cmd_goto_last_line,
-            jump
+            jump(Selections)
         );
 
         // ── Line-position motions ─────────────────────────────────────────────
@@ -89,7 +89,7 @@ impl CommandRegistry {
             "goto-matching-pair",
             "Move cursors to the matching bracket or tag.",
             cmd_goto_matching_pair,
-            jump
+            jump(Selections)
         );
 
         // ── Word motions ──────────────────────────────────────────────────────
@@ -142,7 +142,7 @@ impl CommandRegistry {
             "goto-next-paragraph",
             "Select the next paragraph.",
             cmd_goto_next_paragraph,
-            jump,
+            jump(Selections),
             aligns_view
         );
         super::motion!(
@@ -150,7 +150,7 @@ impl CommandRegistry {
             "goto-prev-paragraph",
             "Select the previous paragraph.",
             cmd_goto_prev_paragraph,
-            jump
+            jump(Selections)
         );
 
         // ── Line selection ────────────────────────────────────────────────────
