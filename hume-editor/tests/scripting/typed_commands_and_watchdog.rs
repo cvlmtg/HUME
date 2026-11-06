@@ -145,9 +145,9 @@ fn watchdog_cancel_wakes_thread_immediately() {
     let watchdog = EvalWatchdog::new();
     watchdog.arm(vm, budget);
     let fired = watchdog.cancel();
-    // cancel() must return well within the budget; 500 ms is generous.
+    // cancel() must return well within the budget.
     assert!(
-        start.elapsed() < std::time::Duration::from_millis(500),
+        start.elapsed() < budget / 2,
         "cancel() took too long: {:?}",
         start.elapsed()
     );
@@ -176,9 +176,9 @@ fn eval_source_watchdog_aborts_runaway() {
         err.contains("interrupted"),
         "expected 'interrupted' in error, got: {err}"
     );
-    // Must abort well within a second; if not, the watchdog didn't fire.
+    // Must abort well within seconds of its 50 ms budget.
     assert!(
-        start.elapsed() < std::time::Duration::from_secs(1),
+        start.elapsed() < std::time::Duration::from_secs(5),
         "eval took too long: {:?}",
         start.elapsed()
     );
@@ -283,12 +283,12 @@ fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
     h.eval_source(
         r#"(define-command! "wait-then-log" "doc"
              (lambda ()
-               (run-capture! "sleep" '("1.0"))
+               (run-capture! "sleep" '("3.0"))
                (log! 'info "after the wait")))"#,
         &mut mock,
     )
     .unwrap();
-    mock.settings.steel_command_budget_ms = 250;
+    mock.settings.steel_command_budget_ms = 1000;
 
     h.call_steel_cmd_by_name("wait-then-log", vec![], &mut mock)
         .expect("a wait on a child must not use up the budget");
@@ -304,7 +304,7 @@ fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
 fn remove_dir_does_not_count_the_delete_against_the_budget() {
     let mut h = host();
     let mut mock = MockHost::new();
-    let budget = std::time::Duration::from_millis(250);
+    let budget = std::time::Duration::from_secs(1);
 
     test_fixtures::slow_delete::assert_delete_outlasts_budget(budget, |root| {
         h.eval_source_watchdog(

@@ -17,20 +17,22 @@ use crate::editor::pipe_run::{
 };
 use crate::editor::replay::Answer;
 use hume_platform::path::test_support::write_program;
-use hume_platform::process::test_support::{logging_command, starts_and_peak};
+use hume_platform::process::test_support::{ShellGate, logging_command, starts_and_peak};
 
 // ── Waiting for a pipe run ───────────────────────────────────────────────────────
 
 /// A console that waits like a detached run, handing out `events` first
 /// once the run has drawn its first frame (the wait has no timeout then),
-/// and records the progress each repaint showed and when it drew. It leaves
-/// `deferred` to the run loop.
+/// and records the progress each repaint showed and when it drew. It opens
+/// each of `gates` the first time the repaints so far satisfy its
+/// condition, and leaves `deferred` to the run loop.
 struct ScriptedConsole {
     events: VecDeque<WaitEvent>,
     deferred: Vec<TerminalEvent>,
     detached: Detached,
     repaints: Vec<Shown>,
     painted_at: Vec<Instant>,
+    gates: Vec<(fn(&[Shown]) -> bool, ShellGate)>,
 }
 
 impl ScriptedConsole {
@@ -45,7 +47,14 @@ impl ScriptedConsole {
                 .expect("a test editor has its own waker"),
             repaints: Vec::new(),
             painted_at: Vec::new(),
+            gates: Vec::new(),
         }
+    }
+
+    /// Opens `gate` once the repaints so far satisfy `when`.
+    fn opening(mut self, gate: ShellGate, when: fn(&[Shown]) -> bool) -> Self {
+        self.gates.push((when, gate));
+        self
     }
 }
 
@@ -65,6 +74,14 @@ impl PipeConsole for ScriptedConsole {
         self.repaints
             .push(progress.map(|p| (p.command.to_owned(), p.done, p.total)));
         self.painted_at.push(Instant::now());
+        let repaints = &self.repaints;
+        self.gates.retain(|(when, gate)| {
+            let opens = when(repaints);
+            if opens {
+                gate.open();
+            }
+            !opens
+        });
         Ok(())
     }
 
@@ -164,16 +181,29 @@ fn a_run_that_ends_within_the_grace_draws_no_frame() {
 #[test]
 fn progress_repaints_as_processes_finish() {
     let mut ed = editor_from("-{fast}> -[mid]> -[slow]>\n");
-    let command = r#"read x; case $x in mid) sleep 0.4;; slow) sleep 0.8;; esac; printf '%s' "$x""#;
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (mid, slow) = (
+        ShellGate::new(dir.path().join("mid")),
+        ShellGate::new(dir.path().join("slow")),
+    );
+    // `mid` ends once a frame shows `fast` done, `slow` once one shows
+    // `mid` done too.
+    let command = &format!(
+        r#"read x; case $x in mid) {};; slow) {};; esac; printf '%s' "$x""#,
+        mid.wait_sh(),
+        slow.wait_sh()
+    );
     let run = start_run(&mut ed, command, PipeKind::Replace);
-    let mut console = ScriptedConsole::new(&ed, []);
+    let mut console = ScriptedConsole::new(&ed, [])
+        .opening(mid, |shown| matches!(shown.last(), Some(Some((_, 1, _)))))
+        .opening(slow, |shown| matches!(shown.last(), Some(Some((_, 2, _)))));
     run_with(&mut ed, run, &mut console);
     let done: Vec<usize> = console
         .repaints
         .iter()
         .map(|shown| {
             let (shown_command, done, total) = shown.as_ref().expect("a repaint shows the run");
-            assert_eq!((shown_command.as_str(), *total), (command, 3));
+            assert_eq!((shown_command.as_str(), *total), (command.as_str(), 3));
             *done
         })
         .collect();
@@ -209,12 +239,17 @@ fn progress_frames_are_at_least_a_frame_gap_apart() {
 #[test]
 fn a_resize_during_the_wait_repaints() {
     let mut ed = editor_from("-[abc]>\n");
-    let run = start_run(&mut ed, "sleep 0.5; cat", PipeKind::Replace);
-    let mut console = ScriptedConsole::new(&ed, [WaitEvent::Resized]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let gate = ShellGate::new(dir.path().join("gate"));
+    // The run ends once the resize has repainted.
+    let command = &format!("{}; cat", gate.wait_sh());
+    let run = start_run(&mut ed, command, PipeKind::Replace);
+    let mut console =
+        ScriptedConsole::new(&ed, [WaitEvent::Resized]).opening(gate, |shown| shown.len() == 2);
     run_with(&mut ed, run, &mut console);
     assert_eq!(
         console.repaints,
-        [shown("sleep 0.5; cat", 0, 1), shown("sleep 0.5; cat", 0, 1)]
+        [shown(command, 0, 1), shown(command, 0, 1)]
     );
 }
 
@@ -646,18 +681,22 @@ fn the_indicator_shows_after_the_grace_for_the_focused_buffer_only() {
 fn runs_in_two_buffers_share_one_process_cap() {
     let dir = tempfile::tempdir().expect("tempdir");
     let log = dir.path().join("log");
+    let gate = ShellGate::new(dir.path().join("gate"));
+    let command = logging_command(&log, &gate);
     let mut ed = editor_from("-{a}> -[b]> -[c]>\n");
     ed.state.pipe_runs = PipeRuns::with_limit(NonZeroUsize::new(2).expect("two is not zero"));
     let first = ed.focused_buffer_id();
-    type_pipe(&mut ed, &logging_command(&log));
+    type_pipe(&mut ed, &command);
     let second = open_other_buffer(&mut ed, "a b c\n");
     ed.handle_key(key('%'));
     ed.handle_key(key('s'));
     ed.handle_key(key('\\'));
     ed.handle_key(key('w'));
     ed.handle_key(key_enter());
-    type_pipe(&mut ed, &logging_command(&log));
+    type_pipe(&mut ed, &command);
     assert!(busy(&ed, first) && busy(&ed, second), "setup: both run");
+    drain_until(&mut ed, |_| log.exists() && starts_and_peak(&log).0 == 2);
+    gate.open();
     drain_until(&mut ed, |ed| !busy(ed, first) && !busy(ed, second));
     assert_eq!(starts_and_peak(&log), (6, 2));
 }

@@ -947,7 +947,7 @@ fn markdown_heading_is_undone_by_one_undo() {
 #[test]
 fn delete_dir_does_not_count_the_delete_against_the_budget() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
-    let budget = std::time::Duration::from_millis(250);
+    let budget = std::time::Duration::from_secs(1);
 
     test_fixtures::slow_delete::assert_delete_outlasts_budget(budget, |root| {
         let source = format!(r#"(call! "stdlib/delete-dir!" {})"#, steel_path(root));

@@ -1005,11 +1005,11 @@ fn bundled_languages_carry_root_markers() {
 // ── Grammar loads and the command budget ─────────────────────────────────────
 
 /// Well above the scheduling noise of the Scheme each probe runs.
-const GRAMMAR_LOAD_BUDGET_MS: usize = 250;
+const GRAMMAR_LOAD_BUDGET_MS: usize = 1000;
 
 /// How long each grammar library open takes in these tests, several times
 /// [`GRAMMAR_LOAD_BUDGET_MS`].
-const SLOW_OPEN: Duration = Duration::from_secs(1);
+const SLOW_OPEN: Duration = Duration::from_secs(3);
 
 /// An editor showing `text`, whose data dir holds the `installed` fixture
 /// grammars, registered at startup and not yet loaded. The command budget is

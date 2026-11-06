@@ -185,7 +185,7 @@ mod unix {
         )
         .expect("spawn sh");
         drain_until_disconnected(&mut source);
-        let exit = source.finish();
+        let exit = source.finish_within(Duration::from_secs(5));
         assert_eq!(exit.status.and_then(|s| s.code()), Some(3));
         assert!(exit.stderr.contains("oops"), "got: {:?}", exit.stderr);
     }
@@ -208,7 +208,7 @@ mod unix {
         )
         .expect("spawn sh");
         drain_until_disconnected(&mut source);
-        let exit = source.finish();
+        let exit = source.finish_within(Duration::from_secs(5));
         assert_eq!(exit.stderr, kept_stderr(&"x\n".repeat(100_000)));
     }
 

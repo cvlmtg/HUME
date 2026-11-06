@@ -7,6 +7,7 @@ use super::*;
 
 use crate::editor::input_stack::picker::{self, item};
 use hume_platform::process::line_source::spawn_line_source;
+use hume_platform::process::test_support::ShellGate;
 use steel::rvals::SteelVal;
 
 /// Spawns `sh -c script` and attaches it to the already-open picker with
@@ -321,10 +322,12 @@ fn live_session_first_batch_after_attach_replaces_the_previous_rows() {
 fn live_session_second_batch_from_the_same_source_appends() {
     let mut ed = editor_from("-[a]>bc\n");
     open_live_test_picker(&mut ed);
+    let dir = tempfile::tempdir().unwrap();
+    let gate = ShellGate::new(dir.path().join("gate"));
 
     attach_sh(
         &mut ed,
-        "printf 'first\\n'; sleep 0.3; printf 'second\\n'",
+        &format!("printf 'first\\n'; {}; printf 'second\\n'", gate.wait_sh()),
         vec![0],
     );
 
@@ -342,6 +345,7 @@ fn live_session_second_batch_from_the_same_source_appends() {
         "the first batch after attach must replace (wholesale, not append)"
     );
 
+    gate.open();
     drain_sources_until(&mut ed, |ed| {
         ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) == 2
     });
@@ -367,16 +371,19 @@ fn a_stale_sources_late_batch_keeps_the_query_its_rows_answer() {
     let picker_total = |ed: &Editor| ed.state.input.picker().map_or(0, |p| p.total_len());
     let render_query = |ed: &Editor| ed.state.input.picker().unwrap().render_query().to_owned();
     let _ = ed.state.input.picker_mut().unwrap().insert_char('a');
+    let dir = tempfile::tempdir().unwrap();
+    let gate = ShellGate::new(dir.path().join("gate"));
 
     attach_sh(
         &mut ed,
-        "printf 'first\\n'; sleep 0.3; printf 'second\\n'",
+        &format!("printf 'first\\n'; {}; printf 'second\\n'", gate.wait_sh()),
         vec![0],
     );
     drain_sources_until(&mut ed, |ed| picker_total(ed) == 1);
     assert_eq!(render_query(&ed), "a");
 
     let _ = ed.state.input.picker_mut().unwrap().insert_char('b');
+    gate.open();
     drain_sources_until(&mut ed, |ed| picker_total(ed) == 2);
     assert_eq!(render_query(&ed), "a");
 

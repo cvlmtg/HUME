@@ -236,7 +236,12 @@ impl SpawnedLineSource {
     /// `try_wait` returns immediately with the real status; the rare child
     /// that lingers after closing stdout is killed right away rather than
     /// polled for, trading its exact exit status for a bounded frame.
-    pub fn finish(mut self) -> SourceExit {
+    pub fn finish(self) -> SourceExit {
+        self.finish_within(REAP_GRACE)
+    }
+
+    /// [`Self::finish`], waiting up to `grace` for the captured stderr.
+    fn finish_within(mut self, grace: Duration) -> SourceExit {
         let status = match self.child.try_wait() {
             Ok(Some(status)) => Some(status),
             Ok(None) => self.child.reap(),
@@ -245,7 +250,7 @@ impl SpawnedLineSource {
         let stderr = self
             .stderr_rx
             .take()
-            .and_then(|rx| rx.recv_timeout(REAP_GRACE).ok())
+            .and_then(|rx| rx.recv_timeout(grace).ok())
             .unwrap_or_default();
         SourceExit { status, stderr }
     }

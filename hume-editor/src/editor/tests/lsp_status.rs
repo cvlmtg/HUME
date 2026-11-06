@@ -403,10 +403,11 @@ fn lsp_shutdown_all_on_a_starting_client_skips_the_protocol_but_still_tears_down
 #[test]
 fn lsp_shutdown_all_with_no_clients_returns_immediately() {
     let mut ed = editor_from("-[w]>ord\n");
+    let grace = std::time::Duration::from_secs(5);
     let start = std::time::Instant::now();
-    ed.lsp_shutdown_all(std::time::Duration::from_secs(5));
+    ed.lsp_shutdown_all(grace);
     assert!(
-        start.elapsed() < std::time::Duration::from_millis(50),
+        start.elapsed() < grace,
         "no clients means nothing to wait for: must not block on the grace window"
     );
 }

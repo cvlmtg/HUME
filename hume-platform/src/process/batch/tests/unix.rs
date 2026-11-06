@@ -5,7 +5,9 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use super::super::*;
-use crate::process::test_support::{is_alive, logging_command, starts_and_peak};
+use crate::process::test_support::{
+    ShellGate, is_alive, logging_command, starts_and_peak, wait_for_starts,
+};
 use crate::wake::no_op_wake;
 
 fn batch(command: &str, inputs: &[&str]) -> ShellBatch {
@@ -66,8 +68,11 @@ fn progress_counts_finished_processes() {
 fn the_limit_bounds_how_many_processes_run_at_once() {
     let dir = tempfile::tempdir().expect("tempdir");
     let log = dir.path().join("log");
-    let command = logging_command(&log);
-    let mut b = batch(&command, &["", "", "", "", "", ""]);
+    let gate = ShellGate::new(dir.path().join("gate"));
+    let mut b = batch(&logging_command(&log, &gate), &["", "", "", "", "", ""]);
+    poll(&mut b, &mut 2).expect("starts");
+    wait_for_starts(&log, 2);
+    gate.open();
     finish(&mut b, 2).expect("all succeed");
 
     assert_eq!(starts_and_peak(&log), (6, 2));
@@ -77,9 +82,15 @@ fn the_limit_bounds_how_many_processes_run_at_once() {
 fn batches_sharing_one_budget_never_run_more_processes_together() {
     let dir = tempfile::tempdir().expect("tempdir");
     let log = dir.path().join("log");
-    let command = logging_command(&log);
+    let gate = ShellGate::new(dir.path().join("gate"));
+    let command = logging_command(&log, &gate);
     let mut first = batch(&command, &["", "", ""]);
     let mut second = batch(&command, &["", "", ""]);
+    let mut free = 2;
+    poll(&mut first, &mut free).expect("starts");
+    poll(&mut second, &mut free).expect("starts");
+    wait_for_starts(&log, 2);
+    gate.open();
     let deadline = Instant::now() + Duration::from_secs(5);
     let (mut first_done, mut second_done) = (false, false);
     while !(first_done && second_done) {
@@ -112,8 +123,11 @@ fn a_failing_process_fails_the_batch_with_its_exit_code_and_stderr() {
 fn the_first_failure_ends_the_batch_and_dropping_it_kills_the_rest() {
     let dir = tempfile::tempdir().expect("tempdir");
     let pid_file = dir.path().join("pid");
+    // The failing process waits for the slow one to have started.
+    let started = ShellGate::new(&pid_file);
     let command = format!(
-        r#"read x; if [ "$x" = fail ]; then sleep 0.3; exit 1; fi; echo $$ > '{}'; exec sleep 30"#,
+        r#"read x; if [ "$x" = fail ]; then {}; exit 1; fi; echo $$ > '{}'; exec sleep 30"#,
+        started.wait_sh(),
         pid_file.display()
     );
     let mut b = batch(&command, &["fail\n", "slow\n"]);
