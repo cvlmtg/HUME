@@ -31,7 +31,7 @@ For running HUME from a shell instead, see [Command-line Flags](cli.md).
 | `:wq`, `:write-quit` | Save, then close as `:q` does |
 | `:wq!` | Save as `:w!` does, then close as `:wq` does |
 
-Relative paths given to `:w` resolve against HUME's working directory (`:pwd`), not the shell's.
+Relative paths given to `:w` resolve against HUME's working directory (`:pwd`).
 
 ## Files
 
