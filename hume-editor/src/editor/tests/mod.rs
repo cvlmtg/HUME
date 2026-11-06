@@ -951,13 +951,11 @@ fn type_cmd_event(ed: &mut Editor, cmd: &str) {
     ed.feed_event(key_enter());
 }
 
-/// Run a `:set` argument string directly through `typed_set`, bypassing the
-/// keymap dispatcher. Use when a test only needs the setting write's own
-/// success/error result, not the end-to-end minibuffer path `type_cmd`
-/// exercises.
+/// Run `:set <cmd>` as the `:` line runs it, returning its error. Use when
+/// a test only needs the setting write's own success/error result, not the
+/// end-to-end minibuffer path `type_cmd` exercises.
 fn run_set(ed: &mut Editor, cmd: &str) -> Result<(), crate::editor::error::CommandError> {
-    let fp = FocusedPane::current(&ed.view);
-    crate::editor::commands::typed_set(ed, fp, cmd)
+    ed.execute_typed("set", Some(cmd))
 }
 
 /// Enters Insert mode, types `text` (translating `\n` to Enter, same as a
@@ -1891,7 +1889,6 @@ mod find;
 mod frame_pacing;
 mod gc_rooting;
 mod geometry_replaces_caret;
-mod get_setting;
 mod goto_revision;
 mod horizontal_scroll_follow;
 mod increment;
@@ -1983,6 +1980,7 @@ mod terminator;
 mod theme_loading;
 mod timers;
 mod triggers;
+mod typed_settings;
 mod undo_levels;
 mod undo_persist;
 #[cfg(unix)]

@@ -79,14 +79,14 @@ impl CommandRegistry {
             "set",
             "Set a configuration value: :set global|buffer|pane key=value.",
             &[],
-            ArgRequired(typed_set, SET_USAGE),
+            ArgRequired(typed_set, "global|buffer|pane key=value"),
             completer: Some(completion::SET_SOURCE)
         );
         typed_cmd!(
             "get",
             "Show a configuration value: :get global|buffer|pane key.",
             &[],
-            ArgRequired(typed_get, GET_USAGE),
+            ArgRequired(typed_get, "global|buffer|pane key"),
             completer: Some(completion::GET_SOURCE)
         );
         typed_cmd!(

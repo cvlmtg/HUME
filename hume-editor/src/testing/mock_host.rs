@@ -16,12 +16,12 @@
 //! aliases, real grammar parsing) uses a real `Editor` + `EditorHostImpl`
 //! instead (see `editor/tests/plugins.rs`).
 
-use hume_core::{BufferId, OnUnsaved, OptionInput, PaneHandle};
+use hume_core::{BufferId, OnUnsaved, OptionInput, OptionValue, PaneHandle};
 use hume_rope::line::ContentLine;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
     BufferHost, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost,
-    NativeCall, OptionValue, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage,
+    NativeCall, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -284,30 +284,16 @@ impl SettingsHost for MockHost {
         _bid: BufferId,
         _origin: hume_core::ConfigOrigin,
     ) -> Result<(), String> {
-        // MockHost models no buffers, so no per-buffer override to write to.
+        // MockHost models no buffers, so no per-buffer value to write to.
         Err("MockHost: set_buffer_option not available".into())
     }
-    fn set_buffer_line_ending(
-        &mut self,
-        _bid: BufferId,
-        _value: OptionInput,
-        _origin: hume_core::ConfigOrigin,
-    ) -> Result<(), String> {
-        // MockHost models no buffers, so no text to set a line ending on.
-        Err("MockHost: set_buffer_line_ending not available".into())
-    }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
-        hume::editor::settings::setting_value(key, &self.settings, None)
-            .ok_or_else(|| format!("unknown setting '{key}'"))
+        hume::editor::settings::ops::global_option(key, &self.settings)
     }
     fn get_buffer_option(&self, key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         // MockHost models no buffers, so there is no per-buffer override to
         // resolve: every key reads its global value.
-        hume::editor::settings::setting_value(key, &self.settings, None)
-            .ok_or_else(|| format!("unknown setting '{key}'"))
-    }
-    fn buffer_line_ending(&self, _bid: BufferId) -> Result<String, String> {
-        Err("MockHost: buffer_line_ending not available".into())
+        hume::editor::settings::ops::global_option(key, &self.settings)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64

@@ -704,7 +704,7 @@ impl Takes {
             _ => {}
         }
         if let (None, ArgTaken::Required { usage }) = (arg, self.arg) {
-            return Err(refusal(name, &format!("requires an argument: {usage}")));
+            return Err(usage_refusal(name, usage));
         }
         Ok(Accepted {
             arg: arg.map(expand).transpose()?,
@@ -718,6 +718,12 @@ impl Takes {
 /// drop.
 fn refusal(name: &str, reason: &str) -> CommandError {
     CommandError::new(format!("`:{name}` {reason}"))
+}
+
+/// The error for a typed command `name` given no argument, or one not in
+/// the shape `usage` gives: a typo to correct, shown and not logged.
+fn usage_refusal(name: &str, usage: &str) -> CommandError {
+    CommandError::transient(format!("Usage: :{name} {usage}"))
 }
 
 /// What a typed command was given on the `:` line. Only [`Takes::accept`]
@@ -747,6 +753,22 @@ pub(in crate::editor) enum ArgOrForceInput<'a> {
 
 type NativeResult = Result<(), CommandError>;
 
+/// Why a [`NativeTyped::ArgRequired`] body did not run to completion.
+#[derive(Debug)]
+pub(in crate::editor) enum ArgError {
+    /// The argument is not in the shape the command's usage gives. The
+    /// dispatcher refuses it with that usage, as it refuses a missing one.
+    Usage,
+    /// The command failed.
+    Failed(CommandError),
+}
+
+impl From<CommandError> for ArgError {
+    fn from(e: CommandError) -> Self {
+        Self::Failed(e)
+    }
+}
+
 /// A native typed command's body, by the inputs it takes. The shape is the
 /// declaration [`Takes`] reads, so a body cannot read an input the `:`
 /// line would refuse.
@@ -755,9 +777,9 @@ pub(in crate::editor) enum NativeTyped {
     Bare(fn(&mut super::super::Editor, FocusedPane) -> NativeResult),
     Arg(fn(&mut super::super::Editor, FocusedPane, Option<&str>) -> NativeResult),
     /// An argument the body cannot run without, and the usage a line
-    /// without one is refused with.
+    /// without one, or with one the body finds malformed, is refused with.
     ArgRequired(
-        fn(&mut super::super::Editor, FocusedPane, &str) -> NativeResult,
+        fn(&mut super::super::Editor, FocusedPane, &str) -> Result<(), ArgError>,
         &'static str,
     ),
     Force(fn(&mut super::super::Editor, FocusedPane, bool) -> NativeResult),
@@ -779,10 +801,11 @@ impl NativeTyped {
         Takes { arg, force }
     }
 
-    /// Runs the body with the inputs its shape takes, `input` having been
-    /// accepted by [`Self::takes`].
+    /// Runs the body of the typed command `name` with the inputs its shape
+    /// takes, `input` having been accepted by [`Self::takes`].
     pub(in crate::editor) fn run(
         self,
+        name: &str,
         ed: &mut super::super::Editor,
         fp: FocusedPane,
         input: &Accepted,
@@ -791,7 +814,11 @@ impl NativeTyped {
         match self {
             Self::Bare(f) => f(ed, fp),
             Self::Arg(f) => f(ed, fp, arg),
-            Self::ArgRequired(f, _) => f(ed, fp, arg.expect("a missing argument is refused")),
+            Self::ArgRequired(f, usage) => f(ed, fp, arg.expect("a missing argument is refused"))
+                .map_err(|e| match e {
+                    ArgError::Usage => usage_refusal(name, usage),
+                    ArgError::Failed(e) => e,
+                }),
             Self::Force(f) => f(ed, fp, force),
             Self::ArgForce(f) => f(ed, fp, arg, force),
             Self::ArgOrForce(f) => {

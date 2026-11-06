@@ -16,51 +16,6 @@ fn effective_wrap_mode(ed: &Editor, pid: hume_core::PaneId) -> WrapMode {
     crate::editor::commands::effective_wrap_mode(doc, &ed.state.settings, pane)
 }
 
-// ── Generic scope/key validation (`setting_scopes`) ─────────────────────────
-//
-// A single data-driven check produces every "unknown setting" / "wrong
-// scope for this setting" message, instead of two divergent hardcoded
-// strings.
-
-#[test]
-fn typed_set_unknown_setting_errors() {
-    let mut ed = editor_from("-[a]>b\n");
-    let result = run_set(&mut ed, "global foo=bar");
-    assert!(result.is_err(), "nonexistent setting must error");
-    let msg = result.unwrap_err().message().to_owned();
-    assert!(
-        msg.contains("unknown setting") && msg.contains("foo"),
-        "error should say the setting is unknown: {msg}"
-    );
-}
-
-#[test]
-fn typed_set_garbage_scope_on_real_key_errors() {
-    let mut ed = editor_from("-[a]>b\n");
-    let result = run_set(&mut ed, "bogus indent-width=2");
-    assert!(result.is_err(), "garbage scope token must error");
-    let msg = result.unwrap_err().message().to_owned();
-    assert!(
-        msg.contains("indent-width") && msg.contains("global") && msg.contains("buffer"),
-        "error should name the key and its real valid scopes: {msg}"
-    );
-}
-
-/// `complete_set` tolerates a stray double space before the key, so
-/// `typed_set` must accept the same input on Enter. Otherwise Tab-completing
-/// through a double space produces a command line that errors.
-#[test]
-fn typed_set_tolerates_double_space_before_key() {
-    let mut ed = editor_from("-[a]>b\n");
-    let result = run_set(&mut ed, "global  indent-width=2");
-    assert!(
-        result.is_ok(),
-        "double space before key must not error: {:?}",
-        result.err().map(|e| e.message().to_owned())
-    );
-    assert_eq!(ed.state.settings.indent_width, 2);
-}
-
 // ── `:set pane wrap-mode=…` ─────────────────────────────────────────────────
 
 #[test]
@@ -82,42 +37,6 @@ fn typed_set_pane_wrap_mode_none_leaves_saved_wrapping() {
     // saved_wrap_mode must never collapse to a non-wrapping value: it's
     // still the restore target for a future `:wrap` toggle-on.
     assert_eq!(pane.wrap().saved, Some(WrapMode::Word { width: 0 }));
-}
-
-#[test]
-fn typed_set_pane_unknown_setting_errors() {
-    let mut ed = editor_from("-[a]>b\n");
-    let result = run_set(&mut ed, "pane foo=bar");
-    assert!(result.is_err(), "unknown setting must error");
-    let msg = result.unwrap_err().message().to_owned();
-    assert!(
-        msg.contains("unknown setting") && msg.contains("foo"),
-        "error should name the unknown key: {msg}"
-    );
-}
-
-/// A real setting that just isn't pane-eligible (`indent-width`'s `scope:` list
-/// is `["global", "buffer"]`) must be rejected with its own valid scopes, not
-/// silently accepted or confused with an unknown-setting error.
-#[test]
-fn typed_set_pane_ineligible_key_errors() {
-    let mut ed = editor_from("-[a]>b\n");
-    let result = run_set(&mut ed, "pane indent-width=2");
-    assert!(result.is_err(), "pane-ineligible key must error");
-    let msg = result.unwrap_err().message().to_owned();
-    assert!(
-        msg.contains("indent-width") && msg.contains("global") && msg.contains("buffer"),
-        "error should name the key and its actual valid scopes: {msg}"
-    );
-}
-
-#[test]
-fn typed_set_pane_language_errors() {
-    let mut ed = editor_from("-[a]>b\n");
-    // `language` is intercepted before pane-scope handling and has no
-    // pane-scoped meaning, so it must still be a hard error, not a silent no-op.
-    let result = run_set(&mut ed, "pane language=rust");
-    assert!(result.is_err(), "pane-scoped language must error");
 }
 
 #[test]

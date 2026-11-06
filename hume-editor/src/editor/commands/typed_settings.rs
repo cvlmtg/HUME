@@ -1,0 +1,117 @@
+//! `:set` and `:get`: the typed commands that name a setting by scope and key.
+
+use hume_core::{BufferIntrinsicOption, LanguageOptionText, OptionInput, Severity};
+
+use super::super::Editor;
+use super::FocusedPane;
+use crate::editor::error::CommandError;
+use crate::editor::registry::ArgError;
+use crate::editor::settings::ops as settings_ops;
+use crate::editor::settings::{
+    BufferTarget, PaneSetting, PaneValue, Scope, SettingKey, SettingTarget, pane_text, parse_pane,
+    read_global, unknown_setting,
+};
+
+/// The typed command that names a setting by scope and key.
+#[derive(Clone, Copy)]
+enum SettingCommand {
+    Set,
+    Get,
+}
+
+impl SettingCommand {
+    /// What the command does to a setting, as its errors say it.
+    fn action(self) -> &'static str {
+        match self {
+            Self::Set => "set with :set",
+            Self::Get => "read with :get",
+        }
+    }
+}
+
+/// `arg`'s scope token and the text after it.
+fn split_scope(arg: &str) -> Result<(&str, &str), ArgError> {
+    // Stray extra whitespace before the key is tolerated, as `complete_set`
+    // tolerates it, or Tab could complete through a double space into a
+    // command line that errors on Enter.
+    arg.split_once(' ')
+        .map(|(scope, rest)| (scope, rest.trim_start()))
+        .ok_or(ArgError::Usage)
+}
+
+/// Resolve `key` in the scope `scope_str` names. The key is checked before
+/// the scope, so an invalid scope on a real key names that key's scopes.
+fn resolve_setting(
+    cmd: SettingCommand,
+    scope_str: &str,
+    key: &str,
+) -> Result<SettingTarget, CommandError> {
+    let setting =
+        SettingKey::named(key).ok_or_else(|| CommandError::transient(unknown_setting(key)))?;
+    let target = Scope::named(scope_str).and_then(|scope| setting.target(scope));
+    target.ok_or_else(|| {
+        CommandError::transient(format!(
+            "'{key}' cannot be {} {scope_str} (valid scopes: {})",
+            cmd.action(),
+            setting
+                .scopes()
+                .map(Scope::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    })
+}
+
+pub(in crate::editor) fn typed_set(
+    ed: &mut Editor,
+    fp: FocusedPane,
+    arg: &str,
+) -> Result<(), ArgError> {
+    let (scope_str, rest) = split_scope(arg)?;
+    let (key, value) = rest.split_once('=').ok_or(ArgError::Usage)?;
+    let bid = fp.bid(&ed.view);
+    // Only the user runs a typed command: no script reaches `:set`.
+    let by = hume_core::ConfigOrigin::User;
+    let input = OptionInput::Text(value.to_string());
+
+    match resolve_setting(SettingCommand::Set, scope_str, key)? {
+        SettingTarget::Global(key) => {
+            settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input, by)
+        }
+        SettingTarget::Buffer(BufferTarget::Intrinsic(BufferIntrinsicOption::Language)) => {
+            let _ = ed.set_buffer_language_by_name(bid, LanguageOptionText::decode(value), by);
+            Ok(())
+        }
+        SettingTarget::Buffer(target) => {
+            settings_ops::apply_buffer_target(&mut ed.state, bid, target, &input, by)
+        }
+        SettingTarget::Pane(setting) => parse_pane(setting, &input).map(|value| match value {
+            PaneValue::WrapMode(mode) => ed.set_wrap_override(fp, mode),
+        }),
+    }
+    .map_err(|e| ArgError::Failed(CommandError::new(e)))
+}
+
+/// Report a setting's effective value in `scope` as `key=value`, the text
+/// `:set` takes back.
+pub(in crate::editor) fn typed_get(
+    ed: &mut Editor,
+    fp: FocusedPane,
+    arg: &str,
+) -> Result<(), ArgError> {
+    let (scope_str, key) = split_scope(arg)?;
+    let bid = fp.bid(&ed.view);
+    let buf = ed.state.buffers.get(bid);
+    let settings = &ed.state.settings;
+    let value = match resolve_setting(SettingCommand::Get, scope_str, key)? {
+        SettingTarget::Global(key) => read_global(key, settings).text(),
+        SettingTarget::Buffer(target) => {
+            settings_ops::read_buffer_target(&ed.state, buf, target).text()
+        }
+        SettingTarget::Pane(PaneSetting::WrapMode) => pane_text(PaneValue::WrapMode(
+            super::effective_wrap_mode(buf, settings, &ed.view.panes[fp.pid()]),
+        )),
+    };
+    ed.report(Severity::Info, format!("{key}={value}"));
+    Ok(())
+}

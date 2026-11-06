@@ -11,24 +11,27 @@
 //!
 //! A simple setting is one entry in the `define_settings!` invocation, which
 //! generates both structs, their defaults, accessors and the
-//! `write_global`/`write_buffer`/`setting_scopes` dispatch and the readers.
-//! `scope: [...]` lists a key's global and buffer scopes. A buffer key that a
-//! pane can also override declares `pane: Variant`, naming its
-//! [`PaneSetting`]: neither generated writer has pane storage, so `typed_set`
-//! and `typed_get` match that variant. A global key whose write has a
-//! derived-state effect declares `resync: true` (wired in
-//! `editor::settings::ops::apply_global`).
+//! `write_global`/`write_buffer`/`table_setting` dispatch and the readers.
+//! A key's section gives its scopes, which [`SettingKey`] reads for every
+//! caller that names a setting. A buffer key that a pane can also override
+//! declares `pane: Variant`, naming its [`PaneSetting`]: neither generated
+//! writer has pane storage, so `typed_set` and `typed_get` match that
+//! variant. A global key whose write has a derived-state effect declares
+//! `resync: true` (wired in `editor::settings::ops::apply_global`).
 //!
 //! The `BufferIntrinsicOption`s have no macro entry: they have no global
 //! default and live on the buffer. `language` needs `Editor`-level access
-//! (`OnLanguageSet` hook, registry lookup), so `typed_set` handles it;
-//! `line-ending` is written by `ops::set_line_ending`. `ops::intrinsic_text`
-//! reads either back as `:set` text.
+//! (`OnLanguageSet` hook, registry lookup), so `typed_set` and the
+//! `set-buffer-option!` builtin handle its write; `ops::apply_buffer_target`
+//! writes `line-ending`, and `ops::read_buffer_target` reads either back.
 
 use std::fmt;
-use std::str::FromStr;
+use std::hash::Hash;
 
-use hume_core::{Claim, ConfigOrigin, DiagSeverity, LaterWins, OptionInput, StatuslineSections};
+use hume_core::{
+    BufferIntrinsicOption, Claim, ConfigOrigin, DiagSeverity, LaterWins, OptionInput,
+    StatuslineSections,
+};
 use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
@@ -70,7 +73,7 @@ fn parse_named<T>(
 /// The text form of a `:set` value: the names `:set <key>=<Tab>` completes,
 /// the parser that reads a value, and the printer that writes it back.
 ///
-/// Every value type behind a `from_str` setting implements it,
+/// Every value type behind a [`kind::Typed`] setting implements it,
 /// whichever crate defines the type. A trait local to this crate is the only
 /// way to give a foreign type that surface, which is why the text forms of
 /// the option enums live here and not next to the enums.
@@ -89,53 +92,37 @@ pub(in crate::editor) trait SettingText: Sized {
 /// override (buffer). Within one scope a write from an origin below the
 /// recorded one is shadowed, and one from the same or a higher origin
 /// replaces it.
-#[derive(Clone, Debug, Default)]
-pub(in crate::editor::settings) struct SettingOrigins(FxHashMap<&'static str, Claim<LaterWins>>);
+#[derive(Clone, Debug)]
+pub(in crate::editor::settings) struct SettingOrigins<K>(FxHashMap<K, Claim<LaterWins>>);
 
-impl SettingOrigins {
+impl<K> Default for SettingOrigins<K> {
+    fn default() -> Self {
+        Self(FxHashMap::default())
+    }
+}
+
+impl<K: Copy + Eq + Hash> SettingOrigins<K> {
     /// Whether `by` may write `key`; recorded as its writer when it may.
-    fn claim(&mut self, key: &'static str, by: ConfigOrigin) -> bool {
+    fn claim(&mut self, key: K, by: ConfigOrigin) -> bool {
         self.0.entry(key).or_default().claim(by).is_applied()
     }
 
     /// `key`'s slot as it stands, for [`Self::restore`].
-    pub(in crate::editor::settings) fn slot(&self, key: &str) -> Claim<LaterWins> {
-        self.0.get(key).copied().unwrap_or_default()
+    pub(in crate::editor::settings) fn slot(&self, key: K) -> Claim<LaterWins> {
+        self.0.get(&key).copied().unwrap_or_default()
     }
 
     /// Put back what [`Self::slot`] read for `key` before a write that is
     /// being undone.
-    pub(in crate::editor::settings) fn restore(
-        &mut self,
-        key: &'static str,
-        slot: Claim<LaterWins>,
-    ) {
+    pub(in crate::editor::settings) fn restore(&mut self, key: K, slot: Claim<LaterWins>) {
         self.0.insert(key, slot);
     }
 }
 
 /// Name the setting `key` in a parse error. Every `:set` value parse goes
 /// through here, so the parsers themselves stay key-free.
-pub(in crate::editor) fn for_key<T>(key: &str, parsed: Result<T, String>) -> Result<T, String> {
+fn for_key<T>(key: &str, parsed: Result<T, String>) -> Result<T, String> {
     parsed.map_err(|e| format!("invalid value for '{key}': {e}"))
-}
-
-/// The text of `value` for a setting that takes one value; a list or the
-/// statusline's sections are refused.
-pub(in crate::editor) fn single_value(value: &OptionInput) -> Result<&str, String> {
-    match value {
-        OptionInput::Text(text) => Ok(text),
-        OptionInput::Words(_) => Err("takes one value, not a list".to_string()),
-        OptionInput::Sections(_) => Err("takes one value, not statusline sections".to_string()),
-    }
-}
-
-/// Parse `value` as the setting `key`'s type.
-pub(in crate::editor) fn parse_setting_text<T: SettingText>(
-    key: &str,
-    value: &str,
-) -> Result<T, String> {
-    for_key(key, T::parse(value))
 }
 
 /// Generate a closed `:set` enum's [`SettingText`] from one list of
@@ -170,7 +157,7 @@ macro_rules! settings_enum {
 /// [`write_global`]). `Buffer` overrides a setting for the active buffer only
 /// (written to [`BufferOverrides`] via [`write_buffer`]). `Pane` has no
 /// generic storage at all: a [`PaneSetting`] is written straight to the live
-/// `Pane` by `typed_file::typed_set`, a third, narrower rung *on top of*
+/// `Pane` by `typed_settings::typed_set`, a third, narrower rung *on top of*
 /// `Buffer`/`Global` rather than a bypass of them: a pane with no pane-level
 /// override still resolves through the buffer/global chain (see
 /// `commands::effective_wrap_mode`).
@@ -197,6 +184,11 @@ impl Scope {
             Scope::Pane => "pane",
         }
     }
+
+    /// The scope `s` names, `None` for any other text.
+    pub(in crate::editor) fn named(s: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|scope| scope.as_str() == s)
+    }
 }
 
 impl fmt::Display for Scope {
@@ -205,39 +197,20 @@ impl fmt::Display for Scope {
     }
 }
 
-impl FromStr for Scope {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "global" => Ok(Scope::Global),
-            "buffer" => Ok(Scope::Buffer),
-            "pane" => Ok(Scope::Pane),
-            _ => Err(format!("unknown :set scope '{s}'")),
-        }
-    }
-}
-
-/// The `:set`/completion key for the active theme, declared as a
-/// `define_settings!` entry (below), but also matched directly at a few
-/// non-macro call sites, so this constant keeps those literals from drifting
-/// off the macro's own key string.
-pub(in crate::editor) const THEME_KEY: &str = "theme";
+/// The active theme's setting.
+pub(in crate::editor) const THEME: GlobalKey = GlobalKey::theme;
 
 /// Name the `theme` setting starts as: the theme loaded from the search path
 /// when config doesn't pick one.
 pub(in crate::editor) const DEFAULT_THEME: &str = "sand";
 
-/// Same rationale as [`THEME_KEY`], for `wrap-mode`'s non-macro call sites.
-pub(in crate::editor) const WRAP_MODE_KEY: &str = "wrap-mode";
-
 /// One global setting key declared `resync: true` in `define_settings!`.
 ///
-/// Only the generated `resync_key` produces values, so drift is a compile
-/// error both ways: a new `resync: true` key with no variant fails at
-/// `resync_key`, and a variant with no arm fails `resync_derived_state`'s
+/// Only the generated [`GlobalKey::resync`] produces values, so drift is a
+/// compile error both ways: a new `resync: true` key with no variant fails
+/// there, and a variant with no arm fails `resync_derived_state`'s
 /// exhaustive `match`. Variants reuse the snake_case field names because
-/// `resync_key` emits `$gname` verbatim (renaming would need `paste`).
+/// `GlobalKey::resync` emits `$gname` verbatim (renaming would need `paste`).
 ///
 /// Omit the clause rather than writing `resync: false`: that still compiles,
 /// but produces a variant and an arm that can never fire.
@@ -253,179 +226,147 @@ pub(in crate::editor) enum ResyncKey {
 /// A buffer setting a pane can also override, declared `pane: Variant` on its
 /// `define_settings!` entry.
 ///
-/// Only the generated `pane_setting` produces values, and a `pane:` clause
-/// naming no variant fails to compile there, so `typed_set` and `typed_get`
-/// match every pane-scoped key.
+/// Only the generated [`BufferKey::pane`] produces values, and a `pane:`
+/// clause naming no variant fails to compile there, so `typed_set` and
+/// `typed_get` match every pane-scoped key.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) enum PaneSetting {
     /// `wrap-mode`: the pane's own wrap override.
     WrapMode,
 }
 
-/// The `Scope::Pane` a `pane:` clause adds to its key's scopes.
-macro_rules! pane_scope {
-    ($variant:ident) => {
-        Scope::Pane
-    };
+/// A `define_settings!` key, which always has a global value.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(in crate::editor) enum TableKey {
+    Global(GlobalKey),
+    Buffer(BufferKey),
 }
 
-// ── Parser helper ─────────────────────────────────────────────────────────────
-
-/// Dispatch from a parser-kind token to the actual parse call.
-///
-/// All arms return `Result<T, String>`. Used inside `write_global`/
-/// `write_buffer` (generated by `define_settings!`) where `value` and `key`
-/// are in scope.
-macro_rules! parse_setting {
-    (@raw $value:expr, bool) => {
-        parse_bool($value)
-    };
-    (@raw $value:expr, usize) => {
-        parse_usize($value)
-    };
-    (@raw $value:expr, usize_nonzero) => {
-        parse_usize_nonzero($value)
-    };
-    (@raw $value:expr, tab_width) => {
-        parse_tab_width($value)
-    };
-    (@raw $value:expr, from_str) => {
-        SettingText::parse($value)
-    };
-    (@raw $value:expr, string) => {
-        Ok::<String, String>(($value).to_owned())
-    };
-    (@raw $value:expr, show_newline) => {
-        parse_show_newline($value)
-    };
-    (@raw $value:expr, word_chars) => {
-        parse_word_chars($value)
-    };
-    ($value:expr, $key:expr, shell_command) => {
-        for_key(
-            $key,
-            match $value {
-                OptionInput::Text(text) => ShellCommand::parse(text),
-                OptionInput::Words(words) => ShellCommand::from_words(words.clone()),
-                OptionInput::Sections(_) => Err("takes a command, not statusline sections".to_string()),
-            },
-        )
-    };
-    ($value:expr, $key:expr, $kind:ident) => {
-        for_key(
-            $key,
-            single_value($value).and_then(|text| parse_setting!(@raw text, $kind)),
-        )
-    };
-}
-
-/// What a setting's effective value is read as: the
-/// [`hume_scripting::host::OptionValue`] `get-option` returns, or the text
-/// `:set` takes back. One method per shape `read_as!` hands it, so each
-/// form holds one inverse per shape.
-trait SettingForm {
-    type Out;
-    fn bool(&self, value: bool) -> Self::Out;
-    fn int(&self, value: usize) -> Self::Out;
-    /// A value already in the text its parser takes back.
-    fn text(&self, value: String) -> Self::Out;
-    fn shell(&self, value: &ShellCommand) -> Self::Out;
-    fn statusline(&self, value: &StatusLineConfig) -> Self::Out;
-}
-
-/// A setting as `get-option` reads it. `shell` reads back as a list of
-/// words and `statusline` as its sections.
-struct ScriptForm;
-
-impl SettingForm for ScriptForm {
-    type Out = hume_scripting::host::OptionValue;
-
-    fn bool(&self, value: bool) -> Self::Out {
-        Self::Out::Bool(value)
+impl TableKey {
+    /// Every settings-table key, the global-only ones first.
+    pub(in crate::editor) fn all() -> impl Iterator<Item = Self> {
+        GlobalKey::ALL
+            .iter()
+            .copied()
+            .map(Self::Global)
+            .chain(BufferKey::ALL.iter().copied().map(Self::Buffer))
     }
 
-    fn int(&self, value: usize) -> Self::Out {
-        Self::Out::Int(value as i64)
-    }
-
-    fn text(&self, value: String) -> Self::Out {
-        Self::Out::Str(value)
-    }
-
-    fn shell(&self, value: &ShellCommand) -> Self::Out {
-        Self::Out::List(value.words())
-    }
-
-    fn statusline(&self, value: &StatusLineConfig) -> Self::Out {
-        Self::Out::Sections(statusline_sections(value))
+    /// The key `:set` and scripts name the setting by.
+    pub(in crate::editor) const fn name(self) -> &'static str {
+        match self {
+            Self::Global(key) => key.name(),
+            Self::Buffer(key) => key.name(),
+        }
     }
 }
 
-/// A setting as the text `:set` takes back.
-struct TypedForm;
+/// What a setting names on one buffer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) enum BufferTarget {
+    /// An option the buffer stores itself.
+    Intrinsic(BufferIntrinsicOption),
+    /// A settings-table key's buffer override.
+    Override(BufferKey),
+}
 
-impl SettingForm for TypedForm {
-    type Out = String;
+/// Where a setting named in a scope lives.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) enum SettingTarget {
+    /// A settings-table key's global value.
+    Global(TableKey),
+    Buffer(BufferTarget),
+    /// A setting's pane override.
+    Pane(PaneSetting),
+}
 
-    fn bool(&self, value: bool) -> String {
-        value.to_string()
+/// A setting by its key, and the scopes it takes: the one rule `:set`,
+/// `:get`, their completion and the option builtins' host all read.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) enum SettingKey {
+    /// An option the buffer stores itself, valid only in buffer scope.
+    Intrinsic(BufferIntrinsicOption),
+    /// A settings-table key: a `global` or `private_global` key is valid
+    /// only in global scope, a `buffer` or `subfield` key in global and
+    /// buffer scope, and in pane scope when its `pane:` clause names a
+    /// [`PaneSetting`].
+    Table(TableKey),
+}
+
+impl SettingKey {
+    /// The setting `key` names, `None` for an unknown key.
+    pub(in crate::editor) fn named(key: &str) -> Option<Self> {
+        BufferIntrinsicOption::from_name(key)
+            .map(Self::Intrinsic)
+            .or_else(|| table_setting(key).map(Self::Table))
     }
 
-    fn int(&self, value: usize) -> String {
-        value.to_string()
+    /// Every setting, the buffer-intrinsic options first.
+    pub(in crate::editor) fn all() -> impl Iterator<Item = Self> {
+        BufferIntrinsicOption::ALL
+            .into_iter()
+            .map(Self::Intrinsic)
+            .chain(TableKey::all().map(Self::Table))
     }
 
-    fn text(&self, value: String) -> String {
-        value
+    /// The key `:set` and scripts name the setting by.
+    pub(in crate::editor) const fn name(self) -> &'static str {
+        match self {
+            Self::Intrinsic(opt) => opt.name(),
+            Self::Table(key) => key.name(),
+        }
     }
 
-    fn shell(&self, value: &ShellCommand) -> String {
-        value.to_text()
+    /// The setting's global value, `None` for one the buffer stores itself.
+    pub(in crate::editor) fn global(self) -> Option<TableKey> {
+        match self {
+            Self::Table(key) => Some(key),
+            Self::Intrinsic(_) => None,
+        }
     }
 
-    fn statusline(&self, value: &StatusLineConfig) -> String {
-        statusline_text(value)
+    /// What the setting names on a buffer, `None` for a global-only one.
+    pub(in crate::editor) fn buffer(self) -> Option<BufferTarget> {
+        match self {
+            Self::Intrinsic(opt) => Some(BufferTarget::Intrinsic(opt)),
+            Self::Table(TableKey::Buffer(key)) => Some(BufferTarget::Override(key)),
+            Self::Table(TableKey::Global(_)) => None,
+        }
+    }
+
+    /// The setting's pane override, `None` for one a pane cannot override.
+    pub(in crate::editor) fn pane(self) -> Option<PaneSetting> {
+        match self {
+            Self::Table(TableKey::Buffer(key)) => key.pane(),
+            Self::Table(TableKey::Global(_)) | Self::Intrinsic(_) => None,
+        }
+    }
+
+    /// Every scope the setting takes, in [`Scope::ALL`] order.
+    pub(in crate::editor) fn scopes(self) -> impl Iterator<Item = Scope> {
+        Scope::ALL
+            .iter()
+            .copied()
+            .filter(move |&scope| self.target(scope).is_some())
+    }
+
+    /// Where the setting lives in `scope`, `None` for a scope it does not
+    /// take.
+    pub(in crate::editor) fn target(self, scope: Scope) -> Option<SettingTarget> {
+        match scope {
+            Scope::Global => self.global().map(SettingTarget::Global),
+            Scope::Buffer => self.buffer().map(SettingTarget::Buffer),
+            Scope::Pane => self.pane().map(SettingTarget::Pane),
+        }
     }
 }
 
-/// Dispatch from a parser-kind token to the [`SettingForm`] method that
-/// reads the value. Mirrors [`parse_setting!`]'s kind table so every setting
-/// stays readable the moment it's declared: integer-ish kinds (`usize`,
-/// `usize_nonzero`, `tab_width`) read as `int`, and every named value as
-/// `text` in the form its own parser takes back: [`SettingText::to_text`]
-/// for `from_str` types, [`format_show_newline`] (the inverse of
-/// [`parse_show_newline`]) for `show_newline`.
-macro_rules! read_as {
-    ($form:expr, $value:expr, bool) => {
-        $form.bool($value)
-    };
-    ($form:expr, $value:expr, usize) => {
-        $form.int($value)
-    };
-    ($form:expr, $value:expr, usize_nonzero) => {
-        $form.int($value)
-    };
-    ($form:expr, $value:expr, tab_width) => {
-        $form.int(usize::from($value))
-    };
-    ($form:expr, $value:expr, from_str) => {
-        $form.text($value.to_text())
-    };
-    ($form:expr, $value:expr, string) => {
-        $form.text($value.clone())
-    };
-    ($form:expr, $value:expr, show_newline) => {
-        $form.text(format_show_newline($value).to_owned())
-    };
-    ($form:expr, $value:expr, word_chars) => {
-        $form.text($value.to_string())
-    };
-    ($form:expr, $value:expr, shell_command) => {
-        $form.shell(&$value)
-    };
+/// The error for a key no setting has, whichever command or builtin named it.
+pub(in crate::editor) fn unknown_setting(key: &str) -> String {
+    format!("unknown setting '{key}'")
 }
 
-/// Dispatch from a parser-kind token to a `BufferOverrides` accessor.
+/// Dispatch from a parser kind to a `BufferOverrides` accessor.
 ///
 /// Every buffer setting but `word-chars` is `Copy`, so the default arm
 /// resolves buffer-override-or-global by copying. `word_chars`
@@ -433,7 +374,7 @@ macro_rules! read_as {
 /// what lets [`hume_editing::word::WordChars`] stay borrowed-and-`Copy` per
 /// its own doc, rather than every caller paying a heap clone per keystroke.
 macro_rules! buffer_accessor {
-    ($bname:ident, $btype:ty, word_chars) => {
+    ($bname:ident, $btype:ty, WordChars) => {
         /// Effective value: buffer override → global default.
         pub(in crate::editor) fn $bname<'a>(&'a self, global: &'a EditorSettings) -> &'a str {
             self.$bname.as_deref().unwrap_or(&global.$bname)
@@ -449,54 +390,44 @@ macro_rules! buffer_accessor {
 
 // ── Settings definition ───────────────────────────────────────────────────────
 
-/// Generate [`EditorSettings`], [`BufferOverrides`], [`write_global`], and
-/// [`write_buffer`] from a single source of truth.
+/// Generate [`EditorSettings`], [`BufferOverrides`], the key types
+/// [`GlobalKey`] and [`BufferKey`], [`write_global`], [`write_buffer`] and
+/// the readers [`read_global`] and [`read_buffer`] from a single source of
+/// truth.
 ///
 /// ## Sections
 ///
 /// - `global { … }`: global-only `:set` keys.
-///   `"key" => field: Type = default, scope: [...], parser: kind [, resync: true];`
+///   `"key" => field: Type = default, parser: Kind [, resync: true];`
 ///   Declare `resync: true` when the write has a derived-state effect.
-/// - `buffer { … }`: per-buffer-overridable `:set` keys; same format, no
+/// - `buffer { … }`: `:set` keys a buffer can override; same format, no
 ///   `resync:`. Declare `pane: Variant` (after `parser:`) for a key a pane can
-///   also override: it adds `Scope::Pane` and names its [`PaneSetting`].
+///   also override: it adds `Scope::Pane` and names its [`PaneSetting`]. Only
+///   this section takes it, so a pane-scoped key also takes buffer scope,
+///   where a per-language `on-language-set` hook can reach it.
 /// - `extra_global { … }`: `EditorSettings`-only fields, no `:set` key.
 ///   `field: Type = default;`
 /// - `extra_buffer { … }`: fields on both structs, no `:set` key.
 ///   `field: Type = global_default;` (buffer default is `None`)
 /// - `subfield { … }`: a `:set` key stored in a nested field of an
 ///   `extra_global` value, with a differently named buffer override.
-///   `"key" => global_field.sub_field / override_field : Type, scope: [...], parser: kind;`
+///   `"key" => global_field.sub_field / override_field : Type, parser: Kind;`
 ///   Used by the three `whitespace-*` keys.
-/// - `manual_keys { … }`: `:set` keys with a hand-written write arm below the
-///   invocation; this section is still the sole source of their
-///   [`setting_scopes`]/[`all_setting_keys`] entries.
-///   `"key" => field, scope: [...];` The readers call the [`SettingForm`]
-///   method named `field` on `EditorSettings`' own `field`. Used by
-///   `"statusline"`.
+/// - `private_global { … }`: global-only `:set` keys whose field is private
+///   and read through a getter of the same name, so a raw assignment outside
+///   this module is a compile error and [`write_global`] is the only writer.
+///   `"key" => field: Type, parser: Kind;` The default is `Type::default()`.
+///   Used by `"statusline"`.
 ///
-/// ## Parser kinds
-///
-/// | Token | Function |
-/// |-------|----------|
-/// | `bool` | `parse_bool(value)` |
-/// | `usize` | `parse_usize(value)` |
-/// | `usize_nonzero` | `parse_usize_nonzero(value)` |
-/// | `tab_width` | `parse_tab_width(value)` |
-/// | `from_str` | `SettingText::parse` (type inferred from field) |
-/// | `string` | `value.to_owned()` |
-/// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format) |
-/// | `word_chars` | `parse_word_chars(value)` (validated, unlike `string`) |
-/// | `shell_command` | `ShellCommand`'s `SettingText::parse` for text, [`ShellCommand::from_words`] for a script's list; reads back as a list of strings |
-///
-/// Every kind but `shell_command` takes one value and refuses a list.
+/// `parser:` names a type in [`kind`] that implements [`kind::Kind`] for
+/// the field's type: how the value parses, completes and reads back.
 macro_rules! define_settings {
     (
         global {
-            $( $gkey:literal => $gname:ident : $gtype:ty = $gdefault:expr, scope: [$($gscope:expr),+], parser: $gparser:ident $(, resync: $gresync:literal)?; )*
+            $( $gkey:literal => $gname:ident : $gtype:ty = $gdefault:expr, parser: $gparser:ident $(, resync: $gresync:literal)?; )*
         }
         buffer {
-            $( $bkey:literal => $bname:ident : $btype:ty = $bdefault:expr, scope: [$($bscope:expr),+], parser: $bparser:ident $(, pane: $bpane:ident)?; )*
+            $( $bkey:literal => $bname:ident : $btype:ty = $bdefault:expr, parser: $bparser:ident $(, pane: $bpane:ident)?; )*
         }
         extra_global {
             $( $egname:ident : $egtype:ty = $egdefault:expr; )*
@@ -505,10 +436,10 @@ macro_rules! define_settings {
             $( $ebname:ident : $ebtype:ty = $ebdefault:expr; )*
         }
         subfield {
-            $( $skey:literal => $sglobal:ident . $ssub:ident / $sfield:ident : $stype:ty, scope: [$($sscope:expr),+], parser: $sparser:ident; )*
+            $( $skey:literal => $sglobal:ident . $ssub:ident / $sfield:ident : $stype:ty, parser: $sparser:ident; )*
         }
-        manual_keys {
-            $( $mkey:literal => $mname:ident, scope: [$($mscope:expr),+]; )*
+        private_global {
+            $( $pkey:literal => $pname:ident : $ptype:ty, parser: $pparser:ident; )*
         }
     ) => {
 
@@ -523,14 +454,8 @@ macro_rules! define_settings {
             $( pub $bname: $btype, )*
             $( pub $egname: $egtype, )*
             $( pub $ebname: $ebtype, )*
-            /// Not `pub`, unlike every other field here: `write_global`'s
-            /// hand-written `"statusline"` arm is its only legal writer, so
-            /// keeping the field itself private (rather than merely
-            /// `pub(crate)`) makes a raw assignment from anywhere else in
-            /// this crate (a raw assignment from anywhere else is a compile
-            /// error instead of a bug). Read through [`EditorSettings::statusline`].
-            statusline: StatusLineConfig,
-            origins: SettingOrigins,
+            $( $pname: $ptype, )*
+            origins: SettingOrigins<TableKey>,
         }
 
         impl Default for EditorSettings {
@@ -540,18 +465,20 @@ macro_rules! define_settings {
                     $( $bname: $bdefault, )*
                     $( $egname: $egdefault, )*
                     $( $ebname: $ebdefault, )*
-                    statusline: StatusLineConfig::default(),
+                    $( $pname: <$ptype>::default(), )*
                     origins: SettingOrigins::default(),
                 }
             }
         }
 
         impl EditorSettings {
-            /// Read the resolved statusline config. There is no write
-            /// counterpart on this type; see the field's own doc.
-            pub fn statusline(&self) -> &StatusLineConfig {
-                &self.statusline
-            }
+            $(
+                /// A `private_global` setting's value, written only by
+                /// [`write_global`].
+                pub fn $pname(&self) -> &$ptype {
+                    &self.$pname
+                }
+            )*
         }
 
         /// Per-buffer setting overrides. All fields are `Option<T>`; `None`
@@ -564,11 +491,92 @@ macro_rules! define_settings {
             $( pub $bname: Option<$btype>, )*
             $( pub $ebname: Option<$ebtype>, )*
             $( pub $sfield: Option<$stype>, )*
-            origins: SettingOrigins,
+            origins: SettingOrigins<BufferKey>,
         }
 
         impl BufferOverrides {
             $( buffer_accessor!($bname, $btype, $bparser); )*
+        }
+
+        // ── keys ──────────────────────────────────────────────────────────────
+
+        /// A global-only setting: a `global` or `private_global` entry.
+        /// Variants reuse the snake_case field names, as [`ResyncKey`]'s do.
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        #[allow(non_camel_case_types)]
+        pub(in crate::editor) enum GlobalKey {
+            $( $gname, )*
+            $( $pname, )*
+        }
+
+        impl GlobalKey {
+            /// Every global-only setting.
+            pub(in crate::editor) const ALL: &'static [Self] = &[$( Self::$gname, )* $( Self::$pname, )*];
+
+            /// The key `:set` and scripts name the setting by.
+            pub(in crate::editor) const fn name(self) -> &'static str {
+                match self {
+                    $( Self::$gname => $gkey, )*
+                    $( Self::$pname => $pkey, )*
+                }
+            }
+
+            /// The derived state a write to this setting resyncs, `None`
+            /// unless its entry declares `resync: true`. The sole source both
+            /// `editor::settings::ops::resync_derived_state` (which effect to
+            /// run) and `reset_globals` (which keys need one at all) go
+            /// through.
+            pub(in crate::editor) fn resync(self) -> Option<ResyncKey> {
+                match self {
+                    $( $( Self::$gname if $gresync => Some(ResyncKey::$gname), )? )*
+                    _ => None,
+                }
+            }
+        }
+
+        /// A setting a buffer can override: a `buffer` or `subfield` entry.
+        /// Variants reuse the snake_case field names, as [`GlobalKey`]'s do.
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        #[allow(non_camel_case_types)]
+        pub(in crate::editor) enum BufferKey {
+            $( $bname, )*
+            $( $sfield, )*
+        }
+
+        impl BufferKey {
+            /// Every setting a buffer can override.
+            pub(in crate::editor) const ALL: &'static [Self] = &[$( Self::$bname, )* $( Self::$sfield, )*];
+
+            /// The key `:set` and scripts name the setting by.
+            pub(in crate::editor) const fn name(self) -> &'static str {
+                match self {
+                    $( Self::$bname => $bkey, )*
+                    $( Self::$sfield => $skey, )*
+                }
+            }
+
+            /// The [`PaneSetting`] the entry's `pane:` clause names, `None`
+            /// for a key a pane cannot override.
+            pub(in crate::editor) fn pane(self) -> Option<PaneSetting> {
+                match self {
+                    $( $( Self::$bname => Some(PaneSetting::$bpane), )? )*
+                    _ => None,
+                }
+            }
+        }
+
+        /// The settings-table key a raw key names, by the section that
+        /// declares it. `None` for any other key, notably the
+        /// `BufferIntrinsicOption`s, which have no generic storage:
+        /// [`SettingKey::named`] matches them before consulting this table.
+        fn table_setting(key: &str) -> Option<TableKey> {
+            match key {
+                $( $gkey => Some(TableKey::Global(GlobalKey::$gname)), )*
+                $( $pkey => Some(TableKey::Global(GlobalKey::$pname)), )*
+                $( $bkey => Some(TableKey::Buffer(BufferKey::$bname)), )*
+                $( $skey => Some(TableKey::Buffer(BufferKey::$sfield)), )*
+                _ => None,
+            }
         }
 
         // ── write_global / write_buffer ───────────────────────────────────────
@@ -576,53 +584,46 @@ macro_rules! define_settings {
         /// Write a global setting's raw value from `by`, with no
         /// derived-state resync.
         ///
-        /// Returns `Err(message)` on unknown key or invalid value, checked
-        /// before the rank, and `Ok(false)`, writing nothing, when a higher
-        /// origin wrote the value ([`SettingOrigins`]).
+        /// Returns `Err(message)` on an invalid value, checked before the
+        /// rank, and `Ok(false)`, writing nothing, when a higher origin
+        /// wrote the value ([`SettingOrigins`]).
         ///
         /// This is the raw field write only. Some settings have derived
         /// state that must be resynced after a successful write (declared
         /// via `resync: true` above). Production code must go through
         /// [`ops::apply_global`], which wraps this and runs those effects;
-        /// calling this directly would silently skip them.
+        /// calling this directly would skip them.
         ///
-        /// `pub(in crate::editor::settings)`: [`ops::apply_global`] is the
-        /// one production caller, with editor state to resync against, and
-        /// `settings::tests` is the only other reach. `testing::MockHost`
-        /// needs the raw write too (it has no `EditorState`/`EngineView` to
-        /// resync effects against) but lives outside this module, so it goes
-        /// through `ops::write_global_for_test`, a `#[cfg(test)]`-gated
-        /// `pub(crate)` pass-through that does not exist in a production
-        /// build, not a widening of this function's own visibility.
+        /// [`ops::apply_global`] is the one production caller.
+        /// `ops::write_global_for_test` reaches it for `testing::MockHost`
+        /// and `settings::tests`, in test and `test-util` builds only.
         pub(in crate::editor::settings) fn write_global(
-            key: &str,
+            key: TableKey,
             value: &OptionInput,
             settings: &mut EditorSettings,
             by: ConfigOrigin,
         ) -> Result<bool, String> {
             match key {
-                $( $gkey => {
-                    let parsed = parse_setting!(value, key, $gparser)?;
-                    if !settings.origins.claim($gkey, by) { return Ok(false); }
+                $( TableKey::Global(GlobalKey::$gname) => {
+                    let parsed = kind::parse_as::<kind::$gparser, _>($gkey, value)?;
+                    if !settings.origins.claim(key, by) { return Ok(false); }
                     settings.$gname = parsed;
                 } )*
-                $( $bkey => {
-                    let parsed = parse_setting!(value, key, $bparser)?;
-                    if !settings.origins.claim($bkey, by) { return Ok(false); }
+                $( TableKey::Global(GlobalKey::$pname) => {
+                    let parsed = kind::parse_as::<kind::$pparser, _>($pkey, value)?;
+                    if !settings.origins.claim(key, by) { return Ok(false); }
+                    settings.$pname = parsed;
+                } )*
+                $( TableKey::Buffer(BufferKey::$bname) => {
+                    let parsed = kind::parse_as::<kind::$bparser, _>($bkey, value)?;
+                    if !settings.origins.claim(key, by) { return Ok(false); }
                     settings.$bname = parsed;
                 } )*
-                $( $skey => {
-                    let parsed = parse_setting!(value, key, $sparser)?;
-                    if !settings.origins.claim($skey, by) { return Ok(false); }
+                $( TableKey::Buffer(BufferKey::$sfield) => {
+                    let parsed = kind::parse_as::<kind::$sparser, _>($skey, value)?;
+                    if !settings.origins.claim(key, by) { return Ok(false); }
                     settings.$sglobal.$ssub = parsed;
                 } )*
-                // Statusline config, global-only: `:set`'s text or a script's sections.
-                "statusline" => {
-                    let parsed = for_key(key, parse_statusline(value))?;
-                    if !settings.origins.claim("statusline", by) { return Ok(false); }
-                    settings.statusline = parsed;
-                }
-                _ => return Err(format!("unknown setting '{key}'")),
             }
             Ok(true)
         }
@@ -631,165 +632,96 @@ macro_rules! define_settings {
         /// resync (no buffer-scoped key has one today; see [`write_global`]'s
         /// doc for the mechanism global-only keys use).
         ///
-        /// Returns `Err(message)` on unknown key, a global-only key, or an
-        /// invalid value, and `Ok(false)`, writing nothing, when a higher
-        /// origin wrote the override ([`SettingOrigins`]).
+        /// Returns `Err(message)` on an invalid value, and `Ok(false)`,
+        /// writing nothing, when a higher origin wrote the override
+        /// ([`SettingOrigins`]).
         ///
-        /// `pub(in crate::editor::settings)`: [`ops::apply_buffer`] is the
-        /// only caller. `testing::MockHost` models no buffers, so it has no
+        /// `pub(in crate::editor::settings)`: `ops::apply_buffer`, behind
+        /// [`ops::apply_buffer_target`], is the only caller. `testing::MockHost` models no buffers, so it has no
         /// per-buffer override to write and needs no forwarding shim here
         /// (contrast [`write_global`]'s `write_global_for_test`).
         pub(in crate::editor::settings) fn write_buffer(
-            key: &str,
+            key: BufferKey,
             value: &OptionInput,
             overrides: &mut BufferOverrides,
             by: ConfigOrigin,
         ) -> Result<bool, String> {
             match key {
-                $( $bkey => {
-                    let parsed = parse_setting!(value, key, $bparser)?;
-                    if !overrides.origins.claim($bkey, by) { return Ok(false); }
+                $( BufferKey::$bname => {
+                    let parsed = kind::parse_as::<kind::$bparser, _>($bkey, value)?;
+                    if !overrides.origins.claim(key, by) { return Ok(false); }
                     overrides.$bname = Some(parsed);
                 } )*
-                $( $skey => {
-                    let parsed = parse_setting!(value, key, $sparser)?;
-                    if !overrides.origins.claim($skey, by) { return Ok(false); }
+                $( BufferKey::$sfield => {
+                    let parsed = kind::parse_as::<kind::$sparser, _>($skey, value)?;
+                    if !overrides.origins.claim(key, by) { return Ok(false); }
                     overrides.$sfield = Some(parsed);
                 } )*
-                "statusline" => {
-                    return Err("'statusline' is a global-only setting; use :set global statusline=…".to_string());
-                }
-                $( $gkey => {
-                    return Err(format!(
-                        "'{key}' is a global-only setting; use :set global {key}=…"
-                    ));
-                } )*
-                _ => return Err(format!("unknown setting '{key}'")),
             }
             Ok(true)
         }
 
-        /// Decode `key` into its [`ResyncKey`] variant, or `None` if it
-        /// doesn't declare `resync: true` above. The sole source both
-        /// `editor::settings::ops::resync_derived_state` (which key to
-        /// resync) and `reset_globals` (which keys need resyncing at all)
-        /// go through. See [`ResyncKey`]'s own doc for the compile-time
-        /// property this buys.
-        pub(in crate::editor) fn resync_key(key: &str) -> Option<ResyncKey> {
-            match key {
-                $( $( $gkey if $gresync => Some(ResyncKey::$gname), )? )*
-                _ => None,
+        // ── pane overrides ────────────────────────────────────────────────────
+
+        /// A pane override's value, one variant per [`PaneSetting`].
+        pub(in crate::editor) enum PaneValue {
+            $( $( $bpane($btype), )? )*
+        }
+
+        /// Parse `value` for the pane override `setting`, by the parser its
+        /// `buffer` entry declares.
+        pub(in crate::editor) fn parse_pane(
+            setting: PaneSetting,
+            value: &OptionInput,
+        ) -> Result<PaneValue, String> {
+            match setting {
+                $( $( PaneSetting::$bpane => kind::parse_as::<kind::$bparser, _>($bkey, value).map(PaneValue::$bpane), )? )*
+            }
+        }
+
+        /// `value` as the text `:set pane` takes back.
+        pub(in crate::editor) fn pane_text(value: PaneValue) -> String {
+            match value {
+                $( $( PaneValue::$bpane(value) => <kind::$bparser as kind::Kind<$btype>>::shape(&value).text(), )? )*
             }
         }
 
         // ── setting readers ───────────────────────────────────────────────────
 
-        /// The effective value of `key` read as `form`: `overrides`' value
-        /// if `Some` and the key is buffer-scoped, else the global default.
-        /// `None` for the keys [`setting_scopes`] has no entry for.
-        fn read_setting<F: SettingForm>(
-            key: &str,
-            settings: &EditorSettings,
-            overrides: Option<&BufferOverrides>,
-            form: F,
-        ) -> Option<F::Out> {
+        /// `key`'s global value.
+        pub(in crate::editor) fn read_global(key: TableKey, settings: &EditorSettings) -> Shape {
             match key {
-                $( $gkey => Some(read_as!(form, settings.$gname, $gparser)), )*
-                // `read_as!` is called separately in each branch, not
-                // hoisted after a shared `let value = …`: the `word_chars`
-                // accessor returns `&str` while the global fallback is the
-                // `String` field itself, so the two branches don't unify to
-                // one type the way every `Copy` buffer setting's do.
-                $( $bkey => match overrides {
-                    Some(o) => Some(read_as!(form, o.$bname(settings), $bparser)),
-                    None => Some(read_as!(form, settings.$bname, $bparser)),
-                }, )*
-                $( $skey => {
-                    let value = match overrides {
-                        Some(o) => o.$sfield.unwrap_or(settings.$sglobal.$ssub),
-                        None => settings.$sglobal.$ssub,
-                    };
-                    Some(read_as!(form, value, $sparser))
-                } )*
-                $( $mkey => Some(form.$mname(&settings.$mname)), )*
-                _ => None,
+                $( TableKey::Global(GlobalKey::$gname) => <kind::$gparser as kind::Kind<$gtype>>::shape(&settings.$gname), )*
+                $( TableKey::Global(GlobalKey::$pname) => <kind::$pparser as kind::Kind<$ptype>>::shape(&settings.$pname), )*
+                $( TableKey::Buffer(BufferKey::$bname) => <kind::$bparser as kind::Kind<$btype>>::shape(&settings.$bname), )*
+                $( TableKey::Buffer(BufferKey::$sfield) => <kind::$sparser as kind::Kind<$stype>>::shape(&settings.$sglobal.$ssub), )*
             }
         }
 
-        /// The effective value of `key`, as [`read_setting`] resolves it.
-        /// Backs `(get-option key)` (`overrides` always `None`: global only)
-        /// and `(get-buffer-option bid key)` (`overrides` from `bid`'s
-        /// stored `BufferOverrides`). `None` for a key with no generic
-        /// storage, such as a `BufferIntrinsicOption`: the
-        /// `get-buffer-option` builtin routes those to their own readers
-        /// before reaching here.
-        pub fn setting_value(
-            key: &str,
+        /// `key`'s effective value for a buffer with `overrides`: the
+        /// override if set, else the global value.
+        pub(in crate::editor) fn read_buffer(
+            key: BufferKey,
             settings: &EditorSettings,
-            overrides: Option<&BufferOverrides>,
-        ) -> Option<hume_scripting::host::OptionValue> {
-            read_setting(key, settings, overrides, ScriptForm)
-        }
-
-        /// The effective value of `key` as the text `:set` takes back, as
-        /// [`read_setting`] resolves it. Backs `:get`.
-        pub(in crate::editor) fn setting_text(
-            key: &str,
-            settings: &EditorSettings,
-            overrides: Option<&BufferOverrides>,
-        ) -> Option<String> {
-            read_setting(key, settings, overrides, TypedForm)
-        }
-
-        /// The [`PaneSetting`] a buffer key's `pane:` clause names, `None`
-        /// for every other key.
-        pub(in crate::editor) fn pane_setting(key: &str) -> Option<PaneSetting> {
+            overrides: &BufferOverrides,
+        ) -> Shape {
             match key {
-                $( $( $bkey => Some(PaneSetting::$bpane), )? )*
-                _ => None,
+                $( BufferKey::$bname => <kind::$bparser as kind::Kind<$btype>>::shape(overrides.$bname.as_ref().unwrap_or(&settings.$bname)), )*
+                $( BufferKey::$sfield => <kind::$sparser as kind::Kind<$stype>>::shape(overrides.$sfield.as_ref().unwrap_or(&settings.$sglobal.$ssub)), )*
             }
         }
 
-        /// The `Scope`s a setting accepts, as declared by its `scope: [...]`
-        /// list in the `define_settings!` invocation below, plus
-        /// `Scope::Pane` for a `pane:` clause. Empty for any
-        /// key not declared there, notably the `BufferIntrinsicOption`s,
-        /// which have no generic storage: `typed_set` and the option
-        /// builtins match them before consulting this table.
-        pub(in crate::editor) fn setting_scopes(key: &str) -> &'static [Scope] {
-            match key {
-                $( $gkey => &[$($gscope),+], )*
-                $( $bkey => &[$($bscope,)+ $(pane_scope!($bpane))?], )*
-                $( $skey => &[$($sscope),+], )*
-                $( $mkey => &[$($mscope),+], )*
-                _ => &[],
-            }
-        }
-
-        /// Every setting key with a `:set` wire format: the union of the
-        /// `global`/`buffer`/`subfield` macro entries and the `manual_keys`
-        /// entries (`statusline`). Notably **excludes** the
-        /// `BufferIntrinsicOption`s, which have no macro entry and are
-        /// surfaced only when the completer knows the scope is `"buffer"`
-        /// (their sole valid scope).
-        pub(in crate::editor) fn all_setting_keys() -> &'static [&'static str] {
-            &[$($gkey,)* $($bkey,)* $($skey,)* $($mkey,)*]
-        }
-
-        /// `true` if `key`'s value is parsed with `parser: bool`, i.e. its
-        /// only valid values are `"true"`/`"false"`. Derived from the same
-        /// per-key `parser: kind;` declaration used to dispatch parsing in
-        /// `write_global`/`write_buffer`, so a new bool setting is picked up
-        /// automatically by anything that queries this (e.g.
-        /// `completion::complete_set`'s value completion) instead of
-        /// needing a hand-copied key list. `manual_keys` never declare a
-        /// `parser:`, so this only checks global/buffer/subfield.
-        pub(in crate::editor) fn is_bool_setting(key: &str) -> bool {
-            match key {
-                $( $gkey => stringify!($gparser) == "bool", )*
-                $( $bkey => stringify!($bparser) == "bool", )*
-                $( $skey => stringify!($sparser) == "bool", )*
-                _ => false,
+        impl TableKey {
+            /// The values `:set` value completion offers for the setting,
+            /// by the parser its entry declares. Empty for one that takes
+            /// free text.
+            pub(in crate::editor) fn value_names(self) -> &'static [&'static str] {
+                match self {
+                    $( Self::Global(GlobalKey::$gname) => <kind::$gparser as kind::Kind<$gtype>>::NAMES, )*
+                    $( Self::Global(GlobalKey::$pname) => <kind::$pparser as kind::Kind<$ptype>>::NAMES, )*
+                    $( Self::Buffer(BufferKey::$bname) => <kind::$bparser as kind::Kind<$btype>>::NAMES, )*
+                    $( Self::Buffer(BufferKey::$sfield) => <kind::$sparser as kind::Kind<$stype>>::NAMES, )*
+                }
             }
         }
     };
@@ -800,189 +732,150 @@ macro_rules! define_settings {
 define_settings! {
     global {
         "scroll-margin" => scroll_margin: usize = 3,
-            scope: [Scope::Global],
-            parser: usize;
+            parser: Usize;
         "scroll-jump-align" => scroll_jump_align: ObjectJumpAlign = ObjectJumpAlign::default(),
-            scope: [Scope::Global],
-            parser: from_str;
+            parser: Typed;
         "insert-cursor-shape" => insert_cursor_shape: CursorShape = CursorShape::default(),
-            scope: [Scope::Global],
-            parser: from_str;
+            parser: Typed;
         "mouse-scroll-lines" => mouse_scroll_lines: usize = 3,
-            scope: [Scope::Global],
-            parser: usize;
+            parser: Usize;
         "mouse" => mouse: bool = true,
-            scope: [Scope::Global],
-            parser: bool;
+            parser: Bool;
         "mouse-select" => mouse_select: bool = false,
-            scope: [Scope::Global],
-            parser: bool;
+            parser: Bool;
         // Resizes every open pane's live jump list cap. Like undo-levels
         // below, takes effect on the next push, not retroactively. See
         // `editor::settings::ops::resync_derived_state` and `JumpList::set_capacity`.
         "jump-list-capacity" => jump_list_capacity: usize = 100,
-            scope: [Scope::Global],
-            parser: usize_nonzero,
+            parser: UsizeNonzero,
             resync: true;
         "jump-list-min-lines" => jump_list_min_lines: usize = 5,
-            scope: [Scope::Global],
-            parser: usize;
+            parser: Usize;
         // Resizes the command/search prompt-history ring cap. Like
         // undo-levels below, takes effect on the next push, not
         // retroactively. See `editor::settings::ops::resync_derived_state`
         // and `History::set_capacity`.
         "prompt-history-levels" => prompt_history_levels: usize = 100,
-            scope: [Scope::Global],
-            parser: usize_nonzero,
+            parser: UsizeNonzero,
             resync: true;
         // 0 is a valid, meaningful value here (unlimited), unlike
-        // prompt-history-levels above, hence plain `usize`, not `usize_nonzero`.
+        // prompt-history-levels above, hence `Usize`, not `UsizeNonzero`.
         // Resizes the undo-tree cap on every open buffer. Takes effect on
         // the next edit, not retroactively (Vim's `undolevels` semantics).
         // See `editor::settings::ops::resync_derived_state`.
         "undo-levels" => undo_levels: usize = 0,
-            scope: [Scope::Global],
-            parser: usize,
+            parser: Usize,
             resync: true;
         // Where a save writes the undo history of a buffer whose
         // `undo-persist` is on, and where opening a file looks for one.
         "undo-directory" => undo_directory: UndoDirectory = UndoDirectory::Default,
-            scope: [Scope::Global],
-            parser: from_str;
+            parser: Typed;
         "steel-init-budget-ms" => steel_init_budget_ms: usize = 10_000,
-            scope: [Scope::Global],
-            parser: usize_nonzero;
+            parser: UsizeNonzero;
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,
-            scope: [Scope::Global],
-            parser: usize_nonzero;
+            parser: UsizeNonzero;
         // How long a write waits for `on-before-buffer-save` handlers that
         // took `done` before it goes ahead without them.
         "hook-before-save-timeout-ms" => hook_before_save_timeout_ms: usize = 1_000,
-            scope: [Scope::Global],
-            parser: usize_nonzero;
+            parser: UsizeNonzero;
         "command-completion" => command_completion: CommandCompletion = CommandCompletion::default(),
-            scope: [Scope::Global],
-            parser: from_str;
+            parser: Typed;
         "popup-border" => popup_border: bool = true,
-            scope: [Scope::Global],
-            parser: bool;
+            parser: Bool;
         // Read by the completion menu's documentation box and by the
         // selection-time `completionItem/resolve` that fills it.
         "completion-docs" => completion_docs: bool = true,
-            scope: [Scope::Global],
-            parser: bool;
+            parser: Bool;
         "pane-dividers" => pane_dividers: bool = true,
-            scope: [Scope::Global],
-            parser: bool;
+            parser: Bool;
         // Read fresh by the statusline provider each frame; no resync needed.
         "statusline-mode-colors" => statusline_mode_colors: bool = true,
-            scope: [Scope::Global],
-            parser: bool;
+            parser: Bool;
         // Resolved into the tab bar's rows by `EditorState::screen_layout`, and
         // into the `TablineViewState` snapshot the provider paints by
         // `sync_tabline_view` every frame.
         "tabline" => tabline: TablineVisibility = TablineVisibility::default(),
-            scope: [Scope::Global],
-            parser: from_str;
+            parser: Typed;
         // Loads and applies the named theme immediately, rolling back to the
         // theme on screen on failure; empty selects the compiled-in fallback.
         // See `editor::settings::ops::resync_derived_state`.
         "theme" => theme: String = DEFAULT_THEME.to_string(),
-            scope: [Scope::Global],
-            parser: string,
+            parser: FreeText,
             resync: true;
         // The program `pipe` runs each command line with.
         "shell" => shell: ShellCommand = ShellCommand::default(),
-            scope: [Scope::Global],
-            parser: shell_command;
+            parser: Shell;
         "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576,
-            scope: [Scope::Global],
-            parser: usize_nonzero;
+            parser: UsizeNonzero;
         // Scroll bursts (page-down held, mouse wheel) must collapse to one
         // OnViewportChange fire, not one per frame.
         "hook-viewport-debounce-ms" => hook_viewport_debounce_ms: usize = 150,
-            scope: [Scope::Global],
-            parser: usize_nonzero;
+            parser: UsizeNonzero;
         // rust-analyzer's first requests during indexing are slow; 10s
         // gives real-world servers room before the request is dropped as
         // TimedOut.
         "lsp-request-timeout-ms" => lsp_request_timeout_ms: usize = 10_000,
-            scope: [Scope::Global],
-            parser: usize_nonzero;
+            parser: UsizeNonzero;
         // A typing burst collapses to one diagnostics pull per buffer.
         "lsp-diagnostics-pull-debounce-ms" => lsp_diagnostics_pull_debounce_ms: usize = 250,
-            scope: [Scope::Global],
-            parser: usize_nonzero;
+            parser: UsizeNonzero;
         // Hint = most lenient: every severity renders. Gates the diagnostic
         // underline/extra-highlight and gutter-sign render write sides.
         "lsp-diagnostics-min-severity" => lsp_diagnostics_min_severity: DiagSeverity = DiagSeverity::Hint,
-            scope: [Scope::Global],
-            parser: from_str;
+            parser: Typed;
         // Off hides the diagnostic underline and end-of-line summary on the
         // primary cursor's line while typing in Insert mode. The summary is
         // hidden by `core:lsp` passing the negation to `set-eol-text!`.
         "lsp-diagnostics-on-insert-line" => lsp_diagnostics_on_insert_line: bool = false,
-            scope: [Scope::Global],
-            parser: bool;
+            parser: Bool;
         "messages-min-severity" => messages_min_severity: MessagesMinSeverity = MessagesMinSeverity::default(),
-            scope: [Scope::Global],
-            parser: from_str;
+            parser: Typed;
     }
     buffer {
         // A buffer-overridable setting like any other (e.g. from an
         // `on-language-set` hook, for a per-filetype default), plus a third,
         // narrower rung: `pane:` below adds `Scope::Pane`, and
-        // `:set pane wrap-mode=…` (see `typed_file::typed_set`) writes
+        // `:set pane wrap-mode=…` (see `typed_settings::typed_set`) writes
         // straight to the live `Pane`'s override, a separate path from
         // `write_global`/`write_buffer`, since wrap is also a view property
         // (two panes on the same buffer may wrap differently once one is
         // pinned; see `commands::effective_wrap_mode`, the pane → buffer →
         // global resolver every render/motion path reads through).
         "wrap-mode" => wrap_mode: WrapMode = hume_engine::pane::DEFAULT_WRAP_STYLE,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: from_str,
+            parser: Typed,
             pane: WrapMode;
         "indent-width" => indent_width: u8 = 4,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: tab_width;
+            parser: TabWidth;
         "indent-guides" => indent_guides: bool = true,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: bool;
+            parser: Bool;
         "indent-style" => indent_style: TabStyle = TabStyle::default(),
-            scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: Typed;
         "gutter-line-numbers" => gutter_line_numbers: LineNumberStyle = LineNumberStyle::default(),
-            scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: Typed;
         "insert-auto-pairs" => insert_auto_pairs: bool = true,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: bool;
+            parser: Bool;
         // Enter, `o` and `O` indent a new line (see `break_line`), and a
         // typed closing token dedents its line (`electric_dedent`). Off, a
         // new line starts at the left margin and no line is dedented.
         "indent-smart" => indent_smart: bool = true,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: bool;
+            parser: Bool;
         // Leaving Insert mode selects whatever text the session just typed
         // (empty run: falls back to the entry command's own exit position).
         // See `begin_typed_run` and `tear_down_insert`'s pinned-anchor
         // finalization. Applies to every way of entering Insert mode:
         // `i`/`a`/`I`/`A`/`o`/`O`/`c`.
         "insert-select-on-exit" => insert_select_on_exit: bool = true,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: bool;
+            parser: Bool;
         // `toggle-comment` on a selection spanning several lines takes a
         // line token per line instead of the language's block pair.
         "comment-prefer-line" => comment_prefer_line: bool = false,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: bool;
+            parser: Bool;
         // Word motions (`w`/`W`/`b`/`B`), `mm`/`MM` and `maw`/`maW` cover
         // the destination word's whitespace bookend on the preferred side.
         // See `word_select_cmd`'s `ctx.whitespace` read and `run_body`'s
         // `SelectionBody::Word` arm, which resolves it.
         "word-selects-whitespace" => word_selects_whitespace: WordSelectsWhitespace = WordSelectsWhitespace::default(),
-            scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: Typed;
         // Extra characters this buffer counts as part of a word, on top of
         // the built-in alphanumeric-plus-`_` rule (Vim's `iskeyword`, minus
         // the range syntax), e.g. `-` makes `foo-bar` one word in CSS.
@@ -999,11 +892,9 @@ define_settings! {
         // at write time, since promoting one to `Word` would leave a word run
         // with no terminator (see `WordChars::validate`).
         "word-chars" => word_chars: String = String::new(),
-            scope: [Scope::Global, Scope::Buffer],
-            parser: word_chars;
+            parser: WordChars;
         "gutter-signs" => gutter_signs: SignColumnConfig = SignColumnConfig::default(),
-            scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: Typed;
         // Read fresh by `check_buffer_disk_state` at each trigger; no
         // resync needed. `true`: an external change to the focused buffer
         // opens a reload confirm. `false`: detection still runs and warns,
@@ -1011,11 +902,9 @@ define_settings! {
         // `:w`'s write guard, which reads the file itself at write time
         // regardless of this setting.
         "file-reload-prompt" => file_reload_prompt: bool = true,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: bool;
+            parser: Bool;
         "undo-persist" => undo_persist: bool = false,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: bool;
+            parser: Bool;
     }
     extra_global {
         // `statusline` is declared directly on the struct template above,
@@ -1032,28 +921,21 @@ define_settings! {
         // change just one (e.g. space) while still inheriting the global
         // values for the others. Resolution in `BufferOverrides::whitespace`.
         "whitespace-space" => whitespace.space / whitespace_space : WhitespaceRender,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: Typed;
         "whitespace-tab" => whitespace.tab / whitespace_tab : WhitespaceRender,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: Typed;
         "whitespace-newline" => whitespace.newline / whitespace_newline : bool,
-            scope: [Scope::Global, Scope::Buffer],
-            parser: show_newline;
+            parser: ShowNewline;
     }
-    manual_keys {
-        // Parsed via parse_statusline, not FromStr: global-only.
-        "statusline" => statusline, scope: [Scope::Global];
+    private_global {
+        "statusline" => statusline: StatusLineConfig, parser: Statusline;
     }
 }
 
-/// Parse a `statusline` value: `:set`'s `"left|center|right"` text, or the
-/// sections a script passes.
-///
-/// The text requires three `|`-separated sections, no more, each a
-/// comma-separated list of `StatusElement` names. Either way an empty
-/// section is allowed, an empty name inside one (`Mode,,FileName`) is not.
-fn parse_statusline(value: &OptionInput) -> Result<StatusLineConfig, String> {
+/// The sections of `:set`'s `"left|center|right"` statusline text: three
+/// `|`-separated sections, no more, each a comma-separated list of element
+/// names.
+fn statusline_text_sections(text: &str) -> Result<StatuslineSections, String> {
     let names = |section: &str| -> Vec<String> {
         if section.is_empty() {
             Vec::new()
@@ -1061,28 +943,23 @@ fn parse_statusline(value: &OptionInput) -> Result<StatusLineConfig, String> {
             section.split(',').map(str::to_string).collect()
         }
     };
-    let parsed;
-    let sections = match value {
-        OptionInput::Sections(sections) => sections,
-        OptionInput::Text(text) => {
-            let parts: Vec<&str> = text.splitn(4, '|').collect();
-            let [left, center, right] = parts.as_slice() else {
-                return Err(format!(
-                    "expected three sections separated by '|' \
-                     (e.g. 'Mode,FileName||Position'), got '{text}'"
-                ));
-            };
-            parsed = StatuslineSections {
-                left: names(left),
-                center: names(center),
-                right: names(right),
-            };
-            &parsed
-        }
-        OptionInput::Words(_) => {
-            return Err("takes three sections, not a list".to_string());
-        }
+    let parts: Vec<&str> = text.splitn(4, '|').collect();
+    let [left, center, right] = parts.as_slice() else {
+        return Err(format!(
+            "expected three sections separated by '|' \
+             (e.g. 'Mode,FileName||Position'), got '{text}'"
+        ));
     };
+    Ok(StatuslineSections {
+        left: names(left),
+        center: names(center),
+        right: names(right),
+    })
+}
+
+/// The statusline `sections` name. An empty section is allowed, an empty
+/// name inside one (`Mode,,FileName`) is not.
+fn parse_statusline(sections: &StatuslineSections) -> Result<StatusLineConfig, String> {
     let elements = |names: &[String]| -> Result<Vec<StatusElement>, String> {
         names
             .iter()
@@ -1115,20 +992,18 @@ fn statusline_sections(cfg: &StatusLineConfig) -> StatuslineSections {
     }
 }
 
-/// The `left|center|right` text [`parse_statusline`] reads back as `cfg`.
-fn statusline_text(cfg: &StatusLineConfig) -> String {
+/// The `left|center|right` text [`statusline_text_sections`] and
+/// [`parse_statusline`] read back as `cfg`.
+fn format_statusline(cfg: &StatusLineConfig) -> String {
     let sections = statusline_sections(cfg);
     [sections.left, sections.center, sections.right]
         .map(|names| names.join(","))
         .join("|")
 }
 
-/// The wire-format strings [`parse_show_newline`] accepts: the single
-/// source `:set buffer whitespace-newline=<Tab>` completion mirrors (see
-/// `editor::completion::set::static_value_candidates`), so the two can never
-/// drift out of sync. The sibling `space`/`tab` settings get the same
-/// guarantee from `WhitespaceRender`'s `settings_enum!`.
-pub(in crate::editor) const SHOW_NEWLINE_VALUES: &[&str] = &["none", "all"];
+/// The wire-format strings [`parse_show_newline`] accepts, which
+/// [`kind::ShowNewline`] offers to `:set buffer whitespace-newline=<Tab>`.
+const SHOW_NEWLINE_VALUES: &[&str] = &["none", "all"];
 
 /// Parse the `whitespace-newline` wire format. Unlike `space`/`tab`, a
 /// newline is inherently always at end-of-line, so there's no meaningful
@@ -1179,15 +1054,23 @@ impl BufferOverrides {
 
 // ── Value parsers ─────────────────────────────────────────────────────────────
 
-fn parse_usize(value: &str) -> Result<usize, String> {
-    value
-        .parse::<usize>()
-        .map_err(|_| format!("expected a non-negative integer, got '{value}'"))
+/// The error for a count that is not a non-negative integer.
+fn not_a_count(value: impl fmt::Display) -> String {
+    format!("expected a non-negative integer, got '{value}'")
 }
 
-fn parse_usize_nonzero(value: &str) -> Result<usize, String> {
-    let n = parse_usize(value)?;
-    if n == 0 {
+fn parse_usize(value: &str) -> Result<usize, String> {
+    value.parse::<usize>().map_err(|_| not_a_count(value))
+}
+
+/// A script's integer as a count, held to [`parse_usize`]'s rule.
+fn script_count(value: i64) -> Result<usize, String> {
+    usize::try_from(value).map_err(|_| not_a_count(value))
+}
+
+/// `n`, refused when it is 0.
+fn at_least_one<T: PartialEq + Default>(n: T) -> Result<T, String> {
+    if n == T::default() {
         return Err("must be at least 1".into());
     }
     Ok(n)
@@ -1201,17 +1084,26 @@ fn parse_bool(value: &str) -> Result<bool, String> {
     }
 }
 
-fn parse_tab_width(value: &str) -> Result<u8, String> {
-    let n: u8 = value
-        .parse()
-        .map_err(|_| format!("expected 1–255, got '{value}'"))?;
-    if n == 0 {
-        return Err("must be at least 1".into());
-    }
-    Ok(n)
+/// The error for a tab width outside `u8`.
+fn not_a_tab_width(value: impl fmt::Display) -> String {
+    format!("expected 1–255, got '{value}'")
 }
 
-/// `parser: string` (`Ok(value.to_owned())`, unconditionally) is not usable
+fn parse_tab_width(value: &str) -> Result<u8, String> {
+    value
+        .parse::<u8>()
+        .map_err(|_| not_a_tab_width(value))
+        .and_then(at_least_one)
+}
+
+/// A script's integer as a tab width, held to [`parse_tab_width`]'s rule.
+fn script_tab_width(value: i64) -> Result<u8, String> {
+    u8::try_from(value)
+        .map_err(|_| not_a_tab_width(value))
+        .and_then(at_least_one)
+}
+
+/// `parser: FreeText` (`Ok(value.to_owned())`, unconditionally) is not usable
 /// here: a `word-chars` value must reject whitespace/newline (see
 /// `WordChars::validate`), so it gets its own parser kind instead of the
 /// generic unvalidated string one.
@@ -1221,19 +1113,22 @@ fn parse_word_chars(value: &str) -> Result<String, String> {
 }
 
 /// Applying a setting change: the single production path
-/// ([`ops::apply_global`]/[`ops::apply_buffer`]). A child of this module,
+/// ([`ops::apply_global`]/[`ops::apply_buffer_target`]). A child of this module,
 /// not a sibling, so [`write_global`]/[`write_buffer`] above narrow to
 /// `pub(in crate::editor::settings)`: the chokepoint this crate's write path
 /// funnels through is reachable from exactly `settings::ops` and
 /// `settings::tests`, not from every one of the ~110 other files under
 /// `crate::editor`. The module path itself is `pub(crate)`, wider than that,
 /// only so `testing::mock_host` (outside `crate::editor` entirely) can
-/// name `ops::write_global_for_test`; every other item in `ops` keeps its
+/// name `ops::write_global_for_test` and `ops::global_option`; every other item in `ops` keeps its
 /// own narrower per-item visibility regardless of the path being nameable.
 pub(crate) mod ops;
 
+mod kind;
 mod values;
 mod word_list;
+
+pub(in crate::editor) use kind::Shape;
 
 pub use values::{
     CommandCompletion, CursorShape, MessagesMinSeverity, ObjectJumpAlign, SignColumnConfig,

@@ -325,7 +325,9 @@ fn a_statusline_given_as_text_raises() {
         .eval_source(r#"(set-option! "statusline" "Mode||Position")"#, &mut mock)
         .unwrap_err();
     assert!(
-        err.contains("'statusline' takes a statusline sections hash"),
+        err.contains(
+            "invalid value for 'statusline': expected a statusline sections hash, got a string"
+        ),
         "got: {err}"
     );
 }
@@ -355,7 +357,12 @@ fn only_the_statusline_takes_a_sections_hash() {
             &mut mock,
         )
         .unwrap_err();
-    assert!(err.contains("'theme' takes a string"), "got: {err}");
+    assert!(
+        err.contains(
+            "invalid value for 'theme': expected a string, got a statusline sections hash"
+        ),
+        "got: {err}"
+    );
 }
 
 #[test]

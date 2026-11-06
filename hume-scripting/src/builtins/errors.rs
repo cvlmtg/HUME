@@ -27,6 +27,18 @@ pub(crate) fn require_cap<T: ?Sized>(cap: Option<&mut T>) -> Result<&mut T, Stee
     cap.ok_or_else(|| generic_err("not supported by this host"))
 }
 
+/// `e`'s message, without the `Error: <kind>: ` its rendering starts with:
+/// for an error carried as text and raised again by another layer.
+pub(crate) fn message(e: &SteelErr) -> String {
+    let rendered = e.to_string();
+    let prefix = format!("Error: {:?}: ", e.kind());
+    debug_assert!(rendered.starts_with(&prefix), "unexpected rendering: {e}");
+    rendered
+        .strip_prefix(&prefix)
+        .unwrap_or(&rendered)
+        .to_owned()
+}
+
 /// Runs `body`, the builtin a plugin calls as `builtin`, its error starting
 /// with that name: the one place a builtin's name enters its error. The
 /// `builtins!` table runs every builtin through it.

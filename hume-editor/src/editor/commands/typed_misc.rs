@@ -12,7 +12,8 @@ use crate::editor::buffer::{Buffer, EditorView, ViewLabel, lifecycle};
 use crate::editor::error::CommandError;
 use crate::editor::input_stack::DrawerLayer;
 use crate::editor::jump_list::{JumpRule, with_jump};
-use crate::editor::settings::THEME_KEY;
+use crate::editor::registry::ArgError;
+use crate::editor::settings::{THEME, TableKey};
 use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 
 // ── Message log ──────────────────────────────────────────────────────────────
@@ -245,7 +246,7 @@ pub(in crate::editor) fn typed_theme(
     crate::editor::settings::ops::apply_global(
         &mut ed.state,
         &mut ed.view,
-        THEME_KEY,
+        TableKey::Global(THEME),
         &name,
         hume_core::ConfigOrigin::User,
     )
@@ -434,13 +435,12 @@ pub(in crate::editor) fn typed_tutor(ed: &mut Editor, fp: FocusedPane) -> Result
 /// `:goto N`: jump to 1-based line `N`, clamped to the last content line.
 ///
 /// The pre-jump position is recorded in the jump list so `Ctrl-o` returns here.
-/// `:42` is accepted as shorthand (the command-mode dispatcher intercepts bare
-/// digit strings and routes them here before the normal registry lookup).
+/// `:42` runs as `:goto 42`.
 pub(in crate::editor) fn typed_goto_line(
     ed: &mut Editor,
     fp: FocusedPane,
     raw: &str,
-) -> Result<(), CommandError> {
+) -> Result<(), ArgError> {
     let n: usize = raw
         .trim()
         .parse()

@@ -8,7 +8,7 @@ use super::{FocusedPane, jump_pane_to};
 use crate::editor::buffer::{DiskCheckTrigger, ReloadError, lifecycle};
 use crate::editor::error::CommandError;
 use crate::editor::jump_list::{JumpRule, with_jump};
-use crate::editor::registry::ArgOrForceInput;
+use crate::editor::registry::{ArgError, ArgOrForceInput};
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
 
@@ -203,7 +203,7 @@ pub(in crate::editor) fn typed_buffer(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: &str,
-) -> Result<(), CommandError> {
+) -> Result<(), ArgError> {
     let bid = resolve_buffer_arg(ed, arg)?;
     ed.enter_buffer(fp, bid);
     Ok(())

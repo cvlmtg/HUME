@@ -419,6 +419,7 @@ mod target;
 mod typed_buffer;
 mod typed_file;
 mod typed_misc;
+mod typed_settings;
 
 pub(super) use comment::*;
 pub(super) use edit::*;
@@ -436,6 +437,7 @@ pub(super) use tab::*;
 pub(super) use typed_buffer::*;
 pub(super) use typed_file::*;
 pub(super) use typed_misc::*;
+pub(super) use typed_settings::*;
 
 // insert_session.rs's other items are re-exported privately above (visible
 // only within `commands` and its descendants: every other `mod` in this

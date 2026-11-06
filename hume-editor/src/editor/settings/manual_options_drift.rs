@@ -1,20 +1,18 @@
 //! # User-manual option-table drift
 //!
 //! `user-manual/docs/settings.md`'s "Global options"/"Buffer options"
-//! tables are a hand-maintained mirror of `settings::all_setting_keys()`
-//! (plus the buffer-intrinsic options, documented but excluded from that list
-//! by design; see `settings.rs`'s module doc). Nothing else keeps the two in sync;
-//! `user_manual_option_tables_match_all_setting_keys` scans both tables for
-//! every backtick-quoted first-column key and diffs the set against the
-//! code's key list in both directions, catching a key added to
-//! `define_settings!` without a manual row (or vice versa). It also
+//! tables are a hand-maintained mirror of `SettingKey::all()`. Nothing else
+//! keeps the two in sync; `user_manual_option_tables_match_every_setting`
+//! scans both tables for every backtick-quoted first-column key and diffs
+//! the set against the code's key list in both directions, catching a key
+//! added to `define_settings!` without a manual row (or vice versa). It also
 //! cross-checks each documented key's own scope, catching a row moved to the
 //! wrong table (e.g. a global-only key documented under "Buffer options").
 //!
 //! Lives here rather than in `arch-lints` (the workspace's other
 //! architectural lints, `absent_decode`/`init_example`/etc.): those scan
 //! source text as strings and never link against the crates they check, but
-//! this lint calls `all_setting_keys`/`setting_scopes`/`Scope` directly, while
+//! this lint calls `SettingKey`/`Scope` directly, while
 //! `arch-lints` has zero dependencies by design (see its own module doc),
 //! never constructing an `Editor` or linking against `hume-editor` at all;
 //! moving this lint there would mean adding that dependency, destroying the
@@ -52,27 +50,21 @@ fn first_cell_keys(section: &str) -> std::collections::BTreeSet<String> {
 /// must be a real setting. A failure names the key and the side it is
 /// missing from.
 #[test]
-fn user_manual_option_tables_match_all_setting_keys() {
+fn user_manual_option_tables_match_every_setting() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
         .expect("CARGO_MANIFEST_DIR not set: run via `cargo test`");
     let manual_path = std::path::Path::new(&manifest).join("../user-manual/docs/settings.md");
     let text = std::fs::read_to_string(&manual_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", manual_path.display()));
 
-    use hume_core::BufferIntrinsicOption;
     let global_documented = first_cell_keys(section_after(&text, "## Global options"));
     let buffer_documented = first_cell_keys(section_after(&text, "## Buffer options"));
     let mut documented = global_documented.clone();
     documented.extend(buffer_documented.clone());
 
-    let mut code_keys: std::collections::BTreeSet<String> = super::all_setting_keys()
-        .iter()
-        .map(|k| k.to_string())
+    let code_keys: std::collections::BTreeSet<String> = super::SettingKey::all()
+        .map(|setting| setting.name().to_string())
         .collect();
-    // The buffer-intrinsic options have no define_settings! entry by design
-    // (see settings.rs's module doc) but are documented in the Buffer options
-    // table, so they're added here rather than to all_setting_keys() itself.
-    code_keys.extend(BufferIntrinsicOption::NAMES.map(str::to_string));
 
     let missing_from_docs: Vec<_> = code_keys.difference(&documented).collect();
     let stale_in_docs: Vec<_> = documented.difference(&code_keys).collect();
@@ -80,27 +72,24 @@ fn user_manual_option_tables_match_all_setting_keys() {
     // A key present in *some* table isn't necessarily under the *right*
     // one: a name-set diff alone can't catch a row filed under the
     // wrong heading. Cross-check each documented key's own table
-    // against its declared scope.
-    use super::Scope;
-    let misplaced: Vec<String> = global_documented
-        .iter()
-        .filter(|k| BufferIntrinsicOption::from_name(k).is_none())
-        .filter(|k| !super::setting_scopes(k).contains(&Scope::Global))
-        .map(|k| format!("'{k}' is under Global options but its scope list has no Global"))
-        .chain(
-            buffer_documented
-                .iter()
-                // Buffer-only by special case, no scope entry.
-                .filter(|k| BufferIntrinsicOption::from_name(k).is_none())
-                .filter(|k| !super::setting_scopes(k).contains(&Scope::Buffer))
-                .map(|k| format!("'{k}' is under Buffer options but its scope list has no Buffer")),
-        )
-        .collect();
+    // against the scopes its section gives it.
+    use super::{Scope, SettingKey};
+    let misplaced: Vec<String> = [
+        (&global_documented, Scope::Global, "Global"),
+        (&buffer_documented, Scope::Buffer, "Buffer"),
+    ]
+    .into_iter()
+    .flat_map(|(keys, scope, heading)| {
+        keys.iter()
+            .filter(move |k| SettingKey::named(k).and_then(|s| s.target(scope)).is_none())
+            .map(move |k| format!("'{k}' is under {heading} options but has no {scope} scope"))
+    })
+    .collect();
 
     assert!(
         missing_from_docs.is_empty() && stale_in_docs.is_empty() && misplaced.is_empty(),
         "\nuser-manual/docs/settings.md option tables drifted from \
-         settings::all_setting_keys().\n\
+         SettingKey::all().\n\
          In code but missing from the docs tables: {missing_from_docs:?}\n\
          In the docs tables but not a real setting key: {stale_in_docs:?}\n\
          Documented under the wrong heading: {misplaced:?}\n"

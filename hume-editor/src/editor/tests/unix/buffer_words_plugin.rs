@@ -142,7 +142,7 @@ fn queue_word_chars_reindex(ed: &mut Editor) {
     ed.state
         .queue_event(crate::editor::event::EditorEvent::OnOptionChange {
             key: "word-chars".into(),
-            value: hume_scripting::host::OptionValue::Str("-".into()),
+            value: hume_core::OptionValue::Str("-".into()),
         });
     ed.settle();
 }

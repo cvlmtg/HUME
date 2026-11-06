@@ -1,87 +1,49 @@
 //! `(set-option! key value)` / `(get-option key)` / `(set-buffer-option! pane
 //! key value)` / `(get-buffer-option pane key)` builtins.
 
-use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::SteelVal;
 
 use hume_core::{
-    BufferId, BufferIntrinsicOption, LanguageOptionText, OptionInput, StatuslineSections,
+    BufferId, BufferIntrinsicOption, LanguageOptionText, OptionInput, OptionType, OptionValue,
+    StatuslineSections,
 };
 
 use crate::SteelCtx;
-use crate::host::OptionValue;
+use crate::host::option_value_to_steel;
 use crate::types::{Effect, QueuedEffect};
 
 use super::SteelResult;
 use super::args::{hash_entry, list_to_strings, string_list, symbol_hash};
-use super::errors::generic_err;
+use super::errors::{generic_err, message};
 
-/// The type an option's value has in Scheme, the one `get-option` reads it
-/// back in.
-#[derive(Clone, Copy)]
-enum Takes {
-    Bool,
-    Int,
-    Text,
-    Words,
-    Sections,
-}
-
-impl Takes {
-    /// What `key` takes: its global value's type. Raises for an unknown
-    /// `key`.
-    fn of(ctx: &mut SteelCtx, key: &str) -> Result<Self, SteelErr> {
-        let current = ctx
-            .host
-            .settings()
-            .get_global_option(key)
-            .map_err(generic_err)?;
-        Ok(match current {
-            OptionValue::Bool(_) => Takes::Bool,
-            OptionValue::Int(_) => Takes::Int,
-            OptionValue::Str(_) => Takes::Text,
-            OptionValue::List(_) => Takes::Words,
-            OptionValue::Sections(_) => Takes::Sections,
-        })
+/// `value` as the editor's option layer takes it. Nothing is refused here: a
+/// list or hash whose contents do not decode, and a value of no option type,
+/// reach the editor as such, which refuses them once it knows the option. An
+/// unknown option is then reported as unknown, and a list given to a
+/// one-value option as the wrong type, whatever the list holds.
+fn option_input(value: SteelVal) -> OptionInput {
+    let decoded = |ty, value: Result<OptionValue, _>| match value {
+        Ok(value) => OptionInput::Value(value),
+        Err(e) => OptionInput::Unreadable {
+            ty,
+            error: message(&e),
+        },
+    };
+    match value {
+        SteelVal::BoolV(b) => OptionInput::Value(OptionValue::Bool(b)),
+        SteelVal::IntV(n) => OptionInput::Value(OptionValue::Int(n as i64)),
+        SteelVal::StringV(s) => OptionInput::Value(OptionValue::Str(s.to_string())),
+        value @ SteelVal::ListV(_) => decoded(
+            OptionType::List,
+            list_to_strings(value, "value").map(OptionValue::List),
+        ),
+        value @ SteelVal::HashMapV(_) => decoded(
+            OptionType::Sections,
+            decode_sections(value).map(OptionValue::Sections),
+        ),
+        SteelVal::SymbolV(s) => OptionInput::Foreign(format!("the symbol '{s}")),
+        value => OptionInput::Foreign(value.to_string()),
     }
-
-    /// The type as an error names it.
-    fn name(self) -> &'static str {
-        match self {
-            Takes::Bool => "a boolean",
-            Takes::Int => "an integer",
-            Takes::Text => "a string",
-            Takes::Words => "a list of strings",
-            Takes::Sections => "a statusline sections hash",
-        }
-    }
-}
-
-/// Decodes `value` for option `key`, which takes `takes`, into what the
-/// settings layer takes: the text `:set` would carry, a list's words, or the
-/// statusline's sections. A value of any other type raises before what it
-/// holds is read, a symbol for a named value included.
-fn decode_option_value(value: SteelVal, key: &str, takes: Takes) -> Result<OptionInput, SteelErr> {
-    match (value, takes) {
-        (SteelVal::BoolV(b), Takes::Bool) => Ok(OptionInput::Text(b.to_string())),
-        (SteelVal::IntV(n), Takes::Int) => Ok(OptionInput::Text(n.to_string())),
-        (SteelVal::StringV(s), Takes::Text) => Ok(OptionInput::Text(s.to_string())),
-        (value @ SteelVal::ListV(_), Takes::Words) => {
-            list_to_strings(value, "value").map(OptionInput::Words)
-        }
-        (value @ SteelVal::HashMapV(_), Takes::Sections) => {
-            decode_sections(value).map(OptionInput::Sections)
-        }
-        (value, takes) => Err(type_mismatch(key, takes, &value)),
-    }
-}
-
-/// The error for a `value` that option `key`, which takes `takes`, refuses.
-fn type_mismatch(key: &str, takes: Takes, value: &SteelVal) -> SteelErr {
-    SteelErr::new(
-        ErrorKind::TypeMismatch,
-        format!("'{key}' takes {}, got {value:?}", takes.name()),
-    )
 }
 
 /// The keys of the statusline's `(hash 'left 'center 'right)`, each a list of
@@ -89,7 +51,7 @@ fn type_mismatch(key: &str, takes: Takes, value: &SteelVal) -> SteelErr {
 const SECTION_KEYS: &[&str] = &["left", "center", "right"];
 
 /// Decodes a statusline sections hash; every section is required.
-fn decode_sections(value: SteelVal) -> Result<StatuslineSections, SteelErr> {
+fn decode_sections(value: SteelVal) -> Result<StatuslineSections, steel::rerrs::SteelErr> {
     let entry = hash_entry(value, "value", SECTION_KEYS)?;
     let section = |key: &str| list_to_strings(entry.required(key)?, &entry.label(key));
     Ok(StatuslineSections {
@@ -109,10 +71,10 @@ pub(crate) fn sections_value(sections: StatuslineSections) -> SteelVal {
     ])
 }
 
-/// The error a global-option builtin raises for a buffer-intrinsic option,
-/// which has no global value: `builtin` is the per-buffer builtin to use.
-fn per_buffer_err(opt: BufferIntrinsicOption, builtin: &str) -> SteelErr {
-    generic_err(format!("'{}' is per-buffer: use {builtin}", opt.name()))
+/// Whether `key` names the `language` option, which a script's write queues
+/// and a script's read ranks against that queue, so neither reaches the host.
+fn is_language(key: &str) -> bool {
+    key == BufferIntrinsicOption::Language.name()
 }
 
 /// `(set-option! key value)`
@@ -129,18 +91,11 @@ fn per_buffer_err(opt: BufferIntrinsicOption, builtin: &str) -> SteelErr {
 /// `line-ending`) has no global value and raises, naming
 /// `set-buffer-option!`.
 pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> SteelResult {
-    if let Some(opt) = BufferIntrinsicOption::from_name(&key) {
-        return Err(per_buffer_err(opt, "set-buffer-option!"));
-    }
-    let takes = Takes::of(ctx, &key)?;
-    let value = decode_option_value(value, &key, takes)?;
-
     let origin = ctx.registration_origin();
     ctx.host
         .settings()
-        .set_global_option(&key, value, origin)
+        .set_global_option(&key, option_input(value), origin)
         .map_err(generic_err)?;
-
     Ok(SteelVal::Void)
 }
 
@@ -156,6 +111,9 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 /// `Effect::SetBufferLanguage` rather than written here: setting it can
 /// activate plugins, which must not happen inside the current eval.
 ///
+/// A global-only option has no buffer value and raises, naming
+/// `set-option!`.
+///
 /// Command/hook context only (`cmd` kind). The idiomatic caller is an
 /// `on-language-set` hook handler, which receives a pane naming the target
 /// buffer as an explicit argument rather than relying on `(focused-pane)` (a
@@ -167,33 +125,24 @@ pub(crate) fn set_buffer_option(
     value: SteelVal,
 ) -> SteelResult {
     let origin = ctx.registration_origin();
-    match BufferIntrinsicOption::from_name(&key) {
-        Some(BufferIntrinsicOption::Language) => {
-            let SteelVal::StringV(language) = value else {
-                return Err(type_mismatch(&key, Takes::Text, &value));
-            };
-            let language = LanguageOptionText::decode(&language).map(str::to_string);
-            ctx.push_effect(Effect::SetBufferLanguage {
-                buffer: bid,
-                language,
-                origin,
-            });
-        }
-        Some(BufferIntrinsicOption::LineEnding) => {
-            let value = decode_option_value(value, &key, Takes::Text)?;
-            ctx.host
-                .settings()
-                .set_buffer_line_ending(bid, value, origin)
-                .map_err(generic_err)?;
-        }
-        None => {
-            let takes = Takes::of(ctx, &key)?;
-            let value = decode_option_value(value, &key, takes)?;
-            ctx.host
-                .settings()
-                .set_buffer_option(&key, value, bid, origin)
-                .map_err(generic_err)?;
-        }
+    if is_language(&key) {
+        let SteelVal::StringV(language) = value else {
+            return Err(generic_err(format!(
+                "invalid value for '{key}': expected {}, got {value}",
+                OptionType::Str.name()
+            )));
+        };
+        let language = LanguageOptionText::decode(&language).map(str::to_string);
+        ctx.push_effect(Effect::SetBufferLanguage {
+            buffer: bid,
+            language,
+            origin,
+        });
+    } else {
+        ctx.host
+            .settings()
+            .set_buffer_option(&key, option_input(value), bid, origin)
+            .map_err(generic_err)?;
     }
     Ok(SteelVal::Void)
 }
@@ -205,13 +154,10 @@ pub(crate) fn set_buffer_option(
 /// `BufferIntrinsicOption` has no global value and raises, naming
 /// `get-buffer-option`.
 pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
-    if let Some(opt) = BufferIntrinsicOption::from_name(&key) {
-        return Err(per_buffer_err(opt, "get-buffer-option"));
-    }
     ctx.host
         .settings()
         .get_global_option(&key)
-        .map(SteelVal::from)
+        .map(option_value_to_steel)
         .map_err(generic_err)
 }
 
@@ -219,7 +165,8 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// its buffer override if one is set, else the global default. `"language"`
 /// reads the buffer's language name (`""` for none), including a change
 /// queued earlier in this same eval. `"line-ending"` reads `"lf"` or
-/// `"crlf"`; it has no global default.
+/// `"crlf"`; it has no global default. A global-only option has no buffer
+/// value and raises, naming `get-option`.
 ///
 /// Command/hook context only (`cmd` kind). The idiomatic caller is an
 /// `on-language-set` hook handler, which receives a pane naming the target
@@ -227,26 +174,17 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// live read that may differ from the buffer whose language just changed), same
 /// reasoning as `set-buffer-option!`.
 pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, bid: BufferId, key: String) -> SteelResult {
-    match BufferIntrinsicOption::from_name(&key) {
-        Some(BufferIntrinsicOption::Language) => {
-            let language = effective_language(ctx, bid);
-            Ok(SteelVal::StringV(
-                LanguageOptionText::encode(language.as_deref()).into(),
-            ))
-        }
-        Some(BufferIntrinsicOption::LineEnding) => ctx
-            .host
-            .settings()
-            .buffer_line_ending(bid)
-            .map(|text| SteelVal::StringV(text.into()))
-            .map_err(generic_err),
-        None => ctx
-            .host
-            .settings()
-            .get_buffer_option(&key, bid)
-            .map(SteelVal::from)
-            .map_err(generic_err),
+    if is_language(&key) {
+        let language = effective_language(ctx, bid);
+        return Ok(SteelVal::StringV(
+            LanguageOptionText::encode(language.as_deref()).into(),
+        ));
     }
+    ctx.host
+        .settings()
+        .get_buffer_option(&key, bid)
+        .map(option_value_to_steel)
+        .map_err(generic_err)
 }
 
 /// `bid`'s language as a script sees it: the buffer's stored language with

@@ -48,7 +48,7 @@ pub use lsp::{
 };
 pub use output::{ClaimRefused, OutputHost};
 pub use registers::RegisterHost;
-pub use settings::{OptionValue, SettingsHost};
+pub use settings::{SettingsHost, option_value_to_steel};
 pub use timers::{TimerHandle, TimerHost};
 pub use token::{TrackedFate, TrackedHold, token_to_steel};
 pub use ui::{

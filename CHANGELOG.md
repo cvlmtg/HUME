@@ -4,6 +4,7 @@
 
 ### Breaking changes
 - A plugin declared with `#:languages` works only in buffers of those languages: its hooks and completions skip every other buffer. If you narrow a plugin such as `core:lsp` with your own `#:languages`, list every language you use it in, or use `'("*")`. Such a declaration can no longer list in `#:events` a hook about a buffer, such as `on-buffer-open`: remove it.
+- `get-buffer-option` raises for a global-only option such as `theme`, as `set-buffer-option!` does: read it with `get-option`.
 
 ### CLI
 - `--keys` writes every logged message to stderr, including trace detail.
@@ -20,6 +21,7 @@
 ### Plugins & scripting
 - New `unregister-sign-source!` gives back a plugin's gutter sign slot on a buffer.
 - `focused-pane` takes `#:in-scope #t`, returning `#f` when the focused buffer is outside the calling plugin's `#:languages`.
+- `set-option!` and `set-buffer-option!` refuse a value of the wrong type the way `:set` refuses a bad value: `invalid value for 'mouse': expected a boolean, got an integer`.
 
 ### Fixes
 - In Insert mode, Up and Down move by screen line on wrapped lines, as `j` and `k` do.

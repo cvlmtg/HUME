@@ -8,13 +8,13 @@ use super::*;
 use super::language_config::boot;
 use hume_core::{
     BindMode, ConfigOrigin, FeatureFilter, LanguageFields, ListEntry, ListTier, LspServerConfig,
-    OptionInput, ServerName,
+    OptionInput, OptionValue, ServerName,
 };
 use hume_editing::text::LineEnding;
-use hume_scripting::host::{KeymapTarget, OptionValue};
+use hume_scripting::host::KeymapTarget;
 use hume_scripting::{Effect, PendingLanguageReg, PendingLspServerOp, PendingLspServerReg};
 
-use crate::editor::settings::ops;
+use crate::editor::settings::{self, BufferKey, BufferTarget, TableKey, ops};
 
 const ORIGINS: [ConfigOrigin; 3] = [
     ConfigOrigin::Bundled,
@@ -78,39 +78,36 @@ fn label_of(texts: [&str; 2], now: &str) -> Option<u8> {
 
 const INDENT_WIDTHS: [&str; 2] = ["2", "3"];
 
-fn indent_width_label(value: Option<OptionValue>) -> Option<u8> {
+fn indent_width_label(value: OptionValue) -> Option<u8> {
     match value {
-        Some(OptionValue::Int(width)) => label_of(INDENT_WIDTHS, &width.to_string()),
+        OptionValue::Int(width) => label_of(INDENT_WIDTHS, &width.to_string()),
         _ => None,
     }
 }
 
 fn write_global_option(ed: &mut Editor, by: ConfigOrigin, label: u8) {
     let value = OptionInput::Text(INDENT_WIDTHS[label as usize - 1].to_string());
-    ops::apply_global(&mut ed.state, &mut ed.view, "indent-width", &value, by).unwrap();
+    let key = TableKey::Buffer(BufferKey::indent_width);
+    ops::apply_global(&mut ed.state, &mut ed.view, key, &value, by).unwrap();
 }
 
 fn read_global_option(ed: &Editor) -> Option<u8> {
-    indent_width_label(crate::editor::settings::setting_value(
-        "indent-width",
-        &ed.state.settings,
-        None,
-    ))
+    let key = TableKey::Buffer(BufferKey::indent_width);
+    indent_width_label(settings::read_global(key, &ed.state.settings).value())
 }
 
 fn write_buffer_option(ed: &mut Editor, by: ConfigOrigin, label: u8) {
     let value = OptionInput::Text(INDENT_WIDTHS[label as usize - 1].to_string());
     let bid = ed.focused_buffer_id();
-    ops::apply_buffer(&mut ed.state, bid, "indent-width", &value, by).unwrap();
+    let target = BufferTarget::Override(BufferKey::indent_width);
+    ops::apply_buffer_target(&mut ed.state, bid, target, &value, by).unwrap();
 }
 
 fn read_buffer_option(ed: &Editor) -> Option<u8> {
     let overrides = &ed.state.buffers.get(ed.focused_buffer_id()).overrides;
-    indent_width_label(crate::editor::settings::setting_value(
-        "indent-width",
-        &ed.state.settings,
-        Some(overrides),
-    ))
+    indent_width_label(
+        settings::read_buffer(BufferKey::indent_width, &ed.state.settings, overrides).value(),
+    )
 }
 
 // ── Buffer line ending and language ──────────────────────────────────────
@@ -120,7 +117,8 @@ const LINE_ENDINGS: [&str; 2] = ["crlf", "lf"];
 fn write_line_ending(ed: &mut Editor, by: ConfigOrigin, label: u8) {
     let bid = ed.focused_buffer_id();
     let value = OptionInput::Text(LINE_ENDINGS[label as usize - 1].to_string());
-    ops::set_line_ending(&mut ed.state, bid, &value, by).unwrap();
+    let target = BufferTarget::Intrinsic(hume_core::BufferIntrinsicOption::LineEnding);
+    ops::apply_buffer_target(&mut ed.state, bid, target, &value, by).unwrap();
 }
 
 fn read_line_ending(ed: &Editor) -> Option<u8> {

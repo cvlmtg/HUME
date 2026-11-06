@@ -321,7 +321,7 @@ fn typed_set_theme_failure_does_not_persist() {
 /// one: the plugin's write is attempted, and fails to load in turn.
 #[test]
 fn a_failed_theme_load_restores_the_previous_origin() {
-    use crate::editor::settings::{THEME_KEY, ops};
+    use crate::editor::settings::{THEME, TableKey, ops};
     use hume_core::{ConfigOrigin, OptionInput};
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -329,7 +329,7 @@ fn a_failed_theme_load_restores_the_previous_origin() {
         ops::apply_global(
             &mut ed.state,
             &mut ed.view,
-            THEME_KEY,
+            TableKey::Global(THEME),
             &OptionInput::Text(name.to_string()),
             by,
         )
@@ -483,7 +483,10 @@ fn a_symbol_option_value_raises() {
     let mut ed = editor_from("-[a]>b\n");
     let err = eval_set_option(&mut ed, r#"(set-option! "indent-style" 'soft)"#)
         .expect_err("a symbol value is refused");
-    assert!(err.contains("'indent-style' takes a string"), "got: {err}");
+    assert!(
+        err.contains("invalid value for 'indent-style': expected a string, got the symbol 'soft"),
+        "got: {err}"
+    );
     assert_eq!(
         ed.state.settings.indent_style,
         hume_editing::tab_style::TabStyle::Hard
@@ -494,12 +497,17 @@ fn a_symbol_option_value_raises() {
 /// that, whatever the list or hash holds.
 #[test]
 fn a_composite_value_for_a_one_value_option_raises() {
-    for value in ["(hash 'n 4)", "'(1 2)"] {
+    for (value, given) in [
+        ("(hash 'n 4)", "a statusline sections hash"),
+        ("'(1 2)", "a list of strings"),
+    ] {
         let mut ed = editor_from("-[a]>b\n");
         let err = eval_set_option(&mut ed, &format!(r#"(set-option! "indent-width" {value})"#))
             .expect_err("a composite value is refused");
         assert!(
-            err.contains("'indent-width' takes an integer"),
+            err.contains(&format!(
+                "invalid value for 'indent-width': expected an integer, got {given}"
+            )),
             "{value}: {err}"
         );
     }
@@ -515,19 +523,46 @@ fn a_value_of_another_type_raises_and_changes_nothing() {
     for (source, refusal) in [
         (
             r#"(set-option! "word-chars" #f)"#,
-            "'word-chars' takes a string",
+            "invalid value for 'word-chars': expected a string, got a boolean",
         ),
         (
             r#"(set-option! "indent-width" "4")"#,
-            "'indent-width' takes an integer",
+            "invalid value for 'indent-width': expected an integer, got a string",
         ),
-        (r#"(set-option! "mouse" 1)"#, "'mouse' takes a boolean"),
+        (
+            r#"(set-option! "mouse" 1)"#,
+            "invalid value for 'mouse': expected a boolean, got an integer",
+        ),
     ] {
         let err = eval_set_option(&mut ed, source).expect_err(source);
         assert!(err.contains(refusal), "{source}: {err}");
     }
     assert_eq!(ed.state.settings.word_chars, word_chars);
     assert_eq!(ed.state.settings.indent_width, indent_width);
+}
+
+/// An option the buffer stores itself has no global value: the global
+/// builtins refuse it, naming the per-buffer builtin, and set nothing.
+#[test]
+fn the_global_builtins_refuse_an_option_the_buffer_stores() {
+    for opt in hume_core::BufferIntrinsicOption::ALL {
+        let name = opt.name();
+        let mut ed = editor_from("-[a]>b\n");
+        let line_ending = ed.doc().text().line_ending();
+        let set = eval_set_option(&mut ed, &format!(r#"(set-option! "{name}" "crlf")"#))
+            .expect_err("set-option! refuses it");
+        let get = eval_set_option(&mut ed, &format!(r#"(get-option "{name}")"#))
+            .expect_err("get-option refuses it");
+        assert!(
+            set.contains(&format!("'{name}' is per-buffer: use set-buffer-option!")),
+            "{set}"
+        );
+        assert!(
+            get.contains(&format!("'{name}' is per-buffer: use get-buffer-option")),
+            "{get}"
+        );
+        assert_eq!(ed.doc().text().line_ending(), line_ending);
+    }
 }
 
 /// An unknown option name is reported as unknown, whatever its value.
@@ -603,7 +638,8 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
 /// `set_buffer_option_targets_hook_bid_not_focused_buffer` pins for writes.
 #[test]
 fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
-    use hume_scripting::host::{EditorHost, OptionValue};
+    use hume_core::OptionValue;
+    use hume_scripting::host::EditorHost;
 
     let mut ed = editor_from("-[a]>b\n");
     crate::editor::tests::language::attach_host(
@@ -659,8 +695,8 @@ fn get_buffer_option_closed_bid_errors() {
     );
 }
 
-/// A global-only key rejected by `write_buffer`'s global-only arm is
-/// reported as a hook error and leaves the global setting unchanged.
+/// A global-only key passed to `set-buffer-option!` from a hook is reported
+/// as a hook error and leaves the global setting unchanged.
 #[test]
 fn set_buffer_option_global_only_key_errors_from_hook() {
     let mut ed = editor_from("-[a]>b\n");
@@ -687,8 +723,34 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
     );
 }
 
+/// A global-only key has no buffer value to read: `get-buffer-option`
+/// refuses it as `set-buffer-option!` does, naming the global reader.
+#[test]
+fn get_buffer_option_global_only_key_errors_from_hook() {
+    let mut ed = editor_from("-[a]>b\n");
+    crate::editor::tests::language::attach_host(
+        &mut ed,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (get-buffer-option bid "scroll-margin")))"#,
+    );
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.config.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
+    ed.settle();
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error
+                && e.text
+                    .contains("'scroll-margin' is global-only: use get-option")),
+        "expected a global-only-key hook error; messages: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+}
+
 /// `EditorHostImpl::set_buffer_option` returns `Err` for a stale bid instead
-/// of panicking. `settings::ops::apply_buffer`'s `get_mut` panics on an
+/// of panicking. `settings::ops::apply_buffer_target`'s writers panic on an
 /// unseeded id, so the host's `live_buffer` guard must run first.
 #[test]
 fn host_set_buffer_option_invalid_bid_errors() {

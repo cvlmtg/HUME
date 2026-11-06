@@ -1,38 +1,26 @@
 //! Global settings and the Steel eval budget.
 
-use hume_core::{BufferId, OptionInput, StatuslineSections};
+use hume_core::{BufferId, OptionInput, OptionValue};
 
-/// A setting's effective value, typed just enough for `(get-option key)` to
-/// build the right `SteelVal`. `hume-scripting` has no dependency on
-/// `hume-editor`'s settings types, so the editor impl converts its own
-/// per-key parser kind (`bool`/`usize`/`enum_str`/…) down to one of these
-/// shapes at the trait boundary. `Str` is every named value, free text
-/// and `name:N` forms alike, in the spelling `set-option!` takes back;
-/// `List` is a word list (`shell`); `Sections` is the `statusline`, read
-/// back as `(hash 'left 'center 'right)`, the hash `set-option!` takes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OptionValue {
-    Bool(bool),
-    Int(i64),
-    Str(String),
-    List(Vec<String>),
-    Sections(StatuslineSections),
-}
-
-impl From<OptionValue> for steel::rvals::SteelVal {
-    fn from(value: OptionValue) -> Self {
-        match value {
-            OptionValue::Bool(b) => Self::BoolV(b),
-            OptionValue::Int(n) => Self::IntV(n as isize),
-            OptionValue::Str(s) => Self::StringV(s.into()),
-            OptionValue::List(words) => crate::builtins::args::string_list(words),
-            OptionValue::Sections(sections) => crate::builtins::settings::sections_value(sections),
-        }
+/// `value` as a script reads it back: a word list as a list of strings, the
+/// statusline as `(hash 'left 'center 'right)`, the hash `set-option!` takes.
+pub fn option_value_to_steel(value: OptionValue) -> steel::rvals::SteelVal {
+    use steel::rvals::SteelVal;
+    match value {
+        OptionValue::Bool(b) => SteelVal::BoolV(b),
+        OptionValue::Int(n) => SteelVal::IntV(n as isize),
+        OptionValue::Str(s) => SteelVal::StringV(s.into()),
+        OptionValue::List(words) => crate::builtins::args::string_list(words),
+        OptionValue::Sections(sections) => crate::builtins::settings::sections_value(sections),
     }
 }
 
 /// Global settings and the Steel eval budget,
 /// accessed through [`EditorHost::settings`](super::EditorHost::settings).
+///
+/// A key is the name a script passed. The host knows which options there
+/// are, which scopes each takes and what value each takes, and refuses a
+/// key or a value with an error naming the builtin to use instead.
 pub trait SettingsHost {
     /// `(set-option! key value)`: only `Global` scope from scripts. No
     /// eval-mode gate (`open` kind): callable from `init.scm`, plugin load,
@@ -47,15 +35,15 @@ pub trait SettingsHost {
         origin: hume_core::ConfigOrigin,
     ) -> Result<(), String>;
 
-    /// `(set-buffer-option! pane key value)`: writes `key`'s per-buffer
-    /// override on `pane`'s buffer. `key` is a settings-table key: the
-    /// builtins route each `BufferIntrinsicOption` elsewhere. Command/hook
-    /// context (`cmd` kind),
-    /// unlike `set_global_option`. `Err` for a stale buffer, a global-only
-    /// key, or a bad value. Only the buffer matters: the builtin declares
-    /// its `pane` a `LiveBuffer`, which resolves to a plain `bid`. It ranks as
-    /// `origin` against the buffer's override, as `set_global_option` does
-    /// against the global value.
+    /// `(set-buffer-option! pane key value)`: writes `key` on `pane`'s
+    /// buffer: its per-buffer override, or for `line-ending` the line ending
+    /// a save writes. Every buffer option but `language`, whose write the
+    /// builtin queues. Command/hook context (`cmd` kind), unlike
+    /// `set_global_option`. `Err` for a stale buffer, a bad value, or a
+    /// read-only buffer's line ending. Only the buffer matters: the builtin
+    /// declares its `pane` a `LiveBuffer`, which resolves to a plain `bid`.
+    /// It ranks as `origin` against the buffer's own value, as
+    /// `set_global_option` does against the global value.
     fn set_buffer_option(
         &mut self,
         key: &str,
@@ -64,37 +52,21 @@ pub trait SettingsHost {
         origin: hume_core::ConfigOrigin,
     ) -> Result<(), String>;
 
-    /// `(set-buffer-option! pane "line-ending" value)`: sets the line ending
-    /// a save writes on `bid`, ranked as `origin`. `Err` for a stale buffer,
-    /// a read-only buffer, or a value other than `lf`/`crlf`.
-    fn set_buffer_line_ending(
-        &mut self,
-        bid: BufferId,
-        value: OptionInput,
-        origin: hume_core::ConfigOrigin,
-    ) -> Result<(), String>;
-
     /// `(get-option key)`: `key`'s global value, ignoring any buffer
-    /// override even if one exists. `Err` for an unknown key. No eval-mode
-    /// gate (`open` kind), mirroring `set_global_option`: callable from
-    /// `init.scm` too.
+    /// override even if one exists. No eval-mode gate (`open` kind),
+    /// mirroring `set_global_option`: callable from `init.scm` too.
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String>;
 
     /// `(get-buffer-option pane key)`: the effective value of `key` for
     /// `pane`'s buffer: its buffer override if one is set, else the global
-    /// default. `key` is a settings-table key, as for `set_buffer_option`.
-    /// `Err` for an unknown key or a stale buffer, same guard as
-    /// `set_buffer_option`; a closed buffer's override no longer exists to
-    /// read, so silently falling back to the global value would hide a
-    /// caller acting on a buffer that already went away. Command/hook
-    /// context (`cmd` kind): the idiomatic caller is a hook handler that
-    /// received the target pane as an explicit argument (e.g.
-    /// `on-language-set`, whose buffer may differ from the focused one).
+    /// default, or the value the buffer stores itself for `line-ending`.
+    /// `Err` for a stale buffer, same guard as `set_buffer_option`: a closed
+    /// buffer has no override to read, and falling back to the global value
+    /// would hide a caller acting on a buffer that went away. Command/hook context (`cmd` kind): the idiomatic
+    /// caller is a hook handler that received the target pane as an explicit
+    /// argument (e.g. `on-language-set`, whose buffer may differ from the
+    /// focused one).
     fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
-
-    /// `(get-buffer-option pane "line-ending")`: in the spelling the setter
-    /// takes back. `Err` for a stale buffer.
-    fn buffer_line_ending(&self, bid: BufferId) -> Result<String, String>;
 
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;

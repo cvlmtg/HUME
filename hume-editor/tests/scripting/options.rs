@@ -24,7 +24,7 @@ fn set_option_tab_width_string_raises() {
         .eval_source("(set-option! \"indent-width\" \"8\")", &mut mock)
         .unwrap_err();
     assert!(
-        err.contains("'indent-width' takes an integer"),
+        err.contains("invalid value for 'indent-width': expected an integer, got a string"),
         "got: {err}"
     );
     assert_eq!(mock.settings.indent_width, 4);

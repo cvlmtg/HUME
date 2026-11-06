@@ -300,12 +300,10 @@ fn line_ending_option_round_trips_through_scripts() {
 fn typed_set_language_global_scope_errors() {
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");
-    let result = run_set(&mut ed, "global language=rust");
-    assert!(result.is_err(), "global language must be an error");
-    let msg = result.unwrap_err().message().to_owned();
-    assert!(
-        msg.contains("per-buffer"),
-        "error should mention per-buffer: {msg}"
+    let err = run_set(&mut ed, "global language=rust").expect_err("language takes no global scope");
+    insta::assert_snapshot!(
+        err.message(),
+        @"'language' cannot be set with :set global (valid scopes: buffer)"
     );
 }
 

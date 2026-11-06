@@ -31,7 +31,7 @@ mod command;
 mod defaults;
 
 pub(in crate::editor) use command::{
-    Accepted, ArgExpansion, ArgOrForceInput, CmdMeta, EditFn, FocusedCmdFn, NativeTyped,
+    Accepted, ArgError, ArgExpansion, ArgOrForceInput, CmdMeta, EditFn, FocusedCmdFn, NativeTyped,
     PaneCharCmdFn, PaneCmdFn, PaneTextCmdFn, SelectionEffect, SelectionRole, Takes, TextPrompt,
     TypedBody, TypedCommand,
 };

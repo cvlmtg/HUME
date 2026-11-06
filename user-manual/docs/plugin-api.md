@@ -58,9 +58,9 @@ Steel's library functions and your own `define`s are plain Scheme functions, not
 | Call | Effect |
 |------|--------|
 | `set-option!` | `(set-option! key value)`{.sig} Set a global option, in the type `get-option` returns for it. Of two values from the same rank, the later wins. Raises for the per-buffer `language` and `line-ending` |
-| `set-buffer-option!` | `(set-buffer-option! pane key value)`{.sig} Set an option on `pane`'s buffer only, ranked against the buffer's own overrides as `set-option!` is against the global value |
+| `set-buffer-option!` | `(set-buffer-option! pane key value)`{.sig} Set an option on `pane`'s buffer only, ranked against the buffer's own overrides as `set-option!` is against the global value. Raises for a global-only option |
 | `get-option` | `(get-option key)`{.sig} Read an option's global value, ignoring any buffer override. Raises for the per-buffer `language` and `line-ending` |
-| `get-buffer-option` | `(get-buffer-option pane key)`{.sig} Read `pane`'s buffer's effective value: its own override if set, else the global default (`language` and `line-ending` have no global default) |
+| `get-buffer-option` | `(get-buffer-option pane key)`{.sig} Read `pane`'s buffer's effective value: its own override if set, else the global default (`language` and `line-ending` have no global default). Raises for a global-only option |
 | `configure-statusline!` | `(configure-statusline! left center right)`{.sig} Set the three statusline sections, each a list of element name strings; `(get-option "statusline")` reads them back as `(hash 'left 'center 'right)` |
 | `set-statusline-text!` | `(set-statusline-text! pane source text)`{.sig} Push `text` for a `"steel:<source>"` statusline element, scoped to `pane`'s buffer; an empty string clears it |
 

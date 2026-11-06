@@ -7,10 +7,7 @@ use pretty_assertions::assert_eq;
 fn buffer_no_arg_errors() {
     let mut ed = editor_from("-[h]>ello\n");
     let err = ed.execute_typed("b", None).unwrap_err();
-    assert_eq!(
-        err.message(),
-        "`:buffer` requires an argument: <name|#|index>"
-    );
+    assert_eq!(err.message(), "Usage: :buffer <name|#|index>");
 }
 
 // ── :b by 1-based index ───────────────────────────────────────────────────────

@@ -14,7 +14,9 @@
 //! capability accessor to it, overriding only the one or two
 //! accessors/methods that make them distinct.
 
-use hume_core::{BufferId, ConfigOrigin, HostToken, OnUnsaved, OptionInput, PaneHandle};
+use hume_core::{
+    BufferId, ConfigOrigin, HostToken, OnUnsaved, OptionInput, OptionValue, PaneHandle,
+};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 
@@ -24,9 +26,9 @@ use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, ClaimRefused, CommandHolder, CommandHost, CommandKind, CursorHost, EditorHost,
-    EventHost, EventShape, EventSubject, LanguageHost, LocationPlace, LspHost, OptionValue,
-    OutputHost, PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost,
-    ShownHandle, StoredLanguage, TrackedHold, check_lazy_claim,
+    EventHost, EventShape, EventSubject, LanguageHost, LocationPlace, LspHost, OutputHost,
+    PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost, ShownHandle,
+    StoredLanguage, TrackedHold, check_lazy_claim,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -243,22 +245,11 @@ impl SettingsHost for NullHost {
     ) -> Result<(), String> {
         Err("NullHost: set_buffer_option not available".into())
     }
-    fn set_buffer_line_ending(
-        &mut self,
-        _bid: BufferId,
-        _value: OptionInput,
-        _origin: ConfigOrigin,
-    ) -> Result<(), String> {
-        Err("NullHost: set_buffer_line_ending not available".into())
-    }
     fn get_global_option(&self, _key: &str) -> Result<OptionValue, String> {
         Err("NullHost: get_global_option not available".into())
     }
     fn get_buffer_option(&self, _key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         Err("NullHost: get_buffer_option not available".into())
-    }
-    fn buffer_line_ending(&self, _bid: BufferId) -> Result<String, String> {
-        Err("NullHost: buffer_line_ending not available".into())
     }
     fn steel_command_budget_ms(&self) -> u64 {
         10_000

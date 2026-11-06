@@ -1,6 +1,5 @@
 use super::*;
-use crate::editor::settings::{Scope, THEME_KEY, all_setting_keys, setting_scopes};
-use hume_core::BufferIntrinsicOption;
+use crate::editor::settings::{Scope, SettingKey, THEME, TableKey};
 
 /// Run `:get <arg>` and return the status it reports.
 fn get(ed: &mut Editor, arg: &str) -> String {
@@ -76,7 +75,20 @@ fn get_a_setting_in_a_scope_it_lacks_names_its_scopes() {
     );
     insta::assert_snapshot!(
         get_error(&mut ed, "global language"),
-        @"'language' is per-buffer: use ':get buffer language'"
+        @"'language' cannot be read with :get global (valid scopes: buffer)"
+    );
+}
+
+#[test]
+fn get_a_real_setting_in_an_unknown_scope_names_its_scopes() {
+    let mut ed = editor_from("-[a]>b\n");
+    insta::assert_snapshot!(
+        get_error(&mut ed, "glob indent-width"),
+        @"'indent-width' cannot be read with :get glob (valid scopes: global, buffer)"
+    );
+    insta::assert_snapshot!(
+        get_error(&mut ed, "glob language"),
+        @"'language' cannot be read with :get glob (valid scopes: buffer)"
     );
 }
 
@@ -84,6 +96,82 @@ fn get_a_setting_in_a_scope_it_lacks_names_its_scopes() {
 fn get_without_a_key_shows_its_usage() {
     let mut ed = editor_from("-[a]>b\n");
     insta::assert_snapshot!(get_error(&mut ed, "global"), @"Usage: :get global|buffer|pane key");
+}
+
+#[test]
+fn typed_set_unknown_setting_errors() {
+    let mut ed = editor_from("-[a]>b\n");
+    let result = run_set(&mut ed, "global foo=bar");
+    assert!(result.is_err(), "nonexistent setting must error");
+    let msg = result.unwrap_err().message().to_owned();
+    assert!(
+        msg.contains("unknown setting") && msg.contains("foo"),
+        "error should say the setting is unknown: {msg}"
+    );
+}
+
+#[test]
+fn typed_set_garbage_scope_on_real_key_errors() {
+    let mut ed = editor_from("-[a]>b\n");
+    let result = run_set(&mut ed, "bogus indent-width=2");
+    assert!(result.is_err(), "garbage scope token must error");
+    let msg = result.unwrap_err().message().to_owned();
+    assert!(
+        msg.contains("indent-width") && msg.contains("global") && msg.contains("buffer"),
+        "error should name the key and its real valid scopes: {msg}"
+    );
+}
+
+/// `complete_set` tolerates a stray double space before the key, so
+/// `typed_set` must accept the same input on Enter. Otherwise Tab-completing
+/// through a double space produces a command line that errors.
+#[test]
+fn typed_set_tolerates_double_space_before_key() {
+    let mut ed = editor_from("-[a]>b\n");
+    let result = run_set(&mut ed, "global  indent-width=2");
+    assert!(
+        result.is_ok(),
+        "double space before key must not error: {:?}",
+        result.err().map(|e| e.message().to_owned())
+    );
+    assert_eq!(ed.state.settings.indent_width, 2);
+}
+
+#[test]
+fn typed_set_pane_unknown_setting_errors() {
+    let mut ed = editor_from("-[a]>b\n");
+    let result = run_set(&mut ed, "pane foo=bar");
+    assert!(result.is_err(), "unknown setting must error");
+    let msg = result.unwrap_err().message().to_owned();
+    assert!(
+        msg.contains("unknown setting") && msg.contains("foo"),
+        "error should name the unknown key: {msg}"
+    );
+}
+
+/// A real setting that just isn't pane-eligible (`indent-width` takes global
+/// and buffer scope) must be rejected with its own valid scopes, not
+/// accepted or confused with an unknown-setting error.
+#[test]
+fn typed_set_pane_ineligible_key_errors() {
+    let mut ed = editor_from("-[a]>b\n");
+    let result = run_set(&mut ed, "pane indent-width=2");
+    assert!(result.is_err(), "pane-ineligible key must error");
+    let msg = result.unwrap_err().message().to_owned();
+    assert!(
+        msg.contains("indent-width") && msg.contains("global") && msg.contains("buffer"),
+        "error should name the key and its actual valid scopes: {msg}"
+    );
+}
+
+#[test]
+fn typed_set_pane_language_errors() {
+    let mut ed = editor_from("-[a]>b\n");
+    let err = run_set(&mut ed, "pane language=rust").expect_err("language takes no pane scope");
+    insta::assert_snapshot!(
+        err.message(),
+        @"'language' cannot be set with :set pane (valid scopes: buffer)"
+    );
 }
 
 /// `:get <arg>`'s value, after checking it reads back through `:set` as
@@ -115,20 +203,20 @@ fn every_value_get_reports_sets_back_unchanged() {
         .register_identity("rust", &["rs"], &[], &[])
         .expect("a test identity registers");
     run_set(&mut ed, "buffer language=rust").unwrap();
-    for key in all_setting_keys().iter().filter(|key| **key != THEME_KEY) {
-        for scope in setting_scopes(key) {
-            assert_round_trips(&mut ed, scope, key);
+    let mut intrinsic = Vec::new();
+    for setting in
+        SettingKey::all().filter(|setting| *setting != SettingKey::Table(TableKey::Global(THEME)))
+    {
+        for scope in setting.scopes() {
+            let value = assert_round_trips(&mut ed, scope, setting.name());
+            if let SettingKey::Intrinsic(_) = setting {
+                intrinsic.push(value);
+            }
         }
     }
-    let intrinsic: Vec<String> = BufferIntrinsicOption::ALL
-        .into_iter()
-        .map(|opt| assert_round_trips(&mut ed, Scope::Buffer, opt.name()))
-        .collect();
     assert_eq!(intrinsic, ["rust", "lf"]);
     assert!(
-        all_setting_keys()
-            .iter()
-            .any(|key| setting_scopes(key).contains(&Scope::Pane)),
+        SettingKey::all().any(|setting| setting.scopes().any(|scope| scope == Scope::Pane)),
         "the pane scope is covered"
     );
 }

@@ -211,12 +211,10 @@ fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
     // Bare line number `:42`: shorthand for `:goto 42`.
     // The parser leaves `cmd = ""` for digit-only input (a name can't start
     // with a digit, so `:42` → cmd="" arg=Some("42")).
-    if let Some(line) = arg.filter(|a| {
+    let line_number = arg.is_some_and(|a| {
         cmd.is_empty() && !force && !a.is_empty() && a.bytes().all(|b| b.is_ascii_digit())
-    }) {
-        let fp = commands::FocusedPane::current(&ed.view);
-        return commands::typed_goto_line(ed, fp, line);
-    }
+    });
+    let cmd = if line_number { "goto" } else { cmd };
 
     // `:` resolves only typed commands: an editor (key-bindable) command's
     // name is unreachable here; see `registry/mod.rs`'s module doc.
@@ -237,7 +235,7 @@ fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
                 .takes()
                 .accept(&name, arg, force, |a| expand(ed, a))?;
             let fp = commands::FocusedPane::current(&ed.view);
-            return native.run(ed, fp, &input);
+            return native.run(&name, ed, fp, &input);
         }
         TypedBody::Steel(body) => body.clone(),
         // Activated before the refusal, which reads the lambda's arity.

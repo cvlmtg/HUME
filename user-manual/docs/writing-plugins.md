@@ -390,6 +390,7 @@ A value the user sets in `init.scm` or with `:set` wins over one your plugin's b
 
 `get-option` returns the option's global value, ignoring any buffer override. `get-buffer-option` returns `pane`'s buffer's effective value: its own override if one is set, else the global value. A named value comes back as a string, like `indent-style`'s `"soft"`. Pass the pane you were given (an `on-language-set` handler receives one) rather than assuming the buffer you care about is the focused one. Both raise for an unknown option name.
 
+- A global-only option, such as `theme`, has no buffer value, so `get-buffer-option` and `set-buffer-option!` raise for it.
 - `language` and `line-ending` are per-buffer, with no global value, so `get-option` and `set-option!` raise for them. `(get-buffer-option pane "language")` returns the buffer's language name, or `""` if it has none. `(get-buffer-option pane "line-ending")` returns `"lf"` or `"crlf"`.
 - `(get-option "shell")` returns a list of strings, the program and its first arguments: `'("sh" "-c")`.
 - For `wrap-mode`, `get-buffer-option` reads the buffer and global levels only: a pane pinned with `:set pane wrap-mode=…` can show a different style than it reports.

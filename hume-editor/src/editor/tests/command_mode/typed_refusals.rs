@@ -148,16 +148,38 @@ fn a_detached_bang_is_refused_as_an_argument() {
     assert!(!ed.state.should_quit);
 }
 
+/// A usage refusal is a typo to correct, not a failure: shown, not logged.
+fn assert_usage_refused(ed: &mut Editor, line: &str, arg: Option<&str>, usage: &str) {
+    let err = ed
+        .execute_typed(line, arg)
+        .expect_err(&format!("`:{line}` with {arg:?} must be refused"));
+    let name = line.split(' ').next().unwrap_or(line);
+    assert_eq!(err.message(), format!("Usage: :{name} {usage}"));
+    assert_eq!(err.severity(), Severity::Info);
+}
+
 #[test]
 fn a_command_that_needs_its_argument_refuses_a_line_without_one() {
     for (name, usage) in REQUIRES_ARG {
         assert!(TAKES_ARG.contains(name), "`:{name}` must take an argument");
         let mut ed = editor_from("-[h]>ello\n");
-        assert_refused(
-            &mut ed,
-            name,
-            None,
-            &format!("`:{name}` requires an argument: {usage}"),
-        );
+        assert_usage_refused(&mut ed, name, None, usage);
+    }
+}
+
+#[test]
+fn a_malformed_argument_is_refused_with_the_same_usage() {
+    let cases = [
+        ("set", "global"),
+        ("set", "global undo-persist"),
+        ("get", "global"),
+    ];
+    for (name, arg) in cases {
+        let usage = REQUIRES_ARG
+            .iter()
+            .find_map(|(n, usage)| (*n == name).then_some(*usage))
+            .expect("the command requires an argument");
+        let mut ed = editor_from("-[h]>ello\n");
+        assert_usage_refused(&mut ed, name, Some(arg), usage);
     }
 }

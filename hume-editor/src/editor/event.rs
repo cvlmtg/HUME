@@ -4,9 +4,10 @@
 //! compiles in this type, only the `&str` names and `SteelVal` args produced
 //! here (see `hume_scripting::host::EventHost`).
 
+use hume_core::OptionValue;
 use hume_core::{BufferId, PaneHandle};
 use hume_editing::hunk::ChangeHunk;
-use hume_scripting::host::{EventShape, EventSubject, OptionValue};
+use hume_scripting::host::{EventShape, EventSubject};
 use hume_scripting::json::JsonHandle;
 use hume_scripting::{ServerRef, SteelPane};
 use std::rc::Rc;
@@ -218,7 +219,7 @@ pub(in crate::editor) enum EditorEvent {
     /// of those funnels through, so this is the one place to raise it.
     /// Buffer-scoped overrides (`:set`/`set-buffer-option!` without
     /// `global`) don't raise this: the payload has no `BufferId` to name,
-    /// and `apply_buffer` has no per-key resync effects to piggyback on (see
+    /// and `apply_buffer_target` has no per-key resync effects to piggyback on (see
     /// its doc). `value` is the setting's new value as `(get-option key)`
     /// reports it: a bool, integer, string, or list of strings.
     OnOptionChange {
@@ -502,7 +503,10 @@ impl EditorEvent {
                 ]
             }
             EditorEvent::OnOptionChange { key, value } => {
-                vec![SteelVal::StringV(key.into()), SteelVal::from(value)]
+                vec![
+                    SteelVal::StringV(key.into()),
+                    hume_scripting::host::option_value_to_steel(value),
+                ]
             }
             EditorEvent::OnLspNotification {
                 server,

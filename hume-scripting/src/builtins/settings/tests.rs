@@ -1,5 +1,5 @@
 use super::*;
-use crate::host::{OptionValue, StoredLanguage};
+use crate::host::StoredLanguage;
 use crate::test_support::{SteelCtxTestHarness, default_bid};
 use hume_core::{BufferId, ConfigOrigin, OnUnsaved, OptionInput};
 use steel::rvals::IntoSteelVal as _;
@@ -23,141 +23,18 @@ fn set_option_reaches_host_from_command_mode() {
     );
 }
 
-/// `set-option!` rejects a value that is no option's type.
-#[test]
-fn set_option_invalid_value_type_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
-    let mut ctx = h.ctx_with_host(&mut host);
-    let result = set_option(&mut ctx, "indent-width".into(), SteelVal::Void);
-    let msg = result.expect_err("void is not a setting value").to_string();
-    assert!(
-        msg.contains("'indent-width' takes an integer"),
-        "got: {msg}"
-    );
-}
-
-/// A list of strings or symbols is forwarded as its words, so the editor
-/// can refuse it for a setting that is not a word list. A symbol in a list
-/// is a word, as a symbol on its own is the text.
-#[test]
-fn a_list_value_is_forwarded_as_words() {
-    let forms: [fn(&str) -> SteelVal; 2] = [
-        |word| SteelVal::StringV(word.into()),
-        |word| SteelVal::SymbolV(word.into()),
-    ];
-    for form in forms {
-        let mut h = SteelCtxTestHarness::new();
-        let mut host = RecordingBufferOptionHost::default();
-        let target = BufferId::default();
-        let mut ctx = h.ctx_with_host(&mut host);
-        let list = vec![form("/opt/my sh"), form("-c")]
-            .into_steelval()
-            .unwrap();
-        set_buffer_option(
-            &mut ctx,
-            hume_core::PaneHandle::buffer_only(target).buffer(),
-            "shell".into(),
-            list,
-        )
-        .expect("a list of words must be accepted");
-        assert_eq!(
-            host.calls,
-            vec![(
-                "shell".to_string(),
-                OptionInput::Words(vec!["/opt/my sh".to_string(), "-c".to_string()]),
-                target
-            )]
-        );
-    }
-}
-
-#[test]
-fn a_list_with_a_non_string_item_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
-    let mut ctx = h.ctx_with_host(&mut host);
-    let list = vec![SteelVal::StringV("sh".into()), SteelVal::IntV(1)]
-        .into_steelval()
-        .unwrap();
-    let msg = set_option(&mut ctx, "shell".into(), list)
-        .expect_err("a non-string item must be refused")
-        .to_string();
-    assert!(msg.contains("expected a string"), "got: {msg}");
-}
-
-/// In init mode with valid args, `set-option!` reaches the host (NullHost → Err,
-/// proving the guard was passed and the host was asked for the option).
+/// In init mode with valid args, `set-option!` reaches the host (NullHost →
+/// Err, proving the guard was passed).
 #[test]
 fn set_option_init_mode_calls_host() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
     let result = set_option(&mut ctx, "indent-width".into(), SteelVal::IntV(4));
-    // NullHost.get_global_option returns Err; the error must NOT be the guard error.
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
         !msg.contains("only valid during"),
         "must reach the host, not the guard; got: {msg}"
-    );
-}
-
-/// `set-option!` and `set-buffer-option!` take an option's value in the
-/// type `get-option` reads it back in, and refuse the other one-value types.
-#[test]
-fn an_option_takes_only_the_type_it_reads_back() {
-    let one_values = [
-        SteelVal::BoolV(false),
-        SteelVal::IntV(3),
-        SteelVal::StringV("3".into()),
-    ];
-    // One option per type `get-option` reads back, a value of that type,
-    // and the error a value of every other one-value type raises.
-    let typed_options = [
-        ("mouse", SteelVal::BoolV(true), "'mouse' takes a boolean"),
-        (
-            "indent-width",
-            SteelVal::IntV(4),
-            "'indent-width' takes an integer",
-        ),
-        (
-            "word-chars",
-            SteelVal::StringV("-".into()),
-            "'word-chars' takes a string",
-        ),
-    ];
-    let mut h = SteelCtxTestHarness::new();
-    for (key, own, refusal) in typed_options {
-        for value in &one_values {
-            let mut host = RecordingBufferOptionHost::default();
-            let mut ctx = h.ctx_with_host(&mut host);
-            let global = set_option(&mut ctx, key.into(), value.clone());
-            let buffer = set_buffer_option(&mut ctx, default_bid(), key.into(), value.clone());
-            if std::mem::discriminant(value) == std::mem::discriminant(&own) {
-                global.expect("its own type is accepted");
-                buffer.expect("its own type is accepted");
-            } else {
-                for result in [global, buffer] {
-                    let msg = result.expect_err("another type is refused").to_string();
-                    assert!(msg.contains(refusal), "{key} {value:?}: {msg}");
-                }
-            }
-        }
-    }
-}
-
-/// A word-list option takes a list only, not the text `:set` would parse.
-#[test]
-fn a_word_list_option_refuses_text() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
-    let mut ctx = h.ctx_with_host(&mut host);
-    let msg = set_option(&mut ctx, "shell".into(), SteelVal::StringV("sh -c".into()))
-        .expect_err("text is refused")
-        .to_string();
-    assert!(
-        msg.contains("'shell' takes a list of strings"),
-        "got: {msg}"
     );
 }
 
@@ -193,24 +70,119 @@ fn get_buffer_option_command_mode_calls_host_with_explicit_bid() {
     );
 }
 
-// ── set-buffer-option! ──────────────────────────────────────────────────────
-
-/// `set-buffer-option!` rejects a value that is no option's type.
-#[test]
-fn set_buffer_option_invalid_value_type_errors() {
+/// What `set-buffer-option!` hands the host for `value`.
+fn forwarded(value: SteelVal) -> OptionInput {
     let mut h = SteelCtxTestHarness::new();
     let mut host = RecordingBufferOptionHost::default();
     let mut ctx = h.ctx_with_host(&mut host);
-    let result = set_buffer_option(
-        &mut ctx,
-        default_bid(),
-        "indent-width".into(),
-        SteelVal::Void,
+    set_buffer_option(&mut ctx, default_bid(), "indent-width".into(), value)
+        .expect("the recording host accepts every write");
+    drop(ctx);
+    let [(key, input, bid)] = <[_; 1]>::try_from(host.calls).expect("one write");
+    assert_eq!((key.as_str(), bid), ("indent-width", default_bid()));
+    input
+}
+
+/// A boolean, an integer and a string reach the host as values of their own
+/// type, whatever the option takes: the editor checks the type.
+#[test]
+fn a_one_value_reaches_the_host_in_its_own_type() {
+    assert_eq!(
+        forwarded(SteelVal::BoolV(true)),
+        OptionInput::Value(OptionValue::Bool(true))
     );
-    let msg = result.expect_err("void is not a setting value").to_string();
-    assert!(
-        msg.contains("'indent-width' takes an integer"),
-        "got: {msg}"
+    assert_eq!(
+        forwarded(SteelVal::IntV(8)),
+        OptionInput::Value(OptionValue::Int(8))
+    );
+    assert_eq!(
+        forwarded(SteelVal::StringV("8".into())),
+        OptionInput::Value(OptionValue::Str("8".to_string()))
+    );
+}
+
+/// A list of strings or symbols reaches the host as its words. A symbol in a
+/// list is a word, as a symbol on its own is the text.
+#[test]
+fn a_list_value_is_forwarded_as_words() {
+    let forms: [fn(&str) -> SteelVal; 2] = [
+        |word| SteelVal::StringV(word.into()),
+        |word| SteelVal::SymbolV(word.into()),
+    ];
+    for form in forms {
+        let list = vec![form("/opt/my sh"), form("-c")]
+            .into_steelval()
+            .unwrap();
+        assert_eq!(
+            forwarded(list),
+            OptionInput::Value(OptionValue::List(vec![
+                "/opt/my sh".to_string(),
+                "-c".to_string()
+            ]))
+        );
+    }
+}
+
+/// A list whose items are not all strings reaches the host as an unreadable
+/// list, so the editor can refuse it as a list for an option that takes
+/// something else before saying what is wrong inside it.
+#[test]
+fn a_list_with_a_non_string_item_is_forwarded_as_unreadable() {
+    let list = vec![SteelVal::StringV("sh".into()), SteelVal::IntV(1)]
+        .into_steelval()
+        .unwrap();
+    match forwarded(list) {
+        OptionInput::Unreadable {
+            ty: OptionType::List,
+            error,
+        } => assert!(error.contains("expected a string"), "got: {error}"),
+        other => panic!("expected an unreadable list, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_hash_missing_a_section_is_forwarded_as_unreadable() {
+    let hash = symbol_hash([("left", string_list(Vec::new()))]);
+    assert!(matches!(
+        forwarded(hash),
+        OptionInput::Unreadable {
+            ty: OptionType::Sections,
+            ..
+        }
+    ));
+}
+
+/// A named value is a string, the spelling `get-buffer-option` reads back:
+/// a symbol, like void, is no option value, and reaches the host named.
+#[test]
+fn a_value_of_no_option_type_is_forwarded_named() {
+    assert_eq!(
+        forwarded(SteelVal::SymbolV("soft".into())),
+        OptionInput::Foreign("the symbol 'soft".to_string())
+    );
+    assert!(matches!(forwarded(SteelVal::Void), OptionInput::Foreign(_)));
+}
+
+#[test]
+fn set_buffer_option_line_ending_reaches_the_host_as_a_buffer_write() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = RecordingBufferOptionHost::default();
+    let target = BufferId::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    set_buffer_option(
+        &mut ctx,
+        hume_core::PaneHandle::buffer_only(target).buffer(),
+        "line-ending".into(),
+        SteelVal::StringV("crlf".into()),
+    )
+    .expect("the host accepts the write");
+    assert_eq!(
+        host.calls,
+        vec![(
+            "line-ending".to_string(),
+            OptionInput::Value(OptionValue::Str("crlf".to_string())),
+            target
+        )]
     );
 }
 
@@ -220,7 +192,8 @@ fn set_buffer_option_invalid_value_type_errors() {
 #[test]
 fn set_buffer_option_language_queues_every_write_with_its_origin() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut host = RecordingBufferOptionHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     for _ in 0..2 {
         set_buffer_option(
             &mut ctx,
@@ -254,7 +227,8 @@ fn set_buffer_option_language_queues_every_write_with_its_origin() {
 #[test]
 fn set_buffer_option_language_rejects_a_non_string() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut host = RecordingBufferOptionHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     let msg = set_buffer_option(
         &mut ctx,
         default_bid(),
@@ -263,7 +237,10 @@ fn set_buffer_option_language_rejects_a_non_string() {
     )
     .unwrap_err()
     .to_string();
-    assert!(msg.contains("'language' takes a string"), "got: {msg}");
+    assert!(
+        msg.contains("invalid value for 'language': expected a string"),
+        "got: {msg}"
+    );
 }
 
 // `set-buffer-option!`'s `bid` is validated live before the builtin body
@@ -275,15 +252,14 @@ fn set_buffer_option_language_rejects_a_non_string() {
 // can't reach that check at all, since it bypasses the registration layer.
 
 /// A [`crate::null_host::NullHost`] wrapper that reports every buffer id as
-/// existing, knows every option (`shell` as a word list, `mouse` as a
-/// boolean, `word-chars` as text, every other one as an integer), and records `set_buffer_option` and `set_buffer_line_ending`
-/// calls, so a test can prove the builtin's guards were all passed and the
-/// exact `(key, value, bid)` the host received, without a real editor.
+/// existing, accepts every option write, and records each
+/// `set_buffer_option` call, so a test can prove the builtin's guards were
+/// all passed and the exact `(key, value, bid)` the host received, without a
+/// real editor.
 #[derive(Default)]
 struct RecordingBufferOptionHost {
     inner: crate::null_host::NullHost,
     pub(crate) calls: Vec<(String, OptionInput, BufferId)>,
-    pub(crate) line_endings: Vec<(OptionInput, BufferId)>,
     /// The origin each global or buffer write arrived with, in order.
     pub(crate) origins: Vec<ConfigOrigin>,
 }
@@ -464,83 +440,21 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
         self.origins.push(origin);
         Ok(())
     }
-    fn set_buffer_line_ending(
-        &mut self,
-        bid: BufferId,
-        value: OptionInput,
-        origin: ConfigOrigin,
-    ) -> Result<(), String> {
-        self.line_endings.push((value, bid));
-        self.origins.push(origin);
-        Ok(())
-    }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
-        Ok(match key {
-            "shell" => OptionValue::List(Vec::new()),
-            "mouse" => OptionValue::Bool(false),
-            "word-chars" => OptionValue::Str(String::new()),
-            _ => OptionValue::Int(0),
-        })
+        crate::host::SettingsHost::get_global_option(&self.inner, key)
     }
     fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
         crate::host::SettingsHost::get_buffer_option(&self.inner, key, bid)
-    }
-    fn buffer_line_ending(&self, bid: BufferId) -> Result<String, String> {
-        crate::host::SettingsHost::buffer_line_ending(&self.inner, bid)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         crate::host::SettingsHost::steel_command_budget_ms(&self.inner)
     }
 }
 
-/// With valid args and a bid the host recognizes, `set-buffer-option!`
-/// reaches the host and forwards the decoded `(key, value, bid)`.
-#[test]
-fn set_buffer_option_reaches_host() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
-    let target = BufferId::default();
-    let mut ctx = h.ctx_with_host(&mut host);
-    let result = set_buffer_option(
-        &mut ctx,
-        hume_core::PaneHandle::buffer_only(target).buffer(),
-        "indent-width".into(),
-        SteelVal::IntV(8),
-    );
-    assert!(result.is_ok(), "expected Ok, got {result:?}");
-    assert_eq!(
-        host.calls,
-        vec![(
-            "indent-width".to_string(),
-            OptionInput::Text("8".to_string()),
-            target
-        )]
-    );
-}
-
-/// A named value is a string, the spelling `get-buffer-option` reads back,
-/// so a symbol is refused before it reaches the host.
-#[test]
-fn set_buffer_option_refuses_a_symbol_value() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
-    let target = BufferId::default();
-    let mut ctx = h.ctx_with_host(&mut host);
-    let err = set_buffer_option(
-        &mut ctx,
-        hume_core::PaneHandle::buffer_only(target).buffer(),
-        "indent-style".into(),
-        SteelVal::SymbolV("soft".into()),
-    )
-    .expect_err("a symbol value is refused");
-    assert_eq!(err.kind(), steel::rerrs::ErrorKind::TypeMismatch, "{err}");
-    assert!(host.calls.is_empty(), "nothing reaches the host");
-}
-
 #[test]
 fn a_list_option_value_reads_back_as_a_list_of_strings() {
     assert_eq!(
-        SteelVal::from(OptionValue::List(vec!["sh".to_string(), "-c".to_string()])),
+        option_value_to_steel(OptionValue::List(vec!["sh".to_string(), "-c".to_string()])),
         vec![
             SteelVal::StringV("sh".into()),
             SteelVal::StringV("-c".into())
@@ -553,7 +467,7 @@ fn a_list_option_value_reads_back_as_a_list_of_strings() {
 #[test]
 fn a_named_option_value_reads_back_as_a_string() {
     assert_eq!(
-        SteelVal::from(OptionValue::Str("soft".to_string())),
+        option_value_to_steel(OptionValue::Str("soft".to_string())),
         SteelVal::StringV("soft".into())
     );
 }
@@ -587,77 +501,4 @@ fn option_writes_carry_the_callers_origin() {
             ConfigOrigin::Plugin
         ]
     );
-}
-
-/// A value each buffer-intrinsic option accepts on `set-buffer-option!`.
-fn intrinsic_value(opt: BufferIntrinsicOption) -> SteelVal {
-    match opt {
-        BufferIntrinsicOption::Language => SteelVal::StringV("rust".into()),
-        BufferIntrinsicOption::LineEnding => SteelVal::StringV("crlf".into()),
-    }
-}
-
-#[test]
-fn set_option_refuses_a_buffer_intrinsic_key() {
-    for opt in BufferIntrinsicOption::ALL {
-        let mut h = SteelCtxTestHarness::new();
-        let mut host = RecordingBufferOptionHost::default();
-        let mut ctx = h.ctx_with_host(&mut host);
-        let msg = set_option(&mut ctx, opt.name().into(), intrinsic_value(opt))
-            .expect_err("a per-buffer option has no global value to set")
-            .to_string();
-        drop(ctx);
-        assert!(
-            msg.contains("per-buffer") && msg.contains("set-buffer-option!"),
-            "{}: got {msg}",
-            opt.name()
-        );
-        assert!(
-            h.state.effects.is_empty(),
-            "{}: nothing is queued",
-            opt.name()
-        );
-        assert!(
-            host.origins.is_empty() && host.calls.is_empty() && host.line_endings.is_empty(),
-            "{}: nothing reaches the host",
-            opt.name()
-        );
-    }
-}
-
-#[test]
-fn get_option_refuses_a_buffer_intrinsic_key() {
-    for opt in BufferIntrinsicOption::ALL {
-        let mut h = SteelCtxTestHarness::new();
-        let mut host = RecordingBufferOptionHost::default();
-        let mut ctx = h.ctx_with_host(&mut host);
-        let msg = get_option(&mut ctx, opt.name().into())
-            .expect_err("a per-buffer option has no global value to read")
-            .to_string();
-        assert!(
-            msg.contains("per-buffer") && msg.contains("get-buffer-option"),
-            "{}: got {msg}",
-            opt.name()
-        );
-    }
-}
-
-#[test]
-fn set_buffer_option_line_ending_reaches_the_line_ending_setter() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
-    let target = BufferId::default();
-    let mut ctx = h.ctx_with_host(&mut host);
-    set_buffer_option(
-        &mut ctx,
-        hume_core::PaneHandle::buffer_only(target).buffer(),
-        "line-ending".into(),
-        SteelVal::StringV("crlf".into()),
-    )
-    .expect("the host accepts the write");
-    assert_eq!(
-        host.line_endings,
-        vec![(OptionInput::Text("crlf".to_string()), target)]
-    );
-    assert!(host.calls.is_empty(), "no settings-table write");
 }

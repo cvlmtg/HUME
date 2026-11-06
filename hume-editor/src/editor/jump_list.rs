@@ -122,7 +122,7 @@ impl JumpList {
     /// `capacity == 0` is a silent black hole (every `push` immediately
     /// evicts what it just pushed) rather than a documented "unlimited",
     /// unlike `undo-levels`, where `0` means exactly that. The settings
-    /// parser (`usize_nonzero`) already rejects `0` for `jump-list-capacity`
+    /// parser (`UsizeNonzero`) already rejects `0` for `jump-list-capacity`
     /// before it can reach here; this just makes the trap loud if that
     /// guard is ever bypassed (a test constructing a `JumpList` directly).
     pub(in crate::editor) fn new(capacity: usize) -> Self {

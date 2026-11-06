@@ -4,7 +4,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use hume_core::{BufferId, HostToken, OnUnsaved, OptionInput, PaneHandle};
+use hume_core::{BufferId, HostToken, OnUnsaved, OptionInput, OptionValue, PaneHandle};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
@@ -13,7 +13,7 @@ use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost, EventShape,
-    LanguageHost, OptionValue, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage, UndoNode,
+    LanguageHost, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage, UndoNode,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -192,14 +192,6 @@ impl SettingsHost for ReadOnlyHost<'_> {
     ) -> Result<(), String> {
         Err(self.refuse("set_buffer_option"))
     }
-    fn set_buffer_line_ending(
-        &mut self,
-        _bid: BufferId,
-        _value: OptionInput,
-        _origin: hume_core::ConfigOrigin,
-    ) -> Result<(), String> {
-        Err(self.refuse("set_buffer_line_ending"))
-    }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
         self.inner.borrow_mut().settings().get_global_option(key)
     }
@@ -208,9 +200,6 @@ impl SettingsHost for ReadOnlyHost<'_> {
             .borrow_mut()
             .settings()
             .get_buffer_option(key, bid)
-    }
-    fn buffer_line_ending(&self, bid: BufferId) -> Result<String, String> {
-        self.inner.borrow_mut().settings().buffer_line_ending(bid)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.inner.borrow_mut().settings().steel_command_budget_ms()

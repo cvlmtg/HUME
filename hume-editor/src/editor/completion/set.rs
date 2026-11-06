@@ -1,15 +1,8 @@
 use std::ops::Range;
 
-use hume_engine::builtins::line_number::LineNumberStyle;
-use hume_engine::pane::{WhitespaceRender, WrapMode};
-
 use super::{CompletionCtx, CompletionItem, arg_prefix, arg_span, theme_name_candidates};
-use crate::editor::settings::{
-    SHOW_NEWLINE_VALUES, Scope, SettingText, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY,
-    all_setting_keys, setting_scopes,
-};
+use crate::editor::settings::{Scope, SettingKey, SettingText, THEME, TableKey};
 use hume_core::BufferIntrinsicOption;
-use hume_editing::tab_style::TabStyle;
 use hume_editing::text::LineEnding;
 
 // ── :set arguments ────────────────────────────────────────────────────────────
@@ -36,99 +29,50 @@ fn prefix_completions<'a>(
     candidates
 }
 
-/// Static value candidates for enum/bool keys. Returns `None` for keys whose
-/// values are dynamic (`language`, `theme`) or free-form (numbers,
-/// `statusline`); those are handled in [`complete_set`].
-fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
-    // Bool keys are derived from `define_settings!`'s `parser: bool` (not
-    // hand-listed), so a new bool setting gets value completion for free.
-    if crate::editor::settings::is_bool_setting(key) {
-        return Some(&["true", "false"]);
-    }
-    Some(match key {
-        "indent-style" => TabStyle::VALUES,
-        "gutter-line-numbers" => LineNumberStyle::VALUES,
-        "scroll-jump-align" => crate::editor::settings::ObjectJumpAlign::VALUES,
-        "insert-cursor-shape" => crate::editor::settings::CursorShape::VALUES,
-        WRAP_MODE_KEY => WrapMode::VALUES,
-        "whitespace-space" | "whitespace-tab" => WhitespaceRender::VALUES,
-        "whitespace-newline" => SHOW_NEWLINE_VALUES,
-        "gutter-signs" => SignColumnConfig::VALUES,
-        "tabline" => crate::editor::settings::TablineVisibility::VALUES,
-        "command-completion" => crate::editor::settings::CommandCompletion::VALUES,
-        "word-selects-whitespace" => crate::editor::settings::WordSelectsWhitespace::VALUES,
-        "lsp-diagnostics-min-severity" => hume_core::DiagSeverity::VALUES,
-        "messages-min-severity" => crate::editor::settings::MessagesMinSeverity::VALUES,
-        _ => return None,
-    })
-}
-
 /// Completes the scope token (`global`/`buffer`/`pane`).
 fn complete_set_scope(prefix: &str) -> Vec<CompletionItem> {
     prefix_completions(Scope::ALL.iter().map(|s| s.as_str()), prefix)
 }
 
-/// Completes the key. Surfaces every declared key whose scopes
-/// include `scope`; the buffer-intrinsic keys have no macro entry and are
-/// valid only for buffer, so they're chained in when the scope matches. An
-/// unparseable `scope` token (mid-typing garbage) yields no candidates, same
-/// as any real key that doesn't accept it.
-fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
-    let Ok(scope) = scope.parse::<Scope>() else {
-        return Vec::new();
-    };
-    let scope_keys = all_setting_keys()
-        .iter()
-        .copied()
-        .filter(|k| setting_scopes(k).contains(&scope));
-    let intrinsic = (scope == Scope::Buffer)
-        .then_some(BufferIntrinsicOption::NAMES)
-        .into_iter()
-        .flatten();
-    prefix_completions(scope_keys.chain(intrinsic), rest)
+/// Completes the key: every setting, the buffer-intrinsic ones included,
+/// that takes `scope`.
+fn complete_set_key(scope: Scope, rest: &str) -> Vec<CompletionItem> {
+    let keys = SettingKey::all()
+        .filter(|setting| setting.target(scope).is_some())
+        .map(SettingKey::name);
+    prefix_completions(keys, rest)
 }
 
-/// Completes the value. Static enum/bool lists come from
-/// [`static_value_candidates`]; `language` and `theme` are dynamic.
+/// Completes the value. A settings-table key offers
+/// [`TableKey::value_names`]; `language` and `theme` are dynamic.
 ///
-/// Every key checks its scope before offering values (the same gate
-/// `typed_set` enforces at execution time), so e.g. `:set pane indent-style=`
-/// (indent-style isn't pane-scoped) never dangles a completion that would error
-/// on Enter.
+/// Every key checks its scope before offering values, by the rule `:set`
+/// enforces, so e.g. `:set pane indent-style=` (indent-style isn't pane-scoped) never
+/// dangles a completion that would error on Enter.
 fn complete_set_value(
-    scope: &str,
+    scope: Scope,
     key: &str,
     value_prefix: &str,
     ctx: &CompletionCtx<'_>,
 ) -> Vec<CompletionItem> {
-    // Buffer-intrinsic options have no `setting_scopes` entry by design (see
-    // settings.rs): valid only for buffer scope, checked directly instead of
-    // through the generic gate below. An unparseable `scope` token falls
-    // through to the same empty result as a real key rejecting that scope.
-    let scope = scope.parse::<Scope>().ok();
-    if let Some(opt) = BufferIntrinsicOption::from_name(key) {
-        if scope != Some(Scope::Buffer) {
-            return Vec::new();
+    let Some(setting) = SettingKey::named(key).filter(|setting| setting.target(scope).is_some())
+    else {
+        return Vec::new();
+    };
+    match setting {
+        SettingKey::Intrinsic(BufferIntrinsicOption::Language) => {
+            prefix_completions(ctx.languages.iter_names(), value_prefix)
         }
-        match opt {
-            BufferIntrinsicOption::Language => {
-                prefix_completions(ctx.languages.iter_names(), value_prefix)
-            }
-            BufferIntrinsicOption::LineEnding => {
-                prefix_completions(LineEnding::VALUES.iter().copied(), value_prefix)
-            }
+        SettingKey::Intrinsic(BufferIntrinsicOption::LineEnding) => {
+            prefix_completions(LineEnding::VALUES.iter().copied(), value_prefix)
         }
-    } else if !scope.is_some_and(|s| setting_scopes(key).contains(&s)) {
-        Vec::new()
-    } else if let Some(values) = static_value_candidates(key) {
-        prefix_completions(values.iter().copied(), value_prefix)
-    } else if key == THEME_KEY {
-        prefix_completions(
+        SettingKey::Table(TableKey::Global(THEME)) => prefix_completions(
             theme_name_candidates(ctx.dirs).iter().map(String::as_str),
             value_prefix,
-        )
-    } else {
-        Vec::new()
+        ),
+        SettingKey::Table(key) => {
+            prefix_completions(key.value_names().iter().copied(), value_prefix)
+        }
     }
 }
 
@@ -140,17 +84,17 @@ fn complete_set_value(
 ///
 /// Three phases, selected by cursor position within the argument:
 /// - **scope** (no space yet): offers `global`/`buffer`/`pane`.
-/// - **key** (space present, no `=` yet): offers every setting key whose
-///   declared scopes include the chosen scope, plus `language` for `buffer`.
+/// - **key** (space present, no `=` yet): offers every setting key that
+///   takes the chosen scope.
 /// - **value** (`=` present): offers the valid value set for enum/bool keys,
 ///   registered language names for `language`, installed theme names for
 ///   `theme`. Numeric/free-form keys (e.g. `scroll-margin`, `statusline`) get no
 ///   candidates: the user types them and `write_global`/`write_buffer`
 ///   validates.
 ///
-/// Value lists are completion *hints* mirrored from each setting's parser;
-/// `write_global`/`write_buffer` remain the validation SSOT, so the two can
-/// drift only in what's offered, never in what's accepted.
+/// A settings-table key's value list comes from the parser kind its
+/// `define_settings!` entry declares, the same kind `write_global`/
+/// `write_buffer` validate with.
 pub(super) fn complete_set(
     input: &str,
     cursor: usize,
@@ -181,6 +125,8 @@ pub(super) fn complete_set(
             (span, candidates)
         }
         Some((scope, rest)) => {
+            // `None` for mid-typing garbage, which takes no key or value.
+            let scope = Scope::named(scope);
             let rest = rest.trim_start();
             match rest.split_once('=') {
                 None => {
@@ -190,7 +136,8 @@ pub(super) fn complete_set(
                     // would swallow the `=x` into the replaced span instead
                     // of leaving it after the completed key.
                     let span = arg_span(input, cursor, ' ', &[' ', '=']);
-                    let candidates = complete_set_key(scope, rest);
+                    let candidates =
+                        scope.map_or_else(Vec::new, |scope| complete_set_key(scope, rest));
                     (span, candidates)
                 }
                 Some((key, value)) => {
@@ -199,7 +146,8 @@ pub(super) fn complete_set(
                     // internal '=' or spaces (e.g. a `statusline` format
                     // string), so only whitespace ends it.
                     let span = arg_span(input, cursor, '=', &[' ']);
-                    let candidates = complete_set_value(scope, key, value, ctx);
+                    let candidates = scope
+                        .map_or_else(Vec::new, |scope| complete_set_value(scope, key, value, ctx));
                     (span, candidates)
                 }
             }
