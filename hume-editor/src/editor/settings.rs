@@ -810,7 +810,7 @@ define_settings! {
             resync: true;
         // Where a save writes the undo history of a buffer whose
         // `undo-persist` is on, and where opening a file looks for one.
-        "undo-directory" => undo_directory: UndoDirectory = UndoDirectory::Default,
+        "undo-directory" => undo_directory: StoreDirectory = StoreDirectory::Default,
             parser: Typed;
         "steel-init-budget-ms" => steel_init_budget_ms: usize = 10_000,
             parser: UsizeNonzero;
@@ -1024,7 +1024,7 @@ pub(in crate::editor) use kind::Shape;
 
 pub use values::{
     CommandCompletion, CursorShape, MessagesMinSeverity, ObjectJumpAlign, SignColumnConfig,
-    SignColumnMode, TablineVisibility, UndoDirectory, WordSelectsWhitespace,
+    SignColumnMode, StoreDirectory, TablineVisibility, WordSelectsWhitespace,
 };
 
 #[cfg(test)]

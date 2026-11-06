@@ -114,7 +114,7 @@ impl EditorState {
         let dir = self
             .settings
             .undo_directory
-            .location(&self.dirs, &self.cwd)?;
+            .location(&self.dirs, &self.cwd, "undo")?;
         mirrored_under(&dir, file.resolved(), ".undo")
             .map(Some)
             .ok_or_else(|| "the path has no place in the undo directory".to_owned())

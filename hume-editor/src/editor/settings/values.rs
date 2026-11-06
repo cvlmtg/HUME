@@ -374,12 +374,13 @@ impl SettingText for ShellCommand {
     }
 }
 
-// ── UndoDirectory ─────────────────────────────────────────────────────────────
+// ── StoreDirectory ────────────────────────────────────────────────────────────
 
-/// Where saved undo histories are kept.
+/// Where files HUME saves for itself are kept: saved undo histories,
+/// sessions.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum UndoDirectory {
-    /// `undo` in the state directory.
+pub enum StoreDirectory {
+    /// A folder of the state directory, named by the setting's reader.
     #[default]
     Default,
     /// A path that is absolute once `~` and environment variables are
@@ -387,20 +388,22 @@ pub enum UndoDirectory {
     At(String),
 }
 
-impl UndoDirectory {
-    /// The directory, a typed path resolved as `cwd`'s typed paths are. The
-    /// error says why there is none.
+impl StoreDirectory {
+    /// The directory, `default_name` in the state directory for
+    /// [`Self::Default`], a typed path resolved as `cwd`'s typed paths are
+    /// otherwise. The error says why there is none.
     pub(in crate::editor) fn location(
         &self,
         dirs: &Dirs,
         cwd: &AbsolutePath,
+        default_name: &str,
     ) -> Result<PathBuf, String> {
         match self {
             Self::Default => dirs
                 .state
                 .as_ref()
-                .map(|state| state.join("undo"))
-                .ok_or_else(|| "no state directory to keep undo history in".to_owned()),
+                .map(|state| state.join(default_name))
+                .ok_or_else(|| "no state directory".to_owned()),
             Self::At(typed) => AbsolutePath::from_typed(typed, cwd)
                 .map(|dir| dir.to_path_buf())
                 .map_err(|e| format!("{typed}: {e}")),
@@ -408,7 +411,7 @@ impl UndoDirectory {
     }
 }
 
-impl SettingText for UndoDirectory {
+impl SettingText for StoreDirectory {
     const VALUES: &'static [&'static str] = &[];
 
     fn parse(s: &str) -> Result<Self, String> {
