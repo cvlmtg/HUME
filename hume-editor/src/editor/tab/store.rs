@@ -91,6 +91,21 @@ impl TabStore {
         })
     }
 
+    /// Every tab's layout in display order, reading the active tab's from
+    /// `live` (`EngineView::focused_layout`).
+    pub(in crate::editor) fn layouts<'a>(
+        &'a self,
+        live: &'a FocusedLayout,
+    ) -> impl Iterator<Item = &'a FocusedLayout> {
+        self.order.iter().map(move |&id| {
+            if id == self.current {
+                live
+            } else {
+                &self.stash[id]
+            }
+        })
+    }
+
     /// Every inactive tab's layout.
     pub(in crate::editor) fn inactive(&self) -> impl Iterator<Item = &FocusedLayout> {
         self.stash.values()

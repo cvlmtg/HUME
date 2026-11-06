@@ -1434,6 +1434,7 @@ impl Editor {
             applied_mouse_mode: initial_mouse_mode,
             applied_cwd: None,
             startup_positions: Vec::new(),
+            keeps_session: false,
             detached: Some(detached),
             input_backlog: std::collections::VecDeque::new(),
             inline_pipe_console: None,
@@ -2011,6 +2012,7 @@ mod scripting_host_globals;
 mod search;
 mod select_all;
 mod selection_history;
+mod session;
 mod settings_effects;
 mod shells;
 mod shift_punctuation;

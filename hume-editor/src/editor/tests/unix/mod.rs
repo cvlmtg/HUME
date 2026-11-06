@@ -791,6 +791,7 @@ mod scripting_grammar;
 mod scripting_lsp_install;
 mod scripting_theme_install;
 mod search_path;
+mod session;
 mod sync_dispatch;
 mod theme_dirs;
 mod tutor;

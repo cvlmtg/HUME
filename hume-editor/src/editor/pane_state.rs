@@ -356,6 +356,11 @@ impl PaneEntry {
         self.buffers.get(bid)
     }
 
+    /// The pane's state for every buffer it has shown.
+    pub(in crate::editor) fn buffers(&self) -> impl Iterator<Item = (BufferId, &PaneBufferState)> {
+        self.buffers.iter()
+    }
+
     /// The pane's state for `bid`, if it has ever shown it, mutably.
     pub(in crate::editor) fn buffer_mut(&mut self, bid: BufferId) -> Option<&mut PaneBufferState> {
         self.buffers.get_mut(bid)

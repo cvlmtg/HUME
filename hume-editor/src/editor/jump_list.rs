@@ -322,6 +322,12 @@ impl JumpList {
         Some(&self.entries[self.cursor])
     }
 
+    /// The entries, oldest first, and where the list stands in them:
+    /// `entries.len()` at the present.
+    pub(in crate::editor) fn history(&self) -> (&VecDeque<JumpEntry>, usize) {
+        (&self.entries, self.cursor)
+    }
+
     #[cfg(test)]
     pub(in crate::editor) fn len(&self) -> usize {
         self.entries.len()

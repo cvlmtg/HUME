@@ -12,8 +12,9 @@ use std::collections::VecDeque;
 /// Which minibuffer prompt a history ring belongs to.
 ///
 /// An explicit ENUM (rather than a raw `char`) keeps the variant set closed,
-/// exhaustively matched, and serializable to a stable key in a future env file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// exhaustively matched, and serializable as the key of a saved session's
+/// rings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::editor) enum HistoryKind {
     /// `:` command-mode prompt.
     Command,
@@ -222,6 +223,23 @@ impl HistoryStore {
             pipe,
         } = self;
         [command, search_f, search_b, pipe]
+    }
+
+    /// Every ring's entries, oldest first, with the kind it belongs to. The
+    /// pattern names each field, as [`Self::rings_mut`]'s does.
+    pub(in crate::editor) fn entries_by_kind(&self) -> [(HistoryKind, &VecDeque<String>); 4] {
+        let Self {
+            command,
+            search_f,
+            search_b,
+            pipe,
+        } = self;
+        [
+            (HistoryKind::Command, &command.entries),
+            (HistoryKind::SearchForward, &search_f.entries),
+            (HistoryKind::SearchBackward, &search_b.entries),
+            (HistoryKind::Pipe, &pipe.entries),
+        ]
     }
 
     /// Reset per-session nav state on every ring. Called when any minibuffer

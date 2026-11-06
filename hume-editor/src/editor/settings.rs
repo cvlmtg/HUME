@@ -812,6 +812,13 @@ define_settings! {
         // `undo-persist` is on, and where opening a file looks for one.
         "undo-directory" => undo_directory: StoreDirectory = StoreDirectory::Default,
             parser: Typed;
+        // Whether a run started with no files restores the session saved
+        // for its working directory, and saves its own when it ends.
+        "session-persist" => session_persist: bool = false,
+            parser: Bool;
+        // Where sessions are saved and looked for.
+        "session-directory" => session_directory: StoreDirectory = StoreDirectory::Default,
+            parser: Typed;
         "steel-init-budget-ms" => steel_init_budget_ms: usize = 10_000,
             parser: UsizeNonzero;
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,

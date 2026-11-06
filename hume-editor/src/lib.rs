@@ -206,9 +206,10 @@ pub fn run(
         editor.run(&shared, &mut term)
     });
     // Before any terminal write or teardown: the terminator thread forces
-    // the process down `QUIT_GRACE` after a signal, and each dump is one
-    // write and one rename.
+    // the process down `QUIT_GRACE` after a signal, and each dump, like the
+    // session, is one write and one rename.
     let dumps = editor.dump_if_abnormal_exit(&result, scratch_dumps.as_deref());
+    let session = editor.save_session();
     // Restore the terminal before the LSP grace window: `lsp_shutdown_all`
     // can take `SHUTDOWN_GRACE` per server, which on the alternate screen
     // reads as a frozen editor. Errors are collected, not propagated, so a
@@ -228,6 +229,7 @@ pub fn run(
     }
     // Back on the normal screen, where the messages stay in scrollback.
     editor::buffer::report_dumps(&mut std::io::stderr().lock(), &dumps);
+    editor::session::report_unsaved(&mut std::io::stderr().lock(), &session);
     editor::buffer::print_worker_panics(&mut std::io::stderr().lock(), &worker_panics);
     // Shutdown request, then exit notification, so `ServerHandle::drop`
     // does not `SIGKILL` the servers.

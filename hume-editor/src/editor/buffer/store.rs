@@ -346,6 +346,11 @@ impl BufferStore {
         self.mru.retain(|&x| x != id);
     }
 
+    /// Every buffer, least recently viewed first.
+    pub(in crate::editor) fn mru(&self) -> &[BufferId] {
+        &self.mru
+    }
+
     /// Move `id` to the tail of the MRU list: "most recently viewed."
     pub(in crate::editor) fn touch_mru(&mut self, id: BufferId) {
         self.mru.retain(|&x| x != id);

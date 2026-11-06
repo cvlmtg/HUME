@@ -208,6 +208,7 @@ impl Editor {
             applied_mouse_mode: initial_mouse_mode,
             applied_cwd: None,
             startup_positions: Vec::new(),
+            keeps_session: false,
             detached: None,
             input_backlog: VecDeque::new(),
             #[cfg(test)]
@@ -268,6 +269,7 @@ impl Editor {
             startup_cwd,
         )?;
         let startup = editor.focused_buffer_id();
+        editor.keeps_session = files.is_empty();
         editor.detached = detached;
         editor.set_kitty_support(kitty_enabled);
         editor.state.headless = headless;
