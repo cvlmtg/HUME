@@ -214,10 +214,9 @@ impl PipeRuns {
         self.runs.iter().map(|run| run.id).find(|&id| id >= mark)
     }
 
-    /// `bid`'s run, as the statusline shows it: once it has gone on for
-    /// [`PROGRESS_GRACE`], until its processes are done.
-    pub(crate) fn progress(&self, bid: BufferId) -> Option<PipeProgress<'_>> {
-        let now = Instant::now();
+    /// `bid`'s run, as the statusline shows it at `now`: once it has gone on
+    /// for [`PROGRESS_GRACE`], until its processes are done.
+    pub(crate) fn progress(&self, bid: BufferId, now: Instant) -> Option<PipeProgress<'_>> {
         self.runs
             .iter()
             .find(|run| run.launch.buffer == bid)
@@ -231,7 +230,8 @@ impl PipeRuns {
             })
     }
 
-    fn start(&mut self, launch: Launch, hold: TextHold, batch: ShellBatch) -> RunId {
+    /// Start a run of `batch` for `launch` at `now`.
+    fn start(&mut self, launch: Launch, hold: TextHold, batch: ShellBatch, now: Instant) -> RunId {
         debug_assert!(
             self.runs
                 .iter()
@@ -245,7 +245,7 @@ impl PipeRuns {
             launch,
             hold,
             state: RunState::Running(batch),
-            started: Instant::now(),
+            started: now,
             done: 0,
         });
         id
@@ -519,7 +519,7 @@ impl EditorState {
         };
         let batch = ShellBatch::new(&self.settings.shell, &launch.command, from, inputs);
         let hold = self.buffers.get_mut(buffer).hold_text();
-        self.pipe_runs.start(launch, hold, batch)
+        self.pipe_runs.start(launch, hold, batch, self.clock.now())
     }
 
     /// Land a run that ended with `outcome`, or report its failure and
@@ -678,7 +678,7 @@ impl Editor {
         let mut shown = false;
         // Whether the progress differs from what the last frame showed.
         let mut stale = true;
-        let mut pacer = FramePacer::not_before(Instant::now() + PROGRESS_GRACE);
+        let mut pacer = FramePacer::not_before(self.state.clock.now() + PROGRESS_GRACE);
         loop {
             if self.state.terminate_requested() {
                 return Ok(Waited::Cancelled);
@@ -690,13 +690,13 @@ impl Editor {
                 return Ok(Waited::Ended);
             };
             stale |= changed;
-            if stale && pacer.wait(Instant::now()).is_none() {
+            if stale && pacer.wait(self.state.clock.now()).is_none() {
                 console.repaint(self)?;
                 shown = true;
                 stale = false;
-                pacer.drew(Instant::now());
+                pacer.drew(self.state.clock.now());
             }
-            let timeout = stale.then(|| pacer.wait(Instant::now()).unwrap_or_default());
+            let timeout = stale.then(|| pacer.wait(self.state.clock.now()).unwrap_or_default());
             match console.next(timeout)? {
                 WaitEvent::Interrupt => return Ok(Waited::Cancelled),
                 WaitEvent::Resized if shown => {

@@ -349,7 +349,7 @@ impl LspClient {
     /// `take_completed`'s deadline/timeout handling covers a request that's
     /// still queued exactly like one already on the wire.
     ///
-    /// A Crashed/Dead connection has its `meta.deadline` clamped to now: the
+    /// A Crashed/Dead connection has its `meta.deadline` clamped to `now`: the
     /// send is silently dropped (see `send_or_queue`) and nothing will ever
     /// answer it, so the caller's whole requested timeout (routinely tens
     /// of seconds) must not stand between it and the `TimedOut` outcome
@@ -360,10 +360,11 @@ impl LspClient {
         method: &str,
         params: serde_json::Value,
         mut meta: RequestMeta,
+        now: Instant,
     ) -> RequestId {
         let id = self.ids.next();
         if matches!(self.state, ServerState::Crashed | ServerState::Dead) {
-            meta.deadline = Instant::now();
+            meta.deadline = now;
         }
         self.pending.insert(id.clone(), meta);
         let msg = Message::Request {
@@ -412,18 +413,6 @@ impl LspClient {
             .drain()
             .map(|(id, meta)| (id, meta, Outcome::Stopped))
             .collect()
-    }
-
-    /// Forces every pending deadline into the past, so the next
-    /// `take_completed` sweep expires them without waiting out real time,
-    /// e.g. to drive an `initialize` timeout in an editor-level test without
-    /// an injectable clock.
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn expire_pending_deadlines_for_test(&mut self) {
-        let past = Instant::now() - std::time::Duration::from_secs(1);
-        for meta in self.pending.values_mut() {
-            meta.deadline = past;
-        }
     }
 
     /// Drops `id`'s `Message::Request` from the Starting-queue, if it's
@@ -503,15 +492,16 @@ impl LspClient {
         (out, actions)
     }
 
-    /// Builds `InitializeParams` and sends the request.
-    pub fn start_handshake(&mut self, backend: &mut dyn LspBackend) {
+    /// Builds `InitializeParams` and sends the request, which times out
+    /// `INITIALIZE_TIMEOUT` after `now`.
+    pub fn start_handshake(&mut self, backend: &mut dyn LspBackend, now: Instant) {
         let id = self.ids.next();
         self.initialize_id = Some(id.clone());
         self.pending.insert(
             id.clone(),
             RequestMeta {
                 method: lsp_types::request::Initialize::METHOD.to_string(),
-                deadline: Instant::now() + INITIALIZE_TIMEOUT,
+                deadline: now + INITIALIZE_TIMEOUT,
             },
         );
 
@@ -674,8 +664,8 @@ impl LspClient {
         vec![ClientAction::BecameRunning { send }]
     }
 
-    /// `shutdown` request, then `exit` notification, only while `Running`;
-    /// nothing but `initialize` is legal on the wire before `initialized`,
+    /// `shutdown` request, timing out `SHUTDOWN_TIMEOUT` after `now`, then
+    /// `exit` notification, only while `Running`; nothing but `initialize` is legal on the wire before `initialized`,
     /// so a Starting (or already Crashed/Dead) client sends nothing here.
     /// Every caller still gets a definite `Dead` transition regardless of
     /// prior state, so the transport-level teardown (`ServerHandle::drop`:
@@ -686,14 +676,14 @@ impl LspClient {
     /// correlates through `pending`/`take_completed` like any other request;
     /// a caller that drops the client immediately (e.g. `:lsp-stop`) instead
     /// dispatches it as stopped via `drain_pending`.
-    pub fn begin_shutdown(&mut self, backend: &mut dyn LspBackend) {
+    pub fn begin_shutdown(&mut self, backend: &mut dyn LspBackend, now: Instant) {
         if self.state == ServerState::Running {
             let id = self.ids.next();
             self.pending.insert(
                 id.clone(),
                 RequestMeta {
                     method: lsp_types::request::Shutdown::METHOD.to_string(),
-                    deadline: Instant::now() + SHUTDOWN_TIMEOUT,
+                    deadline: now + SHUTDOWN_TIMEOUT,
                 },
             );
             backend.send(

@@ -1391,7 +1391,8 @@ impl Editor {
         let history_capacity = settings.prompt_history_levels;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
-        let mut buffers = BufferStore::new();
+        let clock = crate::editor::clock::Clock::default();
+        let mut buffers = BufferStore::new(clock.clone());
         buffers.open(buffer_id, new);
         let mut panes = PaneView::default();
         let unattached = panes.open(
@@ -1408,6 +1409,7 @@ impl Editor {
             state: EditorState {
                 wake,
                 buffers,
+                clock,
                 lsp: super::lsp::LspState::new_inline(),
                 settings,
                 panes,

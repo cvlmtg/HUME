@@ -10,6 +10,7 @@ impl<'a> TimerHost for EditorHostImpl<'a> {
         let id = self.timers.as_mut()?.schedule(
             std::time::Duration::from_millis(ms),
             TimerPayload::SteelThunk(thunk),
+            self.state.clock.now(),
         );
         Some(id)
     }

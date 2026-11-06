@@ -49,12 +49,14 @@ impl Timers {
         }
     }
 
+    /// Schedule `payload` to fire `after` from `now`.
     pub(in crate::editor) fn schedule(
         &mut self,
         after: Duration,
         payload: TimerPayload,
+        now: Instant,
     ) -> TimerId {
-        let id = self.wheel.schedule(after);
+        let id = self.wheel.schedule(after, now);
         self.payloads.insert(id, payload);
         id
     }
@@ -141,7 +143,7 @@ impl Editor {
     /// debounce fires `OnViewportChange` directly with the pane's *current*
     /// bounds.
     pub(super) fn drain_due_timers(&mut self) {
-        for (id, payload) in self.timers.take_due(Instant::now()) {
+        for (id, payload) in self.timers.take_due(self.state.clock.now()) {
             match payload {
                 TimerPayload::SteelThunk(thunk) => {
                     self.state
@@ -177,6 +179,7 @@ impl Editor {
             pane_id,
             after,
             TimerPayload::ViewportDebounce(pane_id),
+            self.state.clock.now(),
         );
     }
 
@@ -192,21 +195,23 @@ impl Editor {
             bid,
             after,
             TimerPayload::DiagnosticPullDebounce(bid),
+            self.state.clock.now(),
         );
     }
 }
 
-/// Schedules `payload` after `after` as `key`'s pending timer in `pending`,
-/// cancelling the one a previous call left there.
+/// Schedules `payload` `after` from `now` as `key`'s pending timer in
+/// `pending`, cancelling the one a previous call left there.
 fn reschedule<K: std::hash::Hash + Eq>(
     pending: &mut rustc_hash::FxHashMap<K, TimerId>,
     timers: &mut Timers,
     key: K,
     after: Duration,
     payload: TimerPayload,
+    now: Instant,
 ) {
     if let Some(old_id) = pending.remove(&key) {
         timers.cancel(old_id);
     }
-    pending.insert(key, timers.schedule(after, payload));
+    pending.insert(key, timers.schedule(after, payload, now));
 }

@@ -14,7 +14,7 @@ fn make_buf() -> NewBuffer {
 
 fn store_with_engine() -> (BufferStore, EngineView) {
     let (ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
-    (BufferStore::new(), ev)
+    (BufferStore::new(crate::editor::clock::Clock::default()), ev)
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn touch_mru_promotes_to_tail() {
 /// touches it (see `PasteStamp`, which relies on this for staleness checks).
 #[test]
 fn edit_seq_starts_at_zero_and_bumps_explicitly() {
-    let mut store = BufferStore::new();
+    let mut store = BufferStore::new(crate::editor::clock::Clock::default());
     assert_eq!(store.edit_seq(), 0);
     store.bump_edit_seq();
     assert_eq!(store.edit_seq(), 1);

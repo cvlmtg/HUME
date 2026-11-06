@@ -377,7 +377,7 @@ impl EditorState {
         let anchor = spec.anchor;
         let did = self.lsp.deliveries.next_id();
         let deadline =
-            Instant::now() + Duration::from_millis(self.settings.lsp_request_timeout_ms as u64);
+            self.clock.now() + Duration::from_millis(self.settings.lsp_request_timeout_ms as u64);
         let slots: Vec<Slot> = members
             .into_iter()
             .map(|member| match member {
@@ -499,7 +499,10 @@ impl EditorState {
             method: method.to_string(),
             deadline,
         };
-        let Some(id) = self.lsp.send_request(server.id, method, json, meta) else {
+        let Some(id) = self
+            .lsp
+            .send_request(server.id, method, json, meta, self.clock.now())
+        else {
             let reason = format!("{} is not running", server.name);
             return Slot::failed(server, SlotError::Unavailable(reason));
         };

@@ -180,11 +180,9 @@ fn initialize_timeout_reports_a_crash_through_drain_lsp() {
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
 
-    ed.state
-        .lsp
-        .client_for_test(sid)
-        .unwrap()
-        .expire_pending_deadlines_for_test();
+    // Past `initialize`'s 30 s timeout.
+    ed.state.clock.hold();
+    ed.state.clock.advance(std::time::Duration::from_secs(31));
 
     ed.drain_lsp();
 
@@ -206,8 +204,9 @@ fn shutdown_error_response_is_logged_at_trace() {
         b.fail_with("shutdown", -32603, "internal error");
     });
 
+    let now = ed.state.clock.now();
     let (client, backend) = ed.state.lsp.client_and_backend(sid).unwrap();
-    client.begin_shutdown(backend);
+    client.begin_shutdown(backend, now);
 
     ed.drain_lsp();
 

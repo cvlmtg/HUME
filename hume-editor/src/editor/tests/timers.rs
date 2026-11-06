@@ -295,14 +295,16 @@ fn debounce_called_again_while_its_thunk_is_queued_runs_once() {
 fn cancelling_a_thunk_leaves_a_native_timer_scheduled() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
+    let now = ed.state.clock.now();
     let native = ed.timers.schedule(
         std::time::Duration::from_millis(10),
         crate::editor::timer_bridge::TimerPayload::DiagnosticPullDebounce(bid),
+        now,
     );
     ed.timers.cancel_thunk(native);
     let due = ed
         .timers
-        .take_due(std::time::Instant::now() + std::time::Duration::from_millis(20));
+        .take_due(now + std::time::Duration::from_millis(20));
     assert_eq!(due.len(), 1);
 }
 

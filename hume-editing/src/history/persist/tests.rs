@@ -1,9 +1,7 @@
-use std::time::SystemTime;
-
 use hume_core::{PaneId, fresh_ids};
 
 use super::super::Side;
-use super::super::tests::{record_edit, selected};
+use super::super::tests::{record_edit, selected, start_time};
 use super::*;
 
 /// The text a walk of `txns` from `text` lands on, and the selections it
@@ -45,7 +43,7 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let [a, b] = fresh_ids();
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let t0 = BufferText::from("abc\n");
     let t1 = record_edit(&mut h, Some(a), &t0, (0, 0), "X", selected(&t0, 0, 2));
     let t2 = record_edit(&mut h, Some(a), &t1, (1, 1), "Y", selected(&t1, 1, 3));
@@ -77,7 +75,7 @@ fn fixture() -> Fixture {
 /// `fixture`'s history saved and restored onto a fresh copy of its text.
 fn restored(f: &Fixture) -> (History, BufferText) {
     let text = BufferText::from(f.current.to_string().as_str());
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.restore(f.history.snapshot(), &text)
         .expect("a saved tree restores");
     (h, text)
@@ -103,7 +101,7 @@ fn restore_reaches_every_revision_s_text_and_selections() {
 fn restore_keeps_the_redo_choice_and_the_ages() {
     let f = fixture();
     let (mut h, _) = restored(&f);
-    let now = SystemTime::now();
+    let now = start_time();
 
     let ages = |h: &History| -> Vec<_> {
         h.nodes(now)
@@ -141,7 +139,7 @@ fn restore_gives_the_last_editor_s_revisions_to_a_pane_that_claimed_before() {
     let f = fixture();
     let [_, _, c] = fresh_ids();
     let text = BufferText::from(f.current.to_string().as_str());
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.claim_restored(c);
 
     h.restore(f.history.snapshot(), &text)
@@ -157,7 +155,7 @@ fn owned(h: &History) -> Vec<bool> {
 #[test]
 fn snapshot_keeps_the_newest_editor_s_revisions_when_no_pane_made_the_current_one() {
     let [a] = fresh_ids();
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let t0 = BufferText::from("abc\n");
     let t1 = record_edit(&mut h, Some(a), &t0, (0, 0), "X", selected(&t0, 0, 2));
     let t2 = record_edit(&mut h, Some(a), &t1, (1, 1), "Y", selected(&t1, 1, 3));
@@ -168,7 +166,7 @@ fn snapshot_keeps_the_newest_editor_s_revisions_when_no_pane_made_the_current_on
 #[test]
 fn snapshot_keeps_the_newest_editor_s_revisions_at_the_root() {
     let [a] = fresh_ids();
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let t0 = BufferText::from("abc\n");
     let t1 = record_edit(&mut h, Some(a), &t0, (0, 0), "X", selected(&t0, 0, 2));
     record_edit(&mut h, Some(a), &t1, (1, 1), "Y", selected(&t1, 1, 3));
@@ -178,7 +176,7 @@ fn snapshot_keeps_the_newest_editor_s_revisions_at_the_root() {
 
 #[test]
 fn restore_after_the_root_was_promoted() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.set_undo_levels(1);
     let t0 = BufferText::from("abc\n");
     let t1 = record_edit(&mut h, None, &t0, (0, 0), "X", selected(&t0, 0, 0));
@@ -186,7 +184,7 @@ fn restore_after_the_root_was_promoted() {
     assert_eq!(h.len(), 2, "the first edit was promoted into the root");
 
     let text = BufferText::from(t2.to_string().as_str());
-    let mut back = History::new();
+    let mut back = History::new(start_time());
     back.restore(h.snapshot(), &text).unwrap();
     assert_eq!(walk(&text, back.undo_n(1)).0, t1.to_string());
     assert!(!back.can_undo());
@@ -197,7 +195,7 @@ fn restore_after_the_root_was_promoted() {
 fn rejected(f: &Fixture, text: &str, change: impl FnOnce(&mut HistorySnapshot)) -> RestoreError {
     let mut snapshot = f.history.snapshot();
     change(&mut snapshot);
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let err = h
         .restore(snapshot, &BufferText::from(text))
         .expect_err("the snapshot is rejected");

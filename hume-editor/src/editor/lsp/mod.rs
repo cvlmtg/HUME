@@ -332,17 +332,18 @@ impl LspState {
         Some((client, backend.as_mut()))
     }
 
-    /// Sends a request through `server`'s client. `None` if `server` is not
-    /// a running instance.
+    /// Sends a request through `server`'s client at `now`. `None` if `server`
+    /// is not a running instance.
     pub(in crate::editor) fn send_request(
         &mut self,
         server: ServerId,
         method: &str,
         params: serde_json::Value,
         meta: RequestMeta,
+        now: Instant,
     ) -> Option<RequestId> {
         let (client, backend) = self.client_and_backend(server)?;
-        Some(client.send_request(backend, method, params, meta))
+        Some(client.send_request(backend, method, params, meta, now))
     }
 }
 

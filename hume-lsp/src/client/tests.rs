@@ -48,7 +48,7 @@ fn handshake_round_trip_transitions_to_running() {
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     assert_eq!(client.state, ServerState::Starting);
 
     let events = backend.drain();
@@ -90,7 +90,7 @@ fn handshake_sends_did_change_configuration_when_settings_set() {
         ),
     );
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let events = backend.drain();
     let (_id, ev) = events.into_iter().next().unwrap();
     let actions = client.on_event(ev);
@@ -134,7 +134,7 @@ fn handshake_omits_did_change_configuration_when_settings_unset() {
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let events = backend.drain();
     let (_id, ev) = events.into_iter().next().unwrap();
     let actions = client.on_event(ev);
@@ -173,7 +173,7 @@ fn did_change_configuration_is_queued_ahead_of_pending_did_open() {
         },
     );
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let events = backend.drain();
     let (_id, ev) = events.into_iter().next().unwrap();
     let actions = client.on_event(ev);
@@ -220,7 +220,7 @@ fn initialize_request_carries_initialization_options_when_set() {
         ),
     );
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
 
     match &backend.sent[0] {
         (_, Message::Request { params, .. }) => {
@@ -251,7 +251,7 @@ fn initialize_request_advertises_ranges_formatting_support() {
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
 
     match &backend.sent[0] {
         (_, Message::Request { params, .. }) => {
@@ -277,7 +277,7 @@ fn initialize_request_omits_initialization_options_when_unset() {
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
 
     match &backend.sent[0] {
         (_, Message::Request { params, .. }) => {
@@ -304,7 +304,7 @@ fn handshake_failure_response_crashes() {
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
     let actions = client.on_event(ev);
 
@@ -336,7 +336,13 @@ fn generic_initialize_request_is_not_hijacked_by_the_handshake_discriminator() {
         method: "initialize".to_string(),
         deadline: Instant::now() + std::time::Duration::from_secs(10),
     };
-    let sent_id = client.send_request(&mut backend, "initialize", serde_json::Value::Null, meta);
+    let sent_id = client.send_request(
+        &mut backend,
+        "initialize",
+        serde_json::Value::Null,
+        meta,
+        Instant::now(),
+    );
 
     let (_sid, ev) = backend.drain().into_iter().next().unwrap();
     let actions = client.on_event(ev);
@@ -366,7 +372,7 @@ fn initialize_sweep_is_quiet_before_the_deadline() {
         )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
 
     let (completed, actions) = client.take_completed(&mut backend, Instant::now());
     assert!(completed.is_empty());
@@ -386,7 +392,7 @@ fn initialize_timeout_crashes_via_the_sweep() {
         )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
 
     let past_deadline = Instant::now() + std::time::Duration::from_secs(31);
     let (completed, actions) = client.take_completed(&mut backend, past_deadline);
@@ -447,6 +453,7 @@ fn earliest_deadline_is_min() {
             method: "foo".to_string(),
             deadline: now + std::time::Duration::from_secs(5),
         },
+        Instant::now(),
     );
     client.send_request(
         &mut backend,
@@ -456,6 +463,7 @@ fn earliest_deadline_is_min() {
             method: "bar".to_string(),
             deadline: now + std::time::Duration::from_secs(1),
         },
+        Instant::now(),
     );
 
     let earliest = client.earliest_deadline().expect("two pending requests");
@@ -478,7 +486,7 @@ fn messages_sent_while_starting_are_queued_then_flushed_in_order() {
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     client.send_or_queue(
         &mut backend,
         Message::Notification {
@@ -562,7 +570,7 @@ fn flushed_after_queueing(queue: Vec<Message>) -> Vec<String> {
         )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     for msg in queue {
         client.send_or_queue(&mut backend, msg);
     }
@@ -663,7 +671,7 @@ fn send_request_while_starting_is_queued_then_flushed_and_still_correlates() {
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
         deadline: Instant::now() + std::time::Duration::from_secs(10),
@@ -673,6 +681,7 @@ fn send_request_while_starting_is_queued_then_flushed_and_still_correlates() {
         "textDocument/hover",
         serde_json::Value::Null,
         meta,
+        Instant::now(),
     );
 
     // Nothing but the initialize request should be on the wire yet.
@@ -742,7 +751,7 @@ fn utf8_negotiated_when_offered() {
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
     client.on_event(ev);
 
@@ -763,7 +772,7 @@ fn utf16_is_the_default_when_server_omits_the_field() {
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
     client.on_event(ev);
 
@@ -797,7 +806,7 @@ fn handshaken_client(result: serde_json::Value) -> LspClient {
         )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
     client.on_event(ev);
     client
@@ -920,12 +929,14 @@ fn drain_pending_completes_every_request_as_stopped() {
         "textDocument/hover",
         serde_json::Value::Null,
         meta(),
+        Instant::now(),
     );
     let second = client.send_request(
         &mut backend,
         "textDocument/hover",
         serde_json::Value::Null,
         meta(),
+        Instant::now(),
     );
 
     let mut drained = client.drain_pending();
@@ -953,7 +964,7 @@ fn starting_client_with_a_queued_request() -> LspClient {
         )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
         deadline: Instant::now() + std::time::Duration::from_secs(10),
@@ -963,6 +974,7 @@ fn starting_client_with_a_queued_request() -> LspClient {
         "textDocument/hover",
         serde_json::Value::Null,
         meta,
+        Instant::now(),
     );
     assert_eq!(client.queued.len(), 1);
     client
@@ -1020,6 +1032,7 @@ fn send_request_after_crashed_times_out_immediately_via_the_sweep() {
         "textDocument/hover",
         serde_json::Value::Null,
         meta,
+        Instant::now(),
     );
 
     assert!(
@@ -1045,7 +1058,7 @@ fn shutdown_sends_shutdown_request_then_exit_notification_in_order() {
     // asserts on what `begin_shutdown` adds after it.
     let before = backend.sent.len();
 
-    client.begin_shutdown(&mut backend);
+    client.begin_shutdown(&mut backend, Instant::now());
 
     assert_eq!(client.state, ServerState::Dead);
     assert_eq!(backend.sent.len(), before + 2);
@@ -1077,7 +1090,7 @@ fn begin_shutdown_sends_nothing_while_still_starting() {
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     assert_eq!(client.state, ServerState::Starting);
 
-    client.begin_shutdown(&mut backend);
+    client.begin_shutdown(&mut backend, Instant::now());
 
     assert_eq!(client.state, ServerState::Dead);
     assert!(
@@ -1107,8 +1120,8 @@ fn initialize_response_after_shutdown_while_starting_does_not_resurrect_the_clie
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
-    client.start_handshake(&mut backend);
-    client.begin_shutdown(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
+    client.begin_shutdown(&mut backend, Instant::now());
     assert_eq!(client.state, ServerState::Dead);
 
     let (_id, ev) = backend
@@ -1134,7 +1147,7 @@ fn shutdown_response_surfaces_through_take_completed() {
     let (mut backend, mut client) = make_running_client();
     backend.respond_to("shutdown", serde_json::Value::Null);
 
-    client.begin_shutdown(&mut backend);
+    client.begin_shutdown(&mut backend, Instant::now());
     let (_sid, ev) = backend
         .drain()
         .into_iter()
@@ -1160,7 +1173,7 @@ fn shutdown_error_surfaces_as_err() {
     let (mut backend, mut client) = make_running_client();
     backend.fail_with("shutdown", -32603, "internal error");
 
-    client.begin_shutdown(&mut backend);
+    client.begin_shutdown(&mut backend, Instant::now());
     let (_sid, ev) = backend
         .drain()
         .into_iter()
@@ -1189,7 +1202,7 @@ fn make_running_client() -> (InlineLspBackend, LspClient) {
         )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
     client.on_event(ev);
     assert_eq!(client.state, ServerState::Running);
@@ -1210,6 +1223,7 @@ fn send_request_delivers_response_via_take_completed() {
         "textDocument/hover",
         serde_json::Value::Null,
         meta,
+        Instant::now(),
     );
 
     let (_sid, ev) = backend.drain().into_iter().next().unwrap();
@@ -1249,6 +1263,7 @@ fn cancel_removes_pending_and_sends_cancel_notification() {
         "textDocument/definition",
         serde_json::Value::Null,
         meta,
+        Instant::now(),
     );
     client.cancel(&mut backend, id.clone());
 
@@ -1303,6 +1318,7 @@ fn cancel_and_timeout_send_no_cancel_request_while_still_starting() {
         "textDocument/definition",
         serde_json::Value::Null,
         meta,
+        Instant::now(),
     );
     client.cancel(&mut backend, id);
     assert!(
@@ -1319,6 +1335,7 @@ fn cancel_and_timeout_send_no_cancel_request_while_still_starting() {
         "textDocument/hover",
         serde_json::Value::Null,
         meta2,
+        Instant::now(),
     );
     let (completed, actions) = client.take_completed(&mut backend, Instant::now());
     assert_eq!(completed.len(), 1);
@@ -1349,7 +1366,7 @@ fn cancelled_request_is_not_flushed_after_handshake_completes() {
         )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
-    client.start_handshake(&mut backend);
+    client.start_handshake(&mut backend, Instant::now());
 
     let meta = RequestMeta {
         method: "textDocument/definition".to_string(),
@@ -1360,6 +1377,7 @@ fn cancelled_request_is_not_flushed_after_handshake_completes() {
         "textDocument/definition",
         serde_json::Value::Null,
         meta,
+        Instant::now(),
     );
     client.cancel(&mut backend, id);
 
@@ -1397,6 +1415,7 @@ fn take_completed_reports_timeout_and_sends_cancel_request() {
         "textDocument/completion",
         serde_json::Value::Null,
         meta,
+        Instant::now(),
     );
 
     let (completed, actions) = client.take_completed(&mut backend, Instant::now());
@@ -1760,7 +1779,7 @@ fn eof_reports_crashed_only_once_even_if_fed_again() {
 #[test]
 fn eof_after_a_graceful_shutdown_does_not_report_crashed() {
     let (mut backend, mut client) = make_running_client();
-    client.begin_shutdown(&mut backend);
+    client.begin_shutdown(&mut backend, Instant::now());
     assert_eq!(client.state, ServerState::Dead);
 
     let actions = client.on_event(InboundEvent::Eof { error: None });

@@ -387,8 +387,11 @@ impl Editor {
             .collect();
         let timeout = (!holds.is_empty()).then(|| {
             let after = self.before_save_timeout();
-            self.timers
-                .schedule(after, TimerPayload::BeforeSaveTimeout(bid))
+            self.timers.schedule(
+                after,
+                TimerPayload::BeforeSaveTimeout(bid),
+                self.state.clock.now(),
+            )
         });
         self.state.pending_writes.open_holds(bid, &holds, timeout);
         let fired = {

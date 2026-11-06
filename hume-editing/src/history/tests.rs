@@ -1,3 +1,5 @@
+use std::time::{Duration, SystemTime};
+
 use hume_rope::offset::CharOffset;
 
 use super::children::Children;
@@ -7,6 +9,11 @@ use crate::selection::{Selection, SelectionSet};
 use crate::state::EditState;
 use crate::text::BufferText;
 use hume_core::PaneId;
+
+/// The time every test history starts at.
+pub(super) fn start_time() -> SystemTime {
+    SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000)
+}
 
 /// A cursor at offset `pos` of one text shared by every call, wide enough
 /// that every char below 60 starts a cluster, so two calls with one `pos`
@@ -28,8 +35,8 @@ fn insert_cs(buf_len: usize, text: &str) -> ChangeSet {
     b.finish()
 }
 
-/// Record `forward` in `h`, as an edit of a text of blanks as long as
-/// `forward` expects.
+/// Record `forward` in `h` at [`start_time`], as an edit of a text of blanks as
+/// long as `forward` expects.
 fn record(
     h: &mut History,
     owner: Option<PaneId>,
@@ -37,15 +44,27 @@ fn record(
     pre: SelectionSet,
     post: SelectionSet,
 ) -> Option<RevisionId> {
+    record_at(h, start_time(), owner, forward, pre, post)
+}
+
+/// [`record`], made at `at`.
+fn record_at(
+    h: &mut History,
+    at: SystemTime,
+    owner: Option<PaneId>,
+    forward: ChangeSet,
+    pre: SelectionSet,
+    post: SelectionSet,
+) -> Option<RevisionId> {
     let text = BufferText::from(format!("{}\n", " ".repeat(forward.len_before() - 1)).as_str());
-    h.record(owner, forward, &text, pre, post)
+    h.record(owner, forward, &text, pre, post, at)
 }
 
 // ── Basic undo/redo ───────────────────────────────────────────────────────
 
 #[test]
 fn new_history_has_one_revision() {
-    let h = History::new();
+    let h = History::new(start_time());
     assert_eq!(h.len(), 1);
     assert!(!h.can_undo());
     assert!(!h.can_redo());
@@ -53,7 +72,7 @@ fn new_history_has_one_revision() {
 
 #[test]
 fn record_advances_current() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let cs = insert_cs(6, "x");
     record(&mut h, None, cs, sel_at(0), sel_at(1));
     assert_eq!(h.len(), 2);
@@ -63,7 +82,7 @@ fn record_advances_current() {
 
 #[test]
 fn undo_returns_inverse_and_moves_to_parent() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let cs = insert_cs(6, "x");
     record(&mut h, None, cs, sel_at(0), sel_at(1));
 
@@ -75,13 +94,13 @@ fn undo_returns_inverse_and_moves_to_parent() {
 
 #[test]
 fn undo_at_root_returns_none() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     assert!(h.undo().is_none());
 }
 
 #[test]
 fn redo_returns_forward_and_moves_to_child() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let cs = insert_cs(6, "x");
     record(&mut h, None, cs.clone(), sel_at(0), sel_at(1));
 
@@ -94,13 +113,13 @@ fn redo_returns_forward_and_moves_to_child() {
 
 #[test]
 fn redo_with_no_children_returns_none() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     assert!(h.redo().is_none());
 }
 
 #[test]
 fn undo_redo_roundtrip() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "x"), sel_at(0), sel_at(1));
     record(&mut h, None, insert_cs(7, "y"), sel_at(1), sel_at(2));
 
@@ -122,7 +141,7 @@ fn branching_preserves_old_path() {
     // Tree:  root → A → B
     //            ↘ C
     // Redo from root should go to C (last child), not B.
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev 1
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // rev 2
     h.undo(); // to rev 1
@@ -154,7 +173,7 @@ fn branching_preserves_old_path() {
 
 #[test]
 fn undo_n_walks_multiple_steps_and_lands_on_target() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     for i in 0..5 {
         record(
             &mut h,
@@ -176,7 +195,7 @@ fn undo_n_walks_multiple_steps_and_lands_on_target() {
 
 #[test]
 fn undo_n_clamps_at_root_short_of_the_requested_count() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1));
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2));
 
@@ -187,7 +206,7 @@ fn undo_n_clamps_at_root_short_of_the_requested_count() {
 
 #[test]
 fn undo_n_zero_count_is_empty_and_current_unmoved() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1));
     let before = h.current;
 
@@ -197,14 +216,14 @@ fn undo_n_zero_count_is_empty_and_current_unmoved() {
 
 #[test]
 fn undo_n_at_root_is_empty() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     assert!(h.undo_n(3).is_empty());
     assert_eq!(h.current, RevisionId(0));
 }
 
 #[test]
 fn redo_n_walks_multiple_steps_and_lands_on_target() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     for i in 0..4 {
         record(
             &mut h,
@@ -227,7 +246,7 @@ fn redo_n_walks_multiple_steps_and_lands_on_target() {
 
 #[test]
 fn redo_n_clamps_at_leaf_short_of_the_requested_count() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1));
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2));
     h.undo();
@@ -274,19 +293,25 @@ fn redo_n_follows_last_walked_child_through_multiple_hops() {
 /// rev1 = first edit, rev2 = second edit, rev3 = third edit.
 /// Undo to rev1, then record rev4 = branch C.
 fn branching_history() -> History {
-    let mut h = History::new();
-    record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1
-    record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // rev2
-    record(&mut h, None, insert_cs(8, "c"), sel_at(2), sel_at(3)); // rev3
+    branching_history_at([start_time(); 5])
+}
+
+/// [`branching_history`], with the root and each revision made at its
+/// entry of `times`, in id order.
+fn branching_history_at([root, a, b, c, d]: [SystemTime; 5]) -> History {
+    let mut h = History::new(root);
+    record_at(&mut h, a, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1
+    record_at(&mut h, b, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // rev2
+    record_at(&mut h, c, None, insert_cs(8, "c"), sel_at(2), sel_at(3)); // rev3
     h.undo(); // back to rev2
     h.undo(); // back to rev1
-    record(&mut h, None, insert_cs(7, "d"), sel_at(1), sel_at(9)); // rev4 (branch)
+    record_at(&mut h, d, None, insert_cs(7, "d"), sel_at(1), sel_at(9)); // rev4 (branch)
     h
 }
 
 #[test]
 fn goto_current_revision_walks_nothing() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1));
     let current = h.current;
     let txns = h
@@ -298,13 +323,13 @@ fn goto_current_revision_walks_nothing() {
 
 #[test]
 fn goto_out_of_bounds_returns_none() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     assert!(h.goto_revision(RevisionId(999)).is_none());
 }
 
 #[test]
 fn goto_parent_is_one_inverse() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1));
     let rev0 = RevisionId(0);
     let txns = h.goto_revision(rev0).expect("should move to parent");
@@ -316,7 +341,7 @@ fn goto_parent_is_one_inverse() {
 
 #[test]
 fn goto_child_is_one_forward() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1));
     h.undo(); // back to root
     let rev1 = RevisionId(1);
@@ -400,7 +425,7 @@ fn changes_to_unknown_id_is_unknown() {
 
 #[test]
 fn goto_distant_ancestor() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     for i in 0..5 {
         record(
             &mut h,
@@ -420,7 +445,7 @@ fn goto_distant_ancestor() {
 
 #[test]
 fn goto_distant_descendant() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     for i in 0..5 {
         record(
             &mut h,
@@ -447,7 +472,7 @@ fn goto_distant_descendant() {
 
 #[test]
 fn multiple_sequential_undos() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     for i in 0..5 {
         record(
             &mut h,
@@ -473,7 +498,7 @@ fn multiple_sequential_undos() {
 fn cap_zero_never_evicts() {
     // A cap of 0 means unlimited. Trimming here would leave 1 revision
     // instead of 6.
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     for i in 0..5 {
         record(
             &mut h,
@@ -490,7 +515,7 @@ fn cap_zero_never_evicts() {
 fn set_undo_levels_does_not_trim_until_next_record() {
     // Lowering the cap takes effect on the next record. An immediate trim
     // would drop len() to 3 right after the call.
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     for i in 0..5 {
         record(
             &mut h,
@@ -514,7 +539,7 @@ fn set_undo_levels_does_not_trim_until_next_record() {
 fn linear_chain_promotes_oldest() {
     // Promoting `a` into the root drops len() from 4 (root+a+b+c) to 3 and
     // leaves `a` with no parent at all.
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.set_undo_levels(2);
     let a = record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // a = RevisionId(1)
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // b
@@ -533,7 +558,7 @@ fn linear_chain_promotes_oldest() {
 #[test]
 fn cap_one_current_never_evicted() {
     // Current is never evicted, so len() holds at 2 (root + current).
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.set_undo_levels(1);
     for i in 0..4 {
         record(
@@ -554,7 +579,7 @@ fn oldest_branch_evicted_first() {
     // Tree: root -> A (rev1) -> B (rev2); undo to A; record C (rev3, branch).
     // current is under C. Capping to 1 must drop the whole {A, B} branch
     // and promote C, not touch C's own subtree.
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1 = A
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // rev2 = B
     h.undo(); // back to A
@@ -574,7 +599,7 @@ fn protected_branch_skipped() {
     // (rev3, branch), undo to root; record D (rev4, branch, current).
     // Root has 3 children [A, C, D] (chronological). D is on current's
     // path. Eviction must remove A's branch (oldest non-protected), not D's.
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1 = A
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // rev2 = B
     h.undo();
@@ -601,7 +626,7 @@ fn subtree_eviction_may_overshoot() {
     // (branch, current). Cap 3 with 4 non-root nodes triggers eviction;
     // discarding the whole {A, B, C} branch in one step drops to 1 non-root
     // node, well under the cap of 3, matching Vim's overshoot behavior.
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1 = A
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // rev2 = B
     record(&mut h, None, insert_cs(8, "c"), sel_at(2), sel_at(3)); // rev3 = C
@@ -620,7 +645,7 @@ fn promotion_reports_last_promoted_only() {
     // loop (linear chain with a very low cap). Only the final promoted id
     // is meaningful (it's the node root now represents), so earlier
     // promotions in the same loop must not leak out.
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.set_undo_levels(1);
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // a: len 2, no trim
     let promoted_b = record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // b promotes a
@@ -632,27 +657,41 @@ fn promotion_reports_last_promoted_only() {
 
 // ── Time-travel step resolution (:earlier/:later) ────────────────────────────
 
-use std::time::{Duration, SystemTime};
-
-/// Backdate revision `id` so it reads as `age` old.
-fn backdate(h: &mut History, id: RevisionId, age: Duration) {
-    h.revisions.get_mut(&id).expect("revision exists").timestamp = SystemTime::now() - age;
-}
-
 fn mins(n: u64) -> Duration {
     Duration::from_secs(n * 60)
 }
 
-/// Linear chain root(20m) → rev1(15m) → rev2(8m) → rev3(1m, current).
+/// `n` minutes after [`start_time`].
+fn at(n: u64) -> SystemTime {
+    start_time() + mins(n)
+}
+
+/// When the aged histories below are queried.
+fn now() -> SystemTime {
+    at(20)
+}
+
+/// Linear chain root(20m) → rev1(15m) → rev2(8m) → rev3(1m, current), as
+/// old as of [`now`].
 fn aged_chain() -> History {
-    let mut h = History::new();
-    record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1
-    record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // rev2
-    record(&mut h, None, insert_cs(8, "c"), sel_at(2), sel_at(3)); // rev3
-    backdate(&mut h, RevisionId(0), mins(20));
-    backdate(&mut h, RevisionId(1), mins(15));
-    backdate(&mut h, RevisionId(2), mins(8));
-    backdate(&mut h, RevisionId(3), mins(1));
+    let mut h = History::new(at(0));
+    record_at(&mut h, at(5), None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1
+    record_at(
+        &mut h,
+        at(12),
+        None,
+        insert_cs(7, "b"),
+        sel_at(1),
+        sel_at(2),
+    ); // rev2
+    record_at(
+        &mut h,
+        at(19),
+        None,
+        insert_cs(8, "c"),
+        sel_at(2),
+        sel_at(3),
+    ); // rev3
     h
 }
 
@@ -660,23 +699,23 @@ fn aged_chain() -> History {
 fn undo_steps_older_than_walks_to_state_as_of_age() {
     let h = aged_chain();
     assert_eq!(
-        h.undo_steps_older_than(mins(5)),
+        h.undo_steps_older_than(mins(5), now()),
         Ok(1),
         ":earlier 5m from 1m-old tip must step once onto rev2 (8m)"
     );
     assert_eq!(
-        h.undo_steps_older_than(mins(10)),
+        h.undo_steps_older_than(mins(10), now()),
         Ok(2),
         ":earlier 10m must step twice onto rev1 (15m)"
     );
     assert_eq!(
-        h.undo_steps_older_than(mins(30)),
+        h.undo_steps_older_than(mins(30), now()),
         Err(3),
         ":earlier older than the root is unsatisfiable: Err carries the real depth (3), \
          for the shared undo loop's own exhaustion check to report"
     );
     assert_eq!(
-        h.undo_steps_older_than(Duration::ZERO),
+        h.undo_steps_older_than(Duration::ZERO, now()),
         Ok(0),
         ":earlier 0s is already satisfied: no steps"
     );
@@ -688,18 +727,18 @@ fn redo_steps_newer_than_walks_last_child_chain() {
     h.undo();
     h.undo(); // back to rev1 (15m)
     assert_eq!(
-        h.redo_steps_newer_than(mins(5)),
+        h.redo_steps_newer_than(mins(5), now()),
         Ok(1),
         ":later 5m from rev1 must step once onto rev2 (8m), stopping before rev3 (1m)"
     );
     assert_eq!(
-        h.redo_steps_newer_than(Duration::ZERO),
+        h.redo_steps_newer_than(Duration::ZERO, now()),
         Err(2),
         ":later 0s walks the whole last-child chain to the tip (2 real hops), still \
          older than now: unsatisfiable, Err carries the real hop count"
     );
     assert_eq!(
-        h.redo_steps_newer_than(mins(30)),
+        h.redo_steps_newer_than(mins(30), now()),
         Ok(0),
         ":later older than every descendant is already satisfied: no steps"
     );
@@ -716,9 +755,9 @@ fn redo_steps_newer_than_walks_last_child_chain() {
 /// step, where `Ok(0)` is correct.
 #[test]
 fn redo_steps_newer_than_at_the_tip_is_satisfied_regardless_of_the_tip_s_own_age() {
-    let h = aged_chain(); // current = rev3 (tip), backdated to 1m, no children
+    let h = aged_chain(); // current = rev3 (tip), 1m old, no children
     assert_eq!(
-        h.redo_steps_newer_than(Duration::from_secs(5)),
+        h.redo_steps_newer_than(Duration::from_secs(5), now()),
         Ok(0),
         ":later 5s at the tip is already satisfied; there is nothing newer to redo \
          onto, no matter how old the tip itself is relative to the requested age"
@@ -730,18 +769,24 @@ fn redo_steps_newer_than_follows_last_walked_child() {
     let mut h = aged_chain();
     h.undo();
     h.undo(); // back to rev1
-    record(&mut h, None, insert_cs(7, "d"), sel_at(1), sel_at(9)); // rev4, last child of rev1
-    backdate(&mut h, RevisionId(4), mins(2));
+    record_at(
+        &mut h,
+        at(18),
+        None,
+        insert_cs(7, "d"),
+        sel_at(1),
+        sel_at(9),
+    ); // rev4, last child of rev1
     h.undo(); // back to rev1, the fork point the queries run from
     // Sibling rev2 is 8m old but is not rev1's redo target; the count must
     // follow rev4 (2m), so `:later 5m` takes no steps.
     assert_eq!(
-        h.redo_steps_newer_than(mins(5)),
+        h.redo_steps_newer_than(mins(5), now()),
         Ok(0),
         ":later must follow the redo child (rev4, 2m), not the older sibling"
     );
     assert_eq!(
-        h.redo_steps_newer_than(Duration::ZERO),
+        h.redo_steps_newer_than(Duration::ZERO, now()),
         Err(1),
         ":later 0s steps once along the rev4 branch (1 real hop), whose tip is still \
          older than now: unsatisfiable, Err carries the real hop count"
@@ -758,7 +803,7 @@ fn redo_steps_newer_than_follows_last_walked_child() {
 
 #[test]
 fn undo_makes_the_undone_child_the_redo_target() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1
     h.undo();
     record(&mut h, None, insert_cs(6, "c"), sel_at(0), sel_at(2)); // rev2, newer sibling
@@ -788,13 +833,19 @@ fn redo_steps_newer_than_follows_the_walked_branch() {
     let mut h = aged_chain();
     h.undo();
     h.undo(); // rev1
-    record(&mut h, None, insert_cs(7, "d"), sel_at(1), sel_at(9)); // rev4
-    backdate(&mut h, RevisionId(4), mins(2));
+    record_at(
+        &mut h,
+        at(18),
+        None,
+        insert_cs(7, "d"),
+        sel_at(1),
+        sel_at(9),
+    ); // rev4
     h.goto_revision(RevisionId(2));
     h.undo(); // rev1, redo target now rev2 (8m), not rev4 (2m)
 
     assert_eq!(
-        h.redo_steps_newer_than(mins(5)),
+        h.redo_steps_newer_than(mins(5), now()),
         Ok(1),
         ":later 5m must step onto rev2 (8m) and stop before rev3 (1m)"
     );
@@ -804,7 +855,7 @@ fn redo_steps_newer_than_follows_the_walked_branch() {
 
 #[test]
 fn promotion_carries_the_redo_target_into_the_root() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.set_undo_levels(3);
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // rev2
@@ -866,7 +917,7 @@ fn children_set_redo_rejects_a_non_child() {
 
 #[test]
 fn revision_id_checked_accepts_live_and_rejects_evicted_ids() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.set_undo_levels(1);
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1)); // rev1
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2)); // rev2, promotes rev1
@@ -880,11 +931,9 @@ fn revision_id_checked_accepts_live_and_rejects_evicted_ids() {
 
 #[test]
 fn nodes_enumerate_every_revision_in_id_order_with_parent_and_age() {
-    let mut h = branching_history(); // rev1 → rev2 → rev3, rev1 → rev4
-    for i in 0..=4 {
-        backdate(&mut h, RevisionId(i), mins(20 - 4 * i as u64));
-    }
-    let nodes = h.nodes(SystemTime::now());
+    // rev1 → rev2 → rev3, rev1 → rev4
+    let h = branching_history_at([at(0), at(4), at(8), at(12), at(16)]);
+    let nodes = h.nodes(now());
 
     let shape: Vec<_> = nodes
         .iter()
@@ -901,18 +950,13 @@ fn nodes_enumerate_every_revision_in_id_order_with_parent_and_age() {
         ]
     );
     for (i, node) in nodes.iter().enumerate() {
-        let want = mins(20 - 4 * i as u64);
-        assert!(
-            node.age() >= want && node.age() < want + Duration::from_secs(5),
-            "rev{i} age {:?} should be about {want:?}",
-            node.age()
-        );
+        assert_eq!(node.age(), mins(20 - 4 * i as u64), "rev{i}");
     }
 }
 
 #[test]
 fn change_seq_moves_on_every_navigation_and_record_only() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let mut seen = h.change_seq();
     let mut moved = |h: &History| {
         let now = h.change_seq();
@@ -946,40 +990,52 @@ fn change_seq_moves_on_every_navigation_and_record_only() {
 
 #[test]
 fn promotion_gives_the_root_the_age_of_the_promoted_state() {
-    let mut h = History::new();
+    let mut h = History::new(at(0));
     h.set_undo_levels(1);
-    record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1));
-    backdate(&mut h, RevisionId(0), mins(60));
-    backdate(&mut h, RevisionId(1), mins(10));
+    record_at(
+        &mut h,
+        at(10),
+        None,
+        insert_cs(6, "a"),
+        sel_at(0),
+        sel_at(1),
+    );
 
-    let promoted = record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2));
+    let promoted = record_at(
+        &mut h,
+        at(20),
+        None,
+        insert_cs(7, "b"),
+        sel_at(1),
+        sel_at(2),
+    );
 
     assert_eq!(promoted, Some(RevisionId(1)));
-    let root = &h.nodes(SystemTime::now())[0];
+    let root = &h.nodes(now())[0];
     assert_eq!(root.id, History::ROOT);
-    assert!(
-        root.age >= mins(10) && root.age < mins(11),
-        "the root holds the promoted revision's state, so it is that old: {:?}",
-        root.age
+    assert_eq!(
+        root.age,
+        mins(10),
+        "the root holds the promoted revision's state, so it is that old"
     );
 }
 
 #[test]
 fn reset_keeps_change_seq_strictly_increasing() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.set_undo_levels(5);
     record(&mut h, None, insert_cs(6, "a"), sel_at(0), sel_at(1));
     record(&mut h, None, insert_cs(7, "b"), sel_at(1), sel_at(2));
     let before = h.change_seq();
 
-    h.reset();
+    h.reset(start_time());
 
     assert!(h.change_seq() > before);
     assert_eq!(h.len(), 1);
     assert_eq!(h.current_id(), History::ROOT);
     assert_eq!(h.undo_levels(), 5);
     let after_reset = h.change_seq();
-    h.reset();
+    h.reset(start_time());
     assert_eq!(
         h.change_seq(),
         after_reset,
@@ -1023,7 +1079,7 @@ fn record_edit_leaving(
     let cs = b.finish();
     let after = cs.apply(text).expect("built for text");
     let left = selected(&after, anchor, head);
-    h.record(owner, cs, text, before, left);
+    h.record(owner, cs, text, before, left, start_time());
     after
 }
 
@@ -1049,7 +1105,7 @@ fn pane() -> Option<PaneId> {
 
 #[test]
 fn the_selection_an_edit_left_is_exact_on_its_own_text() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let text = BufferText::from("abcdef\n");
     let after = record_edit(&mut h, pane(), &text, (1, 3), "XY", selected(&text, 1, 2));
     let point = SelectionPoint {
@@ -1062,7 +1118,7 @@ fn the_selection_an_edit_left_is_exact_on_its_own_text() {
 
 #[test]
 fn an_undone_edits_selection_is_exact_on_the_text_undo_restores() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let text = BufferText::from("abcdef\n");
     let paragraph = selected(&text, 1, 4);
     let after = record_edit(&mut h, pane(), &text, (1, 5), "", paragraph.clone());
@@ -1078,7 +1134,7 @@ fn an_undone_edits_selection_is_exact_on_the_text_undo_restores() {
 
 #[test]
 fn a_saved_selection_is_mapped_through_later_edits() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let text = BufferText::from("abcdef\n");
     let mid = record_edit(&mut h, pane(), &text, (0, 0), "X", selected(&text, 1, 2));
     let first = h.current_id();
@@ -1093,7 +1149,7 @@ fn a_saved_selection_is_mapped_through_later_edits() {
 
 #[test]
 fn selection_points_are_one_owners_newest_first() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let t0 = BufferText::from("abcdef\n");
     let left = (0, 1);
     let t1 = record_edit_leaving(&mut h, pane(), &t0, (0, 0), "X", selected(&t0, 1, 2), left);
@@ -1116,7 +1172,7 @@ fn selection_points_are_one_owners_newest_first() {
 
 #[test]
 fn selection_points_leave_out_single_cursors() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     let t0 = BufferText::from("abcdef\n");
     let t1 = record_edit(&mut h, pane(), &t0, (0, 0), "X", selected(&t0, 1, 2));
     let left_cursor = h.current_id();
@@ -1143,7 +1199,7 @@ fn selection_points_leave_out_single_cursors() {
 
 #[test]
 fn a_selection_saved_on_a_text_promoted_into_the_root_is_mapped_from_it() {
-    let mut h = History::new();
+    let mut h = History::new(start_time());
     h.set_undo_levels(1);
     let t0 = BufferText::from("abcdef\n");
     let t1 = record_edit(&mut h, pane(), &t0, (0, 0), "X", selected(&t0, 1, 2));

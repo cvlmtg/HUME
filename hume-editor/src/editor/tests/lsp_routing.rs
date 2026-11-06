@@ -1623,12 +1623,12 @@ fn one_delivery_can_mix_an_answer_a_timeout_and_a_stop() {
 
     type_cmd(&mut rig.ed, ":send");
     rig.stop("ra-extra");
+    let timeout = rig.ed.state.settings.lsp_request_timeout_ms;
+    rig.ed.state.clock.hold();
     rig.ed
         .state
-        .lsp
-        .client_for_test(LINT)
-        .expect("ra-lint is running")
-        .expire_pending_deadlines_for_test();
+        .clock
+        .advance(std::time::Duration::from_millis(timeout as u64 + 1));
     rig.ed.settle();
 
     assert_eq!(

@@ -189,10 +189,13 @@ mod next_wake_covers_client_state {
             method: "textDocument/hover".to_string(),
             deadline: Instant::now() + Duration::from_secs(10),
         };
-        rig.ed
-            .state
-            .lsp
-            .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta);
+        rig.ed.state.lsp.send_request(
+            sid,
+            "textDocument/hover",
+            serde_json::Value::Null,
+            meta,
+            Instant::now(),
+        );
 
         let timeout = rig
             .ed
@@ -234,6 +237,7 @@ mod next_wake_covers_client_state {
                 method: "textDocument/hover".to_string(),
                 deadline: Instant::now() + Duration::from_secs(20),
             },
+            Instant::now(),
         );
         rig.ed.state.lsp.send_request(
             sid_near,
@@ -243,6 +247,7 @@ mod next_wake_covers_client_state {
                 method: "textDocument/hover".to_string(),
                 deadline: Instant::now() + Duration::from_secs(2),
             },
+            Instant::now(),
         );
 
         let timeout = rig.ed.wake_timeout().expect("two pending requests");
@@ -296,14 +301,14 @@ fn timer_wheel_end_to_end_tick_via_editor() {
     // sleeping in the test.
     let mut ed = editor_from("-[w]>ord\n");
     let bid = ed.focused_buffer_id();
+    let now = ed.state.clock.now();
     ed.timers.schedule(
         Duration::from_millis(10),
         TimerPayload::DiagnosticPullDebounce(bid),
+        now,
     );
 
-    let due = ed
-        .timers
-        .take_due(Instant::now() + Duration::from_millis(20));
+    let due = ed.timers.take_due(now + Duration::from_millis(20));
     assert!(
         matches!(due[..], [(_, TimerPayload::DiagnosticPullDebounce(due_bid))] if due_bid == bid),
         "exactly the scheduled timer must be due"
@@ -313,15 +318,17 @@ fn timer_wheel_end_to_end_tick_via_editor() {
 /// Schedules a native timer whose firing nothing in these tests observes.
 fn schedule_any(ed: &mut Editor, after: Duration) {
     let bid = ed.focused_buffer_id();
+    let now = ed.state.clock.now();
     ed.timers
-        .schedule(after, TimerPayload::DiagnosticPullDebounce(bid));
+        .schedule(after, TimerPayload::DiagnosticPullDebounce(bid), now);
 }
 
 #[test]
 fn a_started_pipe_run_wakes_the_loop_by_its_grace_end() {
     let mut ed = editor_from("-[abc]>\n");
     assert_eq!(ed.wake_timeout(), None, "setup: nothing to wake for");
+    ed.state.clock.hold();
     type_pipe(&mut ed, "sort");
     let timeout = ed.wake_timeout().expect("the run's grace end is a wake");
-    assert!(timeout <= Duration::from_millis(100), "got {timeout:?}");
+    assert_eq!(timeout, Duration::from_millis(100));
 }

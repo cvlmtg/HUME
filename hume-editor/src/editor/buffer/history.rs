@@ -102,12 +102,14 @@ impl Buffer {
     /// delegate so the typed layer never touches `History` itself. See
     /// `History::undo_steps_older_than`'s own doc for the `Result` contract.
     pub(in crate::editor) fn undo_steps_older_than(&self, age: Duration) -> Result<usize, usize> {
-        self.history.undo_steps_older_than(age)
+        self.history
+            .undo_steps_older_than(age, self.clock.wall_now())
     }
 
     /// Redo steps forward to the state as of `age` ago, for `:later`.
     pub(in crate::editor) fn redo_steps_newer_than(&self, age: Duration) -> Result<usize, usize> {
-        self.history.redo_steps_newer_than(age)
+        self.history
+            .redo_steps_newer_than(age, self.clock.wall_now())
     }
 
     /// Jump to an arbitrary revision in the undo tree as one composed

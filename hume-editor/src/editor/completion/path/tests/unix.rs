@@ -11,7 +11,10 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
     std::fs::write(home_dir.path().join("notes.md"), b"").unwrap();
     std::fs::create_dir(home_dir.path().join("code")).unwrap();
 
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = &AbsolutePath::rooted("/tmp");
     let langs = LanguageRegistry::for_testing();
     let ctx = CompletionCtx {
@@ -57,7 +60,10 @@ fn path_completer_dollar_var_expands_for_lookup() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("main.rs"), b"").unwrap();
 
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = &AbsolutePath::rooted("/tmp");
     let langs = LanguageRegistry::for_testing();
     let ctx = CompletionCtx {
@@ -100,7 +106,10 @@ fn path_completer_dirs_only_mode() {
     std::fs::write(&file, "x\n").unwrap();
 
     let canonical = AbsolutePath::canonicalize(dir.path()).unwrap();
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let langs = LanguageRegistry::for_testing();
     let ctx = CompletionCtx {
         registry: &reg,
@@ -146,7 +155,10 @@ fn path_completer_steps_out_of_a_symlink_target_on_dot_dot() {
     std::fs::write(dir.path().join("b/in_b.txt"), b"").unwrap();
     std::os::unix::fs::symlink(dir.path().join("b/c"), dir.path().join("a/link")).unwrap();
 
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let input = "e a/link/../";

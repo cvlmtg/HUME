@@ -27,6 +27,7 @@ mod async_source;
 mod before_save;
 #[cfg(any(test, feature = "test-util"))]
 pub(crate) mod bench;
+mod clock;
 mod decoration_providers;
 mod edit_session;
 mod error;
@@ -213,6 +214,9 @@ pub(crate) struct EditorState {
     pub(crate) library_wait: hume_core::OsWait,
     /// All open buffers. SSOT for buffer content, history, and file metadata.
     pub(crate) buffers: BufferStore,
+    /// The time every deadline, grace and age in the editor is measured on.
+    /// `buffers` holds a clone of it.
+    pub(crate) clock: clock::Clock,
     /// Each buffer's diagnostics and last insertion, carried with its text.
     pub(in crate::editor) buffer_positions: position_stores::BufferPositions,
     /// LSP backend, server registry, running instances and in-flight
@@ -407,9 +411,11 @@ impl EditorState {
         let settings = EditorSettings::default();
         let history_capacity = settings.prompt_history_levels;
         let library_wait = hume_core::OsWait::default();
+        let clock = clock::Clock::default();
         Self {
             dirs: hume_platform::dirs::Dirs::none(),
-            buffers: BufferStore::new(),
+            buffers: BufferStore::new(clock.clone()),
+            clock,
             buffer_positions: position_stores::BufferPositions::default(),
             lsp: lsp::LspState::new_threaded(Arc::new(|| {})),
             // The real probe result arrives later, through `set_kitty_support`.

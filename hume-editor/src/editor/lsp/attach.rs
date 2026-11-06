@@ -340,6 +340,7 @@ impl EditorState {
                 config,
                 wanted.root.clone(),
                 self.dirs.search_path.as_deref(),
+                self.clock.now(),
             )
             .map_err(|e| format!("lsp: {e}"));
         match spawned {
@@ -455,6 +456,7 @@ impl EditorState {
     /// answer completes first, a landed response with its own outcome and
     /// the rest as stopped, so no callback outlives its server.
     fn lsp_stop_instance(&mut self, view: &EngineView, sid: ServerId) {
+        let now = self.clock.now();
         let LspState {
             instances,
             backend,
@@ -465,10 +467,8 @@ impl EditorState {
             return;
         };
         publishes.forget_server(sid);
-        instance.client.begin_shutdown(backend.as_mut());
-        let (completed, _actions) = instance
-            .client
-            .take_completed(backend.as_mut(), std::time::Instant::now());
+        instance.client.begin_shutdown(backend.as_mut(), now);
+        let (completed, _actions) = instance.client.take_completed(backend.as_mut(), now);
         let pending = instance.client.drain_pending();
         backend.shutdown(sid);
         for (id, meta, outcome) in completed {

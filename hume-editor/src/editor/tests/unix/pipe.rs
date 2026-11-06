@@ -58,7 +58,10 @@ impl PipeConsole for ScriptedConsole {
     }
 
     fn repaint(&mut self, ed: &mut Editor) -> io::Result<()> {
-        let progress = ed.state.pipe_runs.progress(ed.focused_buffer_id());
+        let progress = ed
+            .state
+            .pipe_runs
+            .progress(ed.focused_buffer_id(), ed.state.clock.now());
         self.repaints
             .push(progress.map(|p| (p.command.to_owned(), p.done, p.total)));
         self.painted_at.push(Instant::now());
@@ -145,10 +148,13 @@ fn a_run_replaces_the_selection_with_its_output() {
     assert_eq!(state(&ed), "-[a\nb]>\nz\n");
 }
 
+/// The clock is held, so the run ends within the grace however long it
+/// takes.
 #[test]
 fn a_run_that_ends_within_the_grace_draws_no_frame() {
     let mut ed = editor_from("-[abc]>\n");
-    let run = start_run(&mut ed, "cat", PipeKind::Replace);
+    ed.state.clock.hold();
+    let run = start_run(&mut ed, "sleep 0.2; cat", PipeKind::Replace);
     let mut console = ScriptedConsole::new(&ed, []);
     run_with(&mut ed, run, &mut console);
     assert_eq!(state(&ed), "-[abc]>\n");
@@ -617,15 +623,23 @@ fn a_failed_background_run_reports_naming_the_buffer_and_keeps_the_previous_chan
 fn the_indicator_shows_after_the_grace_for_the_focused_buffer_only() {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
+    ed.state.clock.hold();
     type_pipe(&mut ed, "sleep 0.5; cat");
-    assert_eq!(ed.state.pipe_runs.progress(bid), None, "within the grace");
-    std::thread::sleep(Duration::from_millis(150));
     assert_eq!(
-        ed.state.pipe_runs.progress(bid),
+        ed.state.pipe_runs.progress(bid, ed.state.clock.now()),
+        None,
+        "within the grace"
+    );
+    ed.state.clock.advance(Duration::from_millis(100));
+    assert_eq!(
+        ed.state.pipe_runs.progress(bid, ed.state.clock.now()),
         progress("sleep 0.5; cat", 0, 1)
     );
     let other = open_other_buffer(&mut ed, "x\n");
-    assert_eq!(ed.state.pipe_runs.progress(other), None);
+    assert_eq!(
+        ed.state.pipe_runs.progress(other, ed.state.clock.now()),
+        None
+    );
 }
 
 #[test]
@@ -664,7 +678,7 @@ fn a_waited_run_takes_the_next_free_slot_before_an_older_background_run() {
     let left = ed
         .state
         .pipe_runs
-        .progress(background)
+        .progress(background, ed.state.clock.now())
         .expect("the background run still has processes to run");
     assert!(left.done < left.total, "{left:?}");
 }

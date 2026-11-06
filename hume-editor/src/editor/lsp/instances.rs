@@ -5,6 +5,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 use rustc_hash::FxHashMap;
 
@@ -66,7 +67,7 @@ impl Instances {
     }
 
     /// Starts `config`'s command at `root`, looked up on `search_path`, and
-    /// begins its handshake.
+    /// begins its handshake at `now`.
     pub(in crate::editor::lsp) fn spawn(
         &mut self,
         backend: &mut dyn LspBackend,
@@ -74,6 +75,7 @@ impl Instances {
         config: &Arc<LspServerConfig>,
         root: PathBuf,
         search_path: Option<&OsStr>,
+        now: Instant,
     ) -> std::io::Result<ServerId> {
         let launch = Launch {
             cwd: &root,
@@ -81,7 +83,7 @@ impl Instances {
         };
         let sid = backend.start(&config.command, &config.args, launch, &config.env)?;
         let mut client = LspClient::new(sid, root, Arc::clone(config));
-        client.start_handshake(backend);
+        client.start_handshake(backend, now);
         self.map.insert(
             sid,
             Instance {

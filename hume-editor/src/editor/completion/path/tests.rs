@@ -11,7 +11,10 @@ fn path_completer_lists_directory() {
     std::fs::write(dir.path().join("beta.txt"), b"").unwrap();
     std::fs::create_dir(dir.path().join("gamma")).unwrap();
 
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let input = "e ";
@@ -30,7 +33,10 @@ fn path_completer_tags_directories_with_folder_kind_files_with_none() {
     std::fs::write(dir.path().join("file.txt"), b"").unwrap();
     std::fs::create_dir(dir.path().join("subdir")).unwrap();
 
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let input = "e ";
@@ -54,7 +60,10 @@ fn path_completer_filters_by_prefix() {
     std::fs::write(dir.path().join("foo.txt"), b"").unwrap();
     std::fs::write(dir.path().join("bar.txt"), b"").unwrap();
 
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let input = "e foo";
@@ -70,7 +79,10 @@ fn path_completer_excludes_hidden_unless_dot_prefix() {
     std::fs::write(dir.path().join(".hidden"), b"").unwrap();
     std::fs::write(dir.path().join("visible"), b"").unwrap();
 
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
 
@@ -92,7 +104,10 @@ fn path_completer_multi_segment() {
     std::fs::create_dir(&sub).unwrap();
     std::fs::write(sub.join("file.rs"), b"").unwrap();
 
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
 
@@ -105,7 +120,10 @@ fn path_completer_multi_segment() {
 
 #[test]
 fn path_completer_missing_dir_returns_empty() {
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = &AbsolutePath::rooted("/nonexistent/path/that/does/not/exist");
     let langs = LanguageRegistry::for_testing();
     let ctx = CompletionCtx {
@@ -125,7 +143,10 @@ fn path_completer_sorted_ascending() {
     for name in &["zz.txt", "aa.txt", "mm.txt"] {
         std::fs::write(dir.path().join(name), b"").unwrap();
     }
-    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let (reg, store) = (
+        CommandRegistry::with_defaults(),
+        BufferStore::new(crate::editor::clock::Clock::default()),
+    );
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let (_, candidates) = complete_path("e ", 2, &ctx);

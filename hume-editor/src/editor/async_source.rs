@@ -58,7 +58,7 @@ impl Editor {
         if self.messages_view_behind() {
             return Some(Duration::ZERO);
         }
-        let now = Instant::now();
+        let now = self.state.clock.now();
         self.async_sources()
             .iter()
             .filter_map(|s| s.next_wake(now))

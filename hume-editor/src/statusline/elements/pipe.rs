@@ -13,7 +13,10 @@ impl StatuslineElement for PipeElement {
     type Data<'a> = Option<PipeProgress<'a>>;
 
     fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
-        editor.state.pipe_runs.progress(editor.focused_bid)
+        editor
+            .state
+            .pipe_runs
+            .progress(editor.focused_bid, editor.state.clock.now())
     }
 
     fn format<'a>(

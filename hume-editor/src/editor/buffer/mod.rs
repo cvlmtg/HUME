@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 
 use super::search::{SearchMatches, SearchPattern};
+use crate::editor::clock::Clock;
 use crate::editor::edit_session::EditGroup;
 use crate::editor::position_stores::PositionStores;
 use crate::editor::settings::BufferOverrides;
@@ -306,6 +307,8 @@ pub(crate) struct Buffer {
     /// restore prompt for it. Kept as a path, not re-derived from `path`: a
     /// save-as changes `path` but not which dump the prompt is about.
     pub(in crate::editor) pending_dump: Option<PathBuf>,
+    /// The editor's clock, which stamps this buffer's revisions.
+    clock: Clock,
 }
 
 /// While alive, nothing may change its buffer's text: the work that owns
@@ -355,10 +358,11 @@ impl Buffer {
     }
 
     /// A buffer holding `text`, for [`store::BufferStore::open`], which
-    /// builds `origin` from the [`NewBuffer`] it was handed. A pane showing it
-    /// starts with a cursor on its first cluster.
-    fn new(text: BufferText, origin: Origin, pending_dump: Option<PathBuf>) -> Self {
-        let history = History::new();
+    /// builds `origin` from the [`NewBuffer`] it was handed and hands it the
+    /// editor's `clock`. A pane showing it starts with a cursor on its first
+    /// cluster.
+    fn new(text: BufferText, origin: Origin, pending_dump: Option<PathBuf>, clock: Clock) -> Self {
+        let history = History::new(clock.wall_now());
         let saved_revision = Some(history.current_id());
         let saved_line_ending = text.line_ending();
         let announced_generation = text.generation();
@@ -386,6 +390,7 @@ impl Buffer {
             plugin_view: PluginView::default(),
             disk_state: disk::DiskState::InSync,
             pending_dump,
+            clock,
         }
     }
 
@@ -407,7 +412,7 @@ impl Buffer {
         content: &str,
     ) {
         let text = self.text.replaced_with(content);
-        self.history.reset();
+        self.history.reset(self.clock.wall_now());
         self.saved_revision = Some(self.history.current_id());
         self.saved_line_ending = text.line_ending();
         self.search_pattern = None;
@@ -756,10 +761,14 @@ impl Buffer {
         pre_sels: SelectionSet,
         post_sels: SelectionSet,
     ) {
-        if let Some(promoted) = self
-            .history
-            .record(owner, forward, pre_text, pre_sels, post_sels)
-        {
+        if let Some(promoted) = self.history.record(
+            owner,
+            forward,
+            pre_text,
+            pre_sels,
+            post_sels,
+            self.clock.wall_now(),
+        ) {
             if self.saved_revision == Some(promoted) {
                 self.saved_revision = Some(History::ROOT);
             } else if self.saved_revision == Some(History::ROOT) {

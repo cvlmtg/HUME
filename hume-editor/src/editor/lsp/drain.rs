@@ -40,7 +40,7 @@ impl Editor {
         }
         self.ingest_published();
 
-        let now = Instant::now();
+        let now = self.state.clock.now();
 
         // Advance the statusline loading spinner while any server is mid-
         // handshake or reporting `$/progress`, idle otherwise, so the
@@ -116,6 +116,7 @@ impl Editor {
             return;
         }
 
+        let now = self.state.clock.now();
         let mut awaiting_eof: FxHashSet<ServerId> = FxHashSet::default();
         for &server_id in &server_ids {
             let LspState {
@@ -124,14 +125,16 @@ impl Editor {
             if let Some(instance) = instances.get_mut(server_id)
                 && instance.client.state() == ServerState::Running
             {
-                instance.client.begin_shutdown(backend.as_mut());
+                instance.client.begin_shutdown(backend.as_mut(), now);
                 awaiting_eof.insert(server_id);
             }
         }
 
         if !awaiting_eof.is_empty() {
-            let deadline = Instant::now() + grace;
-            while !awaiting_eof.is_empty() && Instant::now() < deadline {
+            // real-clock: waits for real server processes to close their pipes
+            let started = Instant::now();
+            // real-clock: the same wait
+            while !awaiting_eof.is_empty() && started.elapsed() < grace {
                 for (server_id, ev) in self.state.lsp.backend.drain() {
                     if matches!(ev, hume_lsp::transport::InboundEvent::Eof { .. }) {
                         awaiting_eof.remove(&server_id);

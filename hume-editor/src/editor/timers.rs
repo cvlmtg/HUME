@@ -36,11 +36,11 @@ impl TimerWheel {
         }
     }
 
-    /// Schedule a timer to fire `after` from now. Returns a handle usable
+    /// Schedule a timer to fire `after` from `now`. Returns a handle usable
     /// with [`Self::cancel`].
-    pub(in crate::editor) fn schedule(&mut self, after: Duration) -> TimerId {
+    pub(in crate::editor) fn schedule(&mut self, after: Duration, now: Instant) -> TimerId {
         let id = self.ids.mint();
-        self.heap.push(Reverse((Instant::now() + after, id)));
+        self.heap.push(Reverse((now + after, id)));
         id
     }
 

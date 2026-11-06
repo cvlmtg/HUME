@@ -16,6 +16,7 @@ use hume_engine::pipeline::Cycle;
 use hume_platform::path::AbsolutePath;
 
 use crate::editor::buffer::{Buffer, NewBuffer, Origin, SavedSelections, ViewLabel};
+use crate::editor::clock::Clock;
 use crate::editor::doc_ops::HistoryAdmitted;
 
 /// Who is changing text: the user, through a key, a command or a callback
@@ -77,10 +78,13 @@ pub(crate) struct BufferStore {
     /// [`ScratchNumber`] minted. A closed or saved scratch buffer keeps its
     /// number used.
     scratch_count: u32,
+    /// The editor's clock, which every buffer this store builds stamps its
+    /// revisions with.
+    clock: Clock,
 }
 
 impl BufferStore {
-    pub(in crate::editor) fn new() -> Self {
+    pub(in crate::editor) fn new(clock: Clock) -> Self {
         Self {
             buffers: SecondaryMap::new(),
             order: Vec::new(),
@@ -88,6 +92,7 @@ impl BufferStore {
             edit_seq: 0,
             edit_origin: EditOrigin::User,
             scratch_count: 0,
+            clock,
         }
     }
 
@@ -128,19 +133,20 @@ impl BufferStore {
     ///
     /// A scratch buffer gets the next [`ScratchNumber`] here.
     pub(in crate::editor) fn open(&mut self, id: BufferId, new: NewBuffer) {
-        let buffer = match new {
+        let (text, origin, pending_dump) = match new {
             NewBuffer::Scratch(text) => {
                 self.scratch_count += 1;
                 let number = ScratchNumber(self.scratch_count);
-                Buffer::new(text, Origin::Scratch(number), None)
+                (text, Origin::Scratch(number), None)
             }
             NewBuffer::File {
                 text,
                 file,
                 pending_dump,
-            } => Buffer::new(text, Origin::File(file), pending_dump),
-            NewBuffer::View { text, label } => Buffer::new(text, Origin::View(label), None),
+            } => (text, Origin::File(file), pending_dump),
+            NewBuffer::View { text, label } => (text, Origin::View(label), None),
         };
+        let buffer = Buffer::new(text, origin, pending_dump, self.clock.clone());
         self.buffers.insert(id, buffer);
         self.order.push(id);
         self.mru.insert(0, id);
@@ -151,7 +157,7 @@ impl BufferStore {
     #[cfg(test)]
     pub(in crate::editor) fn holding(new: NewBuffer) -> (Self, BufferId) {
         let id = slotmap::SlotMap::<BufferId, ()>::with_key().insert(());
-        let mut store = Self::new();
+        let mut store = Self::new(Clock::default());
         store.open(id, new);
         (store, id)
     }

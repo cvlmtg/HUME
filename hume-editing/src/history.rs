@@ -190,21 +190,15 @@ pub struct History {
     claimed_by: Option<PaneId>,
 }
 
-impl Default for History {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl History {
     /// Create a new history rooted at the initial document state, the state
-    /// before any edit.
-    pub fn new() -> Self {
+    /// before any edit, as of `now`.
+    pub fn new(now: SystemTime) -> Self {
         let root = Revision {
             link: None,
             owner: Owner::Nobody,
             children: Children::default(),
-            timestamp: SystemTime::now(),
+            timestamp: now,
         };
 
         let mut revisions = FxHashMap::default();
@@ -220,14 +214,14 @@ impl History {
         }
     }
 
-    /// Drop every revision and return to a fresh root, keeping `undo_levels`.
-    /// `change_seq` never moves back, and moves forward only when a revision
-    /// was dropped: resetting a root-only tree changes nothing an observer
-    /// could see.
-    pub fn reset(&mut self) {
+    /// Drop every revision and return to a fresh root as of `now`, keeping
+    /// `undo_levels`. `change_seq` never moves back, and moves forward only
+    /// when a revision was dropped: resetting a root-only tree changes
+    /// nothing an observer could see.
+    pub fn reset(&mut self, now: SystemTime) {
         let undo_levels = self.undo_levels;
         let change_seq = self.change_seq + u64::from(self.len() > 1);
-        *self = Self::new();
+        *self = Self::new(now);
         self.undo_levels = undo_levels;
         self.change_seq = change_seq;
     }
@@ -263,6 +257,7 @@ impl History {
     ///   so undo restores them).
     /// - `post_edit_sels`: cursor positions after the edit (stored in `forward`
     ///   so redo restores them).
+    /// - `now`: when the edit was made, the revision's timestamp.
     ///
     /// If `undo-levels` trimming promotes a child of the root to become the
     /// new root (see `Self::enforce_undo_levels`), returns the id of that
@@ -283,6 +278,7 @@ impl History {
         pre_edit_text: &BufferText,
         pre_edit_sels: SelectionSet,
         post_edit_sels: SelectionSet,
+        now: SystemTime,
     ) -> Option<RevisionId> {
         let inverse_cs = forward_cs.invert(pre_edit_text);
         let new_id = RevisionId(self.next_id);
@@ -299,7 +295,7 @@ impl History {
             }),
             owner: owner.map_or(Owner::Nobody, Owner::Pane),
             children: Children::default(),
-            timestamp: SystemTime::now(),
+            timestamp: now,
         };
 
         self.revisions.insert(new_id, revision);
@@ -484,7 +480,7 @@ impl History {
             .unwrap_or_default()
     }
 
-    /// Undo steps needed to reach the state as of `age` ago, for `:earlier`.
+    /// Undo steps needed to reach the state as of `age` before `now`, for `:earlier`.
     /// `Ok(n)` feeds straight into [`Self::undo_n`], so the count (not a
     /// revision id) is what crosses the crate boundary and the tree stays
     /// unenumerable. `Err(n)` means the request is unsatisfiable (the walk
@@ -497,8 +493,7 @@ impl History {
     /// younger than `age`. Strict `<` keeps an exact hit un-counted as
     /// unsatisfiable: landing on a revision exactly `age` old is a hit, not
     /// an over-travel.
-    pub fn undo_steps_older_than(&self, age: Duration) -> Result<usize, usize> {
-        let now = SystemTime::now();
+    pub fn undo_steps_older_than(&self, age: Duration, now: SystemTime) -> Result<usize, usize> {
         let mut steps = 0;
         let mut id = self.current;
         while self.age(id, now) < age {
@@ -511,7 +506,7 @@ impl History {
         Ok(steps)
     }
 
-    /// Redo steps needed to reach the state as of `age` ago, for `:later`.
+    /// Redo steps needed to reach the state as of `age` before `now`, for `:later`.
     /// `Ok(n)` feeds straight into [`Self::redo_n`]. `Err(n)` mirrors
     /// [`Self::undo_steps_older_than`]'s: the walk reached a leaf that is
     /// still older than `age`, so the request is unsatisfiable, and `n` is
@@ -522,8 +517,7 @@ impl History {
     /// before the first child young enough to postdate it. Strict `>` keeps
     /// an exact hit un-counted as unsatisfiable, same boundary as
     /// `undo_steps_older_than`'s `<`.
-    pub fn redo_steps_newer_than(&self, age: Duration) -> Result<usize, usize> {
-        let now = SystemTime::now();
+    pub fn redo_steps_newer_than(&self, age: Duration, now: SystemTime) -> Result<usize, usize> {
         let mut steps = 0;
         let mut id = self.current;
         while let Some(child) = self.revisions[&id].children.redo() {

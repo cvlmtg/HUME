@@ -34,6 +34,7 @@ fn editor_state_fields_are_classified() {
             // language + overrides; content, undo history, and
             // everything else survive
             buffers: _,
+            clock: _,            // preserved
             buffer_positions: _, // preserved
             // config: LspState::reset_config clears registrations and
             // in-flight deliveries; running servers and the spinner survive

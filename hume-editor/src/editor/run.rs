@@ -6,7 +6,7 @@ use hume_grid::Rect;
 use std::collections::VecDeque;
 use std::io;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use termina::event::Event as TerminalEvent;
 
@@ -160,7 +160,8 @@ impl Editor {
         let history_capacity = settings.prompt_history_levels;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
-        let mut buffers = BufferStore::new();
+        let clock = super::clock::Clock::default();
+        let mut buffers = BufferStore::new(clock.clone());
         buffers.open(buffer_id, new);
         let mut panes = PaneView::default();
         let unattached = panes.open(
@@ -176,6 +177,7 @@ impl Editor {
             state: super::EditorState {
                 dirs,
                 buffers,
+                clock,
                 buffer_positions: super::position_stores::BufferPositions::default(),
                 lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
                 clipboard: clipboard::SystemClipboard::new(),
@@ -491,10 +493,10 @@ impl Editor {
                 )?;
                 continue;
             }
-            let frame_wait = pacer.wait(Instant::now());
+            let frame_wait = pacer.wait(self.state.clock.now());
             if frame_wait.is_none() {
                 self.draw_frame(&mut frame)?;
-                pacer.drew(Instant::now());
+                pacer.drew(self.state.clock.now());
             }
 
             // ── 3. Terminal event ─────────────────────────────────────────────

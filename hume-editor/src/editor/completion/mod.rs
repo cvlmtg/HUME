@@ -163,7 +163,7 @@ mod testing {
     pub(in crate::editor::completion) fn make_ctx_parts() -> (CommandRegistry, BufferStore, TempDir)
     {
         let reg = CommandRegistry::with_defaults();
-        let store = BufferStore::new();
+        let store = BufferStore::new(crate::editor::clock::Clock::default());
         let dir = tempfile::tempdir().unwrap();
         (reg, store, dir)
     }

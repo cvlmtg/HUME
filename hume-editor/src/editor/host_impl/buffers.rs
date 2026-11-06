@@ -177,7 +177,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<hume_scripting::host::UndoNode>> {
         let buf = self.buffer(id)?;
         let (current, saved) = (buf.revision_id(), buf.saved_revision());
-        let nodes = buf.revision_nodes(std::time::SystemTime::now());
+        let nodes = buf.revision_nodes(self.state.clock.wall_now());
         Some(
             nodes
                 .into_iter()
