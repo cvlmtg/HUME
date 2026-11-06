@@ -101,11 +101,6 @@ impl TabStore {
         })
     }
 
-    /// Every inactive tab's layout.
-    pub(in crate::editor) fn inactive(&self) -> impl Iterator<Item = &FocusedLayout> {
-        self.stash.values()
-    }
-
     /// `current`'s index in `order`. Every method below that needs it reads
     /// this instead of taking a caller-supplied id: `TabStore` reads its
     /// own `current` field, so a missing position would mean `order` and

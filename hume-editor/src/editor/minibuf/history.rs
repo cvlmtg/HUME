@@ -27,12 +27,19 @@ pub(in crate::editor) enum HistoryKind {
 }
 
 impl HistoryKind {
-    pub(in crate::editor) const ALL: [Self; 4] = [
-        Self::Command,
-        Self::SearchForward,
-        Self::SearchBackward,
-        Self::Pipe,
-    ];
+    /// Every kind. The match names each variant, so a new kind is a compile
+    /// error here until it is listed.
+    pub(in crate::editor) const ALL: [Self; 4] = {
+        let all = [
+            Self::Command,
+            Self::SearchForward,
+            Self::SearchBackward,
+            Self::Pipe,
+        ];
+        match all[0] {
+            Self::Command | Self::SearchForward | Self::SearchBackward | Self::Pipe => all,
+        }
+    };
 }
 
 /// Direction for [`crate::editor::minibuf::recall_history`].

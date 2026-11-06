@@ -18,7 +18,7 @@ fn new_seeds_a_single_tab_with_nothing_stashed() {
 
     assert_eq!(store.order(), &[store.current()]);
     assert_eq!(store.len(), 1);
-    assert_eq!(store.inactive().count(), 0);
+    assert!(store.stash.is_empty());
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn close_current_removes_from_order_and_promotes_survivor() {
     assert_eq!(incoming.focused(), p1);
     assert_eq!(store.order(), &[t1]);
     assert_eq!(store.current(), t1);
-    assert_eq!(store.inactive().count(), 0);
+    assert!(store.stash.is_empty());
 }
 
 #[test]

@@ -132,9 +132,9 @@ impl EditorState {
     /// [`Self::screen_layout`] lays it out.
     pub(in crate::editor) fn pane_size(&self, view: &EngineView, pid: PaneId) -> PaneSize {
         let screen = self.screen_layout(view);
-        std::iter::once(view.focused_layout())
-            .chain(self.tabs.inactive())
-            .find_map(|layout| screen.pane_size(layout, pid))
+        self.tabs
+            .layouts(view.focused_layout())
+            .find_map(|(_, layout)| screen.pane_size(layout, pid))
             .expect("every pooled pane is a leaf of one tab's layout")
     }
 
