@@ -149,7 +149,7 @@ Scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill
   (set-option! "session-root" (or (call! "stdlib/git-toplevel") (cwd)))
   ```
 
-  Only the value `init.scm` sets decides which session comes back. A session root that isn't a directory is reported at startup, and nothing is saved to it.
+  Only the value `init.scm` sets decides which session comes back. `:reload-config` runs `init.scm` again, so a root worked out from the current directory, as this one is, follows a `:cd` made before the reload. A session root that isn't a directory is reported at startup, and nothing is saved to it.
 - HUME saves it however it ends, including when you close the terminal window, but not when HUME itself crashes.
 - A file changed since the session was saved comes back in its place in the layout, at its top. A file that has been deleted since is left out. A damaged session file is ignored, with a warning.
 - When two HUME instances with the same session root quit, the last one's session wins, wherever under the root each was started.

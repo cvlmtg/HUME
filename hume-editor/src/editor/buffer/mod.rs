@@ -190,9 +190,9 @@ impl NewBuffer {
     /// it). A missing file's resolved path is the target's, the form
     /// `find_by_path` dedup looks it up by.
     ///
-    /// The single decision point for "is a missing path openable", shared by
-    /// every open chokepoint, so they can't diverge on tolerance. A path with
-    /// no file name (`/`) errors (see [`BufferFile::new_file`]).
+    /// The open for which a missing file is one to create;
+    /// [`Self::existing_file`] is the open with nothing to create. A path
+    /// with no file name (`/`) errors (see [`BufferFile::new_file`]).
     pub(in crate::editor) fn file_or_new(target: FileTarget) -> io::Result<Self> {
         let (text, file) = match BufferFile::read(target.typed().clone()) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
