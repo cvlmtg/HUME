@@ -138,10 +138,10 @@ With `session-persist` on, quitting HUME saves the session of its session root, 
 - the registers `q` and `0`–`9`, recorded macros included;
 - what you typed at the `:`, `/`, `?` and `|` prompts, and the last search, so `n` works at once.
 
-Scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill ring `k` and the clipboard `c` are not kept.
+Scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill ring `k` and the clipboard `c` are not kept: a session records which files were open, so save your changes to keep them.
 
 - Turn it on with `(set-option! "session-persist" #t)` in `init.scm`. Turning it off stops both saving and restoring, and deletes nothing.
-- Starting HUME with files, as in `hume notes.txt`, opens just those files and leaves the saved session alone: quitting that run doesn't save over it.
+- Starting HUME with files, as in `hume notes.txt`, opens just those files and leaves the saved session alone: quitting that run doesn't save over it. Run `:save-session` to make it a session after all: it saves the session at once, replacing the saved one, and quitting saves it again. In any session, `:save-session` saves it right away.
 - `:cd` doesn't move the session: it stays with the session root, and restoring one leaves you in the directory you started in.
 - To share one session across a project, set `session-root` from `init.scm`. With `core:stdlib` loaded, this keys sessions by git repository, and by the starting directory outside one:
 

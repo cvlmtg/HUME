@@ -176,7 +176,8 @@ fn editor_fields_are_classified() {
             // preserved: drained by apply_startup_positions at the
             // first settle, long before any :reload-config could run
             startup_positions: _,
-            // preserved: fixed by how the run started
+            // preserved: a reload changes neither how the run started nor
+            // whether `:save-session` started its session
             keeps_session: _,
             detached: _,            // preserved: pairs with state.wake
             input_backlog: _,       // preserved: input the user typed

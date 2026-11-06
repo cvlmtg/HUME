@@ -635,3 +635,87 @@ fn with_every_file_gone_the_scratch_stays_and_registers_come_back() {
         Some(&[key('x')][..])
     );
 }
+
+// ── :save-session ────────────────────────────────────────────────────────
+
+#[test]
+fn save_session_starts_a_session_in_a_run_started_with_a_file() {
+    let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]);
+    let mut ed = project.start(&["a.txt"], PERSIST);
+    type_cmd(&mut ed, ":e b.txt");
+    type_cmd(&mut ed, ":save-session");
+    assert!(project.session_file().is_file());
+    assert_eq!(status(&ed), "session saved");
+    type_cmd(&mut ed, ":e c.txt");
+    quit(&mut ed).expect("quitting saves the session it started");
+
+    let again = project.start(&[], PERSIST);
+    assert_eq!(buffer_names(&again), ["a.txt", "b.txt", "c.txt"]);
+    assert_eq!(again.doc().display_name(), "c.txt");
+}
+
+#[test]
+fn save_session_is_refused_with_session_persist_off() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    let mut ed = project.start(&["a.txt"], "");
+    type_cmd(&mut ed, ":save-session");
+    assert!(has_error(&ed, "session-persist is off"), "{}", status(&ed));
+    quit(&mut ed).expect("nothing to save");
+    assert!(!project.state().join("sessions").exists());
+}
+
+#[test]
+fn save_session_in_a_session_run_saves_it_now_and_again() {
+    let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":save-session");
+    type_cmd(&mut ed, ":e b.txt");
+    type_cmd(&mut ed, ":save-session");
+    assert!(session_warnings(&ed).is_empty());
+
+    // Not quitting: the last manual save is what the next run sees.
+    let again = project.start(&[], PERSIST);
+    assert_eq!(again.doc().display_name(), "b.txt");
+}
+
+#[test]
+fn save_session_reports_a_session_it_cannot_write() {
+    let project = Project::new(&[]);
+    std::fs::write(project.state(), "a file where the directory goes").unwrap();
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":save-session");
+    assert!(has_error(&ed, "save-session: "), "{}", status(&ed));
+}
+
+#[test]
+fn a_failed_save_session_starts_no_session() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    std::fs::write(project.state(), "a file where the directory goes").unwrap();
+    let mut ed = project.start(&["a.txt"], PERSIST);
+    type_cmd(&mut ed, ":save-session");
+    assert!(has_error(&ed, "save-session: "), "{}", status(&ed));
+    std::fs::remove_file(project.state()).unwrap();
+    quit(&mut ed).expect("a run started with a file keeps no session");
+    assert!(!project.session_file().exists());
+}
+
+#[test]
+fn a_script_cannot_save_the_session() {
+    let project = Project::new(&[]);
+    let mut ed = project.start(&[], PERSIST);
+    run(
+        &mut ed,
+        &project.work(),
+        r#"(define-command! "try-save" "" (lambda (pane) (call! "save-session")))"#,
+    );
+    call(&mut ed, "try-save");
+    assert!(!project.session_file().exists());
+    let log: Vec<_> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(log.iter().any(|t| t.contains("save-session")), "{log:#?}");
+}

@@ -14,9 +14,12 @@ mod snapshot;
 use std::io;
 use std::path::PathBuf;
 
+use hume_core::Severity;
 use hume_platform::path::mirrored_under;
 
 use super::{Editor, EditorState};
+use crate::editor::commands::FocusedPane;
+use crate::editor::error::CommandError;
 use crate::editor::stamped_file::{self, Stamp};
 use snapshot::SessionSnapshot;
 
@@ -47,11 +50,31 @@ impl Editor {
         if !self.keeps_session || !self.state.settings.session_persist {
             return Ok(());
         }
+        self.write_session()
+    }
+
+    fn write_session(&self) -> Result<(), String> {
         let path = self.state.session_path()?;
         let snapshot = SessionSnapshot::capture(&self.state, &self.view);
         let bytes = postcard::to_extend(&snapshot, STAMP.header()).map_err(|e| e.to_string())?;
         stamped_file::write(&path, &bytes)
     }
+}
+
+/// `:save-session`: save the session now, and once it is saved make this run
+/// keep it, so quitting saves it again whatever files the run started with.
+pub(in crate::editor) fn typed_save_session(
+    ed: &mut Editor,
+    _fp: FocusedPane,
+) -> Result<(), CommandError> {
+    if !ed.state.settings.session_persist {
+        return Err(CommandError::new("save-session: session-persist is off"));
+    }
+    ed.write_session()
+        .map_err(|e| CommandError::new(format!("save-session: {e}")))?;
+    ed.keeps_session = true;
+    ed.report(Severity::Info, "session saved");
+    Ok(())
 }
 
 /// Write the outcome of [`Editor::save_session`] to `out` when it failed. A

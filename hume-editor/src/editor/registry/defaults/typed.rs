@@ -83,6 +83,13 @@ impl CommandRegistry {
         )
         .reg(self);
         typed(
+            "save-session",
+            "Save the session now; quitting saves it again.",
+            &[],
+            NativeTyped::Bare(crate::editor::session::typed_save_session),
+        )
+        .reg(self);
+        typed(
             "edit",
             "Open a file or reload current file.",
             &["e"],

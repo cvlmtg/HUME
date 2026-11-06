@@ -30,6 +30,7 @@ For running HUME from a shell instead, see [Command-line Flags](cli.md).
 | `:wa!` | Save every modified buffer as `:w!` does, including those whose file changed on disk |
 | `:wq`, `:write-quit` | Save, then close as `:q` does |
 | `:wq!` | Save as `:w!` does, then close as `:wq` does |
+| `:save-session` | Save the session now, even if HUME started with files; quitting then saves it again. Needs `session-persist`. See [Saved sessions](files-and-buffers.md#saved-sessions) |
 
 Relative paths given to `:w` resolve against HUME's working directory (`:pwd`).
 

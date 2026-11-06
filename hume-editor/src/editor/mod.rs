@@ -605,8 +605,8 @@ pub(crate) struct Editor {
     /// Startup cursor placements, one per CLI `path:line[:col]` argument,
     /// queued by `Editor::start` and drained by `apply_startup_positions`.
     startup_positions: Vec<(BufferId, crate::cli::PathPosition)>,
-    /// Whether this run restores and saves the working directory's session:
-    /// it was started with no files.
+    /// Whether quitting saves the session: the run was started with no
+    /// files, or `:save-session` started its session.
     keeps_session: bool,
     /// The receiving end of `state.wake`, which a pipe run with no terminal
     /// waits on. `None` when `state.wake` wakes a terminal's reader.
