@@ -21,7 +21,8 @@ pub(crate) fn dump_path_for(path: &Path) -> PathBuf {
 }
 
 impl Editor {
-    /// Write every writable buffer with unsaved changes to its dump file.
+    /// Write every buffer with unsaved changes to its dump file. A view
+    /// never has any, so it is never dumped.
     /// A buffer with a path goes to [`dump_path_for`], and to `scratch_dir`
     /// when that cannot be written; a pathless one goes straight to
     /// `scratch_dir` (created on demand) under a per-process, per-buffer
@@ -39,7 +40,7 @@ impl Editor {
         self.state
             .buffers
             .iter()
-            .filter(|(id, buf)| self.state.has_unsaved_changes(*id) && !buf.is_read_only())
+            .filter(|(id, _)| self.state.has_unsaved_changes(*id))
             .map(|(_, buf)| {
                 let written = panic_to_error(|| dump_one(buf, scratch_dir, &mut scratch_count));
                 (buf.display_name(), written)
