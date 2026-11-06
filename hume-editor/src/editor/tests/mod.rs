@@ -81,6 +81,11 @@ pub(crate) fn test_cwd() -> AbsolutePath {
     AbsolutePath::current_dir().expect("current_dir")
 }
 
+/// Every setting at its default, for an editor started in [`test_cwd`].
+pub(crate) fn default_settings() -> EditorSettings {
+    EditorSettings::new(&test_cwd())
+}
+
 /// Opens `path`, an absolute path, through the open funnel `:e` uses, and
 /// returns its buffer.
 pub(in crate::editor) fn open_path(ed: &mut Editor, path: impl AsRef<std::path::Path>) -> BufferId {
@@ -1387,7 +1392,7 @@ impl Editor {
         let (mut engine_view, focus_key) = EngineView::new(theme, super::run::HEADLESS_TERMINAL);
         let (views, tabline_view) = super::run::register_chrome(&mut engine_view);
         let buffer_id = engine_view.buffers.insert(());
-        let settings = EditorSettings::new(&test_cwd());
+        let settings = default_settings();
         let history_capacity = settings.prompt_history_levels;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 

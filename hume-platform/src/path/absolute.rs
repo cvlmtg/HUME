@@ -51,6 +51,19 @@ impl AbsolutePath {
         std::fs::canonicalize(path).map(Self::stripped)
     }
 
+    /// [`Self::canonicalize`] for a path that must name a directory, failing
+    /// with `NotADirectory` when it names anything else.
+    pub fn canonical_dir(path: &Path) -> io::Result<Self> {
+        let canonical = Self::canonicalize(path)?;
+        if !canonical.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotADirectory,
+                "not a directory",
+            ));
+        }
+        Ok(canonical)
+    }
+
     /// The file this path names, with every symlink resolved: its canonical
     /// form when it exists. A dangling symlink is followed to the missing
     /// path it names, and a missing path is its longest existing ancestor,

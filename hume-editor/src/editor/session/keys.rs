@@ -112,28 +112,6 @@ impl From<SavedKey> for KeyEvent {
     }
 }
 
-/// `From` both ways between a termina enum whose variants carry nothing and
-/// its mirror.
-macro_rules! mirror {
-    ($theirs:ident <=> $ours:ident { $($variant:ident),* $(,)? }) => {
-        impl From<$theirs> for $ours {
-            fn from(value: $theirs) -> Self {
-                match value {
-                    $($theirs::$variant => Self::$variant,)*
-                }
-            }
-        }
-
-        impl From<$ours> for $theirs {
-            fn from(value: $ours) -> Self {
-                match value {
-                    $($ours::$variant => Self::$variant,)*
-                }
-            }
-        }
-    };
-}
-
 mirror!(KeyEventKind <=> SavedKind { Press, Release, Repeat });
 mirror!(ModifierKeyCode <=> SavedModifier {
     LeftShift, LeftControl, LeftAlt, LeftSuper, LeftHyper, LeftMeta, RightShift,

@@ -1,5 +1,6 @@
 use super::ops::write_global_for_test;
 use super::*;
+use crate::editor::tests::default_settings;
 use hume_core::{ConfigOrigin, DiagSeverity, OptionType, OptionValue, StatuslineSections};
 use hume_editing::text::LineEnding;
 use hume_platform::path::AbsolutePath;
@@ -8,7 +9,7 @@ use hume_platform::path::AbsolutePath;
 
 #[test]
 fn editor_settings_default_values() {
-    let s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let s = default_settings();
     assert_eq!(s.scroll_margin, 3);
     assert_eq!(s.mouse_scroll_lines, 3);
     assert!(s.mouse);
@@ -55,7 +56,7 @@ fn buffer_overrides_default_is_all_none() {
 
 #[test]
 fn resolution_override_wins_over_global() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides {
         indent_width: Some(8),
         ..Default::default()
@@ -65,7 +66,7 @@ fn resolution_override_wins_over_global() {
 
 #[test]
 fn resolution_line_number_style_override_wins() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides {
         gutter_line_numbers: Some(LineNumberStyle::Relative),
         ..Default::default()
@@ -77,14 +78,14 @@ fn resolution_line_number_style_override_wins() {
 
 #[test]
 fn resolution_falls_back_to_global_tab_width() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides::default();
     assert_eq!(ov.indent_width(&global), global.indent_width);
 }
 
 #[test]
 fn resolution_tab_style_override_wins() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides {
         indent_style: Some(TabStyle::Soft),
         ..Default::default()
@@ -94,7 +95,7 @@ fn resolution_tab_style_override_wins() {
 
 #[test]
 fn resolution_falls_back_to_global_tab_style() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides::default();
     assert_eq!(ov.indent_style(&global), global.indent_style);
 }
@@ -122,7 +123,7 @@ fn read_key(
 
 #[test]
 fn read_key_bool_key_returns_bool() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     assert_eq!(
         read_key("mouse", &global, None),
         Some(OptionValue::Bool(true))
@@ -131,7 +132,7 @@ fn read_key_bool_key_returns_bool() {
 
 #[test]
 fn read_key_usize_key_returns_int() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     assert_eq!(
         read_key("indent-width", &global, None),
         Some(OptionValue::Int(4))
@@ -140,7 +141,7 @@ fn read_key_usize_key_returns_int() {
 
 #[test]
 fn read_key_enum_key_returns_its_name() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     assert_eq!(
         read_key("indent-style", &global, None),
         Some(OptionValue::Str("hard".to_string()))
@@ -151,7 +152,7 @@ fn read_key_enum_key_returns_its_name() {
 /// count otherwise.
 #[test]
 fn read_key_parameterized_keys_return_their_text() {
-    let mut global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut global = default_settings();
     assert_eq!(
         read_key("wrap-mode", &global, None),
         Some(OptionValue::Str("indent".to_string()))
@@ -169,7 +170,7 @@ fn read_key_parameterized_keys_return_their_text() {
 
 #[test]
 fn read_key_shell_defaults_to_sh_c() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     assert_eq!(
         read_key("shell", &global, None),
         Some(OptionValue::List(vec!["sh".to_string(), "-c".to_string()]))
@@ -203,7 +204,7 @@ fn write_buffer_named(
 #[test]
 fn shell_reads_back_the_words_it_was_set_to() {
     for value in [text(r#""/opt/my sh" -lc"#), words(&["/opt/my sh", "-lc"])] {
-        let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+        let mut s = default_settings();
         write_global_for_test("shell", &value, &mut s, ConfigOrigin::User).unwrap();
         assert_eq!(
             read_key("shell", &s, None),
@@ -219,7 +220,7 @@ fn shell_reads_back_the_words_it_was_set_to() {
 #[test]
 fn shell_refuses_an_empty_program() {
     for value in [text("  "), text(r#""" -c"#), words(&["", "-c"]), words(&[])] {
-        let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+        let mut s = default_settings();
         let err = write_global_for_test("shell", &value, &mut s, ConfigOrigin::User)
             .expect_err(&format!("{value:?} names no program"));
         assert!(err.starts_with("invalid value for 'shell'"), "{err}");
@@ -229,7 +230,7 @@ fn shell_refuses_an_empty_program() {
 
 #[test]
 fn only_the_shell_setting_takes_a_list() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     let err = write_global_for_test(
         "word-chars",
         &words(&["_", "-"]),
@@ -246,7 +247,7 @@ fn only_the_shell_setting_takes_a_list() {
 
 #[test]
 fn read_key_buffer_override_wins_over_global() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides {
         indent_width: Some(8),
         ..Default::default()
@@ -259,7 +260,7 @@ fn read_key_buffer_override_wins_over_global() {
 
 #[test]
 fn read_key_falls_back_to_global_when_no_override() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides::default();
     assert_eq!(
         read_key("indent-width", &global, Some(&ov)),
@@ -269,7 +270,7 @@ fn read_key_falls_back_to_global_when_no_override() {
 
 #[test]
 fn read_key_subfield_key_falls_back_to_global_whitespace() {
-    let mut global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut global = default_settings();
     global.whitespace.space = WhitespaceRender::Trailing;
     global.whitespace.newline = true;
     assert_eq!(
@@ -286,7 +287,7 @@ fn read_key_subfield_key_falls_back_to_global_whitespace() {
 fn read_key_whitespace_newline_round_trips_through_write_global() {
     // Write the wire string, read it back: they must match.
     for wire in <kind::ShowNewline as kind::Kind<bool>>::NAMES {
-        let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+        let mut s = default_settings();
         write_global_for_test(
             "whitespace-newline",
             &text(wire),
@@ -303,7 +304,7 @@ fn read_key_whitespace_newline_round_trips_through_write_global() {
 
 #[test]
 fn read_key_subfield_key_buffer_override_wins_over_global() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides {
         whitespace_tab: Some(WhitespaceRender::All),
         ..Default::default()
@@ -316,7 +317,7 @@ fn read_key_subfield_key_buffer_override_wins_over_global() {
 
 #[test]
 fn read_key_statusline_reads_back_the_sections_of_a_text_write() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     write_global_for_test(
         "statusline",
         &text("Mode,FileName||Position"),
@@ -390,7 +391,7 @@ fn cursor_shape_values_round_trip_through_from_str() {
 
 #[test]
 fn auto_pairs_ref_enabled_resolves_override_over_global() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides {
         insert_auto_pairs: Some(false),
         ..Default::default()
@@ -402,7 +403,7 @@ fn auto_pairs_ref_enabled_resolves_override_over_global() {
 
 #[test]
 fn auto_pairs_ref_enabled_falls_back_to_global_when_no_override() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = BufferOverrides::default();
     let (enabled, pairs) = ov.auto_pairs_ref(&global);
     assert_eq!(enabled, global.insert_auto_pairs);
@@ -413,7 +414,7 @@ fn auto_pairs_ref_enabled_falls_back_to_global_when_no_override() {
 
 #[test]
 fn a_global_value_ranks_by_its_writers_origin() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     let mut write =
         |value: &str, by| write_global_for_test("indent-width", &text(value), &mut s, by);
     assert_eq!(write("2", ConfigOrigin::User), Ok(true));
@@ -424,7 +425,7 @@ fn a_global_value_ranks_by_its_writers_origin() {
 
 #[test]
 fn a_plugins_global_value_gives_way_to_a_later_plugins_and_a_users() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     let mut write =
         |value: &str, by| write_global_for_test("indent-width", &text(value), &mut s, by);
     assert_eq!(write("2", ConfigOrigin::Plugin), Ok(true));
@@ -435,7 +436,7 @@ fn a_plugins_global_value_gives_way_to_a_later_plugins_and_a_users() {
 
 #[test]
 fn a_shadowed_global_write_still_rejects_a_bad_value() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     write_global_for_test("indent-width", &text("2"), &mut s, ConfigOrigin::User).unwrap();
     assert!(
         write_global_for_test("indent-width", &text("wide"), &mut s, ConfigOrigin::Plugin).is_err()
@@ -444,7 +445,7 @@ fn a_shadowed_global_write_still_rejects_a_bad_value() {
 
 #[test]
 fn global_origins_are_per_key() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     write_global_for_test("indent-width", &text("2"), &mut s, ConfigOrigin::User).unwrap();
     assert_eq!(
         write_global_for_test("scroll-margin", &text("1"), &mut s, ConfigOrigin::Plugin),
@@ -464,7 +465,7 @@ fn a_buffer_override_ranks_by_its_writers_origin() {
 
 #[test]
 fn default_settings_and_overrides_hold_no_origin() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     let mut ov = BufferOverrides::default();
     assert_eq!(
         write_global_for_test("indent-width", &text("2"), &mut s, ConfigOrigin::Bundled),
@@ -479,7 +480,7 @@ fn default_settings_and_overrides_hold_no_origin() {
 // ── write_global ───────────────────────────────────────────────────────────
 
 fn global(key: &str, value: &str) -> Result<EditorSettings, String> {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     write_global_for_test(key, &text(value), &mut s, ConfigOrigin::User)?;
     Ok(s)
 }
@@ -856,28 +857,28 @@ fn set_global_empty_value_errors() {
 
 #[test]
 fn set_buffer_tab_width() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("indent-width", "8").unwrap();
     assert_eq!(ov.indent_width(&global), 8);
 }
 
 #[test]
 fn set_buffer_tab_style() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("indent-style", "soft").unwrap();
     assert_eq!(ov.indent_style(&global), TabStyle::Soft);
 }
 
 #[test]
 fn set_buffer_wrap_mode() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("wrap-mode", "none").unwrap();
     assert_eq!(ov.wrap_mode(&global), WrapMode::None);
 }
 
 #[test]
 fn set_buffer_line_number_style() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("gutter-line-numbers", "absolute").unwrap();
     assert_eq!(
         ov.gutter_line_numbers(&global),
@@ -887,7 +888,7 @@ fn set_buffer_line_number_style() {
 
 #[test]
 fn set_buffer_auto_pairs() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("insert-auto-pairs", "false").unwrap();
     let (enabled, _) = ov.auto_pairs_ref(&global);
     assert!(!enabled);
@@ -895,21 +896,21 @@ fn set_buffer_auto_pairs() {
 
 #[test]
 fn set_buffer_select_inserted_text() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("insert-select-on-exit", "false").unwrap();
     assert!(!ov.insert_select_on_exit(&global));
 }
 
 #[test]
 fn set_buffer_prefer_line_comments() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("comment-prefer-line", "true").unwrap();
     assert!(ov.comment_prefer_line(&global));
 }
 
 #[test]
 fn set_buffer_word_selects_whitespace() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("word-selects-whitespace", "after").unwrap();
     assert_eq!(
         ov.word_selects_whitespace(&global),
@@ -919,35 +920,35 @@ fn set_buffer_word_selects_whitespace() {
 
 #[test]
 fn set_buffer_word_chars() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("word-chars", "-").unwrap();
     assert_eq!(ov.word_chars(&global), "-");
 }
 
 #[test]
 fn set_buffer_indent_guides() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("indent-guides", "false").unwrap();
     assert!(!ov.indent_guides(&global));
 }
 
 #[test]
 fn set_buffer_whitespace_space() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("whitespace-space", "all").unwrap();
     assert_eq!(ov.whitespace(&global).space, WhitespaceRender::All);
 }
 
 #[test]
 fn set_buffer_whitespace_tab() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("whitespace-tab", "trailing").unwrap();
     assert_eq!(ov.whitespace(&global).tab, WhitespaceRender::Trailing);
 }
 
 #[test]
 fn set_buffer_whitespace_newline() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("whitespace-newline", "all").unwrap();
     assert!(ov.whitespace(&global).newline);
 }
@@ -956,7 +957,7 @@ fn set_buffer_whitespace_newline() {
 fn set_buffer_whitespace_fields_are_independent() {
     // Overriding one sub-field leaves the others resolved from global,
     // even when the global has non-default values.
-    let mut global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut global = default_settings();
     global.whitespace.tab = WhitespaceRender::Trailing;
     let ov = buffer("whitespace-space", "all").unwrap();
     let ws = ov.whitespace(&global);
@@ -981,7 +982,7 @@ fn set_buffer_whitespace_invalid_value_errors() {
 
 #[test]
 fn set_global_tab_width_propagates_to_unoverridden_buffer() {
-    let mut global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut global = default_settings();
     let ov = BufferOverrides::default();
     write_global_for_test("indent-width", &text("2"), &mut global, ConfigOrigin::User).unwrap();
     // Text has no override, so it inherits the new global value.
@@ -990,7 +991,7 @@ fn set_global_tab_width_propagates_to_unoverridden_buffer() {
 
 #[test]
 fn set_global_tab_style_propagates_to_unoverridden_buffer() {
-    let mut global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut global = default_settings();
     let ov = BufferOverrides::default();
     write_global_for_test(
         "indent-style",
@@ -1004,7 +1005,7 @@ fn set_global_tab_style_propagates_to_unoverridden_buffer() {
 
 #[test]
 fn apply_statusline_wrong_section_count_errors() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     // Two pipes required; one pipe produces only two parts.
     assert!(
         write_global_for_test(
@@ -1029,7 +1030,7 @@ fn apply_statusline_wrong_section_count_errors() {
 
 #[test]
 fn apply_statusline_unknown_element_name_errors() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     assert!(
         write_global_for_test(
             "statusline",
@@ -1043,7 +1044,7 @@ fn apply_statusline_unknown_element_name_errors() {
 
 #[test]
 fn apply_statusline_empty_element_name_errors() {
-    let mut s = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut s = default_settings();
     let err = write_global_for_test(
         "statusline",
         &text("Mode,,FileName||"),
@@ -1219,7 +1220,7 @@ fn set_global_gutter_signs() {
 
 #[test]
 fn set_buffer_gutter_signs() {
-    let global = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let global = default_settings();
     let ov = buffer("gutter-signs", "always:3").unwrap();
     let cfg = ov.gutter_signs(&global);
     assert_eq!(cfg.mode, SignColumnMode::Always);
@@ -1246,7 +1247,7 @@ fn settings_enum_parse_error_lists_every_accepted_value() {
 
 #[test]
 fn set_names_the_failing_key_in_enum_errors() {
-    let mut settings = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut settings = default_settings();
     assert_eq!(
         write_global_for_test(
             "whitespace-tab",
@@ -1329,7 +1330,7 @@ fn every_parser_kind_names_the_key_once() {
         ),
     ];
     for (key, value, expected) in cases {
-        let mut settings = EditorSettings::new(&crate::editor::tests::test_cwd());
+        let mut settings = default_settings();
         assert_eq!(
             write_global_for_test(key, &text(value), &mut settings, ConfigOrigin::User)
                 .unwrap_err(),
@@ -1711,7 +1712,7 @@ fn pane_names_only_a_setting_a_pane_overrides() {
 fn every_completed_value_parses() {
     for key in TableKey::all() {
         for name in key.value_names() {
-            let mut settings = EditorSettings::new(&crate::editor::tests::test_cwd());
+            let mut settings = default_settings();
             let written = write_global(key, &text(name), &mut settings, ConfigOrigin::User);
             assert_eq!(written, Ok(true), "'{}={name}'", key.name());
         }
@@ -1750,7 +1751,7 @@ fn script_value(ty: OptionType) -> OptionValue {
 #[test]
 fn a_setting_takes_a_script_value_of_the_type_it_reads_back_as() {
     for key in TableKey::all() {
-        let mut settings = EditorSettings::new(&crate::editor::tests::test_cwd());
+        let mut settings = default_settings();
         let own = read_global(key, &settings).value();
         let written = write_global(
             key,
@@ -1790,18 +1791,13 @@ fn a_script_integer_is_checked_as_its_text_is() {
         ("indent-width", 256),
     ] {
         let write = |value: OptionInput| {
-            write_global_for_test(
-                key,
-                &value,
-                &mut EditorSettings::new(&crate::editor::tests::test_cwd()),
-                ConfigOrigin::User,
-            )
+            write_global_for_test(key, &value, &mut default_settings(), ConfigOrigin::User)
         };
         let typed = write(OptionInput::Value(OptionValue::Int(n)));
         assert!(typed.is_err(), "{key}={n}");
         assert_eq!(typed, write(text(&n.to_string())), "{key}={n}");
     }
-    let mut settings = EditorSettings::new(&crate::editor::tests::test_cwd());
+    let mut settings = default_settings();
     write_global_for_test(
         "indent-width",
         &OptionInput::Value(OptionValue::Int(8)),
@@ -1825,7 +1821,7 @@ fn an_unreadable_value_is_refused_by_type_before_its_contents() {
         write_global_for_test(
             key,
             &unreadable,
-            &mut EditorSettings::new(&crate::editor::tests::test_cwd()),
+            &mut default_settings(),
             ConfigOrigin::User,
         )
     };
@@ -1844,7 +1840,7 @@ fn a_foreign_value_is_refused_naming_it() {
     let err = write_global_for_test(
         "indent-style",
         &OptionInput::Foreign("the symbol 'soft".to_string()),
-        &mut EditorSettings::new(&crate::editor::tests::test_cwd()),
+        &mut default_settings(),
         ConfigOrigin::User,
     )
     .unwrap_err();

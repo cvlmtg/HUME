@@ -449,17 +449,12 @@ impl SessionRoot {
     /// The directory, symlinks resolved so every name of one directory
     /// keys one session. The error says why there is none.
     pub(in crate::editor) fn location(&self, cwd: &AbsolutePath) -> Result<AbsolutePath, String> {
-        let shown = self.to_text();
-        let dir = match self {
-            Self::Path(dir) => AbsolutePath::canonicalize(dir),
+        match self {
+            Self::Path(dir) => AbsolutePath::canonical_dir(dir),
             Self::Typed(typed) => AbsolutePath::from_typed(typed, cwd)
-                .and_then(|dir| AbsolutePath::canonicalize(&dir)),
+                .and_then(|dir| AbsolutePath::canonical_dir(&dir)),
         }
-        .map_err(|e| format!("{shown}: {e}"))?;
-        if !dir.is_dir() {
-            return Err(format!("{shown}: not a directory"));
-        }
-        Ok(dir)
+        .map_err(|e| format!("{}: {e}", self.to_text()))
     }
 }
 

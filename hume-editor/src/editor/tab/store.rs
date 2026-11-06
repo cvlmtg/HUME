@@ -76,33 +76,28 @@ impl TabStore {
     }
 
     /// Every tab in display order with its focused pane, reading the active
-    /// tab's from `live_focus` (`EngineView::focused_pane`).
-    pub(in crate::editor) fn focused_panes(
-        &self,
-        live_focus: PaneId,
+    /// tab's from `live` (`EngineView::focused_layout`).
+    pub(in crate::editor) fn focused_panes<'a>(
+        &'a self,
+        live: &'a FocusedLayout,
     ) -> impl Iterator<Item = (TabId, PaneId)> {
-        self.order.iter().map(move |&id| {
-            let pid = if id == self.current {
-                live_focus
-            } else {
-                self.stash[id].focused()
-            };
-            (id, pid)
-        })
+        self.layouts(live)
+            .map(|(id, layout)| (id, layout.focused()))
     }
 
-    /// Every tab's layout in display order, reading the active tab's from
-    /// `live` (`EngineView::focused_layout`).
+    /// Every tab with its layout in display order, reading the active tab's
+    /// from `live` (`EngineView::focused_layout`).
     pub(in crate::editor) fn layouts<'a>(
         &'a self,
         live: &'a FocusedLayout,
-    ) -> impl Iterator<Item = &'a FocusedLayout> {
+    ) -> impl Iterator<Item = (TabId, &'a FocusedLayout)> {
         self.order.iter().map(move |&id| {
-            if id == self.current {
+            let layout = if id == self.current {
                 live
             } else {
                 &self.stash[id]
-            }
+            };
+            (id, layout)
         })
     }
 

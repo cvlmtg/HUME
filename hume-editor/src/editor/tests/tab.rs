@@ -727,7 +727,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
 
     assert_eq!(
         ed.state.buffers.get(bid_b).overrides.indent_width,
-        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
+        Some(default_settings().indent_width + 1),
         "returning to B's tab at unchanged geometry must still re-fire on-viewport-change"
     );
 }
@@ -768,7 +768,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
 
     assert_eq!(
         ed.state.buffers.get(bid_b).overrides.indent_width,
-        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
+        Some(default_settings().indent_width + 1),
         "switching buffer in place at an unchanged visible range must still \
          re-fire on-viewport-change"
     );
@@ -843,7 +843,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
 
     assert_eq!(
         ed.state.buffers.get(bid_a).overrides.indent_width,
-        Some(EditorSettings::new(&test_cwd()).indent_width + 1),
+        Some(default_settings().indent_width + 1),
         "returning to A's tab must still re-fire on-viewport-change exactly once"
     );
 }

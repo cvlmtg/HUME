@@ -7,6 +7,28 @@
 //! [`SessionSnapshot`]. Buffer text is not saved: each buffer records its
 //! text's MD5, and its positions are restored only onto that same text.
 
+/// `From` both ways between a foreign enum whose variants carry nothing and
+/// its mirror.
+macro_rules! mirror {
+    ($theirs:ident <=> $ours:ident { $($variant:ident),* $(,)? }) => {
+        impl From<$theirs> for $ours {
+            fn from(value: $theirs) -> Self {
+                match value {
+                    $($theirs::$variant => Self::$variant,)*
+                }
+            }
+        }
+
+        impl From<$ours> for $theirs {
+            fn from(value: $ours) -> Self {
+                match value {
+                    $($ours::$variant => Self::$variant,)*
+                }
+            }
+        }
+    };
+}
+
 mod keys;
 mod restore;
 mod snapshot;

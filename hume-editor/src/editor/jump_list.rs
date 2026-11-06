@@ -190,20 +190,17 @@ impl JumpList {
     }
 
     /// Remove all entries for `id`. Adjusts the cursor so its relative position
-    /// in the remaining entries is preserved; clamps to `entries.len()` if the
-    /// cursor falls past the end (which means "at the present").
+    /// in the remaining entries is preserved, `entries.len()` staying "at the
+    /// present".
     pub(in crate::editor) fn prune_buffer(&mut self, id: BufferId) {
-        let removed_before = self
-            .entries
-            .iter()
-            .take(self.cursor)
-            .filter(|e| e.buffer_id == id)
-            .count();
-        self.entries.retain(|e| e.buffer_id != id);
-        self.cursor = self
-            .cursor
-            .saturating_sub(removed_before)
-            .min(self.entries.len());
+        let (entries, cursor) = kept_with_cursor(
+            self.entries
+                .drain(..)
+                .map(|e| (e.buffer_id != id).then_some(e)),
+            self.cursor,
+        );
+        self.entries = entries.into();
+        self.cursor = cursor;
         for slot in &mut self.pending {
             if slot.as_ref().is_some_and(|e| e.buffer_id == id) {
                 *slot = None;
@@ -537,6 +534,26 @@ pub(in crate::editor) fn record_if_moved(
         state.panes.entries[t.pid()].jumps.push(pre);
     }
     moved
+}
+
+/// The `Some` items of `items`, and where `cursor`, a place in `items`,
+/// stands among them: after every kept item before it. A cursor at
+/// `items`' end lands at the kept items' end.
+pub(in crate::editor) fn kept_with_cursor<T>(
+    items: impl IntoIterator<Item = Option<T>>,
+    cursor: usize,
+) -> (Vec<T>, usize) {
+    let mut kept = Vec::new();
+    let mut kept_cursor = 0;
+    for (i, item) in items.into_iter().enumerate() {
+        if let Some(item) = item {
+            if i < cursor {
+                kept_cursor += 1;
+            }
+            kept.push(item);
+        }
+    }
+    (kept, kept_cursor)
 }
 
 #[cfg(test)]

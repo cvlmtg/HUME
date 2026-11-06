@@ -1,4 +1,5 @@
 use std::io;
+use std::path::Path;
 
 use hume_core::{BufferId, Severity};
 use hume_editing::text::BufferText;
@@ -35,13 +36,7 @@ impl EditorState {
     /// does the editor's. Unit tests skip that call so they cannot race each
     /// other over it.
     pub(in crate::editor) fn set_cwd(&mut self, path: &AbsolutePath) -> io::Result<AbsolutePath> {
-        let canonical = AbsolutePath::canonicalize(path)?;
-        if !canonical.is_dir() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotADirectory,
-                "not a directory",
-            ));
-        }
+        let canonical = AbsolutePath::canonical_dir(path)?;
         #[cfg(not(test))]
         std::env::set_current_dir(&canonical)?;
         self.cwd = canonical;
@@ -93,16 +88,16 @@ impl Editor {
                 Some(bid)
             }
             Err(e) => {
-                self.report(
-                    Severity::Warning,
-                    format!(
-                        "Failed to open {}: {e}",
-                        hume_platform::path::display_form(typed)
-                    ),
-                );
+                self.report_failed_open(typed, &e);
                 None
             }
         }
+    }
+
+    /// Warn that the file at `path` did not open in the background.
+    pub(in crate::editor) fn report_failed_open(&mut self, path: &Path, e: &io::Error) {
+        let shown = hume_platform::path::display_form(path);
+        self.report(Severity::Warning, format!("Failed to open {shown}: {e}"));
     }
 
     /// Tests' entry point to [`lifecycle::open_and_notify`], the production

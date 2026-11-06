@@ -16,7 +16,7 @@ use super::STAMP;
 use super::snapshot::{PaneSnapshot, RegisterSnapshot, SessionSnapshot, TabSnapshot};
 use crate::editor::buffer::lifecycle;
 use crate::editor::commands::{open_pane_as_new_tab, open_pane_in_layout};
-use crate::editor::jump_list::{JumpEntry, JumpList};
+use crate::editor::jump_list::{JumpEntry, JumpList, kept_with_cursor};
 use crate::editor::{Editor, focus, pane_state, stamped_file, tab};
 
 /// A saved buffer as this run opened it.
@@ -125,8 +125,7 @@ impl Editor {
             Ok((bid, _)) => Some(bid),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => {
-                let shown = hume_platform::path::display_form(path);
-                self.report(Severity::Warning, format!("Failed to open {shown}: {e}"));
+                self.report_failed_open(path, &e);
                 None
             }
         }
@@ -184,7 +183,7 @@ impl Editor {
                 continue;
             };
             if let Some(wrap) = kept.wrap {
-                self.view.panes[pid].wraps.insert(bid, wrap.into());
+                self.view.panes[pid].resume_wrap(bid, wrap.into());
             }
             if !same_text {
                 continue;
@@ -204,25 +203,20 @@ impl Editor {
             let top = DisplayLinePos::new(ContentLine::clamped(text.rope(), line), slot);
             self.view.panes[pid].resume_scroll(bid, top);
         }
-        let mut cursor = 0;
-        let mut jumps = Vec::new();
-        for (i, jump) in saved.jumps.iter().enumerate() {
-            let Some(Opened {
-                bid,
-                same_text: true,
-            }) = opened[jump.buffer]
-            else {
-                continue;
-            };
-            let text = state.buffers.get(bid).text();
-            let Some(sels) = jump.selections.on(text) else {
-                continue;
-            };
-            if i < saved.jump_cursor {
-                cursor += 1;
-            }
-            jumps.push(JumpEntry::new(sels, text, bid));
-        }
+        let (jumps, cursor) = kept_with_cursor(
+            saved.jumps.iter().map(|jump| {
+                let Opened {
+                    bid,
+                    same_text: true,
+                } = opened[jump.buffer]?
+                else {
+                    return None;
+                };
+                let text = state.buffers.get(bid).text();
+                Some(JumpEntry::new(jump.selections.on(text)?, text, bid))
+            }),
+            saved.jump_cursor,
+        );
         state.panes.entries[pid].jumps =
             JumpList::resumed(state.settings.jump_list_capacity, jumps, cursor);
     }

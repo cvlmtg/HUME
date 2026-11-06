@@ -765,7 +765,7 @@ impl EditorState {
             let bar = screen.tabbar_area();
             bar.x.hash(&mut hasher);
             bar.width.hash(&mut hasher);
-            for (id, pid) in self.tabs.focused_panes(view.focused_pane()) {
+            for (id, pid) in self.tabs.focused_panes(view.focused_layout()) {
                 id.hash(&mut hasher);
                 pid.hash(&mut hasher);
                 let bid = view.panes[pid].buffer_id();
@@ -812,7 +812,7 @@ impl EditorState {
 
         let tabs: Vec<crate::tabline::TabEntry> = self
             .tabs
-            .focused_panes(view.focused_pane())
+            .focused_panes(view.focused_layout())
             .map(|(id, pid)| {
                 let bid = view.panes[pid].buffer_id();
                 let buf = self.buffers.get(bid);

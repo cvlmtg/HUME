@@ -26,6 +26,15 @@ pub(in crate::editor) enum HistoryKind {
     Pipe,
 }
 
+impl HistoryKind {
+    pub(in crate::editor) const ALL: [Self; 4] = [
+        Self::Command,
+        Self::SearchForward,
+        Self::SearchBackward,
+        Self::Pipe,
+    ];
+}
+
 /// Direction for [`crate::editor::minibuf::recall_history`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) enum HistoryDir {
@@ -183,7 +192,6 @@ impl HistoryStore {
         }
     }
 
-    #[cfg(test)]
     pub(in crate::editor) fn get(&self, kind: HistoryKind) -> &History {
         match kind {
             HistoryKind::Command => &self.command,
@@ -225,21 +233,9 @@ impl HistoryStore {
         [command, search_f, search_b, pipe]
     }
 
-    /// Every ring's entries, oldest first, with the kind it belongs to. The
-    /// pattern names each field, as [`Self::rings_mut`]'s does.
+    /// Every ring's entries, oldest first, with the kind it belongs to.
     pub(in crate::editor) fn entries_by_kind(&self) -> [(HistoryKind, &VecDeque<String>); 4] {
-        let Self {
-            command,
-            search_f,
-            search_b,
-            pipe,
-        } = self;
-        [
-            (HistoryKind::Command, &command.entries),
-            (HistoryKind::SearchForward, &search_f.entries),
-            (HistoryKind::SearchBackward, &search_b.entries),
-            (HistoryKind::Pipe, &pipe.entries),
-        ]
+        HistoryKind::ALL.map(|kind| (kind, &self.get(kind).entries))
     }
 
     /// Reset per-session nav state on every ring. Called when any minibuffer

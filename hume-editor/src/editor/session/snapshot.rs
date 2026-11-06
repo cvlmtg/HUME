@@ -7,7 +7,7 @@ use std::ffi::OsString;
 
 use hume_core::{BufferId, PaneId};
 use hume_editing::selection::SelectionsSnapshot;
-use hume_engine::pane::{Pane, WrapMode, WrapOverride};
+use hume_engine::pane::{WrapMode, WrapOverride};
 use hume_engine::pipeline::{Direction, EngineView, LayoutTree};
 use hume_ops::register::{MACRO_REGISTERS, Shape};
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use slotmap::SecondaryMap;
 
 use super::keys::SavedKey;
 use crate::editor::EditorState;
-use crate::editor::jump_list::JumpEntry;
+use crate::editor::jump_list::kept_with_cursor;
 use crate::editor::minibuf::history::HistoryKind;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -141,7 +141,7 @@ impl SessionSnapshot {
         let tabs = state
             .tabs
             .layouts(view.focused_layout())
-            .map(|layout| {
+            .map(|(_, layout)| {
                 let mut splits = Vec::new();
                 let mut leaves = Vec::new();
                 grow(layout.tree(), 0, &mut splits, &mut leaves);
@@ -236,67 +236,34 @@ fn capture_pane(
     let buffers = entry
         .buffers()
         .filter_map(|(bid, buffer_state)| {
+            let top = pane.scroll_top(bid);
             Some(PaneBufferSnapshot {
                 buffer: *index.get(bid)?,
                 selections: SelectionsSnapshot::of(buffer_state.selections()),
-                top: scroll_top(pane, bid),
-                wrap: pane.wraps.get(bid).copied().map(WrapSnapshot::from),
+                top: (top.line.index(), top.slot),
+                wrap: pane.wrap_in(bid).map(WrapSnapshot::from),
             })
         })
         .collect();
     let (entries, cursor) = entry.jumps.history();
-    let kept = |jump: &JumpEntry| index.contains_key(jump.buffer_id);
-    let jumps = entries
-        .iter()
-        .filter(|jump| kept(jump))
-        .map(|jump| JumpSnapshot {
-            buffer: index[jump.buffer_id],
-            selections: SelectionsSnapshot::of(&jump.selections),
-        })
-        .collect();
+    let (jumps, jump_cursor) = kept_with_cursor(
+        entries.iter().map(|jump| {
+            Some(JumpSnapshot {
+                buffer: *index.get(jump.buffer_id)?,
+                selections: SelectionsSnapshot::of(&jump.selections),
+            })
+        }),
+        cursor,
+    );
     PaneSnapshot {
         shown: index.get(pane.buffer_id()).copied(),
         buffers,
         jumps,
-        jump_cursor: entries
-            .iter()
-            .take(cursor)
-            .filter(|jump| kept(jump))
-            .count(),
+        jump_cursor,
     }
 }
 
-/// `pane`'s top display line for `bid`: the live one for the buffer it
-/// shows, the saved one for any other.
-fn scroll_top(pane: &Pane, bid: BufferId) -> (usize, usize) {
-    let top = if bid == pane.buffer_id() {
-        pane.viewport.top()
-    } else {
-        pane.saved_scrolls
-            .get(bid)
-            .map(|viewport| viewport.top())
-            .unwrap_or_default()
-    };
-    (top.line.index(), top.slot)
-}
-
-impl From<Direction> for SplitDirection {
-    fn from(direction: Direction) -> Self {
-        match direction {
-            Direction::Horizontal => Self::Horizontal,
-            Direction::Vertical => Self::Vertical,
-        }
-    }
-}
-
-impl From<SplitDirection> for Direction {
-    fn from(direction: SplitDirection) -> Self {
-        match direction {
-            SplitDirection::Horizontal => Self::Horizontal,
-            SplitDirection::Vertical => Self::Vertical,
-        }
-    }
-}
+mirror!(Direction <=> SplitDirection { Horizontal, Vertical });
 
 impl From<WrapOverride> for WrapSnapshot {
     fn from(wrap: WrapOverride) -> Self {
@@ -338,20 +305,4 @@ impl From<WrapModeSnapshot> for WrapMode {
     }
 }
 
-impl From<Shape> for ShapeSnapshot {
-    fn from(shape: Shape) -> Self {
-        match shape {
-            Shape::Charwise => Self::Charwise,
-            Shape::Linewise => Self::Linewise,
-        }
-    }
-}
-
-impl From<ShapeSnapshot> for Shape {
-    fn from(shape: ShapeSnapshot) -> Self {
-        match shape {
-            ShapeSnapshot::Charwise => Self::Charwise,
-            ShapeSnapshot::Linewise => Self::Linewise,
-        }
-    }
-}
+mirror!(Shape <=> ShapeSnapshot { Charwise, Linewise });

@@ -260,7 +260,8 @@ pub struct Pane {
     pub providers: ProviderSet,
     /// This pane's wrap-mode override, per buffer it has shown. Two panes on
     /// the same buffer may wrap differently. Read and written through
-    /// [`Pane::wrap`]/[`Pane::set_wrap`].
+    /// [`Pane::wrap`]/[`Pane::set_wrap`], or [`Pane::wrap_in`]/
+    /// [`Pane::resume_wrap`] for a buffer the pane may not show.
     pub wraps: SecondaryMap<BufferId, WrapOverride>,
     /// What every walk of this pane's display lines has learned about the
     /// lines it visited; see [`crate::display_lines::line_store`].
@@ -354,6 +355,31 @@ impl Pane {
         } else {
             self.saved_scrolls.insert(bid, viewport);
         }
+    }
+
+    /// This pane's top display line in `bid`: the live one for the buffer it
+    /// shows, the saved one for any other, the start when it has none.
+    pub fn scroll_top(&self, bid: BufferId) -> DisplayLinePos {
+        if bid == self.buffer_id {
+            self.viewport.top
+        } else {
+            self.saved_scrolls
+                .get(bid)
+                .map(|viewport| viewport.top)
+                .unwrap_or_default()
+        }
+    }
+
+    /// This pane's wrap-mode override for `bid`, `None` if it has never
+    /// pinned or toggled one there.
+    pub fn wrap_in(&self, bid: BufferId) -> Option<WrapOverride> {
+        self.wraps.get(bid).copied()
+    }
+
+    /// Put back `wrap` as this pane's override for `bid`, one it had there in
+    /// an earlier run.
+    pub fn resume_wrap(&mut self, bid: BufferId, wrap: WrapOverride) {
+        self.wraps.insert(bid, wrap);
     }
 
     /// Drop the saved scroll and wrap-mode override entries for `id` (called

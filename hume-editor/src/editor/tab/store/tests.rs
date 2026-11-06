@@ -167,7 +167,7 @@ fn focused_panes_reads_the_active_tab_s_focus_from_the_live_layout() {
     let t1 = store.current();
     let t2 = store.open_after_current(l1);
 
-    let panes: Vec<_> = store.focused_panes(p2).collect();
+    let panes: Vec<_> = store.focused_panes(&l2).collect();
 
     assert_eq!(panes, vec![(t1, p1), (t2, p2)]);
 }

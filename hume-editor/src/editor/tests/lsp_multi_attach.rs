@@ -414,7 +414,7 @@ fn attach_hook_fires_once_per_buffer_and_server() {
 
     assert_eq!(
         rig.ed.state.buffers.get(rig.bid).overrides.indent_width,
-        Some(EditorSettings::new(&test_cwd()).indent_width + 2)
+        Some(default_settings().indent_width + 2)
     );
 }
 

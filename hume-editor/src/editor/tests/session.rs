@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
+use hume_engine::pipeline::LayoutTree;
 use pretty_assertions::assert_eq;
 
 /// A project directory holding files, beside a state and a config
@@ -40,11 +41,15 @@ impl Project {
         self.dir.path().join("state")
     }
 
+    /// The default session directory.
+    pub(super) fn sessions(&self) -> PathBuf {
+        self.state().join("sessions")
+    }
+
     /// Where the session of `dir` lands under the default directory.
     pub(super) fn session_of(&self, dir: &Path) -> PathBuf {
         let resolved = AbsolutePath::canonicalize(dir).unwrap();
-        hume_platform::path::mirrored_under(&self.state().join("sessions"), &resolved, ".session")
-            .unwrap()
+        hume_platform::path::mirrored_under(&self.sessions(), &resolved, ".session").unwrap()
     }
 
     pub(super) fn session_file(&self) -> PathBuf {
@@ -102,7 +107,7 @@ fn a_run_started_with_a_file_saves_no_session() {
     let project = Project::new(&[("a.txt", "a\n")]);
     let mut ed = project.start(&["a.txt"], PERSIST);
     quit(&mut ed).expect("nothing to save");
-    assert!(!project.state().join("sessions").exists());
+    assert!(!project.sessions().exists());
 }
 
 #[test]
@@ -110,7 +115,7 @@ fn with_session_persist_off_no_session_is_saved() {
     let project = Project::new(&[]);
     let mut ed = project.start(&[], "");
     quit(&mut ed).expect("nothing to save");
-    assert!(!project.state().join("sessions").exists());
+    assert!(!project.sessions().exists());
 }
 
 #[test]
@@ -127,7 +132,7 @@ fn session_directory_moves_where_the_session_is_saved() {
     let cwd = AbsolutePath::canonicalize(&project.work()).unwrap();
     let moved = hume_platform::path::mirrored_under(&elsewhere, &cwd, ".session").unwrap();
     assert!(moved.is_file());
-    assert!(!project.state().join("sessions").exists());
+    assert!(!project.sessions().exists());
 }
 
 #[test]
@@ -205,7 +210,7 @@ fn a_session_root_that_is_not_a_directory_warns_and_saves_nothing() {
         "{warnings:?}"
     );
     assert!(quit(&mut ed).is_err());
-    assert!(!project.state().join("sessions").exists());
+    assert!(!project.sessions().exists());
 }
 
 #[test]
@@ -246,9 +251,9 @@ fn a_session_that_cannot_be_written_is_reported_on_exit() {
 /// Each tab's layout, the file every pane shows and the focused pane
 /// marked `*`, the current tab marked `>`.
 fn layout(ed: &Editor) -> Vec<String> {
-    fn tree(ed: &Editor, node: &hume_engine::pipeline::LayoutTree, focus: PaneId) -> String {
+    fn tree(ed: &Editor, node: &LayoutTree, focus: PaneId) -> String {
         match node {
-            hume_engine::pipeline::LayoutTree::Leaf(pid) => {
+            LayoutTree::Leaf(pid) => {
                 let name = ed
                     .state
                     .buffers
@@ -260,7 +265,7 @@ fn layout(ed: &Editor) -> Vec<String> {
                     name
                 }
             }
-            hume_engine::pipeline::LayoutTree::Split {
+            LayoutTree::Split {
                 direction,
                 children,
                 ..
@@ -271,13 +276,12 @@ fn layout(ed: &Editor) -> Vec<String> {
             ),
         }
     }
-    let current = ed.state.tabs.current_pos();
+    let current = ed.state.tabs.current();
     ed.state
         .tabs
         .layouts(ed.view.focused_layout())
-        .enumerate()
-        .map(|(n, l)| {
-            let mark = if n == current { ">" } else { "" };
+        .map(|(id, l)| {
+            let mark = if id == current { ">" } else { "" };
             format!("{mark}{}", tree(ed, l.tree(), l.focused()))
         })
         .collect()
@@ -290,6 +294,11 @@ fn buffer_names(ed: &Editor) -> Vec<String> {
         .iter()
         .map(|(_, buf)| buf.display_name())
         .collect()
+}
+
+/// Whether no open buffer is a file's.
+fn opens_no_file(ed: &Editor) -> bool {
+    ed.state.buffers.iter().all(|(_, buf)| buf.file().is_none())
 }
 
 fn alternate(ed: &Editor) -> Option<String> {
@@ -529,7 +538,7 @@ fn a_run_started_with_a_file_restores_nothing() {
 fn with_session_persist_off_nothing_is_restored() {
     let project = saved_two_files();
     let ed = project.start(&[], "");
-    assert!(ed.state.buffers.iter().all(|(_, buf)| buf.file().is_none()));
+    assert!(opens_no_file(&ed));
     assert!(
         project.session_file().is_file(),
         "turning it off deletes nothing"
@@ -544,7 +553,7 @@ fn a_damaged_session_warns_and_starts_fresh() {
     std::fs::write(project.session_file(), &bytes).unwrap();
 
     let ed = project.start(&[], PERSIST);
-    assert!(ed.state.buffers.iter().all(|(_, buf)| buf.file().is_none()));
+    assert!(opens_no_file(&ed));
     let warnings = session_warnings(&ed);
     assert!(
         warnings
@@ -576,7 +585,7 @@ fn a_session_of_another_format_is_ignored_without_a_warning() {
     std::fs::write(project.session_file(), &bytes).unwrap();
 
     let ed = project.start(&[], PERSIST);
-    assert!(ed.state.buffers.iter().all(|(_, buf)| buf.file().is_none()));
+    assert!(opens_no_file(&ed));
     assert!(session_warnings(&ed).is_empty());
 }
 
@@ -623,13 +632,7 @@ fn with_every_file_gone_the_scratch_stays_and_registers_come_back() {
     std::fs::remove_file(project.file("a.txt")).unwrap();
 
     let again = project.start(&[], PERSIST);
-    assert!(
-        again
-            .state
-            .buffers
-            .iter()
-            .all(|(_, buf)| buf.file().is_none())
-    );
+    assert!(opens_no_file(&again));
     assert_eq!(
         again.state.registers.read('q').and_then(|r| r.as_macro()),
         Some(&[key('x')][..])
@@ -661,7 +664,7 @@ fn save_session_is_refused_with_session_persist_off() {
     type_cmd(&mut ed, ":save-session");
     assert!(has_error(&ed, "session-persist is off"), "{}", status(&ed));
     quit(&mut ed).expect("nothing to save");
-    assert!(!project.state().join("sessions").exists());
+    assert!(!project.sessions().exists());
 }
 
 #[test]
