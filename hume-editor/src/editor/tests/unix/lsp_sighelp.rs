@@ -215,8 +215,9 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
     ed.feed_key(key('i'));
     ed.settle();
 
-    // Three trigger chars back to back, no settling in between; each
-    // (re)schedules the same 150ms debounce, cancelling the last.
+    // Three trigger chars on a held clock; each (re)schedules the same
+    // 150ms debounce, cancelling the last.
+    ed.state.clock.hold();
     ed.feed_key(key('('));
     ed.settle();
     ed.feed_key(key(','));
@@ -224,6 +225,9 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
     ed.feed_key(key(','));
     ed.settle();
 
+    ed.state
+        .clock
+        .advance(std::time::Duration::from_millis(150));
     settle_until_idle(&mut ed);
 
     let sighelp_requests = requests

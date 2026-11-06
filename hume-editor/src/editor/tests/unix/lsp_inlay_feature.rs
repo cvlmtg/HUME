@@ -868,16 +868,26 @@ fn a_refresh_leaves_another_buffers_request_in_flight() {
 }
 
 /// Queues a viewport-change refresh for the focused pane's buffer and runs
-/// the hook, leaving the 200 ms debounce pending. The focused pane's change
-/// runs last, so the pending call carries that pane even when the frame also
-/// changed another pane's viewport.
+/// the hook, leaving the 200 ms debounce pending on a held clock until
+/// [`refresh_window_passes`]. The focused pane's change runs last, so the
+/// pending call carries that pane even when the frame also changed another
+/// pane's viewport.
 fn queue_refresh_for_focused_buffer(ed: &mut Editor) {
+    ed.state.clock.hold();
     fire_viewport_change(ed);
     ed.settle();
     let pid = ed.view.focused_pane();
     ed.queue_viewport_change(pid);
     ed.settle();
     assert!(!ed.timers.is_empty(), "test setup: the refresh is pending");
+}
+
+/// Moves the clock past the refresh's 200 ms debounce and settles.
+fn refresh_window_passes(ed: &mut Editor) {
+    ed.state
+        .clock
+        .advance(std::time::Duration::from_millis(200));
+    settle_until_idle(ed);
 }
 
 /// Switches the focused pane to a new `other.txt`, a file no server serves.
@@ -902,7 +912,7 @@ fn a_refresh_for_a_buffer_hidden_before_it_fires_sends_nothing() {
     queue_refresh_for_focused_buffer(&mut ed);
     show_other_file(&mut ed, tmp.path());
     assert_ne!(ed.focused_buffer_id(), bid, "test setup: the pane switched");
-    settle_until_idle(&mut ed);
+    refresh_window_passes(&mut ed);
 
     assert_eq!(
         ed.state.message_log.totals().0,
@@ -936,7 +946,7 @@ fn a_refresh_goes_through_another_pane_still_showing_the_buffer() {
     queue_refresh_for_focused_buffer(&mut ed);
     show_other_file(&mut ed, tmp.path());
     assert_ne!(ed.focused_buffer_id(), bid, "test setup: the pane switched");
-    settle_until_idle(&mut ed);
+    refresh_window_passes(&mut ed);
 
     assert_eq!(
         ed.state.message_log.totals().0,
@@ -971,7 +981,7 @@ fn a_refresh_for_a_buffer_closed_before_it_fires_sends_nothing() {
         ed.state.buffers.try_get(bid).is_none(),
         "test setup: the buffer closed"
     );
-    settle_until_idle(&mut ed);
+    refresh_window_passes(&mut ed);
 
     assert_eq!(
         ed.state.message_log.totals().0,

@@ -142,10 +142,14 @@ fn several_inserts_within_the_debounce_ask_once() {
     set_cursor(&mut ed, FOO_OFFSET);
     run_references(&mut ed);
 
+    ed.state.clock.hold();
     for _ in 0..3 {
         insert_line_above_the_cursor_line(&mut ed);
         ed.settle();
     }
+    ed.state
+        .clock
+        .advance(std::time::Duration::from_millis(300));
     settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 2);
