@@ -384,7 +384,7 @@ impl EngineView {
     }
 
     /// Prune the focused pane from the active tab's tree. Focus moves to the
-    /// leftmost leaf of the neighbour that takes its place.
+    /// leftmost leaf of the neighbor that takes its place.
     pub fn close_focused(&mut self, key: &FocusKey) -> Result<DetachedPane, SinglePane> {
         self.check_key(key);
         self.layout.close_focused()

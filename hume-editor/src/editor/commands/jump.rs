@@ -361,7 +361,8 @@ fn resize_focused(
     resize: Resize,
     count: Count,
 ) -> Result<(), CommandError> {
-    let cells = u16::try_from(count.get()).expect("a count is at most 10 000");
+    const _: () = assert!(Count::MAX <= u16::MAX as usize);
+    let cells = u16::try_from(count.get()).expect("a count fits a u16");
     let screen = state.screen_layout(view);
     view.resize_focused(&screen, axis, resize, cells)
         .map_err(|refused| {

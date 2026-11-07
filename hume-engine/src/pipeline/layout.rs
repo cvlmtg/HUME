@@ -150,8 +150,7 @@ impl Seam {
     /// The split that produced this seam. `Horizontal` (a width split)
     /// carves a 1-column-wide, full-height seam, drawn as a vertical line
     /// (`│`). `Vertical` (a height split) carves a 1-row-tall, full-width
-    /// seam, drawn as a horizontal line (`─`). Same axis inversion as
-    /// [`Split::direction`] (see `split_focused_pane`'s doc comment).
+    /// seam, drawn as a horizontal line (`─`).
     pub fn direction(&self) -> Direction {
         self.handle.direction
     }
@@ -347,14 +346,15 @@ fn seams_before(k: usize, reserve_seam: bool) -> u16 {
 /// same direction, whose members would belong to this split.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Split {
-    /// `Horizontal` divides the width and `Vertical` the height: the axis
-    /// names say which way the divider between two members runs.
     direction: Direction,
     members: Vec<LayoutTree>,
     seams: Seams,
 }
 
 impl Split {
+    /// `Horizontal` lays the members side by side, so the divider between
+    /// two of them is a vertical line (`│`). `Vertical` stacks them, with a
+    /// horizontal divider (`─`).
     pub fn direction(&self) -> Direction {
         self.direction
     }
@@ -463,25 +463,25 @@ impl Split {
 
     /// Remove member `k`. A placed split gives its space to the member
     /// before it, or to the one after it when it is first; an equal one
-    /// stays equal. Returns where that neighbour ends up.
+    /// stays equal. Returns where that neighbor ends up.
     fn remove(&mut self, k: usize) -> usize {
-        let neighbour = k.saturating_sub(1);
+        let neighbor = k.saturating_sub(1);
         let seams = match &self.seams {
             Seams::Equal => Seams::Equal,
             Seams::Placed(shares) => {
                 let mut shares = shares.clone();
-                if neighbour + 2 == self.members.len() {
-                    shares.remove(neighbour);
+                if neighbor + 2 == self.members.len() {
+                    shares.remove(neighbor);
                 } else {
-                    let next = shares.remove(neighbour + 1);
-                    shares[neighbour] = shares[neighbour].followed_by(next);
+                    let next = shares.remove(neighbor + 1);
+                    shares[neighbor] = shares[neighbor].followed_by(next);
                 }
                 Seams::Placed(shares)
             }
         };
         self.members.remove(k);
         self.set_seams(seams);
-        neighbour
+        neighbor
     }
 
     /// Take `inner`, a split in this direction standing in member `k`'s
@@ -912,7 +912,7 @@ impl LayoutTree {
 
     /// Prune `Leaf(target)` from its split, which collapses onto its last
     /// member when only one is left, and return the leftmost leaf of the
-    /// neighbour that takes the pruned space (see [`Split::remove`]). A
+    /// neighbor that takes the pruned space (see [`Split::remove`]). A
     /// collapse that leaves a split standing in a split of its own
     /// direction is taken apart into it. `None` when `target` is not a leaf
     /// below a split of `self`.
@@ -921,8 +921,8 @@ impl LayoutTree {
             return None;
         };
         if let Some(k) = split.leaf_member(target) {
-            let neighbour = split.remove(k);
-            let survivor = split.members[neighbour].first_leaf();
+            let neighbor = split.remove(k);
+            let survivor = split.members[neighbor].first_leaf();
             if let [only] = split.members.as_mut_slice() {
                 // The placeholder is dropped with the split it was left in.
                 *self = std::mem::replace(only, LayoutTree::Leaf(PaneId::default()));
@@ -1193,7 +1193,7 @@ impl FocusedLayout {
 
     /// Prune the focused leaf. Its split stays equal if it was, otherwise its
     /// space goes to the member before it, or after it when it is first.
-    /// Focus moves to the leftmost leaf of that neighbour.
+    /// Focus moves to the leftmost leaf of that neighbor.
     pub(crate) fn close_focused(&mut self) -> Result<DetachedPane, SinglePane> {
         self.refuse_single_pane()?;
         let survivor = self

@@ -535,7 +535,7 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
 /// its rect starts well past row 0.
 ///
 /// Terminal height 25 (24 usable after the statusline): `:split` (1-row
-/// seam, ratio 0.5) gives pane A (top) `y ∈ [0, 11)`, pane B (bottom)
+/// seam, equal split) gives pane A (top) `y ∈ [0, 11)`, pane B (bottom)
 /// `y ∈ [12, 24)`, the same halves `split_sizes_both_panes_stacked`
 /// (`multi_pane/split_layout.rs`) pins. Pane B is `:split`'s freshly-opened pane (via
 /// `build_pane`), so its gutter is 4 (line-number digit_count(5) + 1 = 2,
@@ -1160,6 +1160,22 @@ fn a_press_outside_every_pane_ends_a_divider_drag_whose_release_was_lost() {
     drawn_input(&mut ed, mouse_drag(80, 24));
 
     assert_eq!(widths(&ed, &[a, b, c]), vec![32, 39, 27]);
+    assert!(ed.state.mouse_drag.is_none());
+}
+
+#[test]
+fn a_divider_drag_ends_when_a_key_closes_a_pane_beside_it() {
+    let (mut ed, [a, b, c]) = width_split_of_three_drawn();
+
+    // Grab the divider between `b` and `c`, then close `c` mid-drag.
+    drawn_input(&mut ed, mouse_left_down(66, 3));
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('c'));
+    assert!(!ed.view.layout().contains_leaf(c), "setup");
+    let before = widths(&ed, &[a, b]);
+    drawn_input(&mut ed, mouse_drag(72, 3));
+
+    assert_eq!(widths(&ed, &[a, b]), before);
     assert!(ed.state.mouse_drag.is_none());
 }
 

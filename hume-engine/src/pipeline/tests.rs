@@ -1201,7 +1201,7 @@ fn close_focused_collapses_the_parent_onto_the_sibling() {
 }
 
 #[test]
-fn close_focused_moves_focus_to_the_neighbour_subtree_leftmost_leaf() {
+fn close_focused_moves_focus_to_the_neighbor_subtree_leftmost_leaf() {
     let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(
         width_split(vec![LayoutTree::Leaf(a), height_split_of_two(b, c)]),
@@ -1268,6 +1268,41 @@ fn a_collapse_into_a_resized_split_keeps_every_seam_where_it_was() {
     // Each seam keeps its fraction of the split. The split now has one more
     // seam, so one column less to share, and `a` ends a column sooner.
     assert_eq!(widths(&layout, &[a, c, d]), vec![58, 20, 20]);
+}
+
+#[test]
+fn a_collapse_into_a_resized_split_before_its_last_member_keeps_every_seam_where_it_was() {
+    let [a, b, c, d, e] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![
+            LayoutTree::Leaf(a),
+            height_split(vec![
+                LayoutTree::Leaf(b),
+                width_split(vec![LayoutTree::Leaf(c), LayoutTree::Leaf(d)]),
+            ]),
+            LayoutTree::Leaf(e),
+        ]),
+        a,
+    );
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 10);
+    assert_eq!(widths(&layout, &[a, c, d, e]), vec![42, 11, 11, 33]);
+    layout.focus(b);
+
+    let detached = layout.close_focused().expect("five panes");
+
+    assert_eq!(detached.pane_id(), b);
+    let LayoutTree::Split(split) = layout.tree() else {
+        panic!("four panes stay split");
+    };
+    assert_eq!(
+        split.members(),
+        &[a, c, d, e].map(LayoutTree::Leaf),
+        "the collapsed split joins its parent"
+    );
+    // Each seam keeps its fraction of the split. The split now has one more
+    // seam, so one column less to share, every seam lands a column sooner
+    // and `e` takes the column left over.
+    assert_eq!(widths(&layout, &[a, c, d, e]), vec![41, 11, 11, 34]);
 }
 
 #[test]
@@ -1406,7 +1441,7 @@ fn resizing_the_last_pane_moves_the_seam_before_it() {
 }
 
 #[test]
-fn a_resize_stops_at_the_neighbour_s_minimum_size() {
+fn a_resize_stops_at_the_neighbor_s_minimum_size() {
     let [a, b] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(
         width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)]),
