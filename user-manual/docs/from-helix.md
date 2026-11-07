@@ -2,6 +2,8 @@
 
 HUME shares Helix's core editing model (select-then-act, selections as first-class citizens), so the mental shift is small. The differences are mostly in how selections grow, in configuration, and in tooling.
 
+To keep your Helix keys, install the [helix.hume](https://github.com/cvlmtg/helix.hume) plugin. It binds every Helix key HUME has an action for; its README lists what it changes and what it can't match. The rest of this page describes HUME's own keys.
+
 ## The first ten minutes with HUME
 
 ### Opening a file
@@ -114,7 +116,7 @@ To take the whitespace after the word instead, as Helix does, set `word-selects-
 (set-option! "word-selects-whitespace" "after")
 ```
 
-`w` still selects a whole word: with the cursor inside `foo`, Helix's `w` selects the rest of `foo`, while HUME's selects the next word. `off` selects the bare word with no whitespace. See [Buffer options](settings.md#buffer-options).
+`w` still selects a whole word: with the cursor inside `foo`, Helix's `w` selects the rest of `foo`, while HUME's selects the next word. `off` selects the bare word with no whitespace. See [Buffer options](settings.md#buffer-options). [helix.hume](https://github.com/cvlmtg/helix.hume) sets the option to `after` and makes `w`, `e` and `b` select from the cursor as Helix's do.
 
 ### Line selection: `x` vs Extend mode (`e`)
 
@@ -188,19 +190,15 @@ Helix's `bufferline` (`never` / `always` / `multiple`) is a strip of open buffer
 
 ### Surround
 
-Helix uses `m s`, `m d`, `m r` for surround. HUME has its own default bindings and a Helix-compatible plugin:
+Helix uses `m s`, `m d`, `m r` for surround. HUME has its own default bindings, and [helix.hume](https://github.com/cvlmtg/helix.hume) puts Helix's back:
 
-| Action | HUME (default) | HUME (`core:helix-surround`) |
-|--------|---------------|------------------------------|
+| Action | HUME | helix.hume |
+|--------|------|------------|
 | Wrap | `m w` + char | `m s` + char |
 | Delete | `m s` + char, then `d` | `m d` + char |
 | Replace | `m s` + char, then `r` | `m r` + char |
 
-By default `m s` selects the surrounding pair, and the ordinary `d` and `r` act on it. The plugin takes `m s` over for wrapping and removes `m w`. Load it from your `init.scm`:
-
-```scheme
-(load-plugin! "core:helix-surround")
-```
+In HUME, `m s` selects the surrounding pair, and the ordinary `d` and `r` act on it.
 
 ### Matching brackets and structural navigation
 

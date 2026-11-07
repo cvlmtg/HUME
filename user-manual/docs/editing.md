@@ -284,4 +284,4 @@ callone, two<br>
 call[one, two]
 </div>
 
-To use Helix's surround keys instead, where `m s` wraps, `m d` deletes a pair and `m r` replaces one, load [`core:helix-surround`](core-plugins.md#core-helix-surround).
+To use Helix's surround keys instead, where `m s` wraps, `m d` deletes a pair and `m r` replaces one, install [helix.hume](https://github.com/cvlmtg/helix.hume), which binds the rest of Helix's keys too.

@@ -13,8 +13,8 @@ fn eval_err(src: &str) -> String {
 
 #[test]
 fn parse_core_plugin_name() {
-    let id = PluginId::parse("core:helix-surround").unwrap();
-    assert!(matches!(id, PluginId::Core(n) if n == "helix-surround"));
+    let id = PluginId::parse("core:vim-keybind").unwrap();
+    assert!(matches!(id, PluginId::Core(n) if n == "vim-keybind"));
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn parse_invalid_names() {
 #[test]
 fn valid_core_segment() {
     // Segments that should pass through PluginId::parse successfully.
-    assert!(PluginId::parse("core:helix-surround").is_ok());
+    assert!(PluginId::parse("core:vim-keybind").is_ok());
     assert!(PluginId::parse("core:plum").is_ok());
     assert!(PluginId::parse("core:v1.2.3").is_ok());
 }

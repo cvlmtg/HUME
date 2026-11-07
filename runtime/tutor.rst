@@ -1167,9 +1167,6 @@ This selects both the opening AND closing delimiter, giving you two
 independent cursors. You can then delete both with ``d``, or change
 them with ``r`` + a new delimiter character.
 
-Note: if you have the ``core:helix-surround`` plugin loaded, the
-``ms`` binding has different semantics; consult that plugin's docs.
-
 Exercise
 ~~~~~~~~
 

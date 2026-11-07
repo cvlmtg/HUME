@@ -278,16 +278,6 @@ By default (`'smart`), `C` is context-sensitive. On a bare cursor with no count 
 
 `'on` always changes to end of line; `'off` leaves `C` alone. Every value needs `core:stdlib`.
 
-## core:helix-surround
-
-Helix-style surround keys: `m s` wraps the selection, `m d` deletes a surrounding pair, `m r` replaces one.
-
-```scheme
-(load-plugin! "core:helix-surround")
-```
-
-It takes over `m s`, which by default *selects* a surrounding pair, and removes `m w`, so wrapping lives on `m s` alone.
-
 ## core:classic-paste
 
 GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P` paste the kill ring, `Ctrl-v` / `Ctrl-Shift-v` paste the system clipboard (`Ctrl-Shift-v` needs the kitty protocol).

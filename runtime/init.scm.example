@@ -21,7 +21,6 @@
 
 ;; (load-plugin! "core:buffer-words")     ; identifiers already in the buffer, as completions
 ;; (load-plugin! "core:vim-keybind")      ; vim muscle memory
-;; (load-plugin! "core:helix-surround")   ; helix-style surround
 ;; (load-plugin! "core:classic-paste")    ; GUI-style paste
 ;; (load-plugin! "core:steel-server")  ; scheme LSP for HUME config; needs :steel-server-install
 

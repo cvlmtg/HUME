@@ -158,7 +158,7 @@ fn is_safe_segment_version_string_is_valid() {
 
 #[test]
 fn is_safe_segment_plain_name_is_valid() {
-    assert!(is_safe_segment("helix-surround"));
+    assert!(is_safe_segment("vim-keybind"));
 }
 
 // ── relative_to ───────────────────────────────────────────────────────────

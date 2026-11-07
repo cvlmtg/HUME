@@ -70,10 +70,7 @@ fn plugin_id_preserves_case_in_display() {
         pid("SomeUser/CoolPlugin").to_string(),
         "SomeUser/CoolPlugin"
     );
-    assert_eq!(
-        pid("core:helix-surround").to_string(),
-        "core:helix-surround"
-    );
+    assert_eq!(pid("core:vim-keybind").to_string(), "core:vim-keybind");
 }
 
 #[test]

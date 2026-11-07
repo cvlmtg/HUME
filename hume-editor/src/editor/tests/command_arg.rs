@@ -644,16 +644,34 @@ fn enter_on_an_invalid_sift_pattern_reports_and_keeps_the_selection() {
     assert!(has_error(&ed, "invalid pattern"));
 }
 
-// ── core:helix-surround, which reads its delimiters with on-next-char! ──────
+// ── Surround commands that read their delimiter with on-next-char! ──────────
 
-const HELIX_SURROUND: &str =
-    include_str!("../../../../runtime/plugins/core/helix-surround/plugin.scm");
+/// A keymap plugin's delete- and replace-surround commands for `()`, reading
+/// the delimiter, and for `m r` the new one, with `on-next-char!`.
+const SURROUND_BY_CHAR: &str = r#"
+(define-command! "test/surround-delete" ""
+  (lambda (pane)
+    (on-next-char!
+      (lambda (ch)
+        (when (eqv? ch #\()
+          (call! "surround-paren" pane)
+          (call! "delete" pane))))))
+(define-command! "test/surround-replace" ""
+  (lambda (pane)
+    (on-next-char!
+      (lambda (ch)
+        (when (eqv? ch #\()
+          (call! "surround-paren" pane)
+          (on-next-char! (lambda (new) (when new (call! "replace" pane new)))))))))
+(bind-key! 'normal "m d" "test/surround-delete")
+(bind-key! 'normal "m r" "test/surround-replace")
+"#;
 
 #[test]
-fn helix_surround_md_deletes_the_pair_it_reads() {
+fn md_deletes_the_pair_it_reads() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("(h-[e]>llo)\n");
-    run(&mut ed, tmp.path(), HELIX_SURROUND);
+    run(&mut ed, tmp.path(), SURROUND_BY_CHAR);
     feed_settled(&mut ed, "md(");
     assert_eq!(text(&ed), "hello\n");
 }
@@ -661,10 +679,10 @@ fn helix_surround_md_deletes_the_pair_it_reads() {
 /// `md` is not repeatable itself: `.` repeats the delete its callback
 /// ran, on the pair the recorded selection steps find.
 #[test]
-fn dot_after_helix_md_deletes_the_next_pair() {
+fn dot_after_md_deletes_the_next_pair() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("(h-[e]>llo) (world)\n");
-    run(&mut ed, tmp.path(), HELIX_SURROUND);
+    run(&mut ed, tmp.path(), SURROUND_BY_CHAR);
     feed_settled(&mut ed, "md(");
     assert_eq!(text(&ed), "hello (world)\n");
     select_marked(&mut ed, "hello (w-[o]>rld)\n");
@@ -673,10 +691,10 @@ fn dot_after_helix_md_deletes_the_next_pair() {
 }
 
 #[test]
-fn helix_surround_mr_replaces_the_pair_with_the_second_char() {
+fn mr_replaces_the_pair_with_the_second_char() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("(h-[e]>llo)\n");
-    run(&mut ed, tmp.path(), HELIX_SURROUND);
+    run(&mut ed, tmp.path(), SURROUND_BY_CHAR);
     feed_settled(&mut ed, "mr([");
     assert_eq!(text(&ed), "[hello]\n");
 }

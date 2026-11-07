@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Breaking changes
+- `core:helix-surround` is removed. For Helix's `m s`/`m d`/`m r`, load the [helix.hume](https://github.com/cvlmtg/helix.hume) plugin instead: `(load-plugin! "cvlmtg/helix.hume")`, which binds the rest of Helix's keys too.
+
 ## [0.19.0] - 2026-11-06
 
 ### Breaking changes

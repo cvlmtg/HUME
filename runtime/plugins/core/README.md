@@ -24,7 +24,6 @@ plugin-authoring API (not core-specific), see
 | [`undotree`](undotree/README.md) | Undo history graph in the drawer | lazy | none (draws a revision diff when `git-diff` is loaded) |
 | [`buffer-words`](buffer-words/README.md) | Buffer-text completion source | eager | `stdlib` |
 | [`vim-keybind`](vim-keybind/README.md) | Vim muscle-memory keys | eager | `stdlib` |
-| [`helix-surround`](helix-surround/README.md) | Helix-compat surround keys | eager | none |
 | [`classic-paste`](classic-paste/README.md) | GUI-style clipboard/kill-ring split | eager | none |
 
 "Loads": **lazy** means the plugin ships a `manifest.scm`, so `(load-plugin! "core:x")`
@@ -44,11 +43,10 @@ neither file is an error.
 A plugin has no `manifest.scm`, and so loads eagerly, when what it adds has to be in
 place before anything could trigger it:
 
-- **Key bindings.** `pickers`, `vim-keybind`, `helix-surround` and `classic-paste` exist to
-  bind keys, and their `bind-key!` calls are in `plugin.scm`, which a lazy plugin does not
-  run until a trigger fires. A `#:commands` trigger needs a key or a `call!` to reach the
-  command first. `vim-keybind` and `helix-surround` mostly bind built-in commands, which a
-  manifest cannot claim as its own.
+- **Key bindings.** `pickers`, `vim-keybind` and `classic-paste` exist to bind keys, and
+  their `bind-key!` calls are in `plugin.scm`, which a lazy plugin does not run until a
+  trigger fires. A `#:commands` trigger needs a key or a `call!` to reach the command first.
+  `vim-keybind` mostly binds built-in commands, which a manifest cannot claim as its own.
 - **Hooks and a completion source.** `buffer-words` registers both at load and defines no
   command.
 
