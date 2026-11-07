@@ -105,16 +105,13 @@ pub struct RenderContext {
     /// doing that lookup could not run while the loop is borrowing. It lives
     /// here rather than arriving as a parameter so its map is reused across
     /// frames instead of reallocated per frame, the same reason `pane_rects`
-    /// and `seams` are here.
+    /// is here.
     pub(crate) pane_settings: SecondaryMap<PaneId, PaneRenderSettings>,
     /// Pane rects computed by the layout stage.
     pub(crate) pane_rects: Vec<(PaneId, Rect)>,
-    /// Seam dividers computed alongside `pane_rects` each render: reused
-    /// scratch storage, same rationale as `pane_rects`.
-    pub(crate) seams: Vec<Seam>,
-    /// Perpendicular-arm bits keyed by cell, computed from `seams` each
-    /// render so junction glyphs (`┬ ┴ ├ ┤ ┼`) can be drawn where seams
-    /// cross. Reused scratch storage, same rationale as `seams`.
+    /// Perpendicular-arm bits keyed by cell, computed from the seams drawn
+    /// each render so junction glyphs (`┬ ┴ ├ ┤ ┼`) can be drawn where seams
+    /// cross. Reused scratch storage, same rationale as `pane_rects`.
     pub(crate) seam_arms: FxHashMap<(u16, u16), u8>,
     /// Where the focused pane's cursor landed within the pane's content area
     /// (pane-relative, *before* the gutter and pane origin are added, not a
@@ -133,7 +130,6 @@ impl RenderContext {
             frame: FrameScratch::new(),
             pane_settings: SecondaryMap::new(),
             pane_rects: Vec::new(),
-            seams: Vec::new(),
             seam_arms: FxHashMap::default(),
             cursor_content_pos: None,
         }
@@ -377,7 +373,10 @@ impl EngineView {
         share: Option<SplitShare>,
         open: impl FnOnce(&mut Self) -> Result<UnattachedPane, E>,
     ) -> Result<PaneId, E> {
-        if !screen.split_fits(&self.layout, direction, share) {
+        if !self
+            .layout
+            .split_fits(screen.pane_area(), screen.reserves_seam(), direction, share)
+        {
             return Err(SplitTooSmall.into());
         }
         let pane = open(self)?;
@@ -637,13 +636,9 @@ impl EngineView {
                 .iter()
                 .find(|(pid, _)| *pid == focused_pane_id)
                 .map(|(_, r)| *r);
-            ctx.seams.clear();
-            self.layout
-                .tree()
-                .collect_seams_into(pane_area, &mut ctx.seams);
+            let seams = self.drawn.record_seams(self.layout.tree(), pane_area);
             ctx.seam_arms.clear();
-            collect_seam_arms(&ctx.seams, &mut ctx.seam_arms);
-            self.drawn.record_seams(&ctx.seams);
+            collect_seam_arms(seams, &mut ctx.seam_arms);
 
             // `theme.default` (ui.text's color) is the base layer here for the
             // same reason it's the base for a content display line
@@ -681,7 +676,7 @@ impl EngineView {
             // seam pass.
             let (grid_w, grid_h) = grid.size();
             let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
-            for seam in &ctx.seams {
+            for seam in seams {
                 let (x0, y0, x1, y1) =
                     crate::render::clamp_rect_to_grid((grid_w, grid_h), seam.rect);
                 let base = match seam.direction() {

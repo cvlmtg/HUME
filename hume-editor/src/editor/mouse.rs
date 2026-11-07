@@ -84,8 +84,12 @@ impl Editor {
     // ── Click ─────────────────────────────────────────────────────────────────
 
     fn mouse_left_down(&mut self, x: u16, y: u16) {
-        // A press ends whatever drag the previous one left, released or not.
+        // A press starts fresh: it ends whatever drag the previous one left,
+        // released or not, and drops a half-typed key sequence
+        // (`pending`/`count`) and the status line.
         self.state.mouse_drag = None;
+        self.state.discard_pending_keys();
+        self.state.status_msg.clear();
 
         // A tabline click is handled separately (and unconditionally, even
         // when it doesn't land on an actual tab): it's outside every
@@ -98,14 +102,13 @@ impl Editor {
         // A divider is outside every pane's rect. Grabbing one moves neither
         // focus nor a selection.
         if let Some(seam) = self.view.seam_hit(Position::new(x, y)) {
-            self.clear_pending_input();
             self.state.mouse_drag = Some(MouseDrag::Seam(seam.handle));
             return;
         }
 
         // Hit-test before anything else: a miss (statusline or anything else
-        // outside a pane's own rect) is a no-op, and a hit's pane-relative
-        // coordinates are what every step below needs.
+        // outside a pane's own rect) does nothing more, and a hit's
+        // pane-relative coordinates are what every step below needs.
         let Some(hit) = self.view.pane_hit(Position::new(x, y)) else {
             return;
         };
@@ -123,7 +126,6 @@ impl Editor {
         if let Some(pos) = self.click_to_cluster(hit) {
             // Collapse the selections to one cursor on the clicked cluster.
             self.select_only(Selection::cursor(pos));
-            self.clear_pending_input();
             // The cursor is the anchor of a drag that follows.
             self.state.mouse_drag = Some(MouseDrag::Select(hit.pane()));
         }
@@ -135,14 +137,6 @@ impl Editor {
         let text = self.doc().text();
         let only = SelectionSet::new(text, vec![sel], 0);
         self.set_current_selections(only);
-    }
-
-    /// Reset transient input state every click starts fresh from: any
-    /// half-typed key sequence (`pending`/`count`) and the status line.
-    /// `mouse_left_down` resets `mouse_drag` itself, on every press.
-    fn clear_pending_input(&mut self) {
-        self.state.discard_pending_keys();
-        self.state.status_msg.clear();
     }
 
     // ── Drag ──────────────────────────────────────────────────────────────────
@@ -265,7 +259,6 @@ impl Editor {
             // the outgoing tab's own pane while its tab is still live, before
             // the new tab is installed: the teardown's indent trim edits a
             // buffer the outgoing tab's panes may show.
-            self.clear_pending_input();
             crate::editor::tab::switch_to_tab(&mut self.state, &mut self.view, id);
         }
         true

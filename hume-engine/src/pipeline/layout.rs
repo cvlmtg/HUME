@@ -330,10 +330,15 @@ impl Seams {
 /// The cells of `extent` left to `n` members once the seams between them
 /// take theirs.
 fn usable(extent: u16, n: usize, reserve_seam: bool) -> u16 {
+    extent.saturating_sub(seams_before(n - 1, reserve_seam))
+}
+
+/// The seam cells before member `k` of a split.
+fn seams_before(k: usize, reserve_seam: bool) -> u16 {
     if reserve_seam {
-        extent.saturating_sub(u16::try_from(n - 1).unwrap_or(u16::MAX))
+        u16::try_from(k).unwrap_or(u16::MAX)
     } else {
-        extent
+        0
     }
 }
 
@@ -419,10 +424,9 @@ impl Split {
             .cells(n, usable)
             .enumerate()
             .map(move |(k, (lo, hi))| {
-                let seams_before = if reserve_seam { k as u16 } else { 0 };
                 let pos = start
                     .saturating_add(lo)
-                    .saturating_add(seams_before)
+                    .saturating_add(seams_before(k, reserve_seam))
                     .min(end);
                 let len = (hi - lo).min(end - pos);
                 let seam_pos = pos + len;
@@ -435,36 +439,6 @@ impl Split {
                     direction.slice(area, pos, len),
                     direction.slice(area, seam_pos, seam_len),
                 )
-            })
-    }
-
-    /// Whether `members`, laid out along `direction` within `area` by
-    /// `seams`, take a new member after member `k`, placed as
-    /// [`Seams::with_member_after`] places it, with every pane keeping its
-    /// minimum size (see [`LayoutTree::keeps_minimums`]) and the new one at
-    /// least that.
-    fn fits_member_after(
-        direction: Direction,
-        members: &[LayoutTree],
-        seams: &Seams,
-        k: usize,
-        share: Option<SplitShare>,
-        area: Rect,
-        reserve_seam: bool,
-    ) -> bool {
-        let n = members.len();
-        let grown = seams.with_member_after(k, n, share);
-        let mut old = Self::lay_out(direction, area, reserve_seam, n, seams);
-        let mut members = members.iter();
-        Self::lay_out(direction, area, reserve_seam, n + 1, &grown)
-            .enumerate()
-            .all(|(j, (after, _))| {
-                if j == k + 1 {
-                    return direction.span(after).1 >= direction.min_pane_extent();
-                }
-                let member = members.next().expect("a member for each old place");
-                let (before, _) = old.next().expect("an old place for each member");
-                member.keeps_minimums(direction, before, after, reserve_seam)
             })
     }
 
@@ -569,7 +543,7 @@ impl Split {
         };
         // The screen cell the seam is drawn on when it ends member `k` at
         // cell 0 of the usable extent.
-        let offset = i64::from(start) + if reserve_seam { k as i64 } else { 0 };
+        let offset = i64::from(start) + i64::from(seams_before(k, reserve_seam));
         let to = target(offset + i64::from(current)) - offset;
         let shrinking = if to > i64::from(current) { k + 1 } else { k };
         let shares = self.seams.shares(n);
@@ -681,10 +655,11 @@ impl LayoutTree {
     pub(crate) fn find_rect(&self, pid: PaneId, area: Rect, reserve_seam: bool) -> Option<Rect> {
         match self {
             LayoutTree::Leaf(id) => (*id == pid).then_some(area),
-            LayoutTree::Split(split) => {
-                let (k, rect) = split.member_holding(pid, area, reserve_seam)?;
-                split.members[k].find_rect(pid, rect, reserve_seam)
-            }
+            LayoutTree::Split(split) => split
+                .members
+                .iter()
+                .zip(split.member_rects(area, reserve_seam))
+                .find_map(|(member, (rect, _))| member.find_rect(pid, rect, reserve_seam)),
         }
     }
 
@@ -737,10 +712,11 @@ impl LayoutTree {
                         direction,
                     });
                 }
-                let k = split.members.iter().position(|m| m.contains_leaf(target))?;
-                let mut site = split.members[k].split_site(target, direction)?;
-                site.path.insert(0, k);
-                Some(site)
+                split.members.iter().enumerate().find_map(|(k, m)| {
+                    let mut site = m.split_site(target, direction)?;
+                    site.path.insert(0, k);
+                    Some(site)
+                })
             }
         }
     }
@@ -757,21 +733,20 @@ impl LayoutTree {
             (None, subtree) => {
                 // Overwritten below by the pair.
                 let leaf = std::mem::replace(subtree, LayoutTree::Leaf(PaneId::default()));
-                let mut pair = Split {
+                *subtree = LayoutTree::Split(Split {
                     direction: site.direction,
                     members: vec![leaf, new_pane],
-                    seams: Seams::Equal,
-                };
-                pair.set_seams(Seams::Equal.with_member_after(0, 1, share));
-                *subtree = LayoutTree::Split(pair);
+                    seams: Seams::Equal.with_member_after(0, 1, share),
+                });
             }
             (Some(_), LayoutTree::Leaf(_)) => unreachable!("a site after a member is a split"),
         }
     }
 
-    /// Whether a new pane at `site`, a site of `self`, within `area` keeps
-    /// every pane at its minimum size, the new one included (see
-    /// [`Split::fits_member_after`]).
+    /// Whether a new pane at `site`, a site of `self`, within `area`,
+    /// placed as [`Seams::with_member_after`] places it, keeps every pane
+    /// at its minimum size (see [`Self::keeps_minimums`]) and is at least
+    /// that itself.
     fn split_fits(
         &self,
         site: &SplitSite,
@@ -794,7 +769,21 @@ impl LayoutTree {
             (None, leaf) => (std::slice::from_ref(leaf), &Seams::Equal, 0),
             (Some(_), LayoutTree::Leaf(_)) => unreachable!("a site after a member is a split"),
         };
-        Split::fits_member_after(site.direction, members, seams, k, share, area, reserve_seam)
+        let direction = site.direction;
+        let n = members.len();
+        let grown = seams.with_member_after(k, n, share);
+        let mut old = Split::lay_out(direction, area, reserve_seam, n, seams);
+        let mut members = members.iter();
+        Split::lay_out(direction, area, reserve_seam, n + 1, &grown)
+            .enumerate()
+            .all(|(j, (after, _))| {
+                if j == k + 1 {
+                    return direction.span(after).1 >= direction.min_pane_extent();
+                }
+                let member = members.next().expect("a member for each old place");
+                let (before, _) = old.next().expect("an old place for each member");
+                member.keeps_minimums(direction, before, after, reserve_seam)
+            })
     }
 
     /// Whether this subtree, laid out in `after` instead of `before`, leaves

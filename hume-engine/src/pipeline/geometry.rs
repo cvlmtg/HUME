@@ -6,7 +6,7 @@ use std::num::NonZeroU16;
 use hume_grid::{Position, Rect};
 
 use super::BOTTOM_BANDS;
-use super::layout::{Direction, FocusedLayout, Seam, Side, SplitShare};
+use super::layout::{FocusedLayout, LayoutTree, Seam, Side};
 use crate::pane::ViewGeometry;
 use hume_core::PaneId;
 
@@ -132,18 +132,6 @@ impl ScreenLayout {
         PaneSize::of(self.focused_rect(layout))
     }
 
-    /// Whether a split of the focused pane on `direction`, with the seam
-    /// where `share` puts it, leaves every pane it shrinks at least the
-    /// minimum size (see `FocusedLayout::split_fits`).
-    pub(crate) fn split_fits(
-        &self,
-        layout: &FocusedLayout,
-        direction: Direction,
-        share: Option<SplitShare>,
-    ) -> bool {
-        layout.split_fits(self.pane_area(), self.reserve_seam, direction, share)
-    }
-
     /// The nearest pane on `side` of the focused one on screen, `None` when
     /// no pane lies that way.
     pub fn focused_neighbor(&self, layout: &FocusedLayout, side: Side) -> Option<PaneId> {
@@ -171,9 +159,11 @@ impl DrawnLayout {
         self.seams.clear();
     }
 
-    /// Record the seam dividers drawn this frame.
-    pub(crate) fn record_seams(&mut self, seams: &[Seam]) {
-        self.seams.extend_from_slice(seams);
+    /// Record the seam dividers of `tree` laid out in `area`, the ones
+    /// drawn this frame, and return them for drawing.
+    pub(crate) fn record_seams(&mut self, tree: &LayoutTree, area: Rect) -> &[Seam] {
+        tree.collect_seams_into(area, &mut self.seams);
+        &self.seams
     }
 
     /// The seam drawn at `pos`.

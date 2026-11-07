@@ -259,7 +259,7 @@ fn layout(ed: &Editor) -> Vec<String> {
                     .buffers
                     .get(ed.view.panes[*pid].buffer_id())
                     .display_name();
-                let size = ed.state.pane_size(&ed.view, *pid);
+                let size = ed.pane_size(*pid);
                 let mark = if *pid == focus { "*" } else { "" };
                 format!("{mark}{name} {}x{}", size.width(), size.height())
             }

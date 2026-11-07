@@ -15,14 +15,8 @@ fn a_share_taking_some_cells_reads_back_as_those_cells() {
 
 /// Each member's width in `split` laid out over `usable` columns, no seams.
 fn member_widths(split: &Split, usable: u16) -> Vec<u16> {
-    let area = Rect {
-        x: 0,
-        y: 0,
-        width: usable,
-        height: 1,
-    };
     split
-        .member_rects(area, false)
+        .member_rects(Rect::new(0, 0, usable, 1), false)
         .map(|(rect, _)| rect.width)
         .collect()
 }

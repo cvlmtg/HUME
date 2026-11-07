@@ -857,10 +857,7 @@ const AREA: Rect = Rect {
 };
 
 fn widths(layout: &FocusedLayout, panes: &[PaneId]) -> Vec<u16> {
-    panes
-        .iter()
-        .map(|&p| rect_of(layout.tree(), p, AREA).width)
-        .collect()
+    widths_in(AREA, layout, panes)
 }
 
 fn resize(layout: &mut FocusedLayout, axis: Direction, how: Resize, cells: u16) {

@@ -1174,3 +1174,17 @@ fn grabbing_a_divider_drops_a_half_typed_key_sequence() {
 
     assert_eq!(widths(&ed, &[a, b, c]), vec![32, 33, 33]);
 }
+
+#[test]
+fn a_gutter_click_in_another_pane_drops_a_half_typed_key_sequence() {
+    let (mut ed, [a, b, c]) = width_split_of_three_drawn();
+
+    // Pane `b` spans columns 33..66 and opens with a 4-cell gutter.
+    ed.handle_key(key_ctrl('p'));
+    drawn_input(&mut ed, mouse_left_down(34, 0));
+    drawn_input(&mut ed, mouse_left_up(34, 0));
+    assert_eq!(ed.view.focused_pane(), b, "setup");
+    ed.handle_key(key('>'));
+
+    assert_eq!(widths(&ed, &[a, b, c]), vec![32, 33, 33]);
+}

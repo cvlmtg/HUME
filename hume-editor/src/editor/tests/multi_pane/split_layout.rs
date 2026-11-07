@@ -164,7 +164,7 @@ fn vsplit_twice_sizes_three_panes_equally() {
         .every_pane_across_all_tabs()
         .map(|(pid, _)| pid)
         .collect();
-    let widths: Vec<u16> = pids.iter().map(|&pid| ed.pane_size(pid).width()).collect();
+    let widths = widths(&ed, &pids);
     assert_eq!(widths.len(), 3);
     let min = *widths.iter().min().unwrap();
     let max = *widths.iter().max().unwrap();
@@ -198,7 +198,7 @@ fn split_twice_sizes_three_panes_equally() {
         .every_pane_across_all_tabs()
         .map(|(pid, _)| pid)
         .collect();
-    let heights: Vec<u16> = pids.iter().map(|&pid| ed.pane_size(pid).height()).collect();
+    let heights = heights(&ed, &pids);
     assert_eq!(heights.len(), 3);
     let min = *heights.iter().min().unwrap();
     let max = *heights.iter().max().unwrap();
