@@ -508,7 +508,35 @@ fn resizing_past_a_pane_s_minimum_size_stops_there_and_then_is_refused() {
     ctrl_p(&mut ed, '<');
     assert_eq!(
         ed.state.status_msg.text(),
-        Some("the pane is at its minimum size")
+        Some("no room to shrink the pane")
+    );
+}
+
+/// `p` above `a | b`, beside `q`: narrowing `p` narrows `a` and `b` with it,
+/// and stops once they reach the minimum while `p` is still wider.
+#[test]
+fn shrinking_stops_when_a_nested_pane_reaches_its_minimum() {
+    let mut ed = sized_editor("-[h]>ello\n");
+    let p = ed.view.focused_pane();
+    ed.execute_typed("vsplit", None).unwrap();
+    let q = ed.view.focused_pane();
+    ed.state.focus.set_for_test(&mut ed.view, p);
+    ed.execute_typed("split", None).unwrap();
+    let a = ed.view.focused_pane();
+    ed.execute_typed("vsplit", None).unwrap();
+    let b = ed.view.focused_pane();
+    ed.state.focus.set_for_test(&mut ed.view, p);
+    assert_eq!(widths(&ed, &[p, a, b, q]), vec![39, 19, 19, 40], "setup");
+
+    ed.handle_key(key('9'));
+    ed.handle_key(key('9'));
+    ctrl_p(&mut ed, '<');
+    assert_eq!(widths(&ed, &[p, a, b, q]), vec![21, 10, 10, 58]);
+
+    ctrl_p(&mut ed, '<');
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("no room to shrink the pane")
     );
 }
 
@@ -544,6 +572,24 @@ fn vsplit_too_narrow_is_noop_with_warning() {
         "layout is unchanged"
     );
     assert_eq!(ed.state.status_msg.text(), Some("pane too small to split"));
+}
+
+/// A refused `:vsplit <path>` opens no buffer for the path.
+#[test]
+fn a_vsplit_with_a_path_too_narrow_to_fit_opens_no_file() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.resize_terminal(20, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    let buffers = ed.state.buffers.len();
+
+    let err = ed
+        .execute_typed("vsplit", Some("no-such-file-xyz.txt"))
+        .expect_err("a too-narrow pane must refuse the split");
+
+    assert_eq!(err.message(), "pane too small to split");
+    assert_eq!(ed.state.buffers.len(), buffers);
 }
 
 /// `:split` on a pane too short likewise refuses with an `Err`.

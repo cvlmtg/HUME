@@ -368,18 +368,19 @@ impl EngineView {
     /// Focus stays where it was. `share` places the new seam (see
     /// `FocusedLayout::splice_beside_focused`). Refused before `open` runs
     /// when the split would leave the new pane, or one it shrinks, below
-    /// the minimum size (see `FocusedLayout::split_fits`).
-    pub fn split_focused(
+    /// the minimum size (see `FocusedLayout::split_fits`). An `Err` from
+    /// `open` leaves the layout as it was.
+    pub fn split_focused<E: From<SplitTooSmall>>(
         &mut self,
         screen: &ScreenLayout,
         direction: Direction,
         share: Option<SplitShare>,
-        open: impl FnOnce(&mut Self) -> UnattachedPane,
-    ) -> Result<PaneId, SplitTooSmall> {
+        open: impl FnOnce(&mut Self) -> Result<UnattachedPane, E>,
+    ) -> Result<PaneId, E> {
         if !screen.split_fits(&self.layout, direction, share) {
-            return Err(SplitTooSmall);
+            return Err(SplitTooSmall.into());
         }
-        let pane = open(self);
+        let pane = open(self)?;
         Ok(self.layout.splice_beside_focused(pane, direction, share))
     }
 

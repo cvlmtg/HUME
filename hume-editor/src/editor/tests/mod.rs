@@ -1357,9 +1357,9 @@ impl Editor {
         crate::editor::commands::open_pane_in_layout(
             &mut self.state,
             &mut self.view,
-            bid,
             direction,
             None,
+            |_, _| Ok::<_, hume_engine::pipeline::SplitTooSmall>(bid),
         )
         .expect("the split fits")
     }

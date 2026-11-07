@@ -112,42 +112,36 @@ pub(in crate::editor) fn typed_vsplit(
 /// `direction` is the engine's split axis, which is *inverted* from the Vim
 /// command names: `Direction::Vertical` divides height (stacked panes, what
 /// `:split` means), `Direction::Horizontal` divides width (side by side,
-/// `:vsplit`); see `hume_engine::pipeline::Split::direction`.
-///
-/// Checks that the split fits before resolving `arg`, so a too-small pane
-/// rejects the split without the side effect of opening a path argument's
-/// file. The split itself checks again, as every split does (see
-/// `open_pane_in_layout`).
+/// `:vsplit`); see `hume_engine::pipeline::Split::direction`. A split that
+/// does not fit opens no path argument.
 fn split_focused_pane(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: Option<&str>,
     direction: Direction,
 ) -> Result<(), CommandError> {
-    let fits =
-        ed.state
-            .screen_layout(&ed.view)
-            .split_fits(ed.view.focused_layout(), direction, None);
-    if !fits {
-        return Err(CommandError::transient(super::SPLIT_TOO_SMALL_MSG));
-    }
-    let bid = match arg {
-        Some(path) => open_path_arg(ed, path)?,
-        None => fp.bid(&ed.view),
-    };
-    super::split_pane_onto(&mut ed.state, &mut ed.view, fp, bid, direction)
+    super::split_pane_onto(
+        &mut ed.state,
+        &mut ed.view,
+        fp,
+        direction,
+        |state, view| match arg {
+            Some(path) => open_path_arg(state, view, path),
+            None => Ok(fp.bid(view)),
+        },
+    )
 }
 
 /// Resolve a `:split`/`:vsplit` path argument to a `BufferId`, opening the
 /// file if it isn't already open.
-fn open_path_arg(ed: &mut Editor, path_str: &str) -> Result<BufferId, CommandError> {
-    let (bid, _) = AbsolutePath::from_typed(path_str, &ed.state.cwd)
+fn open_path_arg(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    path_str: &str,
+) -> Result<BufferId, CommandError> {
+    let (bid, _) = AbsolutePath::from_typed(path_str, &state.cwd)
         .and_then(|typed| {
-            crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
-                &mut ed.view,
-                &mut ed.state,
-                typed,
-            )
+            crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, typed)
         })
         .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
     Ok(bid)
@@ -165,7 +159,7 @@ pub(in crate::editor) fn typed_tabnew(
     arg: Option<&str>,
 ) -> Result<(), CommandError> {
     let bid = match arg {
-        Some(path) => open_path_arg(ed, path)?,
+        Some(path) => open_path_arg(&mut ed.state, &mut ed.view, path)?,
         None => fp.bid(&ed.view),
     };
     super::pane::open_pane_as_new_tab(&mut ed.state, &mut ed.view, bid);

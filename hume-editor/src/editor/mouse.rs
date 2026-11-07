@@ -84,6 +84,9 @@ impl Editor {
     // ── Click ─────────────────────────────────────────────────────────────────
 
     fn mouse_left_down(&mut self, x: u16, y: u16) {
+        // A press ends whatever drag the previous one left, released or not.
+        self.state.mouse_drag = None;
+
         // A tabline click is handled separately (and unconditionally, even
         // when it doesn't land on an actual tab): it's outside every
         // pane's rect, so the pane hit test below would just treat it as a
@@ -95,6 +98,7 @@ impl Editor {
         // A divider is outside every pane's rect. Grabbing one moves neither
         // focus nor a selection.
         if let Some(seam) = self.view.seam_hit(Position::new(x, y)) {
+            self.clear_pending_input();
             self.state.mouse_drag = Some(MouseDrag::Seam(seam.handle));
             return;
         }
@@ -135,11 +139,7 @@ impl Editor {
 
     /// Reset transient input state every click starts fresh from: any
     /// half-typed key sequence (`pending`/`count`) and the status line.
-    /// Leaves `mouse_drag`
-    /// alone: `mouse_left_down` sets its own right after calling this, and
-    /// `tabline_click` clears it explicitly, since a tab switch is exactly
-    /// the case where a stale drag would extend a selection in a pane that
-    /// isn't even focused anymore.
+    /// `mouse_left_down` resets `mouse_drag` itself, on every press.
     fn clear_pending_input(&mut self) {
         self.state.discard_pending_keys();
         self.state.status_msg.clear();
@@ -266,7 +266,6 @@ impl Editor {
             // the new tab is installed: the teardown's indent trim edits a
             // buffer the outgoing tab's panes may show.
             self.clear_pending_input();
-            self.state.mouse_drag = None;
             crate::editor::tab::switch_to_tab(&mut self.state, &mut self.view, id);
         }
         true

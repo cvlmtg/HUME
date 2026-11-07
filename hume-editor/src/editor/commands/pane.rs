@@ -26,21 +26,22 @@ fn open_pane(state: &mut EditorState, view: &mut EngineView, bid: BufferId) -> U
     )
 }
 
-/// Split the focused pane on `direction`'s axis with a new pane viewing
-/// `bid`. `share` places the new seam, `None` for a plain split. Refused,
-/// with no pane created, when the split does not fit the screen (see
-/// `EngineView::split_focused`). Returns the new pane's id; focus stays
-/// where it was.
-pub(in crate::editor) fn open_pane_in_layout(
+/// Split the focused pane on `direction`'s axis with a new pane viewing the
+/// buffer `buffer` names. `share` places the new seam, `None` for a plain
+/// split. Refused, before `buffer` runs and with no pane created, when the
+/// split does not fit the screen (see `EngineView::split_focused`).
+/// Returns the new pane's id; focus stays where it was.
+pub(in crate::editor) fn open_pane_in_layout<E: From<SplitTooSmall>>(
     state: &mut EditorState,
     view: &mut EngineView,
-    bid: BufferId,
     direction: Direction,
     share: Option<SplitShare>,
-) -> Result<PaneId, SplitTooSmall> {
+    buffer: impl FnOnce(&mut EditorState, &mut EngineView) -> Result<BufferId, E>,
+) -> Result<PaneId, E> {
     let screen = state.screen_layout(view);
     view.split_focused(&screen, direction, share, |view| {
-        open_pane(state, view, bid)
+        let bid = buffer(state, view)?;
+        Ok(open_pane(state, view, bid))
     })
 }
 
@@ -128,33 +129,34 @@ pub(super) fn close_focused_pane(
     Ok(())
 }
 
-/// Status message reported when a split is rejected for being too small.
-/// Shared constant: the typed `:split`/`:vsplit [path]` guard and
-/// `split_pane_onto` both report this for the same failure.
-pub(super) const SPLIT_TOO_SMALL_MSG: &str = "pane too small to split";
+impl From<SplitTooSmall> for CommandError {
+    fn from(SplitTooSmall: SplitTooSmall) -> Self {
+        CommandError::transient("pane too small to split")
+    }
+}
 
-/// Split the focused pane so the new pane views `bid`, and move focus to it.
-/// Refuses with [`SPLIT_TOO_SMALL_MSG`] when the split does not fit (see
-/// `open_pane_in_layout`). `commands::run`
+/// Split the focused pane so the new pane views the buffer `buffer` names,
+/// and move focus to it. Refused when the split does not fit, before
+/// `buffer` runs (see `open_pane_in_layout`). `commands::run`
 /// returns that refusal as `false`, which is how the Steel
 /// `call!` boolean (see `hume_scripting::host::CommandHost::run_command_sync`)
 /// reports the refusal back to a caller like `stdlib/with-pane-command`.
 ///
-/// Shared core for the typed `:split`/`:vsplit [path]` commands (which resolve
-/// `bid` from an optional path argument first) and the bare keymap-bound
+/// Shared core for the typed `:split`/`:vsplit [path]` commands (whose
+/// `buffer` opens an optional path argument) and the bare keymap-bound
 /// `pane-split`/`pane-vsplit` commands (which always split onto the focused
 /// pane's own buffer).
 pub(in crate::editor) fn split_pane_onto(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    bid: BufferId,
     direction: Direction,
+    buffer: impl FnOnce(&mut EditorState, &mut EngineView) -> Result<BufferId, CommandError>,
 ) -> Result<(), CommandError> {
     let old_focused = fp.pid();
     let old_buffer_id = view.panes[old_focused].buffer_id();
-    let new_pid = open_pane_in_layout(state, view, bid, direction, None)
-        .map_err(|SplitTooSmall| CommandError::transient(SPLIT_TOO_SMALL_MSG))?;
+    let new_pid = open_pane_in_layout(state, view, direction, None, buffer)?;
+    let bid = view.panes[new_pid].buffer_id();
 
     // A bare split (same buffer as the source pane) inherits its selections,
     // their history and its scroll position: `open_pane` seeds fresh state at

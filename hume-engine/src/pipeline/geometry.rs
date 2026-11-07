@@ -135,7 +135,7 @@ impl ScreenLayout {
     /// Whether a split of the focused pane on `direction`, with the seam
     /// where `share` puts it, leaves every pane it shrinks at least the
     /// minimum size (see `FocusedLayout::split_fits`).
-    pub fn split_fits(
+    pub(crate) fn split_fits(
         &self,
         layout: &FocusedLayout,
         direction: Direction,

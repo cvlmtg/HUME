@@ -1104,7 +1104,7 @@ fn split_beside(
     view.split_focused(screen, Direction::Horizontal, share, |view| {
         *opened += 1;
         let bid = view.buffers.insert(());
-        view.insert_pane(crate::pane::Pane::new(bid))
+        Ok(view.insert_pane(crate::pane::Pane::new(bid)))
     })
 }
 

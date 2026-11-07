@@ -115,8 +115,8 @@ pub struct SplitTooSmall;
 pub enum ResizeRefused {
     /// No pane sits beside the focused one along the requested axis.
     NoNeighbor,
-    /// The seam cannot move that way: the pane it would shrink is at its
-    /// minimum size.
+    /// The seam cannot move that way: a pane in the member it would shrink
+    /// is at its minimum size.
     AtLimit,
 }
 

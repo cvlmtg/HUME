@@ -240,8 +240,9 @@ pub(in crate::editor) fn cmd_split_pane(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let bid = fp.bid(view);
-    super::split_pane_onto(state, view, fp, bid, Direction::Vertical)
+    super::split_pane_onto(state, view, fp, Direction::Vertical, |_, view| {
+        Ok(fp.bid(view))
+    })
 }
 
 /// `Ctrl-p v`: split the focused pane side by side, onto the same buffer.
@@ -253,8 +254,9 @@ pub(in crate::editor) fn cmd_vsplit_pane(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let bid = fp.bid(view);
-    super::split_pane_onto(state, view, fp, bid, Direction::Horizontal)
+    super::split_pane_onto(state, view, fp, Direction::Horizontal, |_, view| {
+        Ok(fp.bid(view))
+    })
 }
 
 /// `Ctrl-p c`: close the focused pane, collapsing the split onto its sibling.
@@ -369,7 +371,7 @@ fn resize_focused(
                 }
                 (ResizeRefused::NoNeighbor, Direction::Vertical, _) => "no pane above or below",
                 (ResizeRefused::AtLimit, _, Resize::Grow) => "no room to grow the pane",
-                (ResizeRefused::AtLimit, _, Resize::Shrink) => "the pane is at its minimum size",
+                (ResizeRefused::AtLimit, _, Resize::Shrink) => "no room to shrink the pane",
             })
         })
 }

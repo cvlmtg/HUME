@@ -1141,3 +1141,36 @@ fn a_click_on_a_divider_moves_neither_focus_nor_the_selection() {
     assert_eq!(ed.view.focused_pane(), c);
     assert_eq!(selections(&ed), before);
 }
+
+#[test]
+fn a_press_outside_every_pane_ends_a_divider_drag_whose_release_was_lost() {
+    let (mut ed, [a, b, c]) = width_split_of_three_drawn();
+
+    drawn_input(&mut ed, mouse_left_down(66, 3));
+    drawn_input(&mut ed, mouse_drag(72, 3));
+    assert_eq!(widths(&ed, &[a, b, c]), vec![32, 39, 27], "setup");
+
+    // The release never arrives. The next press lands on the statusline,
+    // outside every pane and divider.
+    assert!(
+        ed.view.pane_hit(hume_grid::Position::new(80, 24)).is_none(),
+        "setup"
+    );
+    drawn_input(&mut ed, mouse_left_down(80, 24));
+    drawn_input(&mut ed, mouse_drag(80, 24));
+
+    assert_eq!(widths(&ed, &[a, b, c]), vec![32, 39, 27]);
+    assert!(ed.state.mouse_drag.is_none());
+}
+
+#[test]
+fn grabbing_a_divider_drops_a_half_typed_key_sequence() {
+    let (mut ed, [a, b, c]) = width_split_of_three_drawn();
+
+    ed.handle_key(key_ctrl('p'));
+    drawn_input(&mut ed, mouse_left_down(66, 3));
+    drawn_input(&mut ed, mouse_left_up(66, 3));
+    ed.handle_key(key('>'));
+
+    assert_eq!(widths(&ed, &[a, b, c]), vec![32, 33, 33]);
+}

@@ -9,7 +9,7 @@ use std::path::Path;
 
 use hume_core::{BufferId, OnUnsaved, PaneId, Severity};
 use hume_engine::display_lines::DisplayLinePos;
-use hume_engine::pipeline::SplitShare;
+use hume_engine::pipeline::{SplitShare, SplitTooSmall};
 use hume_ops::register::{Piece, is_valid_macro_register};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
@@ -186,9 +186,9 @@ impl Editor {
                 open_pane_in_layout(
                     &mut self.state,
                     &mut self.view,
-                    bid,
                     step.direction.into(),
                     step.at.map(SplitShare::from_bits),
+                    |_, _| Ok::<_, SplitTooSmall>(bid),
                 )
                 .ok()
             });
