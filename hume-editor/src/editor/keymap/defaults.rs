@@ -250,6 +250,11 @@ fn build_pane_trie() -> KeyTrie {
     t.bind_leaf(key!('c'), cmd!("pane-close"));
     t.bind_leaf(key!('r'), cmd!("pane-rotate-forward"));
     t.bind_leaf(key!('R'), cmd!("pane-rotate-backward"));
+    t.bind_leaf(key!('>'), cmd!("pane-grow-width"));
+    t.bind_leaf(key!('<'), cmd!("pane-shrink-width"));
+    t.bind_leaf(key!('+'), cmd!("pane-grow-height"));
+    t.bind_leaf(key!('-'), cmd!("pane-shrink-height"));
+    t.bind_leaf(key!('='), cmd!("pane-equalize"));
     // A tab is a saved pane layout (see `commands::tab`'s module doc), so
     // cycling tabs lives under the pane-workspace prefix rather than under
     // `g`: every letter `t`/`T` could take there is already claimed by

@@ -112,20 +112,23 @@ pub(in crate::editor) fn typed_vsplit(
 /// `direction` is the engine's split axis, which is *inverted* from the Vim
 /// command names: `Direction::Vertical` divides height (stacked panes, what
 /// `:split` means), `Direction::Horizontal` divides width (side by side,
-/// `:vsplit`); see `LayoutTree::collect_rects_into`'s use of `split_rect`.
+/// `:vsplit`); see `hume_engine::pipeline::Split::direction`.
 ///
-/// Checks `fits_split` up front, before resolving `arg`, so a too-small pane
+/// Checks that the split fits before resolving `arg`, so a too-small pane
 /// rejects the split without the side effect of opening a path argument's
-/// file. `split_pane_onto` (the shared core with the keymap-bound
-/// `pane-split`/`pane-vsplit` commands) checks again once `bid` is known,
-/// redundant here but the only guard on the no-arg keymap path.
+/// file. The split itself checks again, as every split does (see
+/// `open_pane_in_layout`).
 fn split_focused_pane(
     ed: &mut Editor,
     fp: FocusedPane,
     arg: Option<&str>,
     direction: Direction,
 ) -> Result<(), CommandError> {
-    if !super::fits_split(&ed.state, &ed.view, direction) {
+    let fits =
+        ed.state
+            .screen_layout(&ed.view)
+            .split_fits(ed.view.focused_layout(), direction, None);
+    if !fits {
         return Err(CommandError::transient(super::SPLIT_TOO_SMALL_MSG));
     }
     let bid = match arg {

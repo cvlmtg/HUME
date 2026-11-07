@@ -19,7 +19,6 @@ fn alternate_buffer_none_with_single_buffer() {
 /// toggle back, since B's own touches are now part of that same history.
 #[test]
 fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on_repeat() {
-    use crate::editor::commands::open_pane_in_layout;
     use hume_core::PaneHandle;
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::Direction;
@@ -47,7 +46,7 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
     // focused-pane touch of `foo`, already the tail (no-op), and B's pane is
     // built via `open_pane`, which never touches `mru` at all.
     crate::editor::focus::switch_pane_to_buffer(&mut ed.state, &mut ed.view, pid_a, foo_bid);
-    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, baz_bid, Direction::Horizontal);
+    let pid_b = ed.split_onto(baz_bid, Direction::Horizontal);
     assert_eq!(
         ed.focused_buffer_id(),
         foo_bid,

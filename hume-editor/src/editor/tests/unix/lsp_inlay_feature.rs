@@ -13,7 +13,6 @@
 use std::path::Path;
 
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 use hume_core::BufferId;
 use hume_engine::pipeline::RenderContext;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
@@ -116,12 +115,9 @@ fn setup_two_servers(
         .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&file_b))
         .expect("main.py opens as a buffer");
     // Both buffers must be *shown*: `lsp/request-hints` skips a hidden bid.
-    let pane_b = open_pane_in_layout(
-        &mut rig.ed.state,
-        &mut rig.ed.view,
-        bid_b,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pane_b = rig
+        .ed
+        .split_onto(bid_b, hume_engine::pipeline::Direction::Horizontal);
     rig.ed.drain_lsp();
     rig.ed.settle();
 
@@ -936,12 +932,7 @@ fn a_refresh_goes_through_another_pane_still_showing_the_buffer() {
     });
     let bid = ed.focused_buffer_id();
     let (errors, _) = ed.state.message_log.totals();
-    open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     queue_refresh_for_focused_buffer(&mut ed);
     show_other_file(&mut ed, tmp.path());

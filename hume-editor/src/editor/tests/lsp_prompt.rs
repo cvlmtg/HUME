@@ -2,7 +2,6 @@
 // on-confirm #:prefill text), (symbol-under-cursor bid).
 
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
@@ -407,12 +406,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
     let other_bid = ed
         .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra))
         .expect("extra file must open");
-    let other_pid = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        other_bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let other_pid = ed.split_onto(other_bid, hume_engine::pipeline::Direction::Horizontal);
     ed.state.focus.set_for_test(&mut ed.view, other_pid);
 
     let fired = run_probe(

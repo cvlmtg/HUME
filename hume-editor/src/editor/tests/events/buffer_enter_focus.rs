@@ -168,12 +168,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
 
     let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
     let buf2 = ed.open_scratch(hume_editing::text::BufferText::empty());
 
     // Bare `focus` write (no settle() in between)...

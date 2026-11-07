@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 use hume_platform::dirs::Dirs;
 use hume_scripting::host::NativeCall;
 

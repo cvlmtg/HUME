@@ -228,6 +228,11 @@ Press `Ctrl-p` then a second key:
 | `Ctrl-p c` | `pane-close` |  | Close the focused pane (does nothing if it's the only pane, and refuses while a `\|` run from it is running) |
 | `Ctrl-p r` | `pane-rotate-forward` |  | Move each pane in the focused pane's row or column one place right or down (that many places with a count); the last one wraps to the first |
 | `Ctrl-p R` | `pane-rotate-backward` |  | Move each pane in the focused pane's row or column one place left or up (that many places with a count); the first one wraps to the last |
+| `Ctrl-p >` | `pane-grow-width` |  | Widen the focused pane by a column (that many with a count) |
+| `Ctrl-p <` | `pane-shrink-width` |  | Narrow the focused pane by a column (that many with a count) |
+| `Ctrl-p +` | `pane-grow-height` |  | Make the focused pane a row taller (that many with a count) |
+| `Ctrl-p -` | `pane-shrink-height` |  | Make the focused pane a row shorter (that many with a count) |
+| `Ctrl-p =` | `pane-equalize` |  | Give every pane of the tab an equal share of its row or column |
 | `Ctrl-p t` | `goto-next-tab` |  | Switch to the next tab in display order |
 | `Ctrl-p T` | `goto-prev-tab` |  | Switch to the previous tab in display order |
 

@@ -35,7 +35,7 @@ mod restore;
 mod snapshot;
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use hume_core::Severity;
 use hume_platform::path::mirrored_under;
@@ -46,9 +46,12 @@ use crate::editor::error::CommandError;
 use crate::editor::stamped_file::{self, Stamp};
 use snapshot::SessionSnapshot;
 
+#[cfg(test)]
+pub(in crate::editor) use restore::rewrite_saved_shares;
+
 const STAMP: Stamp = Stamp {
     magic: b"HUMESESS",
-    format: 1,
+    format: 2,
     kind: "a session file",
 };
 
@@ -78,10 +81,14 @@ impl Editor {
 
     fn write_session(&self) -> Result<(), String> {
         let path = self.state.session_path()?;
-        let snapshot = SessionSnapshot::capture(&self.state, &self.view);
-        let bytes = postcard::to_extend(&snapshot, STAMP.header()).map_err(|e| e.to_string())?;
-        stamped_file::write(&path, &bytes)
+        write(&path, &SessionSnapshot::capture(&self.state, &self.view))
     }
+}
+
+/// Encode `snapshot` as a session file and write it to `path`.
+fn write(path: &Path, snapshot: &SessionSnapshot) -> Result<(), String> {
+    let bytes = postcard::to_extend(snapshot, STAMP.header()).map_err(|e| e.to_string())?;
+    stamped_file::write(path, &bytes)
 }
 
 /// `:save-session`: save the session now, and once it is saved make this run

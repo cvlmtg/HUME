@@ -6,7 +6,7 @@ use std::num::NonZeroU16;
 use hume_grid::{Position, Rect};
 
 use super::BOTTOM_BANDS;
-use super::layout::{Direction, FocusedLayout, Side};
+use super::layout::{Direction, FocusedLayout, Seam, Side, SplitShare};
 use crate::pane::ViewGeometry;
 use hume_core::PaneId;
 
@@ -132,10 +132,16 @@ impl ScreenLayout {
         PaneSize::of(self.focused_rect(layout))
     }
 
-    /// The focused pane's rect after a split on `direction`, without
-    /// splitting.
-    pub fn focused_split_rect(&self, layout: &FocusedLayout, direction: Direction) -> Rect {
-        layout.predicted_split_rect(self.pane_area(), self.reserve_seam, direction)
+    /// Whether a split of the focused pane on `direction`, with the seam
+    /// where `share` puts it, leaves every pane it shrinks at least the
+    /// minimum size (see `FocusedLayout::split_fits`).
+    pub fn split_fits(
+        &self,
+        layout: &FocusedLayout,
+        direction: Direction,
+        share: Option<SplitShare>,
+    ) -> bool {
+        layout.split_fits(self.pane_area(), self.reserve_seam, direction, share)
     }
 
     /// The nearest pane on `side` of the focused one on screen, `None` when
@@ -145,22 +151,37 @@ impl ScreenLayout {
     }
 }
 
-/// What the last render drew: the tab bar's rect and each pane's rect. Hit
-/// tests read only this, so a click lands in the pane that was on screen
-/// under it even when a band or a pane has changed since. Before the first
-/// render every hit misses.
+/// What the last render drew: the tab bar's rect, each pane's rect and each
+/// seam divider. Hit tests read only this, so a click lands in the pane that
+/// was on screen under it even when a band or a pane has changed since.
+/// Before the first render every hit misses.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct DrawnLayout {
     tabbar: Rect,
     panes: Vec<(PaneId, Rect)>,
+    seams: Vec<Seam>,
 }
 
 impl DrawnLayout {
-    /// Start recording a frame drawn with `screen`, keeping the pane list's
-    /// allocation.
+    /// Start recording a frame drawn with `screen`, keeping the pane and
+    /// seam lists' allocations.
     pub(crate) fn begin(&mut self, screen: &ScreenLayout) {
         self.tabbar = screen.tabbar_area();
         self.panes.clear();
+        self.seams.clear();
+    }
+
+    /// Record the seam dividers drawn this frame.
+    pub(crate) fn record_seams(&mut self, seams: &[Seam]) {
+        self.seams.extend_from_slice(seams);
+    }
+
+    /// The seam drawn at `pos`.
+    pub(crate) fn seam_at(&self, pos: Position) -> Option<Seam> {
+        self.seams
+            .iter()
+            .copied()
+            .find(|seam| seam.rect.contains(pos))
     }
 
     /// Record pane `id`, drawn into `rect`.

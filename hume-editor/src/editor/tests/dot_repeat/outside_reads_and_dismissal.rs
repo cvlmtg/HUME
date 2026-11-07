@@ -219,16 +219,10 @@ fn dot_repeats_the_operand_key_that_dismissed_a_recorded_menu() {
 /// change records normally.
 #[test]
 fn a_refused_picker_in_an_insert_binding_leaves_the_next_change_recordable() {
-    use crate::editor::commands::open_pane_in_layout;
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc def\n");
     let bid = ed.focused_buffer_id();
-    open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
     run(
         &mut ed,
         tmp.path(),

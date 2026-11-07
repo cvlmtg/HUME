@@ -50,7 +50,11 @@ A **pane** is a viewport onto a buffer. The buffer is the open file; a pane is w
 
 `:sp` and `:vsp` split the focused pane (see [Panes](command-mode.md#panes)); without a path, the new pane views the same buffer as the focused one. The keys for splitting, focusing, closing and rotating panes are listed under [Pane prefix](default-keys.md#pane-prefix-ctrl-p) in Default Keys.
 
-HUME refuses to split, with a message, when the pane is already too small to divide. Panes sharing a split axis are kept the same size: three `:vsplit`s in a row give three equal columns, not one half and two quarters. Closing a pane shares its space equally among the rest.
+HUME refuses to split, with a message, when a pane would end up too small. Until you resize one of them, panes sharing a split axis stay the same size: three `:vsplit`s in a row give three equal columns, not one half and two quarters, and closing a pane shares its space equally among the rest.
+
+`Ctrl-p >` and `Ctrl-p <` widen and narrow the focused pane, and `Ctrl-p +` and `Ctrl-p -` make it taller and shorter: by one column or row, or by a count typed first (`5 Ctrl-p >`). The space comes from the next pane in the innermost row or column the focused pane belongs to, or from the one before when it is the last there. Panes further out keep their size. No pane shrinks below its minimum size. With `mouse-select` and `pane-dividers` on, you can also drag the divider between two panes.
+
+Once a row or column has been resized, a split there halves the focused pane and leaves the other panes as they are, and closing a pane gives its space to the pane beside it. `Ctrl-p =` makes every row and column of the tab even again.
 
 A divider is drawn between panes (the `pane-dividers` option, on by default), and panes without focus are dimmed. Wrap follows the buffer/global setting unless you pin it for a pane: `:wrap` toggles it for the focused pane, and `:set pane wrap-mode=<value>` pins its style directly. Two panes on the same buffer then wrap independently. See [Text wrap](settings.md#text-wrap).
 
@@ -133,7 +137,7 @@ Nothing removes old history files. To forget a file's history, delete its `.undo
 With `session-persist` on, quitting HUME saves the session of its session root, by default the directory HUME started in, and starting `hume` with no files and the same root brings it back:
 
 - the files you had open, and the one you saw before the current one, so `:b#` still goes back to it;
-- your tabs and splits, and which pane had focus;
+- your tabs and splits, their sizes, and which pane had focus;
 - in each pane, the selections, scroll position and wrap setting of every file it showed, and its jump list;
 - the registers `q` and `0`–`9`, recorded macros included;
 - what you typed at the `:`, `/`, `?` and `|` prompts, and the last search, so `n` works at once.
@@ -152,6 +156,7 @@ Scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill
   Only the value `init.scm` sets decides which session comes back. `:reload-config` runs `init.scm` again, so a root worked out from the current directory, as this one is, follows a `:cd` made before the reload. A session root that isn't a directory is reported at startup, and nothing is saved to it.
 - HUME saves it however it ends, including when you close the terminal window, but not when HUME itself crashes.
 - A file changed since the session was saved comes back in its place in the layout, at its top. A file that has been deleted since is left out. A damaged session file is ignored, with a warning.
+- A pane that would be too small in the current terminal is left out, with a warning, and its space stays with the pane it was split from.
 - When two HUME instances with the same session root quit, the last one's session wins, wherever under the root each was started.
 
 Saved sessions live in HUME's state directory: `~/.local/state/hume/sessions` (or `$XDG_STATE_HOME/hume/sessions`), `%LOCALAPPDATA%\hume\sessions` on Windows. Set `session-directory` to keep them elsewhere. Each session sits at its root's own full path with `.session` added, so the session of `/home/me/project` is `sessions/home/me/project.session`. A root reached through a symlink shares its session with the directory it points to. On Linux and macOS its files and the folders HUME creates for them are readable only by you.

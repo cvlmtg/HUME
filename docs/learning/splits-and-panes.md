@@ -54,10 +54,12 @@ old position to its new one.
 
 ## Layout: a tree of splits
 
-Panes are arranged in a tree of horizontal and vertical splits, the model
-most terminal multiplexers and modal editors use. Splitting a pane replaces
-it in the tree with a small subtree of two panes, so splitting one half of
-an existing split nests correctly however many times you have split before.
+Panes are arranged in a tree of rows and columns, the model most terminal
+multiplexers and modal editors use. Splitting a pane the way its row already
+runs adds a pane to that row; splitting it the other way replaces it with a
+small column (or row) of two. So a row is always one node of the tree,
+however many times it was split, and the dividers between its panes are the
+boundaries between its members.
 
 One pane is always **focused**: it receives the keystrokes. Unfocused panes
 are dimmed, so it is obvious at a glance where your typing will land.
@@ -96,14 +98,26 @@ pane starts from the source pane's view: its selections, scroll position,
 jump history and any wrap-mode override. From there the two diverge as you
 work in each.
 
-Every split resizes the panes along that split's axis back to equal sizes,
-so splitting a third time gives three equal thirds rather than halving the
-pane you split. A group of stacked panes counts as one column (and a group
-of side-by-side panes as one row) when measured against its neighbours, the
-way most terminal multiplexers balance a mixed grid.
+A row nobody has resized stays even: every split there resizes its panes
+back to equal sizes, so splitting a third time gives three equal thirds
+rather than halving the pane you split. A group of stacked panes counts as
+one column (and a group of side-by-side panes as one row) when measured
+against its neighbours, the way most terminal multiplexers balance a mixed
+grid. Closing a pane works the same way in reverse: its space is shared
+equally among the panes that remain.
 
-Closing a pane works the same way in reverse: its space is shared equally
-among the panes that remain, not handed to one neighbour.
+## Resizing
+
+Growing a pane moves one divider: the one after it in its row, or the one
+before it when it is the last. Only the two panes beside that divider change
+size, which is also what dragging a divider with the mouse does. A divider
+keeps its place as a fraction of its row, so resizing the terminal scales the
+whole row rather than squeezing only its last pane.
+
+Once a row has a divider placed by hand, it stops being evened out. A split
+there halves the pane you split, and closing a pane gives its space to the
+neighbour beside it, so a split followed by a close puts the row back as it
+was. Equalizing makes every row even again.
 
 ---
 

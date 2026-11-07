@@ -6,6 +6,7 @@ use super::super::snapshot::{
     SessionSnapshot, SplitDirection, SplitStep, TabSnapshot,
 };
 use super::check;
+use crate::editor::stamped_file::decode_whole;
 
 /// A session of one buffer shown in two side-by-side panes.
 fn valid() -> SessionSnapshot {
@@ -36,6 +37,7 @@ fn valid() -> SessionSnapshot {
             splits: vec![SplitStep {
                 pane: 0,
                 direction: SplitDirection::Horizontal,
+                at: None,
             }],
             focused: 1,
         }],
@@ -101,4 +103,13 @@ fn a_register_no_session_keeps_is_refused() {
     assert!(refused(|s| s
         .registers
         .push(('c', RegisterSnapshot::Text(vec![])))));
+}
+
+#[test]
+fn a_split_share_of_zero_does_not_decode() {
+    let step = |share: u32| {
+        postcard::to_allocvec(&(0usize, SplitDirection::Horizontal, Some(share))).expect("encodes")
+    };
+    assert!(decode_whole::<SplitStep>(&step(1)).is_ok());
+    assert!(decode_whole::<SplitStep>(&step(0)).is_err());
 }

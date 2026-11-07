@@ -1,8 +1,10 @@
-use hume_grid::Rect;
+use std::num::NonZeroU32;
+
 use hume_grid::box_glyphs::{
     BOTTOM_LEFT, BOTTOM_RIGHT, CROSS, HORIZONTAL, HORIZONTAL_DOWN, HORIZONTAL_UP, TOP_LEFT,
     TOP_RIGHT, VERTICAL, VERTICAL_LEFT, VERTICAL_RIGHT,
 };
+use hume_grid::{Position, Rect};
 use rustc_hash::FxHashMap;
 
 use super::UnattachedPane;
@@ -16,14 +18,65 @@ pub enum Direction {
     Vertical,
 }
 
+/// Minimum rows a pane keeps when a height split or a resize shrinks it.
+const MIN_PANE_HEIGHT: u16 = 3;
+/// Minimum columns a pane keeps when a width split or a resize shrinks it.
+/// Wider than `MIN_PANE_HEIGHT` because text needs more horizontal room than
+/// vertical to stay usable.
+const MIN_PANE_WIDTH: u16 = 10;
+
+impl Direction {
+    /// The fewest cells a pane keeps along this axis when a split or a
+    /// resize makes it smaller.
+    fn min_pane_extent(self) -> u16 {
+        match self {
+            Direction::Horizontal => MIN_PANE_WIDTH,
+            Direction::Vertical => MIN_PANE_HEIGHT,
+        }
+    }
+
+    /// `area`'s start and extent along the axis a split in this direction
+    /// divides: its columns for `Horizontal`, its rows for `Vertical`.
+    fn span(self, area: Rect) -> (u16, u16) {
+        match self {
+            Direction::Horizontal => (area.x, area.width),
+            Direction::Vertical => (area.y, area.height),
+        }
+    }
+
+    /// `area` cut to `len` cells from `start` along that axis.
+    fn slice(self, area: Rect, start: u16, len: u16) -> Rect {
+        match self {
+            Direction::Horizontal => Rect {
+                x: start,
+                width: len,
+                ..area
+            },
+            Direction::Vertical => Rect {
+                y: start,
+                height: len,
+                ..area
+            },
+        }
+    }
+}
+
 /// Which way [`EngineView::rotate_focused`](super::EngineView::rotate_focused)
-/// moves the members of a row or column.
+/// moves the members of a split.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Rotation {
     /// Each member moves right or down; the last wraps to the first.
     Forward,
     /// Each member moves left or up; the first wraps to the last.
     Backward,
+}
+
+/// Whether [`EngineView::resize_focused`](super::EngineView::resize_focused)
+/// makes the focused pane larger or smaller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Resize {
+    Grow,
+    Shrink,
 }
 
 /// Which way a step through an ordered list goes, wrapping at either end.
@@ -51,6 +104,27 @@ impl Cycle {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SinglePane;
 
+/// Refusal of [`EngineView::split_focused`](super::EngineView::split_focused):
+/// the split would leave the new pane, or one it shrinks, below the minimum
+/// size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SplitTooSmall;
+
+/// Refusal of [`EngineView::resize_focused`](super::EngineView::resize_focused).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResizeRefused {
+    /// No pane sits beside the focused one along the requested axis.
+    NoNeighbor,
+    /// The seam cannot move that way: the pane it would shrink is at its
+    /// minimum size.
+    AtLimit,
+}
+
+/// Refusal of [`EngineView::move_seam`](super::EngineView::move_seam): the
+/// handle names no seam of the active tab.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StaleSeam;
+
 /// A side of the focused pane, for
 /// [`ScreenLayout::focused_neighbor`](super::ScreenLayout::focused_neighbor).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,21 +135,38 @@ pub enum Side {
     Down,
 }
 
-/// A single 1-cell divider segment drawn between two sibling panes at one
-/// split node.
+/// A single 1-cell divider drawn between two adjacent members of a split.
 ///
-/// Emitted by `LayoutTree::collect_seams_into`, which walks the same
-/// recursion as `collect_rects_into` off the same `split_rect` math, so seam
-/// and leaf geometry can never drift apart.
+/// Emitted by `LayoutTree::collect_seams_into`, which walks the same member
+/// geometry as `collect_rects_into`, so seam and leaf geometry can never
+/// drift apart.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Seam {
     pub rect: Rect,
+    pub handle: SeamHandle,
+}
+
+impl Seam {
     /// The split that produced this seam. `Horizontal` (a width split)
     /// carves a 1-column-wide, full-height seam, drawn as a vertical line
     /// (`│`). `Vertical` (a height split) carves a 1-row-tall, full-width
     /// seam, drawn as a horizontal line (`─`). Same axis inversion as
-    /// `LayoutTree::Split` (see `split_focused_pane`'s doc comment).
-    pub direction: Direction,
+    /// [`Split::direction`] (see `split_focused_pane`'s doc comment).
+    pub fn direction(&self) -> Direction {
+        self.handle.direction
+    }
+}
+
+/// Names a seam by a pane on each side of it: the first leaf of the member
+/// before it and of the member after it. The split it divides is the two
+/// panes' nearest common ancestor, so the name survives a change elsewhere
+/// in the tree. It resolves only while the two panes sit in adjacent
+/// members of a split in `direction`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SeamHandle {
+    before: PaneId,
+    after: PaneId,
+    direction: Direction,
 }
 
 /// Proof that a `PaneId` has been detached from every `LayoutTree` that
@@ -106,36 +197,463 @@ impl DetachedPane {
     }
 }
 
+/// The whole of the space a [`SplitShare`] divides, in its units of 2^-32.
+const ONE: u64 = 1 << 32;
+
+/// The position `fraction` of the way from `lo` to `hi`, rounded down.
+fn between(lo: u64, hi: u64, fraction: u64) -> u64 {
+    lo + (((hi - lo) * fraction) >> 32)
+}
+
+/// The part of the space left along a split, from a member's start to the
+/// split's end, that the member takes, in units of 2^-32 of that space; the
+/// members after it share the rest. A saved session keeps one per member
+/// but the last, so replaying the splits puts each seam back where it was.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SplitShare(NonZeroU32);
+
+impl SplitShare {
+    const HALF: Self = Self(NonZeroU32::new(1 << 31).expect("half is not zero"));
+
+    pub fn from_bits(bits: NonZeroU32) -> Self {
+        Self(bits)
+    }
+
+    pub fn bits(self) -> NonZeroU32 {
+        self.0
+    }
+
+    /// The share `fraction` of [`ONE`] names, or the nearest one inside
+    /// `(0, ONE)`. Only a member with no cells to speak of asks for one
+    /// outside it, such as one a hand-edited session file splits off.
+    fn saturating(fraction: u64) -> Self {
+        let bits = u32::try_from(fraction).unwrap_or(u32::MAX);
+        Self(NonZeroU32::new(bits).unwrap_or(NonZeroU32::MIN))
+    }
+
+    /// The smallest share whose [`Self::of`] `space` is `cells`, which lie
+    /// strictly inside it.
+    fn taking(cells: u16, space: u16) -> Self {
+        Self::saturating((u64::from(cells) << 32).div_ceil(u64::from(space)))
+    }
+
+    /// The share of the space from `lo` to [`ONE`] that ends at `at`.
+    fn placing(lo: u64, at: u64) -> Self {
+        Self::saturating(((at - lo) << 32).div_ceil(ONE - lo))
+    }
+
+    /// The cells of `space` this share takes, rounded down.
+    fn of(self, space: u16) -> u16 {
+        ((u64::from(space) * self.fraction()) >> 32) as u16
+    }
+
+    fn fraction(self) -> u64 {
+        u64::from(self.0.get())
+    }
+
+    /// Where this share puts a seam in the space from `lo` to `hi`.
+    fn within(self, lo: u64, hi: u64) -> u64 {
+        between(lo, hi, self.fraction())
+    }
+
+    /// The share of two members side by side: this one's, then `next` of
+    /// the space this one leaves.
+    fn followed_by(self, next: SplitShare) -> Self {
+        Self::saturating(next.within(self.fraction(), ONE))
+    }
+}
+
+/// Where a split's seams sit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Seams {
+    /// Spread evenly over however many members the split has: no seam of it
+    /// has been moved by hand.
+    Equal,
+    /// Moved by hand: the share of each member but the last, which
+    /// [`Split::set_seams`] checks against the member count.
+    Placed(Vec<SplitShare>),
+}
+
+impl Seams {
+    /// The share of each of `n` members but the last: placed seams' own, or
+    /// the ones that lay an equal split's cells out where they are.
+    fn shares(&self, n: usize) -> Vec<SplitShare> {
+        match self {
+            Seams::Equal => (0..n - 1)
+                .map(|k| SplitShare::saturating(ONE.div_ceil((n - k) as u64)))
+                .collect(),
+            Seams::Placed(shares) => shares.clone(),
+        }
+    }
+
+    /// The first cell of each of `n` members in a `usable`-cell extent and
+    /// the cell past its end. Each member takes its share of the cells left
+    /// from where it starts, rounded down, and the last takes the rest, so
+    /// no member loses a cell when the extent grows. An equal split's
+    /// leftover cells go to its last members.
+    fn cells(&self, n: usize, usable: u16) -> impl Iterator<Item = (u16, u16)> + '_ {
+        (0..n).scan(0, move |start: &mut u16, k| {
+            let left = usable - *start;
+            let len = match self {
+                _ if k + 1 == n => left,
+                Seams::Equal => left / u16::try_from(n - k).unwrap_or(u16::MAX),
+                Seams::Placed(shares) => shares[k].of(left),
+            };
+            let first = *start;
+            *start += len;
+            Some((first, *start))
+        })
+    }
+
+    /// These seams of `n` members once a new member goes after member `k`,
+    /// in its space. Equal seams stay equal unless `share` is given;
+    /// otherwise member `k` keeps `share` of that space, or half. A lone
+    /// pane is one member with equal seams.
+    fn with_member_after(&self, k: usize, n: usize, share: Option<SplitShare>) -> Seams {
+        if share.is_none() && *self == Seams::Equal {
+            return Seams::Equal;
+        }
+        let share = share.unwrap_or(SplitShare::HALF);
+        let mut shares = self.shares(n);
+        if k + 1 == n {
+            shares.push(share);
+        } else {
+            let own = shares[k];
+            let kept = SplitShare::saturating((own.fraction() * share.fraction()).div_ceil(ONE));
+            shares[k] = kept;
+            shares.insert(k + 1, SplitShare::placing(kept.fraction(), own.fraction()));
+        }
+        Seams::Placed(shares)
+    }
+}
+
+/// The cells of `extent` left to `n` members once the seams between them
+/// take theirs.
+fn usable(extent: u16, n: usize, reserve_seam: bool) -> u16 {
+    if reserve_seam {
+        extent.saturating_sub(u16::try_from(n - 1).unwrap_or(u16::MAX))
+    } else {
+        extent
+    }
+}
+
+/// A group of panes laid out along `direction`, with a seam between each
+/// two members. There are at least two members, and none is a split in the
+/// same direction, whose members would belong to this split.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Split {
+    /// `Horizontal` divides the width and `Vertical` the height: the axis
+    /// names say which way the divider between two members runs.
+    direction: Direction,
+    members: Vec<LayoutTree>,
+    seams: Seams,
+}
+
+impl Split {
+    pub fn direction(&self) -> Direction {
+        self.direction
+    }
+
+    pub fn members(&self) -> &[LayoutTree] {
+        &self.members
+    }
+
+    /// For each member after the first, in order: the share to split the
+    /// member before it with, while that one is the last, to grow this
+    /// split from its first member. `None` while the seams are equal, since
+    /// a plain split keeps them equal.
+    pub fn rebuild_shares(&self) -> impl Iterator<Item = Option<SplitShare>> + '_ {
+        (1..self.members.len()).map(|k| match &self.seams {
+            Seams::Equal => None,
+            Seams::Placed(shares) => Some(shares[k - 1]),
+        })
+    }
+
+    /// Set the seams, which must suit the members the split has now.
+    fn set_seams(&mut self, seams: Seams) {
+        if let Seams::Placed(shares) = &seams {
+            assert_eq!(
+                shares.len() + 1,
+                self.members.len(),
+                "one share for each member but the last"
+            );
+        }
+        self.seams = seams;
+    }
+
+    /// The index of the member that is `Leaf(pid)`.
+    fn leaf_member(&self, pid: PaneId) -> Option<usize> {
+        self.members
+            .iter()
+            .position(|m| *m == LayoutTree::Leaf(pid))
+    }
+
+    /// Each member's rect within `area`, paired with the seam after it (see
+    /// [`Self::lay_out`]).
+    fn member_rects(&self, area: Rect, reserve_seam: bool) -> impl Iterator<Item = (Rect, Rect)> {
+        Self::lay_out(
+            self.direction,
+            area,
+            reserve_seam,
+            self.members.len(),
+            &self.seams,
+        )
+    }
+
+    /// The rects of `n` members along `direction` within `area`, placed by
+    /// `seams` (see [`Seams::cells`]), each paired with the seam after it:
+    /// a 1-cell rect when `reserve_seam` is on, empty after the last member
+    /// or with it off. Every bound saturates, so an area too small for the
+    /// seams yields empty rects rather than a panic.
+    fn lay_out(
+        direction: Direction,
+        area: Rect,
+        reserve_seam: bool,
+        n: usize,
+        seams: &Seams,
+    ) -> impl Iterator<Item = (Rect, Rect)> {
+        let (start, extent) = direction.span(area);
+        let end = start.saturating_add(extent);
+        let usable = usable(extent, n, reserve_seam);
+        seams
+            .cells(n, usable)
+            .enumerate()
+            .map(move |(k, (lo, hi))| {
+                let seams_before = if reserve_seam { k as u16 } else { 0 };
+                let pos = start
+                    .saturating_add(lo)
+                    .saturating_add(seams_before)
+                    .min(end);
+                let len = (hi - lo).min(end - pos);
+                let seam_pos = pos + len;
+                let seam_len = if reserve_seam && k + 1 < n {
+                    (end - seam_pos).min(1)
+                } else {
+                    0
+                };
+                (
+                    direction.slice(area, pos, len),
+                    direction.slice(area, seam_pos, seam_len),
+                )
+            })
+    }
+
+    /// Whether `members`, laid out along `direction` within `area` by
+    /// `seams`, take a new member after member `k`, placed as
+    /// [`Seams::with_member_after`] places it, with every pane keeping its
+    /// minimum size (see [`LayoutTree::keeps_minimums`]) and the new one at
+    /// least that.
+    fn fits_member_after(
+        direction: Direction,
+        members: &[LayoutTree],
+        seams: &Seams,
+        k: usize,
+        share: Option<SplitShare>,
+        area: Rect,
+        reserve_seam: bool,
+    ) -> bool {
+        let n = members.len();
+        let grown = seams.with_member_after(k, n, share);
+        let mut old = Self::lay_out(direction, area, reserve_seam, n, seams);
+        let mut members = members.iter();
+        Self::lay_out(direction, area, reserve_seam, n + 1, &grown)
+            .enumerate()
+            .all(|(j, (after, _))| {
+                if j == k + 1 {
+                    return direction.span(after).1 >= direction.min_pane_extent();
+                }
+                let member = members.next().expect("a member for each old place");
+                let (before, _) = old.next().expect("an old place for each member");
+                member.keeps_minimums(direction, before, after, reserve_seam)
+            })
+    }
+
+    /// The index and rect of the member holding `pid`.
+    fn member_holding(&self, pid: PaneId, area: Rect, reserve_seam: bool) -> Option<(usize, Rect)> {
+        self.members
+            .iter()
+            .zip(self.member_rects(area, reserve_seam))
+            .enumerate()
+            .find(|(_, (member, _))| member.contains_leaf(pid))
+            .map(|(k, (_, (rect, _)))| (k, rect))
+    }
+
+    /// Insert `member` after member `k`, in member `k`'s space. A placed
+    /// split leaves member `k` the part of that space `share` gives, or
+    /// half; an equal one stays equal unless `share` is given.
+    fn insert_after(&mut self, k: usize, member: LayoutTree, share: Option<SplitShare>) {
+        let seams = self.seams.with_member_after(k, self.members.len(), share);
+        self.members.insert(k + 1, member);
+        self.set_seams(seams);
+    }
+
+    /// Remove member `k`. A placed split gives its space to the member
+    /// before it, or to the one after it when it is first; an equal one
+    /// stays equal. Returns where that neighbour ends up.
+    fn remove(&mut self, k: usize) -> usize {
+        let neighbour = k.saturating_sub(1);
+        let seams = match &self.seams {
+            Seams::Equal => Seams::Equal,
+            Seams::Placed(shares) => {
+                let mut shares = shares.clone();
+                if neighbour + 2 == self.members.len() {
+                    shares.remove(neighbour);
+                } else {
+                    let next = shares.remove(neighbour + 1);
+                    shares[neighbour] = shares[neighbour].followed_by(next);
+                }
+                Seams::Placed(shares)
+            }
+        };
+        self.members.remove(k);
+        self.set_seams(seams);
+        neighbour
+    }
+
+    /// Take `inner`, a split in this direction standing in member `k`'s
+    /// space, apart into its members, keeping every seam where it sits. Two
+    /// equal splits make an equal one.
+    fn absorb(&mut self, k: usize, inner: Split) {
+        let seams = match (&self.seams, &inner.seams) {
+            (Seams::Equal, Seams::Equal) => Seams::Equal,
+            _ => {
+                let n = self.members.len();
+                let last = k + 1 == n;
+                let mut shares = self.seams.shares(n);
+                // Member `k`'s space, as a part of the space left from where
+                // it starts.
+                let room = if last { ONE } else { shares[k].fraction() };
+                let starts: Vec<u64> = std::iter::once(0)
+                    .chain(inner.seams.shares(inner.members.len()).into_iter().scan(
+                        0,
+                        |at: &mut u64, share| {
+                            *at = share.within(*at, ONE);
+                            Some(*at)
+                        },
+                    ))
+                    .map(|at| between(0, room, at))
+                    .chain((!last).then_some(room))
+                    .collect();
+                let inner_shares = starts
+                    .windows(2)
+                    .map(|pair| SplitShare::placing(pair[0], pair[1]));
+                shares.splice(k..k + usize::from(!last), inner_shares);
+                Seams::Placed(shares)
+            }
+        };
+        self.members.splice(k..=k, inner.members);
+        self.set_seams(seams);
+    }
+
+    /// Move seam `k` one cell at a time toward the screen cell along the
+    /// split axis that `target` gives for the cell it is drawn on, stopping
+    /// before a step that would leave a pane of the member it shrinks below
+    /// its minimum size (see [`LayoutTree::keeps_minimums`]). The member it
+    /// grows only gains cells (see [`Seams::cells`]), and no other member
+    /// moves. `false` when the seam stays where it was.
+    fn place_seam(
+        &mut self,
+        k: usize,
+        area: Rect,
+        reserve_seam: bool,
+        target: impl FnOnce(i64) -> i64,
+    ) -> bool {
+        let n = self.members.len();
+        let (start, extent) = self.direction.span(area);
+        let usable = usable(extent, n, reserve_seam);
+        let (lo, current, hi) = {
+            let mut cells = self.seams.cells(n, usable).skip(k);
+            let (lo, current) = cells.next().expect("member k");
+            let (_, hi) = cells.next().expect("member k + 1");
+            (lo, current, hi)
+        };
+        // The screen cell the seam is drawn on when it ends member `k` at
+        // cell 0 of the usable extent.
+        let offset = i64::from(start) + if reserve_seam { k as i64 } else { 0 };
+        let to = target(offset + i64::from(current)) - offset;
+        let shrinking = if to > i64::from(current) { k + 1 } else { k };
+        let shares = self.seams.shares(n);
+        let with_seam_at = |cell: u16| {
+            let mut shares = shares.clone();
+            shares[k] = SplitShare::taking(cell - lo, usable - lo);
+            if k + 2 < n {
+                shares[k + 1] = SplitShare::taking(hi - cell, usable - cell);
+            }
+            Seams::Placed(shares)
+        };
+        let shrunk = |seams: &Seams| {
+            let (rect, _) = Self::lay_out(self.direction, area, reserve_seam, n, seams)
+                .nth(shrinking)
+                .expect("the member the seam shrinks");
+            rect
+        };
+        let was = shrunk(&self.seams);
+        let mut placed = current;
+        while i64::from(placed) != to {
+            // A step that empties member `k` or `k + 1` leaves a pane in it
+            // below its minimum, and no share places it.
+            let next = if to > i64::from(placed) {
+                placed.checked_add(1)
+            } else {
+                placed.checked_sub(1)
+            }
+            .filter(|&cell| lo < cell && cell < hi);
+            let Some(next) = next else { break };
+            let now = shrunk(&with_seam_at(next));
+            if !self.members[shrinking].keeps_minimums(self.direction, was, now, reserve_seam) {
+                break;
+            }
+            placed = next;
+        }
+        if placed == current {
+            return false;
+        }
+        self.set_seams(with_seam_at(placed));
+        true
+    }
+}
+
+/// Where a new pane goes, as [`LayoutTree::split_site`] finds it: the
+/// member taken at each split from the root down to the subtree it joins,
+/// then the member of that subtree's split it goes after, or `None` when
+/// the subtree is the leaf it pairs with.
+struct SplitSite {
+    path: Vec<usize>,
+    after: Option<usize>,
+    direction: Direction,
+}
+
 /// Recursive layout tree. Leaves reference panes; splits partition space.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LayoutTree {
     Leaf(PaneId),
-    Split {
-        direction: Direction,
-        /// Fraction (0.0–1.0) allocated to the first child. Derived by
-        /// `equalize` from the two children's `shares_along` counts,
-        /// not chosen by whatever split produced this node, so every pane
-        /// sharing a split axis stays equal-sized regardless of split order.
-        /// Kept as stored (not derived-on-read) state because `LayoutTree`
-        /// is `pub` and constructible directly with an arbitrary ratio (see
-        /// `focused_neighbor_tie_breaks_on_center_distance`); a
-        /// derived-on-read field couldn't hold a ratio nothing equalized.
-        /// `equalize` currently rewrites every ratio in the whole tree on
-        /// every split/close; a future manual pane resize will need to keep
-        /// its own ratio scoped out of that pass rather than being
-        /// overwritten by an unrelated split elsewhere.
-        ratio: f32,
-        children: Box<(LayoutTree, LayoutTree)>,
-    },
+    Split(Split),
 }
 
 impl LayoutTree {
+    /// `members` side by side along `direction`, with equal seams.
+    #[cfg(test)]
+    pub(crate) fn split(direction: Direction, members: Vec<LayoutTree>) -> Self {
+        assert!(members.len() >= 2, "a split has two members or more");
+        assert!(
+            !members
+                .iter()
+                .any(|m| matches!(m, LayoutTree::Split(s) if s.direction == direction)),
+            "a split in the same direction belongs to its parent"
+        );
+        LayoutTree::Split(Split {
+            direction,
+            members,
+            seams: Seams::Equal,
+        })
+    }
+
     /// Compute (PaneId, Rect) pairs for the leaf panes given the total area.
     /// Results are appended to `out` (which is not cleared; caller must clear first).
     ///
     /// `reserve_seam` mirrors the `pane-dividers` setting: `true` carves a
-    /// 1-cell seam out of each split axis (see `split_rect`); `false` tiles
-    /// children edge-to-edge with no reserved gap.
+    /// 1-cell seam between each two members of a split; `false` tiles them
+    /// edge-to-edge with no reserved gap.
     pub(crate) fn collect_rects_into(
         &self,
         area: Rect,
@@ -144,19 +662,14 @@ impl LayoutTree {
     ) {
         match self {
             LayoutTree::Leaf(id) => out.push((*id, area)),
-            LayoutTree::Split {
-                direction,
-                ratio,
-                children,
-            } => {
-                let (r1, _seam, r2) = split_rect(
-                    area,
-                    *direction == Direction::Vertical,
-                    *ratio,
-                    reserve_seam,
-                );
-                children.0.collect_rects_into(r1, reserve_seam, out);
-                children.1.collect_rects_into(r2, reserve_seam, out);
+            LayoutTree::Split(split) => {
+                for (member, (rect, _)) in split
+                    .members
+                    .iter()
+                    .zip(split.member_rects(area, reserve_seam))
+                {
+                    member.collect_rects_into(rect, reserve_seam, out);
+                }
             }
         }
     }
@@ -168,73 +681,147 @@ impl LayoutTree {
     pub(crate) fn find_rect(&self, pid: PaneId, area: Rect, reserve_seam: bool) -> Option<Rect> {
         match self {
             LayoutTree::Leaf(id) => (*id == pid).then_some(area),
-            LayoutTree::Split {
-                direction,
-                ratio,
-                children,
-            } => {
-                let (r1, _seam, r2) = split_rect(
-                    area,
-                    *direction == Direction::Vertical,
-                    *ratio,
-                    reserve_seam,
-                );
-                children
-                    .0
-                    .find_rect(pid, r1, reserve_seam)
-                    .or_else(|| children.1.find_rect(pid, r2, reserve_seam))
+            LayoutTree::Split(split) => {
+                let (k, rect) = split.member_holding(pid, area, reserve_seam)?;
+                split.members[k].find_rect(pid, rect, reserve_seam)
             }
         }
     }
 
-    /// Compute the 1-cell seam divider drawn between sibling panes at every
-    /// split node, given the total area. Walks the same recursion as
-    /// `collect_rects_into`, off the same `split_rect` math, so seams always
-    /// align with the leaf rects computed for the same `area` this frame.
-    /// Results are appended to `out` (not cleared; caller must clear first).
+    /// Compute the 1-cell seam divider drawn between each two members of
+    /// every split, given the total area. Walks the same member geometry as
+    /// `collect_rects_into`, so seams always align with the leaf rects
+    /// computed for the same `area` this frame. Results are appended to
+    /// `out` (not cleared; caller must clear first).
     ///
     /// Always reserves the seam: callers only invoke this when dividers are
     /// being drawn, which is also when `collect_rects_into` is called with
     /// `reserve_seam: true`, so the two stay aligned.
     pub(crate) fn collect_seams_into(&self, area: Rect, out: &mut Vec<Seam>) {
-        if let LayoutTree::Split {
-            direction,
-            ratio,
-            children,
-        } = self
-        {
-            let (r1, seam, r2) = split_rect(area, *direction == Direction::Vertical, *ratio, true);
+        let LayoutTree::Split(split) = self else {
+            return;
+        };
+        for (k, (rect, seam)) in split.member_rects(area, true).enumerate() {
             if seam.width > 0 && seam.height > 0 {
                 out.push(Seam {
                     rect: seam,
-                    direction: *direction,
+                    handle: SeamHandle {
+                        before: split.members[k].first_leaf(),
+                        after: split.members[k + 1].first_leaf(),
+                        direction: split.direction,
+                    },
                 });
             }
-            children.0.collect_seams_into(r1, out);
-            children.1.collect_seams_into(r2, out);
+            split.members[k].collect_seams_into(rect, out);
         }
     }
 
-    /// Replace `Leaf(target)` with a `Split` of `(Leaf(target),
-    /// Leaf(new_pane))`: `false` when `target` is not a leaf below `self`.
-    /// Leaves the ratios to the caller's single `equalize` at the root, so
-    /// equalization doesn't run once per level of recursion.
-    fn insert_split(&mut self, target: PaneId, new_pane: PaneId, direction: Direction) -> bool {
+    /// Where a new pane after `Leaf(target)` along `direction` goes: into
+    /// `target`'s own split when that runs the same way, otherwise into a
+    /// new split of the two in `target`'s place. `None` when `target` is not
+    /// a leaf below `self`.
+    fn split_site(&self, target: PaneId, direction: Direction) -> Option<SplitSite> {
         match self {
-            LayoutTree::Leaf(id) if *id == target => {
-                *self = LayoutTree::Split {
-                    direction,
-                    // Overwritten by the caller's `equalize()`.
-                    ratio: 0.5,
-                    children: Box::new((LayoutTree::Leaf(target), LayoutTree::Leaf(new_pane))),
+            LayoutTree::Leaf(id) => (*id == target).then(|| SplitSite {
+                path: Vec::new(),
+                after: None,
+                direction,
+            }),
+            LayoutTree::Split(split) => {
+                if split.direction == direction
+                    && let Some(k) = split.leaf_member(target)
+                {
+                    return Some(SplitSite {
+                        path: Vec::new(),
+                        after: Some(k),
+                        direction,
+                    });
+                }
+                let k = split.members.iter().position(|m| m.contains_leaf(target))?;
+                let mut site = split.members[k].split_site(target, direction)?;
+                site.path.insert(0, k);
+                Some(site)
+            }
+        }
+    }
+
+    /// Put `new_pane` at `site`, a site of `self`.
+    fn insert_split(&mut self, site: &SplitSite, new_pane: PaneId, share: Option<SplitShare>) {
+        let subtree = site.path.iter().fold(self, |node, &k| match node {
+            LayoutTree::Split(split) => &mut split.members[k],
+            LayoutTree::Leaf(_) => unreachable!("a split site's path runs through splits"),
+        });
+        let new_pane = LayoutTree::Leaf(new_pane);
+        match (site.after, subtree) {
+            (Some(k), LayoutTree::Split(split)) => split.insert_after(k, new_pane, share),
+            (None, subtree) => {
+                // Overwritten below by the pair.
+                let leaf = std::mem::replace(subtree, LayoutTree::Leaf(PaneId::default()));
+                let mut pair = Split {
+                    direction: site.direction,
+                    members: vec![leaf, new_pane],
+                    seams: Seams::Equal,
                 };
-                true
+                pair.set_seams(Seams::Equal.with_member_after(0, 1, share));
+                *subtree = LayoutTree::Split(pair);
             }
-            LayoutTree::Leaf(_) => false,
-            LayoutTree::Split { children, .. } => {
-                children.0.insert_split(target, new_pane, direction)
-                    || children.1.insert_split(target, new_pane, direction)
+            (Some(_), LayoutTree::Leaf(_)) => unreachable!("a site after a member is a split"),
+        }
+    }
+
+    /// Whether a new pane at `site`, a site of `self`, within `area` keeps
+    /// every pane at its minimum size, the new one included (see
+    /// [`Split::fits_member_after`]).
+    fn split_fits(
+        &self,
+        site: &SplitSite,
+        share: Option<SplitShare>,
+        area: Rect,
+        reserve_seam: bool,
+    ) -> bool {
+        let (subtree, area) = site.path.iter().fold((self, area), |(node, area), &k| {
+            let LayoutTree::Split(split) = node else {
+                unreachable!("a split site's path runs through splits");
+            };
+            let (rect, _) = split
+                .member_rects(area, reserve_seam)
+                .nth(k)
+                .expect("a member on the path");
+            (&split.members[k], rect)
+        });
+        let (members, seams, k) = match (site.after, subtree) {
+            (Some(k), LayoutTree::Split(split)) => (split.members.as_slice(), &split.seams, k),
+            (None, leaf) => (std::slice::from_ref(leaf), &Seams::Equal, 0),
+            (Some(_), LayoutTree::Leaf(_)) => unreachable!("a site after a member is a split"),
+        };
+        Split::fits_member_after(site.direction, members, seams, k, share, area, reserve_seam)
+    }
+
+    /// Whether this subtree, laid out in `after` instead of `before`, leaves
+    /// every pane in it at least the minimum size along `axis`, or no
+    /// smaller there than it was. A placed split scales its seams with its
+    /// rect, so a pane deep in it can reach its minimum before the subtree
+    /// as a whole would.
+    fn keeps_minimums(
+        &self,
+        axis: Direction,
+        before: Rect,
+        after: Rect,
+        reserve_seam: bool,
+    ) -> bool {
+        match self {
+            LayoutTree::Leaf(_) => {
+                let (was, now) = (axis.span(before).1, axis.span(after).1);
+                now >= was || now >= axis.min_pane_extent()
             }
+            LayoutTree::Split(split) => split
+                .members
+                .iter()
+                .zip(split.member_rects(before, reserve_seam))
+                .zip(split.member_rects(after, reserve_seam))
+                .all(|((member, (before, _)), (after, _))| {
+                    member.keeps_minimums(axis, before, after, reserve_seam)
+                }),
         }
     }
 
@@ -242,9 +829,7 @@ impl LayoutTree {
     pub fn contains_leaf(&self, target: PaneId) -> bool {
         match self {
             LayoutTree::Leaf(id) => *id == target,
-            LayoutTree::Split { children, .. } => {
-                children.0.contains_leaf(target) || children.1.contains_leaf(target)
-            }
+            LayoutTree::Split(split) => split.members.iter().any(|m| m.contains_leaf(target)),
         }
     }
 
@@ -262,19 +847,20 @@ impl LayoutTree {
     fn collect_detached(self, out: &mut Vec<DetachedPane>) {
         match self {
             LayoutTree::Leaf(id) => out.push(DetachedPane(id)),
-            LayoutTree::Split { children, .. } => {
-                let (a, b) = *children;
-                a.collect_detached(out);
-                b.collect_detached(out);
+            LayoutTree::Split(split) => {
+                for member in split.members {
+                    member.collect_detached(out);
+                }
             }
         }
     }
 
-    /// Leftmost leaf, found by descending into the first child at each split.
+    /// Leftmost leaf, found by descending into the first member of each
+    /// split.
     fn first_leaf(&self) -> PaneId {
         match self {
             LayoutTree::Leaf(id) => *id,
-            LayoutTree::Split { children, .. } => children.0.first_leaf(),
+            LayoutTree::Split(split) => split.members[0].first_leaf(),
         }
     }
 
@@ -297,143 +883,135 @@ impl LayoutTree {
     fn collect_leaves(&self, out: &mut Vec<PaneId>) {
         match self {
             LayoutTree::Leaf(id) => out.push(*id),
-            LayoutTree::Split { children, .. } => {
-                children.0.collect_leaves(out);
-                children.1.collect_leaves(out);
+            LayoutTree::Split(split) => {
+                for member in &split.members {
+                    member.collect_leaves(out);
+                }
             }
         }
     }
 
-    /// How many side-by-side shares this subtree occupies along `direction`'s
-    /// axis: the unit [`Self::equalize`] balances a split's two children in.
-    /// Named `share` because `slot` is this crate's display-line vocabulary.
-    /// A leaf is always one share. A split *on* `direction`'s axis is the sum
-    /// of its children's shares, since each becomes its own share of that
-    /// axis. A split on the *other* axis (a stacked or side-by-side group)
-    /// counts as a single share when measured across its own axis, matching
-    /// the `Ctrl-W =` convention most terminal multiplexers use, where a
-    /// group of stacked panes shares one column's width rather than each
-    /// stacked pane claiming its own.
-    fn shares_along(&self, direction: Direction) -> u32 {
-        match self {
-            LayoutTree::Leaf(_) => 1,
-            LayoutTree::Split {
-                direction: split_dir,
-                children,
-                ..
-            } if *split_dir == direction => {
-                children.0.shares_along(direction) + children.1.shares_along(direction)
-            }
-            LayoutTree::Split { .. } => 1,
-        }
-    }
-
-    /// Re-derive every split's `ratio` from its two children's
-    /// [`Self::shares_along`] counts on that split's own axis, so every pane
-    /// sharing a split axis ends up the same size regardless of the order
-    /// splits and closes happened in. Recurses into both children first so a
-    /// nested split's ratio is set from its own children before this level
-    /// reads `shares_along` on it.
+    /// Set every split's seams equal.
     fn equalize(&mut self) {
-        if let LayoutTree::Split {
-            direction,
-            ratio,
-            children,
-        } = self
-        {
-            children.0.equalize();
-            children.1.equalize();
-            let shares0 = children.0.shares_along(*direction);
-            let shares1 = children.1.shares_along(*direction);
-            *ratio = shares0 as f32 / (shares0 + shares1) as f32;
+        if let LayoutTree::Split(split) = self {
+            split.seams = Seams::Equal;
+            for member in &mut split.members {
+                member.equalize();
+            }
         }
     }
 
     /// The recursive body of [`FocusedLayout::rotate_focused`]: `false`
     /// when `target` is not a leaf below `self`.
     fn rotate_run(&mut self, target: PaneId, rotation: Rotation, steps: usize) -> bool {
-        let LayoutTree::Split { direction, .. } = self else {
+        let LayoutTree::Split(split) = self else {
             return false;
         };
-        let direction = *direction;
-        let mut members = Vec::new();
-        self.collect_run_members(direction, &mut members);
-        if !members
-            .iter()
-            .any(|m| matches!(m, LayoutTree::Leaf(id) if *id == target))
-        {
-            return members
-                .into_iter()
+        if split.leaf_member(target).is_none() {
+            return split
+                .members
+                .iter_mut()
                 .any(|m| m.rotate_run(target, rotation, steps));
         }
-        // Each placeholder leaf is overwritten when the rotated trees are
-        // written back below.
-        let mut trees: Vec<LayoutTree> = members
-            .iter_mut()
-            .map(|m| std::mem::replace(&mut **m, LayoutTree::Leaf(PaneId::default())))
-            .collect();
-        let shift = steps % trees.len();
+        let shift = steps % split.members.len();
         match rotation {
-            Rotation::Forward => trees.rotate_right(shift),
-            Rotation::Backward => trees.rotate_left(shift),
-        }
-        for (member, tree) in members.into_iter().zip(trees) {
-            *member = tree;
+            Rotation::Forward => split.members.rotate_right(shift),
+            Rotation::Backward => split.members.rotate_left(shift),
         }
         true
     }
 
-    /// The members of the same-direction run rooted at `self`, in order:
-    /// every descendant reached through splits on `direction` only.
-    fn collect_run_members<'a>(
-        &'a mut self,
-        direction: Direction,
-        out: &mut Vec<&'a mut LayoutTree>,
-    ) {
-        // Tested apart from the binding: a guarded arm binding `children` for
-        // `'a` would keep `self` borrowed in the fallback arm too.
-        let in_run = matches!(self, LayoutTree::Split { direction: d, .. } if *d == direction);
-        if !in_run {
-            out.push(self);
-            return;
+    /// Prune `Leaf(target)` from its split, which collapses onto its last
+    /// member when only one is left, and return the leftmost leaf of the
+    /// neighbour that takes the pruned space (see [`Split::remove`]). A
+    /// collapse that leaves a split standing in a split of its own
+    /// direction is taken apart into it. `None` when `target` is not a leaf
+    /// below a split of `self`.
+    fn prune_leaf(&mut self, target: PaneId) -> Option<PaneId> {
+        let LayoutTree::Split(split) = self else {
+            return None;
+        };
+        if let Some(k) = split.leaf_member(target) {
+            let neighbour = split.remove(k);
+            let survivor = split.members[neighbour].first_leaf();
+            if let [only] = split.members.as_mut_slice() {
+                // The placeholder is dropped with the split it was left in.
+                *self = std::mem::replace(only, LayoutTree::Leaf(PaneId::default()));
+            }
+            return Some(survivor);
         }
-        if let LayoutTree::Split { children, .. } = self {
-            let (first, second) = &mut **children;
-            first.collect_run_members(direction, out);
-            second.collect_run_members(direction, out);
+        let (k, survivor) = split
+            .members
+            .iter_mut()
+            .enumerate()
+            .find_map(|(k, m)| m.prune_leaf(target).map(|survivor| (k, survivor)))?;
+        // Overwritten below, either by the member itself or by its members.
+        match std::mem::replace(&mut split.members[k], LayoutTree::Leaf(PaneId::default())) {
+            LayoutTree::Split(inner) if inner.direction == split.direction => {
+                split.absorb(k, inner)
+            }
+            member => split.members[k] = member,
         }
+        Some(survivor)
     }
 
-    /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling,
-    /// and return the leftmost leaf of that promoted sibling. `None` when
-    /// `target` is not a leaf below a split of `self`. Leaves the ratios to
-    /// the caller's `equalize`, for the same reason as [`Self::insert_split`].
-    fn prune_leaf(&mut self, target: PaneId) -> Option<PaneId> {
-        match self {
-            LayoutTree::Leaf(_) => None,
-            LayoutTree::Split { children, .. } => {
-                let hit0 = matches!(&children.0, LayoutTree::Leaf(id) if *id == target);
-                let hit1 = matches!(&children.1, LayoutTree::Leaf(id) if *id == target);
-                if hit0 || hit1 {
-                    // Promote the sibling subtree; the placeholder left behind
-                    // in `keep` is discarded when `*self` is overwritten below.
-                    let keep = if hit0 {
-                        &mut children.1
-                    } else {
-                        &mut children.0
-                    };
-                    let sibling = std::mem::replace(keep, LayoutTree::Leaf(PaneId::default()));
-                    let survivor = sibling.first_leaf();
-                    *self = sibling;
-                    Some(survivor)
-                } else {
-                    children
-                        .0
-                        .prune_leaf(target)
-                        .or_else(|| children.1.prune_leaf(target))
-                }
-            }
+    /// The recursive body of [`FocusedLayout::resize_focused`]: move the
+    /// seam beside the member holding `target` in the innermost split along
+    /// `axis` that holds it, by `cells` toward the member after it (or
+    /// before it, for the last member). `None` when no split along `axis`
+    /// holds `target`, otherwise whether the seam moved.
+    fn resize_along(
+        &mut self,
+        target: PaneId,
+        area: Rect,
+        reserve_seam: bool,
+        axis: Direction,
+        cells: i64,
+    ) -> Option<bool> {
+        let LayoutTree::Split(split) = self else {
+            return None;
+        };
+        let (k, rect) = split.member_holding(target, area, reserve_seam)?;
+        if let Some(moved) = split.members[k].resize_along(target, rect, reserve_seam, axis, cells)
+        {
+            return Some(moved);
         }
+        (split.direction == axis).then(|| {
+            let (seam, by) = if k + 1 < split.members.len() {
+                (k, cells)
+            } else {
+                (k - 1, -cells)
+            };
+            split.place_seam(seam, area, reserve_seam, |current| current + by)
+        })
+    }
+
+    /// The recursive body of [`FocusedLayout::move_seam`].
+    fn move_seam(
+        &mut self,
+        handle: SeamHandle,
+        area: Rect,
+        reserve_seam: bool,
+        cell: u16,
+    ) -> Result<(), StaleSeam> {
+        let LayoutTree::Split(split) = self else {
+            return Err(StaleSeam);
+        };
+        let (k, rect) = split
+            .member_holding(handle.before, area, reserve_seam)
+            .ok_or(StaleSeam)?;
+        if split.members[k].contains_leaf(handle.after) {
+            return split.members[k].move_seam(handle, rect, reserve_seam, cell);
+        }
+        let adjacent = split
+            .members
+            .get(k + 1)
+            .is_some_and(|m| m.contains_leaf(handle.after));
+        if !adjacent || split.direction != handle.direction {
+            return Err(StaleSeam);
+        }
+        split.place_seam(k, area, reserve_seam, |_| i64::from(cell));
+        Ok(())
     }
 }
 
@@ -566,50 +1144,53 @@ impl FocusedLayout {
             .map(|(_, pid)| pid)
     }
 
-    /// The rect the focused pane would have within `area` after
-    /// [`Self::split_focused`] on `direction`, leaving this layout unchanged.
-    /// `equalize` runs whole-tree, so a split can shrink every pane sharing
-    /// its axis, not only the focused one; this simulates the real
-    /// insert-then-equalize sequence instead of halving the current rect.
-    ///
-    /// The focused pane's side of the new split is never larger than the
-    /// new pane's: `insert_split` makes the focused pane the first child,
-    /// and `split_rect`'s integer truncation rounds the first child's share
-    /// down, so a minimum-size check against this rect alone is
-    /// conservative.
-    pub(crate) fn predicted_split_rect(
+    /// Whether splitting the focused pane on `direction` within `area`, with
+    /// the seam where `share` puts it, would leave the new pane, and every
+    /// pane it shrinks, at least the minimum size along that axis. In an
+    /// equal split a new member shrinks every member, not only the focused
+    /// one. A pane the split leaves alone is not checked, even when it is
+    /// already smaller than the minimum.
+    pub(super) fn split_fits(
         &self,
         area: Rect,
         reserve_seam: bool,
         direction: Direction,
-    ) -> Rect {
-        let mut probe = self.tree.clone();
-        let inserted = probe.insert_split(self.focus, PaneId::default(), direction);
-        assert!(inserted, "the focused pane is a leaf of the tree");
-        probe.equalize();
-        probe
-            .find_rect(self.focus, area, reserve_seam)
-            .expect("the focused pane is a leaf of the tree")
+        share: Option<SplitShare>,
+    ) -> bool {
+        self.tree
+            .split_fits(&self.split_site(direction), share, area, reserve_seam)
     }
 
-    /// Split the focused pane, placing `pane` after it along `direction`,
-    /// then re-derive every split ratio so panes sharing a split axis stay
-    /// equal-sized (see `equalize`). Focus stays where it was.
-    pub(crate) fn split_focused(&mut self, pane: UnattachedPane, direction: Direction) -> PaneId {
+    /// Put `pane` after the focused pane along `direction`, without checking
+    /// that it fits: [`EngineView::split_focused`](super::EngineView::split_focused)
+    /// checks with [`Self::split_fits`] first. An equal split stays equal and
+    /// a placed one halves the focused pane's space, unless `share` says
+    /// where the new seam goes (see [`Split::insert_after`]). Focus stays
+    /// where it was.
+    pub(super) fn splice_beside_focused(
+        &mut self,
+        pane: UnattachedPane,
+        direction: Direction,
+        share: Option<SplitShare>,
+    ) -> PaneId {
         let new_id = pane.pane_id();
-        let inserted = self.tree.insert_split(self.focus, new_id, direction);
-        assert!(inserted, "the focused pane is a leaf of the tree");
-        self.tree.equalize();
+        let site = self.split_site(direction);
+        self.tree.insert_split(&site, new_id, share);
         new_id
     }
 
-    /// Rotate the row or column the focused pane sits in by `steps` places.
-    /// That row is the largest run of same-direction splits holding the
-    /// focused leaf as a direct member; a split on the other axis inside it
-    /// is one member and moves whole. The tree's shape and ratios are kept:
-    /// every member is one share along the run's axis (see `shares_along`),
-    /// so each place keeps its size and only its contents move. Focus stays
-    /// on the same pane.
+    /// Where a new pane after the focused one along `direction` goes (see
+    /// [`LayoutTree::split_site`]).
+    fn split_site(&self, direction: Direction) -> SplitSite {
+        self.tree
+            .split_site(self.focus, direction)
+            .expect("the focused pane is a leaf of the tree")
+    }
+
+    /// Rotate the split holding the focused leaf as a direct member by
+    /// `steps` places. A split on the other axis inside it is one member
+    /// and moves whole. The seams stay, so each place keeps its size and
+    /// only its contents move. Focus stays on the same pane.
     pub(crate) fn rotate_focused(
         &mut self,
         rotation: Rotation,
@@ -621,25 +1202,73 @@ impl FocusedLayout {
         Ok(())
     }
 
-    /// Prune the focused leaf, collapsing its parent split onto the sibling,
-    /// then re-derive every split ratio so the survivors stay equal-sized
-    /// (see `equalize`). Focus moves to the leftmost leaf of the promoted
-    /// sibling.
+    /// Prune the focused leaf. Its split stays equal if it was, otherwise its
+    /// space goes to the member before it, or after it when it is first.
+    /// Focus moves to the leftmost leaf of that neighbour.
     pub(crate) fn close_focused(&mut self) -> Result<DetachedPane, SinglePane> {
         self.refuse_single_pane()?;
         let survivor = self
             .tree
             .prune_leaf(self.focus)
             .expect("the focused pane is a leaf of the tree");
-        self.tree.equalize();
         Ok(DetachedPane(std::mem::replace(&mut self.focus, survivor)))
     }
 
     pub(crate) fn refuse_single_pane(&self) -> Result<(), SinglePane> {
         match self.tree {
             LayoutTree::Leaf(_) => Err(SinglePane),
-            LayoutTree::Split { .. } => Ok(()),
+            LayoutTree::Split(_) => Ok(()),
         }
+    }
+
+    /// Grow or shrink the focused pane by `cells` along `axis` within
+    /// `area`, moving the seam after its member of the innermost split on
+    /// `axis` that holds it, or the seam before it when it is the last
+    /// member. Only the two members beside that seam change size, and only
+    /// as far as every pane in them keeps its minimum size; that split's
+    /// seams are placed from then on.
+    pub(crate) fn resize_focused(
+        &mut self,
+        area: Rect,
+        reserve_seam: bool,
+        axis: Direction,
+        resize: Resize,
+        cells: u16,
+    ) -> Result<(), ResizeRefused> {
+        let by = match resize {
+            Resize::Grow => i64::from(cells),
+            Resize::Shrink => -i64::from(cells),
+        };
+        match self
+            .tree
+            .resize_along(self.focus, area, reserve_seam, axis, by)
+        {
+            None => Err(ResizeRefused::NoNeighbor),
+            Some(false) => Err(ResizeRefused::AtLimit),
+            Some(true) => Ok(()),
+        }
+    }
+
+    /// Move the seam `handle` names so it lands on `to`'s cell along its
+    /// axis within `area`, as far as the members beside it allow (see
+    /// [`Self::resize_focused`]).
+    pub(crate) fn move_seam(
+        &mut self,
+        handle: SeamHandle,
+        area: Rect,
+        reserve_seam: bool,
+        to: Position,
+    ) -> Result<(), StaleSeam> {
+        let cell = match handle.direction {
+            Direction::Horizontal => to.x,
+            Direction::Vertical => to.y,
+        };
+        self.tree.move_seam(handle, area, reserve_seam, cell)
+    }
+
+    /// Set every seam of the tree equal.
+    pub(crate) fn equalize(&mut self) {
+        self.tree.equalize();
     }
 }
 
@@ -691,13 +1320,13 @@ pub(super) fn junction_glyph(mask: u8) -> &'static str {
 
 /// Record the perpendicular arms each seam contributes to its two endpoint
 /// cells into `out` (not cleared; caller must clear first). A seam reserves
-/// its own cell (see `split_rect`), so a perpendicular seam's nearest cell
-/// sits one cell *past* this seam's endpoint. E.g. a vertical seam
+/// its own cell (see `Split::member_rects`), so a perpendicular seam's
+/// nearest cell sits one cell *past* this seam's endpoint. E.g. a vertical seam
 /// starting at row `y` contributes a southward arm to the cell at `y - 1`,
 /// which is where a horizontal seam ending there would actually be drawn.
 pub(super) fn collect_seam_arms(seams: &[Seam], out: &mut FxHashMap<(u16, u16), u8>) {
     for seam in seams {
-        match seam.direction {
+        match seam.direction() {
             // `Horizontal` (width split) carves a vertical `│` line.
             Direction::Horizontal => {
                 let x = seam.rect.x;
@@ -715,61 +1344,6 @@ pub(super) fn collect_seam_arms(seams: &[Seam], out: &mut FxHashMap<(u16, u16), 
                 *out.entry((seam.rect.x + seam.rect.width, y)).or_insert(0) |= ARM_W;
             }
         }
-    }
-}
-
-/// Split `area` into two child rects plus the seam divider drawn between
-/// them, reserving that cell from the split axis so `first`, `seam`, and
-/// `second` together (not `first`/`second` alone) tile `area` exactly.
-///
-/// `reserve_seam` mirrors the `pane-dividers` setting: `true` reserves a
-/// 1-cell seam; `false` reserves none, so `first`/`second` tile `area`
-/// edge-to-edge and `seam` is a zero-size rect.
-///
-/// All arithmetic is saturating so degenerate areas (zero width/height, or a
-/// ratio that leaves no room for a seam) clamp to empty rects rather than
-/// panicking. Callers must not invoke this on an area too small to hold a
-/// seam plus two minimal panes: `:split`/`:vsplit` guard that before
-/// mutating the layout tree (see `split_focused_pane` in the editor crate).
-pub(super) fn split_rect(
-    area: Rect,
-    vertical: bool,
-    ratio: f32,
-    reserve_seam: bool,
-) -> (Rect, Rect, Rect) {
-    let seam_reserve: u16 = if reserve_seam { 1 } else { 0 };
-    if vertical {
-        let usable = area.height.saturating_sub(seam_reserve);
-        let h1 = ((usable as f32 * ratio) as u16).min(usable);
-        let seam_h = area.height.saturating_sub(h1).min(seam_reserve);
-        let r1 = Rect { height: h1, ..area };
-        let seam = Rect {
-            y: area.y + h1,
-            height: seam_h,
-            ..area
-        };
-        let r2 = Rect {
-            y: area.y + h1 + seam_h,
-            height: area.height.saturating_sub(h1 + seam_h),
-            ..area
-        };
-        (r1, seam, r2)
-    } else {
-        let usable = area.width.saturating_sub(seam_reserve);
-        let w1 = ((usable as f32 * ratio) as u16).min(usable);
-        let seam_w = area.width.saturating_sub(w1).min(seam_reserve);
-        let r1 = Rect { width: w1, ..area };
-        let seam = Rect {
-            x: area.x + w1,
-            width: seam_w,
-            ..area
-        };
-        let r2 = Rect {
-            x: area.x + w1 + seam_w,
-            width: area.width.saturating_sub(w1 + seam_w),
-            ..area
-        };
-        (r1, seam, r2)
     }
 }
 
@@ -825,3 +1399,6 @@ pub(super) fn focused_pane_corners(pane: Rect) -> [Option<(u16, u16)>; 4] {
     let y1 = pane.y.checked_add(pane.height);
     [x0.zip(y0), x1.zip(y0), x0.zip(y1), x1.zip(y1)]
 }
+
+#[cfg(test)]
+mod tests;

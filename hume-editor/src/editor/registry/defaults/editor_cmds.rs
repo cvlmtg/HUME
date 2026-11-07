@@ -622,5 +622,35 @@ impl CommandRegistry {
             cmd_pane_rotate_backward,
         )
         .reg(self);
+        ecmd_focused(
+            "pane-grow-width",
+            "Widen the focused pane by a column (that many with a count), taking it from the next pane in its innermost row, or the one before when it is the last.",
+            cmd_pane_grow_width,
+        )
+        .reg(self);
+        ecmd_focused(
+            "pane-shrink-width",
+            "Narrow the focused pane by a column (that many with a count), giving it to the next pane in its innermost row, or the one before when it is the last.",
+            cmd_pane_shrink_width,
+        )
+        .reg(self);
+        ecmd_focused(
+            "pane-grow-height",
+            "Make the focused pane a row taller (that many with a count), taking it from the next pane in its innermost column, or the one before when it is the last.",
+            cmd_pane_grow_height,
+        )
+        .reg(self);
+        ecmd_focused(
+            "pane-shrink-height",
+            "Make the focused pane a row shorter (that many with a count), giving it to the next pane in its innermost column, or the one before when it is the last.",
+            cmd_pane_shrink_height,
+        )
+        .reg(self);
+        ecmd_focused(
+            "pane-equalize",
+            "Give every pane of the tab an equal share of its row or column.",
+            cmd_pane_equalize,
+        )
+        .reg(self);
     }
 }

@@ -7,7 +7,6 @@
 //! coverage.
 
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 use hume_core::PaneHandle;
 use hume_engine::pipeline::Direction;
 use hume_scripting::host::CommandHost;
@@ -20,8 +19,8 @@ fn split_two_buffers(ed: &mut Editor, b: &str) -> (PaneId, BufferId, PaneId, Buf
     let bid_a = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
     let bid_b = ed.open_scratch(BufferText::from(b));
-    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid_b, Direction::Horizontal);
-    // `open_pane_in_layout` itself does not move focus (unlike
+    let pid_b = ed.split_onto(bid_b, Direction::Horizontal);
+    // `split_onto` itself does not move focus (unlike
     // `split_pane_onto`/`:vsplit` in production), so pin it back to A
     // explicitly so every caller's premise holds regardless.
     ed.state.focus.set_for_test(&mut ed.view, pid_a);

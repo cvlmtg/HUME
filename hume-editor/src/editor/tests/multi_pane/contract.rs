@@ -17,12 +17,7 @@ fn d1_selections_are_pane_owned() {
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
 
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     // Pane A → position 2 ('l').
     ed.switch_focused_pane(pid_a);
@@ -58,12 +53,7 @@ fn d4a_search_pattern_is_per_buffer() {
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     // Both panes see Buffer.search_pattern: it's a single field on `doc`.
     // Verify independence of search_cursor: write distinct values per pane.
@@ -198,12 +188,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     // Pane A insert session: type 'X' at the start.
     ed.switch_focused_pane(pid_a);
@@ -283,12 +268,7 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
         editor_from("-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n");
     let pid_a = ed.view.focused_pane();
     let bid_a = ed.focused_buffer_id();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid_a,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid_a, hume_engine::pipeline::Direction::Horizontal);
     ed.switch_focused_pane(pid_b);
     ed.execute_typed("e", Some(path_b.to_str().unwrap()))
         .unwrap();
@@ -373,12 +353,7 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     // Position pane B's cursor at char 9 ('j').
     ed.switch_focused_pane(pid_b);
@@ -411,12 +386,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     // Position pane B at char 9.
     ed.switch_focused_pane(pid_b);
@@ -463,12 +433,7 @@ fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
     let mut ed = editor_from("  -[f]>oo\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     // Pane B's cursor sits at column 0, an ordinary cursor that merely
     // happens to be at the line start, not a linewise selection.
@@ -502,12 +467,7 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     let mut ed = editor_from("-[a]>bcde\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     // Pane B: two cursors at positions 2 ('c') and 4 ('e').
     ed.switch_focused_pane(pid_b);
@@ -551,12 +511,7 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     // Position pane B's cursor at char 5 ('f').
     ed.switch_focused_pane(pid_b);

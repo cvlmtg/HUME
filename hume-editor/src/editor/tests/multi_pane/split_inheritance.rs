@@ -96,7 +96,7 @@ fn wrap_toggle_affects_only_focused_pane() {
 // ── Geometry regression guards ─────────────────────────────────────────────────
 //
 // `EngineView` must not cache a `pane_rects` snapshot across frames. Every
-// consumer (pane-focus commands, `fits_split`, the bar-cursor lookup) must
+// consumer (pane-focus commands, the split check, the bar-cursor lookup) must
 // recompute from the live layout tree plus the terminal area cached by the
 // last `prepare_frame`. A cache would let a close/split earlier in the same
 // macro-replay batch invalidate geometry that a later command in the same
@@ -434,12 +434,7 @@ fn close_pane_under_open_session(ed: &mut Editor, keys: &str) -> PaneId {
 
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
     ed.switch_focused_pane(pid_b);
     for ch in keys.chars() {
         ed.feed_key(key(ch));

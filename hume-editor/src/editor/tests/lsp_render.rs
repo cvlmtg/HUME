@@ -13,7 +13,6 @@ use hume_platform::dirs::Dirs;
 
 use super::lsp_rig::LspRig;
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 use hume_core::PaneId;
 use hume_engine::pipeline::{Direction, RenderContext};
 use hume_engine::providers::HighlightTier;
@@ -38,12 +37,7 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
     let tmp = tempfile::tempdir().unwrap();
     let marked = format!("-[{}]>{}", &content[..1], &content[1..]);
     let mut rig = LspRig::rust(tmp.path(), &marked, serde_json::json!({"capabilities": {}}));
-    let pid = open_pane_in_layout(
-        &mut rig.ed.state,
-        &mut rig.ed.view,
-        rig.bid,
-        Direction::Horizontal,
-    );
+    let pid = rig.ed.split_onto(rig.bid, Direction::Horizontal);
     rig.ed.state.focus.set_for_test(&mut rig.ed.view, pid);
 
     if !diags.is_empty() {

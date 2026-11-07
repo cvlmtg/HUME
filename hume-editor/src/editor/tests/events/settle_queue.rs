@@ -45,12 +45,7 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     let buf_id = ed.focused_buffer_id();
 
     // Create a second pane (not the focused one) viewing the same buffer.
-    let second_pane = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        buf_id,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let second_pane = ed.split_onto(buf_id, hume_engine::pipeline::Direction::Horizontal);
     assert!(ed.view.panes.contains_key(second_pane));
 
     // Edit in the focused pane (insert 'x' → "xab\n").
@@ -349,7 +344,6 @@ fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
 /// hook names that pane itself.
 #[test]
 fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
-    use crate::editor::commands::open_pane_in_layout;
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::Direction;
 
@@ -357,9 +351,9 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
     let bid_a = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
     let bid_b = ed.open_scratch(BufferText::from("bbb\n"));
-    open_pane_in_layout(&mut ed.state, &mut ed.view, bid_b, Direction::Horizontal);
+    ed.split_onto(bid_b, Direction::Horizontal);
     // The split moves focus onto the new pane in production
-    // (`split_pane_onto`/`:vsplit`), but `open_pane_in_layout` itself does
+    // (`split_pane_onto`/`:vsplit`), but `split_onto` itself does
     // not. Restore focus to A explicitly so this test's premise (A stays
     // focused, B lives in a background split) holds regardless.
     ed.state.focus.set_for_test(&mut ed.view, pid_a);

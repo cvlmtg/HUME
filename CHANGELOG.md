@@ -5,6 +5,10 @@
 ### Breaking changes
 - `core:helix-surround` is removed. For Helix's `m s`/`m d`/`m r`, load the [helix.hume](https://github.com/cvlmtg/helix.hume) plugin instead: `(load-plugin! "cvlmtg/helix.hume")`, which binds the rest of Helix's keys too.
 
+### Panes & interface
+- New `Ctrl-p >`, `Ctrl-p <`, `Ctrl-p +` and `Ctrl-p -` resize the focused pane, `Ctrl-p =` evens the panes out again, and dragging the divider between two panes resizes them.
+- Saved sessions keep pane sizes.
+
 ## [0.19.0] - 2026-11-06
 
 ### Breaking changes

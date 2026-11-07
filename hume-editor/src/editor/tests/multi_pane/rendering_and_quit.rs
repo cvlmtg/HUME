@@ -155,12 +155,7 @@ fn split_pane_gets_gutter_column() {
     );
 
     let bid = ed.focused_buffer_id();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
 
     assert_eq!(
         ed.view.panes[pid_b].providers.gutter_columns().count(),
@@ -331,12 +326,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
-    let pid = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid_a,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid = ed.split_onto(bid_a, hume_engine::pipeline::Direction::Horizontal);
     ed.switch_focused_pane(pid);
 
     let scope = ed.view.registry.intern("ui.virtual");
@@ -421,31 +411,16 @@ fn quit_in_grid_promotes_correct_sibling() {
     );
     assert!(!ed.view.panes.contains_key(pid_d), "D was closed");
 
-    match ed.view.layout() {
-        LayoutTree::Split { children, .. } => {
-            assert!(
-                matches!(&children.0, LayoutTree::Leaf(id) if *id == pid_a),
-                "top row collapses to A"
-            );
-            match &children.1 {
-                LayoutTree::Split {
-                    children: bottom, ..
-                } => {
-                    let leaves: Vec<_> = [&bottom.0, &bottom.1]
-                        .into_iter()
-                        .map(|c| match c {
-                            LayoutTree::Leaf(id) => *id,
-                            other => panic!("expected leaf, got {other:?}"),
-                        })
-                        .collect();
-                    assert!(
-                        leaves.contains(&pid_b) && leaves.contains(&pid_c),
-                        "bottom row keeps B and C untouched"
-                    );
-                }
-                other => panic!("expected bottom row Split, got {other:?}"),
-            }
-        }
-        other => panic!("expected Split layout, got {other:?}"),
-    }
+    let LayoutTree::Split(stack) = ed.view.layout() else {
+        panic!("expected a split, got {:?}", ed.view.layout());
+    };
+    let [LayoutTree::Leaf(top), LayoutTree::Split(bottom)] = stack.members() else {
+        panic!("expected a pane over a width split, got {stack:?}");
+    };
+    assert_eq!(*top, pid_a, "the top split collapses to A");
+    assert_eq!(
+        bottom.members(),
+        [LayoutTree::Leaf(pid_b), LayoutTree::Leaf(pid_c)],
+        "the bottom split keeps B and C untouched"
+    );
 }

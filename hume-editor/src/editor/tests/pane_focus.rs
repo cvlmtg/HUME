@@ -1,7 +1,7 @@
 use super::*;
 use crate::editor::commands::{
     FocusedPane, cmd_pane_focus_down, cmd_pane_focus_left, cmd_pane_focus_next,
-    cmd_pane_focus_right, cmd_pane_focus_up, open_pane_in_layout,
+    cmd_pane_focus_right, cmd_pane_focus_up,
 };
 use hume_core::PaneId;
 use hume_engine::pipeline::{Direction, RenderContext};
@@ -18,10 +18,10 @@ fn build_2x2() -> (Editor, [PaneId; 4]) {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane(); // top-left
-    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Vertical); // stack a over b
-    let pid_c = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal); // a | c (top row)
+    let pid_b = ed.split_onto(bid, Direction::Vertical); // stack a over b
+    let pid_c = ed.split_onto(bid, Direction::Horizontal); // a | c on top
     ed.state.focus.set_for_test(&mut ed.view, pid_b);
-    let pid_d = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal); // b | d (bottom row)
+    let pid_d = ed.split_onto(bid, Direction::Horizontal); // b | d below
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
     let mut ctx = RenderContext::new();
     ed.resize_terminal(100, 51);

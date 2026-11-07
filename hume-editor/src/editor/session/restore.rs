@@ -3,10 +3,13 @@
 //! started.
 
 use std::io::Read;
+#[cfg(test)]
+use std::num::NonZeroU32;
 use std::path::Path;
 
 use hume_core::{BufferId, OnUnsaved, PaneId, Severity};
 use hume_engine::display_lines::DisplayLinePos;
+use hume_engine::pipeline::SplitShare;
 use hume_ops::register::{Piece, is_valid_macro_register};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
@@ -93,9 +96,21 @@ impl Editor {
         };
 
         let mut tab_ids = Vec::with_capacity(tabs.len());
+        let mut left_out = 0;
         for (n, saved) in tabs.iter().enumerate() {
-            self.rebuild_tab(saved, n == 0, &opened, fallback.bid);
+            left_out += self.rebuild_tab(saved, n == 0, &opened, fallback.bid);
             tab_ids.push(self.state.tabs.current());
+        }
+        match left_out {
+            0 => {}
+            1 => self.report(
+                Severity::Warning,
+                "session: 1 pane did not fit and was not restored",
+            ),
+            n => self.report(
+                Severity::Warning,
+                format!("session: {n} panes did not fit and were not restored"),
+            ),
         }
         tab::switch_to_tab(&mut self.state, &mut self.view, tab_ids[current_tab]);
         for &i in &mru {
@@ -136,14 +151,17 @@ impl Editor {
     }
 
     /// Lay `saved` out: in the active tab when `first`, which grows from its
-    /// focused pane, otherwise in a new tab after the current one.
+    /// focused pane, otherwise in a new tab after the current one. Each split
+    /// is refused as a split by hand would be when it does not fit, and so
+    /// is every split of a pane left out. Returns how many panes were left
+    /// out.
     fn rebuild_tab(
         &mut self,
         saved: &TabSnapshot,
         first: bool,
         opened: &[Option<Opened>],
         fallback: BufferId,
-    ) {
+    ) -> usize {
         let shows = |pane: &PaneSnapshot| {
             pane.shown
                 .and_then(|i| opened[i])
@@ -160,21 +178,38 @@ impl Editor {
         } else {
             open_pane_as_new_tab(&mut self.state, &mut self.view, shows(&saved.panes[0]));
         }
-        let mut pids = vec![self.view.focused_pane()];
+        let mut pids = vec![Some(self.view.focused_pane())];
         for step in &saved.splits {
-            focus::focus_pane(&mut self.state, &mut self.view, pids[step.pane]);
             let bid = shows(&saved.panes[pids.len()]);
-            pids.push(open_pane_in_layout(
-                &mut self.state,
-                &mut self.view,
-                bid,
-                step.direction.into(),
-            ));
+            let made = pids[step.pane].and_then(|target| {
+                focus::focus_pane(&mut self.state, &mut self.view, target);
+                open_pane_in_layout(
+                    &mut self.state,
+                    &mut self.view,
+                    bid,
+                    step.direction.into(),
+                    step.at.map(SplitShare::from_bits),
+                )
+                .ok()
+            });
+            pids.push(made);
         }
-        focus::focus_pane(&mut self.state, &mut self.view, pids[saved.focused]);
-        for (&pid, pane) in pids.iter().zip(&saved.panes) {
-            self.resume_pane(pid, pane, opened);
+        // A pane left out leaves its space to the pane it would have split,
+        // back to pane 0, which is always there.
+        let mut focused = saved.focused;
+        let focus = loop {
+            match pids[focused] {
+                Some(pid) => break pid,
+                None => focused = saved.splits[focused - 1].pane,
+            }
+        };
+        focus::focus_pane(&mut self.state, &mut self.view, focus);
+        for (pid, pane) in pids.iter().zip(&saved.panes) {
+            if let Some(pid) = *pid {
+                self.resume_pane(pid, pane, opened);
+            }
         }
+        pids.iter().filter(|pid| pid.is_none()).count()
     }
 
     /// Put back what `pid` held for each saved buffer: its wrap pin, and its
@@ -236,6 +271,19 @@ fn read(path: &Path) -> Result<Option<SessionSnapshot>, String> {
         check(&snapshot)?;
         Ok(snapshot)
     })
+}
+
+/// Replace the shares of the first tab's splits in the session saved at
+/// `path`, in order, for a session no run would save.
+#[cfg(test)]
+pub(in crate::editor) fn rewrite_saved_shares(path: &Path, shares: &[Option<NonZeroU32>]) {
+    let mut snapshot = read(path)
+        .expect("the session reads")
+        .expect("a session is saved");
+    for (step, &at) in snapshot.tabs[0].splits.iter_mut().zip(shares) {
+        step.at = at;
+    }
+    super::write(path, &snapshot).expect("the session writes");
 }
 
 /// Whether every index in `snapshot` names something it holds.

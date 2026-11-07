@@ -2,7 +2,8 @@
 //!
 //! Events arrive when normal tracking (mode 1000) is enabled. Button-event
 //! tracking (mode 1002, which delivers `MouseEventKind::Drag`) is enabled only
-//! when `editor.mouse_select` is true.
+//! when `editor.mouse_select` is true, so dragging a selection and dragging a
+//! divider between two panes both need it.
 //!
 //! Click coordinates are terminal-absolute, so `EngineView::pane_hit` first
 //! finds the pane under the pointer, in its own cells, before
@@ -19,7 +20,8 @@
 //! `Popup` dismisses on any of them. [`Editor::base_mouse`] is the `Base`
 //! layer's policy, reached only after the stack has let the event through.
 
-use hume_engine::pipeline::PaneHit;
+use hume_core::PaneId;
+use hume_engine::pipeline::{PaneHit, SeamHandle};
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -44,6 +46,16 @@ pub(super) fn is_fresh_gesture(kind: MouseEventKind) -> bool {
         kind,
         MouseEventKind::Down(_) | MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
     )
+}
+
+/// What a left-button drag in progress moves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MouseDrag {
+    /// The head of the primary selection of the pane the drag started in.
+    /// The anchor is that selection's own, read live.
+    Select(PaneId),
+    /// The divider the drag started on.
+    Seam(SeamHandle),
 }
 
 impl Editor {
@@ -80,9 +92,16 @@ impl Editor {
             return;
         }
 
-        // Hit-test before anything else: a miss (statusline, a divider seam
-        // or anything else outside a pane's own rect) is a no-op, and a hit's
-        // pane-relative coordinates are what every step below needs.
+        // A divider is outside every pane's rect. Grabbing one moves neither
+        // focus nor a selection.
+        if let Some(seam) = self.view.seam_hit(Position::new(x, y)) {
+            self.state.mouse_drag = Some(MouseDrag::Seam(seam.handle));
+            return;
+        }
+
+        // Hit-test before anything else: a miss (statusline or anything else
+        // outside a pane's own rect) is a no-op, and a hit's pane-relative
+        // coordinates are what every step below needs.
         let Some(hit) = self.view.pane_hit(Position::new(x, y)) else {
             return;
         };
@@ -102,7 +121,7 @@ impl Editor {
             self.select_only(Selection::cursor(pos));
             self.clear_pending_input();
             // The cursor is the anchor of a drag that follows.
-            self.state.mouse_drag = Some(hit.pane());
+            self.state.mouse_drag = Some(MouseDrag::Select(hit.pane()));
         }
     }
 
@@ -130,12 +149,34 @@ impl Editor {
 
     fn mouse_left_drag(&mut self, x: u16, y: u16) {
         // Drag events are only received when `mouse_select = true` (mode 1002).
+        match self.state.mouse_drag {
+            Some(MouseDrag::Seam(handle)) => self.drag_seam(handle, x, y),
+            Some(MouseDrag::Select(pid)) => self.drag_selection(pid, x, y),
+            None => {}
+        }
+    }
+
+    /// Move the divider `handle` names under the pointer, the way
+    /// `Ctrl-p >` and its siblings move one. A handle that names no divider
+    /// of the layout ends the drag.
+    fn drag_seam(&mut self, handle: SeamHandle, x: u16, y: u16) {
+        let screen = self.state.screen_layout(&self.view);
+        if self
+            .view
+            .move_seam(&screen, handle, Position::new(x, y))
+            .is_err()
+        {
+            self.state.mouse_drag = None;
+        }
+    }
+
+    fn drag_selection(&mut self, pid: PaneId, x: u16, y: u16) {
         // A drag never moves focus mid-gesture. It extends the selection in
-        // the pane the click that started it focused, and only while that
-        // pane still has focus. A drag that leaves it (as a fast mouse move
-        // easily can) is ignored rather than resolving against the wrong pane.
-        let pid = self.view.focused_pane();
-        if self.state.mouse_drag != Some(pid) {
+        // `pid`, the pane the click that started it focused, and only while
+        // that pane still has focus. A drag that leaves it (as a fast mouse
+        // move easily can) is ignored rather than resolving against the
+        // wrong pane.
+        if pid != self.view.focused_pane() {
             return;
         }
         let Some(hit) = self

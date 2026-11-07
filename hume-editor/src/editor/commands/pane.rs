@@ -3,7 +3,8 @@
 
 use hume_core::{BufferId, PaneId};
 use hume_engine::pipeline::{
-    DetachedPane, Direction, EngineView, FocusedLayout, SinglePane, UnattachedPane,
+    DetachedPane, Direction, EngineView, FocusedLayout, SinglePane, SplitShare, SplitTooSmall,
+    UnattachedPane,
 };
 
 use crate::editor::EditorState;
@@ -25,17 +26,22 @@ fn open_pane(state: &mut EditorState, view: &mut EngineView, bid: BufferId) -> U
     )
 }
 
-/// Create a pane viewing `bid` and splice it into the layout beside the
-/// focused pane, on `direction`'s axis, in one step. Returns the new pane's
-/// id; focus stays where it was.
+/// Split the focused pane on `direction`'s axis with a new pane viewing
+/// `bid`. `share` places the new seam, `None` for a plain split. Refused,
+/// with no pane created, when the split does not fit the screen (see
+/// `EngineView::split_focused`). Returns the new pane's id; focus stays
+/// where it was.
 pub(in crate::editor) fn open_pane_in_layout(
     state: &mut EditorState,
     view: &mut EngineView,
     bid: BufferId,
     direction: Direction,
-) -> PaneId {
-    let unattached = open_pane(state, view, bid);
-    view.split_focused(unattached, direction)
+    share: Option<SplitShare>,
+) -> Result<PaneId, SplitTooSmall> {
+    let screen = state.screen_layout(view);
+    view.split_focused(&screen, direction, share, |view| {
+        open_pane(state, view, bid)
+    })
 }
 
 /// Create a pane viewing `bid` as the sole content of a brand-new tab
@@ -124,44 +130,12 @@ pub(super) fn close_focused_pane(
 
 /// Status message reported when a split is rejected for being too small.
 /// Shared constant: the typed `:split`/`:vsplit [path]` guard and
-/// `split_pane_onto`'s guard both report this for the same failure.
+/// `split_pane_onto` both report this for the same failure.
 pub(super) const SPLIT_TOO_SMALL_MSG: &str = "pane too small to split";
 
-/// Minimum content rows a pane must keep on its split axis for a height
-/// split (`:split`) to be allowed.
-const MIN_PANE_HEIGHT: u16 = 3;
-/// Minimum content columns a pane must keep on its split axis for a width
-/// split (`:vsplit`) to be allowed. Wider than `MIN_PANE_HEIGHT` because text
-/// needs more horizontal room than vertical to stay usable.
-const MIN_PANE_WIDTH: u16 = 10;
-
-/// Whether splitting the focused pane on `direction` would leave every pane
-/// sharing that axis (not just the two new ones) at or above the minimum
-/// size, including the 1-cell seam divider drawn between siblings (see
-/// `hume_engine::pipeline::split_rect`).
-///
-/// Simulates the split via `ScreenLayout::focused_split_rect` rather than
-/// halving the focused pane's current rect: since `equalize` resizes every
-/// pane on the split's axis, not just the pair being split, a pane deep in a
-/// row of several can be pushed under the minimum by a split that never
-/// touches it directly.
-pub(in crate::editor) fn fits_split(
-    state: &EditorState,
-    view: &EngineView,
-    direction: Direction,
-) -> bool {
-    let rect = state
-        .screen_layout(view)
-        .focused_split_rect(view.focused_layout(), direction);
-    match direction {
-        Direction::Vertical => rect.height >= MIN_PANE_HEIGHT,
-        Direction::Horizontal => rect.width >= MIN_PANE_WIDTH,
-    }
-}
-
 /// Split the focused pane so the new pane views `bid`, and move focus to it.
-/// Refuses with [`SPLIT_TOO_SMALL_MSG`] if the focused pane is too small to
-/// fit two panes plus the seam divider (see `fits_split`). `commands::run`
+/// Refuses with [`SPLIT_TOO_SMALL_MSG`] when the split does not fit (see
+/// `open_pane_in_layout`). `commands::run`
 /// returns that refusal as `false`, which is how the Steel
 /// `call!` boolean (see `hume_scripting::host::CommandHost::run_command_sync`)
 /// reports the refusal back to a caller like `stdlib/with-pane-command`.
@@ -177,12 +151,10 @@ pub(in crate::editor) fn split_pane_onto(
     bid: BufferId,
     direction: Direction,
 ) -> Result<(), CommandError> {
-    if !fits_split(state, view, direction) {
-        return Err(CommandError::transient(SPLIT_TOO_SMALL_MSG));
-    }
     let old_focused = fp.pid();
     let old_buffer_id = view.panes[old_focused].buffer_id();
-    let new_pid = open_pane_in_layout(state, view, bid, direction);
+    let new_pid = open_pane_in_layout(state, view, bid, direction, None)
+        .map_err(|SplitTooSmall| CommandError::transient(SPLIT_TOO_SMALL_MSG))?;
 
     // A bare split (same buffer as the source pane) inherits its selections,
     // their history and its scroll position: `open_pane` seeds fresh state at

@@ -30,7 +30,7 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `messages-min-severity` | `trace` \| `warning` \| `error` | `warning` | Lowest severity `:messages` shows. `trace` also shows detail useful for debugging |
 | `mouse` | bool | `true` | Enable mouse support |
 | `mouse-scroll-lines` | integer | `3` | Lines per mouse scroll tick |
-| `mouse-select` | bool | `false` | Mouse drag creates selections |
+| `mouse-select` | bool | `false` | Mouse drag creates selections and, with `pane-dividers` on, resizes panes |
 | `pane-dividers` | bool | `true` | Draw a 1-cell divider between sibling panes |
 | `popup-border` | bool | `true` | Show borders on popups, menus, pickers and the bottom drawer |
 | `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?`/`\|` prompt history |

@@ -73,7 +73,7 @@ To switch buffers from a key, bind the editor commands `goto-prev-buffer`, `goto
 | `:sp [path]`, `:split [path]` | Split the focused pane, stacking the new pane below. The new pane shows the current buffer, or opens `path` |
 | `:vsp [path]`, `:vsplit [path]` | Split the focused pane side by side, the same way |
 
-Splitting a pane that is already too small is refused with a message. Focusing, closing and rotating panes use the `Ctrl-p` prefix; see [Default Keys](default-keys.md). See [Splits and panes](files-and-buffers.md#splits-and-panes) for how panes behave.
+Splitting a pane that is already too small is refused with a message. Focusing, closing, rotating and resizing panes use the `Ctrl-p` prefix; see [Default Keys](default-keys.md). See [Splits and panes](files-and-buffers.md#splits-and-panes) for how panes behave.
 
 ## Tabs
 

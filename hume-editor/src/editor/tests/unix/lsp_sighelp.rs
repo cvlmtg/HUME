@@ -9,7 +9,6 @@
 use std::path::Path;
 
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 use crate::editor::tests::lsp_rig::stop_server;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
@@ -406,12 +405,7 @@ fn stale_response_after_a_pane_switch_shows_no_popup() {
     let other_bid = ed
         .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra))
         .expect("extra file must open as a buffer");
-    let other_pid = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        other_bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let other_pid = ed.split_onto(other_bid, hume_engine::pipeline::Direction::Horizontal);
     ed.state.focus.set_for_test(&mut ed.view, other_pid);
 
     // The debounce fires, and the request is sent and its reply delivered.

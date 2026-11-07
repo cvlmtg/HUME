@@ -18,7 +18,6 @@
 //! every buffer switch.
 
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 
 /// A resize with the cursor unmoved must still replace the caret: a pane's
 /// `height` is part of `EditorState::layout_key`, so a shrunk viewport
@@ -369,12 +368,7 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
         "sanity: the cursor is visible before the gutter grows"
     );
 
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
     ed.switch_focused_pane(pid_b);
     seek_to_line(&mut ed, 96);
     ed.feed_key(key('o'));

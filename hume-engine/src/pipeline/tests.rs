@@ -1,4 +1,4 @@
-use hume_grid::{Grid, Rect, Rgb};
+use hume_grid::{Grid, Position, Rect, Rgb};
 use std::collections::HashMap;
 
 use crate::test_doubles::VirtualLineBlock;
@@ -7,7 +7,6 @@ use hume_rope::spanned::SpannedText;
 
 use super::*;
 
-use super::layout::split_rect;
 use crate::display_lines::DisplayLinePos;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine};
@@ -656,142 +655,136 @@ fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
     assert_eq!(cell_symbol(&buf, 1, 1), "g");
 }
 
-// ── split_rect ───────────────────────────────────────────────────────
-
-#[test]
-fn split_rect_horizontal_half() {
-    // width=100 → usable=99, w1 = (99*0.5) as u16 = 49 (truncates, not rounds).
-    let (a, seam, b) = split_rect(rect(0, 0, 100, 50), false, 0.5, true);
-    assert_eq!(a, rect(0, 0, 49, 50));
-    assert_eq!(seam, rect(49, 0, 1, 50));
-    assert_eq!(b, rect(50, 0, 50, 50));
-}
-
-#[test]
-fn split_rect_vertical_half() {
-    // height=50 → usable=49, h1 = (49*0.5) as u16 = 24 (truncates, not rounds).
-    let (a, seam, b) = split_rect(rect(0, 0, 100, 50), true, 0.5, true);
-    assert_eq!(a, rect(0, 0, 100, 24));
-    assert_eq!(seam, rect(0, 24, 100, 1));
-    assert_eq!(b, rect(0, 25, 100, 25));
-}
-
-#[test]
-fn split_rect_ratio_zero_gives_remainder_to_second() {
-    // ratio 0.0 → first gets nothing; second gets everything but the seam.
-    let (a, seam, b) = split_rect(rect(0, 0, 100, 50), false, 0.0, true);
-    assert_eq!(a.width, 0);
-    assert_eq!(seam.width, 1);
-    assert_eq!(b.width, 99);
-}
-
-#[test]
-fn split_rect_ratio_one_gives_remainder_to_first() {
-    // ratio 1.0 → first gets everything but the seam; second gets nothing.
-    let (a, seam, b) = split_rect(rect(0, 0, 100, 50), false, 1.0, true);
-    assert_eq!(a.width, 99);
-    assert_eq!(seam.width, 1);
-    assert_eq!(b.width, 0);
-}
-
-#[test]
-fn split_rect_zero_area_no_panic() {
-    let (a, seam, b) = split_rect(rect(0, 0, 0, 0), false, 0.5, true);
-    assert_eq!(a.width, 0);
-    assert_eq!(seam.width, 0);
-    assert_eq!(b.width, 0);
-}
-
-#[test]
-fn split_rect_children_and_seam_tile_parent() {
-    let area = rect(10, 5, 100, 40);
-    let (a, seam, b) = split_rect(area, false, 0.3, true);
-    assert_eq!(a.x, area.x);
-    assert_eq!(seam.x, a.x + a.width);
-    assert_eq!(b.x, seam.x + seam.width);
-    assert_eq!(a.width + seam.width + b.width, area.width);
-    assert_eq!(a.height, area.height);
-    assert_eq!(seam.height, area.height);
-    assert_eq!(b.height, area.height);
-}
-
-#[test]
-fn split_rect_no_reserve_seam_tiles_edge_to_edge() {
-    // pane-dividers=false: no seam reserved, children tile the parent exactly.
-    let area = rect(10, 5, 100, 40);
-    let (a, seam, b) = split_rect(area, false, 0.3, false);
-    assert_eq!(seam.width, 0);
-    assert_eq!(a.x, area.x);
-    assert_eq!(b.x, a.x + a.width);
-    assert_eq!(a.width + b.width, area.width);
-}
-
 // ── LayoutTree ───────────────────────────────────────────────────────
+
+fn width_split(members: Vec<LayoutTree>) -> LayoutTree {
+    LayoutTree::split(Direction::Horizontal, members)
+}
+
+fn height_split(members: Vec<LayoutTree>) -> LayoutTree {
+    LayoutTree::split(Direction::Vertical, members)
+}
+
+fn width_split_of_three(a: PaneId, b: PaneId, c: PaneId) -> LayoutTree {
+    width_split(vec![
+        LayoutTree::Leaf(a),
+        LayoutTree::Leaf(b),
+        LayoutTree::Leaf(c),
+    ])
+}
+
+fn width_split_of_four(a: PaneId, b: PaneId, c: PaneId, d: PaneId) -> LayoutTree {
+    width_split(vec![
+        LayoutTree::Leaf(a),
+        LayoutTree::Leaf(b),
+        LayoutTree::Leaf(c),
+        LayoutTree::Leaf(d),
+    ])
+}
+
+/// `top` stacked above `bottom`.
+fn height_split_of_two(top: PaneId, bottom: PaneId) -> LayoutTree {
+    height_split(vec![LayoutTree::Leaf(top), LayoutTree::Leaf(bottom)])
+}
+
+/// Every leaf's rect in `area`, with dividers.
+fn rects(tree: &LayoutTree, area: Rect) -> Vec<(PaneId, Rect)> {
+    let mut out = Vec::new();
+    tree.collect_rects_into(area, true, &mut out);
+    out
+}
+
+fn rect_of(tree: &LayoutTree, pid: PaneId, area: Rect) -> Rect {
+    tree.find_rect(pid, area, true).expect("a leaf of the tree")
+}
 
 #[test]
 fn layout_tree_leaf_returns_single_rect() {
     let tree = LayoutTree::Leaf(PaneId::default());
-    let mut out = Vec::new();
-    tree.collect_rects_into(rect(0, 0, 80, 24), true, &mut out);
-    assert_eq!(out.len(), 1);
-    assert_eq!(out[0].1, rect(0, 0, 80, 24));
+    assert_eq!(
+        rects(&tree, rect(0, 0, 80, 24)),
+        vec![(PaneId::default(), rect(0, 0, 80, 24))]
+    );
 }
 
 #[test]
-fn layout_tree_horizontal_split() {
-    let id_a = PaneId::default();
-    let id_b = PaneId::default();
-    let tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((LayoutTree::Leaf(id_a), LayoutTree::Leaf(id_b))),
-    };
-    let mut out = Vec::new();
-    tree.collect_rects_into(rect(0, 0, 100, 50), true, &mut out);
-    assert_eq!(out.len(), 2);
-    // Seam eats 1 column from the first child; the second child's
-    // geometry is unaffected (see split_rect_horizontal_half).
-    assert_eq!(out[0].1.width, 49);
-    assert_eq!(out[1].1.x, 50);
-    assert_eq!(out[1].1.width, 50);
+fn an_equal_pair_gives_the_seam_and_the_odd_cell_after_the_first_half() {
+    // 100 columns: 1 for the seam, 99 left, the first half rounds down.
+    let [a, b] = hume_core::fresh_ids();
+    let tree = width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)]);
+    let area = rect(0, 0, 100, 50);
+    assert_eq!(
+        rects(&tree, area),
+        vec![(a, rect(0, 0, 49, 50)), (b, rect(50, 0, 50, 50))]
+    );
+    let mut seams = Vec::new();
+    tree.collect_seams_into(area, &mut seams);
+    assert_eq!(seams.len(), 1);
+    assert_eq!(seams[0].rect, rect(49, 0, 1, 50));
+    assert_eq!(seams[0].direction(), Direction::Horizontal);
 }
 
 #[test]
-fn layout_tree_vertical_split() {
-    let tree = LayoutTree::Split {
-        direction: Direction::Vertical,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Leaf(PaneId::default()),
-            LayoutTree::Leaf(PaneId::default()),
-        )),
-    };
-    let mut out = Vec::new();
-    tree.collect_rects_into(rect(0, 0, 100, 50), true, &mut out);
-    assert_eq!(out.len(), 2);
-    // Seam eats 1 row from the first child; the second child's geometry
-    // is unaffected (see split_rect_vertical_half).
-    assert_eq!(out[0].1.height, 24);
-    assert_eq!(out[1].1.y, 25);
-    assert_eq!(out[1].1.height, 25);
+fn an_equal_height_split_divides_the_height() {
+    let [a, b] = hume_core::fresh_ids();
+    assert_eq!(
+        rects(&height_split_of_two(a, b), rect(0, 0, 100, 50)),
+        vec![(a, rect(0, 0, 100, 24)), (b, rect(0, 25, 100, 25))]
+    );
 }
 
 #[test]
-fn layout_tree_no_reserve_seam_children_tile_edge_to_edge() {
-    // pane-dividers=false: no seam between the two panes.
-    let tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Leaf(PaneId::default()),
-            LayoutTree::Leaf(PaneId::default()),
-        )),
-    };
+fn without_dividers_members_tile_edge_to_edge() {
+    let [a, b, c] = hume_core::fresh_ids();
     let mut out = Vec::new();
-    tree.collect_rects_into(rect(0, 0, 100, 50), false, &mut out);
-    assert_eq!(out.len(), 2);
-    assert_eq!(out[0].1.width + out[1].1.width, 100);
-    assert_eq!(out[1].1.x, out[0].1.width);
+    width_split_of_three(a, b, c).collect_rects_into(rect(10, 5, 100, 40), false, &mut out);
+    assert_eq!(
+        out,
+        vec![
+            (a, rect(10, 5, 33, 40)),
+            (b, rect(43, 5, 33, 40)),
+            (c, rect(76, 5, 34, 40)),
+        ]
+    );
+}
+
+#[test]
+fn an_equal_width_split_and_its_seams_tile_the_area_within_a_cell_of_each_other() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let tree = width_split_of_four(a, b, c, d);
+    let area = rect(3, 0, 101, 10);
+    let panes = rects(&tree, area);
+    let mut seams = Vec::new();
+    tree.collect_seams_into(area, &mut seams);
+
+    let mut x = area.x;
+    for (k, (_, pane)) in panes.iter().enumerate() {
+        assert_eq!(pane.x, x, "member {k} starts where the last cell ended");
+        x += pane.width;
+        if let Some(seam) = seams.get(k) {
+            assert_eq!(seam.rect.x, x, "seam {k} follows member {k}");
+            x += 1;
+        }
+    }
+    assert_eq!(x, area.right());
+    let widths: Vec<u16> = panes.iter().map(|(_, r)| r.width).collect();
+    let (min, max) = (
+        widths.iter().copied().fold(u16::MAX, u16::min),
+        widths.iter().copied().fold(0, u16::max),
+    );
+    assert!(max - min <= 1, "widths {widths:?}");
+}
+
+#[test]
+fn a_zero_area_gives_empty_rects() {
+    let [a, b] = hume_core::fresh_ids();
+    let tree = width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)]);
+    for (_, pane) in rects(&tree, rect(0, 0, 0, 0)) {
+        assert_eq!(pane.width, 0);
+    }
+    let mut seams = Vec::new();
+    tree.collect_seams_into(rect(0, 0, 0, 0), &mut seams);
+    assert!(seams.is_empty());
 }
 
 #[test]
@@ -809,78 +802,73 @@ fn find_rect_matches_collect_rects_into_for_each_pane() {
     // coincide with another fresh map's first key, so "unknown" must come
     // from this same call, not a separate one.
     let [id_a, id_b, id_c, unknown] = hume_core::fresh_ids();
-    // A 3-pane tree: (a | (b / c)), a horizontal split whose right side is
-    // itself split vertically.
-    let tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Leaf(id_a),
-            LayoutTree::Split {
-                direction: Direction::Vertical,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(id_b), LayoutTree::Leaf(id_c))),
-            },
-        )),
-    };
+    let tree = width_split(vec![
+        LayoutTree::Leaf(id_a),
+        height_split_of_two(id_b, id_c),
+    ]);
     let area = rect(0, 0, 100, 50);
-    let mut collected = Vec::new();
-    tree.collect_rects_into(area, true, &mut collected);
 
-    for &(pid, expected_rect) in &collected {
+    for (pid, expected_rect) in rects(&tree, area) {
         assert_eq!(
             tree.find_rect(pid, area, true),
             Some(expected_rect),
             "find_rect must agree with collect_rects_into for {pid:?}"
         );
     }
-    // A pid absent from the tree finds nothing.
     assert_eq!(tree.find_rect(unknown, area, true), None);
+}
+
+#[test]
+fn collect_seams_leaf_has_no_seams() {
+    let tree = LayoutTree::Leaf(PaneId::default());
+    let mut out = Vec::new();
+    tree.collect_seams_into(rect(0, 0, 80, 24), &mut out);
+    assert!(out.is_empty());
+}
+
+#[test]
+fn collect_seams_yields_one_seam_between_each_two_members() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let tree = width_split(vec![
+        LayoutTree::Leaf(a),
+        height_split_of_two(b, c),
+        LayoutTree::Leaf(d),
+    ]);
+    let mut out = Vec::new();
+    tree.collect_seams_into(rect(0, 0, 100, 100), &mut out);
+    let directions: Vec<Direction> = out.iter().map(Seam::direction).collect();
+    assert_eq!(
+        directions,
+        vec![
+            Direction::Horizontal,
+            Direction::Horizontal,
+            Direction::Vertical
+        ]
+    );
 }
 
 // ── FocusedLayout ────────────────────────────────────────────────────
 
-fn split(direction: Direction, ratio: f32, a: LayoutTree, b: LayoutTree) -> LayoutTree {
-    LayoutTree::Split {
-        direction,
-        ratio,
-        children: Box::new((a, b)),
-    }
+const AREA: Rect = Rect {
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 50,
+};
+
+fn widths(layout: &FocusedLayout, panes: &[PaneId]) -> Vec<u16> {
+    panes
+        .iter()
+        .map(|&p| rect_of(layout.tree(), p, AREA).width)
+        .collect()
 }
 
-/// `a | b | c` as the nested chain `a | (b | c)`, with equalized ratios.
-fn row_of_three(a: PaneId, b: PaneId, c: PaneId) -> LayoutTree {
-    split(
-        Direction::Horizontal,
-        1.0 / 3.0,
-        LayoutTree::Leaf(a),
-        split(
-            Direction::Horizontal,
-            0.5,
-            LayoutTree::Leaf(b),
-            LayoutTree::Leaf(c),
-        ),
-    )
-}
-
-/// `a | b | c | d` as the nested chain `a | (b | (c | d))`.
-fn row_of_four(a: PaneId, b: PaneId, c: PaneId, d: PaneId) -> LayoutTree {
-    split(
-        Direction::Horizontal,
-        0.25,
-        LayoutTree::Leaf(a),
-        row_of_three(b, c, d),
-    )
-}
-
-/// `top` stacked above `bottom`.
-fn column_of_two(top: PaneId, bottom: PaneId) -> LayoutTree {
-    split(
-        Direction::Vertical,
-        0.5,
-        LayoutTree::Leaf(top),
-        LayoutTree::Leaf(bottom),
-    )
+fn resize(layout: &mut FocusedLayout, axis: Direction, how: Resize, cells: u16) {
+    assert_eq!(
+        layout.resize_focused(AREA, true, axis, how, cells),
+        Ok(()),
+        "setup: the resize moves a seam"
+    );
 }
 
 #[test]
@@ -894,7 +882,7 @@ fn a_new_layout_is_its_pane_alone_and_focused() {
 #[test]
 fn focus_moves_to_a_leaf() {
     let [a, b] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(column_of_two(a, b), a);
+    let mut layout = FocusedLayout::from_parts(height_split_of_two(a, b), a);
 
     layout.focus(b);
 
@@ -905,7 +893,7 @@ fn focus_moves_to_a_leaf() {
 #[should_panic(expected = "a focus target is a leaf of the tree")]
 fn focus_refuses_a_pane_outside_the_tree() {
     let [a, b, missing] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(column_of_two(a, b), a);
+    let mut layout = FocusedLayout::from_parts(height_split_of_two(a, b), a);
 
     layout.focus(missing);
 }
@@ -913,7 +901,7 @@ fn focus_refuses_a_pane_outside_the_tree() {
 #[test]
 fn next_cycled_pane_follows_leaf_order_and_wraps() {
     let [a, b, c] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), a);
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), a);
     assert_eq!(layout.pane_cycled_from_focused(Cycle::Next), Some(b));
 
     layout.focus(c);
@@ -924,7 +912,7 @@ fn next_cycled_pane_follows_leaf_order_and_wraps() {
 #[test]
 fn prev_cycled_pane_follows_reverse_leaf_order_and_wraps() {
     let [a, b, c] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), c);
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), c);
     assert_eq!(layout.pane_cycled_from_focused(Cycle::Prev), Some(b));
 
     layout.focus(a);
@@ -947,23 +935,15 @@ fn cycled_pane_is_none_for_a_sole_pane() {
 #[test]
 fn focused_neighbor_tie_breaks_on_center_distance() {
     let [a, b, c] = hume_core::fresh_ids();
-    let tree = split(
-        Direction::Horizontal,
-        0.5,
-        LayoutTree::Leaf(a),
-        split(
-            Direction::Vertical,
-            0.3,
-            LayoutTree::Leaf(b),
-            LayoutTree::Leaf(c),
-        ),
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![LayoutTree::Leaf(a), height_split_of_two(b, c)]),
+        b,
     );
-    let layout = FocusedLayout::from_parts(tree, a);
+    resize(&mut layout, Direction::Vertical, Resize::Shrink, 10);
+    assert_eq!(rect_of(layout.tree(), b, AREA), rect(50, 0, 50, 14));
+    layout.focus(a);
 
-    assert_eq!(
-        layout.focused_neighbor(rect(0, 0, 100, 50), true, Side::Right),
-        Some(c)
-    );
+    assert_eq!(layout.focused_neighbor(AREA, true, Side::Right), Some(c));
 }
 
 #[test]
@@ -981,92 +961,381 @@ fn split_focused_adds_the_pane_beside_the_focus_and_keeps_focus() {
     let [a, b] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
 
-    let new_pane = layout.split_focused(UnattachedPane::for_test(b), Direction::Vertical);
+    let new_pane =
+        layout.splice_beside_focused(UnattachedPane::for_test(b), Direction::Vertical, None);
 
     assert_eq!(new_pane, b);
-    assert_eq!(layout.tree(), &column_of_two(a, b));
+    assert_eq!(layout.tree(), &height_split_of_two(a, b));
     assert_eq!(layout.focused(), a);
 }
 
 #[test]
-fn rotate_forward_moves_each_pane_one_place_along_its_row() {
+fn a_split_along_a_split_joins_it_after_the_focused_pane() {
     let [a, b, c] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), b);
-    let area = rect(0, 0, 100, 50);
-    let mut before = Vec::new();
-    layout.tree().collect_rects_into(area, true, &mut before);
+    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
+    layout.splice_beside_focused(UnattachedPane::for_test(b), Direction::Horizontal, None);
+    layout.splice_beside_focused(UnattachedPane::for_test(c), Direction::Horizontal, None);
 
-    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
-
-    assert_eq!(layout.tree(), &row_of_three(c, a, b));
-    assert_eq!(layout.focused(), b, "focus stays on the pane it was on");
-    let mut after = Vec::new();
-    layout.tree().collect_rects_into(area, true, &mut after);
-    let member_rects = |v: &[(PaneId, Rect)]| v.iter().map(|&(_, r)| r).collect::<Vec<_>>();
-    assert_eq!(member_rects(&after), member_rects(&before));
+    assert_eq!(layout.tree(), &width_split_of_three(a, c, b));
 }
 
 #[test]
-fn rotate_backward_moves_each_pane_one_place_back_along_its_row() {
+fn a_split_across_a_split_stacks_the_focused_pane_with_the_new_one() {
     let [a, b, c] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), b);
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)]),
+        b,
+    );
+
+    layout.splice_beside_focused(UnattachedPane::for_test(c), Direction::Vertical, None);
+
+    assert_eq!(
+        layout.tree(),
+        &width_split(vec![LayoutTree::Leaf(a), height_split_of_two(b, c)])
+    );
+}
+
+#[test]
+fn a_split_in_a_resized_split_halves_only_the_focused_pane() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)]),
+        a,
+    );
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 10);
+    assert_eq!(widths(&layout, &[a, b]), vec![59, 40]);
+
+    layout.splice_beside_focused(UnattachedPane::for_test(c), Direction::Horizontal, None);
+
+    // The new seam takes a cell of `a`'s 59, and `a` and `c` share the rest.
+    assert_eq!(widths(&layout, &[a, c, b]), vec![29, 29, 40]);
+}
+
+#[test]
+fn a_split_and_a_close_in_a_resized_split_leave_it_as_it_was() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)]),
+        a,
+    );
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 10);
+    let before = layout.tree().clone();
+    let new_pane =
+        layout.splice_beside_focused(UnattachedPane::for_test(c), Direction::Horizontal, None);
+    layout.focus(new_pane);
+
+    let detached = layout.close_focused().expect("three panes");
+
+    assert_eq!(detached.pane_id(), c);
+    assert_eq!(layout.tree(), &before);
+    assert_eq!(
+        layout.focused(),
+        a,
+        "focus goes to the pane that took the space"
+    );
+}
+
+#[test]
+fn closing_the_first_pane_of_a_resized_split_gives_its_space_to_the_next() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), b);
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 6);
+    assert_eq!(widths(&layout, &[a, b, c]), vec![32, 39, 27]);
+    layout.focus(a);
+
+    let detached = layout.close_focused().expect("three panes");
+
+    assert_eq!(detached.pane_id(), a);
+    // `b` takes `a`'s 32 columns and the seam between them; `c` keeps its 27.
+    assert_eq!(widths(&layout, &[b, c]), vec![72, 27]);
+    assert_eq!(layout.focused(), b);
+}
+
+#[test]
+fn a_split_across_a_resized_split_leaves_its_seams() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)]),
+        a,
+    );
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 10);
+    layout.focus(b);
+
+    layout.splice_beside_focused(UnattachedPane::for_test(c), Direction::Vertical, None);
+
+    assert_eq!(widths(&layout, &[a, b, c]), vec![59, 40, 40]);
+}
+
+#[test]
+fn a_split_with_a_share_places_the_seam_in_the_focused_pane_s_space() {
+    let [a, b] = hume_core::fresh_ids();
+    let quarter = SplitShare::from_bits(std::num::NonZeroU32::new(1 << 30).expect("not zero"));
+    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
+
+    layout.splice_beside_focused(
+        UnattachedPane::for_test(b),
+        Direction::Horizontal,
+        Some(quarter),
+    );
+
+    // A quarter of the 99 columns left once the seam takes one, rounded down.
+    assert_eq!(widths(&layout, &[a, b]), vec![24, 75]);
+}
+
+/// A one-pane view on a `width`-column, 25-row terminal, with its screen.
+#[allow(clippy::disallowed_methods)]
+fn one_pane_view(width: u16) -> (EngineView, ScreenLayout) {
+    let (mut view, key) = EngineView::new(Theme::default(), rect(0, 0, width, 25));
+    let bid = view.buffers.insert(());
+    let pane = view.insert_pane(crate::pane::Pane::new(bid));
+    let _placeholder = view.replace_layout(&key, FocusedLayout::new(pane));
+    let screen = view.screen_layout(ChromeRows::default(), true);
+    (view, screen)
+}
+
+/// Split `view`'s focused pane side by side, counting the panes the split
+/// opens.
+fn split_beside(
+    view: &mut EngineView,
+    screen: &ScreenLayout,
+    share: Option<SplitShare>,
+    opened: &mut usize,
+) -> Result<PaneId, SplitTooSmall> {
+    view.split_focused(screen, Direction::Horizontal, share, |view| {
+        *opened += 1;
+        let bid = view.buffers.insert(());
+        view.insert_pane(crate::pane::Pane::new(bid))
+    })
+}
+
+#[test]
+fn a_split_that_fits_opens_its_pane_beside_the_focus() {
+    let (mut view, screen) = one_pane_view(80);
+    let focus = view.focused_pane();
+    let mut opened = 0;
+
+    let new_pane = split_beside(&mut view, &screen, None, &mut opened).expect("80 columns fit");
+
+    assert_eq!(opened, 1);
+    assert_eq!(
+        view.layout(),
+        &width_split(vec![LayoutTree::Leaf(focus), LayoutTree::Leaf(new_pane)])
+    );
+    assert_eq!(view.focused_pane(), focus);
+}
+
+#[test]
+fn a_split_too_small_for_two_panes_opens_nothing() {
+    // Two 10-column panes and a seam need 21 columns.
+    let (mut view, screen) = one_pane_view(20);
+    let before = view.layout().clone();
+    let mut opened = 0;
+
+    assert_eq!(
+        split_beside(&mut view, &screen, None, &mut opened),
+        Err(SplitTooSmall)
+    );
+    assert_eq!(opened, 0);
+    assert_eq!(view.layout(), &before);
+}
+
+#[test]
+fn a_share_that_leaves_a_pane_no_room_is_refused() {
+    let (mut view, screen) = one_pane_view(80);
+    let mut opened = 0;
+    let at = |bits| {
+        Some(SplitShare::from_bits(
+            std::num::NonZeroU32::new(bits).expect("not zero"),
+        ))
+    };
+    // A share of 1 puts the seam at the start of the focused pane, and the
+    // largest one at its end.
+    for share in [at(1), at(u32::MAX)] {
+        assert_eq!(
+            split_beside(&mut view, &screen, share, &mut opened),
+            Err(SplitTooSmall)
+        );
+    }
+    assert_eq!(opened, 0);
+}
+
+#[test]
+fn split_and_close_in_an_equal_split_keep_it_equal() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)]),
+        b,
+    );
+    layout.splice_beside_focused(UnattachedPane::for_test(c), Direction::Horizontal, None);
+    assert_eq!(widths(&layout, &[a, b, c]), vec![32, 33, 33]);
+    layout.focus(c);
+
+    let detached = layout.close_focused().expect("three panes");
+
+    assert_eq!(detached.pane_id(), c);
+    assert_eq!(
+        layout.tree(),
+        &width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)])
+    );
+    assert_eq!(layout.focused(), b);
+}
+
+#[test]
+fn a_perpendicular_member_counts_as_one_share_of_an_equal_split() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![LayoutTree::Leaf(a), height_split_of_two(b, c)]),
+        a,
+    );
+
+    layout.splice_beside_focused(UnattachedPane::for_test(d), Direction::Horizontal, None);
+
+    assert_eq!(widths(&layout, &[a, d, b, c]), vec![32, 33, 33, 33]);
+}
+
+#[test]
+fn close_focused_collapses_the_parent_onto_the_sibling() {
+    let [a, b] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(height_split_of_two(a, b), a);
+    let detached = layout.close_focused().expect("two panes");
+    assert_eq!(detached.pane_id(), a);
+    assert_eq!(layout.tree(), &LayoutTree::Leaf(b));
+    assert_eq!(layout.focused(), b);
+}
+
+#[test]
+fn close_focused_moves_focus_to_the_neighbour_subtree_leftmost_leaf() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![LayoutTree::Leaf(a), height_split_of_two(b, c)]),
+        a,
+    );
+    let detached = layout.close_focused().expect("three panes");
+    assert_eq!(detached.pane_id(), a);
+    assert_eq!(layout.tree(), &height_split_of_two(b, c));
+    assert_eq!(layout.focused(), b);
+}
+
+#[test]
+fn close_focused_refuses_a_sole_pane() {
+    let [a] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
+    assert_eq!(layout.close_focused().err(), Some(SinglePane));
+    assert_eq!(layout.tree(), &LayoutTree::Leaf(a));
+    assert_eq!(layout.focused(), a);
+}
+
+/// `a | (b over (c | d))`, focused on `b`.
+fn width_split_around_a_height_split_holding_a_width_split(
+    a: PaneId,
+    b: PaneId,
+    c: PaneId,
+    d: PaneId,
+) -> FocusedLayout {
+    FocusedLayout::from_parts(
+        width_split(vec![
+            LayoutTree::Leaf(a),
+            height_split(vec![
+                LayoutTree::Leaf(b),
+                width_split(vec![LayoutTree::Leaf(c), LayoutTree::Leaf(d)]),
+            ]),
+        ]),
+        b,
+    )
+}
+
+#[test]
+fn a_collapse_into_a_split_of_the_same_direction_joins_it() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let mut layout = width_split_around_a_height_split_holding_a_width_split(a, b, c, d);
+
+    let detached = layout.close_focused().expect("four panes");
+
+    assert_eq!(detached.pane_id(), b);
+    assert_eq!(layout.tree(), &width_split_of_three(a, c, d));
+    assert_eq!(layout.focused(), c);
+}
+
+#[test]
+fn a_collapse_into_a_resized_split_keeps_every_seam_where_it_was() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let mut layout = width_split_around_a_height_split_holding_a_width_split(a, b, c, d);
+    layout.focus(a);
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 10);
+    assert_eq!(widths(&layout, &[a, c, d]), vec![59, 19, 20]);
+    layout.focus(b);
+
+    let detached = layout.close_focused().expect("four panes");
+
+    assert_eq!(detached.pane_id(), b);
+    // Each seam keeps its fraction of the split. The split now has one more
+    // seam, so one column less to share, and `a` ends a column sooner.
+    assert_eq!(widths(&layout, &[a, c, d]), vec![58, 20, 20]);
+}
+
+#[test]
+fn rotate_forward_moves_each_pane_one_place_along_its_split() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), b);
+
+    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
+
+    assert_eq!(layout.tree(), &width_split_of_three(c, a, b));
+    assert_eq!(layout.focused(), b, "focus stays on the pane it was on");
+}
+
+#[test]
+fn rotate_keeps_each_place_s_size_in_a_resized_row() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), a);
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 9);
+    let member_rects = |layout: &FocusedLayout| {
+        rects(layout.tree(), AREA)
+            .into_iter()
+            .map(|(_, r)| r)
+            .collect::<Vec<_>>()
+    };
+    let before = member_rects(&layout);
+
+    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
+
+    assert_eq!(member_rects(&layout), before);
+    assert_eq!(rect_of(layout.tree(), c, AREA), before[0]);
+}
+
+#[test]
+fn rotate_backward_moves_each_pane_one_place_back_along_its_split() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), b);
     assert_eq!(layout.rotate_focused(Rotation::Backward, 1), Ok(()));
-    assert_eq!(layout.tree(), &row_of_three(b, c, a));
+    assert_eq!(layout.tree(), &width_split_of_three(b, c, a));
 }
 
 #[test]
 fn rotate_by_a_count_moves_each_pane_that_many_places() {
     let [a, b, c, d] = hume_core::fresh_ids();
-    let mut forward = FocusedLayout::from_parts(row_of_four(a, b, c, d), a);
+    let mut forward = FocusedLayout::from_parts(width_split_of_four(a, b, c, d), a);
     assert_eq!(forward.rotate_focused(Rotation::Forward, 2), Ok(()));
-    assert_eq!(forward.tree(), &row_of_four(c, d, a, b));
+    assert_eq!(forward.tree(), &width_split_of_four(c, d, a, b));
 
-    let mut backward = FocusedLayout::from_parts(row_of_four(a, b, c, d), a);
+    let mut backward = FocusedLayout::from_parts(width_split_of_four(a, b, c, d), a);
     assert_eq!(backward.rotate_focused(Rotation::Backward, 3), Ok(()));
-    assert_eq!(backward.tree(), &row_of_four(d, a, b, c));
+    assert_eq!(backward.tree(), &width_split_of_four(d, a, b, c));
 }
 
 #[test]
-fn rotate_by_the_member_count_leaves_the_row_unchanged() {
+fn rotate_by_the_member_count_leaves_the_split_unchanged() {
     let [a, b, c] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), a);
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), a);
     assert_eq!(layout.rotate_focused(Rotation::Forward, 3), Ok(()));
-    assert_eq!(layout.tree(), &row_of_three(a, b, c));
-}
-
-#[test]
-fn rotate_treats_a_left_nested_chain_as_one_row() {
-    let [a, b, c] = hume_core::fresh_ids();
-    let left_nested = |x, y, z| {
-        split(
-            Direction::Horizontal,
-            2.0 / 3.0,
-            split(
-                Direction::Horizontal,
-                0.5,
-                LayoutTree::Leaf(x),
-                LayoutTree::Leaf(y),
-            ),
-            LayoutTree::Leaf(z),
-        )
-    };
-    let mut layout = FocusedLayout::from_parts(left_nested(a, b, c), c);
-
-    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
-
-    assert_eq!(layout.tree(), &left_nested(c, a, b));
+    assert_eq!(layout.tree(), &width_split_of_three(a, b, c));
 }
 
 #[test]
 fn rotate_moves_a_perpendicular_split_as_one_member() {
     let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(
-        split(
-            Direction::Horizontal,
-            0.5,
-            LayoutTree::Leaf(a),
-            column_of_two(b, c),
-        ),
+        width_split(vec![LayoutTree::Leaf(a), height_split_of_two(b, c)]),
         a,
     );
 
@@ -1074,25 +1343,15 @@ fn rotate_moves_a_perpendicular_split_as_one_member() {
 
     assert_eq!(
         layout.tree(),
-        &split(
-            Direction::Horizontal,
-            0.5,
-            column_of_two(b, c),
-            LayoutTree::Leaf(a)
-        )
+        &width_split(vec![height_split_of_two(b, c), LayoutTree::Leaf(a)])
     );
 }
 
 #[test]
-fn rotate_inside_a_perpendicular_split_rotates_only_that_column() {
+fn rotate_inside_a_perpendicular_split_rotates_only_that_split() {
     let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::from_parts(
-        split(
-            Direction::Horizontal,
-            0.5,
-            LayoutTree::Leaf(a),
-            column_of_two(b, c),
-        ),
+        width_split(vec![LayoutTree::Leaf(a), height_split_of_two(b, c)]),
         b,
     );
 
@@ -1100,41 +1359,22 @@ fn rotate_inside_a_perpendicular_split_rotates_only_that_column() {
 
     assert_eq!(
         layout.tree(),
-        &split(
-            Direction::Horizontal,
-            0.5,
-            LayoutTree::Leaf(a),
-            column_of_two(c, b)
-        )
+        &width_split(vec![LayoutTree::Leaf(a), height_split_of_two(c, b)])
     );
 }
 
 #[test]
-fn rotate_two_levels_below_a_perpendicular_split_rotates_only_the_innermost_row() {
+fn rotate_two_levels_below_a_perpendicular_split_rotates_only_the_innermost_split() {
     let [a, b, c, d] = hume_core::fresh_ids();
-    let nested = |x, y| {
-        split(
-            Direction::Horizontal,
-            0.5,
-            LayoutTree::Leaf(a),
-            split(
-                Direction::Vertical,
-                0.5,
-                LayoutTree::Leaf(b),
-                split(
-                    Direction::Horizontal,
-                    0.5,
-                    LayoutTree::Leaf(x),
-                    LayoutTree::Leaf(y),
-                ),
-            ),
-        )
-    };
-    let mut layout = FocusedLayout::from_parts(nested(c, d), c);
+    let mut layout = width_split_around_a_height_split_holding_a_width_split(a, b, c, d);
+    layout.focus(c);
 
     assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
 
-    assert_eq!(layout.tree(), &nested(d, c));
+    assert_eq!(
+        layout.tree(),
+        width_split_around_a_height_split_holding_a_width_split(a, b, d, c).tree()
+    );
 }
 
 #[test]
@@ -1145,51 +1385,371 @@ fn rotate_refuses_a_sole_pane() {
     assert_eq!(layout.tree(), &LayoutTree::Leaf(a));
 }
 
-// ── Seams ────────────────────────────────────────────────────────────
-
 #[test]
-fn collect_seams_leaf_has_no_seams() {
-    let tree = LayoutTree::Leaf(PaneId::default());
-    let mut out = Vec::new();
-    tree.collect_seams_into(rect(0, 0, 80, 24), &mut out);
-    assert!(out.is_empty());
-}
-
-#[test]
-fn collect_seams_one_split_yields_one_seam() {
-    let tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Leaf(PaneId::default()),
-            LayoutTree::Leaf(PaneId::default()),
-        )),
-    };
-    let mut out = Vec::new();
-    tree.collect_seams_into(rect(0, 0, 100, 50), &mut out);
-    assert_eq!(out.len(), 1);
-    assert_eq!(out[0].rect, rect(49, 0, 1, 50));
-    assert_eq!(out[0].direction, Direction::Horizontal);
-}
-
-#[test]
-fn collect_seams_nested_splits_yield_one_seam_per_split_node() {
+fn growing_a_pane_takes_cells_from_the_next_one_only() {
     let [a, b, c] = hume_core::fresh_ids();
-    let tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Leaf(a),
-            LayoutTree::Split {
-                direction: Direction::Vertical,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-            },
-        )),
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), b);
+    assert_eq!(widths(&layout, &[a, b, c]), vec![32, 33, 33]);
+
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 5);
+
+    assert_eq!(widths(&layout, &[a, b, c]), vec![32, 38, 28]);
+}
+
+#[test]
+fn resizing_the_last_pane_moves_the_seam_before_it() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), c);
+
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 3);
+    assert_eq!(widths(&layout, &[a, b, c]), vec![32, 30, 36]);
+
+    resize(&mut layout, Direction::Horizontal, Resize::Shrink, 7);
+    assert_eq!(widths(&layout, &[a, b, c]), vec![32, 37, 29]);
+}
+
+#[test]
+fn a_resize_stops_at_the_neighbour_s_minimum_size() {
+    let [a, b] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(
+        width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(b)]),
+        a,
+    );
+
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 1000);
+    assert_eq!(widths(&layout, &[a, b]), vec![89, 10]);
+
+    assert_eq!(
+        layout.resize_focused(AREA, true, Direction::Horizontal, Resize::Grow, 1),
+        Err(ResizeRefused::AtLimit)
+    );
+    resize(&mut layout, Direction::Horizontal, Resize::Shrink, 1000);
+    assert_eq!(widths(&layout, &[a, b]), vec![10, 89]);
+}
+
+#[test]
+fn a_perpendicular_member_shrinks_no_further_than_its_widest_minimum() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let mut layout = width_split_around_a_height_split_holding_a_width_split(a, b, c, d);
+    layout.focus(a);
+
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 1000);
+
+    // The height split's bottom member needs two 10-column panes and a seam.
+    assert_eq!(widths(&layout, &[a, b, c, d]), vec![78, 21, 10, 10]);
+}
+
+/// `c` keeps 15 of the inner width split's 49 usable columns. At a height
+/// split width `w` it gets `⌊(w − 1) · 15 / 49⌋` columns, which stays at
+/// least 10 down to `w = 34`, leaving `a` 99 − 34 columns.
+#[test]
+fn a_resize_stops_where_a_pane_of_a_resized_nested_split_reaches_its_minimum() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let mut layout = width_split_around_a_height_split_holding_a_width_split(a, b, c, d);
+    layout.focus(c);
+    resize(&mut layout, Direction::Horizontal, Resize::Shrink, 9);
+    assert_eq!(widths(&layout, &[c, d]), vec![15, 34], "setup");
+    layout.focus(a);
+
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 1000);
+
+    assert_eq!(widths(&layout, &[a, c, d]), vec![65, 10, 23]);
+}
+
+#[test]
+fn dragging_a_divider_stops_where_a_pane_of_a_resized_nested_split_reaches_its_minimum() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let mut layout = width_split_around_a_height_split_holding_a_width_split(a, b, c, d);
+    layout.focus(c);
+    resize(&mut layout, Direction::Horizontal, Resize::Shrink, 9);
+    let mut seams = Vec::new();
+    layout.tree().collect_seams_into(AREA, &mut seams);
+    let outer = seams
+        .iter()
+        .find(|seam| seam.rect == rect(49, 0, 1, 50))
+        .expect("setup: the divider beside a");
+
+    assert_eq!(
+        layout.move_seam(outer.handle, AREA, true, Position::new(90, 7)),
+        Ok(())
+    );
+
+    assert_eq!(widths(&layout, &[a, c, d]), vec![65, 10, 23]);
+    seams.clear();
+    layout.tree().collect_seams_into(AREA, &mut seams);
+    assert!(seams.iter().any(|seam| seam.rect == rect(65, 0, 1, 50)));
+}
+
+/// Every split, resize and divider drag on a few layouts, equal and placed,
+/// nested on either axis: afterwards each pane is at least 10 columns by 3
+/// rows, or no smaller than it was.
+#[test]
+fn no_split_resize_or_drag_shrinks_a_pane_below_its_minimum() {
+    let ids: [PaneId; 12] = hume_core::fresh_ids();
+    let [a, b, c, d, new, five @ ..] = ids;
+    let layouts: [&dyn Fn() -> FocusedLayout; 4] = [
+        &|| FocusedLayout::from_parts(width_split_of_three(a, b, c), a),
+        &|| {
+            let mut layout = width_split_around_a_height_split_holding_a_width_split(a, b, c, d);
+            layout.focus(c);
+            resize(&mut layout, Direction::Horizontal, Resize::Shrink, 9);
+            layout
+        },
+        &|| {
+            let mut layout = FocusedLayout::from_parts(
+                height_split(vec![
+                    LayoutTree::Leaf(a),
+                    width_split(vec![LayoutTree::Leaf(b), height_split_of_two(c, d)]),
+                ]),
+                c,
+            );
+            resize(&mut layout, Direction::Vertical, Resize::Shrink, 7);
+            layout
+        },
+        &|| {
+            let mut layout = width_split_around_a_height_split_holding_five(five);
+            resize(&mut layout, Direction::Horizontal, Resize::Shrink, 10);
+            layout
+        },
+    ];
+    let keeps_minimums = |before: &[(PaneId, Rect)], after: &[(PaneId, Rect)], what: &str| {
+        for &(pid, now) in after {
+            let was = before.iter().find(|&&(p, _)| p == pid).map(|&(_, r)| r);
+            let width_ok = now.width >= 10 || was.is_some_and(|was| now.width >= was.width);
+            let height_ok = now.height >= 3 || was.is_some_and(|was| now.height >= was.height);
+            assert!(
+                width_ok && height_ok,
+                "{what}: {pid:?} was {was:?}, is {now:?}"
+            );
+        }
     };
-    let mut out = Vec::new();
-    tree.collect_seams_into(rect(0, 0, 100, 100), &mut out);
-    assert_eq!(out.len(), 2, "one seam per split node: root + nested");
+    let axes = [Direction::Horizontal, Direction::Vertical];
+    for make in layouts {
+        let panes = make().tree().leaves();
+        for &pane in &panes {
+            for axis in axes {
+                for how in [Resize::Grow, Resize::Shrink] {
+                    let mut layout = make();
+                    let before = rects(layout.tree(), AREA);
+                    layout.focus(pane);
+                    let _ = layout.resize_focused(AREA, true, axis, how, 1000);
+                    let what = format!("resize {pane:?} {axis:?} {how:?}");
+                    keeps_minimums(&before, &rects(layout.tree(), AREA), &what);
+                }
+                let mut layout = make();
+                let before = rects(layout.tree(), AREA);
+                layout.focus(pane);
+                if layout.split_fits(AREA, true, axis, None) {
+                    layout.splice_beside_focused(UnattachedPane::for_test(new), axis, None);
+                }
+                let what = format!("split {pane:?} {axis:?}");
+                keeps_minimums(&before, &rects(layout.tree(), AREA), &what);
+            }
+        }
+        let mut seams = Vec::new();
+        make().tree().collect_seams_into(AREA, &mut seams);
+        for seam in seams {
+            for to in [Position::new(0, 0), Position::new(99, 49)] {
+                let mut layout = make();
+                let before = rects(layout.tree(), AREA);
+                layout
+                    .move_seam(seam.handle, AREA, true, to)
+                    .expect("a seam of the layout");
+                let what = format!("drag {:?} to {to:?}", seam.rect);
+                keeps_minimums(&before, &rects(layout.tree(), AREA), &what);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_split_whose_share_lands_on_a_seam_is_refused() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), b);
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 5);
+    let share = SplitShare::from_bits(std::num::NonZeroU32::MIN);
+
+    assert!(!layout.split_fits(AREA, true, Direction::Horizontal, Some(share)));
+}
+
+#[test]
+fn a_resize_moves_a_seam_of_the_innermost_split_holding_the_pane() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let mut layout = width_split_around_a_height_split_holding_a_width_split(a, b, c, d);
+    let wa = widths(&layout, &[a])[0];
+    layout.focus(c);
+
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 4);
+
+    assert_eq!(widths(&layout, &[a])[0], wa);
+    assert_eq!(widths(&layout, &[c, d]), vec![28, 21]);
+}
+
+/// `a | (b over five panes side by side)`, focused on `a`.
+fn width_split_around_a_height_split_holding_five(ids: [PaneId; 7]) -> FocusedLayout {
+    let [a, b, row @ ..] = ids;
+    FocusedLayout::from_parts(
+        width_split(vec![
+            LayoutTree::Leaf(a),
+            height_split(vec![
+                LayoutTree::Leaf(b),
+                width_split(row.map(LayoutTree::Leaf).to_vec()),
+            ]),
+        ]),
+        a,
+    )
+}
+
+#[test]
+fn growing_a_pane_never_shrinks_a_pane_inside_it() {
+    let ids: [PaneId; 7] = hume_core::fresh_ids();
+    let [a, inside @ ..] = ids;
+    let mut layout = width_split_around_a_height_split_holding_five(ids);
+    resize(&mut layout, Direction::Horizontal, Resize::Shrink, 1);
+    let before = widths(&layout, &inside);
+
+    let resized = layout.resize_focused(AREA, true, Direction::Horizontal, Resize::Shrink, 1);
+
+    assert_eq!(resized, Ok(()));
+    assert_eq!(widths(&layout, &[a]), vec![47]);
+    let after = widths(&layout, &inside);
+    assert!(
+        before.iter().zip(&after).all(|(was, now)| now >= was),
+        "{before:?} became {after:?}"
+    );
+}
+
+/// A 120-column screen: `a` gets 59 of the 119 columns left by the seam,
+/// and the row of five gets the other 60 less its four seams.
+const WIDE: Rect = Rect {
+    x: 0,
+    y: 0,
+    width: 120,
+    height: 30,
+};
+
+fn widths_in(area: Rect, layout: &FocusedLayout, panes: &[PaneId]) -> Vec<u16> {
+    panes
+        .iter()
+        .map(|&p| rect_of(layout.tree(), p, area).width)
+        .collect()
+}
+
+#[test]
+fn narrowing_a_pane_widens_one_pane_of_the_row_beside_it_per_column() {
+    let ids: [PaneId; 7] = hume_core::fresh_ids();
+    let [a, _, row @ ..] = ids;
+    let mut layout = width_split_around_a_height_split_holding_five(ids);
+    assert_eq!(widths_in(WIDE, &layout, &[a]), vec![59]);
+    assert_eq!(widths_in(WIDE, &layout, &row), vec![11, 11, 11, 11, 12]);
+
+    for step in 1..=12 {
+        let before = widths_in(WIDE, &layout, &row);
+        let resized = layout.resize_focused(WIDE, true, Direction::Horizontal, Resize::Shrink, 1);
+
+        assert_eq!(resized, Ok(()), "step {step}");
+        assert_eq!(
+            widths_in(WIDE, &layout, &[a]),
+            vec![59 - step],
+            "step {step}"
+        );
+        let after = widths_in(WIDE, &layout, &row);
+        let gains: Vec<i32> = before
+            .iter()
+            .zip(&after)
+            .map(|(&was, &now)| i32::from(now) - i32::from(was))
+            .collect();
+        assert_eq!(
+            gains.iter().filter(|&&gain| gain == 1).count(),
+            1,
+            "step {step}: {gains:?}"
+        );
+        assert!(
+            gains.iter().all(|&gain| gain >= 0),
+            "step {step}: {gains:?}"
+        );
+    }
+    assert_eq!(widths_in(WIDE, &layout, &row), vec![13, 13, 14, 14, 14]);
+}
+
+#[test]
+fn widening_a_pane_stops_when_every_pane_of_the_row_beside_it_is_at_its_minimum() {
+    let ids: [PaneId; 7] = hume_core::fresh_ids();
+    let [a, _, row @ ..] = ids;
+    let mut layout = width_split_around_a_height_split_holding_five(ids);
+
+    let resized = layout.resize_focused(WIDE, true, Direction::Horizontal, Resize::Grow, 40);
+
+    assert_eq!(resized, Ok(()));
+    // Five 10-column panes and their four seams leave `a` 119 - 54 columns.
+    assert_eq!(widths_in(WIDE, &layout, &row), vec![10; 5]);
+    assert_eq!(widths_in(WIDE, &layout, &[a]), vec![65]);
+    assert_eq!(
+        layout.resize_focused(WIDE, true, Direction::Horizontal, Resize::Grow, 1),
+        Err(ResizeRefused::AtLimit)
+    );
+}
+
+#[test]
+fn a_resize_with_no_split_on_its_axis_is_refused() {
+    let [a, b] = hume_core::fresh_ids();
+    let mut sole = FocusedLayout::new(UnattachedPane::for_test(a));
+    assert_eq!(
+        sole.resize_focused(AREA, true, Direction::Horizontal, Resize::Grow, 1),
+        Err(ResizeRefused::NoNeighbor)
+    );
+    let mut stacked = FocusedLayout::from_parts(height_split_of_two(a, b), a);
+    assert_eq!(
+        stacked.resize_focused(AREA, true, Direction::Horizontal, Resize::Grow, 1),
+        Err(ResizeRefused::NoNeighbor)
+    );
+}
+
+#[test]
+fn equalize_spreads_every_seam_evenly_again() {
+    let [a, b, c, d] = hume_core::fresh_ids();
+    let mut layout = width_split_around_a_height_split_holding_a_width_split(a, b, c, d);
+    let equal = layout.tree().clone();
+    resize(&mut layout, Direction::Vertical, Resize::Grow, 5);
+    layout.focus(a);
+    resize(&mut layout, Direction::Horizontal, Resize::Grow, 5);
+
+    layout.equalize();
+
+    assert_eq!(layout.tree(), &equal);
+}
+
+#[test]
+fn moving_a_seam_lands_it_on_the_cell_and_moves_no_other() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), a);
+    let mut seams = Vec::new();
+    layout.tree().collect_seams_into(AREA, &mut seams);
+    assert_eq!(seams.len(), 2);
+
+    assert_eq!(
+        layout.move_seam(seams[1].handle, AREA, true, Position::new(80, 7)),
+        Ok(())
+    );
+
+    assert_eq!(rect_of(layout.tree(), c, AREA).x, 81);
+    assert_eq!(widths(&layout, &[a, b, c]), vec![32, 47, 19]);
+}
+
+#[test]
+fn a_seam_handle_does_not_resolve_between_panes_that_are_not_adjacent() {
+    let [a, b, c] = hume_core::fresh_ids();
+    let mut layout = FocusedLayout::from_parts(width_split_of_three(a, b, c), b);
+    let mut seams = Vec::new();
+    layout.tree().collect_seams_into(AREA, &mut seams);
+    layout
+        .rotate_focused(Rotation::Backward, 1)
+        .expect("three panes");
+
+    assert_eq!(
+        layout.move_seam(seams[0].handle, AREA, true, Position::new(40, 7)),
+        Err(StaleSeam)
+    );
 }
 
 #[test]
@@ -1326,24 +1886,14 @@ fn junction_glyph_resolves_every_reachable_mask() {
 #[test]
 fn collect_seam_arms_t_junction() {
     // A over (B|C): the seam below A meets the seam between B and C in a
-    // T. Root split is vertical (height split, ratio 0.5) over a 100x100
-    // area, landing the horizontal seam at row 49 (see
-    // split_rect_vertical_half); the nested horizontal split of the
-    // 100x50 bottom half lands its vertical seam at column 49 (see
-    // split_rect_horizontal_half applied to a 100-wide area).
+    // T. The height split's 100 rows leave 99 to the panes, landing the
+    // horizontal seam at row 49; the 100-wide width split below it lands
+    // its vertical seam at column 49.
     let [a, b, c] = hume_core::fresh_ids();
-    let tree = LayoutTree::Split {
-        direction: Direction::Vertical,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Leaf(a),
-            LayoutTree::Split {
-                direction: Direction::Horizontal,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-            },
-        )),
-    };
+    let tree = height_split(vec![
+        LayoutTree::Leaf(a),
+        width_split(vec![LayoutTree::Leaf(b), LayoutTree::Leaf(c)]),
+    ]);
     let mut seams = Vec::new();
     tree.collect_seams_into(rect(0, 0, 100, 100), &mut seams);
 
@@ -1357,26 +1907,14 @@ fn collect_seam_arms_t_junction() {
 
 #[test]
 fn collect_seam_arms_cross_junction() {
-    // (A|D) over (B|C), both rows split at the same ratio so their
-    // vertical seams land in the same column (49). The horizontal seam
-    // between the rows is sandwiched by both, producing a full cross.
+    // (A|D) over (B|C), both width splits equal so their vertical seams
+    // land in the same column (49). The horizontal seam between them is
+    // sandwiched by both, producing a full cross.
     let [a, b, c, d] = hume_core::fresh_ids();
-    let tree = LayoutTree::Split {
-        direction: Direction::Vertical,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Split {
-                direction: Direction::Horizontal,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(d))),
-            },
-            LayoutTree::Split {
-                direction: Direction::Horizontal,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-            },
-        )),
-    };
+    let tree = height_split(vec![
+        width_split(vec![LayoutTree::Leaf(a), LayoutTree::Leaf(d)]),
+        width_split(vec![LayoutTree::Leaf(b), LayoutTree::Leaf(c)]),
+    ]);
     let mut seams = Vec::new();
     tree.collect_seams_into(rect(0, 0, 100, 100), &mut seams);
 
@@ -1394,18 +1932,10 @@ fn junction_glyph_at_t_and_cross_scenarios_matches_collect_seam_arms() {
     // arms-map output through `junction_glyph` and confirm the resolved
     // glyphs match what a human reading the layout would expect.
     let [a, b, c] = hume_core::fresh_ids();
-    let t_tree = LayoutTree::Split {
-        direction: Direction::Vertical,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Leaf(a),
-            LayoutTree::Split {
-                direction: Direction::Horizontal,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-            },
-        )),
-    };
+    let t_tree = height_split(vec![
+        LayoutTree::Leaf(a),
+        width_split(vec![LayoutTree::Leaf(b), LayoutTree::Leaf(c)]),
+    ]);
     let mut seams = Vec::new();
     t_tree.collect_seams_into(rect(0, 0, 100, 100), &mut seams);
     let mut arms = FxHashMap::default();
@@ -1416,210 +1946,23 @@ fn junction_glyph_at_t_and_cross_scenarios_matches_collect_seam_arms() {
     assert_eq!(junction_glyph(mask), "┬");
 }
 
-#[test]
-fn split_focused_on_a_nested_leaf() {
-    let [a, b, c] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(
-        split(
-            Direction::Horizontal,
-            0.5,
-            LayoutTree::Leaf(a),
-            LayoutTree::Leaf(b),
-        ),
-        b,
-    );
-    layout.split_focused(UnattachedPane::for_test(c), Direction::Vertical);
-    let tree = layout.tree();
-    assert_eq!(
-        tree,
-        &LayoutTree::Split {
-            direction: Direction::Horizontal,
-            ratio: 0.5,
-            children: Box::new((
-                LayoutTree::Leaf(a),
-                LayoutTree::Split {
-                    direction: Direction::Vertical,
-                    ratio: 0.5,
-                    children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-                },
-            )),
-        }
-    );
-
-    let mut out = Vec::new();
-    tree.collect_rects_into(rect(0, 0, 100, 100), true, &mut out);
-    assert_eq!(out.len(), 3);
-}
-
-#[test]
-fn split_focused_twice_gives_equal_thirds() {
-    let [a, b, c] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
-    layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
-    layout.split_focused(UnattachedPane::for_test(c), Direction::Horizontal);
-    let tree = layout.tree();
-
-    // `a` is split again, so it (now paired with `c`) occupies 2 of the 3
-    // slots on the horizontal axis (hence 2/3, not 1/3), with the nested
-    // (a, c) pair itself split 0.5. The two ratios compose to an equal third
-    // apiece, checked below against rendered widths.
-    assert_eq!(
-        tree,
-        &LayoutTree::Split {
-            direction: Direction::Horizontal,
-            ratio: 2.0 / 3.0,
-            children: Box::new((
-                LayoutTree::Split {
-                    direction: Direction::Horizontal,
-                    ratio: 0.5,
-                    children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(c))),
-                },
-                LayoutTree::Leaf(b),
-            )),
-        }
-    );
-
-    // Read the rects back, not the ratios again.
-    let mut out = Vec::new();
-    tree.collect_rects_into(rect(0, 0, 99, 10), false, &mut out);
-    assert_eq!(out.len(), 3);
-    let widths: Vec<u16> = out.iter().map(|(_, r)| r.width).collect();
-    let min = *widths.iter().min().unwrap();
-    let max = *widths.iter().max().unwrap();
-    assert!(
-        max - min <= 1,
-        "widths {widths:?} not within 1 of each other"
-    );
-}
-
-#[test]
-fn split_focused_counts_perpendicular_subtree_as_one_share() {
-    let [a, b, c, d] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(
-        split(
-            Direction::Horizontal,
-            0.5,
-            LayoutTree::Leaf(a),
-            column_of_two(b, c),
-        ),
-        a,
-    );
-    layout.split_focused(UnattachedPane::for_test(d), Direction::Horizontal);
-    let tree = layout.tree();
-    let LayoutTree::Split { ratio, .. } = tree else {
-        panic!("root must still be a split");
-    };
-    assert_eq!(*ratio, 2.0 / 3.0);
-
-    let mut out = Vec::new();
-    tree.collect_rects_into(rect(0, 0, 99, 10), false, &mut out);
-    let widths: Vec<u16> = out.iter().map(|(_, r)| r.width).collect();
-    let min = *widths.iter().min().unwrap();
-    let max = *widths.iter().max().unwrap();
-    assert!(
-        max - min <= 1,
-        "widths {widths:?} not within 1 of each other"
-    );
-}
-
-#[test]
-fn close_focused_collapses_the_parent_onto_the_sibling() {
-    let [a, b] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(column_of_two(a, b), a);
-    let detached = layout.close_focused().expect("two panes");
-    assert_eq!(detached.pane_id(), a);
-    assert_eq!(layout.tree(), &LayoutTree::Leaf(b));
-    assert_eq!(layout.focused(), b);
-}
-
-#[test]
-fn close_focused_moves_focus_to_the_promoted_subtree_leftmost_leaf() {
-    let [a, b, c] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::from_parts(
-        split(
-            Direction::Horizontal,
-            0.5,
-            LayoutTree::Leaf(a),
-            column_of_two(b, c),
-        ),
-        a,
-    );
-    let detached = layout.close_focused().expect("three panes");
-    assert_eq!(detached.pane_id(), a);
-    assert_eq!(layout.tree(), &column_of_two(b, c));
-    assert_eq!(layout.focused(), b);
-}
-
-#[test]
-fn close_focused_refuses_a_sole_pane() {
-    let [a] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
-    assert_eq!(layout.close_focused().err(), Some(SinglePane));
-    assert_eq!(layout.tree(), &LayoutTree::Leaf(a));
-    assert_eq!(layout.focused(), a);
-}
-
-#[test]
-fn close_focused_equalizes_survivors() {
-    let [a, b, c] = hume_core::fresh_ids();
-    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
-    layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
-    let new_pane = layout.split_focused(UnattachedPane::for_test(c), Direction::Horizontal);
-    layout.focus(new_pane);
-
-    let detached = layout.close_focused().expect("three panes");
-    assert_eq!(detached.pane_id(), c);
-    assert_eq!(layout.focused(), a);
-    assert_eq!(
-        layout.tree(),
-        &split(
-            Direction::Horizontal,
-            0.5,
-            LayoutTree::Leaf(a),
-            LayoutTree::Leaf(b)
-        )
-    );
-}
-
-/// `contains_leaf` must recurse through `Split` nodes, so a leaf nested two
-/// levels down is still found.
+/// `contains_leaf` must recurse through splits, so a leaf nested two levels
+/// down is still found.
 #[test]
 fn contains_leaf_finds_a_leaf_at_any_depth() {
     let [a, b, c, missing] = hume_core::fresh_ids();
-    let tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Leaf(a),
-            LayoutTree::Split {
-                direction: Direction::Vertical,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-            },
-        )),
-    };
+    let tree = width_split(vec![LayoutTree::Leaf(a), height_split_of_two(b, c)]);
     assert!(tree.contains_leaf(a));
     assert!(tree.contains_leaf(c));
     assert!(!tree.contains_leaf(missing));
 }
 
-/// `into_detached` must recurse through `Split` nodes and yield a token for
-/// every nested leaf, not just the top level.
+/// `into_detached` must recurse through splits and yield a token for every
+/// nested leaf, not just the top level.
 #[test]
 fn into_detached_yields_one_token_per_leaf() {
     let [a, b, c] = hume_core::fresh_ids();
-    let tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((
-            LayoutTree::Leaf(a),
-            LayoutTree::Split {
-                direction: Direction::Vertical,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-            },
-        )),
-    };
+    let tree = width_split(vec![LayoutTree::Leaf(a), height_split_of_two(b, c)]);
     let ids: Vec<PaneId> = tree
         .into_detached()
         .into_iter()
@@ -1635,8 +1978,8 @@ fn into_detached_yields_one_token_per_leaf() {
 fn leaves_collects_every_pane_in_a_split_tree() {
     let [a, b, c] = hume_core::fresh_ids();
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
-    layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
-    layout.split_focused(UnattachedPane::for_test(c), Direction::Vertical);
+    layout.splice_beside_focused(UnattachedPane::for_test(b), Direction::Horizontal, None);
+    layout.splice_beside_focused(UnattachedPane::for_test(c), Direction::Vertical, None);
     let tree = layout.tree();
 
     // Order-independent: `leaves` promises a depth-first walk, not a

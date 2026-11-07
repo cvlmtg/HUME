@@ -376,9 +376,8 @@ pub(crate) struct EditorState {
     /// `reset_config_state` re-baselines it, so a reload fires no transition
     /// the fresh hooks never observed.
     pub(super) last_observed_mode: Mode,
-    /// The pane a left-button drag started in, set on mouse-left-down. The
-    /// drag's anchor is that pane's primary selection anchor, read live.
-    pub(super) mouse_drag: Option<PaneId>,
+    /// What a left-button drag in progress moves, set on mouse-left-down.
+    pub(super) mouse_drag: Option<mouse::MouseDrag>,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: AbsolutePath,
     /// The working directory HUME started in, which `session-root`

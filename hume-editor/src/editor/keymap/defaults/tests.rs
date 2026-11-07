@@ -303,3 +303,20 @@ fn pane_focus_prev_is_ctrl_p_shift_p_and_shift_tab_needs_kitty() {
     assert_eq!(&*c.name, "pane-focus-prev");
     assert!(trie.walk(&[key!(BackTab)]).is_none());
 }
+
+#[test]
+fn ctrl_p_resize_keys_bind_the_pane_resize_commands() {
+    let trie = default_normal_keymap();
+    for (second, name) in [
+        (key!('>'), "pane-grow-width"),
+        (key!('<'), "pane-shrink-width"),
+        (key!('+'), "pane-grow-height"),
+        (key!('-'), "pane-shrink-height"),
+        (key!('='), "pane-equalize"),
+    ] {
+        let Some(WalkResult::Leaf(c)) = trie.walk(&[key!(Ctrl + 'p'), second]) else {
+            panic!("Ctrl-p {second:?} should bind to {name}");
+        };
+        assert_eq!(&*c.name, name);
+    }
+}

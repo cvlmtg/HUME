@@ -1,5 +1,5 @@
 use hume_core::Count;
-use hume_engine::pipeline::{Cycle, Direction, EngineView, Rotation, Side};
+use hume_engine::pipeline::{Cycle, Direction, EngineView, Resize, ResizeRefused, Rotation, Side};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
@@ -276,8 +276,8 @@ pub(in crate::editor) fn cmd_close_pane(
     })
 }
 
-/// `Ctrl-p r`: rotate the focused pane's row or column forward by `count`
-/// places, focus staying on the pane it was on.
+/// `Ctrl-p r`: rotate the split the focused pane sits in forward by
+/// `count` places, focus staying on the pane it was on.
 pub(in crate::editor) fn cmd_pane_rotate_forward(
     _state: &mut EditorState,
     view: &mut EngineView,
@@ -306,4 +306,83 @@ fn rotate_focused(
 ) -> Result<(), CommandError> {
     view.rotate_focused(rotation, count.get())
         .map_err(|_| CommandError::transient("no other pane to rotate"))
+}
+
+/// `Ctrl-p >`: widen the focused pane by `count` columns.
+pub(in crate::editor) fn cmd_pane_grow_width(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _fp: FocusedPane,
+    count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    resize_focused(state, view, Direction::Horizontal, Resize::Grow, count)
+}
+
+/// `Ctrl-p <`: narrow the focused pane by `count` columns.
+pub(in crate::editor) fn cmd_pane_shrink_width(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _fp: FocusedPane,
+    count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    resize_focused(state, view, Direction::Horizontal, Resize::Shrink, count)
+}
+
+/// `Ctrl-p +`: make the focused pane `count` rows taller.
+pub(in crate::editor) fn cmd_pane_grow_height(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _fp: FocusedPane,
+    count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    resize_focused(state, view, Direction::Vertical, Resize::Grow, count)
+}
+
+/// `Ctrl-p -`: make the focused pane `count` rows shorter.
+pub(in crate::editor) fn cmd_pane_shrink_height(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _fp: FocusedPane,
+    count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    resize_focused(state, view, Direction::Vertical, Resize::Shrink, count)
+}
+
+fn resize_focused(
+    state: &EditorState,
+    view: &mut EngineView,
+    axis: Direction,
+    resize: Resize,
+    count: Count,
+) -> Result<(), CommandError> {
+    let cells = u16::try_from(count.get()).expect("a count is at most 10 000");
+    let screen = state.screen_layout(view);
+    view.resize_focused(&screen, axis, resize, cells)
+        .map_err(|refused| {
+            CommandError::transient(match (refused, axis, resize) {
+                (ResizeRefused::NoNeighbor, Direction::Horizontal, _) => {
+                    "no pane to the left or right"
+                }
+                (ResizeRefused::NoNeighbor, Direction::Vertical, _) => "no pane above or below",
+                (ResizeRefused::AtLimit, _, Resize::Grow) => "no room to grow the pane",
+                (ResizeRefused::AtLimit, _, Resize::Shrink) => "the pane is at its minimum size",
+            })
+        })
+}
+
+/// `Ctrl-p =`: give every pane of the tab an equal share of its split
+/// again.
+pub(in crate::editor) fn cmd_pane_equalize(
+    _state: &mut EditorState,
+    view: &mut EngineView,
+    _fp: FocusedPane,
+    _count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    view.equalize();
+    Ok(())
 }

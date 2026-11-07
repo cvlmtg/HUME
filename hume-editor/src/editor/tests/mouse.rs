@@ -271,8 +271,8 @@ fn a_wheel_notch_in_a_zero_height_pane_leaves_the_viewport_alone() {
 /// translated into that pane's own rect (subtracting the rect's origin),
 /// not used as if they were already pane-relative.
 ///
-/// Terminal width 100, one real buffer line: `:vsplit` (1-column seam,
-/// `split_rect`'s `0.5` ratio) gives pane A `x ∈ [0, 49)`, pane B
+/// Terminal width 100, one real buffer line: `:vsplit` (1-column seam, an
+/// equal pair) gives pane A `x ∈ [0, 49)`, pane B
 /// `x ∈ [50, 100)`, the same halves `vsplit_sizes_both_panes_from_layout`
 /// (`multi_pane/split_layout.rs`) pins.
 ///
@@ -1074,4 +1074,70 @@ fn a_click_on_a_docked_popup_s_band_dismisses_it_without_moving_the_cursor() {
         head,
         "the click lands on the band the frame drew, not on the pane"
     );
+}
+
+/// `a | b | c` on a 100×25 terminal, 32, 33 and 33 columns wide with the
+/// dividers at columns 32 and 66, focused on `c`.
+fn width_split_of_three_drawn() -> (Editor, [PaneId; 3]) {
+    let mut ed = editor_from("-[h]>ello\n");
+    let a = ed.view.focused_pane();
+    ed.execute_typed("vsplit", None).unwrap();
+    let b = ed.view.focused_pane();
+    ed.execute_typed("vsplit", None).unwrap();
+    let c = ed.view.focused_pane();
+    frame(&mut ed, 100, 25);
+    assert_eq!(widths(&ed, &[a, b, c]), vec![32, 33, 33], "setup");
+    (ed, [a, b, c])
+}
+
+/// Feed `event` after drawing a frame, as the run loop does.
+fn drawn_input(ed: &mut Editor, event: termina::Event) {
+    draw(ed);
+    ed.handle_input(event);
+}
+
+#[test]
+fn dragging_a_divider_moves_that_divider_alone() {
+    let (mut ed, [a, b, c]) = width_split_of_three_drawn();
+
+    drawn_input(&mut ed, mouse_left_down(66, 3));
+    drawn_input(&mut ed, mouse_drag(72, 3));
+    drawn_input(&mut ed, mouse_drag(80, 5));
+    drawn_input(&mut ed, mouse_left_up(80, 5));
+
+    assert_eq!(widths(&ed, &[a, b, c]), vec![32, 47, 19]);
+    assert!(ed.state.mouse_drag.is_none());
+}
+
+#[test]
+fn a_divider_drag_stops_at_the_pane_s_minimum_size() {
+    let (mut ed, [a, b, c]) = width_split_of_three_drawn();
+
+    drawn_input(&mut ed, mouse_left_down(32, 3));
+    drawn_input(&mut ed, mouse_drag(0, 3));
+
+    assert_eq!(widths(&ed, &[a, b, c]), vec![10, 55, 33]);
+}
+
+#[test]
+fn a_click_on_a_divider_moves_neither_focus_nor_the_selection() {
+    let (mut ed, [_, _, c]) = width_split_of_three_drawn();
+    let bid = ed.view.panes[c].buffer_id();
+    let selections = |ed: &Editor| {
+        let view = ed
+            .state
+            .panes
+            .entries
+            .seeded(c, bid)
+            .view(ed.state.buffers.get(bid).text());
+        let primary = view.primary();
+        (primary.anchor().offset(), primary.head().offset())
+    };
+    let before = selections(&ed);
+
+    drawn_input(&mut ed, mouse_left_down(66, 3));
+    drawn_input(&mut ed, mouse_left_up(66, 3));
+
+    assert_eq!(ed.view.focused_pane(), c);
+    assert_eq!(selections(&ed), before);
 }

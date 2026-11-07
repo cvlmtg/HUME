@@ -139,7 +139,7 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
 
     let mut ed = editor_from("-[a]>bbbbbbbbbb\n");
     let bid = ed.focused_buffer_id();
-    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal);
+    let pid_b = ed.split_onto(bid, Direction::Horizontal);
 
     let mut host = ScriptingHost::for_testing(&Dirs::none());
     let mut mock = MockHost::new();

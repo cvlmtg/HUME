@@ -27,27 +27,19 @@ fn split_stacks_pane_on_same_buffer() {
         "new pane views the same buffer"
     );
 
-    match ed.view.layout() {
-        LayoutTree::Split {
-            direction,
-            children,
-            ..
-        } => {
-            assert_eq!(*direction, Direction::Vertical, ":split stacks panes");
-            let leaves: Vec<_> = [&children.0, &children.1]
-                .into_iter()
-                .map(|c| match c {
-                    LayoutTree::Leaf(id) => *id,
-                    other => panic!("expected two leaves, got {other:?}"),
-                })
-                .collect();
-            assert!(
-                leaves.contains(&pid_a) && leaves.contains(&pid_b),
-                "layout's two leaves are the original and new pane"
-            );
-        }
-        other => panic!("expected Split layout, got {other:?}"),
-    }
+    let LayoutTree::Split(split) = ed.view.layout() else {
+        panic!("expected Split layout, got {:?}", ed.view.layout());
+    };
+    assert_eq!(
+        split.direction(),
+        Direction::Vertical,
+        ":split stacks panes"
+    );
+    assert_eq!(
+        split.members(),
+        [LayoutTree::Leaf(pid_a), LayoutTree::Leaf(pid_b)],
+        "layout's two leaves are the original and new pane"
+    );
 }
 
 /// `:vsplit` places the new pane side by side with the focused one:
@@ -60,8 +52,12 @@ fn vsplit_places_pane_side_by_side() {
     ed.execute_typed("vsplit", None).unwrap();
 
     match ed.view.layout() {
-        LayoutTree::Split { direction, .. } => {
-            assert_eq!(*direction, Direction::Horizontal, ":vsplit is side-by-side")
+        LayoutTree::Split(split) => {
+            assert_eq!(
+                split.direction(),
+                Direction::Horizontal,
+                ":vsplit is side-by-side"
+            )
         }
         other => panic!("expected Split layout, got {other:?}"),
     }
@@ -87,7 +83,7 @@ fn split_via_command_mode_moves_focus() {
         "focus moves to the new pane through the real command-mode path"
     );
     assert!(
-        matches!(*ed.view.layout(), LayoutTree::Split { .. }),
+        matches!(*ed.view.layout(), LayoutTree::Split(_)),
         "layout is a Split"
     );
 }
@@ -370,6 +366,152 @@ fn rotate_with_a_single_pane_is_refused() {
     assert_eq!(ed.state.status_msg.text(), Some("no other pane to rotate"));
 }
 
+// ── Resizing ─────────────────────────────────────────────────────────────────
+
+/// `a | b | c` on the 80×25 terminal, 26 columns each once the two seams
+/// take theirs, focused on `b`.
+fn width_split_of_three_focused_on_the_middle() -> (Editor, [PaneId; 3]) {
+    let mut ed = sized_editor("-[h]>ello\n");
+    let a = ed.view.focused_pane();
+    ed.execute_typed("vsplit", None).unwrap();
+    let b = ed.view.focused_pane();
+    ed.execute_typed("vsplit", None).unwrap();
+    let c = ed.view.focused_pane();
+    ed.state.focus.set_for_test(&mut ed.view, b);
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 26, 26], "setup");
+    (ed, [a, b, c])
+}
+
+fn ctrl_p(ed: &mut Editor, ch: char) {
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key(ch));
+}
+
+#[test]
+fn ctrl_p_greater_and_less_widen_and_narrow_the_focused_pane_against_the_next() {
+    let (mut ed, [a, b, c]) = width_split_of_three_focused_on_the_middle();
+
+    ctrl_p(&mut ed, '>');
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 27, 25]);
+
+    ctrl_p(&mut ed, '<');
+    ctrl_p(&mut ed, '<');
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 25, 27]);
+}
+
+#[test]
+fn the_last_pane_of_a_split_resizes_against_the_one_before_it() {
+    let (mut ed, [a, b, c]) = width_split_of_three_focused_on_the_middle();
+    ed.state.focus.set_for_test(&mut ed.view, c);
+
+    ctrl_p(&mut ed, '>');
+
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 25, 27]);
+}
+
+#[test]
+fn ctrl_p_plus_and_minus_resize_the_focused_pane_s_height() {
+    let mut ed = sized_editor("-[h]>ello\n");
+    let top = ed.view.focused_pane();
+    ed.execute_typed("split", None).unwrap();
+    let bottom = ed.view.focused_pane();
+    ed.state.focus.set_for_test(&mut ed.view, top);
+    // 24 rows: one for the seam, 11 above it and 12 below.
+    assert_eq!(heights(&ed, &[top, bottom]), vec![11, 12], "setup");
+
+    ctrl_p(&mut ed, '+');
+    assert_eq!(heights(&ed, &[top, bottom]), vec![12, 11]);
+
+    ctrl_p(&mut ed, '-');
+    ctrl_p(&mut ed, '-');
+    assert_eq!(heights(&ed, &[top, bottom]), vec![10, 13]);
+}
+
+#[test]
+fn a_count_resizes_by_that_many_cells() {
+    let (mut ed, [a, b, c]) = width_split_of_three_focused_on_the_middle();
+
+    ed.handle_key(key('5'));
+    ctrl_p(&mut ed, '>');
+
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 31, 21]);
+}
+
+#[test]
+fn after_a_resize_a_split_halves_the_pane_and_a_close_gives_its_space_back() {
+    let (mut ed, [a, b, c]) = width_split_of_three_focused_on_the_middle();
+    ed.handle_key(key('6'));
+    ctrl_p(&mut ed, '>');
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 32, 20], "setup");
+
+    ed.execute_typed("vsplit", None).unwrap();
+    let d = ed.view.focused_pane();
+
+    // The new seam takes a column from the split, so every seam keeps its
+    // place as a share of 77 columns rather than 78: `a` loses one, and `b`
+    // and `d` split `b`'s 32 columns around the new seam.
+    assert_eq!(widths(&ed, &[a, b, d, c]), vec![25, 16, 16, 20]);
+
+    ctrl_p(&mut ed, 'c');
+
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 32, 20]);
+    assert_eq!(ed.view.focused_pane(), b);
+}
+
+#[test]
+fn ctrl_p_equal_evens_the_split_out_and_a_split_keeps_it_even() {
+    let (mut ed, [a, b, c]) = width_split_of_three_focused_on_the_middle();
+    ed.handle_key(key('6'));
+    ctrl_p(&mut ed, '>');
+
+    ctrl_p(&mut ed, '=');
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 26, 26]);
+
+    ed.execute_typed("vsplit", None).unwrap();
+    let d = ed.view.focused_pane();
+    assert_eq!(widths(&ed, &[a, b, d, c]), vec![19, 19, 19, 20]);
+}
+
+#[test]
+fn resizing_with_no_pane_on_that_axis_is_refused() {
+    let mut ed = sized_editor("-[h]>ello\n");
+    let pid = ed.view.focused_pane();
+
+    ctrl_p(&mut ed, '>');
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("no pane to the left or right")
+    );
+
+    ed.execute_typed("vsplit", None).unwrap();
+    ctrl_p(&mut ed, '+');
+    assert_eq!(ed.state.status_msg.text(), Some("no pane above or below"));
+    assert_eq!(ed.pane_size(pid).height(), 24);
+}
+
+#[test]
+fn resizing_past_a_pane_s_minimum_size_stops_there_and_then_is_refused() {
+    let (mut ed, [a, b, c]) = width_split_of_three_focused_on_the_middle();
+
+    ed.handle_key(key('9'));
+    ed.handle_key(key('9'));
+    ctrl_p(&mut ed, '>');
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 42, 10]);
+
+    ctrl_p(&mut ed, '>');
+    assert_eq!(ed.state.status_msg.text(), Some("no room to grow the pane"));
+
+    ed.handle_key(key('9'));
+    ed.handle_key(key('9'));
+    ctrl_p(&mut ed, '<');
+    assert_eq!(widths(&ed, &[a, b, c]), vec![26, 10, 42]);
+    ctrl_p(&mut ed, '<');
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("the pane is at its minimum size")
+    );
+}
+
 // ── T4: Split-too-small guard ────────────────────────────────────────────────
 
 /// `:vsplit` on a pane too narrow to fit two minimum-width panes plus the
@@ -476,7 +618,7 @@ fn split_at_minimum_height_still_splits() {
     );
 }
 
-/// `fits_split` must judge the *post-equalize* size a split would produce,
+/// The split check must judge the *post-equalize* size a split would produce,
 /// not the pre-split rect of whichever pane is being split, since
 /// `equalize` resizes every pane sharing the axis, a stack of several
 /// equal-height panes can still have room for one more even though halving

@@ -16,7 +16,6 @@
 
 use super::doubles::InlineHint;
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 use hume_core::Side;
 use hume_editing::text::BufferText;
 use hume_engine::pane::WrapMode;
@@ -335,12 +334,7 @@ fn a_parked_view_survives_a_sibling_panes_edit() {
     let (mut ed, rect) = trailing_block_editor();
     let bid = ed.focused_buffer_id();
     let pid_a = ed.view.focused_pane();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(bid, hume_engine::pipeline::Direction::Horizontal);
     park_behind_trailing_block(&mut ed, rect);
     let top_before = ed.viewport().top();
 

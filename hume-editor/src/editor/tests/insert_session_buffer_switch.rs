@@ -321,15 +321,14 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
 
 #[test]
 fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
-    use crate::editor::commands::open_pane_in_layout;
     use hume_engine::pipeline::Direction;
 
     let mut ed = editor_from("-[a]>bc\n");
     let pid_a = ed.view.focused_pane();
     let bid_a = ed.focused_buffer_id();
     let bid_b = ed.open_scratch(BufferText::from("baz\n"));
-    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid_b, Direction::Horizontal);
-    // `open_pane_in_layout` does not move focus itself; pin it back to A
+    let pid_b = ed.split_onto(bid_b, Direction::Horizontal);
+    // `split_onto` does not move focus itself; pin it back to A
     // explicitly so the premise below holds regardless.
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
     let bid_c = ed.open_scratch(BufferText::from("qux\n"));
@@ -379,13 +378,12 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
 /// with B's selections and run the exit-cursor motion on B.
 #[test]
 fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
-    use crate::editor::commands::open_pane_in_layout;
     use hume_engine::pipeline::Direction;
 
     let mut ed = editor_from("-[a]>bc\n");
     let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
-    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal);
+    let pid_b = ed.split_onto(bid, Direction::Horizontal);
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
 
     ed.feed_key(key('A'));

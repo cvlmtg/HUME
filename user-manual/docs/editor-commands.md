@@ -30,7 +30,7 @@ Every command needs a `pane` that names a pane; a value with only a buffer (from
 - paste and paste cycling
 - `repeat-last-action`
 - switching or opening tabs
-- every pane focus, split, close and rotate command
+- every pane focus, split, close, rotate and resize command
 
 A `pane` the command can't act on raises an error; the command never falls back to whatever is focused. See [Calling other commands](writing-plugins.md#calling-other-commands) for how a plugin uses these.
 
@@ -285,14 +285,19 @@ Split, focus, and close panes; switch buffers; switch tabs.
 | `goto-prev-buffer` | — | Switch to the previous buffer, in the order they were opened. |
 | `goto-prev-tab` | `Ctrl-p T` | Switch to the previous tab in display order. |
 | `pane-close` | `Ctrl-p c` | Close the focused pane. |
+| `pane-equalize` | `Ctrl-p =` | Give every pane of the tab an equal share of its row or column. |
 | `pane-focus-down` | `Ctrl-p j` | Focus the pane below. |
 | `pane-focus-left` | `Ctrl-p h` | Focus the pane to the left. |
 | `pane-focus-next` | `Tab` *(kitty)* / `Ctrl-p p` | Focus the next pane. |
 | `pane-focus-prev` | `Shift-Tab` *(kitty)* / `Ctrl-p P` | Focus the previous pane. |
 | `pane-focus-right` | `Ctrl-p l` | Focus the pane to the right. |
 | `pane-focus-up` | `Ctrl-p k` | Focus the pane above. |
+| `pane-grow-height` | `Ctrl-p +` | Make the focused pane a row taller (that many with a count), taking it from the next pane in its innermost column, or the one before when it is the last. |
+| `pane-grow-width` | `Ctrl-p >` | Widen the focused pane by a column (that many with a count), taking it from the next pane in its innermost row, or the one before when it is the last. |
 | `pane-rotate-backward` | `Ctrl-p R` | Rotate the panes in the focused pane's row or column backward (that many places with a count). |
 | `pane-rotate-forward` | `Ctrl-p r` | Rotate the panes in the focused pane's row or column forward (that many places with a count). |
+| `pane-shrink-height` | `Ctrl-p -` | Make the focused pane a row shorter (that many with a count), giving it to the next pane in its innermost column, or the one before when it is the last. |
+| `pane-shrink-width` | `Ctrl-p <` | Narrow the focused pane by a column (that many with a count), giving it to the next pane in its innermost row, or the one before when it is the last. |
 | `pane-split` | `Ctrl-p s` | Split the focused pane, stacking the new pane below it. |
 | `pane-vsplit` | `Ctrl-p v` | Split the focused pane side by side. |
 | `tab-new` | — | Open a fresh pane viewing the focused buffer in a new tab. |

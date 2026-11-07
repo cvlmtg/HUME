@@ -5,7 +5,6 @@
 
 use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 use hume_lsp::test_util::RecordingLspBackend;
 use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
@@ -807,12 +806,9 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
         .buffers
         .find_by_path(&AbsolutePath::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
-    let other_pid = open_pane_in_layout(
-        &mut rig.ed.state,
-        &mut rig.ed.view,
-        other_bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let other_pid = rig
+        .ed
+        .split_onto(other_bid, hume_engine::pipeline::Direction::Horizontal);
     rig.ed.state.focus.set_for_test(&mut rig.ed.view, other_pid);
 
     let host = editor_host(&mut rig.ed);

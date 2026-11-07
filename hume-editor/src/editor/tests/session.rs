@@ -98,7 +98,7 @@ fn quitting_a_run_started_with_no_files_saves_its_session() {
 
     let bytes = std::fs::read(project.session_file()).expect("a session file");
     let mut header = b"HUMESESS".to_vec();
-    header.extend_from_slice(&1u32.to_le_bytes());
+    header.extend_from_slice(&2u32.to_le_bytes());
     assert_eq!(bytes[..header.len()], header[..]);
 }
 
@@ -248,8 +248,8 @@ fn a_session_that_cannot_be_written_is_reported_on_exit() {
 
 // ── Restore ──────────────────────────────────────────────────────────────
 
-/// Each tab's layout, the file every pane shows and the focused pane
-/// marked `*`, the current tab marked `>`.
+/// Each tab's layout, the file and size every pane shows and the focused
+/// pane marked `*`, the current tab marked `>`.
 fn layout(ed: &Editor) -> Vec<String> {
     fn tree(ed: &Editor, node: &LayoutTree, focus: PaneId) -> String {
         match node {
@@ -259,21 +259,18 @@ fn layout(ed: &Editor) -> Vec<String> {
                     .buffers
                     .get(ed.view.panes[*pid].buffer_id())
                     .display_name();
-                if *pid == focus {
-                    format!("*{name}")
-                } else {
-                    name
-                }
+                let size = ed.state.pane_size(&ed.view, *pid);
+                let mark = if *pid == focus { "*" } else { "" };
+                format!("{mark}{name} {}x{}", size.width(), size.height())
             }
-            LayoutTree::Split {
-                direction,
-                children,
-                ..
-            } => format!(
-                "{direction:?}({}, {})",
-                tree(ed, &children.0, focus),
-                tree(ed, &children.1, focus)
-            ),
+            LayoutTree::Split(split) => {
+                let members: Vec<String> = split
+                    .members()
+                    .iter()
+                    .map(|member| tree(ed, member, focus))
+                    .collect();
+                format!("{:?}({})", split.direction(), members.join(", "))
+            }
         }
     }
     let current = ed.state.tabs.current();
@@ -360,6 +357,91 @@ fn tabs_splits_and_focus_come_back() {
 
     let again = restart(&project, ed);
     assert_eq!(layout(&again), before);
+}
+
+#[test]
+fn resized_panes_come_back_with_their_sizes_and_their_split_rule() {
+    let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":vsplit b.txt");
+    ed.feed_key(key('7'));
+    ed.feed_key(key_ctrl('p'));
+    ed.feed_key(key('>'));
+    type_cmd(&mut ed, ":split c.txt");
+    let before = layout(&ed);
+    assert_eq!(
+        before,
+        [">Horizontal(a.txt 32x24, Vertical(b.txt 47x11, *c.txt 47x12))"],
+        "setup"
+    );
+
+    let mut again = restart(&project, ed);
+    assert_eq!(layout(&again), before);
+
+    // The height split was never resized, so a split there evens it out;
+    // the width split was, so a split there halves the pane.
+    type_cmd(&mut again, ":split");
+    again.feed_key(key_ctrl('p'));
+    again.feed_key(key('h'));
+    type_cmd(&mut again, ":vsplit");
+    assert_eq!(
+        layout(&again),
+        [concat!(
+            ">Horizontal(a.txt 15x24, *a.txt 16x24, ",
+            "Vertical(b.txt 47x7, c.txt 47x7, c.txt 47x8))"
+        )]
+    );
+}
+
+#[test]
+fn panes_that_do_not_fit_are_left_out_and_focus_goes_to_the_pane_they_split() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    let no_dividers = format!("{PERSIST}\n(set-option! \"pane-dividers\" #f)");
+    let mut ed = project.start(&[], &no_dividers);
+    type_cmd(&mut ed, ":e a.txt");
+    for _ in 0..7 {
+        type_cmd(&mut ed, ":vsplit");
+    }
+    let leaves = ed.view.layout().leaves();
+    assert_eq!(leaves.len(), 8, "setup: eight 10-column panes fill 80");
+    assert_eq!(ed.view.focused_pane(), leaves[7], "setup");
+    quit(&mut ed).expect("the session saves");
+
+    // With dividers the seams take 7 columns, so only seven panes fit.
+    let again = project.start(&[], PERSIST);
+    let leaves = again.view.layout().leaves();
+    assert_eq!(leaves.len(), 7);
+    assert_eq!(again.view.focused_pane(), leaves[6]);
+    assert_eq!(
+        session_warnings(&again),
+        ["session: 1 pane did not fit and was not restored"]
+    );
+}
+
+#[test]
+fn a_saved_seam_on_top_of_another_leaves_its_pane_out() {
+    let project = Project::new(&[("a.txt", "a\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":vsplit");
+    type_cmd(&mut ed, ":vsplit");
+    quit(&mut ed).expect("the session saves");
+    // The smallest share of the last pane's space puts the second seam on
+    // the first.
+    let share = |bits| std::num::NonZeroU32::new(bits);
+    crate::editor::session::rewrite_saved_shares(
+        &project.session_file(),
+        &[share(1 << 31), share(1)],
+    );
+
+    let mut again = project.start(&[], PERSIST);
+    assert_eq!(again.view.layout().leaves().len(), 2);
+    assert_eq!(
+        session_warnings(&again),
+        ["session: 1 pane did not fit and was not restored"]
+    );
+    quit(&mut again).expect("the session saves");
 }
 
 #[test]
@@ -525,7 +607,7 @@ fn a_scratch_holding_unsaved_text_is_kept() {
     type_cmd(&mut again, ":set global session-persist=true");
     let scratch = again.focused_buffer_id();
     again.restore_session(scratch);
-    assert_eq!(layout(&again), [">*a.txt"]);
+    assert_eq!(layout(&again), [">*a.txt 80x24"]);
     assert_eq!(
         again.state.buffers.get(scratch).text().to_string(),
         "kept\n"
@@ -550,7 +632,7 @@ fn a_run_started_with_a_file_restores_nothing() {
     let project = saved_two_files();
     let ed = project.start(&["a.txt"], PERSIST);
     assert_eq!(buffer_names(&ed), ["a.txt"]);
-    assert_eq!(layout(&ed), [">*a.txt"]);
+    assert_eq!(layout(&ed), [">*a.txt 80x24"]);
 }
 
 #[test]
@@ -600,7 +682,7 @@ fn a_file_that_is_not_a_session_warns() {
 fn a_session_of_another_format_is_ignored_without_a_warning() {
     let project = saved_two_files();
     let mut bytes = std::fs::read(project.session_file()).unwrap();
-    bytes[8..12].copy_from_slice(&2u32.to_le_bytes());
+    bytes[8..12].copy_from_slice(&1u32.to_le_bytes());
     std::fs::write(project.session_file(), &bytes).unwrap();
 
     let ed = project.start(&[], PERSIST);
@@ -613,7 +695,7 @@ fn a_file_changed_since_the_save_opens_at_its_start() {
     let project = saved_two_files();
     project.write("b.txt", &lines(120));
     let mut ed = project.start(&[], PERSIST);
-    assert_eq!(layout(&ed), [">Horizontal(a.txt, *b.txt)"]);
+    assert_eq!(layout(&ed), [">Horizontal(a.txt 39x24, *b.txt 40x24)"]);
     assert_eq!(ed.current_view().primary().head().offset(), co(0));
     assert_eq!(
         ed.view.panes[ed.view.focused_pane()].viewport.top(),
@@ -685,7 +767,7 @@ fn a_missing_file_is_skipped_and_its_pane_shows_another() {
     std::fs::remove_file(project.file("b.txt")).unwrap();
     let ed = project.start(&[], PERSIST);
     assert_eq!(buffer_names(&ed), ["a.txt"]);
-    assert_eq!(layout(&ed), [">Horizontal(a.txt, *a.txt)"]);
+    assert_eq!(layout(&ed), [">Horizontal(a.txt 39x24, *a.txt 40x24)"]);
     let (jumps, _) = ed.state.panes.entries[ed.view.focused_pane()]
         .jumps
         .history();
@@ -699,7 +781,7 @@ fn a_saved_file_that_fails_to_open_warns_and_its_pane_shows_another() {
     std::fs::remove_file(project.file("b.txt")).unwrap();
     std::fs::create_dir(project.file("b.txt")).unwrap();
     let ed = project.start(&[], PERSIST);
-    assert_eq!(layout(&ed), [">Horizontal(a.txt, *a.txt)"]);
+    assert_eq!(layout(&ed), [">Horizontal(a.txt 39x24, *a.txt 40x24)"]);
     let failed: Vec<_> = super::before_save::warning_texts(&ed)
         .into_iter()
         .filter(|w| w.contains("Failed to open"))

@@ -150,6 +150,16 @@ fn focused_pane(ed: &Editor) -> hume_core::PaneHandle {
     hume_core::PaneHandle::with_pane(ed.focused_buffer_id(), ed.view.focused_pane())
 }
 
+/// The width of each of `panes` on screen.
+fn widths(ed: &Editor, panes: &[PaneId]) -> Vec<u16> {
+    panes.iter().map(|&p| ed.pane_size(p).width()).collect()
+}
+
+/// The height of each of `panes` on screen.
+fn heights(ed: &Editor, panes: &[PaneId]) -> Vec<u16> {
+    panes.iter().map(|&p| ed.pane_size(p).height()).collect()
+}
+
 /// Pin the focused pane to `WrapMode::None`, so a display line is a buffer
 /// line regardless of the global default, which wraps (`DEFAULT_WRAP_STYLE`,
 /// `hume-engine/src/pane.rs`). Shared by every test that reasons about
@@ -1336,6 +1346,24 @@ impl std::fmt::Debug for Editor {
 }
 
 impl Editor {
+    /// Split the focused pane on `direction` with a new pane viewing `bid`,
+    /// as a plain split does, and return the new pane. Focus stays where it
+    /// was. Panics when the split does not fit.
+    pub(in crate::editor) fn split_onto(
+        &mut self,
+        bid: BufferId,
+        direction: hume_engine::pipeline::Direction,
+    ) -> PaneId {
+        crate::editor::commands::open_pane_in_layout(
+            &mut self.state,
+            &mut self.view,
+            bid,
+            direction,
+            None,
+        )
+        .expect("the split fits")
+    }
+
     /// [`Self::for_testing`] on `state`'s text, the pane starting on
     /// `state`'s selections.
     pub(crate) fn for_testing_with(state: hume_editing::state::EditState) -> Self {

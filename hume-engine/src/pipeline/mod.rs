@@ -26,7 +26,8 @@ use layout::{
     junction_glyph,
 };
 pub use layout::{
-    Cycle, DetachedPane, Direction, FocusedLayout, LayoutTree, Rotation, Seam, Side, SinglePane,
+    Cycle, DetachedPane, Direction, FocusedLayout, LayoutTree, Resize, ResizeRefused, Rotation,
+    Seam, SeamHandle, Side, SinglePane, Split, SplitShare, SplitTooSmall, StaleSeam,
 };
 pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
@@ -317,6 +318,12 @@ impl EngineView {
             .filter(|hit| self.layout.tree().contains_leaf(hit.pane()))
     }
 
+    /// The seam the last [`Self::render`] drew at `pos`, `None` on a miss or
+    /// when no divider was drawn.
+    pub fn seam_hit(&self, pos: Position) -> Option<Seam> {
+        self.drawn.seam_at(pos)
+    }
+
     /// The active tab's focused pane, always a leaf of [`Self::layout`].
     pub fn focused_pane(&self) -> PaneId {
         self.layout.focused()
@@ -356,14 +363,28 @@ impl EngineView {
         self.layout.focus(pid);
     }
 
-    /// Splice a freshly inserted, not-yet-attached pane into the active
-    /// tab's tree beside the focused pane, which keeps focus.
-    pub fn split_focused(&mut self, pane: UnattachedPane, direction: Direction) -> PaneId {
-        self.layout.split_focused(pane, direction)
+    /// Split the active tab's focused pane on `direction`, as laid out on
+    /// `screen`, putting the pane `open` inserts into the pool beside it.
+    /// Focus stays where it was. `share` places the new seam (see
+    /// `FocusedLayout::splice_beside_focused`). Refused before `open` runs
+    /// when the split would leave the new pane, or one it shrinks, below
+    /// the minimum size (see `FocusedLayout::split_fits`).
+    pub fn split_focused(
+        &mut self,
+        screen: &ScreenLayout,
+        direction: Direction,
+        share: Option<SplitShare>,
+        open: impl FnOnce(&mut Self) -> UnattachedPane,
+    ) -> Result<PaneId, SplitTooSmall> {
+        if !screen.split_fits(&self.layout, direction, share) {
+            return Err(SplitTooSmall);
+        }
+        let pane = open(self);
+        Ok(self.layout.splice_beside_focused(pane, direction, share))
     }
 
     /// Prune the focused pane from the active tab's tree. Focus moves to the
-    /// leftmost leaf of the sibling that takes its place.
+    /// leftmost leaf of the neighbour that takes its place.
     pub fn close_focused(&mut self, key: &FocusKey) -> Result<DetachedPane, SinglePane> {
         self.check_key(key);
         self.layout.close_focused()
@@ -375,15 +396,51 @@ impl EngineView {
         self.layout.refuse_single_pane()
     }
 
-    /// Rotate the row or column the focused pane sits in by `steps` places.
+    /// Rotate the split the focused pane sits in by `steps` places.
     /// Focus stays on the same pane.
     pub fn rotate_focused(&mut self, rotation: Rotation, steps: usize) -> Result<(), SinglePane> {
         self.layout.rotate_focused(rotation, steps)
     }
 
+    /// Grow or shrink the focused pane by `cells` along `axis`, as laid out
+    /// on `screen` (see `FocusedLayout::resize_focused`).
+    pub fn resize_focused(
+        &mut self,
+        screen: &ScreenLayout,
+        axis: Direction,
+        resize: Resize,
+        cells: u16,
+    ) -> Result<(), ResizeRefused> {
+        self.layout.resize_focused(
+            screen.pane_area(),
+            screen.reserves_seam(),
+            axis,
+            resize,
+            cells,
+        )
+    }
+
+    /// Move the seam `handle` names to `to`'s cell along its axis, as laid
+    /// out on `screen` (see `FocusedLayout::move_seam`).
+    pub fn move_seam(
+        &mut self,
+        screen: &ScreenLayout,
+        handle: SeamHandle,
+        to: Position,
+    ) -> Result<(), StaleSeam> {
+        self.layout
+            .move_seam(handle, screen.pane_area(), screen.reserves_seam(), to)
+    }
+
+    /// Set every seam of the active tab equal.
+    pub fn equalize(&mut self) {
+        self.layout.equalize();
+    }
+
     /// Insert a pane into the pool, returning the [`UnattachedPane`] token
-    /// proving it isn't yet reachable from any layout tree. Splice it in
-    /// with [`Self::split_focused`] or [`FocusedLayout::new`].
+    /// proving it isn't yet reachable from any layout tree. Insert it from
+    /// [`Self::split_focused`]'s `open`, or start a layout with
+    /// [`FocusedLayout::new`].
     pub fn insert_pane(&mut self, pane: Pane) -> UnattachedPane {
         self.panes.insert(pane)
     }
@@ -422,8 +479,8 @@ impl EngineView {
 
     /// Render all panes and chrome into `grid`, as laid out by
     /// [`FrameInputs::layout`], whose terminal area `grid` must match in
-    /// size, and record that layout for [`Self::pane_hit`] and
-    /// [`Self::drawn_tabbar_area`].
+    /// size, and record that layout for [`Self::pane_hit`],
+    /// [`Self::seam_hit`] and [`Self::drawn_tabbar_area`].
     ///
     /// `ctx`'s [`pane_settings`](RenderContext::set_pane_settings) must carry
     /// an entry for every pane this call will draw.
@@ -585,6 +642,7 @@ impl EngineView {
                 .collect_seams_into(pane_area, &mut ctx.seams);
             ctx.seam_arms.clear();
             collect_seam_arms(&ctx.seams, &mut ctx.seam_arms);
+            self.drawn.record_seams(&ctx.seams);
 
             // `theme.default` (ui.text's color) is the base layer here for the
             // same reason it's the base for a content display line
@@ -625,7 +683,7 @@ impl EngineView {
             for seam in &ctx.seams {
                 let (x0, y0, x1, y1) =
                     crate::render::clamp_rect_to_grid((grid_w, grid_h), seam.rect);
-                let base = match seam.direction {
+                let base = match seam.direction() {
                     Direction::Horizontal => ARM_N | ARM_S,
                     Direction::Vertical => ARM_E | ARM_W,
                 };

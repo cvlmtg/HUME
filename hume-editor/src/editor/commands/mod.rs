@@ -444,8 +444,8 @@ pub(in crate::editor) use insert_session::{
     arm_autoindent, autoindent_owned, end_insert_session, tear_down_insert,
 };
 pub(in crate::editor) use pane::CloseRefused;
+pub(in crate::editor) use pane::split_pane_onto;
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
-pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 pub(in crate::editor) use pane::{open_pane_as_new_tab, open_pane_in_layout};
 pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe, is_blank_command};
 use pipeline::MissingOperand;

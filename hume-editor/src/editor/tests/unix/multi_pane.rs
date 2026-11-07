@@ -36,7 +36,7 @@ fn vsplit_path_opens_that_buffer() {
     );
 
     match ed.view.layout() {
-        LayoutTree::Split { direction, .. } => assert_eq!(*direction, Direction::Horizontal),
+        LayoutTree::Split(split) => assert_eq!(split.direction(), Direction::Horizontal),
         other => panic!("expected Split layout, got {other:?}"),
     }
 }

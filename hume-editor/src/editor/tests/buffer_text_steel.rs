@@ -3,7 +3,6 @@
 // `selections-charwise?`.
 
 use super::*;
-use crate::editor::commands::open_pane_in_layout;
 use hume_core::Severity;
 use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
@@ -764,12 +763,7 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
         .buffers
         .find_by_path(&AbsolutePath::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
-    let other_pid = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        other_bid,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
+    let other_pid = ed.split_onto(other_bid, hume_engine::pipeline::Direction::Horizontal);
     ed.state.focus.set_for_test(&mut ed.view, other_pid);
 
     let fired = run_probe(

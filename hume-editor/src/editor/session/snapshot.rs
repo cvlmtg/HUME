@@ -4,11 +4,12 @@
 //! crafted file cannot exhaust the stack.
 
 use std::ffi::OsString;
+use std::num::NonZeroU32;
 
 use hume_core::{BufferId, PaneId};
 use hume_editing::selection::SelectionsSnapshot;
 use hume_engine::pane::{WrapMode, WrapOverride};
-use hume_engine::pipeline::{Direction, EngineView, LayoutTree};
+use hume_engine::pipeline::{Direction, EngineView, LayoutTree, SplitShare};
 use hume_ops::register::{MACRO_REGISTERS, RegisterContent, Shape};
 use serde::{Deserialize, Serialize};
 use slotmap::SecondaryMap;
@@ -42,8 +43,8 @@ pub(super) struct BufferSnapshot {
 }
 
 /// One tab's layout, rebuilt from its first pane by splitting: split `k`
-/// splits pane `splits[k].pane`, which keeps its place as the first half,
-/// and creates pane `k + 1` as the second.
+/// splits pane `splits[k].pane`, which keeps its place before the new pane,
+/// and creates pane `k + 1` after it.
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct TabSnapshot {
     pub(super) panes: Vec<PaneSnapshot>,
@@ -55,6 +56,10 @@ pub(super) struct TabSnapshot {
 pub(super) struct SplitStep {
     pub(super) pane: usize,
     pub(super) direction: SplitDirection,
+    /// Where the split puts its seam in the space of the pane it splits (a
+    /// `SplitShare`), `None` for a plain split, which keeps an equal split
+    /// equal.
+    pub(super) at: Option<NonZeroU32>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -195,8 +200,9 @@ impl SessionSnapshot {
 }
 
 /// Record the split steps that turn pane `at` into `tree`, and each leaf
-/// with the number of the pane that ends up as it. A split keeps `at` as
-/// its first half and numbers its second half after itself.
+/// with the number of the pane that ends up as it. A split's members are
+/// made first, each by splitting the one before it, which numbers the new
+/// pane after itself; then each member grows from its own pane.
 fn grow(
     tree: &LayoutTree,
     at: usize,
@@ -205,18 +211,21 @@ fn grow(
 ) {
     match tree {
         LayoutTree::Leaf(pid) => leaves.push((at, *pid)),
-        LayoutTree::Split {
-            direction,
-            children,
-            ..
-        } => {
-            splits.push(SplitStep {
-                pane: at,
-                direction: (*direction).into(),
-            });
-            let second = splits.len();
-            grow(&children.0, at, splits, leaves);
-            grow(&children.1, second, splits, leaves);
+        LayoutTree::Split(split) => {
+            let mut panes = vec![at];
+            let mut prev = at;
+            for share in split.rebuild_shares() {
+                splits.push(SplitStep {
+                    pane: prev,
+                    direction: split.direction().into(),
+                    at: share.map(SplitShare::bits),
+                });
+                prev = splits.len();
+                panes.push(prev);
+            }
+            for (member, pane) in split.members().iter().zip(panes) {
+                grow(member, pane, splits, leaves);
+            }
         }
     }
 }

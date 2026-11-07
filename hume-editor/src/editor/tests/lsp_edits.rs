@@ -679,7 +679,6 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
 /// to issue the edit from.
 #[test]
 fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files_untouched() {
-    use crate::editor::commands::open_pane_in_layout;
     use hume_core::PaneHandle;
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::Direction;
@@ -714,12 +713,7 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
     // to the focused pane's own open session, the same shape a `call!`
     // targeting a different pane would produce.
     let other_bid = ed.open_scratch(BufferText::from("misc\n"));
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        other_bid,
-        Direction::Horizontal,
-    );
+    let pid_b = ed.split_onto(other_bid, Direction::Horizontal);
 
     // ok.txt listed first, conflict.txt second. A check made only at commit
     // time would already have committed ok.txt by the time conflict.txt's
