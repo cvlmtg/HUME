@@ -6,7 +6,7 @@ formats at runtime. Design rationale for the LSP parts: `docs/LSP-INSTALL.md`.
 
 | Script | Pin | Fetches | Emits |
 |---|---|---|---|
-| `sync-grammars.py` | `runtime/plugins/core/plum/data/treesitter-hume-pin.scm` | that `cvlmtg/treesitter.hume` release's `grammars.toml` for its `helix-rev`, then `helix-editor/helix` `languages.toml` at that commit | `runtime/scheme/languages.scm`, one `runtime/scheme/languages/<name>.scm` per language, one `runtime/plugins/core/lsp-install/data/registrations/<server>.scm` per server, and `data/language-servers.scm` |
+| `sync-grammars.py` | `runtime/plugins/core/plum/data/treesitter-hume-pin.scm` | that `cvlmtg/treesitter.hume` tag's source archive, for its `languages/<name>/language.toml` files and `language-servers.toml`: Helix's `languages.toml` settings with treesitter.hume's corrections | `runtime/scheme/languages.scm`, one `runtime/scheme/languages/<name>.scm` per language, one `runtime/plugins/core/lsp-install/data/registrations/<server>.scm` per server, and `data/language-servers.scm` |
 | `sync-lsp-sources.py` | `runtime/plugins/core/lsp-install/data/mason-pin.scm` | `mason-org/mason-registry` `registry.json.zip` + every release asset (for sha256) | one `runtime/plugins/core/lsp-install/data/sources/<server>.scm` and one `data/requirements/<server>.scm` per server |
 
 Each one-file-per-name directory (`runtime/scheme/languages/`, and `registrations/`,
@@ -25,9 +25,10 @@ parsing logic is tested against fixtures, without the network, by
 
 Each script runs alone after its own pin bump:
 
-- bump `plum/data/treesitter-hume-pin.scm` → run `sync-grammars.py`. A Helix bump starts in
-  treesitter.hume: its `sync-pins.py --helix <sha>`, a release, then this pin bump, so the
-  language data and the grammars' queries always come from one Helix commit.
+- bump `plum/data/treesitter-hume-pin.scm` → run `sync-grammars.py`. A Helix change starts
+  in treesitter.hume: an upstream snapshot merged into its main, a release, then this pin
+  bump, so the language data and the grammars' queries always come from one release. A
+  correction to Helix's language settings belongs in treesitter.hume too.
 - bump `lsp-install/data/mason-pin.scm` → run `sync-lsp-sources.py`
 
 One exception: `sync-lsp-sources.py` reads the checked-in `registrations/` to filter

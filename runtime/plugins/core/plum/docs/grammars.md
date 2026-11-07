@@ -62,8 +62,8 @@ than downloading something else.
 ## Grammar pin
 
 `data/treesitter-hume-pin.scm` holds one string, a treesitter.hume release tag, and is HUME's
-only grammar-related pin. That release's `grammars.toml` also names the Helix commit HUME's
-language data is generated from, so the data and the installed queries agree. To bump it:
+only grammar-related pin. HUME's language data is generated from that release's language
+settings, so the data and the installed queries come from one release. To bump it:
 
 1. Release treesitter.hume.
 2. Change the tag here.
@@ -143,8 +143,9 @@ When an install fails or stops:
 
 Install folders left behind are [leftovers](#leftovers).
 
-The archives carry Helix's query files with their `; inherits:` directives already resolved,
-so PLUM installs them unchanged.
+The archives carry treesitter.hume's query files, taken from Helix and
+nvim-treesitter-context, with their `; inherits:` directives already resolved, so PLUM
+installs them unchanged.
 
 ## Leftovers
 

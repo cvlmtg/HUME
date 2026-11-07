@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -272,22 +273,6 @@ class CommentTokens(unittest.TestCase):
             self.tokens({"block-comment-tokens": ["/*", "*/", "x"]})
 
 
-    def test_graphqls_block_string_delimiter_is_not_a_block_comment(self):
-        (lang,) = parse_langs(
-            [{"name": "graphql", "comment-token": "#", "block-comment-tokens": ['"""', '"""']}]
-        )
-        self.assertEqual((lang["comment_tokens"], lang["block_comment_tokens"]), (["#"], []))
-
-    def test_another_language_keeps_the_same_pair(self):
-        self.assertEqual(
-            self.tokens({"block-comment-tokens": ['"""', '"""']}), ([], [('"""', '"""')])
-        )
-
-    def test_an_exclusion_its_language_no_longer_has_is_fatal(self):
-        with self.assertRaises(SystemExit):
-            parse_langs([{"name": "graphql", "comment-token": "#"}])
-
-
 class Shebangs(unittest.TestCase):
     def shebangs(self, name, shebangs):
         (lang,) = parse_langs([{"name": name, "shebangs": shebangs}])
@@ -295,9 +280,6 @@ class Shebangs(unittest.TestCase):
 
     def test_interpreter_names_keep_their_order(self):
         self.assertEqual(self.shebangs("x", ["python", "uv"]), ["python", "uv"])
-
-    def test_vs_v_run_becomes_the_v_interpreter(self):
-        self.assertEqual(self.shebangs("v", ["v run"]), ["v"])
 
     def test_a_shebang_with_a_space_is_fatal(self):
         with self.assertRaises(SystemExit):
@@ -308,11 +290,6 @@ class Shebangs(unittest.TestCase):
             with self.subTest(shebang=shebang), self.assertRaises(SystemExit):
                 self.shebangs("x", [shebang])
 
-    def test_a_correction_its_language_no_longer_has_is_fatal(self):
-        with self.assertRaises(SystemExit):
-            self.shebangs("v", ["v"])
-
-
 class LanguageGrammar(unittest.TestCase):
     def test_a_language_naming_a_grammar_carries_no_grammar_field(self):
         (lang,) = parse_langs([{"name": "jsx", "grammar": "javascript"}])
@@ -320,21 +297,63 @@ class LanguageGrammar(unittest.TestCase):
         self.assertNotIn("grammar", lang)
 
 
-class HelixRev(unittest.TestCase):
-    SHA = "ba40e547426b0f9896c8bdc699a4ab11f2b37dbc"
+def archive(files):
+    """A gzipped tar of `files`, `{path: text}`, as GitHub serves a tag's
+    source."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        for path, text in files.items():
+            data = text.encode()
+            info = tarfile.TarInfo(path)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
 
-    def test_reads_the_full_commit_of_a_grammars_toml(self):
-        text = f'# header\nhelix-rev = "{self.SHA}"\n\n[[language]]\nname = "c"\n'
 
-        self.assertEqual(sync.helix_rev_of(text), self.SHA)
+SERVERS = '[language-server]\nruff = { command = "ruff" }\n'
 
-    def test_a_missing_rev_is_fatal(self):
+
+class LanguageDocument(unittest.TestCase):
+    def test_reads_each_language_and_the_servers(self):
+        data = archive(
+            {
+                "treesitter.hume-0.2.0/languages/rust/language.toml": '[[language]]\nname = "rust"\n',
+                "treesitter.hume-0.2.0/languages/rust/highlights.scm": "(x) @y\n",
+                "treesitter.hume-0.2.0/languages/python/language.toml": '[[language]]\nname = "python"\nroots = ["pyproject.toml"]\n',
+                "treesitter.hume-0.2.0/languages/ecma/source.toml": "[upstream]\n",
+                "treesitter.hume-0.2.0/language-servers.toml": SERVERS,
+            }
+        )
+
+        self.assertEqual(
+            sync.language_document(data),
+            {
+                "language": [
+                    {"name": "python", "roots": ["pyproject.toml"]},
+                    {"name": "rust"},
+                ],
+                "language-server": {"ruff": {"command": "ruff"}},
+            },
+        )
+
+    def test_a_language_file_naming_another_language_is_fatal(self):
+        data = archive(
+            {
+                "t/languages/rust/language.toml": '[[language]]\nname = "go"\n',
+                "t/language-servers.toml": SERVERS,
+            }
+        )
         with self.assertRaises(SystemExit):
-            sync.helix_rev_of('[[language]]\nname = "c"\n')
+            sync.language_document(data)
 
-    def test_an_abbreviated_rev_is_fatal(self):
+    def test_no_server_file_is_fatal(self):
+        data = archive({"t/languages/rust/language.toml": '[[language]]\nname = "rust"\n'})
         with self.assertRaises(SystemExit):
-            sync.helix_rev_of('helix-rev = "ba40e547426b"\n')
+            sync.language_document(data)
+
+    def test_no_language_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            sync.language_document(archive({"t/language-servers.toml": SERVERS}))
 
 
 def parsed_language(**overrides):
@@ -390,7 +409,7 @@ class WriteLanguageFiles(unittest.TestCase):
 
     def write(self, directory):
         with contextlib.redirect_stderr(io.StringIO()):
-            sync.write_language_files(directory, "abc123", [self.LANG])
+            sync.write_language_files(directory, "v9.9.9", [self.LANG])
 
     def test_writes_one_file_per_language_with_its_header(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -403,7 +422,7 @@ class WriteLanguageFiles(unittest.TestCase):
             text,
             ";;; runtime/scheme/languages/markdown.inline.scm — HUME bundled language data.\n"
             ";;; Generated — do not hand-edit. Record format: README.md, parent directory.\n"
-            ";;; Source: helix-editor/helix languages.toml @ abc123\n"
+            ";;; Source: cvlmtg/treesitter.hume v9.9.9\n"
             "\n"
             '((block-comment-tokens ("<!--" . "-->")))\n',
         )

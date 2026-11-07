@@ -29,8 +29,8 @@ that one up.
 
 ## Generation
 
-`registrations/` and `language-servers.scm` come from the registration pin: the Helix
-commit behind `core:plum`'s treesitter.hume pin, read by `scripts/sync-grammars.py`.
+`registrations/` and `language-servers.scm` come from the registration pin: the language
+settings of the treesitter.hume release `core:plum` pins, read by `scripts/sync-grammars.py`.
 `sources/` comes from the Mason pin, and `requirements/` from `sources/`, both written by
 `scripts/sync-lsp-sources.py`. The two pins come from different upstreams, so their
 catalogs stay apart. `scripts/README.md` has the run order.

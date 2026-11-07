@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Regenerate runtime/scheme/languages.scm, runtime/scheme/languages/*.scm and the
-lsp-install catalog files from helix-editor/helix languages.toml.
+lsp-install catalog files from cvlmtg/treesitter.hume's language settings.
 
 Reads the treesitter.hume release tag core:plum pins
-(runtime/plugins/core/plum/data/treesitter-hume-pin.scm), takes the Helix
-commit that release's grammars.toml names (`helix-rev`), so the language data
-and the grammars' queries come from one Helix commit, fetches helix's
-languages.toml at that commit, and rewrites:
+(runtime/plugins/core/plum/data/treesitter-hume-pin.scm), so the language data
+and the grammars come from one release, fetches that tag's source, reads its
+languages/<name>/language.toml files and language-servers.toml (Helix's
+languages.toml settings, with treesitter.hume's corrections), and rewrites:
   - languages.scm       — (define-language! …) detection data for every [[language]] block
   - languages/<name>.scm — one data file per [[language]] block: comment tokens,
     language-id and root markers
@@ -21,10 +21,11 @@ Idempotent: running twice produces byte-identical files.
 
 from __future__ import annotations
 
+import io
 import json
 import re
 import sys
-from collections.abc import Callable
+import tarfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -60,19 +61,19 @@ LANGUAGE_SERVERS_SCM = LSP_INSTALL_DATA / "language-servers.scm"
 LANGUAGES_HEADER = """\
 ;;; runtime/scheme/languages.scm — HUME bundled default language identities.
 ;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
-;;; Source: helix-editor/helix languages.toml @ {sha}
+;;; Source: cvlmtg/treesitter.hume {tag}
 """
 
 LANGUAGE_DATA_HEADER = """\
 ;;; runtime/scheme/languages/{name}.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: helix-editor/helix languages.toml @ {sha}
+;;; Source: cvlmtg/treesitter.hume {tag}
 """
 
 LANGUAGE_SERVERS_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
 ;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
-;;; Source: helix-editor/helix languages.toml @ {sha}
+;;; Source: cvlmtg/treesitter.hume {tag}
 """
 
 # Helix's `language-servers` feature vocabulary (its LanguageServerFeature
@@ -105,26 +106,52 @@ LSP_FEATURES = (
 LSP_REGISTRATION_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/registrations/{name}.scm — one LSP server's registration.
 ;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
-;;; Source: helix-editor/helix languages.toml @ {sha}
+;;; Source: cvlmtg/treesitter.hume {tag}
 """
 
 
-def helix_rev_of(grammars_toml: str) -> str:
-    """The full Helix commit a treesitter.hume grammars.toml names."""
-    rev = tomllib.loads(grammars_toml).get("helix-rev")
-    if not isinstance(rev, str) or not re.fullmatch(r"[0-9a-f]{40}", rev):
-        sys.exit(f"error: grammars.toml has no full 40-digit helix-rev, got {rev!r}")
-    return rev
+LANGUAGE_FILE = re.compile(r"[^/]+/languages/([^/]+)/language\.toml")
+SERVERS_FILE = re.compile(r"[^/]+/language-servers\.toml")
 
 
-def fetch_helix_rev(tag: str) -> str:
-    url = f"https://raw.githubusercontent.com/cvlmtg/treesitter.hume/{tag}/grammars.toml"
-    return helix_rev_of(fetch_bytes(url, timeout=30).decode())
+def language_document(archive: bytes) -> dict:
+    """The `{language: [...], language-server: {...}}` document a
+    treesitter.hume source archive's language settings make, its languages
+    in name order. Each language.toml holds the one `[[language]]` its
+    folder names."""
+    languages = []
+    servers = None
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
+        for member in tar:
+            if not member.isfile():
+                continue
+            language = LANGUAGE_FILE.fullmatch(member.name)
+            if not language and not SERVERS_FILE.fullmatch(member.name):
+                continue
+            file = tar.extractfile(member)
+            if file is None:
+                sys.exit(f"error: {member.name}: unreadable")
+            doc = tomllib.loads(file.read().decode())
+            if language is None:
+                servers = doc.get("language-server")
+                continue
+            entries = doc.get("language", [])
+            if [entry.get("name") for entry in entries] != [language[1]]:
+                sys.exit(f"error: {member.name} must hold one [[language]] named '{language[1]}'")
+            languages.append(entries[0])
+    if servers is None:
+        sys.exit("error: the archive has no language-servers.toml")
+    if not languages:
+        sys.exit("error: the archive has no languages/<name>/language.toml")
+    return {
+        "language": sorted(languages, key=lambda entry: entry["name"]),
+        "language-server": servers,
+    }
 
 
-def fetch_toml(sha: str) -> dict:
-    url = f"https://raw.githubusercontent.com/helix-editor/helix/{sha}/languages.toml"
-    return tomllib.loads(fetch_bytes(url, timeout=30).decode())
+def fetch_language_document(tag: str) -> dict:
+    url = f"https://github.com/cvlmtg/treesitter.hume/archive/refs/tags/{tag}.tar.gz"
+    return language_document(fetch_bytes(url, timeout=60))
 
 
 def comment_tokens(entry: dict) -> list[str]:
@@ -168,58 +195,18 @@ def block_comment_tokens(entry: dict) -> list[tuple[str, str]]:
     sys.exit(f"error: language '{name}': malformed block-comment-tokens {value!r}")
 
 
-# Helix block comment pairs dropped before emission, by language. GraphQL's
-# `"""` delimits a block string (a field description), not a comment: GraphQL
-# comments are `#` only, and `G G` would strip a description's quotes as if
-# uncommenting it.
-BLOCK_COMMENT_EXCLUSIONS: dict[str, set[tuple[str, str]]] = {
-    "graphql": {('"""', '"""')},
-}
-
-
-def fail_on_stale(name: str, what: str, stale: set) -> None:
-    """Fatal when `stale`, the entries of language `name`'s correction
-    table for `what` that its upstream data lacks, is not empty, so the
-    table does not outlive the upstream data it corrects."""
-    if stale:
-        sys.exit(f"error: language '{name}': {what} {sorted(stale)!r} not in languages.toml")
-
-
-def kept_block_comment_tokens(entry: dict) -> list[tuple[str, str]]:
-    """`block_comment_tokens(entry)` without the language's excluded pairs.
-    Fatal when an excluded pair is missing from them (`fail_on_stale`)."""
-    name = entry["name"]
-    pairs = block_comment_tokens(entry)
-    excluded = BLOCK_COMMENT_EXCLUSIONS.get(name, set())
-    fail_on_stale(name, "excluded block-comment-tokens", excluded - set(pairs))
-    return [p for p in pairs if p not in excluded]
-
-
-# Helix shebangs replaced before emission, by language. HUME matches a
-# shebang against the one program a `#!` line runs, so V's `v run` names
-# the `v` interpreter.
-SHEBANG_CORRECTIONS: dict[str, dict[str, str]] = {
-    "v": {"v run": "v"},
-}
-
-
 def checked_shebangs(entry: dict) -> list[str]:
-    """`entry`'s shebangs with the language's corrections applied. Fatal
-    when a corrected shebang is missing from them (`fail_on_stale`), and
-    when a shebang is not one interpreter name, which `define-language!`
-    refuses (`ShebangInterpreter::new`)."""
+    """`entry`'s shebangs. Fatal when one is not one interpreter name, which
+    `define-language!` refuses (`ShebangInterpreter::new`)."""
     name = entry["name"]
     shebangs = entry.get("shebangs", [])
-    corrections = SHEBANG_CORRECTIONS.get(name, {})
-    fail_on_stale(name, "corrected shebangs", set(corrections) - set(shebangs))
-    corrected = [corrections.get(s, s) for s in shebangs]
-    for shebang in corrected:
+    for shebang in shebangs:
         if not shebang or any(c.isspace() or c in "/\\" for c in shebang):
             sys.exit(
                 f"error: language '{name}': shebang {shebang!r} is not one interpreter "
-                f"name; add it to SHEBANG_CORRECTIONS"
+                f"name; correct it in treesitter.hume's languages/{name}/language.toml"
             )
-    return corrected
+    return list(shebangs)
 
 
 def parse_languages(doc: dict) -> list[dict]:
@@ -255,7 +242,7 @@ def parse_languages(doc: dict) -> list[dict]:
                 "globs": globs,
                 "shebangs": shebangs,
                 "comment_tokens": comment_tokens(entry),
-                "block_comment_tokens": kept_block_comment_tokens(entry),
+                "block_comment_tokens": block_comment_tokens(entry),
                 "language_id": entry.get("language-id"),
                 "roots": entry.get("roots", []),
             }
@@ -309,33 +296,13 @@ def emit_language_data(lang: dict) -> list[str]:
     return rows
 
 
-def write_language_files(directory: Path, sha: str, langs: list[dict]) -> None:
+def write_language_files(directory: Path, tag: str, langs: list[dict]) -> None:
     """One data file per language in `langs`, through `write_named_files`."""
     write_named_files(
         directory,
-        lambda name: LANGUAGE_DATA_HEADER.format(name=name, sha=sha),
+        lambda name: LANGUAGE_DATA_HEADER.format(name=name, tag=tag),
         {lang["name"]: emit_language_data(lang) for lang in langs},
     )
-
-
-# HUME-specific corrections to upstream Helix `config` data, applied before
-# emission. Not Helix bugs to route around blindly — verified against each
-# named server's own source that its *real* config-reading code expects a
-# different shape than what ships in languages.toml. Add an entry here only
-# after checking the server's actual handler, the same way the hostInfo
-# rewrite in parse_language_servers below was checked.
-CONFIG_OVERRIDES: dict[str, Callable[[dict], dict]] = {
-    # Helix's own entry double-wraps this under the server's own name
-    # (`[language-server.actions-language-server.config.actions-language-server]`)
-    # but connection.ts reads `initializationOptions.sessionToken` flat, no
-    # wrapper — the token is silently never seen as shipped upstream.
-    "actions-language-server": lambda config: config.get("actions-language-server", config),
-    # pony-lsp ignores initializationOptions for these keys entirely; it
-    # only reads them from a workspace/configuration pull for section
-    # "pony-lsp" (server_options.pony's send_configuration_request), which
-    # needs this same data nested one level under that key.
-    "pony-lsp": lambda config: {"pony-lsp": config},
-}
 
 
 def server_list_entry(element, lang_name: str) -> tuple[str, tuple[str, list[str]] | None]:
@@ -401,8 +368,6 @@ def parse_language_servers(
                 config = ls_def.get("config")
                 if config and "hostInfo" in config:
                     config = {**config, "hostInfo": "hume"}
-                if config and server_name in CONFIG_OVERRIDES:
-                    config = CONFIG_OVERRIDES[server_name](config)
                 ignored_keys.update(k for k in ls_def if k not in ("command", "args", "config"))
                 servers[server_name] = {
                     "command": ls_def["command"],
@@ -497,10 +462,8 @@ def emit_language_servers(
 
 def main() -> None:
     tag = read_pin(TREESITTER_PIN_SCM)
-    sha = fetch_helix_rev(tag)
-    print(f"treesitter.hume {tag}: helix-rev {sha}", file=sys.stderr)
 
-    doc = fetch_toml(sha)
+    doc = fetch_language_document(tag)
     langs = parse_languages(doc)
     check_file_names("language", (lang["name"] for lang in langs))
     servers, language_lists = parse_language_servers(doc)
@@ -516,23 +479,23 @@ def main() -> None:
     # sequence of top-level (define-language! …) forms), so unlike the others
     # it has no read_sexpr self-check.
     write_generated_file(
-        LANGUAGES_SCM, LANGUAGES_HEADER.format(sha=sha), emit_language_identities(langs)
+        LANGUAGES_SCM, LANGUAGES_HEADER.format(tag=tag), emit_language_identities(langs)
     )
 
     # languages/<name>.scm — per-language data
-    write_language_files(LANGUAGES_DIR, sha, langs)
+    write_language_files(LANGUAGES_DIR, tag, langs)
 
     # lsp-install registrations/<server>.scm — command, args and config, defaults omitted
     write_named_files(
         LSP_REGISTRATIONS_DIR,
-        lambda name: LSP_REGISTRATION_HEADER.format(name=name, sha=sha),
+        lambda name: LSP_REGISTRATION_HEADER.format(name=name, tag=tag),
         {name: emit_lsp_registration(name, servers[name]) for name in sorted(servers)},
     )
 
     # language-servers.scm — each language's ordered server list
     write_generated_file(
         LANGUAGE_SERVERS_SCM,
-        LANGUAGE_SERVERS_HEADER.format(sha=sha),
+        LANGUAGE_SERVERS_HEADER.format(tag=tag),
         emit_language_servers(language_lists),
     )
     read_sexpr(LANGUAGE_SERVERS_SCM)  # self-check: emitted file must re-parse

@@ -49,7 +49,7 @@ No upstream format is ever parsed inside the editor.
 
 | Concern | Upstream | Pin | Generated data |
 |---|---|---|---|
-| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | `core:plum`'s `treesitter-hume-pin.scm`, whose release names the Helix commit | `runtime/plugins/core/lsp-install/data/registrations/<server>.scm`, `data/language-servers.scm` (and each language's root markers in `runtime/scheme/languages/<name>.scm`) |
+| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables), as `cvlmtg/treesitter.hume` keeps it with its corrections | `core:plum`'s `treesitter-hume-pin.scm`, a treesitter.hume release tag | `runtime/plugins/core/lsp-install/data/registrations/<server>.scm`, `data/language-servers.scm` (and each language's root markers in `runtime/scheme/languages/<name>.scm`) |
 | **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/plugins/core/lsp-install/data/sources/<server>.scm`, `data/requirements/<server>.scm` |
 
 Each pin has its own generated files: a treesitter.hume pin bump touches only Helix-derived data, a
@@ -68,8 +68,8 @@ server is guaranteed wired), resolve per-platform assets, and record a sha256 pe
 
 Scripts align with *pins*, not features (see `scripts/README.md`):
 
-- **`scripts/sync-grammars.py`** (existing, extended): already fetches `languages.toml` at
-  the Helix commit the pinned treesitter.hume release names and emits `languages.scm` + one `languages/<name>.scm` per language; additionally emits
+- **`scripts/sync-grammars.py`** (existing, extended): already reads the pinned treesitter.hume
+  release's copy of Helix's `languages.toml` settings and emits `languages.scm` + one `languages/<name>.scm` per language; additionally emits
   one `registrations/<server>.scm` per server and `language-servers.scm` from the same parsed TOML. One bump, one run, all helix-derived files
   move in one diff.
 - **`scripts/sync-lsp-sources.py`** (new, standalone): mason-pin → one `sources/<server>.scm`
