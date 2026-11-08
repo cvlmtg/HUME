@@ -276,15 +276,10 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     ) -> Result<ExclusiveRange<hume_rope::line::ContentLine>, String> {
         let t = self.shown(pane)?;
         // No active-tab restriction: `EditorState::pane_size` lays out a
-        // background tab's panes against the current terminal too, so a
-        // background-tab pane's *size* is as trustworthy as an active
-        // one's. Its *scroll position* can lag, though: the frame's scroll
-        // step only runs over `active_pane_ids()`, so a background pane's
-        // scroll stays wherever it last was while still active, until its
-        // tab is focused again. "The range of lines this pane would show"
-        // is still well-defined regardless of which tab is on screen; it's
-        // just not guaranteed to reflect a scroll that happened elsewhere
-        // while this pane was hidden.
+        // background tab's panes against the current terminal too, and
+        // `viewport_range` settles the pane's view before reading it, so a
+        // background-tab pane answers with the lines it would show once its
+        // tab is focused again.
         Ok(crate::editor::geometry::viewport_range(
             self.state,
             self.view,

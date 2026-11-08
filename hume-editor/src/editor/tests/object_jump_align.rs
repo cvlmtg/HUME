@@ -106,6 +106,7 @@ fn goto_next_paragraph_count_past_the_last_paragraph_still_centers() {
 fn goto_prev_paragraph_never_aligns_view() {
     let mut ed = paragraph_editor(20);
     seek_to_line(&mut ed, 30);
+    ed.settle_views();
     let top_before = ed.viewport().top().line;
 
     ed.handle_key(key('{'));

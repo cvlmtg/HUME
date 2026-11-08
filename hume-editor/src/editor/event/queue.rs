@@ -219,18 +219,17 @@ impl Editor {
     /// reading the pane's *current* bounds rather than whatever they were
     /// when the timer was armed. A no-op if the pane closed in the meantime,
     /// or if its tab went to the background before the (debounced) timer
-    /// fired: the frame's scroll step stops maintaining a backgrounded
-    /// pane's scroll position (only its size stays current), so firing with
-    /// its frozen scroll would hand a handler a range the code itself no
-    /// longer trusts. `prepare_frame` drops that pane's `last_visible_range`
-    /// when its tab backgrounds, so the pane's first frame back on screen
-    /// reads as a fresh change and re-arms this on its own. This guard only
+    /// fired: a hidden pane shows no lines to announce. `prepare_frame`
+    /// drops that pane's `last_visible_range` when its tab backgrounds, so
+    /// the pane's first frame back on screen reads as a fresh change and
+    /// re-arms this on its own. This guard only
     /// skips the fire for the frames spent hidden, not the one on return.
     pub(in crate::editor) fn queue_viewport_change(&mut self, pane_id: hume_core::PaneId) {
         if !self.view.layout().contains_leaf(pane_id) {
             return;
         }
-        let lines = crate::editor::geometry::viewport_range(&self.state, &self.view, pane_id);
+        let lines =
+            crate::editor::geometry::viewport_range(&mut self.state, &mut self.view, pane_id);
         let bid = self.view.panes[pane_id].buffer_id();
         self.state.queue_event(EditorEvent::OnViewportChange {
             target: PaneHandle::with_pane(bid, pane_id),

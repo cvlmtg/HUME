@@ -25,7 +25,7 @@ use hume_engine::pipeline::{PaneHit, SeamHandle};
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
-use super::commands::{self, pane_display_lines};
+use super::commands;
 use super::cursor;
 use hume_ops::MotionMode;
 
@@ -266,14 +266,14 @@ impl Editor {
 
     /// Resolve `hit` to the buffer cluster under it, at its pane's drawn size
     /// with the pane's current gutter.
+    #[allow(clippy::disallowed_methods)] // a click aims at the view on screen
     fn click_to_cluster(&mut self, hit: PaneHit) -> Option<hume_rope::cluster::ClusterStart> {
         let pid = hit.pane();
         let buf_id = self.view.panes[pid].buffer_id();
         let geometry = self.state.pane_geometry(&self.view, pid, hit.size());
         let key = self.state.format_key(&self.view.panes[pid]);
-        let (mut dlm, viewport) = pane_display_lines(
-            self.state.buffers.get(buf_id),
-            &mut self.view.panes[pid],
+        let (mut dlm, viewport) = self.view.panes[pid].display_lines_and_viewport(
+            self.state.buffers.get(buf_id).text().rope(),
             key,
             geometry.content_width,
         );
@@ -285,8 +285,8 @@ impl Editor {
 
 /// Translate a pane-content-relative `(content_x, row)` cell (relative to
 /// the pane's content area, past the `gutter_w`-wide gutter) into an
-/// absolute terminal cell: a content-relative position `pane_display_lines`'s
-/// cursor walk already resolved, placed onto the screen.
+/// absolute terminal cell: a content-relative position a display-line walk
+/// already resolved, placed onto the screen.
 pub(super) fn content_pos_to_screen(
     content_x: u16,
     row: u16,

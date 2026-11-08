@@ -16,14 +16,18 @@ use hume_platform::terminal::SharedTerm;
 use hume_grid::{Grid, Rect};
 
 use hume_core::PaneId;
-use hume_engine::pane::Pane;
+use hume_engine::display_lines::DisplayLineMap;
+use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{
-    EngineView, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
+    EngineView, PanePool, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
 };
 use hume_engine::types::EditorMode;
 
+use super::buffer::store::BufferStore;
 use super::buffer::{Buffer, BufferFile};
+use super::geometry::LayoutKey;
 use super::input_stack::ResolvedPopupLayout;
+use super::pane_state::PaneEntries;
 use super::{Editor, EditorState};
 
 /// Project a pane's selections into its engine mirror, in the model's start
@@ -261,8 +265,8 @@ impl Editor {
     /// `format` is [`EditorState::format_key`](super::EditorState::format_key),
     /// the single source of truth for wrap_mode / tab_width / whitespace
     /// across all render paths, so this and the scroll pass
-    /// (`commands::pane_display_lines`) resolve a bit-identical key for the same
-    /// pane. `mode` is a per-focus fact: only the focused pane owns the real
+    /// (`scroll_into_view`) resolve a bit-identical key for the same pane.
+    /// `mode` is a per-focus fact: only the focused pane owns the real
     /// terminal cursor, so it alone gets the live editor mode; other panes are
     /// forced to `Normal` so they don't take Insert's or Extend's cursor
     /// colours. `cursor_is_block` is the separate per-focus resolution that
@@ -552,18 +556,7 @@ impl Editor {
             .collect();
 
         self.sync_all_pane_mirrors(&active);
-
-        // Everything that changes display-line counts or columns, synced
-        // before scrolling. Signs set the gutter width and so the wrap
-        // column; the other three are `DisplayLineMap` providers. The
-        // snapshot predates the scroll, so a line exposed by this frame's
-        // scroll gets its hints one frame late. Syncing after the scroll
-        // would instead let scroll and render disagree on layout.
-        let panes = self.decorated_panes(&sizes);
-        self.update_sign_providers(&panes);
-        self.update_inlay_hint_providers(&panes);
-        self.update_virtual_line_providers(&panes);
-        self.update_eol_text_providers(&panes);
+        self.sync_layout_providers(&sizes);
 
         // Scroll each active pane so its primary cursor stays visible.
         //
@@ -575,32 +568,13 @@ impl Editor {
         for &(pid, size) in &sizes {
             let buf_id = self.view.panes[pid].buffer_id();
             let layout_key = self.state.layout_key(&self.view, pid, size);
-            // Per (pane, buffer) state: a pane that just switched buffers
-            // reads a fresh entry whose `last_layout_key` is `None`.
-            let pbs = self.state.panes.entries.shown_mut(&self.view.panes, pid);
-            let cursor = pbs
-                .view(self.state.buffers.get(buf_id).text())
-                .primary()
-                .head();
-            let layout_changed = pbs.last_layout_key.replace(layout_key) != Some(layout_key);
-            // A layout change reveals only a pane that isn't parked: one
-            // parked behind an unfollowable scroll must not snap back onto
-            // its cursor just because something changed elsewhere in the
-            // buffer it's viewing. The pane's own action (a head move, or an
-            // edit it made) always reveals, via `reveal_pending`.
-            let reveal = std::mem::take(&mut pbs.reveal_pending) || (layout_changed && !pbs.parked);
-            let outcome = scroll_into_view(
-                self.state.buffers.get(buf_id),
-                &mut self.view.panes[pid],
-                cursor,
+            let cursor_screen = reveal_due_cursor(
+                &self.state.buffers,
+                &mut self.state.panes.entries,
+                &mut self.view.panes,
+                pid,
                 layout_key,
-                reveal,
             );
-            self.state
-                .panes
-                .entries
-                .shown_mut(&self.view.panes, pid)
-                .parked = outcome.parked;
             if self.state.messages_view_awaits_seen(buf_id)
                 && shows_document_end(
                     self.state.buffers.get(buf_id),
@@ -611,14 +585,15 @@ impl Editor {
                 self.state.message_log.mark_all_seen();
             }
             if pid == self.view.focused_pane() {
-                ctx.cursor_content_pos = outcome.cursor_screen;
+                ctx.cursor_content_pos = cursor_screen;
             }
 
             // A visible-range change arms the `OnViewportChange` debounce
             // timer; the hook fires later from the timer drain.
             let content_lines = self.state.buffers.get(buf_id).text().content_line_count();
-            let range =
-                super::geometry::pane_visible_range(&self.view.panes[pid], size, content_lines);
+            #[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
+            let viewport = self.view.panes[pid].viewport();
+            let range = super::geometry::pane_visible_range(viewport, size, content_lines);
             if self.last_visible_range.insert(pid, (buf_id, range)) != Some((buf_id, range)) {
                 self.debounce_viewport_change(pid);
             }
@@ -647,6 +622,61 @@ impl Editor {
         screen
     }
 
+    /// Sync everything that changes display-line counts or columns into the
+    /// `sizes` panes, before a reveal lays them out. Signs set the gutter
+    /// width and so the wrap column; the other three are `DisplayLineMap`
+    /// providers. The snapshot is of each view before the reveal moves it,
+    /// so a line the reveal exposes gets its hints one pass late. Syncing
+    /// after the reveal would instead let reveal and render disagree on
+    /// layout.
+    fn sync_layout_providers(&mut self, sizes: &[(PaneId, PaneSize)]) {
+        let panes = self.decorated_panes(sizes);
+        self.update_sign_providers(&panes);
+        self.update_inlay_hint_providers(&panes);
+        self.update_virtual_line_providers(&panes);
+        self.update_eol_text_providers(&panes);
+    }
+
+    /// Run in every active pane the reveal the next frame would run, after
+    /// the provider sync it would run first. Every key and paste calls it
+    /// before dispatch, so input with no frame since the last cursor move (a
+    /// macro replay, input queued behind input) acts on the view that move
+    /// would have drawn: the view follows the input, not how many frames
+    /// fell between it. A pane with nothing due is left alone, which is
+    /// every pane when a frame drew since the last input. A click does not
+    /// call it, since it aims at the frame on screen; the wheel settles in
+    /// `commands::scroll_view`.
+    pub(in crate::editor) fn settle_views(&mut self) {
+        let screen = self.state.screen_layout(&self.view);
+        let due: Vec<(PaneId, PaneSize)> = self
+            .view
+            .active_pane_ids()
+            .into_iter()
+            .filter_map(|pid| {
+                let size = screen
+                    .pane_size(self.view.focused_layout(), pid)
+                    .expect("an active pane is a leaf of the focused layout");
+                let key = self.state.layout_key(&self.view, pid, size);
+                let settled = view_settled(&self.state.panes.entries, &self.view.panes, pid, key);
+                (!settled).then_some((pid, size))
+            })
+            .collect();
+        if due.is_empty() {
+            return;
+        }
+        self.sync_layout_providers(&due);
+        for (pid, size) in due {
+            let key = self.state.layout_key(&self.view, pid, size);
+            reveal_due_cursor(
+                &self.state.buffers,
+                &mut self.state.panes.entries,
+                &mut self.view.panes,
+                pid,
+                key,
+            );
+        }
+    }
+
     /// Sync every active-tab pane's selection mirror from the authoritative
     /// `pane_state`.
     ///
@@ -671,8 +701,22 @@ impl Editor {
     // ── Engine accessors ──────────────────────────────────────────────────────
 
     #[cfg(test)]
-    pub(in crate::editor) fn viewport(&self) -> &hume_engine::pane::Viewport {
-        &self.view.panes[self.view.focused_pane()].viewport
+    pub(in crate::editor) fn viewport(&self) -> &Viewport {
+        self.pane_viewport(self.view.focused_pane())
+    }
+
+    /// Pane `pid`'s viewport as it stands, settled or not.
+    #[cfg(test)]
+    #[allow(clippy::disallowed_methods)]
+    pub(in crate::editor) fn pane_viewport(&self, pid: PaneId) -> &Viewport {
+        self.view.panes[pid].viewport()
+    }
+
+    /// Pane `pid`'s viewport as it stands, to write.
+    #[cfg(test)]
+    #[allow(clippy::disallowed_methods)]
+    pub(in crate::editor) fn pane_viewport_mut(&mut self, pid: PaneId) -> &mut Viewport {
+        self.view.panes[pid].viewport_mut()
     }
 
     /// How many times `claim_terminal` has actually entered the
@@ -699,9 +743,8 @@ impl Editor {
     }
 
     #[cfg(test)]
-    pub(in crate::editor) fn viewport_mut(&mut self) -> &mut hume_engine::pane::Viewport {
-        let focused_pid = self.view.focused_pane();
-        &mut self.view.panes[focused_pid].viewport
+    pub(in crate::editor) fn viewport_mut(&mut self) -> &mut Viewport {
+        self.pane_viewport_mut(self.view.focused_pane())
     }
 }
 
@@ -860,10 +903,91 @@ impl EditorState {
     }
 }
 
+/// Scroll pane `pid` onto its primary cursor when a reveal is due, laid out
+/// as `layout_key`, and return where the cursor sits on screen (see
+/// [`ScrollOutcome::cursor_screen`]).
+///
+/// A reveal is due when the pane's own action raised
+/// `PaneBufferState::reveal_pending`, or when `layout_key` differs from the
+/// pane's `last_layout_key` and the pane isn't parked: a pane parked behind
+/// an unfollowable scroll must not snap back onto its cursor because
+/// something changed elsewhere in the buffer it shows.
+///
+/// Every frame runs it per pane, [`Editor::settle_views`] before each input
+/// and [`settled_pane_view`] before a read between frames, and a view move
+/// runs it after moving the view, so `parked` describes the view the move
+/// left.
+pub(in crate::editor) fn reveal_due_cursor(
+    buffers: &BufferStore,
+    entries: &mut PaneEntries,
+    panes: &mut PanePool,
+    pid: PaneId,
+    layout_key: LayoutKey,
+) -> Option<(u16, u16)> {
+    let buf_id = panes[pid].buffer_id();
+    // Per (pane, buffer) state: a pane that just switched buffers reads a
+    // fresh entry whose `last_layout_key` is `None`.
+    let pbs = entries.shown_mut(panes, pid);
+    let cursor = pbs.view(buffers.get(buf_id).text()).primary().head();
+    let layout_changed = pbs.last_layout_key.replace(layout_key) != Some(layout_key);
+    let reveal = std::mem::take(&mut pbs.reveal_pending) || (layout_changed && !pbs.parked);
+    let outcome = scroll_into_view(
+        buffers.get(buf_id),
+        &mut panes[pid],
+        cursor,
+        layout_key,
+        reveal,
+    );
+    entries.shown_mut(panes, pid).parked = outcome.parked;
+    outcome.cursor_screen
+}
+
+/// Pane `pid`'s display lines and viewport between frames, laid out as
+/// `layout_key`, after running [`reveal_due_cursor`] as the next frame would
+/// if anything it reads changed. `clippy.toml` bans the engine's own
+/// viewport accessors outside the few sites that want the view as drawn, so
+/// every other reader comes through here: a read after a cursor move in the
+/// same dispatch (a command that jumps and then pages) or from a timer sees
+/// the view that move would have drawn. Unlike [`Editor::settle_views`] it
+/// syncs no providers, so it lays the pane out by those the last sync left.
+#[allow(clippy::disallowed_methods)] // settled first
+pub(in crate::editor) fn settled_pane_view<'a>(
+    buffers: &'a BufferStore,
+    entries: &mut PaneEntries,
+    panes: &'a mut PanePool,
+    pid: PaneId,
+    layout_key: LayoutKey,
+) -> (DisplayLineMap<'a>, &'a mut Viewport) {
+    if !view_settled(entries, panes, pid, layout_key) {
+        reveal_due_cursor(buffers, entries, panes, pid, layout_key);
+    }
+    let pane = &mut panes[pid];
+    pane.display_lines_and_viewport(
+        buffers.get(pane.buffer_id()).text().rope(),
+        layout_key.format_key(),
+        layout_key.content_width(),
+    )
+}
+
+/// Whether nothing [`reveal_due_cursor`] reads for pane `pid` has changed
+/// since it last ran: `reveal_pending` clear and the same `layout_key`. The
+/// view is then the one that run left, and `parked` already describes it. A
+/// parked pane whose key changed is not settled, though no reveal is due:
+/// running it records the key and recomputes `parked`.
+fn view_settled(
+    entries: &PaneEntries,
+    panes: &PanePool,
+    pid: PaneId,
+    layout_key: LayoutKey,
+) -> bool {
+    let pbs = entries.shown(panes, pid);
+    !pbs.reveal_pending && pbs.last_layout_key == Some(layout_key)
+}
+
 /// [`scroll_into_view`]'s result: where the cursor ended up on screen, and
 /// whether this pane came out of the pass parked (its cursor outside the
-/// scroll-margin band). `PaneBufferState::parked`'s only writer is the caller,
-/// which stores this field back onto it.
+/// scroll-margin band), which [`reveal_due_cursor`] stores back onto
+/// `PaneBufferState::parked`.
 struct ScrollOutcome {
     /// Pane-relative, before the gutter. `None` for a viewport with no
     /// display lines to place it in, or when the cursor has scrolled out of
@@ -878,17 +1002,13 @@ struct ScrollOutcome {
 }
 
 /// Whether `pane`'s viewport reaches `doc`'s last display line.
-fn shows_document_end(
-    doc: &Buffer,
-    pane: &mut Pane,
-    layout_key: super::geometry::LayoutKey,
-) -> bool {
+#[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
+fn shows_document_end(doc: &Buffer, pane: &mut Pane, layout_key: LayoutKey) -> bool {
     let Some(geo) = layout_key.geometry() else {
         return false;
     };
-    let (mut dlm, viewport) = super::commands::pane_display_lines(
-        doc,
-        pane,
+    let (mut dlm, viewport) = pane.display_lines_and_viewport(
+        doc.text().rope(),
         layout_key.format_key(),
         layout_key.content_width(),
     );
@@ -908,27 +1028,26 @@ fn shows_document_end(
 /// the display-line map holds no viewport, so no arm below can change what
 /// `locate` already answered.
 ///
-/// `reveal` is `PaneBufferState::reveal_pending`'s value for this frame
-/// (already taken by the caller) or'd with an unparked layout change; see
-/// that field's own doc. When `true`, `Viewport::reveal` runs and the pane
-/// comes out unparked. When `false`, `Viewport::settled_row`
-/// answers whether the cursor is already where `reveal` would have left it:
+/// `reveal` is whether [`reveal_due_cursor`] found a reveal due. When
+/// `true`, `Viewport::reveal` runs and the pane comes out unparked. When
+/// `false`, `Viewport::settled_row` answers whether the cursor is already
+/// where `reveal` would have left it:
 /// `Some` places the cursor there directly (an unparked pane, same walk
 /// `reveal` itself would need); `None` means the cursor is outside the band,
 /// so this pass falls back to a plain forward walk from `top` (resolved via
 /// `Viewport::top_at`) and reports the pane parked.
+#[allow(clippy::disallowed_methods)] // the reveal itself, which settles the view
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
     cursor: hume_rope::cluster::ClusterStart,
-    layout_key: super::geometry::LayoutKey,
+    layout_key: LayoutKey,
     reveal: bool,
 ) -> ScrollOutcome {
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done: both work through this pane's one store.
-    let (mut dlm, viewport) = super::commands::pane_display_lines(
-        doc,
-        pane,
+    let (mut dlm, viewport) = pane.display_lines_and_viewport(
+        doc.text().rope(),
         layout_key.format_key(),
         layout_key.content_width(),
     );

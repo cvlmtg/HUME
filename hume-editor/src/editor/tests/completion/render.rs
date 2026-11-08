@@ -561,7 +561,6 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
 
     // Re-derive the cell independently via a fresh `DisplayLineMap`
     // and `cursor::content_pos`, bypassing `ctx.cursor_content_pos`.
-    let bid = ed.focused_buffer_id();
     let anchor = ed
         .state
         .input
@@ -574,11 +573,12 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     let gutter_w = ed.state.pane_geometry(&ed.view, pid, size).gutter_width;
     let layout_key = ed.state.layout_key(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
-    let (mut dlm, vp) = commands::pane_display_lines(
-        state.buffers.get(bid),
-        &mut view.panes[pid],
-        layout_key.format_key(),
-        layout_key.content_width(),
+    let (mut dlm, vp) = crate::editor::frame::settled_pane_view(
+        &state.buffers,
+        &mut state.panes.entries,
+        &mut view.panes,
+        pid,
+        layout_key,
     );
     let (content_x, row) = cursor::content_pos(size, vp, &mut dlm, anchor).expect("visible");
     let expected_x = content_x + gutter_w + pane_rect.x;

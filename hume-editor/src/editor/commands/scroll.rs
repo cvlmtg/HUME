@@ -1,13 +1,71 @@
 use hume_core::{Count, PaneId};
-use hume_engine::display_lines::carry;
+use hume_engine::display_lines::{DisplayLineMap, carry};
+use hume_engine::pane::{ViewGeometry, Viewport};
 use hume_engine::pipeline::{EngineView, PaneSize};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
+use super::super::buffer::store::BufferStore;
 use super::super::doc_ops;
-use super::{CommandPane, pane_display_lines, sticky_landing};
+use super::super::frame::{reveal_due_cursor, settled_pane_view};
+use super::super::pane_state::PaneEntries;
+use super::{CommandPane, sticky_landing};
 use crate::editor::error::CommandError;
 use hume_editing::selection::Selection;
+
+// ── Moving the view ───────────────────────────────────────────────────────────
+
+/// What [`move_view`] hands its caller: the pane's settled display lines and
+/// viewport, its scroll geometry, and the selection stores, free to write
+/// while the map is held.
+struct ViewMove<'a> {
+    dlm: DisplayLineMap<'a>,
+    viewport: &'a mut Viewport,
+    geo: ViewGeometry,
+    buffers: &'a BufferStore,
+    entries: &'a mut PaneEntries,
+}
+
+/// Move pane `pid`'s view between frames with `f`, laid out at `size`. `f`
+/// starts from the view the last cursor move would have drawn, whether or
+/// not a frame drew it, and the reveal `f` leaves due runs after it, so
+/// `PaneBufferState::parked` describes the view `f` ends on. A pane with no
+/// rows has no view to move, and `f` does not run.
+fn move_view(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    pid: PaneId,
+    size: PaneSize,
+    f: impl FnOnce(ViewMove<'_>),
+) {
+    let key = state.layout_key(view, pid, size);
+    {
+        let (dlm, viewport) = settled_pane_view(
+            &state.buffers,
+            &mut state.panes.entries,
+            &mut view.panes,
+            pid,
+            key,
+        );
+        let Some(geo) = key.geometry() else {
+            return;
+        };
+        f(ViewMove {
+            dlm,
+            viewport,
+            geo,
+            buffers: &state.buffers,
+            entries: &mut state.panes.entries,
+        });
+    }
+    reveal_due_cursor(
+        &state.buffers,
+        &mut state.panes.entries,
+        &mut view.panes,
+        pid,
+        key,
+    );
+}
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
 //
@@ -27,9 +85,9 @@ use hume_editing::selection::Selection;
 /// post-scroll `top` (walking its own bound independently of `scroll_by`'s;
 /// see `hume_engine::display_lines::scroll`'s module doc for why) is what
 /// keeps the cursor at the same relative position (or, failing that, lands
-/// it back inside the scroll-margin band) instead of being snapped back next
-/// frame. See `carry`'s own doc for why a selection it can't place stays
-/// untouched rather than collapsing.
+/// it back inside the scroll-margin band) instead of being snapped back by
+/// the reveal that follows. See `carry`'s own doc for why a selection it
+/// can't place stays untouched rather than collapsing.
 pub(in crate::editor) fn scroll_view(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -41,50 +99,48 @@ pub(in crate::editor) fn scroll_view(
 ) {
     let buf_id = view.panes[pid].buffer_id();
     let landing = sticky_landing(state, pid, buf_id);
-    let key = state.layout_key(view, pid, size);
-    let (mut dlm, viewport) = pane_display_lines(
-        state.buffers.get(buf_id),
-        &mut view.panes[pid],
-        key.format_key(),
-        key.content_width(),
-    );
-    let Some(geo) = key.geometry() else {
-        return; // a collapsed pane has nothing to scroll and nowhere to carry a cursor
-    };
     let delta = if down {
         count as isize
     } else {
         -(count as isize)
     };
-    viewport.scroll_by(&mut dlm, geo, delta);
-    let top = viewport.top();
-
-    // `apply_doc_motion`'s own head-before/after comparison is what raises
-    // `PaneBufferState::reveal_pending` here. No separate pin to track: a
-    // scroll that couldn't carry a selection anywhere (parked behind a
-    // virtual block, or already at a document edge) leaves that selection's
-    // head unchanged, which is exactly the case the funnel already treats
-    // as "nothing to reveal".
-    doc_ops::apply_doc_motion(
-        &state.buffers,
-        &mut state.panes.entries,
+    move_view(
+        state,
+        view,
         pid,
-        buf_id,
-        |st| {
-            st.map(|sel| {
-                let (head_pos, target_col) = dlm.locate(sel.head());
-                let Some(landed) = carry(&mut dlm, geo, top, head_pos, delta) else {
-                    // Parked behind a virtual block or at a document edge.
-                    return sel.selection();
-                };
-                let new_head = dlm.char_at(landed, target_col, landing);
-                let anchor = if mode == MotionMode::Extend {
-                    sel.anchor()
-                } else {
-                    new_head
-                };
-                Selection::new(anchor, new_head)
-            })
+        size,
+        |ViewMove {
+             mut dlm,
+             viewport,
+             geo,
+             buffers,
+             entries,
+         }| {
+            viewport.scroll_by(&mut dlm, geo, delta);
+            let top = viewport.top();
+
+            // `apply_doc_motion`'s own head-before/after comparison is what raises
+            // `PaneBufferState::reveal_pending` here. No separate pin to track: a
+            // scroll that couldn't carry a selection anywhere (parked behind a
+            // virtual block, or already at a document edge) leaves that selection's
+            // head unchanged, which is exactly the case the funnel already treats
+            // as "nothing to reveal".
+            doc_ops::apply_doc_motion(buffers, entries, pid, buf_id, |st| {
+                st.map(|sel| {
+                    let (head_pos, target_col) = dlm.locate(sel.head());
+                    let Some(landed) = carry(&mut dlm, geo, top, head_pos, delta) else {
+                        // Parked behind a virtual block or at a document edge.
+                        return sel.selection();
+                    };
+                    let new_head = dlm.char_at(landed, target_col, landing);
+                    let anchor = if mode == MotionMode::Extend {
+                        sel.anchor()
+                    } else {
+                        new_head
+                    };
+                    Selection::new(anchor, new_head)
+                })
+            });
         },
     );
 }
@@ -97,9 +153,9 @@ pub(in crate::editor) fn scroll_view(
 /// Floors rather than rounds up (`9` visible rows steps `4`, not `5`) to
 /// match the conventional buffer half-page; `.max(1)` keeps a one- or
 /// two-row view pageable instead of stalling on a truncated division.
-/// `0` stays `0` rather than climbing to `1`: before a widget's first frame
-/// its geometry is unresolved and `visible_rows` is `0`, where paging must
-/// be a no-op, not a one-row creep.
+/// `0` stays `0` rather than climbing to `1`: a view that shows no rows (a
+/// collapsed pane, a terminal too short for any drawer row or for the
+/// picker panel) must not page, not even by one row.
 pub(in crate::editor) fn half_page(visible_rows: usize) -> usize {
     if visible_rows == 0 {
         return 0;
@@ -176,19 +232,21 @@ fn cmd_view_scroll_to_display_line(
         .view(state.buffers.get(buf_id).text())
         .primary()
         .head();
-    let key = state.layout_key(view, pid, size);
-    let (mut dlm, viewport) = pane_display_lines(
-        state.buffers.get(buf_id),
-        &mut view.panes[pid],
-        key.format_key(),
-        key.content_width(),
+    move_view(
+        state,
+        view,
+        pid,
+        size,
+        |ViewMove {
+             mut dlm,
+             viewport,
+             geo,
+             ..
+         }| {
+            let cursor_pos = dlm.locate_display_line(cursor_char);
+            viewport.align(&mut dlm, geo, cursor_pos, target_display_line);
+        },
     );
-    // A collapsed pane has no geometry, and nowhere to align a cursor to.
-    let Some(geo) = key.geometry() else {
-        return;
-    };
-    let cursor_pos = dlm.locate_display_line(cursor_char);
-    viewport.align(&mut dlm, geo, cursor_pos, target_display_line);
 }
 
 /// Center the head in the viewport, like `z z`. Infallible core shared by

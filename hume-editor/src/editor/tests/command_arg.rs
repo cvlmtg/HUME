@@ -145,7 +145,7 @@ fn scrolling_leaves_the_read_pending() {
     ed.feed_key(key('f'));
     ed.handle_input(mouse_wheel(true));
     let pid = ed.view.focused_pane();
-    assert!(ed.view.panes[pid].viewport.top().line > hume_rope::line::ContentLine::new(0));
+    assert!(ed.pane_viewport(pid).top().line > hume_rope::line::ContentLine::new(0));
     assert!(reading_char(&ed));
     ed.feed_key(key('e'));
     let head = ed.current_view().primary().head().offset().index();

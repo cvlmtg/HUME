@@ -24,8 +24,7 @@ fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
 
     // Scroll down near the 10-line original's end: line 8 is valid there,
     // but past the end of the 2-line replacement below.
-    ed.view.panes[pid]
-        .viewport
+    ed.pane_viewport_mut(pid)
         .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
             ContentLine::new(8),
             0,
@@ -38,8 +37,8 @@ fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
     // it must land inside the shrunken 2-line document, not past its end.
     ed.render_to_buf(Rect::new(0, 0, 40, 8));
     assert!(
-        ed.view.panes[pid].viewport.top().line <= ContentLine::new(1),
+        ed.pane_viewport(pid).top().line <= ContentLine::new(1),
         "top must land inside the shrunken 2-line document, not past its end (got {:?})",
-        ed.view.panes[pid].viewport.top().line
+        ed.pane_viewport(pid).top().line
     );
 }

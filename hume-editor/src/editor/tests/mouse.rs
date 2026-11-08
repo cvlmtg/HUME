@@ -132,8 +132,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     // scroll-then-click leaves behind, and the case that distinguishes
     // "viewport moved" from "cursor moved with it".
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid]
-        .viewport
+    ed.pane_viewport_mut(pid)
         .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
             hume_rope::line::ContentLine::new(10),
             0,
@@ -147,7 +146,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     ed.handle_input(mouse_wheel(false));
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top().line,
+        ed.pane_viewport(pid).top().line,
         hume_rope::line::ContentLine::new(7),
         "viewport must scroll up by mouse_scroll_lines (3)"
     );
@@ -171,7 +170,7 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
 
     let pid = ed.view.focused_pane();
     assert_eq!(
-        ed.view.panes[pid].viewport.top().line,
+        ed.pane_viewport(pid).top().line,
         hume_rope::line::ContentLine::new(0)
     );
     assert_eq!(ed.current_view().primary().head().offset(), co(0));
@@ -194,7 +193,7 @@ fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() 
 
     let pid = ed.view.focused_pane();
     assert_eq!(
-        ed.view.panes[pid].viewport.top().line,
+        ed.pane_viewport(pid).top().line,
         hume_rope::line::ContentLine::new(0),
         "nothing to scroll: the 3-line document already fits"
     );
@@ -258,10 +257,10 @@ fn a_wheel_notch_in_a_zero_height_pane_leaves_the_viewport_alone() {
     }
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top().line,
+        ed.pane_viewport(pid).top().line,
         hume_rope::line::ContentLine::new(0)
     );
-    assert_eq!(ed.view.panes[pid].viewport.top().slot, 0);
+    assert_eq!(ed.pane_viewport(pid).top().slot, 0);
 }
 
 // ── Multi-pane hit-testing ────────────────────────────────────────────────
@@ -400,9 +399,11 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
     // `scroll_up_moves_viewport_and_cursor_together`'s doc for why not row 0):
     // the same setup that test uses, reproduced per-pane since both panes
     // view the same buffer but keep independent viewports/selections.
-    ed.view.panes[pid_a].viewport.seed_top_for_test(
-        hume_engine::display_lines::DisplayLinePos::new(hume_rope::line::ContentLine::new(10), 0),
-    );
+    ed.pane_viewport_mut(pid_a)
+        .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
+            hume_rope::line::ContentLine::new(10),
+            0,
+        ));
     let head_a = ed
         .state
         .buffers
@@ -442,7 +443,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         "a wheel notch must never move focus, unlike a click"
     );
     assert_eq!(
-        ed.view.panes[pid_a].viewport.top().line,
+        ed.pane_viewport(pid_a).top().line,
         hume_rope::line::ContentLine::new(7),
         "pane A's viewport must scroll up by mouse_scroll_lines (3)"
     );
@@ -463,7 +464,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         "pane A's own cursor must move with its viewport (screen row 5)"
     );
     assert_eq!(
-        ed.view.panes[pid_b].viewport.top().line,
+        ed.pane_viewport(pid_b).top().line,
         hume_rope::line::ContentLine::new(0),
         "pane B's viewport must be untouched"
     );
@@ -496,15 +497,19 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    ed.view.panes[pid_b].viewport.seed_top_for_test(
-        hume_engine::display_lines::DisplayLinePos::new(hume_rope::line::ContentLine::new(10), 0),
-    );
+    ed.pane_viewport_mut(pid_b)
+        .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
+            hume_rope::line::ContentLine::new(10),
+            0,
+        ));
+    // Line 13 sits scroll-margin (3) rows below the seeded top, inside the
+    // band, so the reveal this selection write raises leaves the top at 10.
     let head_b = ed
         .state
         .buffers
         .get(bid)
         .text()
-        .line_to_char(hume_rope::line::RopeyLine::new(10));
+        .line_to_char(hume_rope::line::RopeyLine::new(13));
     ed.state
         .panes
         .entries
@@ -523,7 +528,7 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
     ed.handle_input(mouse_wheel_at(10, 24, false));
 
     assert_eq!(
-        ed.view.panes[pid_b].viewport.top().line,
+        ed.pane_viewport(pid_b).top().line,
         hume_rope::line::ContentLine::new(7),
         "an off-pane notch must fall back to scrolling the focused pane"
     );
@@ -845,8 +850,7 @@ fn click_with_picker_open_leaves_cursor_and_focus_untouched() {
 fn wheel_with_picker_open_does_not_scroll() {
     let mut ed = editor_from("-[l]>ine0\nline1\nline2\nline3\nline4\n");
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid]
-        .viewport
+    ed.pane_viewport_mut(pid)
         .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
             hume_rope::line::ContentLine::new(2),
             0,
@@ -856,7 +860,7 @@ fn wheel_with_picker_open_does_not_scroll() {
     ed.handle_input(mouse_wheel(false));
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top().line,
+        ed.pane_viewport(pid).top().line,
         hume_rope::line::ContentLine::new(2),
         "picker must swallow the wheel notch"
     );
@@ -996,8 +1000,7 @@ fn click_under_drawer_falls_through_leaving_it_open() {
 fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
     let mut ed = editor_from("-[l]>ine0\nline1\nline2\nline3\nline4\n");
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid]
-        .viewport
+    ed.pane_viewport_mut(pid)
         .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
             hume_rope::line::ContentLine::new(2),
             0,
@@ -1008,7 +1011,7 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
     ed.handle_input(mouse_wheel(false));
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top().line,
+        ed.pane_viewport(pid).top().line,
         hume_rope::line::ContentLine::new(0),
         "the wheel notch must still scroll the pane"
     );

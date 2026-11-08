@@ -102,15 +102,14 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let mut vp = ed.view.panes[pid].viewport;
+    let mut vp = *ed.pane_viewport(pid);
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
     let size = ed.pane_size(pid);
     let layout_key = ed.state.layout_key(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
-    let (mut dlm, _) = crate::editor::commands::pane_display_lines(
-        state.buffers.get(bid),
-        &mut view.panes[pid],
+    let mut dlm = view.panes[pid].display_lines(
+        state.buffers.get(bid).text().rope(),
         layout_key.format_key(),
         layout_key.content_width(),
     );

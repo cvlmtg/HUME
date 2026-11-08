@@ -64,15 +64,14 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // ask `content_pos` with that same settled state, exactly as production
     // code does after `prepare_frame`.
     let pid = ed.view.focused_pane();
-    let mut vp = ed.view.panes[pid].viewport;
+    let mut vp = *ed.pane_viewport(pid);
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
     let size = ed.pane_size(pid);
     let layout_key = ed.state.layout_key(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
-    let (mut dlm, _) = crate::editor::commands::pane_display_lines(
-        state.buffers.get(bid),
-        &mut view.panes[pid],
+    let mut dlm = view.panes[pid].display_lines(
+        state.buffers.get(bid).text().rope(),
         layout_key.format_key(),
         layout_key.content_width(),
     );
@@ -299,15 +298,10 @@ fn wheel_reaches_a_trailing_after_last_line_block() {
 // must not snap back onto its cursor just because one of those changed for
 // a reason that had nothing to do with this pane's own action.
 
-/// A decoration refresh (an inlay hint arriving with no input in between)
-/// must not un-park an already-parked view.
-#[test]
-fn a_parked_view_survives_a_decoration_change() {
-    let (mut ed, rect) = trailing_block_editor();
+/// Gives the focused buffer one inlay hint at its start: a decoration
+/// change that moves the layout key but not the cursor.
+fn add_inlay_hint(ed: &mut Editor) {
     let bid = ed.focused_buffer_id();
-    park_behind_trailing_block(&mut ed, rect);
-    let top_before = ed.viewport().top();
-
     ed.state.config.decorations.set_inlay_hints(
         "test".to_string(),
         bid,
@@ -317,6 +311,17 @@ fn a_parked_view_survives_a_decoration_change() {
             side: hume_core::Side::Before,
         }],
     );
+}
+
+/// A decoration refresh (an inlay hint arriving with no input in between)
+/// must not un-park an already-parked view.
+#[test]
+fn a_parked_view_survives_a_decoration_change() {
+    let (mut ed, rect) = trailing_block_editor();
+    park_behind_trailing_block(&mut ed, rect);
+    let top_before = ed.viewport().top();
+
+    add_inlay_hint(&mut ed);
     ed.render_to_buf(rect);
 
     assert_eq!(
@@ -324,6 +329,36 @@ fn a_parked_view_survives_a_decoration_change() {
         top_before,
         "a decoration change elsewhere must not snap a parked view back onto its cursor"
     );
+}
+
+/// A notch that parks the view, with no frame after it, leaves the pane
+/// parked: a decoration change before the next frame must not snap the view
+/// back onto the cursor either.
+#[test]
+fn a_view_parked_by_an_unrendered_notch_survives_a_decoration_change() {
+    let (mut ed, rect) = trailing_block_editor();
+    let last_line = hume_rope::line::ContentLine::new(9);
+    let head_line = |ed: &Editor| ed.current_view().primary().head_line();
+    ed.render_to_buf(rect);
+    for _ in 0..10 {
+        if head_line(&ed) == last_line {
+            break;
+        }
+        ed.handle_input(mouse_wheel(true));
+        ed.render_to_buf(rect);
+    }
+    assert_eq!(
+        head_line(&ed),
+        last_line,
+        "setup: the cursor reaches the last line"
+    );
+
+    ed.handle_input(mouse_wheel(true));
+    let top_parked = ed.viewport().top();
+    add_inlay_hint(&mut ed);
+    ed.render_to_buf(rect);
+
+    assert_eq!(ed.viewport().top(), top_parked);
 }
 
 /// A sibling pane's edit to the same buffer, past this pane's own parked
@@ -353,7 +388,7 @@ fn a_parked_view_survives_a_sibling_panes_edit() {
 
     ed.render_to_buf(rect);
     assert_eq!(
-        ed.view.panes[pid_a].viewport.top(),
+        ed.pane_viewport(pid_a).top(),
         top_before,
         "a sibling pane's edit must not snap a parked view back onto its cursor"
     );
@@ -519,15 +554,14 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     );
     assert_eq!(cell(&rendered, 0, 2), "y", "line 1 follows at row 2");
 
-    let mut vp = ed.view.panes[pid].viewport;
+    let mut vp = *ed.pane_viewport(pid);
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
     let size = ed.pane_size(pid);
     let layout_key = ed.state.layout_key(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
-    let (mut dlm, _) = crate::editor::commands::pane_display_lines(
-        state.buffers.get(bid),
-        &mut view.panes[pid],
+    let mut dlm = view.panes[pid].display_lines(
+        state.buffers.get(bid).text().rope(),
         layout_key.format_key(),
         layout_key.content_width(),
     );

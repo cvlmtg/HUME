@@ -199,9 +199,11 @@ fn split_inherits_focused_panes_selection_and_scroll() {
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(150));
     set_cursor(&mut ed, cursor_pos.index());
-    ed.view.panes[pid_a].viewport.seed_top_for_test(
-        hume_engine::display_lines::DisplayLinePos::new(hume_rope::line::ContentLine::new(140), 0),
-    );
+    ed.pane_viewport_mut(pid_a)
+        .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
+            hume_rope::line::ContentLine::new(140),
+            0,
+        ));
 
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.view.focused_pane();
@@ -213,7 +215,7 @@ fn split_inherits_focused_panes_selection_and_scroll() {
         "new pane inherits the source pane's selection"
     );
     assert_eq!(
-        ed.view.panes[pid_b].viewport.top().line,
+        ed.pane_viewport(pid_b).top().line,
         hume_rope::line::ContentLine::new(140),
         "new pane inherits the source pane's scroll position"
     );

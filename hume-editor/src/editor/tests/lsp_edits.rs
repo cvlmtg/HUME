@@ -1162,14 +1162,15 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     type_cmd(&mut ed, ":go");
 
     let cursor_char = ed.current_view().primary().head();
-    let bid = ed.focused_buffer_id();
     let size = ed.pane_size(pid);
     let layout_key = ed.state.layout_key(&ed.view, pid, size);
-    let (mut dlm, viewport) = crate::editor::commands::pane_display_lines(
-        ed.state.buffers.get(bid),
-        &mut ed.view.panes[pid],
-        layout_key.format_key(),
-        layout_key.content_width(),
+    let Editor { state, view, .. } = &mut ed;
+    let (mut dlm, viewport) = crate::editor::frame::settled_pane_view(
+        &state.buffers,
+        &mut state.panes.entries,
+        &mut view.panes,
+        pid,
+        layout_key,
     );
     let top = viewport.top();
     let cursor_pos = dlm.locate_display_line(cursor_char);

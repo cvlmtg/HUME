@@ -50,7 +50,7 @@ pub type BufferTag = [u64; 3];
 /// One value rather than four loose ones, built once by the caller
 /// (`hume-editor`'s `EditorState::format_key`) and threaded unchanged through
 /// `DisplayLineMap::new`: the frame's scroll pass and render pass each resolve this
-/// from a different composition (`commands::pane_display_lines` vs.
+/// from a different composition (`Pane::display_lines_and_viewport` vs.
 /// `frame.rs::resolve_pane_settings`), and their sharing this pane's store
 /// depends entirely on the two agreeing bit for bit. A single constructor is
 /// what makes disagreement a compile-time impossibility rather than a

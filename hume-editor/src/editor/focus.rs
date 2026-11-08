@@ -90,7 +90,7 @@ pub(in crate::editor) fn switch_pane_to_buffer(
         state.buffers.touch_mru(target);
     }
     state.buffers.get_mut(target).claim_restored_history(pid);
-    // `frame.rs`'s scroll step indexes the pane's state for `target`
+    // `frame::reveal_due_cursor` indexes the pane's state for `target`
     // directly, so it must exist from the first visit.
     super::pane_state::ensure(
         &mut state.panes.entries,

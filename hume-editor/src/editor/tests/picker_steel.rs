@@ -722,7 +722,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
     let cursor_line = hume_rope::lines::char_to_ropey_line(rope, cursor_char).index();
 
     let height = usize::from(ed.pane_size(pid).height());
-    let top = ed.view.panes[pid].viewport.top().line.index();
+    let top = ed.pane_viewport(pid).top().line.index();
     let bottom = top + height;
     assert!(
         top > 0,

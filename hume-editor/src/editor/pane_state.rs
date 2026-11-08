@@ -42,8 +42,8 @@ pub(crate) struct PaneBufferState {
     selections: PaneSelections,
     /// Per-pane cursor through the buffer's shared match list.
     pub search_cursor: SearchCursor,
-    /// A fact worth re-settling the viewport for happened since the last
-    /// frame handled one, raised at the source, not inferred from state.
+    /// A fact worth re-settling the viewport for happened since the viewport
+    /// last settled, raised at the source, not inferred from state.
     ///
     /// Two writers: the selection funnel [`PaneBufferState::set_selections`]
     /// (set whenever a write actually moves *this
@@ -58,17 +58,17 @@ pub(crate) struct PaneBufferState {
     /// [`PaneBufferState::parked`] comparison instead, which is gated on this
     /// pane's own parked state rather than firing unconditionally.
     ///
-    /// Read and cleared every frame by `frame.rs`'s scroll step, alongside
-    /// that comparison: either one being true means the vertical
-    /// `Viewport::reveal` correction runs this frame; both false means
+    /// Read and cleared by `frame::reveal_due_cursor`, alongside that
+    /// comparison: either one being true means the vertical
+    /// `Viewport::reveal` correction runs in that pass; both false means
     /// `cursor::content_pos` re-derives the caret's current position
     /// without moving the viewport: the same "hidden caret until an
     /// ordinary motion resyncs the view" behavior a scroll that parks a
     /// selection behind a virtual block always could produce.
     pub reveal_pending: bool,
-    /// This pane's [`LayoutKey`] as of the last frame that read one:
-    /// `frame.rs`'s scroll step's own memo, compared against a fresh
-    /// `EditorState::layout_key` every frame to derive reveals for
+    /// This pane's [`LayoutKey`] as of the last read of one:
+    /// `frame::reveal_due_cursor`'s own memo, compared against a fresh
+    /// `EditorState::layout_key` each time it runs to derive reveals for
     /// every non-selection source at once: a resize, a wrap-mode pin or
     /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
     /// pair is `None`, so it always differs), a decoration-generation
@@ -91,7 +91,7 @@ pub(crate) struct PaneBufferState {
     /// `SecondaryMap` entry, same as everything else on this struct).
     pub(in crate::editor) last_layout_key: Option<LayoutKey>,
     /// Whether this pane's cursor sat outside the scroll-margin band as of the
-    /// last frame `frame.rs`'s scroll step settled it: `Viewport::settled_row`
+    /// last time `frame::reveal_due_cursor` settled it: `Viewport::settled_row`
     /// returning `None`, the case a wheel or `Ctrl-d` scroll leaves behind
     /// when `carry` can't fully follow it (a virtual block too tall for the
     /// band, a document edge). Gates whether a [`PaneBufferState::last_layout_key`]
@@ -151,7 +151,7 @@ impl PaneBufferState {
 
     /// Carry this pane's selections for the buffer through `change`. Raises
     /// no reveal of its own: a text change moves the text generation, which
-    /// `frame.rs`'s scroll step already reads off `EditorState::layout_key`
+    /// `frame::reveal_due_cursor` already reads off `EditorState::layout_key`
     /// and reveals for, gated on [`PaneBufferState::parked`] like every other
     /// external change (see that field's own doc for why a parked pane must
     /// not snap back just because the head it can't currently see also
@@ -672,7 +672,8 @@ impl Editor {
         }
         pane.set_wrap(wrap);
         if mode != before {
-            self.view.panes[pid].viewport.reset_horizontal();
+            #[allow(clippy::disallowed_methods)] // a write: the new wrap starts at column 0
+            self.view.panes[pid].viewport_mut().reset_horizontal();
         }
     }
 
@@ -722,7 +723,8 @@ impl Editor {
             }
             true
         };
-        self.view.panes[pid].viewport.reset_horizontal();
+        #[allow(clippy::disallowed_methods)] // a write: the new wrap starts at column 0
+        self.view.panes[pid].viewport_mut().reset_horizontal();
         now_wrapping
     }
 }

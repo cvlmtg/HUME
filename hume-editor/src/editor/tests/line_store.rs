@@ -272,7 +272,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
 ///
 /// Both passes reach the engine through their own `DisplayLineMap`, each built from
 /// `EditorState::format_key` on the same pane (the scroll step through
-/// `commands::pane_display_lines`, the render pass through `frame.rs`'s
+/// `frame.rs`'s `scroll_into_view`, the render pass through its
 /// `resolve_pane_settings`), so the two share an entry: one
 /// composition, called twice, cannot itself disagree with itself. This test
 /// still pins the outcome rather than the mechanism, so a future call site

@@ -294,13 +294,12 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
         3,
     ));
     ed.execute_typed("wrap", None).unwrap(); // on
-    let pane = focused_pane(&ed);
     assert_eq!(
-        pane.viewport.horizontal_offset(),
+        ed.viewport().horizontal_offset(),
         hume_rope::column::DisplayLineCol::new(0)
     );
     assert_eq!(
-        pane.viewport.top().slot,
+        ed.viewport().top().slot,
         3,
         "the top's slot is a row address valid in either wrap mode: a mode \
          change must not discard it"
@@ -320,7 +319,7 @@ fn set_pane_wrap_mode_zeroes_horizontal_offset_on_an_effective_change() {
 
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
     assert_eq!(
-        focused_pane(&ed).viewport.horizontal_offset(),
+        ed.viewport().horizontal_offset(),
         hume_rope::column::DisplayLineCol::new(0),
         "none → soft is an effective-mode change, so horizontal scroll is zeroed"
     );
@@ -338,7 +337,7 @@ fn set_pane_wrap_mode_leaves_horizontal_offset_when_effective_mode_is_unchanged(
 
     run_set(&mut ed, "pane wrap-mode=none").expect(":set pane wrap-mode=none failed");
     assert_eq!(
-        focused_pane(&ed).viewport.horizontal_offset(),
+        ed.viewport().horizontal_offset(),
         hume_rope::column::DisplayLineCol::new(12),
         "none → none is not an effective-mode change, so horizontal scroll survives"
     );
@@ -363,7 +362,7 @@ fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
     let pane = focused_pane(&ed);
     assert_eq!(pane.wrap().mode, Some(WrapMode::None));
     assert_eq!(
-        pane.viewport.top().slot,
+        ed.viewport().top().slot,
         3,
         "toggle_wrap itself must not reset a still-unvalidated offset"
     );
@@ -373,7 +372,7 @@ fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
     // `top_at` read must pull the stale offset down to it.
     ed.render_to_buf(Rect::new(0, 0, 40, 8));
     assert_eq!(
-        focused_pane(&ed).viewport.top().slot,
+        ed.viewport().top().slot,
         0,
         "Viewport::top_at, not the wrap-mode change, is what repairs staleness"
     );
@@ -397,14 +396,14 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_t
     let pane = focused_pane(&ed);
     assert_eq!(pane.wrap().mode, Some(WrapMode::Soft { width: 20 }));
     assert_eq!(
-        pane.viewport.top().slot,
+        ed.viewport().top().slot,
         3,
         "the raw offset survives the width change untouched"
     );
 
     ed.render_to_buf(Rect::new(0, 0, 40, 8));
     assert_eq!(
-        focused_pane(&ed).viewport.top().slot,
+        ed.viewport().top().slot,
         0,
         "line 0's block is 1 row under either width here, so clamp pulls the stale offset to it"
     );
@@ -440,7 +439,7 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
     let pane = focused_pane(&ed);
     assert_eq!(pane.wrap().mode, Some(WrapMode::None));
     assert_eq!(
-        pane.viewport.top().slot,
+        ed.viewport().top().slot,
         1,
         "still-valid address inside the Before block must not be discarded"
     );
@@ -609,7 +608,7 @@ fn wrapped_and_scrolled_frame_pins_the_rendered_display_lines() {
     frame(&mut ed, 24, 8);
 
     assert!(
-        focused_pane(&ed).viewport.top().line > hume_rope::line::ContentLine::new(0),
+        ed.viewport().top().line > hume_rope::line::ContentLine::new(0),
         "the fixture must actually be scrolled, or it pins the wrong thing"
     );
 

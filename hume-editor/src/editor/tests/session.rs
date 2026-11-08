@@ -455,7 +455,7 @@ fn selections_scroll_and_wrap_pins_come_back_per_pane() {
     ed.feed_key(key_ctrl('d'));
     press(&mut ed, "C");
     let a_state = state(&ed);
-    let a_top = ed.view.panes[ed.view.focused_pane()].viewport.top();
+    let a_top = ed.pane_viewport(ed.view.focused_pane()).top();
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 20 });
     let pid = ed.view.focused_pane();
     let bid = ed
@@ -469,14 +469,14 @@ fn selections_scroll_and_wrap_pins_come_back_per_pane() {
     let mut again = restart(&project, ed);
     let pid = again.view.focused_pane();
     assert_eq!(state(&again), a_state);
-    assert_eq!(again.view.panes[pid].viewport.top(), a_top);
+    assert_eq!(again.pane_viewport(pid).top(), a_top);
     assert_eq!(
         again.view.panes[pid].wrap().mode,
         Some(hume_engine::pane::WrapMode::Soft { width: 20 })
     );
     type_cmd(&mut again, ":e b.txt");
     let pid = again.view.focused_pane();
-    assert_eq!(again.view.panes[pid].viewport.top(), b_top);
+    assert_eq!(again.pane_viewport(pid).top(), b_top);
     assert_eq!(again.view.panes[pid].wrap().mode, None);
 }
 
@@ -698,7 +698,7 @@ fn a_file_changed_since_the_save_opens_at_its_start() {
     assert_eq!(layout(&ed), [">Horizontal(a.txt 39x24, *b.txt 40x24)"]);
     assert_eq!(ed.current_view().primary().head().offset(), co(0));
     assert_eq!(
-        ed.view.panes[ed.view.focused_pane()].viewport.top(),
+        ed.pane_viewport(ed.view.focused_pane()).top(),
         Default::default()
     );
     type_cmd(&mut ed, ":e a.txt");

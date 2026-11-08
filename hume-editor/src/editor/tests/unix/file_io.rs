@@ -750,7 +750,7 @@ fn settle_centers_the_focused_buffer_on_its_startup_position() {
     // buffer line 149 with a 1:1 line-to-row mapping, so the top line is
     // 149 - 11 = 138.
     assert_eq!(
-        ed.view.panes[ed.view.focused_pane()].viewport.top().line,
+        ed.pane_viewport(ed.view.focused_pane()).top().line,
         hume_rope::line::ContentLine::new(138)
     );
 }
@@ -775,7 +775,7 @@ fn settle_centers_a_startup_position_against_a_drawer_opened_since_the_last_resi
     // (statusline) - 2 (drawer) = 21 rows, so the centre row is 21/2 = 10 and
     // the top line is 149 - 10 = 139.
     assert_eq!(
-        ed.view.panes[ed.view.focused_pane()].viewport.top().line,
+        ed.pane_viewport(ed.view.focused_pane()).top().line,
         hume_rope::line::ContentLine::new(139)
     );
 }

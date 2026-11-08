@@ -62,4 +62,14 @@ disallowed-methods = [
     # only readers of the raw pane.
     "hume_scripting::host::ShownHandle::handle",
     "hume_scripting::host::FocusedHandle::handle",
+    # A view read between frames must first follow the cursor moves made
+    # since the last frame, and that reveal policy is the editor's, so the
+    # engine cannot run it itself. `frame::settled_pane_view`
+    # (`hume-editor/src/editor/frame.rs`) runs it and is the way in for every
+    # other reader; the frame's own reveal pass, a click (which aims at the
+    # view on screen) and a write that resets the horizontal scroll are the
+    # exceptions, and the editor's test helpers.
+    "hume_engine::pane::Pane::viewport",
+    "hume_engine::pane::Pane::viewport_mut",
+    "hume_engine::pane::Pane::display_lines_and_viewport",
 ]

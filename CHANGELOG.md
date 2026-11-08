@@ -9,6 +9,7 @@
 - New `Ctrl-p >`, `Ctrl-p <`, `Ctrl-p +` and `Ctrl-p -` resize the focused pane, `Ctrl-p =` evens the panes out again, and dragging the divider between two panes resizes them.
 - Saved sessions keep pane sizes.
 - Scrolling fast with the mouse wheel or a held key stops when you stop, instead of lagging behind.
+- A macro, or keys typed faster than the screen redraws, leave the view where the same keys typed slowly would. Paging right after a jump, such as `g e` then `Ctrl-u`, pages from where the jump landed, and `(viewport-range)` reports the lines the jump shows.
 
 ## [0.19.0] - 2026-11-06
 

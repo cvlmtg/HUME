@@ -1,7 +1,8 @@
 //! Per-frame sync of highlight/sign/inlay-hint/virtual-line/EOL-text/
 //! line-background decoration data from editor-authoritative stores to the
 //! shared `Arc` buffers the engine's providers read during rendering. Driven
-//! by `prepare_frame`'s decoration syncs.
+//! by `prepare_frame`'s decoration syncs, and for the providers that change
+//! layout also by `Editor::settle_views` before each input.
 
 use hume_core::{BufferId, DiagSeverity, PaneId, Side};
 use hume_engine::pipeline::PaneSize;
@@ -72,7 +73,8 @@ impl Editor {
             .map(|&(pid, size)| {
                 let pane = &self.view.panes[pid];
                 let bid = pane.buffer_id();
-                let vp = &pane.viewport;
+                #[allow(clippy::disallowed_methods)] // the view before a reveal moves it
+                let vp = pane.viewport();
                 let height = size.height();
                 let text = self.state.buffers.get(bid).text();
                 let content_end = text.content_line_count().end_exclusive();
@@ -285,10 +287,10 @@ impl Editor {
     /// pre-merged at write time, diagnostics included via `core:lsp`'s own
     /// `"lsp-diagnostics"` source) to every pane's own decoration handle,
     /// read by that pane's `SharedSignSource`. Stays visible in Insert mode:
-    /// the gutter doesn't crowd the text being typed. Called from
-    /// `prepare_frame` before scrolling, against the pre-scroll snapshot (see
-    /// [`Self::decorated_panes`]), because whether it placed any sign sizes
-    /// an `auto` sign column (`EditorState::gutter_inputs`), whose width
+    /// the gutter doesn't crowd the text being typed. Called before each
+    /// reveal (`frame.rs`'s `sync_layout_providers`), against the pre-scroll
+    /// snapshot (see [`Self::decorated_panes`]), because whether it placed
+    /// any sign sizes an `auto` sign column (`EditorState::gutter_inputs`), whose width
     /// feeds `EditorState::pane_geometry`, which decides the wrap column the scroll step's
     /// `DisplayLineMap` resolves against.
     pub(super) fn update_sign_providers(&mut self, panes: &[DecoratedPane]) {
@@ -337,7 +339,7 @@ impl Editor {
     /// inlay hint appearing or changing shape can shift a line's wrap
     /// column, moving the cursor's own display line without the selection
     /// itself moving. `EditorState::layout_key`'s `buffer_tag` carries
-    /// `decorations.generation(bid)`, so `frame.rs`'s scroll step derives
+    /// `decorations.generation(bid)`, so `frame::reveal_due_cursor` derives
     /// the reveal from that rather than this function raising it.
     pub(super) fn update_inlay_hint_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::providers::InlineInsert;
@@ -399,12 +401,13 @@ impl Editor {
     /// line, not per EOL line in the whole buffer. Both write into a pane's
     /// inline-decoration providers, which `DisplayLineMap::ensure_formatted`
     /// reads, so this feeds wrap display-line counts and columns exactly
-    /// like inlay hints do. Called from `prepare_frame`'s pre-scroll decoration sync, against
-    /// the pre-scroll snapshot (see [`Self::decorated_panes`]). EOL text
-    /// appearing can push a line onto a further wrapped display line,
-    /// moving the cursor's own row without the selection itself moving.
+    /// like inlay hints do. Called before each reveal (`frame.rs`'s
+    /// `sync_layout_providers`), against the pre-scroll snapshot (see
+    /// [`Self::decorated_panes`]). EOL text appearing can push a line onto a
+    /// further wrapped display line, moving the cursor's own row without the
+    /// selection itself moving.
     /// `EditorState::layout_key`'s `buffer_tag` carries
-    /// `decorations.generation(bid)`, so `frame.rs`'s scroll step derives
+    /// `decorations.generation(bid)`, so `frame::reveal_due_cursor` derives
     /// the reveal from that rather than this function raising it.
     pub(super) fn update_eol_text_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::providers::InlineInsert;
@@ -509,7 +512,7 @@ impl Editor {
             // cursor can move its own display line relative to the
             // viewport without the selection itself moving.
             // `EditorState::layout_key`'s `buffer_tag` carries
-            // `decorations.generation(bid)`, so `frame.rs`'s scroll step
+            // `decorations.generation(bid)`, so `frame::reveal_due_cursor`
             // derives the reveal from that rather than this function
             // raising it directly.
         }

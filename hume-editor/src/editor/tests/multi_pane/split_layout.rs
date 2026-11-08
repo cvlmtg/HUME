@@ -237,7 +237,7 @@ fn half_page_after_close_scrolls_by_the_whole_pane() {
     ed.execute_keymap_command("half-page-down", Count::UNTYPED, false);
 
     // The lone pane has the 80x25 terminal's 24 rows again.
-    assert_eq!(ed.view.panes[pid].viewport.top().line.index(), 12);
+    assert_eq!(ed.pane_viewport(pid).top().line.index(), 12);
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn half_page_after_rotate_scrolls_by_the_pane_s_new_share() {
     ed.execute_keymap_command("half-page-down", Count::UNTYPED, false);
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top().line.index(),
+        ed.pane_viewport(pid).top().line.index(),
         usize::from(after / 2)
     );
 }
@@ -276,7 +276,7 @@ fn half_page_after_split_scrolls_by_the_new_pane_height() {
     ed.execute_keymap_command("half-page-down", Count::UNTYPED, false);
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top().line.index(),
+        ed.pane_viewport(pid).top().line.index(),
         usize::from(height / 2)
     );
 }

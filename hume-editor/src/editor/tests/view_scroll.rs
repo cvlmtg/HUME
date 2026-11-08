@@ -174,6 +174,7 @@ fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
 fn z_alone_does_not_dispatch() {
     let mut ed = view_test_editor();
     seek_to_line(&mut ed, 25);
+    ed.settle_views();
     let top_before = ed.viewport().top().line;
     ed.handle_key(key('z'));
     // After the first `z`, the trie is mid-walk: no command has fired yet.

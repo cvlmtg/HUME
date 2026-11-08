@@ -22,8 +22,7 @@ use hume_rope::cluster::ClusterStart;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 
 use super::commands::{
-    CommandPane, apply_pane_motion, effective_wrap_mode, pane_display_lines, sticky_landing,
-    word_chars_owned,
+    CommandPane, apply_pane_motion, effective_wrap_mode, sticky_landing, word_chars_owned,
 };
 use super::{EditorState, doc_ops};
 use crate::editor::error::CommandError;
@@ -154,9 +153,8 @@ pub(super) fn apply_visual_vertical(
     let key = state.layout_key(view, pid, size);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
-    let (mut dlm, _) = pane_display_lines(
-        state.buffers.get(buf_id),
-        &mut view.panes[pid],
+    let mut dlm = view.panes[pid].display_lines(
+        state.buffers.get(buf_id).text().rope(),
         key.format_key(),
         key.content_width(),
     );
@@ -386,9 +384,8 @@ fn copy_selection_on_line(
     let landing = sticky_landing(state, t.pid(), buf_id);
     let size = state.pane_size(view, t.pid());
     let key = state.layout_key(view, t.pid(), size);
-    let (mut dlm, _) = pane_display_lines(
-        state.buffers.get(buf_id),
-        &mut view.panes[t.pid()],
+    let mut dlm = view.panes[t.pid()].display_lines(
+        state.buffers.get(buf_id).text().rope(),
         key.format_key(),
         key.content_width(),
     );
@@ -516,9 +513,8 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
 
     let size = state.pane_size(view, t.pid());
     let key = state.layout_key(view, t.pid(), size);
-    let (mut dlm, _) = pane_display_lines(
-        state.buffers.get(buf_id),
-        &mut view.panes[t.pid()],
+    let mut dlm = view.panes[t.pid()].display_lines(
+        state.buffers.get(buf_id).text().rope(),
         key.format_key(),
         key.content_width(),
     );

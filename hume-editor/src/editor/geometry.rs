@@ -5,7 +5,6 @@
 use hume_core::{BufferId, PaneId};
 use hume_engine::builtins::sign_column::SignColumn;
 use hume_engine::layout::PaneGeometry;
-use hume_engine::pane::Pane;
 use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
 use hume_engine::providers::GutterInputs;
 
@@ -21,12 +20,12 @@ use super::{EditorState, commands};
 /// through the wrap mode it resolves. This key keeps it because a growing
 /// gutter narrows the wrap column just like a resize, and reveal cares.
 ///
-/// `frame.rs`'s scroll step is the one comparison site: it stores this in
-/// `PaneBufferState::last_layout_key` each frame and compares it against a
-/// fresh one every frame (resize, wrap-mode change, buffer switch,
-/// decoration generation, and any content edit to the buffer, since
-/// `buffer_tag` includes `generation`). A change reveals only a pane that
-/// isn't [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked):
+/// `frame::reveal_due_cursor` stores this in
+/// `PaneBufferState::last_layout_key` and compares it against a fresh one
+/// each time it runs (resize, wrap-mode change, buffer switch, decoration
+/// generation, and any content edit to the buffer, since `buffer_tag`
+/// includes `generation`). A change reveals only a pane that isn't
+/// [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked):
 /// a parked pane's own edit still reveals it, through `reveal_pending`
 /// instead, but a change from elsewhere (a sibling pane's edit, a
 /// decoration refresh) leaves it where it is.
@@ -193,7 +192,7 @@ impl EditorState {
     /// reaches formatting only through the wrap mode's resolved width (see
     /// `hume_engine::display_lines::line_store::ResolvedFormatKey`'s doc).
     ///
-    /// The frame's scroll pass (`commands::pane_display_lines`) and its render
+    /// The frame's scroll pass (`frame.rs`'s `scroll_into_view`) and its render
     /// pass (`frame.rs`'s `resolve_pane_settings`) each call this on `pane`'s
     /// current state, and their sharing that pane's line store depends
     /// entirely on the two resolving a bit-identical key. One function
@@ -238,7 +237,7 @@ impl EditorState {
     }
 }
 
-/// `pane`'s visible line range, end-exclusive, clamped to a buffer of
+/// The line range `viewport` shows, end-exclusive, clamped to a buffer of
 /// `content_lines`, so the hook payload and `(viewport-range bid)` agree.
 /// Never points past the buffer's last *content* line (not ropey's phantom
 /// line past the structural trailing `\n`), even when the pane's viewport
@@ -249,11 +248,11 @@ impl EditorState {
 /// than an empty one, so callers always get at least the pane's top line
 /// instead of a degenerate empty range.
 pub(in crate::editor) fn pane_visible_range(
-    pane: &Pane,
+    viewport: &hume_engine::pane::Viewport,
     size: hume_engine::pipeline::PaneSize,
     content_lines: hume_rope::line::ContentLineCount,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
-    let first_line = pane.viewport.top().line;
+    let first_line = viewport.top().line;
     // Terminal-row count added to a buffer-line index: under wrap one buffer
     // line can span multiple display lines (and therefore fewer terminal
     // rows than buffer lines), so this over-estimates how many buffer lines
@@ -267,18 +266,26 @@ pub(in crate::editor) fn pane_visible_range(
 }
 
 /// Pane `pid`'s visible line range (end-exclusive) between frames, for
-/// `(viewport-range pane)` and the `OnViewportChange` payload.
+/// `(viewport-range pane)` and the `OnViewportChange` payload, read from
+/// the settled view (`frame::settled_pane_view`).
 pub(in crate::editor) fn viewport_range(
-    state: &EditorState,
-    view: &EngineView,
+    state: &mut EditorState,
+    view: &mut EngineView,
     pid: PaneId,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
     let size = state.pane_size(view, pid);
-    let pane = &view.panes[pid];
+    let key = state.layout_key(view, pid, size);
     let content_lines = state
         .buffers
-        .get(pane.buffer_id())
+        .get(view.panes[pid].buffer_id())
         .text()
         .content_line_count();
-    pane_visible_range(pane, size, content_lines)
+    let (_, viewport) = super::frame::settled_pane_view(
+        &state.buffers,
+        &mut state.panes.entries,
+        &mut view.panes,
+        pid,
+        key,
+    );
+    pane_visible_range(viewport, size, content_lines)
 }

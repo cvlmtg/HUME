@@ -407,12 +407,12 @@ fn a_scroll_margin_change_replaces_the_caret_even_when_the_cursor_has_not_moved(
     let pid = ed.view.focused_pane();
 
     frame(&mut ed, 80, 20);
-    let top_before = ed.view.panes[pid].viewport.top();
+    let top_before = ed.pane_viewport(pid).top();
 
     run_set(&mut ed, "global scroll-margin=6").expect(":set global scroll-margin=6 failed");
 
     frame(&mut ed, 80, 20);
-    let top_after = ed.view.panes[pid].viewport.top();
+    let top_after = ed.pane_viewport(pid).top();
 
     assert_ne!(
         top_after, top_before,
@@ -437,8 +437,7 @@ fn a_revisit_with_nothing_changed_leaves_a_parked_view_parked() {
     let bid = ed.focused_buffer_id();
 
     frame(&mut ed, 80, 20);
-    ed.view.panes[pid]
-        .viewport
+    ed.pane_viewport_mut(pid)
         .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
             hume_rope::line::ContentLine::new(0),
             0,
@@ -448,7 +447,7 @@ fn a_revisit_with_nothing_changed_leaves_a_parked_view_parked() {
         frame(&mut ed, 80, 20).cursor_content_pos.is_none(),
         "sanity: the seeded top leaves the cursor genuinely off-screen"
     );
-    let top_before = ed.view.panes[pid].viewport.top();
+    let top_before = ed.pane_viewport(pid).top();
 
     let second_bid = ed.open_scratch(BufferText::from("x\n"));
     ed.enter_buffer(FocusedPane::current(&ed.view), second_bid);
@@ -462,7 +461,7 @@ fn a_revisit_with_nothing_changed_leaves_a_parked_view_parked() {
          where it was, not snap back onto the cursor"
     );
     assert_eq!(
-        ed.view.panes[pid].viewport.top(),
+        ed.pane_viewport(pid).top(),
         top_before,
         "the viewport itself must not move either"
     );

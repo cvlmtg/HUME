@@ -2,7 +2,9 @@ use std::num::NonZeroU16;
 
 use slotmap::SecondaryMap;
 
-use crate::display_lines::DisplayLinePos;
+use crate::display_lines::line_store::FormatKey;
+use crate::display_lines::{DisplayLineMap, DisplayLinePos};
+use crate::pipeline::ContentWidth;
 use crate::providers::ProviderSet;
 use crate::types::PaintedSelections;
 use hume_core::BufferId;
@@ -249,8 +251,11 @@ pub struct Pane {
     /// Which buffer this pane views. Changed only through
     /// [`EngineView::show_buffer`](crate::pipeline::EngineView::show_buffer).
     pub(crate) buffer_id: BufferId,
-    /// Scroll and size state.
-    pub viewport: Viewport,
+    /// Scroll and size state. Outside this crate it is read through
+    /// [`Pane::viewport`], [`Pane::viewport_mut`] and
+    /// [`Pane::display_lines_and_viewport`], which a host can ban where a
+    /// view must first follow its cursor.
+    pub(crate) viewport: Viewport,
     /// Where this pane was when it last viewed each buffer.
     pub saved_scrolls: SecondaryMap<BufferId, Viewport>,
     /// All active selections as the renderer paints them. `None` until the
@@ -321,6 +326,52 @@ impl Pane {
     /// The buffer this pane shows.
     pub fn buffer_id(&self) -> BufferId {
         self.buffer_id
+    }
+
+    /// This pane's viewport as it stands.
+    pub fn viewport(&self) -> &Viewport {
+        &self.viewport
+    }
+
+    /// This pane's viewport as it stands, to write.
+    pub fn viewport_mut(&mut self) -> &mut Viewport {
+        &mut self.viewport
+    }
+
+    /// The display lines of `rope` in this pane, laid out by `key` at
+    /// `content_width`: what every scroll, cursor and movement consumer walks
+    /// instead of walking display lines itself.
+    pub fn display_lines<'a>(
+        &'a mut self,
+        rope: &'a Rope,
+        key: FormatKey,
+        content_width: ContentWidth,
+    ) -> DisplayLineMap<'a> {
+        DisplayLineMap::new(
+            rope,
+            &self.providers,
+            content_width,
+            key,
+            &mut self.line_store,
+        )
+    }
+
+    /// [`Self::display_lines`] together with the viewport, for a caller that
+    /// writes the viewport while it reads the map.
+    pub fn display_lines_and_viewport<'a>(
+        &'a mut self,
+        rope: &'a Rope,
+        key: FormatKey,
+        content_width: ContentWidth,
+    ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
+        let dlm = DisplayLineMap::new(
+            rope,
+            &self.providers,
+            content_width,
+            key,
+            &mut self.line_store,
+        );
+        (dlm, &mut self.viewport)
     }
 
     /// Show `target`, saving the scroll of the buffer shown until now and

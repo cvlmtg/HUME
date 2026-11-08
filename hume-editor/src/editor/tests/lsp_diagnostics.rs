@@ -613,6 +613,10 @@ fn lsp_stop_keeps_a_sign_where_a_preceding_edit_moved_it() {
     let ed = &mut rig.ed;
 
     let scope = ed.view.registry.intern("x");
+    ed.state
+        .config
+        .decorations
+        .register_sign_source("test".to_string(), bid, 0);
     ed.state.config.decorations.set_signs(
         "test".to_string(),
         bid,

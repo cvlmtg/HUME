@@ -106,6 +106,8 @@ impl Editor {
         // `status_msg` clears. Chosen for UX, not technical constraint.
         const SUMMARY_TTL: u8 = 3;
 
+        self.settle_views();
+
         // Any keypress dismisses the previous transient status message.
         // When it clears with unseen log entries the summary becomes visible,
         // so arm its countdown. On later keypresses tick it down and auto-dismiss
@@ -153,6 +155,7 @@ impl Editor {
         let Some(text) = PastedText::new(vec![text]) else {
             return;
         };
+        self.settle_views();
         // Mirrors `handle_key`'s status-message dismissal, minus the
         // summary-TTL bookkeeping: a paste is a real input event but not a
         // keystroke the TTL countdown should tick against. Unconditional,

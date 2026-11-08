@@ -803,6 +803,41 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
     );
 }
 
+/// A popup opened right after a jump, with no frame between, pages from
+/// where the jump landed, as it does with a frame between.
+#[test]
+fn ctrl_d_pages_a_popup_opened_after_an_unrendered_jump() {
+    let tmp = tempfile::tempdir().unwrap();
+    let tall = popup_lines(30);
+    let after_jump_and_page = |render_after_jump: bool| {
+        let mut ed = unwrapped_editor(&numbered_lines(100), 0);
+        run(
+            &mut ed,
+            tmp.path(),
+            &format!(
+                r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{tall}" #:kind 'scrollable)))"#
+            ),
+        );
+        let rect = Rect::new(0, 0, 80, 25);
+        ed.render_to_buf(rect);
+        ed.feed_key(key('g'));
+        ed.feed_key(key('e'));
+        if render_after_jump {
+            ed.render_to_buf(rect);
+        }
+        type_cmd(&mut ed, ":go");
+        ed.feed_key(key_ctrl('d'));
+        (
+            ed.state.input.popup().map(|p| p.scroll),
+            ed.current_view().primary().head(),
+        )
+    };
+
+    let unrendered = after_jump_and_page(false);
+    assert!(unrendered.0.is_some_and(|scroll| scroll > 0));
+    assert_eq!(unrendered, after_jump_and_page(true));
+}
+
 // ── Mouse dismissal ──────────────────────────────────────────────────────
 
 #[test]

@@ -118,7 +118,8 @@ fn page_up_moves_full_viewport() {
 /// file's degenerate "cursor already at row 0" starting state should be
 /// allowed to skip (see `carry`'s own doc). `scroll-margin` defaults to 3, so
 /// the clamp pushes the landing down to row `margin` (3) below the new top
-/// (12), landing on line 15.
+/// (12), landing on line 15. The reveal that ends the scroll then finds the
+/// cursor inside the band, so the top stays at 12.
 #[test]
 fn half_page_down_moves_the_view() {
     let mut ed = long_page_test_editor();
@@ -137,27 +138,81 @@ fn half_page_down_moves_the_view() {
     );
 }
 
-/// The band clamp's whole point: `frame.rs`'s `Viewport::reveal` correction
-/// runs on the next settled frame regardless (the cursor move above raises
-/// `PaneBufferState::reveal_pending` unconditionally), but it must find
-/// nothing left to do: the viewport must already sit exactly where `carry`
-/// landed it in `half_page_down_moves_the_view` above, not move a second
-/// time once a real frame settles.
+/// A macro replay, or input queued behind input, runs its keys with no frame
+/// between them. A page key right after a jump must still page from where
+/// the jump landed, as it does with a frame between: 99 (the last line) less
+/// a half page of 12.
 #[test]
-fn scroll_view_leaves_nothing_for_reveal_to_correct() {
-    let mut ed = long_page_test_editor();
-    ed.handle_key(key_ctrl('d'));
-    let top_after_scroll = ed.viewport().top();
-
+fn a_page_scroll_after_an_unrendered_jump_pages_from_the_jump() {
     let rect = hume_grid::Rect::new(0, 0, 80, 25);
-    ed.render_to_buf(rect); // settles, running Viewport::reveal if it has anything to do
+    let page_after_jump = |render: bool| {
+        let mut ed = long_page_test_editor();
+        ed.handle_key(key('g'));
+        ed.handle_key(key('e'));
+        if render {
+            ed.render_to_buf(rect);
+        }
+        ed.handle_key(key_ctrl('u'));
+        (ed.current_view().primary().head_line(), viewport_top(&ed))
+    };
 
+    let unrendered = page_after_jump(false);
+    assert_eq!(unrendered.0, hume_rope::line::ContentLine::new(87));
+    assert_eq!(unrendered, page_after_jump(true));
+}
+
+/// Keys with no frame between them leave the view where the same keys with
+/// a frame after each would. `g e` from line 10 reveals the last line, and
+/// `Ctrl-o` back to line 10 then reveals it from below, scroll-margin (3)
+/// rows under the top: 7. Settling only once, after both, would find line
+/// 10 already in view at top 0.
+#[test]
+fn keys_with_no_frame_between_leave_the_view_frames_would() {
+    let rect = hume_grid::Rect::new(0, 0, 80, 25);
+    let jump_and_back = |render: bool| {
+        let mut ed = unwrapped_editor(&numbered_lines(100), 20);
+        ed.render_to_buf(rect);
+        ed.handle_key(key('g'));
+        ed.handle_key(key('e'));
+        if render {
+            ed.render_to_buf(rect);
+        }
+        ed.handle_key(key_ctrl('o'));
+        ed.render_to_buf(rect);
+        (ed.current_view().primary().head_line(), viewport_top(&ed))
+    };
+
+    let unrendered = jump_and_back(false);
+    assert_eq!(unrendered, jump_and_back(true));
     assert_eq!(
-        ed.viewport().top(),
-        top_after_scroll,
-        "reveal must find nothing to correct: carry already left the \
-         cursor inside the scroll-margin band"
+        unrendered,
+        (
+            hume_rope::line::ContentLine::new(10),
+            (hume_rope::line::ContentLine::new(7), 0)
+        )
     );
+}
+
+/// `(viewport-range pane)` read right after a jump, with no frame between,
+/// names the lines the jump's frame shows.
+#[test]
+fn viewport_range_after_an_unrendered_jump_is_the_jump_s_view() {
+    let rect = hume_grid::Rect::new(0, 0, 80, 25);
+    let range_after_jump = |render: bool| {
+        let mut ed = long_page_test_editor();
+        ed.render_to_buf(rect);
+        ed.handle_key(key('g'));
+        ed.handle_key(key('e'));
+        if render {
+            ed.render_to_buf(rect);
+        }
+        let pid = ed.view.focused_pane();
+        crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, pid)
+    };
+
+    let unrendered = range_after_jump(false);
+    assert_eq!(unrendered.end, hume_rope::line::ContentLine::new(100));
+    assert_eq!(unrendered, range_after_jump(true));
 }
 
 // ── Wheel and Ctrl-d are the same action ────────────────────────────────────
@@ -225,7 +280,7 @@ fn page_down_in_a_zero_height_pane_moves_neither_cursor_nor_view() {
 
     assert_eq!(ed.current_view().primary().head().offset(), head_before);
     assert_eq!(
-        ed.view.panes[pid].viewport.top().line,
+        ed.pane_viewport(pid).top().line,
         hume_rope::line::ContentLine::new(0)
     );
 }

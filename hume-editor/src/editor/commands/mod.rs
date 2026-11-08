@@ -19,10 +19,9 @@ pub(in crate::editor::commands) const FALLBACK_THEME_LABEL: &str = "fallback (bu
 use hume_core::{BufferId, PaneId, Severity};
 use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;
-use hume_engine::display_lines::line_store::FormatKey;
-use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
-use hume_engine::pane::{Pane, Viewport};
-use hume_engine::pipeline::{ContentWidth, EngineView};
+use hume_engine::display_lines::DisplayColTarget;
+use hume_engine::pane::Pane;
+use hume_engine::pipeline::EngineView;
 
 use super::EditorState;
 use super::buffer::lifecycle::CloseBufferRefused;
@@ -298,43 +297,6 @@ pub(super) fn effective_wrap_mode(
     pane.wrap()
         .mode
         .unwrap_or_else(|| doc.overrides.wrap_mode(settings))
-}
-
-/// A [`DisplayLineMap`] over `pane`'s view of `doc` (the display-line list every
-/// scroll, cursor and movement consumer reads instead of walking display
-/// lines itself), together with the pane's viewport, for the scroll
-/// consumers that write it while reading the map.
-///
-/// Takes the pane mutably and splits it here: `providers`, `line_store` and
-/// `viewport` are disjoint fields, which only a function holding the whole
-/// pane can say, and which a caller holding just `&mut Pane` could not split
-/// apart itself without also re-deriving the map's inputs. Callers keep their
-/// own `&mut` on `state` fields meanwhile (`visual_move` rewrites
-/// `state.panes` selections), which is why the pane arrives separately rather
-/// than through `&mut Editor`.
-///
-/// `key` and `content_width` are resolved by the caller *before* this call
-/// takes `pane` mutably, from [`EditorState::layout_key`](super::EditorState::layout_key),
-/// or from `format_key` and `pane_geometry` for a caller that also needs the
-/// gutter width: everything they
-/// need lives on `pane` itself, but a `&Pane` used to build them cannot
-/// coexist with the `&mut Pane` this function requires. A caller with no
-/// viewport to write (the movement consumers, which read the display-line
-/// list and rewrite selections instead) destructures `(mut dlm, _)`.
-pub(super) fn pane_display_lines<'a>(
-    doc: &'a Buffer,
-    pane: &'a mut Pane,
-    key: FormatKey,
-    content_width: ContentWidth,
-) -> (DisplayLineMap<'a>, &'a mut Viewport) {
-    let Pane {
-        providers,
-        line_store,
-        viewport,
-        ..
-    } = pane;
-    let dlm = DisplayLineMap::new(doc.text().rope(), providers, content_width, key, line_store);
-    (dlm, viewport)
 }
 
 /// Move `t`'s pane to `(bid, pos)` and center the viewport by display line,
