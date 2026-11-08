@@ -58,13 +58,13 @@ pub(in crate::editor::frame) fn write_pane_mirror(
 /// draw one frame, not one each.
 pub(in crate::editor) const FRAME_GAP: Duration = Duration::from_millis(16);
 
-/// When a loop may draw: at once after input, otherwise no sooner than
-/// [`FRAME_GAP`] after the last frame.
+/// When a loop may draw: at once after input it reports, otherwise no
+/// sooner than [`FRAME_GAP`] after the last frame.
 #[derive(Debug, Default)]
 pub(in crate::editor) struct FramePacer {
     /// The earliest a frame not drawn for input may draw, `None` for at once.
     next_due: Option<Instant>,
-    /// Input arrived since the last frame.
+    /// Input was reported since the last frame.
     input: bool,
 }
 
@@ -77,7 +77,7 @@ impl FramePacer {
         }
     }
 
-    /// Input arrived: the next frame is due at once.
+    /// Input that should draw arrived: the next frame is due at once.
     pub(in crate::editor) fn input(&mut self) {
         self.input = true;
     }

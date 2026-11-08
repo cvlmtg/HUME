@@ -398,8 +398,8 @@ impl Editor {
     ///    the engine pane.
     /// 2. Wait for a foreground pipe run the last input started and start
     ///    over (its wait draws its own frames; see `Editor::wait_pipe_run`),
-    ///    or render: at once after input, otherwise once the
-    ///    [`FramePacer`] says a frame is due.
+    ///    or render: at once after input that has no more input queued
+    ///    behind it, otherwise once the [`FramePacer`] says a frame is due.
     /// 3. Block until the next terminal event.
     /// 4. Dispatch the event.
     ///
@@ -413,7 +413,8 @@ impl Editor {
     /// reader, so this is verified by this function's own structure below
     /// plus `tests/events/settle_queue.rs`' `:wq`-fires-`OnBufferSave` regression test,
     /// which covers the drain but not the loop ordering, recorded here
-    /// rather than faked with a shape-assertion test.
+    /// rather than faked with a shape-assertion test. The same holds for
+    /// input with more input queued behind it drawing no frame of its own.
     pub(crate) fn run(&mut self, term: &SharedTerm, screen: &mut Screen) -> io::Result<()> {
         // Marks that this Editor owns the terminal for the whole of
         // `run_loop`: dispatch's inline-output bracket (dispatch.rs) reads
@@ -560,7 +561,19 @@ impl Editor {
                 }
                 ev => self.dispatch_terminal_event(ev),
             }
-            pacer.input();
+            // An event with more input queued behind it draws no frame of its
+            // own, so a fast wheel or a held key cannot back up behind
+            // frames; a long burst draws at most once per `FRAME_GAP`. Like a
+            // macro replay, the queued events then run without the frame's
+            // sync between them. The peek may consume a background wake. A
+            // wake only signals work queued before it, which the loop top's
+            // `settle()` drains, and the replay drain below waits only on
+            // pipe runs it starts itself.
+            let queued =
+                !self.input_backlog.is_empty() || reader.poll(Some(Duration::ZERO), |_| true)?;
+            if !queued {
+                pacer.input();
+            }
 
             // Not a `break`: this loop's top now owns the one quit-observation
             // point that runs after `settle()` (see this function's doc).

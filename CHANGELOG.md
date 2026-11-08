@@ -8,6 +8,7 @@
 ### Panes & interface
 - New `Ctrl-p >`, `Ctrl-p <`, `Ctrl-p +` and `Ctrl-p -` resize the focused pane, `Ctrl-p =` evens the panes out again, and dragging the divider between two panes resizes them.
 - Saved sessions keep pane sizes.
+- Scrolling fast with the mouse wheel or a held key stops when you stop, instead of lagging behind.
 
 ## [0.19.0] - 2026-11-06
 
