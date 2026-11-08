@@ -211,3 +211,21 @@ fn dropping_the_hold_lets_the_same_key_edit() {
     ed.handle_key(key('d'));
     assert_eq!(ed.doc().text().to_string(), " cd\n");
 }
+
+/// A held buffer refuses edits as busy, but `buffer-read-only?` is `#f`:
+/// only a view is read-only.
+#[test]
+fn buffer_read_only_is_false_for_a_held_buffer() {
+    let mut ed = editor_from("-[ab]> cd\n");
+    let _hold = hold(&mut ed);
+    let tmp = tempfile::tempdir().unwrap();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "probe" "" (lambda (pane)
+             (log! 'info (to-string (buffer-read-only? pane)))))"#,
+    );
+    type_cmd(&mut ed, ":probe");
+
+    assert_eq!(status(&ed), "#false");
+}

@@ -183,6 +183,16 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     Ok(SteelVal::BoolV(dirty))
 }
 
+/// `(buffer-read-only? pane)` → `#t` for a read-only view buffer.
+pub(crate) fn buffer_read_only(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
+    let read_only = ctx
+        .host
+        .buffers()
+        .buffer_is_read_only(bid)
+        .ok_or_else(|| not_live_err("pane", bid))?;
+    Ok(SteelVal::BoolV(read_only))
+}
+
 /// `(buffer-generation pane)` → an opaque [`BufferGeneration`], a new one
 /// after every mutation to `pane`'s buffer and `equal?` to every value read
 /// before the next. The staleness token `#:expect-generation` and

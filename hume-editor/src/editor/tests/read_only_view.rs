@@ -490,6 +490,34 @@ fn show_read_only_buffer_returns_the_pane_now_showing_the_view() {
     assert_eq!(ed.state.status_msg.text(), Some("[report]"));
 }
 
+/// `buffer-read-only?` is `#t` for the view and `#f` for the file buffer
+/// the pane showed before it.
+#[test]
+fn buffer_read_only_is_true_for_a_plugin_view_only() {
+    let mut ed = editor_from("-[h]>ello\n");
+    run_show_probe(
+        &mut ed,
+        r#"(let ((view (show-read-only-buffer! pane "report" "one\n")))
+             (log! 'info (string-append (to-string (buffer-read-only? pane)) " "
+                                        (to-string (buffer-read-only? view)))))"#,
+    );
+
+    assert_eq!(ed.state.status_msg.text(), Some("#false #true"));
+}
+
+#[test]
+fn buffer_read_only_is_true_for_messages() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.report(Severity::Warning, "test message");
+    ed.execute_typed("messages", None).unwrap();
+    run_show_probe(
+        &mut ed,
+        r#"(log! 'info (to-string (buffer-read-only? pane)))"#,
+    );
+
+    assert_eq!(ed.state.status_msg.text(), Some("#true"));
+}
+
 /// `switch-to-buffer!` and a cross-buffer `goto-location!` return the pane
 /// now showing their target; the value they were called with names the
 /// buffer the pane left.

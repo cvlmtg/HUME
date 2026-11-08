@@ -74,6 +74,9 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
         self.buffer(id).map(|_| self.state.has_unsaved_changes(id))
     }
+    fn buffer_is_read_only(&self, id: BufferId) -> Option<bool> {
+        self.buffer(id).map(|buf| buf.is_read_only())
+    }
     fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage {
         let Some(buffer) = self.buffer(id) else {
             return StoredLanguage::default();

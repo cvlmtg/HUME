@@ -13,6 +13,7 @@ const PANE_PROBES: &[&str] = &[
     "(buffer-display-path p)",
     "(buffer-name p)",
     "(buffer-dirty? p)",
+    "(buffer-read-only? p)",
     "(buffer-text p)",
     "(buffer-line-count p)",
     "(buffer-char-count p)",

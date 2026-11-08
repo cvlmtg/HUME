@@ -77,6 +77,7 @@ pub trait BufferHost {
     ) -> Option<String>;
     fn buffer_display_name(&self, id: BufferId) -> Option<String>;
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool>;
+    fn buffer_is_read_only(&self, id: BufferId) -> Option<bool>;
     /// Language stored on the buffer, not counting a pending
     /// `set-buffer-option!` `"language"`. The default for an unknown id.
     fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage;

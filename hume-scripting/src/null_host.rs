@@ -141,6 +141,9 @@ impl BufferHost for NullHost {
     fn buffer_is_dirty(&self, _id: BufferId) -> Option<bool> {
         None
     }
+    fn buffer_is_read_only(&self, _id: BufferId) -> Option<bool> {
+        None
+    }
     fn buffer_stored_language(&self, _id: BufferId) -> StoredLanguage {
         StoredLanguage::default()
     }

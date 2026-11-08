@@ -11,6 +11,9 @@
 - Scrolling fast with the mouse wheel or a held key stops when you stop, instead of lagging behind.
 - A macro, or keys typed faster than the screen redraws, leave the view where the same keys typed slowly would. Paging right after a jump, such as `g e` then `Ctrl-u`, pages from where the jump landed, and `(viewport-range)` reports the lines the jump shows.
 
+### Plugins & scripting
+- New `buffer-read-only?` tells a read-only view from a buffer you can edit.
+
 ## [0.19.0] - 2026-11-06
 
 ### Breaking changes

@@ -246,6 +246,9 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
         self.inner.borrow_mut().buffers().buffer_is_dirty(id)
     }
+    fn buffer_is_read_only(&self, id: BufferId) -> Option<bool> {
+        self.inner.borrow_mut().buffers().buffer_is_read_only(id)
+    }
     fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage {
         self.inner.borrow_mut().buffers().buffer_stored_language(id)
     }

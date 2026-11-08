@@ -56,6 +56,7 @@
 (#%register-global "buffer-new")
 (#%register-global "buffer-panes")
 (#%register-global "buffer-path")
+(#%register-global "buffer-read-only?")
 (#%register-global "buffer-revision-diff")
 (#%register-global "buffer-search")
 (#%register-global "buffer-selections")
