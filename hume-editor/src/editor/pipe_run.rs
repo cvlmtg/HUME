@@ -20,7 +20,7 @@ use termina::event::{Event as TerminalEvent, KeyCode, KeyEvent, KeyEventKind, Mo
 
 use super::buffer::TextHold;
 use super::commands;
-use super::frame::FramePacer;
+use super::frame::{FramePacer, InputBacklog};
 use super::keymap::WalkResult;
 use super::replay::{DeferredChange, DeferredOutcome};
 use super::{Editor, EditorState};
@@ -701,7 +701,7 @@ impl Editor {
                 WaitEvent::Interrupt => return Ok(Waited::Cancelled),
                 WaitEvent::Resized if shown => {
                     stale = true;
-                    pacer.input();
+                    pacer.input(InputBacklog::Empty);
                 }
                 WaitEvent::Resized | WaitEvent::Woken => {}
             }

@@ -611,8 +611,7 @@ pub(crate) fn line_to_char_offset(ctx: &mut SteelCtx, bid: BufferId, line: usize
 /// `pane`'s own pane: 0-based, end-exclusive, matching `buffer-lines`'
 /// range convention. Raises when `pane` carries no pane, a closed one, or
 /// one that no longer shows `pane`'s buffer. Answers for a background-tab
-/// pane too, but its scroll position may lag until that tab is next
-/// focused (see `EditorHostImpl::viewport_range`'s own doc). Reads live
+/// pane too, with the lines it shows once that tab is focused. Reads live
 /// view state, which only exists at command dispatch, hook fire, or a
 /// queued-call drain.
 pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {

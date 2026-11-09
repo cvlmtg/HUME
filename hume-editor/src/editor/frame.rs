@@ -62,13 +62,21 @@ pub(in crate::editor::frame) fn write_pane_mirror(
 /// draw one frame, not one each.
 pub(in crate::editor) const FRAME_GAP: Duration = Duration::from_millis(16);
 
-/// When a loop may draw: at once after input it reports, otherwise no
-/// sooner than [`FRAME_GAP`] after the last frame.
+/// Whether more input waits behind the input just handled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) enum InputBacklog {
+    Empty,
+    Queued,
+}
+
+/// When a loop may draw: at once after input with nothing queued behind it,
+/// otherwise no sooner than [`FRAME_GAP`] after the last frame, so a burst
+/// of input draws at most once per gap instead of backing up behind frames.
 #[derive(Debug, Default)]
 pub(in crate::editor) struct FramePacer {
     /// The earliest a frame not drawn for input may draw, `None` for at once.
     next_due: Option<Instant>,
-    /// Input was reported since the last frame.
+    /// Input with an empty backlog arrived since the last frame.
     input: bool,
 }
 
@@ -81,9 +89,12 @@ impl FramePacer {
         }
     }
 
-    /// Input that should draw arrived: the next frame is due at once.
-    pub(in crate::editor) fn input(&mut self) {
-        self.input = true;
+    /// Input arrived. With nothing queued behind it the next frame is due
+    /// at once; with more queued the frame keeps its [`FRAME_GAP`] schedule.
+    pub(in crate::editor) fn input(&mut self, backlog: InputBacklog) {
+        if backlog == InputBacklog::Empty {
+            self.input = true;
+        }
     }
 
     /// How long until the next frame is due, `None` when it is due at `now`.
@@ -544,16 +555,8 @@ impl Editor {
             .sync_band_views(&mut self.view, &screen, popup_layout);
 
         // Nothing below changes which panes the active tab shows.
-        let active = self.view.active_pane_ids();
-        let sizes: Vec<(PaneId, PaneSize)> = active
-            .iter()
-            .map(|&pid| {
-                let size = screen
-                    .pane_size(self.view.focused_layout(), pid)
-                    .expect("an active pane is a leaf of the focused layout");
-                (pid, size)
-            })
-            .collect();
+        let sizes = self.active_pane_sizes(&screen);
+        let active: Vec<PaneId> = sizes.iter().map(|&(pid, _)| pid).collect();
 
         self.sync_all_pane_mirrors(&active);
         self.sync_layout_providers(&sizes);
@@ -642,23 +645,18 @@ impl Editor {
     /// before dispatch, so input with no frame since the last cursor move (a
     /// macro replay, input queued behind input) acts on the view that move
     /// would have drawn: the view follows the input, not how many frames
-    /// fell between it. A pane with nothing due is left alone, which is
-    /// every pane when a frame drew since the last input. A click does not
+    /// fell between it. A pane is left alone when nothing it is laid out by
+    /// changed since its last reveal and no reveal is pending. A click does not
     /// call it, since it aims at the frame on screen; the wheel settles in
     /// `commands::scroll_view`.
     pub(in crate::editor) fn settle_views(&mut self) {
         let screen = self.state.screen_layout(&self.view);
         let due: Vec<(PaneId, PaneSize)> = self
-            .view
-            .active_pane_ids()
+            .active_pane_sizes(&screen)
             .into_iter()
-            .filter_map(|pid| {
-                let size = screen
-                    .pane_size(self.view.focused_layout(), pid)
-                    .expect("an active pane is a leaf of the focused layout");
+            .filter(|&(pid, size)| {
                 let key = self.state.layout_key(&self.view, pid, size);
-                let settled = view_settled(&self.state.panes.entries, &self.view.panes, pid, key);
-                (!settled).then_some((pid, size))
+                !view_settled(&self.state.panes.entries, &self.view.panes, pid, key)
             })
             .collect();
         if due.is_empty() {
@@ -675,6 +673,20 @@ impl Editor {
                 key,
             );
         }
+    }
+
+    /// Every active-tab pane with its size in `screen`.
+    fn active_pane_sizes(&self, screen: &ScreenLayout) -> Vec<(PaneId, PaneSize)> {
+        self.view
+            .active_pane_ids()
+            .into_iter()
+            .map(|pid| {
+                let size = screen
+                    .pane_size(self.view.focused_layout(), pid)
+                    .expect("an active pane is a leaf of the focused layout");
+                (pid, size)
+            })
+            .collect()
     }
 
     /// Sync every active-tab pane's selection mirror from the authoritative
@@ -913,10 +925,10 @@ impl EditorState {
 /// an unfollowable scroll must not snap back onto its cursor because
 /// something changed elsewhere in the buffer it shows.
 ///
-/// Every frame runs it per pane, [`Editor::settle_views`] before each input
-/// and [`settled_pane_view`] before a read between frames, and a view move
-/// runs it after moving the view, so `parked` describes the view the move
-/// left.
+/// Every frame runs it per pane, [`Editor::settle_views`] before each input,
+/// [`settled_pane_view`] and [`settle_pane`] before a read between frames,
+/// and a view move runs it after moving the view, so `parked` describes the
+/// view the move left.
 pub(in crate::editor) fn reveal_due_cursor(
     buffers: &BufferStore,
     entries: &mut PaneEntries,
@@ -943,13 +955,13 @@ pub(in crate::editor) fn reveal_due_cursor(
 }
 
 /// Pane `pid`'s display lines and viewport between frames, laid out as
-/// `layout_key`, after running [`reveal_due_cursor`] as the next frame would
-/// if anything it reads changed. `clippy.toml` bans the engine's own
-/// viewport accessors outside the few sites that want the view as drawn, so
-/// every other reader comes through here: a read after a cursor move in the
-/// same dispatch (a command that jumps and then pages) or from a timer sees
-/// the view that move would have drawn. Unlike [`Editor::settle_views`] it
-/// syncs no providers, so it lays the pane out by those the last sync left.
+/// `layout_key`, after [`settle`] runs the reveal the next frame would.
+/// `clippy.toml` bans the engine's own viewport readers outside the few
+/// sites that want the view as drawn, so every other reader comes through
+/// here or [`settle_pane`]: a read after a cursor move in the same dispatch
+/// (a command that jumps and then pages) or from a timer sees the view that
+/// move would have drawn. Unlike [`Editor::settle_views`] it syncs no
+/// providers, so it lays the pane out by those the last sync left.
 #[allow(clippy::disallowed_methods)] // settled first
 pub(in crate::editor) fn settled_pane_view<'a>(
     buffers: &'a BufferStore,
@@ -958,15 +970,43 @@ pub(in crate::editor) fn settled_pane_view<'a>(
     pid: PaneId,
     layout_key: LayoutKey,
 ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
-    if !view_settled(entries, panes, pid, layout_key) {
-        reveal_due_cursor(buffers, entries, panes, pid, layout_key);
-    }
+    settle(buffers, entries, panes, pid, layout_key);
     let pane = &mut panes[pid];
     pane.display_lines_and_viewport(
         buffers.get(pane.buffer_id()).text().rope(),
         layout_key.format_key(),
         layout_key.content_width(),
     )
+}
+
+/// [`settled_pane_view`] for a reader that wants no display lines back:
+/// settle pane `pid`, active or in a background tab, at the size
+/// [`EditorState::pane_size`] gives it, before a step that keeps its view
+/// (a split copying it, a buffer switch saving it, a session snapshot).
+pub(in crate::editor) fn settle_pane(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
+    let size = state.pane_size(view, pid);
+    let key = state.layout_key(view, pid, size);
+    settle(
+        &state.buffers,
+        &mut state.panes.entries,
+        &mut view.panes,
+        pid,
+        key,
+    );
+}
+
+/// Run [`reveal_due_cursor`] on pane `pid` unless its view is already
+/// settled for `layout_key`.
+fn settle(
+    buffers: &BufferStore,
+    entries: &mut PaneEntries,
+    panes: &mut PanePool,
+    pid: PaneId,
+    layout_key: LayoutKey,
+) {
+    if !view_settled(entries, panes, pid, layout_key) {
+        reveal_due_cursor(buffers, entries, panes, pid, layout_key);
+    }
 }
 
 /// Whether nothing [`reveal_due_cursor`] reads for pane `pid` has changed

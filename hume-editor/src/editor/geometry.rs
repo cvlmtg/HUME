@@ -140,7 +140,7 @@ impl EditorState {
     /// The gutter settings pane `pid` draws by: its buffer's line-number
     /// style, and its sign column's width from the buffer's `gutter-signs`
     /// setting, its registered sign sources and, for `auto`, whether the
-    /// last frame placed a sign in the pane. Every gutter width, the frame's
+    /// last sign sync placed a sign in the pane. Every gutter width, the frame's
     /// and a between-frame reader's alike, comes from here.
     pub(in crate::editor) fn gutter_inputs(&self, view: &EngineView, pid: PaneId) -> GutterInputs {
         let bid = view.panes[pid].buffer_id();

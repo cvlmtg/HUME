@@ -46,15 +46,17 @@ impl Editor {
     /// of `self.view.panes`, and so a bridge's `lines`/`chars` can never
     /// drift from what every other bridge in the same call sees.
     ///
-    /// `prepare_frame` calls this **twice** (once before the scroll step,
-    /// once after) rather than sharing one snapshot across both groups: the
-    /// sign/inlay-hint/virtual-line/EOL-text bridges read the
-    /// *previous* frame's viewport (their output decides display-line counts/columns
-    /// the scroll step's `DisplayLineMap` resolves against, so it must already be
-    /// visible before that math runs), while the highlight/line-background
-    /// bridges are paint-only and want the *current* one. Two snapshots make
-    /// that straddle a property of *where* each is taken, not something each
-    /// of the six bridges has to individually get right.
+    /// Called before each reveal, by `frame.rs`'s `sync_layout_providers`
+    /// (from `prepare_frame` and from `settle_views` before an input), and
+    /// once more by `prepare_frame` after its reveal, rather than sharing one
+    /// snapshot across both groups: the sign/inlay-hint/virtual-line/EOL-text
+    /// bridges read the viewport before the reveal moves it (their output
+    /// decides display-line counts/columns the reveal's `DisplayLineMap`
+    /// resolves against, so it must already be visible before that math
+    /// runs), while the highlight/line-background bridges are paint-only and
+    /// want the one the reveal settled. Two snapshots make that straddle a
+    /// property of *where* each is taken, not something each of the six
+    /// bridges has to individually get right.
     ///
     /// `lines` is a one-row *superset* of the viewport (its end plus one more
     /// row), and `chars` spans the same lines: cheap over-fetch beats a
@@ -64,16 +66,16 @@ impl Editor {
     ///
     /// Scoped to `active` (the active tab's panes, each with its size in the
     /// frame's layout; see `EngineView::active_pane_ids`) rather than the
-    /// whole pool: a background tab's pane isn't decorated, mirrored, or
-    /// scrolled while hidden, so it has no "current frame" viewport for this
-    /// to snapshot.
+    /// whole pool: a background tab's pane isn't decorated or mirrored while
+    /// hidden, so it has no "current frame" viewport for this to snapshot.
     pub(super) fn decorated_panes(&self, active: &[(PaneId, PaneSize)]) -> Vec<DecoratedPane> {
         active
             .iter()
             .map(|&(pid, size)| {
                 let pane = &self.view.panes[pid];
                 let bid = pane.buffer_id();
-                #[allow(clippy::disallowed_methods)] // the view before a reveal moves it
+                #[allow(clippy::disallowed_methods)]
+                // the view as it stands, on either side of a reveal
                 let vp = pane.viewport();
                 let height = size.height();
                 let text = self.state.buffers.get(bid).text();

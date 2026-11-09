@@ -359,6 +359,51 @@ fn tabs_splits_and_focus_come_back() {
     assert_eq!(layout(&again), before);
 }
 
+/// A pane whose cursor moved while its tab was hidden, as a plugin's
+/// `set-selections!` can move it, saves the view it would show once its tab
+/// is focused, as it does when the tab is visited before quitting. Two tabs
+/// leave 23 of 25 rows to the pane, so line 150, held scroll-margin (3) rows
+/// above the bottom, puts the top at 131.
+#[test]
+fn a_hidden_tab_s_pane_saves_the_view_its_moved_cursor_would_show() {
+    let rect = hume_grid::Rect::new(0, 0, 80, 25);
+    let restored_top = |visit: bool| {
+        let project = Project::new(&[("a.txt", "a\n"), ("b.txt", &lines(200))]);
+        let mut ed = project.start(&[], PERSIST);
+        type_cmd(&mut ed, ":e a.txt");
+        type_cmd(&mut ed, ":tabnew b.txt");
+        let (pid_b, bid_b) = (ed.view.focused_pane(), ed.focused_buffer_id());
+        ed.render_to_buf(rect);
+        type_cmd(&mut ed, ":tabprev");
+        ed.render_to_buf(rect);
+
+        let text = ed.state.buffers.get(bid_b).text();
+        let line_150 = text
+            .line_to_char(hume_rope::line::RopeyLine::new(150))
+            .index();
+        let sels = sels_at(text, &[(line_150, line_150)], 0);
+        ed.state
+            .panes
+            .entries
+            .seeded_mut(pid_b, bid_b)
+            .set_selections(sels, text);
+        if visit {
+            type_cmd(&mut ed, ":tabnext");
+            ed.render_to_buf(rect);
+            type_cmd(&mut ed, ":tabprev");
+            ed.render_to_buf(rect);
+        }
+
+        let mut again = restart(&project, ed);
+        type_cmd(&mut again, ":tabnext");
+        again.pane_viewport(again.view.focused_pane()).top()
+    };
+
+    let unvisited = restored_top(false);
+    assert_eq!(unvisited.line, hume_rope::line::ContentLine::new(131));
+    assert_eq!(unvisited, restored_top(true));
+}
+
 #[test]
 fn resized_panes_come_back_with_their_sizes_and_their_split_rule() {
     let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]);

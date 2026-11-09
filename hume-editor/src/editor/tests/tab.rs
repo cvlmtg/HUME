@@ -230,6 +230,42 @@ fn hiding_the_tab_bar_resizes_a_hidden_tab_s_pane_before_the_next_frame() {
     assert_eq!(range.end, hume_rope::line::ContentLine::new(24));
 }
 
+/// A hidden tab's pane whose cursor moved while hidden, as a plugin's
+/// `set-selections!` can move it, answers `(viewport-range)` with the lines
+/// it shows once its tab is focused again. Two tabs leave 23 of 25 rows to
+/// the pane, so line 80, held scroll-margin (3) rows above the bottom, puts
+/// the top at 61.
+#[test]
+fn a_hidden_tab_s_pane_reports_the_range_its_tab_shows_when_focused() {
+    let (path, _f) = tall_file();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("tabnew", Some(path.to_str().unwrap()))
+        .unwrap();
+    let (pid_b, bid_b) = (ed.view.focused_pane(), ed.focused_buffer_id());
+    frame(&mut ed, 80, 25);
+    ed.execute_typed("tabprev", None).unwrap();
+    frame(&mut ed, 80, 25);
+
+    let text = ed.state.buffers.get(bid_b).text();
+    let line_80 = text
+        .line_to_char(hume_rope::line::RopeyLine::new(80))
+        .index();
+    let sels = sels_at(text, &[(line_80, line_80)], 0);
+    ed.state
+        .panes
+        .entries
+        .seeded_mut(pid_b, bid_b)
+        .set_selections(sels, text);
+    let hidden = crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, pid_b);
+
+    ed.execute_typed("tabnext", None).unwrap();
+    frame(&mut ed, 80, 25);
+    let shown = crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, pid_b);
+
+    assert_eq!(hidden.start, hume_rope::line::ContentLine::new(61));
+    assert_eq!(hidden, shown);
+}
+
 /// `:q` on a tab's own last pane closes the tab (Vim's placement), not the
 /// editor: `view.panes.len()` is a global pool shared by every tab, so it
 /// stays `> 1` here even though the active tab has just this one pane.

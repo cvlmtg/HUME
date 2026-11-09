@@ -155,6 +155,9 @@ pub(in crate::editor) fn split_pane_onto(
 ) -> Result<(), CommandError> {
     let old_focused = fp.pid();
     let old_buffer_id = view.panes[old_focused].buffer_id();
+    // At the size the source pane has before the split shrinks it, so a
+    // same-buffer split inherits the view its last frame would have drawn.
+    crate::editor::frame::settle_pane(state, view, old_focused);
     let new_pid = open_pane_in_layout(state, view, direction, None, buffer)?;
     let bid = view.panes[new_pid].buffer_id();
 
@@ -178,6 +181,7 @@ pub(in crate::editor) fn split_pane_onto(
             .panes
             .get_disjoint_mut([new_pid, old_focused])
             .expect("new_pid and old_focused are distinct, valid pane keys");
+        #[allow(clippy::disallowed_methods)] // the source pane settled before the split
         new_pane.inherit_view_state(old_pane);
 
         // A same-buffer split inherits the source pane's jump history so the

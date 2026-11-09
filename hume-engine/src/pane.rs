@@ -252,9 +252,11 @@ pub struct Pane {
     /// [`EngineView::show_buffer`](crate::pipeline::EngineView::show_buffer).
     pub(crate) buffer_id: BufferId,
     /// Scroll and size state. Outside this crate it is read through
-    /// [`Pane::viewport`], [`Pane::viewport_mut`] and
-    /// [`Pane::display_lines_and_viewport`], which a host can ban where a
-    /// view must first follow its cursor.
+    /// [`Pane::viewport`], [`Pane::viewport_mut`],
+    /// [`Pane::display_lines_and_viewport`], [`Pane::scroll_top`],
+    /// [`Pane::inherit_view_state`] and
+    /// [`EngineView::show_buffer`](crate::pipeline::EngineView::show_buffer),
+    /// which a host can ban where a view must first follow its cursor.
     pub(crate) viewport: Viewport,
     /// Where this pane was when it last viewed each buffer.
     pub saved_scrolls: SecondaryMap<BufferId, Viewport>,
@@ -272,8 +274,8 @@ pub struct Pane {
     /// lines it visited; see [`crate::display_lines::line_store`].
     ///
     /// Per pane because two panes on one buffer at one width resolve the
-    /// same [`FormatKey`](crate::display_lines::line_store::FormatKey), and a
-    /// shared hit would skip the other pane's providers. Every pane's scroll
+    /// same [`FormatKey`], and a shared hit would skip the other pane's
+    /// providers. Every pane's scroll
     /// step also runs before any pane renders, so one shared store would hold
     /// only the last pane's lines.
     pub line_store: crate::display_lines::line_store::PaneLineStore,

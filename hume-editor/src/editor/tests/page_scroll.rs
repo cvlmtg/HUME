@@ -193,6 +193,38 @@ fn keys_with_no_frame_between_leave_the_view_frames_would() {
     );
 }
 
+/// A paste right after a jump, with no frame between, leaves the view where
+/// it would with a frame between. `g g` from the last line reveals line 0 at
+/// top 0, and 40 pasted lines put the head on line 40, which then reveals
+/// from above, scroll-margin (3) rows over the bottom of 24: top 20. Settling
+/// only once, after the paste, would reveal line 40 from below instead.
+#[test]
+fn a_paste_after_an_unrendered_jump_leaves_the_view_a_frame_between_would() {
+    let rect = hume_grid::Rect::new(0, 0, 80, 25);
+    let jump_and_paste = |render: bool| {
+        let mut ed = unwrapped_editor(&numbered_lines(100), 198);
+        ed.render_to_buf(rect);
+        ed.handle_key(key('g'));
+        ed.handle_key(key('g'));
+        if render {
+            ed.render_to_buf(rect);
+        }
+        ed.feed_paste(&"x\n".repeat(40));
+        ed.render_to_buf(rect);
+        (ed.current_view().primary().head_line(), viewport_top(&ed))
+    };
+
+    let unrendered = jump_and_paste(false);
+    assert_eq!(unrendered, jump_and_paste(true));
+    assert_eq!(
+        unrendered,
+        (
+            hume_rope::line::ContentLine::new(40),
+            (hume_rope::line::ContentLine::new(20), 0)
+        )
+    );
+}
+
 /// `(viewport-range pane)` read right after a jump, with no frame between,
 /// names the lines the jump's frame shows.
 #[test]
@@ -213,6 +245,67 @@ fn viewport_range_after_an_unrendered_jump_is_the_jump_s_view() {
     let unrendered = range_after_jump(false);
     assert_eq!(unrendered.end, hume_rope::line::ContentLine::new(100));
     assert_eq!(unrendered, range_after_jump(true));
+}
+
+/// Runs `goto-last-line` and then `then` on the focused pane of a 100-line
+/// buffer: in one command when `render` is false, so no frame or key falls
+/// between them, and as two commands with a frame between when it is true.
+fn jump_to_end_then(then: &str, render: bool) -> Editor {
+    let rect = hume_grid::Rect::new(0, 0, 80, 25);
+    let mut ed = long_page_test_editor();
+    attach_steel(
+        &mut ed,
+        &format!(
+            r#"(define-command! "end-then" "" (lambda (bid) (call! "goto-last-line" bid) (call! "{then}" bid)))
+               (define-command! "then" "" (lambda (bid) (call! "{then}" bid)))"#
+        ),
+    );
+    ed.render_to_buf(rect);
+    if render {
+        ed.execute_keymap_command("goto-last-line", Count::typed(1), false);
+        ed.render_to_buf(rect);
+        ed.execute_keymap_command("then", Count::typed(1), false);
+    } else {
+        ed.execute_keymap_command("end-then", Count::typed(1), false);
+    }
+    ed
+}
+
+/// A split made right after a jump, in the same command, starts from the
+/// view the jump's frame shows: 100 lines in 24 rows scroll at most
+/// scroll-margin (3) rows past the end, so the top is 79.
+#[test]
+fn a_split_after_an_unrendered_jump_inherits_the_jump_s_view() {
+    let new_pane_top = |render: bool| {
+        let ed = jump_to_end_then("pane-vsplit", render);
+        ed.pane_viewport(ed.view.focused_pane()).top()
+    };
+
+    let unrendered = new_pane_top(false);
+    assert_eq!(unrendered.line, hume_rope::line::ContentLine::new(79));
+    assert_eq!(unrendered, new_pane_top(true));
+}
+
+/// A buffer switch made right after a jump, in the same command, remembers
+/// the view the jump's frame shows for the buffer it leaves.
+#[test]
+fn a_buffer_switch_after_an_unrendered_jump_remembers_the_jump_s_view() {
+    let saved_top = |render: bool| {
+        let ed = jump_to_end_then("buffer-new", render);
+        let pid = ed.view.focused_pane();
+        let left = ed
+            .state
+            .buffers
+            .iter()
+            .map(|(bid, _)| bid)
+            .find(|&bid| bid != ed.focused_buffer_id())
+            .expect("the buffer the switch left");
+        ed.view.panes[pid].saved_scrolls[left].top()
+    };
+
+    let unrendered = saved_top(false);
+    assert_eq!(unrendered.line, hume_rope::line::ContentLine::new(79));
+    assert_eq!(unrendered, saved_top(true));
 }
 
 // ── Wheel and Ctrl-d are the same action ────────────────────────────────────

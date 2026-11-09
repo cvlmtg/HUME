@@ -241,6 +241,7 @@ fn capture_pane(
     let buffers = entry
         .buffers()
         .filter_map(|(bid, buffer_state)| {
+            #[allow(clippy::disallowed_methods)] // `Editor::write_session` settled every pane
             let top = pane.scroll_top(bid);
             Some(PaneBufferSnapshot {
                 buffer: *index.get(bid)?,

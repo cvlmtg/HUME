@@ -72,15 +72,26 @@ impl EditorState {
 impl Editor {
     /// Save the session when this run keeps one and `session-persist` is
     /// on: the one call every way out of the run loop but a panic reaches.
-    pub(crate) fn save_session(&self) -> Result<(), String> {
+    pub(crate) fn save_session(&mut self) -> Result<(), String> {
         if !self.keeps_session || !self.state.settings.session_persist {
             return Ok(());
         }
         self.write_session()
     }
 
-    fn write_session(&self) -> Result<(), String> {
+    /// Settles every pane first, hidden tabs' included, so each saves the
+    /// view the next frame showing it would draw.
+    fn write_session(&mut self) -> Result<(), String> {
         let path = self.state.session_path()?;
+        let pids: Vec<_> = self
+            .view
+            .panes
+            .every_pane_across_all_tabs()
+            .map(|(pid, _)| pid)
+            .collect();
+        for pid in pids {
+            super::frame::settle_pane(&mut self.state, &mut self.view, pid);
+        }
         write(&path, &SessionSnapshot::capture(&self.state, &self.view))
     }
 }

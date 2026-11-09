@@ -191,8 +191,9 @@ pub trait BufferHost {
 
     /// The content lines visible in `pane`'s pane, for
     /// `(viewport-range pane)` (0-based, end-exclusive). A pane on a
-    /// background tab answers too: its size follows the terminal, but its
-    /// scroll position stays where it was until that tab is focused again.
+    /// background tab answers too, with the lines it shows once that tab is
+    /// focused again: its size follows the terminal, and its view follows
+    /// its cursor.
     /// `&mut self` so the host can first lay its panes out against a band
     /// opened or closed since its last frame.
     fn viewport_range(

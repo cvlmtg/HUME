@@ -70,7 +70,8 @@ pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &Engi
 /// - promotes `target` in `BufferStore.mru`. With [`focus_pane`], this keeps
 ///   `mru`'s tail equal to the buffer on screen.
 ///
-/// Saves the pane's scroll for the old buffer, restores `target`'s saved scroll
+/// Saves the pane's scroll for the buffer it leaves, settled first as the next
+/// frame would settle it (`frame::settle_pane`), restores `target`'s saved scroll
 /// (zero on first visit), and seeds the pane's state for `target` if it has
 /// never shown `target` before. The first pane to show `target` owns its
 /// restored selection history.
@@ -85,6 +86,8 @@ pub(in crate::editor) fn switch_pane_to_buffer(
         end_focus_sessions(state, ev);
     }
     let last_content_line = state.buffers.get(target).text().last_content_line();
+    super::frame::settle_pane(state, ev, pid);
+    #[allow(clippy::disallowed_methods)] // settled above, so it saves the view a frame would show
     ev.show_buffer(&state.focus.0, pid, target, last_content_line);
     if is_focused_switch {
         state.buffers.touch_mru(target);

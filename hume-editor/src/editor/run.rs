@@ -19,7 +19,7 @@ use hume_platform::wake::WakeCallback;
 
 use super::Editor;
 use super::buffer::lifecycle;
-use super::frame::{FramePacer, FrameTarget};
+use super::frame::{FramePacer, FrameTarget, InputBacklog};
 use super::pipe_run::{Detached, PipeConsole, ReaderConsole, WaitEvent};
 use super::tui::Tui;
 use crate::cli::{ConfigSource, FileArg};
@@ -413,8 +413,9 @@ impl Editor {
     /// reader, so this is verified by this function's own structure below
     /// plus `tests/events/settle_queue.rs`' `:wq`-fires-`OnBufferSave` regression test,
     /// which covers the drain but not the loop ordering, recorded here
-    /// rather than faked with a shape-assertion test. The same holds for
-    /// input with more input queued behind it drawing no frame of its own.
+    /// rather than faked with a shape-assertion test. The same holds for the
+    /// peek that tells the [`FramePacer`] whether input is queued behind the
+    /// event just handled; what the pacer does with it is its own tests'.
     pub(crate) fn run(&mut self, term: &SharedTerm, screen: &mut Screen) -> io::Result<()> {
         // Marks that this Editor owns the terminal for the whole of
         // `run_loop`: dispatch's inline-output bracket (dispatch.rs) reads
@@ -571,9 +572,11 @@ impl Editor {
             // pipe runs it starts itself.
             let queued =
                 !self.input_backlog.is_empty() || reader.poll(Some(Duration::ZERO), |_| true)?;
-            if !queued {
-                pacer.input();
-            }
+            pacer.input(if queued {
+                InputBacklog::Queued
+            } else {
+                InputBacklog::Empty
+            });
 
             // Not a `break`: this loop's top now owns the one quit-observation
             // point that runs after `settle()` (see this function's doc).
