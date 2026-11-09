@@ -31,7 +31,7 @@ fn top(line: usize) -> DisplayLinePos {
 fn walk(
     rope: &Rope,
     providers: &ProviderSet,
-    source: Option<&dyn SyntaxSource>,
+    table: &ScopeTable,
     settings: ContextSettings,
     top: DisplayLinePos,
     height: usize,
@@ -43,7 +43,10 @@ fn walk(
         &mut dlm,
         top,
         height,
-        ScopeHeaderInputs { source, settings },
+        ScopeHeaderInputs {
+            source: Some(table),
+            settings,
+        },
         &mut out,
     );
     out.iter().map(|line| line.index()).collect()
@@ -56,9 +59,8 @@ fn push_up_drops_a_scope_when_its_closing_line_reaches_the_header_row() {
         .lines(2..=5, &[0, 1])
         .lines(6..=9, &[0]);
     let providers = ProviderSet::new();
-    let source = Some(&table as &dyn SyntaxSource);
-    assert_eq!(walk(&rope, &providers, source, SHOWN, top(4), 24), [0, 1]);
-    assert_eq!(walk(&rope, &providers, source, SHOWN, top(5), 24), [0]);
+    assert_eq!(walk(&rope, &providers, &table, SHOWN, top(4), 24), [0, 1]);
+    assert_eq!(walk(&rope, &providers, &table, SHOWN, top(5), 24), [0]);
 }
 
 #[test]
@@ -66,18 +68,16 @@ fn cap_drops_outermost_by_default_and_second_with_outer_level() {
     let rope = doc(30);
     let providers = ProviderSet::new();
     let three = ScopeTable::default().lines(3..=20, &[0, 1, 2]);
-    let three = Some(&three as &dyn SyntaxSource);
-    assert_eq!(walk(&rope, &providers, three, SHOWN, top(5), 3), [1, 2]);
+    assert_eq!(walk(&rope, &providers, &three, SHOWN, top(5), 3), [1, 2]);
     assert_eq!(
-        walk(&rope, &providers, three, OUTER_LEVEL, top(5), 3),
+        walk(&rope, &providers, &three, OUTER_LEVEL, top(5), 3),
         [0, 2]
     );
 
     let four = ScopeTable::default().lines(4..=20, &[0, 1, 2, 3]);
-    let four = Some(&four as &dyn SyntaxSource);
-    assert_eq!(walk(&rope, &providers, four, SHOWN, top(5), 24), [1, 2, 3]);
+    assert_eq!(walk(&rope, &providers, &four, SHOWN, top(5), 24), [1, 2, 3]);
     assert_eq!(
-        walk(&rope, &providers, four, OUTER_LEVEL, top(5), 24),
+        walk(&rope, &providers, &four, OUTER_LEVEL, top(5), 24),
         [0, 2, 3]
     );
 }
@@ -87,22 +87,20 @@ fn height_one_shows_none_and_height_three_at_most_two() {
     let rope = doc(30);
     let providers = ProviderSet::new();
     let table = ScopeTable::default().lines(3..=20, &[0, 1, 2]);
-    let source = Some(&table as &dyn SyntaxSource);
     assert_eq!(
-        walk(&rope, &providers, source, SHOWN, top(5), 1),
+        walk(&rope, &providers, &table, SHOWN, top(5), 1),
         Vec::<usize>::new()
     );
-    assert_eq!(walk(&rope, &providers, source, SHOWN, top(5), 3).len(), 2);
+    assert_eq!(walk(&rope, &providers, &table, SHOWN, top(5), 3).len(), 2);
 }
 
 #[test]
 fn no_header_without_a_line_under_it() {
     let providers = ProviderSet::new();
     let table = ScopeTable::default().lines(1..=2, &[0]);
-    let source = Some(&table as &dyn SyntaxSource);
-    assert_eq!(walk(&doc(3), &providers, source, SHOWN, top(1), 24), [0]);
+    assert_eq!(walk(&doc(3), &providers, &table, SHOWN, top(1), 24), [0]);
     assert_eq!(
-        walk(&doc(2), &providers, source, SHOWN, top(1), 24),
+        walk(&doc(2), &providers, &table, SHOWN, top(1), 24),
         Vec::<usize>::new()
     );
 }
@@ -118,8 +116,7 @@ fn virtual_display_line_row_belongs_to_its_line() {
         "V",
     )));
     let table = ScopeTable::default().lines(4..=4, &[0]);
-    let source = Some(&table as &dyn SyntaxSource);
-    assert_eq!(walk(&rope, &providers, source, SHOWN, top(4), 24), [0]);
+    assert_eq!(walk(&rope, &providers, &table, SHOWN, top(4), 24), [0]);
 }
 
 #[test]
@@ -127,10 +124,6 @@ fn disabled_or_sourceless_yields_nothing() {
     let rope = doc(30);
     let providers = ProviderSet::new();
     let table = ScopeTable::default().lines(3..=20, &[0, 1]);
-    let disabled = ContextSettings {
-        enabled: false,
-        outer_level: false,
-    };
 
     let mut store = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, 80, &mut store);
@@ -141,7 +134,7 @@ fn disabled_or_sourceless_yields_nothing() {
         24,
         ScopeHeaderInputs {
             source: Some(&table),
-            settings: disabled,
+            settings: ContextSettings::OFF,
         },
         &mut out,
     );

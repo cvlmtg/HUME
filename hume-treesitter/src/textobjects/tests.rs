@@ -6,7 +6,7 @@ use test_fixtures::{require_grammars, require_helix_query};
 use super::*;
 use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
-use crate::test_support::{empty_langs, make_bundle, syntax_with};
+use crate::test_support::{bundle_with_fixture_query, empty_langs, make_bundle, syntax_with};
 use hume_core::OptionalQuery;
 use hume_editing::changeset::ChangeSetBuilder;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
@@ -197,10 +197,7 @@ fn adjacent_returns_none_at_buffer_edges() {
 /// The real `name` bundle carrying the fetched Helix `textobjects.scm`, no
 /// injections; these tests probe single-layer trees.
 fn bundle_with_real_textobjects(name: &str, symbol: &str) -> Arc<GrammarBundle> {
-    require_grammars(&[name]);
-    let path = require_helix_query(name, OptionalQuery::TextObjects.file_name());
-    let source = std::fs::read_to_string(path).expect("read textobjects.scm");
-    make_bundle(name, symbol, "", &[(OptionalQuery::TextObjects, &source)])
+    bundle_with_fixture_query(name, symbol, OptionalQuery::TextObjects)
 }
 
 fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {

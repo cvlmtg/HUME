@@ -375,13 +375,6 @@ impl Buffer {
         self.syntax.as_ref().map(|syn| syn as &dyn SyntaxSource)
     }
 
-    /// Names the committed syntax layers, `None` without syntax: it changes
-    /// whenever a parse lands, so a view settled before it can be settled
-    /// again.
-    pub(in crate::editor) fn layers_identity(&self) -> Option<u64> {
-        self.syntax.as_ref().map(Syntax::committed_gen)
-    }
-
     /// A buffer holding `text`, for [`store::BufferStore::open`], which
     /// builds `origin` from the [`NewBuffer`] it was handed and hands it the
     /// editor's `clock`. A pane showing it starts with a cursor on its first

@@ -7,7 +7,7 @@ use hume_rope::offset::ExclusiveRange;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor};
 
-use crate::layers::{SyntaxLayers, layer_covers_line};
+use crate::layers::SyntaxLayers;
 
 // RopeProvider
 
@@ -185,21 +185,17 @@ pub fn layer_highlights_for_line(
     events: &mut Vec<(ByteCol, bool, u32, u8, ScopeId)>,
     out: &mut Vec<(ExclusiveRange<ByteCol>, ScopeId)>,
 ) {
-    let line_start = rope.line_to_byte(line_idx.index());
-    let line_end = hume_rope::lines::next_line_start_byte(rope, line_idx.into());
-
+    let (bytes, covering) = layers.covering_line(rope, line_idx);
     raw.clear();
-    for layer in &layers.layers {
-        if layer_covers_line(layer, line_start, line_end) {
-            layer.bundle.highlighter.collect_line_spans(
-                &layer.tree,
-                rope,
-                line_start,
-                line_end,
-                layer.depth,
-                raw,
-            );
-        }
+    for layer in covering {
+        layer.bundle.highlighter.collect_line_spans(
+            &layer.tree,
+            rope,
+            bytes.start,
+            bytes.end,
+            layer.depth,
+            raw,
+        );
     }
 
     hume_engine::interval_sweep::flatten_overlapping_spans(

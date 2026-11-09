@@ -101,8 +101,18 @@ impl ViewGeometry<'_> {
     /// `target`, so the band `[top_margin_at, target]` is never empty.
     pub fn top_margin_at(&self, dlm: &mut DisplayLineMap<'_>, top: DisplayLinePos) -> usize {
         let mut headers = Vec::new();
-        scope_headers(dlm, top, self.height, self.headers, &mut headers);
+        self.scope_headers(dlm, top, &mut headers);
         (self.margin + headers.len()).min((self.height - 1) / 2)
+    }
+
+    /// The [`scope_headers`] painted over this view while `top` is its top.
+    pub fn scope_headers(
+        &self,
+        dlm: &mut DisplayLineMap<'_>,
+        top: DisplayLinePos,
+        out: &mut Vec<ContentLine>,
+    ) {
+        scope_headers(dlm, top, self.height, self.headers, out);
     }
 }
 

@@ -38,14 +38,20 @@ pub struct ScopeHeaderInputs<'a> {
 }
 
 #[cfg(test)]
+impl ContextSettings {
+    /// Settings that show no header.
+    pub(crate) const OFF: Self = Self {
+        enabled: false,
+        outer_level: false,
+    };
+}
+
+#[cfg(test)]
 impl ScopeHeaderInputs<'static> {
     /// Inputs that yield no header.
     pub(crate) const NONE: Self = Self {
         source: None,
-        settings: ContextSettings {
-            enabled: false,
-            outer_level: false,
-        },
+        settings: ContextSettings::OFF,
     };
 }
 
@@ -81,41 +87,32 @@ pub fn scope_headers(
         return;
     }
     let mut pos = dlm.clamp(top);
-    let mut taken = Vec::new();
     let mut scratch = Vec::new();
     while out.len() < cap {
         // A virtual display line's row belongs to the line it is anchored to.
         source.header_lines(pos.line, dlm.rope(), &mut scratch);
-        let Some(&header) = scratch.iter().find(|line| !taken.contains(*line)) else {
+        let Some(&header) = scratch.iter().find(|line| !out.contains(*line)) else {
             return;
         };
         let Some(next) = dlm.next(pos) else {
             return;
         };
-        taken.push(header);
         out.push(header);
         pos = next;
     }
     // At the cap the line under the headers stays at row `cap`, so each of
     // its scopes not yet taken joins in turn, outer to inner, and drops a row.
     source.header_lines(pos.line, dlm.rope(), &mut scratch);
-    for &header in scratch.iter().filter(|line| !taken.contains(*line)) {
+    scratch.retain(|line| !out.contains(line));
+    for &header in &scratch {
         out.push(header);
         out.remove(if settings.outer_level { 1 } else { 0 });
     }
 }
 
-/// The format a header row lays its line out with: the pane's `key` with
-/// wrapping off, so a long header line is cut at the pane's edge in every
-/// wrap mode.
-fn header_format_key(key: FormatKey) -> FormatKey {
-    FormatKey {
-        wrap_mode: WrapMode::None,
-        ..key
-    }
-}
-
-/// The map a header row is laid out through, whole lines, for a hit test.
+/// The map a header row is laid out through, whole lines, for a hit test:
+/// the pane's `key` with wrapping off, so a long header line is cut at the
+/// pane's edge in every wrap mode.
 ///
 /// `store` is rewound: the pane's providers (inlay hints, EOL text) shape its
 /// lines but are not in `key`, so two panes on one buffer can share a key and
@@ -128,13 +125,11 @@ pub fn header_display_map<'a>(
     store: &'a mut PaneLineStore,
 ) -> DisplayLineMap<'a> {
     store.rewind();
-    DisplayLineMap::new(
-        rope,
-        providers,
-        content_width,
-        header_format_key(key),
-        store,
-    )
+    let key = FormatKey {
+        wrap_mode: WrapMode::None,
+        ..key
+    };
+    DisplayLineMap::new(rope, providers, content_width, key, store)
 }
 
 /// [`header_display_map`] clipped to the columns the header rows draw, which
@@ -150,7 +145,7 @@ pub(crate) fn header_render_map<'a>(
     store: &'a mut PaneLineStore,
 ) -> DisplayLineMap<'a> {
     header_display_map(rope, providers, content_width, key, store).with_h_window(h_window(
-        header_format_key(key).wrap_mode,
+        WrapMode::None,
         DisplayLineCol::new(0),
         content_width,
     ))

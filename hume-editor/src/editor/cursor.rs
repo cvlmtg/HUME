@@ -5,7 +5,7 @@
 //! mapping go through `DisplayLineMap`, so neither can disagree with the
 //! renderer about which display line a position is on.
 
-use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
+use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap, DisplayLinePos};
 use hume_engine::pane::Viewport;
 use hume_engine::scope_headers::header_display_line;
 use hume_rope::cluster::ClusterStart;
@@ -84,18 +84,15 @@ pub(in crate::editor) fn screen_to_cluster(
     viewport: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
 ) -> Option<hume_rope::cluster::ClusterStart> {
-    if content_x < gutter_w {
-        return None;
-    }
-    let display_col = viewport
-        .horizontal_offset()
-        .advance_saturating((content_x - gutter_w) as u32);
-
     let top = viewport.top_at(dlm);
     let clicked = dlm.advance_saturating(top, content_y as isize);
-    // A column past the text resolves to the display line's last cell, its
-    // `\n`, which is a cursor position in the inclusive selection model.
-    Some(dlm.char_at(clicked, display_col, DisplayColTarget::Cell))
+    cell_to_cluster(
+        content_x,
+        gutter_w,
+        viewport.horizontal_offset(),
+        dlm,
+        clicked,
+    )
 }
 
 /// The buffer cluster under a click on the scope header row that draws
@@ -109,12 +106,27 @@ pub(in crate::editor) fn header_to_cluster(
     dlm: &mut DisplayLineMap<'_>,
     line: ContentLine,
 ) -> Option<ClusterStart> {
+    let row = header_display_line(dlm, line);
+    cell_to_cluster(content_x, gutter_w, DisplayLineCol::new(0), dlm, row)
+}
+
+/// The cluster in display line `pos` under pane-relative `content_x`, where
+/// the content area's first cell shows display column `origin`. A click in
+/// the `gutter_w`-wide gutter returns `None`.
+fn cell_to_cluster(
+    content_x: u16,
+    gutter_w: u16,
+    origin: DisplayLineCol,
+    dlm: &mut DisplayLineMap<'_>,
+    pos: DisplayLinePos,
+) -> Option<ClusterStart> {
     if content_x < gutter_w {
         return None;
     }
-    let col = DisplayLineCol::new(0).advance_saturating(u32::from(content_x - gutter_w));
-    let row = header_display_line(dlm, line);
-    Some(dlm.char_at(row, col, DisplayColTarget::Cell))
+    let col = origin.advance_saturating(u32::from(content_x - gutter_w));
+    // A column past the text resolves to the display line's last cell, its
+    // `\n`, which is a cursor position in the inclusive selection model.
+    Some(dlm.char_at(pos, col, DisplayColTarget::Cell))
 }
 
 #[cfg(test)]

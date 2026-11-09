@@ -24,7 +24,7 @@
 use hume_core::PaneId;
 use hume_engine::display_lines::line_store::PaneLineStore;
 use hume_engine::pipeline::{PaneHit, SeamHandle};
-use hume_engine::scope_headers::{ScopeHeaderInputs, header_display_map, scope_headers};
+use hume_engine::scope_headers::header_display_map;
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -275,46 +275,40 @@ impl Editor {
     fn click_to_cluster(&mut self, hit: PaneHit) -> Option<hume_rope::cluster::ClusterStart> {
         let pid = hit.pane();
         let buf_id = self.view.panes[pid].buffer_id();
-        let geometry = self.state.pane_geometry(&self.view, pid, hit.size());
-        let key = self.state.format_key(&self.view.panes[pid]);
+        let gutter_width = self
+            .state
+            .pane_geometry(&self.view, pid, hit.size())
+            .gutter_width;
+        let layout_key = self.state.layout_key(&self.view, pid, hit.size());
+        let key = layout_key.format_key();
+        let content_width = layout_key.content_width();
         let doc = self.state.buffers.get(buf_id);
         let rope = doc.text().rope();
         let pane = &mut self.view.panes[pid];
-        let mut headers = Vec::new();
-        {
-            let (mut dlm, viewport) =
-                pane.display_lines_and_viewport(rope, key, geometry.content_width);
-            let top = viewport.top_at(&mut dlm);
-            scope_headers(
-                &mut dlm,
-                top,
-                usize::from(hit.size().height()),
-                ScopeHeaderInputs {
-                    source: doc.syntax_source(),
-                    settings: self.state.context_settings(doc),
-                },
-                &mut headers,
-            );
-        }
-        if let Some(&line) = headers.get(usize::from(hit.y())) {
-            let mut store = PaneLineStore::new();
-            let mut header_dlm = header_display_map(
-                rope,
-                &pane.providers,
-                geometry.content_width,
-                key,
-                &mut store,
-            );
-            return cursor::header_to_cluster(
-                hit.x(),
-                geometry.gutter_width,
-                &mut header_dlm,
-                line,
-            );
-        }
-        let (mut dlm, viewport) =
-            pane.display_lines_and_viewport(rope, key, geometry.content_width);
-        cursor::screen_to_cluster(hit.x(), hit.y(), geometry.gutter_width, viewport, &mut dlm)
+        let header = {
+            let (mut dlm, viewport) = pane.display_lines_and_viewport(rope, key, content_width);
+            let mut headers = Vec::new();
+            if let Some(geo) = layout_key.geometry(doc.syntax_source()) {
+                let top = viewport.top_at(&mut dlm);
+                geo.scope_headers(&mut dlm, top, &mut headers);
+            }
+            match headers.get(usize::from(hit.y())) {
+                Some(&line) => line,
+                None => {
+                    return cursor::screen_to_cluster(
+                        hit.x(),
+                        hit.y(),
+                        gutter_width,
+                        viewport,
+                        &mut dlm,
+                    );
+                }
+            }
+        };
+        let mut store = PaneLineStore::new();
+        let mut header_dlm =
+            header_display_map(rope, &pane.providers, content_width, key, &mut store);
+        cursor::header_to_cluster(hit.x(), gutter_width, &mut header_dlm, header)
     }
 }
 

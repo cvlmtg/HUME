@@ -65,6 +65,22 @@ pub(crate) fn make_bundle(
     })
 }
 
+/// The fetched Helix `kind` query for `language`.
+pub(crate) fn fixture_query(language: &str, kind: OptionalQuery) -> String {
+    let path = test_fixtures::require_helix_query(language, kind.file_name());
+    std::fs::read_to_string(path).expect("read fixture query")
+}
+
+/// The `name` bundle carrying the fetched Helix `kind` query and no other.
+pub(crate) fn bundle_with_fixture_query(
+    name: &str,
+    symbol: &str,
+    kind: OptionalQuery,
+) -> Arc<GrammarBundle> {
+    test_fixtures::require_grammars(&[name]);
+    make_bundle(name, symbol, "", &[(kind, &fixture_query(name, kind))])
+}
+
 /// The markdown grammar fixture with its highlights and injections queries.
 pub(crate) fn fixture_markdown() -> Arc<GrammarBundle> {
     let highlights = test_fixtures::grammar_query_path("markdown");

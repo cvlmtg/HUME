@@ -2,6 +2,8 @@ use std::cmp::Reverse;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
+use hume_rope::line::ContentLine;
+
 use crate::edited_bytes::EditedBytes;
 use crate::injections::{InjectionSites, PriorInjections};
 use crate::parse_worker::PriorLayers;
@@ -77,6 +79,22 @@ impl SyntaxLayers {
             textobject_memo: Mutex::new(None),
             edited: EditedBytes::default(),
         }
+    }
+
+    /// `line`'s bytes and the layers parsed over any of them: what a query
+    /// run per line reads and clips itself to.
+    pub(crate) fn covering_line(
+        &self,
+        rope: &ropey::Rope,
+        line: ContentLine,
+    ) -> (Range<usize>, impl Iterator<Item = &SyntaxLayer>) {
+        let start = rope.line_to_byte(line.index());
+        let end = hume_rope::lines::next_line_start_byte(rope, line.into());
+        let covering = self
+            .layers
+            .iter()
+            .filter(move |layer| layer_covers_line(layer, start, end));
+        (start..end, covering)
     }
 
     /// Apply `edits`, in the order `Tree::edit` takes them, to every
@@ -312,7 +330,7 @@ pub fn first_layer_mismatch(
 
 /// True if `layer` was parsed over the byte range `[line_start, line_end)`.
 /// The root layer (empty `ranges`) always covers every line.
-pub(crate) fn layer_covers_line(layer: &SyntaxLayer, line_start: usize, line_end: usize) -> bool {
+fn layer_covers_line(layer: &SyntaxLayer, line_start: usize, line_end: usize) -> bool {
     layer.ranges.is_empty()
         || last_range_starting_before(layer, line_end).is_some_and(|r| line_start < r.end_byte)
 }

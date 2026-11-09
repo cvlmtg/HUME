@@ -126,7 +126,10 @@ pub(crate) fn render_pane(
     // Which line's highlight intervals and cursorline state `line` currently
     // holds, so crossing into a new line is the only thing that rebuilds them.
     let mut line: Option<LineStyle> = None;
-    let mut screen_row = 0u16;
+    // The header rows paint over the display lines under them, so the walk
+    // starts below those.
+    pos = dlm.advance_saturating(pos, headers.len() as isize);
+    let mut screen_row = headers.len() as u16;
 
     while screen_row < height {
         // One resolve per display line, not two: `render_display_line` already walks
@@ -239,9 +242,7 @@ pub(crate) fn render_pane(
         return;
     }
     // Header rows are formatted and drawn from column 0 whatever the pane's
-    // horizontal scroll. Without a cursor line (`primary_head_line: None`)
-    // the gutter numbers a header's line absolutely in every line-number
-    // style and never marks it as the cursor's.
+    // horizontal scroll.
     let mut header_dlm = header_render_map(
         pane_ctx.rope,
         pane_ctx.providers,
@@ -256,13 +257,7 @@ pub(crate) fn render_pane(
     };
     let header_bg = pane_ctx.theme.ui.context.bg;
     for (header_row, &header) in (0u16..).zip(headers.iter()) {
-        let line = LineStyle::enter(
-            header,
-            last_content_line,
-            header_ctx.primary_head_line,
-            pane_ctx,
-            style,
-        );
+        let line = LineStyle::enter(header, last_content_line, None, pane_ctx, style);
         let pos = header_display_line(&mut header_dlm, header);
         let rendered = header_dlm.render_display_line(pos);
         style

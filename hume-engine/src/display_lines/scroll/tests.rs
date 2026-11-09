@@ -1174,17 +1174,21 @@ fn carry_overshoot_past_the_band_gives_up_instead_of_landing_outside_it() {
 
 // ── scope headers ─────────────────────────────────────────────────────────
 
-const HEADERS_SHOWN: ContextSettings = ContextSettings {
-    enabled: true,
-    outer_level: false,
-};
-
-/// Header inputs drawing their scopes from `table`.
-fn headers_from(table: &ScopeTable) -> ScopeHeaderInputs<'_> {
-    ScopeHeaderInputs {
-        source: Some(table),
-        settings: HEADERS_SHOWN,
-    }
+/// The geometry of a pane `height` rows tall with scroll-margin 3 whose
+/// header rows draw their scopes from `table`.
+fn header_geo(table: &ScopeTable, height: u16) -> ViewGeometry<'_> {
+    PaneSize::new(80, height)
+        .geometry(
+            3,
+            ScopeHeaderInputs {
+                source: Some(table),
+                settings: ContextSettings {
+                    enabled: true,
+                    outer_level: false,
+                },
+            },
+        )
+        .unwrap()
 }
 
 /// Height 20, scroll-margin 3: the cursor above `top` settles 3 rows plus
@@ -1196,9 +1200,7 @@ fn reveal_lands_the_cursor_below_the_headers_and_settles() {
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let table = ScopeTable::default().lines(10..=40, &[0, 1]);
-    let geo = PaneSize::new(80, 20)
-        .geometry(3, headers_from(&table))
-        .unwrap();
+    let geo = header_geo(&table, 20);
 
     let (mut v, _) = viewport(30, 20, 80);
     let cursor = DisplayLinePos::new(ContentLine::new(20), 0);
@@ -1216,9 +1218,7 @@ fn reveal_lands_the_cursor_below_the_headers_and_settles() {
     assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(14), 0));
 
     let deeper = ScopeTable::default().lines(10..=40, &[0, 1, 2]);
-    let geo = PaneSize::new(80, 20)
-        .geometry(3, headers_from(&deeper))
-        .unwrap();
+    let geo = header_geo(&deeper, 20);
     assert_eq!(
         geo.top_margin_at(&mut dlm, DisplayLinePos::new(ContentLine::new(30), 0)),
         6
@@ -1234,9 +1234,7 @@ fn reveal_margin_is_clamped_in_a_short_pane() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let table = ScopeTable::default().lines(3..=20, &[0, 1]);
-    let geo = PaneSize::new(80, 4)
-        .geometry(3, headers_from(&table))
-        .unwrap();
+    let geo = header_geo(&table, 4);
     assert_eq!(
         geo.top_margin_at(&mut dlm, DisplayLinePos::new(ContentLine::new(10), 0)),
         1
@@ -1254,9 +1252,7 @@ fn carry_band_uses_the_post_scroll_top() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let table = ScopeTable::default().lines(10..=40, &[0, 1]);
-    let geo = PaneSize::new(80, 20)
-        .geometry(3, headers_from(&table))
-        .unwrap();
+    let geo = header_geo(&table, 20);
     let (mut v, _) = viewport(5, 20, 80);
     let head = DisplayLinePos::new(ContentLine::new(8), 0);
 
@@ -1280,9 +1276,7 @@ fn reveal_upward_counts_the_headers_of_the_view_it_lands_in() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let table = ScopeTable::default().lines(31..=60, &[28, 29, 30]);
-    let geo = PaneSize::new(80, 20)
-        .geometry(3, headers_from(&table))
-        .unwrap();
+    let geo = header_geo(&table, 20);
     let cursor = DisplayLinePos::new(ContentLine::new(10), 0);
 
     let (mut v, _) = viewport(45, 20, 80);
@@ -1304,9 +1298,7 @@ fn reveal_in_view_settles_on_the_margin_of_the_new_top() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let table = ScopeTable::default().lines(31..=60, &[28, 29, 30]);
-    let geo = PaneSize::new(80, 20)
-        .geometry(3, headers_from(&table))
-        .unwrap();
+    let geo = header_geo(&table, 20);
     let cursor = DisplayLinePos::new(ContentLine::new(32), 0);
 
     let (mut v, _) = viewport(31, 20, 80);
@@ -1329,9 +1321,7 @@ fn reveal_stops_at_the_least_margin_its_top_needs() {
         .lines(20..=20, &[19])
         .lines(21..=21, &[19, 20])
         .lines(22..=50, &[19, 20, 21]);
-    let geo = PaneSize::new(80, 20)
-        .geometry(3, headers_from(&table))
-        .unwrap();
+    let geo = header_geo(&table, 20);
     let cursor = DisplayLinePos::new(ContentLine::new(23), 0);
 
     let (mut v, _) = viewport(40, 20, 80);

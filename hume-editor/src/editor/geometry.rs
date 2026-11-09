@@ -9,6 +9,7 @@ use hume_engine::pane::ViewGeometry;
 use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
 use hume_engine::providers::{GutterInputs, SyntaxSource};
 use hume_engine::scope_headers::{ContextSettings, ScopeHeaderInputs};
+use hume_treesitter::syntax::Syntax;
 
 use super::input_stack::{FocusedBox, ResolvedPopupLayout};
 use super::{EditorState, commands};
@@ -16,8 +17,9 @@ use super::{EditorState, commands};
 /// Every input a pane's layout depends on: its
 /// [`FormatKey`](hume_engine::display_lines::line_store::FormatKey) plus content
 /// width, viewport height and scroll-margin, which decide where the cursor's
-/// display line falls, and the buffer's scope-header settings and committed
-/// syntax layers, which decide how many header rows the top margin grows by.
+/// display line falls, and the buffer's scope-header settings and, while
+/// headers are on, its committed syntax layers, which decide how many header
+/// rows the top margin grows by.
 ///
 /// `FormatKey` leaves out content width because formatting sees it only
 /// through the wrap mode it resolves. This key keeps it because a growing
@@ -26,7 +28,7 @@ use super::{EditorState, commands};
 /// `frame::reveal_due_cursor` stores this in
 /// `PaneBufferState::last_layout_key` and compares it against a fresh one
 /// each time it runs (resize, wrap-mode change, buffer switch, decoration
-/// generation, a parse landing, and any content edit to the buffer, since
+/// generation, a parse landing while headers are on, and any content edit to the buffer, since
 /// `buffer_tag` includes `generation`). A change reveals only a pane that isn't
 /// [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked):
 /// a parked pane's own edit still reveals it, through `reveal_pending`
@@ -39,6 +41,8 @@ pub(in crate::editor) struct LayoutKey {
     size: hume_engine::pipeline::PaneSize,
     scroll_margin: usize,
     context: ContextSettings,
+    /// [`Syntax::committed_gen`],
+    /// `None` without syntax or with headers off.
     layers: Option<u64>,
 }
 
@@ -256,13 +260,18 @@ impl EditorState {
         size: hume_engine::pipeline::PaneSize,
     ) -> LayoutKey {
         let doc = self.buffers.get(view.panes[pid].buffer_id());
+        let context = self.context_settings(doc);
         LayoutKey {
             format: self.format_key(&view.panes[pid]),
             content_width: self.pane_geometry(view, pid, size).content_width,
             size,
             scroll_margin: self.settings.scroll_margin,
-            context: self.context_settings(doc),
-            layers: doc.layers_identity(),
+            context,
+            layers: doc
+                .syntax
+                .as_ref()
+                .filter(|_| context.enabled)
+                .map(Syntax::committed_gen),
         }
     }
 }

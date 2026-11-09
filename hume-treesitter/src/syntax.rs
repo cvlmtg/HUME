@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::context::textobject_header_lines;
 use crate::highlight::layer_highlights_for_line;
-use crate::layers::{SyntaxLayer, SyntaxLayers, layer_covers_line};
+use crate::layers::{SyntaxLayer, SyntaxLayers};
 use hume_core::BufferId;
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
@@ -672,17 +672,13 @@ impl hume_engine::providers::SyntaxSource for Syntax {
         let Some(layers) = self.layers() else {
             return;
         };
-        let line_start = rope.line_to_byte(line.index());
-        let line_end = hume_rope::lines::next_line_start_byte(rope, line.into());
+        let (bytes, covering) = layers.covering_line(rope, line);
         let mut cursor = self
             .header_cursor
             .lock()
             .expect("header cursor lock poisoned");
-        for layer in &layers.layers {
-            if !layer_covers_line(layer, line_start, line_end) {
-                continue;
-            }
-            let bytes = line_start..line_end;
+        for layer in covering {
+            let bytes = bytes.clone();
             if let Some(query) = &layer.bundle.context {
                 query.header_lines(&mut cursor, &layer.tree, rope, bytes, line, out);
             } else if let Some(query) = &layer.bundle.textobjects {

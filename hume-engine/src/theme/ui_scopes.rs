@@ -34,8 +34,7 @@ pub const STATUSLINE_SIFT: &str = "ui.statusline.sift";
 pub const STATUSLINE_SEPARATOR: &str = "ui.statusline.separator";
 pub const POPUP: &str = "ui.popup";
 pub const POPUP_SCROLL: &str = "ui.popup.scroll";
-/// Background of the scope header rows over a pane's top. `compute_ui` falls
-/// back to [`POPUP`]'s, which is not on this name's dot-trim chain.
+/// Background of the scope header rows over a pane's top.
 pub const CONTEXT: &str = "ui.context";
 pub const MENU: &str = "ui.menu";
 pub const MENU_SELECTED: &str = "ui.menu.selected";

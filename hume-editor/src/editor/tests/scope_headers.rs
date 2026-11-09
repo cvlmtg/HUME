@@ -283,12 +283,8 @@ fn header_rows_snapshot_wrap_on() {
 fn header_rows_ignore_horizontal_scroll() {
     let mut ed = snapshot_editor(true, 12);
     pin_no_wrap(&mut ed);
-    let line_start = hume_rope::lines::line_start_char(
-        ed.doc().text().rope(),
-        hume_rope::line::RopeyLine::new(12),
-    )
-    .index();
-    set_cursor(&mut ed, line_start + 150);
+    let far = char_at_column(&ed, 12, 150).index();
+    set_cursor(&mut ed, far);
     let snap = super::render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 30, 16));
     insta::assert_snapshot!(snap);
 }
@@ -296,13 +292,13 @@ fn header_rows_ignore_horizontal_scroll() {
 #[test]
 fn header_rows_show_no_selection_cursor_or_cursorline() {
     let mut ed = snapshot_editor(false, 15);
-    let impl_line_len = line_of(&wide_impl(false), 0).chars().count();
-    let deep = hume_rope::lines::line_start_char(
-        ed.doc().text().rope(),
-        hume_rope::line::RopeyLine::new(15),
-    )
-    .index();
-    select(&mut ed, &[(0, impl_line_len - 1), (deep, deep)], 1);
+    let impl_line = line_of(&wide_impl(false), 0);
+    let deep = char_at_column(&ed, 15, 0).index();
+    select(
+        &mut ed,
+        &[(0, impl_line.chars().count() - 1), (deep, deep)],
+        1,
+    );
     let covered: Vec<String> = ed
         .current_view()
         .iter()
@@ -310,7 +306,7 @@ fn header_rows_show_no_selection_cursor_or_cursorline() {
         .collect();
     assert_eq!(
         covered,
-        [line_of(&wide_impl(false), 0), " ".to_owned()],
+        [impl_line, " ".to_owned()],
         "premise: a secondary selection covers the impl line"
     );
     let snap = super::render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 30, 16));
@@ -343,11 +339,12 @@ fn header_rows_use_popup_background_when_ui_context_is_unset() {
 
     let (rect, gutter) = drawn_pane(&ed, &buf, pid);
     assert!(gutter > 0, "premise: the split pane draws a gutter");
+    let source = wide_impl(false);
     assert_eq!(
         pane_rows(&ed, &buf, pid, 2),
         [
-            line_of(&wide_impl(false), 0)[..usize::from(rect.width - gutter)].to_owned(),
-            line_of(&wide_impl(false), 1)
+            line_of(&source, 0)[..usize::from(rect.width - gutter)].to_owned(),
+            line_of(&source, 1)
         ]
     );
     for row in 0..2 {
@@ -471,10 +468,7 @@ fn a_header_row_on_the_cursors_line_does_not_mark_its_number() {
     wheel_down(&mut ed, &buf, pid, 3);
     let buf = ed.render_to_buf(rect);
 
-    let fn_line_start = hume_rope::lines::line_start_char(
-        ed.doc().text().rope(),
-        hume_rope::line::RopeyLine::new(1),
-    );
+    let fn_line_start = char_at_column(&ed, 1, 0);
     assert_eq!(
         ed.current_view().primary().head().offset(),
         fn_line_start,
@@ -543,12 +537,8 @@ fn cursor_cluster(ed: &Editor) -> String {
 /// Place the cursor on column 12 of line `line`, the `x` of a statement in
 /// [`two_fn_impl`]'s bodies.
 fn seek_to_column_12(ed: &mut Editor, line: usize) {
-    let start = hume_rope::lines::line_start_char(
-        ed.doc().text().rope(),
-        hume_rope::line::RopeyLine::new(line),
-    )
-    .index();
-    set_cursor(ed, start + 12);
+    let target = char_at_column(ed, line, 12).index();
+    set_cursor(ed, target);
 }
 
 #[test]
