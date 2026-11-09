@@ -30,7 +30,8 @@ pub(crate) struct ComposeCtx<'a> {
     /// whole thing, since it is the only field of it `compose_display_line` ever needs.
     pub horizontal_offset: DisplayLineCol,
     pub mode: EditorMode,
-    pub primary_head_line: hume_rope::line::ContentLine,
+    /// See [`GutterCtx::primary_head_line`](crate::providers::GutterCtx::primary_head_line).
+    pub primary_head_line: Option<hume_rope::line::ContentLine>,
     pub tab_width: u8,
     /// Pre-resolved from `theme.ui.virtual_text` to avoid repeated field access in the hot loop.
     pub tilde_style: ResolvedStyle,

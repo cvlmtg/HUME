@@ -74,7 +74,10 @@ pub trait SyntaxSource {
 /// `line_to_byte` call it themselves.
 pub struct GutterCtx<'a> {
     pub mode: EditorMode,
-    pub primary_head_line: hume_rope::line::ContentLine,
+    /// The primary selection's head line, `None` for a row drawn without the
+    /// cursor's line in it (a scope header row): no line is marked as the
+    /// cursor's, and numbers are absolute.
+    pub primary_head_line: Option<hume_rope::line::ContentLine>,
     pub rope: &'a ropey::Rope,
     /// The gutter's settings for the pane being drawn.
     pub inputs: GutterInputs,

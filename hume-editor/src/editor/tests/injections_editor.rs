@@ -68,15 +68,16 @@ fn markdown_editor_registering(
     dirs: &Dirs,
     registered: &[&str],
 ) -> (Editor, hume_core::BufferId) {
-    markdown_editor_with_rust_queries(source, dirs, registered, &[])
+    markdown_editor_with_rust_queries(source, dirs, registered, &[OptionalQuery::Injections], &[])
 }
 
-/// [`markdown_editor_registering`] where rust also gets the Helix queries
-/// `rust_helix` lists.
-fn markdown_editor_with_rust_queries(
+/// [`markdown_editor_registering`] where markdown gets the Helix queries
+/// `markdown_helix` lists and rust gets those `rust_helix` lists.
+pub(super) fn markdown_editor_with_rust_queries(
     source: &str,
     dirs: &Dirs,
     registered: &[&str],
+    markdown_helix: &[OptionalQuery],
     rust_helix: &[OptionalQuery],
 ) -> (Editor, hume_core::BufferId) {
     let mut ed = Editor::for_testing(hume_editing::text::BufferText::from(source));
@@ -91,7 +92,7 @@ fn markdown_editor_with_rust_queries(
         &mut ed,
         "markdown",
         "tree_sitter_markdown",
-        &[OptionalQuery::Injections],
+        markdown_helix,
         registered,
     );
     ed.state
@@ -470,6 +471,7 @@ fn a_text_object_in_a_fence_whose_grammar_just_loaded_finds_its_function() {
         "```rust\nfn f() {\n    1\n}\n```\n",
         &Dirs::none(),
         &["rust"],
+        &[OptionalQuery::Injections],
         &[OptionalQuery::TextObjects],
     );
     let syn = ed.state.buffers.get(bid).syntax.as_ref().expect("syntax");

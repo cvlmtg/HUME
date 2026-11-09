@@ -323,7 +323,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     let rope = ed.state.buffers.get(bid).text().rope().clone();
     let gutter_ctx = hume_engine::providers::GutterCtx {
         mode: hume_engine::types::EditorMode::Normal,
-        primary_head_line: hume_rope::line::ContentLine::new(0),
+        primary_head_line: Some(hume_rope::line::ContentLine::new(0)),
         rope: &rope,
         inputs: ed.state.gutter_inputs(&ed.view, pid),
     };

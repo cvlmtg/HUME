@@ -11,7 +11,7 @@ const SELECTED_SCOPE: ScopeId = ScopeId(1);
 fn ctx(rope: &ropey::Rope, primary_head_line: usize, style: LineNumberStyle) -> GutterCtx<'_> {
     GutterCtx {
         mode: EditorMode::Normal,
-        primary_head_line: ContentLine::new(primary_head_line),
+        primary_head_line: Some(ContentLine::new(primary_head_line)),
         rope,
         inputs: GutterInputs {
             line_numbers: style,
@@ -208,4 +208,36 @@ fn large_line_number_renders_correctly() {
         .next()
         .unwrap();
     assert_eq!(cell.as_str(), "9999999");
+}
+
+/// Without a head line every style numbers absolutely and marks no line.
+#[test]
+fn no_head_line_numbers_absolutely_unmarked() {
+    let lane = LineNumberColumn::new(DEFAULT_SCOPE, SELECTED_SCOPE);
+    let rope = ropey::Rope::new();
+    for style in [
+        LineNumberStyle::Absolute,
+        LineNumberStyle::Relative,
+        LineNumberStyle::Hybrid,
+    ] {
+        let ctx = GutterCtx {
+            primary_head_line: None,
+            ..ctx(&rope, 0, style)
+        };
+        let cell = lane
+            .render_cells(
+                DisplayLineKind::LineStart {
+                    line_idx: RopeyLine::new(4),
+                },
+                &ctx,
+            )
+            .into_iter()
+            .next()
+            .unwrap();
+        assert_eq!(
+            (cell.as_str(), cell.scope),
+            ("5", DEFAULT_SCOPE),
+            "{style:?}"
+        );
+    }
 }

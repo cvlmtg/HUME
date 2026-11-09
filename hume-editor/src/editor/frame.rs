@@ -307,6 +307,7 @@ impl Editor {
             indent_guides,
             cursor_is_block,
             gutter: self.state.gutter_inputs(&self.view, pid),
+            context: self.state.context_settings(doc),
         }
     }
 
@@ -357,12 +358,7 @@ impl Editor {
             grid,
             hume_engine::pipeline::FrameInputs {
                 get_rope: |bid| buffers.try_get(bid).map(|b| b.text().rope()),
-                get_syntax: |bid| {
-                    buffers
-                        .try_get(bid)
-                        .and_then(|b| b.syntax.as_ref())
-                        .map(|s| s as &dyn hume_engine::providers::SyntaxSource)
-                },
+                get_syntax: |bid| buffers.try_get(bid).and_then(Buffer::syntax_source),
                 statusline: &statusline,
                 layout,
             },

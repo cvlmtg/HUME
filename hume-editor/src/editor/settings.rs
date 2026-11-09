@@ -927,6 +927,12 @@ define_settings! {
         // line token per line instead of the language's block pair.
         "comment-prefer-line" => comment_prefer_line: bool = false,
             parser: Bool;
+        // Scope header rows over a pane's top rows (`hume_engine::scope_headers`).
+        "context-enabled" => context_enabled: bool = true,
+            parser: Bool;
+        // With more scopes than header rows, keep the outermost one.
+        "context-outer-level" => context_outer_level: bool = false,
+            parser: Bool;
         // Word motions (`w`/`W`/`b`/`B`), `mm`/`MM` and `maw`/`maW` cover
         // the destination word's whitespace bookend on the preferred side.
         // See `word_select_cmd`'s `ctx.whitespace` read and `run_body`'s

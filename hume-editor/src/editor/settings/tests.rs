@@ -32,6 +32,8 @@ fn editor_settings_default_values() {
     assert!(s.statusline_mode_colors);
     assert_eq!(s.tabline, TablineVisibility::Dynamic);
     assert_eq!(s.gutter_signs, SignColumnConfig::default());
+    assert!(s.context_enabled);
+    assert!(!s.context_outer_level);
 }
 
 #[test]
@@ -50,6 +52,8 @@ fn buffer_overrides_default_is_all_none() {
     assert!(ov.whitespace_tab.is_none());
     assert!(ov.whitespace_newline.is_none());
     assert!(ov.gutter_signs.is_none());
+    assert!(ov.context_enabled.is_none());
+    assert!(ov.context_outer_level.is_none());
 }
 
 // ── Resolution: override present → returns override value ─────────────────
@@ -930,6 +934,13 @@ fn set_buffer_indent_guides() {
     let global = default_settings();
     let ov = buffer("indent-guides", "false").unwrap();
     assert!(!ov.indent_guides(&global));
+}
+
+#[test]
+fn set_buffer_context_enabled() {
+    let global = default_settings();
+    let ov = buffer("context-enabled", "false").unwrap();
+    assert!(!ov.context_enabled(&global));
 }
 
 #[test]

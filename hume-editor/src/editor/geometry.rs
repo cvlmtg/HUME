@@ -222,6 +222,18 @@ impl EditorState {
         }
     }
 
+    /// `doc`'s scope-header settings: the one resolution the render pass and
+    /// the scroll pass read.
+    pub(in crate::editor) fn context_settings(
+        &self,
+        doc: &super::buffer::Buffer,
+    ) -> hume_engine::scope_headers::ContextSettings {
+        hume_engine::scope_headers::ContextSettings {
+            enabled: doc.overrides.context_enabled(&self.settings),
+            outer_level: doc.overrides.context_outer_level(&self.settings),
+        }
+    }
+
     /// Pane `pid`'s [`Self::format_key`] plus the content width and geometry
     /// it formats and scrolls by at `size`, and the scroll margin. The frame's
     /// scroll pass reveals the cursor when this changes.

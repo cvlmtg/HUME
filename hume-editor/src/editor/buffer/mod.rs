@@ -18,6 +18,7 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, LineEnding};
 use hume_editing::transaction::Transaction;
+use hume_engine::providers::SyntaxSource;
 use hume_platform::path::AbsolutePath;
 use hume_rope::cluster::ClusterRange;
 use md5::{Digest, Md5};
@@ -367,6 +368,11 @@ impl Buffer {
         self.syntax
             .as_ref()
             .and_then(|syn| syn.current_layers(self.text().generation()))
+    }
+
+    /// The buffer's syntax as the engine reads it, `None` without a grammar.
+    pub(in crate::editor) fn syntax_source(&self) -> Option<&dyn SyntaxSource> {
+        self.syntax.as_ref().map(|syn| syn as &dyn SyntaxSource)
     }
 
     /// A buffer holding `text`, for [`store::BufferStore::open`], which

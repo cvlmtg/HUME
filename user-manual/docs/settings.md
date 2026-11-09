@@ -67,6 +67,8 @@ A buffer option you set, with `:set buffer` or from a hook in your `init.scm`, b
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `comment-prefer-line` | bool | `false` | `G G` comments a selection spanning several lines with a line comment on each line, even when the language also has block comments |
+| `context-enabled` | bool | `true` | Show the first line of each scope the top of the pane is inside (a function, a class, a Markdown section) over the pane's top rows, up to three |
+| `context-outer-level` | bool | `false` | With more scopes than rows, keep the outermost scope's line and the innermost ones; off keeps only the innermost |
 | `file-reload-prompt` | bool | `true` | Prompt to reload when the current buffer's file changes on disk. `false` only warns; reload manually with `:e!` |
 | `gutter-line-numbers` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `gutter-signs` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` gives one column per registered sign source. A source claims its column when the plugin registers it, so the width doesn't change as signs come and go. `:N` fixes the width at N columns (1–127) instead, hiding lower-priority sources that don't fit. `auto` also collapses to zero width when no signs are visible |

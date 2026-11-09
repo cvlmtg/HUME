@@ -79,11 +79,13 @@ fn apply_styles(
             dline,
             graphemes,
             line_chars,
-            &painted,
-            is_head_line,
-            tint,
-            mode,
-            cursor_is_block,
+            Some(SelectionPaint {
+                selections: &painted,
+                is_head_line,
+                mode,
+                cursor_is_block,
+            }),
+            tint.and_then(|scope| theme.resolve(scope).bg),
             theme,
             scratch,
         );
@@ -141,12 +143,13 @@ fn a_line_without_selections_keeps_the_default_style() {
     );
 }
 
-/// A `line_tint` scope with `fg`/modifiers as well as `bg` must only
-/// contribute its `bg`. The row-fill paint site (`pane_render.rs`'s
-/// `row_bg`) can only ever read a background color out of the same scope, so
-/// a fg/modifier applied here would show up on content cells but nowhere the
-/// row-fill site paints (gutter, trailing fill past end-of-line),
-/// contradicting a kind documented as a full-row *background* tint.
+/// A line tint whose scope has `fg`/modifiers as well as `bg` must only
+/// contribute its `bg`, passed as `base_bg`. The row-fill paint site
+/// (`pane_render.rs`'s `row_bg`) can only ever read a background color out
+/// of the same scope, so a fg/modifier applied here would show up on content
+/// cells but nowhere the row-fill site paints (gutter, trailing fill past
+/// end-of-line), contradicting a kind documented as a full-row *background*
+/// tint.
 #[test]
 fn line_tint_applies_only_background_not_fg_or_modifiers() {
     let rope = ropey::Rope::from_str("abc\nd");
@@ -174,11 +177,13 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
         &lines[0],
         &graphemes,
         ExclusiveRange::new(co(0), co(3)),
-        &crate::test_support::cursor_mirror(&rope, 4),
-        false, // not the cursor line, which isolates the tint's own contribution
-        Some(tint_scope),
-        EditorMode::Normal,
-        true,
+        Some(SelectionPaint {
+            selections: &crate::test_support::cursor_mirror(&rope, 4),
+            is_head_line: false, // isolates the tint's own contribution
+            mode: EditorMode::Normal,
+            cursor_is_block: true,
+        }),
+        theme.resolve(tint_scope).bg,
         &theme,
         &mut scratch,
     );
@@ -198,6 +203,62 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
         crate::types::Modifiers::empty(),
         "the tint's modifiers must not apply, same reasoning as fg"
     );
+}
+
+/// A call without selection paint draws none of the selection, cursor or
+/// cursorline tiers, even right after a call that painted all three on the
+/// same line into the same scratch: every cell is the default style over
+/// `base_bg`.
+#[test]
+fn no_selection_paint_leaves_every_cell_at_the_base_style() {
+    let rope = ropey::Rope::from_str("abcde\n");
+    let graphemes = make_graphemes(&rope, 5);
+    let line = make_display_line(0..5);
+    let line_chars = ExclusiveRange::new(co(0), co(6));
+    let theme = theme_with([
+        ("ui.cursor", fg(Rgb(255, 0, 0))),
+        ("ui.cursor.primary", fg(Rgb(0, 255, 0))),
+        ("ui.selection", bg(Rgb(0, 0, 255))),
+        ("ui.selection.primary", bg(Rgb(0, 255, 255))),
+        ("ui.cursorline", bg(Rgb(255, 255, 0))),
+        ("ui.cursorline.primary", bg(Rgb(255, 0, 255))),
+    ]);
+    let selections = crate::test_support::mirror(&rope, &[(0, 1), (3, 3)], 1);
+    let mut scratch = StyleScratch::new();
+    scratch
+        .styles
+        .resize(graphemes.len(), ResolvedStyle::default());
+    style_display_line(
+        &line,
+        &graphemes,
+        line_chars,
+        Some(SelectionPaint {
+            selections: &selections,
+            is_head_line: true,
+            mode: EditorMode::Normal,
+            cursor_is_block: true,
+        }),
+        None,
+        &theme,
+        &mut scratch,
+    );
+    assert_ne!(
+        scratch.styles[3],
+        ResolvedStyle::default(),
+        "premise: the painted call styles the primary head"
+    );
+
+    let base = Rgb(10, 20, 30);
+    style_display_line(
+        &line,
+        &graphemes,
+        line_chars,
+        None,
+        Some(base),
+        &theme,
+        &mut scratch,
+    );
+    assert_eq!(scratch.styles[..5], [bg(base); 5]);
 }
 
 #[test]

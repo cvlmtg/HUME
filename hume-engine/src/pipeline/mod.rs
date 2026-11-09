@@ -47,6 +47,13 @@ pub struct FrameScratch {
     pub style: StyleScratch,
     /// Pre-computed gutter lane widths used by the render stage.
     pub lane_widths: Vec<u16>,
+    /// The header line of each scope header row of the pane being drawn.
+    pub scope_headers: Vec<ContentLine>,
+    /// The formatted header lines of the pane being drawn, laid out by
+    /// [`header_format_key`](crate::scope_headers::header_format_key), apart
+    /// from the pane's own store, whose key it does not share. `render_pane`
+    /// rewinds it before each pane's header pass.
+    pub header_lines: crate::display_lines::line_store::PaneLineStore,
 }
 
 impl FrameScratch {
@@ -54,6 +61,8 @@ impl FrameScratch {
         Self {
             style: StyleScratch::new(),
             lane_widths: Vec::new(),
+            scope_headers: Vec::new(),
+            header_lines: crate::display_lines::line_store::PaneLineStore::new(),
         }
     }
 
@@ -61,6 +70,7 @@ impl FrameScratch {
     pub fn clear(&mut self) {
         self.style.clear();
         self.lane_widths.clear();
+        self.scope_headers.clear();
     }
 }
 
@@ -746,6 +756,8 @@ pub struct PaneRenderSettings {
     pub indent_guides: bool,
     pub cursor_is_block: bool,
     pub gutter: crate::providers::GutterInputs,
+    /// The pane's buffer's scope-header settings.
+    pub context: crate::scope_headers::ContextSettings,
 }
 
 /// Transient bundle of borrows needed to render one pane. Avoids passing a

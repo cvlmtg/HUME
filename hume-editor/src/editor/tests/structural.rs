@@ -17,36 +17,46 @@ fn require_fixtures() {
     require_helix_query("rust", OptionalQuery::TextObjects.file_name());
 }
 
-/// Build an editor from the marker DSL with grammar `name` (plus its real
-/// Helix-maintained `textobjects.scm`, what `:plum-install-grammar` actually
-/// fetches) attached, but the initial parse *not yet* drained: the window
-/// `ensure_syntax_current`'s no-committed-tree gate covers.
-fn grammar_editor_undrained(name: &str, symbol: &str, source: &str) -> Editor {
+/// Build an editor from the marker DSL with grammar `name` (plus the real
+/// Helix-maintained query files `queries` lists, what `:plum-install-grammar`
+/// actually fetches) attached, but the initial parse *not yet* drained: the
+/// window `ensure_syntax_current`'s no-committed-tree gate covers.
+pub(super) fn grammar_editor_undrained(
+    name: &str,
+    symbol: &str,
+    queries: &[OptionalQuery],
+    source: &str,
+) -> Editor {
     require_grammars(&[name]);
-    let to_path = require_helix_query(name, OptionalQuery::TextObjects.file_name());
+    let files = queries
+        .iter()
+        .fold(QueryFiles::new(grammar_query_path(name)), |files, &kind| {
+            files.with(kind, require_helix_query(name, kind.file_name()))
+        });
     let mut ed = editor_from(source);
     let bid = ed.focused_buffer_id();
-    attach_fixture_grammar_with(
-        &mut ed,
-        name,
-        symbol,
-        &QueryFiles::new(grammar_query_path(name)).with(OptionalQuery::TextObjects, to_path),
-    );
+    attach_fixture_grammar_with(&mut ed, name, symbol, &files);
     super::language::attach_host(&mut ed, "");
     let lang = ed.state.config.languages.intern(name);
     ed.set_buffer_language(bid, Some(lang)).expect_open();
     ed
 }
 
-/// [`grammar_editor_undrained`] with the initial full parse drained.
+/// [`grammar_editor_undrained`] with `textobjects.scm` and the initial full
+/// parse drained.
 fn grammar_editor(name: &str, symbol: &str, source: &str) -> Editor {
-    let mut ed = grammar_editor_undrained(name, symbol, source);
+    let mut ed = grammar_editor_undrained(name, symbol, &[OptionalQuery::TextObjects], source);
     ed.reparse_stale_buffers();
     ed
 }
 
 fn rust_editor_undrained(source: &str) -> Editor {
-    grammar_editor_undrained("rust", "tree_sitter_rust", source)
+    grammar_editor_undrained(
+        "rust",
+        "tree_sitter_rust",
+        &[OptionalQuery::TextObjects],
+        source,
+    )
 }
 
 /// Build an editor from the marker DSL with the `rust` grammar (plus its

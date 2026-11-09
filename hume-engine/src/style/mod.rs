@@ -3,13 +3,14 @@ use highlight::HighlightStack;
 pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_line_decorations;
 
+use hume_grid::Rgb;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::providers::Decoration;
 use crate::theme::Theme;
-use crate::types::{DisplayLine, EditorMode, Grapheme, PaintedSelections, ResolvedStyle, ScopeId};
+use crate::types::{DisplayLine, EditorMode, Grapheme, PaintedSelections, ResolvedStyle};
 
 // Scratch storage
 
@@ -66,6 +67,17 @@ impl Default for StyleScratch {
     }
 }
 
+/// What a display line's selection, cursor and cursorline tiers paint from.
+#[derive(Copy, Clone)]
+pub(crate) struct SelectionPaint<'a> {
+    pub selections: &'a PaintedSelections,
+    /// Whether the line holds the primary selection's head (the cursorline).
+    pub is_head_line: bool,
+    pub mode: EditorMode,
+    /// Whether selection heads are painted at all: only under a block cursor.
+    pub cursor_is_block: bool,
+}
+
 /// Resolve per-grapheme styles for one display line.
 ///
 /// `styles_out` must be pre-sized to at least `display_line.graphemes.end` (parallel
@@ -73,72 +85,68 @@ impl Default for StyleScratch {
 /// outside `display_line.graphemes` are untouched.
 ///
 /// Call [`rebuild_line_decorations`] for the current buffer line before
-/// this, and pass its returned tint through as `line_tint`.
-#[allow(clippy::too_many_arguments)]
+/// this. `base_bg` is the background under the whole line. `selection` is
+/// `None` for a line drawn without selections, cursors or cursorline: a
+/// scope header row.
 pub(crate) fn style_display_line(
     display_line: &DisplayLine,
     graphemes: &[Grapheme],
     line_chars: ExclusiveRange<CharOffset>,
-    selections: &PaintedSelections,
-    is_head_line: bool,
-    line_tint: Option<ScopeId>,
-    mode: EditorMode,
-    cursor_is_block: bool,
+    selection: Option<SelectionPaint<'_>>,
+    base_bg: Option<Rgb>,
     theme: &Theme,
     scratch: &mut StyleScratch,
 ) {
-    // Whether the primary selection runs backward (head before anchor): the
-    // one piece of per-display-line context the unpainted-primary-head
-    // carve-out below needs. A property of the selection itself, not of
-    // this display line, so it's computed once here rather than per grapheme.
-    let primary_is_reverse = selections.primary().is_reverse();
-    collect_selection_spans(
-        line_chars,
-        selections,
-        graphemes,
-        &display_line.graphemes,
-        &mut scratch.sel_spans,
-        &mut scratch.primary_sel_span,
-    );
-    collect_head_display_cols(
-        line_chars,
-        selections,
-        graphemes,
-        &display_line.graphemes,
-        &mut scratch.head_display_cols,
-        &mut scratch.primary_head_display_col,
-    );
+    // The selection spans and heads on this display line, and whether the
+    // primary selection runs backward (head before anchor): the one piece of
+    // context the unpainted-primary-head carve-out below needs. A property of
+    // the selection itself, not of this display line, so it's computed once
+    // here rather than per grapheme.
+    let selection = selection.map(|paint| {
+        collect_selection_spans(
+            line_chars,
+            paint.selections,
+            graphemes,
+            &display_line.graphemes,
+            &mut scratch.sel_spans,
+            &mut scratch.primary_sel_span,
+        );
+        collect_head_display_cols(
+            line_chars,
+            paint.selections,
+            graphemes,
+            &display_line.graphemes,
+            &mut scratch.head_display_cols,
+            &mut scratch.primary_head_display_col,
+        );
+        (paint, paint.selections.primary().is_reverse())
+    });
 
     let mut hl = HighlightStack::new(&scratch.tier_bufs);
 
     // Tiers 4 and 3 are properties of the *display line*, not of any
     // grapheme in it, so they resolve once here rather than per grapheme below.
     //
-    // Tier 4: provider line-background tint (lowest), a full-row
-    // *background* a `DecorationSource` requested for this line (e.g.
-    // git-diff's changed-line highlight). Only `bg` is layered, not the
-    // scope's whole resolved style: the row-fill paint site
-    // (`pane_render.rs`'s `row_bg`) can only ever contribute a background
-    // (it has no per-grapheme fg/modifiers to paint), so a `LineBg`-scoped fg
-    // or modifier applied here would only ever show up on content cells,
-    // never on the gutter or the row's trailing fill past end-of-line.
-    // Constraining both paint sites to `bg` is what keeps them in agreement.
-    // Layered below cursorline so
-    // the cursor's own line always reads clearly even inside a tinted block;
-    // a theme whose cursorline has no `bg` falls through to the tint
-    // automatically (`ResolvedStyle::layer` only overrides on `Some(bg)`).
+    // Tier 4: the line's background (lowest): a provider's full-row tint
+    // (`Decoration::LineBg`, e.g. git-diff's changed-line highlight) or a
+    // header row's `ui.context`. A background only, not a whole style: the
+    // row-fill paint site (`pane_render.rs`'s `row_bg`) can only ever
+    // contribute a background (it has no per-grapheme fg/modifiers to
+    // paint), so an fg or modifier applied here would only ever show up on
+    // content cells, never on the gutter or the row's trailing fill past
+    // end-of-line. Layered below cursorline so the cursor's own line always
+    // reads clearly even inside a tinted block; a theme whose cursorline has
+    // no `bg` falls through to the tint automatically (`ResolvedStyle::layer`
+    // only overrides on `Some(bg)`).
     //
     // Tier 3: selection-head-line background tint, applied to every grapheme
     // on the line that contains a selection head. `theme.ui` fields are O(1)
     // struct-field reads, no HashMap lookup.
-    let mut base_style = theme.default;
-    if let Some(scope) = line_tint {
-        base_style = base_style.layer(ResolvedStyle {
-            bg: theme.resolve(scope).bg,
-            ..ResolvedStyle::default()
-        });
-    }
-    if is_head_line {
+    let mut base_style = theme.default.layer(ResolvedStyle {
+        bg: base_bg,
+        ..ResolvedStyle::default()
+    });
+    if selection.is_some_and(|(paint, _)| paint.is_head_line) {
         base_style = base_style.layer(theme.ui.cursorline);
     }
 
@@ -217,24 +225,26 @@ pub(crate) fn style_display_line(
         // The `is_primary_head` arm below is not folded into that gate's
         // condition: a primary head that fails it must stay bare, never fall
         // through to the span checks meant for the secondary case.
-        let is_primary_head = scratch.primary_head_display_col == Some(g.display_col);
-        let in_primary_span = scratch
-            .primary_sel_span
-            .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e);
-        if cursor_is_block && scratch.head_display_cols.contains(&g.display_col) {
-            style = style.layer(cursor_cell_style(theme, mode, is_primary_head));
-        } else if is_primary_head {
-            if primary_is_reverse && in_primary_span {
+        if let Some((paint, primary_is_reverse)) = selection {
+            let is_primary_head = scratch.primary_head_display_col == Some(g.display_col);
+            let in_primary_span = scratch
+                .primary_sel_span
+                .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e);
+            if paint.cursor_is_block && scratch.head_display_cols.contains(&g.display_col) {
+                style = style.layer(cursor_cell_style(theme, paint.mode, is_primary_head));
+            } else if is_primary_head {
+                if primary_is_reverse && in_primary_span {
+                    style = style.layer(theme.ui.selection_primary);
+                }
+            } else if in_primary_span {
                 style = style.layer(theme.ui.selection_primary);
+            } else if scratch
+                .sel_spans
+                .iter()
+                .any(|&(s, e)| g.display_col >= s && g.display_col < e)
+            {
+                style = style.layer(theme.ui.selection);
             }
-        } else if in_primary_span {
-            style = style.layer(theme.ui.selection_primary);
-        } else if scratch
-            .sel_spans
-            .iter()
-            .any(|&(s, e)| g.display_col >= s && g.display_col < e)
-        {
-            style = style.layer(theme.ui.selection);
         }
 
         scratch.styles[g_idx] = style;

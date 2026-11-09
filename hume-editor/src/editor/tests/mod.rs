@@ -2039,6 +2039,7 @@ mod registers_steel;
 mod reload_config;
 mod reload_scroll;
 mod render_snapshot;
+mod scope_headers;
 mod scripting_effects;
 mod scripting_grammar;
 mod scripting_host_globals;

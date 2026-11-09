@@ -8,7 +8,9 @@
 
 use hume_rope::line::ContentLine;
 
+use crate::display_lines::line_store::FormatKey;
 use crate::display_lines::{DisplayLineMap, DisplayLinePos};
+use crate::pane::WrapMode;
 use crate::providers::SyntaxSource;
 
 /// The most header rows a pane shows.
@@ -96,6 +98,16 @@ pub fn scope_headers(
     for &header in scratch.iter().filter(|line| !taken.contains(*line)) {
         out.push(header);
         out.remove(if settings.outer_level { 1 } else { 0 });
+    }
+}
+
+/// The format a header row lays its line out with: the pane's `key` with
+/// wrapping off, so a long header line is cut at the pane's edge in every
+/// wrap mode.
+pub fn header_format_key(key: FormatKey) -> FormatKey {
+    FormatKey {
+        wrap_mode: WrapMode::None,
+        ..key
     }
 }
 

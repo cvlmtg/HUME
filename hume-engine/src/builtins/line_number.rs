@@ -73,13 +73,15 @@ impl GutterColumn for LineNumberColumn {
         // ropey domain (see its doc), so the comparison needs both sides in
         // the same one. The widening is a no-op in practice: a real render
         // walk (`DisplayLineMap`) never emits a `LineStart` for the phantom line.
-        let primary_head_line: hume_rope::line::RopeyLine = ctx.primary_head_line.into();
+        let primary_head_line: Option<hume_rope::line::RopeyLine> =
+            ctx.primary_head_line.map(Into::into);
         let cell = match kind {
             DisplayLineKind::Filler
             | DisplayLineKind::Virtual { .. }
             | DisplayLineKind::Wrap { .. } => GutterCell::blank(self.default_scope),
             DisplayLineKind::LineStart { line_idx } => {
-                let scope = if line_idx == primary_head_line {
+                let is_head_line = primary_head_line == Some(line_idx);
+                let scope = if is_head_line {
                     self.selected_scope
                 } else {
                     self.default_scope
@@ -90,19 +92,16 @@ impl GutterColumn for LineNumberColumn {
                 // display number to begin with (the phantom line has no
                 // number a user would ever see), and this plain escape-hatch
                 // arithmetic mirrors `width()`'s own `last_line_idx.index() + 1`.
-                let display_num = match ctx.inputs.line_numbers {
-                    LineNumberStyle::Absolute => line_idx.index() + 1,
-                    LineNumberStyle::Relative => (line_idx.index() as isize
-                        - primary_head_line.index() as isize)
-                        .unsigned_abs(),
-                    LineNumberStyle::Hybrid => {
-                        if line_idx == primary_head_line {
-                            line_idx.index() + 1 // absolute on the primary selection head line
-                        } else {
-                            (line_idx.index() as isize - primary_head_line.index() as isize)
-                                .unsigned_abs()
-                        }
-                    }
+                let absolute = line_idx.index() + 1;
+                let distance = |head: hume_rope::line::RopeyLine| {
+                    (line_idx.index() as isize - head.index() as isize).unsigned_abs()
+                };
+                let display_num = match (ctx.inputs.line_numbers, primary_head_line) {
+                    (LineNumberStyle::Absolute, _) | (_, None) => absolute,
+                    (LineNumberStyle::Relative, Some(head)) => distance(head),
+                    // Absolute on the primary selection head line.
+                    (LineNumberStyle::Hybrid, Some(_)) if is_head_line => absolute,
+                    (LineNumberStyle::Hybrid, Some(head)) => distance(head),
                 };
 
                 GutterCell {

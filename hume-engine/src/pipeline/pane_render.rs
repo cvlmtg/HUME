@@ -1,14 +1,22 @@
-use hume_grid::Grid;
+use std::ops::Range;
+
+use hume_grid::{Grid, Rgb};
+use hume_rope::column::DisplayLineCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::display_lines::DisplayLineMap;
+use crate::pane::WrapMode;
 use crate::render::{self, ComposeCtx};
+use crate::scope_headers::{
+    ScopeHeaderInputs, header_display_line, header_format_key, scope_headers,
+};
+use crate::style::SelectionPaint;
 use crate::types::{DisplayLineKind, ResolvedStyle};
 
-use super::{FrameScratch, PaneRenderCtx, PaneSize};
+use super::{ContentWidth, FrameScratch, PaneRenderCtx, PaneSize};
 
 /// Extra columns appended past `content_width` when clipping `WrapMode::None`
-/// formatting to the horizontal window (see [`render_pane`]). Covers a cell
+/// formatting to the horizontal window (see [`h_window`]). Covers a cell
 /// that starts just inside the right edge but is wider than one column (a
 /// double-width CJK glyph or a wide tab stop). Without slack, such a cell
 /// would be scanned but never pushed, clipping it one column too early.
@@ -16,7 +24,27 @@ const H_WINDOW_SLACK: u16 = 4;
 
 // Fused pipeline
 
-/// Render one pane by walking its display lines.
+/// The columns a `WrapMode::None` line is formatted within when the pane
+/// shows it from `h_offset`, `None` under wrapping.
+///
+/// A single unwrapped line can be arbitrarily long (a minified JS file is a
+/// real case), so scanning past the right edge would cost O(line_length)
+/// per frame. Wrapping modes are already bounded by `wrap_width`.
+fn h_window(
+    wrap_mode: WrapMode,
+    h_offset: DisplayLineCol,
+    content_width: ContentWidth,
+) -> Option<Range<DisplayLineCol>> {
+    (!wrap_mode.is_wrapping()).then(|| {
+        let end = h_offset
+            .advance_saturating(u32::from(content_width.get().get()))
+            .advance_saturating(H_WINDOW_SLACK as u32);
+        h_offset..end
+    })
+}
+
+/// Render one pane by walking its display lines, then paint its scope
+/// header rows over its top rows.
 ///
 /// The walk is the layout: stepping `DisplayLineMap` from the viewport's top
 /// address visits exactly the on-screen display lines in order, wrap and
@@ -55,7 +83,10 @@ pub(crate) fn render_pane(
     // already holds whatever the scroll step formatted for this pane this
     // frame.
     let FrameScratch {
-        style, lane_widths, ..
+        style,
+        lane_widths,
+        scope_headers: headers,
+        header_lines,
     } = scratch;
 
     // Gutter lane widths: constant for the entire frame.
@@ -66,18 +97,7 @@ pub(crate) fn render_pane(
         pane_ctx.settings.gutter,
     ));
 
-    // Clip `WrapMode::None` formatting to the visible horizontal window: a
-    // single unwrapped line can be arbitrarily long (a minified JS file is a
-    // real case), so scanning past the right edge would cost O(line_length)
-    // per frame. Wrapping modes are already bounded by `wrap_width`.
-    let h_window = (!pane_ctx.settings.format.wrap_mode.is_wrapping()).then(|| {
-        let h_offset = pane_ctx.viewport.horizontal_offset;
-        let end = h_offset
-            .advance_saturating(u32::from(visible.content_width.get().get()))
-            .advance_saturating(H_WINDOW_SLACK as u32);
-        h_offset..end
-    });
-
+    let wrap_mode = pane_ctx.settings.format.wrap_mode;
     let mut dlm = DisplayLineMap::new(
         pane_ctx.rope,
         pane_ctx.providers,
@@ -85,7 +105,11 @@ pub(crate) fn render_pane(
         pane_ctx.settings.format,
         store,
     )
-    .with_h_window(h_window);
+    .with_h_window(h_window(
+        wrap_mode,
+        pane_ctx.viewport.horizontal_offset,
+        visible.content_width,
+    ));
     let last_content_line = dlm.last_line();
 
     // The render pass resolves the top it walks from (see `Viewport::top_at`),
@@ -93,6 +117,16 @@ pub(crate) fn render_pane(
     // different embedder, or this crate's own `pipeline/tests.rs`) can never
     // desync the walk from a stale address.
     let mut pos = pane_ctx.viewport.top_at(&mut dlm);
+    scope_headers(
+        &mut dlm,
+        pos,
+        usize::from(pane_ctx.rect.height),
+        ScopeHeaderInputs {
+            source: pane_ctx.syntax,
+            settings: pane_ctx.settings.context,
+        },
+        headers,
+    );
 
     // Bundle per-frame constants so compose_display_line call sites stay concise.
     let compose_ctx = ComposeCtx {
@@ -100,7 +134,10 @@ pub(crate) fn render_pane(
         visible: &visible,
         horizontal_offset: pane_ctx.viewport.horizontal_offset,
         mode: pane_ctx.settings.mode,
-        primary_head_line: crate::pane::primary_head_line(pane_ctx.selections, pane_ctx.rope),
+        primary_head_line: Some(crate::pane::primary_head_line(
+            pane_ctx.selections,
+            pane_ctx.rope,
+        )),
         tab_width: pane_ctx.settings.format.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text,
         indent_guide_style: pane_ctx.theme.ui.indent_guide,
@@ -184,11 +221,13 @@ pub(crate) fn render_pane(
                     rendered.display_line,
                     rendered.graphemes,
                     line.chars,
-                    pane_ctx.selections,
-                    line.is_head_line,
-                    line.tint,
-                    pane_ctx.settings.mode,
-                    pane_ctx.settings.cursor_is_block,
+                    Some(SelectionPaint {
+                        selections: pane_ctx.selections,
+                        is_head_line: line.is_head_line,
+                        mode: pane_ctx.settings.mode,
+                        cursor_is_block: pane_ctx.settings.cursor_is_block,
+                    }),
+                    line.tint_bg,
                     pane_ctx.theme,
                     style,
                 );
@@ -198,7 +237,7 @@ pub(crate) fn render_pane(
                     .is_head_line
                     .then_some(pane_ctx.theme.ui.cursorline.bg)
                     .flatten()
-                    .or_else(|| line.tint.and_then(|scope| pane_ctx.theme.resolve(scope).bg));
+                    .or(line.tint_bg);
                 render::compose_display_line(
                     &rendered,
                     &style.styles[rendered.display_line.graphemes.clone()],
@@ -224,6 +263,68 @@ pub(crate) fn render_pane(
     }
 
     render::render_tilde_fillers(screen_row, lane_widths, &compose_ctx, &mut canvas);
+
+    if headers.is_empty() {
+        return;
+    }
+    // Header rows are formatted and drawn from column 0 whatever the pane's
+    // horizontal scroll. Without a cursor line (`primary_head_line: None`)
+    // the gutter numbers a header's line absolutely in every line-number
+    // style and never marks it as the cursor's. The header store is rewound for every pane: the
+    // pane's providers (inlay hints, EOL text) shape its lines but are not in
+    // the key, so two panes on one buffer can share a key and differ.
+    let header_key = header_format_key(pane_ctx.settings.format);
+    header_lines.rewind();
+    let mut header_dlm = DisplayLineMap::new(
+        pane_ctx.rope,
+        pane_ctx.providers,
+        visible.content_width,
+        header_key,
+        header_lines,
+    )
+    .with_h_window(h_window(
+        header_key.wrap_mode,
+        DisplayLineCol::new(0),
+        visible.content_width,
+    ));
+    let header_ctx = ComposeCtx {
+        horizontal_offset: DisplayLineCol::new(0),
+        primary_head_line: None,
+        ..compose_ctx
+    };
+    let header_bg = pane_ctx.theme.ui.context.bg;
+    for (header_row, &header) in (0u16..).zip(headers.iter()) {
+        let line = LineStyle::enter(
+            header,
+            last_content_line,
+            header_ctx.primary_head_line,
+            pane_ctx,
+            style,
+        );
+        let pos = header_display_line(&mut header_dlm, header);
+        let rendered = header_dlm.render_display_line(pos);
+        style
+            .styles
+            .resize(rendered.graphemes.len(), ResolvedStyle::default());
+        crate::style::style_display_line(
+            rendered.display_line,
+            rendered.graphemes,
+            line.chars,
+            None,
+            header_bg,
+            pane_ctx.theme,
+            style,
+        );
+        render::compose_display_line(
+            &rendered,
+            &style.styles[rendered.display_line.graphemes.clone()],
+            header_row,
+            lane_widths,
+            &header_ctx,
+            &mut canvas,
+            header_bg,
+        );
+    }
 }
 
 // Per-line style state
@@ -235,18 +336,19 @@ pub(crate) fn render_pane(
 struct LineStyle {
     chars: ExclusiveRange<CharOffset>,
     is_head_line: bool,
-    /// A provider-requested full-row background tint for this line, if any
-    /// (`Decoration::LineBg`), resolved once here and read at both paint
-    /// sites (the row-fill `row_bg` and `style_display_line`'s per-grapheme
-    /// layering) so they can't disagree about which line is tinted.
-    tint: Option<crate::types::ScopeId>,
+    /// The background of a provider-requested full-row tint for this line,
+    /// if any (`Decoration::LineBg`), resolved once here and read at both
+    /// paint sites (the row-fill `row_bg` and `style_display_line`'s
+    /// per-grapheme layering) so they can't disagree about which line is
+    /// tinted.
+    tint_bg: Option<Rgb>,
 }
 
 impl LineStyle {
     fn enter(
         line_idx: hume_rope::line::ContentLine,
         last_content_line: hume_rope::line::ContentLine,
-        primary_head_line: hume_rope::line::ContentLine,
+        primary_head_line: Option<hume_rope::line::ContentLine>,
         pane_ctx: &PaneRenderCtx,
         style: &mut super::StyleScratch,
     ) -> Self {
@@ -270,8 +372,8 @@ impl LineStyle {
         Self {
             chars: ExclusiveRange::new(start_char, end_char),
             // Cursorline highlights only the primary cursor's line.
-            is_head_line: line_idx == primary_head_line,
-            tint,
+            is_head_line: primary_head_line == Some(line_idx),
+            tint_bg: tint.and_then(|scope| pane_ctx.theme.resolve(scope).bg),
         }
     }
 }

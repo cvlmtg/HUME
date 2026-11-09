@@ -52,6 +52,10 @@ fn render_test_pane(
         indent_guides: true,
         cursor_is_block: true,
         gutter: crate::providers::GutterInputs::default(),
+        context: crate::scope_headers::ContextSettings {
+            enabled: false,
+            outer_level: false,
+        },
     };
     // The host writes a mirror before every frame; these tests stand in for
     // it with a primary cursor at the text start unless a test wrote its own.
