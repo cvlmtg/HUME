@@ -6,6 +6,7 @@
 - `core:helix-surround` is removed. For Helix's `m s`/`m d`/`m r`, load the [helix.hume](https://github.com/cvlmtg/helix.hume) plugin instead: `(load-plugin! "cvlmtg/helix.hume")`, which binds the rest of Helix's keys too.
 
 ### Panes & interface
+- Scope headers: while you scroll inside a function, class or Markdown section, its first line stays at the top of the pane.
 - New `Ctrl-p >`, `Ctrl-p <`, `Ctrl-p +` and `Ctrl-p -` resize the focused pane, `Ctrl-p =` evens the panes out again, and dragging the divider between two panes resizes them.
 - Saved sessions keep pane sizes.
 - Scrolling fast with the mouse wheel or a held key stops when you stop, instead of lagging behind.

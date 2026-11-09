@@ -71,6 +71,16 @@ Some languages embed others: a fenced code block in Markdown, or Markdown's own 
 
 For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar its emphasis and inline-code spans need. A fenced ` ```rust ` block then highlights as Rust once the Rust grammar is installed too, with `:plum-install-grammar rust`. Install one for each language you use in fences.
 
+## Scope headers
+
+While the top of a pane is inside a function, class, or Markdown section whose first line has scrolled off, that line stays at the top of the pane, painted over the text beneath it. Outer scopes come first, up to three rows: inside a method in a class, you see the class line, then the method line.
+
+- A header row shows its line's own number and starts at the pane's left edge, whatever the horizontal scroll. A line too long for the pane is cut at its right edge, whatever the wrap mode. A header row has no cursor or selection.
+- Scrolling keeps the cursor below the headers.
+- Clicking a header row puts the cursor on its line, at the column you clicked. With `mouse-select` on, dragging over one extends the selection to that line the same way.
+- The headers come from the grammar's `context.scm` query. A grammar without one falls back to its function and class text objects. A buffer with no grammar shows none.
+- `:set buffer context-enabled=false` turns the headers off. `context-outer-level` (off by default) keeps the outermost scope's line when a line is inside more scopes than there are rows; otherwise the innermost ones stay. See [Buffer options](settings.md#buffer-options).
+
 ## When detection gets it wrong
 
 If HUME guesses the buffer's language wrong, or can't guess it, override it:
@@ -146,7 +156,7 @@ The required fields, in order:
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file
 
-Three optional keyword arguments can follow, in any order, each the path to one more query file:
+Four optional keyword arguments can follow, in any order, each the path to one more query file:
 
 ```scheme
 (register-grammar! "my-lang"
@@ -155,12 +165,14 @@ Three optional keyword arguments can follow, in any order, each the path to one 
   "/path/to/highlights.scm"
   #:injections "/path/to/injections.scm"
   #:textobjects "/path/to/textobjects.scm"
-  #:indents "/path/to/indents.scm")
+  #:indents "/path/to/indents.scm"
+  #:context "/path/to/context.scm")
 ```
 
 - `#:injections`: the language embeds other languages, like Markdown's fenced code blocks.
 - `#:textobjects`: structural text objects and navigation (functions, classes, arguments, …).
 - `#:indents`: how new lines are indented, using Helix's `indents.scm` captures; see [Indentation](editing.md#indentation) for what it drives.
+- `#:context`: the scopes whose first line stays at the top of the pane while you scroll inside them; see [Scope headers](#scope-headers).
 
 Registered from `init.scm`, a grammar loads the first time a file or an embedded block needs it, and `:messages` reports then if its library or a query file can't be loaded. Registered from a command, it loads right away, and the command fails with the reason.
 

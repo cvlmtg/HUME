@@ -35,7 +35,7 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `popup-border` | bool | `true` | Show borders on popups, menus, pickers and the bottom drawer |
 | `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?`/`\|` prompt history |
 | `scroll-jump-align` | `top` \| `center` \| `off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` still respects `scroll-margin` |
-| `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor |
+| `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor. Above the cursor, scope header rows at the top of a pane count on top of it |
 | `session-directory` | path | `""` | Where saved sessions are kept (see [Saved sessions](files-and-buffers.md#saved-sessions)). Empty means `sessions` in HUME's state directory. Otherwise an absolute path, which may start with `~` |
 | `session-persist` | bool | `false` | Starting HUME with no files brings back the session last saved for `session-root`, and quitting saves it. See [Saved sessions](files-and-buffers.md#saved-sessions) |
 | `session-root` | path | the directory HUME started in | The directory a session belongs to; `:cd` doesn't change it. An absolute path, which may start with `~`. See [Saved sessions](files-and-buffers.md#saved-sessions) |

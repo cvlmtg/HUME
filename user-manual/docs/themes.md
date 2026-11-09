@@ -78,6 +78,7 @@ These have no Helix equivalent:
 
 - `ui.cursor.match.search`: every visible search match, falling back to `ui.cursor.match` when unset
 - `ui.popup.scroll`: scrollbar thumb on a scrolled hover popup (Helix only themes a scrollbar for `ui.menu`)
+- `ui.context`: background of the [scope header](syntax-highlighting.md#scope-headers) rows at the top of a pane, falling back to `ui.popup`
 - `ui.window.focused`: seam divider segments next to the focused pane, falling back to `ui.window`
 - `ui.drawer`: background and border of the bottom drawer, the list panel that shows diagnostics, references and similar lists
 - `ui.tabline` / `ui.tabline.active`: the tab bar's row and its active tab. An unset `.active` falls back to the base `ui.tabline` style, unlike the statusline separator below
