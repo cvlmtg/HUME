@@ -1,47 +1,18 @@
-use std::ops::Range;
-
 use hume_grid::{Grid, Rgb};
 use hume_rope::column::DisplayLineCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use crate::display_lines::DisplayLineMap;
-use crate::pane::WrapMode;
+use crate::display_lines::{DisplayLineMap, h_window};
 use crate::render::{self, ComposeCtx};
 use crate::scope_headers::{
-    ScopeHeaderInputs, header_display_line, header_format_key, scope_headers,
+    ScopeHeaderInputs, header_display_line, header_render_map, scope_headers,
 };
 use crate::style::SelectionPaint;
 use crate::types::{DisplayLineKind, ResolvedStyle};
 
-use super::{ContentWidth, FrameScratch, PaneRenderCtx, PaneSize};
-
-/// Extra columns appended past `content_width` when clipping `WrapMode::None`
-/// formatting to the horizontal window (see [`h_window`]). Covers a cell
-/// that starts just inside the right edge but is wider than one column (a
-/// double-width CJK glyph or a wide tab stop). Without slack, such a cell
-/// would be scanned but never pushed, clipping it one column too early.
-const H_WINDOW_SLACK: u16 = 4;
+use super::{FrameScratch, PaneRenderCtx, PaneSize};
 
 // Fused pipeline
-
-/// The columns a `WrapMode::None` line is formatted within when the pane
-/// shows it from `h_offset`, `None` under wrapping.
-///
-/// A single unwrapped line can be arbitrarily long (a minified JS file is a
-/// real case), so scanning past the right edge would cost O(line_length)
-/// per frame. Wrapping modes are already bounded by `wrap_width`.
-fn h_window(
-    wrap_mode: WrapMode,
-    h_offset: DisplayLineCol,
-    content_width: ContentWidth,
-) -> Option<Range<DisplayLineCol>> {
-    (!wrap_mode.is_wrapping()).then(|| {
-        let end = h_offset
-            .advance_saturating(u32::from(content_width.get().get()))
-            .advance_saturating(H_WINDOW_SLACK as u32);
-        h_offset..end
-    })
-}
 
 /// Render one pane by walking its display lines, then paint its scope
 /// header rows over its top rows.
@@ -270,23 +241,14 @@ pub(crate) fn render_pane(
     // Header rows are formatted and drawn from column 0 whatever the pane's
     // horizontal scroll. Without a cursor line (`primary_head_line: None`)
     // the gutter numbers a header's line absolutely in every line-number
-    // style and never marks it as the cursor's. The header store is rewound for every pane: the
-    // pane's providers (inlay hints, EOL text) shape its lines but are not in
-    // the key, so two panes on one buffer can share a key and differ.
-    let header_key = header_format_key(pane_ctx.settings.format);
-    header_lines.rewind();
-    let mut header_dlm = DisplayLineMap::new(
+    // style and never marks it as the cursor's.
+    let mut header_dlm = header_render_map(
         pane_ctx.rope,
         pane_ctx.providers,
         visible.content_width,
-        header_key,
+        pane_ctx.settings.format,
         header_lines,
-    )
-    .with_h_window(h_window(
-        header_key.wrap_mode,
-        DisplayLineCol::new(0),
-        visible.content_width,
-    ));
+    );
     let header_ctx = ComposeCtx {
         horizontal_offset: DisplayLineCol::new(0),
         primary_head_line: None,

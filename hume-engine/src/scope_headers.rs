@@ -6,12 +6,15 @@
 //! keeps the cursor below it, and a mouse hit on a header row resolves
 //! through it.
 
+use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
+use ropey::Rope;
 
-use crate::display_lines::line_store::FormatKey;
-use crate::display_lines::{DisplayLineMap, DisplayLinePos};
+use crate::display_lines::line_store::{FormatKey, PaneLineStore};
+use crate::display_lines::{DisplayLineMap, DisplayLinePos, h_window};
 use crate::pane::WrapMode;
-use crate::providers::SyntaxSource;
+use crate::pipeline::ContentWidth;
+use crate::providers::{ProviderSet, SyntaxSource};
 
 /// The most header rows a pane shows.
 pub const MAX_SCOPE_HEADERS: usize = 3;
@@ -105,11 +108,52 @@ pub fn scope_headers(
 /// The format a header row lays its line out with: the pane's `key` with
 /// wrapping off, so a long header line is cut at the pane's edge in every
 /// wrap mode.
-pub fn header_format_key(key: FormatKey) -> FormatKey {
+fn header_format_key(key: FormatKey) -> FormatKey {
     FormatKey {
         wrap_mode: WrapMode::None,
         ..key
     }
+}
+
+/// The map a header row is laid out through, whole lines, for a hit test.
+///
+/// `store` is rewound: the pane's providers (inlay hints, EOL text) shape its
+/// lines but are not in `key`, so two panes on one buffer can share a key and
+/// differ.
+pub fn header_display_map<'a>(
+    rope: &'a Rope,
+    providers: &'a ProviderSet,
+    content_width: ContentWidth,
+    key: FormatKey,
+    store: &'a mut PaneLineStore,
+) -> DisplayLineMap<'a> {
+    store.rewind();
+    DisplayLineMap::new(
+        rope,
+        providers,
+        content_width,
+        header_format_key(key),
+        store,
+    )
+}
+
+/// [`header_display_map`] clipped to the columns the header rows draw, which
+/// start at column 0 whatever the pane's horizontal scroll.
+///
+/// The clip is a render-only bound: a map with a window answers no bounded
+/// query, so a hit test reads [`header_display_map`].
+pub(crate) fn header_render_map<'a>(
+    rope: &'a Rope,
+    providers: &'a ProviderSet,
+    content_width: ContentWidth,
+    key: FormatKey,
+    store: &'a mut PaneLineStore,
+) -> DisplayLineMap<'a> {
+    header_display_map(rope, providers, content_width, key, store).with_h_window(h_window(
+        header_format_key(key).wrap_mode,
+        DisplayLineCol::new(0),
+        content_width,
+    ))
 }
 
 /// The display line a header row draws: `line`'s first content display line.

@@ -29,6 +29,7 @@ use std::ops::Range;
 use ropey::Rope;
 
 use crate::format::{FormatBound, LineFormat, format_buffer_line, format_virtual_lines};
+use crate::pane::WrapMode;
 use crate::pipeline::ContentWidth;
 use crate::providers::{Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine};
 use crate::types::{DisplayLine, Grapheme, ScopeId};
@@ -49,6 +50,32 @@ pub use pos::{BlockBreakdown, BlockSlot, DisplayColTarget, DisplayLinePos};
 pub use scroll::carry;
 
 // Display-line map
+
+/// Extra columns appended past `content_width` when clipping `WrapMode::None`
+/// formatting to the horizontal window (see [`h_window`]). Covers a cell
+/// that starts just inside the right edge but is wider than one column (a
+/// double-width CJK glyph or a wide tab stop). Without slack, such a cell
+/// would be scanned but never pushed, clipping it one column too early.
+const H_WINDOW_SLACK: u16 = 4;
+
+/// The columns a `WrapMode::None` line is formatted within when the pane
+/// shows it from `h_offset`, `None` under wrapping.
+///
+/// A single unwrapped line can be arbitrarily long (a minified JS file is a
+/// real case), so scanning past the right edge would cost O(line_length)
+/// per frame. Wrapping modes are already bounded by `wrap_width`.
+pub(crate) fn h_window(
+    wrap_mode: WrapMode,
+    h_offset: DisplayLineCol,
+    content_width: ContentWidth,
+) -> Option<Range<DisplayLineCol>> {
+    (!wrap_mode.is_wrapping()).then(|| {
+        let end = h_offset
+            .advance_saturating(u32::from(content_width.get().get()))
+            .advance_saturating(H_WINDOW_SLACK as u32);
+        h_offset..end
+    })
+}
 
 /// Everything the render stage needs to style and compose one display line.
 pub struct RenderDisplayLine<'m> {
