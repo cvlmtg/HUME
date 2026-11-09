@@ -21,7 +21,7 @@ use hume_editing::selection::Selection;
 struct ViewMove<'a> {
     dlm: DisplayLineMap<'a>,
     viewport: &'a mut Viewport,
-    geo: ViewGeometry,
+    geo: ViewGeometry<'a>,
     buffers: &'a BufferStore,
     entries: &'a mut PaneEntries,
 }

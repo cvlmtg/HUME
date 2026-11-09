@@ -1,14 +1,19 @@
-//! Decoration sources for tests here and in crates that enable the
-//! `test-util` feature.
+//! Decoration and syntax sources for tests here and in crates that enable
+//! the `test-util` feature.
 
 use std::cell::Cell;
+use std::ops::RangeInclusive;
 use std::rc::Rc;
 
 use hume_core::Side;
+use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::ExclusiveRange;
 use hume_rope::spanned::SpannedText;
+use ropey::Rope;
 
-use crate::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine};
+use crate::providers::{Decoration, DecorationKinds, DecorationSource, SyntaxSource, VirtualLine};
+use crate::types::ScopeId;
 
 /// What each of a [`VirtualLineBlock`]'s display lines says.
 enum BlockText {
@@ -92,6 +97,50 @@ impl DecorationSource for VirtualLineBlock {
                 }),
                 base_scope: None,
             }));
+        }
+    }
+}
+
+/// A [`SyntaxSource`] that highlights nothing and answers `header_lines`
+/// from a table of line ranges. A line no range holds is in no scope.
+#[derive(Default)]
+pub struct ScopeTable {
+    ranges: Vec<(RangeInclusive<usize>, Vec<ContentLine>)>,
+}
+
+impl ScopeTable {
+    /// Every line in `lines` is inside the scopes headed by `headers`, outer
+    /// to inner. Ranges must not overlap.
+    pub fn lines(mut self, lines: RangeInclusive<usize>, headers: &[usize]) -> Self {
+        debug_assert!(
+            self.ranges
+                .iter()
+                .all(|(held, _)| held.end() < lines.start() || lines.end() < held.start()),
+            "ScopeTable ranges overlap"
+        );
+        let headers = headers.iter().copied().map(ContentLine::new).collect();
+        self.ranges.push((lines, headers));
+        self
+    }
+}
+
+impl SyntaxSource for ScopeTable {
+    fn spans_for_line(
+        &self,
+        _line_idx: ContentLine,
+        _rope: &Rope,
+        _out: &mut Vec<(ExclusiveRange<ByteCol>, ScopeId)>,
+    ) {
+    }
+
+    fn header_lines(&self, line: ContentLine, _rope: &Rope, out: &mut Vec<ContentLine>) {
+        out.clear();
+        if let Some((_, headers)) = self
+            .ranges
+            .iter()
+            .find(|(held, _)| held.contains(&line.index()))
+        {
+            out.extend_from_slice(headers);
         }
     }
 }

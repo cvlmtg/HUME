@@ -12,8 +12,9 @@
 //! the document bound, and following it would stall the cursor short of the
 //! last line once the viewport saturates. Farther from EOF the two agree.
 //!
-//! `carry` then clamps the landing into `[geo.margin, geo.target]` display
-//! lines below the viewport's new top, so the head always ends inside the
+//! `carry` then clamps the landing into `[top margin, geo.target]` display
+//! lines below the viewport's new top, the top margin being that top's own
+//! [`ViewGeometry::top_margin_at`], so the head always ends inside the
 //! scroll-margin band and [`Viewport::reveal`] is idle after `scroll_view`. An
 //! in-band landing is unchanged, keeping the cursor's screen row.
 
@@ -60,7 +61,7 @@ impl Viewport {
     /// *earlier* of the two (`DisplayLinePos: Ord` is document order),
     /// snapping a downward notch backwards. An *upward* scroll only
     /// saturates at the document's first display line.
-    pub fn scroll_by(&mut self, dlm: &mut DisplayLineMap<'_>, geo: ViewGeometry, delta: isize) {
+    pub fn scroll_by(&mut self, dlm: &mut DisplayLineMap<'_>, geo: ViewGeometry<'_>, delta: isize) {
         let current = self.top_at(dlm);
         let next = dlm.advance_saturating(current, delta);
         if delta < 0 {
@@ -88,13 +89,13 @@ impl Viewport {
     }
 
     /// Adjust `top` so `cursor_pos` is visible with `geo.margin` display
-    /// lines of look-ahead above and below it. Returns the cursor's
-    /// resulting screen row: its distance below the (possibly just-moved)
-    /// `top`.
+    /// lines of look-ahead below it and [`ViewGeometry::top_margin_at`] the
+    /// resulting top above it. Returns the cursor's resulting screen row: its
+    /// distance below the (possibly just-moved) `top`.
     pub fn reveal(
         &mut self,
         dlm: &mut DisplayLineMap<'_>,
-        geo: ViewGeometry,
+        geo: ViewGeometry<'_>,
         cursor_pos: DisplayLinePos,
     ) -> usize {
         let (top, row) = self.reveal_target(dlm, geo, cursor_pos);
@@ -110,26 +111,28 @@ impl Viewport {
     fn reveal_target(
         &mut self,
         dlm: &mut DisplayLineMap<'_>,
-        geo: ViewGeometry,
+        geo: ViewGeometry<'_>,
         cursor_pos: DisplayLinePos,
     ) -> (DisplayLinePos, usize) {
         let top = self.top_at(dlm);
-        if cursor_pos < top {
-            return Self::scroll_back_target(dlm, cursor_pos, geo.margin);
-        }
-        // Capped at `geo.target` rather than `geo.height`: walking past
-        // `geo.target` under wrap only pays for `format_buffer_line` calls
-        // whose answer nothing inspects. `distance` never returns more than
-        // its own cap, so a `Some` result here is always `<= geo.target`,
-        // well inside the second arm below without needing its own
-        // upper-bound check.
-        match dlm.distance(top, cursor_pos, geo.target) {
-            Some(display_lines_below_top) if display_lines_below_top < geo.margin => {
-                Self::scroll_back_target(dlm, cursor_pos, geo.margin)
+        below_headers(dlm, geo, |dlm, top_margin| {
+            if cursor_pos < top {
+                return Self::scroll_back_target(dlm, cursor_pos, top_margin);
             }
-            Some(display_lines_below_top) => (top, display_lines_below_top),
-            None => Self::scroll_back_target(dlm, cursor_pos, geo.target),
-        }
+            // Capped at `geo.target` rather than `geo.height`: walking past
+            // `geo.target` under wrap only pays for `format_buffer_line` calls
+            // whose answer nothing inspects. `distance` never returns more than
+            // its own cap, so a `Some` result here is always `<= geo.target`,
+            // well inside the second arm below without needing its own
+            // upper-bound check.
+            match dlm.distance(top, cursor_pos, geo.target) {
+                Some(display_lines_below_top) if display_lines_below_top < top_margin => {
+                    Self::scroll_back_target(dlm, cursor_pos, top_margin)
+                }
+                Some(display_lines_below_top) => (top, display_lines_below_top),
+                None => Self::scroll_back_target(dlm, cursor_pos, geo.target),
+            }
+        })
     }
 
     /// Whether `cursor_pos` already sits where [`Self::reveal`] would leave
@@ -141,7 +144,7 @@ impl Viewport {
     pub fn settled_row(
         &mut self,
         dlm: &mut DisplayLineMap<'_>,
-        geo: ViewGeometry,
+        geo: ViewGeometry<'_>,
         cursor_pos: DisplayLinePos,
     ) -> Option<usize> {
         let before = self.top_at(dlm);
@@ -150,8 +153,10 @@ impl Viewport {
     }
 
     /// Scroll so `cursor_pos` lands `display_lines_below_top` display lines
-    /// below `top`, clamped to `[geo.margin, geo.target]`: the same
-    /// scroll-margin range [`Viewport::reveal`] settles a too-close cursor into.
+    /// below `top`, clamped to `[top margin, geo.target]`, the top margin
+    /// being the least one, from `geo.margin` up, whose resulting top needs
+    /// no more (`below_headers`): the same scroll-margin range
+    /// [`Viewport::reveal`] settles a too-close cursor into.
     /// Used by the `z z`/`z k`/`z j` view commands, which write no
     /// reveal-on-demand signal of their own, so the clamp is applied here
     /// rather than left to a follow-up `reveal` call.
@@ -162,12 +167,18 @@ impl Viewport {
     pub fn align(
         &mut self,
         dlm: &mut DisplayLineMap<'_>,
-        geo: ViewGeometry,
+        geo: ViewGeometry<'_>,
         cursor_pos: DisplayLinePos,
         display_lines_below_top: usize,
     ) {
-        let display_lines_below_top = display_lines_below_top.clamp(geo.margin, geo.target);
-        self.scroll_back_from(dlm, cursor_pos, display_lines_below_top);
+        let (top, _) = below_headers(dlm, geo, |dlm, top_margin| {
+            Self::scroll_back_target(
+                dlm,
+                cursor_pos,
+                display_lines_below_top.clamp(top_margin, geo.target),
+            )
+        });
+        self.top = top;
     }
 
     /// Adjust `horizontal_offset` so `cursor_display_col` stays visible.
@@ -213,25 +224,11 @@ impl Viewport {
         }
     }
 
-    /// Put `top` `display_lines_above` display lines before `cursor_pos`,
-    /// saturating at the document's first display line. Returns how many
-    /// display lines it actually stepped back, which, `next`/`prev` being
-    /// inverses, is the cursor's screen row under the new `top`.
-    fn scroll_back_from(
-        &mut self,
-        dlm: &mut DisplayLineMap<'_>,
-        cursor_pos: DisplayLinePos,
-        display_lines_above: usize,
-    ) -> usize {
-        let (top, stepped) = Self::scroll_back_target(dlm, cursor_pos, display_lines_above);
-        self.top = top;
-        stepped
-    }
-
-    /// [`Self::scroll_back_from`]'s walk, without the write: the target top
-    /// `display_lines_above` before `cursor_pos`, plus the cursor's row
-    /// under it. Takes no `&self` at all, since the answer depends only on
-    /// `dlm` and the two arguments.
+    /// The top `display_lines_above` display lines before `cursor_pos`,
+    /// saturating at the document's first display line, plus how many it
+    /// actually stepped back, which, `next`/`prev` being inverses, is the
+    /// cursor's screen row under that top. Takes no `&self` at all, since the
+    /// answer depends only on `dlm` and the two arguments.
     fn scroll_back_target(
         dlm: &mut DisplayLineMap<'_>,
         cursor_pos: DisplayLinePos,
@@ -269,10 +266,32 @@ impl<'a> DisplayLineMap<'a> {
     /// would otherwise return the document's *last* display line (the
     /// opposite of "saturates at the first") for the degenerate `target ==
     /// 0` a zero height produces.
-    pub(crate) fn max_scroll_top(&mut self, geo: ViewGeometry) -> DisplayLinePos {
+    pub(crate) fn max_scroll_top(&mut self, geo: ViewGeometry<'_>) -> DisplayLinePos {
         let last_line = self.last_line();
         let last = DisplayLinePos::new(last_line, self.block(last_line).total().saturating_sub(1));
         self.advance_saturating(last, -(geo.target as isize))
+    }
+}
+
+/// `place`'s candidate for the least top margin, from `geo.margin` up, whose
+/// top needs no more margin than it was placed with
+/// ([`ViewGeometry::top_margin_at`]). A smaller margin would leave the
+/// cursor under one of that top's header rows, so settling it again would
+/// scroll; a larger one would put the cursor lower than the view it lands
+/// in needs. `top_margin_at` never exceeds `(height - 1) / 2`, so the
+/// search stops there at the latest.
+fn below_headers(
+    dlm: &mut DisplayLineMap<'_>,
+    geo: ViewGeometry<'_>,
+    mut place: impl FnMut(&mut DisplayLineMap<'_>, usize) -> (DisplayLinePos, usize),
+) -> (DisplayLinePos, usize) {
+    let mut top_margin = geo.margin;
+    loop {
+        let candidate = place(dlm, top_margin);
+        if geo.top_margin_at(dlm, candidate.0) <= top_margin {
+            return candidate;
+        }
+        top_margin += 1;
     }
 }
 
@@ -289,14 +308,14 @@ impl<'a> DisplayLineMap<'a> {
 /// line: `head` already sat at the document's edge in the direction of
 /// travel, `delta == 0`, or a virtual-line block past the band swallowed the
 /// walk whole); `place_in_band` then clamps how many display lines below
-/// `top` that landing sits into `[geo.margin, geo.target]`, if it isn't
+/// `top` that landing sits into `[top margin, geo.target]`, if it isn't
 /// there already. Either pass returning `None` is not an error: it is the same
 /// "cursor can't follow" state a pure view scroll into a trailing
 /// virtual-line block always could produce, and it leaves the selection
 /// untouched rather than collapsing it.
 pub fn carry(
     dlm: &mut DisplayLineMap<'_>,
-    geo: ViewGeometry,
+    geo: ViewGeometry<'_>,
     top: DisplayLinePos,
     head: DisplayLinePos,
     delta: isize,
@@ -318,7 +337,7 @@ pub fn carry(
 /// breaks the walk before either bound is satisfied.
 fn walk_by_delta(
     dlm: &mut DisplayLineMap<'_>,
-    geo: ViewGeometry,
+    geo: ViewGeometry<'_>,
     top: DisplayLinePos,
     head: DisplayLinePos,
     delta: isize,
@@ -350,43 +369,44 @@ fn walk_by_delta(
 }
 
 /// `carry`'s second pass: clamp how many display lines below `top`
-/// `candidate` sits into `[geo.margin, geo.target]`, walking forward from
-/// `top` to the band's near or far edge via [`walk_from_top`] if it isn't
-/// there already. A landing already in-band (the common case) passes
-/// through unchanged, so "the cursor keeps its screen row" still holds
-/// exactly for it.
+/// `candidate` sits into `[top margin, geo.target]`, with `top`'s own
+/// [`ViewGeometry::top_margin_at`], walking forward from `top` to the band's
+/// near or far edge via [`walk_from_top`] if it isn't there already. A
+/// landing already in-band (the common case) passes through unchanged, so
+/// "the cursor keeps its screen row" still holds for it.
 ///
-/// A landing short of `margin` is also left unchanged when `top` itself has
-/// no room to retreat any further: walking `candidate` back by `margin`
-/// lands on `top` again either way (saturating there), so
+/// A landing short of the top margin is also left unchanged when `top`
+/// itself has no room to retreat any further: walking `candidate` back by
+/// the top margin lands on `top` again either way (saturating there), so
 /// [`Viewport::reveal`] would be idle on `candidate` exactly as it is; only
 /// when `top` still has document above it to scroll into would `reveal`
 /// actually move it on the very next frame, which is what the clamp exists
 /// to preempt. Without this exception the clamp would permanently override
 /// `scroll-margin` at the buffer's own start, since `top` can never retreat far
-/// enough there to satisfy a bare `< geo.margin` check.
+/// enough there to satisfy a bare `< top_margin` check.
 fn place_in_band(
     dlm: &mut DisplayLineMap<'_>,
-    geo: ViewGeometry,
+    geo: ViewGeometry<'_>,
     top: DisplayLinePos,
     candidate: DisplayLinePos,
 ) -> Option<DisplayLinePos> {
+    let top_margin = geo.top_margin_at(dlm, top);
     match dlm.distance(top, candidate, geo.height) {
         Some(display_lines_below_top)
-            if (geo.margin..=geo.target).contains(&display_lines_below_top) =>
+            if (top_margin..=geo.target).contains(&display_lines_below_top) =>
         {
             Some(candidate)
         }
         Some(display_lines_below_top) if display_lines_below_top > geo.target => {
             walk_from_top(dlm, geo, top, geo.target)
         }
-        Some(_) if dlm.advance_saturating(candidate, -(geo.margin as isize)) == top => {
+        Some(_) if dlm.advance_saturating(candidate, -(top_margin as isize)) == top => {
             Some(candidate)
         }
-        // Short of `margin` with room for `top` to retreat further, or
+        // Short of the top margin with room for `top` to retreat further, or
         // `candidate` sits before `top` (or too far past `geo.height` to
         // tell). Either way, not in band.
-        _ => walk_from_top(dlm, geo, top, geo.margin),
+        _ => walk_from_top(dlm, geo, top, top_margin),
     }
 }
 
@@ -395,11 +415,11 @@ fn place_in_band(
 /// past a virtual landing exactly like [`walk_by_delta`]'s own overshoot,
 /// capped at `geo.target` total steps so this can never itself land past the
 /// band. `top` counts as a landing in its own right when it's already
-/// content and `display_lines_below_top == 0` (the `geo.margin == 0` case a
+/// content and `display_lines_below_top == 0` (the zero top margin case a
 /// very short viewport clamps to).
 fn walk_from_top(
     dlm: &mut DisplayLineMap<'_>,
-    geo: ViewGeometry,
+    geo: ViewGeometry<'_>,
     top: DisplayLinePos,
     display_lines_below_top: usize,
 ) -> Option<DisplayLinePos> {

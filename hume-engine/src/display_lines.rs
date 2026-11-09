@@ -160,6 +160,11 @@ impl<'a> DisplayLineMap<'a> {
         self
     }
 
+    /// The text this map lays out.
+    pub fn rope(&self) -> &Rope {
+        self.rope
+    }
+
     pub fn is_wrapping(&self) -> bool {
         self.key.params.wrap.is_wrapping()
     }

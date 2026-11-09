@@ -2,14 +2,15 @@
 
 use super::*;
 use crate::pane::ViewGeometry;
+use crate::scope_headers::ScopeHeaderInputs;
 
 /// [`ViewGeometry`] for a `height`-row viewport and `margin` scroll-margin.
 /// `max_scroll_top` cannot be called at `height == 0` (there is no
 /// `ViewGeometry` to construct one from), so every fixture here is implicitly
 /// nonzero-height.
-fn geo(height: u16, margin: usize) -> ViewGeometry {
+fn geo(height: u16, margin: usize) -> ViewGeometry<'static> {
     crate::pipeline::PaneSize::new(0, height)
-        .geometry(margin)
+        .geometry(margin, ScopeHeaderInputs::NONE)
         .expect("test fixtures use a nonzero height")
 }
 
@@ -285,7 +286,11 @@ fn zero_height_viewport_has_no_geometry_to_scroll_with() {
     // `PaneSize::geometry` returning `None`, so `max_scroll_top` (and every
     // other scroll verb) can never be called at `height == 0` in the first
     // place; there is no `ViewGeometry` to construct one from.
-    assert!(crate::pipeline::PaneSize::new(0, 0).geometry(0).is_none());
+    assert!(
+        crate::pipeline::PaneSize::new(0, 0)
+            .geometry(0, ScopeHeaderInputs::NONE)
+            .is_none()
+    );
 }
 
 #[test]

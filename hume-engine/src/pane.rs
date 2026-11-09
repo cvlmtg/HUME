@@ -6,6 +6,7 @@ use crate::display_lines::line_store::FormatKey;
 use crate::display_lines::{DisplayLineMap, DisplayLinePos};
 use crate::pipeline::ContentWidth;
 use crate::providers::ProviderSet;
+use crate::scope_headers::{ScopeHeaderInputs, scope_headers};
 use crate::types::PaintedSelections;
 use hume_core::BufferId;
 use hume_rope::column::DisplayLineCol;
@@ -72,23 +73,36 @@ impl Viewport {
 /// is never 0. Cursor-follow (`reveal`) and the scroll-down bound
 /// (`max_scroll_top`) read `margin`/`target` from the same value, so a
 /// `Ctrl-d` to EOF and the next cursor motion agree on the viewport top.
-#[derive(Copy, Clone, Debug)]
-pub struct ViewGeometry {
+#[derive(Copy, Clone)]
+pub struct ViewGeometry<'a> {
     /// The pane's height in terminal rows. Callers also use it as a
     /// display-line or buffer-line cap; each site picks its unit.
     pub(crate) height: usize,
     /// Display lines of look-ahead kept above/below the cursor, clamped so
     /// the two margins can never meet in the middle of an odd-or-even height.
+    /// The top margin of a given top is [`ViewGeometry::top_margin_at`].
     pub(crate) margin: usize,
     /// Display line (0-indexed from the top) the far edge settles at once
     /// `margin` is reserved on both sides; always `>= margin`.
     pub(crate) target: usize,
+    /// Where the scope headers painted over the pane's top rows come from.
+    pub(crate) headers: ScopeHeaderInputs<'a>,
 }
 
-impl ViewGeometry {
+impl ViewGeometry<'_> {
     /// The pane's height in terminal rows.
     pub fn height(&self) -> usize {
         self.height
+    }
+
+    /// The look-ahead kept above the cursor while `top` is the viewport's
+    /// top: `margin` plus the scope header rows painted over that view,
+    /// clamped to `(height - 1) / 2` like `margin` itself. Never above
+    /// `target`, so the band `[top_margin_at, target]` is never empty.
+    pub fn top_margin_at(&self, dlm: &mut DisplayLineMap<'_>, top: DisplayLinePos) -> usize {
+        let mut headers = Vec::new();
+        scope_headers(dlm, top, self.height, self.headers, &mut headers);
+        (self.margin + headers.len()).min((self.height - 1) / 2)
     }
 }
 

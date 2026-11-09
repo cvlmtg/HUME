@@ -8,6 +8,7 @@ use hume_grid::{Position, Rect};
 use super::BOTTOM_BANDS;
 use super::layout::{FocusedLayout, LayoutTree, Seam, Side};
 use crate::pane::ViewGeometry;
+use crate::scope_headers::ScopeHeaderInputs;
 use hume_core::PaneId;
 
 /// Rows each piece of chrome takes, as the editor computes them from its
@@ -261,8 +262,14 @@ impl PaneSize {
     /// height. Every scroll verb takes a [`ViewGeometry`] rather than a raw
     /// height, so a collapsed pane is one early return here instead of a
     /// `height == 0` check repeated inside each verb. The sole constructor,
-    /// so `margin`/`target` can never disagree between callers.
-    pub fn geometry(self, scroll_margin: usize) -> Option<ViewGeometry> {
+    /// so `margin`/`target` can never disagree between callers. `headers`
+    /// is what the pane's scope headers are read from, which grow the top
+    /// margin.
+    pub fn geometry<'a>(
+        self,
+        scroll_margin: usize,
+        headers: ScopeHeaderInputs<'a>,
+    ) -> Option<ViewGeometry<'a>> {
         if self.height == 0 {
             return None;
         }
@@ -278,6 +285,7 @@ impl PaneSize {
             height,
             margin,
             target,
+            headers,
         })
     }
 }

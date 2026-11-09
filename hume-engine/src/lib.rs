@@ -27,6 +27,7 @@ pub mod pane;
 pub mod pipeline;
 pub mod providers;
 pub mod render;
+pub mod scope_headers;
 pub mod style;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_doubles;

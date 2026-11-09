@@ -51,8 +51,11 @@ impl LayoutKey {
     }
 
     /// The pane's scroll-margin geometry, `None` for a pane with no rows.
-    pub(in crate::editor) fn geometry(&self) -> Option<hume_engine::pane::ViewGeometry> {
-        self.size.geometry(self.scroll_margin)
+    pub(in crate::editor) fn geometry(&self) -> Option<hume_engine::pane::ViewGeometry<'static>> {
+        self.size.geometry(
+            self.scroll_margin,
+            hume_engine::scope_headers::ScopeHeaderInputs::NONE,
+        )
     }
 }
 
