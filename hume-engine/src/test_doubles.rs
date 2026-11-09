@@ -106,6 +106,7 @@ impl DecorationSource for VirtualLineBlock {
 #[derive(Default)]
 pub struct ScopeTable {
     ranges: Vec<(RangeInclusive<usize>, Vec<ContentLine>)>,
+    header_queries: Cell<usize>,
 }
 
 impl ScopeTable {
@@ -122,6 +123,11 @@ impl ScopeTable {
         self.ranges.push((lines, headers));
         self
     }
+
+    /// How many `header_lines` calls this table has answered.
+    pub fn header_queries(&self) -> usize {
+        self.header_queries.get()
+    }
 }
 
 impl SyntaxSource for ScopeTable {
@@ -134,6 +140,7 @@ impl SyntaxSource for ScopeTable {
     }
 
     fn header_lines(&self, line: ContentLine, _rope: &Rope, out: &mut Vec<ContentLine>) {
+        self.header_queries.set(self.header_queries.get() + 1);
         out.clear();
         if let Some((_, headers)) = self
             .ranges

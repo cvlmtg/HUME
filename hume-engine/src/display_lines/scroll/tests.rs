@@ -1225,6 +1225,29 @@ fn reveal_lands_the_cursor_below_the_headers_and_settles() {
     );
 }
 
+/// Top line 15 is under two headers, so the settled cursor at row 10 needs a
+/// top margin of 5. Raising the margin from 3 to 5 keeps line 15 as the
+/// top, whose headers are walked once.
+#[test]
+fn settling_walks_an_unchanged_tops_headers_once() {
+    let r = Rope::from_str(&"a\n".repeat(60));
+    let providers = no_providers();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let table = ScopeTable::default().lines(10..=40, &[0, 1]);
+    let geo = header_geo(&table, 20);
+    let (mut v, _) = viewport(15, 20, 80);
+    let cursor = DisplayLinePos::new(ContentLine::new(25), 0);
+
+    let before = table.header_queries();
+    assert_eq!(geo.top_margin_at(&mut dlm, v.top()), 5);
+    let one_walk = table.header_queries() - before;
+
+    let before = table.header_queries();
+    assert_eq!(v.settled_row(&mut dlm, geo, cursor), Some(10));
+    assert_eq!(table.header_queries() - before, one_walk);
+}
+
 /// Height 4 clamps the margin to `(4 - 1) / 2 = 1`, and two headers cannot
 /// raise it past that.
 #[test]

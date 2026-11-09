@@ -280,17 +280,26 @@ impl<'a> DisplayLineMap<'a> {
 /// scroll; a larger one would put the cursor lower than the view it lands
 /// in needs. `top_margin_at` never exceeds `(height - 1) / 2`, so the
 /// search stops there at the latest.
+///
+/// A margin often places the same top as the one before it, whose header
+/// walk is then reused.
 fn below_headers(
     dlm: &mut DisplayLineMap<'_>,
     geo: ViewGeometry<'_>,
     mut place: impl FnMut(&mut DisplayLineMap<'_>, usize) -> (DisplayLinePos, usize),
 ) -> (DisplayLinePos, usize) {
     let mut top_margin = geo.margin;
+    let mut walked: Option<(DisplayLinePos, usize)> = None;
     loop {
         let candidate = place(dlm, top_margin);
-        if geo.top_margin_at(dlm, candidate.0) <= top_margin {
+        let needed = match walked {
+            Some((top, needed)) if top == candidate.0 => needed,
+            _ => geo.top_margin_at(dlm, candidate.0),
+        };
+        if needed <= top_margin {
             return candidate;
         }
+        walked = Some((candidate.0, needed));
         top_margin += 1;
     }
 }
