@@ -97,7 +97,7 @@ pub(in crate::editor) fn screen_to_cluster(
 
 /// The buffer cluster under a click on the scope header row that draws
 /// `line`, at pane-relative `content_x`. `dlm` is built by
-/// [`header_display_map`](hume_engine::scope_headers::header_display_map);
+/// [`HeaderLayout::display_map`](hume_engine::scope_headers::HeaderLayout::display_map);
 /// columns count from the line's column 0 whatever the pane's horizontal
 /// scroll. A click in the `gutter_w`-wide gutter returns `None`.
 pub(in crate::editor) fn header_to_cluster(

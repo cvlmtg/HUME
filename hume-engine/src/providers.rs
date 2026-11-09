@@ -74,13 +74,23 @@ pub trait SyntaxSource {
 /// `line_to_byte` call it themselves.
 pub struct GutterCtx<'a> {
     pub mode: EditorMode,
-    /// The primary selection's head line, `None` for a row drawn without the
-    /// cursor's line in it (a scope header row): no line is marked as the
-    /// cursor's, and numbers are absolute.
-    pub primary_head_line: Option<hume_rope::line::ContentLine>,
+    pub row: GutterRow,
     pub rope: &'a ropey::Rope,
     /// The gutter's settings for the pane being drawn.
     pub inputs: GutterInputs,
+}
+
+/// The kind of pane row a gutter cell is drawn for.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum GutterRow {
+    /// A row of the pane's text, whose primary selection head is on
+    /// `primary_head_line`.
+    Body {
+        primary_head_line: hume_rope::line::ContentLine,
+    },
+    /// A scope header row, which shows its line's number alone: absolute,
+    /// never marked as the cursor's, and with no sign.
+    Header,
 }
 
 /// The settings the built-in gutter columns size and draw by, resolved for

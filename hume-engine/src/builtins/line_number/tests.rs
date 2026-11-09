@@ -11,7 +11,9 @@ const SELECTED_SCOPE: ScopeId = ScopeId(1);
 fn ctx(rope: &ropey::Rope, primary_head_line: usize, style: LineNumberStyle) -> GutterCtx<'_> {
     GutterCtx {
         mode: EditorMode::Normal,
-        primary_head_line: Some(ContentLine::new(primary_head_line)),
+        row: crate::providers::GutterRow::Body {
+            primary_head_line: ContentLine::new(primary_head_line),
+        },
         rope,
         inputs: GutterInputs {
             line_numbers: style,
@@ -221,7 +223,7 @@ fn no_head_line_numbers_absolutely_unmarked() {
         LineNumberStyle::Hybrid,
     ] {
         let ctx = GutterCtx {
-            primary_head_line: None,
+            row: crate::providers::GutterRow::Header,
             ..ctx(&rope, 0, style)
         };
         let cell = lane

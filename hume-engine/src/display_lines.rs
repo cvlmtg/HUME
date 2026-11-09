@@ -192,6 +192,11 @@ impl<'a> DisplayLineMap<'a> {
         self.rope
     }
 
+    /// The providers this map lays its lines out with.
+    pub(crate) fn providers(&self) -> &'a ProviderSet {
+        self.providers
+    }
+
     pub fn is_wrapping(&self) -> bool {
         self.key.params.wrap.is_wrapping()
     }

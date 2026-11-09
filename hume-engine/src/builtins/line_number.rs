@@ -1,4 +1,4 @@
-use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterInputs};
+use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterInputs, GutterRow};
 use crate::types::{DisplayLineKind, ScopeId};
 
 // Line number style
@@ -73,8 +73,10 @@ impl GutterColumn for LineNumberColumn {
         // ropey domain (see its doc), so the comparison needs both sides in
         // the same one. The widening is a no-op in practice: a real render
         // walk (`DisplayLineMap`) never emits a `LineStart` for the phantom line.
-        let primary_head_line: Option<hume_rope::line::RopeyLine> =
-            ctx.primary_head_line.map(Into::into);
+        let primary_head_line: Option<hume_rope::line::RopeyLine> = match ctx.row {
+            GutterRow::Body { primary_head_line } => Some(primary_head_line.into()),
+            GutterRow::Header => None,
+        };
         let cell = match kind {
             DisplayLineKind::Filler
             | DisplayLineKind::Virtual { .. }

@@ -22,9 +22,8 @@
 //! layer's policy, reached only after the stack has let the event through.
 
 use hume_core::PaneId;
-use hume_engine::display_lines::line_store::PaneLineStore;
 use hume_engine::pipeline::{PaneHit, SeamHandle};
-use hume_engine::scope_headers::header_display_map;
+use hume_engine::scope_headers::HeaderLayout;
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -305,9 +304,8 @@ impl Editor {
                 }
             }
         };
-        let mut store = PaneLineStore::new();
-        let mut header_dlm =
-            header_display_map(rope, &pane.providers, content_width, key, &mut store);
+        let mut header_layout = HeaderLayout::default();
+        let mut header_dlm = header_layout.display_map(rope, content_width, key);
         cursor::header_to_cluster(hit.x(), gutter_width, &mut header_dlm, header)
     }
 }

@@ -3,10 +3,9 @@ use hume_rope::column::DisplayLineCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::display_lines::{DisplayLineMap, h_window};
+use crate::providers::{GutterRow, ProviderSet};
 use crate::render::{self, ComposeCtx};
-use crate::scope_headers::{
-    ScopeHeaderInputs, header_display_line, header_render_map, scope_headers,
-};
+use crate::scope_headers::{ScopeHeaderInputs, header_display_line, scope_headers};
 use crate::style::SelectionPaint;
 use crate::types::{DisplayLineKind, ResolvedStyle};
 
@@ -57,7 +56,7 @@ pub(crate) fn render_pane(
         style,
         lane_widths,
         scope_headers: headers,
-        header_lines,
+        header_layout,
     } = scratch;
 
     // Gutter lane widths: constant for the entire frame.
@@ -99,16 +98,16 @@ pub(crate) fn render_pane(
         headers,
     );
 
+    let head_line = crate::pane::primary_head_line(pane_ctx.selections, pane_ctx.rope);
     // Bundle per-frame constants so compose_display_line call sites stay concise.
     let compose_ctx = ComposeCtx {
         gutter_columns: &pane_ctx.providers.gutter_columns,
         visible: &visible,
         horizontal_offset: pane_ctx.viewport.horizontal_offset,
         mode: pane_ctx.settings.mode,
-        primary_head_line: Some(crate::pane::primary_head_line(
-            pane_ctx.selections,
-            pane_ctx.rope,
-        )),
+        row: GutterRow::Body {
+            primary_head_line: head_line,
+        },
         tab_width: pane_ctx.settings.format.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text,
         indent_guide_style: pane_ctx.theme.ui.indent_guide,
@@ -183,7 +182,8 @@ pub(crate) fn render_pane(
                     LineStyle::enter(
                         pos.line,
                         last_content_line,
-                        compose_ctx.primary_head_line,
+                        Some(head_line),
+                        pane_ctx.providers,
                         pane_ctx,
                         style,
                     )
@@ -243,21 +243,27 @@ pub(crate) fn render_pane(
     }
     // Header rows are formatted and drawn from column 0 whatever the pane's
     // horizontal scroll.
-    let mut header_dlm = header_render_map(
+    let mut header_dlm = header_layout.render_map(
         pane_ctx.rope,
-        pane_ctx.providers,
         visible.content_width,
         pane_ctx.settings.format,
-        header_lines,
     );
+    let header_providers = header_dlm.providers();
     let header_ctx = ComposeCtx {
         horizontal_offset: DisplayLineCol::new(0),
-        primary_head_line: None,
+        row: GutterRow::Header,
         ..compose_ctx
     };
     let header_bg = pane_ctx.theme.ui.context.bg;
     for (header_row, &header) in (0u16..).zip(headers.iter()) {
-        let line = LineStyle::enter(header, last_content_line, None, pane_ctx, style);
+        let line = LineStyle::enter(
+            header,
+            last_content_line,
+            None,
+            header_providers,
+            pane_ctx,
+            style,
+        );
         let pos = header_display_line(&mut header_dlm, header);
         let rendered = header_dlm.render_display_line(pos);
         style
@@ -289,7 +295,8 @@ pub(crate) fn render_pane(
 /// The per-line facts every content display line of one buffer line shares.
 ///
 /// Built once when the walk crosses into a line; building it also rebuilds the
-/// highlight interval buffers, which is the expensive part.
+/// highlight interval buffers, which is the expensive part. Its decorations
+/// come from the providers the line's display map lays it out with.
 struct LineStyle {
     chars: ExclusiveRange<CharOffset>,
     is_head_line: bool,
@@ -306,6 +313,7 @@ impl LineStyle {
         line_idx: hume_rope::line::ContentLine,
         last_content_line: hume_rope::line::ContentLine,
         primary_head_line: Option<hume_rope::line::ContentLine>,
+        providers: &ProviderSet,
         pane_ctx: &PaneRenderCtx,
         style: &mut super::StyleScratch,
     ) -> Self {
@@ -320,7 +328,7 @@ impl LineStyle {
         let tint = crate::style::rebuild_line_decorations(
             line_idx,
             pane_ctx.syntax,
-            pane_ctx.providers,
+            providers,
             pane_ctx.rope,
             style,
         );

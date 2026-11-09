@@ -19,7 +19,9 @@ fn inputs(sign_width: u8) -> GutterInputs {
 fn ctx(rope: &ropey::Rope, sign_width: u8) -> GutterCtx<'_> {
     GutterCtx {
         mode: EditorMode::Normal,
-        primary_head_line: Some(ContentLine::new(0)),
+        row: crate::providers::GutterRow::Body {
+            primary_head_line: ContentLine::new(0),
+        },
         rope,
         inputs: inputs(sign_width),
     }
@@ -203,7 +205,9 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         visible: &visible,
         horizontal_offset: DisplayLineCol::new(0),
         mode: EditorMode::Normal,
-        primary_head_line: Some(ContentLine::new(0)),
+        row: crate::providers::GutterRow::Body {
+            primary_head_line: ContentLine::new(0),
+        },
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -285,7 +289,9 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         visible: &visible,
         horizontal_offset: DisplayLineCol::new(0),
         mode: EditorMode::Normal,
-        primary_head_line: Some(ContentLine::new(0)),
+        row: crate::providers::GutterRow::Body {
+            primary_head_line: ContentLine::new(0),
+        },
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -511,7 +517,9 @@ fn multi_slot_column_renders_through_compose_gutter() {
         visible: &visible,
         horizontal_offset: DisplayLineCol::new(0),
         mode: EditorMode::Normal,
-        primary_head_line: Some(ContentLine::new(0)),
+        row: crate::providers::GutterRow::Body {
+            primary_head_line: ContentLine::new(0),
+        },
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),

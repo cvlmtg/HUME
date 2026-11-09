@@ -110,45 +110,50 @@ pub fn scope_headers(
     }
 }
 
-/// The map a header row is laid out through, whole lines, for a hit test:
-/// the pane's `key` with wrapping off, so a long header line is cut at the
-/// pane's edge in every wrap mode.
-///
-/// `store` is rewound: the pane's providers (inlay hints, EOL text) shape its
-/// lines but are not in `key`, so two panes on one buffer can share a key and
-/// differ.
-pub fn header_display_map<'a>(
-    rope: &'a Rope,
-    providers: &'a ProviderSet,
-    content_width: ContentWidth,
-    key: FormatKey,
-    store: &'a mut PaneLineStore,
-) -> DisplayLineMap<'a> {
-    store.rewind();
-    let key = FormatKey {
-        wrap_mode: WrapMode::None,
-        ..key
-    };
-    DisplayLineMap::new(rope, providers, content_width, key, store)
+/// What header rows are laid out with: a line store of their own, apart
+/// from the pane's, whose key they do not share, and no decoration
+/// providers, so a header row shows its line's text alone.
+#[derive(Default)]
+pub struct HeaderLayout {
+    store: PaneLineStore,
+    providers: ProviderSet,
 }
 
-/// [`header_display_map`] clipped to the columns the header rows draw, which
-/// start at column 0 whatever the pane's horizontal scroll.
-///
-/// The clip is a render-only bound: a map with a window answers no bounded
-/// query, so a hit test reads [`header_display_map`].
-pub(crate) fn header_render_map<'a>(
-    rope: &'a Rope,
-    providers: &'a ProviderSet,
-    content_width: ContentWidth,
-    key: FormatKey,
-    store: &'a mut PaneLineStore,
-) -> DisplayLineMap<'a> {
-    header_display_map(rope, providers, content_width, key, store).with_h_window(h_window(
-        WrapMode::None,
-        DisplayLineCol::new(0),
-        content_width,
-    ))
+impl HeaderLayout {
+    /// The map a header row is laid out through, whole lines, for a hit
+    /// test: the pane's `key` with wrapping off, so a long header line is
+    /// cut at the pane's edge in every wrap mode.
+    pub fn display_map<'a>(
+        &'a mut self,
+        rope: &'a Rope,
+        content_width: ContentWidth,
+        key: FormatKey,
+    ) -> DisplayLineMap<'a> {
+        let key = FormatKey {
+            wrap_mode: WrapMode::None,
+            ..key
+        };
+        DisplayLineMap::new(rope, &self.providers, content_width, key, &mut self.store)
+    }
+
+    /// [`Self::display_map`] clipped to the columns the header rows draw,
+    /// which start at column 0 whatever the pane's horizontal scroll.
+    ///
+    /// The clip is a render-only bound: a map with a window answers no
+    /// bounded query, so a hit test reads [`Self::display_map`].
+    pub(crate) fn render_map<'a>(
+        &'a mut self,
+        rope: &'a Rope,
+        content_width: ContentWidth,
+        key: FormatKey,
+    ) -> DisplayLineMap<'a> {
+        self.display_map(rope, content_width, key)
+            .with_h_window(h_window(
+                WrapMode::None,
+                DisplayLineCol::new(0),
+                content_width,
+            ))
+    }
 }
 
 /// The display line a header row draws: `line`'s first content display line.

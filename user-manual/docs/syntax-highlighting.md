@@ -75,7 +75,7 @@ For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar i
 
 While the top of a pane is inside a function, class, or Markdown section whose first line has scrolled off, that line stays at the top of the pane, painted over the text beneath it. Outer scopes come first, up to three rows: inside a method in a class, you see the class line, then the method line.
 
-- A header row shows its line's own number and starts at the pane's left edge, whatever the horizontal scroll. A line too long for the pane is cut at its right edge, whatever the wrap mode. A header row has no cursor or selection.
+- A header row shows its line's own number and starts at the pane's left edge, whatever the horizontal scroll. A line too long for the pane is cut at its right edge, whatever the wrap mode. A header row shows the line's text in its syntax colors and nothing else: no cursor or selection, inlay hints, end-of-line messages, gutter signs, search matches or other highlights.
 - Scrolling keeps the cursor below the headers.
 - Clicking a header row puts the cursor on its line, at the column you clicked. With `mouse-select` on, dragging over one extends the selection to that line the same way.
 - The headers come from the grammar's `context.scm` query. A grammar without one falls back to its function and class text objects. A buffer with no grammar shows none.

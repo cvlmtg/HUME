@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterCtx, GutterInputs};
+use crate::providers::{
+    GutterCell, GutterCellContent, GutterColumn, GutterCtx, GutterInputs, GutterRow,
+};
 use crate::types::{DisplayLineKind, ScopeId};
 use hume_rope::line::ContentLine;
 
@@ -94,10 +96,11 @@ impl GutterColumn for SignColumn {
 
     fn render_cells(&self, kind: DisplayLineKind, ctx: &GutterCtx) -> Vec<GutterCell> {
         let max_signs = ctx.inputs.sign_width.saturating_sub(1) as usize;
-        let DisplayLineKind::LineStart { line_idx } = kind else {
-            // Wrap/Virtual/Filler display lines never carry a sign: one blank cell
-            // per configured slot so `compose_gutter`'s cell count matches
-            // the column's width.
+        let (DisplayLineKind::LineStart { line_idx }, GutterRow::Body { .. }) = (kind, ctx.row)
+        else {
+            // Wrap/Virtual/Filler display lines and header rows never carry a
+            // sign: one blank cell per configured slot so `compose_gutter`'s
+            // cell count matches the column's width.
             return vec![GutterCell::blank(self.blank_scope); max_signs];
         };
         if max_signs == 0 {

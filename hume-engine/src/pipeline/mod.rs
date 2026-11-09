@@ -49,11 +49,8 @@ pub struct FrameScratch {
     pub lane_widths: Vec<u16>,
     /// The header line of each scope header row of the pane being drawn.
     pub scope_headers: Vec<ContentLine>,
-    /// The formatted header lines of the pane being drawn, laid out by
-    /// [`header_display_map`](crate::scope_headers::header_display_map), apart
-    /// from the pane's own store, whose key it does not share. Building that
-    /// map rewinds it before each pane's header pass.
-    pub header_lines: crate::display_lines::line_store::PaneLineStore,
+    /// What the scope header rows of the pane being drawn are laid out with.
+    pub header_layout: crate::scope_headers::HeaderLayout,
 }
 
 impl FrameScratch {
@@ -62,7 +59,7 @@ impl FrameScratch {
             style: StyleScratch::new(),
             lane_widths: Vec::new(),
             scope_headers: Vec::new(),
-            header_lines: crate::display_lines::line_store::PaneLineStore::new(),
+            header_layout: crate::scope_headers::HeaderLayout::default(),
         }
     }
 

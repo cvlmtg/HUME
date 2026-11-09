@@ -358,6 +358,116 @@ fn header_rows_use_popup_background_when_ui_context_is_unset() {
     }
 }
 
+/// Line 0 heads row 0 from above the top. Line 1 heads row 1 while it is the
+/// top line itself, inside the range the pane's decorations are synced for.
+/// Line 5 is a body row and shows each decoration.
+#[test]
+fn header_rows_draw_their_lines_without_decorations() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let bid = ed.focused_buffer_id();
+    let pid = focused_split(&mut ed, bid);
+    pin_no_wrap(&mut ed);
+    let rect = Rect::new(0, 0, 80, 25);
+    let buf = ed.render_to_buf(rect);
+    wheel_down(&mut ed, &buf, pid, 1);
+
+    let marked = ed.view.registry.intern("ui.selection");
+    let marked_bg = ed
+        .view
+        .theme
+        .resolve_by_name(hume_engine::types::Scope("ui.selection"))
+        .bg;
+    let header_bg = ed.view.theme.ui.context.bg;
+    assert!(
+        marked_bg.is_some() && marked_bg != header_bg,
+        "premise: the highlight's background differs from the header rows'"
+    );
+    let decorated = [0, 1, 5].map(hume_rope::line::ContentLine::new);
+    let columns_0_and_4 =
+        decorated.map(|line| [0, 4].map(|col| char_at_column(&ed, line.index(), col)));
+    let decorations = &mut ed.state.config.decorations;
+    decorations.set_inlay_hints(
+        "test".to_owned(),
+        bid,
+        columns_0_and_4
+            .iter()
+            .map(|&[_, col_4]| hume_decorations::InlayHintEntry {
+                pos: col_4,
+                text: "H:".to_owned(),
+                side: hume_core::Side::Before,
+            })
+            .collect(),
+    );
+    decorations.set_eol_text(
+        "test".to_owned(),
+        bid,
+        decorated
+            .iter()
+            .map(|&line| hume_decorations::EolTextEntry {
+                line,
+                text: " EOL".to_owned(),
+                scope: marked,
+                hide_on_insert_line: false,
+            })
+            .collect(),
+    );
+    decorations.register_sign_source("test".to_owned(), bid, 0);
+    decorations.set_signs(
+        "test".to_owned(),
+        bid,
+        decorated
+            .iter()
+            .map(|&line| hume_decorations::SignEntry {
+                line,
+                text: "!".into(),
+                scope: marked,
+            })
+            .collect(),
+    );
+    decorations.set_extra_highlights(
+        "test".to_owned(),
+        bid,
+        columns_0_and_4
+            .iter()
+            .map(|&[col_0, col_4]| hume_decorations::ExtraHighlightEntry {
+                start: col_0,
+                end: col_4,
+                scope: marked,
+            })
+            .collect(),
+    );
+    let buf = ed.render_to_buf(rect);
+    assert_eq!(top_line(&ed, pid), 1, "premise: `fn a()` is the top line");
+
+    let (rect, gutter) = drawn_pane(&ed, &buf, pid);
+    let gutter_text = |row: u16| -> String {
+        (rect.x..rect.x + gutter)
+            .map(|x| cell(&buf, x, rect.y + row))
+            .collect()
+    };
+    let body = pane_rows(&ed, &buf, pid, 5).remove(4);
+    assert_eq!(
+        (body.as_str(), gutter_text(4).contains('!')),
+        ("    H:    let x3 = 3; EOL", true),
+        "premise: a body row draws its line's hint, EOL text and sign"
+    );
+    assert_eq!(
+        pane_rows(&ed, &buf, pid, 2),
+        [line_of(&source, 0), line_of(&source, 1)]
+    );
+    for row in 0..2 {
+        assert!(!gutter_text(row).contains('!'), "header row {row}'s gutter");
+        for x in rect.x + gutter..rect.right() {
+            assert_eq!(
+                buf[(x, rect.y + row)].style().bg,
+                header_bg,
+                "header row {row}, column {x}"
+            );
+        }
+    }
+}
+
 #[test]
 fn two_panes_on_one_buffer_show_their_own_headers() {
     let source = two_fn_impl();
