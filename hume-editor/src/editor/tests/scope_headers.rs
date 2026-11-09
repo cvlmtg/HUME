@@ -14,6 +14,13 @@ use test_fixtures::{require_grammars, require_helix_query};
 /// initial parse drained. `source` is plain text; the cursor starts on its
 /// first cluster. Indent guides are off, so a row reads as its line's text.
 fn rust_context_editor(source: &str) -> Editor {
+    let mut ed = rust_context_editor_undrained(source);
+    ed.reparse_stale_buffers();
+    ed
+}
+
+/// [`rust_context_editor`] with the initial parse still queued.
+fn rust_context_editor_undrained(source: &str) -> Editor {
     let marked = format!("-[{}]>{}", &source[..1], &source[1..]);
     let mut ed = super::structural::grammar_editor_undrained(
         "rust",
@@ -22,7 +29,6 @@ fn rust_context_editor(source: &str) -> Editor {
         &marked,
     );
     ed.state.settings.indent_guides = false;
-    ed.reparse_stale_buffers();
     ed
 }
 
@@ -498,4 +504,138 @@ fn a_header_row_on_the_cursors_line_does_not_mark_its_number() {
         .find(|&x| cell(&buf, x, rect.y + 1) == "2")
         .expect("header row 1 numbers its line 2");
     assert_eq!(buf[(number, rect.y + 1)].style().fg, linenr);
+}
+
+const VIEW: Rect = Rect::new(0, 0, 80, 25);
+
+/// The focused pane after a settled frame: where its cursor is drawn, as
+/// `(row, text of the cell there)`, and how many of its top rows are scope
+/// headers (leading rows whose text is a line above the top line).
+fn cursor_row_and_headers(ed: &mut Editor, source: &str) -> (u16, String, usize) {
+    let (cursor_x, row) = frame(ed, 80, 25)
+        .cursor_content_pos
+        .expect("the cursor is on screen");
+    let buf = ed.render_to_buf(VIEW);
+    let pid = ed.view.focused_pane();
+    let (rect, gutter) = drawn_pane(ed, &buf, pid);
+    let shown = cell(&buf, rect.x + gutter + cursor_x, rect.y + row);
+    let above: Vec<String> = (0..top_line(ed, pid))
+        .map(|line| line_of(source, line))
+        .collect();
+    let headers = top_rows(ed, &buf, 3)
+        .iter()
+        .take_while(|text| above.contains(text))
+        .count();
+    (row, shown, headers)
+}
+
+/// The text of the cluster under the focused pane's primary cursor, as a
+/// cell shows it.
+fn cursor_cluster(ed: &Editor) -> String {
+    let cluster = ed.current_view().primary().slice().to_string();
+    if cluster == "\n" {
+        " ".to_owned()
+    } else {
+        cluster
+    }
+}
+
+/// Place the cursor on column 12 of line `line`, the `x` of a statement in
+/// [`two_fn_impl`]'s bodies.
+fn seek_to_column_12(ed: &mut Editor, line: usize) {
+    let start = hume_rope::lines::line_start_char(
+        ed.doc().text().rope(),
+        hume_rope::line::RopeyLine::new(line),
+    )
+    .index();
+    set_cursor(ed, start + 12);
+}
+
+#[test]
+fn landed_parse_resettles_the_view() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor_undrained(&source);
+    ed.state.settings.scroll_margin = 1;
+    let pid = ed.view.focused_pane();
+    let frame_without_settle = |ed: &mut Editor| {
+        ed.resize_terminal(80, 25);
+        ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+    };
+
+    seek_to_column_12(&mut ed, 50);
+    frame_without_settle(&mut ed);
+    let top = top_line(&ed, pid);
+    seek_to_column_12(&mut ed, top + 1);
+    frame_without_settle(&mut ed);
+    assert_eq!(
+        top_line(&ed, pid),
+        top,
+        "premise: the cursor is in the band"
+    );
+
+    let (row, shown, headers) = cursor_row_and_headers(&mut ed, &source);
+    assert!(headers >= 1, "premise: the landed parse shows headers");
+    assert!(
+        usize::from(row) > headers,
+        "row {row} is not below {headers} headers"
+    );
+    assert_eq!(shown, cursor_cluster(&ed));
+    assert!(!ed.state.panes.entries.shown(&ed.view.panes, pid).parked);
+}
+
+#[test]
+fn cursor_moving_up_never_lands_on_a_header_row() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    ed.state.settings.scroll_margin = 1;
+    seek_to_column_12(&mut ed, 50);
+    let mut deepest = 0;
+    for step in 0..40 {
+        press(&mut ed, "k");
+        let (row, shown, headers) = cursor_row_and_headers(&mut ed, &source);
+        deepest = deepest.max(headers);
+        assert!(
+            usize::from(row) > headers,
+            "step {step}: row {row} is not below {headers} headers"
+        );
+        assert_eq!(shown, cursor_cluster(&ed), "step {step}");
+    }
+    assert!(deepest >= 2, "premise: the walk crosses a two-header view");
+}
+
+#[test]
+fn settling_twice_does_not_scroll() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    ed.state.settings.scroll_margin = 1;
+    let pid = ed.view.focused_pane();
+    seek_to_column_12(&mut ed, 50);
+    for _ in 0..5 {
+        press(&mut ed, "k");
+    }
+    draw(&mut ed);
+    let settled = ed.pane_viewport(pid).top();
+    draw(&mut ed);
+    assert_eq!(ed.pane_viewport(pid).top(), settled);
+}
+
+#[test]
+fn context_enabled_off_keeps_the_margin() {
+    let source = two_fn_impl();
+    let mut with_grammar = rust_context_editor(&source);
+    run_set(&mut with_grammar, "buffer context-enabled=false").expect("the setting applies");
+    let mut without = editor_from(&format!("-[{}]>{}", &source[..1], &source[1..]));
+    for ed in [&mut with_grammar, &mut without] {
+        ed.state.settings.scroll_margin = 1;
+        ed.state.settings.indent_guides = false;
+        seek_to_column_12(ed, 50);
+    }
+    for step in 0..40 {
+        for ed in [&mut with_grammar, &mut without] {
+            press(ed, "k");
+        }
+        let with_row = cursor_row_and_headers(&mut with_grammar, &source).0;
+        let without_row = cursor_row_and_headers(&mut without, &source).0;
+        assert_eq!(with_row, without_row, "step {step}");
+    }
 }

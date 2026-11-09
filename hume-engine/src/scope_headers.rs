@@ -34,9 +34,10 @@ pub struct ScopeHeaderInputs<'a> {
     pub settings: ContextSettings,
 }
 
+#[cfg(test)]
 impl ScopeHeaderInputs<'static> {
     /// Inputs that yield no header.
-    pub const NONE: Self = Self {
+    pub(crate) const NONE: Self = Self {
         source: None,
         settings: ContextSettings {
             enabled: false,

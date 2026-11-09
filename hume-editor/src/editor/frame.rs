@@ -1040,7 +1040,7 @@ struct ScrollOutcome {
 /// Whether `pane`'s viewport reaches `doc`'s last display line.
 #[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
 fn shows_document_end(doc: &Buffer, pane: &mut Pane, layout_key: LayoutKey) -> bool {
-    let Some(geo) = layout_key.geometry() else {
+    let Some(geo) = layout_key.geometry(doc.syntax_source()) else {
         return false;
     };
     let (mut dlm, viewport) = pane.display_lines_and_viewport(
@@ -1091,7 +1091,7 @@ fn scroll_into_view(
     // Checked before `locate`, which would otherwise format the cursor's
     // line for an answer no one can use, and before `geometry`, which
     // returns `None` for exactly this case.
-    let Some(geo) = layout_key.geometry() else {
+    let Some(geo) = layout_key.geometry(doc.syntax_source()) else {
         return ScrollOutcome {
             cursor_screen: None,
             parked: false,

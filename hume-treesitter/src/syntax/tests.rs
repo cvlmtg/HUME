@@ -631,6 +631,65 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
 }
 
 #[test]
+fn committed_gen_advances_on_every_install() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let [bid] = hume_core::fresh_ids();
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    let unparsed = syn.committed_gen();
+
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
+        &empty_langs(),
+    );
+    let first = syn.committed_gen();
+    assert!(first > unparsed);
+
+    let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
+    record(&mut syn, &t0, &t1, &cs);
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t1), "{\"a\":1}\n"),
+        generation(&t1),
+        &empty_langs(),
+    );
+    let second = syn.committed_gen();
+    assert!(second > first);
+
+    // A result for a text that has moved on and one for the generation
+    // already installed leave the committed layers alone.
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t1),
+        &empty_langs(),
+    );
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t1), "{\"a\":1}\n"),
+        generation(&t1),
+        &empty_langs(),
+    );
+
+    // A failed parse of a newer text reaches the failure arm and commits
+    // nothing.
+    let (t2, cs) = insert_into(&t1, 1, "\"b\":2,");
+    record(&mut syn, &t1, &t2, &cs);
+    syn.install(
+        ParseDone {
+            bid,
+            generation: generation(&t2),
+            bundle: Arc::clone(&bundle),
+            snapshot_generation: empty_langs().generation(),
+            outcome: ParseOutcome::ParseFailed,
+        },
+        generation(&t2),
+        &empty_langs(),
+    );
+    assert_eq!(syn.parsed_gen(), Some(generation(&t2)));
+    assert_eq!(syn.committed_gen(), second);
+}
+
+#[test]
 fn install_parse_failed_advances_parsed_gen_only() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");

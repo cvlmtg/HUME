@@ -5,8 +5,10 @@
 use hume_core::{BufferId, PaneId};
 use hume_engine::builtins::sign_column::SignColumn;
 use hume_engine::layout::PaneGeometry;
+use hume_engine::pane::ViewGeometry;
 use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
-use hume_engine::providers::GutterInputs;
+use hume_engine::providers::{GutterInputs, SyntaxSource};
+use hume_engine::scope_headers::{ContextSettings, ScopeHeaderInputs};
 
 use super::input_stack::{FocusedBox, ResolvedPopupLayout};
 use super::{EditorState, commands};
@@ -14,7 +16,8 @@ use super::{EditorState, commands};
 /// Every input a pane's layout depends on: its
 /// [`FormatKey`](hume_engine::display_lines::line_store::FormatKey) plus content
 /// width, viewport height and scroll-margin, which decide where the cursor's
-/// display line falls.
+/// display line falls, and the buffer's scope-header settings and committed
+/// syntax layers, which decide how many header rows the top margin grows by.
 ///
 /// `FormatKey` leaves out content width because formatting sees it only
 /// through the wrap mode it resolves. This key keeps it because a growing
@@ -23,8 +26,8 @@ use super::{EditorState, commands};
 /// `frame::reveal_due_cursor` stores this in
 /// `PaneBufferState::last_layout_key` and compares it against a fresh one
 /// each time it runs (resize, wrap-mode change, buffer switch, decoration
-/// generation, and any content edit to the buffer, since `buffer_tag`
-/// includes `generation`). A change reveals only a pane that isn't
+/// generation, a parse landing, and any content edit to the buffer, since
+/// `buffer_tag` includes `generation`). A change reveals only a pane that isn't
 /// [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked):
 /// a parked pane's own edit still reveals it, through `reveal_pending`
 /// instead, but a change from elsewhere (a sibling pane's edit, a
@@ -35,6 +38,8 @@ pub(in crate::editor) struct LayoutKey {
     content_width: hume_engine::pipeline::ContentWidth,
     size: hume_engine::pipeline::PaneSize,
     scroll_margin: usize,
+    context: ContextSettings,
+    layers: Option<u64>,
 }
 
 impl LayoutKey {
@@ -51,10 +56,17 @@ impl LayoutKey {
     }
 
     /// The pane's scroll-margin geometry, `None` for a pane with no rows.
-    pub(in crate::editor) fn geometry(&self) -> Option<hume_engine::pane::ViewGeometry<'static>> {
+    /// `source` is the syntax of the buffer this key was built for.
+    pub(in crate::editor) fn geometry<'a>(
+        &self,
+        source: Option<&'a dyn SyntaxSource>,
+    ) -> Option<ViewGeometry<'a>> {
         self.size.geometry(
             self.scroll_margin,
-            hume_engine::scope_headers::ScopeHeaderInputs::NONE,
+            ScopeHeaderInputs {
+                source,
+                settings: self.context,
+            },
         )
     }
 }
@@ -227,8 +239,8 @@ impl EditorState {
     pub(in crate::editor) fn context_settings(
         &self,
         doc: &super::buffer::Buffer,
-    ) -> hume_engine::scope_headers::ContextSettings {
-        hume_engine::scope_headers::ContextSettings {
+    ) -> ContextSettings {
+        ContextSettings {
             enabled: doc.overrides.context_enabled(&self.settings),
             outer_level: doc.overrides.context_outer_level(&self.settings),
         }
@@ -243,11 +255,14 @@ impl EditorState {
         pid: hume_core::PaneId,
         size: hume_engine::pipeline::PaneSize,
     ) -> LayoutKey {
+        let doc = self.buffers.get(view.panes[pid].buffer_id());
         LayoutKey {
             format: self.format_key(&view.panes[pid]),
             content_width: self.pane_geometry(view, pid, size).content_width,
             size,
             scroll_margin: self.settings.scroll_margin,
+            context: self.context_settings(doc),
+            layers: doc.layers_identity(),
         }
     }
 }

@@ -39,6 +39,7 @@ fn move_view(
     f: impl FnOnce(ViewMove<'_>),
 ) {
     let key = state.layout_key(view, pid, size);
+    let buffer = state.buffers.get(view.panes[pid].buffer_id());
     {
         let (dlm, viewport) = settled_pane_view(
             &state.buffers,
@@ -47,7 +48,7 @@ fn move_view(
             pid,
             key,
         );
-        let Some(geo) = key.geometry() else {
+        let Some(geo) = key.geometry(buffer.syntax_source()) else {
             return;
         };
         f(ViewMove {

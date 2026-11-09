@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::context::textobject_header_lines;
@@ -26,6 +27,11 @@ pub(crate) struct FlattenScratch {
     stack: Vec<(u8, u32, ScopeId)>,
     events: Vec<(ByteCol, bool, u32, u8, ScopeId)>,
 }
+
+/// The last value stamped on a [`Syntax`]'s committed layers, shared by every
+/// attachment so that no two installs, of one buffer or of two, carry the same
+/// stamp.
+static LAST_COMMITTED_GEN: AtomicU64 = AtomicU64::new(0);
 
 /// What an inline parse resolves injections against, and loads the grammars
 /// they name through: a site whose grammar is registered but not loaded gets
@@ -173,6 +179,9 @@ pub struct Syntax {
     /// reused across calls. Lives on `Syntax` because it survives `install`,
     /// which rebuilds `SyntaxLayers`.
     header_cursor: Mutex<QueryCursor>,
+    /// Identifies the committed layers: `0` while there are none, then a new
+    /// value from `LAST_COMMITTED_GEN` for each parse `install` commits.
+    committed_gen: u64,
 }
 
 impl Syntax {
@@ -188,6 +197,7 @@ impl Syntax {
             min_snapshot_generation: 0,
             span_scratch: Mutex::new(FlattenScratch::default()),
             header_cursor: Mutex::new(QueryCursor::new()),
+            committed_gen: 0,
         }
     }
 
@@ -527,6 +537,7 @@ impl Syntax {
                     at: LayersAt::Parsed(generation),
                     snapshot_generation,
                 });
+                self.committed_gen = LAST_COMMITTED_GEN.fetch_add(1, Ordering::Relaxed) + 1;
                 // Every recorded edit ends at or before the current
                 // generation, which this result is for.
                 self.pending_edits.clear();
@@ -555,6 +566,14 @@ impl Syntax {
     /// to check whether it has an injections query.
     pub fn bundle(&self) -> &Arc<GrammarBundle> {
         &self.bundle
+    }
+
+    /// Names the committed layers: it differs after every install that
+    /// replaces them, so a reader can tell when the scopes it settled a view
+    /// against have changed. [`Self::reresolve_injections`] does not reset it,
+    /// as it does `parsed_gen`.
+    pub fn committed_gen(&self) -> u64 {
+        self.committed_gen
     }
 
     pub fn parsed_gen(&self) -> Option<u64> {
