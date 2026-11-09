@@ -7,7 +7,7 @@ use hume_core::{BufferId, PaneId};
 use slotmap::{SecondaryMap, SlotMap};
 
 use crate::pane::Pane;
-use crate::providers::{ChromeProvider, DEFAULT_GUTTER_SCOPE, OverlayProvider, SyntaxSpans};
+use crate::providers::{ChromeProvider, DEFAULT_GUTTER_SCOPE, OverlayProvider, SyntaxSource};
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::{EditorMode, ResolvedStyle, ScopeId};
@@ -77,7 +77,7 @@ pub struct FrameInputs<'a, R, S> {
     /// (typically the editor's `Document`). The borrow is used only inside
     /// the render call; no rope is stored in `EngineView`.
     pub get_rope: R,
-    /// Resolves a `BufferId` to its syntax highlight span source, if any.
+    /// Resolves a `BufferId` to its syntax source, if any.
     /// Same per-frame-borrow contract as `get_rope`.
     pub get_syntax: S,
     pub statusline: &'a dyn ChromeProvider,
@@ -491,7 +491,7 @@ impl EngineView {
         ctx: &mut RenderContext,
     ) where
         R: Fn(BufferId) -> Option<&'rope ropey::Rope>,
-        S: Fn(BufferId) -> Option<&'rope dyn SyntaxSpans>,
+        S: Fn(BufferId) -> Option<&'rope dyn SyntaxSource>,
     {
         let FrameInputs {
             get_rope,
@@ -765,9 +765,9 @@ pub(crate) struct PaneRenderCtx<'a> {
     pub selections: &'a crate::types::PaintedSelections,
     /// Rope borrowed from the caller's `Document` for this frame only.
     pub rope: &'a ropey::Rope,
-    /// Syntax highlight span source borrowed from the caller via
-    /// `get_syntax`, if a language with a grammar is configured.
-    pub syntax: Option<&'a dyn SyntaxSpans>,
+    /// Syntax source borrowed from the caller via `get_syntax`, if a
+    /// language with a grammar is configured.
+    pub syntax: Option<&'a dyn SyntaxSource>,
     pub theme: &'a Theme,
     pub rect: Rect,
     /// Borrowed from the caller's `RenderContext`, which owns the map these

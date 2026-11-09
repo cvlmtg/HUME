@@ -111,8 +111,6 @@ pub enum Direction {
 /// dot, but no installed query defines such a name). Names that don't
 /// parse as `<kind>.<span>` (`@_helper`, `@function.x`) map to nothing.
 pub struct TextObjectsQuery {
-    /// Read directly by [`collect_hulls`], which needs the compiled `Query`
-    /// itself, not just this table.
     query: tree_sitter::Query,
     captures: [[Option<u32>; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()],
 }
@@ -133,6 +131,11 @@ impl TextObjectsQuery {
             captures[kind as usize][span as usize] = Some(idx as u32);
         }
         Self { query, captures }
+    }
+
+    /// The compiled query, for code that runs its matches itself.
+    pub(crate) fn query(&self) -> &tree_sitter::Query {
+        &self.query
     }
 
     /// The capture index for a `<kind>.<span>` pair, if this query defines it.

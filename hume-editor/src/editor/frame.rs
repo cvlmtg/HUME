@@ -361,7 +361,7 @@ impl Editor {
                     buffers
                         .try_get(bid)
                         .and_then(|b| b.syntax.as_ref())
-                        .map(|s| s as &dyn hume_engine::providers::SyntaxSpans)
+                        .map(|s| s as &dyn hume_engine::providers::SyntaxSource)
                 },
                 statusline: &statusline,
                 layout,

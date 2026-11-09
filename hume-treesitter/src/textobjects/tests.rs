@@ -6,7 +6,7 @@ use test_fixtures::{require_grammars, require_helix_query};
 use super::*;
 use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
-use crate::test_support::{empty_langs, make_bundle};
+use crate::test_support::{empty_langs, make_bundle, syntax_with};
 use hume_core::OptionalQuery;
 use hume_editing::changeset::ChangeSetBuilder;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
@@ -234,12 +234,6 @@ fn span_text(text: &BufferText, span: ClusterRange) -> String {
 /// own next line.
 fn rust_syntax(source: &str) -> (Syntax, BufferText) {
     syntax_with(rust_bundle_with_real_textobjects(), source)
-}
-
-fn syntax_with(bundle: Arc<GrammarBundle>, source: &str) -> (Syntax, BufferText) {
-    let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
-    (syn, text)
 }
 
 #[test]

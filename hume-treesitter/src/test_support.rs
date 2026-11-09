@@ -6,6 +6,7 @@
 use std::sync::{Arc, LazyLock, Mutex};
 
 use hume_core::OptionalQuery;
+use hume_editing::text::BufferText;
 use hume_engine::theme::ScopeRegistry;
 
 use crate::grammar::LoadedGrammar;
@@ -13,6 +14,7 @@ use crate::registry::{
     CompiledQueries, GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, compile_queries,
     next_config_gen,
 };
+use crate::syntax::Syntax;
 
 /// The id `name` has across every test bundle, so two bundles built for one
 /// name name the same language.
@@ -80,6 +82,15 @@ pub(crate) fn fixture_markdown() -> Arc<GrammarBundle> {
 /// A snapshot with no grammars, for tests with no injections to resolve.
 pub(crate) fn empty_langs() -> Arc<GrammarSnapshot> {
     Arc::new(GrammarSnapshot::default())
+}
+
+/// Parse `source` with `bundle`, no injections resolved. Returns the
+/// `Syntax` rather than its layers: `layers()` borrows from it, so the caller
+/// holds it.
+pub(crate) fn syntax_with(bundle: Arc<GrammarBundle>, source: &str) -> (Syntax, BufferText) {
+    let text = BufferText::from(source);
+    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
+    (syn, text)
 }
 
 /// Build a `tree_sitter::Range` from byte offsets, synthesizing single-line

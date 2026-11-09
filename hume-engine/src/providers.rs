@@ -34,23 +34,34 @@ pub enum HighlightTier {
     BracketMatch = 4,
 }
 
-// Syntax spans
+// Syntax source
 
-/// Per-buffer source of syntax highlight spans, implemented outside the
-/// engine (hume-treesitter's `Syntax`). Same span shape as
-/// `Decoration::Highlight`: `(range, scope_id)` with byte columns relative to
-/// the line start, sorted, non-overlapping, appended to `out`. Kept as its
-/// own trait rather than folded into `DecorationSource`: parse state is
-/// per-buffer while `DecorationSource` providers are per-pane, and this is
-/// the dependency-inversion seam to `hume-treesitter`: same span shape,
-/// different lifecycle. The engine consumes only these spans; it has no
-/// knowledge of parse trees, grammars, or tree-sitter.
-pub trait SyntaxSpans {
+/// Per-buffer source of syntax-derived per-line facts, implemented outside
+/// the engine (hume-treesitter's `Syntax`). Kept as its own trait rather
+/// than folded into `DecorationSource`: parse state is per-buffer while
+/// `DecorationSource` providers are per-pane, and this is the
+/// dependency-inversion seam to `hume-treesitter`. The engine consumes only
+/// these per-line answers; it has no knowledge of parse trees, grammars, or
+/// tree-sitter.
+pub trait SyntaxSource {
+    /// Highlight spans in `Decoration::Highlight`'s shape: `(range,
+    /// scope_id)` with byte columns relative to the line start, sorted,
+    /// non-overlapping, appended to `out`.
     fn spans_for_line(
         &self,
         line_idx: hume_rope::line::ContentLine,
         rope: &ropey::Rope,
         out: &mut Vec<(ExclusiveRange<ByteCol>, ScopeId)>,
+    );
+
+    /// The header lines of every scope containing `line` whose header is
+    /// above it, ascending (outer to inner), deduplicated, written to `out`,
+    /// replacing its contents.
+    fn header_lines(
+        &self,
+        line: hume_rope::line::ContentLine,
+        rope: &ropey::Rope,
+        out: &mut Vec<hume_rope::line::ContentLine>,
     );
 }
 

@@ -5,7 +5,7 @@ use hume_core::BufferId;
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
-use hume_engine::providers::SyntaxSpans;
+use hume_engine::providers::SyntaxSource;
 use hume_rope::offset::CharOffset;
 
 use super::{InjectionLoader, Syntax};

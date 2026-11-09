@@ -7,7 +7,7 @@
 //! an item's docs. There is nothing to incrementally reparse, since the
 //! content never changes after this.
 
-use hume_engine::providers::SyntaxSpans;
+use hume_engine::providers::SyntaxSource;
 use hume_engine::theme::ui_scopes;
 use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::{ResolvedStyle, Scope};

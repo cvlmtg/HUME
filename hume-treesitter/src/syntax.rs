@@ -1,13 +1,16 @@
 use std::sync::{Arc, Mutex};
 
+use crate::context::textobject_header_lines;
 use crate::highlight::layer_highlights_for_line;
-use crate::layers::{SyntaxLayer, SyntaxLayers};
+use crate::layers::{SyntaxLayer, SyntaxLayers, layer_covers_line};
 use hume_core::BufferId;
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
 use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
+use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
+use tree_sitter::QueryCursor;
 
 use crate::edits::input_edits_from_changeset;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
@@ -166,6 +169,10 @@ pub struct Syntax {
     /// `install`: `SyntaxLayers` is rebuilt wholesale on every install,
     /// `Syntax` is not.
     span_scratch: Mutex<FlattenScratch>,
+    /// The query cursor `header_lines` runs every layer's scope query on,
+    /// reused across calls. Lives on `Syntax` because it survives `install`,
+    /// which rebuilds `SyntaxLayers`.
+    header_cursor: Mutex<QueryCursor>,
 }
 
 impl Syntax {
@@ -180,6 +187,7 @@ impl Syntax {
             in_flight: None,
             min_snapshot_generation: 0,
             span_scratch: Mutex::new(FlattenScratch::default()),
+            header_cursor: Mutex::new(QueryCursor::new()),
         }
     }
 
@@ -618,7 +626,7 @@ impl Syntax {
     }
 }
 
-impl hume_engine::providers::SyntaxSpans for Syntax {
+impl hume_engine::providers::SyntaxSource for Syntax {
     fn spans_for_line(
         &self,
         line_idx: hume_rope::line::ContentLine,
@@ -634,6 +642,36 @@ impl hume_engine::providers::SyntaxSpans for Syntax {
             .expect("span scratch lock poisoned");
         let FlattenScratch { raw, stack, events } = &mut *scratch;
         layer_highlights_for_line(layers, line_idx, rope, raw, stack, events, out);
+    }
+
+    /// Every layer covering `line` answers through its `context.scm`, or,
+    /// without one, through its `textobjects.scm` function and class
+    /// objects. Sorting merges the layers outer to inner: an injected
+    /// layer's scopes lie inside its host's, so their headers come later.
+    fn header_lines(&self, line: ContentLine, rope: &ropey::Rope, out: &mut Vec<ContentLine>) {
+        out.clear();
+        let Some(layers) = self.layers() else {
+            return;
+        };
+        let line_start = rope.line_to_byte(line.index());
+        let line_end = hume_rope::lines::next_line_start_byte(rope, line.into());
+        let mut cursor = self
+            .header_cursor
+            .lock()
+            .expect("header cursor lock poisoned");
+        for layer in &layers.layers {
+            if !layer_covers_line(layer, line_start, line_end) {
+                continue;
+            }
+            let bytes = line_start..line_end;
+            if let Some(query) = &layer.bundle.context {
+                query.header_lines(&mut cursor, &layer.tree, rope, bytes, line, out);
+            } else if let Some(query) = &layer.bundle.textobjects {
+                textobject_header_lines(query, &mut cursor, &layer.tree, rope, bytes, line, out);
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
     }
 }
 

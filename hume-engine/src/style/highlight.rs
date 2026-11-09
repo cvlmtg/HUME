@@ -1,5 +1,5 @@
 use super::StyleScratch;
-use crate::providers::{Decoration, DecorationKinds, HighlightTier, ProviderSet, SyntaxSpans};
+use crate::providers::{Decoration, DecorationKinds, HighlightTier, ProviderSet, SyntaxSource};
 use crate::theme::Theme;
 use crate::types::{ResolvedStyle, ScopeId};
 use hume_rope::column::ByteCol;
@@ -12,7 +12,7 @@ use hume_rope::offset::ExclusiveRange;
 ///
 /// `pub(crate)`: also used by `format::format_virtual_lines` to resolve
 /// per-grapheme scopes for virtual lines, the same interval shape as
-/// `Decoration::Highlight`/`SyntaxSpans`.
+/// `Decoration::Highlight`/`SyntaxSource::spans_for_line`.
 pub(crate) struct IntervalCursor<'a> {
     intervals: &'a [(ExclusiveRange<ByteCol>, ScopeId)],
     pos: usize,
@@ -121,12 +121,12 @@ impl TierBufs {
 /// Must be called once per buffer line before calling [`super::style_display_line`] for
 /// that line's display lines. Clears and re-fills `tier_bufs`.
 ///
-/// `syntax` is the buffer's syntax span source (if a language is
+/// `syntax` is the buffer's syntax source (if a language is
 /// configured). Its spans for this line are merged into the `Syntax`
 /// tier bucket before any per-pane provider-based sources.
 pub(crate) fn rebuild_line_decorations(
     line_idx: hume_rope::line::ContentLine,
-    syntax: Option<&dyn SyntaxSpans>,
+    syntax: Option<&dyn SyntaxSource>,
     providers: &ProviderSet,
     rope: &ropey::Rope,
     scratch: &mut StyleScratch,
