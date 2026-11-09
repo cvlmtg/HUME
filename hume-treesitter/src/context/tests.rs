@@ -56,12 +56,22 @@ fn impl_with_long_fn() -> String {
 #[test]
 fn context_query_resolves_its_captures() {
     let fixture = compile(&fixture_query("rust", OptionalQuery::Context));
-    assert!(fixture.context.is_some());
-    assert!(fixture.start.is_none());
+    assert!(matches!(
+        fixture.scopes,
+        Scopes::Context {
+            context: Some(_),
+            start: None
+        }
+    ));
 
     let with_start = compile("(function_item name: (_) @context.start) @context");
-    assert!(with_start.context.is_some());
-    assert!(with_start.start.is_some());
+    assert!(matches!(
+        with_start.scopes,
+        Scopes::Context {
+            context: Some(_),
+            start: Some(_)
+        }
+    ));
 }
 
 #[test]
@@ -219,4 +229,21 @@ fn header_lines_replace_what_out_held() {
     let mut out = vec![stale];
     unparsed.header_lines(last_let, text.rope(), &mut out);
     assert_eq!(out, Vec::new());
+}
+
+#[test]
+fn textobjects_name_scopes_only_with_function_or_class_objects() {
+    require_grammars(&["rust"]);
+    let grammar = open_grammar("rust", "tree_sitter_rust");
+    let textobjects = |source: &str| {
+        TextObjectsQuery::new(
+            tree_sitter::Query::new(grammar.language(), source).expect("compile query"),
+        )
+    };
+    assert!(
+        ContextQuery::from_textobjects(&textobjects("(parameter) @parameter.around")).is_none()
+    );
+    assert!(
+        ContextQuery::from_textobjects(&textobjects("(function_item) @function.around")).is_some()
+    );
 }

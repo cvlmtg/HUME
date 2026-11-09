@@ -1,7 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::context::textobject_header_lines;
 use crate::highlight::layer_highlights_for_line;
 use crate::layers::{SyntaxLayer, SyntaxLayers};
 use hume_core::BufferId;
@@ -678,11 +677,8 @@ impl hume_engine::providers::SyntaxSource for Syntax {
             .lock()
             .expect("header cursor lock poisoned");
         for layer in covering {
-            let bytes = bytes.clone();
             if let Some(query) = &layer.bundle.context {
-                query.header_lines(&mut cursor, &layer.tree, rope, bytes, line, out);
-            } else if let Some(query) = &layer.bundle.textobjects {
-                textobject_header_lines(query, &mut cursor, &layer.tree, rope, bytes, line, out);
+                query.header_lines(&mut cursor, &layer.tree, rope, bytes.clone(), line, out);
             }
         }
         out.sort_unstable();

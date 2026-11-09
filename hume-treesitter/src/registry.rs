@@ -76,8 +76,9 @@ pub struct GrammarBundle {
     /// Compiled `indents.scm`, if the grammar has one. `None` means new
     /// lines in this language are never indented from its syntax tree.
     pub indents: Option<IndentQuery>,
-    /// Compiled `context.scm`, if the grammar has one. `None` means this
-    /// language names no scopes by query.
+    /// The scopes scope header rows come from: compiled `context.scm`, or
+    /// without one the function and class objects of `textobjects`. `None`
+    /// means this language names no scopes by query.
     pub context: Option<ContextQuery>,
     /// Unique per bundle, issued by `next_config_gen`. Grammar-swap
     /// / staleness checks compare this instead of `Arc::ptr_eq`, a plain
@@ -275,6 +276,11 @@ pub(crate) fn compile_queries(
         };
         assert!(!duplicate, "{} given twice", kind.file_name());
     }
+    let context = context.or_else(|| {
+        textobjects
+            .as_ref()
+            .and_then(ContextQuery::from_textobjects)
+    });
     Ok(CompiledQueries {
         highlighter: Arc::new(TreeSitterHighlighter::from_shared_query(
             highlights, scope_reg,

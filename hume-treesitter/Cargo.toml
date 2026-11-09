@@ -36,3 +36,7 @@ test-util = []
 [[bench]]
 name = "indent"
 harness = false
+
+[[bench]]
+name = "header_lines"
+harness = false
