@@ -43,6 +43,7 @@ pub(crate) fn make_bundle(
         injections,
         textobjects,
         indents,
+        context,
     } = compile_queries(
         grammar.language(),
         highlights_src,
@@ -56,6 +57,7 @@ pub(crate) fn make_bundle(
         injections,
         textobjects,
         indents,
+        context,
         config_gen: next_config_gen(),
         language: test_language_id(name),
     })

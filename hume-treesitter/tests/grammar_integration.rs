@@ -43,6 +43,7 @@ fn bundle_for(name: &str, symbol: &str, query_src: &str) -> (Arc<GrammarBundle>,
         injections: None,
         textobjects: None,
         indents: None,
+        context: None,
         config_gen: 0,
         language: LanguageRegistry::for_testing().intern(name),
     });

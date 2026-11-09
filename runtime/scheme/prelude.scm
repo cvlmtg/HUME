@@ -38,11 +38,13 @@
 (define (register-grammar! name grammar-path symbol highlights-path
                            #:injections [injections-path #f]
                            #:textobjects [textobjects-path #f]
-                           #:indents [indents-path #f])
+                           #:indents [indents-path #f]
+                           #:context [context-path #f])
   (%register-grammar! name grammar-path symbol highlights-path
                       (hash 'injections injections-path
                             'textobjects textobjects-path
-                            'indents indents-path)))
+                            'indents indents-path
+                            'context context-path)))
 
 (define (configure-statusline! left center right)
   (set-option! "statusline" (hash 'left left 'center center 'right right)))

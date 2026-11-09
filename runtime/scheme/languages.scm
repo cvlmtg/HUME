@@ -308,7 +308,7 @@
 (define-language! "tolk" '("tolk"))
 (define-language! "toml" '("toml") '("pdm.lock" "poetry.lock" "Cargo.lock" "uv.lock" "containers.conf" "containers.conf.d/*.conf" "containers.conf.modules/*.conf" "mounts.conf" "policy.conf" "registries.conf" "storage.conf" "staticcheck.conf"))
 (define-language! "tql" '("tql"))
-(define-language! "tsq" '() '("queries/*.scm" "injections.scm" "highlights.scm" "indents.scm" "textobjects.scm" "locals.scm" "tags.scm"))
+(define-language! "tsq" '() '("queries/*.scm" "injections.scm" "highlights.scm" "indents.scm" "textobjects.scm" "locals.scm" "tags.scm" "context.scm"))
 (define-language! "tsx" '("tsx"))
 (define-language! "twig" '("twig"))
 (define-language! "typescript" '("ts" "mts" "cts") '() '("deno" "bun" "ts-node"))

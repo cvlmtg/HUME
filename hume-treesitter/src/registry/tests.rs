@@ -294,6 +294,46 @@ fn attach_grammar_with_broken_textobjects_fails_whole_attach() {
     );
 }
 
+/// A broken context.scm hard-fails the whole attach, same policy as a broken
+/// textobjects.scm.
+#[test]
+fn attach_grammar_with_broken_context_fails_whole_attach() {
+    require_grammars(&["rust"]);
+    let hl_path = grammar_query_path("rust");
+    let (_dir, context_path) = write_temp_scm("context.scm", "(nonexistent_node) @context");
+
+    let mut reg = LanguageRegistry::for_testing();
+    let mut scope_reg = ScopeRegistry::new();
+    let result = reg.attach_grammar(
+        "rust",
+        &rust_source(QueryFiles::new(hl_path).with(OptionalQuery::Context, context_path)),
+        ConfigOrigin::User,
+        &mut scope_reg,
+    );
+    let Err(err) = result else {
+        panic!("broken context.scm must fail the attach");
+    };
+    assert!(
+        matches!(
+            err,
+            super::RegisterError::OptionalQueryBuild {
+                kind: OptionalQuery::Context,
+                ..
+            }
+        ),
+        "broken context.scm must surface as OptionalQueryBuild for Context, got: {err:?}"
+    );
+    assert!(
+        err.to_string()
+            .starts_with("context.scm compilation failed:"),
+        "{err}"
+    );
+    assert!(
+        reg.defined_id("rust").is_none(),
+        "a failed attach must not leave a partial identity behind"
+    );
+}
+
 #[test]
 fn query_files_get_returns_what_with_stored_per_kind() {
     let files = QueryFiles::new("hl.scm".into());

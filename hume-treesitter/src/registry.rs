@@ -6,6 +6,7 @@ use globset::{GlobSet, GlobSetBuilder};
 use hume_platform::path::AbsolutePath;
 use ropey::Rope;
 
+use crate::context::ContextQuery;
 use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
 use hume_core::{
@@ -75,6 +76,9 @@ pub struct GrammarBundle {
     /// Compiled `indents.scm`, if the grammar has one. `None` means new
     /// lines in this language are never indented from its syntax tree.
     pub indents: Option<IndentQuery>,
+    /// Compiled `context.scm`, if the grammar has one. `None` means this
+    /// language names no scopes by query.
+    pub context: Option<ContextQuery>,
     /// Unique per bundle, issued by `next_config_gen`. Grammar-swap
     /// / staleness checks compare this instead of `Arc::ptr_eq`, a plain
     /// integer identity that survives across the worker-thread boundary.
@@ -213,6 +217,7 @@ fn new_bundle(
         injections,
         textobjects,
         indents,
+        context,
     } = compiled;
     Arc::new(GrammarBundle {
         grammar,
@@ -220,6 +225,7 @@ fn new_bundle(
         injections,
         textobjects,
         indents,
+        context,
         config_gen: next_config_gen(),
         language,
     })
@@ -231,6 +237,7 @@ pub(crate) struct CompiledQueries {
     pub(crate) injections: Option<InjectionsQuery>,
     pub(crate) textobjects: Option<TextObjectsQuery>,
     pub(crate) indents: Option<IndentQuery>,
+    pub(crate) context: Option<ContextQuery>,
 }
 
 /// Compiles a grammar's queries. This is the one place query sources become
@@ -247,6 +254,7 @@ pub(crate) fn compile_queries(
     let mut injections = None;
     let mut textobjects = None;
     let mut indents = None;
+    let mut context = None;
     for &(kind, src) in optional {
         let query = tree_sitter::Query::new(language, src)
             .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?;
@@ -263,6 +271,7 @@ pub(crate) fn compile_queries(
                         .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?,
                 )
                 .is_some(),
+            OptionalQuery::Context => context.replace(ContextQuery::new(query)).is_some(),
         };
         assert!(!duplicate, "{} given twice", kind.file_name());
     }
@@ -273,6 +282,7 @@ pub(crate) fn compile_queries(
         injections,
         textobjects,
         indents,
+        context,
     })
 }
 

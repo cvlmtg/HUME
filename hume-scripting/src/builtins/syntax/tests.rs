@@ -421,6 +421,36 @@ fn register_grammar_hash_with_textobjects_only_populates_that_kind() {
     }
 }
 
+#[test]
+fn register_grammar_context_key_reaches_query_files() {
+    let mut h = SteelCtxTestHarness::new();
+    {
+        let mut ctx = h.ctx_init();
+        let result = register_grammar(
+            &mut ctx,
+            str_val("rust"),
+            str_val("/tmp/rust.so"),
+            str_val("tree_sitter_rust"),
+            str_val("/tmp/highlights.scm"),
+            symbol_hash([("context", str_val("/tmp/context.scm"))]),
+        );
+        assert!(result.is_ok());
+    }
+    // On Windows a root-anchored path lands on the working directory's drive.
+    #[expect(clippy::join_absolute_paths)]
+    let context = std::env::current_dir().unwrap().join("/tmp/context.scm");
+    match lang_regs(&h)[0] {
+        PendingLanguageReg::Grammar(reg) => {
+            assert_eq!(
+                reg.source.queries.get(OptionalQuery::Context),
+                Some(context.as_path()),
+            );
+            assert_eq!(reg.source.queries.get(OptionalQuery::Injections), None);
+        }
+        other => panic!("expected a Grammar entry, got: {other:?}"),
+    }
+}
+
 /// `#f` for the optional-queries argument yields no optional file, and a
 /// key bound to `#f` is the same as an absent key.
 #[test]
@@ -507,6 +537,7 @@ fn grammar_optional_queries_lists_every_kind_with_its_file() {
             "(injections . \"injections.scm\")",
             "(textobjects . \"textobjects.scm\")",
             "(indents . \"indents.scm\")",
+            "(context . \"context.scm\")",
         ]
     );
 }

@@ -173,6 +173,7 @@ named_enum! {
         Injections => "injections",
         TextObjects => "textobjects",
         Indents => "indents",
+        Context => "context",
     }
 }
 
@@ -183,6 +184,7 @@ impl OptionalQuery {
             Self::Injections => "injections.scm",
             Self::TextObjects => "textobjects.scm",
             Self::Indents => "indents.scm",
+            Self::Context => "context.scm",
         }
     }
 }
@@ -195,6 +197,7 @@ pub struct QueryFiles {
     injections: Option<PathBuf>,
     textobjects: Option<PathBuf>,
     indents: Option<PathBuf>,
+    context: Option<PathBuf>,
 }
 
 impl QueryFiles {
@@ -205,6 +208,7 @@ impl QueryFiles {
             injections: None,
             textobjects: None,
             indents: None,
+            context: None,
         }
     }
 
@@ -214,6 +218,7 @@ impl QueryFiles {
             OptionalQuery::Injections => self.injections = Some(path),
             OptionalQuery::TextObjects => self.textobjects = Some(path),
             OptionalQuery::Indents => self.indents = Some(path),
+            OptionalQuery::Context => self.context = Some(path),
         }
         self
     }
@@ -227,6 +232,7 @@ impl QueryFiles {
             OptionalQuery::Injections => self.injections.as_deref(),
             OptionalQuery::TextObjects => self.textobjects.as_deref(),
             OptionalQuery::Indents => self.indents.as_deref(),
+            OptionalQuery::Context => self.context.as_deref(),
         }
     }
 }
