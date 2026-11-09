@@ -118,6 +118,7 @@ const DEFAULT_SC = {
   "ui.statusline.separator": "gray",
   "ui.popup": { fg: "white", bg: "dark-gray" },
   "ui.popup.scroll": { fg: "yellow", bg: "dark-gray" },
+  "ui.context": { bg: "dark-gray" },
   "ui.menu": { fg: "white", bg: "dark-gray" },
   "ui.menu.selected": { fg: "black", bg: "blue" },
   "ui.menu.scroll": { fg: "yellow", bg: "dark-gray" },

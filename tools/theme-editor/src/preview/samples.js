@@ -93,6 +93,7 @@ export const HTML_SAMPLE = {
 export const MARKDOWN_SAMPLE = {
   name: "README.md",
   cursorLine: 1,
+  sticky: [3],
   diagnostics: [{ line: 8, sev: "hint", msg: "consider a table of contents" }],
   lines: [
     { n: 1, t: [["# ", "markup.heading.marker"], ["G", "markup.heading.1", "cursor"], ["etting started", "markup.heading.1", "sel"]] },

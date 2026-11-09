@@ -191,6 +191,21 @@ fn ui_scopes_available_before_bake() {
 }
 
 #[test]
+fn context_falls_back_to_popup_when_unset() {
+    let theme = theme_with([("ui.popup", bg(Rgb(1, 2, 3)))]);
+    assert_eq!(theme.ui.context.bg, Some(Rgb(1, 2, 3)));
+}
+
+#[test]
+fn context_uses_its_own_entry_when_set() {
+    let theme = theme_with([
+        ("ui.popup", bg(Rgb(1, 2, 3))),
+        ("ui.context", bg(Rgb(4, 5, 6))),
+    ]);
+    assert_eq!(theme.ui.context.bg, Some(Rgb(4, 5, 6)));
+}
+
+#[test]
 fn window_focused_falls_back_to_window_when_unset() {
     // No "ui.window.focused" entry: dot-notation must fall back to "ui.window".
     let theme = theme_with([("ui.window", fg(Rgb(0x80, 0x80, 0x80)))]);

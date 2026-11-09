@@ -179,6 +179,9 @@ pub struct UiScopes {
     /// Seam divider segments adjacent to the focused pane. Falls back to
     /// `ui.window`.
     pub window_focused: ResolvedStyle,
+    /// Scope header rows. Falls back to `ui.popup`, which is not on
+    /// `ui.context`'s dot chain, so the fallback is explicit in `compute_ui`.
+    pub context: ResolvedStyle,
 }
 
 // Theme
@@ -334,6 +337,11 @@ impl Theme {
             background: self.resolve_raw(ui_scopes::BACKGROUND),
             window: self.resolve_raw(ui_scopes::WINDOW),
             window_focused: self.resolve_raw(ui_scopes::WINDOW_FOCUSED),
+            context: self
+                .raw
+                .get(ui_scopes::CONTEXT)
+                .copied()
+                .unwrap_or_else(|| self.resolve_raw(ui_scopes::POPUP)),
         }
     }
 

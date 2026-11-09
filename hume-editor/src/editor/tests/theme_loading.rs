@@ -76,6 +76,21 @@ fn bundled_themes_load_and_resolve() {
     }
 }
 
+/// `sand` sets its own `ui.context` entry, so header rows do not rely on the
+/// `ui.popup` fallback.
+#[test]
+fn sand_defines_ui_context() {
+    let (_, sand) = load_bundled_themes()
+        .into_iter()
+        .find(|(name, _)| name == "sand")
+        .expect("sand is bundled");
+    assert!(sand.raw_contains("ui.context"));
+    assert_eq!(
+        sand.ui.context,
+        sand.resolve_by_name(hume_engine::types::Scope("ui.context"))
+    );
+}
+
 /// Themes written for HUME, covered by the repository's own `LICENSE`.
 const HUME_ORIGINAL_THEMES: [&str; 1] = ["sand"];
 

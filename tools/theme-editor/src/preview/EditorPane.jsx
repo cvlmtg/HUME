@@ -269,6 +269,11 @@ export default function EditorPane({ theme }) {
   const indentGuideFg = fgc("ui.virtual.indent-guide", theme, FG);
   const whitespaceFg = fgc("ui.virtual.whitespace", theme, FG);
   const virtualFg = fgc("ui.virtual", theme, FG);
+  // `ui.popup` is not on `ui.context`'s dot chain, so the fallback is explicit
+  // (`compute_ui`, hume-engine/src/theme/mod.rs).
+  const contextBg = theme.scope("ui.context") !== undefined
+    ? bgc("ui.context", theme, BG)
+    : bgc("ui.popup", theme, BG);
 
   // Returns the tagged scope's own style (fg/bg/mods), or null for "nothing
   // to layer" — `tokenStyle`'s `tag?.fg ?? s?.fg ?? fallbackFg` already
@@ -327,6 +332,20 @@ export default function EditorPane({ theme }) {
               <DiffRows theme={theme} BG={BG} FG={FG} lnr={lnr} tagStyle={tagStyle} />
             ) : (
               <>
+                {/* Scope header rows: the sticky lines' own number and tokens over
+                    ui.context, with no cursorline tint and no selection or cursor. */}
+                {(buf.sticky ?? []).map(n => {
+                  const line = buf.lines.find(l => l.n === n);
+                  return (
+                    <div key={"ctx" + n} style={{ display: "flex", padding: "0 12px 0 0", background: contextBg, minHeight: 20 }}>
+                      <span style={{ width: 16, flexShrink: 0 }} />
+                      <span style={{ display: "inline-block", width: 36, textAlign: "right", paddingRight: 12, color: lnr, userSelect: "none", flexShrink: 0, fontSize: 12 }}>{line.n}</span>
+                      <span style={{ whiteSpace: "pre" }}>
+                        {line.t.map((tok, i) => renderToken(tok, i, null, theme, FG, contextBg))}
+                      </span>
+                    </div>
+                  );
+                })}
                 {buf.lines.map(line => {
                   const isCur = line.n === buf.cursorLine;
                   const d = diag.find(x => x.line === line.n);

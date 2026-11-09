@@ -54,7 +54,7 @@ export const CURSOR_LADDERS = {
   },
 };
 
-export const UI_SCOPES = ["ui.background", "ui.text", "ui.text.focus", "ui.selection", "ui.selection.primary", "ui.linenr", "ui.linenr.selected", "ui.statusline", "ui.statusline.normal", "ui.statusline.insert", "ui.statusline.select", "ui.statusline.search", "ui.statusline.command", "ui.statusline.sift", "ui.statusline.separator", "ui.popup", "ui.popup.scroll", "ui.menu", "ui.menu.selected", "ui.menu.scroll", "ui.window", "ui.window.focused", "ui.tabline", "ui.tabline.active", "ui.bufferline", "ui.bufferline.active", "ui.drawer", "ui.cursorline.primary"];
+export const UI_SCOPES = ["ui.background", "ui.text", "ui.text.focus", "ui.selection", "ui.selection.primary", "ui.linenr", "ui.linenr.selected", "ui.statusline", "ui.statusline.normal", "ui.statusline.insert", "ui.statusline.select", "ui.statusline.search", "ui.statusline.command", "ui.statusline.sift", "ui.statusline.separator", "ui.popup", "ui.popup.scroll", "ui.context", "ui.menu", "ui.menu.selected", "ui.menu.scroll", "ui.window", "ui.window.focused", "ui.tabline", "ui.tabline.active", "ui.bufferline", "ui.bufferline.active", "ui.drawer", "ui.cursorline.primary"];
 
 export const VIRTUAL_SCOPES = ["ui.virtual", "ui.virtual.indent-guide", "ui.virtual.whitespace", "ui.virtual.inlay-hint", "ui.virtual.invisible"];
 
