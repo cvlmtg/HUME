@@ -51,7 +51,8 @@ Steel's library functions and your own `define`s are plain Scheme functions, not
 - Settings, key bindings, language definitions and grammars rank by whose behalf they are made: the user's beat a plugin's, and a plugin's beat HUME's own. The entries below say which of two values from the same rank wins.
   - Code acts for the user in `init.scm`, at `:set`, and in any command run from a key or the `:` prompt, including one a plugin defined, along with the hooks, timers and callbacks that code sets up.
   - A plugin's body acts for the plugin, as do the hooks, timers and callbacks the body sets up.
-- A value from a fixed set of names (a mode, a hook name, a log level, an enum option's value) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
+- A value from a fixed set of names (a mode, a hook name, a log level) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
+- An option's value is the exception: one from a fixed set of names, such as `indent-style`'s, is a string both ways. `get-option` returns `"soft"`, and `set-option!` and `set-buffer-option!` refuse `'soft`.
 
 ## Settings & statusline
 
