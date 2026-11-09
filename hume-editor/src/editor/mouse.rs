@@ -7,7 +7,8 @@
 //!
 //! Click coordinates are terminal-absolute, so `EngineView::pane_hit` first
 //! finds the pane under the pointer, in its own cells, before
-//! `screen_to_cluster` resolves the buffer cluster it hits. Every hit test
+//! `screen_to_cluster` resolves the buffer cluster it hits (`header_to_cluster`
+//! for a scope header row). Every hit test
 //! reads the pane rects the last frame drew, so a click lands in the pane
 //! that was on screen under it even after a band or a pane changed. The
 //! gutter and content widths are the pane's current ones at its drawn size.
@@ -21,7 +22,10 @@
 //! layer's policy, reached only after the stack has let the event through.
 
 use hume_core::PaneId;
+use hume_engine::display_lines::DisplayLineMap;
+use hume_engine::display_lines::line_store::PaneLineStore;
 use hume_engine::pipeline::{PaneHit, SeamHandle};
+use hume_engine::scope_headers::{ScopeHeaderInputs, header_format_key, scope_headers};
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -265,18 +269,52 @@ impl Editor {
     }
 
     /// Resolve `hit` to the buffer cluster under it, at its pane's drawn size
-    /// with the pane's current gutter.
+    /// with the pane's current gutter. A press on a scope header row resolves
+    /// to its line's cluster, laid out as the row draws it, not to the hidden
+    /// line under it.
     #[allow(clippy::disallowed_methods)] // a click aims at the view on screen
     fn click_to_cluster(&mut self, hit: PaneHit) -> Option<hume_rope::cluster::ClusterStart> {
         let pid = hit.pane();
         let buf_id = self.view.panes[pid].buffer_id();
         let geometry = self.state.pane_geometry(&self.view, pid, hit.size());
         let key = self.state.format_key(&self.view.panes[pid]);
-        let (mut dlm, viewport) = self.view.panes[pid].display_lines_and_viewport(
-            self.state.buffers.get(buf_id).text().rope(),
-            key,
-            geometry.content_width,
-        );
+        let doc = self.state.buffers.get(buf_id);
+        let rope = doc.text().rope();
+        let pane = &mut self.view.panes[pid];
+        let mut headers = Vec::new();
+        {
+            let (mut dlm, viewport) =
+                pane.display_lines_and_viewport(rope, key, geometry.content_width);
+            let top = viewport.top_at(&mut dlm);
+            scope_headers(
+                &mut dlm,
+                top,
+                usize::from(hit.size().height()),
+                ScopeHeaderInputs {
+                    source: doc.syntax_source(),
+                    settings: self.state.context_settings(doc),
+                },
+                &mut headers,
+            );
+        }
+        if let Some(&line) = headers.get(usize::from(hit.y())) {
+            let mut store = PaneLineStore::new();
+            let mut header_dlm = DisplayLineMap::new(
+                rope,
+                &pane.providers,
+                geometry.content_width,
+                header_format_key(key),
+                &mut store,
+            );
+            return cursor::header_to_cluster(
+                hit.x(),
+                geometry.gutter_width,
+                &mut header_dlm,
+                line,
+            );
+        }
+        let (mut dlm, viewport) =
+            pane.display_lines_and_viewport(rope, key, geometry.content_width);
         cursor::screen_to_cluster(hit.x(), hit.y(), geometry.gutter_width, viewport, &mut dlm)
     }
 }

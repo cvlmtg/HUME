@@ -7,7 +7,10 @@
 
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::pane::Viewport;
+use hume_engine::scope_headers::header_display_line;
+use hume_rope::cluster::ClusterStart;
 use hume_rope::column::DisplayLineCol;
+use hume_rope::line::ContentLine;
 
 /// The `(x, row)` of `cursor` within the pane content area: after the
 /// gutter, not a terminal-absolute cell. `x` accounts for
@@ -93,6 +96,25 @@ pub(in crate::editor) fn screen_to_cluster(
     // A column past the text resolves to the display line's last cell, its
     // `\n`, which is a cursor position in the inclusive selection model.
     Some(dlm.char_at(clicked, display_col, DisplayColTarget::Cell))
+}
+
+/// The buffer cluster under a click on the scope header row that draws
+/// `line`, at pane-relative `content_x`. `dlm` is the map the header rows are
+/// laid out with ([`header_format_key`](hume_engine::scope_headers::header_format_key)),
+/// and columns count from the line's column 0 whatever the pane's horizontal
+/// scroll. A click in the `gutter_w`-wide gutter returns `None`.
+pub(in crate::editor) fn header_to_cluster(
+    content_x: u16,
+    gutter_w: u16,
+    dlm: &mut DisplayLineMap<'_>,
+    line: ContentLine,
+) -> Option<ClusterStart> {
+    if content_x < gutter_w {
+        return None;
+    }
+    let col = DisplayLineCol::new(0).advance_saturating(u32::from(content_x - gutter_w));
+    let row = header_display_line(dlm, line);
+    Some(dlm.char_at(row, col, DisplayColTarget::Cell))
 }
 
 #[cfg(test)]

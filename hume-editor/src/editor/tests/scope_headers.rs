@@ -639,3 +639,137 @@ fn context_enabled_off_keeps_the_margin() {
         assert_eq!(with_row, without_row, "step {step}");
     }
 }
+
+// ── Mouse ────────────────────────────────────────────────────────────
+
+/// Press at content cell `(x, y)` of pane `pid` on the frame `buf` drew.
+fn press_at(ed: &mut Editor, buf: &Grid, pid: PaneId, x: u16, y: u16) {
+    let (rect, gutter) = drawn_pane(ed, buf, pid);
+    ed.handle_input(mouse_left_down(rect.x + gutter + x, rect.y + y));
+}
+
+/// The char offset of column `col` of line `line`, a line of ASCII.
+fn char_at_column(ed: &Editor, line: usize, col: usize) -> hume_rope::offset::CharOffset {
+    let start = hume_rope::lines::line_start_char(
+        ed.doc().text().rope(),
+        hume_rope::line::RopeyLine::new(line),
+    );
+    co(start.index() + col)
+}
+
+#[test]
+fn press_on_a_header_row_selects_that_line_and_reveals_it() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let pid = ed.view.focused_pane();
+    let rect = Rect::new(0, 0, 80, 25);
+    let buf = ed.render_to_buf(rect);
+    wheel_down(&mut ed, &buf, pid, 10);
+    let buf = ed.render_to_buf(rect);
+    assert_eq!(
+        top_rows(&ed, &buf, 3),
+        [
+            line_of(&source, 0),
+            line_of(&source, 1),
+            line_of(&source, 12)
+        ]
+    );
+
+    press_at(&mut ed, &buf, pid, 4, 1);
+
+    let sel = ed.current_view().primary();
+    assert_eq!(sel.anchor().offset(), char_at_column(&ed, 1, 4));
+    assert_eq!(sel.head().offset(), char_at_column(&ed, 1, 4));
+    let pressed = state(&ed);
+    let buf = ed.render_to_buf(rect);
+    assert_eq!(top_line(&ed, pid), 0);
+    assert_eq!(
+        top_rows(&ed, &buf, 2),
+        [line_of(&source, 0), line_of(&source, 1)]
+    );
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), pressed);
+}
+
+#[test]
+fn press_on_a_header_counts_columns_from_zero_under_horizontal_scroll() {
+    let mut ed = snapshot_editor(true, 12);
+    pin_no_wrap(&mut ed);
+    let far = char_at_column(&ed, 12, 150).index();
+    set_cursor(&mut ed, far);
+    let rect = Rect::new(0, 0, 30, 16);
+    let buf = ed.render_to_buf(rect);
+    let pid = ed.view.focused_pane();
+    assert!(ed.pane_viewport(pid).horizontal_offset().get() > 0);
+    assert!(top_rows(&ed, &buf, 1)[0].starts_with("impl"));
+
+    press_at(&mut ed, &buf, pid, 5, 0);
+
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        char_at_column(&ed, 0, 5)
+    );
+}
+
+#[test]
+fn press_on_a_wrapped_header_lands_where_the_row_draws_it() {
+    let mut ed = snapshot_editor(false, 15);
+    let rect = Rect::new(0, 0, 30, 16);
+    let buf = ed.render_to_buf(rect);
+    let pid = ed.view.focused_pane();
+    assert_eq!(top_rows(&ed, &buf, 1), ["impl Iterator for AVeryLo"]);
+
+    // Column 24 is past where the line's first wrap segment breaks.
+    press_at(&mut ed, &buf, pid, 24, 0);
+
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        char_at_column(&ed, 0, 24)
+    );
+}
+
+#[test]
+fn drag_onto_a_header_row_extends_to_its_line() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let pid = ed.view.focused_pane();
+    let rect = Rect::new(0, 0, 80, 25);
+    let buf = ed.render_to_buf(rect);
+    wheel_down(&mut ed, &buf, pid, 10);
+    let buf = ed.render_to_buf(rect);
+    press_at(&mut ed, &buf, pid, 12, 5);
+    let anchor = ed.current_view().primary().anchor().offset();
+    let buf = ed.render_to_buf(rect);
+    assert_eq!(
+        top_rows(&ed, &buf, 2),
+        [line_of(&source, 0), line_of(&source, 1)]
+    );
+
+    let (rect, gutter) = drawn_pane(&ed, &buf, pid);
+    ed.handle_input(mouse_drag(rect.x + gutter + 4, rect.y + 1));
+
+    let sel = ed.current_view().primary();
+    assert_eq!(sel.anchor().offset(), anchor);
+    assert_eq!(sel.head().offset(), char_at_column(&ed, 1, 4));
+}
+
+#[test]
+fn press_on_row_zero_with_headers_off_selects_the_top_line() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    run_set(&mut ed, "buffer context-enabled=false").expect("the setting applies");
+    let pid = ed.view.focused_pane();
+    let rect = Rect::new(0, 0, 80, 25);
+    let buf = ed.render_to_buf(rect);
+    wheel_down(&mut ed, &buf, pid, 10);
+    let buf = ed.render_to_buf(rect);
+    assert_eq!(top_rows(&ed, &buf, 1), [line_of(&source, 10)]);
+
+    press_at(&mut ed, &buf, pid, 0, 0);
+
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        char_at_column(&ed, 10, 0)
+    );
+}

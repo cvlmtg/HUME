@@ -671,3 +671,40 @@ fn place_saturates_when_column_is_left_of_horizontal_offset() {
     let pos = place(&v, inverted_col, 0);
     assert_eq!(pos, (0, 0));
 }
+
+// ── header_to_cluster ────────────────────────────────────────────────
+
+/// A header row resolves to its own line's cluster at the clicked column,
+/// whatever line the map's viewport top is on.
+#[test]
+fn header_row_resolves_to_its_line_at_the_clicked_column() {
+    let rope = Rope::from_str("abcdef\nghijkl\nmnopqr\n");
+    let providers = no_providers();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, 80, &mut s);
+    let line = hume_rope::line::ContentLine::new(1);
+    let got = header_to_cluster(2, 0, &mut dlm, line).map(|p| p.offset());
+    assert_eq!(got, Some(co(9))); // line 1 starts at char 7; 'i' is column 2
+}
+
+#[test]
+fn header_row_gutter_click_returns_none() {
+    let rope = Rope::from_str("abcdef\n");
+    let providers = no_providers();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, 80, &mut s);
+    let line = hume_rope::line::ContentLine::new(0);
+    assert_eq!(header_to_cluster(2, 4, &mut dlm, line), None);
+}
+
+/// The column is counted from the gutter's right edge.
+#[test]
+fn header_row_column_starts_after_the_gutter() {
+    let rope = Rope::from_str("abcdef\n");
+    let providers = no_providers();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, 80, &mut s);
+    let line = hume_rope::line::ContentLine::new(0);
+    let got = header_to_cluster(6, 4, &mut dlm, line).map(|p| p.offset());
+    assert_eq!(got, Some(co(2)));
+}
