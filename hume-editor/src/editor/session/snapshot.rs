@@ -3,6 +3,7 @@
 //! buffer and pane ids last one run. No type is recursive, so decoding a
 //! crafted file cannot exhaust the stack.
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::num::NonZeroU32;
 
@@ -21,7 +22,8 @@ use crate::editor::minibuf::history::HistoryKind;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct SessionSnapshot {
-    /// The file buffers, in open order.
+    /// The file buffers a pane of some tab shows, and the alternate one, in
+    /// open order.
     pub(super) buffers: Vec<BufferSnapshot>,
     /// Every buffer index once, least recently shown first.
     pub(super) mru: Vec<usize>,
@@ -124,10 +126,18 @@ pub(super) enum ShapeSnapshot {
 
 impl SessionSnapshot {
     pub(super) fn capture(state: &EditorState, view: &EngineView) -> Self {
+        let kept: HashSet<BufferId> = state
+            .tabs
+            .layouts(view.focused_layout())
+            .flat_map(|(_, layout)| layout.tree().leaves())
+            .map(|pid| view.panes[pid].buffer_id())
+            .chain(state.buffers.second_most_recent())
+            .collect();
         let mut index = SecondaryMap::new();
         let buffers = state
             .buffers
             .iter()
+            .filter(|(bid, _)| kept.contains(bid))
             .filter_map(|(bid, buf)| {
                 let file = buf.file()?;
                 index.insert(bid, index.len());

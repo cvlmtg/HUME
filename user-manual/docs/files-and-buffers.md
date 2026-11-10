@@ -136,13 +136,13 @@ Nothing removes old history files. To forget a file's history, delete its `.undo
 
 With `session-persist` on, quitting HUME saves the session of its session root, by default the directory HUME started in, and starting `hume` with no files and the same root brings it back:
 
-- the files you had open, and the one you saw before the current one, so `:b#` still goes back to it;
+- the files shown in a pane of any tab, and the one you saw before the current one, so `:b#` still goes back to it;
 - your tabs and splits, their sizes, and which pane had focus;
-- in each pane, the selections, scroll position and wrap setting of every file it showed, and its jump list;
+- in each pane, the selections, scroll position and wrap setting of each of those files it showed, and its jumps within them;
 - the registers `q` and `0`–`9`, recorded macros included;
 - what you typed at the `:`, `/`, `?` and `|` prompts, and the last search, so `n` works at once.
 
-Scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill ring `k` and the clipboard `c` are not kept: a session records which files were open, so save your changes to keep them.
+Files no pane shows, scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill ring `k` and the clipboard `c` are not kept: a session records which files were shown, so save your changes to keep them.
 
 - Turn it on with `(set-option! "session-persist" #t)` in `init.scm`. Turning it off stops both saving and restoring, and deletes nothing.
 - Starting HUME with files, as in `hume notes.txt`, opens just those files and leaves the saved session alone: quitting that run doesn't save over it. Run `:save-session` to make it a session after all: it saves the session at once, replacing the saved one, and quitting saves it again. In any session, `:save-session` saves it right away.

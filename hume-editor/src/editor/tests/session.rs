@@ -321,7 +321,7 @@ fn lines(n: usize) -> String {
 }
 
 #[test]
-fn buffers_come_back_in_open_order_with_the_same_alternate() {
+fn only_shown_files_and_the_alternate_come_back_in_open_order() {
     let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]);
     let mut ed = project.start(&[], PERSIST);
     type_cmd(&mut ed, ":e a.txt");
@@ -331,7 +331,7 @@ fn buffers_come_back_in_open_order_with_the_same_alternate() {
     assert_eq!(alternate(&ed).as_deref(), Some("c.txt"), "sanity");
 
     let again = restart(&project, ed);
-    assert_eq!(buffer_names(&again), ["a.txt", "b.txt", "c.txt"]);
+    assert_eq!(buffer_names(&again), ["a.txt", "c.txt"]);
     assert_eq!(again.doc().display_name(), "a.txt");
     assert_eq!(alternate(&again).as_deref(), Some("c.txt"));
     assert!(session_warnings(&again).is_empty());
@@ -545,6 +545,37 @@ fn the_jump_list_comes_back_where_it_stood() {
     again.feed_key(key_ctrl('i'));
     assert_ne!(state(&again), back);
     assert_ne!(state(&again), older);
+}
+
+#[test]
+fn jumps_into_a_file_not_kept_are_left_out() {
+    let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":e b.txt");
+    type_cmd(&mut ed, ":e c.txt");
+    type_cmd(&mut ed, ":e a.txt");
+    let jumped_to = |ed: &Editor| -> Vec<String> {
+        let (jumps, _) = ed.state.panes.entries[ed.view.focused_pane()]
+            .jumps
+            .history();
+        jumps
+            .iter()
+            .map(|j| ed.state.buffers.get(j.buffer_id).display_name())
+            .collect()
+    };
+    let saved = jumped_to(&ed);
+    assert!(
+        saved.iter().any(|name| name == "b.txt"),
+        "sanity: the list holds b.txt entries: {saved:?}"
+    );
+    let kept: Vec<_> = saved
+        .into_iter()
+        .filter(|name| name == "a.txt" || name == "c.txt")
+        .collect();
+
+    let again = restart(&project, ed);
+    assert_eq!(jumped_to(&again), kept);
 }
 
 #[test]
@@ -866,7 +897,7 @@ fn save_session_starts_a_session_in_a_run_started_with_a_file() {
     quit(&mut ed).expect("quitting saves the session it started");
 
     let again = project.start(&[], PERSIST);
-    assert_eq!(buffer_names(&again), ["a.txt", "b.txt", "c.txt"]);
+    assert_eq!(buffer_names(&again), ["b.txt", "c.txt"]);
     assert_eq!(again.doc().display_name(), "c.txt");
 }
 
