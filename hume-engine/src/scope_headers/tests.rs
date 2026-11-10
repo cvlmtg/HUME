@@ -68,9 +68,9 @@ fn cap_drops_outermost_by_default_and_second_with_outer_level() {
     let rope = doc(30);
     let providers = ProviderSet::new();
     let three = ScopeTable::default().lines(3..=20, &[0, 1, 2]);
-    assert_eq!(walk(&rope, &providers, &three, SHOWN, top(5), 3), [1, 2]);
+    assert_eq!(walk(&rope, &providers, &three, SHOWN, top(5), 5), [1, 2]);
     assert_eq!(
-        walk(&rope, &providers, &three, OUTER_LEVEL, top(5), 3),
+        walk(&rope, &providers, &three, OUTER_LEVEL, top(5), 5),
         [0, 2]
     );
 

@@ -67,7 +67,7 @@ A buffer option you set, with `:set buffer` or from a hook in your `init.scm`, b
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `comment-prefer-line` | bool | `false` | `G G` comments a selection spanning several lines with a line comment on each line, even when the language also has block comments |
-| `context-enabled` | bool | `true` | Show the first line of each scope the top of the pane is inside (a function, a class, a Markdown section) over the pane's top rows, up to three |
+| `context-enabled` | bool | `true` | Show the first line of each scope the top of the pane is inside (a function, a class, a Markdown section) over the pane's top rows, up to three, and fewer than half the pane's rows |
 | `context-outer-level` | bool | `false` | With more scopes than rows, keep the outermost scope's line and the innermost ones; off keeps only the innermost |
 | `file-reload-prompt` | bool | `true` | Prompt to reload when the current buffer's file changes on disk. `false` only warns; reload manually with `:e!` |
 | `gutter-line-numbers` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |

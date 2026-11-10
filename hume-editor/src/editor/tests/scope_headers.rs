@@ -205,7 +205,7 @@ fn push_up_drops_the_fn_header_when_its_closing_brace_is_under_it() {
 fn short_pane_keeps_two_headers_by_the_outer_level_setting() {
     let mut ed = markdown_context_editor(&nested_markdown(3));
     seek_to_line(&mut ed, 25);
-    let rect = Rect::new(0, 0, 20, 4);
+    let rect = Rect::new(0, 0, 20, 6);
 
     let buf = ed.render_to_buf(rect);
     assert_eq!(top_rows(&ed, &buf, 2), ["## b", "### c"]);
@@ -608,14 +608,14 @@ fn a_header_row_on_the_cursors_line_does_not_mark_its_number() {
     assert_eq!(buf[(number, rect.y + 1)].style().fg, linenr);
 }
 
-/// The focused pane after a settled frame: where its cursor is drawn, as
-/// `(row, text of the cell there)`, and how many of its top rows are scope
-/// headers (leading rows whose text is a line above the top line).
-fn cursor_row_and_headers(ed: &mut Editor, source: &str) -> (u16, String, usize) {
-    let (cursor_x, row) = frame(ed, 80, 25)
+/// The focused pane after a settled `view`-sized frame: where its cursor is
+/// drawn, as `(row, text of the cell there)`, and how many of its top rows
+/// are scope headers (leading rows whose text is a line above the top line).
+fn cursor_row_and_headers(ed: &mut Editor, source: &str, view: Rect) -> (u16, String, usize) {
+    let (cursor_x, row) = frame(ed, view.width, view.height)
         .cursor_content_pos
         .expect("the cursor is on screen");
-    let buf = ed.render_to_buf(VIEW);
+    let buf = ed.render_to_buf(view);
     let pid = ed.view.focused_pane();
     let (rect, gutter) = drawn_pane(ed, &buf, pid);
     let shown = cell(&buf, rect.x + gutter + cursor_x, rect.y + row);
@@ -671,7 +671,7 @@ fn landed_parse_resettles_the_view() {
         "premise: the cursor is in the band"
     );
 
-    let (row, shown, headers) = cursor_row_and_headers(&mut ed, &source);
+    let (row, shown, headers) = cursor_row_and_headers(&mut ed, &source, VIEW);
     assert!(headers >= 1, "premise: the landed parse shows headers");
     assert!(
         usize::from(row) > headers,
@@ -690,7 +690,7 @@ fn cursor_moving_up_never_lands_on_a_header_row() {
     let mut deepest = 0;
     for step in 0..40 {
         press(&mut ed, "k");
-        let (row, shown, headers) = cursor_row_and_headers(&mut ed, &source);
+        let (row, shown, headers) = cursor_row_and_headers(&mut ed, &source, VIEW);
         deepest = deepest.max(headers);
         assert!(
             usize::from(row) > headers,
@@ -699,6 +699,31 @@ fn cursor_moving_up_never_lands_on_a_header_row() {
         assert_eq!(shown, cursor_cluster(&ed), "step {step}");
     }
     assert!(deepest >= 2, "premise: the walk crosses a two-header view");
+}
+
+/// A 3-row pane under the statusline: one row of text below the most
+/// headers it shows, which the margin's clamp to that height still clears.
+#[test]
+fn cursor_in_a_short_pane_stays_below_the_headers() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    seek_to_column(&mut ed, 50, STATEMENT_X);
+    let mut deepest = 0;
+    for step in 0..40 {
+        press(&mut ed, "k");
+        let (row, shown, headers) =
+            cursor_row_and_headers(&mut ed, &source, Rect::new(0, 0, 80, 4));
+        deepest = deepest.max(headers);
+        assert!(
+            usize::from(row) >= headers,
+            "step {step}: row {row} is under {headers} headers"
+        );
+        assert_eq!(shown, cursor_cluster(&ed), "step {step}");
+    }
+    assert!(
+        deepest >= 1,
+        "premise: the walk crosses a view with a header"
+    );
 }
 
 #[test]
@@ -732,8 +757,8 @@ fn context_enabled_off_keeps_the_margin() {
         for ed in [&mut with_grammar, &mut without] {
             press(ed, "k");
         }
-        let with_row = cursor_row_and_headers(&mut with_grammar, &source).0;
-        let without_row = cursor_row_and_headers(&mut without, &source).0;
+        let with_row = cursor_row_and_headers(&mut with_grammar, &source, VIEW).0;
+        let without_row = cursor_row_and_headers(&mut without, &source, VIEW).0;
         assert_eq!(with_row, without_row, "step {step}");
     }
 }

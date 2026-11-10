@@ -64,11 +64,12 @@ impl ScopeHeaderInputs<'static> {
 /// Built row by row: the line under the headers taken so far is the one at
 /// row `out.len()`, and its outermost scope not yet taken becomes the next
 /// header, until that line has none left. At most
-/// `min(MAX_SCOPE_HEADERS, height - 1)` rows, so a row is always left for
-/// text; past that cap each new header drops the outermost row, or with
-/// [`ContextSettings::outer_level`] the row after it, and the line under the
-/// headers stays at the cap's row. A header whose row would have no line
-/// under it, past the document's end, is not shown.
+/// `min(MAX_SCOPE_HEADERS, (height - 1) / 2)` rows, the most the top margin
+/// [`ViewGeometry::top_margin_at`](crate::pane::ViewGeometry::top_margin_at)
+/// keeps the cursor below; past that cap each new header drops the
+/// outermost row, or with [`ContextSettings::outer_level`] the row after it,
+/// and the line under the headers stays at the cap's row. A header whose
+/// row would have no line under it, past the document's end, is not shown.
 pub(crate) fn scope_headers(
     dlm: &mut DisplayLineMap<'_>,
     top: DisplayLinePos,
@@ -84,7 +85,7 @@ pub(crate) fn scope_headers(
     else {
         return;
     };
-    let cap = MAX_SCOPE_HEADERS.min(height.saturating_sub(1));
+    let cap = MAX_SCOPE_HEADERS.min(height.saturating_sub(1) / 2);
     if !settings.enabled || cap == 0 {
         return;
     }
