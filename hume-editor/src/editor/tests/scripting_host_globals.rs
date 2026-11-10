@@ -6,6 +6,18 @@
 
 use super::*;
 use hume_scripting::ScriptingHost;
+use hume_treesitter::registry::{DetectPaths, LanguageRegistry, detect_language};
+
+/// The name of the language `languages` detects for an empty file at
+/// `path`, a root-anchored literal.
+fn detect<'a>(languages: &'a LanguageRegistry, path: &str) -> Option<&'a str> {
+    let path = hume_platform::path::AbsolutePath::rooted(path);
+    let paths = DetectPaths {
+        as_opened: &path,
+        resolved: &path,
+    };
+    detect_language(Some(paths), &ropey::Rope::new(), languages).map(|id| languages.name_of(id))
+}
 
 /// `<repo>/runtime/plugins/core/steel-server/lsp-home/`.
 fn lsp_home_dir() -> std::path::PathBuf {
@@ -231,32 +243,23 @@ fn steel_server_plugin_registers_its_server_with_generated_globals_env() {
 /// dotted extensions.
 #[test]
 fn bundled_language_data_detects_by_path_and_dotted_extension() {
-    use hume_treesitter::registry::{DetectPaths, detect_language};
-
     let (_host, ed) = host_and_editor_after_runtime_layers();
     let languages = &ed.state.config.languages;
-    let detect = |path: &str| {
-        let path = hume_platform::path::AbsolutePath::rooted(path);
-        let paths = DetectPaths {
-            as_opened: &path,
-            resolved: &path,
-        };
-        detect_language(Some(paths), &ropey::Rope::new(), languages).map(|id| languages.name_of(id))
-    };
     assert_eq!(
-        detect("/repo/.github/workflows/ci.yaml"),
+        detect(languages, "/repo/.github/workflows/ci.yaml"),
         Some("github-action")
     );
-    assert_eq!(detect("/repo/dist/app.js.map"), Some("json"));
-    assert_eq!(detect("/repo/.vscode/settings.json"), Some("jsonc"));
+    assert_eq!(detect(languages, "/repo/dist/app.js.map"), Some("json"));
+    assert_eq!(
+        detect(languages, "/repo/.vscode/settings.json"),
+        Some("jsonc")
+    );
 }
 
 /// Every shebang in the bundled language data names an interpreter, and a
 /// version after the name does not stop detection.
 #[test]
 fn bundled_language_data_detects_versioned_interpreters() {
-    use hume_treesitter::registry::detect_language;
-
     let (_host, ed) = host_and_editor_after_runtime_layers();
     let languages = &ed.state.config.languages;
     let detect = |line: &str| {
@@ -295,7 +298,7 @@ fn steel_server_plugin_gives_scheme_its_root_and_server_list() {
     let languages = &ed.state.config.languages;
     let scheme = languages.id_of("scheme").expect("scheme is a language");
     assert_eq!(languages.roots_of(scheme), ["cog.scm"]);
-    assert_eq!(languages.by_file_name("f.scm", None), Some(scheme));
+    assert_eq!(detect(languages, "/repo/f.scm"), Some("scheme"));
     assert_eq!(
         crate::editor::lsp::introspect::language_servers(&ed.state.lsp, "scheme")
             .into_iter()

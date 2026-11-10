@@ -53,9 +53,9 @@ order and stops at the first match:
    goes by the same ranking, then to the language defined last.
 
 When two languages' glob patterns match the same file, the same ranking
-decides, then the language defined last. Which definition of one language counts is decided by who made
-it, not when: the user's beats a plugin's, and a plugin's beats the built-in
-one.
+decides, then the language defined last. Which definition of one language
+counts is decided by who made it, not when: the user's beats a plugin's, and
+a plugin's beats the built-in one.
 
 If no tier matches, the buffer has no language. That is a valid state: plain
 text files, scratch buffers and binary files have none.

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::{DetectPaths, LanguageId, LanguageRegistry, detect_language};
+use super::{DetectPaths, LanguageId, LanguageRegistry, RegisterError, detect_language};
 use hume_core::{
     BlockCommentTokens, ConfigOrigin, FileExtension, GrammarSource, LanguageField, LanguageFields,
     LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFiles, WriteOutcome,
@@ -47,6 +47,13 @@ fn detect_linked(
 /// literal that is also its resolved path, with `first_line` as its first line.
 fn detect_at(path: &str, first_line: Option<&str>, reg: &LanguageRegistry) -> Option<LanguageId> {
     detect_linked(path, path, first_line, reg)
+}
+
+/// The id a registration gave, which must have applied.
+fn applied(written: Result<(LanguageId, WriteOutcome), RegisterError>) -> LanguageId {
+    let (id, outcome) = written.expect("the test detection data is valid");
+    assert_eq!(outcome, WriteOutcome::Applied);
+    id
 }
 
 /// The rust fixture grammar with `queries`.
@@ -442,10 +449,7 @@ fn reregistering_an_identity_keeps_its_configured_roots() {
         set_roots(&mut reg, id, &["go.mod"], ConfigOrigin::User),
         WriteOutcome::Applied
     );
-    let (_, outcome) = reg
-        .register_identity_by("go", &["go"], &[], &[], ConfigOrigin::User)
-        .expect("the test detection data is valid");
-    assert_eq!(outcome, WriteOutcome::Applied);
+    applied(reg.register_identity_by("go", &["go"], &[], &[], ConfigOrigin::User));
     assert_eq!(reg.roots_of(id), ["go.mod"]);
 }
 
@@ -847,16 +851,8 @@ fn register_identity_with_globs_lookup() {
     let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
         .unwrap();
-    let matches = reg.compiled_globs().matches(Path::new("/x/Makefile"));
-    assert!(!matches.is_empty(), "Makefile should match registered glob");
-    let name = reg.glob_lang_id(matches[0]).map(|id| reg.name_of(id));
-    assert_eq!(name, Some("makefile"));
-    // A path the globs don't cover yields no match.
-    assert!(
-        reg.compiled_globs()
-            .matches(Path::new("/x/Cargo.toml"))
-            .is_empty()
-    );
+    assert_eq!(reg.by_glob(Path::new("/x/Makefile")), reg.id_of("makefile"));
+    assert_eq!(reg.by_glob(Path::new("/x/Cargo.toml")), None);
 }
 
 #[test]
@@ -866,21 +862,13 @@ fn remove_clears_glob_and_shebang_entries() {
         .unwrap();
     assert!(reg.by_file_name("f.py", None).is_some());
     assert!(reg.by_interpreter("python").is_some());
-    assert!(
-        !reg.compiled_globs()
-            .matches(Path::new("/x/foo.py"))
-            .is_empty()
-    );
+    assert!(reg.by_glob(Path::new("/x/foo.py")).is_some());
 
     reg.remove("python");
 
     assert!(reg.by_file_name("f.py", None).is_none());
     assert!(reg.by_interpreter("python").is_none());
-    assert!(
-        reg.compiled_globs()
-            .matches(Path::new("/x/foo.py"))
-            .is_empty()
-    );
+    assert!(reg.by_glob(Path::new("/x/foo.py")).is_none());
 }
 
 /// Dropping a shared extension from one language's definition leaves it to
@@ -892,10 +880,10 @@ fn a_language_dropping_a_shared_extension_leaves_it_to_the_others() {
         reg.register_identity("c", &["c", "h"], &[], &[]).unwrap();
         reg.register_identity("cpp", &["cpp", "h"], &[], &[])
             .unwrap();
-        let (_, outcome) = reg
-            .register_identity_by(dropping, &[dropping], &[], &[], ConfigOrigin::User)
-            .expect("the test detection data is valid");
-        assert_eq!(outcome, WriteOutcome::Applied);
+        assert_eq!(
+            define(&mut reg, dropping, dropping, ConfigOrigin::User),
+            WriteOutcome::Applied
+        );
 
         assert_eq!(
             reg.by_file_name("f.h", None),
@@ -917,10 +905,7 @@ fn a_language_dropping_a_shared_interpreter_leaves_it_to_the_others() {
         let mut reg = LanguageRegistry::for_testing();
         reg.register_identity("tcl", &[], &[], &["tclsh"]).unwrap();
         reg.register_identity("wish", &[], &[], &["tclsh"]).unwrap();
-        let (_, outcome) = reg
-            .register_identity_by(dropping, &[], &[], &[], ConfigOrigin::User)
-            .expect("the test detection data is valid");
-        assert_eq!(outcome, WriteOutcome::Applied);
+        applied(reg.register_identity_by(dropping, &[], &[], &[], ConfigOrigin::User));
 
         assert_eq!(
             reg.by_interpreter("tclsh"),
@@ -942,10 +927,7 @@ fn a_later_lower_definition_does_not_take_an_interpreter() {
     for (higher, lower) in [(user, plugin), (user, bundled), (plugin, bundled)] {
         let mut reg = LanguageRegistry::for_testing();
         for (name, by) in [("first", higher), ("later", lower)] {
-            let (_, outcome) = reg
-                .register_identity_by(name, &[], &[], &["swipl"], by)
-                .expect("the test detection data is valid");
-            assert_eq!(outcome, WriteOutcome::Applied);
+            applied(reg.register_identity_by(name, &[], &[], &["swipl"], by));
         }
 
         assert_eq!(
@@ -981,10 +963,7 @@ fn attached_grammar_survives_identity_re_registration() {
 
     // Re-register identity, as `define-language!` would from init.scm to add
     // an extra extension.
-    let (_, outcome) = reg
-        .register_identity_by("rust", &["rs", "mylang"], &[], &[], ConfigOrigin::User)
-        .expect("the test detection data is valid");
-    assert_eq!(outcome, WriteOutcome::Applied);
+    applied(reg.register_identity_by("rust", &["rs", "mylang"], &[], &[], ConfigOrigin::User));
 
     assert!(
         reg.has_grammar("rust"),
@@ -1044,10 +1023,7 @@ fn identity_re_registration_keeps_the_configured_lsp_language_id() {
         WriteOutcome::Applied
     );
 
-    let (_, outcome) = reg
-        .register_identity_by("tsx", &["tsx", "mytsx"], &[], &[], ConfigOrigin::User)
-        .expect("the test detection data is valid");
-    assert_eq!(outcome, WriteOutcome::Applied);
+    applied(reg.register_identity_by("tsx", &["tsx", "mytsx"], &[], &[], ConfigOrigin::User));
 
     assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
 }
@@ -1188,10 +1164,7 @@ fn detect_language_glob_from_a_higher_origin_wins() {
         ("mine", "Dockerfile.dev", ConfigOrigin::User),
         ("docker", "Dockerfile*", ConfigOrigin::Plugin),
     ] {
-        let (_, outcome) = reg
-            .register_identity_by(name, &[], &[glob], &[], by)
-            .expect("the test detection data is valid");
-        assert_eq!(outcome, WriteOutcome::Applied);
+        applied(reg.register_identity_by(name, &[], &[glob], &[], by));
     }
 
     assert_eq!(
@@ -1243,10 +1216,7 @@ fn perl_and_prolog() -> LanguageRegistry {
 fn the_shebang_decides_an_extension_several_languages_share() {
     let mut users = LanguageRegistry::for_testing();
     for (name, interpreter) in [("perl", "perl"), ("prolog", "swipl")] {
-        let (_, outcome) = users
-            .register_identity_by(name, &["pl"], &[], &[interpreter], ConfigOrigin::User)
-            .unwrap();
-        assert_eq!(outcome, WriteOutcome::Applied);
+        applied(users.register_identity_by(name, &["pl"], &[], &[interpreter], ConfigOrigin::User));
     }
     for reg in [perl_and_prolog(), users] {
         let swipl = detect_at("/x/t.pl", Some("#!/usr/bin/env swipl"), &reg);
@@ -1270,25 +1240,13 @@ fn a_shared_extension_without_a_deciding_shebang_is_one_of_its_languages() {
 }
 
 #[test]
-fn a_users_language_gets_a_shared_extension_whatever_the_shebang() {
-    let mut reg = perl_and_prolog();
-    assert_eq!(
-        define(&mut reg, "mine", "pl", ConfigOrigin::User),
-        WriteOutcome::Applied
-    );
-    let id = detect_at("/x/t.pl", Some("#!/usr/bin/env swipl"), &reg);
-    assert_eq!(id, reg.id_of("mine"));
-}
-
-#[test]
-fn a_plugins_language_gets_a_shared_extension_whatever_the_shebang() {
-    let mut reg = perl_and_prolog();
-    assert_eq!(
-        define(&mut reg, "mine", "pl", ConfigOrigin::Plugin),
-        WriteOutcome::Applied
-    );
-    let id = detect_at("/x/t.pl", Some("#!/usr/bin/env swipl"), &reg);
-    assert_eq!(id, reg.id_of("mine"));
+fn a_higher_origins_language_gets_a_shared_extension_whatever_the_shebang() {
+    for by in [ConfigOrigin::User, ConfigOrigin::Plugin] {
+        let mut reg = perl_and_prolog();
+        assert_eq!(define(&mut reg, "mine", "pl", by), WriteOutcome::Applied);
+        let id = detect_at("/x/t.pl", Some("#!/usr/bin/env swipl"), &reg);
+        assert_eq!(id, reg.id_of("mine"), "{by:?}");
+    }
 }
 
 /// The shebang decides a shared extension through any language its
@@ -1296,10 +1254,7 @@ fn a_plugins_language_gets_a_shared_extension_whatever_the_shebang() {
 #[test]
 fn the_shebang_decides_an_extension_through_any_language_naming_its_interpreter() {
     let mut reg = perl_and_prolog();
-    let (_, outcome) = reg
-        .register_identity_by("perl-tests", &["t"], &[], &["perl"], ConfigOrigin::User)
-        .expect("the test detection data is valid");
-    assert_eq!(outcome, WriteOutcome::Applied);
+    applied(reg.register_identity_by("perl-tests", &["t"], &[], &["perl"], ConfigOrigin::User));
 
     let id = detect_at("/x/x.pl", Some("#!/usr/bin/perl"), &reg);
     assert_eq!(id, reg.id_of("perl"));

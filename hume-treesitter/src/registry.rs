@@ -1,6 +1,7 @@
 use rustc_hash::FxHashMap;
 use std::borrow::Borrow;
 use std::hash::Hash;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
@@ -311,8 +312,9 @@ impl LanguageEntry {
     }
 }
 
-/// The languages whose detection data lists one extension or interpreter,
-/// per origin of that data, each layer in the order its definitions applied.
+/// Languages per origin of their detection data, each layer in the order
+/// their definitions applied: those listing one extension or interpreter,
+/// or every language with detection data.
 #[derive(Default)]
 struct Claimants(ByOrigin<Vec<LanguageId>>);
 
@@ -328,7 +330,7 @@ impl Claimants {
     }
 
     fn is_empty(&self) -> bool {
-        self.0.iter().all(|(_, ids)| ids.is_empty())
+        self.deciding().is_empty()
     }
 
     /// The languages of the highest origin that has any, which alone decide.
@@ -374,13 +376,13 @@ pub struct LanguageRegistry {
     /// extension, and with `shebang_to_id` an interpreter.
     by_ext: FxHashMap<String, Claimants>,
     /// Compiled glob matcher, rebuilt whenever languages are added or removed.
-    /// Index-aligned with `glob_lang_ids`.
+    /// Index-aligned with `glob_lang_ids`, in `registered`'s ranked order.
     compiled_globs: GlobSet,
     /// Language id for each glob pattern at the corresponding GlobSet index.
     glob_lang_ids: Vec<LanguageId>,
     shebang_to_id: FxHashMap<ShebangInterpreter, Claimants>,
-    /// Registration order, which ranks the globs of one origin.
-    lang_order: Vec<LanguageId>,
+    /// Every language with detection data, which ranks the globs.
+    registered: Claimants,
     /// Rebuilt whenever a grammar changes.
     grammar_snapshot: Arc<GrammarSnapshot>,
     /// Languages given a grammar whose bundled data file has not been read.
@@ -453,7 +455,7 @@ impl LanguageRegistry {
             compiled_globs: GlobSet::empty(),
             glob_lang_ids: Vec::new(),
             shebang_to_id: FxHashMap::default(),
-            lang_order: Vec::new(),
+            registered: Claimants::default(),
             grammar_snapshot: Arc::new(GrammarSnapshot::default()),
             bundled_pending: Vec::new(),
             failed_loads: Vec::new(),
@@ -684,8 +686,8 @@ impl LanguageRegistry {
             self.deindex(id, &old);
         }
         self.index(id);
-        self.lang_order.retain(|&i| i != id);
-        self.lang_order.push(id);
+        self.registered.remove(id);
+        self.registered.push(id, by);
         (id, written.outcome)
     }
 
@@ -744,18 +746,19 @@ impl LanguageRegistry {
     /// origin decide. Among them the first that `shebang`, the program a
     /// file's `#!` line runs, names in [`Self::by_interpreter`]'s order wins;
     /// when it names none of them, which one is unspecified.
-    pub fn by_file_name(&self, file_name: &str, shebang: Option<&str>) -> Option<LanguageId> {
+    fn by_file_name(&self, file_name: &str, shebang: Option<&str>) -> Option<LanguageId> {
         file_name
             .char_indices()
             .filter(|&(i, c)| c == '.' && i > 0)
             .find_map(|(i, _)| {
-                let deciding = self.by_ext.get(&file_name[i + 1..])?.deciding();
+                let claimants = self.by_ext.get(&file_name[i + 1..])?;
+                let deciding = claimants.deciding();
                 shebang
                     .and_then(|program| {
                         self.interpreter_claimants(program)
                             .find(|id| deciding.contains(id))
                     })
-                    .or_else(|| deciding.last().copied())
+                    .or_else(|| claimants.ranked().next())
             })
     }
 
@@ -775,16 +778,10 @@ impl LanguageRegistry {
             .map(|entry| &*entry.name)
     }
 
-    /// The compiled glob matcher for path-based detection. Index-aligned with
-    /// `glob_lang_id`: `glob_lang_id(i)` is the language for match index `i`.
-    /// Of several matches the lowest index wins: the languages of the highest
-    /// origin come first, the last defined first among them.
-    pub fn compiled_globs(&self) -> &GlobSet {
-        &self.compiled_globs
-    }
-
-    /// Language id for glob match index `i` (from `GlobSet::matches`).
-    pub fn glob_lang_id(&self, i: usize) -> Option<LanguageId> {
+    /// The language one of whose globs matches `path`. Of several, the
+    /// highest origin's wins, and the last defined among its languages.
+    fn by_glob(&self, path: &Path) -> Option<LanguageId> {
+        let &i = self.compiled_globs.matches(path).first()?;
         self.glob_lang_ids.get(i).copied()
     }
 
@@ -795,7 +792,7 @@ impl LanguageRegistry {
     /// most specific name first, as [`Self::by_file_name`] tries the longest
     /// extension first. Of the languages sharing that interpreter, the one
     /// the highest origin defined last wins.
-    pub fn by_interpreter(&self, program: &str) -> Option<LanguageId> {
+    fn by_interpreter(&self, program: &str) -> Option<LanguageId> {
         self.interpreter_claimants(program).next()
     }
 
@@ -832,7 +829,7 @@ impl LanguageRegistry {
             self.deindex(id, &identity);
         }
         self.entry_mut(id).grammar = Ranked::default();
-        self.lang_order.retain(|&i| i != id);
+        self.registered.remove(id);
         // Only reachable if the set already failed to compile before this remove:
         // `rebuild_glob_set` is fail-soft in production (see `apply_pending_language_regs`),
         // so registry state can sit above the NFA limit, and dropping one language need not
@@ -997,15 +994,9 @@ impl LanguageRegistry {
     }
 
     fn build_globs(&self) -> Result<(GlobSet, Vec<LanguageId>), globset::Error> {
-        let mut by_origin = Claimants::default();
-        for &lang_id in &self.lang_order {
-            if let Some(by) = self.entry(lang_id).identity.by() {
-                by_origin.push(lang_id, by);
-            }
-        }
         let mut builder = GlobSetBuilder::new();
         let mut ids = Vec::new();
-        for lang_id in by_origin.ranked() {
+        for lang_id in self.registered.ranked() {
             if let Some(identity) = self.entry(lang_id).identity.get() {
                 for glob in &identity.globs {
                     builder.add(glob.glob().clone());
@@ -1031,12 +1022,12 @@ pub struct DetectPaths<'a> {
 
 /// Detect the language for a buffer given its paths and its text.
 ///
-/// Priority: the path as opened, then the resolved path, each by glob
-/// (ranked as [`LanguageRegistry::compiled_globs`] says) and then by file
-/// extension; then the shebang on the text's first line. The shebang also
-/// decides between languages that share an extension
-/// ([`LanguageRegistry::by_file_name`]). Returns the language id, or `None`
-/// if unrecognised.
+/// Priority: the path as opened, then the resolved path, each by glob and
+/// then by file extension; then the shebang on the text's first line. Of
+/// several languages listing a glob, extension or interpreter, those from
+/// the highest origin decide. The shebang also decides between languages
+/// that share an extension. Returns the language id, or `None` if
+/// unrecognised.
 pub fn detect_language(
     paths: Option<DetectPaths>,
     text: &Rope,
@@ -1062,23 +1053,21 @@ fn detect_path(
     shebang: Option<&str>,
     registry: &LanguageRegistry,
 ) -> Option<LanguageId> {
-    registry
-        .compiled_globs()
-        .matches(path)
-        .first()
-        .and_then(|&i| registry.glob_lang_id(i))
-        .or_else(|| {
-            let name = path.file_name()?.to_str()?;
-            registry.by_file_name(name, shebang)
-        })
+    registry.by_glob(path).or_else(|| {
+        let name = path.file_name()?.to_str()?;
+        registry.by_file_name(name, shebang)
+    })
 }
 
 /// The longest `#!` line Linux reads, in bytes.
 const SHEBANG_LINE_MAX_BYTES: usize = 256;
 
-/// `text`'s first line, up to its `\n` or the last whole char within
-/// [`SHEBANG_LINE_MAX_BYTES`]. `None` when it is empty.
+/// `text`'s first line when it is a `#!` line, up to its `\n` or the last
+/// whole char within [`SHEBANG_LINE_MAX_BYTES`].
 fn shebang_line(text: &Rope) -> Option<String> {
+    if text.get_slice(..2)? != "#!" {
+        return None;
+    }
     let mut line = String::new();
     for ch in text.chars() {
         if ch == '\n' || line.len() + ch.len_utf8() > SHEBANG_LINE_MAX_BYTES {
@@ -1086,7 +1075,7 @@ fn shebang_line(text: &Rope) -> Option<String> {
         }
         line.push(ch);
     }
-    (!line.is_empty()).then_some(line)
+    Some(line)
 }
 
 /// The env(1) options, GNU and BSD, whose operand is the next word.

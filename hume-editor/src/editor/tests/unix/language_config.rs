@@ -7,7 +7,7 @@ use super::*;
 use super::super::scripting_grammar::{grammar_warnings, prelude_source};
 use super::scripting_grammar::grammar_fixture;
 use hume_core::{BlockCommentTokens, CommentTokens, LineCommentTokens};
-use hume_treesitter::registry::LanguageId;
+use hume_treesitter::registry::{DetectPaths, LanguageId, detect_language};
 
 /// A session over a [`ReloadFixture`] whose runtime holds the real
 /// `prelude.scm`, a caller-supplied `languages.scm` and one bundled data file
@@ -455,7 +455,12 @@ fn reload_config_leaves_a_read_only_view_without_a_language() {
 // ── Detection and server registrations, ranked by origin ─────────────────
 
 fn detected(ed: &Editor, file_name: &str) -> Option<LanguageId> {
-    ed.state.config.languages.by_file_name(file_name, None)
+    let path = hume_platform::path::AbsolutePath::rooted(format!("/x/{file_name}"));
+    let paths = DetectPaths {
+        as_opened: &path,
+        resolved: &path,
+    };
+    detect_language(Some(paths), &ropey::Rope::new(), &ed.state.config.languages)
 }
 
 #[test]
