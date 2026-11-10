@@ -1,6 +1,14 @@
 # Installation
 
-HUME ships as one archive: the editor plus the themes, plugins and language definitions it reads at runtime. Download it, extract it, and run it. You add syntax highlighting and language servers later, on demand, only for the languages you use.
+HUME ships as one archive: the editor plus the themes, plugins and language definitions it reads at runtime. Install it with Homebrew, or download it, extract it, and run it. You add syntax highlighting and language servers later, on demand, only for the languages you use.
+
+## Homebrew (macOS, Linux)
+
+```sh
+brew install cvlmtg/tap/hume
+```
+
+`brew upgrade hume` updates it to the newest release.
 
 ## Download
 
@@ -10,6 +18,7 @@ Grab the latest release from the [releases page](https://github.com/cvlmtg/HUME/
 |---|---|
 | macOS (Apple Silicon) | `hume-*-aarch64-apple-darwin.tar.gz` |
 | Linux (x86\_64, glibc 2.28+) | `hume-*-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux (arm64, glibc 2.28+) | `hume-*-aarch64-unknown-linux-gnu.tar.gz` |
 | Windows (x86\_64) | `hume-*-x86_64-pc-windows-msvc.zip` |
 
 ### macOS / Linux

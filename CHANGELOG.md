@@ -6,6 +6,8 @@
 - `core:helix-surround` is removed. For Helix's `m s`/`m d`/`m r`, load the [helix.hume](https://github.com/cvlmtg/helix.hume) plugin instead: `(load-plugin! "cvlmtg/helix.hume")`, which binds the rest of Helix's keys too.
 
 ### Installation
+- Install with Homebrew on macOS and Linux: `brew install cvlmtg/tap/hume`.
+- Releases include a Linux arm64 archive.
 - `hume` started through a symlink, such as `~/.local/bin/hume` pointing into an extracted archive, finds its themes and plugins.
 
 ### Files & buffers

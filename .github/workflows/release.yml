@@ -52,3 +52,32 @@ jobs:
             --title "${GITHUB_REF_NAME}" \
             --notes-file release-notes.md \
             --verify-tag
+
+  homebrew:
+    needs: publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: actions/checkout@v6
+        with:
+          repository: cvlmtg/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update the formula
+        run: |
+          mkdir -p tap/Formula
+          bash scripts/homebrew-formula.sh "${GITHUB_REF_NAME}" dist > tap/Formula/hume.rb
+          cd tap
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/hume.rb
+          git commit -m "hume ${GITHUB_REF_NAME#v}"
+          git push

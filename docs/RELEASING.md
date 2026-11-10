@@ -3,7 +3,13 @@
 Maintainer checklist. Contributors don't need this — see `CONTRIBUTING.md`.
 
 1. `scripts/release.sh [<version> [<next-version>]]` (e.g. `0.11.0` or `v0.11.0`) on `main` or a maintenance branch (`X.Y.x`), clean tree. Prompts for either version left out (defaulting to the version staged in `Cargo.toml`, and to the next minor on `main` / next patch on a maintenance branch). Runs fmt + `test-all.sh`, promotes the changelog's `## Unreleased` section, bumps `hume-editor`'s version, syncs `Cargo.lock`, commits, tags — then bumps `Cargo.toml` again to the next dev version in a second commit, so `--version` reflects the version in progress rather than the one just tagged.
-2. `git push origin <branch> --follow-tags` — carries both commits and the tag, and triggers `release.yml` (three platform archives, then the GitHub Release) and, on `main`, the nightly build.
+2. `git push origin <branch> --follow-tags` — carries both commits and the tag, and triggers `release.yml` (the platform archives, the GitHub Release, then the Homebrew formula) and, on `main`, the nightly build.
+
+## Package managers
+
+`release.yml`'s `homebrew` job writes `Formula/hume.rb` with `scripts/homebrew-formula.sh` and pushes it to [`cvlmtg/homebrew-tap`](https://github.com/cvlmtg/homebrew-tap). It reads the `HOMEBREW_TAP_TOKEN` repo secret: a fine-grained token for that one repo, with Contents read and write. When it fails after the release is published, re-run only that job; nothing else depends on it.
+
+To check a formula before a release, generate it from downloaded archives, `brew tap-new` a local tap, copy it into the tap's `Formula/`, then `brew trust --tap`, `brew style` and `brew audit --strict` it there.
 
 ## Patching an older release
 
