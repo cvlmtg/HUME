@@ -16,11 +16,12 @@ use hume_platform::terminal::SharedTerm;
 use hume_grid::{Grid, Rect};
 
 use hume_core::PaneId;
-use hume_engine::display_lines::DisplayLineMap;
+use hume_engine::display_lines::{DisplayLineMap, Revealed};
 use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{
     EngineView, PanePool, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
 };
+use hume_engine::scope_headers::PaneRows;
 use hume_engine::types::EditorMode;
 
 use super::buffer::store::BufferStore;
@@ -307,7 +308,6 @@ impl Editor {
             indent_guides,
             cursor_is_block,
             gutter: self.state.gutter_inputs(&self.view, pid),
-            context: self.state.context_settings(doc),
         }
     }
 
@@ -564,16 +564,21 @@ impl Editor {
         self.last_visible_range
             .retain(|pid, _| active.contains(pid));
 
+        let mut pane_rows = Vec::with_capacity(sizes.len());
         for &(pid, size) in &sizes {
             let buf_id = self.view.panes[pid].buffer_id();
             let layout_key = self.state.layout_key(&self.view, pid, size);
-            let cursor_screen = reveal_due_cursor(
+            let settled = reveal_due_cursor(
                 &self.state.buffers,
                 &mut self.state.panes.entries,
                 &mut self.view.panes,
                 pid,
                 layout_key,
             );
+            let cursor_screen = settled.and_then(|settled| {
+                pane_rows.push((pid, settled.rows));
+                settled.cursor_screen
+            });
             if self.state.messages_view_awaits_seen(buf_id)
                 && shows_document_end(
                     self.state.buffers.get(buf_id),
@@ -597,6 +602,9 @@ impl Editor {
                 self.debounce_viewport_change(pid);
             }
         }
+        // Render draws the rows this pass settled, so it walks no scope
+        // header again.
+        ctx.set_pane_rows(pane_rows);
 
         // Highlights and line tints only affect painting, so they sync after
         // the scroll from a fresh snapshot of the final viewport.
@@ -912,8 +920,8 @@ impl EditorState {
 }
 
 /// Scroll pane `pid` onto its primary cursor when a reveal is due, laid out
-/// as `layout_key`, and return where the cursor sits on screen (see
-/// [`ScrollOutcome::cursor_screen`]).
+/// as `layout_key`, and return the view it leaves, `None` for a pane with no
+/// rows.
 ///
 /// A reveal is due when the pane's own action raised
 /// `PaneBufferState::reveal_pending`, or when `layout_key` differs from the
@@ -931,7 +939,7 @@ pub(in crate::editor) fn reveal_due_cursor(
     panes: &mut PanePool,
     pid: PaneId,
     layout_key: LayoutKey,
-) -> Option<(u16, u16)> {
+) -> Option<SettledPane> {
     let buf_id = panes[pid].buffer_id();
     // Per (pane, buffer) state: a pane that just switched buffers reads a
     // fresh entry whose `last_layout_key` is `None`.
@@ -947,7 +955,7 @@ pub(in crate::editor) fn reveal_due_cursor(
         reveal,
     );
     entries.shown_mut(panes, pid).parked = outcome.parked;
-    outcome.cursor_screen
+    outcome.settled
 }
 
 /// Pane `pid`'s display lines and viewport between frames, laid out as
@@ -1020,19 +1028,25 @@ fn view_settled(
     !pbs.reveal_pending && pbs.last_layout_key == Some(layout_key)
 }
 
-/// [`scroll_into_view`]'s result: where the cursor ended up on screen, and
-/// whether this pane came out of the pass parked (its cursor outside the
-/// scroll-margin band), which [`reveal_due_cursor`] stores back onto
-/// `PaneBufferState::parked`.
+/// A pane's view as the scroll pass leaves it: its rows, which render
+/// draws, and where its cursor is on screen.
+pub(in crate::editor) struct SettledPane {
+    pub(in crate::editor) rows: PaneRows,
+    /// Pane-relative, before the gutter. `None` when the cursor has scrolled
+    /// out of view or under a header row: a legitimate state, not a bug. The
+    /// cursor can only occupy content display lines, so a pure view scroll
+    /// into a virtual-line block can carry the viewport further than the
+    /// cursor can follow. The terminal caret is simply hidden until an
+    /// ordinary cursor motion resyncs the view.
+    pub(in crate::editor) cursor_screen: Option<(u16, u16)>,
+}
+
+/// [`scroll_into_view`]'s result: the view it leaves, and whether this pane
+/// came out of the pass parked (its cursor outside the scroll-margin band),
+/// which [`reveal_due_cursor`] stores back onto `PaneBufferState::parked`.
 struct ScrollOutcome {
-    /// Pane-relative, before the gutter. `None` for a viewport with no
-    /// display lines to place it in, or when the cursor has scrolled out of
-    /// view: a legitimate state, not a bug. The cursor can only occupy
-    /// content display lines, so a pure view scroll into a virtual-line
-    /// block can carry the viewport further than the cursor can follow. The
-    /// terminal caret is simply hidden until an ordinary cursor motion
-    /// resyncs the view.
-    cursor_screen: Option<(u16, u16)>,
+    /// `None` for a pane with no rows.
+    settled: Option<SettledPane>,
     /// See [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked)'s own doc.
     parked: bool,
 }
@@ -1070,8 +1084,9 @@ fn shows_document_end(doc: &Buffer, pane: &mut Pane, layout_key: LayoutKey) -> b
 /// where `reveal` would have left it:
 /// `Some` places the cursor there directly (an unparked pane, same walk
 /// `reveal` itself would need); `None` means the cursor is outside the band,
-/// so this pass falls back to a plain forward walk from `top` (resolved via
-/// `Viewport::top_at`) and reports the pane parked.
+/// so this pass reads the rows of the view as it stands, places the cursor
+/// through them, hidden under a header row as off screen, and reports the
+/// pane parked.
 #[allow(clippy::disallowed_methods)] // the reveal itself, which settles the view
 fn scroll_into_view(
     doc: &Buffer,
@@ -1093,7 +1108,7 @@ fn scroll_into_view(
     // returns `None` for exactly this case.
     let Some(geo) = layout_key.geometry(doc.syntax_source()) else {
         return ScrollOutcome {
-            cursor_screen: None,
+            settled: None,
             parked: false,
         };
     };
@@ -1106,37 +1121,32 @@ fn scroll_into_view(
     // `reveal` the vertical arm below reads would leave it stale for
     // exactly that case.
     viewport.reveal_horizontal(&mut dlm, cursor_display_col);
-    if reveal {
-        let screen_row = viewport.reveal(&mut dlm, geo, cursor_pos);
-        return ScrollOutcome {
-            cursor_screen: Some(super::cursor::place(
-                viewport,
-                cursor_display_col,
-                screen_row,
-            )),
-            parked: false,
-        };
-    }
-    if let Some(screen_row) = viewport.settled_row(&mut dlm, geo, cursor_pos) {
+    let settled = if reveal {
+        Some(viewport.reveal(&mut dlm, geo, cursor_pos))
+    } else {
+        viewport.settled_row(&mut dlm, geo, cursor_pos)
+    };
+    if let Some(Revealed { rows, row }) = settled {
         ScrollOutcome {
-            cursor_screen: Some(super::cursor::place(
-                viewport,
-                cursor_display_col,
-                screen_row,
-            )),
+            settled: Some(SettledPane {
+                rows,
+                cursor_screen: Some(super::cursor::place(viewport, cursor_display_col, row)),
+            }),
             parked: false,
         }
     } else {
         // `reveal_horizontal` just guaranteed `cursor_display_col >=
-        // horizontal_offset`, so this is `cursor::content_pos` minus the two
-        // checks it exists to make for a caller that hasn't already done
-        // them. Only its forward walk is left to redo.
-        let top = viewport.top_at(&mut dlm);
-        let cursor_screen = dlm
-            .distance(top, cursor_pos, geo.height() - 1)
+        // horizontal_offset`, so this is `cursor::content_pos` minus the
+        // check it exists to make for a caller that hasn't already made it.
+        let rows = geo.rows(&mut dlm, viewport);
+        let cursor_screen = rows
+            .row_of(&mut dlm, cursor_pos)
             .map(|screen_row| super::cursor::place(viewport, cursor_display_col, screen_row));
         ScrollOutcome {
-            cursor_screen,
+            settled: Some(SettledPane {
+                rows,
+                cursor_screen,
+            }),
             parked: true,
         }
     }

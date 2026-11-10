@@ -8,6 +8,7 @@ use hume_engine::display_lines::line_store::{FormatKey, PaneLineStore};
 use hume_engine::pane::{Viewport, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::{ContentWidth, PaneSize};
 use hume_engine::providers::ProviderSet;
+use hume_engine::scope_headers::{ContextSettings, PaneRow, ScopeHeaderInputs};
 use hume_engine::test_doubles::VirtualLineBlock;
 use ropey::Rope;
 
@@ -44,6 +45,40 @@ fn map<'a>(
         },
         store,
     )
+}
+
+/// The geometry of a pane of `size` whose buffer has no grammar, so it
+/// shows no header row.
+fn no_headers(size: PaneSize) -> ViewGeometry<'static> {
+    size.geometry(
+        0,
+        ScopeHeaderInputs {
+            source: None,
+            settings: ContextSettings {
+                enabled: false,
+                outer_level: false,
+            },
+        },
+    )
+    .expect("a nonzero-height pane has a geometry")
+}
+
+/// The buffer cluster under a click at pane-relative `(content_x,
+/// content_y)` of a pane with no header row, resolved as the mouse resolves
+/// one: the row through the pane's rows, the column through
+/// `cell_to_cluster`.
+fn screen_to_cluster(
+    content_x: u16,
+    content_y: u16,
+    gutter_w: u16,
+    viewport: &mut Viewport,
+    dlm: &mut DisplayLineMap<'_>,
+) -> Option<hume_rope::cluster::ClusterStart> {
+    let rows = no_headers(PaneSize::for_test(80, 100)).rows(dlm, viewport);
+    let PaneRow::Body(pos) = rows.row_at(dlm, content_y) else {
+        panic!("a pane with no header row has none");
+    };
+    cell_to_cluster(content_x, gutter_w, viewport.horizontal_offset(), dlm, pos)
 }
 
 // ── screen_to_cluster (no-wrap) ──────────────────────────────────────
@@ -278,7 +313,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let bare = no_providers();
     let mut s = PaneLineStore::new();
     let with_none = content_pos(
-        size,
+        no_headers(size),
         &mut v,
         &mut map(&rope, wrap, &bare, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -292,7 +327,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let providers = providers_with_before_line(1);
     let mut s = PaneLineStore::new();
     let with_virtual = content_pos(
-        size,
+        no_headers(size),
         &mut v,
         &mut map(&rope, wrap, &providers, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -393,7 +428,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     let bare = no_providers();
     let mut s = PaneLineStore::new();
     let with_none = content_pos(
-        size,
+        no_headers(size),
         &mut v,
         &mut map(&rope, wrap, &bare, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -407,7 +442,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     let providers = providers_with_before_line(1);
     let mut s = PaneLineStore::new();
     let with_virtual = content_pos(
-        size,
+        no_headers(size),
         &mut v,
         &mut map(&rope, wrap, &providers, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -504,7 +539,7 @@ fn content_pos_accounts_for_before_line_0() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut s = PaneLineStore::new();
         let pos = content_pos(
-            size,
+            no_headers(size),
             &mut v,
             &mut map(&rope, wrap, &providers, 80, &mut s),
             cluster_at(&rope, cursor_char.index()),
@@ -537,7 +572,7 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
         let (mut v, size) = vp(0, 80, 10);
         let mut s = PaneLineStore::new();
         let pos = content_pos(
-            size,
+            no_headers(size),
             &mut v,
             &mut map(&rope, wrap, &providers, 80, &mut s),
             cluster_at(&rope, cursor_char.index()),
@@ -576,7 +611,7 @@ fn content_pos_clamps_a_top_slot_past_the_lines_current_block() {
     let mut s = PaneLineStore::new();
 
     let pos = content_pos(
-        size,
+        no_headers(size),
         &mut v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -593,24 +628,6 @@ fn content_pos_clamps_a_top_slot_past_the_lines_current_block() {
     );
 }
 
-/// A zero-height viewport (a pane collapsed to nothing mid-resize) has no
-/// row to place the cursor on.
-#[test]
-fn content_pos_zero_height_returns_none() {
-    let rope = Rope::from_str("a\nb\nc\n");
-    let (mut v, size) = vp(0, 80, 0);
-    let providers = no_providers();
-    let mut s = PaneLineStore::new();
-
-    let pos = content_pos(
-        size,
-        &mut v,
-        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
-        cluster_at(&rope, co(0).index()),
-    );
-    assert_eq!(pos, None);
-}
-
 /// A cursor more rows below the viewport's top than the viewport is tall:
 /// the case `Viewport::reveal` is supposed to prevent, but `content_pos`
 /// must still answer `None` rather than a row past the visible window.
@@ -624,7 +641,7 @@ fn content_pos_cursor_below_viewport_returns_none() {
         co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(5)).index()); // 'f': 5 rows below the top
 
     let pos = content_pos(
-        size,
+        no_headers(size),
         &mut v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -649,7 +666,7 @@ fn content_pos_anchor_left_of_horizontal_offset_returns_none() {
     let anchor_char = co(2); // display col 2, left of horizontal_offset 5
 
     let pos = content_pos(
-        size,
+        no_headers(size),
         &mut v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         cluster_at(&rope, anchor_char.index()),

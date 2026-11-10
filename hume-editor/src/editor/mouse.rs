@@ -6,10 +6,10 @@
 //! divider between two panes both need it.
 //!
 //! Click coordinates are terminal-absolute, so `EngineView::pane_hit` first
-//! finds the pane under the pointer, in its own cells, before
-//! `screen_to_cluster` resolves the buffer cluster it hits (`header_to_cluster`
-//! for a scope header row). Every hit test
-//! reads the pane rects the last frame drew, so a click lands in the pane
+//! finds the pane under the pointer, in its own cells. The pane's rows then
+//! say what the hit row shows, and `cursor::cell_to_cluster` resolves the
+//! buffer cluster under it (`header_to_cluster` for a scope header row).
+//! Every hit test reads the pane rects the last frame drew, so a click lands in the pane
 //! that was on screen under it even after a band or a pane changed. The
 //! gutter and content widths are the pane's current ones at its drawn size.
 //!
@@ -23,7 +23,7 @@
 
 use hume_core::PaneId;
 use hume_engine::pipeline::{PaneHit, SeamHandle};
-use hume_engine::scope_headers::HeaderLayout;
+use hume_engine::scope_headers::{HeaderLayout, PaneRow};
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -285,17 +285,22 @@ impl Editor {
         let rope = doc.text().rope();
         let (mut dlm, viewport) =
             self.view.panes[pid].display_lines_and_viewport(rope, key, content_width);
-        let mut headers = Vec::new();
-        if let Some(geo) = layout_key.geometry(doc.syntax_source()) {
-            let top = viewport.top_at(&mut dlm);
-            geo.scope_headers(&mut dlm, top, &mut headers);
+        let geo = layout_key.geometry(doc.syntax_source())?;
+        let rows = geo.rows(&mut dlm, viewport);
+        match rows.row_at(&mut dlm, hit.y()) {
+            PaneRow::Body(pos) => cursor::cell_to_cluster(
+                hit.x(),
+                gutter_width,
+                viewport.horizontal_offset(),
+                &mut dlm,
+                pos,
+            ),
+            PaneRow::Header(line) => {
+                let mut header_layout = HeaderLayout::default();
+                let mut header_dlm = header_layout.display_map(rope, content_width, key);
+                cursor::header_to_cluster(hit.x(), gutter_width, &mut header_dlm, line)
+            }
         }
-        let Some(&header) = headers.get(usize::from(hit.y())) else {
-            return cursor::screen_to_cluster(hit.x(), hit.y(), gutter_width, viewport, &mut dlm);
-        };
-        let mut header_layout = HeaderLayout::default();
-        let mut header_dlm = header_layout.display_map(rope, content_width, key);
-        cursor::header_to_cluster(hit.x(), gutter_width, &mut header_dlm, header)
     }
 }
 

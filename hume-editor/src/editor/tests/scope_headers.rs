@@ -555,6 +555,40 @@ fn pane_of_height_one_shows_no_header() {
     );
 }
 
+/// A tall virtual block under line 10 leaves the cursor there while the
+/// wheel scrolls the view: at top line 9 the cursor's line is under header
+/// row 1, and its caret is hidden as the line is.
+#[test]
+fn a_parked_cursor_under_a_header_row_has_no_caret() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let bid = ed.focused_buffer_id();
+    let pid = focused_split(&mut ed, bid);
+    seek_to_column(&mut ed, 10, STATEMENT_X);
+    ed.view.panes[pid].providers.add_decoration_source(Box::new(
+        hume_engine::test_doubles::VirtualLineBlock::uniform(
+            hume_core::Side::Before,
+            hume_rope::line::ContentLine::new(11),
+            40,
+            "V",
+        ),
+    ));
+    let buf = wheel_down(&mut ed, pid, 7);
+
+    assert_eq!(top_line(&ed, pid), 9, "premise: the view scrolled");
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        char_at_column(&ed, 10, STATEMENT_X),
+        "premise: the cursor stayed on line 10"
+    );
+    assert_eq!(
+        pane_rows(&ed, &buf, pid, 2),
+        [line_of(&source, 0), line_of(&source, 1)],
+        "premise: two header rows cover rows 0 and 1"
+    );
+    assert_eq!(frame(&mut ed, 80, 25).cursor_content_pos, None);
+}
+
 /// A pane parked behind a tall virtual block under the cursor's `fn` line,
 /// so that line is a header row while the primary cursor is still on it: its
 /// number is drawn as any other line's, not as the cursor line's.

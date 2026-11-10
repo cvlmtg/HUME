@@ -572,6 +572,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     let size = ed.pane_size(pid);
     let gutter_w = ed.state.pane_geometry(&ed.view, pid, size).gutter_width;
     let layout_key = ed.state.layout_key(&ed.view, pid, size);
+    let bid = ed.view.panes[pid].buffer_id();
     let Editor { state, view, .. } = &mut ed;
     let (mut dlm, vp) = crate::editor::frame::settled_pane_view(
         &state.buffers,
@@ -580,7 +581,10 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         pid,
         layout_key,
     );
-    let (content_x, row) = cursor::content_pos(size, vp, &mut dlm, anchor).expect("visible");
+    let geo = layout_key
+        .geometry(state.buffers.get(bid).syntax_source())
+        .expect("the pane has rows");
+    let (content_x, row) = cursor::content_pos(geo, vp, &mut dlm, anchor).expect("visible");
     let expected_x = content_x + gutter_w + pane_rect.x;
     let expected_y = row + pane_rect.y + 1;
 

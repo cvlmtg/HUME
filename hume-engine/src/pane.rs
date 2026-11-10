@@ -6,7 +6,7 @@ use crate::display_lines::line_store::FormatKey;
 use crate::display_lines::{DisplayLineMap, DisplayLinePos};
 use crate::pipeline::ContentWidth;
 use crate::providers::ProviderSet;
-use crate::scope_headers::{ScopeHeaderInputs, scope_headers};
+use crate::scope_headers::{PaneRows, ScopeHeaderInputs};
 use crate::types::PaintedSelections;
 use hume_core::BufferId;
 use hume_rope::column::DisplayLineCol;
@@ -96,24 +96,24 @@ impl ViewGeometry<'_> {
     }
 
     /// The look-ahead kept above the cursor while `top` is the viewport's
-    /// top: `margin` plus the scope header rows painted over that view,
-    /// clamped to `(height - 1) / 2` like `margin` itself. Never above
-    /// `target`, so the band `[top_margin_at, target]` is never empty.
+    /// top: `margin` plus the scope header rows of that view, clamped to
+    /// `(height - 1) / 2` like `margin` itself. Never above `target`, so the
+    /// band `[top margin, target]` is never empty, and never below the header
+    /// count, which the same bound caps.
     pub fn top_margin_at(&self, dlm: &mut DisplayLineMap<'_>, top: DisplayLinePos) -> usize {
-        let mut headers = Vec::new();
-        self.scope_headers(dlm, top, &mut headers);
-        (self.margin + headers.len()).min((self.height - 1) / 2)
+        self.top_margin_of(&PaneRows::walk(dlm, self, top))
     }
 
-    /// The header lines painted over this view's top rows while `top` is its
-    /// top, top row first, written to `out` in place of its contents.
-    pub fn scope_headers(
-        &self,
-        dlm: &mut DisplayLineMap<'_>,
-        top: DisplayLinePos,
-        out: &mut Vec<ContentLine>,
-    ) {
-        scope_headers(dlm, top, self.height, self.headers, out);
+    /// [`Self::top_margin_at`] for the view `rows` lays out.
+    pub(crate) fn top_margin_of(&self, rows: &PaneRows) -> usize {
+        (self.margin + rows.headers().len()).min((self.height - 1) / 2)
+    }
+
+    /// This view's rows: `viewport`'s top, resolved, and the scope headers
+    /// over it.
+    pub fn rows(&self, dlm: &mut DisplayLineMap<'_>, viewport: &mut Viewport) -> PaneRows {
+        let top = viewport.top_at(dlm);
+        PaneRows::walk(dlm, self, top)
     }
 }
 

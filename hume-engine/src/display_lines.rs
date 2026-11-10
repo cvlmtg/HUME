@@ -47,7 +47,7 @@ pub mod scroll;
 mod stepping;
 
 pub use pos::{BlockBreakdown, BlockSlot, DisplayColTarget, DisplayLinePos};
-pub use scroll::{CarryTop, carry};
+pub use scroll::{CarryTop, Revealed, carry};
 
 // Display-line map
 

@@ -3,6 +3,7 @@ use ropey::Rope;
 use super::*;
 use crate::display_lines::line_store::PaneLineStore;
 use crate::pane::WrapMode;
+use crate::pipeline::PaneSize;
 use crate::providers::ProviderSet;
 use crate::test_doubles::{ScopeTable, VirtualLineBlock};
 use crate::test_support::map;
@@ -27,6 +28,20 @@ fn top(line: usize) -> DisplayLinePos {
     DisplayLinePos::new(ContentLine::new(line), 0)
 }
 
+/// The rows of a pane `height` rows tall laid out by `dlm`, scroll-margin
+/// 0, whose top is `top` and whose headers come from `inputs`.
+fn rows_of(
+    dlm: &mut DisplayLineMap<'_>,
+    top: DisplayLinePos,
+    height: u16,
+    inputs: ScopeHeaderInputs<'_>,
+) -> PaneRows {
+    let geo = PaneSize::new(80, height)
+        .geometry(0, inputs)
+        .expect("a nonzero-height pane has a geometry");
+    PaneRows::walk(dlm, &geo, top)
+}
+
 /// The header lines a pane `height` rows tall with `top` at its top shows.
 fn walk(
     rope: &Rope,
@@ -34,22 +49,19 @@ fn walk(
     table: &ScopeTable,
     settings: ContextSettings,
     top: DisplayLinePos,
-    height: usize,
+    height: u16,
 ) -> Vec<usize> {
     let mut store = PaneLineStore::new();
     let mut dlm = map(rope, WrapMode::None, providers, 80, &mut store);
-    let mut out = Vec::new();
-    scope_headers(
-        &mut dlm,
-        top,
-        height,
-        ScopeHeaderInputs {
-            source: Some(table),
-            settings,
-        },
-        &mut out,
-    );
-    out.iter().map(|line| line.index()).collect()
+    let inputs = ScopeHeaderInputs {
+        source: Some(table),
+        settings,
+    };
+    rows_of(&mut dlm, top, height, inputs)
+        .headers()
+        .iter()
+        .map(|line| line.index())
+        .collect()
 }
 
 #[test]
@@ -133,19 +145,63 @@ fn a_line_under_several_header_rows_is_queried_once() {
         10,
         &mut store,
     );
-    let mut out = Vec::new();
-    scope_headers(
-        &mut dlm,
-        top(4),
-        24,
-        ScopeHeaderInputs {
-            source: Some(&table),
-            settings: SHOWN,
-        },
-        &mut out,
-    );
-    assert_eq!(out, [ContentLine::new(0), ContentLine::new(1)]);
+    let inputs = ScopeHeaderInputs {
+        source: Some(&table),
+        settings: SHOWN,
+    };
+    let rows = rows_of(&mut dlm, top(4), 24, inputs);
+    assert_eq!(rows.headers(), [ContentLine::new(0), ContentLine::new(1)]);
     assert_eq!(table.header_queries(), 1);
+}
+
+/// A 5-row pane whose top line 4 wraps over three rows at width 10, under
+/// two headers: rows 0 and 1 draw the headers over line 4's first two
+/// display lines, rows 2 to 4 show line 4's third display line, line 5 and
+/// line 6.
+#[test]
+fn rows_map_header_rows_to_their_lines_and_the_rest_to_display_lines() {
+    let rope = Rope::from_str(&format!(
+        "x\nx\nx\nx\n{}\n{}",
+        "y".repeat(25),
+        "x\n".repeat(5)
+    ));
+    let providers = ProviderSet::new();
+    let table = ScopeTable::default().lines(2..=8, &[0, 1]);
+    let mut store = PaneLineStore::new();
+    let mut dlm = map(
+        &rope,
+        WrapMode::Soft { width: 10 },
+        &providers,
+        10,
+        &mut store,
+    );
+    let inputs = ScopeHeaderInputs {
+        source: Some(&table),
+        settings: SHOWN,
+    };
+    let rows = rows_of(&mut dlm, top(4), 5, inputs);
+    let at = |line: usize, slot: usize| DisplayLinePos::new(ContentLine::new(line), slot);
+
+    assert_eq!(rows.headers(), [ContentLine::new(0), ContentLine::new(1)]);
+    assert_eq!(rows.body_top(&mut dlm), at(4, 2));
+    assert_eq!(
+        (0..5)
+            .map(|row| rows.row_at(&mut dlm, row))
+            .collect::<Vec<_>>(),
+        [
+            PaneRow::Header(ContentLine::new(0)),
+            PaneRow::Header(ContentLine::new(1)),
+            PaneRow::Body(at(4, 2)),
+            PaneRow::Body(at(5, 0)),
+            PaneRow::Body(at(6, 0)),
+        ]
+    );
+
+    assert_eq!(rows.row_of(&mut dlm, at(3, 0)), None, "above the top");
+    assert_eq!(rows.row_of(&mut dlm, at(4, 1)), None, "under header row 1");
+    assert_eq!(rows.row_of(&mut dlm, at(4, 2)), Some(2));
+    assert_eq!(rows.row_of(&mut dlm, at(6, 0)), Some(4));
+    assert_eq!(rows.row_of(&mut dlm, at(7, 0)), None, "past the last row");
 }
 
 #[test]
@@ -156,29 +212,14 @@ fn disabled_or_sourceless_yields_nothing() {
 
     let mut store = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, 80, &mut store);
-    let mut out = vec![ContentLine::new(7)];
-    scope_headers(
-        &mut dlm,
-        top(5),
-        24,
-        ScopeHeaderInputs {
-            source: Some(&table),
-            settings: ContextSettings::OFF,
-        },
-        &mut out,
-    );
-    assert!(out.is_empty());
-
-    out.push(ContentLine::new(7));
-    scope_headers(
-        &mut dlm,
-        top(5),
-        24,
-        ScopeHeaderInputs {
-            source: None,
-            settings: SHOWN,
-        },
-        &mut out,
-    );
-    assert!(out.is_empty());
+    let disabled = ScopeHeaderInputs {
+        source: Some(&table),
+        settings: ContextSettings::OFF,
+    };
+    assert_eq!(rows_of(&mut dlm, top(5), 24, disabled).headers(), []);
+    let sourceless = ScopeHeaderInputs {
+        source: None,
+        settings: SHOWN,
+    };
+    assert_eq!(rows_of(&mut dlm, top(5), 24, sourceless).headers(), []);
 }

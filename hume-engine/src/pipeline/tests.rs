@@ -52,8 +52,26 @@ fn render_test_pane(
         indent_guides: true,
         cursor_is_block: true,
         gutter: crate::providers::GutterInputs::default(),
-        context: crate::scope_headers::ContextSettings::OFF,
     };
+    // The pane's rows as the host's scroll pass settles them: a map laid
+    // out as the render pass lays this pane out, over a store of its own.
+    let content_width = crate::layout::compute_viewport(
+        rope,
+        PaneSize::of(pane_rect),
+        pane.providers.gutter_columns(),
+        settings.gutter,
+    )
+    .content_width;
+    let mut rows_store = crate::display_lines::line_store::PaneLineStore::new();
+    let mut rows_dlm = crate::display_lines::DisplayLineMap::new(
+        rope,
+        &pane.providers,
+        content_width,
+        settings.format,
+        &mut rows_store,
+    );
+    let rows = crate::test_support::plain_geo(PaneSize::of(pane_rect), 0)
+        .rows(&mut rows_dlm, &mut pane.viewport);
     // The host writes a mirror before every frame; these tests stand in for
     // it with a primary cursor at the text start unless a test wrote its own.
     let selections = pane
@@ -68,6 +86,7 @@ fn render_test_pane(
         theme,
         rect: pane_rect,
         settings: &settings,
+        rows,
         dim: None,
         default_gutter_scope,
     };

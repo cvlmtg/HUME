@@ -21,6 +21,7 @@
 
 use super::{DisplayLineMap, DisplayLinePos};
 use crate::pane::{ViewGeometry, Viewport};
+use crate::scope_headers::PaneRows;
 use hume_rope::column::DisplayLineCol;
 
 impl Viewport {
@@ -91,21 +92,21 @@ impl Viewport {
 
     /// Adjust `top` so `cursor_pos` is visible with `geo.margin` display
     /// lines of look-ahead below it and [`ViewGeometry::top_margin_at`] the
-    /// resulting top above it. Returns the cursor's resulting screen row: its
-    /// distance below the (possibly just-moved) `top`.
+    /// resulting top above it. Returns the rows of the (possibly just-moved)
+    /// view and the cursor's row in it.
     pub fn reveal(
         &mut self,
         dlm: &mut DisplayLineMap<'_>,
         geo: ViewGeometry<'_>,
         cursor_pos: DisplayLinePos,
-    ) -> usize {
-        let (top, row) = self.reveal_target(dlm, geo, cursor_pos);
-        self.top = top;
-        row
+    ) -> Revealed {
+        let revealed = self.reveal_target(dlm, geo, cursor_pos);
+        self.top = revealed.rows.top();
+        revealed
     }
 
-    /// `reveal`'s decision, without writing it: the top `reveal` would
-    /// settle on plus the cursor's resulting row, both resolved against the
+    /// `reveal`'s decision, without writing it: the rows of the view `reveal`
+    /// would settle on plus the cursor's row in it, both resolved against the
     /// current (already-healed) `top`. [`Self::reveal`] and
     /// [`Self::settled_row`] are this one decision's two readers, so it
     /// exists to be identical between them rather than by convention.
@@ -114,9 +115,9 @@ impl Viewport {
         dlm: &mut DisplayLineMap<'_>,
         geo: ViewGeometry<'_>,
         cursor_pos: DisplayLinePos,
-    ) -> (DisplayLinePos, usize) {
+    ) -> Revealed {
         let top = self.top_at(dlm);
-        below_headers(dlm, geo, |dlm, top_margin| {
+        let (rows, row) = below_headers(dlm, geo, |dlm, top_margin| {
             if cursor_pos < top {
                 return Self::scroll_back_target(dlm, cursor_pos, top_margin);
             }
@@ -133,24 +134,30 @@ impl Viewport {
                 Some(display_lines_below_top) => (top, display_lines_below_top),
                 None => Self::scroll_back_target(dlm, cursor_pos, geo.target),
             }
-        })
+        });
+        debug_assert!(
+            row >= rows.headers().len(),
+            "the cursor settled on row {row}, under {} header rows",
+            rows.headers().len()
+        );
+        Revealed { rows, row }
     }
 
     /// Whether `cursor_pos` already sits where [`Self::reveal`] would leave
     /// it, without moving `top`: the single definition of a pane being
     /// "parked" (its cursor outside the scroll-margin band, left behind by a
-    /// wheel/`Ctrl-d` scroll `carry` couldn't fully follow). `Some(row)`
-    /// when `top` is already `reveal`'s fixed point for `cursor_pos`, giving
-    /// the cursor's row for free; `None` otherwise.
+    /// wheel/`Ctrl-d` scroll `carry` couldn't fully follow). `Some` when
+    /// `top` is already `reveal`'s fixed point for `cursor_pos`, giving the
+    /// view's rows and the cursor's row for free; `None` otherwise.
     pub fn settled_row(
         &mut self,
         dlm: &mut DisplayLineMap<'_>,
         geo: ViewGeometry<'_>,
         cursor_pos: DisplayLinePos,
-    ) -> Option<usize> {
+    ) -> Option<Revealed> {
         let before = self.top_at(dlm);
-        let (target, row) = self.reveal_target(dlm, geo, cursor_pos);
-        (target == before).then_some(row)
+        let revealed = self.reveal_target(dlm, geo, cursor_pos);
+        (revealed.rows.top() == before).then_some(revealed)
     }
 
     /// Scroll so `cursor_pos` lands `display_lines_below_top` display lines
@@ -172,14 +179,14 @@ impl Viewport {
         cursor_pos: DisplayLinePos,
         display_lines_below_top: usize,
     ) {
-        let (top, _) = below_headers(dlm, geo, |dlm, top_margin| {
+        let (rows, _) = below_headers(dlm, geo, |dlm, top_margin| {
             Self::scroll_back_target(
                 dlm,
                 cursor_pos,
                 display_lines_below_top.clamp(top_margin, geo.target),
             )
         });
-        self.top = top;
+        self.top = rows.top();
     }
 
     /// Adjust `horizontal_offset` so `cursor_display_col` stays visible.
@@ -276,7 +283,8 @@ impl<'a> DisplayLineMap<'a> {
 
 /// `place`'s candidate for the least top margin, from `geo.margin` up, whose
 /// top needs no more margin than it was placed with
-/// ([`ViewGeometry::top_margin_at`]). A smaller margin would leave the
+/// ([`ViewGeometry::top_margin_at`]), with the rows of that top. A smaller
+/// margin would leave the
 /// cursor under one of that top's header rows, so settling it again would
 /// scroll; a larger one would put the cursor lower than the view it lands
 /// in needs. `top_margin_at` never exceeds `(height - 1) / 2`, so the
@@ -288,21 +296,30 @@ fn below_headers(
     dlm: &mut DisplayLineMap<'_>,
     geo: ViewGeometry<'_>,
     mut place: impl FnMut(&mut DisplayLineMap<'_>, usize) -> (DisplayLinePos, usize),
-) -> (DisplayLinePos, usize) {
+) -> (PaneRows, usize) {
     let mut top_margin = geo.margin;
-    let mut walked: Option<(DisplayLinePos, usize)> = None;
+    let mut walked: Option<PaneRows> = None;
     loop {
-        let candidate = place(dlm, top_margin);
-        let needed = match walked {
-            Some((top, needed)) if top == candidate.0 => needed,
-            _ => geo.top_margin_at(dlm, candidate.0),
+        let (top, row) = place(dlm, top_margin);
+        let rows = match walked {
+            Some(rows) if rows.top() == top => rows,
+            _ => PaneRows::walk(dlm, &geo, top),
         };
-        if needed <= top_margin {
-            return candidate;
+        if geo.top_margin_of(&rows) <= top_margin {
+            return (rows, row);
         }
-        walked = Some((candidate.0, needed));
+        walked = Some(rows);
         top_margin += 1;
     }
+}
+
+/// Where [`Viewport::reveal`] leaves a view, or finds it already left.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Revealed {
+    /// The view's rows.
+    pub rows: PaneRows,
+    /// The cursor's row, below the header rows.
+    pub row: usize,
 }
 
 /// Where a head's display line goes after a view scroll of `delta` display

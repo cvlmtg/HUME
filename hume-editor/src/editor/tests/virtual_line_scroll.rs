@@ -76,7 +76,10 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
         layout_key.content_width(),
     );
 
-    let pos = crate::editor::cursor::content_pos(size, &mut vp, &mut dlm, cursor_char);
+    let geo = layout_key
+        .geometry(state.buffers.get(bid).syntax_source())
+        .expect("the pane has rows");
+    let pos = crate::editor::cursor::content_pos(geo, &mut vp, &mut dlm, cursor_char);
     assert_eq!(
         pos.map(|(_, row)| row),
         Some(1),
@@ -565,9 +568,11 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
         layout_key.format_key(),
         layout_key.content_width(),
     );
+    let geo = layout_key
+        .geometry(state.buffers.get(bid).syntax_source())
+        .expect("the pane has rows");
     assert_eq!(
-        crate::editor::cursor::content_pos(size, &mut vp, &mut dlm, cursor_char)
-            .map(|(_, row)| row),
+        crate::editor::cursor::content_pos(geo, &mut vp, &mut dlm, cursor_char).map(|(_, row)| row),
         Some(2),
         "content_pos must count the hint's extra display line, as the renderer does"
     );

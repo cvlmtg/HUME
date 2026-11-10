@@ -81,6 +81,7 @@ pub(in crate::editor) fn popup_placement(
             // `settled_pane_view`'s own split rather than being held across it.
             let key = ed.state.layout_key(&ed.view, focused, size);
             let Editor { state, view, .. } = ed;
+            let doc = state.buffers.get(view.panes[focused].buffer_id());
             let (mut dlm, vp) = crate::editor::frame::settled_pane_view(
                 &state.buffers,
                 &mut state.panes.entries,
@@ -88,7 +89,8 @@ pub(in crate::editor) fn popup_placement(
                 focused,
                 key,
             );
-            super::super::cursor::content_pos(size, vp, &mut dlm, anchor)?
+            let geo = key.geometry(doc.syntax_source())?;
+            super::super::cursor::content_pos(geo, vp, &mut dlm, anchor)?
         }
     };
     let screen = super::super::mouse::content_pos_to_screen(

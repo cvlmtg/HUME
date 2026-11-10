@@ -6,7 +6,7 @@
 //! renderer about which display line a position is on.
 
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap, DisplayLinePos};
-use hume_engine::pane::Viewport;
+use hume_engine::pane::{ViewGeometry, Viewport};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
@@ -15,21 +15,18 @@ use hume_rope::line::ContentLine;
 /// gutter, not a terminal-absolute cell. `x` accounts for
 /// `viewport.horizontal_offset`.
 ///
-/// `None` when the position is outside the viewport. That is a steady state:
-/// the cursor occupies only content display lines, so a pure view scroll
-/// into a virtual-line block (an inline diff's ghost lines) can carry the
-/// viewport past where the cursor can follow. The caret stays hidden until a
-/// cursor motion resyncs the view.
+/// `None` when the position is outside the viewport or under a header row of
+/// the view `geo` lays out. That is a steady state: the cursor occupies only
+/// content display lines, so a pure view scroll into a virtual-line block
+/// (an inline diff's ghost lines) can carry the viewport past where the
+/// cursor can follow. The caret stays hidden until a cursor motion resyncs
+/// the view.
 pub(in crate::editor) fn content_pos(
-    size: hume_engine::pipeline::PaneSize,
+    geo: ViewGeometry<'_>,
     viewport: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
     cursor: hume_rope::cluster::ClusterStart,
 ) -> Option<(u16, u16)> {
-    let height = size.height();
-    if height == 0 {
-        return None;
-    }
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor);
     if cursor_display_col < viewport.horizontal_offset() {
         // Off the viewport horizontally. The live cursor never is, but the
@@ -37,13 +34,7 @@ pub(in crate::editor) fn content_pos(
         // cursor and the scroll it drives move on.
         return None;
     }
-    // Resolve the top as the render pass does, or the walk would disagree
-    // with the renderer about which display line is on screen.
-    let top = viewport.top_at(dlm);
-    // Capping the walk one row short of the viewport's height makes an
-    // off-screen cursor a `None` rather than a row past the last one; a cursor
-    // scrolled off the *top* is likewise unreachable walking forward.
-    let screen_row = dlm.distance(top, cursor_pos, height as usize - 1)?;
+    let screen_row = geo.rows(dlm, viewport).row_of(dlm, cursor_pos)?;
     Some(place(viewport, cursor_display_col, screen_row))
 }
 
@@ -70,30 +61,6 @@ pub(in crate::editor) fn place(
 
 // Screen-to-buffer reverse mapping
 
-/// The buffer cluster under a click at pane-relative `(content_x,
-/// content_y)`, where `(0, 0)` is the pane's top-left cell. Callers translate
-/// a terminal-absolute `MouseEvent` through `EngineView::pane_hit` first.
-///
-/// `gutter_w` is the gutter width in cells. A click in the gutter returns
-/// `None`; any other click resolves, clamped to the last display line.
-pub(in crate::editor) fn screen_to_cluster(
-    content_x: u16,
-    content_y: u16,
-    gutter_w: u16,
-    viewport: &mut Viewport,
-    dlm: &mut DisplayLineMap<'_>,
-) -> Option<hume_rope::cluster::ClusterStart> {
-    let top = viewport.top_at(dlm);
-    let clicked = dlm.advance_saturating(top, content_y as isize);
-    cell_to_cluster(
-        content_x,
-        gutter_w,
-        viewport.horizontal_offset(),
-        dlm,
-        clicked,
-    )
-}
-
 /// The buffer cluster under a click on the scope header row that draws
 /// `line`, at pane-relative `content_x`. `dlm` is built by
 /// [`HeaderLayout::display_map`](hume_engine::scope_headers::HeaderLayout::display_map);
@@ -110,9 +77,11 @@ pub(in crate::editor) fn header_to_cluster(
 }
 
 /// The cluster in display line `pos` under pane-relative `content_x`, where
-/// the content area's first cell shows display column `origin`. A click in
-/// the `gutter_w`-wide gutter returns `None`.
-fn cell_to_cluster(
+/// the content area's first cell shows display column `origin`: the
+/// viewport's horizontal offset for a
+/// [`PaneRow::Body`](hume_engine::scope_headers::PaneRow::Body) row. A click
+/// in the `gutter_w`-wide gutter returns `None`.
+pub(in crate::editor) fn cell_to_cluster(
     content_x: u16,
     gutter_w: u16,
     origin: DisplayLineCol,

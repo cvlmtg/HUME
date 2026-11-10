@@ -8,6 +8,7 @@ use slotmap::{SecondaryMap, SlotMap};
 
 use crate::pane::Pane;
 use crate::providers::{ChromeProvider, DEFAULT_GUTTER_SCOPE, OverlayProvider, SyntaxSource};
+use crate::scope_headers::PaneRows;
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::{EditorMode, ResolvedStyle, ScopeId};
@@ -47,8 +48,6 @@ pub struct FrameScratch {
     pub style: StyleScratch,
     /// Pre-computed gutter lane widths used by the render stage.
     pub lane_widths: Vec<u16>,
-    /// The header line of each scope header row of the pane being drawn.
-    pub scope_headers: Vec<ContentLine>,
     /// What the scope header rows of the pane being drawn are laid out with.
     pub header_layout: crate::scope_headers::HeaderLayout,
 }
@@ -58,7 +57,6 @@ impl FrameScratch {
         Self {
             style: StyleScratch::new(),
             lane_widths: Vec::new(),
-            scope_headers: Vec::new(),
             header_layout: crate::scope_headers::HeaderLayout::default(),
         }
     }
@@ -67,7 +65,6 @@ impl FrameScratch {
     pub fn clear(&mut self) {
         self.style.clear();
         self.lane_widths.clear();
-        self.scope_headers.clear();
     }
 }
 
@@ -114,6 +111,10 @@ pub struct RenderContext {
     /// frames instead of reallocated per frame, the same reason `pane_rects`
     /// is here.
     pub(crate) pane_settings: SecondaryMap<PaneId, PaneRenderSettings>,
+    /// Each pane's rows as this frame's scroll pass settled them, filled by
+    /// the caller through [`RenderContext::set_pane_rows`], so drawing walks
+    /// no scope header the scroll pass already walked.
+    pub(crate) pane_rows: SecondaryMap<PaneId, PaneRows>,
     /// Pane rects computed by the layout stage.
     pub(crate) pane_rects: Vec<(PaneId, Rect)>,
     /// Perpendicular-arm bits keyed by cell, computed from the seams drawn
@@ -136,6 +137,7 @@ impl RenderContext {
         Self {
             frame: FrameScratch::new(),
             pane_settings: SecondaryMap::new(),
+            pane_rows: SecondaryMap::new(),
             pane_rects: Vec::new(),
             seam_arms: FxHashMap::default(),
             cursor_content_pos: None,
@@ -153,6 +155,15 @@ impl RenderContext {
     ) {
         self.pane_settings.clear();
         self.pane_settings.extend(settings);
+    }
+
+    /// Replace the rows [`EngineView::render`] will draw this frame's panes
+    /// with, wholesale for the same reason as [`Self::set_pane_settings`].
+    /// Every pane with a row the next `render` call reaches must be in
+    /// `rows`, each for the top its viewport holds.
+    pub fn set_pane_rows(&mut self, rows: impl IntoIterator<Item = (PaneId, PaneRows)>) {
+        self.pane_rows.clear();
+        self.pane_rows.extend(rows);
     }
 }
 
@@ -518,6 +529,7 @@ impl EngineView {
         let focused_pane_id = self.layout.focused();
         let scratch = &mut ctx.frame;
         let pane_settings = &ctx.pane_settings;
+        let pane_rows = &ctx.pane_rows;
         let pane_rects = &mut ctx.pane_rects;
 
         // A degenerate area (e.g. a terminal reporting height 0 during early
@@ -597,6 +609,14 @@ impl EngineView {
             let settings = pane_settings
                 .get(pane_id)
                 .expect("no render settings for a live pane, see RenderContext::set_pane_settings");
+            if rect.height == 0 {
+                // No row to draw, so no rows to draw from.
+                self.drawn.record_pane(pane_id, rect);
+                continue;
+            }
+            let rows = *pane_rows
+                .get(pane_id)
+                .expect("no rows for a live pane, see RenderContext::set_pane_rows");
 
             scratch.clear();
 
@@ -622,6 +642,7 @@ impl EngineView {
                 theme: &self.theme,
                 rect,
                 settings,
+                rows,
                 // Dim non-focused panes so the active one reads clearly at a
                 // glance, independent of `draw_dividers`, which only controls
                 // the seam glyph. Skipped when `ui.background` has no explicit
@@ -753,8 +774,6 @@ pub struct PaneRenderSettings {
     pub indent_guides: bool,
     pub cursor_is_block: bool,
     pub gutter: crate::providers::GutterInputs,
-    /// The pane's buffer's scope-header settings.
-    pub context: crate::scope_headers::ContextSettings,
 }
 
 /// Transient bundle of borrows needed to render one pane. Avoids passing a
@@ -782,6 +801,8 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// Borrowed from the caller's `RenderContext`, which owns the map these
     /// come out of for the whole frame.
     pub settings: &'a PaneRenderSettings,
+    /// The pane's rows, for the top `viewport` holds.
+    pub rows: PaneRows,
     /// `Some` for non-focused panes: blend every written cell's fg/bg toward
     /// this target by `factor`. `None` for the focused pane.
     pub dim: Option<(Rgb, f32)>,

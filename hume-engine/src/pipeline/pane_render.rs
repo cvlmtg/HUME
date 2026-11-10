@@ -5,7 +5,6 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use crate::display_lines::{DisplayLineMap, h_window};
 use crate::providers::{GutterRow, ProviderSet};
 use crate::render::{self, ComposeCtx};
-use crate::scope_headers::{ScopeHeaderInputs, scope_headers};
 use crate::style::SelectionPaint;
 use crate::types::{DisplayLineKind, ResolvedStyle};
 
@@ -55,7 +54,6 @@ pub(crate) fn render_pane(
     let FrameScratch {
         style,
         lane_widths,
-        scope_headers: headers,
         header_layout,
     } = scratch;
 
@@ -82,20 +80,12 @@ pub(crate) fn render_pane(
     let last_content_line = dlm.last_line();
     let providers = dlm.providers();
 
-    // The render pass resolves the top it walks from (see `Viewport::top_at`),
-    // so a host with no per-frame healing discipline of its own (a
-    // different embedder, or this crate's own `pipeline/tests.rs`) can never
-    // desync the walk from a stale address.
-    let mut pos = pane_ctx.viewport.top_at(&mut dlm);
-    scope_headers(
-        &mut dlm,
-        pos,
-        usize::from(pane_ctx.rect.height),
-        ScopeHeaderInputs {
-            source: pane_ctx.syntax,
-            settings: pane_ctx.settings.context,
-        },
-        headers,
+    let rows = pane_ctx.rows;
+    let top = pane_ctx.viewport.top_at(&mut dlm);
+    debug_assert_eq!(
+        top,
+        rows.top(),
+        "the pane's rows were settled for another top"
     );
 
     let head_line = crate::pane::primary_head_line(pane_ctx.selections, pane_ctx.rope);
@@ -127,8 +117,8 @@ pub(crate) fn render_pane(
     let mut line: Option<LineStyle> = None;
     // The header rows paint over the display lines under them, so the walk
     // starts below those.
-    pos = dlm.advance_saturating(pos, headers.len() as isize);
-    let mut screen_row = headers.len() as u16;
+    let mut pos = rows.body_top(&mut dlm);
+    let mut screen_row = rows.headers().len() as u16;
 
     while screen_row < height {
         // One resolve per display line, not two: `render_display_line` already walks
@@ -232,7 +222,7 @@ pub(crate) fn render_pane(
 
     render::render_tilde_fillers(screen_row, lane_widths, &compose_ctx, &mut canvas);
 
-    if headers.is_empty() {
+    if rows.headers().is_empty() {
         return;
     }
     // Header rows are formatted and drawn from column 0 whatever the pane's
@@ -249,7 +239,7 @@ pub(crate) fn render_pane(
         ..compose_ctx
     };
     let header_bg = pane_ctx.theme.ui.context.bg;
-    for (header_row, &header) in (0u16..).zip(headers.iter()) {
+    for (header_row, &header) in (0u16..).zip(rows.headers()) {
         let line = LineStyle::enter(header, last_content_line, header_providers, pane_ctx, style);
         let pos = header_dlm.first_content_display_line(header);
         let rendered = header_dlm.render_display_line(pos);

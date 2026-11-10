@@ -254,15 +254,18 @@ fn settled_row_matches_reveal_when_cursor_is_in_band() {
             geo,
             cursor_pos,
         )
+        .map(|revealed| revealed.row)
         .expect("cursor sits within the band");
     let top_before = v.top();
 
     let mut s = PaneLineStore::new();
-    let revealed_row = v.reveal(
-        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        geo,
-        cursor_pos,
-    );
+    let revealed_row = v
+        .reveal(
+            &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+            geo,
+            cursor_pos,
+        )
+        .row;
 
     assert_eq!(v.top(), top_before, "an in-band cursor never moves top");
     assert_eq!(
@@ -290,7 +293,8 @@ fn settled_row_is_none_when_cursor_is_outside_the_band() {
             &mut map(&r, WrapMode::None, &providers, 80, &mut s),
             geo,
             cursor_pos
-        ),
+        )
+        .map(|revealed| revealed.row),
         None,
         "a cursor above top is parked"
     );
@@ -316,15 +320,18 @@ fn settled_row_is_some_at_the_documents_start_saturation() {
             geo,
             cursor_pos,
         )
+        .map(|revealed| revealed.row)
         .expect("saturates at the document start rather than being parked");
     let top_before = v.top();
 
     let mut s = PaneLineStore::new();
-    let revealed_row = v.reveal(
-        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        geo,
-        cursor_pos,
-    );
+    let revealed_row = v
+        .reveal(
+            &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+            geo,
+            cursor_pos,
+        )
+        .row;
 
     assert_eq!(
         v.top(),
@@ -519,7 +526,7 @@ fn reveal_is_safe_to_call_directly_on_a_stale_top() {
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let cursor_pos = dlm.locate_display_line(cursor);
     let geo = plain_geo(stale_size, 0);
-    let stale_row = stale.reveal(&mut dlm, geo, cursor_pos);
+    let stale_row = stale.reveal(&mut dlm, geo, cursor_pos).row;
 
     let (mut resolved, resolved_size) = viewport(0, 5, 80);
     resolved.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 200)); // same stale seed
@@ -528,7 +535,7 @@ fn reveal_is_safe_to_call_directly_on_a_stale_top() {
     resolved.top_at(&mut dlm); // pre-resolve before reveal sees it
     let cursor_pos = dlm.locate_display_line(cursor);
     let geo = plain_geo(resolved_size, 0);
-    let resolved_row = resolved.reveal(&mut dlm, geo, cursor_pos);
+    let resolved_row = resolved.reveal(&mut dlm, geo, cursor_pos).row;
 
     assert_eq!(
         stale_row, resolved_row,
@@ -632,7 +639,7 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
                     v.top_at(&mut dlm);
                     let cursor_pos = dlm.locate_display_line(cursor);
                     let geo = plain_geo(size, 2);
-                    let reported = v.reveal(&mut dlm, geo, cursor_pos);
+                    let reported = v.reveal(&mut dlm, geo, cursor_pos).row;
 
                     let mut s = PaneLineStore::new();
                     let walked = local_content_pos(
@@ -667,7 +674,7 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
     v.top_at(&mut dlm);
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor);
     let geo = plain_geo(size, 3);
-    let row = v.reveal(&mut dlm, geo, cursor_pos);
+    let row = v.reveal(&mut dlm, geo, cursor_pos).row;
     v.reveal_horizontal(&mut dlm, cursor_display_col);
     let placed = local_place(&v, cursor_display_col, row);
 
@@ -706,11 +713,13 @@ fn far_jump_lands_at_the_same_top_as_before_the_cap_change() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::Soft { width: 80 }, &providers, 80, &mut s);
     let geo = plain_geo(size, margin);
-    let row = v.reveal(
-        &mut dlm,
-        geo,
-        DisplayLinePos::new(ContentLine::new(cursor_line), 0),
-    );
+    let row = v
+        .reveal(
+            &mut dlm,
+            geo,
+            DisplayLinePos::new(ContentLine::new(cursor_line), 0),
+        )
+        .row;
 
     let target = height - margin - 1;
     assert_eq!(v.top().line, ContentLine::new(cursor_line - target));
@@ -1214,7 +1223,11 @@ fn reveal_lands_the_cursor_below_the_headers_and_settles() {
     v.reveal(&mut dlm, geo, cursor);
     assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(15), 0));
     assert_eq!(dlm.distance(v.top(), cursor, 20), Some(5));
-    assert_eq!(v.settled_row(&mut dlm, geo, cursor), Some(5));
+    assert_eq!(
+        v.settled_row(&mut dlm, geo, cursor)
+            .map(|revealed| revealed.row),
+        Some(5)
+    );
     v.reveal(&mut dlm, geo, cursor);
     assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(15), 0));
 
@@ -1229,6 +1242,27 @@ fn reveal_lands_the_cursor_below_the_headers_and_settles() {
         geo.top_margin_at(&mut dlm, DisplayLinePos::new(ContentLine::new(30), 0)),
         6
     );
+}
+
+/// The search for the top margin tries tops 17 and 16 before settling on
+/// 15: the rows `reveal` and `settled_row` hand back are those of the top
+/// they leave, as a fresh walk of it gives them.
+#[test]
+fn reveal_returns_the_rows_of_the_top_it_settles_on() {
+    let r = Rope::from_str(&"a\n".repeat(60));
+    let providers = no_providers();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let table = ScopeTable::default().lines(10..=40, &[0, 1]);
+    let geo = header_geo(&table, 20);
+    let (mut v, _) = viewport(30, 20, 80);
+    let cursor = DisplayLinePos::new(ContentLine::new(20), 0);
+
+    let revealed = v.reveal(&mut dlm, geo, cursor);
+    assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(15), 0));
+    assert_eq!(revealed.rows, geo.rows(&mut dlm, &mut v));
+    assert_eq!(revealed.row, 5);
+    assert_eq!(v.settled_row(&mut dlm, geo, cursor), Some(revealed));
 }
 
 /// Top line 15 is under two headers, so the settled cursor at row 10 needs a
@@ -1250,7 +1284,11 @@ fn settling_walks_an_unchanged_tops_headers_once() {
     let one_walk = table.header_queries() - before;
 
     let before = table.header_queries();
-    assert_eq!(v.settled_row(&mut dlm, geo, cursor), Some(10));
+    assert_eq!(
+        v.settled_row(&mut dlm, geo, cursor)
+            .map(|revealed| revealed.row),
+        Some(10)
+    );
     assert_eq!(table.header_queries() - before, one_walk);
 }
 
@@ -1310,7 +1348,7 @@ fn reveal_upward_counts_the_headers_of_the_view_it_lands_in() {
     let cursor = DisplayLinePos::new(ContentLine::new(10), 0);
 
     let (mut v, _) = viewport(45, 20, 80);
-    assert_eq!(v.reveal(&mut dlm, geo, cursor), 3);
+    assert_eq!(v.reveal(&mut dlm, geo, cursor).row, 3);
     assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(7), 0));
 
     let (mut v, _) = viewport(45, 20, 80);
@@ -1332,9 +1370,13 @@ fn reveal_in_view_settles_on_the_margin_of_the_new_top() {
     let cursor = DisplayLinePos::new(ContentLine::new(32), 0);
 
     let (mut v, _) = viewport(31, 20, 80);
-    assert_eq!(v.reveal(&mut dlm, geo, cursor), 3);
+    assert_eq!(v.reveal(&mut dlm, geo, cursor).row, 3);
     assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(29), 0));
-    assert_eq!(v.settled_row(&mut dlm, geo, cursor), Some(3));
+    assert_eq!(
+        v.settled_row(&mut dlm, geo, cursor)
+            .map(|revealed| revealed.row),
+        Some(3)
+    );
 }
 
 /// `mod` on line 19, `impl` on line 20, `fn` on line 21. A top at line 20
@@ -1355,7 +1397,11 @@ fn reveal_stops_at_the_least_margin_its_top_needs() {
     let cursor = DisplayLinePos::new(ContentLine::new(23), 0);
 
     let (mut v, _) = viewport(40, 20, 80);
-    assert_eq!(v.reveal(&mut dlm, geo, cursor), 4);
+    assert_eq!(v.reveal(&mut dlm, geo, cursor).row, 4);
     assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(19), 0));
-    assert_eq!(v.settled_row(&mut dlm, geo, cursor), Some(4));
+    assert_eq!(
+        v.settled_row(&mut dlm, geo, cursor)
+            .map(|revealed| revealed.row),
+        Some(4)
+    );
 }
