@@ -1,6 +1,6 @@
 ;;; runtime/scheme/languages/cabal.scm — HUME bundled language data.
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
-;;; Source: cvlmtg/treesitter.hume v0.2.0
+;;; Source: cvlmtg/treesitter.hume v0.3.0
 
 ((comment-tokens "--")
  (roots "cabal.project" "Setup.hs"))
