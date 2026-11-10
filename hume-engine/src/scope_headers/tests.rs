@@ -118,6 +118,36 @@ fn virtual_display_line_row_belongs_to_its_line() {
     assert_eq!(walk(&rope, &providers, &table, SHOWN, top(4), 24), [0]);
 }
 
+/// Line 4 wraps over three rows at width 10, so the first two header rows
+/// both lie over it and its scopes are read once.
+#[test]
+fn a_line_under_several_header_rows_is_queried_once() {
+    let rope = Rope::from_str(&format!("x\nx\nx\nx\n{}\nx\nx\n", "y".repeat(25)));
+    let providers = ProviderSet::new();
+    let table = ScopeTable::default().lines(2..=5, &[0, 1]);
+    let mut store = PaneLineStore::new();
+    let mut dlm = map(
+        &rope,
+        WrapMode::Soft { width: 10 },
+        &providers,
+        10,
+        &mut store,
+    );
+    let mut out = Vec::new();
+    scope_headers(
+        &mut dlm,
+        top(4),
+        24,
+        ScopeHeaderInputs {
+            source: Some(&table),
+            settings: SHOWN,
+        },
+        &mut out,
+    );
+    assert_eq!(out, [ContentLine::new(0), ContentLine::new(1)]);
+    assert_eq!(table.header_queries(), 1);
+}
+
 #[test]
 fn disabled_or_sourceless_yields_nothing() {
     let rope = doc(30);
