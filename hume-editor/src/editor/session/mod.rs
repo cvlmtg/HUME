@@ -1,9 +1,9 @@
 //! The session of a run that keeps one (started with no files, or after
-//! `:save-session`): the files its panes show and the alternate one, its
-//! tabs, splits, positions, registers and prompt history, saved under the
-//! session directory at the `session-root` directory's path mirrored there
-//! with `.session` appended, and restored by the next run started with no
-//! files and that root.
+//! `:save-session`): the files its panes show and the last one seen before
+//! the current one, its tabs, splits, positions, registers and prompt
+//! history, saved under the session directory at the `session-root`
+//! directory's path mirrored there with `.session` appended, and restored by
+//! the next run started with no files and that root.
 //!
 //! The file is a stamped file (`HUMESESS`) whose body is a postcard-encoded
 //! [`SessionSnapshot`]. Buffer text is not saved: each buffer records its

@@ -338,6 +338,51 @@ fn only_shown_files_and_the_alternate_come_back_in_open_order() {
 }
 
 #[test]
+fn the_alternate_kept_is_the_last_file_seen_before_the_current_one() {
+    let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n")]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":e b.txt");
+    type_cmd(&mut ed, ":new");
+    type_cmd(&mut ed, ":b#");
+    let live = ed
+        .state
+        .buffers
+        .second_most_recent()
+        .expect("sanity: an alternate");
+    assert!(
+        ed.state.buffers.get(live).file().is_none(),
+        "sanity: the alternate is the scratch"
+    );
+
+    let again = restart(&project, ed);
+    assert_eq!(buffer_names(&again), ["a.txt", "b.txt"]);
+    assert_eq!(again.doc().display_name(), "b.txt");
+    assert_eq!(alternate(&again).as_deref(), Some("a.txt"));
+}
+
+#[test]
+fn files_shown_in_a_background_tab_or_an_unfocused_split_come_back() {
+    let project = Project::new(&[
+        ("a.txt", "a\n"),
+        ("b.txt", "b\n"),
+        ("c.txt", "c\n"),
+        ("d.txt", "d\n"),
+        ("e.txt", "e\n"),
+    ]);
+    let mut ed = project.start(&[], PERSIST);
+    type_cmd(&mut ed, ":e a.txt");
+    type_cmd(&mut ed, ":vsplit b.txt");
+    type_cmd(&mut ed, ":tabnew c.txt");
+    type_cmd(&mut ed, ":e d.txt");
+    type_cmd(&mut ed, ":e e.txt");
+    assert_eq!(alternate(&ed).as_deref(), Some("d.txt"), "sanity");
+
+    let again = restart(&project, ed);
+    assert_eq!(buffer_names(&again), ["a.txt", "b.txt", "d.txt", "e.txt"]);
+}
+
+#[test]
 fn tabs_splits_and_focus_come_back() {
     let project = Project::new(&[("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]);
     let mut ed = project.start(&[], PERSIST);

@@ -111,7 +111,7 @@ Files you open are always editable, whatever their permissions on disk. A write 
 ## Persistence and safety
 
 - **Undo history lasts until HUME exits, unless you save it.** With `undo-persist` on, saving a file saves its undo history too; see [Saved undo history](#saved-undo-history).
-- **Open files and layout last until HUME exits, unless you save the session.** With `session-persist` on, quitting saves them for the session root, by default the directory HUME started in; see [Saved sessions](#saved-sessions).
+- **Your tabs, splits and the files they show last until HUME exits, unless you save the session.** With `session-persist` on, quitting saves them for the session root, by default the directory HUME started in; see [Saved sessions](#saved-sessions).
 - **No swap or backup files.** HUME writes no swap or backup files while you edit. A save writes to a temporary file and renames it into place, so the file on disk holds either the old content or the new, never a half-written mix.
 - **Unsaved changes survive a crash.** If HUME itself panics, it writes them to disk and offers them back the next time you open the file; see [Crash recovery](#crash-recovery).
 - **A background crash doesn't stop HUME.** If a background task crashes (syntax highlighting, a language server connection), HUME keeps running. The crash appears as an error in `:messages` and is printed on the terminal after you quit. The feature that task ran can stop working until you restart.
@@ -136,13 +136,13 @@ Nothing removes old history files. To forget a file's history, delete its `.undo
 
 With `session-persist` on, quitting HUME saves the session of its session root, by default the directory HUME started in, and starting `hume` with no files and the same root brings it back:
 
-- the files shown in a pane of any tab, and the one you saw before the current one, so `:b#` still goes back to it;
+- the files shown in a pane of any tab, and the last file you saw before the current one, so `:b#` still goes back to it;
 - your tabs and splits, their sizes, and which pane had focus;
 - in each pane, the selections, scroll position and wrap setting of each of those files it showed, and its jumps within them;
 - the registers `q` and `0`–`9`, recorded macros included;
 - what you typed at the `:`, `/`, `?` and `|` prompts, and the last search, so `n` works at once.
 
-Files no pane shows, scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill ring `k` and the clipboard `c` are not kept: a session records which files were shown, so save your changes to keep them.
+Other open files, scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill ring `k` and the clipboard `c` are not kept: a session records which files to reopen, not their text, so save your changes to keep them.
 
 - Turn it on with `(set-option! "session-persist" #t)` in `init.scm`. Turning it off stops both saving and restoring, and deletes nothing.
 - Starting HUME with files, as in `hume notes.txt`, opens just those files and leaves the saved session alone: quitting that run doesn't save over it. Run `:save-session` to make it a session after all: it saves the session at once, replacing the saved one, and quitting saves it again. In any session, `:save-session` saves it right away.

@@ -22,8 +22,8 @@ use crate::editor::minibuf::history::HistoryKind;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct SessionSnapshot {
-    /// The file buffers a pane of some tab shows, and the alternate one, in
-    /// open order.
+    /// The file buffers a pane of some tab shows, and the last file shown
+    /// before the focused pane's, in open order.
     pub(super) buffers: Vec<BufferSnapshot>,
     /// Every buffer index once, least recently shown first.
     pub(super) mru: Vec<usize>,
@@ -74,7 +74,7 @@ pub(super) enum SplitDirection {
 pub(super) struct PaneSnapshot {
     /// The buffer the pane shows, `None` for one no session keeps.
     pub(super) shown: Option<usize>,
-    /// The pane's state for each file buffer it has shown.
+    /// The pane's state for each kept buffer it has shown.
     pub(super) buffers: Vec<PaneBufferSnapshot>,
     pub(super) jumps: Vec<JumpSnapshot>,
     /// Where the pane stands in `jumps`, `jumps.len()` at the present.
@@ -126,12 +126,20 @@ pub(super) enum ShapeSnapshot {
 
 impl SessionSnapshot {
     pub(super) fn capture(state: &EditorState, view: &EngineView) -> Self {
-        let kept: HashSet<BufferId> = state
-            .tabs
-            .layouts(view.focused_layout())
-            .flat_map(|(_, layout)| layout.tree().leaves())
-            .map(|pid| view.panes[pid].buffer_id())
-            .chain(state.buffers.second_most_recent())
+        let focused = view.panes[view.focused_pane()].buffer_id();
+        // Restore makes this file the alternate.
+        let alternate = state
+            .buffers
+            .mru()
+            .iter()
+            .rev()
+            .copied()
+            .find(|&bid| bid != focused && state.buffers.get(bid).file().is_some());
+        let kept: HashSet<BufferId> = view
+            .panes
+            .every_pane_across_all_tabs()
+            .map(|(_, pane)| pane.buffer_id())
+            .chain(alternate)
             .collect();
         let mut index = SecondaryMap::new();
         let buffers = state
