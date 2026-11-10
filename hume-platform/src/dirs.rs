@@ -239,6 +239,7 @@ fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 ///
 /// Search order:
 /// 1. `HUME_RUNTIME` environment variable (dev escape hatch; not existence-checked).
+
 /// 2. `../share/hume/runtime/` relative to the binary, Unix / macOS installed (FHS)
 ///    layout. Not `../share/hume/` itself: with the binary in `~/.local/bin` that
 ///    is the data dir, whose `plugins/` and `themes/` would alias the runtime's.
@@ -247,6 +248,10 @@ fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 ///    is no `share/` layout, and any unpacked archive run in place on Unix).
 /// 4. `./runtime` relative to cwd: dev fallback when running with `cargo run` from the
 ///    workspace root.
+///
+/// Candidates 2 and 3 are relative to the binary's canonical path, so a
+/// symlink to it (a package manager's link directory, `~/.local/bin/hume`)
+/// finds the runtime its target was installed with.
 ///
 /// Every candidate except (1) is existence-checked; returns `None` if none exist.
 fn runtime_dir_with(
@@ -258,7 +263,8 @@ fn runtime_dir_with(
         return Some(PathBuf::from(rt));
     }
 
-    if let Some(exe_dir) = exe.and_then(Path::parent) {
+    let exe = exe.and_then(|exe| crate::path::AbsolutePath::canonicalize(exe).ok());
+    if let Some(exe_dir) = exe.as_deref().and_then(Path::parent) {
         #[cfg(not(windows))]
         if let Some(share_runtime) = exe_dir
             .parent()

@@ -96,12 +96,44 @@ fn runtime_dir_prefers_installed_share_layout_over_exe_relative_runtime() {
     let prefix = tempfile::tempdir().unwrap();
     let bin_dir = prefix.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
+    std::fs::write(bin_dir.join("hume"), "").unwrap();
     std::fs::create_dir(bin_dir.join("runtime")).unwrap();
     let share_runtime = prefix.path().join("share").join("hume").join("runtime");
     std::fs::create_dir_all(&share_runtime).unwrap();
 
     let result = runtime_dir_with(|_| None, Some(&bin_dir.join("hume")), None);
-    assert_eq!(result, Some(share_runtime));
+    assert_eq!(result, Some(canonical(&share_runtime)));
+}
+
+#[test]
+fn runtime_dir_follows_a_symlinked_binary_to_its_share_layout() {
+    // A package manager links <links>/hume to <prefix>/bin/hume.
+    let base = tempfile::tempdir().unwrap();
+    let bin_dir = base.path().join("prefix").join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    std::fs::write(bin_dir.join("hume"), "").unwrap();
+    let share_runtime = base.path().join("prefix/share/hume/runtime");
+    std::fs::create_dir_all(&share_runtime).unwrap();
+    let links = base.path().join("links");
+    std::fs::create_dir(&links).unwrap();
+    std::os::unix::fs::symlink(bin_dir.join("hume"), links.join("hume")).unwrap();
+
+    let result = runtime_dir_with(|_| None, Some(&links.join("hume")), None);
+    assert_eq!(result, Some(canonical(&share_runtime)));
+}
+
+#[test]
+fn runtime_dir_follows_a_symlinked_binary_to_its_archive_runtime() {
+    let base = tempfile::tempdir().unwrap();
+    let pkg = base.path().join("pkg");
+    std::fs::create_dir_all(pkg.join("runtime")).unwrap();
+    std::fs::write(pkg.join("hume"), "").unwrap();
+    let links = base.path().join("links");
+    std::fs::create_dir(&links).unwrap();
+    std::os::unix::fs::symlink(pkg.join("hume"), links.join("hume")).unwrap();
+
+    let result = runtime_dir_with(|_| None, Some(&links.join("hume")), None);
+    assert_eq!(result, Some(canonical(&pkg.join("runtime"))));
 }
 
 #[test]
@@ -110,6 +142,7 @@ fn runtime_dir_skips_a_share_hume_without_a_runtime_subdir() {
     let prefix = tempfile::tempdir().unwrap();
     let bin_dir = prefix.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
+    std::fs::write(bin_dir.join("hume"), "").unwrap();
     std::fs::create_dir_all(prefix.path().join("share").join("hume").join("plugins")).unwrap();
 
     let result = runtime_dir_with(|_| None, Some(&bin_dir.join("hume")), None);

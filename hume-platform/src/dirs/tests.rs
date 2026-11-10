@@ -1,5 +1,13 @@
 use super::*;
 
+/// `path` with every symlink resolved: a temp dir can sit under one, as
+/// macOS's `/var` does.
+fn canonical(path: &Path) -> PathBuf {
+    crate::path::AbsolutePath::canonicalize(path)
+        .unwrap()
+        .to_path_buf()
+}
+
 #[test]
 fn runtime_dir_respects_hume_runtime() {
     let tmp = tempfile::tempdir().unwrap();
@@ -40,9 +48,10 @@ fn runtime_dir_falls_back_to_exe_relative_runtime() {
     // Portable/archive layout: hume(.exe) sits next to runtime/ (nightly zips).
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir(tmp.path().join("runtime")).unwrap();
+    std::fs::write(tmp.path().join("hume"), "").unwrap();
 
     let result = runtime_dir_with(|_| None, Some(&tmp.path().join("hume")), None);
-    assert_eq!(result, Some(tmp.path().join("runtime")));
+    assert_eq!(result, Some(canonical(&tmp.path().join("runtime"))));
 }
 
 #[test]

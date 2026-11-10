@@ -79,7 +79,7 @@ On every platform, keep the whole extracted folder intact. HUME finds its runtim
 - macOS/Linux: `../share/hume/runtime/` next to `bin/hume`.
 - Windows: `runtime/` next to `hume.exe`.
 
-A binary moved out on its own can't find them.
+A binary moved out on its own can't find them. A symlink to the binary works, for example `ln -s ~/apps/hume-x.y.z/bin/hume ~/.local/bin/hume`.
 
 ### Check it works
 

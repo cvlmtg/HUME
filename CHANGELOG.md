@@ -5,6 +5,9 @@
 ### Breaking changes
 - `core:helix-surround` is removed. For Helix's `m s`/`m d`/`m r`, load the [helix.hume](https://github.com/cvlmtg/helix.hume) plugin instead: `(load-plugin! "cvlmtg/helix.hume")`, which binds the rest of Helix's keys too.
 
+### Installation
+- `hume` started through a symlink, such as `~/.local/bin/hume` pointing into an extracted archive, finds its themes and plugins.
+
 ### Files & buffers
 - A file whose extension several languages share, such as `.pl` for Perl and Prolog, opens as the language its shebang runs. A language you define in `init.scm` gets its extensions, globs and interpreters over a plugin's, and a plugin's over HUME's own.
 
