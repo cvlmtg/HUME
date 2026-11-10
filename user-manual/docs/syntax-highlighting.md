@@ -109,6 +109,8 @@ You can drop trailing arguments you don't need: `(define-language! "my-lang" '("
 
 Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its [settings](#language-settings) stay. A definition in your `init.scm` beats a plugin's, whichever runs first, and a second one in your `init.scm` is ignored with a note in `:messages`.
 
+Several languages can list the same extension or interpreter, or have globs that match the same file. A language you define in your `init.scm` gets the file over a plugin's, and a plugin's over HUME's own, so defining one there is how you choose. This only decides between languages listing the same extension or interpreter name: a longer extension, or an interpreter name with a version, wins over a shorter one whoever defined it. Between languages of the same rank, a glob or an interpreter goes to the one defined last, and a file with a shared extension is one its first line's interpreter is listed for, when there is one; otherwise which of them it is isn't specified.
+
 ### Language settings
 
 Settings beyond detection go through `configure-language!`, which works on any language, built-in or your own. Call it after the `define-language!` that defines the language.

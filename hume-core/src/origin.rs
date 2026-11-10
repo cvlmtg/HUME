@@ -162,6 +162,11 @@ impl<T, P: TiePolicy> Ranked<T, P> {
         self.held.as_ref().map(|&(_, by)| by)
     }
 
+    /// The held value and the origin of the write that set it.
+    pub fn held(&self) -> Option<(&T, ConfigOrigin)> {
+        self.held.as_ref().map(|(value, by)| (value, *by))
+    }
+
     /// Empties the slot whatever its origin: a reset, not a ranked write.
     pub fn take(&mut self) -> Option<T> {
         self.held.take().map(|(value, _)| value)
@@ -232,6 +237,11 @@ impl<T> ByOrigin<T> {
             .into_iter()
             .rev()
             .map(|origin| (origin, &self.0[usize::from(origin.level())]))
+    }
+
+    /// Every origin's value, to change in place.
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.0.iter_mut()
     }
 
     /// The values of every origin above `origin`, highest first.

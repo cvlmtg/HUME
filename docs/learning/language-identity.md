@@ -35,17 +35,25 @@ order and stops at the first match:
 
 2. **Extensions.** If no glob matches, the file extension is looked up (`.rs`
    is Rust, `.py` is Python, and so on). This handles the common case: most
-   source files are unambiguous from their extension.
+   source files are unambiguous from their extension, and the longest
+   extension that matches is the one looked up (`app.js.map` is `js.map`
+   before `map`). When several languages list it, those defined by whoever
+   ranks highest (the user, then a plugin, then the built-in data) decide,
+   and the shebang chooses among them: `.pl` is both Perl and Prolog, and a
+   file whose first line runs `swipl` is Prolog. A shebang naming none of
+   them leaves the choice unspecified.
 
 3. **Shebangs.** If the file has no extension, or an extension no language
    claims, the first line is checked for a shebang (`#!/usr/bin/env python3`,
    `#!/bin/bash`). This covers extensionless scripts like `build` or
    `configure`. A language lists interpreter names, and a version after the
    name (`python3`, `lua5.4`) still finds the language listing `python` or
-   `lua`, unless some language lists that exact version.
+   `lua`, unless some language lists that exact version: the most specific
+   name counts before who defined it. An interpreter several languages list
+   goes by the same ranking, then to the language defined last.
 
-When two languages' glob patterns match the same file, the language defined
-last wins. Which definition of one language counts is decided by who made
+When two languages' glob patterns match the same file, the same ranking
+decides, then the language defined last. Which definition of one language counts is decided by who made
 it, not when: the user's beats a plugin's, and a plugin's beats the built-in
 one.
 

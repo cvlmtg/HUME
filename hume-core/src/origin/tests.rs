@@ -88,6 +88,10 @@ fn write_replaces_the_value_with_its_origin_only_when_it_applies<P: TiePolicy>(
         assert_eq!(written.displaced, displaced, "{held:?} {by:?}");
         assert_eq!(slot.by(), origin);
         assert_eq!(slot.get().copied(), origin.map(|_| value));
+        assert_eq!(
+            slot.held().map(|(value, by)| (*value, by)),
+            origin.map(|by| (value, by))
+        );
     }
 }
 

@@ -295,7 +295,7 @@ fn steel_server_plugin_gives_scheme_its_root_and_server_list() {
     let languages = &ed.state.config.languages;
     let scheme = languages.id_of("scheme").expect("scheme is a language");
     assert_eq!(languages.roots_of(scheme), ["cog.scm"]);
-    assert_eq!(languages.by_file_name("f.scm"), Some(scheme));
+    assert_eq!(languages.by_file_name("f.scm", None), Some(scheme));
     assert_eq!(
         crate::editor::lsp::introspect::language_servers(&ed.state.lsp, "scheme")
             .into_iter()

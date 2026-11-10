@@ -385,7 +385,7 @@ fn attach_grammar_with_missing_injections_file_fails_with_read_error() {
 #[test]
 fn language_registry_by_ext_lookup_empty() {
     let reg = LanguageRegistry::for_testing();
-    assert!(reg.by_file_name("f.rs").is_none());
+    assert!(reg.by_file_name("f.rs", None).is_none());
 }
 
 #[test]
@@ -403,11 +403,11 @@ fn register_identity_then_defined_id_returns_its_id() {
         .expect("identity should be registered");
     assert_eq!(reg.name_of(id), "toml");
     assert!(
-        reg.by_file_name("f.toml").is_some(),
+        reg.by_file_name("f.toml", None).is_some(),
         "extension lookup must work after identity reg"
     );
     // Unknown ext should not match.
-    assert!(reg.by_file_name("f.yaml").is_none());
+    assert!(reg.by_file_name("f.yaml", None).is_none());
 }
 
 fn strings(items: &[&str]) -> Vec<String> {
@@ -864,7 +864,7 @@ fn remove_clears_glob_and_shebang_entries() {
     let mut reg = LanguageRegistry::for_testing();
     reg.register_identity("python", &["py"], &["*.py"], &["python"])
         .unwrap();
-    assert!(reg.by_file_name("f.py").is_some());
+    assert!(reg.by_file_name("f.py", None).is_some());
     assert!(reg.by_interpreter("python").is_some());
     assert!(
         !reg.compiled_globs()
@@ -874,7 +874,7 @@ fn remove_clears_glob_and_shebang_entries() {
 
     reg.remove("python");
 
-    assert!(reg.by_file_name("f.py").is_none());
+    assert!(reg.by_file_name("f.py", None).is_none());
     assert!(reg.by_interpreter("python").is_none());
     assert!(
         reg.compiled_globs()
@@ -883,34 +883,77 @@ fn remove_clears_glob_and_shebang_entries() {
     );
 }
 
-/// `deindex` must only remove an index entry it still owns.
-/// `c` and `cpp` both claim `.h` (last-registered wins, so `cpp` takes
-/// it); re-registering `c` without `.h` must not evict `cpp`'s mapping:
-/// `c` never owned it at the time of re-registration.
+/// Dropping a shared extension from one language's definition leaves it to
+/// the others.
 #[test]
-fn deindex_does_not_clobber_another_languages_shared_extension() {
-    let mut reg = LanguageRegistry::for_testing();
-    reg.register_identity("c", &["c", "h"], &[], &[]).unwrap();
-    reg.register_identity("cpp", &["cpp", "h"], &[], &[])
-        .unwrap();
-    assert_eq!(
-        reg.by_file_name("f.h"),
-        reg.id_of("cpp"),
-        "cpp must win the shared .h extension (last-registered-wins)"
-    );
+fn a_language_dropping_a_shared_extension_leaves_it_to_the_others() {
+    for (dropping, keeping) in [("c", "cpp"), ("cpp", "c")] {
+        let mut reg = LanguageRegistry::for_testing();
+        reg.register_identity("c", &["c", "h"], &[], &[]).unwrap();
+        reg.register_identity("cpp", &["cpp", "h"], &[], &[])
+            .unwrap();
+        let (_, outcome) = reg
+            .register_identity_by(dropping, &[dropping], &[], &[], ConfigOrigin::User)
+            .expect("the test detection data is valid");
+        assert_eq!(outcome, WriteOutcome::Applied);
 
-    // Re-register c, dropping .h from its own extension list.
-    let (_, outcome) = reg
-        .register_identity_by("c", &["c"], &[], &[], ConfigOrigin::User)
-        .expect("the test detection data is valid");
-    assert_eq!(outcome, WriteOutcome::Applied);
+        assert_eq!(
+            reg.by_file_name("f.h", None),
+            reg.id_of(keeping),
+            "{dropping} dropped .h"
+        );
+        assert_eq!(
+            reg.by_file_name(&format!("f.{dropping}"), None),
+            reg.id_of(dropping)
+        );
+    }
+}
 
-    assert_eq!(
-        reg.by_file_name("f.h"),
-        reg.id_of("cpp"),
-        "re-registering c must not clobber cpp's still-current .h mapping"
+/// Dropping a shared interpreter from one language's definition leaves it
+/// to the others.
+#[test]
+fn a_language_dropping_a_shared_interpreter_leaves_it_to_the_others() {
+    for (dropping, keeping) in [("tcl", "wish"), ("wish", "tcl")] {
+        let mut reg = LanguageRegistry::for_testing();
+        reg.register_identity("tcl", &[], &[], &["tclsh"]).unwrap();
+        reg.register_identity("wish", &[], &[], &["tclsh"]).unwrap();
+        let (_, outcome) = reg
+            .register_identity_by(dropping, &[], &[], &[], ConfigOrigin::User)
+            .expect("the test detection data is valid");
+        assert_eq!(outcome, WriteOutcome::Applied);
+
+        assert_eq!(
+            reg.by_interpreter("tclsh"),
+            reg.id_of(keeping),
+            "{dropping} dropped tclsh"
+        );
+    }
+}
+
+/// A language defined after another, from a lower origin, does not take
+/// the interpreter they share.
+#[test]
+fn a_later_lower_definition_does_not_take_an_interpreter() {
+    let (user, plugin, bundled) = (
+        ConfigOrigin::User,
+        ConfigOrigin::Plugin,
+        ConfigOrigin::Bundled,
     );
-    assert_eq!(reg.by_file_name("f.c"), reg.id_of("c"));
+    for (higher, lower) in [(user, plugin), (user, bundled), (plugin, bundled)] {
+        let mut reg = LanguageRegistry::for_testing();
+        for (name, by) in [("first", higher), ("later", lower)] {
+            let (_, outcome) = reg
+                .register_identity_by(name, &[], &[], &["swipl"], by)
+                .expect("the test detection data is valid");
+            assert_eq!(outcome, WriteOutcome::Applied);
+        }
+
+        assert_eq!(
+            reg.by_interpreter("swipl"),
+            reg.id_of("first"),
+            "{higher:?} over {lower:?}"
+        );
+    }
 }
 
 /// A `define-language!` override in `init.scm` (e.g. adding an extension to
@@ -1136,6 +1179,27 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
     );
 }
 
+/// A glob from a higher origin wins over a later, lower definition's glob
+/// matching the same file.
+#[test]
+fn detect_language_glob_from_a_higher_origin_wins() {
+    let mut reg = LanguageRegistry::for_testing();
+    for (name, glob, by) in [
+        ("mine", "Dockerfile.dev", ConfigOrigin::User),
+        ("docker", "Dockerfile*", ConfigOrigin::Plugin),
+    ] {
+        let (_, outcome) = reg
+            .register_identity_by(name, &[], &[glob], &[], by)
+            .expect("the test detection data is valid");
+        assert_eq!(outcome, WriteOutcome::Applied);
+    }
+
+    assert_eq!(
+        detect_at("/x/Dockerfile.dev", None, &reg),
+        reg.id_of("mine")
+    );
+}
+
 #[test]
 fn detect_language_by_shebang() {
     let mut reg = LanguageRegistry::for_testing();
@@ -1159,6 +1223,104 @@ fn detect_language_shebang_direct_path() {
     // Without extension, shebang is used.
     let id2 = detect_at("/x/run", Some("#!/bin/bash"), &reg);
     assert_eq!(id2, reg.id_of("bash"));
+}
+
+/// `perl` and `prolog` both claim `pl`, each with its own shebang, and
+/// `python` has its shebang.
+fn perl_and_prolog() -> LanguageRegistry {
+    let mut reg = LanguageRegistry::for_testing();
+    reg.register_identity("perl", &["pl"], &[], &["perl"])
+        .unwrap();
+    reg.register_identity("prolog", &["pl"], &[], &["swipl"])
+        .unwrap();
+    reg.register_identity("python", &["py"], &[], &["python"])
+        .unwrap();
+    reg
+}
+
+/// The shebang decides between bundled languages and between the user's.
+#[test]
+fn the_shebang_decides_an_extension_several_languages_share() {
+    let mut users = LanguageRegistry::for_testing();
+    for (name, interpreter) in [("perl", "perl"), ("prolog", "swipl")] {
+        let (_, outcome) = users
+            .register_identity_by(name, &["pl"], &[], &[interpreter], ConfigOrigin::User)
+            .unwrap();
+        assert_eq!(outcome, WriteOutcome::Applied);
+    }
+    for reg in [perl_and_prolog(), users] {
+        let swipl = detect_at("/x/t.pl", Some("#!/usr/bin/env swipl"), &reg);
+        let perl = detect_at("/x/t.pl", Some("#!/usr/bin/perl"), &reg);
+        assert_eq!(swipl, reg.id_of("prolog"));
+        assert_eq!(perl, reg.id_of("perl"));
+    }
+}
+
+#[test]
+fn a_shared_extension_without_a_deciding_shebang_is_one_of_its_languages() {
+    let reg = perl_and_prolog();
+    let claimants = [reg.id_of("perl"), reg.id_of("prolog")];
+    for first_line in [Some("#!/usr/bin/env python3"), Some("print 1;"), None] {
+        let id = detect_at("/x/sölve.pl", first_line, &reg);
+        assert!(
+            id.is_some() && claimants.contains(&id),
+            "{first_line:?}: {id:?}"
+        );
+    }
+}
+
+#[test]
+fn a_users_language_gets_a_shared_extension_whatever_the_shebang() {
+    let mut reg = perl_and_prolog();
+    assert_eq!(
+        define(&mut reg, "mine", "pl", ConfigOrigin::User),
+        WriteOutcome::Applied
+    );
+    let id = detect_at("/x/t.pl", Some("#!/usr/bin/env swipl"), &reg);
+    assert_eq!(id, reg.id_of("mine"));
+}
+
+#[test]
+fn a_plugins_language_gets_a_shared_extension_whatever_the_shebang() {
+    let mut reg = perl_and_prolog();
+    assert_eq!(
+        define(&mut reg, "mine", "pl", ConfigOrigin::Plugin),
+        WriteOutcome::Applied
+    );
+    let id = detect_at("/x/t.pl", Some("#!/usr/bin/env swipl"), &reg);
+    assert_eq!(id, reg.id_of("mine"));
+}
+
+/// The shebang decides a shared extension through any language its
+/// interpreter names, not only the one an extensionless script opens as.
+#[test]
+fn the_shebang_decides_an_extension_through_any_language_naming_its_interpreter() {
+    let mut reg = perl_and_prolog();
+    let (_, outcome) = reg
+        .register_identity_by("perl-tests", &["t"], &[], &["perl"], ConfigOrigin::User)
+        .expect("the test detection data is valid");
+    assert_eq!(outcome, WriteOutcome::Applied);
+
+    let id = detect_at("/x/x.pl", Some("#!/usr/bin/perl"), &reg);
+    assert_eq!(id, reg.id_of("perl"));
+}
+
+#[test]
+fn a_longer_extension_wins_over_a_shorter_shared_one() {
+    let mut reg = perl_and_prolog();
+    reg.register_identity("perl-test", &["t.pl"], &[], &[])
+        .unwrap();
+    let id = detect_at("/x/a.t.pl", Some("#!/usr/bin/env swipl"), &reg);
+    assert_eq!(id, reg.id_of("perl-test"));
+}
+
+#[test]
+fn a_glob_wins_over_a_shared_extension() {
+    let mut reg = perl_and_prolog();
+    reg.register_identity("latexmk", &[], &["latexmkrc.pl"], &[])
+        .unwrap();
+    let id = detect_at("/x/latexmkrc.pl", Some("#!/usr/bin/env swipl"), &reg);
+    assert_eq!(id, reg.id_of("latexmk"));
 }
 
 /// Only the first line is read for a shebang, and a long interpreter path
@@ -1572,9 +1734,9 @@ fn a_user_definition_replaces_the_bundled_one_and_a_plugins_does_not_replace_it(
         WriteOutcome::Shadowed
     );
     let tsx = reg.id_of("tsx");
-    assert_eq!(reg.by_file_name("a.utsx"), tsx);
-    assert_eq!(reg.by_file_name("a.tsx"), None);
-    assert_eq!(reg.by_file_name("a.ptsx"), None);
+    assert_eq!(reg.by_file_name("a.utsx", None), tsx);
+    assert_eq!(reg.by_file_name("a.tsx", None), None);
+    assert_eq!(reg.by_file_name("a.ptsx", None), None);
 }
 
 #[test]
@@ -1588,8 +1750,8 @@ fn a_second_definition_from_one_tier_is_ignored() {
         define(&mut reg, "tsx", "second", ConfigOrigin::Plugin),
         WriteOutcome::Ignored
     );
-    assert_eq!(reg.by_file_name("a.first"), reg.id_of("tsx"));
-    assert_eq!(reg.by_file_name("a.second"), None);
+    assert_eq!(reg.by_file_name("a.first", None), reg.id_of("tsx"));
+    assert_eq!(reg.by_file_name("a.second", None), None);
 }
 
 /// A grammar defines the language it names with no detection data, which
@@ -1610,7 +1772,7 @@ fn a_grammar_defines_its_language_and_leaves_its_detection_to_a_definition() {
         define(&mut reg, "zlang", "zl", ConfigOrigin::Bundled),
         WriteOutcome::Applied
     );
-    assert_eq!(reg.by_file_name("a.zl"), zlang);
+    assert_eq!(reg.by_file_name("a.zl", None), zlang);
 }
 
 /// Removing a language its grammar alone defined leaves it undefined, with

@@ -455,7 +455,7 @@ fn reload_config_leaves_a_read_only_view_without_a_language() {
 // ── Detection and server registrations, ranked by origin ─────────────────
 
 fn detected(ed: &Editor, file_name: &str) -> Option<LanguageId> {
-    ed.state.config.languages.by_file_name(file_name)
+    ed.state.config.languages.by_file_name(file_name, None)
 }
 
 #[test]
@@ -499,6 +499,67 @@ fn a_second_init_definition_is_ignored_with_a_warning() {
         warnings.iter().any(|w| w.contains("define-language!")),
         "the ignored definition must be reported; warnings: {warnings:?}"
     );
+}
+
+const PERL_PROLOG_LANGUAGES: &str = r#"(define-language! "perl" '("pl") '() '("perl"))
+(define-language! "prolog" '("pl") '() '("swipl"))"#;
+
+const SWIPL_SCRIPT: (&str, &str) = ("sölve.pl", "#!/usr/bin/env swipl\n:- main.\n");
+
+/// The language of `name`, written with `text` into `fixture`'s data dir
+/// and opened with `:e`.
+fn open_language(
+    ed: &mut Editor,
+    fixture: &ReloadFixture,
+    (name, text): (&str, &str),
+) -> Option<String> {
+    let path = fixture.data_dir.join(name);
+    std::fs::write(&path, text).unwrap();
+    type_cmd(ed, &format!(":e {}", path.display()));
+    ed.settle();
+    language(ed)
+}
+
+#[test]
+fn the_shebang_decides_an_extension_two_languages_share() {
+    let (mut ed, fixture) = boot(PERL_PROLOG_LANGUAGES, &[], "", "");
+
+    let swipl = open_language(&mut ed, &fixture, SWIPL_SCRIPT);
+    let perl = open_language(
+        &mut ed,
+        &fixture,
+        ("print.pl", "#!/usr/bin/perl\nprint 1;\n"),
+    );
+
+    assert_eq!(swipl.as_deref(), Some("prolog"));
+    assert_eq!(perl.as_deref(), Some("perl"));
+    assert_no_errors(&ed);
+}
+
+#[test]
+fn a_language_defined_in_init_gets_a_shared_extension_whatever_the_shebang() {
+    let init = r#"(define-language! "mine" '("pl"))"#;
+    let (mut ed, fixture) = boot(PERL_PROLOG_LANGUAGES, &[], init, "");
+
+    let swipl = open_language(&mut ed, &fixture, SWIPL_SCRIPT);
+
+    assert_eq!(swipl.as_deref(), Some("mine"));
+    assert_no_errors(&ed);
+}
+
+#[test]
+fn a_plugins_language_gets_a_shared_extension_whatever_the_shebang() {
+    let (mut ed, fixture) = boot(
+        PERL_PROLOG_LANGUAGES,
+        &[],
+        r#"(load-plugin! "user/tp")"#,
+        r#"(define-language! "mine" '("pl"))"#,
+    );
+
+    let swipl = open_language(&mut ed, &fixture, SWIPL_SCRIPT);
+
+    assert_eq!(swipl.as_deref(), Some("mine"));
+    assert_no_errors(&ed);
 }
 
 #[test]

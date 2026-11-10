@@ -1,4 +1,6 @@
 use rustc_hash::FxHashMap;
+use std::borrow::Borrow;
+use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
@@ -10,9 +12,9 @@ use crate::context::ContextQuery;
 use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
 use hume_core::{
-    BlockCommentTokens, CommentTokens, ConfigOrigin, FirstWins, GrammarSource, LanguageField,
-    LanguageFields, LanguageIdentity, LaterWins, LineCommentTokens, OptionalQuery, OsWait, Ranked,
-    ShebangInterpreter, WriteOutcome,
+    BlockCommentTokens, ByOrigin, CommentTokens, ConfigOrigin, FirstWins, GrammarSource,
+    LanguageField, LanguageFields, LanguageIdentity, LaterWins, LineCommentTokens, OptionalQuery,
+    OsWait, Ranked, ShebangInterpreter, WriteOutcome,
 };
 #[cfg(any(test, feature = "test-util"))]
 use hume_core::{FileExtension, FileGlob};
@@ -309,6 +311,57 @@ impl LanguageEntry {
     }
 }
 
+/// The languages whose detection data lists one extension or interpreter,
+/// per origin of that data, each layer in the order its definitions applied.
+#[derive(Default)]
+struct Claimants(ByOrigin<Vec<LanguageId>>);
+
+impl Claimants {
+    fn push(&mut self, id: LanguageId, by: ConfigOrigin) {
+        self.0.get_mut(by).push(id);
+    }
+
+    fn remove(&mut self, id: LanguageId) {
+        for ids in self.0.values_mut() {
+            ids.retain(|&claimant| claimant != id);
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.iter().all(|(_, ids)| ids.is_empty())
+    }
+
+    /// The languages of the highest origin that has any, which alone decide.
+    fn deciding(&self) -> &[LanguageId] {
+        self.0
+            .iter()
+            .map(|(_, ids)| ids.as_slice())
+            .find(|ids| !ids.is_empty())
+            .unwrap_or_default()
+    }
+
+    /// Every language, highest origin first and, within one origin, the
+    /// last defined first.
+    fn ranked(&self) -> impl Iterator<Item = LanguageId> + '_ {
+        self.0.iter().flat_map(|(_, ids)| ids.iter().rev().copied())
+    }
+}
+
+/// Drops `id` from `key`'s claimants in `index`, and the key once no
+/// language claims it.
+fn unclaim<K: Borrow<str> + Hash + Eq>(
+    index: &mut FxHashMap<K, Claimants>,
+    key: &str,
+    id: LanguageId,
+) {
+    if let Some(claimants) = index.get_mut(key) {
+        claimants.remove(id);
+        if claimants.is_empty() {
+            index.remove(key);
+        }
+    }
+}
+
 /// Global registry of configured language identities. Lives on `Editor`.
 ///
 /// `ids` and `entries` are the interner: dense and append-only, with
@@ -317,15 +370,16 @@ pub struct LanguageRegistry {
     ids: FxHashMap<Arc<str>, LanguageId>,
     entries: Vec<LanguageEntry>,
     /// Detection indices, never rebuilt by a grammar change, only on
-    /// identity (re-)registration or removal.
-    by_ext: FxHashMap<String, LanguageId>,
+    /// identity (re-)registration or removal: every language listing an
+    /// extension, and with `shebang_to_id` an interpreter.
+    by_ext: FxHashMap<String, Claimants>,
     /// Compiled glob matcher, rebuilt whenever languages are added or removed.
     /// Index-aligned with `glob_lang_ids`.
     compiled_globs: GlobSet,
     /// Language id for each glob pattern at the corresponding GlobSet index.
     glob_lang_ids: Vec<LanguageId>,
-    shebang_to_id: FxHashMap<ShebangInterpreter, LanguageId>,
-    /// Registration order for glob priority: later entries win on overlap.
+    shebang_to_id: FxHashMap<ShebangInterpreter, Claimants>,
+    /// Registration order, which ranks the globs of one origin.
     lang_order: Vec<LanguageId>,
     /// Rebuilt whenever a grammar changes.
     grammar_snapshot: Arc<GrammarSnapshot>,
@@ -635,8 +689,8 @@ impl LanguageRegistry {
         (id, written.outcome)
     }
 
-    /// Point the `by_ext`/`shebang_to_id` secondary indices at `id` for each
-    /// extension and interpreter of its held identity.
+    /// Add `id` to the `by_ext`/`shebang_to_id` secondary indices for each
+    /// extension and interpreter of its held identity, under its origin.
     fn index(&mut self, id: LanguageId) {
         let Self {
             entries,
@@ -644,36 +698,32 @@ impl LanguageRegistry {
             shebang_to_id,
             ..
         } = self;
-        let Some(identity) = entries[id.0 as usize].identity.get() else {
+        let Some((identity, by)) = entries[id.0 as usize].identity.held() else {
             return;
         };
         for ext in &identity.extensions {
-            by_ext.insert(ext.as_str().to_owned(), id);
+            by_ext
+                .entry(ext.as_str().to_owned())
+                .or_default()
+                .push(id, by);
         }
         for shebang in &identity.shebangs {
-            shebang_to_id.insert(shebang.clone(), id);
+            shebang_to_id
+                .entry(shebang.clone())
+                .or_default()
+                .push(id, by);
         }
     }
 
-    /// Remove `identity`'s entries from the `by_ext`/`shebang_to_id` secondary
-    /// indices, but only where `id` is still the current owner: a shared
-    /// extension (e.g. `.h` claimed by both `c` and `cpp`) may have been
-    /// reassigned to a different language since `identity` was registered, and
-    /// deindexing unconditionally would evict that newer owner's mapping.
-    /// Note: this does not resurrect an older claimant if `id` was
-    /// indeed still the owner; the extension simply becomes unclaimed, as
-    /// between two languages the one whose definition applied last claims a
-    /// shared extension.
+    /// Remove `identity`'s entries from the `by_ext`/`shebang_to_id`
+    /// secondary indices. A shared extension or interpreter keeps its other
+    /// languages.
     fn deindex(&mut self, id: LanguageId, identity: &LanguageIdentity) {
         for ext in &identity.extensions {
-            if self.by_ext.get(ext.as_str()) == Some(&id) {
-                self.by_ext.remove(ext.as_str());
-            }
+            unclaim(&mut self.by_ext, ext.as_str(), id);
         }
         for shebang in &identity.shebangs {
-            if self.shebang_to_id.get(shebang.as_str()) == Some(&id) {
-                self.shebang_to_id.remove(shebang.as_str());
-            }
+            unclaim(&mut self.shebang_to_id, shebang.as_str(), id);
         }
     }
 
@@ -689,12 +739,24 @@ impl LanguageRegistry {
     }
 
     /// The language whose [`hume_core::FileExtension`] `file_name` ends with, the
-    /// longest one first: `app.js.map` tries `js.map`, then `map`.
-    pub fn by_file_name(&self, file_name: &str) -> Option<LanguageId> {
+    /// longest one first: `app.js.map` tries `js.map`, then `map`. Of the
+    /// languages sharing that extension, those defined by the highest
+    /// origin decide. Among them the first that `shebang`, the program a
+    /// file's `#!` line runs, names in [`Self::by_interpreter`]'s order wins;
+    /// when it names none of them, which one is unspecified.
+    pub fn by_file_name(&self, file_name: &str, shebang: Option<&str>) -> Option<LanguageId> {
         file_name
             .char_indices()
             .filter(|&(i, c)| c == '.' && i > 0)
-            .find_map(|(i, _)| self.by_ext.get(&file_name[i + 1..]).copied())
+            .find_map(|(i, _)| {
+                let deciding = self.by_ext.get(&file_name[i + 1..])?.deciding();
+                shebang
+                    .and_then(|program| {
+                        self.interpreter_claimants(program)
+                            .find(|id| deciding.contains(id))
+                    })
+                    .or_else(|| deciding.last().copied())
+            })
     }
 
     /// The id of `name` when it is defined (e.g. `"rust"` after its
@@ -715,6 +777,8 @@ impl LanguageRegistry {
 
     /// The compiled glob matcher for path-based detection. Index-aligned with
     /// `glob_lang_id`: `glob_lang_id(i)` is the language for match index `i`.
+    /// Of several matches the lowest index wins: the languages of the highest
+    /// origin come first, the last defined first among them.
     pub fn compiled_globs(&self) -> &GlobSet {
         &self.compiled_globs
     }
@@ -729,8 +793,18 @@ impl LanguageRegistry {
     /// trailing version: each `.N` part dropped in turn, then the digits
     /// left. `python3.12` tries `python3.12`, `python3`, then `python`. The
     /// most specific name first, as [`Self::by_file_name`] tries the longest
-    /// extension first.
+    /// extension first. Of the languages sharing that interpreter, the one
+    /// the highest origin defined last wins.
     pub fn by_interpreter(&self, program: &str) -> Option<LanguageId> {
+        self.interpreter_claimants(program).next()
+    }
+
+    /// Every language `program` names, in the order [`Self::by_interpreter`]
+    /// prefers them.
+    fn interpreter_claimants<'a>(
+        &'a self,
+        program: &'a str,
+    ) -> impl Iterator<Item = LanguageId> + 'a {
         let dotted = std::iter::successors(Some(program), |name| {
             name.rsplit_once('.')
                 .filter(|(_, minor)| !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit()))
@@ -743,7 +817,8 @@ impl LanguageRegistry {
         let unversioned = base.trim_end_matches(|c: char| c.is_ascii_digit());
         dotted
             .chain((unversioned != base).then_some(unversioned))
-            .find_map(|name| self.shebang_to_id.get(name).copied())
+            .filter_map(|name| self.shebang_to_id.get(name))
+            .flat_map(Claimants::ranked)
     }
 
     /// Remove a defined language wholesale: its identity, if it has one,
@@ -842,8 +917,8 @@ impl LanguageRegistry {
         scope_reg: &mut ScopeRegistry,
     ) -> Option<Arc<GrammarBundle>> {
         let entry = self.entry(id);
-        let by = entry.grammar.by()?;
-        let compiled = match entry.grammar.get()? {
+        let (slot, by) = entry.grammar.held()?;
+        let compiled = match slot {
             GrammarSlot::Registered(source) => {
                 compile_source(&entry.name, source, &self.library_wait, scope_reg)
             }
@@ -922,9 +997,15 @@ impl LanguageRegistry {
     }
 
     fn build_globs(&self) -> Result<(GlobSet, Vec<LanguageId>), globset::Error> {
+        let mut by_origin = Claimants::default();
+        for &lang_id in &self.lang_order {
+            if let Some(by) = self.entry(lang_id).identity.by() {
+                by_origin.push(lang_id, by);
+            }
+        }
         let mut builder = GlobSetBuilder::new();
         let mut ids = Vec::new();
-        for &lang_id in &self.lang_order {
+        for lang_id in by_origin.ranked() {
             if let Some(identity) = self.entry(lang_id).identity.get() {
                 for glob in &identity.globs {
                     builder.add(glob.glob().clone());
@@ -951,35 +1032,44 @@ pub struct DetectPaths<'a> {
 /// Detect the language for a buffer given its paths and its text.
 ///
 /// Priority: the path as opened, then the resolved path, each by glob
-/// (last-registered wins) and then by file extension; then the shebang on
-/// the text's first line. Returns the language id, or `None` if
-/// unrecognised.
+/// (ranked as [`LanguageRegistry::compiled_globs`] says) and then by file
+/// extension; then the shebang on the text's first line. The shebang also
+/// decides between languages that share an extension
+/// ([`LanguageRegistry::by_file_name`]). Returns the language id, or `None`
+/// if unrecognised.
 pub fn detect_language(
     paths: Option<DetectPaths>,
     text: &Rope,
     registry: &LanguageRegistry,
 ) -> Option<LanguageId> {
+    let line = shebang_line(text);
+    let shebang = line.as_deref().and_then(shebang_program);
     paths
         .and_then(|paths| {
-            detect_path(paths.as_opened, registry).or_else(|| {
+            detect_path(paths.as_opened, shebang, registry).or_else(|| {
                 (paths.resolved != paths.as_opened)
-                    .then(|| detect_path(paths.resolved, registry))
+                    .then(|| detect_path(paths.resolved, shebang, registry))
                     .flatten()
             })
         })
-        .or_else(|| detect_shebang(&shebang_line(text)?, registry))
+        .or_else(|| registry.by_interpreter(shebang?))
 }
 
-/// `path`'s language by glob, then by file extension.
-fn detect_path(path: &AbsolutePath, registry: &LanguageRegistry) -> Option<LanguageId> {
+/// `path`'s language by glob, then by file extension, with `shebang` the
+/// program its `#!` line runs.
+fn detect_path(
+    path: &AbsolutePath,
+    shebang: Option<&str>,
+    registry: &LanguageRegistry,
+) -> Option<LanguageId> {
     registry
         .compiled_globs()
         .matches(path)
-        .last()
+        .first()
         .and_then(|&i| registry.glob_lang_id(i))
         .or_else(|| {
             let name = path.file_name()?.to_str()?;
-            registry.by_file_name(name)
+            registry.by_file_name(name, shebang)
         })
 }
 
@@ -997,10 +1087,6 @@ fn shebang_line(text: &Rope) -> Option<String> {
         line.push(ch);
     }
     (!line.is_empty()).then_some(line)
-}
-
-fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<LanguageId> {
-    registry.by_interpreter(shebang_program(line)?)
 }
 
 /// The env(1) options, GNU and BSD, whose operand is the next word.
