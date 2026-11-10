@@ -7,7 +7,7 @@ use crate::types::{
 };
 use hume_grid::{Grid, Rect, Rgb};
 use hume_rope::column::DisplayLineCol;
-use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::line::RopeyLine;
 
 fn dc(n: u32) -> DisplayLineCol {
     DisplayLineCol::new(n)
@@ -82,9 +82,7 @@ fn renders_simple_text() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -149,9 +147,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -198,9 +194,7 @@ fn filler_rows_have_tilde() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -255,9 +249,7 @@ fn do_compose_display_line(
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -622,9 +614,7 @@ fn indent_guide_hidden_when_indent_guides_is_false() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -763,9 +753,7 @@ fn indent_guide_leaves_a_reversed_cursor_cell_visibly_distinct() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle {
@@ -959,9 +947,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1035,9 +1021,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1161,9 +1145,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1265,9 +1247,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1373,9 +1353,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             visible: &visible,
             horizontal_offset: viewport.horizontal_offset,
             mode: EditorMode::Normal,
-            row: crate::providers::GutterRow::Body {
-                primary_head_line: ContentLine::new(0),
-            },
+            row: crate::test_support::body_row_on_line_0(),
             tab_width: 4,
             tilde_style: ResolvedStyle::default(),
             indent_guide_style: ResolvedStyle::default(),
@@ -1485,9 +1463,7 @@ fn gutter_column_reads_rope_via_ctx() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1600,9 +1576,7 @@ fn compose_display_line_dims_cells_inline() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1658,9 +1632,7 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
         visible: &visible,
         horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
-        row: crate::providers::GutterRow::Body {
-            primary_head_line: ContentLine::new(0),
-        },
+        row: crate::test_support::body_row_on_line_0(),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),

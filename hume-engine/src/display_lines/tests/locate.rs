@@ -57,6 +57,28 @@ fn locate_offsets_the_display_line_by_the_lines_before_block() {
 }
 
 #[test]
+fn first_content_display_line_is_past_the_lines_before_block() {
+    let rope = Rope::from_str(&"x\n".repeat(10));
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
+        Side::Before,
+        ContentLine::new(4),
+        2,
+        "V",
+    )));
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+    assert_eq!(
+        dlm.first_content_display_line(ContentLine::new(4)),
+        DisplayLinePos::new(ContentLine::new(4), 2)
+    );
+    assert_eq!(
+        dlm.first_content_display_line(ContentLine::new(3)),
+        DisplayLinePos::new(ContentLine::new(3), 0)
+    );
+}
+
+#[test]
 fn locate_skips_a_mid_line_inline_insert_sharing_the_real_graphemes_offset() {
     // "ab\n", no wrap: an inline insert "XY" (an inlay hint, say) spliced in
     // right before 'b' shares 'b's position (1). `locate` must resolve to

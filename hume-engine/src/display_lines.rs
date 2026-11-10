@@ -47,7 +47,7 @@ pub mod scroll;
 mod stepping;
 
 pub use pos::{BlockBreakdown, BlockSlot, DisplayColTarget, DisplayLinePos};
-pub use scroll::carry;
+pub use scroll::{CarryTop, carry};
 
 // Display-line map
 
@@ -188,7 +188,7 @@ impl<'a> DisplayLineMap<'a> {
     }
 
     /// The text this map lays out.
-    pub fn rope(&self) -> &Rope {
+    pub(crate) fn rope(&self) -> &Rope {
         self.rope
     }
 

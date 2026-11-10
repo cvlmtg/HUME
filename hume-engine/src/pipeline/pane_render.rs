@@ -5,7 +5,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use crate::display_lines::{DisplayLineMap, h_window};
 use crate::providers::{GutterRow, ProviderSet};
 use crate::render::{self, ComposeCtx};
-use crate::scope_headers::{ScopeHeaderInputs, header_display_line, scope_headers};
+use crate::scope_headers::{ScopeHeaderInputs, scope_headers};
 use crate::style::SelectionPaint;
 use crate::types::{DisplayLineKind, ResolvedStyle};
 
@@ -67,7 +67,6 @@ pub(crate) fn render_pane(
         pane_ctx.settings.gutter,
     ));
 
-    let wrap_mode = pane_ctx.settings.format.wrap_mode;
     let mut dlm = DisplayLineMap::new(
         pane_ctx.rope,
         pane_ctx.providers,
@@ -76,11 +75,12 @@ pub(crate) fn render_pane(
         store,
     )
     .with_h_window(h_window(
-        wrap_mode,
+        pane_ctx.settings.format.wrap_mode,
         pane_ctx.viewport.horizontal_offset,
         visible.content_width,
     ));
     let last_content_line = dlm.last_line();
+    let providers = dlm.providers();
 
     // The render pass resolves the top it walks from (see `Viewport::top_at`),
     // so a host with no per-frame healing discipline of its own (a
@@ -179,15 +179,10 @@ pub(crate) fn render_pane(
             | DisplayLineKind::Wrap { .. }
             | DisplayLineKind::Filler => {
                 let line = line.get_or_insert_with(|| {
-                    LineStyle::enter(
-                        pos.line,
-                        last_content_line,
-                        Some(head_line),
-                        pane_ctx.providers,
-                        pane_ctx,
-                        style,
-                    )
+                    LineStyle::enter(pos.line, last_content_line, providers, pane_ctx, style)
                 });
+                // Cursorline highlights only the primary cursor's line.
+                let is_head_line = pos.line == head_line;
                 style
                     .styles
                     .resize(rendered.graphemes.len(), ResolvedStyle::default());
@@ -197,7 +192,7 @@ pub(crate) fn render_pane(
                     line.chars,
                     Some(SelectionPaint {
                         selections: pane_ctx.selections,
-                        is_head_line: line.is_head_line,
+                        is_head_line,
                         mode: pane_ctx.settings.mode,
                         cursor_is_block: pane_ctx.settings.cursor_is_block,
                     }),
@@ -207,8 +202,7 @@ pub(crate) fn render_pane(
                 );
                 // Cursorline wins over the tint: a theme whose cursorline
                 // has no `bg` falls through to the tint automatically.
-                let row_bg = line
-                    .is_head_line
+                let row_bg = is_head_line
                     .then_some(pane_ctx.theme.ui.cursorline.bg)
                     .flatten()
                     .or(line.tint_bg);
@@ -256,15 +250,8 @@ pub(crate) fn render_pane(
     };
     let header_bg = pane_ctx.theme.ui.context.bg;
     for (header_row, &header) in (0u16..).zip(headers.iter()) {
-        let line = LineStyle::enter(
-            header,
-            last_content_line,
-            None,
-            header_providers,
-            pane_ctx,
-            style,
-        );
-        let pos = header_display_line(&mut header_dlm, header);
+        let line = LineStyle::enter(header, last_content_line, header_providers, pane_ctx, style);
+        let pos = header_dlm.first_content_display_line(header);
         let rendered = header_dlm.render_display_line(pos);
         style
             .styles
@@ -299,7 +286,6 @@ pub(crate) fn render_pane(
 /// come from the providers the line's display map lays it out with.
 struct LineStyle {
     chars: ExclusiveRange<CharOffset>,
-    is_head_line: bool,
     /// The background of a provider-requested full-row tint for this line,
     /// if any (`Decoration::LineBg`), resolved once here and read at both
     /// paint sites (the row-fill `row_bg` and `style_display_line`'s
@@ -312,7 +298,6 @@ impl LineStyle {
     fn enter(
         line_idx: hume_rope::line::ContentLine,
         last_content_line: hume_rope::line::ContentLine,
-        primary_head_line: Option<hume_rope::line::ContentLine>,
         providers: &ProviderSet,
         pane_ctx: &PaneRenderCtx,
         style: &mut super::StyleScratch,
@@ -336,8 +321,6 @@ impl LineStyle {
         let end_char = hume_rope::lines::next_line_start(pane_ctx.rope, line_idx.into());
         Self {
             chars: ExclusiveRange::new(start_char, end_char),
-            // Cursorline highlights only the primary cursor's line.
-            is_head_line: primary_head_line == Some(line_idx),
             tint_bg: tint.and_then(|scope| pane_ctx.theme.resolve(scope).bg),
         }
     }

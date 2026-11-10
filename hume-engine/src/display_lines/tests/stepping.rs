@@ -3,15 +3,14 @@
 use super::*;
 use crate::pane::ViewGeometry;
 use crate::scope_headers::ScopeHeaderInputs;
+use crate::test_support::plain_geo;
 
 /// [`ViewGeometry`] for a `height`-row viewport and `margin` scroll-margin.
 /// `max_scroll_top` cannot be called at `height == 0` (there is no
 /// `ViewGeometry` to construct one from), so every fixture here is implicitly
 /// nonzero-height.
 fn geo(height: u16, margin: usize) -> ViewGeometry<'static> {
-    crate::pipeline::PaneSize::new(0, height)
-        .geometry(margin, ScopeHeaderInputs::NONE)
-        .expect("test fixtures use a nonzero height")
+    plain_geo(crate::pipeline::PaneSize::new(0, height), margin)
 }
 
 /// Walk the whole document forward from its first display line.

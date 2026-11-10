@@ -28,8 +28,8 @@ use super::{EditorState, commands};
 /// `frame::reveal_due_cursor` stores this in
 /// `PaneBufferState::last_layout_key` and compares it against a fresh one
 /// each time it runs (resize, wrap-mode change, buffer switch, decoration
-/// generation, a parse landing while headers are on, and any content edit to the buffer, since
-/// `buffer_tag` includes `generation`). A change reveals only a pane that isn't
+/// generation, a parse landing while headers are on, and any content edit to
+/// the buffer, since `buffer_tag` includes `generation`). A change reveals only a pane that isn't
 /// [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked):
 /// a parked pane's own edit still reveals it, through `reveal_pending`
 /// instead, but a change from elsewhere (a sibling pane's edit, a
@@ -41,8 +41,8 @@ pub(in crate::editor) struct LayoutKey {
     size: hume_engine::pipeline::PaneSize,
     scroll_margin: usize,
     context: ContextSettings,
-    /// [`Syntax::committed_gen`],
-    /// `None` without syntax or with headers off.
+    /// [`Syntax::committed_gen`], `None` without committed layers or with
+    /// headers off.
     layers: Option<u64>,
 }
 
@@ -271,7 +271,7 @@ impl EditorState {
                 .syntax
                 .as_ref()
                 .filter(|_| context.enabled)
-                .map(Syntax::committed_gen),
+                .and_then(Syntax::committed_gen),
         }
     }
 }

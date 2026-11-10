@@ -7,7 +7,6 @@
 
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap, DisplayLinePos};
 use hume_engine::pane::Viewport;
-use hume_engine::scope_headers::header_display_line;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
@@ -106,7 +105,7 @@ pub(in crate::editor) fn header_to_cluster(
     dlm: &mut DisplayLineMap<'_>,
     line: ContentLine,
 ) -> Option<ClusterStart> {
-    let row = header_display_line(dlm, line);
+    let row = dlm.first_content_display_line(line);
     cell_to_cluster(content_x, gutter_w, DisplayLineCol::new(0), dlm, row)
 }
 

@@ -105,7 +105,8 @@ impl ViewGeometry<'_> {
         (self.margin + headers.len()).min((self.height - 1) / 2)
     }
 
-    /// The [`scope_headers`] painted over this view while `top` is its top.
+    /// The header lines painted over this view's top rows while `top` is its
+    /// top, top row first, written to `out` in place of its contents.
     pub fn scope_headers(
         &self,
         dlm: &mut DisplayLineMap<'_>,

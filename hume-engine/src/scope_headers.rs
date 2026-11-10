@@ -1,8 +1,10 @@
 //! Scope headers: the first lines of the scopes a pane's top rows are
 //! inside, painted over those rows.
 //!
-//! [`scope_headers`] is the one walk that decides them. Rendering draws its
-//! answer, [`ViewGeometry::top_margin_at`](crate::pane::ViewGeometry::top_margin_at)
+//! One walk decides them, which
+//! [`ViewGeometry::scope_headers`](crate::pane::ViewGeometry::scope_headers)
+//! runs for a pane's view. Rendering draws its answer,
+//! [`ViewGeometry::top_margin_at`](crate::pane::ViewGeometry::top_margin_at)
 //! keeps the cursor below it, and a mouse hit on a header row resolves
 //! through it.
 
@@ -17,7 +19,7 @@ use crate::pipeline::ContentWidth;
 use crate::providers::{ProviderSet, SyntaxSource};
 
 /// The most header rows a pane shows.
-pub const MAX_SCOPE_HEADERS: usize = 3;
+const MAX_SCOPE_HEADERS: usize = 3;
 
 /// A buffer's scope-header settings.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -29,7 +31,7 @@ pub struct ContextSettings {
     pub outer_level: bool,
 }
 
-/// What [`scope_headers`] reads a pane's scopes from.
+/// What the scope-header walk reads a pane's scopes from.
 #[derive(Copy, Clone)]
 pub struct ScopeHeaderInputs<'a> {
     /// The buffer's syntax, `None` for a buffer without a grammar.
@@ -67,7 +69,7 @@ impl ScopeHeaderInputs<'static> {
 /// [`ContextSettings::outer_level`] the row after it, and the line under the
 /// headers stays at the cap's row. A header whose row would have no line
 /// under it, past the document's end, is not shown.
-pub fn scope_headers(
+pub(crate) fn scope_headers(
     dlm: &mut DisplayLineMap<'_>,
     top: DisplayLinePos,
     height: usize,
@@ -87,10 +89,19 @@ pub fn scope_headers(
         return;
     }
     let mut pos = dlm.clamp(top);
+    // The scopes of `scratch_line`, which a wrapped or virtual-line block
+    // keeps under the headers for several rows.
     let mut scratch = Vec::new();
-    while out.len() < cap {
+    let mut scratch_line = None;
+    loop {
         // A virtual display line's row belongs to the line it is anchored to.
-        source.header_lines(pos.line, dlm.rope(), &mut scratch);
+        if scratch_line != Some(pos.line) {
+            source.header_lines(pos.line, dlm.rope(), &mut scratch);
+            scratch_line = Some(pos.line);
+        }
+        if out.len() == cap {
+            break;
+        }
         let Some(&header) = scratch.iter().find(|line| !out.contains(*line)) else {
             return;
         };
@@ -102,7 +113,6 @@ pub fn scope_headers(
     }
     // At the cap the line under the headers stays at row `cap`, so each of
     // its scopes not yet taken joins in turn, outer to inner, and drops a row.
-    source.header_lines(pos.line, dlm.rope(), &mut scratch);
     scratch.retain(|line| !out.contains(line));
     for &header in &scratch {
         out.push(header);
@@ -154,11 +164,6 @@ impl HeaderLayout {
                 content_width,
             ))
     }
-}
-
-/// The display line a header row draws: `line`'s first content display line.
-pub fn header_display_line(dlm: &mut DisplayLineMap<'_>, line: ContentLine) -> DisplayLinePos {
-    DisplayLinePos::new(line, dlm.block(line).before)
 }
 
 #[cfg(test)]

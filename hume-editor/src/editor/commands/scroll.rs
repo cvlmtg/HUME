@@ -118,7 +118,7 @@ pub(in crate::editor) fn scroll_view(
              entries,
          }| {
             viewport.scroll_by(&mut dlm, geo, delta);
-            let top = viewport.top();
+            let top = geo.carry_top(&mut dlm, viewport.top());
 
             // `apply_doc_motion`'s own head-before/after comparison is what raises
             // `PaneBufferState::reveal_pending` here. No separate pin to track: a

@@ -283,26 +283,15 @@ impl Editor {
         let content_width = layout_key.content_width();
         let doc = self.state.buffers.get(buf_id);
         let rope = doc.text().rope();
-        let pane = &mut self.view.panes[pid];
-        let header = {
-            let (mut dlm, viewport) = pane.display_lines_and_viewport(rope, key, content_width);
-            let mut headers = Vec::new();
-            if let Some(geo) = layout_key.geometry(doc.syntax_source()) {
-                let top = viewport.top_at(&mut dlm);
-                geo.scope_headers(&mut dlm, top, &mut headers);
-            }
-            match headers.get(usize::from(hit.y())) {
-                Some(&line) => line,
-                None => {
-                    return cursor::screen_to_cluster(
-                        hit.x(),
-                        hit.y(),
-                        gutter_width,
-                        viewport,
-                        &mut dlm,
-                    );
-                }
-            }
+        let (mut dlm, viewport) =
+            self.view.panes[pid].display_lines_and_viewport(rope, key, content_width);
+        let mut headers = Vec::new();
+        if let Some(geo) = layout_key.geometry(doc.syntax_source()) {
+            let top = viewport.top_at(&mut dlm);
+            geo.scope_headers(&mut dlm, top, &mut headers);
+        }
+        let Some(&header) = headers.get(usize::from(hit.y())) else {
+            return cursor::screen_to_cluster(hit.x(), hit.y(), gutter_width, viewport, &mut dlm);
         };
         let mut header_layout = HeaderLayout::default();
         let mut header_dlm = header_layout.display_map(rope, content_width, key);

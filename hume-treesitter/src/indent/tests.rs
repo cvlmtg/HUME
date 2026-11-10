@@ -14,7 +14,9 @@ use super::query::IndentCapture;
 use super::*;
 use crate::registry::{GrammarBundle, GrammarSnapshot, RegisterError, compile_queries};
 use crate::syntax::Syntax;
-use crate::test_support::{empty_langs, make_bundle, open_grammar};
+use crate::test_support::{
+    bundle_with_fixture_query, empty_langs, fixture_query, make_bundle, open_grammar,
+};
 use hume_core::OptionalQuery;
 
 const SPLIT: char = '‸';
@@ -41,13 +43,8 @@ fn bundle(name: &str, indents: &str) -> Arc<GrammarBundle> {
     )
 }
 
-fn fixture_indents(name: &str) -> String {
-    let path = require_helix_query(name, OptionalQuery::Indents.file_name());
-    std::fs::read_to_string(path).expect("read indents.scm")
-}
-
 fn fixture_bundle(name: &str) -> Arc<GrammarBundle> {
-    bundle(name, &fixture_indents(name))
+    bundle_with_fixture_query(name, &symbol(name), OptionalQuery::Indents)
 }
 
 /// The absolute width the model gives the line a break at the split
@@ -316,7 +313,7 @@ fn outdent_always_scopes_opening_the_line_each_count() {
 fn plain_outdents_opening_one_line_count_once() {
     let python = bundle(
         "python",
-        &(fixture_indents("python") + "\n(else_clause) @outdent\n"),
+        &(fixture_query("python", OptionalQuery::Indents) + "\n(else_clause) @outdent\n"),
     );
     assert_eq!(
         hybrid_width(&python, "if a:\n    b\nelse:‸\n    c\n", 4),
@@ -820,7 +817,10 @@ fn rust_with_macro_layers() -> (Arc<GrammarBundle>, Arc<GrammarSnapshot>) {
         "",
         &[
             (OptionalQuery::Injections, &injections),
-            (OptionalQuery::Indents, &fixture_indents("rust")),
+            (
+                OptionalQuery::Indents,
+                &fixture_query("rust", OptionalQuery::Indents),
+            ),
         ],
     );
     let langs = Arc::new(GrammarSnapshot::from_iter([(

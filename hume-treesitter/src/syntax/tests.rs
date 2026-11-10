@@ -637,15 +637,14 @@ fn committed_gen_advances_on_every_install() {
     let [bid] = hume_core::fresh_ids();
     let t0 = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
-    let unparsed = syn.committed_gen();
+    assert_eq!(syn.committed_gen(), None);
 
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
         &empty_langs(),
     );
-    let first = syn.committed_gen();
-    assert!(first > unparsed);
+    let first = syn.committed_gen().expect("the install committed layers");
 
     let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
     record(&mut syn, &t0, &t1, &cs);
@@ -654,8 +653,8 @@ fn committed_gen_advances_on_every_install() {
         generation(&t1),
         &empty_langs(),
     );
-    let second = syn.committed_gen();
-    assert!(second > first);
+    let second = syn.committed_gen().expect("the install committed layers");
+    assert_ne!(second, first);
 
     // A result for a text that has moved on and one for the generation
     // already installed leave the committed layers alone.
@@ -686,7 +685,7 @@ fn committed_gen_advances_on_every_install() {
         &empty_langs(),
     );
     assert_eq!(syn.parsed_gen(), Some(generation(&t2)));
-    assert_eq!(syn.committed_gen(), second);
+    assert_eq!(syn.committed_gen(), Some(second));
 }
 
 #[test]

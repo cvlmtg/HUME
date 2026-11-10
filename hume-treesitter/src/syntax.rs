@@ -112,6 +112,8 @@ struct Committed {
     layers: SyntaxLayers,
     at: LayersAt,
     snapshot_generation: u64,
+    /// A value from `LAST_COMMITTED_GEN` no other install carries.
+    stamp: u64,
 }
 
 impl Committed {
@@ -178,9 +180,6 @@ pub struct Syntax {
     /// reused across calls. Lives on `Syntax` because it survives `install`,
     /// which rebuilds `SyntaxLayers`.
     header_cursor: Mutex<QueryCursor>,
-    /// Identifies the committed layers: `0` while there are none, then a new
-    /// value from `LAST_COMMITTED_GEN` for each parse `install` commits.
-    committed_gen: u64,
 }
 
 impl Syntax {
@@ -196,7 +195,6 @@ impl Syntax {
             min_snapshot_generation: 0,
             span_scratch: Mutex::new(FlattenScratch::default()),
             header_cursor: Mutex::new(QueryCursor::new()),
-            committed_gen: 0,
         }
     }
 
@@ -535,8 +533,8 @@ impl Syntax {
                     layers: SyntaxLayers::new(layers),
                     at: LayersAt::Parsed(generation),
                     snapshot_generation,
+                    stamp: LAST_COMMITTED_GEN.fetch_add(1, Ordering::Relaxed) + 1,
                 });
-                self.committed_gen = LAST_COMMITTED_GEN.fetch_add(1, Ordering::Relaxed) + 1;
                 // Every recorded edit ends at or before the current
                 // generation, which this result is for.
                 self.pending_edits.clear();
@@ -567,12 +565,13 @@ impl Syntax {
         &self.bundle
     }
 
-    /// Names the committed layers: it differs after every install that
-    /// replaces them, so a reader can tell when the scopes it settled a view
-    /// against have changed. [`Self::reresolve_injections`] does not reset it,
-    /// as it does `parsed_gen`.
-    pub fn committed_gen(&self) -> u64 {
-        self.committed_gen
+    /// Names the committed layers, `None` while there are none: it differs
+    /// after every install that replaces them, so a reader can tell when the
+    /// scopes it settled a view against have changed.
+    /// [`Self::reresolve_injections`] does not reset it, as it does
+    /// `parsed_gen`.
+    pub fn committed_gen(&self) -> Option<u64> {
+        self.committed.as_ref().map(|committed| committed.stamp)
     }
 
     pub fn parsed_gen(&self) -> Option<u64> {

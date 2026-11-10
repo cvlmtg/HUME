@@ -14,7 +14,8 @@
 //!
 //! `carry` then clamps the landing into `[top margin, geo.target]` display
 //! lines below the viewport's new top, the top margin being that top's own
-//! [`ViewGeometry::top_margin_at`], so the head always ends inside the
+//! [`ViewGeometry::top_margin_at`], resolved once into a [`CarryTop`] for
+//! every selection the scroll carries, so the head always ends inside the
 //! scroll-margin band and [`Viewport::reveal`] is idle after `scroll_view`. An
 //! in-band landing is unchanged, keeping the cursor's screen row.
 
@@ -325,12 +326,30 @@ fn below_headers(
 pub fn carry(
     dlm: &mut DisplayLineMap<'_>,
     geo: ViewGeometry<'_>,
-    top: DisplayLinePos,
+    top: CarryTop,
     head: DisplayLinePos,
     delta: isize,
 ) -> Option<DisplayLinePos> {
-    let candidate = walk_by_delta(dlm, geo, top, head, delta)?;
+    let candidate = walk_by_delta(dlm, geo, top.pos, head, delta)?;
     place_in_band(dlm, geo, top, candidate)
+}
+
+/// The viewport top [`carry`] places heads under, with its
+/// [`ViewGeometry::top_margin_at`]. Minted by [`ViewGeometry::carry_top`].
+#[derive(Copy, Clone)]
+pub struct CarryTop {
+    pos: DisplayLinePos,
+    top_margin: usize,
+}
+
+impl ViewGeometry<'_> {
+    /// `top` with its top margin, for every head one view scroll carries.
+    pub fn carry_top(&self, dlm: &mut DisplayLineMap<'_>, top: DisplayLinePos) -> CarryTop {
+        CarryTop {
+            pos: top,
+            top_margin: self.top_margin_at(dlm, top),
+        }
+    }
 }
 
 /// `carry`'s first pass: walk `delta` display lines from `head` in the
@@ -396,10 +415,12 @@ fn walk_by_delta(
 fn place_in_band(
     dlm: &mut DisplayLineMap<'_>,
     geo: ViewGeometry<'_>,
-    top: DisplayLinePos,
+    CarryTop {
+        pos: top,
+        top_margin,
+    }: CarryTop,
     candidate: DisplayLinePos,
 ) -> Option<DisplayLinePos> {
-    let top_margin = geo.top_margin_at(dlm, top);
     match dlm.distance(top, candidate, geo.height) {
         Some(display_lines_below_top)
             if (top_margin..=geo.target).contains(&display_lines_below_top) =>

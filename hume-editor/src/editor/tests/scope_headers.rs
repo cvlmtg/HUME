@@ -10,6 +10,12 @@ use hume_engine::pipeline::Direction;
 use hume_grid::{Grid, Position, Rect};
 use test_fixtures::{require_grammars, require_helix_query};
 
+/// The frame most tests here draw.
+const VIEW: Rect = Rect::new(0, 0, 80, 25);
+
+/// The frame the header snapshots draw.
+const SNAP_VIEW: Rect = Rect::new(0, 0, 30, 16);
+
 /// An editor on `source` with the `rust` grammar and its `context.scm`, the
 /// initial parse drained. `source` is plain text; the cursor starts on its
 /// first cluster. Indent guides are off, so a row reads as its line's text.
@@ -21,30 +27,35 @@ fn rust_context_editor(source: &str) -> Editor {
 
 /// [`rust_context_editor`] with the initial parse still queued.
 fn rust_context_editor_undrained(source: &str) -> Editor {
-    let marked = format!("-[{}]>{}", &source[..1], &source[1..]);
     let mut ed = super::structural::grammar_editor_undrained(
         "rust",
         "tree_sitter_rust",
         &[OptionalQuery::Context],
-        &marked,
+        &cursor_on_first_cluster(source),
     );
     ed.state.settings.indent_guides = false;
     ed
 }
 
+/// `source` marked up with a cursor on its first cluster, an ASCII char.
+fn cursor_on_first_cluster(source: &str) -> String {
+    format!("-[{}]>{}", &source[..1], &source[1..])
+}
+
 /// An editor on `source` as a markdown buffer with markdown's injections and
 /// `context.scm` and rust's `context.scm`, the initial parse drained.
-fn markdown_context_editor(source: &str) -> (Editor, BufferId) {
+fn markdown_context_editor(source: &str) -> Editor {
     require_grammars(&["markdown", "markdown.inline", "rust"]);
     require_helix_query("markdown", OptionalQuery::Context.file_name());
     require_helix_query("rust", OptionalQuery::Context.file_name());
-    super::injections_editor::markdown_editor_with_rust_queries(
+    super::injections_editor::markdown_editor_with_queries(
         source,
         &Dirs::none(),
         &[],
         &[OptionalQuery::Injections, OptionalQuery::Context],
         &[OptionalQuery::Context],
     )
+    .0
 }
 
 /// Open `source` as a second buffer in a new focused split and set its
@@ -137,13 +148,16 @@ fn top_line(ed: &Editor, pid: PaneId) -> usize {
     ed.pane_viewport(pid).top().line.index()
 }
 
-/// Turn the wheel `ticks` notches down over pane `pid`, one line a notch.
-fn wheel_down(ed: &mut Editor, buf: &Grid, pid: PaneId, ticks: usize) {
-    let (rect, _) = drawn_pane(ed, buf, pid);
+/// Turn the wheel `ticks` notches down over pane `pid` of a [`VIEW`] frame,
+/// one line a notch, and return the frame drawn after.
+fn wheel_down(ed: &mut Editor, pid: PaneId, ticks: usize) -> Grid {
+    let buf = ed.render_to_buf(VIEW);
+    let (rect, _) = drawn_pane(ed, &buf, pid);
     ed.state.settings.mouse_scroll_lines = 1;
     for _ in 0..ticks {
         ed.handle_input(mouse_wheel_at(rect.x, rect.y, true));
     }
+    ed.render_to_buf(VIEW)
 }
 
 /// A pane on `bid` built as `:split` builds one, gutter included, focused.
@@ -158,11 +172,8 @@ fn push_up_drops_the_fn_header_when_its_closing_brace_is_under_it() {
     let source = two_fn_impl();
     let mut ed = rust_context_editor(&source);
     let pid = ed.view.focused_pane();
-    let rect = Rect::new(0, 0, 80, 25);
-    let buf = ed.render_to_buf(rect);
 
-    wheel_down(&mut ed, &buf, pid, 10);
-    let buf = ed.render_to_buf(rect);
+    let buf = wheel_down(&mut ed, pid, 10);
     assert_eq!(top_line(&ed, pid), 10);
     assert_eq!(
         top_rows(&ed, &buf, 3),
@@ -174,8 +185,7 @@ fn push_up_drops_the_fn_header_when_its_closing_brace_is_under_it() {
     );
 
     // The first fn's `}` (line 32) is the line at row 1.
-    wheel_down(&mut ed, &buf, pid, 21);
-    let buf = ed.render_to_buf(rect);
+    let buf = wheel_down(&mut ed, pid, 21);
     assert_eq!(top_line(&ed, pid), 31);
     assert_eq!(
         top_rows(&ed, &buf, 2),
@@ -183,8 +193,7 @@ fn push_up_drops_the_fn_header_when_its_closing_brace_is_under_it() {
     );
 
     // The blank line after it is at row 1: still only the `impl` header.
-    wheel_down(&mut ed, &buf, pid, 1);
-    let buf = ed.render_to_buf(rect);
+    let buf = wheel_down(&mut ed, pid, 1);
     assert_eq!(top_line(&ed, pid), 32);
     assert_eq!(
         top_rows(&ed, &buf, 2),
@@ -194,7 +203,7 @@ fn push_up_drops_the_fn_header_when_its_closing_brace_is_under_it() {
 
 #[test]
 fn short_pane_keeps_two_headers_by_the_outer_level_setting() {
-    let (mut ed, _) = markdown_context_editor(&nested_markdown(3));
+    let mut ed = markdown_context_editor(&nested_markdown(3));
     seek_to_line(&mut ed, 25);
     let rect = Rect::new(0, 0, 20, 4);
 
@@ -208,29 +217,36 @@ fn short_pane_keeps_two_headers_by_the_outer_level_setting() {
 
 #[test]
 fn tall_pane_keeps_three_headers_by_the_outer_level_setting() {
-    let (mut ed, _) = markdown_context_editor(&nested_markdown(4));
+    let mut ed = markdown_context_editor(&nested_markdown(4));
     seek_to_line(&mut ed, 40);
-    let rect = Rect::new(0, 0, 80, 25);
 
-    let buf = ed.render_to_buf(rect);
+    let buf = ed.render_to_buf(VIEW);
     assert_eq!(top_rows(&ed, &buf, 3), ["## b", "### c", "#### d"]);
 
     run_set(&mut ed, "buffer context-outer-level=true").expect("the setting applies");
-    let buf = ed.render_to_buf(rect);
+    let buf = ed.render_to_buf(VIEW);
     assert_eq!(top_rows(&ed, &buf, 3), ["# a", "### c", "#### d"]);
 }
 
-#[test]
-fn outer_level_is_per_buffer() {
+/// Two panes on two buffers of the same nested markdown, each cursor on
+/// line 40, with `setting` set on the second buffer only: the editor, the
+/// two panes and the source.
+fn two_markdown_panes(setting: &str) -> (Editor, PaneId, PaneId, String) {
     let source = nested_markdown(4);
-    let (mut ed, _) = markdown_context_editor(&source);
+    let mut ed = markdown_context_editor(&source);
     let first = ed.view.focused_pane();
     seek_to_line(&mut ed, 40);
     let second = split_markdown_buffer(&mut ed, &source);
     seek_to_line(&mut ed, 40);
-    run_set(&mut ed, "buffer context-outer-level=true").expect("the setting applies");
+    run_set(&mut ed, setting).expect("the setting applies");
+    (ed, first, second, source)
+}
 
-    let buf = ed.render_to_buf(Rect::new(0, 0, 80, 25));
+#[test]
+fn outer_level_is_per_buffer() {
+    let (mut ed, first, second, _) = two_markdown_panes("buffer context-outer-level=true");
+
+    let buf = ed.render_to_buf(VIEW);
     assert_eq!(pane_rows(&ed, &buf, first, 3), ["## b", "### c", "#### d"]);
     assert_eq!(pane_rows(&ed, &buf, second, 3), ["# a", "### c", "#### d"]);
 }
@@ -267,7 +283,7 @@ fn header_rows_snapshot_wrap_off() {
     let mut ed = snapshot_editor(false, 15);
     pin_no_wrap(&mut ed);
     run_set(&mut ed, "buffer gutter-line-numbers=absolute").expect("the setting applies");
-    let snap = super::render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 30, 16));
+    let snap = super::render_snapshot::render_to_styled_string(&mut ed, SNAP_VIEW);
     insta::assert_snapshot!(snap);
 }
 
@@ -275,7 +291,7 @@ fn header_rows_snapshot_wrap_off() {
 fn header_rows_snapshot_wrap_on() {
     let mut ed = snapshot_editor(false, 15);
     run_set(&mut ed, "buffer gutter-line-numbers=absolute").expect("the setting applies");
-    let snap = super::render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 30, 16));
+    let snap = super::render_snapshot::render_to_styled_string(&mut ed, SNAP_VIEW);
     insta::assert_snapshot!(snap);
 }
 
@@ -283,9 +299,8 @@ fn header_rows_snapshot_wrap_on() {
 fn header_rows_ignore_horizontal_scroll() {
     let mut ed = snapshot_editor(true, 12);
     pin_no_wrap(&mut ed);
-    let far = char_at_column(&ed, 12, 150).index();
-    set_cursor(&mut ed, far);
-    let snap = super::render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 30, 16));
+    seek_to_column(&mut ed, 12, 150);
+    let snap = super::render_snapshot::render_to_styled_string(&mut ed, SNAP_VIEW);
     insta::assert_snapshot!(snap);
 }
 
@@ -309,7 +324,7 @@ fn header_rows_show_no_selection_cursor_or_cursorline() {
         [impl_line, " ".to_owned()],
         "premise: a secondary selection covers the impl line"
     );
-    let snap = super::render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 30, 16));
+    let snap = super::render_snapshot::render_to_styled_string(&mut ed, SNAP_VIEW);
     insta::assert_snapshot!(snap);
 }
 
@@ -318,7 +333,7 @@ fn header_rows_use_popup_background_when_ui_context_is_unset() {
     let mut ed = snapshot_editor(false, 15);
     pin_no_wrap(&mut ed);
     let pid = ed.view.focused_pane();
-    let buf = ed.render_to_buf(Rect::new(0, 0, 30, 16));
+    let buf = ed.render_to_buf(SNAP_VIEW);
     let popup_bg = ed
         .view
         .theme
@@ -368,9 +383,7 @@ fn header_rows_draw_their_lines_without_decorations() {
     let bid = ed.focused_buffer_id();
     let pid = focused_split(&mut ed, bid);
     pin_no_wrap(&mut ed);
-    let rect = Rect::new(0, 0, 80, 25);
-    let buf = ed.render_to_buf(rect);
-    wheel_down(&mut ed, &buf, pid, 1);
+    wheel_down(&mut ed, pid, 1);
 
     let marked = ed.view.registry.intern("ui.selection");
     let marked_bg = ed
@@ -437,7 +450,7 @@ fn header_rows_draw_their_lines_without_decorations() {
             })
             .collect(),
     );
-    let buf = ed.render_to_buf(rect);
+    let buf = ed.render_to_buf(VIEW);
     assert_eq!(top_line(&ed, pid), 1, "premise: `fn a()` is the top line");
 
     let (rect, gutter) = drawn_pane(&ed, &buf, pid);
@@ -475,12 +488,9 @@ fn two_panes_on_one_buffer_show_their_own_headers() {
     let first = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let second = ed.split_onto(bid, Direction::Horizontal);
-    let rect = Rect::new(0, 0, 80, 25);
-    let buf = ed.render_to_buf(rect);
 
-    wheel_down(&mut ed, &buf, first, 33);
-    wheel_down(&mut ed, &buf, second, 10);
-    let buf = ed.render_to_buf(rect);
+    wheel_down(&mut ed, first, 33);
+    let buf = wheel_down(&mut ed, second, 10);
     assert_eq!(top_line(&ed, first), 33);
     assert_eq!(top_line(&ed, second), 10);
 
@@ -500,15 +510,9 @@ fn two_panes_on_one_buffer_show_their_own_headers() {
 
 #[test]
 fn context_enabled_off_on_one_buffer_only() {
-    let source = nested_markdown(4);
-    let (mut ed, _) = markdown_context_editor(&source);
-    let first = ed.view.focused_pane();
-    seek_to_line(&mut ed, 40);
-    let second = split_markdown_buffer(&mut ed, &source);
-    seek_to_line(&mut ed, 40);
-    run_set(&mut ed, "buffer context-enabled=false").expect("the setting applies");
+    let (mut ed, first, second, source) = two_markdown_panes("buffer context-enabled=false");
 
-    let buf = ed.render_to_buf(Rect::new(0, 0, 80, 25));
+    let buf = ed.render_to_buf(VIEW);
     assert_eq!(pane_rows(&ed, &buf, first, 1), ["## b"]);
     assert_eq!(
         pane_rows(&ed, &buf, second, 1),
@@ -522,11 +526,8 @@ fn defaults_show_headers() {
     let source = two_fn_impl();
     let mut ed = rust_context_editor(&source);
     let pid = ed.view.focused_pane();
-    let rect = Rect::new(0, 0, 80, 25);
-    let buf = ed.render_to_buf(rect);
-    wheel_down(&mut ed, &buf, pid, 10);
+    let buf = wheel_down(&mut ed, pid, 10);
 
-    let buf = ed.render_to_buf(rect);
     assert_eq!(
         top_rows(&ed, &buf, 2),
         [line_of(&source, 0), line_of(&source, 1)]
@@ -544,7 +545,7 @@ fn defaults_show_headers() {
 #[test]
 fn pane_of_height_one_shows_no_header() {
     let source = nested_markdown(3);
-    let (mut ed, _) = markdown_context_editor(&source);
+    let mut ed = markdown_context_editor(&source);
     seek_to_line(&mut ed, 25);
     let buf = ed.render_to_buf(Rect::new(0, 0, 20, 2));
     let pid = ed.view.focused_pane();
@@ -573,10 +574,7 @@ fn a_header_row_on_the_cursors_line_does_not_mark_its_number() {
             "V",
         ),
     ));
-    let rect = Rect::new(0, 0, 80, 25);
-    let buf = ed.render_to_buf(rect);
-    wheel_down(&mut ed, &buf, pid, 3);
-    let buf = ed.render_to_buf(rect);
+    let buf = wheel_down(&mut ed, pid, 3);
 
     let fn_line_start = char_at_column(&ed, 1, 0);
     assert_eq!(
@@ -610,8 +608,6 @@ fn a_header_row_on_the_cursors_line_does_not_mark_its_number() {
     assert_eq!(buf[(number, rect.y + 1)].style().fg, linenr);
 }
 
-const VIEW: Rect = Rect::new(0, 0, 80, 25);
-
 /// The focused pane after a settled frame: where its cursor is drawn, as
 /// `(row, text of the cell there)`, and how many of its top rows are scope
 /// headers (leading rows whose text is a line above the top line).
@@ -644,10 +640,12 @@ fn cursor_cluster(ed: &Editor) -> String {
     }
 }
 
-/// Place the cursor on column 12 of line `line`, the `x` of a statement in
-/// [`two_fn_impl`]'s bodies.
-fn seek_to_column_12(ed: &mut Editor, line: usize) {
-    let target = char_at_column(ed, line, 12).index();
+/// The column of the `x` of a statement in [`two_fn_impl`]'s bodies.
+const STATEMENT_X: usize = 12;
+
+/// Place the cursor on column `col` of line `line`, a line of ASCII.
+fn seek_to_column(ed: &mut Editor, line: usize, col: usize) {
+    let target = char_at_column(ed, line, col).index();
     set_cursor(ed, target);
 }
 
@@ -662,10 +660,10 @@ fn landed_parse_resettles_the_view() {
         ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
     };
 
-    seek_to_column_12(&mut ed, 50);
+    seek_to_column(&mut ed, 50, STATEMENT_X);
     frame_without_settle(&mut ed);
     let top = top_line(&ed, pid);
-    seek_to_column_12(&mut ed, top + 1);
+    seek_to_column(&mut ed, top + 1, STATEMENT_X);
     frame_without_settle(&mut ed);
     assert_eq!(
         top_line(&ed, pid),
@@ -688,7 +686,7 @@ fn cursor_moving_up_never_lands_on_a_header_row() {
     let source = two_fn_impl();
     let mut ed = rust_context_editor(&source);
     ed.state.settings.scroll_margin = 1;
-    seek_to_column_12(&mut ed, 50);
+    seek_to_column(&mut ed, 50, STATEMENT_X);
     let mut deepest = 0;
     for step in 0..40 {
         press(&mut ed, "k");
@@ -709,7 +707,7 @@ fn settling_twice_does_not_scroll() {
     let mut ed = rust_context_editor(&source);
     ed.state.settings.scroll_margin = 1;
     let pid = ed.view.focused_pane();
-    seek_to_column_12(&mut ed, 50);
+    seek_to_column(&mut ed, 50, STATEMENT_X);
     for _ in 0..5 {
         press(&mut ed, "k");
     }
@@ -724,11 +722,11 @@ fn context_enabled_off_keeps_the_margin() {
     let source = two_fn_impl();
     let mut with_grammar = rust_context_editor(&source);
     run_set(&mut with_grammar, "buffer context-enabled=false").expect("the setting applies");
-    let mut without = editor_from(&format!("-[{}]>{}", &source[..1], &source[1..]));
+    let mut without = editor_from(&cursor_on_first_cluster(&source));
     for ed in [&mut with_grammar, &mut without] {
         ed.state.settings.scroll_margin = 1;
         ed.state.settings.indent_guides = false;
-        seek_to_column_12(ed, 50);
+        seek_to_column(ed, 50, STATEMENT_X);
     }
     for step in 0..40 {
         for ed in [&mut with_grammar, &mut without] {
@@ -762,10 +760,7 @@ fn press_on_a_header_row_selects_that_line_and_reveals_it() {
     let source = two_fn_impl();
     let mut ed = rust_context_editor(&source);
     let pid = ed.view.focused_pane();
-    let rect = Rect::new(0, 0, 80, 25);
-    let buf = ed.render_to_buf(rect);
-    wheel_down(&mut ed, &buf, pid, 10);
-    let buf = ed.render_to_buf(rect);
+    let buf = wheel_down(&mut ed, pid, 10);
     assert_eq!(
         top_rows(&ed, &buf, 3),
         [
@@ -781,7 +776,7 @@ fn press_on_a_header_row_selects_that_line_and_reveals_it() {
     assert_eq!(sel.anchor().offset(), char_at_column(&ed, 1, 4));
     assert_eq!(sel.head().offset(), char_at_column(&ed, 1, 4));
     let pressed = state(&ed);
-    let buf = ed.render_to_buf(rect);
+    let buf = ed.render_to_buf(VIEW);
     assert_eq!(top_line(&ed, pid), 0);
     assert_eq!(
         top_rows(&ed, &buf, 2),
@@ -796,10 +791,8 @@ fn press_on_a_header_row_selects_that_line_and_reveals_it() {
 fn press_on_a_header_counts_columns_from_zero_under_horizontal_scroll() {
     let mut ed = snapshot_editor(true, 12);
     pin_no_wrap(&mut ed);
-    let far = char_at_column(&ed, 12, 150).index();
-    set_cursor(&mut ed, far);
-    let rect = Rect::new(0, 0, 30, 16);
-    let buf = ed.render_to_buf(rect);
+    seek_to_column(&mut ed, 12, 150);
+    let buf = ed.render_to_buf(SNAP_VIEW);
     let pid = ed.view.focused_pane();
     assert!(ed.pane_viewport(pid).horizontal_offset().get() > 0);
     assert!(top_rows(&ed, &buf, 1)[0].starts_with("impl"));
@@ -815,8 +808,7 @@ fn press_on_a_header_counts_columns_from_zero_under_horizontal_scroll() {
 #[test]
 fn press_on_a_wrapped_header_lands_where_the_row_draws_it() {
     let mut ed = snapshot_editor(false, 15);
-    let rect = Rect::new(0, 0, 30, 16);
-    let buf = ed.render_to_buf(rect);
+    let buf = ed.render_to_buf(SNAP_VIEW);
     let pid = ed.view.focused_pane();
     assert_eq!(top_rows(&ed, &buf, 1), ["impl Iterator for AVeryLo"]);
 
@@ -834,13 +826,10 @@ fn drag_onto_a_header_row_extends_to_its_line() {
     let source = two_fn_impl();
     let mut ed = rust_context_editor(&source);
     let pid = ed.view.focused_pane();
-    let rect = Rect::new(0, 0, 80, 25);
-    let buf = ed.render_to_buf(rect);
-    wheel_down(&mut ed, &buf, pid, 10);
-    let buf = ed.render_to_buf(rect);
+    let buf = wheel_down(&mut ed, pid, 10);
     press_at(&mut ed, &buf, pid, 12, 5);
     let anchor = ed.current_view().primary().anchor().offset();
-    let buf = ed.render_to_buf(rect);
+    let buf = ed.render_to_buf(VIEW);
     assert_eq!(
         top_rows(&ed, &buf, 2),
         [line_of(&source, 0), line_of(&source, 1)]
@@ -860,10 +849,7 @@ fn press_on_row_zero_with_headers_off_selects_the_top_line() {
     let mut ed = rust_context_editor(&source);
     run_set(&mut ed, "buffer context-enabled=false").expect("the setting applies");
     let pid = ed.view.focused_pane();
-    let rect = Rect::new(0, 0, 80, 25);
-    let buf = ed.render_to_buf(rect);
-    wheel_down(&mut ed, &buf, pid, 10);
-    let buf = ed.render_to_buf(rect);
+    let buf = wheel_down(&mut ed, pid, 10);
     assert_eq!(top_rows(&ed, &buf, 1), [line_of(&source, 10)]);
 
     press_at(&mut ed, &buf, pid, 0, 0);

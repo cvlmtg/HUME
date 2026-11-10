@@ -95,15 +95,13 @@ impl GutterColumn for LineNumberColumn {
                 // number a user would ever see), and this plain escape-hatch
                 // arithmetic mirrors `width()`'s own `last_line_idx.index() + 1`.
                 let absolute = line_idx.index() + 1;
-                let distance = |head: hume_rope::line::RopeyLine| {
-                    (line_idx.index() as isize - head.index() as isize).unsigned_abs()
-                };
                 let display_num = match (ctx.inputs.line_numbers, primary_head_line) {
                     (LineNumberStyle::Absolute, _) | (_, None) => absolute,
-                    (LineNumberStyle::Relative, Some(head)) => distance(head),
                     // Absolute on the primary selection head line.
-                    (LineNumberStyle::Hybrid, Some(_)) if is_head_line => absolute,
-                    (LineNumberStyle::Hybrid, Some(head)) => distance(head),
+                    (LineNumberStyle::Hybrid, _) if is_head_line => absolute,
+                    (_, Some(head)) => {
+                        (line_idx.index() as isize - head.index() as isize).unsigned_abs()
+                    }
                 };
 
                 GutterCell {

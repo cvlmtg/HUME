@@ -193,23 +193,6 @@ fn fallback_leaves_the_textobject_memo_alone() {
 }
 
 #[test]
-fn no_layers_yields_nothing() {
-    let source = impl_with_long_fn();
-    let text = BufferText::from(source.as_str());
-    let (syn, _request) = Syntax::attach(
-        rust_bundle(OptionalQuery::Context),
-        BufferId::default(),
-        &text,
-        &empty_langs(),
-    );
-    assert!(syn.layers().is_none());
-    assert_eq!(
-        headers(&syn, &text, line_of(&source, "        let a19")),
-        Vec::new()
-    );
-}
-
-#[test]
 fn header_lines_replace_what_out_held() {
     let source = impl_with_long_fn();
     let stale = ContentLine::new(source.lines().count());
@@ -226,6 +209,7 @@ fn header_lines_replace_what_out_held() {
         &text,
         &empty_langs(),
     );
+    assert!(unparsed.layers().is_none());
     let mut out = vec![stale];
     unparsed.header_lines(last_let, text.rope(), &mut out);
     assert_eq!(out, Vec::new());

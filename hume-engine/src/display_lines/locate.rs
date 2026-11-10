@@ -124,6 +124,11 @@ impl<'a> DisplayLineMap<'a> {
             self.rope,
             pos.offset(),
         ));
+        self.first_content_display_line(line)
+    }
+
+    /// `line`'s first content display line, past its `before` virtual lines.
+    pub fn first_content_display_line(&mut self, line: ContentLine) -> DisplayLinePos {
         DisplayLinePos::new(line, self.block(line).before)
     }
 

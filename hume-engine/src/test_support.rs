@@ -5,7 +5,9 @@
 //! for a char offset literal (`co`), for the cluster at a char offset
 //! (`at`), for a painted selection (`painted`) and a pane's selection mirror
 //! (`mirror`, `cursor_mirror`), for a `DisplayLineMap` over a fixed
-//! `FormatKey` (`map`).
+//! `FormatKey` (`map`), for a pane's geometry with no header rows
+//! (`plain_geo`), and for a body row with the primary head on line 0
+//! (`body_row_on_line_0`).
 
 use std::collections::HashMap;
 
@@ -18,8 +20,10 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::display_lines::line_store::{FormatKey, PaneLineStore};
 use crate::display_lines::{DisplayLineMap, RenderDisplayLine};
-use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::ProviderSet;
+use crate::pane::{ViewGeometry, WhitespaceConfig, WrapMode};
+use crate::pipeline::PaneSize;
+use crate::providers::{GutterRow, ProviderSet};
+use crate::scope_headers::ScopeHeaderInputs;
 use crate::theme::Theme;
 use crate::types::{DisplayLine, Grapheme, PaintedSelection, PaintedSelections, ResolvedStyle};
 
@@ -125,5 +129,19 @@ pub(crate) fn render_display_line<'m>(
         line_text,
         virtual_texts,
         base_scope: None,
+    }
+}
+
+/// The geometry of a pane of `size` with scroll-margin `margin` and no
+/// header rows. Panics on a zero-height `size`, which has none.
+pub(crate) fn plain_geo(size: PaneSize, margin: usize) -> ViewGeometry<'static> {
+    size.geometry(margin, ScopeHeaderInputs::NONE)
+        .expect("a nonzero-height pane has a geometry")
+}
+
+/// A body row of a pane whose primary head is on line 0.
+pub(crate) fn body_row_on_line_0() -> GutterRow {
+    GutterRow::Body {
+        primary_head_line: hume_rope::line::ContentLine::new(0),
     }
 }

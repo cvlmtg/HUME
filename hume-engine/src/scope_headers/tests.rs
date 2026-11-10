@@ -83,7 +83,7 @@ fn cap_drops_outermost_by_default_and_second_with_outer_level() {
 }
 
 #[test]
-fn height_one_shows_none_and_height_three_at_most_two() {
+fn height_one_shows_no_header() {
     let rope = doc(30);
     let providers = ProviderSet::new();
     let table = ScopeTable::default().lines(3..=20, &[0, 1, 2]);
@@ -91,7 +91,6 @@ fn height_one_shows_none_and_height_three_at_most_two() {
         walk(&rope, &providers, &table, SHOWN, top(5), 1),
         Vec::<usize>::new()
     );
-    assert_eq!(walk(&rope, &providers, &table, SHOWN, top(5), 3).len(), 2);
 }
 
 #[test]
@@ -152,26 +151,4 @@ fn disabled_or_sourceless_yields_nothing() {
         &mut out,
     );
     assert!(out.is_empty());
-}
-
-#[test]
-fn header_display_line_is_the_lines_first_content_display_line() {
-    let rope = doc(10);
-    let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        Side::Before,
-        ContentLine::new(4),
-        2,
-        "V",
-    )));
-    let mut store = PaneLineStore::new();
-    let mut dlm = map(&rope, WrapMode::None, &providers, 80, &mut store);
-    assert_eq!(
-        header_display_line(&mut dlm, ContentLine::new(4)),
-        DisplayLinePos::new(ContentLine::new(4), 2)
-    );
-    assert_eq!(
-        header_display_line(&mut dlm, ContentLine::new(3)),
-        DisplayLinePos::new(ContentLine::new(3), 0)
-    );
 }
