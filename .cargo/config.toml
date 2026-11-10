@@ -5,3 +5,8 @@
 # Uncomment after: brew install llvm
 # [target.aarch64-apple-darwin]
 # rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# hume.exe carries the C runtime, so it starts without the Visual C++
+# Redistributable installed.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
