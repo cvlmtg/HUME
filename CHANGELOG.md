@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.20.1] - 2026-11-10
+
 ### Installation
 - On Windows, `hume.exe` starts without the Visual C++ Redistributable installed.
 
