@@ -56,7 +56,9 @@ and annotate them with named captures:
 
 The capture names (`@function`, `@string`, `@keyword`) are the bridge to the
 theme system. The theme defines colors for these names; the query says which
-tree nodes get which name. HUME uses Helix's query files and capture names.
+tree nodes get which name. HUME's highlight queries are Helix's, with Helix's
+capture names; the scope and fold queries come from the nvim-treesitter
+projects.
 A Helix query can inherit another language's patterns through an
 `; inherits:` line; HUME does not follow that line itself, and the grammars it
 installs come with the inherited patterns already merged in.

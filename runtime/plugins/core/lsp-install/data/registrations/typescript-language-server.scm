@@ -1,5 +1,5 @@
 ;;; runtime/plugins/core/lsp-install/data/registrations/typescript-language-server.scm — one LSP server's registration.
 ;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
-;;; Source: cvlmtg/treesitter.hume v0.3.0
+;;; Source: cvlmtg/treesitter.hume v0.5.0
 
 ((args "--stdio") (config . "{\"hostInfo\": \"hume\", \"javascript\": {\"inlayHints\": {\"includeInlayEnumMemberValueHints\": true, \"includeInlayFunctionLikeReturnTypeHints\": true, \"includeInlayFunctionParameterTypeHints\": true, \"includeInlayParameterNameHints\": \"all\", \"includeInlayParameterNameHintsWhenArgumentMatchesName\": true, \"includeInlayPropertyDeclarationTypeHints\": true, \"includeInlayVariableTypeHints\": true}}, \"typescript\": {\"inlayHints\": {\"includeInlayEnumMemberValueHints\": true, \"includeInlayFunctionLikeReturnTypeHints\": true, \"includeInlayFunctionParameterTypeHints\": true, \"includeInlayParameterNameHints\": \"all\", \"includeInlayParameterNameHintsWhenArgumentMatchesName\": true, \"includeInlayPropertyDeclarationTypeHints\": true, \"includeInlayVariableTypeHints\": true}}}"))

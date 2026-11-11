@@ -1,6 +1,6 @@
 ;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
 ;;; Generated — do not hand-edit. Record format: docs/catalogs.md, plugin directory.
-;;; Source: cvlmtg/treesitter.hume v0.3.0
+;;; Source: cvlmtg/treesitter.hume v0.5.0
 
 (
  ("ada" (servers ("ada-language-server")))

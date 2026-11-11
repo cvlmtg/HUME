@@ -1,6 +1,6 @@
 ;;; runtime/scheme/languages.scm — HUME bundled default language identities.
 ;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
-;;; Source: cvlmtg/treesitter.hume v0.3.0
+;;; Source: cvlmtg/treesitter.hume v0.5.0
 
 (define-language! "ada" '("adb" "ads"))
 (define-language! "adl" '("adl"))

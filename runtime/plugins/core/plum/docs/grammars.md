@@ -143,9 +143,9 @@ When an install fails or stops:
 
 Install folders left behind are [leftovers](#leftovers).
 
-The archives carry treesitter.hume's query files, taken from Helix and
-nvim-treesitter-context, with their `; inherits:` directives already resolved, so PLUM
-installs them unchanged.
+The archives carry treesitter.hume's query files, taken from Helix,
+nvim-treesitter-context and nvim-treesitter, with their `; inherits:` directives already
+resolved, so PLUM installs them unchanged.
 
 ## Leftovers
 

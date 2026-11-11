@@ -56,9 +56,9 @@ pub fn grammar_query_path(name: &str) -> PathBuf {
 }
 
 /// Where the query file `file` (e.g. `textobjects.scm`) for `name` lives,
-/// whether or not the fixture has one: `queries/<file>`, Helix's query at
-/// the release's Helix commit with its inherits resolved, as PLUM installs
-/// it.
+/// whether or not the fixture has one: `queries/<file>`, as the pinned
+/// treesitter.hume release ships it and PLUM installs it, inherits
+/// resolved.
 fn helix_query_path_unchecked(name: &str, file: &str) -> PathBuf {
     fixtures_root().join(name).join("queries").join(file)
 }

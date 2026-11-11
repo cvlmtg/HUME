@@ -4,6 +4,7 @@
 
 ### Panes & interface
 - Code folding: `z c`, `z o` and `z t` close and open the function, block or section around the cursor, and a caret in the gutter marks each one you can fold.
+- Scope headers stay fast while scrolling inside a very large macro, table or `impl` block.
 
 ### Language servers
 - Type inlay hints sit right after the name they annotate: `offset: number` instead of `offset : number`.
