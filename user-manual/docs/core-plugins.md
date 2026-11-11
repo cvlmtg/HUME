@@ -49,6 +49,8 @@ Leaving PLUM out only removes these commands. Installed plugins, grammars and th
 
 ## core:lsp
 
+<img src="/core_lsp.png" alt="core:lsp in action" />
+
 Language server support (hover, go-to-definition, references, symbol pickers, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints), plus management of the running server processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`). Downloading the servers is `core:lsp-install`'s job.
 
 ```scheme
@@ -93,6 +95,8 @@ Installing requires `cargo`; install Rust from [rustup.rs](https://rustup.rs) fi
 
 ## core:pickers
 
+<img src="/core_pickers.png" alt="core:pickers in action with a custom picker" />
+
 Fuzzy file, buffer, and modified-file finders: `z f` opens a file picker (inside a git repository it lists the repository's files, elsewhere it needs `fd`), `z b` a buffer switcher, and `z m` a picker over files with staged or unstaged git changes.
 
 ```scheme
@@ -105,6 +109,8 @@ Requires `core:stdlib` loaded first.
 See [Fuzzy pickers](pickers.md) for the file sources, keys, buffer display, modified-files details, and options.
 
 ## core:git-diff
+
+<img src="/core_git_diff.png" alt="core:git-diff in action" />
 
 Live inline git diff. As you type, it compares the buffer against a git ref (default `HEAD`) and renders:
 
@@ -173,6 +179,8 @@ A command of your own can check and turn on the inline diff, or draw diffs of it
 Each `render-diff` call replaces what `source` drew for that buffer, and an empty list draws nothing. While a source draws, the buffer's own inline diff is hidden so changed lines don't show twice; the gutter signs stay.
 
 ## core:undotree
+
+<img src="/core_undotree.png" alt="core:undotree in action" />
 
 A graph of the buffer's undo history in the bottom drawer, with a jump to any revision in it, including a revision on another branch.
 
