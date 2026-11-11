@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use hume_engine::folds::Fold;
 use hume_rope::line::ContentLine;
+use hume_rope::lines::leading_whitespace_end;
 use hume_rope::offset::InclusiveRange;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, QueryCursor, Tree};
@@ -87,19 +88,17 @@ impl SyntaxLayers {
     }
 
     /// Every region of every layer, by first line, one per first line.
-    pub fn all_folds(&self, rope: &ropey::Rope, out: &mut Vec<Fold>) {
-        out.clear();
-        let bytes = 0..rope.len_bytes();
+    pub fn all_folds(&self, rope: &ropey::Rope) -> Vec<Fold> {
+        let mut folds = Vec::new();
         layer_regions(
             &mut QueryCursor::new(),
             self.layers.iter(),
             rope,
-            bytes,
-            &mut |fold| {
-                out.push(fold);
-            },
+            0..rope.len_bytes(),
+            &mut |fold| folds.push(fold),
         );
-        canonical(out);
+        canonical(&mut folds);
+        folds
     }
 
     /// Push the first line of every region of every layer starting in
@@ -168,14 +167,12 @@ fn closes_on_own_line(scope: Node, row: usize, rope: &ropey::Rope) -> bool {
     let Some(token) = scope.descendant_for_byte_range(end.saturating_sub(1), end) else {
         return false;
     };
-    let start = token.start_position();
-    let line_start = token.start_byte() - start.column;
     !token.is_named()
-        && start.row == row
-        && rope
-            .byte_slice(line_start..token.start_byte())
-            .chars()
-            .all(char::is_whitespace)
+        && token.start_position().row == row
+        && leading_whitespace_end(rope, ContentLine::new(row))
+            .offset()
+            .index()
+            == rope.byte_to_char(token.start_byte())
 }
 
 #[cfg(test)]

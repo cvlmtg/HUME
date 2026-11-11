@@ -153,12 +153,8 @@ pub(super) fn apply_visual_vertical(
     let key = state.layout_key(view, pid, size);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
-    let mut dlm = view.panes[pid].display_lines(
-        state.buffers.get(buf_id).text().rope(),
-        key.format_key(),
-        key.hidden(),
-        key.content_width(),
-    );
+    let mut dlm =
+        view.panes[pid].display_lines(state.buffers.get(buf_id).text().rope(), key.inputs());
 
     // Not `apply_focused_motion`: the closure also captures the display-line
     // map and the sticky-column buffer, disjoint fields of `state` that must
@@ -385,12 +381,8 @@ fn copy_selection_on_line(
     let landing = sticky_landing(state, t.pid(), buf_id);
     let size = state.pane_size(view, t.pid());
     let key = state.layout_key(view, t.pid(), size);
-    let mut dlm = view.panes[t.pid()].display_lines(
-        state.buffers.get(buf_id).text().rope(),
-        key.format_key(),
-        key.hidden(),
-        key.content_width(),
-    );
+    let mut dlm =
+        view.panes[t.pid()].display_lines(state.buffers.get(buf_id).text().rope(), key.inputs());
 
     doc_ops::apply_doc_motion(
         &state.buffers,
@@ -515,12 +507,8 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
 
     let size = state.pane_size(view, t.pid());
     let key = state.layout_key(view, t.pid(), size);
-    let mut dlm = view.panes[t.pid()].display_lines(
-        state.buffers.get(buf_id).text().rope(),
-        key.format_key(),
-        key.hidden(),
-        key.content_width(),
-    );
+    let mut dlm =
+        view.panes[t.pid()].display_lines(state.buffers.get(buf_id).text().rope(), key.inputs());
 
     // Not `apply_pane_motion`: the closure also captures the display-line map.
     doc_ops::apply_doc_motion(

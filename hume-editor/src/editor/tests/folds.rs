@@ -11,6 +11,9 @@ use pretty_assertions::assert_eq;
 /// brace staying shown, then two more lines.
 const FN: &str = "fn f() {\n    abc\n    d\n}\nz\ny\n";
 
+/// [`FN`] with a cursor on its first `f`.
+const FN_ON_F: &str = "-[f]>n f() {\n    abc\n    d\n}\nz\ny\n";
+
 /// The region of [`FN`]'s function.
 fn fn_fold() -> Fold {
     fold(0, 3, true)
@@ -54,7 +57,8 @@ fn closed_in(ed: &Editor, pid: PaneId) -> Vec<(usize, usize)> {
         .panes
         .entries
         .shown(&ed.view.panes, pid)
-        .closed_folds()
+        .folds()
+        .closed()
         .iter()
         .map(|f| (f.first().index(), f.last().index()))
         .collect()
@@ -71,7 +75,7 @@ fn closed(ed: &Editor) -> Vec<(usize, usize)> {
 fn closing_moves_a_selection_inside_to_the_fold_line() {
     let mut ed = editor("fn f() {\n    a-[b]>c\n    d\n}\nz\ny\n");
     close(&mut ed, &[fn_fold()]);
-    assert_eq!(state(&ed), "-[f]>n f() {\n    abc\n    d\n}\nz\ny\n");
+    assert_eq!(state(&ed), FN_ON_F);
     assert_eq!(closed(&ed), [(0, 3)]);
 }
 
@@ -93,7 +97,7 @@ fn closing_nested_folds_moves_an_end_to_the_outer_line() {
 
 #[test]
 fn closing_a_fold_replaces_the_closed_one_on_its_first_line() {
-    let mut ed = editor(&format!("-[f]>{}", &FN[1..]));
+    let mut ed = editor(FN_ON_F);
     close(&mut ed, &[fn_fold()]);
     close(&mut ed, &[fold(0, 4, false)]);
     assert_eq!(closed(&ed), [(0, 4)]);
@@ -123,7 +127,7 @@ fn a_goto_into_a_fold_opens_it() {
 
 #[test]
 fn a_search_match_inside_a_fold_opens_it() {
-    let mut ed = editor("-[f]>n f() {\n    abc\n    d\n}\nz\ny\n");
+    let mut ed = editor(FN_ON_F);
     close(&mut ed, &[fn_fold()]);
     keys(&mut ed, "/b");
     ed.feed_key(key_enter());
@@ -133,7 +137,7 @@ fn a_search_match_inside_a_fold_opens_it() {
 
 #[test]
 fn a_plain_line_step_crosses_a_closed_fold() {
-    let mut ed = editor("-[f]>n f() {\n    abc\n    d\n}\nz\ny\n");
+    let mut ed = editor(FN_ON_F);
     close(&mut ed, &[fn_fold()]);
     keys(&mut ed, "j");
     assert_eq!(state(&ed), "fn f() {\n    abc\n    d\n-[}]>\nz\ny\n");
@@ -142,7 +146,7 @@ fn a_plain_line_step_crosses_a_closed_fold() {
 
 #[test]
 fn a_counted_line_step_into_a_fold_opens_it() {
-    let mut ed = editor("-[f]>n f() {\n    abc\n    d\n}\nz\ny\n");
+    let mut ed = editor(FN_ON_F);
     close(&mut ed, &[fn_fold()]);
     keys(&mut ed, "2j");
     assert_eq!(state(&ed), "fn f() {\n    abc\n-[ ]>   d\n}\nz\ny\n");
@@ -151,7 +155,7 @@ fn a_counted_line_step_into_a_fold_opens_it() {
 
 #[test]
 fn copying_a_selection_onto_a_hidden_line_opens_its_fold() {
-    let mut ed = editor("-[f]>n f() {\n    abc\n    d\n}\nz\ny\n");
+    let mut ed = editor(FN_ON_F);
     close(&mut ed, &[fn_fold()]);
     keys(&mut ed, "C");
     assert_eq!(state(&ed), "-[f]>n f() {\n-{ }>   abc\n    d\n}\nz\ny\n");
@@ -231,7 +235,7 @@ fn an_edit_below_a_fold_leaves_it() {
 
 #[test]
 fn opening_a_line_below_the_fold_line_opens_the_fold() {
-    let mut ed = editor("-[f]>n f() {\n    abc\n    d\n}\nz\ny\n");
+    let mut ed = editor(FN_ON_F);
     close(&mut ed, &[fn_fold()]);
     keys(&mut ed, "o");
     ed.feed_key(key_esc());
@@ -326,11 +330,10 @@ fn rust_drawn(source: &str) -> Editor {
 /// Close the region the grammar starts at `line` in the focused pane.
 fn close_at(ed: &mut Editor, line: usize) {
     let doc = ed.doc();
-    let mut folds = Vec::new();
-    doc.current_layers()
+    let fold = doc
+        .current_layers()
         .expect("the buffer is parsed")
-        .all_folds(doc.text().rope(), &mut folds);
-    let fold = folds
+        .all_folds(doc.text().rope())
         .into_iter()
         .find(|fold| fold.first() == ContentLine::new(line))
         .expect("a region starts on the line");
@@ -379,10 +382,15 @@ fn a_wrapped_fold_line_draws_its_caret_once() {
     insta::assert_snapshot!(snapshot(&mut ed));
 }
 
+/// A function `a` whose body is twenty lines.
+fn long_fn() -> String {
+    let body: String = (0..20).map(|i| format!("    let v{i} = {i};\n")).collect();
+    format!("fn a() {{\n{body}}}\n")
+}
+
 #[test]
 fn a_header_row_draws_its_lines_caret() {
-    let body: String = (0..20).map(|i| format!("    let v{i} = {i};\n")).collect();
-    let mut ed = rust_drawn(&format!("fn a() {{\n{body}}}\n"));
+    let mut ed = rust_drawn(&long_fn());
     seek_to_line(&mut ed, 15);
     insta::assert_snapshot!(snapshot(&mut ed));
 }
@@ -399,15 +407,21 @@ fn gutter_folds_off_draws_no_caret() {
 /// An editor on `marked` in the `rust` grammar with its `context.scm`, the
 /// parse drained, laid out without wrapping.
 fn rust_editor(marked: &str) -> Editor {
-    let mut ed = super::structural::grammar_editor_undrained(
+    let mut ed = rust_editor_undrained(marked);
+    pin_no_wrap(&mut ed);
+    ed.reparse_stale_buffers();
+    ed
+}
+
+/// An editor on `marked` in the `rust` grammar with its `context.scm`, its
+/// parse not run.
+fn rust_editor_undrained(marked: &str) -> Editor {
+    super::structural::grammar_editor_undrained(
         "rust",
         "tree_sitter_rust",
         &[hume_core::OptionalQuery::Context],
         marked,
-    );
-    pin_no_wrap(&mut ed);
-    ed.reparse_stale_buffers();
-    ed
+    )
 }
 
 /// [`RS`] with a cursor on `x` and the primary one on `go`.
@@ -485,12 +499,7 @@ fn open_all_folds_opens_every_fold() {
 #[test]
 fn closing_without_a_parsed_tree_changes_nothing() {
     let marked = RS.replacen("x", "-[x]>", 1);
-    let mut ed = super::structural::grammar_editor_undrained(
-        "rust",
-        "tree_sitter_rust",
-        &[hume_core::OptionalQuery::Context],
-        &marked,
-    );
+    let mut ed = rust_editor_undrained(&marked);
     keys(&mut ed, "zc");
     assert_eq!(closed(&ed), []);
     assert_eq!(state(&ed), marked);
@@ -561,8 +570,8 @@ fn a_folds_query_wins_over_the_scope_query() {
 
 #[test]
 fn closing_the_scope_of_a_sticky_header_settles_on_its_line() {
-    let body: String = (0..20).map(|i| format!("    let v{i} = {i};\n")).collect();
-    let mut ed = rust_editor(&format!("-[f]>n a() {{\n{body}}}\n"));
+    let marked = format!("-[f]>{}", &long_fn()[1..]);
+    let mut ed = rust_editor(&marked);
     let pid = ed.view.focused_pane();
     seek_to_line(&mut ed, 15);
     frame(&mut ed, 40, 8);
@@ -572,7 +581,7 @@ fn closing_the_scope_of_a_sticky_header_settles_on_its_line() {
     );
     keys(&mut ed, "zc");
     frame(&mut ed, 40, 8);
-    assert_eq!(state(&ed), format!("-[f]>n a() {{\n{body}}}\n"));
+    assert_eq!(state(&ed), marked);
     assert_eq!(ed.pane_viewport(pid).top().line.index(), 0);
 }
 
@@ -615,8 +624,7 @@ fn a_press_on_a_caret_toggles_its_fold() {
 
 #[test]
 fn a_press_on_a_header_rows_caret_toggles_its_fold() {
-    let body: String = (0..20).map(|i| format!("    let v{i} = {i};\n")).collect();
-    let mut ed = rust_drawn(&format!("fn a() {{\n{body}}}\n"));
+    let mut ed = rust_drawn(&long_fn());
     seek_to_line(&mut ed, 15);
     press_fold_lane(&mut ed, 0);
     assert_eq!(closed(&ed), [(0, 21)]);

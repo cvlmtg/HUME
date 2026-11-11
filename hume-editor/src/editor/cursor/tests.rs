@@ -2,9 +2,9 @@ use super::*;
 use crate::editor::tests::doubles::{no_providers, providers_with_before_line};
 use crate::editor::tests::{cluster_at, co};
 use hume_core::Side;
-use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::DisplayLinePos;
 use hume_engine::display_lines::line_store::{FormatKey, PaneLineStore};
+use hume_engine::display_lines::{DisplayLineInputs, DisplayLineMap};
 use hume_engine::pane::{Viewport, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::{ContentWidth, PaneSize};
 use hume_engine::providers::ProviderSet;
@@ -36,14 +36,16 @@ fn map<'a>(
     DisplayLineMap::new(
         rope,
         providers,
-        ContentWidth::for_test(content_width),
-        FormatKey {
-            buffer_tag: [0; 3],
-            wrap_mode: wrap,
-            tab_width: 4,
-            whitespace: ws(),
+        DisplayLineInputs {
+            format: FormatKey {
+                buffer_tag: [0; 3],
+                wrap_mode: wrap,
+                tab_width: 4,
+                whitespace: ws(),
+            },
+            hidden: hume_engine::folds::HiddenLines::default(),
+            content_width: ContentWidth::for_test(content_width),
         },
-        hume_engine::folds::HiddenLines::default(),
         store,
     )
 }

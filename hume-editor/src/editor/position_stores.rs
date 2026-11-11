@@ -125,8 +125,8 @@ impl<'a> PositionStores<'a> {
     /// Carry every position stored for `target`'s buffer through `change`:
     /// the closed folds and selections of each pane that has shown the
     /// buffer, whether or not it shows it now, with the selections it built
-    /// since its last edit, every jump
-    /// list, the open Insert session's typed run and autoindent records,
+    /// since its last edit, every jump list, the open Insert session's typed
+    /// run and autoindent records,
     /// every position a script is tracking, every open prompt's snapshot,
     /// the open completion session, the buffer's diagnostics and
     /// decorations, and its last insertion. The change is also queued for

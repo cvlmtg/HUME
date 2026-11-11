@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use hume_core::{BufferId, PaneId};
 use slotmap::{SecondaryMap, SlotMap};
 
+use crate::display_lines::DisplayLineInputs;
 use crate::pane::Pane;
 use crate::providers::{ChromeProvider, DEFAULT_GUTTER_SCOPE, OverlayProvider, SyntaxSource};
 use crate::scope_headers::PaneRows;
@@ -111,7 +112,7 @@ pub struct RenderContext {
     /// Each pane's rows as this frame's scroll pass settled them, filled by
     /// the caller through [`RenderContext::set_pane_rows`], so drawing walks
     /// no scope header the scroll pass already walked.
-    pub(crate) pane_rows: SecondaryMap<PaneId, PaneRows>,
+    pub(crate) pane_rows: SecondaryMap<PaneId, SettledRows>,
     /// Pane rects computed by the layout stage.
     pub(crate) pane_rects: Vec<(PaneId, Rect)>,
     /// Perpendicular-arm bits keyed by cell, computed from the seams drawn
@@ -158,7 +159,7 @@ impl RenderContext {
     /// with, wholesale for the same reason as [`Self::set_pane_settings`].
     /// Every pane with a row the next `render` call reaches must be in
     /// `rows`, each for the top its viewport holds.
-    pub fn set_pane_rows(&mut self, rows: impl IntoIterator<Item = (PaneId, PaneRows)>) {
+    pub fn set_pane_rows(&mut self, rows: impl IntoIterator<Item = (PaneId, SettledRows)>) {
         self.pane_rows.clear();
         self.pane_rows.extend(rows);
     }
@@ -611,7 +612,7 @@ impl EngineView {
                 self.drawn.record_pane(pane_id, rect);
                 continue;
             }
-            let rows = *pane_rows
+            let settled = pane_rows
                 .get(pane_id)
                 .expect("no rows for a live pane, see RenderContext::set_pane_rows");
 
@@ -637,7 +638,7 @@ impl EngineView {
                 theme: &self.theme,
                 rect,
                 settings,
-                rows,
+                settled,
                 // Dim non-focused panes so the active one reads clearly at a
                 // glance, independent of `draw_dividers`, which only controls
                 // the seam glyph. Skipped when `ui.background` has no explicit
@@ -742,32 +743,24 @@ impl EngineView {
     }
 }
 
+/// A pane's rows as the scroll pass settled them, and the inputs it laid
+/// them out by, which the render pass draws the pane with.
+#[derive(Clone)]
+pub struct SettledRows {
+    pub rows: PaneRows,
+    pub inputs: DisplayLineInputs,
+}
+
 /// Per-pane render settings supplied by the editor at render time.
 ///
-/// `format` bundles everything the render pass's `DisplayLineMap` resolves a line's
-/// layout from (wrap mode, tab width, whitespace config, buffer identity)
-/// as one [`FormatKey`](crate::display_lines::line_store::FormatKey), unresolved (the
-/// pane's own `content_width` resolves it, inside `DisplayLineMap::new`). `tab_width`
-/// and `whitespace` inside it are document facts, resolved from per-buffer
-/// overrides against global settings, identical for every pane viewing the
-/// same buffer, while `wrap_mode` is per-pane (two panes on the
-/// same buffer may wrap differently, once `:wrap`/`:set pane wrap-mode=…`
-/// pins one); the editor resolves pane override → buffer override → global
-/// default (see `commands::effective_wrap_mode`) and folds the result into
-/// the same key alongside the document facts, since the render pass's
-/// `DisplayLineMap` and the scroll pass's must resolve a bit-identical key to share
-/// this pane's line store; see `FormatKey`'s own doc. `mode` and
-/// `cursor_is_block` are both per-focus facts rather than document facts;
-/// see `Editor::resolve_pane_settings` (`hume-editor`) for exactly what each
-/// resolves to and why. `mode` picks which cursor-scope ladder applies;
-/// `cursor_is_block` gates both selection heads in `style::style_display_line`'s
-/// Tier 1/0.
+/// `mode` and `cursor_is_block` are per-focus facts rather than document
+/// facts; see `Editor::resolve_pane_settings` (`hume-editor`) for what each
+/// resolves to and why. `mode` picks which cursor-scope ladder
+/// applies; `cursor_is_block` gates both selection heads in
+/// `style::style_display_line`'s Tier 1/0.
 #[derive(Clone)]
 pub struct PaneRenderSettings {
     pub mode: EditorMode,
-    pub format: crate::display_lines::line_store::FormatKey,
-    /// The lines the pane's closed folds hide.
-    pub hidden: crate::folds::HiddenLines,
     pub indent_guides: bool,
     pub cursor_is_block: bool,
     pub gutter: crate::providers::GutterInputs,
@@ -798,8 +791,8 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// Borrowed from the caller's `RenderContext`, which owns the map these
     /// come out of for the whole frame.
     pub settings: &'a PaneRenderSettings,
-    /// The pane's rows, for the top `viewport` holds.
-    pub rows: PaneRows,
+    /// The pane's rows, for the top `viewport` holds, and its layout inputs.
+    pub settled: &'a SettledRows,
     /// `Some` for non-focused panes: blend every written cell's fg/bg toward
     /// this target by `factor`. `None` for the focused pane.
     pub dim: Option<(Rgb, f32)>,

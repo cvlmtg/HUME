@@ -13,15 +13,6 @@ fn geo(height: u16, margin: usize) -> ViewGeometry<'static> {
     plain_geo(crate::pipeline::PaneSize::new(0, height), margin)
 }
 
-/// Walk the whole document forward from its first display line.
-fn walk_forward(dlm: &mut DisplayLineMap<'_>) -> Vec<DisplayLinePos> {
-    let mut positions = vec![DisplayLinePos::default()];
-    while let Some(next) = dlm.next(*positions.last().expect("seeded above")) {
-        positions.push(next);
-    }
-    positions
-}
-
 // Stepping
 
 /// "a\nb\nc\n" with 2 Before display lines on line 1 and 1 After display line on line 2. Hand-
@@ -325,14 +316,16 @@ fn wrap_width_one_emits_one_grapheme_per_display_line_without_hanging() {
     let mut dlm = DisplayLineMap::new(
         &rope,
         &providers,
-        crate::pipeline::ContentWidth::for_test(80),
-        FormatKey {
-            buffer_tag: [0; 3],
-            wrap_mode: WrapMode::Soft { width: 1 },
-            tab_width: 4,
-            whitespace: ws(),
+        DisplayLineInputs {
+            format: FormatKey {
+                buffer_tag: [0; 3],
+                wrap_mode: WrapMode::Soft { width: 1 },
+                tab_width: 4,
+                whitespace: ws(),
+            },
+            hidden: crate::folds::HiddenLines::default(),
+            content_width: crate::pipeline::ContentWidth::for_test(80),
         },
-        crate::folds::HiddenLines::default(),
         &mut s,
     );
 

@@ -77,10 +77,7 @@ impl Viewport {
         // `geo.height` shown *buffer* lines short of the document's last one
         // can't be within the bound's own `target` (<= `geo.height`)
         // *display* lines of it, and the bound can't bind.
-        let lines_to_end = dlm
-            .hidden()
-            .shown_between(next.line.advance(1), dlm.last_line().advance(1));
-        if lines_to_end > geo.height {
+        if dlm.hidden().line_after_shown(next.line, geo.height + 1) <= dlm.last_line() {
             self.top = next;
             return;
         }

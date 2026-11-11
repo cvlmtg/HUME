@@ -46,11 +46,9 @@ fn spanning(syn: &Syntax, text: &BufferText, line: usize) -> Vec<Fold> {
 }
 
 fn all(syn: &Syntax, text: &BufferText) -> Vec<Fold> {
-    let mut out = Vec::new();
     syn.layers()
         .expect("layers installed")
-        .all_folds(text.rope(), &mut out);
-    out
+        .all_folds(text.rope())
 }
 
 /// `name` with `folds` as its `folds.scm` and no other optional query.
@@ -159,8 +157,9 @@ fn folds_scm_wins_over_the_scope_query() {
     assert_eq!(fold_at(&syn, &text, 1), Some(fold(1, 3, true)));
 }
 
-#[test]
-fn an_injected_layer_folds_its_own_scopes() {
+/// The `markdown` grammar with its injections, and a snapshot holding
+/// [`rust_blocks`] for the code blocks it injects.
+fn markdown_injecting_rust() -> (Arc<GrammarBundle>, Arc<GrammarSnapshot>) {
     require_grammars(&["markdown", "rust"]);
     let injections = fixture_query("markdown", OptionalQuery::Injections);
     let markdown = make_bundle(
@@ -173,6 +172,12 @@ fn an_injected_layer_folds_its_own_scopes() {
         "rust".to_owned(),
         rust_blocks(),
     )]));
+    (markdown, langs)
+}
+
+#[test]
+fn an_injected_layer_folds_its_own_scopes() {
+    let (markdown, langs) = markdown_injecting_rust();
     let source = "## Usage\n\n```rust\nfn demo() {\n    let x = 1;\n    let y = 2;\n}\n```\n";
     let text = BufferText::from(source);
     let syn = Syntax::attach_sync(markdown, &text, &langs);
@@ -181,18 +186,7 @@ fn an_injected_layer_folds_its_own_scopes() {
 
 #[test]
 fn a_root_without_regions_can_fold_through_an_injected_layer() {
-    require_grammars(&["markdown", "rust"]);
-    let injections = fixture_query("markdown", OptionalQuery::Injections);
-    let markdown = make_bundle(
-        "markdown",
-        "tree_sitter_markdown",
-        "",
-        &[(OptionalQuery::Injections, &injections)],
-    );
-    let langs = Arc::new(GrammarSnapshot::from_iter([(
-        "rust".to_owned(),
-        rust_blocks(),
-    )]));
+    let (markdown, langs) = markdown_injecting_rust();
     let prose = BufferText::from("## Usage\n\nText.\n");
     let code = BufferText::from("## Usage\n\n```rust\nfn demo() {\n    x();\n}\n```\n");
     assert!(!Syntax::attach_sync(Arc::clone(&markdown), &prose, &langs).can_fold());

@@ -79,9 +79,11 @@ pub trait SyntaxSource {
 
 /// Context passed to `GutterColumn::render_cells` for buffer/syntax access.
 ///
-/// Gutter rendering (~100 calls/frame) should stay cheap to build, so this
-/// struct does not precompute per-line data. Providers that need e.g.
-/// `line_to_byte` call it themselves.
+/// Built once per drawn row (~100 per frame) from per-frame inputs, so it
+/// stays cheap to build. Its one per-line field, `fold`, is a lookup in the
+/// fold marks the render pass reads before its walk, one query per run of
+/// shown lines. Providers that need other per-line data (e.g.
+/// `line_to_byte`) compute it themselves.
 pub struct GutterCtx<'a> {
     pub mode: EditorMode,
     pub row: GutterRow,
@@ -94,9 +96,8 @@ pub struct GutterCtx<'a> {
 }
 
 /// Whether a fold starts on a line, and whether it is closed.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FoldMark {
-    #[default]
     None,
     Open,
     Closed,
@@ -113,6 +114,19 @@ pub enum GutterRow {
     /// A scope header row, which shows its line's number, absolute and never
     /// marked as the cursor's, and its fold caret, with no sign.
     Header,
+}
+
+impl GutterRow {
+    /// The primary selection head's line, `None` on a header row. Ropey
+    /// domain, to compare against [`DisplayLineKind::LineStart`]'s own
+    /// field; a render walk never emits that for the phantom line, so the
+    /// widening changes no answer.
+    pub fn primary_head_line(self) -> Option<hume_rope::line::RopeyLine> {
+        match self {
+            Self::Body { primary_head_line } => Some(primary_head_line.into()),
+            Self::Header => None,
+        }
+    }
 }
 
 /// The settings the built-in gutter columns size and draw by, resolved for

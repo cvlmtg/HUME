@@ -19,7 +19,7 @@ use hume_rope::column::ByteCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::display_lines::line_store::{FormatKey, PaneLineStore};
-use crate::display_lines::{DisplayLineMap, RenderDisplayLine};
+use crate::display_lines::{DisplayLineInputs, DisplayLineMap, RenderDisplayLine};
 use crate::folds::HiddenLines;
 use crate::pane::{ViewGeometry, WhitespaceConfig, WrapMode};
 use crate::pipeline::PaneSize;
@@ -101,14 +101,16 @@ pub(crate) fn map_hiding<'a>(
     DisplayLineMap::new(
         rope,
         providers,
-        crate::pipeline::ContentWidth::for_test(content_width),
-        FormatKey {
-            buffer_tag: [0; 3],
-            wrap_mode: wrap,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
+        DisplayLineInputs {
+            format: FormatKey {
+                buffer_tag: [0; 3],
+                wrap_mode: wrap,
+                tab_width: 4,
+                whitespace: WhitespaceConfig::default(),
+            },
+            hidden,
+            content_width: crate::pipeline::ContentWidth::for_test(content_width),
         },
-        hidden,
         store,
     )
 }

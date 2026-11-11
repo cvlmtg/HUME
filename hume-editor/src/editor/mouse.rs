@@ -24,11 +24,13 @@
 
 use hume_core::PaneId;
 use hume_engine::builtins::fold_column::FoldStarts;
-use hume_engine::display_lines::BlockSlot;
+use hume_engine::display_lines::{BlockSlot, DisplayLineMap};
+use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{PaneHit, SeamHandle};
 use hume_engine::providers::FoldMark;
 use hume_engine::scope_headers::{HeaderLayout, PaneRow};
 use hume_grid::{Position, Rect};
+use hume_rope::line::ContentLine;
 use hume_rope::offset::InclusiveRange;
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -37,6 +39,8 @@ use super::cursor;
 use hume_ops::MotionMode;
 
 use super::Editor;
+use super::buffer::Buffer;
+use super::geometry::LayoutKey;
 use super::selection_history::Record;
 use hume_editing::selection::{EditView, Selection, SelectionSet};
 
@@ -288,8 +292,7 @@ impl Editor {
     /// The line whose fold caret `hit` lands on: a cell of the pane's fold
     /// column, on a row drawing a line's first display line or a scope
     /// header, beside a caret. `None` anywhere else.
-    #[allow(clippy::disallowed_methods)] // a click aims at the view on screen
-    fn fold_caret_at(&mut self, hit: PaneHit) -> Option<hume_rope::line::ContentLine> {
+    fn fold_caret_at(&mut self, hit: PaneHit) -> Option<ContentLine> {
         let pid = hit.pane();
         let lane = self.state.panes.entries[pid].fold_lane?;
         let doc = self.state.buffers.get(self.view.panes[pid].buffer_id());
@@ -304,22 +307,15 @@ impl Editor {
             return None;
         }
         let layout_key = self.state.layout_key(&self.view, pid, hit.size());
-        let (mut dlm, viewport) = self.view.panes[pid].display_lines_and_viewport(
-            rope,
-            layout_key.format_key(),
-            layout_key.hidden(),
-            layout_key.content_width(),
-        );
-        let geo = layout_key.geometry(doc.syntax_source())?;
-        let rows = geo.rows(&mut dlm, viewport);
-        let line = match rows.row_at(&mut dlm, hit.y()) {
+        let (row, mut dlm, _) = row_at(doc, &mut self.view.panes[pid], &layout_key, hit.y())?;
+        let line = match row {
             PaneRow::Header(line) => line,
             PaneRow::Body(pos) => (dlm.slot(pos) == BlockSlot::Content(0)).then_some(pos.line)?,
         };
         let mut starts = FoldStarts::default();
         starts.reset(dlm.hidden().clone());
         if let Some(syntax) = doc.syntax_source() {
-            starts.read(InclusiveRange::new(line, line), syntax, rope);
+            starts.read([InclusiveRange::new(line, line)], syntax, rope);
         }
         (starts.mark(line) != FoldMark::None).then_some(line)
     }
@@ -328,7 +324,6 @@ impl Editor {
     /// with the pane's current gutter. A press on a scope header row resolves
     /// to its line's cluster, laid out as the row draws it, not to the hidden
     /// line under it.
-    #[allow(clippy::disallowed_methods)] // a click aims at the view on screen
     fn click_to_cluster(&mut self, hit: PaneHit) -> Option<hume_rope::cluster::ClusterStart> {
         let pid = hit.pane();
         let buf_id = self.view.panes[pid].buffer_id();
@@ -337,19 +332,10 @@ impl Editor {
             .pane_geometry(&self.view, pid, hit.size())
             .gutter_width;
         let layout_key = self.state.layout_key(&self.view, pid, hit.size());
-        let key = layout_key.format_key();
-        let content_width = layout_key.content_width();
         let doc = self.state.buffers.get(buf_id);
-        let rope = doc.text().rope();
-        let (mut dlm, viewport) = self.view.panes[pid].display_lines_and_viewport(
-            rope,
-            key,
-            layout_key.hidden(),
-            content_width,
-        );
-        let geo = layout_key.geometry(doc.syntax_source())?;
-        let rows = geo.rows(&mut dlm, viewport);
-        match rows.row_at(&mut dlm, hit.y()) {
+        let (row, mut dlm, viewport) =
+            row_at(doc, &mut self.view.panes[pid], &layout_key, hit.y())?;
+        match row {
             PaneRow::Body(pos) => cursor::cell_to_cluster(
                 hit.x(),
                 gutter_width,
@@ -359,11 +345,29 @@ impl Editor {
             ),
             PaneRow::Header(line) => {
                 let mut header_layout = HeaderLayout::default();
-                let mut header_dlm = header_layout.display_map(rope, content_width, key);
+                let mut header_dlm =
+                    header_layout.display_map(doc.text().rope(), &layout_key.inputs());
                 cursor::header_to_cluster(hit.x(), gutter_width, &mut header_dlm, line)
             }
         }
     }
+}
+
+/// The row `pane` draws at pane row `y`, laid out by `layout_key` over
+/// `doc`, with the display lines and viewport it was read through. `None`
+/// for a pane with no rows.
+#[allow(clippy::disallowed_methods)] // a click aims at the view on screen
+fn row_at<'a>(
+    doc: &'a Buffer,
+    pane: &'a mut Pane,
+    layout_key: &LayoutKey,
+    y: u16,
+) -> Option<(PaneRow, DisplayLineMap<'a>, &'a mut Viewport)> {
+    let (mut dlm, viewport) =
+        pane.display_lines_and_viewport(doc.text().rope(), layout_key.inputs());
+    let geo = layout_key.geometry(doc.syntax_source())?;
+    let row = geo.rows(&mut dlm, viewport).row_at(&mut dlm, y);
+    Some((row, dlm, viewport))
 }
 
 // Coordinate helpers

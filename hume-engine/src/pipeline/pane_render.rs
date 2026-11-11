@@ -44,6 +44,11 @@ pub(crate) fn render_pane(
         pane_ctx.providers.gutter_columns(),
         pane_ctx.settings.gutter,
     );
+    let inputs = &pane_ctx.settled.inputs;
+    debug_assert_eq!(
+        visible.content_width, inputs.content_width,
+        "the pane's rows were settled at another content width"
+    );
 
     // ── Pre-render: per-frame constant setup ──────────────────────────────
 
@@ -66,23 +71,16 @@ pub(crate) fn render_pane(
         pane_ctx.settings.gutter,
     ));
 
-    let mut dlm = DisplayLineMap::new(
-        pane_ctx.rope,
-        pane_ctx.providers,
-        visible.content_width,
-        pane_ctx.settings.format,
-        pane_ctx.settings.hidden.clone(),
-        store,
-    )
-    .with_h_window(h_window(
-        pane_ctx.settings.format.wrap_mode,
-        pane_ctx.viewport.horizontal_offset,
-        visible.content_width,
-    ));
+    let mut dlm = DisplayLineMap::new(pane_ctx.rope, pane_ctx.providers, inputs.clone(), store)
+        .with_h_window(h_window(
+            inputs.format.wrap_mode,
+            pane_ctx.viewport.horizontal_offset,
+            inputs.content_width,
+        ));
     let last_content_line = dlm.last_line();
     let providers = dlm.providers();
 
-    let rows = pane_ctx.rows;
+    let rows = pane_ctx.settled.rows;
     let top = pane_ctx.viewport.top_at(&mut dlm);
     debug_assert_eq!(
         top,
@@ -93,7 +91,7 @@ pub(crate) fn render_pane(
     // The region starts of every line this pane can draw, read before the
     // walk in one query per run of shown lines: the lines from the top
     // through as many shown lines as the pane has rows, and the header lines.
-    let hidden = &pane_ctx.settings.hidden;
+    let hidden = &inputs.hidden;
     fold_starts.reset(hidden.clone());
     if pane_ctx.settings.gutter.folds
         && let Some(syntax) = pane_ctx.syntax
@@ -101,14 +99,12 @@ pub(crate) fn render_pane(
         let drawn_end = hidden
             .line_after_shown(top.line, usize::from(pane_ctx.rect.height))
             .min(last_content_line);
+        let headers = rows.headers().iter().map(|&h| InclusiveRange::new(h, h));
         fold_starts.read(
-            InclusiveRange::new(top.line, drawn_end),
+            std::iter::once(InclusiveRange::new(top.line, drawn_end)).chain(headers),
             syntax,
             pane_ctx.rope,
         );
-        for &header in rows.headers() {
-            fold_starts.read(InclusiveRange::new(header, header), syntax, pane_ctx.rope);
-        }
     }
 
     let head_line = crate::pane::primary_head_line(pane_ctx.selections, pane_ctx.rope);
@@ -121,7 +117,7 @@ pub(crate) fn render_pane(
         row: GutterRow::Body {
             primary_head_line: head_line,
         },
-        tab_width: pane_ctx.settings.format.tab_width,
+        tab_width: inputs.format.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text,
         indent_guide_style: pane_ctx.theme.ui.indent_guide,
         indent_guides: pane_ctx.settings.indent_guides,
@@ -133,6 +129,7 @@ pub(crate) fn render_pane(
         folds: pane_ctx.settings.gutter.folds.then_some(&*fold_starts),
     };
     let mut canvas = render::Canvas::new(grid, pane_ctx.theme.ui.invisible, pane_ctx.dim);
+
     // ── Display-line walk ────────────────────────────────────────────────
     let height = pane_ctx.rect.height;
     // Which line's highlight intervals and cursorline state `line` currently
@@ -250,11 +247,7 @@ pub(crate) fn render_pane(
     }
     // Header rows are formatted and drawn from column 0 whatever the pane's
     // horizontal scroll.
-    let mut header_dlm = header_layout.render_map(
-        pane_ctx.rope,
-        visible.content_width,
-        pane_ctx.settings.format,
-    );
+    let mut header_dlm = header_layout.render_map(pane_ctx.rope, inputs);
     let header_providers = header_dlm.providers();
     let header_ctx = ComposeCtx {
         horizontal_offset: DisplayLineCol::new(0),

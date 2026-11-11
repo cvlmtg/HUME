@@ -155,14 +155,16 @@ fn a_changed_key_drops_the_scope() {
     DisplayLineMap::new(
         &r,
         &providers,
-        crate::pipeline::ContentWidth::for_test(80),
-        FormatKey {
-            buffer_tag: [1; 3],
-            wrap_mode: wrap,
-            tab_width: 4,
-            whitespace: ws(),
+        DisplayLineInputs {
+            format: FormatKey {
+                buffer_tag: [1; 3],
+                wrap_mode: wrap,
+                tab_width: 4,
+                whitespace: ws(),
+            },
+            hidden: crate::folds::HiddenLines::default(),
+            content_width: crate::pipeline::ContentWidth::for_test(80),
         },
-        crate::folds::HiddenLines::default(),
         &mut store,
     )
     .block(ContentLine::new(0));
@@ -172,14 +174,16 @@ fn a_changed_key_drops_the_scope() {
     DisplayLineMap::new(
         &r,
         &providers,
-        crate::pipeline::ContentWidth::for_test(80),
-        FormatKey {
-            buffer_tag: [2; 3],
-            wrap_mode: wrap,
-            tab_width: 4,
-            whitespace: ws(),
+        DisplayLineInputs {
+            format: FormatKey {
+                buffer_tag: [2; 3],
+                wrap_mode: wrap,
+                tab_width: 4,
+                whitespace: ws(),
+            },
+            hidden: crate::folds::HiddenLines::default(),
+            content_width: crate::pipeline::ContentWidth::for_test(80),
         },
-        crate::folds::HiddenLines::default(),
         &mut store,
     )
     .block(ContentLine::new(0));
@@ -231,14 +235,16 @@ fn a_shape_only_entry_allocates_no_format_buffers() {
     let breakdown = DisplayLineMap::new(
         &r,
         &providers,
-        crate::pipeline::ContentWidth::for_test(80),
-        FormatKey {
-            buffer_tag: [1; 3],
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: ws(),
+        DisplayLineInputs {
+            format: FormatKey {
+                buffer_tag: [1; 3],
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: ws(),
+            },
+            hidden: crate::folds::HiddenLines::default(),
+            content_width: crate::pipeline::ContentWidth::for_test(80),
         },
-        crate::folds::HiddenLines::default(),
         &mut store,
     )
     .block(ContentLine::new(0));
@@ -309,14 +315,16 @@ fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
     DisplayLineMap::new(
         &r,
         &providers,
-        crate::pipeline::ContentWidth::for_test(80),
-        FormatKey {
-            buffer_tag: [1; 3],
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: ws(),
+        DisplayLineInputs {
+            format: FormatKey {
+                buffer_tag: [1; 3],
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: ws(),
+            },
+            hidden: crate::folds::HiddenLines::default(),
+            content_width: crate::pipeline::ContentWidth::for_test(80),
         },
-        crate::folds::HiddenLines::default(),
         &mut store,
     )
     .render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));

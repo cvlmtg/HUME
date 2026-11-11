@@ -11,10 +11,9 @@ use hume_rope::line::ContentLine;
 use ropey::Rope;
 
 use crate::display_lines::line_store::{FormatKey, PaneLineStore};
-use crate::display_lines::{DisplayLineMap, DisplayLinePos, h_window};
+use crate::display_lines::{DisplayLineInputs, DisplayLineMap, DisplayLinePos, h_window};
 use crate::folds::HiddenLines;
 use crate::pane::{ViewGeometry, WrapMode};
-use crate::pipeline::ContentWidth;
 use crate::providers::{ProviderSet, SyntaxSource};
 
 /// The most header rows a pane shows.
@@ -196,27 +195,23 @@ pub struct HeaderLayout {
 
 impl HeaderLayout {
     /// The map a header row is laid out through, whole lines, for a hit
-    /// test: the pane's `key` with wrapping off, so a long header line is
+    /// test: the pane's `inputs` with wrapping off, so a long header line is
     /// cut at the pane's edge in every wrap mode, and with no line hidden,
     /// since each row lays out one line on its own.
     pub fn display_map<'a>(
         &'a mut self,
         rope: &'a Rope,
-        content_width: ContentWidth,
-        key: FormatKey,
+        inputs: &DisplayLineInputs,
     ) -> DisplayLineMap<'a> {
-        let key = FormatKey {
-            wrap_mode: WrapMode::None,
-            ..key
+        let inputs = DisplayLineInputs {
+            format: FormatKey {
+                wrap_mode: WrapMode::None,
+                ..inputs.format
+            },
+            hidden: HiddenLines::default(),
+            content_width: inputs.content_width,
         };
-        DisplayLineMap::new(
-            rope,
-            &self.providers,
-            content_width,
-            key,
-            HiddenLines::default(),
-            &mut self.store,
-        )
+        DisplayLineMap::new(rope, &self.providers, inputs, &mut self.store)
     }
 
     /// [`Self::display_map`] clipped to the columns the header rows draw,
@@ -227,15 +222,13 @@ impl HeaderLayout {
     pub(crate) fn render_map<'a>(
         &'a mut self,
         rope: &'a Rope,
-        content_width: ContentWidth,
-        key: FormatKey,
+        inputs: &DisplayLineInputs,
     ) -> DisplayLineMap<'a> {
-        self.display_map(rope, content_width, key)
-            .with_h_window(h_window(
-                WrapMode::None,
-                DisplayLineCol::new(0),
-                content_width,
-            ))
+        self.display_map(rope, inputs).with_h_window(h_window(
+            WrapMode::None,
+            DisplayLineCol::new(0),
+            inputs.content_width,
+        ))
     }
 }
 

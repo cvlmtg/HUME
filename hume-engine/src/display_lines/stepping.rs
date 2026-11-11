@@ -14,7 +14,7 @@ impl<'a> DisplayLineMap<'a> {
         if pos.slot + 1 < total {
             return Some(DisplayLinePos::new(pos.line, pos.slot + 1));
         }
-        let next = self.hidden.next_shown(pos.line);
+        let next = self.hidden.line_after_shown(pos.line, 1);
         (next <= self.last_line()).then(|| DisplayLinePos::new(next, 0))
     }
 
@@ -103,7 +103,7 @@ impl<'a> DisplayLineMap<'a> {
         // so more of them than `cap` already proves the walk below would
         // return `None`, without formatting a single line under wrap to find
         // out.
-        if self.hidden.shown_between(from.line, to.line) > cap {
+        if self.hidden.line_after_shown(from.line, cap) < to.line {
             return None;
         }
         let mut cur = from;

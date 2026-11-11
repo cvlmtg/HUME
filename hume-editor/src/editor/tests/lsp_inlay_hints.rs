@@ -108,12 +108,8 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     let size = ed.pane_size(pid);
     let layout_key = ed.state.layout_key(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
-    let mut dlm = view.panes[pid].display_lines(
-        state.buffers.get(bid).text().rope(),
-        layout_key.format_key(),
-        layout_key.hidden(),
-        layout_key.content_width(),
-    );
+    let mut dlm =
+        view.panes[pid].display_lines(state.buffers.get(bid).text().rope(), layout_key.inputs());
     let geo = layout_key
         .geometry(state.buffers.get(bid).syntax_source())
         .expect("the pane has rows");

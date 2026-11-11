@@ -61,9 +61,9 @@ impl Editor {
     /// `lines` is a one-row *superset* of the viewport (its end plus one more
     /// row, counting only the lines no closed fold hides), and `chars` spans
     /// the same lines: cheap over-fetch beats a wrap-aware exact bound for a
-    /// bulk store slice. Both are end-exclusive,
-    /// like `geometry::pane_visible_range`, which differs in that one-row
-    /// slack and in leaving the top line unclamped.
+    /// bulk store slice. Both are end-exclusive, like
+    /// `geometry::pane_visible_range`, which differs in that one-row slack
+    /// and in leaving the top line unclamped.
     ///
     /// Scoped to `active` (the active tab's panes, each with its size in the
     /// frame's layout; see `EngineView::active_pane_ids`) rather than the

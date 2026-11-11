@@ -70,12 +70,8 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     let size = ed.pane_size(pid);
     let layout_key = ed.state.layout_key(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
-    let mut dlm = view.panes[pid].display_lines(
-        state.buffers.get(bid).text().rope(),
-        layout_key.format_key(),
-        layout_key.hidden(),
-        layout_key.content_width(),
-    );
+    let mut dlm =
+        view.panes[pid].display_lines(state.buffers.get(bid).text().rope(), layout_key.inputs());
 
     let geo = layout_key
         .geometry(state.buffers.get(bid).syntax_source())
@@ -564,12 +560,8 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     let size = ed.pane_size(pid);
     let layout_key = ed.state.layout_key(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
-    let mut dlm = view.panes[pid].display_lines(
-        state.buffers.get(bid).text().rope(),
-        layout_key.format_key(),
-        layout_key.hidden(),
-        layout_key.content_width(),
-    );
+    let mut dlm =
+        view.panes[pid].display_lines(state.buffers.get(bid).text().rope(), layout_key.inputs());
     let geo = layout_key
         .geometry(state.buffers.get(bid).syntax_source())
         .expect("the pane has rows");

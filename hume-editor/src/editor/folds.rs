@@ -53,10 +53,10 @@ impl FoldSet {
         self.set(closed);
     }
 
-    /// Open the closed fold starting at `line`, if there is one.
-    pub(in crate::editor) fn open_at(&mut self, line: ContentLine) {
+    /// Open the closed folds starting at `lines`.
+    pub(in crate::editor) fn open_at(&mut self, lines: &[ContentLine]) {
         let mut closed = std::mem::take(&mut self.closed);
-        closed.retain(|c| c.first() != line);
+        closed.retain(|c| !lines.contains(&c.first()));
         self.set(closed);
     }
 
@@ -70,24 +70,30 @@ impl FoldSet {
         if self.closed.is_empty() {
             return;
         }
-        let text = view.text();
-        let mut open = vec![false; self.closed.len()];
-        for sel in view.iter() {
-            let lines = sel.lines();
-            let ends = [sel.anchor(), sel.head()].map(|end| text.char_to_line(end.offset()));
-            for line in ends.into_iter().filter(|&line| self.hidden.is_hidden(line)) {
-                for (i, fold) in self.closed.iter().enumerate() {
-                    open[i] |= hides_from(*fold, lines, line);
-                }
-            }
+        // A selection's ends lie on its first and last line.
+        let hidden_ends: Vec<_> = view
+            .iter()
+            .flat_map(|sel| {
+                let lines = sel.lines();
+                [lines.start, lines.end].map(|line| (lines, line))
+            })
+            .filter(|&(_, line)| self.hidden.is_hidden(line))
+            .collect();
+        if hidden_ends.is_empty() {
+            return;
         }
-        if open.contains(&true) {
-            let mut open = open.into_iter();
-            let closed = std::mem::take(&mut self.closed)
-                .into_iter()
-                .filter(|_| !open.next().expect("one flag per fold"))
-                .collect();
-            self.set(closed);
+        let kept: Vec<Fold> = self
+            .closed
+            .iter()
+            .copied()
+            .filter(|&fold| {
+                !hidden_ends
+                    .iter()
+                    .any(|&(lines, line)| hides_from(fold, lines, line))
+            })
+            .collect();
+        if kept.len() < self.closed.len() {
+            self.set(kept);
         }
     }
 
@@ -143,6 +149,13 @@ impl FoldSet {
         let mut cursor = change.line_cursor();
         let mapped: Vec<Option<ContentLine>> =
             lines.iter().map(|&line| cursor.map_line(line)).collect();
+        if lines
+            .iter()
+            .zip(&mapped)
+            .all(|(&line, &to)| to == Some(line))
+        {
+            return;
+        }
         let map = |line: ContentLine| {
             mapped[lines
                 .binary_search(&line)

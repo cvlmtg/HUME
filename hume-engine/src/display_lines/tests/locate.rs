@@ -170,14 +170,16 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
     let mut dlm = DisplayLineMap::new(
         &rope,
         &providers,
-        crate::pipeline::ContentWidth::for_test(80),
-        FormatKey {
-            buffer_tag: [0; 3],
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace,
+        DisplayLineInputs {
+            format: FormatKey {
+                buffer_tag: [0; 3],
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace,
+            },
+            hidden: crate::folds::HiddenLines::default(),
+            content_width: crate::pipeline::ContentWidth::for_test(80),
         },
-        crate::folds::HiddenLines::default(),
         &mut s,
     );
 

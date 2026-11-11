@@ -466,24 +466,23 @@ fn split_inherits_source_panes_saved_wrap_mode() {
 
 // ── Render path ───────────────────────────────────────────────────────────────
 
-/// The render path's own resolve call (`Editor::resolve_pane_settings`, which
-/// `frame.rs` renders through) must apply the same pane → buffer → global
-/// precedence `effective_wrap_mode` does elsewhere, not a two-rung
-/// pane → global shortcut that skips the buffer rung. Asserting a
-/// `WrapMode::None` result (no width to resolve) catches a dropped buffer
-/// rung directly, unlike assertions that read the resolver's own return
-/// value, which would keep passing even if `frame.rs` stopped calling it.
+/// The key a frame lays a pane out by, whose inputs the render pass draws
+/// the pane with, must apply the same pane → buffer → global precedence
+/// `effective_wrap_mode` does elsewhere, not a two-rung pane → global
+/// shortcut that skips the buffer rung. Asserting a `WrapMode::None` result
+/// (no width to resolve) catches a dropped buffer rung directly.
 #[test]
-fn resolve_pane_settings_honours_the_buffer_rung() {
+fn the_layout_key_honours_the_buffer_rung() {
     let mut ed = editor_from("-[a]>b\n");
     // Global default (Indent) wraps; only a buffer override can produce None.
     run_set(&mut ed, "buffer wrap-mode=none").expect("set buffer failed");
     let pid = ed.view.focused_pane();
-    let settings = ed.resolve_pane_settings(pid);
+    let size = ed.state.pane_size(&ed.view, pid);
+    let key = ed.state.layout_key(&ed.view, pid, size);
     assert_eq!(
-        settings.format.wrap_mode,
+        key.inputs().format.wrap_mode,
         WrapMode::None,
-        "the render path must resolve the buffer override, not just pane → global"
+        "the layout key must resolve the buffer override, not just pane → global"
     );
 }
 

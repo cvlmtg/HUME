@@ -109,33 +109,13 @@ impl HiddenLines {
         }
     }
 
-    /// The first shown line after `line`. It may lie past the buffer's last
-    /// line, as `line.advance(1)` would.
-    pub fn next_shown(&self, line: ContentLine) -> ContentLine {
-        self.line_after_shown(line, 1)
-    }
-
     /// The last shown line before `line`, `None` from line 0.
     pub fn prev_shown(&self, line: ContentLine) -> Option<ContentLine> {
         (line.index() > 0).then(|| self.shown_at_or_before(line.retreat_saturating(1)))
     }
 
-    /// How many shown lines lie in `from .. to`.
-    pub fn shown_between(&self, from: ContentLine, to: ContentLine) -> usize {
-        if to <= from {
-            return 0;
-        }
-        let last = to.retreat_saturating(1);
-        let hidden: usize = self.0[self.first_ending_at_or_after(from)..]
-            .iter()
-            .take_while(|r| r.start <= last)
-            .map(|r| r.end.min(last).lines_since(r.start.max(from)) + 1)
-            .sum();
-        to.lines_since(from) - hidden
-    }
-
-    /// The line `n` shown lines past `from`, `from` itself for `n == 0`.
-    /// Unbounded above, like [`HiddenLines::next_shown`].
+    /// The line `n` shown lines past `from`, `from` itself for `n == 0`. It
+    /// may lie past the buffer's last line, as `from.advance(n)` would.
     pub fn line_after_shown(&self, from: ContentLine, n: usize) -> ContentLine {
         if n == 0 {
             return from;

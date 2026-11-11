@@ -4,6 +4,8 @@ use std::sync::Arc;
 use criterion::{Criterion, criterion_group, criterion_main};
 use hume_core::{GrammarSource, OptionalQuery, QueryFiles};
 use hume_editing::text::BufferText;
+use hume_engine::builtins::fold_column::FoldStarts;
+use hume_engine::folds::HiddenLines;
 use hume_engine::providers::SyntaxSource;
 use hume_engine::theme::ScopeRegistry;
 use hume_rope::line::ContentLine;
@@ -61,6 +63,8 @@ fn bundle(registry: &mut LanguageRegistry, kind: OptionalQuery) -> Arc<GrammarBu
 
 /// A pane's worth of region starts, read in one query, from the regions of
 /// `context.scm` and of the textobjects fallback of a grammar without one.
+/// Then the same pane with every method's fold closed, where the render
+/// pass reads one query per run of shown lines.
 fn bench_fold_starts(c: &mut Criterion) {
     require_grammars(&["rust"]);
     let (source, first) = nested_source();
@@ -83,6 +87,39 @@ fn bench_fold_starts(c: &mut Criterion) {
             b.iter(|| {
                 out.clear();
                 syntax.fold_starts(black_box(pane), text.rope(), &mut out);
+            });
+        });
+
+        // Every region closed but the `impl`'s, as close-all and then
+        // opening the outer fold leaves it.
+        let rope = text.rope();
+        let closed = syntax
+            .layers()
+            .expect("a parsed tree")
+            .all_folds(rope)
+            .into_iter()
+            .filter(|fold| fold.first() != ContentLine::new(0));
+        let hidden = HiddenLines::from_folds(closed);
+        let drawn = InclusiveRange::new(
+            first,
+            hidden
+                .line_after_shown(first, ROWS)
+                .min(text.last_content_line()),
+        );
+        assert!(
+            hidden.closed_at(first),
+            "{name}: the method's fold is closed"
+        );
+        // Each run of shown lines ends on a closed method's first line.
+        assert!(
+            hidden.shown_runs(drawn).count() >= ROWS / 4,
+            "{name}: the closed pane reads one run per method"
+        );
+        let mut starts = FoldStarts::default();
+        c.bench_function(&format!("fold_starts_pane_closed_{name}"), |b| {
+            b.iter(|| {
+                starts.reset(hidden.clone());
+                starts.read([black_box(drawn)], &syntax, rope);
             });
         });
     }

@@ -4,6 +4,7 @@
 
 use hume_core::{BufferId, PaneId};
 use hume_engine::builtins::sign_column::SignColumn;
+use hume_engine::display_lines::DisplayLineInputs;
 use hume_engine::folds::HiddenLines;
 use hume_engine::layout::PaneGeometry;
 use hume_engine::pane::ViewGeometry;
@@ -15,17 +16,11 @@ use hume_treesitter::syntax::Syntax;
 use super::input_stack::{FocusedBox, ResolvedPopupLayout};
 use super::{EditorState, commands};
 
-/// Every input a pane's layout depends on: its
-/// [`FormatKey`](hume_engine::display_lines::line_store::FormatKey), the lines
-/// its closed folds hide, content width, viewport height and scroll-margin,
-/// which decide where the cursor's display line falls, and the buffer's
-/// scope-header settings and, while
+/// Every input a pane's layout depends on: its [`DisplayLineInputs`], its
+/// viewport height and scroll-margin, which decide where the cursor's
+/// display line falls, and the buffer's scope-header settings and, while
 /// headers are on, its committed syntax layers, which decide how many header
 /// rows the top margin grows by.
-///
-/// `FormatKey` leaves out content width because formatting sees it only
-/// through the wrap mode it resolves. This key keeps it because a growing
-/// gutter narrows the wrap column just like a resize, and reveal cares.
 ///
 /// `frame::reveal_due_cursor` stores this in
 /// `PaneBufferState::last_layout_key` and compares it against a fresh one
@@ -39,10 +34,7 @@ use super::{EditorState, commands};
 /// decoration refresh) leaves it where it is.
 #[derive(Clone, PartialEq, Eq)]
 pub(in crate::editor) struct LayoutKey {
-    format: hume_engine::display_lines::line_store::FormatKey,
-    /// The lines the pane's closed folds hide.
-    hidden: HiddenLines,
-    content_width: hume_engine::pipeline::ContentWidth,
+    inputs: DisplayLineInputs,
     size: hume_engine::pipeline::PaneSize,
     scroll_margin: usize,
     context: ContextSettings,
@@ -53,20 +45,8 @@ pub(in crate::editor) struct LayoutKey {
 
 impl LayoutKey {
     /// The part of `self` a `DisplayLineMap` is built from.
-    pub(in crate::editor) fn format_key(
-        &self,
-    ) -> hume_engine::display_lines::line_store::FormatKey {
-        self.format
-    }
-
-    /// The lines a `DisplayLineMap` of this pane steps over.
-    pub(in crate::editor) fn hidden(&self) -> HiddenLines {
-        self.hidden.clone()
-    }
-
-    /// The width a `DisplayLineMap` of this pane wraps against.
-    pub(in crate::editor) fn content_width(&self) -> hume_engine::pipeline::ContentWidth {
-        self.content_width
+    pub(in crate::editor) fn inputs(&self) -> DisplayLineInputs {
+        self.inputs.clone()
     }
 
     /// The pane's scroll-margin geometry, `None` for a pane with no rows.
@@ -225,13 +205,6 @@ impl EditorState {
     /// input `pane`'s line formats depend on besides its content width, which
     /// reaches formatting only through the wrap mode's resolved width (see
     /// `hume_engine::display_lines::line_store::ResolvedFormatKey`'s doc).
-    ///
-    /// The frame's scroll pass (`frame.rs`'s `scroll_into_view`) and its render
-    /// pass (`frame.rs`'s `resolve_pane_settings`) each call this on `pane`'s
-    /// current state, and their sharing that pane's line store depends
-    /// entirely on the two resolving a bit-identical key. One function
-    /// rather than two independently-maintained call sites is what makes
-    /// that true.
     pub(in crate::editor) fn format_key(
         &self,
         pane: &hume_engine::pane::Pane,
@@ -254,17 +227,13 @@ impl EditorState {
     }
 
     /// The lines pane `pid`'s closed folds hide in the buffer it shows.
-    pub(in crate::editor) fn hidden_lines(
-        &self,
-        view: &hume_engine::pipeline::EngineView,
-        pid: hume_core::PaneId,
-    ) -> HiddenLines {
-        self.panes.entries.shown(&view.panes, pid).hidden_lines()
+    pub(in crate::editor) fn hidden_lines(&self, view: &EngineView, pid: PaneId) -> &HiddenLines {
+        self.panes.entries.shown(&view.panes, pid).folds().hidden()
     }
 
-    /// Pane `pid`'s [`Self::format_key`] plus the content width and geometry
-    /// it formats and scrolls by at `size`, and the scroll margin. The frame's
-    /// scroll pass reveals the cursor when this changes.
+    /// Pane `pid`'s [`LayoutKey`] at `size`. The frame's scroll pass reveals
+    /// the cursor when this changes, and the render pass draws the pane by
+    /// the [`DisplayLineInputs`] it carries.
     pub(in crate::editor) fn layout_key(
         &self,
         view: &hume_engine::pipeline::EngineView,
@@ -277,9 +246,11 @@ impl EditorState {
             outer_level: doc.overrides.context_outer_level(&self.settings),
         };
         LayoutKey {
-            format: self.format_key(&view.panes[pid]),
-            hidden: self.hidden_lines(view, pid),
-            content_width: self.pane_geometry(view, pid, size).content_width,
+            inputs: DisplayLineInputs {
+                format: self.format_key(&view.panes[pid]),
+                hidden: self.hidden_lines(view, pid).clone(),
+                content_width: self.pane_geometry(view, pid, size).content_width,
+            },
             size,
             scroll_margin: self.settings.scroll_margin,
             context,
@@ -344,5 +315,5 @@ pub(in crate::editor) fn viewport_range(
         pid,
         &key,
     );
-    pane_visible_range(viewport, size, &key.hidden(), content_lines)
+    pane_visible_range(viewport, size, &key.inputs().hidden, content_lines)
 }

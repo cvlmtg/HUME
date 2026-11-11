@@ -99,13 +99,24 @@ pub struct RenderDisplayLine<'m> {
     pub base_scope: Option<ScopeId>,
 }
 
+/// Everything a pane's display lines depend on besides the rope and the
+/// pane's providers. The frame's scroll pass settles a pane's rows for one
+/// such value and the render pass draws by that same value, which is what
+/// lets the two share the pane's line store.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct DisplayLineInputs {
+    pub format: FormatKey,
+    /// The lines the pane's closed folds hide.
+    pub hidden: HiddenLines,
+    pub content_width: ContentWidth,
+}
+
 /// The single authority on the document's display-line list. See the module doc.
 pub struct DisplayLineMap<'a> {
     rope: &'a Rope,
     /// Everything this map's formats depend on besides the line's own text,
     /// resolved against `content_width`, and verbatim this map's store-scope
-    /// key. See [`FormatKey`]'s own doc for why the scroll pass and the
-    /// render pass sharing a store depends on it being one value.
+    /// key: a map built with another key drops what the store holds.
     key: ResolvedFormatKey,
     providers: &'a ProviderSet,
     /// The lines this pane's closed folds hide.
@@ -134,11 +145,14 @@ impl<'a> DisplayLineMap<'a> {
     pub fn new(
         rope: &'a Rope,
         providers: &'a ProviderSet,
-        content_width: ContentWidth,
-        key: FormatKey,
-        hidden: HiddenLines,
+        inputs: DisplayLineInputs,
         store: &'a mut PaneLineStore,
     ) -> Self {
+        let DisplayLineInputs {
+            format: key,
+            hidden,
+            content_width,
+        } = inputs;
         let content_width = content_width.get();
         debug_assert!(
             hume_rope::lines::ends_with_newline(rope),

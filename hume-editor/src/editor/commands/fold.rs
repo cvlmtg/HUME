@@ -8,7 +8,7 @@ use hume_ops::MotionMode;
 use hume_rope::line::ContentLine;
 use hume_treesitter::layers::SyntaxLayers;
 
-use super::CommandPane;
+use super::{CommandPane, pane_view};
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
@@ -59,11 +59,11 @@ pub(in crate::editor) fn apply_fold(
     lines: impl IntoIterator<Item = ContentLine>,
     op: FoldOp,
 ) -> Result<(), CommandError> {
-    let pane = state.panes.entries.shown(&view.panes, pid);
-    let hidden = pane.hidden_lines();
+    let closed = state.panes.entries.shown(&view.panes, pid).folds();
+    let hidden = closed.hidden().clone();
     let (open, close): (Vec<ContentLine>, Vec<ContentLine>) = lines
         .into_iter()
-        .map(|line| pane.fold_line(line))
+        .map(|line| closed.fold_line(line))
         .partition(|&line| match op {
             FoldOp::Open => true,
             FoldOp::Close => false,
@@ -83,33 +83,22 @@ pub(in crate::editor) fn apply_fold(
     }
     let text = state.buffers.get(bid).text();
     let pane = state.panes.entries.shown_mut(&view.panes, pid);
-    for line in open {
-        pane.open_fold_at(line);
-    }
+    pane.open_folds_at(&open);
     pane.close_folds(folds, text);
     Ok(())
 }
 
-/// The line of each selection head of pane `t`.
-fn head_lines(state: &EditorState, view: &EngineView, t: CommandPane) -> Vec<ContentLine> {
-    let text = state.buffers.get(t.bid(view)).text();
-    state
-        .panes
-        .entries
-        .shown(&view.panes, t.pid())
-        .view(text)
-        .iter()
-        .map(|sel| sel.head_line())
-        .collect()
-}
-
+/// Apply `op` at the line of each selection head of pane `t`.
 fn fold_at_heads(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
     op: FoldOp,
 ) -> Result<(), CommandError> {
-    let lines = head_lines(state, view, t);
+    let lines: Vec<ContentLine> = pane_view(state, view, t)
+        .iter()
+        .map(|sel| sel.head_line())
+        .collect();
     apply_fold(state, view, t.pid(), lines, op)
 }
 
@@ -150,11 +139,7 @@ pub(in crate::editor) fn cmd_open_all_folds(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    state
-        .panes
-        .entries
-        .shown_mut(&view.panes, t.pid())
-        .open_all_folds();
+    t.state_mut(&mut state.panes.entries, view).open_all_folds();
     Ok(())
 }
 
@@ -172,14 +157,8 @@ pub(in crate::editor) fn cmd_close_all_folds(
     let bid = t.bid(view);
     ensure_syntax_current(state, &mut view.registry, bid, SyntaxUse::Folds);
     let buf = state.buffers.get(bid);
-    let layers = fold_layers(buf)?;
-    let mut folds = Vec::new();
-    layers.all_folds(buf.text().rope(), &mut folds);
-    let text = buf.text();
-    state
-        .panes
-        .entries
-        .shown_mut(&view.panes, t.pid())
-        .close_folds(folds, text);
+    let folds = fold_layers(buf)?.all_folds(buf.text().rope());
+    t.state_mut(&mut state.panes.entries, view)
+        .close_folds(folds, buf.text());
     Ok(())
 }

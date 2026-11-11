@@ -116,19 +116,7 @@ fn queries_match_the_listed_hidden_lines() {
                 "line_after_shown({n}, {steps})"
             );
         }
-        assert_eq!(
-            hidden.next_shown(line(n)).index(),
-            (n + 1..)
-                .find(|&m| shown(m))
-                .expect("lines past the folds are shown"),
-            "next_shown({n})"
-        );
         for to in n..end {
-            assert_eq!(
-                hidden.shown_between(line(n), line(to)),
-                (n..to).filter(|&m| shown(m)).count(),
-                "shown_between({n}, {to})"
-            );
             let runs: Vec<(usize, usize)> = hidden
                 .shown_runs(InclusiveRange::new(line(n), line(to)))
                 .map(|r| (r.start.index(), r.end.index()))
@@ -155,6 +143,5 @@ fn no_folds_hide_nothing() {
     let hidden = HiddenLines::default();
     assert!(hidden.is_empty());
     assert!(!hidden.is_hidden(line(0)));
-    assert_eq!(hidden.next_shown(line(4)), line(5));
-    assert_eq!(hidden.shown_between(line(2), line(7)), 5);
+    assert_eq!(hidden.line_after_shown(line(4), 1), line(5));
 }

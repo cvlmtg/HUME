@@ -19,7 +19,7 @@ use hume_core::PaneId;
 use hume_engine::display_lines::{DisplayLineMap, Revealed};
 use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{
-    EngineView, PanePool, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
+    EngineView, PanePool, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout, SettledRows,
 };
 use hume_engine::scope_headers::PaneRows;
 use hume_engine::types::EditorMode;
@@ -169,10 +169,10 @@ impl Editor {
             // Reads `cursor_shape()` directly rather than through
             // `resolve_pane_settings`: the focused pane's own
             // `cursor_is_block` is defined as this same comparison there,
-            // and resolving full pane settings (a `FormatKey` build
-            // included) just to throw away everything but this one bool
-            // would repeat, for the focused pane specifically, work
-            // `render_into` already does for every pane this same frame.
+            // and resolving full pane settings just to throw away everything
+            // but this one bool would repeat, for the focused pane
+            // specifically, work `render_into` already does for every pane
+            // this same frame.
             if self.state.cursor_shape() == crate::editor::settings::CursorShape::Block {
                 None
             } else {
@@ -274,10 +274,6 @@ impl Editor {
 impl Editor {
     /// Resolve any pane's render settings.
     ///
-    /// `format` is [`EditorState::format_key`](super::EditorState::format_key),
-    /// the single source of truth for wrap_mode / tab_width / whitespace
-    /// across all render paths, so this and the scroll pass
-    /// (`scroll_into_view`) resolve a bit-identical key for the same pane.
     /// `mode` is a per-focus fact: only the focused pane owns the real
     /// terminal cursor, so it alone gets the live editor mode; other panes are
     /// forced to `Normal` so they don't take Insert's or Extend's cursor
@@ -304,8 +300,6 @@ impl Editor {
             !is_focused || self.state.cursor_shape() == crate::editor::settings::CursorShape::Block;
         PaneRenderSettings {
             mode,
-            format: self.state.format_key(pane),
-            hidden: self.state.hidden_lines(&self.view, pid),
             indent_guides,
             cursor_is_block,
             gutter: self.state.gutter_inputs(&self.view, pid),
@@ -577,7 +571,13 @@ impl Editor {
                 &layout_key,
             );
             let cursor_screen = settled.and_then(|settled| {
-                pane_rows.push((pid, settled.rows));
+                pane_rows.push((
+                    pid,
+                    SettledRows {
+                        rows: settled.rows,
+                        inputs: layout_key.inputs(),
+                    },
+                ));
                 settled.cursor_screen
             });
             if self.state.messages_view_awaits_seen(buf_id)
@@ -599,7 +599,7 @@ impl Editor {
             #[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
             let viewport = self.view.panes[pid].viewport();
             let hidden = self.state.hidden_lines(&self.view, pid);
-            let range = super::geometry::pane_visible_range(viewport, size, &hidden, content_lines);
+            let range = super::geometry::pane_visible_range(viewport, size, hidden, content_lines);
             if self.last_visible_range.insert(pid, (buf_id, range)) != Some((buf_id, range)) {
                 self.debounce_viewport_change(pid);
             }
@@ -981,9 +981,7 @@ pub(in crate::editor) fn settled_pane_view<'a>(
     let pane = &mut panes[pid];
     pane.display_lines_and_viewport(
         buffers.get(pane.buffer_id()).text().rope(),
-        layout_key.format_key(),
-        layout_key.hidden(),
-        layout_key.content_width(),
+        layout_key.inputs(),
     )
 }
 
@@ -1061,12 +1059,8 @@ fn shows_document_end(doc: &Buffer, pane: &mut Pane, layout_key: &LayoutKey) -> 
     let Some(geo) = layout_key.geometry(doc.syntax_source()) else {
         return false;
     };
-    let (mut dlm, viewport) = pane.display_lines_and_viewport(
-        doc.text().rope(),
-        layout_key.format_key(),
-        layout_key.hidden(),
-        layout_key.content_width(),
-    );
+    let (mut dlm, viewport) =
+        pane.display_lines_and_viewport(doc.text().rope(), layout_key.inputs());
     let top = viewport.top_at(&mut dlm);
     let lines_below_top = isize::try_from(geo.height() - 1).expect("a pane height fits an isize");
     let bottom = dlm.advance_saturating(top, lines_below_top);
@@ -1102,12 +1096,8 @@ fn scroll_into_view(
 ) -> ScrollOutcome {
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done: both work through this pane's one store.
-    let (mut dlm, viewport) = pane.display_lines_and_viewport(
-        doc.text().rope(),
-        layout_key.format_key(),
-        layout_key.hidden(),
-        layout_key.content_width(),
-    );
+    let (mut dlm, viewport) =
+        pane.display_lines_and_viewport(doc.text().rope(), layout_key.inputs());
     // A collapsed split has nothing to scroll and nowhere to put a cursor.
     // Checked before `locate`, which would otherwise format the cursor's
     // line for an answer no one can use, and before `geometry`, which

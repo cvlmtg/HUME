@@ -2,10 +2,7 @@ use std::num::NonZeroU16;
 
 use slotmap::SecondaryMap;
 
-use crate::display_lines::line_store::FormatKey;
-use crate::display_lines::{DisplayLineMap, DisplayLinePos};
-use crate::folds::HiddenLines;
-use crate::pipeline::ContentWidth;
+use crate::display_lines::{DisplayLineInputs, DisplayLineMap, DisplayLinePos};
 use crate::providers::ProviderSet;
 use crate::scope_headers::{PaneRows, ScopeHeaderInputs};
 use crate::types::PaintedSelections;
@@ -300,8 +297,8 @@ pub struct Pane {
     /// lines it visited; see [`crate::display_lines::line_store`].
     ///
     /// Per pane because two panes on one buffer at one width resolve the
-    /// same [`FormatKey`], and a shared hit would skip the other pane's
-    /// providers. Every pane's scroll
+    /// same [`FormatKey`](crate::display_lines::line_store::FormatKey), and a
+    /// shared hit would skip the other pane's providers. Every pane's scroll
     /// step also runs before any pane renders, so one shared store would hold
     /// only the last pane's lines.
     pub line_store: crate::display_lines::line_store::PaneLineStore,
@@ -366,24 +363,15 @@ impl Pane {
         &mut self.viewport
     }
 
-    /// The display lines of `rope` in this pane, laid out by `key` at
-    /// `content_width` with `hidden` folded away: what every scroll, cursor
-    /// and movement consumer walks instead of walking display lines itself.
+    /// The display lines of `rope` in this pane, laid out by `inputs`: what
+    /// every scroll, cursor and movement consumer walks instead of walking
+    /// display lines itself.
     pub fn display_lines<'a>(
         &'a mut self,
         rope: &'a Rope,
-        key: FormatKey,
-        hidden: HiddenLines,
-        content_width: ContentWidth,
+        inputs: DisplayLineInputs,
     ) -> DisplayLineMap<'a> {
-        DisplayLineMap::new(
-            rope,
-            &self.providers,
-            content_width,
-            key,
-            hidden,
-            &mut self.line_store,
-        )
+        DisplayLineMap::new(rope, &self.providers, inputs, &mut self.line_store)
     }
 
     /// [`Self::display_lines`] together with the viewport, for a caller that
@@ -391,18 +379,9 @@ impl Pane {
     pub fn display_lines_and_viewport<'a>(
         &'a mut self,
         rope: &'a Rope,
-        key: FormatKey,
-        hidden: HiddenLines,
-        content_width: ContentWidth,
+        inputs: DisplayLineInputs,
     ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
-        let dlm = DisplayLineMap::new(
-            rope,
-            &self.providers,
-            content_width,
-            key,
-            hidden,
-            &mut self.line_store,
-        );
+        let dlm = DisplayLineMap::new(rope, &self.providers, inputs, &mut self.line_store);
         (dlm, &mut self.viewport)
     }
 

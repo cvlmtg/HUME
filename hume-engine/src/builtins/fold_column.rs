@@ -5,8 +5,7 @@ use hume_rope::offset::InclusiveRange;
 
 use crate::folds::HiddenLines;
 use crate::providers::{
-    FoldMark, GutterCell, GutterCellContent, GutterColumn, GutterCtx, GutterInputs, GutterRow,
-    SyntaxSource,
+    FoldMark, GutterCell, GutterCellContent, GutterColumn, GutterCtx, GutterInputs, SyntaxSource,
 };
 use crate::types::{DisplayLineKind, ScopeId};
 
@@ -47,11 +46,7 @@ impl GutterColumn for FoldColumn {
         let DisplayLineKind::LineStart { line_idx } = kind else {
             return vec![GutterCell::blank(self.default_scope)];
         };
-        let is_head_line = matches!(
-            ctx.row,
-            GutterRow::Body { primary_head_line } if line_idx == primary_head_line.into()
-        );
-        let scope = if is_head_line {
+        let scope = if ctx.row.primary_head_line() == Some(line_idx) {
             self.selected_scope
         } else {
             self.default_scope
@@ -80,16 +75,18 @@ impl FoldStarts {
         self.starts.clear();
     }
 
-    /// Add the region starts among the shown lines of `lines`, one `syntax`
-    /// query per run of shown lines.
+    /// Add the region starts among the shown lines of each of `ranges`, one
+    /// `syntax` query per run of shown lines.
     pub fn read(
         &mut self,
-        lines: InclusiveRange<ContentLine>,
+        ranges: impl IntoIterator<Item = InclusiveRange<ContentLine>>,
         syntax: &dyn SyntaxSource,
         rope: &ropey::Rope,
     ) {
-        for run in self.hidden.shown_runs(lines) {
-            syntax.fold_starts(run, rope, &mut self.starts);
+        for lines in ranges {
+            for run in self.hidden.shown_runs(lines) {
+                syntax.fold_starts(run, rope, &mut self.starts);
+            }
         }
         self.starts.sort_unstable();
         self.starts.dedup();

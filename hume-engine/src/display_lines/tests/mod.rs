@@ -24,6 +24,15 @@ mod render;
 mod shared_store;
 mod stepping;
 
+/// Walk the whole document forward from its first display line.
+fn walk_forward(dlm: &mut DisplayLineMap<'_>) -> Vec<DisplayLinePos> {
+    let mut positions = vec![DisplayLinePos::default()];
+    while let Some(next) = dlm.next(*positions.last().expect("seeded above")) {
+        positions.push(next);
+    }
+    positions
+}
+
 fn dc(n: u32) -> DisplayLineCol {
     DisplayLineCol::new(n)
 }

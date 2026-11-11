@@ -270,16 +270,12 @@ fn a_rendered_frames_entries_do_not_survive_it() {
 /// render pass walk the same visible lines, and the second must find what the
 /// first formatted.
 ///
-/// Both passes reach the engine through their own `DisplayLineMap`, each built from
-/// `EditorState::format_key` on the same pane (the scroll step through
-/// `frame.rs`'s `scroll_into_view`, the render pass through its
-/// `resolve_pane_settings`), so the two share an entry: one
-/// composition, called twice, cannot itself disagree with itself. This test
-/// still pins the outcome rather than the mechanism, so a future call site
-/// that builds a `FormatKey` some other way (bypassing `format_key`) still
-/// gets caught: any divergence rescopes the store between the passes and
-/// quietly restores the double formatting this store exists to remove, with
-/// every other test still green.
+/// The render pass builds its `DisplayLineMap` from the `DisplayLineInputs`
+/// the scroll step settled the pane's rows by, so the two share the pane's
+/// store. This test pins the outcome rather than the mechanism: any
+/// divergence rescopes the store between the passes and restores the double
+/// formatting this store exists to remove, with every other test still
+/// green.
 ///
 /// Wrapping, because that is where the cost is: under `WrapMode::None` the
 /// scroll pass counts display lines without formatting at all.

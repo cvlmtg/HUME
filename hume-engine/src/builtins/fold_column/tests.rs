@@ -101,14 +101,14 @@ fn marks_come_from_the_closed_folds_and_the_shown_lines_read() {
     let rope = ropey::Rope::from_str(&"x\n".repeat(12));
     let line = ContentLine::new;
     let table = ScopeTable::default()
-        .fold(2, 6, false)
-        .fold(4, 5, false)
-        .fold(8, 10, false);
+        .fold_start(2)
+        .fold_start(4)
+        .fold_start(8);
     let closed = Fold::new(line(2), line(6), false).expect("the fold hides a line");
     let hidden = HiddenLines::from_folds([closed]);
     let mut starts = FoldStarts::default();
     starts.reset(hidden.clone());
-    starts.read(InclusiveRange::new(line(0), line(11)), &table, &rope);
+    starts.read([InclusiveRange::new(line(0), line(11))], &table, &rope);
     assert_eq!(starts.mark(line(2)), FoldMark::Closed);
     assert_eq!(starts.mark(line(8)), FoldMark::Open);
     assert_eq!(starts.mark(line(0)), FoldMark::None);

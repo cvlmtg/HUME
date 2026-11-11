@@ -48,13 +48,9 @@ pub type BufferTag = [u64; 3];
 /// store is scoped by.
 ///
 /// One value rather than four loose ones, built once by the caller
-/// (`hume-editor`'s `EditorState::format_key`) and threaded unchanged through
-/// `DisplayLineMap::new`: the frame's scroll pass and render pass each resolve this
-/// from a different composition (`Pane::display_lines_and_viewport` vs.
-/// `frame.rs::resolve_pane_settings`), and their sharing this pane's store
-/// depends entirely on the two agreeing bit for bit. A single constructor is
-/// what makes disagreement a compile-time impossibility rather than a
-/// property four independently-resolved fields have to earn by convention.
+/// (`hume-editor`'s `EditorState::format_key`) and carried unchanged inside
+/// the pane's [`DisplayLineInputs`](super::DisplayLineInputs), so no walk
+/// of the pane can scope its store by a key assembled some other way.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct FormatKey {
     pub buffer_tag: BufferTag,

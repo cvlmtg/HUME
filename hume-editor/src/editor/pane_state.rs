@@ -13,7 +13,7 @@
 //! autoindent records included; see [`super::edit_session`].
 
 use hume_core::{BufferId, PaneId};
-use hume_engine::folds::{Fold, HiddenLines};
+use hume_engine::folds::Fold;
 use hume_engine::pipeline::{EngineView, PanePool, UnattachedPane};
 use slotmap::SecondaryMap;
 
@@ -79,9 +79,8 @@ pub(crate) struct PaneBufferState {
     /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
     /// pair is `None`, so it always differs), a decoration-generation
     /// change (inlay hints, EOL text, virtual lines, signs), a fold opening
-    /// or closing, and any edit to
-    /// the buffer at all (its text generation), including one made through a sibling
-    /// pane. A changed key reveals only when [`PaneBufferState::parked`] is
+    /// or closing, and any edit to the buffer at all (its text generation),
+    /// including one made through a sibling pane. A changed key reveals only when [`PaneBufferState::parked`] is
     /// `false`: a pane parked behind an unfollowable scroll must not snap
     /// back onto its cursor just because something changed elsewhere in the
     /// buffer it happens to be viewing. `pub(in crate::editor)`, matching
@@ -187,14 +186,9 @@ impl PaneBufferState {
         self.folds.carry(change);
     }
 
-    /// The lines this pane's closed folds hide.
-    pub(in crate::editor) fn hidden_lines(&self) -> HiddenLines {
-        self.folds.hidden().clone()
-    }
-
-    /// The line a fold command at `line` acts at (see [`FoldSet::fold_line`]).
-    pub(in crate::editor) fn fold_line(&self, line: ContentLine) -> ContentLine {
-        self.folds.fold_line(line)
+    /// This pane's closed folds in the buffer.
+    pub(in crate::editor) fn folds(&self) -> &FoldSet {
+        &self.folds
     }
 
     /// Close `folds`, regions of `text`, the buffer's current text. A
@@ -207,13 +201,13 @@ impl PaneBufferState {
     ) {
         self.folds.close(folds);
         if let Some(shown) = self.folds.shown_ends(self.view(text)) {
-            self.write_revealing_moves(text, |sels| sels.set(shown));
+            self.set_selections(shown, text);
         }
     }
 
-    /// Open the closed fold starting at `line`, if there is one.
-    pub(in crate::editor) fn open_fold_at(&mut self, line: ContentLine) {
-        self.folds.open_at(line);
+    /// Open the closed folds starting at `lines`.
+    pub(in crate::editor) fn open_folds_at(&mut self, lines: &[ContentLine]) {
+        self.folds.open_at(lines);
     }
 
     pub(in crate::editor) fn open_all_folds(&mut self) {
@@ -278,11 +272,6 @@ impl PaneBufferState {
 }
 
 impl PaneBufferState {
-    #[cfg(test)]
-    pub(in crate::editor) fn closed_folds(&self) -> &[Fold] {
-        self.folds.closed()
-    }
-
     /// Start this pane on `sels` instead of the buffer's initial selections,
     /// as though it had first shown the buffer on them.
     #[cfg(test)]
