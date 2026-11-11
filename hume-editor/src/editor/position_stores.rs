@@ -123,8 +123,9 @@ impl<'a> PositionStores<'a> {
     }
 
     /// Carry every position stored for `target`'s buffer through `change`:
-    /// the selections of each pane that has shown the buffer, whether or not
-    /// it shows it now, with those it built since its last edit, every jump
+    /// the closed folds and selections of each pane that has shown the
+    /// buffer, whether or not it shows it now, with the selections it built
+    /// since its last edit, every jump
     /// list, the open Insert session's typed run and autoindent records,
     /// every position a script is tracking, every open prompt's snapshot,
     /// the open completion session, the buffer's diagnostics and
@@ -141,6 +142,7 @@ impl<'a> PositionStores<'a> {
         let acting = target.pane().filter(|_| !change.changes().is_identity());
         for (pane, entry) in self.panes.iter_mut() {
             if let Some(state) = entry.buffer_mut(buffer) {
+                state.carry_folds(change);
                 if Some(pane) == acting {
                     state.forget_live_selections();
                 } else {

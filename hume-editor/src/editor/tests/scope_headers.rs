@@ -869,14 +869,14 @@ fn press_on_a_wrapped_header_lands_where_the_row_draws_it() {
     let mut ed = snapshot_editor(false, 15);
     let buf = ed.render_to_buf(SNAP_VIEW);
     let pid = ed.view.focused_pane();
-    assert_eq!(top_rows(&ed, &buf, 1), ["impl Iterator for AVeryLo"]);
+    assert_eq!(top_rows(&ed, &buf, 1), ["impl Iterator for AVery"]);
 
-    // Column 24 is past where the line's first wrap segment breaks.
-    press_at(&mut ed, &buf, pid, 24, 0);
+    // Column 20 is past where the line's first wrap segment breaks.
+    press_at(&mut ed, &buf, pid, 20, 0);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
-        char_at_column(&ed, 0, 24)
+        char_at_column(&ed, 0, 20)
     );
 }
 

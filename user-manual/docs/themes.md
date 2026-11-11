@@ -116,6 +116,8 @@ HUME's interface works differently for these, so put the color in the listed alt
 
 ### Scopes HUME reads differently
 
+`ui.linenr` and `ui.linenr.selected` also color the [fold](syntax-highlighting.md#folding) carets beside the line numbers.
+
 `ui.window` is the seam between split panes. HUME reads that scope's foreground for the divider glyph. A theme that sets only a background gets the theme's base text color (`ui.text`) for it, the same fallback every other undecorated element uses.
 
 `ui.statusline.separator` divides the statusline's segments. HUME tints the whole statusline row by mode, so an undefined separator takes the row's current color rather than the untinted `ui.statusline`. A separator you set explicitly wins, in every mode.

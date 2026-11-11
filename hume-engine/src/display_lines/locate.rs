@@ -15,12 +15,19 @@ use super::pos::{DisplayColTarget, DisplayLinePos};
 
 impl<'a> DisplayLineMap<'a> {
     /// Locate `pos`: its display line, and its display column in that
-    /// display line.
+    /// display line. A position on a hidden line is at column 0 of its
+    /// fold's first line.
     pub fn locate(&mut self, pos: ClusterStart) -> (DisplayLinePos, DisplayLineCol) {
         self.debug_assert_in_text(pos);
         let (ropey_line, target_byte) =
             hume_rope::lines::char_to_line_byte(self.rope, pos.offset());
         let line = self.content_line_of(ropey_line);
+        if self.hidden.is_hidden(line) {
+            return (
+                self.first_content_display_line(line),
+                DisplayLineCol::new(0),
+            );
+        }
         let before = self.block(line).before;
         // Only up to the target: everything past it is irrelevant to where
         // this one position sits.
@@ -127,8 +134,10 @@ impl<'a> DisplayLineMap<'a> {
         self.first_content_display_line(line)
     }
 
-    /// `line`'s first content display line, past its `before` virtual lines.
+    /// `line`'s first content display line, past its `before` virtual lines,
+    /// or for a hidden line its fold's first line's.
     pub fn first_content_display_line(&mut self, line: ContentLine) -> DisplayLinePos {
+        let line = self.hidden.shown_at_or_before(line);
         DisplayLinePos::new(line, self.block(line).before)
     }
 

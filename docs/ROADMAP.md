@@ -3,7 +3,6 @@
 ## Editor — new features
 
 - [x] Persistent sessions — save and restore the files shown in any tab, splits/tabs and cursor positions across restarts, per session root (by default the directory HUME started in), with recorded macros and the numbered registers.
-- [ ] Code folding — tree-sitter-powered collapse/expand.
 - [ ] Debugger support (DAP) — breakpoints, stepping, call stack, variables and a debug REPL through the Debug Adapter Protocol. A protocol separate from LSP, built on the same split: Rust transport, Steel behavior (`docs/LSP.md`'s "Deferred / Future").
 - [ ] Command and search history picker — fuzzy recall of earlier `:` commands and `/`/`?` searches into the prompt, in place of the Up/Down-only recall in `minibuf/history.rs`.
 - [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold. The reusable confirm-overlay primitive this needs (`ConfirmLayer`, `hume-editor/src/editor/input_stack/confirm.rs`) already exists, built for the disk-change reload prompt. The confirm belongs to the interactive `:e` path: `open-buffer!` stays non-interactive, since a plugin opening a file has no one to answer a prompt.

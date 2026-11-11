@@ -52,6 +52,7 @@ mod cursor;
 mod dispatch;
 mod doc_ops;
 pub(crate) mod event;
+mod folds;
 mod fuzzy;
 mod jump_list;
 mod keymap;

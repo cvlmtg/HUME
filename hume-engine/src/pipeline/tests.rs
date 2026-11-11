@@ -49,6 +49,7 @@ fn render_test_pane(
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
         },
+        hidden: crate::folds::HiddenLines::default(),
         indent_guides: true,
         cursor_is_block: true,
         gutter: crate::providers::GutterInputs::default(),
@@ -68,6 +69,7 @@ fn render_test_pane(
         &pane.providers,
         content_width,
         settings.format,
+        settings.hidden.clone(),
         &mut rows_store,
     );
     let rows = crate::test_support::plain_geo(PaneSize::of(pane_rect), 0)

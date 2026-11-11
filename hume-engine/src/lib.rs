@@ -5,23 +5,24 @@
 //! registry, and [`pipeline::EngineView::render`] draws one frame into a
 //! `hume_grid::Grid`. Each [`pane::Pane`] owns its viewport, wrap mode and
 //! per-frame display-line cache. [`display_lines`] is the one mapping from
-//! buffer lines to display lines (soft wrap and virtual lines) that
-//! rendering, scrolling, cursor placement and mouse hits all read,
-//! [`scope_headers`] is the one walk that decides which scope header lines
-//! cover a pane's top rows, and [`format`](mod@format) lays one buffer line
-//! out into graphemes.
+//! buffer lines to display lines (soft wrap, virtual lines, and the lines
+//! closed [`folds`] hide) that rendering, scrolling, cursor placement and
+//! mouse hits all read, [`scope_headers`] is the one walk that decides which
+//! scope header lines cover a pane's top rows, and [`format`](mod@format)
+//! lays one buffer line out into graphemes.
 //!
 //! What the editor adds beyond text arrives through the traits in
-//! [`providers`]: syntax (highlight spans and scope header lines), gutter
-//! columns, decorations, overlays and chrome bands. The crate knows nothing
-//! of files, keymaps or scripting; it depends only on `hume-core`,
-//! `hume-rope` and `hume-grid`.
+//! [`providers`]: syntax (highlight spans, scope header lines and foldable
+//! regions), gutter columns, decorations, overlays and chrome bands. The
+//! crate knows nothing of files, keymaps or scripting; it depends only on
+//! `hume-core`, `hume-rope` and `hume-grid`.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 
 pub mod builtins;
 pub mod display_lines;
+pub mod folds;
 pub mod format;
 pub mod interval_sweep;
 pub mod layout;

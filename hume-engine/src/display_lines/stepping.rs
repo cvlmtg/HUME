@@ -6,27 +6,37 @@ use super::DisplayLineMap;
 use super::pos::DisplayLinePos;
 
 impl<'a> DisplayLineMap<'a> {
-    /// The next display line, crossing into the next line's block as needed.
-    /// `None` only at the document's very last display line.
+    /// The next display line, crossing into the next shown line's block as
+    /// needed. `None` only at the document's very last display line.
     pub fn next(&mut self, pos: DisplayLinePos) -> Option<DisplayLinePos> {
+        self.debug_assert_shown(pos);
         let total = self.block(pos.line).total();
         if pos.slot + 1 < total {
             return Some(DisplayLinePos::new(pos.line, pos.slot + 1));
         }
-        (pos.line < self.last_line()).then(|| DisplayLinePos::new(pos.line.advance(1), 0))
+        let next = self.hidden.next_shown(pos.line);
+        (next <= self.last_line()).then(|| DisplayLinePos::new(next, 0))
     }
 
     /// The previous display line. `None` only at the document's first display line.
     pub fn prev(&mut self, pos: DisplayLinePos) -> Option<DisplayLinePos> {
+        self.debug_assert_shown(pos);
         if pos.slot > 0 {
             return Some(DisplayLinePos::new(pos.line, pos.slot - 1));
         }
-        if pos.line.index() == 0 {
-            return None;
-        }
-        let prev_line = pos.line.retreat_saturating(1);
+        let prev_line = self.hidden.prev_shown(pos.line)?;
         let total = self.block(prev_line).total();
         Some(DisplayLinePos::new(prev_line, total.saturating_sub(1)))
+    }
+
+    /// A step starts from a display line, which a hidden line has none of:
+    /// a caller holding one heals it through [`DisplayLineMap::clamp`] first.
+    fn debug_assert_shown(&self, pos: DisplayLinePos) {
+        debug_assert!(
+            !self.hidden.is_hidden(pos.line),
+            "line {} is hidden by a closed fold and has no display line",
+            pos.line.index()
+        );
     }
 
     /// Step `delta` display lines from `pos`, saturating at either end of the
@@ -87,12 +97,13 @@ impl<'a> DisplayLineMap<'a> {
         if to < from {
             return None;
         }
-        // Every line's block occupies at least one display line (`block`'s
-        // own `content >= 1` assert), so crossing `to.line - from.line`
-        // lines costs at least that many steps, so a line delta beyond `cap`
-        // already proves the walk below would return `None`, without
-        // formatting a single line under wrap to find out.
-        if to.line.index().saturating_sub(from.line.index()) > cap {
+        // Every shown line's block occupies at least one display line
+        // (`block`'s own `content >= 1` assert), so crossing the shown lines
+        // from `from.line` up to `to.line` costs at least that many steps,
+        // so more of them than `cap` already proves the walk below would
+        // return `None`, without formatting a single line under wrap to find
+        // out.
+        if self.hidden.shown_between(from.line, to.line) > cap {
             return None;
         }
         let mut cur = from;

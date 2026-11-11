@@ -177,6 +177,7 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
             tab_width: 4,
             whitespace,
         },
+        crate::folds::HiddenLines::default(),
         &mut s,
     );
 

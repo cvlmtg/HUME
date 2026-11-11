@@ -4,6 +4,7 @@ use slotmap::SecondaryMap;
 
 use crate::display_lines::line_store::FormatKey;
 use crate::display_lines::{DisplayLineMap, DisplayLinePos};
+use crate::folds::HiddenLines;
 use crate::pipeline::ContentWidth;
 use crate::providers::ProviderSet;
 use crate::scope_headers::{PaneRows, ScopeHeaderInputs};
@@ -366,12 +367,13 @@ impl Pane {
     }
 
     /// The display lines of `rope` in this pane, laid out by `key` at
-    /// `content_width`: what every scroll, cursor and movement consumer walks
-    /// instead of walking display lines itself.
+    /// `content_width` with `hidden` folded away: what every scroll, cursor
+    /// and movement consumer walks instead of walking display lines itself.
     pub fn display_lines<'a>(
         &'a mut self,
         rope: &'a Rope,
         key: FormatKey,
+        hidden: HiddenLines,
         content_width: ContentWidth,
     ) -> DisplayLineMap<'a> {
         DisplayLineMap::new(
@@ -379,6 +381,7 @@ impl Pane {
             &self.providers,
             content_width,
             key,
+            hidden,
             &mut self.line_store,
         )
     }
@@ -389,6 +392,7 @@ impl Pane {
         &'a mut self,
         rope: &'a Rope,
         key: FormatKey,
+        hidden: HiddenLines,
         content_width: ContentWidth,
     ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
         let dlm = DisplayLineMap::new(
@@ -396,6 +400,7 @@ impl Pane {
             &self.providers,
             content_width,
             key,
+            hidden,
             &mut self.line_store,
         );
         (dlm, &mut self.viewport)

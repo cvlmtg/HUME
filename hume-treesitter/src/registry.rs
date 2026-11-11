@@ -10,6 +10,7 @@ use hume_platform::path::AbsolutePath;
 use ropey::Rope;
 
 use crate::context::ContextQuery;
+use crate::fold::FoldQuery;
 use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
 use hume_core::{
@@ -82,7 +83,10 @@ pub struct GrammarBundle {
     /// The scopes scope header rows come from: compiled `context.scm`, or
     /// without one the function and class objects of `textobjects`. `None`
     /// means this language names no scopes by query.
-    pub context: Option<ContextQuery>,
+    pub context: Option<Arc<ContextQuery>>,
+    /// The regions a pane can fold: compiled `folds.scm`, or without one
+    /// the scopes of `context`. `None` means this language folds nothing.
+    pub folds: Option<FoldQuery>,
     /// Unique per bundle, issued by `next_config_gen`. Grammar-swap
     /// / staleness checks compare this instead of `Arc::ptr_eq`, a plain
     /// integer identity that survives across the worker-thread boundary.
@@ -222,6 +226,7 @@ fn new_bundle(
         textobjects,
         indents,
         context,
+        folds,
     } = compiled;
     Arc::new(GrammarBundle {
         grammar,
@@ -230,6 +235,7 @@ fn new_bundle(
         textobjects,
         indents,
         context,
+        folds,
         config_gen: next_config_gen(),
         language,
     })
@@ -241,7 +247,8 @@ pub(crate) struct CompiledQueries {
     pub(crate) injections: Option<InjectionsQuery>,
     pub(crate) textobjects: Option<TextObjectsQuery>,
     pub(crate) indents: Option<IndentQuery>,
-    pub(crate) context: Option<ContextQuery>,
+    pub(crate) context: Option<Arc<ContextQuery>>,
+    pub(crate) folds: Option<FoldQuery>,
 }
 
 /// Compiles a grammar's queries. This is the one place query sources become
@@ -259,6 +266,7 @@ pub(crate) fn compile_queries(
     let mut textobjects = None;
     let mut indents = None;
     let mut context = None;
+    let mut folds = None;
     for &(kind, src) in optional {
         let query = tree_sitter::Query::new(language, src)
             .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?;
@@ -276,14 +284,20 @@ pub(crate) fn compile_queries(
                 )
                 .is_some(),
             OptionalQuery::Context => context.replace(ContextQuery::new(query)).is_some(),
+            OptionalQuery::Folds => folds.replace(FoldQuery::new(query)).is_some(),
         };
         assert!(!duplicate, "{} given twice", kind.file_name());
     }
-    let context = context.or_else(|| {
-        textobjects
-            .as_ref()
-            .and_then(ContextQuery::from_textobjects)
-    });
+    let context = context
+        .or_else(|| {
+            textobjects
+                .as_ref()
+                .and_then(ContextQuery::from_textobjects)
+        })
+        .map(Arc::new);
+    let folds = folds
+        .flatten()
+        .or_else(|| context.clone().map(FoldQuery::Scopes));
     Ok(CompiledQueries {
         highlighter: Arc::new(TreeSitterHighlighter::from_shared_query(
             highlights, scope_reg,
@@ -292,6 +306,7 @@ pub(crate) fn compile_queries(
         textobjects,
         indents,
         context,
+        folds,
     })
 }
 

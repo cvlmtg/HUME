@@ -8,7 +8,8 @@
 //! Click coordinates are terminal-absolute, so `EngineView::pane_hit` first
 //! finds the pane under the pointer, in its own cells. The pane's rows then
 //! say what the hit row shows, and `cursor::cell_to_cluster` resolves the
-//! buffer cluster under it (`header_to_cluster` for a scope header row).
+//! buffer cluster under it (`header_to_cluster` for a scope header row). A
+//! press on a fold caret in the gutter toggles that fold instead.
 //! Every hit test reads the pane rects the last frame drew, so a click lands in the pane
 //! that was on screen under it even after a band or a pane changed. The
 //! gutter and content widths are the pane's current ones at its drawn size.
@@ -22,9 +23,13 @@
 //! layer's policy, reached only after the stack has let the event through.
 
 use hume_core::PaneId;
+use hume_engine::builtins::fold_column::FoldStarts;
+use hume_engine::display_lines::BlockSlot;
 use hume_engine::pipeline::{PaneHit, SeamHandle};
+use hume_engine::providers::FoldMark;
 use hume_engine::scope_headers::{HeaderLayout, PaneRow};
 use hume_grid::{Position, Rect};
+use hume_rope::offset::InclusiveRange;
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::commands;
@@ -124,6 +129,20 @@ impl Editor {
         // buffer (the blank-line indent trim), so computing `click_to_cluster`
         // first would resolve against a buffer the exit is about to change.
         super::focus::focus_pane(&mut self.state, &mut self.view, hit.pane());
+
+        if let Some(line) = self.fold_caret_at(hit) {
+            let toggled = commands::apply_fold(
+                &mut self.state,
+                &mut self.view,
+                hit.pane(),
+                [line],
+                commands::FoldOp::Toggle,
+            );
+            if let Err(e) = toggled {
+                self.report_error(&e);
+            }
+            return;
+        }
 
         if let Some(pos) = self.click_to_cluster(hit) {
             // Collapse the selections to one cursor on the clicked cluster.
@@ -270,6 +289,45 @@ impl Editor {
     /// with the pane's current gutter. A press on a scope header row resolves
     /// to its line's cluster, laid out as the row draws it, not to the hidden
     /// line under it.
+    /// The line whose fold caret `hit` lands on: a cell of the pane's fold
+    /// column, on a row drawing a line's first display line or a scope
+    /// header, beside a caret. `None` anywhere else.
+    #[allow(clippy::disallowed_methods)] // a click aims at the view on screen
+    fn fold_caret_at(&mut self, hit: PaneHit) -> Option<hume_rope::line::ContentLine> {
+        let pid = hit.pane();
+        let lane = self.state.panes.entries[pid].fold_lane?;
+        let doc = self.state.buffers.get(self.view.panes[pid].buffer_id());
+        let rope = doc.text().rope();
+        let inputs = self.state.gutter_inputs(&self.view, pid);
+        let last_line = hume_rope::lines::last_ropey_line(rope);
+        if self.view.panes[pid]
+            .providers
+            .gutter_lane_at(last_line, inputs, hit.x())
+            != Some(lane)
+        {
+            return None;
+        }
+        let layout_key = self.state.layout_key(&self.view, pid, hit.size());
+        let (mut dlm, viewport) = self.view.panes[pid].display_lines_and_viewport(
+            rope,
+            layout_key.format_key(),
+            layout_key.hidden(),
+            layout_key.content_width(),
+        );
+        let geo = layout_key.geometry(doc.syntax_source())?;
+        let rows = geo.rows(&mut dlm, viewport);
+        let line = match rows.row_at(&mut dlm, hit.y()) {
+            PaneRow::Header(line) => line,
+            PaneRow::Body(pos) => (dlm.slot(pos) == BlockSlot::Content(0)).then_some(pos.line)?,
+        };
+        let mut starts = FoldStarts::default();
+        starts.reset(dlm.hidden().clone());
+        if let Some(syntax) = doc.syntax_source() {
+            starts.read(InclusiveRange::new(line, line), syntax, rope);
+        }
+        (starts.mark(line) != FoldMark::None).then_some(line)
+    }
+
     #[allow(clippy::disallowed_methods)] // a click aims at the view on screen
     fn click_to_cluster(&mut self, hit: PaneHit) -> Option<hume_rope::cluster::ClusterStart> {
         let pid = hit.pane();
@@ -283,8 +341,12 @@ impl Editor {
         let content_width = layout_key.content_width();
         let doc = self.state.buffers.get(buf_id);
         let rope = doc.text().rope();
-        let (mut dlm, viewport) =
-            self.view.panes[pid].display_lines_and_viewport(rope, key, content_width);
+        let (mut dlm, viewport) = self.view.panes[pid].display_lines_and_viewport(
+            rope,
+            key,
+            layout_key.hidden(),
+            content_width,
+        );
         let geo = layout_key.geometry(doc.syntax_source())?;
         let rows = geo.rows(&mut dlm, viewport);
         match rows.row_at(&mut dlm, hit.y()) {

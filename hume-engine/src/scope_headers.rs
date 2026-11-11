@@ -12,6 +12,7 @@ use ropey::Rope;
 
 use crate::display_lines::line_store::{FormatKey, PaneLineStore};
 use crate::display_lines::{DisplayLineMap, DisplayLinePos, h_window};
+use crate::folds::HiddenLines;
 use crate::pane::{ViewGeometry, WrapMode};
 use crate::pipeline::ContentWidth;
 use crate::providers::{ProviderSet, SyntaxSource};
@@ -121,6 +122,8 @@ impl PaneRows {
             // A virtual display line's row belongs to the line it is anchored to.
             if scratch_line != Some(pos.line) {
                 source.header_lines(pos.line, dlm.rope(), &mut scratch);
+                // A closed fold can hide the header of a scope that runs past it.
+                scratch.retain(|line| !dlm.hidden().is_hidden(*line));
                 scratch_line = Some(pos.line);
             }
             if rows.header_count == cap {
@@ -194,7 +197,8 @@ pub struct HeaderLayout {
 impl HeaderLayout {
     /// The map a header row is laid out through, whole lines, for a hit
     /// test: the pane's `key` with wrapping off, so a long header line is
-    /// cut at the pane's edge in every wrap mode.
+    /// cut at the pane's edge in every wrap mode, and with no line hidden,
+    /// since each row lays out one line on its own.
     pub fn display_map<'a>(
         &'a mut self,
         rope: &'a Rope,
@@ -205,7 +209,14 @@ impl HeaderLayout {
             wrap_mode: WrapMode::None,
             ..key
         };
-        DisplayLineMap::new(rope, &self.providers, content_width, key, &mut self.store)
+        DisplayLineMap::new(
+            rope,
+            &self.providers,
+            content_width,
+            key,
+            HiddenLines::default(),
+            &mut self.store,
+        )
     }
 
     /// [`Self::display_map`] clipped to the columns the header rows draw,

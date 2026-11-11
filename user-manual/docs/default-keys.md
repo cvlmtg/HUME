@@ -208,6 +208,11 @@ Press `z` then a second key:
 | `z k` | `top-view-on-cursor` |  | Scroll cursor to top of screen |
 | `z z` | `center-view-on-cursor` |  | Center view on cursor |
 | `z j` | `bottom-view-on-cursor` |  | Scroll cursor to bottom of screen |
+| `z t` | `toggle-fold` |  | Open or close the fold at the cursor |
+| `z o` | `open-fold` |  | Open the fold at the cursor |
+| `z c` | `close-fold` |  | Close the fold around the cursor |
+| `z O` | `open-all-folds` |  | Open every fold |
+| `z C` | `close-all-folds` |  | Close every fold |
 
 `core:pickers` and `core:lsp` add more keys under `z`; see [Keys added by core plugins](#keys-added-by-core-plugins).
 

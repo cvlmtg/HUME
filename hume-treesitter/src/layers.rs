@@ -3,6 +3,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
 use hume_rope::line::ContentLine;
+use hume_rope::offset::InclusiveRange;
 
 use crate::edited_bytes::EditedBytes;
 use crate::injections::{InjectionSites, PriorInjections};
@@ -88,8 +89,17 @@ impl SyntaxLayers {
         rope: &ropey::Rope,
         line: ContentLine,
     ) -> (Range<usize>, impl Iterator<Item = &SyntaxLayer>) {
-        let start = rope.line_to_byte(line.index());
-        let end = hume_rope::lines::next_line_start_byte(rope, line.into());
+        self.covering_lines(rope, InclusiveRange::new(line, line))
+    }
+
+    /// [`Self::covering_line`] for the bytes of every line in `lines`.
+    pub(crate) fn covering_lines(
+        &self,
+        rope: &ropey::Rope,
+        lines: InclusiveRange<ContentLine>,
+    ) -> (Range<usize>, impl Iterator<Item = &SyntaxLayer>) {
+        let start = rope.line_to_byte(lines.start.index());
+        let end = hume_rope::lines::next_line_start_byte(rope, lines.end.into());
         let covering = self
             .layers
             .iter()

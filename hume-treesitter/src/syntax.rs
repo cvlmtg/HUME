@@ -9,7 +9,7 @@ use hume_editing::text::BufferText;
 use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::ExclusiveRange;
+use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 use tree_sitter::QueryCursor;
 
 use crate::edits::input_edits_from_changeset;
@@ -176,10 +176,10 @@ pub struct Syntax {
     /// `install`: `SyntaxLayers` is rebuilt wholesale on every install,
     /// `Syntax` is not.
     span_scratch: Mutex<FlattenScratch>,
-    /// The query cursor `header_lines` runs every layer's scope query on,
-    /// reused across calls. Lives on `Syntax` because it survives `install`,
-    /// which rebuilds `SyntaxLayers`.
-    header_cursor: Mutex<QueryCursor>,
+    /// The query cursor `header_lines` and `fold_starts` run every layer's
+    /// queries on, reused across calls. Lives on `Syntax` because it
+    /// survives `install`, which rebuilds `SyntaxLayers`.
+    line_cursor: Mutex<QueryCursor>,
 }
 
 impl Syntax {
@@ -194,7 +194,7 @@ impl Syntax {
             in_flight: None,
             min_snapshot_generation: 0,
             span_scratch: Mutex::new(FlattenScratch::default()),
-            header_cursor: Mutex::new(QueryCursor::new()),
+            line_cursor: Mutex::new(QueryCursor::new()),
         }
     }
 
@@ -671,10 +671,7 @@ impl hume_engine::providers::SyntaxSource for Syntax {
             return;
         };
         let (bytes, covering) = layers.covering_line(rope, line);
-        let mut cursor = self
-            .header_cursor
-            .lock()
-            .expect("header cursor lock poisoned");
+        let mut cursor = self.line_cursor.lock().expect("line cursor lock poisoned");
         for layer in covering {
             if let Some(query) = &layer.bundle.context {
                 query.header_lines(&mut cursor, &layer.tree, rope, bytes.clone(), line, out);
@@ -682,6 +679,19 @@ impl hume_engine::providers::SyntaxSource for Syntax {
         }
         out.sort_unstable();
         out.dedup();
+    }
+
+    fn fold_starts(
+        &self,
+        lines: InclusiveRange<ContentLine>,
+        rope: &ropey::Rope,
+        out: &mut Vec<ContentLine>,
+    ) {
+        let Some(layers) = self.layers() else {
+            return;
+        };
+        let mut cursor = self.line_cursor.lock().expect("line cursor lock poisoned");
+        layers.fold_starts(&mut cursor, rope, lines, out);
     }
 }
 

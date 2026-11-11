@@ -909,6 +909,11 @@ define_settings! {
             parser: Typed;
         "gutter-line-numbers" => gutter_line_numbers: LineNumberStyle = LineNumberStyle::default(),
             parser: Typed;
+        // The fold carets beside the text (`FoldColumn`), shown while the
+        // buffer's grammar names foldable regions or the pane has a fold
+        // closed.
+        "gutter-folds" => gutter_folds: bool = true,
+            parser: Bool;
         "insert-auto-pairs" => insert_auto_pairs: bool = true,
             parser: Bool;
         // Enter, `o` and `O` indent a new line (see `break_line`), and a

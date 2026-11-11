@@ -8,10 +8,11 @@ use std::rc::Rc;
 use hume_core::Side;
 use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::ExclusiveRange;
+use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 use hume_rope::spanned::SpannedText;
 use ropey::Rope;
 
+use crate::folds::Fold;
 use crate::providers::{Decoration, DecorationKinds, DecorationSource, SyntaxSource, VirtualLine};
 use crate::types::ScopeId;
 
@@ -102,10 +103,12 @@ impl DecorationSource for VirtualLineBlock {
 }
 
 /// A [`SyntaxSource`] that highlights nothing and answers `header_lines`
-/// from a table of line ranges. A line no range holds is in no scope.
+/// from a table of line ranges, and `fold_starts` from a list of folds. A line
+/// no range holds is in no scope.
 #[derive(Default)]
 pub struct ScopeTable {
     ranges: Vec<(RangeInclusive<usize>, Vec<ContentLine>)>,
+    folds: Vec<Fold>,
     header_queries: Cell<usize>,
 }
 
@@ -121,6 +124,14 @@ impl ScopeTable {
         );
         let headers = headers.iter().copied().map(ContentLine::new).collect();
         self.ranges.push((lines, headers));
+        self
+    }
+
+    /// A foldable region `first ..= last`.
+    pub fn fold(mut self, first: usize, last: usize, shows_last: bool) -> Self {
+        let fold = Fold::new(ContentLine::new(first), ContentLine::new(last), shows_last)
+            .expect("the region hides a line");
+        self.folds.push(fold);
         self
     }
 
@@ -149,5 +160,19 @@ impl SyntaxSource for ScopeTable {
         {
             out.extend_from_slice(headers);
         }
+    }
+
+    fn fold_starts(
+        &self,
+        lines: InclusiveRange<ContentLine>,
+        _rope: &Rope,
+        out: &mut Vec<ContentLine>,
+    ) {
+        out.extend(
+            self.folds
+                .iter()
+                .map(|fold| fold.first())
+                .filter(|&first| lines.contains(first)),
+        );
     }
 }

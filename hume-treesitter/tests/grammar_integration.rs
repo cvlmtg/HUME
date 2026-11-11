@@ -44,6 +44,7 @@ fn bundle_for(name: &str, symbol: &str, query_src: &str) -> (Arc<GrammarBundle>,
         textobjects: None,
         indents: None,
         context: None,
+        folds: None,
         config_gen: 0,
         language: LanguageRegistry::for_testing().intern(name),
     });

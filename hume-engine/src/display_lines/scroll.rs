@@ -72,12 +72,14 @@ impl Viewport {
         }
         // `max_scroll_top` walks back from the document's very last display
         // line, formatting every line it crosses under wrap: worth skipping
-        // when `next` is provably nowhere near EOF. Every buffer line
+        // when `next` is provably nowhere near EOF. Every shown buffer line
         // contributes at least one display line, so a `next` more than
-        // `geo.height` *buffer* lines short of the document's last one (an
-        // O(1) check) can't be within the bound's own `target` (<=
-        // `geo.height`) *display* lines of it, and the bound can't bind.
-        let lines_to_end = dlm.last_line().index().saturating_sub(next.line.index());
+        // `geo.height` shown *buffer* lines short of the document's last one
+        // can't be within the bound's own `target` (<= `geo.height`)
+        // *display* lines of it, and the bound can't bind.
+        let lines_to_end = dlm
+            .hidden()
+            .shown_between(next.line.advance(1), dlm.last_line().advance(1));
         if lines_to_end > geo.height {
             self.top = next;
             return;
@@ -275,7 +277,7 @@ impl<'a> DisplayLineMap<'a> {
     /// opposite of "saturates at the first") for the degenerate `target ==
     /// 0` a zero height produces.
     pub(crate) fn max_scroll_top(&mut self, geo: ViewGeometry<'_>) -> DisplayLinePos {
-        let last_line = self.last_line();
+        let last_line = self.hidden.shown_at_or_before(self.last_line());
         let last = DisplayLinePos::new(last_line, self.block(last_line).total().saturating_sub(1));
         self.advance_saturating(last, -(geo.target as isize))
     }

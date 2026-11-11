@@ -92,6 +92,7 @@ fn renders_simple_text() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -157,6 +158,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -204,6 +206,7 @@ fn filler_rows_have_tilde() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     render_tilde_fillers(1, &[], &ctx, &mut canvas);
@@ -259,6 +262,7 @@ fn do_compose_display_line(
         rope: &rope,
         default_gutter_scope: ScopeId(0),
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -624,6 +628,7 @@ fn indent_guide_hidden_when_indent_guides_is_false() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -766,6 +771,7 @@ fn indent_guide_leaves_a_reversed_cursor_cell_visibly_distinct() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -957,6 +963,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         rope: &rope,
         default_gutter_scope,
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1031,6 +1038,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         rope: &rope,
         default_gutter_scope,
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1155,6 +1163,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         rope: &rope,
         default_gutter_scope,
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1257,6 +1266,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         rope: &rope,
         default_gutter_scope,
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1363,6 +1373,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             rope: &rope,
             default_gutter_scope,
             gutter: crate::providers::GutterInputs::default(),
+            folds: None,
         };
         let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
         compose_display_line(
@@ -1473,6 +1484,7 @@ fn gutter_column_reads_rope_via_ctx() {
         rope: &rope,
         default_gutter_scope,
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1586,6 +1598,7 @@ fn compose_display_line_dims_cells_inline() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(
@@ -1642,6 +1655,7 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
         gutter: crate::providers::GutterInputs::default(),
+        folds: None,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(

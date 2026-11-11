@@ -70,6 +70,7 @@ A buffer option you set, with `:set buffer` or from a hook in your `init.scm`, b
 | `context-enabled` | bool | `true` | Show the first line of each scope the top of the pane is inside (a function, a class, a Markdown section) over the pane's top rows, up to three, and fewer than half the pane's rows |
 | `context-outer-level` | bool | `false` | With more scopes than rows, keep the outermost scope's line and the innermost ones; off keeps only the innermost |
 | `file-reload-prompt` | bool | `true` | Prompt to reload when the current buffer's file changes on disk. `false` only warns; reload manually with `:e!` |
+| `gutter-folds` | bool | `true` | Show a caret beside each line a fold starts on, `▾` while open and `▸` while closed, for languages whose grammar has foldable regions. See [Folding](syntax-highlighting.md#folding) |
 | `gutter-line-numbers` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `gutter-signs` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` gives one column per registered sign source. A source claims its column when the plugin registers it, so the width doesn't change as signs come and go. `:N` fixes the width at N columns (1–127) instead, hiding lower-priority sources that don't fit. `auto` also collapses to zero width when no signs are visible |
 | `indent-guides` | bool | `true` | Draw vertical guides at each indentation level |

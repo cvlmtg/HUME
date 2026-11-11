@@ -40,3 +40,7 @@ harness = false
 [[bench]]
 name = "header_lines"
 harness = false
+
+[[bench]]
+name = "fold_starts"
+harness = false

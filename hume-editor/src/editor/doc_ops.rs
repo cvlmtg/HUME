@@ -56,7 +56,7 @@ fn finish_edit(
             if let Some(pane_id) = target.pane() {
                 pane_state
                     .seeded_mut(pane_id, buf_id)
-                    .set_selections_after_edit(new_sels);
+                    .set_selections_after_edit(new_sels, buffers.get(buf_id).text());
             }
             buffers.bump_edit_seq();
         }

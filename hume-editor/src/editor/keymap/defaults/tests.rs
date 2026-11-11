@@ -249,27 +249,32 @@ fn goto_trie_holds_real_gotos_and_structural_navigation() {
     }
 }
 
-/// The native `z` trie: directional viewport keys, `zt`/`zb` freed for
-/// `core:pickers` (not asserted here: that's a plugin bind, not native).
+/// The native `z` trie: directional viewport keys and the fold keys, `zb`
+/// freed for `core:pickers` (not asserted here: that's a plugin bind, not
+/// native).
 #[test]
 fn view_trie_is_directional_and_frees_vims_initials() {
     let trie = default_normal_keymap();
-    assert!(
-        matches!(trie.walk(&[key!('z'), key!('z')]), Some(WalkResult::Leaf(ref c)) if &*c.name == "center-view-on-cursor")
-    );
-    assert!(
-        matches!(trie.walk(&[key!('z'), key!('k')]), Some(WalkResult::Leaf(ref c)) if &*c.name == "top-view-on-cursor")
-    );
-    assert!(
-        matches!(trie.walk(&[key!('z'), key!('j')]), Some(WalkResult::Leaf(ref c)) if &*c.name == "bottom-view-on-cursor")
-    );
-    for freed in [key!('t'), key!('b')] {
+    let bound = [
+        (key!('z'), "center-view-on-cursor"),
+        (key!('k'), "top-view-on-cursor"),
+        (key!('j'), "bottom-view-on-cursor"),
+        (key!('t'), "toggle-fold"),
+        (key!('o'), "open-fold"),
+        (key!('c'), "close-fold"),
+        (key!('O'), "open-all-folds"),
+        (key!('C'), "close-all-folds"),
+    ];
+    for (key, name) in bound {
         assert!(
-            trie.walk(&[key!('z'), freed]).is_none(),
-            "z + {:?} must be unbound in the native trie",
-            freed
+            matches!(trie.walk(&[key!('z'), key]), Some(WalkResult::Leaf(ref c)) if &*c.name == name),
+            "z {key:?} runs {name}"
         );
     }
+    assert!(
+        trie.walk(&[key!('z'), key!('b')]).is_none(),
+        "z b must be unbound in the native trie"
+    );
 }
 
 #[test]

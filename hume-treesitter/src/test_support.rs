@@ -46,6 +46,7 @@ pub(crate) fn make_bundle(
         textobjects,
         indents,
         context,
+        folds,
     } = compile_queries(
         grammar.language(),
         highlights_src,
@@ -60,6 +61,7 @@ pub(crate) fn make_bundle(
         textobjects,
         indents,
         context,
+        folds,
         config_gen: next_config_gen(),
         language: test_language_id(name),
     })

@@ -87,7 +87,7 @@ pub(in crate::editor) fn popup_placement(
                 &mut state.panes.entries,
                 &mut view.panes,
                 focused,
-                key,
+                &key,
             );
             let geo = key.geometry(doc.syntax_source())?;
             super::super::cursor::content_pos(geo, vp, &mut dlm, anchor)?

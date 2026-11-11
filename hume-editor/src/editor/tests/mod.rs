@@ -1965,6 +1965,7 @@ mod editor_cwd;
 mod events;
 mod file_io;
 mod find;
+mod folds;
 mod frame_pacing;
 mod gc_rooting;
 mod geometry_replaces_caret;

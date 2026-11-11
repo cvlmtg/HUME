@@ -305,6 +305,7 @@ impl Editor {
         PaneRenderSettings {
             mode,
             format: self.state.format_key(pane),
+            hidden: self.state.hidden_lines(&self.view, pid),
             indent_guides,
             cursor_is_block,
             gutter: self.state.gutter_inputs(&self.view, pid),
@@ -573,7 +574,7 @@ impl Editor {
                 &mut self.state.panes.entries,
                 &mut self.view.panes,
                 pid,
-                layout_key,
+                &layout_key,
             );
             let cursor_screen = settled.and_then(|settled| {
                 pane_rows.push((pid, settled.rows));
@@ -583,7 +584,7 @@ impl Editor {
                 && shows_document_end(
                     self.state.buffers.get(buf_id),
                     &mut self.view.panes[pid],
-                    layout_key,
+                    &layout_key,
                 )
             {
                 self.state.message_log.mark_all_seen();
@@ -597,7 +598,8 @@ impl Editor {
             let content_lines = self.state.buffers.get(buf_id).text().content_line_count();
             #[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
             let viewport = self.view.panes[pid].viewport();
-            let range = super::geometry::pane_visible_range(viewport, size, content_lines);
+            let hidden = self.state.hidden_lines(&self.view, pid);
+            let range = super::geometry::pane_visible_range(viewport, size, &hidden, content_lines);
             if self.last_visible_range.insert(pid, (buf_id, range)) != Some((buf_id, range)) {
                 self.debounce_viewport_change(pid);
             }
@@ -660,7 +662,7 @@ impl Editor {
             .into_iter()
             .filter(|&(pid, size)| {
                 let key = self.state.layout_key(&self.view, pid, size);
-                !view_settled(&self.state.panes.entries, &self.view.panes, pid, key)
+                !view_settled(&self.state.panes.entries, &self.view.panes, pid, &key)
             })
             .collect();
         if due.is_empty() {
@@ -674,7 +676,7 @@ impl Editor {
                 &mut self.state.panes.entries,
                 &mut self.view.panes,
                 pid,
-                key,
+                &key,
             );
         }
     }
@@ -938,14 +940,15 @@ pub(in crate::editor) fn reveal_due_cursor(
     entries: &mut PaneEntries,
     panes: &mut PanePool,
     pid: PaneId,
-    layout_key: LayoutKey,
+    layout_key: &LayoutKey,
 ) -> Option<SettledPane> {
     let buf_id = panes[pid].buffer_id();
     // Per (pane, buffer) state: a pane that just switched buffers reads a
     // fresh entry whose `last_layout_key` is `None`.
     let pbs = entries.shown_mut(panes, pid);
     let cursor = pbs.view(buffers.get(buf_id).text()).primary().head();
-    let layout_changed = pbs.last_layout_key.replace(layout_key) != Some(layout_key);
+    let layout_changed = pbs.last_layout_key.as_ref() != Some(layout_key);
+    pbs.last_layout_key = Some(layout_key.clone());
     let reveal = std::mem::take(&mut pbs.reveal_pending) || (layout_changed && !pbs.parked);
     let outcome = scroll_into_view(
         buffers.get(buf_id),
@@ -972,13 +975,14 @@ pub(in crate::editor) fn settled_pane_view<'a>(
     entries: &mut PaneEntries,
     panes: &'a mut PanePool,
     pid: PaneId,
-    layout_key: LayoutKey,
+    layout_key: &LayoutKey,
 ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
     settle(buffers, entries, panes, pid, layout_key);
     let pane = &mut panes[pid];
     pane.display_lines_and_viewport(
         buffers.get(pane.buffer_id()).text().rope(),
         layout_key.format_key(),
+        layout_key.hidden(),
         layout_key.content_width(),
     )
 }
@@ -995,7 +999,7 @@ pub(in crate::editor) fn settle_pane(state: &mut EditorState, view: &mut EngineV
         &mut state.panes.entries,
         &mut view.panes,
         pid,
-        key,
+        &key,
     );
 }
 
@@ -1006,7 +1010,7 @@ fn settle(
     entries: &mut PaneEntries,
     panes: &mut PanePool,
     pid: PaneId,
-    layout_key: LayoutKey,
+    layout_key: &LayoutKey,
 ) {
     if !view_settled(entries, panes, pid, layout_key) {
         reveal_due_cursor(buffers, entries, panes, pid, layout_key);
@@ -1022,10 +1026,10 @@ fn view_settled(
     entries: &PaneEntries,
     panes: &PanePool,
     pid: PaneId,
-    layout_key: LayoutKey,
+    layout_key: &LayoutKey,
 ) -> bool {
     let pbs = entries.shown(panes, pid);
-    !pbs.reveal_pending && pbs.last_layout_key == Some(layout_key)
+    !pbs.reveal_pending && pbs.last_layout_key.as_ref() == Some(layout_key)
 }
 
 /// A pane's view as the scroll pass leaves it: its rows, which render
@@ -1053,13 +1057,14 @@ struct ScrollOutcome {
 
 /// Whether `pane`'s viewport reaches `doc`'s last display line.
 #[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
-fn shows_document_end(doc: &Buffer, pane: &mut Pane, layout_key: LayoutKey) -> bool {
+fn shows_document_end(doc: &Buffer, pane: &mut Pane, layout_key: &LayoutKey) -> bool {
     let Some(geo) = layout_key.geometry(doc.syntax_source()) else {
         return false;
     };
     let (mut dlm, viewport) = pane.display_lines_and_viewport(
         doc.text().rope(),
         layout_key.format_key(),
+        layout_key.hidden(),
         layout_key.content_width(),
     );
     let top = viewport.top_at(&mut dlm);
@@ -1092,7 +1097,7 @@ fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
     cursor: hume_rope::cluster::ClusterStart,
-    layout_key: LayoutKey,
+    layout_key: &LayoutKey,
     reveal: bool,
 ) -> ScrollOutcome {
     // Whatever this pass formats deciding where to scroll, the render pass
@@ -1100,6 +1105,7 @@ fn scroll_into_view(
     let (mut dlm, viewport) = pane.display_lines_and_viewport(
         doc.text().rope(),
         layout_key.format_key(),
+        layout_key.hidden(),
         layout_key.content_width(),
     );
     // A collapsed split has nothing to scroll and nowhere to put a cursor.

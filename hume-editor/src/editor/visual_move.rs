@@ -156,6 +156,7 @@ pub(super) fn apply_visual_vertical(
     let mut dlm = view.panes[pid].display_lines(
         state.buffers.get(buf_id).text().rope(),
         key.format_key(),
+        key.hidden(),
         key.content_width(),
     );
 
@@ -387,6 +388,7 @@ fn copy_selection_on_line(
     let mut dlm = view.panes[t.pid()].display_lines(
         state.buffers.get(buf_id).text().rope(),
         key.format_key(),
+        key.hidden(),
         key.content_width(),
     );
 
@@ -516,6 +518,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let mut dlm = view.panes[t.pid()].display_lines(
         state.buffers.get(buf_id).text().rope(),
         key.format_key(),
+        key.hidden(),
         key.content_width(),
     );
 

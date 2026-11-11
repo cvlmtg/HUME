@@ -59,8 +59,9 @@ impl Editor {
     /// bridges has to individually get right.
     ///
     /// `lines` is a one-row *superset* of the viewport (its end plus one more
-    /// row), and `chars` spans the same lines: cheap over-fetch beats a
-    /// wrap-aware exact bound for a bulk store slice. Both are end-exclusive,
+    /// row, counting only the lines no closed fold hides), and `chars` spans
+    /// the same lines: cheap over-fetch beats a wrap-aware exact bound for a
+    /// bulk store slice. Both are end-exclusive,
     /// like `geometry::pane_visible_range`, which differs in that one-row
     /// slack and in leaving the top line unclamped.
     ///
@@ -82,9 +83,9 @@ impl Editor {
                 let content_end = text.content_line_count().end_exclusive();
                 let lines = ExclusiveRange::new(
                     vp.top().line.min(content_end),
-                    vp.top()
-                        .line
-                        .advance(usize::from(height) + 1)
+                    self.state
+                        .hidden_lines(&self.view, pid)
+                        .line_after_shown(vp.top().line, usize::from(height) + 1)
                         .min(content_end),
                 );
                 let insert_line = self.state.input.inserting_into(pid, bid).then(|| {
@@ -307,10 +308,13 @@ impl Editor {
             // resolves each entry's source to its registered slot
             // (`DecorationStores::signs_in_range`). This loop places, it
             // never looks a source up.
+            // A sign on a line a closed fold hides is not drawn, so an `auto`
+            // sign column does not open for it.
+            let hidden = self.state.hidden_lines(&self.view, pid);
             let mut by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<Sign>> =
                 rustc_hash::FxHashMap::default();
             for (slot, e) in self.state.config.decorations.signs_in_range(bid, p.lines) {
-                if slot >= slots as usize {
+                if slot >= slots as usize || hidden.is_hidden(e.line) {
                     continue;
                 }
                 let slot = slot as u8;

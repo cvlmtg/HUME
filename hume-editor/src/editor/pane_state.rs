@@ -13,11 +13,13 @@
 //! autoindent records included; see [`super::edit_session`].
 
 use hume_core::{BufferId, PaneId};
+use hume_engine::folds::{Fold, HiddenLines};
 use hume_engine::pipeline::{EngineView, PanePool, UnattachedPane};
 use slotmap::SecondaryMap;
 
 use super::Editor;
 use super::commands::FocusedPane;
+use super::folds::FoldSet;
 use super::geometry::LayoutKey;
 use super::jump_list::JumpList;
 use super::search::SearchCursor;
@@ -30,6 +32,7 @@ use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::tracked::Tracked;
 use hume_rope::cluster::ClusterStart;
+use hume_rope::line::ContentLine;
 
 /// All per-(pane, buffer) editor state bundled into one struct.
 ///
@@ -40,6 +43,9 @@ pub(crate) struct PaneBufferState {
     /// write but a carry raises [`PaneBufferState::reveal_pending`]: an
     /// edit's always, any other when the primary head moves.
     selections: PaneSelections,
+    /// This pane's closed folds in this buffer. Private beside `selections`
+    /// so every selection write passes [`FoldSet::unhide`].
+    folds: FoldSet,
     /// Per-pane cursor through the buffer's shared match list.
     pub search_cursor: SearchCursor,
     /// A fact worth re-settling the viewport for happened since the viewport
@@ -72,7 +78,8 @@ pub(crate) struct PaneBufferState {
     /// every non-selection source at once: a resize, a wrap-mode pin or
     /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
     /// pair is `None`, so it always differs), a decoration-generation
-    /// change (inlay hints, EOL text, virtual lines, signs), and any edit to
+    /// change (inlay hints, EOL text, virtual lines, signs), a fold opening
+    /// or closing, and any edit to
     /// the buffer at all (its text generation), including one made through a sibling
     /// pane. A changed key reveals only when [`PaneBufferState::parked`] is
     /// `false`: a pane parked behind an unfollowable scroll must not snap
@@ -131,8 +138,16 @@ impl PaneBufferState {
     ) -> R {
         let head = self.view(text).primary().head();
         let written = write(&mut self.selections);
+        self.unhide_selections(text);
         self.reveal_pending |= self.view(text).primary().head() != head;
         written
+    }
+
+    /// Open the folds hiding a selection end, `text` being the buffer's
+    /// current text.
+    fn unhide_selections(&mut self, text: &BufferText) {
+        self.folds
+            .unhide(EditView::bind(text, self.selections.current()));
     }
 
     /// Replace the selections outright with `new`, a set for `text`, the
@@ -141,11 +156,16 @@ impl PaneBufferState {
         self.write_revealing_moves(text, |sels| sels.set(new));
     }
 
-    /// Replace this pane's selections with those of an edit it made, and
-    /// raise a reveal: the buffer under the pane changed whether or not the
-    /// primary head moved.
-    pub(in crate::editor) fn set_selections_after_edit(&mut self, new: SelectionSet) {
+    /// Replace this pane's selections with those of an edit it made, `text`
+    /// being the edited text, and raise a reveal: the buffer under the pane
+    /// changed whether or not the primary head moved.
+    pub(in crate::editor) fn set_selections_after_edit(
+        &mut self,
+        new: SelectionSet,
+        text: &BufferText,
+    ) {
         self.selections.set(new);
+        self.unhide_selections(text);
         self.reveal_pending = true;
     }
 
@@ -158,6 +178,41 @@ impl PaneBufferState {
     /// moved). The pane that made an edit raises its own in `finish_edit`.
     pub(in crate::editor) fn carry_selections(&mut self, change: &TextChange<'_>) {
         self.selections.carry(change);
+        self.unhide_selections(change.after());
+    }
+
+    /// Carry this pane's closed folds for the buffer through `change`,
+    /// before its selections.
+    pub(in crate::editor) fn carry_folds(&mut self, change: &TextChange<'_>) {
+        self.folds.carry(change);
+    }
+
+    /// The lines this pane's closed folds hide.
+    pub(in crate::editor) fn hidden_lines(&self) -> HiddenLines {
+        self.folds.hidden().clone()
+    }
+
+    /// Close `folds`, regions of `text`, the buffer's current text. A
+    /// selection end they hide from its selection moves to the line shown
+    /// in its place.
+    pub(in crate::editor) fn close_folds(
+        &mut self,
+        folds: impl IntoIterator<Item = Fold>,
+        text: &BufferText,
+    ) {
+        self.folds.close(folds);
+        if let Some(shown) = self.folds.shown_ends(self.view(text)) {
+            self.write_revealing_moves(text, |sels| sels.set(shown));
+        }
+    }
+
+    /// Open the closed fold starting at `line`, if there is one.
+    pub(in crate::editor) fn open_fold_at(&mut self, line: ContentLine) {
+        self.folds.open_at(line);
+    }
+
+    pub(in crate::editor) fn open_all_folds(&mut self) {
+        self.folds.open_all();
     }
 
     /// Forget the selections built since this pane's last edit of the
@@ -218,6 +273,11 @@ impl PaneBufferState {
 }
 
 impl PaneBufferState {
+    #[cfg(test)]
+    pub(in crate::editor) fn closed_folds(&self) -> &[Fold] {
+        self.folds.closed()
+    }
+
     /// Start this pane on `sels` instead of the buffer's initial selections,
     /// as though it had first shown the buffer on them.
     #[cfg(test)]
@@ -235,6 +295,7 @@ impl PaneBufferState {
 pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
     PaneBufferState {
         selections: PaneSelections::new(buf.initial_sels()),
+        folds: FoldSet::default(),
         search_cursor: SearchCursor::default(),
         reveal_pending: false,
         last_layout_key: None,
@@ -347,6 +408,9 @@ pub(in crate::editor) struct PaneEntry {
     /// The handles feeding the pane's highlight, sign, inlay-hint and
     /// virtual-line providers (see `build_pane`).
     pub(in crate::editor) render: hume_decorations::PaneDecorationHandles,
+    /// The pane's fold column, which a press on a caret toggles through.
+    /// `None` for a pane drawing no gutter.
+    pub(in crate::editor) fold_lane: Option<hume_engine::providers::ProviderId>,
 }
 
 impl PaneEntry {
@@ -435,18 +499,21 @@ impl PaneEntries {
         self.0[pid].buffers.get_mut(bid).expect(PAIR_UNSEEDED)
     }
 
-    /// Give `to` the selections `from` has for the buffer both show, with
-    /// those it built since its last edit, `text` being its current text.
-    pub(in crate::editor) fn copy_selections(
+    /// Give `to` the closed folds and the selections `from` has for the
+    /// buffer both show, with those it built since its last edit, `text`
+    /// being its current text.
+    pub(in crate::editor) fn copy_selections_and_folds(
         &mut self,
         panes: &PanePool,
         from: PaneId,
         to: PaneId,
         text: &BufferText,
     ) {
-        let selections = self.shown(panes, from).selections.split();
-        self.shown_mut(panes, to)
-            .write_revealing_moves(text, |sels| *sels = selections);
+        let source = self.shown(panes, from);
+        let (selections, folds) = (source.selections.split(), source.folds.clone());
+        let target = self.shown_mut(panes, to);
+        target.folds = folds;
+        target.write_revealing_moves(text, |sels| *sels = selections);
     }
 
     pub(in crate::editor) fn iter_mut(&mut self) -> impl Iterator<Item = (PaneId, &mut PaneEntry)> {
@@ -483,7 +550,7 @@ pub(crate) struct PaneView {
 /// What a new pane draws besides its text.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum PaneChrome {
-    /// The line-number gutter and every decoration provider.
+    /// The gutter columns and every decoration provider.
     Full,
     /// Nothing: no gutter, so test geometry has none, and render handles
     /// that feed a provider set nothing renders.
@@ -505,7 +572,7 @@ impl PaneView {
         jump_list_capacity: usize,
         chrome: PaneChrome,
     ) -> UnattachedPane {
-        let (pane, render) = build_pane(&mut view.registry, bid, chrome);
+        let (pane, render, fold_lane) = build_pane(&mut view.registry, bid, chrome);
         let unattached = view.insert_pane(pane);
         buffer.claim_restored_history(unattached.pane_id());
         let mut per_buffer = SecondaryMap::new();
@@ -516,6 +583,7 @@ impl PaneView {
                 buffers: per_buffer,
                 jumps: JumpList::new(jump_list_capacity),
                 render,
+                fold_lane,
             },
         );
         assert!(replaced.is_none(), "a pane is opened once");
@@ -541,11 +609,13 @@ impl PaneView {
 }
 
 /// Build a new pane viewing `buffer_id`. With [`PaneChrome::Full`] it gets
-/// its decoration providers ([`hume_decorations::build_providers`]) and
-/// line-number column; `Pane::new` alone has an empty `ProviderSet`.
+/// its decoration providers ([`hume_decorations::build_providers`]), its
+/// line-number column and, beside the text, its fold column; `Pane::new`
+/// alone has an empty `ProviderSet`.
 ///
 /// Returns the pane with its own `PaneDecorationHandles`, never shared
-/// between panes, so per-pane decoration data cannot bleed across panes.
+/// between panes, so per-pane decoration data cannot bleed across panes,
+/// and its fold column's id.
 /// Wrap mode is not seeded: it resolves lazily via
 /// `commands::effective_wrap_mode`. The gutter's seeded style never reaches a
 /// frame, since `prepare_frame` syncs `gutter-line-numbers` before each render.
@@ -556,6 +626,7 @@ fn build_pane(
 ) -> (
     hume_engine::pane::Pane,
     hume_decorations::PaneDecorationHandles,
+    Option<hume_engine::providers::ProviderId>,
 ) {
     // Interns the engine's own `DEFAULT_GUTTER_SCOPE` constant rather than
     // repeating the "ui.linenr" literal here: the two must resolve to the
@@ -568,7 +639,7 @@ fn build_pane(
     let mut providers = hume_engine::providers::ProviderSet::new();
     let decoration_handles = hume_decorations::build_providers(&mut providers, linenr_scope);
     let mut pane = hume_engine::pane::Pane::new(buffer_id);
-    match chrome {
+    let fold_lane = match chrome {
         PaneChrome::Full => {
             let linenr_selected_scope =
                 registry.intern(hume_engine::theme::ui_scopes::LINENR_SELECTED);
@@ -578,12 +649,19 @@ fn build_pane(
                     linenr_selected_scope,
                 ),
             ));
+            let fold_lane = providers.add_gutter_column(Box::new(
+                hume_engine::builtins::fold_column::FoldColumn::new(
+                    linenr_scope,
+                    linenr_selected_scope,
+                ),
+            ));
             pane.providers = providers;
+            Some(fold_lane)
         }
         #[cfg(test)]
-        PaneChrome::Bare => {}
-    }
-    (pane, decoration_handles)
+        PaneChrome::Bare => None,
+    };
+    (pane, decoration_handles, fold_lane)
 }
 
 impl super::EditorState {

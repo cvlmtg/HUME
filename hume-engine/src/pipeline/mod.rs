@@ -50,6 +50,8 @@ pub struct FrameScratch {
     pub lane_widths: Vec<u16>,
     /// What the scope header rows of the pane being drawn are laid out with.
     pub header_layout: crate::scope_headers::HeaderLayout,
+    /// The fold marks of the lines of the pane being drawn.
+    pub fold_starts: crate::builtins::fold_column::FoldStarts,
 }
 
 impl FrameScratch {
@@ -58,6 +60,7 @@ impl FrameScratch {
             style: StyleScratch::new(),
             lane_widths: Vec::new(),
             header_layout: crate::scope_headers::HeaderLayout::default(),
+            fold_starts: crate::builtins::fold_column::FoldStarts::default(),
         }
     }
 
@@ -65,6 +68,7 @@ impl FrameScratch {
     pub fn clear(&mut self) {
         self.style.clear();
         self.lane_widths.clear();
+        self.fold_starts.reset(crate::folds::HiddenLines::default());
     }
 }
 
@@ -767,10 +771,12 @@ impl EngineView {
 /// resolves to and why. `mode` picks which cursor-scope ladder applies;
 /// `cursor_is_block` gates both selection heads in `style::style_display_line`'s
 /// Tier 1/0.
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct PaneRenderSettings {
     pub mode: EditorMode,
     pub format: crate::display_lines::line_store::FormatKey,
+    /// The lines the pane's closed folds hide.
+    pub hidden: crate::folds::HiddenLines,
     pub indent_guides: bool,
     pub cursor_is_block: bool,
     pub gutter: crate::providers::GutterInputs,

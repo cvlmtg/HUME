@@ -355,6 +355,38 @@ impl CommandRegistry {
         .selection_effect(SelectionEffect::Extends)
         .reg(self);
 
+        // ── Editor commands — folding (z t / z o / z c / z O / z C) ──────────
+        ecmd_pane(
+            "toggle-fold",
+            "Open the closed fold at each selection's line, or else close the innermost foldable region holding it.",
+            cmd_toggle_fold,
+        )
+        .reg(self);
+        ecmd_pane(
+            "open-fold",
+            "Open the closed fold at each selection's line.",
+            cmd_open_fold,
+        )
+        .reg(self);
+        ecmd_pane(
+            "close-fold",
+            "Close the innermost open foldable region holding each selection's line.",
+            cmd_close_fold,
+        )
+        .reg(self);
+        ecmd_pane(
+            "open-all-folds",
+            "Open every closed fold in the pane.",
+            cmd_open_all_folds,
+        )
+        .reg(self);
+        ecmd_pane(
+            "close-all-folds",
+            "Close every foldable region of the buffer in the pane.",
+            cmd_close_all_folds,
+        )
+        .reg(self);
+
         // ── Editor commands — view-trie scroll (z z / z k / z j) ──────────────
         // Reposition the viewport without moving the cursor.
         ecmd_pane(

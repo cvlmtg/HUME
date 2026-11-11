@@ -162,6 +162,7 @@ fn a_changed_key_drops_the_scope() {
             tab_width: 4,
             whitespace: ws(),
         },
+        crate::folds::HiddenLines::default(),
         &mut store,
     )
     .block(ContentLine::new(0));
@@ -178,6 +179,7 @@ fn a_changed_key_drops_the_scope() {
             tab_width: 4,
             whitespace: ws(),
         },
+        crate::folds::HiddenLines::default(),
         &mut store,
     )
     .block(ContentLine::new(0));
@@ -236,6 +238,7 @@ fn a_shape_only_entry_allocates_no_format_buffers() {
             tab_width: 4,
             whitespace: ws(),
         },
+        crate::folds::HiddenLines::default(),
         &mut store,
     )
     .block(ContentLine::new(0));
@@ -313,6 +316,7 @@ fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
             tab_width: 4,
             whitespace: ws(),
         },
+        crate::folds::HiddenLines::default(),
         &mut store,
     )
     .render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));

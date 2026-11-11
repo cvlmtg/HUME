@@ -579,7 +579,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         &mut state.panes.entries,
         &mut view.panes,
         pid,
-        layout_key,
+        &layout_key,
     );
     let geo = layout_key
         .geometry(state.buffers.get(bid).syntax_source())

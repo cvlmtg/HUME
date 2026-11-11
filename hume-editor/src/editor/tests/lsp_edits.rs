@@ -1170,7 +1170,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
         &mut state.panes.entries,
         &mut view.panes,
         pid,
-        layout_key,
+        &layout_key,
     );
     let top = viewport.top();
     let cursor_pos = dlm.locate_display_line(cursor_char);

@@ -5,7 +5,7 @@
 //! for a char offset literal (`co`), for the cluster at a char offset
 //! (`at`), for a painted selection (`painted`) and a pane's selection mirror
 //! (`mirror`, `cursor_mirror`), for a `DisplayLineMap` over a fixed
-//! `FormatKey` (`map`), for a pane's geometry with no header rows
+//! `FormatKey` (`map`, or `map_hiding` with closed folds), for a pane's geometry with no header rows
 //! (`plain_geo`), and for a body row with the primary head on line 0
 //! (`body_row_on_line_0`).
 
@@ -20,6 +20,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::display_lines::line_store::{FormatKey, PaneLineStore};
 use crate::display_lines::{DisplayLineMap, RenderDisplayLine};
+use crate::folds::HiddenLines;
 use crate::pane::{ViewGeometry, WhitespaceConfig, WrapMode};
 use crate::pipeline::PaneSize;
 use crate::providers::{GutterRow, ProviderSet};
@@ -78,6 +79,25 @@ pub(crate) fn map<'a>(
     content_width: u16,
     store: &'a mut PaneLineStore,
 ) -> DisplayLineMap<'a> {
+    map_hiding(
+        rope,
+        wrap,
+        providers,
+        content_width,
+        HiddenLines::default(),
+        store,
+    )
+}
+
+/// [`map`] with the lines `hidden` names folded away.
+pub(crate) fn map_hiding<'a>(
+    rope: &'a Rope,
+    wrap: WrapMode,
+    providers: &'a ProviderSet,
+    content_width: u16,
+    hidden: HiddenLines,
+    store: &'a mut PaneLineStore,
+) -> DisplayLineMap<'a> {
     DisplayLineMap::new(
         rope,
         providers,
@@ -88,6 +108,7 @@ pub(crate) fn map<'a>(
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
         },
+        hidden,
         store,
     )
 }

@@ -19,6 +19,7 @@ fn ctx(rope: &ropey::Rope, primary_head_line: usize, style: LineNumberStyle) -> 
             line_numbers: style,
             ..GutterInputs::default()
         },
+        fold: crate::providers::FoldMark::None,
     }
 }
 

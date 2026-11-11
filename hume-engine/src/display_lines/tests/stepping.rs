@@ -332,6 +332,7 @@ fn wrap_width_one_emits_one_grapheme_per_display_line_without_hanging() {
             tab_width: 4,
             whitespace: ws(),
         },
+        crate::folds::HiddenLines::default(),
         &mut s,
     );
 

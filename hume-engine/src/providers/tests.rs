@@ -135,3 +135,38 @@ fn decoration_sources_filters_by_kind() {
         "PAINT includes HIGHLIGHT but not VIRTUAL_LINE"
     );
 }
+
+/// A gutter column `width` cells wide.
+struct Lane(u8);
+
+impl GutterColumn for Lane {
+    fn width(&self, _: hume_rope::line::RopeyLine, _: GutterInputs) -> u8 {
+        self.0
+    }
+    fn render_cells(&self, _: crate::types::DisplayLineKind, _: &GutterCtx) -> Vec<GutterCell> {
+        vec![GutterCell::blank(ScopeId(0))]
+    }
+}
+
+#[test]
+fn a_gutter_cell_belongs_to_the_lane_drawn_over_it() {
+    let mut set = ProviderSet::new();
+    let first = set.add_gutter_column(Box::new(Lane(2)));
+    set.add_gutter_column(Box::new(Lane(0)));
+    let third = set.add_gutter_column(Box::new(Lane(3)));
+    let last = hume_rope::line::RopeyLine::new(10);
+    let lanes: Vec<_> = (0..6)
+        .map(|x| set.gutter_lane_at(last, GutterInputs::default(), x))
+        .collect();
+    assert_eq!(
+        lanes,
+        [
+            Some(first),
+            Some(first),
+            Some(third),
+            Some(third),
+            Some(third),
+            None
+        ]
+    );
+}

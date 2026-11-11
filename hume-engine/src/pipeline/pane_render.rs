@@ -1,6 +1,6 @@
 use hume_grid::{Grid, Rgb};
 use hume_rope::column::DisplayLineCol;
-use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 
 use crate::display_lines::{DisplayLineMap, h_window};
 use crate::providers::{GutterRow, ProviderSet};
@@ -55,6 +55,7 @@ pub(crate) fn render_pane(
         style,
         lane_widths,
         header_layout,
+        fold_starts,
     } = scratch;
 
     // Gutter lane widths: constant for the entire frame.
@@ -70,6 +71,7 @@ pub(crate) fn render_pane(
         pane_ctx.providers,
         visible.content_width,
         pane_ctx.settings.format,
+        pane_ctx.settings.hidden.clone(),
         store,
     )
     .with_h_window(h_window(
@@ -87,6 +89,27 @@ pub(crate) fn render_pane(
         rows.top(),
         "the pane's rows were settled for another top"
     );
+
+    // The region starts of every line this pane can draw, read before the
+    // walk in one query per run of shown lines: the lines from the top
+    // through as many shown lines as the pane has rows, and the header lines.
+    let hidden = &pane_ctx.settings.hidden;
+    fold_starts.reset(hidden.clone());
+    if pane_ctx.settings.gutter.folds
+        && let Some(syntax) = pane_ctx.syntax
+    {
+        let drawn_end = hidden
+            .line_after_shown(top.line, usize::from(pane_ctx.rect.height))
+            .min(last_content_line);
+        fold_starts.read(
+            InclusiveRange::new(top.line, drawn_end),
+            syntax,
+            pane_ctx.rope,
+        );
+        for &header in rows.headers() {
+            fold_starts.read(InclusiveRange::new(header, header), syntax, pane_ctx.rope);
+        }
+    }
 
     let head_line = crate::pane::primary_head_line(pane_ctx.selections, pane_ctx.rope);
     // Bundle per-frame constants so compose_display_line call sites stay concise.
@@ -107,9 +130,9 @@ pub(crate) fn render_pane(
         rope: pane_ctx.rope,
         default_gutter_scope: pane_ctx.default_gutter_scope,
         gutter: pane_ctx.settings.gutter,
+        folds: pane_ctx.settings.gutter.folds.then_some(&*fold_starts),
     };
     let mut canvas = render::Canvas::new(grid, pane_ctx.theme.ui.invisible, pane_ctx.dim);
-
     // ── Display-line walk ────────────────────────────────────────────────
     let height = pane_ctx.rect.height;
     // Which line's highlight intervals and cursorline state `line` currently

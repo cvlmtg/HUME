@@ -22,12 +22,17 @@
 //! that line's *visual block*, which runs `before`-virtuals, then
 //! content/wrap display lines, then `after`-virtuals. `Viewport::top` is
 //! that address directly.
+//!
+//! A line a closed fold hides has no display line: stepping crosses from a
+//! fold's first line to the next shown one, and a position on a hidden line
+//! answers with its fold's first line.
 
 use std::num::NonZeroU16;
 use std::ops::Range;
 
 use ropey::Rope;
 
+use crate::folds::HiddenLines;
 use crate::format::{FormatBound, LineFormat, format_buffer_line, format_virtual_lines};
 use crate::pane::WrapMode;
 use crate::pipeline::ContentWidth;
@@ -103,6 +108,8 @@ pub struct DisplayLineMap<'a> {
     /// render pass sharing a store depends on it being one value.
     key: ResolvedFormatKey,
     providers: &'a ProviderSet,
+    /// The lines this pane's closed folds hide.
+    hidden: HiddenLines,
     content_width: NonZeroU16,
     h_window: Option<Range<DisplayLineCol>>,
     /// Everything this map knows about the lines it has visited: the
@@ -129,6 +136,7 @@ impl<'a> DisplayLineMap<'a> {
         providers: &'a ProviderSet,
         content_width: ContentWidth,
         key: FormatKey,
+        hidden: HiddenLines,
         store: &'a mut PaneLineStore,
     ) -> Self {
         let content_width = content_width.get();
@@ -144,6 +152,7 @@ impl<'a> DisplayLineMap<'a> {
             rope,
             key,
             providers,
+            hidden,
             content_width,
             h_window: None,
             store,
@@ -195,6 +204,11 @@ impl<'a> DisplayLineMap<'a> {
     /// The providers this map lays its lines out with.
     pub(crate) fn providers(&self) -> &'a ProviderSet {
         self.providers
+    }
+
+    /// The lines this map steps over.
+    pub fn hidden(&self) -> &HiddenLines {
+        &self.hidden
     }
 
     pub fn is_wrapping(&self) -> bool {
@@ -340,9 +354,14 @@ impl<'a> DisplayLineMap<'a> {
     }
 
     /// Pull `pos` into the document: `line` into `0..=last_line()`, then
-    /// `slot` into that line's block.
+    /// `slot` into that line's block. A hidden line becomes its fold's first
+    /// line, at that line's first display line.
     pub fn clamp(&mut self, pos: DisplayLinePos) -> DisplayLinePos {
         let line = pos.line.min(self.last_line());
+        let shown = self.hidden.shown_at_or_before(line);
+        if shown != line {
+            return DisplayLinePos::new(shown, 0);
+        }
         let total = self.block(line).total();
         DisplayLinePos::new(line, pos.slot.min(total.saturating_sub(1)))
     }

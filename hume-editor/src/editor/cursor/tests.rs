@@ -43,6 +43,7 @@ fn map<'a>(
             tab_width: 4,
             whitespace: ws(),
         },
+        hume_engine::folds::HiddenLines::default(),
         store,
     )
 }

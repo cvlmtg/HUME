@@ -538,6 +538,7 @@ fn grammar_optional_queries_lists_every_kind_with_its_file() {
             "(textobjects . \"textobjects.scm\")",
             "(indents . \"indents.scm\")",
             "(context . \"context.scm\")",
+            "(folds . \"folds.scm\")",
         ]
     );
 }

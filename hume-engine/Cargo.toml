@@ -20,5 +20,6 @@ toml = { version = "1", default-features = false, features = ["parse", "serde", 
 
 [dev-dependencies]
 hume-core = { path = "../hume-core", features = ["test-util"] }
+insta = "1.47"
 tempfile = "3"
 ropey.workspace = true

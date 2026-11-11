@@ -328,6 +328,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
         },
         rope: &rope,
         inputs: ed.state.gutter_inputs(&ed.view, pid),
+        fold: hume_engine::providers::FoldMark::None,
     };
     let col = ed.view.panes[pid]
         .providers

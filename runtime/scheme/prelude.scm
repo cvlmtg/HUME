@@ -39,12 +39,14 @@
                            #:injections [injections-path #f]
                            #:textobjects [textobjects-path #f]
                            #:indents [indents-path #f]
-                           #:context [context-path #f])
+                           #:context [context-path #f]
+                           #:folds [folds-path #f])
   (%register-grammar! name grammar-path symbol highlights-path
                       (hash 'injections injections-path
                             'textobjects textobjects-path
                             'indents indents-path
-                            'context context-path)))
+                            'context context-path
+                            'folds folds-path)))
 
 (define (configure-statusline! left center right)
   (set-option! "statusline" (hash 'left left 'center center 'right right)))

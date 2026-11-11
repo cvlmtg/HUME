@@ -272,6 +272,18 @@ Move the viewport without moving the cursor.
 | `page-up` | `PageUp` | Scroll up by one viewport height. |
 | `top-view-on-cursor` | `z k` | Scroll so the primary selection head sits at the top of the viewport. |
 
+## Folding
+
+Hide a region of the buffer behind its first line. See [Folding](syntax-highlighting.md#folding).
+
+| Command | Default key | Effect |
+|---------|-------------|--------|
+| `close-all-folds` | `z C` | Close every foldable region of the buffer in the pane. |
+| `close-fold` | `z c` | Close the innermost open foldable region holding each selection's line. |
+| `open-all-folds` | `z O` | Open every closed fold in the pane. |
+| `open-fold` | `z o` | Open the closed fold at each selection's line. |
+| `toggle-fold` | `z t` | Open the closed fold at each selection's line, or else close the innermost foldable region holding it. |
+
 ## Panes, buffers, and tabs
 
 Split, focus, and close panes; switch buffers; switch tabs.

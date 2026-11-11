@@ -943,6 +943,7 @@ dependencies = [
  "hume-core",
  "hume-grid",
  "hume-rope",
+ "insta",
  "ropey",
  "rustc-hash",
  "slotmap",

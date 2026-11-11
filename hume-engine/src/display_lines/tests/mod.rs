@@ -18,6 +18,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 mod block;
 mod bounded_format;
 mod buffer_line_col;
+mod folds;
 mod locate;
 mod render;
 mod shared_store;

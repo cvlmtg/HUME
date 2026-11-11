@@ -8,9 +8,10 @@ use hume_grid::{Rect, Rgb};
 // keeps working unchanged.
 pub use hume_grid::{Canvas, clamp_rect_to_grid};
 
+use crate::builtins::fold_column::FoldStarts;
 use crate::display_lines::RenderDisplayLine;
 use crate::layout::PaneGeometry;
-use crate::providers::{GutterColumn, GutterCtx, GutterInputs, ProviderId};
+use crate::providers::{FoldMark, GutterColumn, GutterCtx, GutterInputs, ProviderId};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayLineKind, EditorMode, ResolvedStyle, ScopeId};
 
@@ -57,6 +58,9 @@ pub(crate) struct ComposeCtx<'a> {
     pub default_gutter_scope: ScopeId,
     /// The gutter's settings for this pane.
     pub gutter: GutterInputs,
+    /// The fold marks of the lines drawn, `None` while the fold column is
+    /// hidden.
+    pub folds: Option<&'a FoldStarts>,
 }
 
 /// Resolve a gutter cell's scope to a style, layered over the row's
@@ -119,6 +123,12 @@ fn compose_gutter(
         row: compose_ctx.row,
         rope: compose_ctx.rope,
         inputs: compose_ctx.gutter,
+        fold: match (line_kind, compose_ctx.folds) {
+            (DisplayLineKind::LineStart { line_idx }, Some(folds)) => line_idx
+                .to_content(compose_ctx.rope)
+                .map_or(FoldMark::None, |line| folds.mark(line)),
+            _ => FoldMark::None,
+        },
     };
     // Constant for the whole row; resolved once so the per-cell loop and the
     // leftover-width fill below can't drift apart on it.

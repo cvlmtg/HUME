@@ -80,7 +80,25 @@ impl ContextQuery {
         line: ContentLine,
         out: &mut Vec<ContentLine>,
     ) {
-        let line_start = bytes.start;
+        self.for_each_scope(cursor, tree, rope, bytes, |header, scope| {
+            out.extend(scope_header(header, scope, line));
+        });
+    }
+
+    /// Call `f` with the header and the node of every scope of `tree` a
+    /// match over `bytes` names, in match order.
+    ///
+    /// A text object's grouped capture (an attribute above a function) names
+    /// each of its nodes as a scope of its own, so a caller keeping only
+    /// scopes around a line keeps the item, never the node above it.
+    pub(crate) fn for_each_scope<'t>(
+        &self,
+        cursor: &mut QueryCursor,
+        tree: &'t Tree,
+        rope: &ropey::Rope,
+        bytes: Range<usize>,
+        mut f: impl FnMut(Node<'t>, Node<'t>),
+    ) {
         cursor.set_byte_range(bytes);
         let mut matches = cursor.matches(&self.query, tree.root_node(), RopeProvider(rope));
         while let Some(m) = matches.next() {
@@ -93,14 +111,13 @@ impl ContextQuery {
                     let header = start
                         .and_then(|start| m.nodes_for_capture_index(start).next())
                         .unwrap_or(scope);
-                    out.extend(scope_header(header, scope, line));
+                    f(header, scope);
                 }
                 Scopes::TextObjects { around } => {
                     for index in around.into_iter().flatten() {
-                        let item = m.nodes_for_capture_index(index).find(|node| {
-                            node.start_byte() <= line_start && line_start < node.end_byte()
-                        });
-                        out.extend(item.and_then(|item| scope_header(item, item, line)));
+                        for node in m.nodes_for_capture_index(index) {
+                            f(node, node);
+                        }
                     }
                 }
             }

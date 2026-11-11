@@ -81,6 +81,17 @@ While the top of a pane is inside a function, class, or Markdown section whose f
 - The headers come from the grammar's `context.scm` query. A grammar without one falls back to its function and class text objects. A buffer with no grammar shows none.
 - `:set buffer context-enabled=false` turns the headers off. `context-outer-level` (off by default) keeps the outermost scope's line when a line is inside more scopes than there are rows; otherwise the innermost ones stay. See [Buffer options](settings.md#buffer-options).
 
+## Folding
+
+A column in the gutter, beside the text, marks each line a foldable region starts on, such as a function, a block or a Markdown section: `▾` while it is open, `▸` while it is closed. A closed fold hides the region behind its first line. A last line holding only the region's closing bracket or keyword stays shown.
+
+- `z c` closes the innermost region around each cursor, `z o` opens the fold on the cursor's line, and `z t` does whichever applies. `z C` closes every region and `z O` opens every fold. Clicking a caret opens or closes its fold. See [Folding](editor-commands.md#folding).
+- A cursor that lands inside a closed fold, after a search, a jump, `:goto` or an undo, opens it. A selection covering every hidden line of a fold leaves it closed. `j` and `k` step over a closed fold.
+- Each pane has its own folds. A split starts with the folds of the pane it splits.
+- Folds follow your edits. Deleting a fold's first or last line opens it.
+- The regions come from the grammar's `folds.scm` query. A grammar without one folds the scopes [scope headers](#scope-headers) come from. A buffer with no grammar has nothing to fold.
+- `:set buffer gutter-folds=false` hides the caret column; the fold keys still work. See [Buffer options](settings.md#buffer-options).
+
 ## When detection gets it wrong
 
 If HUME guesses the buffer's language wrong, or can't guess it, override it:
@@ -158,7 +169,7 @@ The required fields, in order:
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file
 
-Four optional keyword arguments can follow, in any order, each the path to one more query file:
+Five optional keyword arguments can follow, in any order, each the path to one more query file:
 
 ```scheme
 (register-grammar! "my-lang"
@@ -168,13 +179,15 @@ Four optional keyword arguments can follow, in any order, each the path to one m
   #:injections "/path/to/injections.scm"
   #:textobjects "/path/to/textobjects.scm"
   #:indents "/path/to/indents.scm"
-  #:context "/path/to/context.scm")
+  #:context "/path/to/context.scm"
+  #:folds "/path/to/folds.scm")
 ```
 
 - `#:injections`: the language embeds other languages, like Markdown's fenced code blocks.
 - `#:textobjects`: structural text objects and navigation (functions, classes, arguments, …).
 - `#:indents`: how new lines are indented, using Helix's `indents.scm` captures; see [Indentation](editing.md#indentation) for what it drives.
 - `#:context`: the scopes whose first line stays at the top of the pane while you scroll inside them; see [Scope headers](#scope-headers).
+- `#:folds`: the regions you can fold; see [Folding](#folding).
 
 Registered from `init.scm`, a grammar loads the first time a file or an embedded block needs it, and `:messages` reports then if its library or a query file can't be loaded. Registered from a command, it loads right away, and the command fails with the reason.
 

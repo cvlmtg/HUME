@@ -2,11 +2,12 @@ use ropey::Rope;
 
 use super::*;
 use crate::display_lines::line_store::PaneLineStore;
+use crate::folds::{Fold, HiddenLines};
 use crate::pane::WrapMode;
 use crate::pipeline::PaneSize;
 use crate::providers::ProviderSet;
 use crate::test_doubles::{ScopeTable, VirtualLineBlock};
-use crate::test_support::map;
+use crate::test_support::{map, map_hiding};
 use hume_core::Side;
 
 const SHOWN: ContextSettings = ContextSettings {
@@ -222,4 +223,28 @@ fn disabled_or_sourceless_yields_nothing() {
         settings: SHOWN,
     };
     assert_eq!(rows_of(&mut dlm, top(5), 24, sourceless).headers(), []);
+}
+
+#[test]
+fn a_header_line_a_fold_hides_is_not_shown() {
+    let rope = doc(30);
+    let table = ScopeTable::default().lines(11..=20, &[0, 5]);
+    let providers = ProviderSet::new();
+    let fold =
+        Fold::new(ContentLine::new(1), ContentLine::new(10), false).expect("the fold hides a line");
+    let mut store = PaneLineStore::new();
+    let mut dlm = map_hiding(
+        &rope,
+        WrapMode::None,
+        &providers,
+        80,
+        HiddenLines::from_folds([fold]),
+        &mut store,
+    );
+    let inputs = ScopeHeaderInputs {
+        source: Some(&table),
+        settings: SHOWN,
+    };
+    let rows = rows_of(&mut dlm, top(11), 24, inputs);
+    assert_eq!(rows.headers(), [ContentLine::new(0)]);
 }

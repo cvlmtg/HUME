@@ -46,7 +46,7 @@ fn move_view(
             &mut state.panes.entries,
             &mut view.panes,
             pid,
-            key,
+            &key,
         );
         let Some(geo) = key.geometry(buffer.syntax_source()) else {
             return;
@@ -64,7 +64,7 @@ fn move_view(
         &mut state.panes.entries,
         &mut view.panes,
         pid,
-        key,
+        &key,
     );
 }
 

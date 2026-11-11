@@ -174,6 +174,7 @@ named_enum! {
         TextObjects => "textobjects",
         Indents => "indents",
         Context => "context",
+        Folds => "folds",
     }
 }
 
@@ -185,6 +186,7 @@ impl OptionalQuery {
             Self::TextObjects => "textobjects.scm",
             Self::Indents => "indents.scm",
             Self::Context => "context.scm",
+            Self::Folds => "folds.scm",
         }
     }
 }
@@ -198,6 +200,7 @@ pub struct QueryFiles {
     textobjects: Option<PathBuf>,
     indents: Option<PathBuf>,
     context: Option<PathBuf>,
+    folds: Option<PathBuf>,
 }
 
 impl QueryFiles {
@@ -209,6 +212,7 @@ impl QueryFiles {
             textobjects: None,
             indents: None,
             context: None,
+            folds: None,
         }
     }
 
@@ -219,6 +223,7 @@ impl QueryFiles {
             OptionalQuery::TextObjects => self.textobjects = Some(path),
             OptionalQuery::Indents => self.indents = Some(path),
             OptionalQuery::Context => self.context = Some(path),
+            OptionalQuery::Folds => self.folds = Some(path),
         }
         self
     }
@@ -233,6 +238,7 @@ impl QueryFiles {
             OptionalQuery::TextObjects => self.textobjects.as_deref(),
             OptionalQuery::Indents => self.indents.as_deref(),
             OptionalQuery::Context => self.context.as_deref(),
+            OptionalQuery::Folds => self.folds.as_deref(),
         }
     }
 }

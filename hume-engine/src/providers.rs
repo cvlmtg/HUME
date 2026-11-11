@@ -63,6 +63,16 @@ pub trait SyntaxSource {
         rope: &ropey::Rope,
         out: &mut Vec<hume_rope::line::ContentLine>,
     );
+
+    /// Push the first line of every foldable region starting in `lines`
+    /// onto `out`, in any order, possibly more than once. One call covers a
+    /// pane's whole run of drawn lines, a query per call rather than per line.
+    fn fold_starts(
+        &self,
+        lines: hume_rope::offset::InclusiveRange<hume_rope::line::ContentLine>,
+        rope: &ropey::Rope,
+        out: &mut Vec<hume_rope::line::ContentLine>,
+    );
 }
 
 // Gutter column
@@ -78,6 +88,18 @@ pub struct GutterCtx<'a> {
     pub rope: &'a ropey::Rope,
     /// The gutter's settings for the pane being drawn.
     pub inputs: GutterInputs,
+    /// The fold mark of the line being drawn, [`FoldMark::None`] on every
+    /// row but a line's first, and while the fold column is hidden.
+    pub fold: FoldMark,
+}
+
+/// Whether a fold starts on a line, and whether it is closed.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum FoldMark {
+    #[default]
+    None,
+    Open,
+    Closed,
 }
 
 /// The kind of pane row a gutter cell is drawn for.
@@ -88,8 +110,8 @@ pub enum GutterRow {
     Body {
         primary_head_line: hume_rope::line::ContentLine,
     },
-    /// A scope header row, which shows its line's number alone: absolute,
-    /// never marked as the cursor's, and with no sign.
+    /// A scope header row, which shows its line's number, absolute and never
+    /// marked as the cursor's, and its fold caret, with no sign.
     Header,
 }
 
@@ -104,6 +126,9 @@ pub struct GutterInputs {
     /// [`SignColumn`](crate::builtins::sign_column::SignColumn)'s width in
     /// cells, its slots plus one padding cell, `0` when collapsed.
     pub sign_width: u8,
+    /// Whether [`FoldColumn`](crate::builtins::fold_column::FoldColumn)
+    /// shows.
+    pub folds: bool,
 }
 
 /// A single column in the gutter (line numbers, git signs, diagnostics, etc.).
@@ -361,6 +386,25 @@ impl ProviderSet {
 
     pub fn gutter_columns(&self) -> impl Iterator<Item = &dyn GutterColumn> {
         self.gutter_columns.iter().map(|(_, c)| c.as_ref())
+    }
+
+    /// The gutter column drawn over pane-relative cell `x`, laid out as
+    /// [`crate::layout::lane_widths`] sizes it; `None` past the gutter.
+    pub fn gutter_lane_at(
+        &self,
+        max_line: hume_rope::line::RopeyLine,
+        inputs: GutterInputs,
+        x: u16,
+    ) -> Option<ProviderId> {
+        let widths = crate::layout::lane_widths(self.gutter_columns(), max_line, inputs);
+        let mut end = 0;
+        for ((id, _), width) in self.gutter_columns.iter().zip(widths) {
+            end += width;
+            if x < end {
+                return Some(*id);
+            }
+        }
+        None
     }
 
     /// Decoration sources whose declared [`DecorationKinds`] intersect

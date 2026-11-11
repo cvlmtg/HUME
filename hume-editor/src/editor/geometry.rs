@@ -4,6 +4,7 @@
 
 use hume_core::{BufferId, PaneId};
 use hume_engine::builtins::sign_column::SignColumn;
+use hume_engine::folds::HiddenLines;
 use hume_engine::layout::PaneGeometry;
 use hume_engine::pane::ViewGeometry;
 use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
@@ -15,9 +16,10 @@ use super::input_stack::{FocusedBox, ResolvedPopupLayout};
 use super::{EditorState, commands};
 
 /// Every input a pane's layout depends on: its
-/// [`FormatKey`](hume_engine::display_lines::line_store::FormatKey) plus content
-/// width, viewport height and scroll-margin, which decide where the cursor's
-/// display line falls, and the buffer's scope-header settings and, while
+/// [`FormatKey`](hume_engine::display_lines::line_store::FormatKey), the lines
+/// its closed folds hide, content width, viewport height and scroll-margin,
+/// which decide where the cursor's display line falls, and the buffer's
+/// scope-header settings and, while
 /// headers are on, its committed syntax layers, which decide how many header
 /// rows the top margin grows by.
 ///
@@ -28,15 +30,18 @@ use super::{EditorState, commands};
 /// `frame::reveal_due_cursor` stores this in
 /// `PaneBufferState::last_layout_key` and compares it against a fresh one
 /// each time it runs (resize, wrap-mode change, buffer switch, decoration
-/// generation, a parse landing while headers are on, and any content edit to
-/// the buffer, since `buffer_tag` includes `generation`). A change reveals only a pane that isn't
+/// generation, a parse landing while headers are on, a fold opening or
+/// closing, and any content edit to the buffer, since `buffer_tag` includes
+/// `generation`). A change reveals only a pane that isn't
 /// [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked):
 /// a parked pane's own edit still reveals it, through `reveal_pending`
 /// instead, but a change from elsewhere (a sibling pane's edit, a
 /// decoration refresh) leaves it where it is.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(in crate::editor) struct LayoutKey {
     format: hume_engine::display_lines::line_store::FormatKey,
+    /// The lines the pane's closed folds hide.
+    hidden: HiddenLines,
     content_width: hume_engine::pipeline::ContentWidth,
     size: hume_engine::pipeline::PaneSize,
     scroll_margin: usize,
@@ -52,6 +57,11 @@ impl LayoutKey {
         &self,
     ) -> hume_engine::display_lines::line_store::FormatKey {
         self.format
+    }
+
+    /// The lines a `DisplayLineMap` of this pane steps over.
+    pub(in crate::editor) fn hidden(&self) -> HiddenLines {
+        self.hidden.clone()
     }
 
     /// The width a `DisplayLineMap` of this pane wraps against.
@@ -157,13 +167,20 @@ impl EditorState {
     }
 
     /// The gutter settings pane `pid` draws by: its buffer's line-number
-    /// style, and its sign column's width from the buffer's `gutter-signs`
+    /// style, its sign column's width from the buffer's `gutter-signs`
     /// setting, its registered sign sources and, for `auto`, whether the
-    /// last sign sync placed a sign in the pane. Every gutter width, the frame's
-    /// and a between-frame reader's alike, comes from here.
+    /// last sign sync placed a sign in the pane, and whether its fold column
+    /// shows. Every gutter width, the frame's and a between-frame reader's
+    /// alike, comes from here.
     pub(in crate::editor) fn gutter_inputs(&self, view: &EngineView, pid: PaneId) -> GutterInputs {
         let bid = view.panes[pid].buffer_id();
-        let overrides = &self.buffers.get(bid).overrides;
+        let doc = self.buffers.get(bid);
+        let overrides = &doc.overrides;
+        let foldable = doc
+            .syntax
+            .as_ref()
+            .is_some_and(|syntax| syntax.bundle().folds.is_some())
+            || !self.hidden_lines(view, pid).is_empty();
         let collapsed = overrides.gutter_signs(&self.settings).mode
             == crate::editor::settings::SignColumnMode::Auto
             && !self.panes.entries[pid].render.has_signs();
@@ -174,6 +191,7 @@ impl EditorState {
             } else {
                 SignColumn::width_for_slots(self.sign_slots(bid))
             },
+            folds: overrides.gutter_folds(&self.settings) && foldable,
         }
     }
 
@@ -238,6 +256,15 @@ impl EditorState {
         }
     }
 
+    /// The lines pane `pid`'s closed folds hide in the buffer it shows.
+    pub(in crate::editor) fn hidden_lines(
+        &self,
+        view: &hume_engine::pipeline::EngineView,
+        pid: hume_core::PaneId,
+    ) -> HiddenLines {
+        self.panes.entries.shown(&view.panes, pid).hidden_lines()
+    }
+
     /// Pane `pid`'s [`Self::format_key`] plus the content width and geometry
     /// it formats and scrolls by at `size`, and the scroll margin. The frame's
     /// scroll pass reveals the cursor when this changes.
@@ -254,6 +281,7 @@ impl EditorState {
         };
         LayoutKey {
             format: self.format_key(&view.panes[pid]),
+            hidden: self.hidden_lines(view, pid),
             content_width: self.pane_geometry(view, pid, size).content_width,
             size,
             scroll_margin: self.settings.scroll_margin,
@@ -267,8 +295,9 @@ impl EditorState {
     }
 }
 
-/// The line range `viewport` shows, end-exclusive, clamped to a buffer of
-/// `content_lines`, so the hook payload and `(viewport-range bid)` agree.
+/// The line range `viewport` shows with `hidden` folded away, end-exclusive,
+/// clamped to a buffer of `content_lines`, so the hook payload and
+/// `(viewport-range bid)` agree.
 /// Never points past the buffer's last *content* line (not ropey's phantom
 /// line past the structural trailing `\n`), even when the pane's viewport
 /// height exceeds the buffer.
@@ -280,17 +309,18 @@ impl EditorState {
 pub(in crate::editor) fn pane_visible_range(
     viewport: &hume_engine::pane::Viewport,
     size: hume_engine::pipeline::PaneSize,
+    hidden: &HiddenLines,
     content_lines: hume_rope::line::ContentLineCount,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
     let first_line = viewport.top().line;
-    // Terminal-row count added to a buffer-line index: under wrap one buffer
+    // Terminal-row count of shown lines past the top: under wrap one buffer
     // line can span multiple display lines (and therefore fewer terminal
     // rows than buffer lines), so this over-estimates how many buffer lines
     // are visible. Safe here: the range only needs to cover every buffer
     // line that *could* be visible, not name the true last one exactly.
     let height_rows = usize::from(size.height().max(1));
-    let end_line = first_line
-        .advance(height_rows)
+    let end_line = hidden
+        .line_after_shown(first_line, height_rows)
         .min(content_lines.end_exclusive());
     hume_rope::offset::ExclusiveRange::new(first_line, end_line)
 }
@@ -315,7 +345,7 @@ pub(in crate::editor) fn viewport_range(
         &mut state.panes.entries,
         &mut view.panes,
         pid,
-        key,
+        &key,
     );
-    pane_visible_range(viewport, size, content_lines)
+    pane_visible_range(viewport, size, &key.hidden(), content_lines)
 }

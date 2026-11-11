@@ -267,17 +267,24 @@ fn build_pane_trie() -> KeyTrie {
 
 // ── View (`z`) sub-trie ──────────────────────────────────────────────────────
 //
-// Viewport repositioning; the cursor itself never moves. The three leaves are
-// laid out directionally rather than by Vim's initials: `z k` (up/top),
-// `z z` (centre), `z j` (down/bottom), reusing the j/k axis every motion in
-// the editor already trains. Vim's `zt`/`zb` are not aliased:
-// `t` and `b` stay free under `z` for plugins (`core:pickers` claims `z b`).
+// Viewport repositioning and folding. The three scroll leaves leave the
+// cursor where it is and are laid out directionally rather than by Vim's
+// initials: `z k` (up/top), `z z` (centre), `z j` (down/bottom), reusing the
+// j/k axis every motion in the editor already trains. Vim's `zb` is not
+// aliased: `b` stays free under `z` for plugins (`core:pickers` claims it).
+// The fold leaves are `z t` (toggle), `z o`/`z c` (open/close at each
+// selection) and `z O`/`z C` (every fold).
 
 fn build_view_trie() -> KeyTrie {
     let mut t = KeyTrie::default();
     t.bind_leaf(key!('z'), cmd!("center-view-on-cursor"));
     t.bind_leaf(key!('k'), cmd!("top-view-on-cursor"));
     t.bind_leaf(key!('j'), cmd!("bottom-view-on-cursor"));
+    t.bind_leaf(key!('t'), cmd!("toggle-fold"));
+    t.bind_leaf(key!('o'), cmd!("open-fold"));
+    t.bind_leaf(key!('c'), cmd!("close-fold"));
+    t.bind_leaf(key!('O'), cmd!("open-all-folds"));
+    t.bind_leaf(key!('C'), cmd!("close-all-folds"));
     t
 }
 
