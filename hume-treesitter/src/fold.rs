@@ -34,28 +34,34 @@ impl FoldQuery {
         Some(Self::Folds { query, fold })
     }
 
-    /// Call `f` with every region of `tree` with a node in `bytes`, in
-    /// match order.
+    /// Call `f` with every region of `tree` with a node in `bytes` whose
+    /// first line `wanted` holds, in match order. A region's extent is
+    /// worked out only once `wanted` holds its first line.
     fn regions(
         &self,
         cursor: &mut QueryCursor,
         tree: &Tree,
         rope: &ropey::Rope,
         bytes: Range<usize>,
+        wanted: &impl Fn(ContentLine) -> bool,
         f: &mut impl FnMut(Fold),
     ) {
+        let wanted = |header: Node| wanted(ContentLine::new(header.start_position().row));
         match self {
             Self::Folds { query, fold } => {
                 cursor.set_byte_range(bytes);
                 let mut matches = cursor.matches(query, tree.root_node(), RopeProvider(rope));
                 while let Some(m) = matches.next() {
                     m.nodes_for_capture_index(*fold)
+                        .filter(|&node| wanted(node))
                         .filter_map(|node| fold_of(node, node, rope))
                         .for_each(&mut *f);
                 }
             }
             Self::Scopes(scopes) => scopes.for_each_scope(cursor, tree, rope, bytes, |h, s| {
-                fold_of(h, s, rope).into_iter().for_each(&mut *f);
+                if wanted(h) {
+                    fold_of(h, s, rope).into_iter().for_each(&mut *f);
+                }
             }),
         }
     }
@@ -77,6 +83,7 @@ impl SyntaxLayers {
             covering,
             rope,
             bytes,
+            &|first| first <= line,
             &mut |fold| {
                 if fold.spans(line) {
                     out.push(fold);
@@ -95,6 +102,7 @@ impl SyntaxLayers {
             self.layers.iter(),
             rope,
             0..rope.len_bytes(),
+            &|_| true,
             &mut |fold| folds.push(fold),
         );
         canonical(&mut folds);
@@ -111,11 +119,14 @@ impl SyntaxLayers {
         out: &mut Vec<ContentLine>,
     ) {
         let (bytes, covering) = self.covering_lines(rope, lines);
-        layer_regions(cursor, covering, rope, bytes, &mut |fold| {
-            if lines.contains(fold.first()) {
-                out.push(fold.first());
-            }
-        });
+        layer_regions(
+            cursor,
+            covering,
+            rope,
+            bytes,
+            &|first| lines.contains(first),
+            &mut |fold| out.push(fold.first()),
+        );
     }
 }
 
@@ -124,11 +135,12 @@ fn layer_regions<'l>(
     layers: impl Iterator<Item = &'l SyntaxLayer>,
     rope: &ropey::Rope,
     bytes: Range<usize>,
+    wanted: &impl Fn(ContentLine) -> bool,
     f: &mut impl FnMut(Fold),
 ) {
     for layer in layers {
         if let Some(query) = &layer.bundle.folds {
-            query.regions(cursor, &layer.tree, rope, bytes.clone(), f);
+            query.regions(cursor, &layer.tree, rope, bytes.clone(), wanted, f);
         }
     }
 }
