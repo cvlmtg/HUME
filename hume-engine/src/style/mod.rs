@@ -48,17 +48,6 @@ impl StyleScratch {
             primary_sel_span: None,
         }
     }
-
-    /// Reset all buffers to empty, retaining allocated capacity.
-    pub fn clear(&mut self) {
-        self.styles.clear();
-        self.decorations.clear();
-        self.tier_bufs.clear();
-        self.sel_spans.clear();
-        self.head_display_cols.clear();
-        self.primary_head_display_col = None;
-        self.primary_sel_span = None;
-    }
 }
 
 impl Default for StyleScratch {

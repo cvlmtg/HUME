@@ -2171,17 +2171,3 @@ fn chrome_rows_without_painters_panic() {
         true,
     );
 }
-
-// ── FrameScratch ─────────────────────────────────────────────────────
-
-#[test]
-fn frame_scratch_clear_retains_capacity() {
-    let mut s = FrameScratch::new();
-    for _ in 0..100 {
-        s.style.styles.push(hume_grid::ResolvedStyle::default());
-    }
-    let cap_before = s.style.styles.capacity();
-    s.clear();
-    assert_eq!(s.style.styles.len(), 0);
-    assert!(s.style.styles.capacity() >= cap_before);
-}

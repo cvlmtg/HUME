@@ -35,8 +35,8 @@ use pane_render::render_pane;
 
 // Frame scratch buffers
 
-/// Per-frame scratch storage for the Style and gutter-layout stages.
-/// Cleared at the start of each pane render. After a few frames, all `Vec`s
+/// Per-frame scratch storage for the Style and gutter-layout stages. Each
+/// buffer is reset where its stage fills it. After a few frames, all `Vec`s
 /// have stabilised capacity and no more heap allocations occur.
 ///
 /// The Format stage's buffers are not here. They live on each
@@ -62,13 +62,6 @@ impl FrameScratch {
             header_layout: crate::scope_headers::HeaderLayout::default(),
             fold_starts: crate::builtins::fold_column::FoldStarts::default(),
         }
-    }
-
-    /// Reset all buffers to empty, retaining allocated capacity.
-    pub fn clear(&mut self) {
-        self.style.clear();
-        self.lane_widths.clear();
-        self.fold_starts.reset(crate::folds::HiddenLines::default());
     }
 }
 
@@ -621,8 +614,6 @@ impl EngineView {
             let rows = *pane_rows
                 .get(pane_id)
                 .expect("no rows for a live pane, see RenderContext::set_pane_rows");
-
-            scratch.clear();
 
             // The one place that can say these are disjoint parts of one pane:
             // the render pass reads three of its fields while writing two:
