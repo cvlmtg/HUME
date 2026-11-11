@@ -92,6 +92,16 @@ fn closing_nested_folds_moves_an_end_to_the_outer_line() {
 }
 
 #[test]
+fn closing_a_fold_replaces_the_closed_one_on_its_first_line() {
+    let mut ed = editor(&format!("-[f]>{}", &FN[1..]));
+    close(&mut ed, &[fn_fold()]);
+    close(&mut ed, &[fold(0, 4, false)]);
+    assert_eq!(closed(&ed), [(0, 4)]);
+    close(&mut ed, &[fold(0, 2, false), fold(0, 3, true)]);
+    assert_eq!(closed(&ed), [(0, 3)]);
+}
+
+#[test]
 fn a_selection_covering_the_hidden_lines_keeps_the_fold_closed() {
     let input = "fn f() {\n-[    abc\n    d\n]>}\nz\ny\n";
     let mut ed = editor(input);
@@ -439,6 +449,30 @@ fn toggle_fold_closes_then_opens() {
     assert_eq!(closed(&ed), []);
 }
 
+/// An editor on [`RS`] with the `if` block closed and the cursor on its
+/// shown closing line.
+fn on_closing_line_of_closed_if() -> Editor {
+    let mut ed = rust_editor(&RS.replacen("go", "-[g]>o", 1));
+    keys(&mut ed, "zcj");
+    assert_eq!(closed(&ed), [(6, 9)]);
+    assert_eq!(state(&ed), RS.replacen("    }", "    -[}]>", 1));
+    ed
+}
+
+#[test]
+fn open_fold_on_a_folds_closing_line_opens_it() {
+    let mut ed = on_closing_line_of_closed_if();
+    keys(&mut ed, "zo");
+    assert_eq!(closed(&ed), []);
+}
+
+#[test]
+fn toggle_fold_on_a_folds_closing_line_opens_it() {
+    let mut ed = on_closing_line_of_closed_if();
+    keys(&mut ed, "zt");
+    assert_eq!(closed(&ed), []);
+}
+
 #[test]
 fn open_all_folds_opens_every_fold() {
     let mut ed = rust_editor(&RS.replacen("x", "-[x]>", 1));
@@ -461,6 +495,45 @@ fn closing_without_a_parsed_tree_changes_nothing() {
     assert_eq!(closed(&ed), []);
     assert_eq!(state(&ed), marked);
     assert_eq!(status(&ed), "No syntax tree to fold with");
+}
+
+/// An editor on `marked` in the `rust` grammar with no fold or scope query,
+/// the parse drained.
+fn rust_editor_without_regions(marked: &str) -> Editor {
+    let mut ed =
+        super::structural::grammar_editor_undrained("rust", "tree_sitter_rust", &[], marked);
+    ed.reparse_stale_buffers();
+    ed
+}
+
+const NO_FOLDS: &str = "This language has no folds";
+
+#[test]
+fn closing_in_a_language_without_regions_says_so() {
+    let mut ed = rust_editor_without_regions("fn f() {\n    -[a]>();\n    b();\n}\n");
+    keys(&mut ed, "zc");
+    assert_eq!(status(&ed), NO_FOLDS);
+}
+
+#[test]
+fn closing_after_an_edit_in_a_language_without_regions_says_so() {
+    let mut ed = rust_editor_without_regions("fn f() {\n    -[a]>();\n    b();\n}\n");
+    ed.feed_key(key('x'));
+    ed.feed_key(key('d'));
+    assert!(
+        ed.doc().current_layers().is_none(),
+        "premise: the tree is stale"
+    );
+    ed.feed_key(key('z'));
+    ed.feed_key(key('c'));
+    assert_eq!(status(&ed), NO_FOLDS);
+}
+
+#[test]
+fn closing_all_in_a_language_without_regions_says_so() {
+    let mut ed = rust_editor_without_regions("fn f() {\n    -[a]>();\n    b();\n}\n");
+    keys(&mut ed, "zC");
+    assert_eq!(status(&ed), NO_FOLDS);
 }
 
 #[test]

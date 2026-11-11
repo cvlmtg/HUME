@@ -342,10 +342,7 @@ pub(in crate::editor) fn ensure_syntax_current(
                 .layers
                 .iter()
                 .any(|layer| layer.bundle.indents.is_some()),
-            SyntaxUse::Folds => layers
-                .layers
-                .iter()
-                .any(|layer| layer.bundle.folds.is_some()),
+            SyntaxUse::Folds => layers.can_fold(),
             SyntaxUse::InjectedLanguages => syn.bundle().injections.is_some(),
         };
     if !can_change {

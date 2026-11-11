@@ -192,6 +192,11 @@ impl PaneBufferState {
         self.folds.hidden().clone()
     }
 
+    /// The line a fold command at `line` acts at (see [`FoldSet::fold_line`]).
+    pub(in crate::editor) fn fold_line(&self, line: ContentLine) -> ContentLine {
+        self.folds.fold_line(line)
+    }
+
     /// Close `folds`, regions of `text`, the buffer's current text. A
     /// selection end they hide from its selection moves to the line shown
     /// in its place.

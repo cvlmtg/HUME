@@ -19,25 +19,21 @@ enum Scopes {
     /// `context.scm`: `@context` captures a scope's node; `@context.start`
     /// optionally names the node whose first line is the scope's header
     /// instead.
-    Context {
-        context: Option<u32>,
-        start: Option<u32>,
-    },
+    Context { context: u32, start: Option<u32> },
     /// `textobjects.scm`'s `function.around` and `class.around` captures,
-    /// each headed by the captured node holding the line's start, so a
-    /// leading grouped node (an attribute above a function) never heads one.
+    /// each captured node a scope headed by its own first line.
     TextObjects { around: [Option<u32>; 2] },
 }
 
 impl ContextQuery {
-    /// A compiled `context.scm`.
-    pub(crate) fn new(query: tree_sitter::Query) -> Self {
-        let context = query.capture_index_for_name("context");
+    /// A compiled `context.scm`, `None` when it captures no `@context`.
+    pub(crate) fn new(query: tree_sitter::Query) -> Option<Self> {
+        let context = query.capture_index_for_name("context")?;
         let start = query.capture_index_for_name("context.start");
-        Self {
+        Some(Self {
             query,
             scopes: Scopes::Context { context, start },
-        }
+        })
     }
 
     /// The scopes of a grammar without `context.scm`: its function and class
@@ -104,8 +100,7 @@ impl ContextQuery {
         while let Some(m) = matches.next() {
             match self.scopes {
                 Scopes::Context { context, start } => {
-                    let Some(scope) = context.and_then(|c| m.nodes_for_capture_index(c).next())
-                    else {
+                    let Some(scope) = m.nodes_for_capture_index(context).next() else {
                         continue;
                     };
                     let header = start

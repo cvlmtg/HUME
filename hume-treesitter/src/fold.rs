@@ -61,6 +61,11 @@ impl FoldQuery {
 }
 
 impl SyntaxLayers {
+    /// Whether any layer's grammar names foldable regions.
+    pub fn can_fold(&self) -> bool {
+        self.layers.iter().any(|layer| layer.bundle.folds.is_some())
+    }
+
     /// The regions of every layer holding `line`, innermost first, one per
     /// first line.
     pub fn folds_spanning(&self, rope: &ropey::Rope, line: ContentLine, out: &mut Vec<Fold>) {

@@ -341,6 +341,51 @@ fn attach_grammar_with_broken_context_fails_whole_attach() {
     );
 }
 
+/// Attach rust with `kind`'s query file holding `src`, which must fail with
+/// [`super::RegisterError::MissingCapture`] naming `capture`.
+fn assert_attach_misses_capture(kind: OptionalQuery, src: &str, capture: &str) {
+    require_grammars(&["rust"]);
+    let hl_path = grammar_query_path("rust");
+    let (_dir, path) = write_temp_scm(kind.file_name(), src);
+
+    let mut reg = LanguageRegistry::for_testing();
+    let mut scope_reg = ScopeRegistry::new();
+    let result = reg.attach_grammar(
+        "rust",
+        &rust_source(QueryFiles::new(hl_path).with(kind, path)),
+        ConfigOrigin::User,
+        &mut scope_reg,
+    );
+    let Err(err) = result else {
+        panic!(
+            "{} without @{capture} must fail the attach",
+            kind.file_name()
+        );
+    };
+    assert!(
+        matches!(err, super::RegisterError::MissingCapture { kind: k, capture: c } if k == kind && c == capture),
+        "got: {err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        format!("{} captures no @{capture}", kind.file_name())
+    );
+    assert!(
+        reg.defined_id("rust").is_none(),
+        "a failed attach must not leave a partial identity behind"
+    );
+}
+
+#[test]
+fn attach_grammar_with_folds_capturing_no_fold_fails_whole_attach() {
+    assert_attach_misses_capture(OptionalQuery::Folds, "(block) @region", "fold");
+}
+
+#[test]
+fn attach_grammar_with_context_capturing_no_context_fails_whole_attach() {
+    assert_attach_misses_capture(OptionalQuery::Context, "(function_item) @scope", "context");
+}
+
 #[test]
 fn query_files_get_returns_what_with_stored_per_kind() {
     let files = QueryFiles::new("hl.scm".into());

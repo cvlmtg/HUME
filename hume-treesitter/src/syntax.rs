@@ -565,6 +565,13 @@ impl Syntax {
         &self.bundle
     }
 
+    /// Whether the buffer has foldable regions to name: its root grammar
+    /// does, or a layer injected into the committed tree does. The root
+    /// answers before the first parse lands.
+    pub fn can_fold(&self) -> bool {
+        self.bundle.folds.is_some() || self.layers().is_some_and(SyntaxLayers::can_fold)
+    }
+
     /// Names the committed layers, `None` while there are none: it differs
     /// after every install that replaces them, so a reader can tell when the
     /// scopes it settled a view against have changed.

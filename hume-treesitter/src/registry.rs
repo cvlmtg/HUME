@@ -283,8 +283,20 @@ pub(crate) fn compile_queries(
                         .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?,
                 )
                 .is_some(),
-            OptionalQuery::Context => context.replace(ContextQuery::new(query)).is_some(),
-            OptionalQuery::Folds => folds.replace(FoldQuery::new(query)).is_some(),
+            OptionalQuery::Context => context
+                .replace(
+                    ContextQuery::new(query).ok_or(RegisterError::MissingCapture {
+                        kind,
+                        capture: "context",
+                    })?,
+                )
+                .is_some(),
+            OptionalQuery::Folds => folds
+                .replace(FoldQuery::new(query).ok_or(RegisterError::MissingCapture {
+                    kind,
+                    capture: "fold",
+                })?)
+                .is_some(),
         };
         assert!(!duplicate, "{} given twice", kind.file_name());
     }
@@ -295,9 +307,7 @@ pub(crate) fn compile_queries(
                 .and_then(ContextQuery::from_textobjects)
         })
         .map(Arc::new);
-    let folds = folds
-        .flatten()
-        .or_else(|| context.clone().map(FoldQuery::Scopes));
+    let folds = folds.or_else(|| context.clone().map(FoldQuery::Scopes));
     Ok(CompiledQueries {
         highlighter: Arc::new(TreeSitterHighlighter::from_shared_query(
             highlights, scope_reg,
@@ -433,6 +443,11 @@ pub enum RegisterError {
         kind: OptionalQuery,
         error: tree_sitter::QueryError,
     },
+    /// An optional query compiled without the capture its kind reads.
+    MissingCapture {
+        kind: OptionalQuery,
+        capture: &'static str,
+    },
     /// Grammar ABI version is outside the range the linked tree-sitter
     /// loads.  Recompile the grammar with a compatible generator.
     AbiIncompatible { name: String, abi: usize },
@@ -450,6 +465,9 @@ impl std::fmt::Display for RegisterError {
             }
             Self::OptionalQueryBuild { kind, error } => {
                 write!(f, "{} compilation failed: {error}", kind.file_name())
+            }
+            Self::MissingCapture { kind, capture } => {
+                write!(f, "{} captures no @{capture}", kind.file_name())
             }
             Self::AbiIncompatible { name, abi } => write!(
                 f,

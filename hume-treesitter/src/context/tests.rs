@@ -18,6 +18,7 @@ fn compile(source: &str) -> ContextQuery {
     require_grammars(&["rust"]);
     let grammar = open_grammar("rust", "tree_sitter_rust");
     ContextQuery::new(tree_sitter::Query::new(grammar.language(), source).expect("compile query"))
+        .expect("the query captures @context")
 }
 
 /// Rust with the fixture `kind` query and no other optional query.
@@ -59,7 +60,7 @@ fn context_query_resolves_its_captures() {
     assert!(matches!(
         fixture.scopes,
         Scopes::Context {
-            context: Some(_),
+            context: _,
             start: None
         }
     ));
@@ -68,7 +69,7 @@ fn context_query_resolves_its_captures() {
     assert!(matches!(
         with_start.scopes,
         Scopes::Context {
-            context: Some(_),
+            context: _,
             start: Some(_)
         }
     ));

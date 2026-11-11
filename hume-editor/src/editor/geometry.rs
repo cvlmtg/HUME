@@ -176,10 +176,7 @@ impl EditorState {
         let bid = view.panes[pid].buffer_id();
         let doc = self.buffers.get(bid);
         let overrides = &doc.overrides;
-        let foldable = doc
-            .syntax
-            .as_ref()
-            .is_some_and(|syntax| syntax.bundle().folds.is_some())
+        let foldable = doc.syntax.as_ref().is_some_and(Syntax::can_fold)
             || !self.hidden_lines(view, pid).is_empty();
         let collapsed = overrides.gutter_signs(&self.settings).mode
             == crate::editor::settings::SignColumnMode::Auto

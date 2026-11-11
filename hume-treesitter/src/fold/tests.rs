@@ -160,24 +160,6 @@ fn folds_scm_wins_over_the_scope_query() {
 }
 
 #[test]
-fn folds_scm_without_a_fold_capture_leaves_the_scope_query() {
-    require_grammars(&["rust"]);
-    let context = fixture_query("rust", OptionalQuery::Context);
-    let source = "fn f() {\n    a();\n    b();\n}\n";
-    let bundle = make_bundle(
-        "rust",
-        "tree_sitter_rust",
-        "",
-        &[
-            (OptionalQuery::Context, &context),
-            (OptionalQuery::Folds, "(block) @region"),
-        ],
-    );
-    let (syn, text) = syntax_with(bundle, source);
-    assert_eq!(fold_at(&syn, &text, 0), Some(fold(0, 3, true)));
-}
-
-#[test]
 fn an_injected_layer_folds_its_own_scopes() {
     require_grammars(&["markdown", "rust"]);
     let injections = fixture_query("markdown", OptionalQuery::Injections);
@@ -195,6 +177,26 @@ fn an_injected_layer_folds_its_own_scopes() {
     let text = BufferText::from(source);
     let syn = Syntax::attach_sync(markdown, &text, &langs);
     assert_eq!(fold_at(&syn, &text, 3), Some(fold(3, 6, true)));
+}
+
+#[test]
+fn a_root_without_regions_can_fold_through_an_injected_layer() {
+    require_grammars(&["markdown", "rust"]);
+    let injections = fixture_query("markdown", OptionalQuery::Injections);
+    let markdown = make_bundle(
+        "markdown",
+        "tree_sitter_markdown",
+        "",
+        &[(OptionalQuery::Injections, &injections)],
+    );
+    let langs = Arc::new(GrammarSnapshot::from_iter([(
+        "rust".to_owned(),
+        rust_blocks(),
+    )]));
+    let prose = BufferText::from("## Usage\n\nText.\n");
+    let code = BufferText::from("## Usage\n\n```rust\nfn demo() {\n    x();\n}\n```\n");
+    assert!(!Syntax::attach_sync(Arc::clone(&markdown), &prose, &langs).can_fold());
+    assert!(Syntax::attach_sync(markdown, &code, &langs).can_fold());
 }
 
 #[test]

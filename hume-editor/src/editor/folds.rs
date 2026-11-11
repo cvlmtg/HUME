@@ -12,6 +12,7 @@ use hume_editing::selection::{EditView, Selection, SelectionSet, SelectionView};
 use hume_engine::folds::{Fold, HiddenLines};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::InclusiveRange;
 
 #[derive(Clone, Default)]
 pub(in crate::editor) struct FoldSet {
@@ -31,13 +32,24 @@ impl FoldSet {
         &self.hidden
     }
 
+    /// The line a fold command at `line` acts at: the line shown in place
+    /// of a hidden line, and the first line of the closed fold whose shown
+    /// closing line `line` is.
+    pub(in crate::editor) fn fold_line(&self, line: ContentLine) -> ContentLine {
+        let line = self
+            .closed
+            .iter()
+            .find(|fold| fold.shows_last() && fold.last() == line)
+            .map_or(line, |fold| fold.first());
+        self.hidden.shown_at_or_before(line)
+    }
+
     /// Close `folds`, each replacing a closed fold starting on its line.
     pub(in crate::editor) fn close(&mut self, folds: impl IntoIterator<Item = Fold>) {
-        let mut closed = std::mem::take(&mut self.closed);
-        for fold in folds {
-            closed.retain(|c| c.first() != fold.first());
-            closed.push(fold);
-        }
+        let closed = std::mem::take(&mut self.closed)
+            .into_iter()
+            .chain(folds)
+            .collect();
         self.set(closed);
     }
 
@@ -58,11 +70,14 @@ impl FoldSet {
         if self.closed.is_empty() {
             return;
         }
+        let text = view.text();
         let mut open = vec![false; self.closed.len()];
         for sel in view.iter() {
-            for line in end_lines(sel) {
+            let lines = sel.lines();
+            let ends = [sel.anchor(), sel.head()].map(|end| text.char_to_line(end.offset()));
+            for line in ends.into_iter().filter(|&line| self.hidden.is_hidden(line)) {
                 for (i, fold) in self.closed.iter().enumerate() {
-                    open[i] |= hides_from(*fold, sel, line);
+                    open[i] |= hides_from(*fold, lines, line);
                 }
             }
         }
@@ -83,7 +98,13 @@ impl FoldSet {
         let text = view.text();
         let shown = |sel: SelectionView<'_>, end: ClusterStart| {
             let line = text.char_to_line(end.offset());
-            match self.closed.iter().any(|fold| hides_from(*fold, sel, line)) {
+            let lines = sel.lines();
+            let hidden = self.hidden.is_hidden(line)
+                && self
+                    .closed
+                    .iter()
+                    .any(|fold| hides_from(*fold, lines, line));
+            match hidden {
                 true => text
                     .lines()
                     .indent_end(self.hidden.shown_at_or_before(line)),
@@ -135,24 +156,23 @@ impl FoldSet {
         self.set(closed);
     }
 
+    /// Make `closed` the closed folds, a later fold replacing an earlier one
+    /// on its first line.
     fn set(&mut self, mut closed: Vec<Fold>) {
-        closed.sort_unstable_by_key(|fold| fold.first());
+        // Reversed so the stable sort puts each first line's latest fold
+        // first, the one `dedup_by_key` keeps.
+        closed.reverse();
+        closed.sort_by_key(|fold| fold.first());
         closed.dedup_by_key(|fold| fold.first());
         self.hidden = HiddenLines::from_folds(closed.iter().copied());
         self.closed = closed;
     }
 }
 
-/// The lines `sel`'s anchor and head are on.
-fn end_lines(sel: SelectionView<'_>) -> [ContentLine; 2] {
-    let text = sel.text();
-    [sel.anchor(), sel.head()].map(|end| text.char_to_line(end.offset()))
-}
-
-/// Whether closed `fold` hides `line`, an end of `sel`, from `sel`: it hides
-/// the line, and `sel` does not cover every line it hides.
-fn hides_from(fold: Fold, sel: SelectionView<'_>, line: ContentLine) -> bool {
+/// Whether closed `fold` hides `line`, an end of a selection on `lines`,
+/// from that selection: it hides the line, and `lines` does not cover every
+/// line it hides.
+fn hides_from(fold: Fold, lines: InclusiveRange<ContentLine>, line: ContentLine) -> bool {
     let hidden = fold.hidden();
-    let lines = sel.lines();
     hidden.contains(line) && !(lines.contains(hidden.start) && lines.contains(hidden.end))
 }

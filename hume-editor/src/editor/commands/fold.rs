@@ -6,13 +6,34 @@ use hume_core::{Count, PaneId};
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_rope::line::ContentLine;
+use hume_treesitter::layers::SyntaxLayers;
 
 use super::CommandPane;
 use crate::editor::EditorState;
+use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};
 
 const NO_TREE: &str = "No syntax tree to fold with";
+const NO_FOLDS: &str = "This language has no folds";
+
+/// The layers `buf`'s regions are read from, once `ensure_syntax_current`
+/// has run for [`SyntaxUse::Folds`].
+///
+/// # Errors
+/// When `buf` has no grammar, its grammars name no regions, or its tree
+/// describes an older text.
+fn fold_layers(buf: &Buffer) -> Result<&SyntaxLayers, CommandError> {
+    let syntax = buf
+        .syntax
+        .as_ref()
+        .ok_or_else(|| CommandError::transient(NO_TREE))?;
+    if !syntax.can_fold() {
+        return Err(CommandError::transient(NO_FOLDS));
+    }
+    buf.current_layers()
+        .ok_or_else(|| CommandError::transient(NO_TREE))
+}
 
 /// What [`apply_fold`] does at a line.
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -25,12 +46,12 @@ pub(in crate::editor) enum FoldOp {
     Toggle,
 }
 
-/// Apply `op` at each of `lines` in pane `pid`. A hidden line acts as the
-/// line shown in its place.
+/// Apply `op` at each of `lines` in pane `pid`. A hidden line, or the shown
+/// closing line of a closed fold, acts as the fold's line.
 ///
 /// # Errors
-/// When a region must close and the buffer has no syntax tree for its
-/// current text. Nothing changes then.
+/// When a region must close and the buffer has none to close (see
+/// [`fold_layers`]). Nothing changes then.
 pub(in crate::editor) fn apply_fold(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -38,10 +59,11 @@ pub(in crate::editor) fn apply_fold(
     lines: impl IntoIterator<Item = ContentLine>,
     op: FoldOp,
 ) -> Result<(), CommandError> {
-    let hidden = state.hidden_lines(view, pid);
+    let pane = state.panes.entries.shown(&view.panes, pid);
+    let hidden = pane.hidden_lines();
     let (open, close): (Vec<ContentLine>, Vec<ContentLine>) = lines
         .into_iter()
-        .map(|line| hidden.shown_at_or_before(line))
+        .map(|line| pane.fold_line(line))
         .partition(|&line| match op {
             FoldOp::Open => true,
             FoldOp::Close => false,
@@ -52,9 +74,7 @@ pub(in crate::editor) fn apply_fold(
     if !close.is_empty() {
         ensure_syntax_current(state, &mut view.registry, bid, SyntaxUse::Folds);
         let buf = state.buffers.get(bid);
-        let layers = buf
-            .current_layers()
-            .ok_or_else(|| CommandError::transient(NO_TREE))?;
+        let layers = fold_layers(buf)?;
         let mut spanning = Vec::new();
         for line in close {
             layers.folds_spanning(buf.text().rope(), line, &mut spanning);
@@ -141,7 +161,7 @@ pub(in crate::editor) fn cmd_open_all_folds(
 /// Close every region the buffer's grammar names.
 ///
 /// # Errors
-/// When the buffer has no syntax tree for its current text.
+/// When the buffer has no regions to close (see [`fold_layers`]).
 pub(in crate::editor) fn cmd_close_all_folds(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -152,9 +172,7 @@ pub(in crate::editor) fn cmd_close_all_folds(
     let bid = t.bid(view);
     ensure_syntax_current(state, &mut view.registry, bid, SyntaxUse::Folds);
     let buf = state.buffers.get(bid);
-    let layers = buf
-        .current_layers()
-        .ok_or_else(|| CommandError::transient(NO_TREE))?;
+    let layers = fold_layers(buf)?;
     let mut folds = Vec::new();
     layers.all_folds(buf.text().rope(), &mut folds);
     let text = buf.text();

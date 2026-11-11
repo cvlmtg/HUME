@@ -285,10 +285,6 @@ impl Editor {
         true
     }
 
-    /// Resolve `hit` to the buffer cluster under it, at its pane's drawn size
-    /// with the pane's current gutter. A press on a scope header row resolves
-    /// to its line's cluster, laid out as the row draws it, not to the hidden
-    /// line under it.
     /// The line whose fold caret `hit` lands on: a cell of the pane's fold
     /// column, on a row drawing a line's first display line or a scope
     /// header, beside a caret. `None` anywhere else.
@@ -328,6 +324,10 @@ impl Editor {
         (starts.mark(line) != FoldMark::None).then_some(line)
     }
 
+    /// Resolve `hit` to the buffer cluster under it, at its pane's drawn size
+    /// with the pane's current gutter. A press on a scope header row resolves
+    /// to its line's cluster, laid out as the row draws it, not to the hidden
+    /// line under it.
     #[allow(clippy::disallowed_methods)] // a click aims at the view on screen
     fn click_to_cluster(&mut self, hit: PaneHit) -> Option<hume_rope::cluster::ClusterStart> {
         let pid = hit.pane();

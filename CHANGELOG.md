@@ -8,6 +8,9 @@
 ### Language servers
 - Type inlay hints sit right after the name they annotate: `offset: number` instead of `offset : number`.
 
+### Fixes
+- `register-grammar!` fails with the reason when its `#:context` query has no `@context` capture, instead of showing no scope headers.
+
 ## [0.20.1] - 2026-11-10
 
 ### Installation
