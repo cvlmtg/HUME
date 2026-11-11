@@ -26,7 +26,9 @@
 
 (define (lsp/hint->store-entry pane hint)
   (let* ((text (lsp/inlay-hint-text hint))
-         (pad-left (equal? (json-ref-or hint #f "paddingLeft") #t))
+         ;; See docs/decorations.md, "Inlay hints", on padding.
+         (pad-left (and (equal? (json-ref-or hint #f "paddingLeft") #t)
+                        (not (starts-with? text ":"))))
          (pad-right (equal? (json-ref-or hint #f "paddingRight") #t))
          (text (if pad-left (string-append " " text) text))
          (text (if pad-right (string-append text " ") text))

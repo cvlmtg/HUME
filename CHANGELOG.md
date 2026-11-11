@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Language servers
+- Type inlay hints sit right after the name they annotate: `offset: number` instead of `offset : number`.
+
 ## [0.20.1] - 2026-11-10
 
 ### Installation

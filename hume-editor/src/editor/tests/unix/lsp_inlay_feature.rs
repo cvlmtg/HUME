@@ -387,7 +387,7 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
             "textDocument/inlayHint",
             serde_json::json!([{
                 "position": {"line": 0, "character": 4},
-                "label": [{"value": ":"}, {"value": " i32"}],
+                "label": [{"value": "fn"}, {"value": " main"}],
                 "paddingLeft": true,
                 "paddingRight": true
             }]),
@@ -406,9 +406,38 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
         .collect();
     assert_eq!(hints.len(), 1);
     assert_eq!(
-        hints[0].text, " : i32 ",
+        hints[0].text, " fn main ",
         "label parts must concatenate in order, then get padding spaces on both sides"
     );
+}
+
+#[test]
+fn a_colon_led_label_gets_no_left_padding() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/inlayHint",
+            serde_json::json!([{
+                "position": {"line": 0, "character": 4},
+                "label": [{"value": ":"}, {"value": " i32"}],
+                "paddingLeft": true,
+                "paddingRight": true
+            }]),
+        );
+    });
+    let bid = ed.focused_buffer_id();
+
+    fire_viewport_change(&mut ed);
+    settle_until_idle(&mut ed);
+
+    let hints: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .inlay_hints_for_buffer(bid)
+        .collect();
+    assert_eq!(hints.len(), 1);
+    assert_eq!(hints[0].text, ": i32 ");
 }
 
 /// A server's `workspace/inlayHint/refresh` is answered and re-requests the

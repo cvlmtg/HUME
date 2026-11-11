@@ -141,6 +141,10 @@ refresh. When the debounce fires, the refresh:
 
 On the response:
 
+- A hint's `paddingLeft` and `paddingRight` become one space on that side, since a
+  terminal can only pad by a whole cell. A label that starts with `:` gets no left space:
+  the colon attaches to the code before it, as in a written type annotation (`offset:
+  number`, not `offset : number`).
 - A hint whose wire position lands at or past the end of the text (the text changed
   between request and response) is dropped.
 - The hints shown are those of every server that answered; a null answer contributes
