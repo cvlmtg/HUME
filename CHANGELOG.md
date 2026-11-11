@@ -5,6 +5,7 @@
 ### Panes & interface
 - Code folding: `z c`, `z o` and `z t` close and open the function, block or section around the cursor, and a caret in the gutter marks each one you can fold.
 - Scope headers stay fast while scrolling inside a very large macro, table or `impl` block.
+- To get the new fold regions and fast scope headers, install your grammars again with `:plum-install-grammar`.
 
 ### Language servers
 - Type inlay hints sit right after the name they annotate: `offset: number` instead of `offset : number`.
@@ -12,6 +13,7 @@
 ### Fixes
 - `register-grammar!` fails with the reason when its `#:context` query has no `@context` capture, instead of showing no scope headers.
 - Dragging the divider between two panes resizes them without `mouse-select` on.
+- A click while a key waits for a character, such as after `f`, ends a divider drag.
 
 ## [0.20.1] - 2026-11-10
 
