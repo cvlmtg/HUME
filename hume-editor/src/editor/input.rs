@@ -1,7 +1,7 @@
 //! Where terminal input enters the editor: a key, a mouse event or a
 //! paste, interactively or one key at a time from the headless runner.
 
-use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
+use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind, MouseButton, MouseEventKind};
 
 use super::Editor;
 use super::event::EditorEvent;
@@ -54,7 +54,17 @@ impl Editor {
         let totals_before = self.state.message_log.totals();
         match ev {
             TerminalEvent::Key(k) => self.handle_key(k),
-            TerminalEvent::Mouse(m) => self.dispatch_input(InputEvent::Mouse(m)),
+            TerminalEvent::Mouse(m) => {
+                // Only the Base layer starts a drag, but any layer may
+                // swallow the press or release that ends it.
+                if matches!(
+                    m.kind,
+                    MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+                ) {
+                    self.state.mouse_drag = None;
+                }
+                self.dispatch_input(InputEvent::Mouse(m))
+            }
             TerminalEvent::Paste(s) => self.handle_terminal_paste(s),
             // Regaining focus is one of the external-file-change check's
             // trigger points (alongside buffer-enter and `:checktime`); see

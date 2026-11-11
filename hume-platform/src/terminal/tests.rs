@@ -1,7 +1,7 @@
 use super::{
     Frame, FrameFlag, ModeSwitch, MouseReporting, write_cwd_report, write_focus_disable,
     write_focus_enable, write_kitty_pop, write_kitty_push, write_mouse_disable, write_mouse_enable,
-    write_paste_disable, write_paste_enable, write_unwind_escapes,
+    write_mouse_mode, write_paste_disable, write_paste_enable, write_unwind_escapes,
 };
 use std::io;
 use std::sync::Arc;
@@ -82,6 +82,38 @@ fn mouse_disable_emits_1002_1000_1006_in_that_order() {
     let mut buf = Vec::new();
     write_mouse_disable(&mut buf).unwrap();
     assert_eq!(buf, b"\x1b[?1002l\x1b[?1000l\x1b[?1006l");
+}
+
+/// What a writer was handed, split at each flush.
+#[derive(Default)]
+struct Flushes {
+    pending: Vec<u8>,
+    flushed: Vec<Vec<u8>>,
+}
+
+impl io::Write for Flushes {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.pending.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.flushed.push(std::mem::take(&mut self.pending));
+        Ok(())
+    }
+}
+
+/// A switch while a button is held must not leave tracking off between
+/// two writes the terminal may read apart.
+#[test]
+fn mouse_mode_switch_is_one_flushed_write() {
+    let mut out = Flushes::default();
+    write_mouse_mode(&mut out, Some(MouseReporting::Drags)).unwrap();
+    assert_eq!(
+        out.flushed,
+        vec![b"\x1b[?1002l\x1b[?1000l\x1b[?1006l\x1b[?1000h\x1b[?1006h\x1b[?1002h".to_vec()]
+    );
+    assert!(out.pending.is_empty());
 }
 
 #[test]

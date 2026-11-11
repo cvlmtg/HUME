@@ -1437,23 +1437,20 @@ impl Editor {
         let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
         let (wake, detached) = super::pipe_run::Detached::pair();
 
-        let state = EditorState {
-            wake,
-            buffers,
-            clock,
-            lsp: super::lsp::LspState::new_inline(),
-            settings,
-            panes,
-            history: super::minibuf::history::HistoryStore::new(history_capacity),
-            views,
-            tabline_view,
-            dirs: process_dirs(),
-            ..EditorState::base(focus, AbsolutePath::rooted(std::env::temp_dir()))
-        };
-        let applied_mouse_mode = state.mouse_reporting();
-
         Self {
-            state,
+            state: EditorState {
+                wake,
+                buffers,
+                clock,
+                lsp: super::lsp::LspState::new_inline(),
+                settings,
+                panes,
+                history: super::minibuf::history::HistoryStore::new(history_capacity),
+                views,
+                tabline_view,
+                dirs: process_dirs(),
+                ..EditorState::base(focus, AbsolutePath::rooted(std::env::temp_dir()))
+            },
             view: engine_view,
             kitty_enabled: false,
             scripting: None,
@@ -1466,7 +1463,7 @@ impl Editor {
             last_visible_range: rustc_hash::FxHashMap::default(),
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             tui: super::tui::Tui::Off,
-            applied_mouse_mode,
+            applied_mouse_mode: None,
             applied_cwd: None,
             startup_positions: Vec::new(),
             keeps_session: false,

@@ -113,31 +113,28 @@ fn set_option_applies_jump_list_capacity() {
 
 // ── :set global mouse / mouse-select resync per frame ─────────────
 
-/// The mouse-tracking mode is applied once at startup
-/// (`hume_platform::terminal::init`, called from `hume-editor/src/lib.rs`
-/// before entering the event loop); there is no other write side.
-/// `prepare_frame` calls `resync_mouse_mode` every frame, re-applying the
-/// terminal mode whenever it drifts from `EditorState::mouse_reporting`, so
-/// `:set global mouse=false` takes effect without restarting.
+/// `terminal::init` leaves mouse tracking off, and `prepare_frame`'s
+/// `resync_mouse_mode` applies `EditorState::mouse_reporting` whenever it
+/// differs from what was last applied, so `:set global mouse=false` takes
+/// effect without restarting.
 ///
-/// No `SharedTerm` exists in test `Editor`s (`Editor::for_testing`/`open`
-/// both seed `terminal: None`), so this can't assert on emitted escape
-/// bytes. That path is covered by `hume-platform`'s
-/// `mouse_enable_for_clicks_emits_1000_and_1006_only` and friends
-/// (`hume-platform/src/terminal/tests.rs`). This asserts the terminal-mode
-/// tracking state itself (`Editor::applied_mouse_mode`) resyncs to the new
-/// setting on the next `prepare_frame`, which is the part `resync_mouse_mode`
-/// can do headless. The `if let Some(term)` write is a one-line guard
-/// around the same comparison, exercised whenever a real terminal is
-/// attached.
+/// Test `Editor`s run with `tui: Tui::Off`, so no escape bytes are written
+/// here. `hume-platform`'s `mouse_mode_switch_is_one_flushed_write` and
+/// friends (`hume-platform/src/terminal/tests.rs`) cover the bytes. This
+/// asserts `Editor::applied_mouse_mode`, which `resync_mouse_mode` updates
+/// with or without a terminal.
 #[test]
 fn set_global_mouse_resyncs_applied_mode_next_frame() {
     use hume_platform::terminal::MouseReporting;
     let mut ed = editor_from("-[h]>ello\n");
+    let mut ctx = RenderContext::new();
+    ed.resize_terminal(40, 8);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
     assert_eq!(
         ed.applied_mouse_mode,
         Some(MouseReporting::Clicks),
-        "default EditorSettings has mouse=true, mouse_select=false"
+        "the first frame applies the default mouse=true, mouse_select=false"
     );
 
     let fp = FocusedPane::current(&ed.view);
@@ -148,8 +145,6 @@ fn set_global_mouse_resyncs_applied_mode_next_frame() {
         "the setting write itself must not resync; only prepare_frame does"
     );
 
-    let mut ctx = RenderContext::new();
-    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

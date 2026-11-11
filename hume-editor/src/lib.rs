@@ -190,8 +190,7 @@ pub fn run(
     )?;
     editor.attach_terminate_flag(terminate.clone());
 
-    let mut term =
-        hume_platform::terminal::init(&shared, editor.state.mouse_reporting(), kitty_enabled)?;
+    let mut term = hume_platform::terminal::init(&shared, kitty_enabled)?;
     // After `init`, so the hook it wraps is the terminal's: from here a panic
     // on a background thread is queued for the editor to report instead of
     // restoring the terminal under a loop that keeps drawing.

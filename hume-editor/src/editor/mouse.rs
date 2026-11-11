@@ -104,9 +104,6 @@ impl Editor {
                 // termina's MouseEvent::column is a terminal-absolute x
                 self.mouse_left_drag(mouse.column, mouse.row)
             }
-            MouseEventKind::Up(MouseButton::Left) => {
-                self.state.mouse_drag = None;
-            }
             MouseEventKind::ScrollUp => self.mouse_scroll(mouse.column, mouse.row, false),
             MouseEventKind::ScrollDown => self.mouse_scroll(mouse.column, mouse.row, true),
             _ => {}
@@ -116,10 +113,8 @@ impl Editor {
     // ── Click ─────────────────────────────────────────────────────────────────
 
     fn mouse_left_down(&mut self, x: u16, y: u16) {
-        // A press starts fresh: it ends whatever drag the previous one left,
-        // released or not, and drops a half-typed key sequence
+        // A press starts fresh: it drops a half-typed key sequence
         // (`pending`/`count`) and the status line.
-        self.state.mouse_drag = None;
         self.state.discard_pending_keys();
         self.state.status_msg.clear();
 

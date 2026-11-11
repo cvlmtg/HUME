@@ -1228,6 +1228,35 @@ fn grabbing_a_divider_reports_drags_until_the_release() {
     assert_eq!(ed.applied_mouse_mode, Some(MouseReporting::Clicks));
 }
 
+/// `f` waits for a character, and that read swallows the release.
+#[test]
+fn a_divider_release_a_char_read_swallows_ends_the_drag() {
+    use hume_platform::terminal::MouseReporting;
+    let (mut ed, _) = width_split_of_three_drawn();
+
+    drawn_input(&mut ed, mouse_left_down(66, 3));
+    ed.handle_key(key('f'));
+    drawn_input(&mut ed, mouse_left_up(66, 3));
+    draw(&mut ed);
+
+    assert!(ed.state.mouse_drag.is_none());
+    assert_eq!(ed.applied_mouse_mode, Some(MouseReporting::Clicks));
+}
+
+/// A divider drag whose release never arrived, then a press in text that
+/// the read `f` opened swallows: the drag after it is in text.
+#[test]
+fn a_press_a_char_read_swallows_ends_a_divider_drag() {
+    let (mut ed, [a, b, c]) = width_split_of_three_drawn();
+
+    drawn_input(&mut ed, mouse_left_down(66, 3));
+    ed.handle_key(key('f'));
+    drawn_input(&mut ed, mouse_left_down(80, 3));
+    drawn_input(&mut ed, mouse_drag(90, 3));
+
+    assert_eq!(widths(&ed, &[a, b, c]), vec![32, 33, 33]);
+}
+
 #[test]
 fn a_click_in_text_reports_clicks_without_mouse_select() {
     use hume_platform::terminal::MouseReporting;

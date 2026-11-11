@@ -426,8 +426,8 @@ impl Editor {
 
     /// Re-apply the terminal's mouse-tracking mode if what
     /// `EditorState::mouse_reporting` asks for changed since the last time
-    /// this ran: `mouse` or `mouse-select` was set, or a divider drag began
-    /// or ended. A no-op when nothing changed (the common case, checked
+    /// this ran: on the first frame, after `mouse` or `mouse-select` was set,
+    /// or when a divider drag began or ended. A no-op when nothing changed (the common case, checked
     /// every frame) and when no terminal is attached (tests, headless
     /// `run_keys`).
     ///
@@ -527,8 +527,8 @@ impl Editor {
         // `drop_pane_state` can't clear them when a pane closes.
         self.prune_closed_pane_caches();
 
-        // Mouse modes are terminal state applied once at startup; resyncing
-        // here makes `:set global mouse=…` take effect immediately.
+        // Applies the mouse mode on the first frame, after a `:set` of
+        // `mouse`/`mouse-select`, and when a divider drag starts or ends.
         self.resync_mouse_mode();
         self.resync_cwd();
         self.flush_osc52();

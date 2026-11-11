@@ -412,18 +412,13 @@ pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
 /// `kitty_enabled` is a prior [`probe_kitty`] result; when `true` the caller
 /// should filter `KeyEventKind::Release` events. Focus tracking (DECSET 1004)
 /// is always enabled, since unsupporting terminals just never send focus
-/// events (tmux needs `set -g focus-events on`). `mouse` turns on mouse
-/// tracking with SGR coordinates, reporting what it names; `None` leaves the
-/// mouse to the terminal.
+/// events (tmux needs `set -g focus-events on`). Mouse tracking stays off
+/// until the caller applies a mode with [`set_mouse_mode`].
 ///
 /// Call [`restore`] before exiting. A panic hook, armed before any mode is
 /// entered, also restores, and a failure partway through is unwound before
 /// `Err` is returned.
-pub fn init(
-    term: &SharedTerm,
-    mouse: Option<MouseReporting>,
-    kitty_enabled: bool,
-) -> io::Result<crate::screen::Screen> {
+pub fn init(term: &SharedTerm, kitty_enabled: bool) -> io::Result<crate::screen::Screen> {
     let mut term = term;
 
     // Arm before entering any mode: a panic during the enable sequence below
@@ -434,7 +429,7 @@ pub fn init(
         let _ = write_unwind_escapes(handle, launch_cwd_url.as_deref());
     });
 
-    let enter = editor_modes(kitty_enabled, mouse)
+    let enter = editor_modes(kitty_enabled, None)
         .rev()
         .try_for_each(|mode| mode.reenter(&mut term));
 
@@ -744,19 +739,27 @@ pub fn enter_inline_output(
     Ok(InlineOutputScreen(frame))
 }
 
-/// Reapply the mouse-tracking mode to match `mouse`.
+/// Apply the mouse-tracking mode `mouse`, whatever mode the terminal has.
 ///
-/// Always disables tracking first (a harmless no-op for modes not currently
-/// set; see `write_mouse_disable`) then re-enables for `Some`, so it's safe
-/// to call whenever the desired mode changes at runtime, not just once at
-/// startup (unlike [`init`], which only applies the startup mode).
+/// Disables tracking (a harmless no-op for modes not currently set; see
+/// `write_mouse_disable`) and re-enables it for `Some`, so it is safe to
+/// call whenever the desired mode changes.
 pub fn set_mouse_mode(term: &SharedTerm, mouse: Option<MouseReporting>) -> io::Result<()> {
     let mut term = term;
-    write_mouse_disable(&mut term)?;
+    write_mouse_mode(&mut term, mouse)
+}
+
+/// The reset and the re-enable reach the terminal as one write: a switch
+/// runs while a button is held, and a terminal that read them apart would
+/// handle the pointer itself in between.
+fn write_mouse_mode(out: &mut impl io::Write, mouse: Option<MouseReporting>) -> io::Result<()> {
+    let mut bytes = Vec::new();
+    write_mouse_disable(&mut bytes)?;
     if let Some(reporting) = mouse {
-        write_mouse_enable(&mut term, reporting)?;
+        write_mouse_enable(&mut bytes, reporting)?;
     }
-    Ok(())
+    out.write_all(&bytes)?;
+    out.flush()
 }
 
 /// Print the `--- running NAME ---` bold banner and flush stdout.
