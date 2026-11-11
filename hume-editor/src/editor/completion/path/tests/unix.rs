@@ -27,7 +27,7 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
 
     let home = home_dir.path().to_path_buf();
     let input = "e ~/";
-    let (_, candidates) = complete_path_with(input, input.len(), &ctx, false, |s, cwd| {
+    let (_, candidates) = complete_path_with(input, 1, input.len(), &ctx, false, |s, cwd| {
         let expanded = match s.strip_prefix('~') {
             Some(tail) if tail.is_empty() || tail.starts_with('/') => {
                 format!("{}{tail}", home.display())
@@ -76,7 +76,7 @@ fn path_completer_dollar_var_expands_for_lookup() {
 
     let expanded = dir.path().to_string_lossy().into_owned();
     let input = "e $MYDIR/";
-    let (_, candidates) = complete_path_with(input, input.len(), &ctx, false, |s, cwd| {
+    let (_, candidates) = complete_path_with(input, 1, input.len(), &ctx, false, |s, cwd| {
         let replaced = match s.strip_prefix("$MYDIR") {
             Some(rest) => format!("{expanded}{rest}"),
             None => s.to_owned(),
@@ -120,7 +120,7 @@ fn path_completer_dirs_only_mode() {
     };
 
     // dirs_only: files must be excluded.
-    let (_, dirs) = complete_path_dirs_only("cd m", 4, &ctx);
+    let (_, dirs) = complete_path_dirs_only("cd m", 2, 4, &ctx);
     let dir_names: Vec<&str> = dirs.iter().map(|c| c.label.as_ref()).collect();
     assert!(
         dir_names.contains(&"mysubdir/"),
@@ -132,7 +132,7 @@ fn path_completer_dirs_only_mode() {
     );
 
     // Plain complete_path: both dirs and files must appear.
-    let (_, all) = complete_path("e m", 3, &ctx);
+    let (_, all) = complete_path("e m", 1, 3, &ctx);
     let all_names: Vec<&str> = all.iter().map(|c| c.label.as_ref()).collect();
     assert!(
         all_names.contains(&"mysubdir/"),
@@ -162,7 +162,7 @@ fn path_completer_steps_out_of_a_symlink_target_on_dot_dot() {
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let input = "e a/link/../";
-    let (_, candidates) = complete_path(input, input.len(), &ctx);
+    let (_, candidates) = complete_path(input, 1, input.len(), &ctx);
 
     let names: Vec<&str> = candidates.iter().map(|c| c.label.as_ref()).collect();
     assert!(names.contains(&"in_b.txt"), "{names:?}");

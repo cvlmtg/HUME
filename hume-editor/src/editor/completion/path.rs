@@ -19,19 +19,21 @@ pub(in crate::editor) const PATH_DIRS_ONLY_SOURCE: &str = "path-dirs-only";
 /// enumerating a stable universe for the session to filter.
 pub(super) fn complete_path(
     input: &str,
+    floor: usize,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    complete_path_with(input, cursor, ctx, false, AbsolutePath::from_typed)
+    complete_path_with(input, floor, cursor, ctx, false, AbsolutePath::from_typed)
 }
 
 /// `:cd`'s variant: non-directory entries are filtered out.
 pub(super) fn complete_path_dirs_only(
     input: &str,
+    floor: usize,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    complete_path_with(input, cursor, ctx, true, AbsolutePath::from_typed)
+    complete_path_with(input, floor, cursor, ctx, true, AbsolutePath::from_typed)
 }
 
 /// Testable core of [`complete_path`]/[`complete_path_dirs_only`]: the
@@ -43,6 +45,7 @@ pub(super) fn complete_path_dirs_only(
 /// a fake `~` or variable.
 fn complete_path_with<F>(
     input: &str,
+    floor: usize,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
     dirs_only: bool,
@@ -51,7 +54,7 @@ fn complete_path_with<F>(
 where
     F: Fn(&str, &AbsolutePath) -> std::io::Result<AbsolutePath>,
 {
-    let (arg_start, prefix) = arg_prefix(input, cursor);
+    let (arg_start, prefix) = arg_prefix(input, floor, cursor);
     let arg_end = token_end_at(input, cursor, &[' ']);
     let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
     // Resolved the way `:e` resolves the path it completes; a Windows

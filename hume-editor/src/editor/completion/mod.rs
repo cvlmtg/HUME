@@ -53,33 +53,27 @@ pub(in crate::editor) struct CompletionCtx<'a> {
     pub dirs: &'a hume_platform::dirs::Dirs,
 }
 
-/// Extract the argument prefix for commands that take a single argument.
+/// The whole argument up to the cursor: `input[floor..cursor]` past its
+/// leading whitespace, as `(arg_start, prefix)` with `arg_start` its byte
+/// offset in `input`. `floor` is where the command name ends (0 on a line
+/// that is all argument), so `:e!/tmp/x` and `:e /tmp/x` read the same
+/// argument, as `parse_typed_command` does on Enter.
 ///
-/// Splits `input[..cursor]` on the first space.  Returns `(arg_start, prefix)`
-/// where `arg_start` is the byte offset of the argument in `input` and
-/// `prefix` is the unfinished argument text up to the cursor.
-///
-/// If there is no space (command-only input), returns `(0, input[..cursor])`.
-/// Correct only for a *single*-argument command, where "everything after
-/// the command name" is the one argument (`path.rs`'s own
-/// `:e`/`:w`/`:cd` callers). A multi-argument command's own argument span
-/// is [`arg_span`], which finds the *last* stop char before the cursor
-/// instead.
-pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
-    let up_to_cursor = &input[..cursor.min(input.len())];
-    match up_to_cursor.find(' ') {
-        Some(space_idx) => (space_idx + 1, &up_to_cursor[space_idx + 1..]),
-        None => (0, up_to_cursor),
-    }
+/// A multi-argument command's own argument span is [`arg_span`], which
+/// finds the *last* stop char before the cursor instead.
+pub(in crate::editor) fn arg_prefix(input: &str, floor: usize, cursor: usize) -> (usize, &str) {
+    let end = cursor.min(input.len());
+    let arg = input[floor..end].trim_start();
+    (end - arg.len(), arg)
 }
 
-/// Forward counterpart of [`arg_prefix`]'s backward scan: the byte offset,
-/// at or after `cursor`, of the first char in `stops`, or `input.len()` if
-/// none appears before the end. The token a completion *replaces* extends
-/// past the cursor to wherever it actually ends (`arg_prefix` alone only
-/// ever looks at `input[..cursor]`), so a candidate applied with the cursor
-/// mid-token doesn't duplicate the token's own tail (`:e src/ma|in.rs` +
-/// Tab must not produce `src/main.rsin.rs`).
+/// The byte offset, at or after `cursor`, of the first char in `stops`, or
+/// `input.len()` if none appears before the end. The token a completion
+/// *replaces* extends past the cursor to wherever it actually ends
+/// ([`arg_prefix`] alone only ever looks at `input[..cursor]`), so a
+/// candidate applied with the cursor mid-token doesn't duplicate the
+/// token's own tail (`:e src/ma|in.rs` + Tab must not produce
+/// `src/main.rsin.rs`).
 ///
 /// `stops` names the token's own separator alphabet: a `:set` key stops at
 /// `'='` too (so completing `:set global th|eme=x` doesn't swallow the

@@ -626,14 +626,13 @@ fn invoke_buffer_sources(
 /// together. Every other body gets the whitespace-delimited argument span
 /// computed here, upfront, the same way a `Buffer` source's span is always
 /// the word before the cursor (`invoke_buffer_sources`).
-/// `floor` is the byte offset the `'arg` span's backward scan must not
-/// cross: 0 while still completing the command name itself, or the
-/// command name's own end once `resolve_minibuf_source` has resolved past
-/// it. Without this, `arg_span`'s "last space before the cursor" rule has
-/// nothing to anchor on for a no-space argument (`:b1`, the alias `b`
-/// immediately followed by its argument) and falls back to `start = 0`,
-/// swallowing the command name itself into the span it hands the resolved
-/// completer.
+/// `floor` is the byte offset no argument span may start before: 0 while
+/// still completing the command name itself, or the command name's own
+/// end once `resolve_minibuf_source` has resolved past it. A
+/// `NativeDelegated` source reads its argument from it, and the `'arg`
+/// span's backward scan stops at it. Without it, a no-space argument
+/// (`:b1`, `:e!/tmp/x`) has no space to anchor on and the span starts at
+/// 0, swallowing the command name itself.
 fn invoke_minibuf_source(
     sources: &SourceRegistry,
     ctx: &CompletionCtx<'_>,
@@ -655,7 +654,7 @@ fn invoke_minibuf_source(
             None
         }
         MinibufBody::NativeDelegated(f) => {
-            let (span, items) = f(input, cursor, ctx);
+            let (span, items) = f(input, floor, cursor, ctx);
             let invocation_id = session.invoke(id, Invocation::minibuf(span));
             session.contribute(invocation_id, items);
             None

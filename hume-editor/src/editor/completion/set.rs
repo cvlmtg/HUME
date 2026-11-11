@@ -1,6 +1,8 @@
 use std::ops::Range;
 
-use super::{CompletionCtx, CompletionItem, arg_prefix, arg_span, theme_name_candidates};
+use super::{
+    CompletionCtx, CompletionItem, arg_prefix, arg_span, theme_name_candidates, token_end_at,
+};
 use crate::editor::settings::{Scope, SettingKey, SettingText, THEME, TableKey};
 use hume_core::BufferIntrinsicOption;
 use hume_editing::text::LineEnding;
@@ -97,30 +99,18 @@ fn complete_set_value(
 /// `write_buffer` validate with.
 pub(super) fn complete_set(
     input: &str,
+    floor: usize,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    // Argument region begins after the command word ("set "). `arg_start ==
-    // 0` means `arg_prefix` found no space yet, still typing "set" itself,
-    // not its argument. Unreachable via `resolve_minibuf_source` (which
-    // only invokes this completer once the cursor is past the command
-    // name, which requires a space), kept for callers that hand this
-    // function malformed input directly.
-    let (arg_start, arg) = arg_prefix(input, cursor);
-    if arg_start == 0 {
-        let at = cursor.min(input.len());
-        return (at..at, Vec::new());
-    }
-    let arg = arg.trim_start();
-
+    let (arg_start, arg) = arg_prefix(input, floor, cursor);
     match arg.split_once(' ') {
         None => {
-            // Scope token: bounded by whitespace only. No '=' can occur
-            // yet, so the last space before the cursor is always correct,
-            // robust to stray extra whitespace. `'='` is an extra stop on
-            // the forward side purely for symmetry with the key phase below.
-            // A scope name never contains one, so it never fires here.
-            let span = arg_span(input, cursor, ' ', &[' ', '=']);
+            // Scope token: the argument itself, up to whitespace. `'='` is
+            // an extra stop on the forward side for symmetry with the key
+            // phase below. A scope name never contains one, so it never
+            // fires here.
+            let span = arg_start..token_end_at(input, cursor, &[' ', '=']);
             let candidates = complete_set_scope(arg);
             (span, candidates)
         }
@@ -130,7 +120,8 @@ pub(super) fn complete_set(
             let rest = rest.trim_start();
             match rest.split_once('=') {
                 None => {
-                    // Key token: same start reasoning as the scope case.
+                    // Key token: starts past the last space, which lies
+                    // inside the argument since the scope precedes it.
                     // The forward scan must also stop at `'='` (not just
                     // whitespace), or completing `:set global th|eme=x`
                     // would swallow the `=x` into the replaced span instead
@@ -159,14 +150,15 @@ pub(super) fn complete_set(
 /// key phases. `:get` takes no value, so text after a `=` gets no candidates.
 pub(super) fn complete_get(
     input: &str,
+    floor: usize,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    if arg_prefix(input, cursor).1.contains('=') {
+    if arg_prefix(input, floor, cursor).1.contains('=') {
         let at = cursor.min(input.len());
         return (at..at, Vec::new());
     }
-    complete_set(input, cursor, ctx)
+    complete_set(input, floor, cursor, ctx)
 }
 
 #[cfg(test)]

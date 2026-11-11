@@ -2,6 +2,7 @@ use std::ops::Range;
 
 use super::super::testing::*;
 use super::*;
+use crate::editor::input_stack::command::scan_command_name;
 use hume_platform::path::AbsolutePath;
 use hume_treesitter::registry::LanguageRegistry;
 
@@ -11,7 +12,7 @@ fn set_result(input: &str) -> (Range<usize>, Vec<CompletionItem>) {
     let (reg, store, dir) = make_ctx_parts();
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
-    complete_set(input, input.len(), &ctx)
+    complete_set(input, scan_command_name(input).2, input.len(), &ctx)
 }
 
 fn names_of(result: &(Range<usize>, Vec<CompletionItem>)) -> Vec<&str> {
@@ -252,7 +253,7 @@ fn set_completer_value_language_from_registry() {
     langs.register_identity("ruby", &["rb"], &[], &[]).unwrap();
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx_with(&reg, &store, &cwd, &langs);
-    let result = complete_set("set buffer language=", 21, &ctx);
+    let result = complete_set("set buffer language=", 3, 21, &ctx);
     let names = names_of(&result);
     assert!(names.contains(&"rust"));
     assert!(names.contains(&"ruby"));
@@ -268,7 +269,7 @@ fn set_completer_value_language_only_buffer_scope() {
     langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx_with(&reg, &store, &cwd, &langs);
-    let result = complete_set("set global language=", 21, &ctx);
+    let result = complete_set("set global language=", 3, 21, &ctx);
     assert!(result.1.is_empty());
 }
 
@@ -280,7 +281,7 @@ fn set_completer_value_language_prefix_filters() {
     langs.register_identity("ruby", &["rb"], &[], &[]).unwrap();
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx_with(&reg, &store, &cwd, &langs);
-    let result = complete_set("set buffer language=ru", 22, &ctx);
+    let result = complete_set("set buffer language=ru", 3, 22, &ctx);
     let names = names_of(&result);
     assert!(names.contains(&"rust"));
     assert!(names.contains(&"ruby"));
@@ -296,7 +297,7 @@ fn set_completer_value_language_includes_an_exact_match() {
     langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx_with(&reg, &store, &cwd, &langs);
-    let result = complete_set("set buffer language=ru", 22, &ctx);
+    let result = complete_set("set buffer language=ru", 3, 22, &ctx);
     let names = names_of(&result);
     assert!(names.contains(&"rust"));
     assert!(names.contains(&"ru"));
@@ -308,7 +309,7 @@ fn get_result(input: &str) -> (Range<usize>, Vec<CompletionItem>) {
     let (reg, store, dir) = make_ctx_parts();
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
-    complete_get(input, input.len(), &ctx)
+    complete_get(input, scan_command_name(input).2, input.len(), &ctx)
 }
 
 #[test]

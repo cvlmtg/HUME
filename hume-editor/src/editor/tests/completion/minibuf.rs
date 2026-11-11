@@ -416,6 +416,32 @@ fn tab_on_cd_arg_completes_dirs_only() {
     );
 }
 
+/// The argument starts where the command name ends, space or not, as
+/// `parse_typed_command` reads it on Enter.
+#[test]
+fn tab_completes_a_path_typed_right_after_the_command_name() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    command_line(&mut ed, &format!("e!{}/hel", dir.path().display()));
+    ed.handle_key(key_tab());
+    assert_eq!(
+        minibuf_input(&ed),
+        format!("e!{}/hello.txt", dir.path().display())
+    );
+}
+
+#[test]
+fn tab_completes_a_directory_typed_right_after_cd() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("mysubdir")).unwrap();
+    std::fs::write(dir.path().join("myfile.txt"), b"").unwrap();
+    let mut ed = crate::editor::tests::editor_cwd::editor_in(dir.path());
+    command_line(&mut ed, "cd./my");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "cd./mysubdir/");
+}
+
 #[test]
 fn enter_on_directory_candidate_restarts_completion_inside_it() {
     let dir = tempfile::tempdir().unwrap();
