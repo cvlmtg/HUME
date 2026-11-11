@@ -239,7 +239,6 @@ fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 ///
 /// Search order:
 /// 1. `HUME_RUNTIME` environment variable (dev escape hatch; not existence-checked).
-
 /// 2. `../share/hume/runtime/` relative to the binary, Unix / macOS installed (FHS)
 ///    layout. Not `../share/hume/` itself: with the binary in `~/.local/bin` that
 ///    is the data dir, whose `plugins/` and `themes/` would alias the runtime's.
