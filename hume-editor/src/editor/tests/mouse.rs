@@ -2,6 +2,7 @@ use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use crate::editor::input_stack::MenuLayer;
 use hume_grid::Rect;
+use hume_platform::terminal::MouseReporting;
 use pretty_assertions::assert_eq;
 use steel::rvals::SteelVal;
 
@@ -85,13 +86,10 @@ fn a_drag_in_text_without_mouse_select_leaves_the_click_cursor() {
     let mut ed = editor_from("-[0]>123456789\n");
     ed.resize_terminal(80, 25);
 
-    draw(&mut ed);
-    ed.handle_input(mouse_left_down(2, 0));
-    draw(&mut ed);
-    ed.handle_input(mouse_drag(6, 0));
+    drawn_input(&mut ed, mouse_left_down(2, 0));
+    drawn_input(&mut ed, mouse_drag(6, 0));
 
-    let sel = ed.current_view().primary();
-    assert_eq!((sel.anchor().offset(), sel.head().offset()), (co(2), co(2)));
+    assert_eq!(state(&ed), "01-[2]>3456789\n");
 }
 
 /// A drag whose coordinates fall inside a *different* pane's rect (a fast
@@ -1215,7 +1213,6 @@ fn grabbing_a_divider_drops_a_half_typed_key_sequence() {
 
 #[test]
 fn grabbing_a_divider_reports_drags_until_the_release() {
-    use hume_platform::terminal::MouseReporting;
     let (mut ed, _) = width_split_of_three_drawn();
     assert_eq!(ed.applied_mouse_mode, Some(MouseReporting::Clicks), "setup");
 
@@ -1231,7 +1228,6 @@ fn grabbing_a_divider_reports_drags_until_the_release() {
 /// `f` waits for a character, and that read swallows the release.
 #[test]
 fn a_divider_release_a_char_read_swallows_ends_the_drag() {
-    use hume_platform::terminal::MouseReporting;
     let (mut ed, _) = width_split_of_three_drawn();
 
     drawn_input(&mut ed, mouse_left_down(66, 3));
@@ -1259,7 +1255,6 @@ fn a_press_a_char_read_swallows_ends_a_divider_drag() {
 
 #[test]
 fn a_click_in_text_reports_clicks_without_mouse_select() {
-    use hume_platform::terminal::MouseReporting;
     let mut ed = editor_from("-[0]>123456789\n");
     ed.resize_terminal(80, 25);
 
@@ -1271,7 +1266,6 @@ fn a_click_in_text_reports_clicks_without_mouse_select() {
 
 #[test]
 fn mouse_select_reports_drags_without_a_drag() {
-    use hume_platform::terminal::MouseReporting;
     let mut ed = editor_from("-[0]>123456789\n");
     ed.state.settings.mouse_select = true;
 

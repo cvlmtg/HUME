@@ -5,7 +5,6 @@ use hume_platform::dirs::Dirs;
 use crate::editor::minibuf::history::HistoryKind;
 use hume_core::Severity;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::RenderContext;
 
 /// Drive `(set-option! ...)` through the real Steel path
 /// (`EditorHostImpl::set_global_option`).
@@ -113,11 +112,6 @@ fn set_option_applies_jump_list_capacity() {
 
 // ── :set global mouse / mouse-select resync per frame ─────────────
 
-/// `terminal::init` leaves mouse tracking off, and `prepare_frame`'s
-/// `resync_mouse_mode` applies `EditorState::mouse_reporting` whenever it
-/// differs from what was last applied, so `:set global mouse=false` takes
-/// effect without restarting.
-///
 /// Test `Editor`s run with `tui: Tui::Off`, so no escape bytes are written
 /// here. `hume-platform`'s `mouse_mode_switch_is_one_flushed_write` and
 /// friends (`hume-platform/src/terminal/tests.rs`) cover the bytes. This
@@ -127,10 +121,7 @@ fn set_option_applies_jump_list_capacity() {
 fn set_global_mouse_resyncs_applied_mode_next_frame() {
     use hume_platform::terminal::MouseReporting;
     let mut ed = editor_from("-[h]>ello\n");
-    let mut ctx = RenderContext::new();
-    ed.resize_terminal(40, 8);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    frame(&mut ed, 40, 8);
     assert_eq!(
         ed.applied_mouse_mode,
         Some(MouseReporting::Clicks),
@@ -145,8 +136,7 @@ fn set_global_mouse_resyncs_applied_mode_next_frame() {
         "the setting write itself must not resync; only prepare_frame does"
     );
 
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    frame(&mut ed, 40, 8);
 
     assert_eq!(
         ed.applied_mouse_mode, None,

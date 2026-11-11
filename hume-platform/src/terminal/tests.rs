@@ -17,6 +17,8 @@ const ENTER_ALT_SCREEN: &[u8] = b"\x1b[?1049h";
 // https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
 const KITTY_PUSH: &[u8] = b"\x1b[>7u";
 const MOUSE_ENABLE: &[u8] = b"\x1b[?1000h\x1b[?1006h";
+const MOUSE_ENABLE_DRAGS: &[u8] = b"\x1b[?1000h\x1b[?1006h\x1b[?1002h";
+const MOUSE_DISABLE: &[u8] = b"\x1b[?1002l\x1b[?1000l\x1b[?1006l";
 const FOCUS_DISABLE: &[u8] = b"\x1b[?1004l";
 const FOCUS_ENABLE: &[u8] = b"\x1b[?1004h";
 const PASTE_ENABLE: &[u8] = b"\x1b[?2004h";
@@ -74,14 +76,14 @@ fn mouse_enable_for_clicks_emits_1000_and_1006_only() {
 fn mouse_enable_for_drags_also_emits_1002() {
     let mut buf = Vec::new();
     write_mouse_enable(&mut buf, MouseReporting::Drags).unwrap();
-    assert_eq!(buf, b"\x1b[?1000h\x1b[?1006h\x1b[?1002h");
+    assert_eq!(buf, MOUSE_ENABLE_DRAGS);
 }
 
 #[test]
 fn mouse_disable_emits_1002_1000_1006_in_that_order() {
     let mut buf = Vec::new();
     write_mouse_disable(&mut buf).unwrap();
-    assert_eq!(buf, b"\x1b[?1002l\x1b[?1000l\x1b[?1006l");
+    assert_eq!(buf, MOUSE_DISABLE);
 }
 
 /// What a writer was handed, split at each flush.
@@ -111,7 +113,7 @@ fn mouse_mode_switch_is_one_flushed_write() {
     write_mouse_mode(&mut out, Some(MouseReporting::Drags)).unwrap();
     assert_eq!(
         out.flushed,
-        vec![b"\x1b[?1002l\x1b[?1000l\x1b[?1006l\x1b[?1000h\x1b[?1006h\x1b[?1002h".to_vec()]
+        vec![[MOUSE_DISABLE, MOUSE_ENABLE_DRAGS].concat()]
     );
     assert!(out.pending.is_empty());
 }

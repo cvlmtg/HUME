@@ -1,10 +1,9 @@
 //! Mouse event handling.
 //!
-//! Events arrive whenever the `mouse` setting is on. Drag motion arrives with
-//! `mouse-select` on, or from a press on a divider until its release (see
-//! [`EditorState::mouse_reporting`]). A drag on a divider, drawn with
-//! `pane-dividers` on, moves it. A drag in text extends the selection only
-//! with `mouse-select` on.
+//! Which events arrive is [`EditorState::mouse_reporting`]'s. A drag on a
+//! divider, drawn with `pane-dividers` on, moves it. A drag in text extends
+//! the selection only with `mouse-select` on. A left press or release ends a
+//! drag before any layer sees it ([`EditorState::end_mouse_drag_on`]).
 //!
 //! Click coordinates are terminal-absolute, so `EngineView::pane_hit` first
 //! finds the pane under the pointer, in its own cells. The pane's rows then
@@ -72,21 +71,32 @@ pub(crate) enum MouseDrag {
 }
 
 impl EditorState {
-    /// What the terminal should report of the mouse. Drags are reported
-    /// with `mouse-select` on, and otherwise only while a divider drag is in
-    /// progress: the press that grabs the divider arrives as a click and
+    /// What the terminal should report of the mouse: nothing with `mouse`
+    /// off, drags with `mouse-select` on, and otherwise drags only while one
+    /// is in progress. The press that grabs a divider arrives as a click and
     /// turns motion reporting on until the release.
     pub(crate) fn mouse_reporting(&self) -> Option<MouseReporting> {
         if !self.settings.mouse {
             return None;
         }
-        let drags =
-            self.settings.mouse_select || matches!(self.mouse_drag, Some(MouseDrag::Seam(_)));
+        let drags = self.settings.mouse_select || self.mouse_drag.is_some();
         Some(if drags {
             MouseReporting::Drags
         } else {
             MouseReporting::Clicks
         })
+    }
+
+    /// Only the Base layer starts a drag, but any layer may swallow the
+    /// left press or release that ends it, so the caller runs this before the
+    /// layer walk.
+    pub(crate) fn end_mouse_drag_on(&mut self, kind: MouseEventKind) {
+        if matches!(
+            kind,
+            MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+        ) {
+            self.mouse_drag = None;
+        }
     }
 }
 

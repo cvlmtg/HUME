@@ -1,7 +1,7 @@
 //! Where terminal input enters the editor: a key, a mouse event or a
 //! paste, interactively or one key at a time from the headless runner.
 
-use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind, MouseButton, MouseEventKind};
+use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
 
 use super::Editor;
 use super::event::EditorEvent;
@@ -55,14 +55,7 @@ impl Editor {
         match ev {
             TerminalEvent::Key(k) => self.handle_key(k),
             TerminalEvent::Mouse(m) => {
-                // Only the Base layer starts a drag, but any layer may
-                // swallow the press or release that ends it.
-                if matches!(
-                    m.kind,
-                    MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
-                ) {
-                    self.state.mouse_drag = None;
-                }
+                self.state.end_mouse_drag_on(m.kind);
                 self.dispatch_input(InputEvent::Mouse(m))
             }
             TerminalEvent::Paste(s) => self.handle_terminal_paste(s),
