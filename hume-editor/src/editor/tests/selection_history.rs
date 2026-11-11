@@ -659,6 +659,7 @@ fn a_script_command_of_motions_is_navigation() {
 #[test]
 fn a_mouse_drag_records_one_entry() {
     let mut ed = editor_from("-[0]>123456789\n");
+    ed.state.settings.mouse_select = true;
     ed.resize_terminal(80, 25);
     draw(&mut ed);
     press(&mut ed, "x");
@@ -685,6 +686,7 @@ fn a_mouse_drag_records_one_entry() {
 #[test]
 fn a_drag_after_typing_in_insert_mode_selects_from_the_cursor() {
     let mut ed = editor_from("-[0]>123456789\n");
+    ed.state.settings.mouse_select = true;
     ed.resize_terminal(80, 25);
     draw(&mut ed);
     press(&mut ed, "x");
@@ -720,6 +722,7 @@ fn clicks_are_navigation() {
 #[test]
 fn a_wheel_notch_that_moves_nothing_keeps_a_drag_recorded() {
     let mut ed = editor_from("-[0]>123456789\nabcdefghij\n");
+    ed.state.settings.mouse_select = true;
     ed.resize_terminal(80, 25);
     draw(&mut ed);
     for event in [

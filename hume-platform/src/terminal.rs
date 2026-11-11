@@ -231,7 +231,16 @@ fn write_kitty_pop(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
-fn write_mouse_enable(out: &mut impl io::Write, select: bool) -> io::Result<()> {
+/// What the terminal reports of the mouse while tracking is on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseReporting {
+    /// Presses, releases and the scroll wheel.
+    Clicks,
+    /// Also motion while a button is held.
+    Drags,
+}
+
+fn write_mouse_enable(out: &mut impl io::Write, reporting: MouseReporting) -> io::Result<()> {
     // Normal tracking (1000): button press/release and scroll wheel.
     // SGR extended coordinates (1006): removes the 223-column limit of the
     // legacy X10 encoding; required for wide terminals.
@@ -241,10 +250,9 @@ fn write_mouse_enable(out: &mut impl io::Write, select: bool) -> io::Result<()> 
         dec_set(DecPrivateModeCode::MouseTracking),
         dec_set(DecPrivateModeCode::SGRMouse)
     )?;
-    if select {
-        // Button-event tracking (1002) additionally reports drag motion.
-        // Without it, drag events never reach the application, so the
-        // terminal handles drag-select natively.
+    if reporting == MouseReporting::Drags {
+        // Button-event tracking (1002) also reports motion while a button
+        // is held.
         write!(out, "{}", dec_set(DecPrivateModeCode::ButtonEventMouse))?;
     }
     out.flush()
@@ -404,17 +412,16 @@ pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
 /// `kitty_enabled` is a prior [`probe_kitty`] result; when `true` the caller
 /// should filter `KeyEventKind::Release` events. Focus tracking (DECSET 1004)
 /// is always enabled, since unsupporting terminals just never send focus
-/// events (tmux needs `set -g focus-events on`). `mouse_enabled` turns on
-/// click and scroll tracking with SGR coordinates, leaving drag-select to the
-/// terminal; `mouse_select` also reports drags so the editor can select.
+/// events (tmux needs `set -g focus-events on`). `mouse` turns on mouse
+/// tracking with SGR coordinates, reporting what it names; `None` leaves the
+/// mouse to the terminal.
 ///
 /// Call [`restore`] before exiting. A panic hook, armed before any mode is
 /// entered, also restores, and a failure partway through is unwound before
 /// `Err` is returned.
 pub fn init(
     term: &SharedTerm,
-    mouse_enabled: bool,
-    mouse_select: bool,
+    mouse: Option<MouseReporting>,
     kitty_enabled: bool,
 ) -> io::Result<crate::screen::Screen> {
     let mut term = term;
@@ -427,7 +434,7 @@ pub fn init(
         let _ = write_unwind_escapes(handle, launch_cwd_url.as_deref());
     });
 
-    let enter = editor_modes(kitty_enabled, mouse_enabled, mouse_select)
+    let enter = editor_modes(kitty_enabled, mouse)
         .rev()
         .try_for_each(|mode| mode.reenter(&mut term));
 
@@ -593,7 +600,7 @@ enum EditorMode {
     Focus,
     Paste,
     Kitty,
-    Mouse { select: bool },
+    Mouse(MouseReporting),
     Raw,
     AltScreen,
 }
@@ -604,7 +611,7 @@ impl EditorMode {
             Self::Focus => write_focus_disable(term),
             Self::Paste => write_paste_disable(term),
             Self::Kitty => write_kitty_pop(term),
-            Self::Mouse { .. } => write_mouse_disable(term),
+            Self::Mouse(_) => write_mouse_disable(term),
             Self::Raw => term.cooked_mode(),
             Self::AltScreen => write_leave_alt_screen(term),
         }
@@ -615,7 +622,7 @@ impl EditorMode {
             Self::Focus => write_focus_enable(term),
             Self::Paste => write_paste_enable(term),
             Self::Kitty => write_kitty_push(term),
-            Self::Mouse { select } => write_mouse_enable(term, select),
+            Self::Mouse(reporting) => write_mouse_enable(term, reporting),
             Self::Raw => term.raw_mode(),
             Self::AltScreen => write_enter_alt_screen(term),
         }
@@ -628,16 +635,13 @@ impl EditorMode {
 /// stack per screen, and key reads consult the active screen's.
 fn editor_modes(
     kitty_enabled: bool,
-    mouse_enabled: bool,
-    mouse_select: bool,
+    mouse: Option<MouseReporting>,
 ) -> impl DoubleEndedIterator<Item = EditorMode> {
     [
         Some(EditorMode::Focus),
         Some(EditorMode::Paste),
         kitty_enabled.then_some(EditorMode::Kitty),
-        mouse_enabled.then_some(EditorMode::Mouse {
-            select: mouse_select,
-        }),
+        mouse.map(EditorMode::Mouse),
         Some(EditorMode::Raw),
         Some(EditorMode::AltScreen),
     ]
@@ -662,8 +666,7 @@ impl<T: ModeSwitch> Frame<T> {
         term: T,
         flag: &Arc<AtomicBool>,
         kitty_enabled: bool,
-        mouse_enabled: bool,
-        mouse_select: bool,
+        mouse: Option<MouseReporting>,
     ) -> io::Result<Self> {
         // Raised first, so a refused open writes nothing, and before the
         // switch, so no Ctrl-c the cooked terminal turns into a signal can
@@ -677,7 +680,7 @@ impl<T: ModeSwitch> Frame<T> {
         };
         // Close any open synchronized-output envelope (harmless if none is open).
         let _ = write_sync_reset(&mut frame.term);
-        for mode in editor_modes(kitty_enabled, mouse_enabled, mouse_select) {
+        for mode in editor_modes(kitty_enabled, mouse) {
             frame.left.push(mode);
             if let Err(e) = mode.leave(&mut frame.term) {
                 let _ = frame.close();
@@ -722,10 +725,10 @@ impl InlineOutputScreen {
 /// blocking processes (git clone, formatters) that would otherwise be
 /// invisible inside the TUI.
 ///
-/// `kitty_enabled`, `mouse_enabled` and `mouse_select` are the editor's
-/// current state, which [`InlineOutputScreen::close`] re-applies. Also
-/// disables focus tracking for the duration: a subprocess reading raw
-/// terminal input shouldn't see stray `CSI I`/`CSI O` bytes.
+/// `kitty_enabled` and `mouse` are the editor's current state, which
+/// [`InlineOutputScreen::close`] re-applies. Also disables focus tracking for
+/// the duration: a subprocess reading raw terminal input shouldn't see stray
+/// `CSI I`/`CSI O` bytes.
 ///
 /// A failure once the frame has begun unwinds it before `Err` is returned.
 /// At most one screen is open per terminal: while one lives, this returns
@@ -734,35 +737,24 @@ pub fn enter_inline_output(
     term: &SharedTerm,
     name: &str,
     kitty_enabled: bool,
-    mouse_enabled: bool,
-    mouse_select: bool,
+    mouse: Option<MouseReporting>,
 ) -> io::Result<InlineOutputScreen> {
-    let frame = Frame::open(
-        term.clone(),
-        &term.inline_output,
-        kitty_enabled,
-        mouse_enabled,
-        mouse_select,
-    )?;
+    let frame = Frame::open(term.clone(), &term.inline_output, kitty_enabled, mouse)?;
     print_running_banner(name);
     Ok(InlineOutputScreen(frame))
 }
 
-/// Reapply the mouse-tracking mode to match `mouse_enabled`/`mouse_select`.
+/// Reapply the mouse-tracking mode to match `mouse`.
 ///
 /// Always disables tracking first (a harmless no-op for modes not currently
-/// set; see `write_mouse_disable`) then re-enables per the new flags, so
-/// it's safe to call whenever the desired mode changes at runtime, not just
-/// once at startup (unlike [`init`], which only applies the startup mode).
-pub fn set_mouse_mode(
-    term: &SharedTerm,
-    mouse_enabled: bool,
-    mouse_select: bool,
-) -> io::Result<()> {
+/// set; see `write_mouse_disable`) then re-enables for `Some`, so it's safe
+/// to call whenever the desired mode changes at runtime, not just once at
+/// startup (unlike [`init`], which only applies the startup mode).
+pub fn set_mouse_mode(term: &SharedTerm, mouse: Option<MouseReporting>) -> io::Result<()> {
     let mut term = term;
     write_mouse_disable(&mut term)?;
-    if mouse_enabled {
-        write_mouse_enable(&mut term, mouse_select)?;
+    if let Some(reporting) = mouse {
+        write_mouse_enable(&mut term, reporting)?;
     }
     Ok(())
 }

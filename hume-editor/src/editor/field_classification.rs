@@ -167,7 +167,7 @@ fn editor_fields_are_classified() {
             // that loop
             tui: _,
             // preserved: prepare_frame reconciles it lazily against
-            // state.settings after a reload, same as any runtime
+            // state.mouse_reporting() after a reload, same as any runtime
             // :set mouse/mouse-select change
             applied_mouse_mode: _,
             // preserved: state.cwd survives a reload, and so does what the

@@ -61,6 +61,7 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
 #[test]
 fn drag_extends_selection_from_click_anchor() {
     let mut ed = editor_from("-[0]>123456789\n");
+    ed.state.settings.mouse_select = true;
     ed.resize_terminal(80, 25);
 
     draw(&mut ed);
@@ -77,6 +78,22 @@ fn drag_extends_selection_from_click_anchor() {
     );
 }
 
+/// With `mouse-select` off, a drag in text leaves the cursor the click
+/// placed.
+#[test]
+fn a_drag_in_text_without_mouse_select_leaves_the_click_cursor() {
+    let mut ed = editor_from("-[0]>123456789\n");
+    ed.resize_terminal(80, 25);
+
+    draw(&mut ed);
+    ed.handle_input(mouse_left_down(2, 0));
+    draw(&mut ed);
+    ed.handle_input(mouse_drag(6, 0));
+
+    let sel = ed.current_view().primary();
+    assert_eq!((sel.anchor().offset(), sel.head().offset()), (co(2), co(2)));
+}
+
 /// A drag whose coordinates fall inside a *different* pane's rect (a fast
 /// mouse move during a `:vsplit` drag easily crosses the seam) is ignored,
 /// not translated as if it were still in the originating pane, where a
@@ -85,6 +102,7 @@ fn drag_extends_selection_from_click_anchor() {
 fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     let mut ed =
         editor_from("-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n");
+    ed.state.settings.mouse_select = true;
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.view.focused_pane(); // vsplit focuses the new (right) pane
 
@@ -789,6 +807,7 @@ fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
 #[test]
 fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
     let mut ed = editor_from("-[a]>bc\n");
+    ed.state.settings.mouse_select = true;
     let tab_a = ed.state.tabs.current();
     ed.execute_typed("tabnew", None).unwrap();
     let tab_b = ed.state.tabs.current();
@@ -1192,6 +1211,44 @@ fn grabbing_a_divider_drops_a_half_typed_key_sequence() {
     ed.handle_key(key('>'));
 
     assert_eq!(widths(&ed, &[a, b, c]), vec![32, 33, 33]);
+}
+
+#[test]
+fn grabbing_a_divider_reports_drags_until_the_release() {
+    use hume_platform::terminal::MouseReporting;
+    let (mut ed, _) = width_split_of_three_drawn();
+    assert_eq!(ed.applied_mouse_mode, Some(MouseReporting::Clicks), "setup");
+
+    drawn_input(&mut ed, mouse_left_down(66, 3));
+    draw(&mut ed);
+    assert_eq!(ed.applied_mouse_mode, Some(MouseReporting::Drags));
+
+    ed.handle_input(mouse_left_up(66, 3));
+    draw(&mut ed);
+    assert_eq!(ed.applied_mouse_mode, Some(MouseReporting::Clicks));
+}
+
+#[test]
+fn a_click_in_text_reports_clicks_without_mouse_select() {
+    use hume_platform::terminal::MouseReporting;
+    let mut ed = editor_from("-[0]>123456789\n");
+    ed.resize_terminal(80, 25);
+
+    drawn_input(&mut ed, mouse_left_down(2, 0));
+    draw(&mut ed);
+
+    assert_eq!(ed.applied_mouse_mode, Some(MouseReporting::Clicks));
+}
+
+#[test]
+fn mouse_select_reports_drags_without_a_drag() {
+    use hume_platform::terminal::MouseReporting;
+    let mut ed = editor_from("-[0]>123456789\n");
+    ed.state.settings.mouse_select = true;
+
+    draw(&mut ed);
+
+    assert_eq!(ed.applied_mouse_mode, Some(MouseReporting::Drags));
 }
 
 #[test]

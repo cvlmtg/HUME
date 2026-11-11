@@ -27,8 +27,7 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
                     term,
                     name,
                     kitty,
-                    self.state.settings.mouse,
-                    self.state.settings.mouse_select,
+                    self.state.mouse_reporting(),
                 )
                 .map_err(|e| {
                     // A failed enter may have left and re-entered the alt

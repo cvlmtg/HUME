@@ -884,6 +884,7 @@ fn press_on_a_wrapped_header_lands_where_the_row_draws_it() {
 fn drag_onto_a_header_row_extends_to_its_line() {
     let source = two_fn_impl();
     let mut ed = rust_context_editor(&source);
+    ed.state.settings.mouse_select = true;
     let pid = ed.view.focused_pane();
     let buf = wheel_down(&mut ed, pid, 10);
     press_at(&mut ed, &buf, pid, 12, 5);

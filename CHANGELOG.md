@@ -10,6 +10,7 @@
 
 ### Fixes
 - `register-grammar!` fails with the reason when its `#:context` query has no `@context` capture, instead of showing no scope headers.
+- Dragging the divider between two panes resizes them without `mouse-select` on.
 
 ## [0.20.1] - 2026-11-10
 

@@ -52,7 +52,7 @@ A **pane** is a viewport onto a buffer. The buffer is the open file; a pane is w
 
 HUME refuses to split, with a message, when a pane would end up too small. Until you resize one of them, panes sharing a split axis stay the same size: three `:vsplit`s in a row give three equal columns, not one half and two quarters, and closing a pane shares its space equally among the rest.
 
-`Ctrl-p >` and `Ctrl-p <` widen and narrow the focused pane, and `Ctrl-p +` and `Ctrl-p -` make it taller and shorter: by one column or row, or by a count typed first (`5 Ctrl-p >`). The space comes from the next pane in the innermost row or column the focused pane belongs to, or from the one before when it is the last there. Panes further out keep their size. No pane shrinks below its minimum size. With `mouse-select` and `pane-dividers` on, you can also drag the divider between two panes.
+`Ctrl-p >` and `Ctrl-p <` widen and narrow the focused pane, and `Ctrl-p +` and `Ctrl-p -` make it taller and shorter: by one column or row, or by a count typed first (`5 Ctrl-p >`). The space comes from the next pane in the innermost row or column the focused pane belongs to, or from the one before when it is the last there. Panes further out keep their size. No pane shrinks below its minimum size. With `pane-dividers` on, you can also drag the divider between two panes.
 
 Once a row or column has been resized, a split there halves the focused pane and leaves the other panes as they are, and closing a pane gives its space to the pane beside it. `Ctrl-p =` makes every row and column of the tab even again.
 

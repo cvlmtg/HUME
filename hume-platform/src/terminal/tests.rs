@@ -1,6 +1,6 @@
 use super::{
-    Frame, FrameFlag, ModeSwitch, write_cwd_report, write_focus_disable, write_focus_enable,
-    write_kitty_pop, write_kitty_push, write_mouse_disable, write_mouse_enable,
+    Frame, FrameFlag, ModeSwitch, MouseReporting, write_cwd_report, write_focus_disable,
+    write_focus_enable, write_kitty_pop, write_kitty_push, write_mouse_disable, write_mouse_enable,
     write_paste_disable, write_paste_enable, write_unwind_escapes,
 };
 use std::io;
@@ -64,16 +64,16 @@ fn focus_disable_emits_expected_csi() {
 }
 
 #[test]
-fn mouse_enable_without_select_emits_1000_and_1006_only() {
+fn mouse_enable_for_clicks_emits_1000_and_1006_only() {
     let mut buf = Vec::new();
-    write_mouse_enable(&mut buf, false).unwrap();
+    write_mouse_enable(&mut buf, MouseReporting::Clicks).unwrap();
     assert_eq!(buf, MOUSE_ENABLE);
 }
 
 #[test]
-fn mouse_enable_with_select_also_emits_1002() {
+fn mouse_enable_for_drags_also_emits_1002() {
     let mut buf = Vec::new();
-    write_mouse_enable(&mut buf, true).unwrap();
+    write_mouse_enable(&mut buf, MouseReporting::Drags).unwrap();
     assert_eq!(buf, b"\x1b[?1000h\x1b[?1006h\x1b[?1002h");
 }
 
@@ -187,7 +187,7 @@ impl ModeSwitch for &mut FakeTerm {
 
 fn open_frame(term: &mut FakeTerm) -> io::Result<Frame<&mut FakeTerm>> {
     let flag = Arc::clone(&term.flag);
-    Frame::open(term, &flag, true, true, false)
+    Frame::open(term, &flag, true, Some(MouseReporting::Clicks))
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -257,11 +257,11 @@ fn frame_restore_keeps_going_after_one_step_fails() {
 fn frame_open_is_refused_while_a_frame_is_open() {
     let flag = Arc::new(AtomicBool::new(false));
     let mut first_term = FakeTerm::default();
-    let first = Frame::open(&mut first_term, &flag, true, true, false);
+    let first = Frame::open(&mut first_term, &flag, true, Some(MouseReporting::Clicks));
     assert!(first.is_ok());
 
     let mut second_term = FakeTerm::default();
-    assert!(Frame::open(&mut second_term, &flag, true, true, false).is_err());
+    assert!(Frame::open(&mut second_term, &flag, true, Some(MouseReporting::Clicks)).is_err());
     assert!(second_term.out.is_empty(), "{:?}", second_term.out);
     assert!(
         flag.load(Ordering::Acquire),
@@ -270,5 +270,5 @@ fn frame_open_is_refused_while_a_frame_is_open() {
 
     drop(first);
     let mut third_term = FakeTerm::default();
-    assert!(Frame::open(&mut third_term, &flag, true, true, false).is_ok());
+    assert!(Frame::open(&mut third_term, &flag, true, Some(MouseReporting::Clicks)).is_ok());
 }

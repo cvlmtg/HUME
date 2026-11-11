@@ -593,10 +593,11 @@ pub(crate) struct Editor {
     /// handle to drive it when it does. `Off` in tests and headless
     /// `run_keys`, where dispatch skips the inline-output terminal bracket.
     tui: Tui,
-    /// `(mouse, mouse_select)` as last applied to the terminal.
-    /// `prepare_frame` re-applies the mode when the settings differ, so
-    /// `:set global mouse=…` takes effect at once.
-    applied_mouse_mode: (bool, bool),
+    /// The mouse-tracking mode as last applied to the terminal.
+    /// `prepare_frame` re-applies it when `EditorState::mouse_reporting`
+    /// differs, so `:set global mouse=…` and a divider drag take effect at
+    /// once.
+    applied_mouse_mode: Option<hume_platform::terminal::MouseReporting>,
     /// The working directory last reported to the terminal (OSC 7).
     /// `prepare_frame` compares it against `state.cwd` every frame, so `:cd`
     /// and `(set-cwd! …)` need no hook of their own. `None` until the first

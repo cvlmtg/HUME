@@ -424,23 +424,25 @@ impl Editor {
         });
     }
 
-    /// Re-apply the terminal's mouse-tracking mode if `mouse`/
-    /// `mouse-select` changed since the last time this ran. A no-op when
-    /// nothing changed (the common case, checked every frame) and when no
-    /// terminal is attached (tests, headless `run_keys`).
+    /// Re-apply the terminal's mouse-tracking mode if what
+    /// `EditorState::mouse_reporting` asks for changed since the last time
+    /// this ran: `mouse` or `mouse-select` was set, or a divider drag began
+    /// or ended. A no-op when nothing changed (the common case, checked
+    /// every frame) and when no terminal is attached (tests, headless
+    /// `run_keys`).
     ///
     /// The comparison-and-update itself doesn't require a live terminal, so
     /// it stays outside the `if let Some(term)` below. This keeps
-    /// `applied_mouse_mode` in sync with `state.settings` even headless,
+    /// `applied_mouse_mode` in sync with `state` even headless,
     /// which is what makes the change-detection unit-testable without a
     /// real `SharedTerm`.
     pub(in crate::editor::frame) fn resync_mouse_mode(&mut self) {
-        let desired = (self.state.settings.mouse, self.state.settings.mouse_select);
+        let desired = self.state.mouse_reporting();
         if desired == self.applied_mouse_mode {
             return;
         }
         if let Some(term) = self.tui.terminal() {
-            let _ = hume_platform::terminal::set_mouse_mode(term, desired.0, desired.1);
+            let _ = hume_platform::terminal::set_mouse_mode(term, desired);
         }
         self.applied_mouse_mode = desired;
     }

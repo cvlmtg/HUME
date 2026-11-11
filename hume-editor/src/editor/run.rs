@@ -158,7 +158,6 @@ impl Editor {
         let settings = EditorSettings::new(&startup_cwd);
 
         let history_capacity = settings.prompt_history_levels;
-        let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
         let clock = super::clock::Clock::default();
         let mut buffers = BufferStore::new(clock.clone());
@@ -173,22 +172,25 @@ impl Editor {
         );
         let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
 
+        let state = super::EditorState {
+            dirs,
+            buffers,
+            clock,
+            buffer_positions: super::position_stores::BufferPositions::default(),
+            lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
+            clipboard: clipboard::SystemClipboard::new(),
+            settings,
+            panes,
+            history: super::minibuf::history::HistoryStore::new(history_capacity),
+            views,
+            tabline_view,
+            wake: Arc::clone(&wake),
+            ..super::EditorState::base(focus, startup_cwd)
+        };
+        let applied_mouse_mode = state.mouse_reporting();
+
         Ok(Self {
-            state: super::EditorState {
-                dirs,
-                buffers,
-                clock,
-                buffer_positions: super::position_stores::BufferPositions::default(),
-                lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
-                clipboard: clipboard::SystemClipboard::new(),
-                settings,
-                panes,
-                history: super::minibuf::history::HistoryStore::new(history_capacity),
-                views,
-                tabline_view,
-                wake: Arc::clone(&wake),
-                ..super::EditorState::base(focus, startup_cwd)
-            },
+            state,
             view: engine_view,
             kitty_enabled: false,
             scripting: None,
@@ -205,7 +207,7 @@ impl Editor {
             last_visible_range: rustc_hash::FxHashMap::default(),
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             tui: Tui::Off,
-            applied_mouse_mode: initial_mouse_mode,
+            applied_mouse_mode,
             applied_cwd: None,
             startup_positions: Vec::new(),
             keeps_session: false,

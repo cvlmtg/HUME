@@ -1,9 +1,10 @@
 //! Mouse event handling.
 //!
-//! Events arrive when normal tracking (mode 1000) is enabled. Button-event
-//! tracking (mode 1002, which delivers `MouseEventKind::Drag`) is enabled only
-//! when `editor.mouse_select` is true, so dragging a selection and dragging a
-//! divider between two panes both need it.
+//! Events arrive whenever the `mouse` setting is on. Drag motion arrives with
+//! `mouse-select` on, or from a press on a divider until its release (see
+//! [`EditorState::mouse_reporting`]). A drag on a divider, drawn with
+//! `pane-dividers` on, moves it. A drag in text extends the selection only
+//! with `mouse-select` on.
 //!
 //! Click coordinates are terminal-absolute, so `EngineView::pane_hit` first
 //! finds the pane under the pointer, in its own cells. The pane's rows then
@@ -30,6 +31,7 @@ use hume_engine::pipeline::{PaneHit, SeamHandle};
 use hume_engine::providers::FoldMark;
 use hume_engine::scope_headers::{HeaderLayout, PaneRow};
 use hume_grid::{Position, Rect};
+use hume_platform::terminal::MouseReporting;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::InclusiveRange;
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -38,10 +40,10 @@ use super::commands;
 use super::cursor;
 use hume_ops::MotionMode;
 
-use super::Editor;
 use super::buffer::Buffer;
 use super::geometry::LayoutKey;
 use super::selection_history::Record;
+use super::{Editor, EditorState};
 use hume_editing::selection::{EditView, Selection, SelectionSet};
 
 /// Whether `kind` is a *fresh* user action rather than the tail of a gesture
@@ -67,6 +69,25 @@ pub(crate) enum MouseDrag {
     Select(PaneId),
     /// The divider the drag started on.
     Seam(SeamHandle),
+}
+
+impl EditorState {
+    /// What the terminal should report of the mouse. Drags are reported
+    /// with `mouse-select` on, and otherwise only while a divider drag is in
+    /// progress: the press that grabs the divider arrives as a click and
+    /// turns motion reporting on until the release.
+    pub(crate) fn mouse_reporting(&self) -> Option<MouseReporting> {
+        if !self.settings.mouse {
+            return None;
+        }
+        let drags =
+            self.settings.mouse_select || matches!(self.mouse_drag, Some(MouseDrag::Seam(_)));
+        Some(if drags {
+            MouseReporting::Drags
+        } else {
+            MouseReporting::Clicks
+        })
+    }
 }
 
 impl Editor {
@@ -152,7 +173,9 @@ impl Editor {
             // Collapse the selections to one cursor on the clicked cluster.
             self.select_only(Selection::cursor(pos));
             // The cursor is the anchor of a drag that follows.
-            self.state.mouse_drag = Some(MouseDrag::Select(hit.pane()));
+            if self.state.settings.mouse_select {
+                self.state.mouse_drag = Some(MouseDrag::Select(hit.pane()));
+            }
         }
     }
 
@@ -167,7 +190,6 @@ impl Editor {
     // ── Drag ──────────────────────────────────────────────────────────────────
 
     fn mouse_left_drag(&mut self, x: u16, y: u16) {
-        // Drag events are only received when `mouse_select = true` (mode 1002).
         match self.state.mouse_drag {
             Some(MouseDrag::Seam(handle)) => self.drag_seam(handle, x, y),
             Some(MouseDrag::Select(pid)) => self.drag_selection(pid, x, y),

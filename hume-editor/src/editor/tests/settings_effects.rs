@@ -113,17 +113,17 @@ fn set_option_applies_jump_list_capacity() {
 
 // ── :set global mouse / mouse-select resync per frame ─────────────
 
-/// `mouse`/`mouse-select` are terminal modes applied once at startup
+/// The mouse-tracking mode is applied once at startup
 /// (`hume_platform::terminal::init`, called from `hume-editor/src/lib.rs`
 /// before entering the event loop); there is no other write side.
 /// `prepare_frame` calls `resync_mouse_mode` every frame, re-applying the
-/// terminal mode whenever it drifts from `state.settings`, so `:set global
-/// mouse=false` takes effect without restarting.
+/// terminal mode whenever it drifts from `EditorState::mouse_reporting`, so
+/// `:set global mouse=false` takes effect without restarting.
 ///
 /// No `SharedTerm` exists in test `Editor`s (`Editor::for_testing`/`open`
 /// both seed `terminal: None`), so this can't assert on emitted escape
 /// bytes. That path is covered by `hume-platform`'s
-/// `mouse_enable_without_select_emits_1000_and_1006_only` and friends
+/// `mouse_enable_for_clicks_emits_1000_and_1006_only` and friends
 /// (`hume-platform/src/terminal/tests.rs`). This asserts the terminal-mode
 /// tracking state itself (`Editor::applied_mouse_mode`) resyncs to the new
 /// setting on the next `prepare_frame`, which is the part `resync_mouse_mode`
@@ -132,10 +132,11 @@ fn set_option_applies_jump_list_capacity() {
 /// attached.
 #[test]
 fn set_global_mouse_resyncs_applied_mode_next_frame() {
+    use hume_platform::terminal::MouseReporting;
     let mut ed = editor_from("-[h]>ello\n");
     assert_eq!(
         ed.applied_mouse_mode,
-        (true, false),
+        Some(MouseReporting::Clicks),
         "default EditorSettings has mouse=true, mouse_select=false"
     );
 
@@ -143,7 +144,7 @@ fn set_global_mouse_resyncs_applied_mode_next_frame() {
     crate::editor::commands::typed_set(&mut ed, fp, "global mouse=false").expect("set mouse");
     assert_eq!(
         ed.applied_mouse_mode,
-        (true, false),
+        Some(MouseReporting::Clicks),
         "the setting write itself must not resync; only prepare_frame does"
     );
 
@@ -153,8 +154,7 @@ fn set_global_mouse_resyncs_applied_mode_next_frame() {
     ed.prepare_frame(&mut ctx);
 
     assert_eq!(
-        ed.applied_mouse_mode,
-        (false, false),
+        ed.applied_mouse_mode, None,
         "prepare_frame must resync the terminal mouse mode from the new setting"
     );
 }

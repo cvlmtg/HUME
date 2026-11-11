@@ -28,9 +28,9 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `lsp-diagnostics-pull-debounce-ms` | integer ≥ 1 | `250` | Delay after you stop typing before asking a server that only reports on request for its diagnostics |
 | `lsp-request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
 | `messages-min-severity` | `trace` \| `warning` \| `error` | `warning` | Lowest severity `:messages` shows. `trace` also shows detail useful for debugging |
-| `mouse` | bool | `true` | Enable mouse support |
+| `mouse` | bool | `true` | Enable mouse support. To select text the terminal's way instead, hold your terminal's mouse-bypass key (often Shift) while dragging |
 | `mouse-scroll-lines` | integer | `3` | Lines per mouse scroll tick |
-| `mouse-select` | bool | `false` | Mouse drag creates selections and, with `pane-dividers` on, resizes panes |
+| `mouse-select` | bool | `false` | Mouse drag creates selections |
 | `pane-dividers` | bool | `true` | Draw a 1-cell divider between sibling panes |
 | `popup-border` | bool | `true` | Show borders on popups, menus, pickers and the bottom drawer |
 | `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?`/`\|` prompt history |
