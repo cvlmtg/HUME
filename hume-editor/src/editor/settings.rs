@@ -1043,10 +1043,12 @@ impl BufferOverrides {
 pub(crate) mod ops;
 
 mod kind;
+mod setting_arg;
 mod values;
 mod word_list;
 
 pub(in crate::editor) use kind::Shape;
+pub(in crate::editor) use setting_arg::{ArgSplit, SettingArg};
 
 pub use values::{
     CommandCompletion, CursorShape, MessagesMinSeverity, ObjectJumpAlign, SessionRoot,

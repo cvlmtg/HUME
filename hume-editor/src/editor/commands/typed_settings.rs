@@ -8,8 +8,8 @@ use crate::editor::error::CommandError;
 use crate::editor::registry::ArgError;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{
-    PaneSetting, PaneValue, Scope, SettingKey, SettingTarget, pane_text, parse_pane, read_global,
-    unknown_setting,
+    PaneSetting, PaneValue, Scope, SettingArg, SettingKey, SettingTarget, pane_text, parse_pane,
+    read_global, unknown_setting,
 };
 
 /// The typed command that names a setting by scope and key.
@@ -27,16 +27,6 @@ impl SettingCommand {
             Self::Get => "read with :get",
         }
     }
-}
-
-/// `arg`'s scope token and the text after it.
-fn split_scope(arg: &str) -> Result<(&str, &str), ArgError> {
-    // Stray extra whitespace before the key is tolerated, as `complete_set`
-    // tolerates it, or Tab could complete through a double space into a
-    // command line that errors on Enter.
-    arg.split_once(' ')
-        .map(|(scope, rest)| (scope, rest.trim_start()))
-        .ok_or(ArgError::Usage)
 }
 
 /// Resolve `key` in the scope `scope_str` names. The key is checked before
@@ -67,14 +57,15 @@ pub(in crate::editor) fn typed_set(
     fp: FocusedPane,
     arg: &str,
 ) -> Result<(), ArgError> {
-    let (scope_str, rest) = split_scope(arg)?;
-    let (key, value) = rest.split_once('=').ok_or(ArgError::Usage)?;
+    let SettingArg::Value { scope, key, value } = SettingArg::parse(arg) else {
+        return Err(ArgError::Usage);
+    };
     let bid = fp.bid(&ed.view);
     // Only the user runs a typed command: no script reaches `:set`.
     let by = hume_core::ConfigOrigin::User;
     let input = OptionInput::Text(value.to_string());
 
-    match resolve_setting(SettingCommand::Set, scope_str, key)? {
+    match resolve_setting(SettingCommand::Set, scope, key)? {
         SettingTarget::Global(key) => {
             settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input, by)
         }
@@ -102,11 +93,13 @@ pub(in crate::editor) fn typed_get(
     fp: FocusedPane,
     arg: &str,
 ) -> Result<(), ArgError> {
-    let (scope_str, key) = split_scope(arg)?;
+    let SettingArg::Key { scope, key } = SettingArg::parse(arg) else {
+        return Err(ArgError::Usage);
+    };
     let bid = fp.bid(&ed.view);
     let buf = ed.state.buffers.get(bid);
     let settings = &ed.state.settings;
-    let value = match resolve_setting(SettingCommand::Get, scope_str, key)? {
+    let value = match resolve_setting(SettingCommand::Get, scope, key)? {
         SettingTarget::Global(key) => read_global(key, settings).text(),
         SettingTarget::Buffer(target) => {
             settings_ops::read_buffer_target(&ed.state, buf, target).text()

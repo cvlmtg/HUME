@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use super::{CompletionCtx, CompletionItem, MinibufArg, theme_name_candidates};
-use crate::editor::settings::{Scope, SettingKey, SettingText, THEME, TableKey};
+use crate::editor::settings::{Scope, SettingArg, SettingKey, SettingText, THEME, TableKey};
 use hume_core::BufferIntrinsicOption;
 use hume_editing::text::LineEnding;
 
@@ -99,42 +99,7 @@ pub(super) fn complete_set(
     arg: &MinibufArg<'_>,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    match arg.split_once(' ') {
-        None => {
-            // Scope token: the whole argument.
-            let span = arg.token_span(&[' ', '=']);
-            let candidates = complete_set_scope(arg.prefix());
-            (span, candidates)
-        }
-        Some((scope, rest)) => {
-            // `None` for mid-typing garbage, which takes no key or value.
-            let scope = Scope::named(scope);
-            let rest = rest.trim_start();
-            match rest.split_once('=') {
-                None => {
-                    // Key token: the forward scan must also stop at `'='`
-                    // (not just whitespace), or completing
-                    // `:set global th|eme=x` would swallow the `=x` into the
-                    // replaced span instead of leaving it after the
-                    // completed key.
-                    let span = rest.token_span(&[' ', '=']);
-                    let candidates =
-                        scope.map_or_else(Vec::new, |scope| complete_set_key(scope, rest.prefix()));
-                    (span, candidates)
-                }
-                Some((key, value)) => {
-                    // Value token: everything after the key's '=', so it may
-                    // contain '=' or spaces (a `statusline` format string).
-                    // Whitespace past the cursor ends it.
-                    let span = value.token_span(&[' ']);
-                    let candidates = scope.map_or_else(Vec::new, |scope| {
-                        complete_set_value(scope, key, value.prefix(), ctx)
-                    });
-                    (span, candidates)
-                }
-            }
-        }
-    }
+    complete_phase(SettingArg::parse(*arg), ctx)
 }
 
 /// Completes `:get <scope> <key>` arguments: [`complete_set`]'s scope and
@@ -143,10 +108,42 @@ pub(super) fn complete_get(
     arg: &MinibufArg<'_>,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    if arg.prefix().contains('=') {
-        return (arg.cursor()..arg.cursor(), Vec::new());
+    match SettingArg::parse(*arg) {
+        SettingArg::Value { .. } => (arg.cursor()..arg.cursor(), Vec::new()),
+        phase => complete_phase(phase, ctx),
     }
-    complete_set(arg, ctx)
+}
+
+/// The span and candidates for the token `phase` ends in.
+fn complete_phase(
+    phase: SettingArg<'_, MinibufArg<'_>>,
+    ctx: &CompletionCtx<'_>,
+) -> (Range<usize>, Vec<CompletionItem>) {
+    match phase {
+        SettingArg::Scope(scope) => (
+            scope.token_span(&[' ', '=']),
+            complete_set_scope(scope.prefix()),
+        ),
+        SettingArg::Key { scope, key } => {
+            // The forward scan must also stop at `'='` (not just
+            // whitespace), or completing `:set global th|eme=x` would
+            // swallow the `=x` into the replaced span instead of leaving it
+            // after the completed key.
+            let span = key.token_span(&[' ', '=']);
+            // `None` for mid-typing garbage, which takes no key or value.
+            let candidates = Scope::named(scope)
+                .map_or_else(Vec::new, |scope| complete_set_key(scope, key.prefix()));
+            (span, candidates)
+        }
+        SettingArg::Value { scope, key, value } => {
+            // Whitespace past the cursor ends the value.
+            let span = value.token_span(&[' ']);
+            let candidates = Scope::named(scope).map_or_else(Vec::new, |scope| {
+                complete_set_value(scope, key, value.prefix(), ctx)
+            });
+            (span, candidates)
+        }
+    }
 }
 
 #[cfg(test)]

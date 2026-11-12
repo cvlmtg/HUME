@@ -18,6 +18,7 @@ use hume_platform::path::AbsolutePath;
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::registry::CommandRegistry;
+use crate::editor::settings::ArgSplit;
 use hume_treesitter::registry::LanguageRegistry;
 
 mod item;
@@ -92,17 +93,6 @@ impl<'a> MinibufArg<'a> {
         }
     }
 
-    /// The argument past its leading whitespace.
-    pub(in crate::editor) fn trim_start(self) -> Self {
-        self.narrowed_to(self.prefix().trim_start())
-    }
-
-    /// The prefix before the first `sep`, and the argument after it.
-    pub(in crate::editor) fn split_once(self, sep: char) -> Option<(&'a str, Self)> {
-        let (head, tail) = self.prefix().split_once(sep)?;
-        Some((head, self.narrowed_to(tail)))
-    }
-
     pub(in crate::editor) fn input(&self) -> &'a str {
         self.input
     }
@@ -136,6 +126,18 @@ impl<'a> MinibufArg<'a> {
             .rsplit_once(' ')
             .map_or(*self, |(_, word)| self.narrowed_to(word));
         word.token_span(&[' '])
+    }
+}
+
+impl<'a> ArgSplit<'a> for MinibufArg<'a> {
+    /// The prefix before the first `sep`, and the argument after it.
+    fn split_once(self, sep: char) -> Option<(&'a str, Self)> {
+        let (head, tail) = self.prefix().split_once(sep)?;
+        Some((head, self.narrowed_to(tail)))
+    }
+
+    fn trim_start(self) -> Self {
+        self.narrowed_to(self.prefix().trim_start())
     }
 }
 

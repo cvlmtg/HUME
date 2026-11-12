@@ -99,6 +99,12 @@ fn get_without_a_key_shows_its_usage() {
 }
 
 #[test]
+fn get_with_a_value_shows_its_usage() {
+    let mut ed = editor_from("-[a]>b\n");
+    insta::assert_snapshot!(get_error(&mut ed, "global theme=x"), @"Usage: :get global|buffer|pane key");
+}
+
+#[test]
 fn typed_set_unknown_setting_errors() {
     let mut ed = editor_from("-[a]>b\n");
     let result = run_set(&mut ed, "global foo=bar");
