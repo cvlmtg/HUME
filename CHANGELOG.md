@@ -13,6 +13,7 @@
 - `clipboard-joins-ring` sets when copied text joins the kill ring: at `p`, `d`, `c` or `y`, at `p` only, or never. `core:classic-paste` sets it to never.
 - `.` after a paste pastes the same text again, the entry you cycled to with `[`/`]` included, instead of whatever the kill ring or register holds by then.
 - `.` after `"3d` deletes into register 3 again, and a register typed before `.` replaces it, as a count does.
+- Undoing a `.` puts back the selections that undoing the original change would.
 
 ### Language servers
 - Type inlay hints sit right after the name they annotate: `offset: number` instead of `offset : number`.
@@ -24,6 +25,7 @@
 - A click while a key waits for a character, such as after `f`, ends a divider drag.
 - Tab completes a path typed right after the command, such as `:e!/tmp/fi`.
 - Tab completes a `:` line that starts with spaces.
+- `.` after a script command that pastes, such as one calling `paste-after`, pastes at the selection it rebuilt instead of where the cursor was.
 
 ## [0.20.1] - 2026-11-10
 
