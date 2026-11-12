@@ -1676,6 +1676,29 @@ fn steel_repeatable_paste_dot_repeat_pastes_its_pieces() {
     assert_eq!(state(&ed), "aa-[a]>bc\n");
 }
 
+/// A register typed before `.` replaces the prefix of the first paste in
+/// the re-run command only: a second paste in the same body pastes its
+/// recorded pieces.
+#[test]
+fn register_typed_before_dot_reaches_only_the_paste_that_takes_it() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let f2 = setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-paste-twice" "paste after the cursor twice"
+             (lambda ()
+               (call! "paste-after" (focused-pane))
+               (call! "paste-after" (focused-pane)))
+             #:repeatable #t)"#,
+        "steel-paste-twice",
+    );
+    ed.feed_keys([key('y'), f2]);
+    assert_eq!(state(&ed), "aa-[a]>bc\n");
+    ed.state.registers.write_text('5', vec!["R".to_string()]);
+    seed_ring(&mut ed, &["Q"]);
+    ed.feed_keys([key('"'), key('5'), key('.')]);
+    assert_eq!(state(&ed), "aaaR-[a]>bc\n");
+}
+
 /// The `change` command opens its undo group through `begin_insert_session` (the
 /// only path that opens a group). A Steel `#:repeatable` command wrapping `change`
 /// must record the transcript onto the outer action correctly.

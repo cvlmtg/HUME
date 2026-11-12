@@ -25,8 +25,8 @@
 //! one of its answers ([`Answer::Paste`]): `.` pastes the text it pasted,
 //! never what its register or the kill ring holds by then, and a `[`/`]`
 //! after the `.` refines that answer as it does after the paste itself. A
-//! register typed before `.` replaces the recorded one, as a count does, and
-//! a paste then reads it.
+//! register typed before `.` replaces the recorded one, as a count does: the
+//! first command to take the prefix gets it, and a paste that does reads it.
 
 use hume_core::{Count, HostToken};
 use hume_engine::pipeline::EngineView;
@@ -615,8 +615,9 @@ pub(in crate::editor) struct DotReplay {
     /// names its recorded answer by it, so a `[`/`]` after the `.` refines
     /// it.
     front: AnswerPlace,
-    /// A register typed before `.`: it replaces the recorded one, and a
-    /// paste reads it instead of its recorded text.
+    /// A register typed before `.`: it replaces the recorded prefix, and the
+    /// first command to take the prefix spends it. A paste that takes it
+    /// reads it instead of its recorded text.
     typed_register: Option<char>,
     pending: VecDeque<PendingAnswer>,
     /// Every pipe run the replay starts has an id at least this.
@@ -634,6 +635,15 @@ impl EditorState {
         if let Some(replay) = self.dot_replay.as_mut() {
             replay.stopped = true;
         }
+    }
+
+    /// Spend the register typed before the `.` in progress, as a command
+    /// takes the prefix `.` armed from it. Whether there was one to spend.
+    pub(in crate::editor) fn spend_typed_register(&mut self) -> bool {
+        self.dot_replay
+            .as_mut()
+            .and_then(|replay| replay.typed_register.take())
+            .is_some()
     }
 
     /// Whether [`Self::stop_replays`] stopped the `.` in progress.
@@ -664,8 +674,8 @@ pub(in crate::editor) enum ReplayedPaste {
         bare: bool,
         at: AnswerPlace,
     },
-    /// A register was typed before `.`: the paste reads it as it does live,
-    /// and leaves the recorded pieces as they are.
+    /// The paste took the register typed before `.`: it reads it as it does
+    /// live, and leaves the recorded pieces as they are.
     Typed,
 }
 
@@ -1021,14 +1031,15 @@ impl EditorState {
     }
 
     /// During `.`, what the re-run paste pastes, taking the next recorded
-    /// answer. `None` outside `.`; [`ReplayRefusal::Diverged`] when the next
-    /// answer is not a paste's.
+    /// answer; `typed` when the paste took the register typed before `.`.
+    /// `None` outside `.`; [`ReplayRefusal::Diverged`] when the next answer
+    /// is not a paste's.
     pub(in crate::editor) fn replayed_paste(
         &mut self,
+        typed: bool,
     ) -> Option<Result<ReplayedPaste, ReplayRefusal>> {
         let replay = self.dot_replay.as_mut()?;
         let at = replay.front.clone();
-        let typed = replay.typed_register.is_some();
         Some(
             match replay.next(|answer| match answer {
                 Answer::Paste { pieces, bare } => Some((!typed).then(|| (pieces.clone(), *bare))),

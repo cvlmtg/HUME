@@ -40,7 +40,18 @@ impl EditorState {
     /// Consume the pending `"<reg>` prefix and return the explicit register name,
     /// or `None` if no prefix was typed (bare default case).
     pub(in crate::editor::commands) fn take_register_prefix(&mut self) -> Option<char> {
-        self.register_prefix.take()
+        self.take_register_prefix_at_dot().0
+    }
+
+    /// [`Self::take_register_prefix`], and whether the prefix taken is the
+    /// register typed before the `.` in progress. Taking any prefix spends
+    /// that register, so only the first command to take one gets it.
+    pub(in crate::editor::commands) fn take_register_prefix_at_dot(
+        &mut self,
+    ) -> (Option<char>, bool) {
+        let prefix = self.register_prefix.take();
+        let typed = prefix.is_some() && self.spend_typed_register();
+        (prefix, typed)
     }
 
     /// Write `values` into `name`, routing `'c'` through the OS clipboard.

@@ -261,8 +261,11 @@ fn resolve_explicit_register(
 /// a paste replays its text, never its register or the kill ring as they are
 /// by then. `None` outside `.`, and when a register typed before `.` makes
 /// the paste read that register live.
-fn resolve_replayed(state: &mut EditorState) -> Option<Result<ResolvedPaste, CommandError>> {
-    match state.replayed_paste()? {
+fn resolve_replayed(
+    state: &mut EditorState,
+    typed: bool,
+) -> Option<Result<ResolvedPaste, CommandError>> {
+    match state.replayed_paste(typed)? {
         Ok(ReplayedPaste::Recorded { pieces, bare, at }) => Some(Ok(ResolvedPaste {
             values: pieces,
             bare,
@@ -280,8 +283,8 @@ fn resolve(
     state: &mut EditorState,
     bare: fn(&mut EditorState) -> Result<ResolvedPaste, CommandError>,
 ) -> Result<ResolvedPaste, CommandError> {
-    let prefix = state.take_register_prefix();
-    if let Some(replayed) = resolve_replayed(state) {
+    let (prefix, typed) = state.take_register_prefix_at_dot();
+    if let Some(replayed) = resolve_replayed(state, typed) {
         return replayed;
     }
     match prefix {
