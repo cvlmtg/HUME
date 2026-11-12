@@ -59,8 +59,10 @@ pub(in crate::editor) struct CompletionCtx<'a> {
 /// where the argument starts, which is the floor past its leading
 /// whitespace. The floor is where the command name ends (0 on a line that
 /// is all argument), so `:e!/tmp/x` and `:e /tmp/x` read the same
-/// argument, as `parse_typed_command` does on Enter. No span it gives
-/// starts before the argument.
+/// argument, as `parse_typed_command` does on Enter. Narrowing moves the
+/// start forward, never past the cursor, so no span it gives starts before
+/// the argument.
+#[derive(Clone, Copy)]
 pub(in crate::editor) struct MinibufArg<'a> {
     input: &'a str,
     start: usize,
@@ -69,17 +71,36 @@ pub(in crate::editor) struct MinibufArg<'a> {
 
 impl<'a> MinibufArg<'a> {
     /// Panics unless `floor <= cursor <= input.len()`.
-    pub(in crate::editor) fn new(input: &'a str, floor: usize, cursor: usize) -> Self {
+    fn new(input: &'a str, floor: usize, cursor: usize) -> Self {
         assert!(
             floor <= cursor && cursor <= input.len(),
             "argument floor {floor} and cursor {cursor} out of order in {input:?}"
         );
-        let arg = input[floor..cursor].trim_start();
         Self {
             input,
-            start: cursor - arg.len(),
+            start: floor,
             cursor,
         }
+        .trim_start()
+    }
+
+    /// `self` narrowed to `tail`, a suffix of its prefix.
+    fn narrowed_to(self, tail: &str) -> Self {
+        Self {
+            start: self.cursor - tail.len(),
+            ..self
+        }
+    }
+
+    /// The argument past its leading whitespace.
+    pub(in crate::editor) fn trim_start(self) -> Self {
+        self.narrowed_to(self.prefix().trim_start())
+    }
+
+    /// The prefix before the first `sep`, and the argument after it.
+    pub(in crate::editor) fn split_once(self, sep: char) -> Option<(&'a str, Self)> {
+        let (head, tail) = self.prefix().split_once(sep)?;
+        Some((head, self.narrowed_to(tail)))
     }
 
     pub(in crate::editor) fn input(&self) -> &'a str {
@@ -95,30 +116,26 @@ impl<'a> MinibufArg<'a> {
         &self.input[self.start..self.cursor]
     }
 
-    /// The span a completion of `token`, a suffix of [`Self::prefix`],
-    /// replaces: from where `token` starts to the first of `stops` at or
-    /// after the cursor, or the line's end. Its start is the text the
-    /// completer filtered on. Its end runs past the cursor, so a candidate
-    /// applied mid-token doesn't duplicate the token's tail
+    /// The span a completion of the argument replaces: from its start, the
+    /// text the completer filtered on, to the first of `stops` at or after
+    /// the cursor, or the line's end. Its end runs past the cursor, so a
+    /// candidate applied mid-token doesn't duplicate the token's tail
     /// (`:e src/ma|in.rs` + Tab must not produce `src/main.rsin.rs`).
-    ///
-    /// `stops` is the token's own separator alphabet: a `:set` key stops at
-    /// `'='` too (so completing `:set global th|eme=x` doesn't swallow the
-    /// `=x`), where a path stops at whitespace alone.
-    pub(in crate::editor) fn token_span(&self, token: &str, stops: &[char]) -> Range<usize> {
-        debug_assert!(self.prefix().ends_with(token), "{token:?} ends the prefix");
+    pub(in crate::editor) fn token_span(&self, stops: &[char]) -> Range<usize> {
         let end = self.input[self.cursor..]
-            .find(|c: char| stops.contains(&c))
+            .find(stops)
             .map_or(self.input.len(), |i| self.cursor + i);
-        self.cursor - token.len()..end
+        self.start..end
     }
 
     /// The span of the space-delimited word the cursor is in: the span a
     /// source that does not compute its own replaces.
     pub(in crate::editor) fn last_word_span(&self) -> Range<usize> {
-        let prefix = self.prefix();
-        let word = prefix.rfind(' ').map_or(prefix, |i| &prefix[i + 1..]);
-        self.token_span(word, &[' '])
+        let word = self
+            .prefix()
+            .rsplit_once(' ')
+            .map_or(*self, |(_, word)| self.narrowed_to(word));
+        word.token_span(&[' '])
     }
 }
 

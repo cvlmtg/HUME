@@ -48,9 +48,8 @@ fn complete_path_with<F>(
 where
     F: Fn(&str, &AbsolutePath) -> std::io::Result<AbsolutePath>,
 {
-    let prefix = arg.prefix();
-    let span = arg.token_span(prefix, &[' ']);
-    let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
+    let span = arg.token_span(&[' ']);
+    let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(arg.prefix());
     // Resolved the way `:e` resolves the path it completes; a Windows
     // drive-relative directory cannot be, and lists nothing.
     let Ok(dir) = resolve_dir(dir_str, ctx.cwd) else {

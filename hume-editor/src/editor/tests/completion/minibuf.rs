@@ -525,12 +525,11 @@ fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
     );
 }
 
-/// `last_word_span` (a Steel `'minibuf` source's own token) must be the argument
-/// the cursor is *in*, not everything after the command name: a
+/// `last_word_span` (a Steel `'minibuf` source's own token) must be the
+/// argument the cursor is *in*, not everything after the command name: a
 /// multi-argument typed command's second argument must not drag the first
-/// one along into the span/filter. `"bexyz"` only
-/// `starts_with` `"be"` (the second argument alone), never `"alpha be"`
-/// (what a first-space split would wrongly hand over).
+/// one along into the span/filter. `"bexyz"` only `starts_with` `"be"`
+/// (the second argument alone), never `"alpha be"`.
 #[test]
 fn a_minibuf_source_gets_only_the_argument_the_cursor_is_in() {
     let tmp = tempfile::tempdir().unwrap();

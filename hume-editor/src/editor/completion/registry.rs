@@ -29,7 +29,7 @@ use hume_treesitter::registry::LanguageRegistry;
 
 /// A native minibuffer source that enumerates a stable universe: the
 /// session's own matcher narrows it, and the orchestrator supplies the
-/// `'arg` span it never has to compute.
+/// span it never has to compute.
 pub(in crate::editor) type NativeUniverseFn = fn(&CompletionCtx<'_>) -> Vec<CompletionItem>;
 
 /// A native minibuffer source whose universe *is* the live input (a
@@ -38,11 +38,12 @@ pub(in crate::editor) type NativeUniverseFn = fn(&CompletionCtx<'_>) -> Vec<Comp
 pub(in crate::editor) type NativeDelegatedFn =
     fn(&MinibufArg<'_>, &CompletionCtx<'_>) -> (Range<usize>, Vec<CompletionItem>);
 
-/// How a `Minibuf` source produces its answer: the two native shapes each
-/// have a fixed span rule of their own (see [`super::orchestrate::
-/// invoke_minibuf_source`]'s doc): `NativeDelegated` computes its own from
-/// its [`MinibufArg`], everything else (including every `Steel` minibuf
-/// source) gets [`MinibufArg::last_word_span`].
+/// How a `Minibuf` source produces its answer and its span.
+/// `NativeDelegated` computes its span from its [`MinibufArg`] together
+/// with its candidates, since its universe *is* the live input. Every
+/// other body, every `Steel` minibuf source included, gets
+/// [`MinibufArg::last_word_span`], the same way a `Buffer` source's span
+/// is always the word before the cursor.
 pub(in crate::editor) enum MinibufBody {
     NativeUniverse(NativeUniverseFn),
     NativeDelegated(NativeDelegatedFn),

@@ -77,9 +77,9 @@ can never run, and an outside caller's own type (`&BufferSession` vs.
 struct BufferSourceEntry { name, match_kind, priority, proc: SteelVal, resolve: bool, trigger_chars }
 
 enum MinibufBody {
-    NativeUniverse(fn(&CompletionCtx) -> Vec<CompletionItem>),          // 'arg span
-    NativeDelegated(fn(&str, usize, &CompletionCtx) -> (Range<usize>, Vec<CompletionItem>)),  // own span
-    Steel(SteelVal),
+    NativeUniverse(fn(&CompletionCtx) -> Vec<CompletionItem>),          // last_word_span
+    NativeDelegated(fn(&MinibufArg, &CompletionCtx) -> (Range<usize>, Vec<CompletionItem>)),  // own span
+    Steel { proc, cancel },
 }
 struct MinibufSourceEntry { name, match_kind, body: MinibufBody }
 ```
@@ -113,8 +113,8 @@ as its `prefix` argument). Two sources invoked together can therefore read
 different prefixes off the same text. A `Minibuf` source's token is likewise resolved
 upfront: the orchestrator mints one `MinibufArg`, the argument from where
 the command name ends (the line's start when the line names its source),
-and its `last_word_span` is the token — except a delegated source, whose
-candidate universe *is* the live input: the orchestrator calls a
+and its `last_word_span` is the token. A delegated source's candidate
+universe *is* the live input, so the orchestrator calls a
 `NativeDelegated` function with that `MinibufArg` first and takes the span
 it returns (`:e`'s path, `:set`'s phase-dependent token), and a
 Steel source registered `#:match 'delegated` may name its span with its

@@ -5,7 +5,7 @@ use super::MinibufArg;
 /// The argument's prefix and the span completing all of it replaces.
 fn whole(input: &str, floor: usize, cursor: usize) -> (&str, Range<usize>) {
     let arg = MinibufArg::new(input, floor, cursor);
-    (arg.prefix(), arg.token_span(arg.prefix(), &[' ']))
+    (arg.prefix(), arg.token_span(&[' ']))
 }
 
 #[test]

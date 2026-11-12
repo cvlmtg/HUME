@@ -99,15 +99,11 @@ pub(super) fn complete_set(
     arg: &MinibufArg<'_>,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    let prefix = arg.prefix();
-    match prefix.split_once(' ') {
+    match arg.split_once(' ') {
         None => {
-            // Scope token: the argument itself, up to whitespace. `'='` is
-            // an extra stop on the forward side for symmetry with the key
-            // phase below. A scope name never contains one, so it never
-            // fires here.
-            let span = arg.token_span(prefix, &[' ', '=']);
-            let candidates = complete_set_scope(prefix);
+            // Scope token: the whole argument.
+            let span = arg.token_span(&[' ', '=']);
+            let candidates = complete_set_scope(arg.prefix());
             (span, candidates)
         }
         Some((scope, rest)) => {
@@ -121,19 +117,19 @@ pub(super) fn complete_set(
                     // `:set global th|eme=x` would swallow the `=x` into the
                     // replaced span instead of leaving it after the
                     // completed key.
-                    let span = arg.token_span(rest, &[' ', '=']);
+                    let span = rest.token_span(&[' ', '=']);
                     let candidates =
-                        scope.map_or_else(Vec::new, |scope| complete_set_key(scope, rest));
+                        scope.map_or_else(Vec::new, |scope| complete_set_key(scope, rest.prefix()));
                     (span, candidates)
                 }
                 Some((key, value)) => {
-                    // Value token: everything after the key's '=', ended by
-                    // whitespace only: a value can legitimately contain an
-                    // internal '=' or spaces (e.g. a `statusline` format
-                    // string).
-                    let span = arg.token_span(value, &[' ']);
-                    let candidates = scope
-                        .map_or_else(Vec::new, |scope| complete_set_value(scope, key, value, ctx));
+                    // Value token: everything after the key's '=', so it may
+                    // contain '=' or spaces (a `statusline` format string).
+                    // Whitespace past the cursor ends it.
+                    let span = value.token_span(&[' ']);
+                    let candidates = scope.map_or_else(Vec::new, |scope| {
+                        complete_set_value(scope, key, value.prefix(), ctx)
+                    });
                     (span, candidates)
                 }
             }

@@ -347,7 +347,7 @@ impl EditorState {
             return;
         };
         let (input, cursor) = (mb.input.clone(), mb.cursor);
-        let Some((name, floor)) =
+        let Some((name, arg)) =
             resolve_minibuf_source(&self.config.registry, completion, &input, cursor)
         else {
             return;
@@ -378,7 +378,7 @@ impl EditorState {
             &ctx,
             &mut session,
             id,
-            &MinibufArg::new(&input, floor, cursor),
+            &arg,
         );
         self.queue_source_calls(call);
         let r = self.push_layer(view, MinibufCompletionLayer { session });
@@ -617,15 +617,6 @@ fn invoke_buffer_sources(
 /// Mints an invocation of `id` into `session` and runs it: a native source
 /// answers inline, a Steel one returns the call to queue with its request
 /// id.
-///
-/// `NativeDelegated`'s own span comes from calling its function first: the
-/// only body variant whose span isn't the generic `'arg` one, since its
-/// candidate universe *is* the live input and the two are computed
-/// together. Every other body gets the argument's last word as its span
-/// ([`MinibufArg::last_word_span`]), the same way a `Buffer` source's span
-/// is always the word before the cursor (`invoke_buffer_sources`). Neither
-/// span starts before `arg`'s floor, so a no-space argument (`:b1`,
-/// `:e!/tmp/x`) never swallows the command name.
 fn invoke_minibuf_source(
     sources: &SourceRegistry,
     ctx: &CompletionCtx<'_>,
@@ -648,13 +639,14 @@ fn invoke_minibuf_source(
         }
         MinibufBody::Steel { proc, .. } => {
             let invocation_id = session.invoke(id, Invocation::minibuf(arg.last_word_span()));
+            let input = arg.input();
             // Steel indexes a string by char.
-            let cursor_chars = arg.input()[..arg.cursor()].chars().count();
+            let cursor_chars = input[..arg.cursor()].chars().count();
             let call = SteelCall::new(
                 proc.clone(),
                 vec![
                     token_to_steel(invocation_id),
-                    SteelVal::StringV(arg.input().into()),
+                    SteelVal::StringV(input.into()),
                     SteelVal::IntV(cursor_chars as isize),
                 ],
             );
@@ -675,24 +667,25 @@ fn target_command_name(input: &str, cursor: usize) -> Option<(&str, usize)> {
 }
 
 /// Resolves which registered source applies to `completion`'s line in its
-/// current `(input, cursor)` shape, and the floor of the [`MinibufArg`] it
-/// completes. On the `:` line that is the command name itself while the
-/// cursor is within it (no space yet, or moved left past the space), with
-/// floor `0` (the whole prefix typed so far is the token), else the
-/// resolved command's declared argument completer, with the name's own end
-/// as the floor. A line that names its source gets it with floor `0`.
-fn resolve_minibuf_source(
+/// current `(input, cursor)` shape, and the [`MinibufArg`] it completes.
+/// On the `:` line that is the command name itself while the cursor is
+/// within it (no space yet, or moved left past the space), completing the
+/// whole prefix typed so far, else the resolved command's declared
+/// argument completer, completing from where the name ends. A line that
+/// names its source completes the whole line.
+fn resolve_minibuf_source<'a>(
     registry: &CommandRegistry,
     completion: PromptCompletion,
-    input: &str,
+    input: &'a str,
     cursor: usize,
-) -> Option<(std::borrow::Cow<'static, str>, usize)> {
+) -> Option<(std::borrow::Cow<'static, str>, MinibufArg<'a>)> {
     use std::borrow::Cow;
-    match completion {
-        PromptCompletion::Source(name) => Some((Cow::Borrowed(name), 0)),
+    let (name, floor) = match completion {
+        PromptCompletion::Source(name) => (Cow::Borrowed(name), 0),
         PromptCompletion::CommandLine => match target_command_name(input, cursor) {
-            None => Some((Cow::Borrowed(super::COMMAND_SOURCE), 0)),
-            Some((cmd, cmd_end)) => Some((registry.get_typed(cmd)?.completer.clone()?, cmd_end)),
+            None => (Cow::Borrowed(super::COMMAND_SOURCE), 0),
+            Some((cmd, cmd_end)) => (registry.get_typed(cmd)?.completer.clone()?, cmd_end),
         },
-    }
+    };
+    Some((name, MinibufArg::new(input, floor, cursor)))
 }
