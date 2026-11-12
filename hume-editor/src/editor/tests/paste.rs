@@ -119,22 +119,46 @@ fn kill_ring_register_paste_seeds_cycle() {
     );
 }
 
-/// A cycle step that deletes the same span the previous paste deleted leaves
-/// the text as it is, and still has to hand back selections for that text.
+/// A cycle step that pastes the same text the previous paste did, here one
+/// line taken whole and the same line taken inline over a selection that
+/// starts its line, leaves the text as it is, and still has to hand back
+/// selections for that text.
 #[test]
 fn paste_cycle_step_repeating_the_previous_deletion_keeps_selections_valid() {
+    use hume_ops::register::{Piece, Shape};
+
     let mut ed = editor_from("-[hello]>world\n");
-    ed.state.registers.write_text('5', vec![String::new()]);
-    seed_ring(&mut ed, &[""]);
+    ed.state
+        .kill_ring
+        .push(vec![Piece::new("a\n", Shape::Charwise)]);
+    ed.state
+        .kill_ring
+        .push(vec![Piece::new("a\n", Shape::Linewise)]);
 
-    ed.handle_key(key('"'));
-    ed.handle_key(key('5'));
     ed.feed_key(key('p'));
+    assert_eq!(ed.doc().text().to_string(), "a\nworld\n");
     ed.feed_key(key('['));
+    assert_eq!(
+        ed.state.kill_ring.head(),
+        Some([Piece::new("a\n", Shape::Charwise)].as_slice()),
+        "setup: the cycle pasted the inline entry"
+    );
 
-    assert_eq!(ed.doc().text().to_string(), "world\n");
+    assert_eq!(ed.doc().text().to_string(), "a\nworld\n");
     ed.feed_key(key('u'));
     assert_eq!(ed.doc().text().to_string(), "helloworld\n");
+}
+
+/// A paste and the cycle steps after it are one undo step: undo returns to
+/// the text and selection the paste started from.
+#[test]
+fn undo_after_a_cycle_reverts_the_paste_and_the_cycle_together() {
+    let mut ed = editor_from("-[x]>yz\n");
+    seed_ring(&mut ed, &["b", "a"]);
+    ed.feed_keys([key('p'), key('[')]);
+    assert_eq!(state(&ed), "x-[b]>yz\n");
+    ed.feed_key(key('u'));
+    assert_eq!(state(&ed), "-[x]>yz\n");
 }
 
 // ── Explicit register prefix ────────────────────────────────────────────────
@@ -551,6 +575,17 @@ fn an_unreadable_osc52_clipboard_leaves_p_on_the_ring() {
     seed_ring(&mut ed, &["R"]);
     ed.feed_key(key('p'));
     assert_eq!(state(&ed), "x-[R]>\n");
+}
+
+/// An empty clipboard holds nothing to take in, so `p` over a selection
+/// pastes the ring head instead of deleting the selection.
+#[test]
+fn an_empty_clipboard_leaves_p_on_the_ring_head() {
+    let mut ed = editor_from("-[xy]>z\n");
+    seed_ring(&mut ed, &["a"]);
+    seed_clipboard(&mut ed, "");
+    ed.feed_key(key('p'));
+    assert_eq!(state(&ed), "-[a]>z\n");
 }
 
 /// With nothing on the ring and a clipboard that cannot be read, `p` pastes

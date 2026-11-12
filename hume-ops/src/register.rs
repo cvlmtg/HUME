@@ -312,9 +312,9 @@ impl RegisterSet {
 
     /// Take in `raw`, the OS clipboard's text as read, when HUME has not seen
     /// it: mirror it into the clipboard register and return its pieces.
-    /// `None` when [`Self::is_own_clipboard`].
+    /// `None` when [`Self::is_own_clipboard`], or when `raw` is empty.
     pub fn take_in_clipboard(&mut self, raw: String) -> Option<Vec<Piece>> {
-        if self.is_own_clipboard(&raw) {
+        if raw.is_empty() || self.is_own_clipboard(&raw) {
             return None;
         }
         let pieces = vec![Piece::from(raw.as_str())];
@@ -411,8 +411,13 @@ impl KillRing {
     /// (every string, every char `is_whitespace`), the new entry overwrites
     /// it in place instead of taking a fresh slot. This keeps from filling the
     /// ring with entries you never want to cycle back to.
+    ///
+    /// An entry with no text is not pushed: it would paste nothing.
     pub fn push<P: Into<Piece>>(&mut self, values: Vec<P>) {
         let values: Vec<Piece> = values.into_iter().map(Into::into).collect();
+        if values.iter().all(Piece::is_empty) {
+            return;
+        }
         self.settle();
         if let Some(pos) = self.entries.iter().position(|entry| *entry == values) {
             if pos == 0 {

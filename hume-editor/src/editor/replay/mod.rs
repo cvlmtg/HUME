@@ -26,7 +26,8 @@
 //! never what its register or the kill ring holds by then, and a `[`/`]`
 //! after the `.` refines that answer as it does after the paste itself. A
 //! register typed before `.` replaces the recorded one, as a count does: the
-//! first command to take the prefix gets it, and a paste that does reads it.
+//! first command to take that register gets it, and a paste that does reads
+//! it.
 
 use hume_core::{Count, HostToken};
 use hume_engine::pipeline::EngineView;
@@ -616,7 +617,7 @@ pub(in crate::editor) struct DotReplay {
     /// it.
     front: AnswerPlace,
     /// A register typed before `.`: it replaces the recorded prefix, and the
-    /// first command to take the prefix spends it. A paste that takes it
+    /// first command to take it as its prefix spends it. A paste that takes it
     /// reads it instead of its recorded text.
     typed_register: Option<char>,
     pending: VecDeque<PendingAnswer>,
@@ -637,12 +638,12 @@ impl EditorState {
         }
     }
 
-    /// Spend the register typed before the `.` in progress, as a command
-    /// takes the prefix `.` armed from it. Whether there was one to spend.
-    pub(in crate::editor) fn spend_typed_register(&mut self) -> bool {
+    /// Spend the register typed before the `.` in progress when `taken`, the
+    /// prefix a command takes, is that register. Whether it was spent.
+    pub(in crate::editor) fn spend_typed_register(&mut self, taken: char) -> bool {
         self.dot_replay
             .as_mut()
-            .and_then(|replay| replay.typed_register.take())
+            .and_then(|replay| replay.typed_register.take_if(|typed| *typed == taken))
             .is_some()
     }
 
@@ -701,15 +702,21 @@ pub(in crate::editor) enum PendingAnswer {
 
 impl DotReplay {
     /// Take the next answer if `kind` accepts it, or if it is
-    /// [`Answer::Unanswered`]. `None` when the next answer is of another kind
-    /// or none is left: the re-run took a different branch, and the input
-    /// refuses.
-    fn next<T>(&mut self, kind: impl FnOnce(&Answer) -> Option<T>) -> Option<Replayed<T>> {
-        let taken = match self.answers.front()? {
+    /// [`Answer::Unanswered`]. `kind` moves its value out of an answer of its
+    /// kind and hands any other answer back. `None` when the next answer is
+    /// of another kind or none is left: the re-run took a different branch,
+    /// and the input refuses.
+    fn next<T>(&mut self, kind: impl FnOnce(Answer) -> Result<T, Answer>) -> Option<Replayed<T>> {
+        let taken = match self.answers.pop_front()? {
             Answer::Unanswered => Replayed::Unanswered,
-            answer => Replayed::Answered(kind(answer)?),
+            answer => match kind(answer) {
+                Ok(value) => Replayed::Answered(value),
+                Err(answer) => {
+                    self.answers.push_front(answer);
+                    return None;
+                }
+            },
         };
-        self.answers.pop_front();
         self.front.index += 1;
         Some(taken)
     }
@@ -723,7 +730,7 @@ impl DotReplay {
     }
 
     /// Answers a re-run interactive input (a read, a picker, a prompt, a
-    /// menu) from the recording instead of opening it: `kind` takes its
+    /// menu) from the recording instead of opening it: `kind` moves its
     /// answer out of the next recorded one, and `then` turns it into what to
     /// run after the re-run body, or the refusal naming why it has no fit (a
     /// missing item, an unbound action, a forgotten payload). Refuses with
@@ -731,7 +738,7 @@ impl DotReplay {
     /// and queues nothing for an input that never resolved live.
     pub(in crate::editor) fn answer_call<T>(
         &mut self,
-        kind: impl FnOnce(&Answer) -> Option<T>,
+        kind: impl FnOnce(Answer) -> Result<T, Answer>,
         then: impl FnOnce(T) -> Result<PendingAnswer, ReplayRefusal>,
     ) -> Result<(), ReplayRefusal> {
         if let Replayed::Answered(answer) = self.next(kind).ok_or(ReplayRefusal::Diverged)? {
@@ -1042,8 +1049,8 @@ impl EditorState {
         let at = replay.front.clone();
         Some(
             match replay.next(|answer| match answer {
-                Answer::Paste { pieces, bare } => Some((!typed).then(|| (pieces.clone(), *bare))),
-                _ => None,
+                Answer::Paste { pieces, bare } => Ok((!typed).then_some((pieces, bare))),
+                other => Err(other),
             }) {
                 Some(Replayed::Answered(Some((pieces, bare)))) => {
                     Ok(ReplayedPaste::Recorded { pieces, bare, at })

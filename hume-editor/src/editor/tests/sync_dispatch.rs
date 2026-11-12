@@ -1701,6 +1701,29 @@ fn register_typed_before_dot_reaches_only_the_paste_that_takes_it() {
     assert_eq!(state(&ed), "aaaR-[a]>bc\n");
 }
 
+/// A register typed before `.` is spent only by a paste that takes it: a
+/// paste the body gives its own register pastes its recorded pieces.
+#[test]
+fn a_register_typed_before_dot_skips_a_paste_with_its_own_register() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let f2 = setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-paste-5" "paste register 5 after the cursor"
+             (lambda ()
+               (set-register-prefix! "5")
+               (call! "paste-after" (focused-pane)))
+             #:repeatable #t)"#,
+        "steel-paste-5",
+    );
+    ed.state.registers.write_text('5', vec!["Q".to_string()]);
+    ed.feed_key(f2);
+    assert_eq!(state(&ed), "a-[Q]>bc\n");
+    ed.state.registers.write_text('5', vec!["R".to_string()]);
+    ed.state.registers.write_text('3', vec!["Z".to_string()]);
+    ed.feed_keys([key('"'), key('3'), key('.')]);
+    assert_eq!(state(&ed), "aQ-[Q]>bc\n");
+}
+
 /// The `change` command opens its undo group through `begin_insert_session` (the
 /// only path that opens a group). A Steel `#:repeatable` command wrapping `change`
 /// must record the transcript onto the outer action correctly.

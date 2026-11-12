@@ -210,6 +210,14 @@ fn take_in_clipboard_compares_crlf_text_as_read() {
     assert_eq!(regs.take_in_clipboard("a\r\nb".to_string()), None);
 }
 
+#[test]
+fn take_in_clipboard_skips_empty_text() {
+    let mut regs = RegisterSet::new();
+    assert_eq!(regs.take_in_clipboard(String::new()), None);
+    assert_eq!(clipboard_pieces(&regs), None);
+    assert_eq!(regs.clipboard_blob(), None);
+}
+
 // ── yank_selections ───────────────────────────────────────────────────────
 
 #[test]
@@ -407,6 +415,15 @@ fn push_keeps_non_whitespace_head_when_new_is_whitespace() {
     assert_eq!(ring.head(), Some(vs(" ").as_slice()));
     assert_eq!(ring.slot(1), Some(vs("hello").as_slice()));
     assert_eq!(ring.len(), 2);
+}
+
+#[test]
+fn push_drops_an_all_empty_entry() {
+    let mut ring = KillRing::new();
+    ring.push(vs("a"));
+    ring.push(ps(&["", ""]));
+    assert_eq!(ring.len(), 1);
+    assert_eq!(ring.head(), Some(vs("a").as_slice()));
 }
 
 #[test]

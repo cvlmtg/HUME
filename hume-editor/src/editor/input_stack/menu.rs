@@ -69,8 +69,8 @@ pub(in crate::editor) fn open_menu(
         replay
             .answer_call(
                 |a| match a {
-                    Answer::Menu(choice) => Some(choice.clone()),
-                    _ => None,
+                    Answer::Menu(choice) => Ok(choice),
+                    other => Err(other),
                 },
                 |choice| {
                     let index = choice

@@ -30,7 +30,7 @@ use crate::editor::settings::ClipboardJoinsRing;
 /// The moment a clipboard take-in is attempted at, which
 /// `clipboard-joins-ring` admits or refuses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) enum TakeIn {
+enum TakeIn {
     /// A bare smart paste.
     Paste,
     /// A kill-ring push or a clipboard-register write.
@@ -42,12 +42,18 @@ pub(in crate::editor) enum TakeIn {
 impl EditorState {
     /// Push a bare or `"k`-prefixed capture onto the kill ring, after taking
     /// in a clipboard HUME has not seen, so the capture is the head and the
-    /// outside copy sits below it. A clipboard that cannot be read leaves
-    /// the capture to proceed without a warning: arboard reports a clipboard
-    /// holding an image as a failed read, and every `d` would warn.
+    /// outside copy sits below it.
     pub(in crate::editor) fn capture_to_ring(&mut self, yanked: Vec<Piece>) {
-        self.take_in_clipboard(TakeIn::Edit);
+        self.take_in_clipboard_at_edit();
         self.kill_ring.push(yanked);
+    }
+
+    /// [`Self::take_in_clipboard`] at [`TakeIn::Edit`]. A clipboard that
+    /// cannot be read leaves the edit to proceed without a warning: arboard
+    /// reports a clipboard holding an image as a failed read, and every `d`
+    /// would warn.
+    pub(super) fn take_in_clipboard_at_edit(&mut self) {
+        let _ = self.take_in_clipboard(TakeIn::Edit);
     }
 
     /// Push the clipboard onto the kill ring when it holds text HUME has not
@@ -55,7 +61,8 @@ impl EditorState {
     /// `clipboard-joins-ring` admits `at`. Nothing is read when it does not.
     ///
     /// Returns the warning when the clipboard could not be read.
-    pub(in crate::editor) fn take_in_clipboard(&mut self, at: TakeIn) -> Option<String> {
+    #[must_use]
+    fn take_in_clipboard(&mut self, at: TakeIn) -> Option<String> {
         let admitted = match self.settings.clipboard_joins_ring {
             ClipboardJoinsRing::Always => true,
             ClipboardJoinsRing::Paste => at == TakeIn::Paste,

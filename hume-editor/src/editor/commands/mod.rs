@@ -44,13 +44,13 @@ impl EditorState {
     }
 
     /// [`Self::take_register_prefix`], and whether the prefix taken is the
-    /// register typed before the `.` in progress. Taking any prefix spends
-    /// that register, so only the first command to take one gets it.
+    /// register typed before the `.` in progress. Taking that register spends
+    /// it, so only the first command to take it gets it.
     pub(in crate::editor::commands) fn take_register_prefix_at_dot(
         &mut self,
     ) -> (Option<char>, bool) {
         let prefix = self.register_prefix.take();
-        let typed = prefix.is_some() && self.spend_typed_register();
+        let typed = prefix.is_some_and(|reg| self.spend_typed_register(reg));
         (prefix, typed)
     }
 
@@ -60,7 +60,7 @@ impl EditorState {
     /// lost.
     pub(super) fn write_register(&mut self, name: char, values: Vec<Piece>) {
         if name == hume_ops::register::CLIPBOARD_REGISTER {
-            self.take_in_clipboard(paste::TakeIn::Edit);
+            self.take_in_clipboard_at_edit();
         }
         if let Some(w) =
             register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values)

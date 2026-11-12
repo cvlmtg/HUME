@@ -259,8 +259,8 @@ pub(in crate::editor) fn open_picker(
         replay
             .answer_call(
                 |a| match a {
-                    Answer::Pick(pick) => Some(pick.clone()),
-                    _ => None,
+                    Answer::Pick(pick) => Ok(pick),
+                    other => Err(other),
                 },
                 |pick: Pick| {
                     let mut calls = Vec::new();

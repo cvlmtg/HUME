@@ -83,6 +83,25 @@ fn write_register_k_pushes_the_ring() {
     assert_eq!(ed.state.kill_ring.head(), Some(ps(&["x"]).as_slice()));
 }
 
+/// `(write-register! "k" (list ""))` has no text to push, so the ring keeps
+/// its head.
+#[test]
+fn write_register_k_with_empty_text_leaves_the_ring() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>\n");
+    ed.state.kill_ring.push(vec!["x"]);
+
+    eval_with_real_host(
+        &mut ed,
+        &mut ScriptingHost::for_testing(&Dirs::none()),
+        r#"(write-register! "k" (list ""))"#,
+        tmp.path(),
+    );
+
+    assert_eq!(ed.state.kill_ring.len(), 1);
+    assert_eq!(ed.state.kill_ring.head(), Some(ps(&["x"]).as_slice()));
+}
+
 /// `read-register` on `'k'` reads the ring head, round-tripping with the
 /// write above.
 #[test]

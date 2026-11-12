@@ -40,8 +40,8 @@ pub(in crate::editor) fn open_prompt(
         return replay
             .answer_call(
                 |a| match a {
-                    Answer::Prompt(text) => Some(text.clone()),
-                    _ => None,
+                    Answer::Prompt(text) => Ok(text),
+                    other => Err(other),
                 },
                 |text| Ok(PendingAnswer::Calls(vec![prompt_call(callback, text)])),
             )

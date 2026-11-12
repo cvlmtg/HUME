@@ -119,8 +119,8 @@ fn read_interactive(
     if let Some(replay) = state.dot_replay.as_mut() {
         return replay.answer_call(
             |a| match a {
-                Answer::Char(c) => Some(*c),
-                _ => None,
+                Answer::Char(c) => Ok(c),
+                other => Err(other),
             },
             |answer| Ok(PendingAnswer::Read(CharRead { then, source: None }, answer)),
         );

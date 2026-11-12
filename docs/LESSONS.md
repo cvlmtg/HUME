@@ -1007,33 +1007,25 @@ per-call anchor re-check), `hume-scripting/src/builtins/lsp/convert.rs`
 
 ## L20 — Four target categories for two real kinds; handed a pane, read focus anyway (2026-09-25)
 
-**Root cause:** The explicit-target refactor (17ad8600 and five follow-ups)
-gave native commands four target categories — `Pane`, `FocusedPane`,
-`Buffer`, `Global` — each with its own fn type, builder, resolved-target
-variant, and resolver arm, plus a separate `Scope` enum saying whether the
-target was focus. Four parallel enums (`TargetCategory`, `EditorCmdBody`,
-`ResolvedTarget`, `Scope`) were kept in agreement by `unreachable!()` arms
-and five resolver functions. Nobody counted what the commands actually
-needed: two `Buffer` commands and four `Global` ones, and every one of the
-six turned out to act through a pane (a per-pane search cursor) or on focus
-(a mode layer, the Extend flag, a tab switch). Separately, 31 `FocusedPane`
-bodies received the focused pane as a parameter and most ignored it,
-re-minting `FocusedPane::current` inside; Insert teardown read focus instead
-of the session that recorded its own owner, which made "end sessions before
-the focus write" an ordering rule every caller had to respect.
+**Root cause:** A refactor gave native commands four target categories,
+each with its own function type, builder, resolved-target variant and
+resolver arm, plus a separate enum saying whether the target was focus.
+Four parallel enums were kept in agreement by `unreachable!()` arms and five
+resolver functions. Nobody counted what the commands actually needed: two
+commands in one category and four in another, and every one of the six
+turned out to act through a pane or on focus. Separately, 31 command bodies
+received the focused pane as a parameter and most ignored it, reading focus
+again inside; Insert teardown read focus instead of the session that
+recorded its own owner, which made "end sessions before the focus write" an
+ordering rule every caller had to respect.
 
-**Concrete instance:** a blank-sheet review (2026-09-25) collapsed the
-categories to `Pane`/`FocusedPane`, replaced `Scope` with
-`Target::focused()`, replaced five resolvers with `CommandPane::resolve`/
-`FocusedPane::resolve`/`Target::resolve`, made teardown read
-`EditSession.pane`/`.buffer`, and gave typed `:` commands the focused pane
-at invocation. A test that moves focus raw before the Insert layer pops
-panicked on the old teardown's consistency assert — the ordering rule had
-been the only thing keeping it correct. A same-day follow-up cleanup pass
-folded the keypress-only `Target::at_focus` into `Target::resolve` itself
-(a `Pane`-category handle that names the focused pane now comes back
-`Focused` from `resolve` too), so every mint site left is `Target::resolve`
-or a bare `Target::Focused(fp)`.
+**Concrete instance (code since removed):** a blank-sheet review
+(2026-09-25) collapsed the four categories to two, a pane and the focused
+pane, replaced the five resolvers with one per category, and made Insert
+teardown read the session's own recorded pane and buffer. A test that moves
+focus raw before the Insert layer pops panicked on the old teardown's
+consistency assert: the ordering rule had been the only thing keeping it
+correct.
 
 **Prevention rules:**
 
@@ -1044,20 +1036,19 @@ or a bare `Target::Focused(fp)`.
    `unreachable!()`, mean one of them is redundant. Derive the others from
    one source, or merge them.
 3. A function handed a resolved value (a pane, a session owner) must use it.
-   Re-reading the ambient equivalent (`FocusedPane::current`,
-   `state.focus.id()`) inside the body is the implicit-target bug L19
-   describes, reintroduced one layer down. Mint from ambient state only at
-   the entry point where the input arrives.
-4. State that records its own owner (an `EditSession`) is the owner's
-   source of truth for teardown. Reading it from elsewhere turns a data
-   fact into a call-ordering convention.
+   Reading the ambient equivalent (`FocusedPane::current`, the focus state)
+   inside the body is the implicit-target bug L19 describes, reintroduced
+   one layer down. Mint from ambient state only at the entry point where the
+   input arrives.
+4. State that records its own owner (a session recording its pane and
+   buffer) is the owner's source of truth for teardown. Reading it from
+   elsewhere turns a data fact into a call-ordering convention.
 
 **Files:** `hume-editor/src/editor/commands/pipeline.rs` (`Target`,
 `run`, `run_body`), `hume-editor/src/editor/commands/target.rs`
 (`CommandPane::resolve`, `FocusedPane::resolve`),
-`hume-editor/src/editor/registry/command.rs` (`TargetCategory`),
 `hume-editor/src/editor/commands/insert_session.rs` (`tear_down_insert`),
-`hume-editor/src/editor/doc_ops.rs` (`commit_edit_group`),
+`hume-editor/src/editor/buffer/mod.rs` (`commit_edit_group`),
 `hume-editor/src/editor/tests/insert_session_buffer_switch.rs`
 (`insert_teardown_commits_on_the_sessions_own_pane_not_current_focus`).
 
@@ -1065,32 +1056,25 @@ or a bare `Target::Focused(fp)`.
 
 ## L21 — One session-kind variant meant two things, gated by an incidental property (2026-09-25)
 
-**Root cause:** `Editor::replay_dot` pre-opens a placeholder `EditSession`
-before dispatching the replayed command, to fold a recipe replay plus the
-main edit into one undo revision and to signal `begin_insert_session` that
-keystroke recording should be suppressed. The placeholder reused
-`EditSessionKind::Insert` — the same variant a real, live Insert session
-uses — and `open_or_retarget`'s retarget rule told the two apart only by
-`is_empty()` (no edits composed yet). A genuinely real Insert session, right
-after `i`/`a`/`o` and before the first keystroke, is *also* empty. A
-`(call! "paste-after" pane)` from a hook or timer landing in that one-
-keystroke window passed the emptiness check and silently retargeted the
-live session to `Paste`, corrupting `active_session` while the
-`InsertLayer` stayed on the mode stack — the next keystroke would then
-panic on `apply_doc_edit_grouped`'s `is_insert_at` filter.
+**Root cause:** A placeholder session, opened ahead of a replayed command to
+fold its edits into one undo revision, reused the variant a real Insert
+session uses. The rule deciding whether an open could take a session over
+told the two apart only by emptiness: no edits composed yet. A real Insert
+session right after `i`/`a`/`o`, before the first keystroke, is also empty.
+A script's paste landing in that one-keystroke window passed the emptiness
+check and took over the live session, leaving the Insert layer on the mode
+stack over a session that was no longer an Insert one, so the next
+keystroke would panic.
 
-**Concrete instance:** caught by the altitude review of the Insert/paste-
-session-ownership refactor (`aa5049c5..HEAD`, `3791a746`'s `/simplify`
-pass) before release — no shipped regression. `EditSessionKind::Replay`
-now gives the placeholder its own tag; only that kind is eligible for
-`open_or_retarget`'s retarget branch, so a real, even-empty `Insert`/`Paste`
-session correctly refuses instead. `begin_insert_session_preserving_
-register`'s single "is a group already open" check had to split into two —
-whether to open/retarget the group (needed unless a real Insert session is
-already here) and whether to suppress fresh keystroke recording (needed
-whenever *either* a real Insert session or the Replay placeholder is
-already here) — since the two questions only had the same answer by
-coincidence, back when both cases shared one variant.
+**Concrete instance (code since removed):** caught by a review before
+release, with no shipped regression. The fix gave the placeholder a variant
+of its own, the only one an open could take over, so a real session refused
+even while empty. One "is a group already open" check had to split in two,
+whether to open a group and whether to suppress fresh keystroke recording,
+since the two questions had the same answer only while both cases shared
+one variant. The placeholder itself was removed on 2026-11-12: `.` opens no
+session ahead of the replayed command, and every open refuses while any
+session is open.
 
 **Prevention rules:**
 
@@ -1106,9 +1090,8 @@ coincidence, back when both cases shared one variant.
    changing that representation is the signal to re-split them — don't
    assume the coincidence was structural.
 
-**Files:** `hume-editor/src/editor/edit_session.rs` (`EditSessionKind::
-Replay`, `is_replay_at`, `blocks_open`), `hume-editor/src/editor/replay/mod.rs`
-(`replay_dot`'s pre-open, `finish_replay_session`),
+**Files:** `hume-editor/src/editor/edit_session.rs` (`check_can_open`,
+`open_insert`, `open_paste`),
 `hume-editor/src/editor/commands/insert_session.rs`
 (`begin_insert_session_preserving_register`),
 `hume-editor/src/editor/tests/paste.rs`
