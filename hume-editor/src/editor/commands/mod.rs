@@ -49,7 +49,7 @@ impl EditorState {
     /// lost.
     pub(super) fn write_register(&mut self, name: char, values: Vec<Piece>) {
         if name == hume_ops::register::CLIPBOARD_REGISTER {
-            self.take_in_clipboard();
+            self.take_in_clipboard(paste::TakeIn::Edit);
         }
         if let Some(w) =
             register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values)

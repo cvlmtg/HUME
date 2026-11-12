@@ -156,8 +156,9 @@ pub(in crate::editor) fn cmd_yank(
     }
     match prefix {
         None => {
+            // The clipboard write already took in the copy it replaces.
             state.write_register(CLIPBOARD_REGISTER, yanked.clone());
-            state.capture_to_ring(yanked);
+            state.kill_ring.push(yanked);
         }
         // "ky: push to ring only (no clipboard).
         Some(KILL_RING_REGISTER) => state.capture_to_ring(yanked),

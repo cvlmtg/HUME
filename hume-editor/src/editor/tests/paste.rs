@@ -452,6 +452,93 @@ fn a_clipboard_write_keeps_the_outside_copy_it_replaces() {
     assert_eq!(state(&ed), "a-[X]>b\n");
 }
 
+/// With `clipboard-joins-ring` at `paste`, a kill leaves an outside copy
+/// alone and the next bare `p` takes it in above the kill.
+#[test]
+fn joins_at_paste_only_takes_in_at_p_above_the_kill() {
+    use crate::editor::settings::ClipboardJoinsRing;
+
+    let mut ed = editor_from("-[f]>g\n");
+    ed.state.settings.clipboard_joins_ring = ClipboardJoinsRing::Paste;
+    seed_clipboard(&mut ed, "X");
+    ed.feed_key(key('d'));
+    assert_eq!(ed.state.kill_ring.len(), 1, "the kill alone is on the ring");
+    ed.feed_key(key('p'));
+    assert_eq!(state(&ed), "g-[X]>\n");
+    ed.feed_key(key('['));
+    assert_eq!(state(&ed), "g-[f]>\n");
+}
+
+/// With `clipboard-joins-ring` at `never`, neither a kill nor `p` takes in an
+/// outside copy.
+#[test]
+fn joins_never_keeps_an_outside_copy_off_the_ring() {
+    use crate::editor::settings::ClipboardJoinsRing;
+
+    let mut ed = editor_from("-[f]>g\n");
+    ed.state.settings.clipboard_joins_ring = ClipboardJoinsRing::Never;
+    seed_clipboard(&mut ed, "X");
+    ed.feed_key(key('d'));
+    ed.feed_key(key('p'));
+    assert_eq!(state(&ed), "g-[f]>\n");
+    assert_eq!(
+        ed.state.kill_ring.len(),
+        1,
+        "the copy never joined the ring"
+    );
+}
+
+/// Whatever `clipboard-joins-ring` says, a bare `y` writes the ring and the
+/// clipboard, and `"cy` writes the clipboard alone.
+#[test]
+fn yank_targets_do_not_depend_on_clipboard_joins_ring() {
+    use crate::editor::settings::ClipboardJoinsRing;
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    for mode in [ClipboardJoinsRing::Paste, ClipboardJoinsRing::Never] {
+        let mut ed = editor_from("-[a]>b\n");
+        ed.state.settings.clipboard_joins_ring = mode;
+        seed_clipboard(&mut ed, "X");
+        ed.feed_key(key('y'));
+        assert_eq!(ed.state.registers.clipboard_blob(), Some("a"), "{mode:?}");
+        assert_eq!(ed.state.kill_ring.len(), 1, "{mode:?}: only the yank");
+        ed.feed_keys([key('l'), key('"'), key(CLIPBOARD_REGISTER), key('y')]);
+        assert_eq!(ed.state.registers.clipboard_blob(), Some("b"), "{mode:?}");
+        assert_eq!(ed.state.kill_ring.len(), 1, "{mode:?}: \"cy left the ring");
+    }
+}
+
+/// `core:classic-paste` keeps copied text off the ring, unless the user's own
+/// `init.scm` set `clipboard-joins-ring`.
+#[test]
+fn classic_paste_sets_clipboard_joins_ring_below_the_users_value() {
+    use crate::editor::settings::ClipboardJoinsRing;
+
+    let data = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data.path(),
+        "(load-plugin! \"core:classic-paste\")",
+    );
+    assert_eq!(
+        ed.state.settings.clipboard_joins_ring,
+        ClipboardJoinsRing::Never
+    );
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data.path(),
+        "(set-option! \"clipboard-joins-ring\" \"paste\")\n\
+         (load-plugin! \"core:classic-paste\")",
+    );
+    assert_eq!(
+        ed.state.settings.clipboard_joins_ring,
+        ClipboardJoinsRing::Paste
+    );
+}
+
 /// An OSC 52 clipboard cannot be read, so it never holds anything new.
 #[test]
 fn an_unreadable_osc52_clipboard_leaves_p_on_the_ring() {
@@ -475,7 +562,8 @@ fn p_with_an_empty_ring_and_a_failed_clipboard_reports_the_clipboard() {
     ed.feed_key(key('p'));
     assert_eq!(state(&ed), "-[x]>\n");
     assert!(
-        status(&ed).starts_with("system clipboard unavailable"),
+        status(&ed).starts_with("system clipboard unavailable")
+            && !status(&ed).contains("in-memory"),
         "status: {}",
         status(&ed)
     );

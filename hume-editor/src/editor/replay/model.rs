@@ -5,6 +5,7 @@
 use std::rc::Rc;
 
 use hume_core::Count;
+use hume_ops::register::Piece;
 
 use termina::event::KeyEvent;
 
@@ -28,6 +29,11 @@ pub(crate) enum Answer {
     Prompt(Option<String>),
     /// A menu's chosen item, `None` when it was dismissed.
     Menu(Option<Choice>),
+    /// The pieces a paste ended on, `[`/`]` cycles included, and whether it
+    /// was a bare paste, which a smart paste's repeat-vs-swap rule applies
+    /// to. A paste's source is resolved once, live: `.` pastes these pieces
+    /// again, not what its register or the kill ring holds by then.
+    Paste { pieces: Vec<Piece>, bare: bool },
     /// An input that opened but never resolved: one a reload or a cascade
     /// cap dropped, or a menu `close-menu!` closed. Its callback never ran,
     /// so on replay the input opens nothing and runs nothing.
@@ -164,6 +170,9 @@ pub(crate) struct RepeatableAction {
     /// The count prefix the change ran with. A count given to `.` overrides
     /// it.
     pub count: Count,
+    /// The register prefix pending when the change began, which its
+    /// command reads or writes. A register given to `.` overrides it.
+    pub register: Option<char>,
     /// Selection-building steps replayed before the command, taken from
     /// `EditorState::selection_recipe` when the change starts. Empty when the
     /// command acted on an existing selection.

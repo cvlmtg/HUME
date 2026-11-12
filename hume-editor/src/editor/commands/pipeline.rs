@@ -674,6 +674,7 @@ pub(in crate::editor) fn run(
     let change = pre_recipe.map(|recipe| NewChange {
         command: name.clone(),
         count: ctx.count,
+        register: state.register_prefix,
         seed: bound.operand_answer(),
         recipe,
     });

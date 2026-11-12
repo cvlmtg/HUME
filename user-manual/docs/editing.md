@@ -235,6 +235,8 @@ Undo history is a tree rather than a straight line. Redo follows the branch you 
 
 - Typed keys re-run at the new cursor.
 - A choice you made (the character after `r`, a picker or menu item, a prompt answer) is reused, not asked again.
+- A paste pastes the same text again, including the kill-ring entry you cycled to with `[`/`]`, even when the kill ring, the register or the clipboard holds something newer by then. `[`/`]` right after `.` change what the next `.` pastes.
+- A register you named for the edit (`"3d`) is used again. One typed right before `.` replaces it, as a count does: `"5.` deletes into register 5, or after a paste pastes register 5.
 - After `|` or `Ctrl-|`, `.` runs the same command again, so its output can differ.
 - An accepted completion writes the same text at the cursor, without its edits elsewhere, such as an added import.
 - A pick in a drawer (references, the undo tree) is never repeated.
@@ -243,7 +245,7 @@ For custom Insert-mode bindings, see [Falling back to a key's normal Insert-mode
 
 ## Macros
 
-A macro records a sequence of keys into a register and replays it. Register `q` is the default.
+A macro records a sequence of keys into a register and replays it. Register `q` is the default. Each key does again what it does when the macro runs, so a `p` in a macro pastes the kill ring as it is then, where `.` repeats the paste's own text.
 
 | Key | Effect |
 |-----|--------|

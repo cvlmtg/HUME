@@ -8,7 +8,7 @@ through 15"), and the cursor has usually moved by the time you press repeat:
 the same positions edit the wrong text. (See [Changesets](changesets.md).)
 
 So dot-repeat stores a recipe instead: which command ran, its count, the
-selection it acted on, what the user answered when it asked for something,
+register it was given, the selection it acted on, what the user answered when it asked for something,
 and, if it opened an editing session, every input that session received.
 Replay runs the recipe again at the current cursor, so each step decides
 afresh what it applies to.
@@ -71,6 +71,30 @@ replaced it), and replay applies that directly. A bound key that accepts a
 completion anywhere in its run is recorded as that one edit. An edit the
 completion made elsewhere, such as an import at the top of the file, means
 nothing at another cursor and is dropped.
+
+## A paste replays its text
+
+A paste reads a source: the newest kill-ring entry, a register, or the
+clipboard. By the time you repeat it, that source may hold something else:
+a delete since then has pushed a new ring entry, or another application has
+put new text on the clipboard. Reading it again would repeat a different
+edit. So the source is one more recorded answer: the recording keeps the
+text the paste pasted, and replay pastes that text at the new cursor.
+Cycling the ring with `[` and `]` after the paste changes which text that
+is, so `.` pastes the entry the cycling ended on, and cycling after a `.`
+changes it for the next one.
+
+A register or a count typed right before `.` replaces the recorded one for
+that repeat: deleting into another register, or pasting what another
+register holds.
+
+## Dot-repeat and macros
+
+A macro and `.` both repeat work, at different levels. A macro replays
+keys: each key does again whatever it does now, so a `p` in a macro reads
+the ring as it is when the macro runs. `.` replays the last edit: the same
+command with the same answers, the same session input and the same pasted
+text, applied at the new cursor.
 
 ## Replay fails loudly
 

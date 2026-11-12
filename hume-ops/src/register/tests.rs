@@ -525,19 +525,19 @@ fn push_dedupe_compares_whole_entry() {
 // -- seed_cycle ---------------------------------------------------------------
 
 #[test]
-fn seed_cycle_at_sets_the_slot() {
+fn seed_cycle_at_head_starts_at_the_head() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
     ring.push(vs("b"));
-    ring.seed_cycle_at(1);
-    assert_eq!(ring.cycle, Some(1));
+    ring.seed_cycle_at_head();
+    assert_eq!(ring.cycle, Some(0));
 }
 
 #[test]
 fn seed_cycle_outside_with_other_text_starts_before_the_head() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
-    ring.seed_cycle_at(0);
+    ring.seed_cycle_at_head();
     ring.seed_cycle_outside(&vs("z"));
     assert_eq!(ring.cycle, None);
 }
@@ -587,7 +587,7 @@ fn cycle_older_from_head_reads_slot1() {
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 1
     ring.push(vs("b")); // slot 0 = head
-    ring.seed_cycle_at(0);
+    ring.seed_cycle_at_head();
     assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
     assert_eq!(ring.cycle, Some(1));
 }
@@ -597,7 +597,8 @@ fn cycle_older_noop_at_last_entry() {
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 1
     ring.push(vs("b")); // slot 0 = head
-    ring.seed_cycle_at(1); // at last
+    ring.seed_cycle_at_head();
+    ring.cycle_older(); // at last
     assert!(ring.cycle_older().is_none());
     assert_eq!(ring.cycle, Some(1)); // unchanged
 }
@@ -626,7 +627,7 @@ fn cycle_newer_noop_at_head() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
     ring.push(vs("b"));
-    ring.seed_cycle_at(0);
+    ring.seed_cycle_at_head();
     assert!(ring.cycle_newer().is_none());
     assert_eq!(ring.cycle, Some(0)); // unchanged
 }
@@ -637,7 +638,9 @@ fn cycle_newer_retreats_toward_head() {
     ring.push(vs("a")); // slot 2
     ring.push(vs("b")); // slot 1
     ring.push(vs("c")); // slot 0 = head
-    ring.seed_cycle_at(2);
+    ring.seed_cycle_at_head();
+    ring.cycle_older();
+    ring.cycle_older();
     assert_eq!(ring.cycle_newer(), Some(vs("b").as_slice()));
     assert_eq!(ring.cycle, Some(1));
 }
@@ -681,7 +684,7 @@ fn ring_abc_showing_head() -> KillRing {
     for s in ["c", "b", "a"] {
         ring.push(vs(s));
     }
-    ring.seed_cycle_at(0);
+    ring.seed_cycle_at_head();
     ring
 }
 
@@ -721,7 +724,7 @@ fn cycling_back_to_the_first_entry_keeps_the_order() {
     let mut ring = ring_abc_showing_head();
     ring.cycle_older();
     ring.cycle_newer();
-    ring.seed_cycle_at(0);
+    ring.seed_cycle_at_head();
     assert_eq!(order(&ring), ["a", "b", "c"]);
 }
 
@@ -731,9 +734,9 @@ fn a_whitespace_head_the_cycle_passed_stays_in_the_ring() {
     for s in ["c", "b", " "] {
         ring.push(vs(s));
     }
-    ring.seed_cycle_at(0);
+    ring.seed_cycle_at_head();
     ring.cycle_older();
-    ring.seed_cycle_at(0);
+    ring.seed_cycle_at_head();
     assert_eq!(order(&ring), ["b", " ", "c"]);
 }
 

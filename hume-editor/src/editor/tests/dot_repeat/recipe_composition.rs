@@ -416,45 +416,15 @@ fn dot_repeat_of_noop_surround_preserves_prior_recipe() {
     );
 }
 
-/// `.` replaying a paste-ring cycle (`[`/`]`) must actually cycle the ring
-/// again, not no-op.
-///
-/// `repeat-last-action`'s own dispatch must not commit (and thereby close)
-/// the still-open paste session before `replay_dot` looks at what it is
-/// replaying. See `.defers_paste_commit()` on
-/// `repeat-last-action`'s registration (`registry/defaults/editor_cmds.rs`)
-/// and `Editor::replay_dot`'s own paste-commit step.
-///
-/// `KillRing::cycle_position()` is the ring's own cursor,
-/// read directly rather than inferred from which text ended up pasted.
+/// `.` inside an open paste session repeats the paste of the entry `[`
+/// cycled to, which lands after it as a second `p` would, rather than
+/// cycling the ring another step.
 #[test]
-fn dot_repeat_of_paste_ring_cycle_advances_the_ring() {
-    let mut ed = editor_from("-[aaa]> bbb ccc\n");
-
-    ed.feed_key(key('y')); // yank "aaa" → ring: [aaa]
-    ed.feed_key(key('w')); // select "bbb"
-    ed.feed_key(key('y')); // yank "bbb" → ring: [bbb, aaa]
-    ed.feed_key(key('w')); // select "ccc"
-    ed.feed_key(key('y')); // yank "ccc" → ring: [ccc, bbb, aaa]
-
-    ed.feed_key(key('p')); // bare paste: reads ring slot 0 ("ccc"), seeds cycle Some(0)
-    assert_eq!(
-        ed.state.kill_ring.cycle_position(),
-        Some(0),
-        "setup: p must seed the cycle at slot 0"
-    );
-
-    ed.feed_key(key('[')); // paste-ring-older: Some(0) -> Some(1) ("bbb")
-    assert_eq!(
-        ed.state.kill_ring.cycle_position(),
-        Some(1),
-        "setup: [ must cycle to slot 1"
-    );
-
-    ed.feed_key(key('.')); // replay paste-ring-older: must cycle Some(1) -> Some(2) ("aaa")
-    assert_eq!(
-        ed.state.kill_ring.cycle_position(),
-        Some(2),
-        "`.` must replay paste-ring-older as a second cycle step, not no-op"
-    );
+fn dot_repeat_in_an_open_paste_session_pastes_the_entry_again() {
+    let mut ed = editor_from("-[x]>y\n");
+    seed_ring(&mut ed, &["c", "b", "a"]);
+    ed.feed_keys([key('p'), key('[')]);
+    assert_eq!(state(&ed), "x-[b]>y\n");
+    ed.feed_key(key('.'));
+    assert_eq!(state(&ed), "xb-[b]>y\n");
 }

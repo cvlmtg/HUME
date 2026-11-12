@@ -837,6 +837,8 @@ define_settings! {
             parser: UsizeNonzero;
         "command-completion" => command_completion: CommandCompletion = CommandCompletion::default(),
             parser: Typed;
+        "clipboard-joins-ring" => clipboard_joins_ring: ClipboardJoinsRing = ClipboardJoinsRing::default(),
+            parser: Typed;
         "popup-border" => popup_border: bool = true,
             parser: Bool;
         // Read by the completion menu's documentation box and by the
@@ -1051,8 +1053,9 @@ pub(in crate::editor) use kind::Shape;
 pub(in crate::editor) use setting_arg::{ArgSplit, SettingArg};
 
 pub use values::{
-    CommandCompletion, CursorShape, MessagesMinSeverity, ObjectJumpAlign, SessionRoot,
-    SignColumnConfig, SignColumnMode, StoreDirectory, TablineVisibility, WordSelectsWhitespace,
+    ClipboardJoinsRing, CommandCompletion, CursorShape, MessagesMinSeverity, ObjectJumpAlign,
+    SessionRoot, SignColumnConfig, SignColumnMode, StoreDirectory, TablineVisibility,
+    WordSelectsWhitespace,
 };
 
 #[cfg(test)]

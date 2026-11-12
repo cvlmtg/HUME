@@ -189,6 +189,35 @@ fn clipboard_register_falls_back_to_memory_when_unavailable() {
     );
 }
 
+/// A `"cp` that cannot read the clipboard names the in-memory copy only when
+/// it pasted that copy.
+#[test]
+fn unreadable_clipboard_paste_warns_of_the_copy_only_when_it_used_it() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.clipboard.force_unavailable();
+    ed.feed_keys([key('"'), key(CLIPBOARD_REGISTER), key('p')]);
+    assert_eq!(state(&ed), "-[x]>\n");
+    assert!(
+        status(&ed).starts_with("system clipboard unavailable")
+            && !status(&ed).contains("in-memory"),
+        "status: {}",
+        status(&ed)
+    );
+
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["MIRROR"]);
+    ed.feed_keys([key('"'), key(CLIPBOARD_REGISTER), key('p')]);
+    assert_eq!(state(&ed), "x-[MIRROR]>\n");
+    assert!(
+        status(&ed).ends_with("using in-memory 'c'"),
+        "status: {}",
+        status(&ed)
+    );
+}
+
 // ── Kill-ring register (`"k`) ─────────────────────────────────────────────────
 
 /// `"ky` pushes the yank onto the kill ring and does NOT touch the clipboard.

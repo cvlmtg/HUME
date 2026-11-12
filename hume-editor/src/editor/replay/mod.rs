@@ -1,9 +1,10 @@
 //! Dot-repeat (`.`): recording a change and replaying it.
 //!
 //! Dot-repeat records a [`RepeatableAction`]: the repeatable command that
-//! began a change, its count, the selection recipe that built the extent it
-//! acted on, the [answers](Answer) its interactive inputs got, and an ordered
-//! [transcript](Input) of every Insert-session input the change consumed. It
+//! began a change, its count, the register prefix it was given, the
+//! selection recipe that built the extent it acted on, the [answers](Answer)
+//! its interactive inputs got, and an ordered [transcript](Input) of every
+//! Insert-session input the change consumed. It
 //! records a recipe rather than a raw changeset, since changesets are
 //! position-dependent and can't be replayed at a different cursor.
 //!
@@ -19,9 +20,17 @@
 //! `#:repeatable` for a Steel one. Every input funnel appends to its
 //! transcript at the seam the input arrives, never by inferring afterward
 //! what a dispatch did.
+//!
+//! A macro replays keys; `.` replays the last edit. So a paste's source is
+//! one of its answers ([`Answer::Paste`]): `.` pastes the text it pasted,
+//! never what its register or the kill ring holds by then, and a `[`/`]`
+//! after the `.` refines that answer as it does after the paste itself. A
+//! register typed before `.` replaces the recorded one, as a count does, and
+//! a paste then reads it.
 
 use hume_core::{Count, HostToken};
 use hume_engine::pipeline::EngineView;
+use hume_ops::register::Piece;
 use hume_scripting::Rooted;
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
@@ -305,6 +314,9 @@ fn dispatch_key_binding(ed: &mut Editor, running: Running, cmd: Dispatchable) ->
 pub(in crate::editor) struct NewChange {
     pub(in crate::editor) command: Rc<str>,
     pub(in crate::editor) count: Count,
+    /// The register prefix pending as the command starts, which its body
+    /// takes.
+    pub(in crate::editor) register: Option<char>,
     /// The operand the command was dispatched with, recorded as its first
     /// answer.
     pub(in crate::editor) seed: Option<Answer>,
@@ -585,6 +597,16 @@ impl Recording {
 /// is not one of its kind.
 pub(in crate::editor) struct DotReplay {
     answers: VecDeque<Answer>,
+    /// Where `answers` came from in the replayed recording: its sources,
+    /// the slot, and how many of the slot's answers were taken so far.
+    /// A paste names its recorded answer from these, so a `[`/`]` after
+    /// the `.` refines it.
+    sources: Weak<()>,
+    slot: AnswerSlot,
+    taken: usize,
+    /// A register typed before `.`: it replaces the recorded one, and a
+    /// paste reads it instead of its recorded text.
+    typed_register: Option<char>,
     pending: VecDeque<PendingAnswer>,
     /// Every pipe run the replay starts has an id at least this.
     runs_from: RunId,
@@ -609,6 +631,30 @@ impl EditorState {
             .as_ref()
             .is_some_and(|replay| replay.stopped)
     }
+}
+
+/// Where a paste recorded its [`Answer::Paste`], so a `[`/`]` cycle in the
+/// same paste session can replace it with the entry it cycled to. Holds the
+/// recording weakly: it names the change without keeping it open.
+#[derive(Debug, Clone)]
+pub(in crate::editor) struct PasteAnswer {
+    sources: Weak<()>,
+    slot: AnswerSlot,
+    index: usize,
+}
+
+/// What a paste re-run by `.` pastes.
+pub(in crate::editor) enum ReplayedPaste {
+    /// The pieces the paste pasted live, and whether it was bare; `at` is
+    /// where they are recorded.
+    Recorded {
+        pieces: Vec<Piece>,
+        bare: bool,
+        at: PasteAnswer,
+    },
+    /// A register was typed before `.`: the paste reads it as it does live,
+    /// and leaves the recorded pieces as they are.
+    Typed,
 }
 
 /// What a re-run interactive input finds as its answer.
@@ -642,6 +688,7 @@ impl DotReplay {
             answer => Replayed::Answered(kind(answer)?),
         };
         self.answers.pop_front();
+        self.taken += 1;
         Some(taken)
     }
 
@@ -747,6 +794,7 @@ impl EditorState {
         let action = RepeatableAction {
             command: change.command,
             count: change.count,
+            register: change.register,
             selection_recipe: change.recipe,
             answers: change.seed.into_iter().collect(),
             transcript: Vec::new(),
@@ -911,6 +959,80 @@ impl EditorState {
         {
             *place = answer;
         }
+    }
+
+    /// Record `pieces`, what a paste pastes, as an answer of the change the
+    /// running [`RecordingScope`] records into. `None` when no recorded
+    /// change runs the paste: outside every scope, in a binding whose
+    /// command is not repeatable, or once a newer change superseded the
+    /// scope's.
+    pub(in crate::editor) fn record_paste_answer(
+        &mut self,
+        pieces: Vec<Piece>,
+        bare: bool,
+    ) -> Option<PasteAnswer> {
+        let scope = self.recording_scope.running()?;
+        let slot = scope.slot;
+        let rec = self
+            .recording
+            .as_mut()
+            .filter(|rec| rec.feeds(&scope.source))?;
+        let sources = Rc::downgrade(&rec.sources);
+        let answers = rec.answers_mut(slot)?;
+        answers.push(Answer::Paste { pieces, bare });
+        Some(PasteAnswer {
+            sources,
+            slot,
+            index: answers.len() - 1,
+        })
+    }
+
+    /// Replace the pieces `at` recorded with `pieces`, the entry a `[`/`]`
+    /// cycle pasted, while that change is still the one `.` replays.
+    pub(in crate::editor) fn replace_paste_answer(&mut self, at: &PasteAnswer, pieces: Vec<Piece>) {
+        if let Some(place) = self
+            .recording
+            .as_mut()
+            .filter(|rec| {
+                at.sources
+                    .upgrade()
+                    .is_some_and(|s| Rc::ptr_eq(&s, &rec.sources))
+            })
+            .and_then(|rec| rec.answers_mut(at.slot))
+            .and_then(|answers| answers.get_mut(at.index))
+            && let Answer::Paste {
+                pieces: recorded, ..
+            } = place
+        {
+            *recorded = pieces;
+        }
+    }
+
+    /// During `.`, what the re-run paste pastes, taking the next recorded
+    /// answer. `None` outside `.`; [`ReplayRefusal::Diverged`] when the next
+    /// answer is not a paste's.
+    pub(in crate::editor) fn replayed_paste(
+        &mut self,
+    ) -> Option<Result<ReplayedPaste, ReplayRefusal>> {
+        let replay = self.dot_replay.as_mut()?;
+        let at = PasteAnswer {
+            sources: replay.sources.clone(),
+            slot: replay.slot,
+            index: replay.taken,
+        };
+        let typed = replay.typed_register.is_some();
+        Some(
+            match replay.next(|answer| match answer {
+                Answer::Paste { pieces, bare } => Some((pieces.clone(), *bare)),
+                _ => None,
+            }) {
+                Some(Replayed::Answered(_)) if typed => Ok(ReplayedPaste::Typed),
+                Some(Replayed::Answered((pieces, bare))) => {
+                    Ok(ReplayedPaste::Recorded { pieces, bare, at })
+                }
+                Some(Replayed::Unanswered) | None => Err(ReplayRefusal::Diverged),
+            },
+        )
     }
 
     /// The callback call an interactive input queues once it resolves:
@@ -1142,6 +1264,10 @@ impl Editor {
         };
         let replay = DotReplay {
             answers: recording.action.answers.iter().cloned().collect(),
+            sources: Rc::downgrade(&recording.sources),
+            slot: AnswerSlot::Command,
+            taken: 0,
+            typed_register: self.state.register_prefix.take(),
             pending: VecDeque::new(),
             runs_from: self.state.pipe_runs.mark(),
             stopped: false,
@@ -1171,13 +1297,6 @@ impl Editor {
 
         let meta = edit_cmd.meta();
 
-        // Commit (or defer) any paste session left open by the keypress that
-        // set up `.` itself, using the REPLAYED command's own meta rather than
-        // `repeat-last-action`'s (which always defers). A session can only
-        // still be open here if the replayed command is itself a ring-cycle
-        // command. This reproduces `p [ .` as one more ring-cycle step.
-        commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
-
         // Pre-open a Replay-kind placeholder, folding a recipe replay + the
         // command into one undo revision. Skipped for a `manages_own_session`
         // command (the paste family), which opens its own session; a Steel
@@ -1185,7 +1304,8 @@ impl Editor {
         // `Paste` in place.
         //
         // `Err` here means a real session is already open, not expected given
-        // `step_paste_commit` just ran; defer rather than steal it.
+        // the `.` key's own dispatch committed any paste session; defer
+        // rather than steal it.
         if !meta.manages_own_session {
             let sels = self
                 .state
@@ -1240,6 +1360,12 @@ impl Editor {
             }
         }
 
+        self.state.register_prefix = self
+            .state
+            .dot_replay
+            .as_ref()
+            .and_then(|replay| replay.typed_register)
+            .or(action.register);
         let dispatched = self.dispatch(
             edit_cmd,
             CmdCtx {
@@ -1247,6 +1373,7 @@ impl Editor {
                 extend: false,
             },
         );
+        self.state.register_prefix = None;
         let ran = self.finish_replayed_answers(dispatched);
         if !ran {
             // Close whatever the group opened above became so it can't leak,
@@ -1283,7 +1410,7 @@ impl Editor {
                         self.report(hume_core::Severity::Error, msg);
                     }
                 }
-                Input::Binding { name, answers, .. } => {
+                Input::Binding { id, name, answers } => {
                     // A command name loses its binding only if it was removed
                     // between the original keypress and this replay
                     // (`unbind-key!`, a plugin reload), so a miss reports
@@ -1293,6 +1420,8 @@ impl Editor {
                     };
                     if let Some(replay) = self.state.dot_replay.as_mut() {
                         replay.answers = answers.iter().cloned().collect();
+                        replay.slot = AnswerSlot::Binding(*id);
+                        replay.taken = 0;
                     }
                     // The live keypress dispatched as an Insert-key binding;
                     // replay recreates the same context. An interactive input

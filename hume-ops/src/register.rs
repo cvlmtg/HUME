@@ -427,11 +427,10 @@ impl KillRing {
         }
     }
 
-    /// Seed the cycle cursor for a paste read from ring slot `slot`, counted
-    /// from the head.
-    pub fn seed_cycle_at(&mut self, slot: usize) {
+    /// Seed the cycle cursor for a paste of the ring head.
+    pub fn seed_cycle_at_head(&mut self) {
         self.settle();
-        self.cycle = Some(slot);
+        self.cycle = Some(0);
     }
 
     /// Seed the cycle cursor for a paste of `pasted` from outside the ring.

@@ -382,6 +382,106 @@ fn dot_repeats_smart_paste_after() {
     );
 }
 
+/// `.` pastes the text `p` pasted, not text copied since.
+#[test]
+fn dot_repeat_of_p_pastes_its_text_not_a_newer_copy() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.feed_keys([key('y'), key('p')]);
+    assert_eq!(state(&ed), "a-[a]>b\n");
+    seed_clipboard(&mut ed, "Z");
+    ed.feed_keys([key('l'), key('.')]);
+    assert_eq!(state(&ed), "aab-[a]>\n");
+}
+
+/// `.` after `"3p` pastes register `3` again, not the kill-ring head.
+#[test]
+fn dot_repeat_of_a_register_paste_pastes_the_register() {
+    let mut ed = editor_from("-[a]>b\n");
+    seed_ring(&mut ed, &["R"]);
+    ed.feed_keys([key('"'), key('3'), key('y'), key('"'), key('3'), key('p')]);
+    assert_eq!(state(&ed), "a-[a]>b\n");
+    ed.feed_keys([key('l'), key('.')]);
+    assert_eq!(state(&ed), "aab-[a]>\n");
+}
+
+/// `.` after `p [` pastes the entry `[` cycled to, once the paste session
+/// has closed.
+#[test]
+fn dot_repeat_after_a_cycle_pastes_the_entry_cycled_to() {
+    let mut ed = editor_from("-[x]>y\n");
+    seed_ring(&mut ed, &["c", "b", "a"]);
+    ed.feed_keys([key('p'), key('[')]);
+    assert_eq!(state(&ed), "x-[b]>y\n");
+    ed.feed_keys([key('l'), key('.')]);
+    assert_eq!(state(&ed), "xby-[b]>\n");
+}
+
+/// `.` after `core:classic-paste`'s `Ctrl-v` pastes the clipboard text it
+/// pasted, not the kill-ring head or a newer copy.
+#[test]
+fn dot_repeat_of_classic_paste_clipboard_pastes_its_text() {
+    let data = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>b\n");
+    load_with_init(
+        &mut ed,
+        data.path(),
+        "(load-plugin! \"core:classic-paste\")",
+    );
+    seed_ring(&mut ed, &["R"]);
+    seed_clipboard(&mut ed, "Z");
+    ed.feed_key(key_ctrl('v'));
+    assert_eq!(state(&ed), "a-[Z]>b\n");
+    seed_clipboard(&mut ed, "W");
+    ed.feed_keys([key('l'), key('.')]);
+    assert_eq!(state(&ed), "aZb-[Z]>\n");
+}
+
+/// `.` after `"3d` deletes into register `3` again, not onto the ring.
+#[test]
+fn dot_repeat_of_a_register_delete_deletes_into_the_register() {
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.feed_keys([key('"'), key('3'), key('d')]);
+    assert_eq!(reg(&ed, '3'), &["a"]);
+    ed.feed_key(key('.'));
+    assert_eq!(state(&ed), "-[c]>\n");
+    assert_eq!(reg(&ed, '3'), &["b"]);
+    assert_eq!(ed.state.kill_ring.len(), 0, "the ring never got a kill");
+}
+
+/// A register typed before `.` replaces the one the change was given.
+#[test]
+fn a_register_typed_before_dot_replaces_the_recorded_one() {
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.feed_keys([key('"'), key('3'), key('d')]);
+    ed.feed_keys([key('"'), key('5'), key('.')]);
+    assert_eq!(reg(&ed, '3'), &["a"]);
+    assert_eq!(reg(&ed, '5'), &["b"]);
+}
+
+/// A register typed before `.` makes a repeated paste read that register
+/// instead of the text the paste pasted.
+#[test]
+fn a_register_typed_before_dot_makes_a_paste_read_it() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.registers.write_text('5', vec!["Q"]);
+    ed.feed_keys([key('y'), key('p')]);
+    assert_eq!(state(&ed), "a-[a]>b\n");
+    ed.feed_keys([key('l'), key('"'), key('5'), key('.')]);
+    assert_eq!(state(&ed), "aab-[Q]>\n");
+}
+
+/// A `[` after a `.` paste changes what the next `.` pastes, as it does
+/// after a `p`.
+#[test]
+fn a_cycle_after_a_dot_paste_is_what_the_next_dot_pastes() {
+    let mut ed = editor_from("-[x]>yz\n");
+    seed_ring(&mut ed, &["c", "b", "a"]);
+    ed.feed_keys([key('p'), key('l'), key('.')]);
+    assert_eq!(state(&ed), "xay-[a]>z\n");
+    ed.feed_keys([key('['), key('l'), key('.')]);
+    assert_eq!(state(&ed), "xaybz-[b]>\n");
+}
+
 /// Plain `paste-after` (unbound by default, dispatched by name) is
 /// repeatable too: `.repeatable()` on its registry entry is a separate
 /// declaration from `smart-paste-after`'s, so a repeat must be verified

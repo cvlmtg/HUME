@@ -16,6 +16,7 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `clipboard-joins-ring` | `always` \| `paste` \| `never` | `always` | When text copied in another application joins the kill ring. `always` adds it at your next `p`, `d`, `c` or `y`, `paste` only at your next `p`, and `never` leaves it on the clipboard, where `"cp` still pastes it. See [Smart paste](copy-and-paste.md#smart-paste) |
 | `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` at the `:` or `\|` prompt does when several candidates match. `common-prefix` completes their longest shared text without picking one, so the next `Tab` picks the first; `first-candidate` fills in the first candidate at once |
 | `completion-docs` | bool | `true` | Show the highlighted completion's details and documentation in a box beside the completion menu. When off, or when the box doesn't fit beside the menu, the details show in the menu instead. |
 | `hook-before-save-timeout-ms` | integer ≥ 1 | `1000` | How long a save waits for `on-before-buffer-save` handlers before writing the file anyway |

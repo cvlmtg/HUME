@@ -10,11 +10,15 @@
 ### Editing
 - `p` pastes the newest kill-ring entry even after an edit, instead of switching to the clipboard. Text copied in another application joins the kill ring at your next `p`, `d`, `c` or `y`, so `p` pastes it.
 - After `p` and `[`/`]`, the kill-ring entry you cycled to becomes the newest one.
+- `clipboard-joins-ring` sets when copied text joins the kill ring: at `p`, `d`, `c` or `y`, at `p` only, or never. `core:classic-paste` sets it to never.
+- `.` after a paste pastes the same text again, the entry you cycled to with `[`/`]` included, instead of whatever the kill ring or register holds by then.
+- `.` after `"3d` deletes into register 3 again, and a register typed before `.` replaces it, as a count does.
 
 ### Language servers
 - Type inlay hints sit right after the name they annotate: `offset: number` instead of `offset : number`.
 
 ### Fixes
+- When the clipboard can't be read and nothing is pasted, the warning says so, instead of claiming HUME used its in-memory copy.
 - `register-grammar!` fails with the reason when its `#:context` query has no `@context` capture, instead of showing no scope headers.
 - Dragging the divider between two panes resizes them without `mouse-select` on.
 - A click while a key waits for a character, such as after `f`, ends a divider drag.

@@ -284,6 +284,25 @@ settings_enum!(TablineVisibility, [
     Dynamic => "dynamic",
 ]);
 
+/// When text copied in another application joins the kill ring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ClipboardJoinsRing {
+    /// At a bare smart paste, before every kill-ring push, and before every
+    /// clipboard-register write. HUME's default.
+    #[default]
+    Always,
+    /// At a bare smart paste only.
+    Paste,
+    /// Never: the clipboard is reached only through the `c` register.
+    Never,
+}
+
+settings_enum!(ClipboardJoinsRing, [
+    Always => "always",
+    Paste => "paste",
+    Never => "never",
+]);
+
 /// What the first Tab on the `:` line does when several candidates match.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CommandCompletion {

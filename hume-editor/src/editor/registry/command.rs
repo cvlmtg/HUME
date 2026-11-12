@@ -177,12 +177,11 @@ pub(in crate::editor) struct CmdMeta {
     /// `true` only for `Motion`'s forward object-jump family (`}`,
     /// `goto-next-<kind>`).
     pub aligns_view: bool,
-    /// Whether this command opens or continues `EditorState::active_session`
-    /// itself: `true` only for the paste family. `Editor::replay_dot` does
-    /// not pre-open a session for such a command, since
-    /// `paste-ring-older`/`-newer` need the already-open Paste session, not a
-    /// fresh Replay one. Every other command relies on that pre-opened
-    /// session to fold the recipe replay and the edit into one undo revision.
+    /// Whether this command opens `EditorState::active_session` itself:
+    /// `true` only for the paste commands. `Editor::replay_dot` does not
+    /// pre-open a session for such a command. Every other command relies on
+    /// that pre-opened session to fold the recipe replay and the edit into
+    /// one undo revision.
     ///
     /// A Steel command never sets this, yet its body can dispatch native
     /// paste, which retargets a pre-opened session to `Paste` in place.

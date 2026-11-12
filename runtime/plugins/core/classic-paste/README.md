@@ -3,7 +3,8 @@
 Opt-in "GUI-style" copy/paste split: `p`/`P` paste from the kill-ring and `Ctrl-v`/
 `Ctrl-Shift-v` paste from the OS clipboard, in place of HUME's default smart-`p`, which
 adds text copied in another application to the kill ring and pastes the ring head
-([Copy & Paste](https://cvlmtg.github.io/HUME/copy-and-paste.html)).
+([Copy & Paste](https://cvlmtg.github.io/HUME/copy-and-paste.html)). It sets
+`clipboard-joins-ring` to `never`, so copied text reaches the ring at no key.
 
 ## Usage
 
@@ -34,6 +35,9 @@ clipboard) and then `call!`s the built-in `paste-after` or `paste-before`. The p
 applies to every `call!` after it in the same command body and ends with that body, so no
 state carries over to the next keypress. Each command is the same paste as the
 register-prefixed form its docstring names (`"kp`, `"cP`, and so on).
+
+The plugin's `set-option!` ranks as a plugin's, so a `clipboard-joins-ring` the user sets
+in `init.scm` or with `:set` wins over it, whichever runs first.
 
 ## Known limitations
 

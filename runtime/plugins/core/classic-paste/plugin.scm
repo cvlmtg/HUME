@@ -1,5 +1,7 @@
 ;;; core:classic-paste
 
+(set-option! "clipboard-joins-ring" "never")
+
 ;; ── Wrapper commands ──────────────────────────────────────────────────────────
 
 (define-command! "classic-paste/ring-after"

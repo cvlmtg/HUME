@@ -138,7 +138,7 @@ impl CommandRegistry {
         .reg(self);
         ecmd_focused(
             "smart-paste-after",
-            "Paste the kill-ring head after the selection, first adding to the ring any text copied to the clipboard outside HUME.",
+            "Paste the kill-ring head after the selection, first adding to the ring any text copied to the clipboard outside HUME, as clipboard-joins-ring allows.",
             cmd_smart_paste_after,
         )
         .repeatable()
@@ -147,7 +147,7 @@ impl CommandRegistry {
         .reg(self);
         ecmd_focused(
             "smart-paste-before",
-            "Paste the kill-ring head before the selection, first adding to the ring any text copied to the clipboard outside HUME.",
+            "Paste the kill-ring head before the selection, first adding to the ring any text copied to the clipboard outside HUME, as clipboard-joins-ring allows.",
             cmd_smart_paste_before,
         )
         .repeatable()
@@ -160,9 +160,7 @@ impl CommandRegistry {
             cmd_paste_ring_older,
         )
         .defers_paste_commit()
-        .repeatable()
         .clears_extend()
-        .manages_own_session()
         .reg(self);
         ecmd_focused(
             "paste-ring-newer",
@@ -170,9 +168,7 @@ impl CommandRegistry {
             cmd_paste_ring_newer,
         )
         .defers_paste_commit()
-        .repeatable()
         .clears_extend()
-        .manages_own_session()
         .reg(self);
         ecmd_pane(
             "join-lines-select-spaces",
@@ -415,17 +411,11 @@ impl CommandRegistry {
         // handler itself still takes only a native EditorCmd's shape, no &mut Editor.
         // So only a key runs it: a script's `call!` would return before the
         // replay ran (`.key_only()`).
-        //
-        // `.defers_paste_commit()`: this dispatch itself must not commit a
-        // paste session left open by a preceding `[`/`]`: replay_dot makes
-        // that call once it knows which command is being replayed (see its
-        // own `defers_paste_commit` builder doc for why).
         ecmd_focused(
             "repeat-last-action",
             "Repeat the last editing action.",
             cmd_repeat,
         )
-        .defers_paste_commit()
         .key_only()
         .reg(self);
 

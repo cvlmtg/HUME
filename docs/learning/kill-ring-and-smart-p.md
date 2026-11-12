@@ -22,8 +22,8 @@ letters free for the special registers:
 | Register | `"` prefix | Behaviour |
 |----------|:----------:|-----------|
 | `0`–`9` | yes | In-memory storage for text or macros, last write wins. `"5y` and `"5p` use the same slot, so they round-trip. No kill-ring interaction. |
-| `k` | yes | Kill ring. Paste reads the head; yank, delete, and change push onto the ring without touching the clipboard. |
-| `c` | yes | System clipboard. Yank writes the clipboard only (no ring push); paste always reads it. |
+| `k` | yes | Kill ring. Paste reads the head; yank, delete, and change push onto the ring without writing the clipboard. |
+| `c` | yes | System clipboard. Yank writes the clipboard only, after copied text it overwrites joins the ring; paste always reads it. |
 | `b` | yes | Black hole. Writes are discarded; paste reads nothing. |
 | `q` | no | Default macro register: `QQ` records into it, `qq` replays it. |
 | `s` | no | The last search pattern, written by search. |
@@ -86,7 +86,8 @@ seen" means different from that. So a `y` never looks new to the next paste,
 since HUME wrote it, and neither does a clipboard already taken in, however
 many pastes later.
 
-The check runs at each `p` and before each `d`, `c`, and `y`:
+The check runs at each `p`, before each `d`, `c`, and `y`, and before a
+write to the `c` register:
 
 - **Copy elsewhere, then `p`**: the copy is new, joins the ring at the head,
   and is what gets pasted.
@@ -96,14 +97,19 @@ The check runs at each `p` and before each `d`, `c`, and `y`:
 - **Edit, then `p`**: nothing new on the clipboard, so `p` pastes the head as
   before. Typing does not change the source.
 
-Checking only when the ring is about to be used keeps this cheap: there is
-no clipboard watcher, only a read at the moments the answer matters. Two
-copies made elsewhere with no HUME action between them keep only the second,
-which is the one the clipboard still holds.
+Checking only at those moments keeps this cheap: there is no clipboard
+watcher, only one read when HUME is about to use the ring or overwrite the
+clipboard. Two copies made elsewhere with no HUME action between them keep
+only the second, which is the one the clipboard still holds.
 
 With no readable clipboard (OSC 52 over SSH, where a program can set the
 clipboard but not read it), nothing is ever new, and `p` pastes the ring
 alone.
+
+An option narrows the moments. With the check at `p` only, a delete leaves
+the copy alone, so `d` then `p` pastes the copy and `[` reaches the delete.
+With no check at all, copied text stays on the clipboard's own register,
+which is what the bundled alternate keymap plugin picks.
 
 Repeat presses stack copies: `xd p p p` produces three. Each press reads the
 same head again, and the next section explains why the copies land side by
@@ -183,6 +189,9 @@ entry after it when the head already holds the pasted text (the usual case
 after `y`, which writes both).
 
 `[` and `]` without an open session do nothing.
+
+Repeating a paste with `.` pastes the entry its session ended on, whatever
+the ring holds by then (see [Dot-Repeat](dot-repeat.md)).
 
 ## Linewise versus charwise paste
 

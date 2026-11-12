@@ -35,6 +35,8 @@ A bare `p` or `P` pastes the newest kill-ring entry: right after a `d`, `c`, or 
 
 When the system clipboard holds text copied in another application, `p` first adds it to the kill ring as the newest entry, so that is what it pastes. A `d`, `c`, or `y` adds it too, just below what it takes, so `d` then `p` still pastes what you deleted, and `[` reaches the copied text. Text is added once: after you cycle past it, `p` keeps pasting the entry you chose until you copy something new. What HUME writes to the clipboard itself, with `y` or `"cy`, is never added this way.
 
+The [`clipboard-joins-ring`](settings.md) option sets when copied text is added. With `paste`, only `p` adds it, so a `d` then `p` pastes the copied text and `[` brings back what you deleted. With `never`, copied text stays on the clipboard, and `"cp` pastes it. `y` writes both the kill ring and the clipboard, and `"cy` the clipboard alone, whatever the option says.
+
 With nothing on the kill ring and nothing new on the clipboard, `p` pastes nothing, and says why when the clipboard couldn't be read.
 
 Yanking to an explicit register (`"0y`) leaves the clipboard and the kill ring untouched: a following bare `p` behaves as if the `"0y` hadn't happened. Use `"0p` to read the register back.
@@ -116,7 +118,7 @@ In Insert mode and on the `:` prompt, `Ctrl-r` followed by a register name inser
 
 ## GUI-style paste (core plugin)
 
-To keep the clipboard and the kill ring on separate keys, load `core:classic-paste`. It rebinds `p` / `P` to always paste from the kill ring without adding copied text to it first, and binds `Ctrl-v` / `Ctrl-Shift-v` to always paste from the system clipboard (`Ctrl-Shift-v` needs the kitty protocol).
+To keep the clipboard and the kill ring on separate keys, load `core:classic-paste`. It sets `clipboard-joins-ring` to `never`, rebinds `p` / `P` to always paste from the kill ring, and binds `Ctrl-v` / `Ctrl-Shift-v` to always paste from the system clipboard (`Ctrl-Shift-v` needs the kitty protocol).
 
 ```scheme
 (load-plugin! "core:classic-paste")

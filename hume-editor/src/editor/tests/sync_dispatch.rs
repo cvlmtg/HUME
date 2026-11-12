@@ -1638,6 +1638,44 @@ fn steel_repeatable_paste_dot_repeat_replays_command() {
     );
 }
 
+/// `.` of a repeatable Steel command run with a key's `"3` deletes into
+/// register `3` again.
+#[test]
+fn steel_repeatable_delete_dot_repeat_keeps_its_register() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let f2 = setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-delete" "delete the selection"
+             (lambda () (call! "delete" (focused-pane)))
+             #:repeatable #t)"#,
+        "steel-delete",
+    );
+    ed.feed_keys([key('"'), key('3'), f2]);
+    assert_eq!(reg(&ed, '3'), &["a"]);
+    ed.feed_key(key('.'));
+    assert_eq!(state(&ed), "-[c]>\n");
+    assert_eq!(reg(&ed, '3'), &["b"]);
+}
+
+/// `.` of a repeatable Steel wrapper around `paste-after` pastes the pieces
+/// its paste pasted, not the kill-ring head the re-run would read.
+#[test]
+fn steel_repeatable_paste_dot_repeat_pastes_its_pieces() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let f2 = setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-paste" "paste after the cursor"
+             (lambda () (call! "paste-after" (focused-pane)))
+             #:repeatable #t)"#,
+        "steel-paste",
+    );
+    ed.feed_keys([key('y'), f2]);
+    assert_eq!(state(&ed), "a-[a]>bc\n");
+    seed_ring(&mut ed, &["Q"]);
+    ed.feed_key(key('.'));
+    assert_eq!(state(&ed), "aa-[a]>bc\n");
+}
+
 /// The `change` command opens its undo group through `begin_insert_session` (the
 /// only path that opens a group). A Steel `#:repeatable` command wrapping `change`
 /// must record the transcript onto the outer action correctly.

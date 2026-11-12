@@ -11,12 +11,13 @@
 use std::borrow::Cow;
 
 use crate::editor::clipboard::{ClipboardRead, SystemClipboard};
-use hume_ops::register::{CLIPBOARD_REGISTER, KillRing, Piece, RegisterSet};
+use hume_ops::register::{CLIPBOARD_REGISTER, Piece, RegisterSet};
 
 /// Read text from an explicitly named register.
 ///
 /// Returns `(pieces, warning)` where `warning` is `Some(msg)` when the OS
-/// clipboard failed and the in-memory `'c'` mirror was used instead.
+/// clipboard failed; it names the in-memory `'c'` mirror when the mirror
+/// was used instead.
 ///
 /// - `'c'` → OS clipboard; the in-memory mirror on failure (with a warning)
 ///   and when the clipboard is write-only OSC 52 (no warning).
@@ -50,7 +51,13 @@ pub(in crate::editor) fn read_register_text<'a>(
                 (Some(Cow::Owned(vec![Piece::from(text)])), None)
             }
             ClipboardRead::Mirror => (mirror(), None),
-            ClipboardRead::Failed(e) => (mirror(), Some(clipboard_read_warn(&e))),
+            ClipboardRead::Failed(e) => {
+                let warn = clipboard_read_warn(&e);
+                match mirror() {
+                    Some(mem) => (Some(mem), Some(format!("{warn}, using in-memory 'c'"))),
+                    None => (None, Some(warn)),
+                }
+            }
         }
     } else {
         let v = registers
@@ -58,28 +65,6 @@ pub(in crate::editor) fn read_register_text<'a>(
             .and_then(|r| r.as_pieces())
             .map(Cow::Borrowed);
         (v, None)
-    }
-}
-
-/// Push the OS clipboard's text onto `kill_ring` when HUME has not seen it
-/// (see [`RegisterSet::take_in_clipboard`]). An OSC 52 clipboard cannot be
-/// read, so it never holds anything new.
-///
-/// Returns `Some(warning)` when the clipboard could not be read.
-pub(in crate::editor) fn take_in_clipboard(
-    registers: &mut RegisterSet,
-    clipboard: &mut SystemClipboard,
-    kill_ring: &mut KillRing,
-) -> Option<String> {
-    match clipboard.read() {
-        ClipboardRead::Text(raw) => {
-            if let Some(pieces) = registers.take_in_clipboard(raw) {
-                kill_ring.push(pieces);
-            }
-            None
-        }
-        ClipboardRead::Mirror => None,
-        ClipboardRead::Failed(e) => Some(clipboard_read_warn(&e)),
     }
 }
 
@@ -105,8 +90,8 @@ pub(in crate::editor) fn write_register(
     }
 }
 
-fn clipboard_read_warn(err: &str) -> String {
-    format!("system clipboard unavailable ({err}), using in-memory 'c'")
+pub(in crate::editor) fn clipboard_read_warn(err: &str) -> String {
+    format!("system clipboard unavailable ({err})")
 }
 
 fn clipboard_write_warn(err: &str) -> String {

@@ -24,7 +24,7 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneEntries;
 use crate::editor::replay::DotCapture;
-use crate::editor::replay::SourceTicket;
+use crate::editor::replay::{PasteAnswer, SourceTicket};
 
 /// The editor's open Paste session or dot-repeat placeholder, if any.
 ///
@@ -361,7 +361,13 @@ pub(in crate::editor) enum EditSessionKind {
     /// direction the session was opened with (`true` = `P`/paste-before),
     /// meaningful only while the session is open; read by `[`/`]` so
     /// cycling re-pastes in the same direction as the opening `p`/`P`.
-    Paste { before: bool },
+    /// `answer` is where the opening paste recorded what it pasted for `.`,
+    /// which `[`/`]` replace with the entry they cycle to; `None` when no
+    /// change recorded it.
+    Paste {
+        before: bool,
+        answer: Option<PasteAnswer>,
+    },
     /// `Editor::replay_dot`'s own placeholder, pre-opened before the
     /// replayed body runs, to fold a recipe replay plus the main edit into
     /// one undo revision. Holds no data of its own: nothing ever composes
