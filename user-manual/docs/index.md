@@ -39,4 +39,6 @@ The question every modal editor must answer up front: **to quit, press `Esc`, th
 ## Credits
 
 - [Helix](https://helix-editor.com): the language definitions, the language servers each language uses and their default settings, and the tree-sitter queries behind syntax highlighting, indentation and text objects.
+- [nvim-treesitter-context](https://github.com/nvim-treesitter/nvim-treesitter-context): most of the tree-sitter queries behind scope headers.
+- [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter): the tree-sitter queries behind code folding.
 - [Mason](https://github.com/mason-org/mason-registry): the registry `:lsp-install` uses to download and install language servers.
