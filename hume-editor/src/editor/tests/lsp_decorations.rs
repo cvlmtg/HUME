@@ -65,7 +65,7 @@ fn set_inlay_hints_composes_with_lsp_position_to_char_offset() {
         co(1),
         "wire char 2 (UTF-16) must land right after the emoji, at char index 1"
     );
-    assert_eq!(hints[0].text, "hint");
+    assert_eq!(&*hints[0].text, "hint");
     assert_eq!(hints[0].side, hume_core::Side::After);
 }
 
@@ -101,7 +101,7 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
         1,
         "the second set-inlay-hints! must replace, not append"
     );
-    assert_eq!(hints[0].text, "second");
+    assert_eq!(&*hints[0].text, "second");
 }
 
 /// A malformed offset (non-integer, or negative) must error loudly at the
@@ -1004,7 +1004,7 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         .collect();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].1.line, hume_rope::line::ContentLine::new(0));
-    assert_eq!(entries[0].1.text, "[2] first problem");
+    assert_eq!(&*entries[0].1.text, "[2] first problem");
     assert_eq!(scope_name(&ed, entries[0].1.scope), "diagnostic.error");
 
     // A second call for the same source must replace wholesale, not append.
@@ -1021,7 +1021,7 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         "the second set-eol-text! must replace, not append"
     );
     assert_eq!(entries[0].1.line, hume_rope::line::ContentLine::new(1));
-    assert_eq!(entries[0].1.text, "second problem");
+    assert_eq!(&*entries[0].1.text, "second problem");
     assert_eq!(scope_name(&ed, entries[0].1.scope), "diagnostic.warning");
 }
 

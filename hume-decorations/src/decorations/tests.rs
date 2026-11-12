@@ -103,7 +103,7 @@ fn eol_text_for_buffer_does_not_leak_another_buffers_entries() {
 
     let a_entries: Vec<&str> = store
         .eol_text_for_buffer(a)
-        .map(|(_, e)| e.text.as_str())
+        .map(|(_, e)| &*e.text)
         .collect();
     assert_eq!(
         a_entries,
@@ -113,7 +113,7 @@ fn eol_text_for_buffer_does_not_leak_another_buffers_entries() {
 
     let b_entries: Vec<&str> = store
         .eol_text_for_buffer(b)
-        .map(|(_, e)| e.text.as_str())
+        .map(|(_, e)| &*e.text)
         .collect();
     assert_eq!(
         b_entries,
@@ -711,7 +711,7 @@ fn eol_text_in_range_keeps_in_range_entries_in_source_order() {
 
     let got: Vec<(&str, &str)> = store
         .eol_text_in_range(a, lines(4, 10))
-        .map(|(s, e)| (s, e.text.as_str()))
+        .map(|(s, e)| (s, &*e.text))
         .collect();
     assert_eq!(got, vec![("alpha", "a8"), ("zeta", "z4")]);
 }
@@ -750,7 +750,7 @@ fn a_source_keeps_its_first_sign_eol_text_and_background_on_a_shared_line() {
     assert_eq!(sign_lines(&store, "s", a), vec![(1, "a"), (3, "x")]);
     let eol_texts: Vec<&str> = store
         .eol_text_for_buffer(a)
-        .map(|(_, e)| e.text.as_str())
+        .map(|(_, e)| &*e.text)
         .collect();
     assert_eq!(eol_texts, vec!["first"]);
     let bg_scopes: Vec<ScopeId> = store

@@ -307,7 +307,7 @@ fn add_inlay_hint(ed: &mut Editor) {
         bid,
         vec![hume_decorations::InlayHintEntry {
             pos: co(0),
-            text: "X".to_string(),
+            text: "X".into(),
             side: hume_core::Side::Before,
         }],
     );

@@ -26,7 +26,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             let pos = validate_offset(text, pos, side)?;
             Ok(hume_decorations::InlayHintEntry {
                 pos,
-                text: hint_text,
+                text: hint_text.into(),
                 side,
             })
         })?;
@@ -147,7 +147,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(line, eol_text, scope)| hume_decorations::EolTextEntry {
                 line,
-                text: eol_text,
+                text: eol_text.into(),
                 scope: self.view.registry.intern(&scope),
                 hide_on_insert_line,
             })

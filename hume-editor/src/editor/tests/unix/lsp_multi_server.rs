@@ -513,7 +513,7 @@ fn hint_texts(ed: &Editor) -> Vec<String> {
         .config
         .decorations
         .inlay_hints_for_buffer(bid)
-        .map(|h| h.text.clone())
+        .map(|h| h.text.to_string())
         .collect();
     texts.sort();
     texts

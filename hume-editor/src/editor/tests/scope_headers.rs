@@ -407,7 +407,7 @@ fn header_rows_draw_their_lines_without_decorations() {
             .iter()
             .map(|&[_, col_4]| hume_decorations::InlayHintEntry {
                 pos: col_4,
-                text: "H:".to_owned(),
+                text: "H:".into(),
                 side: hume_core::Side::Before,
             })
             .collect(),
@@ -419,7 +419,7 @@ fn header_rows_draw_their_lines_without_decorations() {
             .iter()
             .map(|&line| hume_decorations::EolTextEntry {
                 line,
-                text: " EOL".to_owned(),
+                text: " EOL".into(),
                 scope: marked,
                 hide_on_insert_line: false,
             })

@@ -11,10 +11,15 @@
 //! reimplementing it. Every `scope` field here is an already-interned
 //! `ScopeId`, not a name: `hume-editor`'s `host_impl.rs`'s `set-*!` handlers intern the
 //! Steel-facing scope string once, at the boundary, so render bridges never
-//! resolve a name themselves. Every render provider reads these fresh every
-//! frame; `virtual_lines` is the exception: the whole-buffer rebuild (not
-//! viewport-filtered, since it also runs in scroll/cursor math) gates on
-//! `generation` instead (see that field's doc).
+//! resolve a name themselves. Every `text` field is `Arc<str>`: the render
+//! bridges in `hume-editor`'s `decoration_providers.rs` clone it into the
+//! engine's per-frame providers for every visible line, a refcount bump
+//! instead of an allocation per entry per frame. Every render provider reads
+//! these fresh every frame; `virtual_lines` is the exception: the
+//! whole-buffer rebuild (not viewport-filtered, since it also runs in
+//! scroll/cursor math) gates on `generation` instead (see that field's doc).
+
+use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 
@@ -29,7 +34,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 /// at `pos`.
 pub struct InlayHintEntry {
     pub pos: CharOffset,
-    pub text: String,
+    pub text: Arc<str>,
     pub side: Side,
 }
 
@@ -38,14 +43,10 @@ pub struct InlayHintEntry {
 /// among `DecorationStores::sign_sources`, not a per-entry value; the
 /// `source` key `SourceStore` already carries is the entry's whole channel
 /// identity. `scope` is interned by `hume-editor`'s `host_impl.rs`'s `set_signs` at the
-/// `set-signs!` boundary, not resolved later by a render bridge. `text` is
-/// `Arc<str>`, not `String`: `hume-editor`'s `Editor::update_sign_providers` clones it
-/// straight into `hume_engine::builtins::sign_column::Sign::text` (also
-/// `Arc<str>`) for every visible line, every frame, a refcount bump
-/// instead of a fresh allocation per sign per frame.
+/// `set-signs!` boundary, not resolved later by a render bridge.
 pub struct SignEntry {
     pub line: ContentLine,
-    pub text: std::sync::Arc<str>,
+    pub text: Arc<str>,
     pub scope: ScopeId,
 }
 
@@ -72,7 +73,7 @@ pub struct VirtualLineEntry {
 /// `set-eol-text!` boundary.
 pub struct EolTextEntry {
     pub line: ContentLine,
-    pub text: String,
+    pub text: Arc<str>,
     pub scope: ScopeId,
     /// The render side drops this entry on the line holding the primary
     /// cursor of the pane typing in Insert mode.

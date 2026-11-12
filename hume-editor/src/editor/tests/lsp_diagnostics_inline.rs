@@ -31,7 +31,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
         bid,
         vec![EolTextEntry {
             line: hume_rope::line::ContentLine::new(0),
-            text: message.to_string(),
+            text: message.into(),
             scope,
             hide_on_insert_line: false,
         }],
@@ -48,7 +48,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
         .expect("line 0 must have an insert");
     assert_eq!(inserts.len(), 1);
     assert_eq!(
-        inserts[0].text, message,
+        &*inserts[0].text, message,
         "the full message must reach the provider, not a prefix of it"
     );
 }
@@ -72,13 +72,13 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_first_one() {
         vec![
             EolTextEntry {
                 line: hume_rope::line::ContentLine::new(0),
-                text: "first".to_string(),
+                text: "first".into(),
                 scope: error_scope,
                 hide_on_insert_line: false,
             },
             EolTextEntry {
                 line: hume_rope::line::ContentLine::new(0),
-                text: "second".to_string(),
+                text: "second".into(),
                 scope: warning_scope,
                 hide_on_insert_line: false,
             },
@@ -101,7 +101,7 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_first_one() {
          not stack"
     );
     assert_eq!(
-        inserts[0].text, "first",
+        &*inserts[0].text, "first",
         "the first entry the source listed must win"
     );
 }
@@ -123,7 +123,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
         bid,
         vec![EolTextEntry {
             line: hume_rope::line::ContentLine::new(0),
-            text: "from-z".to_string(),
+            text: "from-z".into(),
             scope,
             hide_on_insert_line: false,
         }],
@@ -133,7 +133,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
         bid,
         vec![EolTextEntry {
             line: hume_rope::line::ContentLine::new(0),
-            text: "from-a".to_string(),
+            text: "from-a".into(),
             scope,
             hide_on_insert_line: false,
         }],
@@ -150,7 +150,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
         .expect("line 0 must have an insert");
     assert_eq!(inserts.len(), 1);
     assert_eq!(
-        inserts[0].text, "from-a",
+        &*inserts[0].text, "from-a",
         "the alphabetically first source (\"a-plugin\") must win"
     );
 }
@@ -174,7 +174,7 @@ fn two_line_editor_with_eol(entries: &[(&str, usize, &str, bool)]) -> (Editor, h
             bid,
             vec![EolTextEntry {
                 line: hume_rope::line::ContentLine::new(line),
-                text: text.to_string(),
+                text: text.into(),
                 scope,
                 hide_on_insert_line: hide,
             }],
@@ -233,7 +233,7 @@ fn a_hidden_entry_lets_another_source_show_on_that_line() {
     let inserts = by_line
         .get(&hume_rope::line::ContentLine::new(0))
         .expect("the unflagged source still shows on line 0");
-    assert_eq!(inserts[0].text, "shown");
+    assert_eq!(&*inserts[0].text, "shown");
 }
 
 #[test]

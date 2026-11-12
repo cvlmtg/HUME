@@ -478,7 +478,7 @@ fn seed_diagnostic_and_hint(ed: &mut Editor, sid: ServerId, bid: BufferId, uri: 
         bid,
         vec![hume_decorations::InlayHintEntry {
             pos: co(0),
-            text: "x".to_string(),
+            text: "x".into(),
             side: hume_core::Side::Before,
         }],
     );

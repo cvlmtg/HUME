@@ -267,7 +267,7 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
         .collect();
     assert_eq!(hints.len(), 1);
     assert_eq!(hints[0].pos, co(4));
-    assert_eq!(hints[0].text, ": i32");
+    assert_eq!(&*hints[0].text, ": i32");
     assert_eq!(hints[0].side, hume_core::Side::Before);
 }
 
@@ -406,7 +406,7 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
         .collect();
     assert_eq!(hints.len(), 1);
     assert_eq!(
-        hints[0].text, " fn main ",
+        &*hints[0].text, " fn main ",
         "label parts must concatenate in order, then get padding spaces on both sides"
     );
 }
@@ -437,7 +437,7 @@ fn a_colon_led_label_gets_no_left_padding() {
         .inlay_hints_for_buffer(bid)
         .collect();
     assert_eq!(hints.len(), 1);
-    assert_eq!(hints[0].text, ": i32 ");
+    assert_eq!(&*hints[0].text, ": i32 ");
 }
 
 /// A server's `workspace/inlayHint/refresh` is answered and re-requests the

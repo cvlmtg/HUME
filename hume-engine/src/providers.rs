@@ -266,7 +266,7 @@ pub struct VirtualLine {
 pub struct InlineInsert {
     /// Byte offset within the buffer line at which to inject the text.
     pub byte_offset: ByteCol,
-    pub text: String,
+    pub text: Arc<str>,
     pub scope: ScopeId,
 }
 

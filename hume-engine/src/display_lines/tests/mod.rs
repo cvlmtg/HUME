@@ -78,7 +78,7 @@ impl DecorationSource for CountingInsert {
         if line_idx == self.line {
             out.push(Decoration::Inline(InlineInsert {
                 byte_offset: hume_rope::column::ByteCol::new(self.byte_offset),
-                text: self.text.to_string(),
+                text: self.text.into(),
                 scope: ScopeId(0),
             }));
         }

@@ -226,7 +226,7 @@ fn an_inlay_hint_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cur
         bid,
         vec![hume_decorations::InlayHintEntry {
             pos: line19_start,
-            text: "XY".to_string(),
+            text: "XY".into(),
             side: hume_core::Side::Before,
         }],
     );
@@ -258,7 +258,7 @@ fn eol_text_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cursor_h
         bid,
         vec![hume_decorations::EolTextEntry {
             line: hume_rope::line::ContentLine::new(19),
-            text: "XY".to_string(),
+            text: "XY".into(),
             scope,
             hide_on_insert_line: false,
         }],

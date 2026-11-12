@@ -25,7 +25,7 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
         bid,
         vec![InlayHintEntry {
             pos: co(4), // the 'x'
-            text: ": i32".to_string(),
+            text: ": i32".into(),
             side: hume_core::Side::After,
         }],
     );
@@ -49,7 +49,7 @@ fn before_hint_renders_immediately_before_its_char() {
         bid,
         vec![InlayHintEntry {
             pos: co(8), // the '5'
-            text: "n: ".to_string(),
+            text: "n: ".into(),
             side: hume_core::Side::Before,
         }],
     );
@@ -92,7 +92,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
         bid,
         vec![InlayHintEntry {
             pos: co(0), // the 'x'
-            text: "HHH".to_string(),
+            text: "HHH".into(),
             side: hume_core::Side::Before, // mid-line insert, so it participates in wrapping
         }],
     );
@@ -137,7 +137,7 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
         bid,
         vec![InlayHintEntry {
             pos: co(0),
-            text: "<HINT>".to_string(),
+            text: "<HINT>".into(),
             side: hume_core::Side::After,
         }],
     );
@@ -165,7 +165,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
         bid,
         vec![InlayHintEntry {
             pos: co(10), // right after the 'a' run
-            text: "[hint]".to_string(),
+            text: "[hint]".into(),
             side: hume_core::Side::After,
         }],
     );
@@ -189,7 +189,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
         bid,
         vec![InlayHintEntry {
             pos: co(4),
-            text: ": i32".to_string(),
+            text: ": i32".into(),
             side: hume_core::Side::After,
         }],
     );
@@ -240,7 +240,7 @@ fn deleting_a_line_drops_its_inlay_hint_and_undo_does_not_resurrect_it() {
         bid,
         vec![InlayHintEntry {
             pos: co(5),
-            text: ": i32".to_string(),
+            text: ": i32".into(),
             side: hume_core::Side::After,
         }],
     );

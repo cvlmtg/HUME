@@ -874,7 +874,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
     let text = String::from_utf8(vec![b'a'; 300]).unwrap();
     let inserts = vec![InlineInsert {
         byte_offset: ByteCol::new(0),
-        text,
+        text: text.into(),
         scope: crate::types::ScopeId(0),
     }];
     let mut scratch = LineFormat::new();
