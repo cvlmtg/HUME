@@ -1,8 +1,6 @@
 use std::ops::Range;
 
-use super::{
-    CompletionCtx, CompletionItem, arg_prefix, arg_span, theme_name_candidates, token_end_at,
-};
+use super::{CompletionCtx, CompletionItem, MinibufArg, theme_name_candidates};
 use crate::editor::settings::{Scope, SettingKey, SettingText, THEME, TableKey};
 use hume_core::BufferIntrinsicOption;
 use hume_editing::text::LineEnding;
@@ -98,20 +96,18 @@ fn complete_set_value(
 /// `define_settings!` entry declares, the same kind `write_global`/
 /// `write_buffer` validate with.
 pub(super) fn complete_set(
-    input: &str,
-    floor: usize,
-    cursor: usize,
+    arg: &MinibufArg<'_>,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    let (arg_start, arg) = arg_prefix(input, floor, cursor);
-    match arg.split_once(' ') {
+    let prefix = arg.prefix();
+    match prefix.split_once(' ') {
         None => {
             // Scope token: the argument itself, up to whitespace. `'='` is
             // an extra stop on the forward side for symmetry with the key
             // phase below. A scope name never contains one, so it never
             // fires here.
-            let span = arg_start..token_end_at(input, cursor, &[' ', '=']);
-            let candidates = complete_set_scope(arg);
+            let span = arg.token_span(prefix, &[' ', '=']);
+            let candidates = complete_set_scope(prefix);
             (span, candidates)
         }
         Some((scope, rest)) => {
@@ -120,23 +116,22 @@ pub(super) fn complete_set(
             let rest = rest.trim_start();
             match rest.split_once('=') {
                 None => {
-                    // Key token: starts past the last space, which lies
-                    // inside the argument since the scope precedes it.
-                    // The forward scan must also stop at `'='` (not just
-                    // whitespace), or completing `:set global th|eme=x`
-                    // would swallow the `=x` into the replaced span instead
-                    // of leaving it after the completed key.
-                    let span = arg_span(input, cursor, ' ', &[' ', '=']);
+                    // Key token: the forward scan must also stop at `'='`
+                    // (not just whitespace), or completing
+                    // `:set global th|eme=x` would swallow the `=x` into the
+                    // replaced span instead of leaving it after the
+                    // completed key.
+                    let span = arg.token_span(rest, &[' ', '=']);
                     let candidates =
                         scope.map_or_else(Vec::new, |scope| complete_set_key(scope, rest));
                     (span, candidates)
                 }
                 Some((key, value)) => {
-                    // Value token: bounded by '=' on the start, whitespace
-                    // only on the end: a value can legitimately contain an
+                    // Value token: everything after the key's '=', ended by
+                    // whitespace only: a value can legitimately contain an
                     // internal '=' or spaces (e.g. a `statusline` format
-                    // string), so only whitespace ends it.
-                    let span = arg_span(input, cursor, '=', &[' ']);
+                    // string).
+                    let span = arg.token_span(value, &[' ']);
                     let candidates = scope
                         .map_or_else(Vec::new, |scope| complete_set_value(scope, key, value, ctx));
                     (span, candidates)
@@ -149,16 +144,13 @@ pub(super) fn complete_set(
 /// Completes `:get <scope> <key>` arguments: [`complete_set`]'s scope and
 /// key phases. `:get` takes no value, so text after a `=` gets no candidates.
 pub(super) fn complete_get(
-    input: &str,
-    floor: usize,
-    cursor: usize,
+    arg: &MinibufArg<'_>,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    if arg_prefix(input, floor, cursor).1.contains('=') {
-        let at = cursor.min(input.len());
-        return (at..at, Vec::new());
+    if arg.prefix().contains('=') {
+        return (arg.cursor()..arg.cursor(), Vec::new());
     }
-    complete_set(input, floor, cursor, ctx)
+    complete_set(arg, ctx)
 }
 
 #[cfg(test)]

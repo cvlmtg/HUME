@@ -96,7 +96,7 @@ and nothing invokes it again while its menu is open, so `#:priority` and
 `#:incomplete` are refused there too.
 
 The native minibuffer sources (`command`, `buffer-name`, `theme` —
-`NativeUniverse`; `path`, `path-dirs-only`, `set` — `NativeDelegated`) are
+`NativeUniverse`; `path`, `path-dirs-only`, `set`, `get` — `NativeDelegated`) are
 compiled in. The `|` line's `shell` source is Steel, registered by
 `runtime/scheme/shells.scm`. `TypedCommand.completer` (`Option<Cow<'static, str>>`) names any
 entry by name — a built-in's `&'static str` constant, or the runtime string
@@ -111,10 +111,12 @@ chars)..head`, where `chars` is the buffer's `word-chars` extended with the
 source's `#:token-chars` (the seeded filter is that text, handed to the proc
 as its `prefix` argument). Two sources invoked together can therefore read
 different prefixes off the same text. A `Minibuf` source's token is likewise resolved
-upfront, via `arg_prefix`/`token_end_at` (the framework's own command-line
-grammar) — except a delegated source, whose candidate universe *is* the live
-input: the orchestrator calls a `NativeDelegated` function first and takes
-the span it returns (`:e`'s path, `:set`'s phase-dependent token), and a
+upfront: the orchestrator mints one `MinibufArg`, the argument from where
+the command name ends (the line's start when the line names its source),
+and its `last_word_span` is the token — except a delegated source, whose
+candidate universe *is* the live input: the orchestrator calls a
+`NativeDelegated` function with that `MinibufArg` first and takes the span
+it returns (`:e`'s path, `:set`'s phase-dependent token), and a
 Steel source registered `#:match 'delegated` may name its span with its
 answer (`#:span`, the `shell` source's quoted words). A minibuffer session
 invokes one source once and is dismissed by any key but Tab, so nothing

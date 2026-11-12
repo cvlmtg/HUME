@@ -22,7 +22,7 @@
 
 use std::ops::Range;
 
-use super::{CompletionCtx, CompletionItem};
+use super::{CompletionCtx, CompletionItem, MinibufArg};
 use crate::editor::buffer::store::BufferStore;
 use hume_core::{BufferId, MatchKind};
 use hume_treesitter::registry::LanguageRegistry;
@@ -34,16 +34,15 @@ pub(in crate::editor) type NativeUniverseFn = fn(&CompletionCtx<'_>) -> Vec<Comp
 
 /// A native minibuffer source whose universe *is* the live input (a
 /// directory listing, a parse phase): computes its own finished, ordered
-/// result and its own byte span, fresh every attempt. Called with the
-/// input, the floor its argument starts at, and the cursor.
+/// result and its own byte span, fresh every attempt.
 pub(in crate::editor) type NativeDelegatedFn =
-    fn(&str, usize, usize, &CompletionCtx<'_>) -> (Range<usize>, Vec<CompletionItem>);
+    fn(&MinibufArg<'_>, &CompletionCtx<'_>) -> (Range<usize>, Vec<CompletionItem>);
 
 /// How a `Minibuf` source produces its answer: the two native shapes each
 /// have a fixed span rule of their own (see [`super::orchestrate::
 /// invoke_minibuf_source`]'s doc): `NativeDelegated` computes its own from
-/// the floor, everything else (including every `Steel` minibuf source) gets
-/// the whitespace-delimited `'arg` span computed upfront by the orchestrator.
+/// its [`MinibufArg`], everything else (including every `Steel` minibuf
+/// source) gets [`MinibufArg::last_word_span`].
 pub(in crate::editor) enum MinibufBody {
     NativeUniverse(NativeUniverseFn),
     NativeDelegated(NativeDelegatedFn),

@@ -525,7 +525,7 @@ fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
     );
 }
 
-/// `arg_span` (a Steel `'minibuf` source's own token) must be the argument
+/// `last_word_span` (a Steel `'minibuf` source's own token) must be the argument
 /// the cursor is *in*, not everything after the command name: a
 /// multi-argument typed command's second argument must not drag the first
 /// one along into the span/filter. `"bexyz"` only

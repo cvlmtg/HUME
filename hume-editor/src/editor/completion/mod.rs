@@ -12,6 +12,8 @@
 //! - `item.rs`: the item type both targets share; `simple.rs`/`path.rs`/
 //!   `set.rs`: the native minibuffer sources.
 
+use std::ops::Range;
+
 use hume_platform::path::AbsolutePath;
 
 use crate::editor::buffer::store::BufferStore;
@@ -53,59 +55,71 @@ pub(in crate::editor) struct CompletionCtx<'a> {
     pub dirs: &'a hume_platform::dirs::Dirs,
 }
 
-/// The whole argument up to the cursor: `input[floor..cursor]` past its
-/// leading whitespace, as `(arg_start, prefix)` with `arg_start` its byte
-/// offset in `input`. `floor` is where the command name ends (0 on a line
-/// that is all argument), so `:e!/tmp/x` and `:e /tmp/x` read the same
-/// argument, as `parse_typed_command` does on Enter.
-///
-/// A multi-argument command's own argument span is [`arg_span`], which
-/// finds the *last* stop char before the cursor instead.
-pub(in crate::editor) fn arg_prefix(input: &str, floor: usize, cursor: usize) -> (usize, &str) {
-    let end = cursor.min(input.len());
-    let arg = input[floor..end].trim_start();
-    (end - arg.len(), arg)
-}
-
-/// The byte offset, at or after `cursor`, of the first char in `stops`, or
-/// `input.len()` if none appears before the end. The token a completion
-/// *replaces* extends past the cursor to wherever it actually ends
-/// ([`arg_prefix`] alone only ever looks at `input[..cursor]`), so a
-/// candidate applied with the cursor mid-token doesn't duplicate the
-/// token's own tail (`:e src/ma|in.rs` + Tab must not produce
-/// `src/main.rsin.rs`).
-///
-/// `stops` names the token's own separator alphabet: a `:set` key stops at
-/// `'='` too (so completing `:set global th|eme=x` doesn't swallow the
-/// `=x`), where a path or command-name token stops at whitespace alone.
-pub(in crate::editor) fn token_end_at(input: &str, cursor: usize, stops: &[char]) -> usize {
-    let from = cursor.min(input.len());
-    input[from..]
-        .find(|c: char| stops.contains(&c))
-        .map_or(input.len(), |i| from + i)
-}
-
-/// The `[start, end)` span of the token at `cursor`: `start` is one past
-/// the last `back_stop` at or before `cursor` (0 if none), `end` is
-/// [`token_end_at`]'s forward scan for the first of `fwd_stops`. `back_stop`
-/// is a single char, not a slice like `fwd_stops`: every caller's forward
-/// and backward separator alphabets already differ (a `:set` key stops
-/// backward at `' '` but forward at `[' ', '=']`, so a completed key's span
-/// doesn't swallow a following `=value`; a `:set` value stops backward at
-/// `'='` and forward at `[' ']` only, since the value itself may contain
-/// `=`), and every one of them backs up to exactly one separator, never a
-/// choice of several.
-pub(in crate::editor) fn arg_span(
-    input: &str,
+/// The argument a minibuffer source completes: the line, the cursor, and
+/// where the argument starts, which is the floor past its leading
+/// whitespace. The floor is where the command name ends (0 on a line that
+/// is all argument), so `:e!/tmp/x` and `:e /tmp/x` read the same
+/// argument, as `parse_typed_command` does on Enter. No span it gives
+/// starts before the argument.
+pub(in crate::editor) struct MinibufArg<'a> {
+    input: &'a str,
+    start: usize,
     cursor: usize,
-    back_stop: char,
-    fwd_stops: &[char],
-) -> std::ops::Range<usize> {
-    let up_to = &input[..cursor.min(input.len())];
-    let start = up_to
-        .rfind(back_stop)
-        .map_or(0, |i| i + back_stop.len_utf8());
-    start..token_end_at(input, cursor, fwd_stops)
+}
+
+impl<'a> MinibufArg<'a> {
+    /// Panics unless `floor <= cursor <= input.len()`.
+    pub(in crate::editor) fn new(input: &'a str, floor: usize, cursor: usize) -> Self {
+        assert!(
+            floor <= cursor && cursor <= input.len(),
+            "argument floor {floor} and cursor {cursor} out of order in {input:?}"
+        );
+        let arg = input[floor..cursor].trim_start();
+        Self {
+            input,
+            start: cursor - arg.len(),
+            cursor,
+        }
+    }
+
+    pub(in crate::editor) fn input(&self) -> &'a str {
+        self.input
+    }
+
+    pub(in crate::editor) fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// The argument up to the cursor.
+    pub(in crate::editor) fn prefix(&self) -> &'a str {
+        &self.input[self.start..self.cursor]
+    }
+
+    /// The span a completion of `token`, a suffix of [`Self::prefix`],
+    /// replaces: from where `token` starts to the first of `stops` at or
+    /// after the cursor, or the line's end. Its start is the text the
+    /// completer filtered on. Its end runs past the cursor, so a candidate
+    /// applied mid-token doesn't duplicate the token's tail
+    /// (`:e src/ma|in.rs` + Tab must not produce `src/main.rsin.rs`).
+    ///
+    /// `stops` is the token's own separator alphabet: a `:set` key stops at
+    /// `'='` too (so completing `:set global th|eme=x` doesn't swallow the
+    /// `=x`), where a path stops at whitespace alone.
+    pub(in crate::editor) fn token_span(&self, token: &str, stops: &[char]) -> Range<usize> {
+        debug_assert!(self.prefix().ends_with(token), "{token:?} ends the prefix");
+        let end = self.input[self.cursor..]
+            .find(|c: char| stops.contains(&c))
+            .map_or(self.input.len(), |i| self.cursor + i);
+        self.cursor - token.len()..end
+    }
+
+    /// The span of the space-delimited word the cursor is in: the span a
+    /// source that does not compute its own replaces.
+    pub(in crate::editor) fn last_word_span(&self) -> Range<usize> {
+        let prefix = self.prefix();
+        let word = prefix.rfind(' ').map_or(prefix, |i| &prefix[i + 1..]);
+        self.token_span(word, &[' '])
+    }
 }
 
 /// Every installed theme's name (file stem), directory-scanned across
@@ -141,6 +155,9 @@ fn theme_name_candidates(dirs: &hume_platform::dirs::Dirs) -> Vec<String> {
     stems
 }
 
+#[cfg(test)]
+mod tests;
+
 // ── Shared test support ───────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -153,6 +170,13 @@ mod testing {
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::EngineView;
     use hume_engine::theme::Theme;
+
+    /// `input`'s argument with the cursor at its end, floored where the
+    /// command name ends, as the orchestrator floors a `:` line.
+    pub(in crate::editor::completion) fn command_arg(input: &str) -> MinibufArg<'_> {
+        let floor = crate::editor::input_stack::command::scan_command_name(input).2;
+        MinibufArg::new(input, floor, input.len())
+    }
 
     pub(in crate::editor::completion) fn make_ctx_parts() -> (CommandRegistry, BufferStore, TempDir)
     {

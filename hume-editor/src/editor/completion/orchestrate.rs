@@ -27,7 +27,7 @@ use super::registry::{
 use super::session::{
     BufferSession, EndingSession, Invocation, LiveDoc, MinibufSession, Reconciled,
 };
-use super::{CompletionCtx, CompletionItem, arg_span};
+use super::{CompletionCtx, CompletionItem, MinibufArg};
 use crate::editor::EditorState;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{BufferCompletionLayer, LayerRef, MinibufCompletionLayer};
@@ -378,9 +378,7 @@ impl EditorState {
             &ctx,
             &mut session,
             id,
-            &input,
-            cursor,
-            floor,
+            &MinibufArg::new(&input, floor, cursor),
         );
         self.queue_source_calls(call);
         let r = self.push_layer(view, MinibufCompletionLayer { session });
@@ -623,51 +621,40 @@ fn invoke_buffer_sources(
 /// `NativeDelegated`'s own span comes from calling its function first: the
 /// only body variant whose span isn't the generic `'arg` one, since its
 /// candidate universe *is* the live input and the two are computed
-/// together. Every other body gets the whitespace-delimited argument span
-/// computed here, upfront, the same way a `Buffer` source's span is always
-/// the word before the cursor (`invoke_buffer_sources`).
-/// `floor` is the byte offset no argument span may start before: 0 while
-/// still completing the command name itself, or the command name's own
-/// end once `resolve_minibuf_source` has resolved past it. A
-/// `NativeDelegated` source reads its argument from it, and the `'arg`
-/// span's backward scan stops at it. Without it, a no-space argument
-/// (`:b1`, `:e!/tmp/x`) has no space to anchor on and the span starts at
-/// 0, swallowing the command name itself.
+/// together. Every other body gets the argument's last word as its span
+/// ([`MinibufArg::last_word_span`]), the same way a `Buffer` source's span
+/// is always the word before the cursor (`invoke_buffer_sources`). Neither
+/// span starts before `arg`'s floor, so a no-space argument (`:b1`,
+/// `:e!/tmp/x`) never swallows the command name.
 fn invoke_minibuf_source(
     sources: &SourceRegistry,
     ctx: &CompletionCtx<'_>,
     session: &mut MinibufSession,
     id: MinibufSourceId,
-    input: &str,
-    cursor: usize,
-    floor: usize,
+    arg: &MinibufArg<'_>,
 ) -> Option<(HostToken, SteelCall)> {
     let entry = sources.minibuf_get(id);
-    let arg = || {
-        let span = arg_span(input, cursor, ' ', &[' ']);
-        span.start.max(floor)..span.end
-    };
     match &entry.body {
         MinibufBody::NativeUniverse(f) => {
-            let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
+            let invocation_id = session.invoke(id, Invocation::minibuf(arg.last_word_span()));
             session.contribute(invocation_id, f(ctx));
             None
         }
         MinibufBody::NativeDelegated(f) => {
-            let (span, items) = f(input, floor, cursor, ctx);
+            let (span, items) = f(arg, ctx);
             let invocation_id = session.invoke(id, Invocation::minibuf(span));
             session.contribute(invocation_id, items);
             None
         }
         MinibufBody::Steel { proc, .. } => {
-            let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
+            let invocation_id = session.invoke(id, Invocation::minibuf(arg.last_word_span()));
             // Steel indexes a string by char.
-            let cursor_chars = input[..cursor].chars().count();
+            let cursor_chars = arg.input()[..arg.cursor()].chars().count();
             let call = SteelCall::new(
                 proc.clone(),
                 vec![
                     token_to_steel(invocation_id),
-                    SteelVal::StringV(input.into()),
+                    SteelVal::StringV(arg.input().into()),
                     SteelVal::IntV(cursor_chars as isize),
                 ],
             );
@@ -688,13 +675,12 @@ fn target_command_name(input: &str, cursor: usize) -> Option<(&str, usize)> {
 }
 
 /// Resolves which registered source applies to `completion`'s line in its
-/// current `(input, cursor)` shape, and the byte offset
-/// [`invoke_minibuf_source`]'s own argument span must not cross. On the
-/// `:` line that is the command name itself while the cursor is within it
-/// (no space yet, or moved left past the space), with floor `0` (the whole
-/// prefix typed so far is the token), else the resolved command's declared
-/// argument completer, with the name's own end as the floor. A line that
-/// names its source gets it with floor `0`.
+/// current `(input, cursor)` shape, and the floor of the [`MinibufArg`] it
+/// completes. On the `:` line that is the command name itself while the
+/// cursor is within it (no space yet, or moved left past the space), with
+/// floor `0` (the whole prefix typed so far is the token), else the
+/// resolved command's declared argument completer, with the name's own end
+/// as the floor. A line that names its source gets it with floor `0`.
 fn resolve_minibuf_source(
     registry: &CommandRegistry,
     completion: PromptCompletion,

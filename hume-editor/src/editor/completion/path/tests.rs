@@ -18,7 +18,7 @@ fn path_completer_lists_directory() {
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let input = "e ";
-    let (span, candidates) = complete_path(input, 1, input.len(), &ctx);
+    let (span, candidates) = complete_path(&command_arg(input), &ctx);
 
     let names: Vec<&str> = candidates.iter().map(|c| c.label.as_ref()).collect();
     assert!(names.contains(&"alpha.txt"), "alpha.txt should appear");
@@ -40,7 +40,7 @@ fn path_completer_tags_directories_with_folder_kind_files_with_none() {
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let input = "e ";
-    let (_, candidates) = complete_path(input, 1, input.len(), &ctx);
+    let (_, candidates) = complete_path(&command_arg(input), &ctx);
 
     let file = candidates
         .iter()
@@ -67,7 +67,7 @@ fn path_completer_filters_by_prefix() {
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let input = "e foo";
-    let (_, candidates) = complete_path(input, 1, input.len(), &ctx);
+    let (_, candidates) = complete_path(&command_arg(input), &ctx);
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].insert_text, "foo.txt");
@@ -87,13 +87,13 @@ fn path_completer_excludes_hidden_unless_dot_prefix() {
     let ctx = ctx(&reg, &store, &cwd);
 
     // Without dot prefix: hidden excluded.
-    let (_, candidates) = complete_path("e ", 1, 2, &ctx);
+    let (_, candidates) = complete_path(&command_arg("e "), &ctx);
     assert!(!candidates.iter().any(|c| c.label.starts_with('.')));
     assert!(candidates.iter().any(|c| c.label == "visible"));
 
     // With dot prefix: hidden included.
     let input = "e .";
-    let (_, candidates) = complete_path(input, 1, input.len(), &ctx);
+    let (_, candidates) = complete_path(&command_arg(input), &ctx);
     assert!(candidates.iter().any(|c| c.label == ".hidden"));
 }
 
@@ -113,7 +113,7 @@ fn path_completer_multi_segment() {
 
     // Completing "sub/f": should find "sub/file.rs".
     let input = "e sub/f";
-    let (_, candidates) = complete_path(input, 1, input.len(), &ctx);
+    let (_, candidates) = complete_path(&command_arg(input), &ctx);
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].insert_text, "sub/file.rs");
 }
@@ -133,7 +133,7 @@ fn path_completer_missing_dir_returns_empty() {
         languages: &langs,
         dirs: &hume_platform::dirs::Dirs::none(),
     };
-    let (_, candidates) = complete_path("e foo", 1, 5, &ctx);
+    let (_, candidates) = complete_path(&command_arg("e foo"), &ctx);
     assert!(candidates.is_empty());
 }
 
@@ -149,7 +149,7 @@ fn path_completer_sorted_ascending() {
     );
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
-    let (_, candidates) = complete_path("e ", 1, 2, &ctx);
+    let (_, candidates) = complete_path(&command_arg("e "), &ctx);
     let names: Vec<&str> = candidates.iter().map(|c| c.label.as_ref()).collect();
     let mut sorted = names.clone();
     sorted.sort_unstable();
