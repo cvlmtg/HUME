@@ -183,7 +183,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 /// minibuf) is already gone by the time this runs, per
 /// truncate-before-execute.
 fn execute_command_line(ed: &mut Editor, raw: &str) -> Result<(), CommandError> {
-    run_command_line(ed, raw.trim()).inspect_err(|e| ed.report_error(e))
+    run_command_line(ed, raw).inspect_err(|e| ed.report_error(e))
 }
 
 #[cfg(test)]
@@ -204,7 +204,7 @@ impl Editor {
     }
 }
 
-/// Run a trimmed `:` line, returning its error unreported.
+/// Run the `:` line, returning its error unreported.
 fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
     let (cmd, force, arg) = parse_typed_command(input);
 
@@ -254,18 +254,18 @@ fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
 
 // ── Typed-command helpers ─────────────────────────────────────────────────────
 
-/// The command name at the start of `input` (the grammar typed commands
-/// are registered against, [`hume_scripting::command_name`]), one
-/// optional trailing `!` consumed as `force`, and the byte offset one past
-/// both. Shared by [`parse_typed_command`] (which also needs the trimmed
-/// argument past that point) and `orchestrate.rs`'s `target_command_name`
-/// (which only needs the offset, to test whether the cursor has moved past
-/// the name), so completion never disagrees with what `run_command_line`
-/// would actually run.
+/// The command name past `input`'s leading whitespace (the grammar typed
+/// commands are registered against, [`hume_scripting::command_name`]), one
+/// optional trailing `!` consumed as `force`, and the byte offset in
+/// `input` one past both. The one name rule Enter and Tab completion both
+/// read, so completion never disagrees with what `run_command_line` would
+/// run.
 pub(in crate::editor) fn scan_command_name(input: &str) -> (&str, bool, usize) {
-    let name = hume_scripting::command_name::scan(input);
-    let force = input[name.len()..].starts_with('!');
-    (name, force, name.len() + usize::from(force))
+    let start = input.len() - input.trim_start().len();
+    let name = hume_scripting::command_name::scan(&input[start..]);
+    let name_end = start + name.len();
+    let force = input[name_end..].starts_with('!');
+    (name, force, name_end + usize::from(force))
 }
 
 /// Parse a typed-command string into `(cmd, force, arg)`: everything past

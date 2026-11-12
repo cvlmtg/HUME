@@ -442,6 +442,29 @@ fn tab_completes_a_directory_typed_right_after_cd() {
     assert_eq!(minibuf_input(&ed), "cd./mysubdir/");
 }
 
+/// The command name starts past leading whitespace, as Enter reads it.
+#[test]
+fn tab_completes_a_path_after_leading_whitespace() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    command_line(&mut ed, &format!("  e {}/hel", dir.path().display()));
+    ed.handle_key(key_tab());
+    assert_eq!(
+        minibuf_input(&ed),
+        format!("  e {}/hello.txt", dir.path().display())
+    );
+}
+
+#[test]
+fn tab_completes_a_command_name_after_leading_whitespace() {
+    // "reload-config" is the only registered command starting with "relo".
+    let mut ed = editor_from("-[h]>ello\n");
+    command_line(&mut ed, "  relo");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "  reload-config");
+}
+
 #[test]
 fn enter_on_directory_candidate_restarts_completion_inside_it() {
     let dir = tempfile::tempdir().unwrap();

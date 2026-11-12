@@ -21,6 +21,8 @@ fn parse_typed_command_table() {
         ("b1!", "b", false, Some("1!")),               // buffer number keeps `!` in the arg
         ("b12x", "b12x", false, None),                 // `b` + digits + more is a name
         ("42", "", false, Some("42")),                 // line number
+        ("  e foo", "e", false, Some("foo")),          // leading whitespace
+        ("  e!x", "e", true, Some("x")),               // leading whitespace, force
     ];
     for &(input, cmd, force, arg) in cases {
         let (got_cmd, got_force, got_arg) = parse_typed_command(input);

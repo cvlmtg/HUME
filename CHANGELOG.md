@@ -15,6 +15,7 @@
 - Dragging the divider between two panes resizes them without `mouse-select` on.
 - A click while a key waits for a character, such as after `f`, ends a divider drag.
 - Tab completes a path typed right after the command, such as `:e!/tmp/fi`.
+- Tab completes a `:` line that starts with spaces.
 
 ## [0.20.1] - 2026-11-10
 
