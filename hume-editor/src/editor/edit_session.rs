@@ -24,7 +24,7 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneEntries;
 use crate::editor::replay::DotCapture;
-use crate::editor::replay::{PasteAnswer, SourceTicket};
+use crate::editor::replay::{AnswerPlace, SourceTicket};
 
 /// The editor's open Paste session or dot-repeat placeholder, if any.
 ///
@@ -366,7 +366,7 @@ pub(in crate::editor) enum EditSessionKind {
     /// change recorded it.
     Paste {
         before: bool,
-        answer: Option<PasteAnswer>,
+        answer: Option<AnswerPlace>,
     },
     /// `Editor::replay_dot`'s own placeholder, pre-opened before the
     /// replayed body runs, to fold a recipe replay plus the main edit into

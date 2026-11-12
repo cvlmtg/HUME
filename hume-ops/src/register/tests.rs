@@ -524,48 +524,45 @@ fn push_dedupe_compares_whole_entry() {
 
 // -- seed_cycle ---------------------------------------------------------------
 
-#[test]
-fn seed_cycle_at_head_starts_at_the_head() {
-    let mut ring = KillRing::new();
-    ring.push(vs("a"));
-    ring.push(vs("b"));
-    ring.seed_cycle_at_head();
-    assert_eq!(ring.cycle, Some(0));
+/// Seed the cycle as a paste of the ring head does.
+fn paste_head(ring: &mut KillRing) {
+    let head = ring.head().expect("ring has a head").to_vec();
+    ring.seed_cycle(&head);
 }
 
 #[test]
-fn seed_cycle_outside_with_other_text_starts_before_the_head() {
+fn seed_cycle_with_other_text_starts_before_the_head() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
-    ring.seed_cycle_at_head();
-    ring.seed_cycle_outside(&vs("z"));
+    paste_head(&mut ring);
+    ring.seed_cycle(&vs("z"));
     assert_eq!(ring.cycle, None);
 }
 
 #[test]
-fn seed_cycle_outside_with_the_heads_text_starts_at_the_head() {
+fn seed_cycle_with_the_heads_text_starts_at_the_head() {
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 1
     ring.push(vs("b")); // slot 0 = head
-    ring.seed_cycle_outside(&vs("b"));
+    ring.seed_cycle(&vs("b"));
     assert_eq!(ring.cycle, Some(0));
     assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
 }
 
 #[test]
-fn seed_cycle_outside_with_the_only_entrys_text_leaves_nothing_older() {
+fn seed_cycle_with_the_only_entrys_text_leaves_nothing_older() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
-    ring.seed_cycle_outside(&vs("a"));
+    ring.seed_cycle(&vs("a"));
     assert!(ring.cycle_older().is_none());
     assert_eq!(ring.cycle, Some(0));
 }
 
 #[test]
-fn seed_cycle_outside_compares_shape_too() {
+fn seed_cycle_compares_shape_too() {
     let mut ring = KillRing::new();
     ring.push(vec![Piece::new("a\n", Shape::Linewise)]);
-    ring.seed_cycle_outside(&[Piece::new("a\n", Shape::Charwise)]);
+    ring.seed_cycle(&[Piece::new("a\n", Shape::Charwise)]);
     assert_eq!(ring.cycle, None);
 }
 
@@ -576,7 +573,7 @@ fn cycle_older_from_none_reads_slot0() {
     // A paste from outside the ring → first [ goes to slot 0 (ring head).
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 0 = head
-    ring.seed_cycle_outside(&vs("z"));
+    ring.seed_cycle(&vs("z"));
     assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
     assert_eq!(ring.cycle, Some(0));
 }
@@ -587,7 +584,7 @@ fn cycle_older_from_head_reads_slot1() {
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 1
     ring.push(vs("b")); // slot 0 = head
-    ring.seed_cycle_at_head();
+    paste_head(&mut ring);
     assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
     assert_eq!(ring.cycle, Some(1));
 }
@@ -597,7 +594,7 @@ fn cycle_older_noop_at_last_entry() {
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 1
     ring.push(vs("b")); // slot 0 = head
-    ring.seed_cycle_at_head();
+    paste_head(&mut ring);
     ring.cycle_older(); // at last
     assert!(ring.cycle_older().is_none());
     assert_eq!(ring.cycle, Some(1)); // unchanged
@@ -617,7 +614,7 @@ fn cycle_newer_noop_from_none() {
     // A paste from outside the ring has nothing newer than it.
     let mut ring = KillRing::new();
     ring.push(vs("a"));
-    ring.seed_cycle_outside(&vs("z"));
+    ring.seed_cycle(&vs("z"));
     assert!(ring.cycle_newer().is_none());
     assert_eq!(ring.cycle, None); // unchanged
 }
@@ -627,7 +624,7 @@ fn cycle_newer_noop_at_head() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
     ring.push(vs("b"));
-    ring.seed_cycle_at_head();
+    paste_head(&mut ring);
     assert!(ring.cycle_newer().is_none());
     assert_eq!(ring.cycle, Some(0)); // unchanged
 }
@@ -638,7 +635,7 @@ fn cycle_newer_retreats_toward_head() {
     ring.push(vs("a")); // slot 2
     ring.push(vs("b")); // slot 1
     ring.push(vs("c")); // slot 0 = head
-    ring.seed_cycle_at_head();
+    paste_head(&mut ring);
     ring.cycle_older();
     ring.cycle_older();
     assert_eq!(ring.cycle_newer(), Some(vs("b").as_slice()));
@@ -653,7 +650,7 @@ fn cycle_round_trip_clipboard_origin() {
     let mut ring = KillRing::new();
     ring.push(vs("charwise")); // slot 1
     ring.push(vs("linewise\n")); // slot 0 = head
-    ring.seed_cycle_outside(&vs("z")); // a paste from outside the ring
+    ring.seed_cycle(&vs("z")); // a paste from outside the ring
 
     assert_eq!(ring.cycle_older(), Some(vs("linewise\n").as_slice())); // slot 0
     assert_eq!(ring.cycle_older(), Some(vs("charwise").as_slice())); // slot 1
@@ -667,7 +664,7 @@ fn cycle_round_trip_older_then_newer() {
     ring.push(vs("a")); // slot 2
     ring.push(vs("b")); // slot 1
     ring.push(vs("c")); // slot 0 = head
-    ring.seed_cycle_outside(&vs("z"));
+    ring.seed_cycle(&vs("z"));
 
     ring.cycle_older(); // None→0: "c"
     ring.cycle_older(); // 0→1:   "b"
@@ -684,15 +681,12 @@ fn ring_abc_showing_head() -> KillRing {
     for s in ["c", "b", "a"] {
         ring.push(vs(s));
     }
-    ring.seed_cycle_at_head();
+    paste_head(&mut ring);
     ring
 }
 
 fn order(ring: &KillRing) -> Vec<&str> {
-    (0..ring.len())
-        .filter_map(|n| ring.slot(n))
-        .map(|entry| entry[0].text())
-        .collect()
+    ring.entries.iter().map(|entry| entry[0].text()).collect()
 }
 
 #[test]
@@ -714,7 +708,7 @@ fn a_push_after_a_cycle_lands_above_the_cycled_entry() {
 fn a_new_paste_after_a_cycle_starts_from_the_cycled_entry() {
     let mut ring = ring_abc_showing_head();
     ring.cycle_older();
-    ring.seed_cycle_outside(&vs("z"));
+    ring.seed_cycle(&vs("z"));
     assert_eq!(order(&ring), ["b", "a", "c"]);
     assert_eq!(ring.cycle_older(), Some(vs("b").as_slice()));
 }
@@ -724,7 +718,7 @@ fn cycling_back_to_the_first_entry_keeps_the_order() {
     let mut ring = ring_abc_showing_head();
     ring.cycle_older();
     ring.cycle_newer();
-    ring.seed_cycle_at_head();
+    paste_head(&mut ring);
     assert_eq!(order(&ring), ["a", "b", "c"]);
 }
 
@@ -734,9 +728,9 @@ fn a_whitespace_head_the_cycle_passed_stays_in_the_ring() {
     for s in ["c", "b", " "] {
         ring.push(vs(s));
     }
-    ring.seed_cycle_at_head();
+    paste_head(&mut ring);
     ring.cycle_older();
-    ring.seed_cycle_at_head();
+    paste_head(&mut ring);
     assert_eq!(order(&ring), ["b", " ", "c"]);
 }
 

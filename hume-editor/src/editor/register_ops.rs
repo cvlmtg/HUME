@@ -43,7 +43,7 @@ pub(in crate::editor) fn read_register_text<'a>(
                 // 'c' register is in sync, so prefer its structured pieces, which
                 // keep multi-selection boundaries and each piece's shape.  When they differ,
                 // the clipboard was externally modified; use its content directly.
-                if registers.clipboard_blob() == Some(&text)
+                if registers.is_own_clipboard(&text)
                     && let Some(mem) = mirror()
                 {
                     return (Some(mem), None);
@@ -90,7 +90,23 @@ pub(in crate::editor) fn write_register(
     }
 }
 
-pub(in crate::editor) fn clipboard_read_warn(err: &str) -> String {
+/// Take in the OS clipboard when it holds text HUME has not seen (see
+/// [`RegisterSet::take_in_clipboard`]), returning its pieces for the kill
+/// ring. An OSC 52 clipboard cannot be read, so it never holds anything new.
+///
+/// `Err` holds the warning when the OS clipboard could not be read.
+pub(in crate::editor) fn take_in_clipboard(
+    registers: &mut RegisterSet,
+    clipboard: &mut SystemClipboard,
+) -> Result<Option<Vec<Piece>>, String> {
+    match clipboard.read() {
+        ClipboardRead::Text(raw) => Ok(registers.take_in_clipboard(raw)),
+        ClipboardRead::Mirror => Ok(None),
+        ClipboardRead::Failed(e) => Err(clipboard_read_warn(&e)),
+    }
+}
+
+fn clipboard_read_warn(err: &str) -> String {
     format!("system clipboard unavailable ({err})")
 }
 

@@ -312,10 +312,9 @@ impl RegisterSet {
 
     /// Take in `raw`, the OS clipboard's text as read, when HUME has not seen
     /// it: mirror it into the clipboard register and return its pieces.
-    /// `None` when it is the text HUME last wrote or took in. Compared before
-    /// line endings are normalized, so the same CRLF text is never new twice.
+    /// `None` when [`Self::is_own_clipboard`].
     pub fn take_in_clipboard(&mut self, raw: String) -> Option<Vec<Piece>> {
-        if self.clipboard_blob.as_deref() == Some(raw.as_str()) {
+        if self.is_own_clipboard(&raw) {
             return None;
         }
         let pieces = vec![Piece::from(raw.as_str())];
@@ -338,6 +337,14 @@ impl RegisterSet {
         self.registers.insert(name, Register::new(content));
     }
 
+    /// Whether `raw`, the OS clipboard's text as read, is the text HUME last
+    /// wrote or took in. Compared before line endings are normalized, so the
+    /// same CRLF text is never new twice.
+    pub fn is_own_clipboard(&self, raw: &str) -> bool {
+        self.clipboard_blob.as_deref() == Some(raw)
+    }
+
+    #[cfg(any(test, feature = "test-util"))]
     pub fn clipboard_blob(&self) -> Option<&str> {
         self.clipboard_blob.as_deref()
     }
@@ -427,18 +434,12 @@ impl KillRing {
         }
     }
 
-    /// Seed the cycle cursor for a paste of the ring head.
-    pub fn seed_cycle_at_head(&mut self) {
-        self.settle();
-        self.cycle = Some(0);
-    }
-
-    /// Seed the cycle cursor for a paste of `pasted` from outside the ring.
+    /// Seed the cycle cursor for a paste of `pasted`.
     ///
     /// Pieces equal to the head's start the cycle at the head, so the first
     /// `[` steps past the text the paste already shows instead of pasting it
-    /// again.
-    pub fn seed_cycle_outside(&mut self, pasted: &[Piece]) {
+    /// again. Any other text starts it before the head.
+    pub fn seed_cycle(&mut self, pasted: &[Piece]) {
         self.settle();
         self.cycle = (self.head() == Some(pasted)).then_some(0);
     }
@@ -466,16 +467,9 @@ impl KillRing {
 
     /// Borrow ring slot `n` (0-based) in the order the open paste cycles
     /// through, where 0 = the newest entry when the paste started.
-    #[cfg(any(test, feature = "test-util"))]
+    #[cfg(test)]
     pub fn slot(&self, n: usize) -> Option<&[Piece]> {
         self.entries.get(n).map(Vec::as_slice)
-    }
-
-    /// The ring slot the open paste shows, or `None` when it shows text from
-    /// outside the ring that is not the head's.
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn cycle_position(&self) -> Option<usize> {
-        self.cycle
     }
 
     /// Advance the cycle cursor one step older and return that entry.

@@ -314,9 +314,6 @@ fn dispatch_key_binding(ed: &mut Editor, running: Running, cmd: Dispatchable) ->
 pub(in crate::editor) struct NewChange {
     pub(in crate::editor) command: Rc<str>,
     pub(in crate::editor) count: Count,
-    /// The register prefix pending as the command starts, which its body
-    /// takes.
-    pub(in crate::editor) register: Option<char>,
     /// The operand the command was dispatched with, recorded as its first
     /// answer.
     pub(in crate::editor) seed: Option<Answer>,
@@ -486,7 +483,7 @@ impl Recording {
         change: &DeferredChange,
         outcome: DeferredOutcome,
     ) -> Option<Option<Box<Recording>>> {
-        if std::ptr::eq(Rc::as_ptr(&self.sources), change.sources.as_ptr()) {
+        if self.is(&change.sources) {
             let Settling::Awaiting(prev) = std::mem::replace(&mut self.settling, Settling::Settled)
             else {
                 unreachable!(
@@ -547,6 +544,12 @@ impl Recording {
         Rc::ptr_eq(&self.sources, &ticket.sources)
     }
 
+    /// Whether `change`, a weak hold on a recording's sources, names this
+    /// recording.
+    fn is(&self, change: &Weak<()>) -> bool {
+        std::ptr::eq(Rc::as_ptr(&self.sources), change.as_ptr())
+    }
+
     /// Whether `ticket` was opened on this recording and it still takes
     /// input.
     fn feeds(&self, ticket: &SourceTicket) -> bool {
@@ -578,6 +581,17 @@ impl Recording {
         }
     }
 
+    /// Push `answer` onto `slot`'s answers, returning its index there.
+    fn push_answer(&mut self, slot: AnswerSlot, answer: Answer) -> Option<usize> {
+        let answers = self.answers_mut(slot)?;
+        answers.push(answer);
+        Some(answers.len() - 1)
+    }
+
+    fn answer_mut(&mut self, slot: AnswerSlot, index: usize) -> Option<&mut Answer> {
+        self.answers_mut(slot)?.get_mut(index)
+    }
+
     /// The count the recorded change ran with, the default `.` replays with.
     pub(in crate::editor) fn count(&self) -> Count {
         self.action.count
@@ -597,13 +611,10 @@ impl Recording {
 /// is not one of its kind.
 pub(in crate::editor) struct DotReplay {
     answers: VecDeque<Answer>,
-    /// Where `answers` came from in the replayed recording: its sources,
-    /// the slot, and how many of the slot's answers were taken so far.
-    /// A paste names its recorded answer from these, so a `[`/`]` after
-    /// the `.` refines it.
-    sources: Weak<()>,
-    slot: AnswerSlot,
-    taken: usize,
+    /// Where the front of `answers` sits in the replayed recording. A paste
+    /// names its recorded answer by it, so a `[`/`]` after the `.` refines
+    /// it.
+    front: AnswerPlace,
     /// A register typed before `.`: it replaces the recorded one, and a
     /// paste reads it instead of its recorded text.
     typed_register: Option<char>,
@@ -633,11 +644,12 @@ impl EditorState {
     }
 }
 
-/// Where a paste recorded its [`Answer::Paste`], so a `[`/`]` cycle in the
-/// same paste session can replace it with the entry it cycled to. Holds the
-/// recording weakly: it names the change without keeping it open.
+/// Where one answer sits in a recording. A paste keeps its
+/// [`Answer::Paste`]'s place, so a `[`/`]` cycle in the same paste session
+/// can replace it with the entry it cycled to. Holds the recording weakly:
+/// it names the change without keeping it open.
 #[derive(Debug, Clone)]
-pub(in crate::editor) struct PasteAnswer {
+pub(in crate::editor) struct AnswerPlace {
     sources: Weak<()>,
     slot: AnswerSlot,
     index: usize,
@@ -650,7 +662,7 @@ pub(in crate::editor) enum ReplayedPaste {
     Recorded {
         pieces: Vec<Piece>,
         bare: bool,
-        at: PasteAnswer,
+        at: AnswerPlace,
     },
     /// A register was typed before `.`: the paste reads it as it does live,
     /// and leaves the recorded pieces as they are.
@@ -688,8 +700,16 @@ impl DotReplay {
             answer => Replayed::Answered(kind(answer)?),
         };
         self.answers.pop_front();
-        self.taken += 1;
+        self.front.index += 1;
         Some(taken)
+    }
+
+    /// Take `answers`, the answers recorded in `slot`, as the ones to answer
+    /// from next.
+    fn load(&mut self, slot: AnswerSlot, answers: &[Answer]) {
+        self.answers = answers.iter().cloned().collect();
+        self.front.slot = slot;
+        self.front.index = 0;
     }
 
     /// Answers a re-run interactive input (a read, a picker, a prompt, a
@@ -794,7 +814,7 @@ impl EditorState {
         let action = RepeatableAction {
             command: change.command,
             count: change.count,
-            register: change.register,
+            register: self.register_prefix,
             selection_recipe: change.recipe,
             answers: change.seed.into_iter().collect(),
             transcript: Vec::new(),
@@ -954,8 +974,7 @@ impl EditorState {
     pub(in crate::editor) fn record_answer(&mut self, ticket: &AnswerTicket, answer: Answer) {
         if let Some(place) = self
             .current_recording(&ticket.scope.source)
-            .and_then(|rec| rec.answers_mut(ticket.scope.slot))
-            .and_then(|answers| answers.get_mut(ticket.index))
+            .and_then(|rec| rec.answer_mut(ticket.scope.slot, ticket.index))
         {
             *place = answer;
         }
@@ -968,41 +987,34 @@ impl EditorState {
     /// scope's.
     pub(in crate::editor) fn record_paste_answer(
         &mut self,
-        pieces: Vec<Piece>,
+        pieces: &[Piece],
         bare: bool,
-    ) -> Option<PasteAnswer> {
+    ) -> Option<AnswerPlace> {
         let scope = self.recording_scope.running()?;
         let slot = scope.slot;
         let rec = self
             .recording
             .as_mut()
             .filter(|rec| rec.feeds(&scope.source))?;
-        let sources = Rc::downgrade(&rec.sources);
-        let answers = rec.answers_mut(slot)?;
-        answers.push(Answer::Paste { pieces, bare });
-        Some(PasteAnswer {
-            sources,
+        let pieces = pieces.to_vec();
+        let index = rec.push_answer(slot, Answer::Paste { pieces, bare })?;
+        Some(AnswerPlace {
+            sources: Rc::downgrade(&rec.sources),
             slot,
-            index: answers.len() - 1,
+            index,
         })
     }
 
     /// Replace the pieces `at` recorded with `pieces`, the entry a `[`/`]`
     /// cycle pasted, while that change is still the one `.` replays.
-    pub(in crate::editor) fn replace_paste_answer(&mut self, at: &PasteAnswer, pieces: Vec<Piece>) {
-        if let Some(place) = self
+    pub(in crate::editor) fn replace_paste_answer(&mut self, at: &AnswerPlace, pieces: Vec<Piece>) {
+        if let Some(Answer::Paste {
+            pieces: recorded, ..
+        }) = self
             .recording
             .as_mut()
-            .filter(|rec| {
-                at.sources
-                    .upgrade()
-                    .is_some_and(|s| Rc::ptr_eq(&s, &rec.sources))
-            })
-            .and_then(|rec| rec.answers_mut(at.slot))
-            .and_then(|answers| answers.get_mut(at.index))
-            && let Answer::Paste {
-                pieces: recorded, ..
-            } = place
+            .filter(|rec| rec.is(&at.sources))
+            .and_then(|rec| rec.answer_mut(at.slot, at.index))
         {
             *recorded = pieces;
         }
@@ -1015,21 +1027,17 @@ impl EditorState {
         &mut self,
     ) -> Option<Result<ReplayedPaste, ReplayRefusal>> {
         let replay = self.dot_replay.as_mut()?;
-        let at = PasteAnswer {
-            sources: replay.sources.clone(),
-            slot: replay.slot,
-            index: replay.taken,
-        };
+        let at = replay.front.clone();
         let typed = replay.typed_register.is_some();
         Some(
             match replay.next(|answer| match answer {
-                Answer::Paste { pieces, bare } => Some((pieces.clone(), *bare)),
+                Answer::Paste { pieces, bare } => Some((!typed).then(|| (pieces.clone(), *bare))),
                 _ => None,
             }) {
-                Some(Replayed::Answered(_)) if typed => Ok(ReplayedPaste::Typed),
-                Some(Replayed::Answered((pieces, bare))) => {
+                Some(Replayed::Answered(Some((pieces, bare)))) => {
                     Ok(ReplayedPaste::Recorded { pieces, bare, at })
                 }
+                Some(Replayed::Answered(None)) => Ok(ReplayedPaste::Typed),
                 Some(Replayed::Unanswered) | None => Err(ReplayRefusal::Diverged),
             },
         )
@@ -1124,12 +1132,13 @@ impl EditorState {
             .as_mut()
             .filter(|rec| rec.feeds(&scope.source))
             .and_then(|rec| {
-                let source = rec.open_ticket();
-                let answers = rec.answers_mut(slot)?;
-                answers.push(Answer::Unanswered);
+                let index = rec.push_answer(slot, Answer::Unanswered)?;
                 Some(AnswerTicket {
-                    scope: RecordingScope { source, slot },
-                    index: answers.len() - 1,
+                    scope: RecordingScope {
+                        source: rec.open_ticket(),
+                        slot,
+                    },
+                    index,
                 })
             });
         Ok(WaitingInput(ticket))
@@ -1264,9 +1273,11 @@ impl Editor {
         };
         let replay = DotReplay {
             answers: recording.action.answers.iter().cloned().collect(),
-            sources: Rc::downgrade(&recording.sources),
-            slot: AnswerSlot::Command,
-            taken: 0,
+            front: AnswerPlace {
+                sources: Rc::downgrade(&recording.sources),
+                slot: AnswerSlot::Command,
+                index: 0,
+            },
             typed_register: self.state.register_prefix.take(),
             pending: VecDeque::new(),
             runs_from: self.state.pipe_runs.mark(),
@@ -1419,9 +1430,7 @@ impl Editor {
                         continue;
                     };
                     if let Some(replay) = self.state.dot_replay.as_mut() {
-                        replay.answers = answers.iter().cloned().collect();
-                        replay.slot = AnswerSlot::Binding(*id);
-                        replay.taken = 0;
+                        replay.load(AnswerSlot::Binding(*id), answers);
                     }
                     // The live keypress dispatched as an Insert-key binding;
                     // replay recreates the same context. An interactive input

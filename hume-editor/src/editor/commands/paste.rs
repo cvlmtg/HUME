@@ -22,10 +22,9 @@ use hume_ops::register::{BLACK_HOLE_REGISTER, KILL_RING_REGISTER, Piece};
 
 use super::super::{EditorState, doc_ops, register_ops};
 use super::FocusedPane;
-use crate::editor::clipboard::ClipboardRead;
 use crate::editor::edit_session::{self, EditSessionKind};
 use crate::editor::error::CommandError;
-use crate::editor::replay::{PasteAnswer, ReplayedPaste};
+use crate::editor::replay::{AnswerPlace, ReplayedPaste};
 use crate::editor::settings::ClipboardJoinsRing;
 
 /// The moment a clipboard take-in is attempted at, which
@@ -54,7 +53,6 @@ impl EditorState {
     /// Push the clipboard onto the kill ring when it holds text HUME has not
     /// seen (see [`hume_ops::register::RegisterSet::take_in_clipboard`]) and
     /// `clipboard-joins-ring` admits `at`. Nothing is read when it does not.
-    /// An OSC 52 clipboard cannot be read, so it never holds anything new.
     ///
     /// Returns the warning when the clipboard could not be read.
     pub(in crate::editor) fn take_in_clipboard(&mut self, at: TakeIn) -> Option<String> {
@@ -66,15 +64,14 @@ impl EditorState {
         if !admitted {
             return None;
         }
-        match self.clipboard.read() {
-            ClipboardRead::Text(raw) => {
-                if let Some(pieces) = self.registers.take_in_clipboard(raw) {
+        match register_ops::take_in_clipboard(&mut self.registers, &mut self.clipboard) {
+            Ok(new) => {
+                if let Some(pieces) = new {
                     self.kill_ring.push(pieces);
                 }
                 None
             }
-            ClipboardRead::Mirror => None,
-            ClipboardRead::Failed(e) => Some(register_ops::clipboard_read_warn(&e)),
+            Err(warn) => Some(warn),
         }
     }
 
@@ -147,14 +144,10 @@ fn paste_values(
 /// A resolved paste, ready for [`do_paste`] to execute.
 struct ResolvedPaste {
     values: Vec<Piece>,
-    /// The values are the kill-ring head, so `[`/`]` start from the head;
-    /// otherwise (a digit register, `"cp`, or a `.` replay) they start from
-    /// the pasted values.
-    from_ring: bool,
     /// No `"<reg>` prefix was given.
     bare: bool,
     /// Where `.` recorded these values, when a `.` replays them.
-    recorded: Option<PasteAnswer>,
+    recorded: Option<AnswerPlace>,
 }
 
 /// Core paste implementation: applies `resolved` at `sels`, which undo
@@ -184,11 +177,10 @@ fn do_paste(
 ) -> Result<(), CommandError> {
     let ResolvedPaste {
         values,
-        from_ring,
         bare,
         recorded,
     } = resolved;
-    let answer = recorded.or_else(|| state.record_paste_answer(values.clone(), bare));
+    let answer = recorded.or_else(|| state.record_paste_answer(&values, bare));
 
     let base = sels.clone();
     state
@@ -210,11 +202,7 @@ fn do_paste(
     // Every completed paste opens a fresh session (any prior one was already
     // committed in BEFORE by `step_paste_commit`), so every one reseeds the
     // cycle.
-    if from_ring {
-        state.kill_ring.seed_cycle_at_head();
-    } else {
-        state.kill_ring.seed_cycle_outside(&values);
-    }
+    state.kill_ring.seed_cycle(&values);
     Ok(())
 }
 
@@ -241,8 +229,8 @@ fn resolve_explicit_register(
     state: &mut EditorState,
     reg: char,
 ) -> Result<ResolvedPaste, CommandError> {
-    let (values, from_ring) = match reg {
-        KILL_RING_REGISTER => (kill_ring_head(state)?, true),
+    let values = match reg {
+        KILL_RING_REGISTER => kill_ring_head(state)?,
         BLACK_HOLE_REGISTER => return Err(empty_register(reg)),
         c => {
             // Digits and clipboard. Digits read in-memory RegisterSet (symmetric
@@ -255,7 +243,7 @@ fn resolve_explicit_register(
                     if let Some(w) = warn {
                         state.report(Severity::Warning, w);
                     }
-                    (values, false)
+                    values
                 }
                 (None, Some(w)) => return Err(CommandError::warning(w)),
                 (None, None) => return Err(empty_register(c)),
@@ -264,7 +252,6 @@ fn resolve_explicit_register(
     };
     Ok(ResolvedPaste {
         values,
-        from_ring,
         bare: false,
         recorded: None,
     })
@@ -278,7 +265,6 @@ fn resolve_replayed(state: &mut EditorState) -> Option<Result<ResolvedPaste, Com
     match state.replayed_paste()? {
         Ok(ReplayedPaste::Recorded { pieces, bare, at }) => Some(Ok(ResolvedPaste {
             values: pieces,
-            from_ring: false,
             bare,
             recorded: Some(at),
         })),
@@ -287,37 +273,31 @@ fn resolve_replayed(state: &mut EditorState) -> Option<Result<ResolvedPaste, Com
     }
 }
 
-/// Resolve values for a fresh plain (`paste-after`/`-before`) paste. `Err`
-/// when there is nothing to paste.
-fn resolve_plain(state: &mut EditorState) -> Result<ResolvedPaste, CommandError> {
+/// Resolve values for a fresh paste: what a `.` replay recorded, the
+/// `"<reg>` prefix's register, or `bare`'s values when no prefix was given.
+/// `Err` when there is nothing to paste.
+fn resolve(
+    state: &mut EditorState,
+    bare: fn(&mut EditorState) -> Result<ResolvedPaste, CommandError>,
+) -> Result<ResolvedPaste, CommandError> {
     let prefix = state.take_register_prefix();
     if let Some(replayed) = resolve_replayed(state) {
         return replayed;
     }
     match prefix {
-        // Bare source is always the kill-ring head, and the clipboard is
-        // not taken in.
-        None => Ok(ResolvedPaste {
-            values: kill_ring_head(state)?,
-            from_ring: true,
-            bare: true,
-            recorded: None,
-        }),
+        None => bare(state),
         Some(reg) => resolve_explicit_register(state, reg),
     }
 }
 
-/// Resolve values for a fresh smart (`smart-paste-after`/`-before`) paste.
-/// `Err` when there is nothing to paste.
-fn resolve_smart(state: &mut EditorState) -> Result<ResolvedPaste, CommandError> {
-    let prefix = state.take_register_prefix();
-    if let Some(replayed) = resolve_replayed(state) {
-        return replayed;
-    }
-    match prefix {
-        None => resolve_smart_bare(state),
-        Some(reg) => resolve_explicit_register(state, reg),
-    }
+/// Bare `paste-*` resolution: the kill-ring head. The clipboard is not taken
+/// in.
+fn resolve_plain_bare(state: &mut EditorState) -> Result<ResolvedPaste, CommandError> {
+    Ok(ResolvedPaste {
+        values: kill_ring_head(state)?,
+        bare: true,
+        recorded: None,
+    })
 }
 
 /// Bare `smart-paste-*` resolution: the kill-ring head, after taking in a
@@ -335,7 +315,6 @@ fn resolve_smart_bare(state: &mut EditorState) -> Result<ResolvedPaste, CommandE
         })?;
     Ok(ResolvedPaste {
         values,
-        from_ring: true,
         bare: true,
         recorded: None,
     })
@@ -357,7 +336,7 @@ fn do_normal_paste(
     // a refusal here leaves the pane untouched.
     edit_session::check_can_open(state.open_session(), pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
-    let resolved = resolve_plain(state)?;
+    let resolved = resolve(state, resolve_plain_bare)?;
     let sels = state
         .panes
         .entries
@@ -380,7 +359,7 @@ fn do_smart_paste(
     let (pid, buf) = (fp.pid(), fp.bid(view));
     edit_session::check_can_open(state.open_session(), pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
-    let resolved = resolve_smart(state)?;
+    let resolved = resolve(state, resolve_smart_bare)?;
     let pbs = state.panes.entries.shown(&view.panes, pid);
     let sels = pbs.selections().clone();
     let base = if resolved.bare {

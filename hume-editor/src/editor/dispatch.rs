@@ -84,7 +84,6 @@ impl Editor {
         let change = meta.repeatable.then(|| replay::NewChange {
             command: name.clone(),
             count: ctx.count,
-            register: self.state.register_prefix,
             seed: None,
             recipe: opened.recipe().to_vec(),
         });

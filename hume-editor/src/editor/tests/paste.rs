@@ -140,7 +140,7 @@ fn paste_cycle_step_repeating_the_previous_deletion_keeps_selections_valid() {
 // ── Explicit register prefix ────────────────────────────────────────────────
 
 /// An explicit `"Xp` right after a ring paste still pastes from register X:
-/// an explicit register prefix bypasses smart paste (see `resolve_smart`).
+/// an explicit register prefix bypasses smart paste (see `resolve`).
 #[test]
 fn register_prefix_overrides_the_ring() {
     let mut ed = editor_from("-[x]>\n");
@@ -154,7 +154,7 @@ fn register_prefix_overrides_the_ring() {
     ed.handle_key(key('k'));
     ed.feed_key(key('p'));
 
-    // Now paste from named register '5'.
+    // Paste from named register '5'.
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
     ed.feed_key(key('p'));
@@ -1376,7 +1376,7 @@ fn plain_paste_with_an_empty_kill_ring_is_refused() {
     assert_eq!(status(&ed), "kill ring is empty");
 }
 
-/// `"b` (black hole) on a *smart* paste is a no-op too: `resolve_smart`
+/// `"b` (black hole) on a *smart* paste is a no-op too: `resolve`
 /// routes an explicit register through `resolve_explicit_register`, the same
 /// path plain paste uses, so black-hole shortcuts identically for both.
 /// `plain_paste_black_hole_is_noop` above covers the plain path only.

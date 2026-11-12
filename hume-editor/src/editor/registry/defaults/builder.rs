@@ -51,11 +51,10 @@ impl EditorCmdBuilder {
         self.defers_paste_commit = true;
         self
     }
-    /// Mark this command as one that opens or continues
-    /// `EditorState::active_session` itself. See
-    /// [`crate::editor::registry::CmdMeta::manages_own_session`] for the
-    /// full rationale. Every paste-family registration in this file needs
-    /// it; nothing else does.
+    /// Mark this command as one that opens `EditorState::active_session`
+    /// itself. See [`crate::editor::registry::CmdMeta::manages_own_session`]
+    /// for the full rationale. The four paste commands need it; nothing else
+    /// does.
     pub(super) fn manages_own_session(mut self) -> Self {
         self.manages_own_session = true;
         self
