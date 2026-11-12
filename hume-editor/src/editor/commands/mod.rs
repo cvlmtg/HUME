@@ -44,7 +44,13 @@ impl EditorState {
     }
 
     /// Write `values` into `name`, routing `'c'` through the OS clipboard.
+    /// A clipboard write first takes in what the clipboard holds, so an
+    /// outside copy HUME has not seen lands on the kill ring instead of being
+    /// lost.
     pub(super) fn write_register(&mut self, name: char, values: Vec<Piece>) {
+        if name == hume_ops::register::CLIPBOARD_REGISTER {
+            self.take_in_clipboard();
+        }
         if let Some(w) =
             register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values)
         {
@@ -55,23 +61,15 @@ impl EditorState {
     /// Route a kill (`d`/`c`) yank: bare default and `"k` both go to the kill
     /// ring; any other explicit register prefix routes through `write_register`.
     /// The prefix is consumed even when nothing was removed, and an all-empty
-    /// yank writes nowhere. Returns `true` when the yank was captured to the
-    /// ring (and stamped), `false` for an explicit-register route or an empty
-    /// yank, which never stamp.
-    pub(in crate::editor::commands) fn route_kill(&mut self, yanked: Vec<Piece>) -> bool {
+    /// yank writes nowhere.
+    pub(in crate::editor::commands) fn route_kill(&mut self, yanked: Vec<Piece>) {
         let prefix = self.take_register_prefix();
         if yanked.iter().all(Piece::is_empty) {
-            return false;
+            return;
         }
         match prefix {
-            None | Some(hume_ops::register::KILL_RING_REGISTER) => {
-                self.capture_to_ring(yanked);
-                true
-            }
-            Some(reg) => {
-                self.write_register(reg, yanked);
-                false
-            }
+            None | Some(hume_ops::register::KILL_RING_REGISTER) => self.capture_to_ring(yanked),
+            Some(reg) => self.write_register(reg, yanked),
         }
     }
 }

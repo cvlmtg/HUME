@@ -21,7 +21,6 @@
 use std::time::{Duration, Instant};
 
 use super::Editor;
-use super::buffer::store::EditOrigin;
 
 /// One source of asynchronous work the event loop must wake for.
 ///
@@ -70,12 +69,10 @@ impl Editor {
     /// `Editor::settle`, once per call and outside its `pending_work`
     /// fixpoint; see that function's doc for why.
     pub(super) fn drain_async_sources(&mut self) {
-        self.with_edit_origin(EditOrigin::Background, |ed| {
-            ed.drain_due_timers();
-            ed.drain_lsp();
-            ed.drain_picker_source();
-            ed.drain_async_jobs();
-            ed.state.drain_pipe_runs();
-        });
+        self.drain_due_timers();
+        self.drain_lsp();
+        self.drain_picker_source();
+        self.drain_async_jobs();
+        self.state.drain_pipe_runs();
     }
 }

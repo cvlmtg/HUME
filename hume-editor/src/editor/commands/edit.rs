@@ -76,15 +76,7 @@ pub(in crate::editor) fn cmd_change(
     // command uses, so `c`'s auto-select behaves identically to theirs. `c`
     // never steps the cursor back on an empty run, same as `i`/`I`.
     begin_typed_run(state, view, &entry, fp, ExitCursor::StayPut);
-    // Kill-opened only when the yank actually captured to the ring: the
-    // capture stamped `PasteStamp`, but every keystroke about to be typed in
-    // the session bumps `edit_seq` and would strand it. The flag makes
-    // `tear_down_insert` refresh the stamp's `seq` once typing stops. An
-    // explicit-register change (`"5c`) writes no stamp, and refreshing
-    // whatever stale stamp might pre-exist would wrongly resurrect it.
-    if state.route_kill(yanked) {
-        state.input.entered_mut(&entry).kill_opened_session = true;
-    }
+    state.route_kill(yanked);
     Ok(())
 }
 

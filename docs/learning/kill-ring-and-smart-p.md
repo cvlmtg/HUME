@@ -11,8 +11,8 @@ operation.
 
 HUME splits the destinations instead. Captures go to a **kill ring**, a short
 history where a new delete adds an entry rather than overwriting the last
-one. A bare yank also goes to the system clipboard, and a bare paste decides
-which of the two to read.
+one. A bare yank also goes to the system clipboard, and text copied in other
+applications joins the ring, so a bare paste only ever reads the ring.
 
 ## Registers
 
@@ -29,7 +29,7 @@ letters free for the special registers:
 | `s` | no | The last search pattern, written by search. |
 
 A register prefix bypasses everything the rest of this page describes about
-bare keys. If smart paste ever reads the wrong source, the prefix is the
+bare keys. If smart paste ever pastes the wrong text, the prefix is the
 explicit override.
 
 Macros live in the same digit slots as text: `Q5` records into `5` and `q5`
@@ -44,8 +44,8 @@ interactive editing, not for storage.
 
 ## How the kill ring works
 
-The kill ring holds the last ten yanks, deletes, and changes, newest at the
-head. Once it is full, the oldest entry falls off. Every capture pushes a new
+The kill ring holds the last ten yanks, deletes, and changes, plus text
+copied in other applications, newest at the head. Once it is full, the oldest entry falls off. Every capture pushes a new
 entry, with two exceptions.
 
 If the head is pure whitespace (spaces, tabs, newlines), the new entry
@@ -75,31 +75,38 @@ clipboard and the kill ring. A bare delete or change writes only to the
 ring. Cross-application copy is one keystroke, and an accidental delete
 cannot clobber what the user just copied from another application.
 
-## Smart-p: the heuristic
+## Smart-p: the clipboard joins the ring
 
-A bare `p` has two possible sources: the clipboard or the ring head. HUME
-picks by asking whether anything was edited since the ring last changed.
+A bare `p` reads one place, the ring head. The clipboard reaches it by joining
+the ring: whenever it holds text HUME has not seen, that text is pushed as a
+new entry before the ring is used.
 
-- **Nothing edited since the last `d`, `c`, or `y`**: paste reads the ring
-  head. The buffer is still in the state the capture left, so the head is
-  still "the thing that was just here". Swap idioms work: `d`, move, `p`
-  restores what was killed.
-- **Something edited since**: paste reads the system clipboard. The user has
-  moved on, and cross-application paste stays the default.
+HUME remembers the clipboard text it last wrote (a yank) or took in. "Not
+seen" means different from that. So a `y` never looks new to the next paste,
+since HUME wrote it, and neither does a clipboard already taken in, however
+many pastes later.
 
-With no OS clipboard (a headless environment), a fresh paste falls back to
-the ring head. A repeat press whose clipboard cannot be read does nothing
-instead, because substituting the ring head would replace the text the
-previous press just pasted.
+The check runs at each `p` and before each `d`, `c`, and `y`:
 
-The rule judges the buffer, not the command that ran. A motion changes no
-text, so it never switches the source. Undo and redo change the text, so
-they do. There is no list of "kill-like" commands to maintain, and macro
-replay and dot-repeat need no special case: repeating a delete is itself a
-fresh capture, so a paste right after `.` reads what `.` deleted.
+- **Copy elsewhere, then `p`**: the copy is new, joins the ring at the head,
+  and is what gets pasted.
+- **Copy elsewhere, then `d`**: the copy joins first, then the delete pushes
+  on top of it. Swap idioms keep working (`d`, move, `p` restores what was
+  killed), and `[` reaches the copy.
+- **Edit, then `p`**: nothing new on the clipboard, so `p` pastes the head as
+  before. Typing does not change the source.
+
+Checking only when the ring is about to be used keeps this cheap: there is
+no clipboard watcher, only a read at the moments the answer matters. Two
+copies made elsewhere with no HUME action between them keep only the second,
+which is the one the clipboard still holds.
+
+With no readable clipboard (OSC 52 over SSH, where a program can set the
+clipboard but not read it), nothing is ever new, and `p` pastes the ring
+alone.
 
 Repeat presses stack copies: `xd p p p` produces three. Each press reads the
-same source again, and the next section explains why the copies land side by
+same head again, and the next section explains why the copies land side by
 side.
 
 ## Repeat vs. swap
@@ -123,14 +130,15 @@ reaches it.
 
 ## Plain paste versus smart paste
 
-Smart paste is what the default paste keys run: it chooses ring or
-clipboard, and it applies repeat vs. swap. HUME also has a *plain* paste with
+Smart paste is what the default paste keys run: it takes in new clipboard
+text, and it applies repeat vs. swap. HUME also has a *plain* paste with
 neither rule. It always reads the ring head and always replaces a selection
 of more than one character, without comparing text. Pasting the same text
 twice over the same selection replaces it with itself; to stack a copy,
 collapse the selection first (`;`).
 
-Plain paste exists for code that drives the editor. A keymap or a script
+Plain paste also leaves the clipboard alone: it never takes new clipboard
+text in. Plain paste exists for code that drives the editor. A keymap or a script
 that selects text and pastes has already stated its intent by choosing the
 selection, and should never need to ask whether the text is already there to
 know what will happen. A person pressing `p` twice has an intent worth
@@ -160,17 +168,19 @@ ring without typing a register name. Cycling uses a **paste session**:
 Stepping **clamps** at both ends of the ring instead of wrapping, so the
 boundary is visible: at the oldest entry, further `[` presses do nothing.
 
-A `p` right after a paste appends another copy, as repeat vs. swap describes,
-and each such press is its own undo step. After cycling, `p` appends a copy
-of the entry cycled to, not the head, and keeps the cycle position, so a
-following `[` continues from there.
+**The entry a session ends on becomes the head.** Inside a session `[` and
+`]` walk the ring in the order it had when the session opened, so stepping
+back and forth is stable. When the session ends, the entry left pasted
+moves to the front. The next `p` pastes it again, and `"kp` reads it.
 
-**Cycling cannot return to a clipboard paste.** When bare `p` read the
-clipboard, the clipboard text opened the session but is not a ring entry.
-The first `[` steps into the ring at its head, or at the entry after it when
-the head already holds the pasted text (the usual case after `y`, which
-writes both). From there `[` and `]` move among ring entries only. To paste
-the clipboard again, use `"cp`.
+A `p` right after a paste appends another copy, as repeat vs. swap describes,
+and each such press is its own undo step. After cycling, that copy is of the
+entry cycled to, since it is now the head.
+
+A paste from `"c` or a numbered register reads text that is not a ring
+entry. The first `[` after it steps into the ring at its head, or at the
+entry after it when the head already holds the pasted text (the usual case
+after `y`, which writes both).
 
 `[` and `]` without an open session do nothing.
 

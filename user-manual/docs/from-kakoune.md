@@ -28,7 +28,7 @@ What each step shows:
 - **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Kakoune selects up to the target. `e` toggles Extend mode, where every motion grows the selection. So `t T` grows `Welcome` to `Welcome. `, and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` extends for one motion, the job Shift does in Kakoune: `Ctrl-t T` grows the selection without entering Extend mode.
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection).
 - **`Esc` keeps what you typed selected.** After the change, `play` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
-- **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring, with no wiring. `p` pastes your last yank or delete while you haven't edited since, and the clipboard once you have. See [Copy & Paste](copy-and-paste.md).
+- **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring, with no wiring. `p` pastes your last yank or delete, or text you have since copied in another application. See [Copy & Paste](copy-and-paste.md).
 
 Shift does not extend a selection: `W`, `H`, `J`, `K`, `L` do something else here or nothing, so read [Extending selections](#extending-selections) before reaching for them.
 
@@ -237,7 +237,7 @@ Language server support is a core plugin rather than a separate process you conf
 
 ## What HUME has that Kakoune doesn't
 
-- A built-in system clipboard, a [kill ring, and a paste](copy-and-paste.md) that picks the right source
+- A built-in system clipboard, a [kill ring, and a paste](copy-and-paste.md) that picks up text copied in other applications
 - [Extend mode](#extending-selections), plus one-shot extends that need no mode switch
 - Built-in [panes and splits](files-and-buffers.md#splits-and-panes), and [tab pages](files-and-buffers.md#tabs)
 - A [plugin manager](core-plugins.md#core-plum), [Scheme scripting](configuration.md), and [hooks](writing-plugins.md#hooks)

@@ -24,12 +24,12 @@ use hume_editing::state::EditState;
 use hume_rope::offset::CharOffset;
 
 /// Shared post-mutation bookkeeping for every text-mutating path: write
-/// `applied`'s selections back to `target`'s pane, if it has one, and bump
-/// the edit seq when the text changed. Stored positions (other panes, jump lists, prompt snapshots), the
-/// syntax edit chain and the language servers' change queue are not here: the
-/// `Buffer` mutator already carried them through the change.
+/// `applied`'s selections back to `target`'s pane, if it has one. Stored
+/// positions (other panes, jump lists, prompt snapshots), the syntax edit
+/// chain and the language servers' change queue are not here: the `Buffer`
+/// mutator already carried them through the change.
 fn finish_edit(
-    buffers: &mut BufferStore,
+    buffers: &BufferStore,
     pane_state: &mut PaneEntries,
     target: PaneHandle,
     applied: Applied,
@@ -39,9 +39,8 @@ fn finish_edit(
         // An identity changeset moved no bytes: `Buffer::apply_edit*` skipped
         // `install` for it directly, and `commit_edit_group` never records it
         // as a revision for `undo`/`redo` to later replay, so the text
-        // generation did not move either way. Paste-stamping must not count a
-        // no-op as an edit. Selections are still written: a no-op edit can
-        // still move cursors.
+        // generation did not move either way. Selections are still written: a
+        // no-op edit can still move cursors.
         Applied::Unchanged(new_sels) => {
             if let Some(pane_id) = target.pane() {
                 pane_state
@@ -58,7 +57,6 @@ fn finish_edit(
                     .seeded_mut(pane_id, buf_id)
                     .set_selections_after_edit(new_sels, buffers.get(buf_id).text());
             }
-            buffers.bump_edit_seq();
         }
     }
 }
@@ -397,16 +395,6 @@ pub(in crate::editor) fn apply_doc_history_walk(
         return Ok(0);
     };
     finish_edit(buffers, stores.panes, target, Applied::of(new_sels, &cs));
-    // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly:
-    // a normal edit that cancels to identity records no revision at all, so
-    // nothing happened). A history walk is different: `current` moved to a
-    // real revision and the selections moved with it even when the net text
-    // didn't, so any paste session live before this walk is over. Bumped
-    // here rather than in `finish_edit` itself, since that guard still needs
-    // to hold for every *other* caller.
-    if cs.is_identity() {
-        buffers.bump_edit_seq();
-    }
     Ok(steps)
 }
 

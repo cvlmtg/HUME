@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 
 use crate::editor::clipboard::{ClipboardRead, SystemClipboard};
-use hume_ops::register::{CLIPBOARD_REGISTER, Piece, RegisterSet};
+use hume_ops::register::{CLIPBOARD_REGISTER, KillRing, Piece, RegisterSet};
 
 /// Read text from an explicitly named register.
 ///
@@ -58,6 +58,28 @@ pub(in crate::editor) fn read_register_text<'a>(
             .and_then(|r| r.as_pieces())
             .map(Cow::Borrowed);
         (v, None)
+    }
+}
+
+/// Push the OS clipboard's text onto `kill_ring` when HUME has not seen it
+/// (see [`RegisterSet::take_in_clipboard`]). An OSC 52 clipboard cannot be
+/// read, so it never holds anything new.
+///
+/// Returns `Some(warning)` when the clipboard could not be read.
+pub(in crate::editor) fn take_in_clipboard(
+    registers: &mut RegisterSet,
+    clipboard: &mut SystemClipboard,
+    kill_ring: &mut KillRing,
+) -> Option<String> {
+    match clipboard.read() {
+        ClipboardRead::Text(raw) => {
+            if let Some(pieces) = registers.take_in_clipboard(raw) {
+                kill_ring.push(pieces);
+            }
+            None
+        }
+        ClipboardRead::Mirror => None,
+        ClipboardRead::Failed(e) => Some(clipboard_read_warn(&e)),
     }
 }
 

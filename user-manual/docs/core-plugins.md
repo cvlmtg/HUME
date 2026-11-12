@@ -288,7 +288,7 @@ By default (`'smart`), `C` is context-sensitive. On a bare cursor with no count 
 
 ## core:classic-paste
 
-GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P` paste the kill ring, `Ctrl-v` / `Ctrl-Shift-v` paste the system clipboard (`Ctrl-Shift-v` needs the kitty protocol).
+GUI-style paste, if you'd rather keep the clipboard on its own keys: `p` / `P` paste the kill ring without adding copied text to it first, `Ctrl-v` / `Ctrl-Shift-v` paste the system clipboard (`Ctrl-Shift-v` needs the kitty protocol).
 
 ```scheme
 (load-plugin! "core:classic-paste")

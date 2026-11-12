@@ -1197,12 +1197,10 @@ fn reg(ed: &Editor, name: char) -> Vec<String> {
         .collect()
 }
 
-/// Put `text` in the in-memory `c` register, which a test editor's OSC 52
-/// clipboard reads back as the clipboard's text.
+/// Put `text` on the clipboard as another program would: a virtual
+/// clipboard holds it, and HUME has not seen it.
 fn seed_clipboard(ed: &mut Editor, text: &str) {
-    ed.state
-        .registers
-        .write_text(hume_ops::register::CLIPBOARD_REGISTER, vec![text]);
+    ed.state.clipboard.set_mock_content(text);
 }
 
 /// Push each of `entries` onto the kill ring as a one-piece entry, in order,
@@ -1817,10 +1815,9 @@ impl Editor {
     /// Feed one key through `Editor::step`: dispatch it, refresh the search
     /// cache, drain any macro-replay keys it enqueued, then refresh again.
     /// Prefer this over `handle_key` in tests whose correctness depends on
-    /// the per-key ordering, e.g. smart-paste tests, where the idle replay
-    /// drain runs between two keys and must not disturb the `PasteStamp`
-    /// freshness check. `feed_paste` below is the paste-event sibling;
-    /// `feed_event` is the one that also runs `settle()`.
+    /// the per-key ordering, such as the idle replay drain that runs between
+    /// two keys. `feed_paste` below is the paste-event sibling; `feed_event`
+    /// is the one that also runs `settle()`.
     fn feed_key(&mut self, key: KeyEvent) {
         self.step(key);
     }

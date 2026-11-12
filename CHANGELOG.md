@@ -7,6 +7,10 @@
 - Scope headers stay fast while scrolling inside a very large macro, table or `impl` block.
 - To get the new fold regions and fast scope headers, install your grammars again with `:plum-install-grammar`.
 
+### Editing
+- `p` pastes the newest kill-ring entry even after an edit, instead of switching to the clipboard. Text copied in another application joins the kill ring at your next `p`, `d`, `c` or `y`, so `p` pastes it.
+- After `p` and `[`/`]`, the kill-ring entry you cycled to becomes the newest one.
+
 ### Language servers
 - Type inlay hints sit right after the name they annotate: `offset: number` instead of `offset : number`.
 

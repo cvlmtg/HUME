@@ -788,20 +788,16 @@ Submit the form  draft today.
 5.3 Smart Paste
 ---------------
 
-``p`` is context-aware:
+``p`` pastes the newest kill, whatever you edit in between. Text you
+copy in another application joins the kill ring the next time you press
+``p``, ``d``, ``c`` or ``y``:
 
-- while nothing has been edited since your last ``c``/``d``/``y``, it
-  reads from the kill ring
-- once something has been edited, it reads from the clipboard
+- copy, then ``p``: it pastes what you copied
+- copy, then ``d``: the delete goes on top, so ``p`` pastes the deleted
+  text and ``[`` reaches the copy
 
 This means you can delete something with ``d`` and immediately ``p``
 to paste the deleted text, without switching registers manually.
-
-If the clipboard is empty the first time ``p`` would read it since
-your last edit, it falls back to the most recent kill so there is
-always something to paste, and pressing ``p`` again pastes that kill
-again. Once a press has read the clipboard, a further ``p`` pastes
-nothing if the clipboard has become empty since.
 
 Summary
 -------
@@ -816,11 +812,10 @@ Summary
 | [ / ] | cycle ring (after paste)      |
 +-------+-------------------------------+
 
-``p`` reads from kill ring while nothing's been edited since ``c`` /
-``d`` / ``y``, from clipboard otherwise. Pasting text that's already
-selected (as it is right after ``y``) appends alongside it instead
-of replacing it, so ``y`` then ``p`` stacks a copy without needing
-to collapse the selection first.
+``p`` reads the kill ring, which text copied in other applications
+joins. Pasting text that's already selected (as it is right after
+``y``) appends alongside it instead of replacing it, so ``y`` then
+``p`` stacks a copy without needing to collapse the selection first.
 
 Lesson 6 — Find, Till, and Repeat
 =================================

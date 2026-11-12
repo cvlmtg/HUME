@@ -67,16 +67,9 @@ fn read_register_returns_text_written_from_rust() {
     );
 }
 
-/// `(write-register! "k" …)` must behave exactly like `"ky`: it goes through
-/// `capture_to_ring`, which pushes the ring head *and* stamps `paste_stamp`
-/// as one operation, so a bare `p` right after must resume from the ring, not
-/// fall through to the clipboard.
-///
-/// Writing straight to a `'k'` slot in `RegisterSet` without
-/// `capture_to_ring` would leave `paste_stamp` unset and break the following
-/// bare paste's smart-paste routing.
+/// `(write-register! "k" …)` pushes onto the kill ring as `"ky` does.
 #[test]
-fn write_register_k_pushes_ring_and_stamps_paste() {
+fn write_register_k_pushes_the_ring() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
@@ -88,10 +81,6 @@ fn write_register_k_pushes_ring_and_stamps_paste() {
     );
 
     assert_eq!(ed.state.kill_ring.head(), Some(ps(&["x"]).as_slice()));
-    assert!(
-        ed.state.paste_stamp.is_some(),
-        "write-register! \"k\" must stamp paste_stamp, same as \"ky"
-    );
 }
 
 /// `read-register` on `'k'` reads the ring head, round-tripping with the

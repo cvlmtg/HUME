@@ -4,7 +4,7 @@ use super::*;
 
 /// `:e!` reload (`Editor::reload_buffer_in_place`) fires `on-text-changed`:
 /// the case a raise site at `doc_ops::finish_edit` would have missed, since
-/// reload never goes through `doc_ops` (see `BufferStore::edit_seq`'s doc).
+/// reload never goes through `doc_ops`.
 #[test]
 fn e_bang_reload_fires_on_text_changed() {
     use crate::testing::MockHost;
@@ -296,10 +296,6 @@ fn read_only_view_refresh_fires_on_text_changed() {
 /// An identity edit (a command whose `ChangeSet` is the identity transform,
 /// every op a `Retain`) must not bump the text version: `Buffer::apply_edit` skips
 /// `install` entirely for one, so it must not fire `on-text-changed` either.
-/// Also asserts `doc_ops::finish_edit`'s matching guard: `edit_seq` (the
-/// global paste-staleness counter, see `BufferStore::edit_seq`'s doc) must
-/// not move either, or a no-op edit command would wrongly stale a pending
-/// paste stamp.
 #[test]
 fn identity_edit_fires_no_on_text_changed() {
     use crate::editor::doc_ops;
@@ -320,7 +316,6 @@ fn identity_edit_fires_no_on_text_changed() {
 
     let focused = ed.view.focused_pane();
     let before_gen = ed.state.buffers.get(bid).text().generation();
-    let before_edit_seq = ed.state.buffers.edit_seq();
     let (buffers, mut stores) = ed.state.edit_parts();
     doc_ops::apply_doc_edit(
         buffers,
@@ -336,11 +331,6 @@ fn identity_edit_fires_no_on_text_changed() {
         ed.state.buffers.get(bid).text().generation(),
         before_gen,
         "an identity edit must not change the text version"
-    );
-    assert_eq!(
-        ed.state.buffers.edit_seq(),
-        before_edit_seq,
-        "an identity edit must not bump edit_seq"
     );
     assert_eq!(
         ed.state

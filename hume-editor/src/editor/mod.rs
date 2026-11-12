@@ -248,9 +248,6 @@ pub(crate) struct EditorState {
     /// The register a `"<reg>` prefix named, armed for the next
     /// yank/delete/change/paste.
     pub(super) register_prefix: Option<char>,
-    /// Which source a bare paste reads next, and until when. See
-    /// [`commands::PasteStamp`].
-    pub(super) paste_stamp: Option<commands::PasteStamp>,
     pub(super) should_quit: bool,
     /// The exit code the platform terminator thread sets when a signal asks
     /// the editor to quit; `0` means none was requested. Polled by the run
@@ -433,7 +430,6 @@ impl EditorState {
             kill_ring: KillRing::new(),
             clipboard: clipboard::SystemClipboard::osc52(),
             register_prefix: None,
-            paste_stamp: None,
             should_quit: false,
             terminate_exit_code: Arc::new(AtomicI32::new(0)),
             headless: false,

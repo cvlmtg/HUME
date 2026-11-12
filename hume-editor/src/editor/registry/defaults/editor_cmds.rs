@@ -138,7 +138,7 @@ impl CommandRegistry {
         .reg(self);
         ecmd_focused(
             "smart-paste-after",
-            "Paste after the selection: kill-ring head while nothing has been edited since the last capture, clipboard otherwise.",
+            "Paste the kill-ring head after the selection, first adding to the ring any text copied to the clipboard outside HUME.",
             cmd_smart_paste_after,
         )
         .repeatable()
@@ -147,7 +147,7 @@ impl CommandRegistry {
         .reg(self);
         ecmd_focused(
             "smart-paste-before",
-            "Paste before the selection: kill-ring head while nothing has been edited since the last capture, clipboard otherwise.",
+            "Paste the kill-ring head before the selection, first adding to the ring any text copied to the clipboard outside HUME.",
             cmd_smart_paste_before,
         )
         .repeatable()

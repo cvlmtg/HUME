@@ -1,6 +1,6 @@
 # Copy & Paste
 
-HUME has two paste sources: the system clipboard and a kill ring that remembers the last 10 things you deleted, changed or yanked.
+HUME has two paste sources: the system clipboard and a kill ring that remembers the last 10 things you deleted, changed or yanked, and text you copied in other applications.
 
 | Key | Effect |
 |-----|--------|
@@ -31,18 +31,17 @@ Text from outside HUME, such as the system clipboard after another program wrote
 
 ## Smart paste
 
-A bare `p` or `P` chooses what to paste by whether the buffer has changed since the kill ring last did:
+A bare `p` or `P` pastes the newest kill-ring entry: right after a `d`, `c`, or `y`, the text it deleted, changed, or yanked, and right after a paste or a `[`/`]` cycle, the entry that paste or cycle used. Editing in between doesn't change that.
 
-- **Nothing edited since the last `d`, `c`, or `y`**: reads the kill ring. Right after a `d`, `c`, or `y` that is the head (the most recently killed, changed, or yanked text). Right after a paste or a `[`/`]` cycle, it is the entry that paste or cycle used.
-- **Something edited since**: reads the system clipboard. A first paste falls back to the kill ring head when the clipboard is empty or unavailable. Once a press has read the clipboard, a further `p` or `P` pastes nothing, and says why, if the clipboard is then empty or unavailable.
+When the system clipboard holds text copied in another application, `p` first adds it to the kill ring as the newest entry, so that is what it pastes. A `d`, `c`, or `y` adds it too, just below what it takes, so `d` then `p` still pastes what you deleted, and `[` reaches the copied text. Text is added once: after you cycle past it, `p` keeps pasting the entry you chose until you copy something new. What HUME writes to the clipboard itself, with `y` or `"cy`, is never added this way.
 
-Only your own edits count, in any buffer. Changes made in the meantime by a language server, a `|` finishing in the background, or a plugin's timer or hook do not.
+With nothing on the kill ring and nothing new on the clipboard, `p` pastes nothing, and says why when the clipboard couldn't be read.
 
-Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes what you yanked. Yanking to an explicit register instead (`"0y`) leaves the clipboard and smart paste's choice untouched: a following bare `p` behaves as if the `"0y` hadn't happened. Use `"0p` to read the register back.
+Yanking to an explicit register (`"0y`) leaves the clipboard and the kill ring untouched: a following bare `p` behaves as if the `"0y` hadn't happened. Use `"0p` to read the register back.
 
-`[` and `]` only work inside a paste session, opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session is a single undo step. After a paste from the clipboard or a register, the first `[` starts at the newest kill-ring entry, or at the one after it when the newest entry holds the pasted text (as after a `y`, which writes both).
+`[` and `]` only work inside a paste session, opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session is a single undo step. The entry the session ends on becomes the newest in the kill ring, so the next `p` pastes it again. After a paste from `"c` or a numbered register, the first `[` starts at the newest kill-ring entry, or at the one after it when the newest entry holds the pasted text (as after a `y`, which writes both).
 
-Two editor commands, `paste-after` and `paste-before`, exist alongside `p`/`P` with no key bound by default. They always read the kill-ring head, with no clipboard fallback, and always replace a real selection outright, with no same-text check. To stack a copy with them, collapse the selection (`;`) before pasting. [`core:classic-paste`](#gui-style-paste-core-plugin) binds them to `p` and `P`.
+Two editor commands, `paste-after` and `paste-before`, exist alongside `p`/`P` with no key bound by default. They always read the kill-ring head without adding new clipboard text to it, and always replace a real selection outright, with no same-text check. To stack a copy with them, collapse the selection (`;`) before pasting. [`core:classic-paste`](#gui-style-paste-core-plugin) binds them to `p` and `P`.
 
 ## Clipboard over SSH
 
@@ -50,7 +49,7 @@ In an SSH session, or when no clipboard server is available (a Linux machine wit
 
 - Your terminal must allow programs to set the clipboard. Some, iTerm2 for one, ask for this in their settings.
 - Inside `tmux`, add `set -g set-clipboard on` to your `tmux.conf`.
-- `p` pastes what HUME last yanked. Terminals don't let programs read the clipboard back, so text copied in another application comes in through the terminal's own paste shortcut.
+- `p` pastes from the kill ring only, and `"cp` pastes what HUME last put on the clipboard. Terminals don't let programs read the clipboard back, so text copied in another application comes in through the terminal's own paste shortcut.
 
 ## Pasting from the terminal
 
@@ -62,9 +61,9 @@ Text pasted from outside HUME (your system clipboard via the terminal's paste sh
 
 ## Whitespace and the kill ring
 
-When the kill-ring head is pure whitespace (any whitespace characters, such as spaces, tabs and line breaks, and nothing else), the next delete, change, or yank overwrites that slot instead of taking a fresh one. To keep whitespace for later, yank it into a numbered register (`"0`–`"9`).
+When the kill-ring head is pure whitespace (any whitespace characters, such as spaces, tabs and line breaks, and nothing else), the next delete, change, yank, or copied text added to the ring overwrites that slot instead of taking a fresh one. To keep whitespace for later, yank it into a numbered register (`"0`–`"9`).
 
-The ring never holds two identical entries, meaning the same text with the same shape (whole lines or inline). Deleting, changing, or yanking text already in the ring moves that entry back to the front instead of adding a duplicate, so cycling with `[`/`]` never shows the same entry twice.
+The ring never holds two identical entries, meaning the same text with the same shape (whole lines or inline). Deleting, changing, yanking, or copying elsewhere text already in the ring moves that entry back to the front instead of adding a duplicate, so cycling with `[`/`]` never shows the same entry twice.
 
 ## Register prefix (`"`)
 
@@ -117,7 +116,7 @@ In Insert mode and on the `:` prompt, `Ctrl-r` followed by a register name inser
 
 ## GUI-style paste (core plugin)
 
-To keep the clipboard and the kill ring on separate keys instead of letting `p` choose, load `core:classic-paste`. It rebinds `p` / `P` to always paste from the kill ring, and binds `Ctrl-v` / `Ctrl-Shift-v` to always paste from the system clipboard (`Ctrl-Shift-v` needs the kitty protocol).
+To keep the clipboard and the kill ring on separate keys, load `core:classic-paste`. It rebinds `p` / `P` to always paste from the kill ring without adding copied text to it first, and binds `Ctrl-v` / `Ctrl-Shift-v` to always paste from the system clipboard (`Ctrl-Shift-v` needs the kitty protocol).
 
 ```scheme
 (load-plugin! "core:classic-paste")

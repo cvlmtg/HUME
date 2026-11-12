@@ -44,7 +44,7 @@ What each step shows:
 - **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. `e` toggles Extend mode, Vim's Visual mode, where every motion extends until you act or press `Esc`. So `t T` grows `Welcome` to `Welcome. `, and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t T` grows the selection without entering Extend mode.
 - **`x` selects a line.** It replaces Vim's `dd`/`yy`/`cc` doubling: `x d` deletes a line, `x c` rewrites its content and keeps the line. `Ctrl-x` adds the line below to the selection.
 - **`Esc` keeps what you typed selected.** After the change, `play` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
-- **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring, with no `"+` prefix. `p` pastes your last yank or delete while you haven't edited since, and the clipboard once you have. See [Copy & Paste](copy-and-paste.md).
+- **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring, with no `"+` prefix. `p` pastes your last yank or delete, or text you have since copied in another application. See [Copy & Paste](copy-and-paste.md).
 
 A few more keys you'll want early:
 
@@ -207,7 +207,7 @@ Vim's confirm-each-match flag (`:%s/…/gc`) has no equivalent, but you see ever
 
 HUME has no letter registers `a`–`z`. `"0`–`"9` hold text or macros, written only when you name them (`"0y`); `"c` is the system clipboard (Vim's `"+`), `"b` the black hole (Vim's `"_`), and `"k` the kill-ring head. Yanks and deletes go to the kill ring. See [Register prefix](copy-and-paste.md#register-prefix).
 
-The default paste (`p`) reads from the kill ring until you edit something after your last `d`/`c`/`y`, then from the system clipboard. After `y` it still pastes the text you yanked, because `y` writes the clipboard as well as the kill ring. Yanking to a named register (`"0y`) leaves both untouched, so `p` behaves as if the `"0y` never happened; use `"0p` to paste from that register.
+The default paste (`p`) reads the kill ring. Text copied in another application joins the kill ring at your next `p`, `d`, `c` or `y`, so `p` pastes it until you delete or yank something else. Yanking to a named register (`"0y`) leaves both untouched, so `p` behaves as if the `"0y` never happened; use `"0p` to paste from that register.
 
 Two more registers exist but can't be typed after `"`: the search register (the last pattern, Vim's `"/`), written by `/`, `?`, `*` and `Ctrl-/`; and the macro register `q`, written by `Q` recording. You reach both through the commands that use them.
 

@@ -260,7 +260,7 @@ impl Register {
 #[derive(Debug, Clone, Default)]
 pub struct RegisterSet {
     registers: FxHashMap<char, Register>,
-    /// Snapshot of the blob last written to the OS clipboard.
+    /// The OS clipboard's text as HUME last wrote it or took it in, raw.
     /// Compared on read to detect external modifications: when the clipboard
     /// content matches this blob the in-memory `'c'` register is in sync and
     /// its pieces (preserving multi-selection boundaries and shapes) are
@@ -310,6 +310,20 @@ impl RegisterSet {
         self.clipboard_blob.insert(blob)
     }
 
+    /// Take in `raw`, the OS clipboard's text as read, when HUME has not seen
+    /// it: mirror it into the clipboard register and return its pieces.
+    /// `None` when it is the text HUME last wrote or took in. Compared before
+    /// line endings are normalized, so the same CRLF text is never new twice.
+    pub fn take_in_clipboard(&mut self, raw: String) -> Option<Vec<Piece>> {
+        if self.clipboard_blob.as_deref() == Some(raw.as_str()) {
+            return None;
+        }
+        let pieces = vec![Piece::from(raw.as_str())];
+        self.write_text(CLIPBOARD_REGISTER, pieces.clone());
+        self.clipboard_blob = Some(raw);
+        Some(pieces)
+    }
+
     /// Write a recorded macro to a register, replacing its previous contents.
     ///
     /// Writes to the black-hole register (`'b'`) are silently discarded.
@@ -345,21 +359,24 @@ impl RegisterSet {
 
 /// Bounded ring buffer of deleted / yanked text entries.
 ///
-/// Newest entry is always at index 0 (the "head"). Entries are accessed via
-/// `"kp` (head), by cycling with `[`/`]`, or by slot (a bare smart paste
-/// resuming from wherever a prior cycle left off). The digit registers
-/// `"0`–`"9` are independent in-memory storage, not aliases for ring slots.
-/// The ring holds no two equal entries: [`KillRing::push`] moves a
-/// re-captured entry to the head instead of duplicating it.
+/// The head is the entry a paste shows, or the newest entry when no paste
+/// shows one. Entries are accessed via `"kp` (head) or by cycling with
+/// `[`/`]`. The digit registers `"0`–`"9` are independent in-memory storage,
+/// not aliases for ring slots. The ring holds no two equal entries:
+/// [`KillRing::push`] moves a re-captured entry to the head instead of
+/// duplicating it.
 ///
-/// `cycle` persists until the next paste re-seeds it; a lingering value
-/// between sessions is harmless because every fresh paste re-seeds before
-/// reading the cursor.
+/// While a paste cycles, `entries` keeps the order the paste started from, so
+/// `[`/`]` step through a stable order. The cycled-to entry moves to the front
+/// before the next push or paste, which is how the entry a paste session ends
+/// on becomes the head.
 #[derive(Debug, Clone, Default)]
 pub struct KillRing {
-    /// Entries newest-first; max `KILL_RING_DEPTH` entries.
+    /// Entries newest-first, except that the entry `cycle` names is the
+    /// head; max `KILL_RING_DEPTH` entries.
     entries: VecDeque<Vec<Piece>>,
-    /// Active `[`/`]` cycle position.
+    /// The `[`/`]` cycle position, kept after the paste session ends as the
+    /// pending move of that entry to the front.
     /// `Some(n)` = the paste shows slot `n`.
     /// `None` = the paste shows text from outside the ring that is not the
     /// head's (conceptually before slot 0).
@@ -389,6 +406,7 @@ impl KillRing {
     /// ring with entries you never want to cycle back to.
     pub fn push<P: Into<Piece>>(&mut self, values: Vec<P>) {
         let values: Vec<Piece> = values.into_iter().map(Into::into).collect();
+        self.settle();
         if let Some(pos) = self.entries.iter().position(|entry| *entry == values) {
             if pos == 0 {
                 return;
@@ -409,8 +427,10 @@ impl KillRing {
         }
     }
 
-    /// Seed the cycle cursor for a paste read from ring slot `slot`.
+    /// Seed the cycle cursor for a paste read from ring slot `slot`, counted
+    /// from the head.
     pub fn seed_cycle_at(&mut self, slot: usize) {
+        self.settle();
         self.cycle = Some(slot);
     }
 
@@ -420,21 +440,41 @@ impl KillRing {
     /// `[` steps past the text the paste already shows instead of pasting it
     /// again.
     pub fn seed_cycle_outside(&mut self, pasted: &[Piece]) {
+        self.settle();
         self.cycle = (self.head() == Some(pasted)).then_some(0);
     }
 
-    /// Borrow the head entry (most recently pushed), if any.
+    /// Borrow the head entry, if any: the one a paste shows, or the most
+    /// recently pushed.
     pub fn head(&self) -> Option<&[Piece]> {
-        self.entries.front().map(Vec::as_slice)
+        self.cycle
+            .and_then(|n| self.entries.get(n))
+            .or_else(|| self.entries.front())
+            .map(Vec::as_slice)
     }
 
-    /// Borrow ring slot `n` (0-based), where 0 = head.
+    /// Move the entry the cycle shows to the front, keeping the others in
+    /// order. A move, not a [`Self::push`]: the whitespace overwrite is for
+    /// text entering the ring.
+    fn settle(&mut self) {
+        if let Some(n) = self.cycle.filter(|&n| n > 0)
+            && let Some(entry) = self.entries.remove(n)
+        {
+            self.entries.push_front(entry);
+            self.cycle = Some(0);
+        }
+    }
+
+    /// Borrow ring slot `n` (0-based) in the order the open paste cycles
+    /// through, where 0 = the newest entry when the paste started.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn slot(&self, n: usize) -> Option<&[Piece]> {
         self.entries.get(n).map(Vec::as_slice)
     }
 
     /// The ring slot the open paste shows, or `None` when it shows text from
     /// outside the ring that is not the head's.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn cycle_position(&self) -> Option<usize> {
         self.cycle
     }

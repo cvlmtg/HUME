@@ -368,11 +368,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: 
     // run entirely: `spans` stays `None`, so this session contributes
     // nothing to the `mii` stash and, for an empty run, falls back to
     // `exit_cursor`'s step-back handling below.
-    let (typed_run, step_back, kill_opened) = (
-        session.typed_run.take(),
-        session.step_back_on_exit,
-        session.kill_opened_session,
-    );
+    let (typed_run, step_back) = (session.typed_run.take(), session.step_back_on_exit);
     let sel_count = state
         .panes
         .entries
@@ -426,13 +422,6 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: 
     // After the exit motion, so the revision's post-edit selections are the
     // ones leaving Insert mode lands on.
     crate::editor::edit_session::commit_insert(&mut state.buffers, &state.panes.entries, session);
-    // `cmd_change` stamped `PasteStamp` right after the deletion, but every
-    // keystroke since has bumped `edit_seq`. Refresh the stamp to the
-    // session's final `seq` (source unchanged) so `c <text> <Esc> p` still
-    // reads the ring. See `InsertSession::kill_opened_session`'s doc.
-    if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
-        stamp.seq = state.buffers.edit_seq();
-    }
 }
 
 /// The clusters typed in one selection's run, `[anchor, run_end)`, or

@@ -52,7 +52,6 @@ fn editor_state_fields_are_classified() {
             kill_ring: _,           // preserved
             clipboard: _,           // preserved
             register_prefix: _,     // preserved
-            paste_stamp: _,         // preserved
             should_quit: _,         // preserved
             terminate_exit_code: _, // preserved
             headless: _,            // preserved

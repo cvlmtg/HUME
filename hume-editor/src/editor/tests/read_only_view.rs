@@ -293,7 +293,7 @@ fn read_only_buffer_blocks_delete_kill() {
 
 /// `c` on a read-only view buffer must report the read-only refusal, leave
 /// the buffer content and mode unchanged, and must not push anything onto
-/// the kill ring or touch the paste stamp.
+/// the kill ring.
 #[test]
 fn read_only_buffer_blocks_change_kill() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -304,7 +304,6 @@ fn read_only_buffer_blocks_change_kill() {
         .kill_ring
         .head()
         .map(<[hume_ops::register::Piece]>::to_vec);
-    let stamp_before = ed.state.paste_stamp;
 
     ed.report(Severity::Warning, "test message");
     ed.execute_typed("messages", None).unwrap();
@@ -335,11 +334,6 @@ fn read_only_buffer_blocks_change_kill() {
             .map(<[hume_ops::register::Piece]>::to_vec),
         ring_before,
         "a refused c must not change the kill ring head"
-    );
-    assert_eq!(
-        format!("{:?}", ed.state.paste_stamp),
-        format!("{stamp_before:?}"),
-        "a refused c must not touch the paste stamp"
     );
 }
 

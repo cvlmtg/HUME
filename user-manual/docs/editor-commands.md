@@ -211,8 +211,8 @@ Move text between the buffer, the kill ring, and the system clipboard.
 | `paste-before` | — | Paste register contents before the selection. With no register prefix, reads the kill-ring head, with no clipboard fallback. |
 | `paste-ring-newer` | `]` | Cycle kill ring one step newer and re-paste. |
 | `paste-ring-older` | `[` | Cycle kill ring one step older and re-paste. |
-| `smart-paste-after` | `p` | Smart paste after the selection: the kill-ring head if you have edited nothing since you last deleted, changed or yanked text, the clipboard otherwise. |
-| `smart-paste-before` | `P` | Smart paste before the selection, choosing the source as `p` does. |
+| `smart-paste-after` | `p` | Smart paste after the selection: the kill-ring head, after adding any text newly copied in another application. |
+| `smart-paste-before` | `P` | Smart paste before the selection, adding copied text to the kill ring as `p` does. |
 | `yank` | `y` | Copy selections to the clipboard and kill ring without deleting. |
 | `insert-register` | `Ctrl-r` (Insert mode, `:` prompt) | Insert the register named by the next key, or the file's path (`f`) or its directory (`p`), relative to the working directory. See [Inserting a register while typing](copy-and-paste.md#inserting-a-register-while-typing). |
 

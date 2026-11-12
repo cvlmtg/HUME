@@ -287,17 +287,12 @@ fn dot_after_find_is_noop() {
     assert_eq!(state(&ed), state_after_find);
 }
 
-/// A dot-repeated delete is itself a fresh capture: a bare `p` right after
-/// `.` reads what `.` just deleted, not the clipboard.
-///
-/// This is a deliberate consequence of `PasteStamp` having no dot-repeat
-/// special case at all: `replay_dot` runs the replayed edit through the
-/// ordinary `commands::run_body` → `route_kill` → `capture_to_ring`
-/// path, which writes the stamp at the replay's own
-/// `BufferStore::edit_seq()` exactly as a live `d` would: nothing treats a
-/// replayed delete differently from a typed one.
+/// A dot-repeated delete is itself a capture: a bare `p` right after `.`
+/// reads what `.` just deleted, not the clipboard. `replay_dot` runs the
+/// replayed edit through the same `commands::run_body` → `route_kill` →
+/// `capture_to_ring` path a typed `d` takes.
 #[test]
-fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
+fn a_dot_repeated_delete_is_what_p_pastes() {
     let mut ed = editor_from("-[foo]> bar\n");
     // Seed the clipboard with a sentinel value distinct from anything the
     // ring could hold, so a wrong clipboard read is unambiguous.

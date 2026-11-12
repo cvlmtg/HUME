@@ -6,7 +6,6 @@ use hume_scripting::SteelCall;
 use hume_scripting::host::JobHandle;
 
 use super::EditorEvent;
-use crate::editor::buffer::store::EditOrigin;
 use crate::editor::lsp::ResponseAnchor;
 use crate::editor::replay::{AnswerTicket, PickerKeyRun};
 use crate::editor::{Editor, EditorState};
@@ -37,11 +36,8 @@ pub(in crate::editor) enum PendingWork {
         /// What decides at the call's turn whether it still runs, and what
         /// its run or drop releases. A guarded call runs alone. `None` for
         /// a call with no such condition, which runs in one batch with the
-        /// unguarded calls of the same origin queued next to it.
+        /// unguarded calls queued next to it.
         guard: Option<CallGuard>,
-        /// Whose edits the call makes: the user's for a callback a key of
-        /// theirs fired, background ones otherwise.
-        origin: EditOrigin,
     },
     /// An editor event to fire by name at drain time. Args are built by
     /// `into_steel_args()` only if a handler is actually registered.
@@ -92,23 +88,15 @@ pub(in crate::editor) enum CallGuard {
 }
 
 impl PendingWork {
-    /// A `Call` of `call` under `guard`, its edits counted as `origin`'s.
-    pub(in crate::editor) fn call(
-        call: SteelCall,
-        guard: Option<CallGuard>,
-        origin: EditOrigin,
-    ) -> Self {
-        Self::Call {
-            call,
-            guard,
-            origin,
-        }
+    /// A `Call` of `call` under `guard`.
+    pub(in crate::editor) fn call(call: SteelCall, guard: Option<CallGuard>) -> Self {
+        Self::Call { call, guard }
     }
 
     /// The `Call` an interactive input's callback queues: the user's,
     /// answering `ticket`'s input if any.
     pub(in crate::editor) fn answer(call: SteelCall, ticket: Option<AnswerTicket>) -> Self {
-        Self::call(call, ticket.map(CallGuard::Answer), EditOrigin::User)
+        Self::call(call, ticket.map(CallGuard::Answer))
     }
 }
 
@@ -125,9 +113,9 @@ impl EditorState {
     /// Queue `call`, a callback a key of the user's fired: a drawer,
     /// live-picker query or completion-source callback. Background work
     /// queues through [`Self::queue_job_callback`],
-    /// [`Self::queue_timer_thunk`] or [`Self::queue_lsp_callback`], whose
-    /// edits do not count as the user's; an interactive input's callback is
-    /// built by `EditorState::answered_call` instead.
+    /// [`Self::queue_timer_thunk`] or [`Self::queue_lsp_callback`]; an
+    /// interactive input's callback is built by `EditorState::answered_call`
+    /// instead.
     ///
     /// Every queued call runs at the next drain boundary, never inline: LSP
     /// dispatch, timer fire and minibuffer key handling all detect their
@@ -136,7 +124,7 @@ impl EditorState {
     /// which only hold `&mut EditorState`, can queue too, the same reason
     /// `queue_event` lives here.
     pub(in crate::editor) fn queue_steel_call(&mut self, call: SteelCall) {
-        self.push_work(PendingWork::call(call, None, EditOrigin::User));
+        self.push_work(PendingWork::call(call, None));
     }
 
     /// Queue each `(id, call)`, a completion source's call for request
@@ -146,42 +134,26 @@ impl EditorState {
         calls: impl IntoIterator<Item = (HostToken, SteelCall)>,
     ) {
         for (id, call) in calls {
-            self.push_work(PendingWork::call(
-                call,
-                Some(CallGuard::Invocation(id)),
-                EditOrigin::User,
-            ));
+            self.push_work(PendingWork::call(call, Some(CallGuard::Invocation(id))));
         }
     }
 
     /// Queue `call`, a picker keymap binding's call for the key press `run`
     /// names; see [`CallGuard::PickerKey`].
     pub(in crate::editor) fn queue_picker_key(&mut self, run: PickerKeyRun, call: SteelCall) {
-        self.push_work(PendingWork::call(
-            call,
-            Some(CallGuard::PickerKey(run)),
-            EditOrigin::User,
-        ));
+        self.push_work(PendingWork::call(call, Some(CallGuard::PickerKey(run))));
     }
 
     /// Queue `call`, the callback of the `ConfigState.async_jobs` entry
     /// `job`; see [`CallGuard::Job`].
     pub(in crate::editor) fn queue_job_callback(&mut self, job: JobHandle, call: SteelCall) {
-        self.push_work(PendingWork::call(
-            call,
-            Some(CallGuard::Job(job)),
-            EditOrigin::Background,
-        ));
+        self.push_work(PendingWork::call(call, Some(CallGuard::Job(job))));
     }
 
     /// Queue `call`, the thunk of timer `id`, which has come due; see
     /// [`CallGuard::Timer`].
     pub(in crate::editor) fn queue_timer_thunk(&mut self, id: TimerId, call: SteelCall) {
-        self.push_work(PendingWork::call(
-            call,
-            Some(CallGuard::Timer(id)),
-            EditOrigin::Background,
-        ));
+        self.push_work(PendingWork::call(call, Some(CallGuard::Timer(id))));
     }
 
     /// Queue `call`, an `lsp-request!` callback: carries the delivery's `ResponseAnchor` (`None` for a
@@ -196,7 +168,7 @@ impl EditorState {
     ) {
         let guard =
             (anchor.is_some() || hold.is_some()).then_some(CallGuard::Reply { anchor, hold });
-        self.push_work(PendingWork::call(call, guard, EditOrigin::Background));
+        self.push_work(PendingWork::call(call, guard));
     }
 
     /// Append `work` to the queue `Editor::settle` drains: the one place an

@@ -216,7 +216,6 @@ pub(in crate::editor) fn open_insert(
         typed_run: None,
         autoindent: None,
         step_back_on_exit: false,
-        kill_opened_session: false,
     })
 }
 
@@ -471,15 +470,6 @@ pub(in crate::editor) struct InsertSession {
     /// run's cursor lands on exit: step one grapheme back (so `a<Esc>` is a
     /// round trip) rather than staying put.
     pub(in crate::editor) step_back_on_exit: bool,
-    /// Whether the session was entered via a ring-capturing kill (bare or
-    /// `"k`-prefixed `c`; an explicit-register change writes no stamp and
-    /// must not set this). Set only by `cmd_change`. Read by
-    /// `tear_down_insert`: every keystroke typed during the session bumps
-    /// `BufferStore::edit_seq`, so the `PasteStamp` `cmd_change` wrote
-    /// (pointing at the just-replaced text) goes stale by the time the
-    /// session closes, and refreshing its `seq` there is what keeps
-    /// `c <text> <Esc> p` reading the kill ring instead of the clipboard.
-    pub(in crate::editor) kill_opened_session: bool,
 }
 
 impl InsertSession {

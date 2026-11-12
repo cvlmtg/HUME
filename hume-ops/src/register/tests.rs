@@ -172,6 +172,44 @@ fn constants_have_expected_values() {
     assert_eq!(CLIPBOARD_REGISTER, 'c');
 }
 
+// -- take_in_clipboard --------------------------------------------------------
+
+fn clipboard_pieces(regs: &RegisterSet) -> Option<&[Piece]> {
+    regs.read(CLIPBOARD_REGISTER).and_then(Register::as_pieces)
+}
+
+#[test]
+fn take_in_clipboard_returns_new_text_and_mirrors_it() {
+    let mut regs = RegisterSet::new();
+    let taken = regs.take_in_clipboard("foo\n".to_string());
+    assert_eq!(taken, Some(vec![Piece::new("foo\n", Shape::Linewise)]));
+    assert_eq!(clipboard_pieces(&regs), taken.as_deref());
+    assert_eq!(regs.clipboard_blob(), Some("foo\n"));
+}
+
+#[test]
+fn take_in_clipboard_skips_text_already_taken_in() {
+    let mut regs = RegisterSet::new();
+    regs.take_in_clipboard("foo".to_string());
+    assert_eq!(regs.take_in_clipboard("foo".to_string()), None);
+}
+
+#[test]
+fn take_in_clipboard_skips_text_hume_wrote() {
+    let mut regs = RegisterSet::new();
+    let blob = regs.write_clipboard(ps(&["a", "b"])).to_owned();
+    assert_eq!(regs.take_in_clipboard(blob), None);
+    assert_eq!(clipboard_pieces(&regs), Some(ps(&["a", "b"]).as_slice()));
+}
+
+#[test]
+fn take_in_clipboard_compares_crlf_text_as_read() {
+    let mut regs = RegisterSet::new();
+    let taken = regs.take_in_clipboard("a\r\nb".to_string());
+    assert_eq!(taken, Some(vs("a\nb")));
+    assert_eq!(regs.take_in_clipboard("a\r\nb".to_string()), None);
+}
+
 // ── yank_selections ───────────────────────────────────────────────────────
 
 #[test]
@@ -633,6 +671,70 @@ fn cycle_round_trip_older_then_newer() {
     assert_eq!(ring.cycle_newer(), Some(vs("c").as_slice())); // 1→0: "c"
     assert_eq!(ring.cycle, Some(0));
     assert!(ring.cycle_newer().is_none()); // noop at head
+}
+
+// -- the shown entry is the head ----------------------------------------------
+
+/// A ring reading `a`, `b`, `c` from the head, with a paste showing `a`.
+fn ring_abc_showing_head() -> KillRing {
+    let mut ring = KillRing::new();
+    for s in ["c", "b", "a"] {
+        ring.push(vs(s));
+    }
+    ring.seed_cycle_at(0);
+    ring
+}
+
+fn order(ring: &KillRing) -> Vec<&str> {
+    (0..ring.len())
+        .filter_map(|n| ring.slot(n))
+        .map(|entry| entry[0].text())
+        .collect()
+}
+
+#[test]
+fn the_cycled_entry_reads_as_the_head() {
+    let mut ring = ring_abc_showing_head();
+    ring.cycle_older();
+    assert_eq!(ring.head(), Some(vs("b").as_slice()));
+}
+
+#[test]
+fn a_push_after_a_cycle_lands_above_the_cycled_entry() {
+    let mut ring = ring_abc_showing_head();
+    ring.cycle_older();
+    ring.push(vs("x"));
+    assert_eq!(order(&ring), ["x", "b", "a", "c"]);
+}
+
+#[test]
+fn a_new_paste_after_a_cycle_starts_from_the_cycled_entry() {
+    let mut ring = ring_abc_showing_head();
+    ring.cycle_older();
+    ring.seed_cycle_outside(&vs("z"));
+    assert_eq!(order(&ring), ["b", "a", "c"]);
+    assert_eq!(ring.cycle_older(), Some(vs("b").as_slice()));
+}
+
+#[test]
+fn cycling_back_to_the_first_entry_keeps_the_order() {
+    let mut ring = ring_abc_showing_head();
+    ring.cycle_older();
+    ring.cycle_newer();
+    ring.seed_cycle_at(0);
+    assert_eq!(order(&ring), ["a", "b", "c"]);
+}
+
+#[test]
+fn a_whitespace_head_the_cycle_passed_stays_in_the_ring() {
+    let mut ring = KillRing::new();
+    for s in ["c", "b", " "] {
+        ring.push(vs(s));
+    }
+    ring.seed_cycle_at(0);
+    ring.cycle_older();
+    ring.seed_cycle_at(0);
+    assert_eq!(order(&ring), ["b", " ", "c"]);
 }
 
 // ── is_valid_register_name ────────────────────────────────────────────────

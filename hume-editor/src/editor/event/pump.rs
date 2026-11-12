@@ -5,7 +5,6 @@
 use super::{CallGuard, EditorEvent, PendingWork};
 use crate::editor::Editor;
 use crate::editor::buffer::DiskCheckTrigger;
-use crate::editor::buffer::store::EditOrigin;
 use crate::editor::commands::CommandPane;
 use crate::editor::input_stack::picker;
 use crate::editor::replay;
@@ -261,7 +260,7 @@ impl Editor {
 
     /// Run one snapshot of `pending_work` in queued order: event handlers
     /// fire one event at a time, and a contiguous run of unguarded `Call`s
-    /// of one origin goes to `run_steel_calls` as one batch before the next
+    /// goes to `run_steel_calls` as one batch before the next
     /// `Event` (or end of batch). Each call still runs in its own Steel
     /// session; the batch shares one host borrow and one application of
     /// the effects. A guarded `Call` runs alone through
@@ -278,33 +277,21 @@ impl Editor {
                         continue;
                     }
                     self.react_to_event(&event);
-                    self.with_edit_origin(EditOrigin::Background, |ed| ed.fire_one_event(event));
+                    self.fire_one_event(event);
                 }
                 PendingWork::Call {
                     call,
                     guard: Some(guard),
-                    origin,
-                } => self.run_guarded(guard, origin, call),
-                PendingWork::Call {
-                    call,
-                    guard: None,
-                    origin,
-                } => {
+                } => self.run_guarded(guard, call),
+                PendingWork::Call { call, guard: None } => {
                     let mut calls = vec![call];
-                    while matches!(
-                        items.front(),
-                        Some(PendingWork::Call {
-                            guard: None,
-                            origin: next,
-                            ..
-                        }) if *next == origin
-                    ) {
+                    while matches!(items.front(), Some(PendingWork::Call { guard: None, .. })) {
                         let Some(PendingWork::Call { call, .. }) = items.pop_front() else {
                             unreachable!("front() just confirmed an unguarded Call")
                         };
                         calls.push(call);
                     }
-                    self.with_edit_origin(origin, |ed| ed.run_call_batch(calls));
+                    self.run_call_batch(calls);
                 }
             }
         }
@@ -479,32 +466,23 @@ impl Editor {
     /// before an earlier sibling in the same batch has had the chance to
     /// change the state the check reads (a `switch-to-buffer!`, an edit),
     /// and what the guard holds is released right after this call alone.
-    fn run_guarded(
-        &mut self,
-        guard: CallGuard,
-        origin: EditOrigin,
-        call: hume_scripting::SteelCall,
-    ) {
+    fn run_guarded(&mut self, guard: CallGuard, call: hume_scripting::SteelCall) {
         match guard {
             CallGuard::Reply { anchor, hold } => {
                 if anchor.is_none_or(|anchor| self.state.anchor_admits(&self.view, &anchor)) {
-                    self.with_edit_origin(origin, |ed| ed.run_call_batch(vec![call]));
+                    self.run_call_batch(vec![call]);
                 }
                 drop(hold);
             }
             CallGuard::Answer(ticket) => {
-                self.with_edit_origin(origin, |ed| {
-                    ed.run_answered(Some(ticket), |ed| {
-                        ed.run_call_batch(vec![call]);
-                    });
+                self.run_answered(Some(ticket), |ed| {
+                    ed.run_call_batch(vec![call]);
                 });
             }
             CallGuard::PickerKey(run) => {
                 if picker::session_for_token(&mut self.state, run.picker()).is_some() {
-                    self.with_edit_origin(origin, |ed| {
-                        replay::run_picker_key(ed, run, |ed| {
-                            ed.run_call_batch(vec![call]);
-                        });
+                    replay::run_picker_key(self, run, |ed| {
+                        ed.run_call_batch(vec![call]);
                     });
                 }
             }
@@ -514,7 +492,7 @@ impl Editor {
                 }
                 // A callback that fails once would fail on every later
                 // report, so a raise ends the job.
-                if self.with_edit_origin(origin, |ed| ed.run_call_batch(vec![call])) {
+                if self.run_call_batch(vec![call]) {
                     self.forget_job_callback(id);
                 } else {
                     self.state.config.async_jobs.remove(&id);
@@ -522,11 +500,11 @@ impl Editor {
             }
             CallGuard::Timer(id) => {
                 if self.timers.take_queued(id) {
-                    self.with_edit_origin(origin, |ed| ed.run_call_batch(vec![call]));
+                    self.run_call_batch(vec![call]);
                 }
             }
             CallGuard::Invocation(id) => {
-                if !self.with_edit_origin(origin, |ed| ed.run_call_batch(vec![call])) {
+                if !self.run_call_batch(vec![call]) {
                     self.state.end_completion_request(&self.view, id);
                 }
             }
@@ -544,19 +522,6 @@ impl Editor {
             }
             CallGuard::Invocation(id) => self.state.end_completion_request(&self.view, id),
         }
-    }
-
-    /// Run `f` with the edits it makes counted as `origin`'s, then put back
-    /// the origin before it.
-    pub(in crate::editor) fn with_edit_origin<R>(
-        &mut self,
-        origin: EditOrigin,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        let outer = self.state.buffers.set_edit_origin(origin);
-        let result = f(self);
-        self.state.buffers.set_edit_origin(outer);
-        result
     }
 }
 

@@ -1,8 +1,8 @@
 # core:classic-paste
 
 Opt-in "GUI-style" copy/paste split: `p`/`P` paste from the kill-ring and `Ctrl-v`/
-`Ctrl-Shift-v` paste from the OS clipboard, in place of HUME's default smart-`p`
-heuristic, which picks between the two by whether anything was edited since the last copy
+`Ctrl-Shift-v` paste from the OS clipboard, in place of HUME's default smart-`p`, which
+adds text copied in another application to the kill ring and pastes the ring head
 ([Copy & Paste](https://cvlmtg.github.io/HUME/copy-and-paste.html)).
 
 ## Usage
