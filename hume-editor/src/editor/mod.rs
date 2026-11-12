@@ -350,10 +350,10 @@ pub(crate) struct EditorState {
     /// read, picker, prompt, menu and text prompt, which takes its answer
     /// from it.
     pub(in crate::editor) dot_replay: Option<replay::DotReplay>,
-    /// The editor's open Paste session or dot-repeat placeholder, if any.
+    /// The editor's open Paste session, if any.
     /// An open Insert session lives on the input stack instead;
     /// [`EditorState::open_session`] gives the open session of either kind.
-    pub(in crate::editor) active_session: Option<edit_session::EditSession>,
+    pub(in crate::editor) paste_session: Option<edit_session::PasteSession>,
     pub(super) macros: macros::MacroState,
     /// Whether the input being handled logged a new warning or error: set
     /// by `Editor::handle_input` after dispatch, cleared by `Editor::settle`
@@ -459,7 +459,7 @@ impl EditorState {
             #[cfg(test)]
             sift_scans: 0,
             dot_replay: None,
-            active_session: None,
+            paste_session: None,
             macros: macros::MacroState::default(),
             message_logged_this_input: false,
             last_entered_buffer: None,

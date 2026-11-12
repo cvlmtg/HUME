@@ -23,7 +23,6 @@ pub(super) struct EditorCmdBuilder {
     extendable: bool,
     clears_extend: bool,
     selection: Option<SelectionRole>,
-    manages_own_session: bool,
     key_only: bool,
 }
 impl EditorCmdBuilder {
@@ -49,14 +48,6 @@ impl EditorCmdBuilder {
     /// folds into one undo step with the original paste.
     pub(super) fn defers_paste_commit(mut self) -> Self {
         self.defers_paste_commit = true;
-        self
-    }
-    /// Mark this command as one that opens `EditorState::active_session`
-    /// itself. See [`crate::editor::registry::CmdMeta::manages_own_session`]
-    /// for the full rationale. The four paste commands need it; nothing else
-    /// does.
-    pub(super) fn manages_own_session(mut self) -> Self {
-        self.manages_own_session = true;
         self
     }
     /// Refuse this command from a script's `call!`. See
@@ -129,7 +120,6 @@ impl EditorCmdBuilder {
             extendable: self.extendable,
             clears_extend: self.clears_extend,
             selection: self.selection,
-            manages_own_session: self.manages_own_session,
             key_only: self.key_only,
         }));
     }
@@ -147,7 +137,6 @@ fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> Ed
         extendable: false,
         clears_extend: false,
         selection: None,
-        manages_own_session: false,
         key_only: false,
     }
 }

@@ -1473,8 +1473,7 @@ fn paste_during_an_open_insert_session_is_refused_and_leaves_the_session_intact(
 /// Same conflict as the test above, but for the one-keystroke window right
 /// after `i`/`a`/`o`, before anything has been typed: the Insert session is
 /// real and open, but its `EditGroup` is still empty. Emptiness alone must
-/// not be read as "this is replay's own placeholder, safe to retarget".
-/// See `EditSessionKind::Replay`'s own doc.
+/// not let a paste open a session over it.
 #[test]
 fn paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_intact() {
     use hume_scripting::host::CommandHost;

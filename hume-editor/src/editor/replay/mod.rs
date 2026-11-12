@@ -36,7 +36,7 @@ use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
 
 use super::dispatch::CmdCtx;
-use super::edit_session::{self, EditSessionKind, InsertSession};
+use super::edit_session::InsertSession;
 use super::input_stack::PaneSnapshot;
 use super::input_stack::char::{AfterRead, CharRead};
 use super::keymap::CanonicalKey;
@@ -1238,38 +1238,18 @@ impl Editor {
         with_recording_scope(self, ticket.map(|t| t.scope), f)
     }
 
-    /// Close out whatever `replay_dot` left open on the focused (pane,
-    /// buffer), for either its success or its failure path.
+    /// End the Insert session the replayed change entered, through
+    /// `end_insert_session` (it pops the `InsertLayer`, which
+    /// `tear_down_insert` needs present), for either the success or the
+    /// failure path of `replay_action`. A Paste session stays open for a
+    /// following `[`/`]`, as after the live paste.
     ///
-    /// A body that entered real Insert mode closes through
-    /// `end_insert_session` (pops the `InsertLayer`, which `tear_down_insert`
-    /// needs present). A body that called native paste retargeted the
-    /// pre-opened placeholder to `Paste`, which must stay open for a following
-    /// `[`/`]`, so it's left alone. Anything else is still `Replay`-kind and
-    /// commits directly through `edit_session::commit_open_session`.
-    ///
-    /// No-op if nothing is open at all: the body's own dispatch may already
+    /// No-op if no session is open: the body's own dispatch may already
     /// have closed the pane or buffer; `focus::end_focus_sessions` already
     /// committed a still-live session before that happened.
-    fn finish_replay_session(&mut self) {
-        if self.state.open_session().is_none() {
-            return;
-        }
-        if self.state.mode() == Mode::Insert {
+    fn end_replayed_insert(&mut self) {
+        if self.state.open_session().is_some() && self.state.mode() == Mode::Insert {
             self.end_insert_session();
-            return;
-        }
-        let leave_open = self
-            .state
-            .active_session
-            .as_ref()
-            .is_some_and(|s| matches!(s.kind(), EditSessionKind::Paste { .. }));
-        if !leave_open {
-            super::edit_session::commit_open_session(
-                &mut self.state.buffers,
-                &self.state.panes.entries,
-                &mut self.state.active_session,
-            );
         }
     }
 
@@ -1309,46 +1289,10 @@ impl Editor {
         // Read once, at entry: recipe steps never move focus.
         let fp = commands::FocusedPane::current(&self.view);
         let pid = fp.pid();
-        let bid = fp.bid(&self.view);
 
-        // Resolve the command before opening the edit group: a missing command
-        // must return while there is still no cleanup obligation.
         let Some(edit_cmd) = self.resolve_mappable(action.command.as_ref()) else {
             return;
         };
-
-        let meta = edit_cmd.meta();
-
-        // Pre-open a Replay-kind placeholder, folding a recipe replay + the
-        // command into one undo revision. Skipped for a `manages_own_session`
-        // command (the paste family), which opens its own session; a Steel
-        // body that itself calls native paste retargets this placeholder to
-        // `Paste` in place.
-        //
-        // `Err` here means a real session is already open, not expected given
-        // the `.` key's own dispatch committed any paste session; defer
-        // rather than steal it.
-        if !meta.manages_own_session {
-            let sels = self
-                .state
-                .panes
-                .entries
-                .shown(&self.view.panes, pid)
-                .selections()
-                .clone();
-            let buffers = &self.state.buffers;
-            let opened = edit_session::open_or_retarget(
-                self.state.input.insert_session(),
-                &mut self.state.active_session,
-                pid,
-                bid,
-                EditSessionKind::Replay,
-                || buffers.get(bid).begin_edit_group(sels.clone(), sels),
-            );
-            if opened.is_err() {
-                return;
-            }
-        }
 
         // Rebuild the selection extent the command acted on. Every
         // recipe step names a native command taking no operand (a `Composes`/
@@ -1377,7 +1321,6 @@ impl Editor {
             let ran = commands::run_body(&mut self.state, &mut self.view, bound, &step.ctx);
             if !ran {
                 pre_recipe.take_restore(&mut self.state.panes.entries, &self.state.buffers);
-                self.finish_replay_session();
                 return;
             }
         }
@@ -1398,10 +1341,9 @@ impl Editor {
         self.state.register_prefix = None;
         let ran = self.finish_replayed_answers(dispatched);
         if !ran {
-            // Close whatever the group opened above became so it can't leak,
-            // the same decision the success path makes. commit drops an empty
-            // group (clean noop) and records a partial one.
-            self.finish_replay_session();
+            // An Insert session the command opened before it failed ends
+            // here, as on the success path.
+            self.end_replayed_insert();
             return;
         }
 
@@ -1410,7 +1352,7 @@ impl Editor {
         // stopping the loop: the live session kept going past it too. A
         // `Binding` that leaves Insert stops the walk: nothing recorded after
         // it belongs to a session that's gone. So does one whose pipe run was
-        // cancelled. `break`, not `return`, so `finish_replay_session` below
+        // cancelled. `break`, not `return`, so `end_replayed_insert` below
         // still runs.
         for input in &action.transcript {
             match input {
@@ -1455,7 +1397,7 @@ impl Editor {
                 }
             }
         }
-        self.finish_replay_session();
+        self.end_replayed_insert();
     }
 
     /// After a re-run command or binding body: when it `ran`, resolve each

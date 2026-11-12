@@ -331,6 +331,22 @@ fn dot_is_single_undo_step() {
     assert_eq!(ed.doc().text().to_string(), "hi bar\n");
 }
 
+/// Undoing a `.` puts back the selections undoing the live change would:
+/// the ones its replayed recipe built, not the ones `.` was pressed on.
+#[test]
+fn undoing_dot_restores_the_selections_its_recipe_built() {
+    let mut ed = editor_from("-[f]>oo\nbar\n");
+    ed.feed_keys([key('x'), key('c'), key('h'), key('i'), key_esc()]);
+    let before_dot = state(&ed);
+    let mut live = editor_from(&before_dot);
+    live.feed_key(key('x'));
+    let recipe_built = state(&live);
+    assert_ne!(before_dot, recipe_built);
+
+    ed.feed_keys([key('.'), key('u')]);
+    assert_eq!(state(&ed), recipe_built);
+}
+
 /// Pressing `.` before any edit has been recorded should be a no-op.
 #[test]
 fn dot_noop_without_prior_action() {

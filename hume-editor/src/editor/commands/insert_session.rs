@@ -265,9 +265,7 @@ pub(super) fn begin_insert_session_preserving_register(
     let (pid, bid) = (fp.pid(), fp.bid(view));
     // Already open here means this entry runs inside a live Insert session
     // (a binding re-entering Insert), whose group and layer it joins.
-    // Otherwise open one or, under `replay_dot`, take over its `Replay`-kind
-    // placeholder (`edit_session::open_insert`), so the replayed session
-    // folds into the same undo revision as the rest of the replay.
+    // Otherwise open one (`edit_session::open_insert`).
     let joined = state
         .input
         .insert_entry()
@@ -276,7 +274,7 @@ pub(super) fn begin_insert_session_preserving_register(
         super::apply_pane_motion(state, view, fp.pane(), place);
         return Ok(entry);
     }
-    edit_session::check_can_open(state.open_session(), pid, bid)?;
+    edit_session::check_can_open(state.open_session())?;
     let entered_with = super::pane_selections(state, view, fp.pane()).clone();
     super::apply_pane_motion(state, view, fp.pane(), place);
     // Keep the change whose code opened this session alive for the whole
@@ -288,7 +286,7 @@ pub(super) fn begin_insert_session_preserving_register(
         &state.buffers,
         entered_with,
         state.input.insert_session(),
-        &mut state.active_session,
+        &state.paste_session,
         pid,
         bid,
         recording,

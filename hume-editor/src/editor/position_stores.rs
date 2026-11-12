@@ -15,7 +15,7 @@ use hume_rope::cluster::ClusterRange;
 use slotmap::SecondaryMap;
 
 use super::buffer::store::BufferStore;
-use super::edit_session::{self, EditSession, InsertSession, OpenSession};
+use super::edit_session::{self, InsertSession, OpenSession, PasteSession};
 use super::input_stack::{InputStack, OtherLayers};
 use super::lsp::diagnostics::DiagnosticsStore;
 use super::lsp::document::LspDocuments;
@@ -64,8 +64,8 @@ impl BufferPositions {
 
 pub(crate) struct PositionStores<'a> {
     pub(in crate::editor) panes: &'a mut PaneEntries,
-    /// The open Paste session or dot-repeat placeholder.
-    pub(in crate::editor) session: &'a mut Option<EditSession>,
+    /// The open Paste session.
+    pub(in crate::editor) session: &'a mut Option<PasteSession>,
     /// The open Insert session, whose records are carried with the rest, and
     /// which grouped edits compose into.
     insert: Option<&'a mut InsertSession>,
@@ -83,7 +83,7 @@ impl<'a> PositionStores<'a> {
     /// teardown is not.
     pub(in crate::editor) fn new(
         panes: &'a mut PaneView,
-        session: &'a mut Option<EditSession>,
+        session: &'a mut Option<PasteSession>,
         closing: Option<&'a mut InsertSession>,
         input: &'a mut InputStack,
         buffers: &'a mut BufferPositions,
@@ -247,7 +247,7 @@ impl<'a> PositionStores<'a> {
 impl super::EditorState {
     /// The open session, of any kind.
     pub(in crate::editor) fn open_session(&self) -> Option<OpenSession<'_>> {
-        edit_session::open_session(self.input.insert_session(), &self.active_session)
+        edit_session::open_session(self.input.insert_session(), &self.paste_session)
     }
 
     /// The buffers, and every position stored against their text, borrowed
@@ -273,7 +273,7 @@ impl super::EditorState {
             &mut self.buffers,
             PositionStores::new(
                 &mut self.panes,
-                &mut self.active_session,
+                &mut self.paste_session,
                 closing,
                 &mut self.input,
                 &mut self.buffer_positions,
@@ -289,7 +289,7 @@ impl super::EditorState {
 #[derive(Default)]
 pub(crate) struct DetachedStores {
     panes: PaneView,
-    session: Option<EditSession>,
+    session: Option<PasteSession>,
     input: InputStack,
     buffers: BufferPositions,
     decorations: DecorationStores,

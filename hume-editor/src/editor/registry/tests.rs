@@ -346,7 +346,6 @@ fn runtime_register_and_lookup() {
         extendable: false,
         clears_extend: false,
         selection: None,
-        manages_own_session: false,
         key_only: false,
     });
     reg.register(cmd).expect("a lowercase editor command name");
@@ -564,7 +563,6 @@ fn steel_backed_names_filters_by_variant() {
         extendable: false,
         clears_extend: false,
         selection: None,
-        manages_own_session: false,
         key_only: false,
     }))
     .expect("a lowercase editor command name");

@@ -1135,10 +1135,7 @@ fn parity_steel_branch_cluster_vs_native() {
     seed_ring(&mut ed2, &["X"]);
     ed2.feed_key(key('p')); // smart-paste-after → resolves ring head, opens paste session
     assert!(
-        ed2.state.active_session.as_ref().is_some_and(|s| matches!(
-            s.kind(),
-            crate::editor::edit_session::EditSessionKind::Paste { .. }
-        )),
+        ed2.state.paste_session.is_some(),
         "pre-condition: paste-after must have opened a paste session"
     );
 
@@ -1582,21 +1579,8 @@ fn steel_repeatable_insert_dot_repeat_single_undo() {
 }
 
 /// A Steel `#:repeatable` command that calls `(call! "paste-after" bid)`,
-/// replayed via `.`, must actually paste, not panic or silently no-op.
-///
-/// `replay_dot` pre-opens an Insert-kind session before every non-
-/// `manages_own_session` command's body runs (every Steel-backed command,
-/// since that flag has no Steel spelling; see `CmdMeta::manages_own_
-/// session`'s doc). `paste-after` itself is native and declares
-/// `manages_own_session`, but a Steel *wrapper* around it inherits none of
-/// that: its own outer meta is always `manages_own_session: false`, so the
-/// pre-open still runs, and `do_paste` must retarget that still-empty
-/// session to `Paste` instead of colliding with it.
-///
-/// `do_paste` goes through `edit_session::open_or_retarget` for this reason.
-/// Opening a second session here would panic under debug assertions, and in
-/// release it would overwrite the pre-opened session and corrupt the undo
-/// group underneath the paste.
+/// replayed via `.`, pastes again: the nested native paste opens its own
+/// session, as it did live.
 #[test]
 fn steel_repeatable_paste_dot_repeat_replays_command() {
     let mut ed = editor_from("-[a]>bc\n");
@@ -1674,6 +1658,24 @@ fn steel_repeatable_paste_dot_repeat_pastes_its_pieces() {
     seed_ring(&mut ed, &["Q"]);
     ed.feed_key(key('.'));
     assert_eq!(state(&ed), "aa-[a]>bc\n");
+}
+
+/// `.` of a repeatable Steel wrapper around `paste-after` pastes after the
+/// selection its replayed recipe built, as the live keys did.
+#[test]
+fn steel_repeatable_paste_dot_repeat_pastes_at_its_recipe() {
+    let mut ed = editor_from("-[a]>b\ncd\nef\n");
+    let f2 = setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-paste" "paste after the cursor"
+             (lambda () (call! "paste-after" (focused-pane)))
+             #:repeatable #t)"#,
+        "steel-paste",
+    );
+    ed.feed_keys([key('y'), key('x'), f2]);
+    assert_eq!(state(&ed), "-[a]>cd\nef\n");
+    ed.feed_key(key('.'));
+    assert_eq!(state(&ed), "-[a]>ef\n");
 }
 
 /// A register typed before `.` replaces the prefix of the first paste in

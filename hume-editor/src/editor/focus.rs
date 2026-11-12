@@ -54,10 +54,10 @@ impl Focus {
 /// their teardown.
 pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &EngineView) {
     super::commands::end_insert_session(state, view);
-    super::edit_session::commit_open_session(
+    super::edit_session::commit_paste_group(
         &mut state.buffers,
         &state.panes.entries,
-        &mut state.active_session,
+        &mut state.paste_session,
     );
 }
 

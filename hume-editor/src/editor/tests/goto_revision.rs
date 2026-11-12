@@ -24,9 +24,9 @@ fn history_walk_commits_own_paste_session_first() {
     let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
     assert!(
         ed.state
-            .active_session
+            .paste_session
             .as_ref()
-            .is_some_and(|s| s.is_paste_at(pane, buffer)),
+            .is_some_and(|s| s.owned_by(pane, buffer)),
         "setup: `p` leaves a paste session open"
     );
     assert_eq!(ed.doc().text().to_string(), "hhello\n");
@@ -320,9 +320,9 @@ fn goto_revision_errors_when_the_paste_commit_evicts_the_target() {
     let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
     assert!(
         ed.state
-            .active_session
+            .paste_session
             .as_ref()
-            .is_some_and(|s| s.is_paste_at(pane, buffer)),
+            .is_some_and(|s| s.owned_by(pane, buffer)),
         "setup: `p` leaves a paste session open"
     );
     let before = ed.doc().text().to_string();
@@ -332,43 +332,6 @@ fn goto_revision_errors_when_the_paste_commit_evicts_the_target() {
     assert!(
         walk.is_err(),
         "the paste commit evicts branch a, so the jump has no target: {walk:?}"
-    );
-    assert_eq!(ed.doc().text().to_string(), before);
-}
-
-#[test]
-fn history_walk_refuses_own_replay_placeholder() {
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.feed_key(key('d'));
-    let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
-    let sels = ed
-        .state
-        .panes
-        .entries
-        .seeded(pane, buffer)
-        .selections()
-        .clone();
-    crate::editor::edit_session::open_or_retarget(
-        None,
-        &mut ed.state.active_session,
-        pane,
-        buffer,
-        crate::editor::edit_session::EditSessionKind::Replay,
-        || {
-            ed.state
-                .buffers
-                .get(buffer)
-                .begin_edit_group(sels.clone(), sels)
-        },
-    )
-    .expect("no session is open");
-    let before = ed.doc().text().to_string();
-
-    let walk = undo_through_funnel(&mut ed);
-
-    assert!(
-        walk.is_err(),
-        "a walk under a Replay placeholder must be refused"
     );
     assert_eq!(ed.doc().text().to_string(), before);
 }

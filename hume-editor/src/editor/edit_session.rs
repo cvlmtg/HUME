@@ -1,8 +1,8 @@
-//! The one Insert, Paste, or dot-repeat-replay session live in the editor,
-//! if any: an [`InsertSession`], or an [`EditSession`] in
-//! [`EditorState::active_session`](crate::editor::EditorState::active_session)
-//! for the other two kinds. At most one is open at a time ([`open_session`]),
-//! which every open checks ([`check_can_open`]).
+//! The one Insert or Paste session live in the editor, if any: an
+//! [`InsertSession`], or a [`PasteSession`] in
+//! [`EditorState::paste_session`](crate::editor::EditorState::paste_session).
+//! At most one is open at a time ([`open_session`]), which every open checks
+//! ([`check_can_open`]).
 //!
 //! Every session records its own owner `(pane, buffer)`, so
 //! `focus::end_focus_sessions` (run by every focus change and buffer switch)
@@ -26,24 +26,26 @@ use crate::editor::pane_state::PaneEntries;
 use crate::editor::replay::DotCapture;
 use crate::editor::replay::{AnswerPlace, SourceTicket};
 
-/// The editor's open Paste session or dot-repeat placeholder, if any.
-///
-/// Fields are private: [`open_or_retarget`] is the only way to create one or
-/// change its `kind`, and [`open_insert`] the only way to take one over,
-/// which is what makes the `Replay` takeover rule (see
-/// [`EditSessionKind::Replay`]) a compile-time guarantee rather than a
-/// convention every call site has to honor on its own.
-pub(in crate::editor) struct EditSession {
+/// An open `p`/`P` + `[`/`]` ring-cycle session. Fields are private:
+/// [`open_paste`] is the only way to create one.
+pub(in crate::editor) struct PasteSession {
     /// The pane that opened this session, always the focused pane, since
     /// paste sessions only ever open there.
     pane: PaneId,
     /// The buffer this session is editing.
     buffer: BufferId,
-    kind: EditSessionKind,
+    /// The direction the session was opened with (`true` = `P`/paste-before),
+    /// read by `[`/`]` so cycling re-pastes in the same direction as the
+    /// opening `p`/`P`.
+    before: bool,
+    /// Where the opening paste recorded what it pasted for `.`, which `[`/`]`
+    /// replace with the entry they cycle to; `None` when no change recorded
+    /// it.
+    answer: Option<AnswerPlace>,
     group: EditGroup,
 }
 
-impl EditSession {
+impl PasteSession {
     pub(in crate::editor) fn pane(&self) -> PaneId {
         self.pane
     }
@@ -52,8 +54,12 @@ impl EditSession {
         self.buffer
     }
 
-    pub(in crate::editor) fn kind(&self) -> &EditSessionKind {
-        &self.kind
+    pub(in crate::editor) fn before(&self) -> bool {
+        self.before
+    }
+
+    pub(in crate::editor) fn answer(&self) -> Option<&AnswerPlace> {
+        self.answer.as_ref()
     }
 
     pub(in crate::editor) fn group(&self) -> &EditGroup {
@@ -65,58 +71,44 @@ impl EditSession {
     }
 
     /// Consumes the session, handing its [`EditGroup`] to the commit
-    /// (`commit_open_session`).
+    /// (`commit_paste_group`).
     pub(in crate::editor) fn into_group(self) -> EditGroup {
         self.group
     }
 
-    /// `true` if this is a Paste-kind session on `(pane, buffer)`.
-    pub(in crate::editor) fn is_paste_at(&self, pane: PaneId, buffer: BufferId) -> bool {
-        self.owned_by(pane, buffer) && matches!(self.kind, EditSessionKind::Paste { .. })
-    }
-
-    /// `true` if this session belongs to `(pane, buffer)`, regardless of
-    /// kind.
+    /// `true` if this session belongs to `(pane, buffer)`.
     pub(in crate::editor) fn owned_by(&self, pane: PaneId, buffer: BufferId) -> bool {
         self.pane == pane && self.buffer == buffer
     }
-
-    /// `true` if this is `Editor::replay_dot`'s own still-unclaimed
-    /// placeholder on `(pane, buffer)`, the one session an open may take
-    /// over. See [`EditSessionKind::Replay`]'s own doc for why a real, empty
-    /// `Paste` session must not also satisfy this.
-    pub(in crate::editor) fn is_replay_at(&self, pane: PaneId, buffer: BufferId) -> bool {
-        self.owned_by(pane, buffer) && matches!(self.kind, EditSessionKind::Replay)
-    }
 }
 
-/// The one session open in the editor, of either kind: an Insert session,
-/// held apart from the Paste and Replay ones. At most one is open at a time.
+/// The one session open in the editor, of either kind. At most one is open
+/// at a time.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum OpenSession<'a> {
     Insert(&'a InsertSession),
-    Edit(&'a EditSession),
+    Paste(&'a PasteSession),
 }
 
 impl<'a> OpenSession<'a> {
     pub(in crate::editor) fn pane(self) -> PaneId {
         match self {
             OpenSession::Insert(s) => s.pane,
-            OpenSession::Edit(s) => s.pane,
+            OpenSession::Paste(s) => s.pane,
         }
     }
 
     pub(in crate::editor) fn buffer(self) -> BufferId {
         match self {
             OpenSession::Insert(s) => s.buffer,
-            OpenSession::Edit(s) => s.buffer,
+            OpenSession::Paste(s) => s.buffer,
         }
     }
 
     fn group(self) -> &'a EditGroup {
         match self {
             OpenSession::Insert(s) => &s.group,
-            OpenSession::Edit(s) => &s.group,
+            OpenSession::Paste(s) => &s.group,
         }
     }
 
@@ -131,45 +123,31 @@ impl<'a> OpenSession<'a> {
     pub(in crate::editor) fn unrecorded_inverse(self) -> Option<ChangeSet> {
         self.group().inverse()
     }
-
-    /// `true` if this session would block a fresh open at `(pane, buffer)`:
-    /// anything except the still-unclaimed replay placeholder sitting there
-    /// is a real conflict.
-    fn blocks_open(self, pane: PaneId, buffer: BufferId) -> bool {
-        match self {
-            OpenSession::Insert(_) => true,
-            OpenSession::Edit(s) => !s.is_replay_at(pane, buffer),
-        }
-    }
 }
 
-/// The open session, from the Insert session and the Paste/Replay slot
-/// that hold them.
+/// The open session, from the Insert session and the Paste slot that hold
+/// them.
 pub(in crate::editor) fn open_session<'a>(
     insert: Option<&'a InsertSession>,
-    other: &'a Option<EditSession>,
+    paste: &'a Option<PasteSession>,
 ) -> Option<OpenSession<'a>> {
     debug_assert!(
-        insert.is_none() || other.is_none(),
-        "an Insert session and another session are open at once"
+        insert.is_none() || paste.is_none(),
+        "an Insert session and a Paste session are open at once"
     );
     insert
         .map(OpenSession::Insert)
-        .or(other.as_ref().map(OpenSession::Edit))
+        .or(paste.as_ref().map(OpenSession::Paste))
 }
 
-/// `Err` if `open` would refuse a fresh [`open_insert`]/[`open_or_retarget`]
-/// call at `(pane, buffer)`: the exact rule both apply, exposed so a caller
+/// `Err` if `open` would refuse a fresh [`open_insert`]/[`open_paste`] call:
+/// any open session does, even one that is still empty. Exposed so a caller
 /// that needs to know the outcome *before* mutating anything else
 /// (`commands::paste`'s `do_normal_paste`/`do_smart_paste`, which must not
 /// take the live selection only to discover paste would have refused) can
 /// check first.
-pub(in crate::editor) fn check_can_open(
-    open: Option<OpenSession<'_>>,
-    pane: PaneId,
-    buffer: BufferId,
-) -> Result<(), CommandError> {
-    if open.is_some_and(|s| s.blocks_open(pane, buffer)) {
+pub(in crate::editor) fn check_can_open(open: Option<OpenSession<'_>>) -> Result<(), CommandError> {
+    if open.is_some() {
         return Err(CommandError::transient(
             "buffer has an open insert/paste session already",
         ));
@@ -183,30 +161,24 @@ pub(in crate::editor) fn check_can_open(
 /// holds `recording`, its source on the change whose code opens it, if any,
 /// until it ends.
 ///
-/// A fresh session snapshots `entered_with`, the selections Insert mode was
+/// The session snapshots `entered_with`, the selections Insert mode was
 /// entered with before they were placed where typing starts, as its
 /// `undo_sels`: what undo restores, and the revision's pre-edit selections.
-/// A [`EditSessionKind::Replay`] placeholder already open
-/// here (`Editor::replay_dot`'s own pre-open, about to be superseded by
-/// whatever the replayed body actually needs) is taken over with its group
-/// instead; see [`open_or_retarget`] for why that costs nothing and when an
-/// open refuses. The only way to create an [`InsertSession`].
+/// `Err` when a session is open ([`check_can_open`]). The only way to create
+/// an [`InsertSession`].
 pub(in crate::editor) fn open_insert(
     buffers: &BufferStore,
     entered_with: SelectionSet,
     insert: Option<&InsertSession>,
-    other: &mut Option<EditSession>,
+    paste: &Option<PasteSession>,
     pane: PaneId,
     buffer: BufferId,
     recording: Option<SourceTicket>,
 ) -> Result<InsertSession, CommandError> {
-    check_can_open(open_session(insert, other), pane, buffer)?;
-    let group = match other.take() {
-        Some(placeholder) => placeholder.group,
-        None => buffers
-            .get(buffer)
-            .begin_edit_group(entered_with.clone(), entered_with),
-    };
+    check_can_open(open_session(insert, paste))?;
+    let group = buffers
+        .get(buffer)
+        .begin_edit_group(entered_with.clone(), entered_with);
     Ok(InsertSession {
         pane,
         buffer,
@@ -219,46 +191,26 @@ pub(in crate::editor) fn open_insert(
     })
 }
 
-/// Open a Paste or Replay session of `kind` on `(pane, buffer)`, or take
-/// over the [`EditSessionKind::Replay`] placeholder already open there.
-///
-/// `Ok` when: no session is open (opens fresh via `mint_group`), or the one
-/// open is on this exact `(pane, buffer)` and is still the Replay
-/// placeholder. Nothing has composed into it (nothing ever can, see that
-/// variant's own doc), so taking it over costs nothing and keeps its
-/// already-correct `snapshot`/`undo_sels`, both captured before *any*
-/// dispatch in the current action ran, which is what a fresh open right now
-/// would capture too, since nothing has touched the buffer in between. This
-/// is what lets a replayed Steel body that pre-opens the placeholder
-/// (`Editor::replay_dot`'s default) and then calls a native paste command
-/// succeed instead of colliding with it.
-///
-/// `Err` otherwise: an open Insert session, a real, already-open `Paste`
-/// session on this `(pane, buffer)` (even one that's still empty), or any
-/// session on a *different* one. All are genuine conflicts that must never
-/// be overwritten (see this module's own doc and
-/// [`EditSessionKind::Replay`]'s own); see [`check_can_open`] for the exact
-/// rule.
-pub(in crate::editor) fn open_or_retarget(
+/// Open a Paste session on `(pane, buffer)` over the group `mint_group`
+/// builds; `before` and `answer` are its [`PasteSession`] fields. `Err` when
+/// a session is open ([`check_can_open`]), and then nothing is minted.
+pub(in crate::editor) fn open_paste(
     insert: Option<&InsertSession>,
-    other: &mut Option<EditSession>,
+    paste: &mut Option<PasteSession>,
     pane: PaneId,
     buffer: BufferId,
-    kind: EditSessionKind,
+    before: bool,
+    answer: Option<AnswerPlace>,
     mint_group: impl FnOnce() -> EditGroup,
 ) -> Result<(), CommandError> {
-    check_can_open(open_session(insert, other), pane, buffer)?;
-    match other {
-        Some(existing) => existing.kind = kind,
-        None => {
-            *other = Some(EditSession {
-                pane,
-                buffer,
-                kind,
-                group: mint_group(),
-            });
-        }
-    }
+    check_can_open(open_session(insert, paste))?;
+    *paste = Some(PasteSession {
+        pane,
+        buffer,
+        before,
+        answer,
+        group: mint_group(),
+    });
     Ok(())
 }
 
@@ -295,37 +247,19 @@ pub(in crate::editor) fn check_no_conflicting_session(
     Ok(())
 }
 
-/// Commit the open Paste or Replay session as one undo step, read from the
-/// session's own `(pane, buffer)`, never from focus, so the commit lands
-/// correctly however focus moved in the meantime. No-op if nothing is
-/// open.
-pub(in crate::editor) fn commit_open_session(
+/// Commit the open Paste session as one undo step, read from the session's
+/// own `(pane, buffer)`, never from focus, so the commit lands correctly
+/// however focus moved in the meantime. No-op if none is open.
+pub(in crate::editor) fn commit_paste_group(
     buffers: &mut BufferStore,
     pane_state: &PaneEntries,
-    active_session: &mut Option<EditSession>,
+    paste: &mut Option<PasteSession>,
 ) {
-    let Some(session) = active_session.take() else {
+    let Some(session) = paste.take() else {
         return;
     };
     let (pane, buffer) = (session.pane(), session.buffer());
     commit_group(buffers, pane_state, pane, buffer, session.into_group());
-}
-
-/// Close the open Paste-kind session and record it as a single undo step.
-/// No-op if the open session (if any) isn't Paste-kind, so every caller can
-/// route through this unconditionally instead of checking first.
-pub(in crate::editor) fn commit_paste_group(
-    buffers: &mut BufferStore,
-    pane_state: &PaneEntries,
-    active_session: &mut Option<EditSession>,
-) {
-    let is_paste = active_session
-        .as_ref()
-        .is_some_and(|s| matches!(s.kind(), EditSessionKind::Paste { .. }));
-    if !is_paste {
-        return;
-    }
-    commit_open_session(buffers, pane_state, active_session);
 }
 
 /// Record the Insert session `session`, which the leaving `InsertLayer`'s
@@ -353,35 +287,6 @@ fn commit_group(
     buffers
         .get_mut(buffer)
         .commit_edit_group(group, post_sels, pane);
-}
-
-/// Which kind of session [`EditSession`] is.
-pub(in crate::editor) enum EditSessionKind {
-    /// An open `p`/`P` + `[`/`]` ring-cycle session. `before` is the
-    /// direction the session was opened with (`true` = `P`/paste-before),
-    /// meaningful only while the session is open; read by `[`/`]` so
-    /// cycling re-pastes in the same direction as the opening `p`/`P`.
-    /// `answer` is where the opening paste recorded what it pasted for `.`,
-    /// which `[`/`]` replace with the entry they cycle to; `None` when no
-    /// change recorded it.
-    Paste {
-        before: bool,
-        answer: Option<AnswerPlace>,
-    },
-    /// `Editor::replay_dot`'s own placeholder, pre-opened before the
-    /// replayed body runs, to fold a recipe replay plus the main edit into
-    /// one undo revision. Holds no data of its own: nothing ever composes
-    /// into it directly. The replayed body takes it over if it opens an
-    /// Insert session ([`open_insert`]) or a Paste one ([`open_or_retarget`]);
-    /// otherwise it stays `Replay` for `finish_replay_session` to commit
-    /// directly, as a plain edit.
-    ///
-    /// The *only* session an open may take over. A real, already-open
-    /// Insert or Paste session, even one that's still empty, refuses a
-    /// conflicting open rather than hand its group to whatever's asking:
-    /// "empty" alone cannot tell this placeholder from a real session in
-    /// the keystroke between its entry and its first typed character.
-    Replay,
 }
 
 /// The whitespace an insert session auto-inserted for each selection

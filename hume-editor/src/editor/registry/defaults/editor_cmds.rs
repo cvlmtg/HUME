@@ -125,7 +125,6 @@ impl CommandRegistry {
         )
         .repeatable()
         .clears_extend()
-        .manages_own_session()
         .reg(self);
         ecmd_focused(
             "paste-before",
@@ -134,7 +133,6 @@ impl CommandRegistry {
         )
         .repeatable()
         .clears_extend()
-        .manages_own_session()
         .reg(self);
         ecmd_focused(
             "smart-paste-after",
@@ -143,7 +141,6 @@ impl CommandRegistry {
         )
         .repeatable()
         .clears_extend()
-        .manages_own_session()
         .reg(self);
         ecmd_focused(
             "smart-paste-before",
@@ -152,7 +149,6 @@ impl CommandRegistry {
         )
         .repeatable()
         .clears_extend()
-        .manages_own_session()
         .reg(self);
         ecmd_focused(
             "paste-ring-older",

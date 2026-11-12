@@ -218,7 +218,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
 /// `push_mode_layer` truncates the outgoing mode layer before pushing:
 /// entering `Prompt` from `Insert` (a queued `(after! 0 …)` thunk firing
 /// while the user is mid-insert) must end the insert session cleanly
-/// (edit group committed, `active_session` cleared) rather than leaving it
+/// (edit group committed, `paste_session` cleared) rather than leaving it
 /// dangling underneath a `Prompt` layer with no way back to it.
 #[test]
 fn prompt_from_insert_ends_the_insert_session_cleanly() {

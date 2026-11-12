@@ -11,9 +11,7 @@ use hume_core::{BufferId, PaneHandle, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Applied, Buffer, HistoryWalkResult};
-use crate::editor::edit_session::{
-    EditSession, EditSessionKind, check_no_conflicting_session, commit_paste_group,
-};
+use crate::editor::edit_session::{check_no_conflicting_session, commit_paste_group};
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneEntries;
 use crate::editor::position_stores::PositionStores;
@@ -130,12 +128,26 @@ pub(in crate::editor) fn apply_doc_edit_on(
         apply_grouped_from(buffers, stores, pane_id, buf_id, sels, cmd);
         return Ok(());
     }
-    // Scoped to this exact (pane, buffer): `commit_paste_group` alone would
-    // commit *any* open Paste session, but `check_no_conflicting_session`
-    // above only refused a different pane's session on `buf_id`. An
-    // unrelated Paste session still open on the focused pane, for a
-    // *different* buffer, must not be ended early just because a remote
-    // `call!` is editing something else through a background pane.
+    commit_own_paste(buffers, stores, pane_id, buf_id);
+    let applied = buffers
+        .get_mut(buf_id)
+        .apply_edit(target, stores, sels, cmd);
+    finish_edit(buffers, stores.panes, target, applied);
+    Ok(())
+}
+
+/// Commit the Paste session open on this exact `(pane, buffer)`, if any.
+/// `commit_paste_group` alone would commit *any* open Paste session, but
+/// `check_no_conflicting_session` only refuses a different pane's session on
+/// `buf_id`. An unrelated Paste session still open on the focused pane, for a
+/// *different* buffer, must not be ended early just because a remote `call!`
+/// is editing something else through a background pane.
+fn commit_own_paste(
+    buffers: &mut BufferStore,
+    stores: &mut PositionStores<'_>,
+    pane_id: PaneId,
+    buf_id: BufferId,
+) {
     if stores
         .session
         .as_ref()
@@ -143,11 +155,6 @@ pub(in crate::editor) fn apply_doc_edit_on(
     {
         commit_paste_group(buffers, stores.panes, stores.session);
     }
-    let applied = buffers
-        .get_mut(buf_id)
-        .apply_edit(target, stores, sels, cmd);
-    finish_edit(buffers, stores.panes, target, applied);
-    Ok(())
 }
 
 fn edit_from_changes(cs: ChangeSet) -> impl FnOnce(EditState) -> Edited {
@@ -271,7 +278,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     let group = stores
         .session
         .as_ref()
-        .filter(|s| s.is_paste_at(pane_id, buf_id))
+        .filter(|s| s.owned_by(pane_id, buf_id))
         .expect(
             "apply_doc_edit_regrouped called without an open paste session on this (pane, buffer)",
         )
@@ -300,12 +307,6 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     Ok(())
 }
 
-/// The refusal of a history walk under an open Insert session or Replay
-/// placeholder, whose group is mid-composition.
-fn session_refuses_walk() -> CommandError {
-    CommandError::transient("cannot move through undo history while an edit session is open")
-}
-
 /// An admitted read or walk of a buffer's undo history through a pane,
 /// which only [`admit_history_walk`] returns. Reading the selections the
 /// history saved takes one.
@@ -330,13 +331,13 @@ impl HistoryAdmitted {
 ///
 /// Session handling lives here, as in [`apply_doc_edit`]: a Paste session open
 /// on this (pane, buffer) is committed first, so the walk sees its revision
-/// and its snapshot cannot go stale. An Insert session or a Replay placeholder
-/// open there is an `Err`: its group is mid-composition, and a walk underneath
-/// it would desync the group from the text.
+/// and its snapshot cannot go stale. An Insert session open there is an
+/// `Err`: its group is mid-composition, and a walk underneath it would desync
+/// the group from the text.
 ///
 /// `Err` when the text may not change ([`text_gate`]), when
 /// [`check_no_conflicting_session`] finds another pane's session on this
-/// buffer, or when this pane has an Insert or Replay session open on it.
+/// buffer, or when this pane has an Insert session open on it.
 pub(in crate::editor) fn admit_history_walk(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
@@ -345,20 +346,11 @@ pub(in crate::editor) fn admit_history_walk(
 ) -> Result<HistoryAdmitted, CommandError> {
     admit(buffers, stores, PaneHandle::with_pane(buf_id, pane_id))?;
     if stores.insert_at_mut(pane_id, buf_id).is_some() {
-        return Err(session_refuses_walk());
+        return Err(CommandError::transient(
+            "cannot move through undo history while an edit session is open",
+        ));
     }
-    match stores
-        .session
-        .as_ref()
-        .filter(|s| s.owned_by(pane_id, buf_id))
-        .map(EditSession::kind)
-    {
-        None => {}
-        Some(EditSessionKind::Paste { .. }) => {
-            commit_paste_group(buffers, stores.panes, stores.session);
-        }
-        Some(EditSessionKind::Replay) => return Err(session_refuses_walk()),
-    }
+    commit_own_paste(buffers, stores, pane_id, buf_id);
     Ok(HistoryAdmitted {
         pane: pane_id,
         buffer: buf_id,

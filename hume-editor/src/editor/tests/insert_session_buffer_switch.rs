@@ -93,7 +93,7 @@ fn goto_location_to_another_buffer_ends_insert_session_on_focused_pane() {
 
 /// `goto-location!` landing back in the buffer already focused must leave a
 /// still-open Insert session alone. The buffer never actually changes, so
-/// the open `active_session` is still valid.
+/// the open `paste_session` is still valid.
 #[test]
 fn goto_location_within_the_focused_buffer_leaves_insert_session_open() {
     let mut ed = editor_from("-[a]>bcdef\n");
@@ -245,7 +245,7 @@ fn reload_config_ends_insert_session_on_focused_pane() {
 
 /// `reload_buffer_in_place` (the `:e`/`:e!` no-arg reload path) must end an
 /// open Insert session the same way every other buffer-invalidating path
-/// does, not drop its group directly. Otherwise `state.active_session` and
+/// does, not drop its group directly. Otherwise `state.paste_session` and
 /// the `Insert` mode layer survive pointing at a session whose group just
 /// vanished, and the next Esc panics in `Buffer::commit_edit_group`'s
 /// `.expect()`.
@@ -290,10 +290,10 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
 
     ed.feed_key(key('p')); // bare paste-after: ring head, opens a paste session
     assert!(
-        ed.state.active_session.as_ref().is_some_and(|s| matches!(
-            s.kind(),
-            crate::editor::edit_session::EditSessionKind::Paste { .. }
-        ) && s.buffer() == old_bid),
+        ed.state
+            .paste_session
+            .as_ref()
+            .is_some_and(|s| s.buffer() == old_bid),
         "sanity: 'p' must leave an open, uncommitted paste session"
     );
 

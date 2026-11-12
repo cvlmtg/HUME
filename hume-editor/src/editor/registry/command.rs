@@ -177,17 +177,6 @@ pub(in crate::editor) struct CmdMeta {
     /// `true` only for `Motion`'s forward object-jump family (`}`,
     /// `goto-next-<kind>`).
     pub aligns_view: bool,
-    /// Whether this command opens `EditorState::active_session` itself:
-    /// `true` only for the paste commands. `Editor::replay_dot` does not
-    /// pre-open a session for such a command. Every other command relies on
-    /// that pre-opened session to fold the recipe replay and the edit into
-    /// one undo revision.
-    ///
-    /// A Steel command never sets this, yet its body can dispatch native
-    /// paste, which retargets a pre-opened session to `Paste` in place.
-    /// `Editor::finish_replay_session` reads the resulting session's kind to
-    /// decide whether to leave it open for a following `[`/`]`.
-    pub manages_own_session: bool,
     /// Whether only a key may run this command, so a script's `call!`
     /// refuses it. `true` only for `repeat-last-action`: replaying a change
     /// needs the Steel engine, which a `call!` from Steel runs inside, so
@@ -415,7 +404,6 @@ pub(in crate::editor) enum NativeCommand {
         clears_extend: bool,
         /// `None` unless the registration sets one.
         selection: Option<SelectionRole>,
-        manages_own_session: bool,
         key_only: bool,
     },
 }
@@ -459,7 +447,6 @@ impl NativeCommand {
                 repeatable: false,
                 clears_extend: false,
                 aligns_view: *aligns_view,
-                manages_own_session: false,
                 key_only: false,
             },
             Self::Selection {
@@ -478,7 +465,6 @@ impl NativeCommand {
                 repeatable: false,
                 clears_extend: false,
                 aligns_view: false,
-                manages_own_session: false,
                 key_only: false,
             },
             Self::Edit { repeatable, .. } => plain_meta(*repeatable),
@@ -489,7 +475,6 @@ impl NativeCommand {
                 visual_move,
                 clears_extend,
                 selection,
-                manages_own_session,
                 key_only,
                 ..
             } => CmdMeta {
@@ -501,7 +486,6 @@ impl NativeCommand {
                 repeatable: *repeatable,
                 clears_extend: *clears_extend,
                 aligns_view: false,
-                manages_own_session: *manages_own_session,
                 key_only: *key_only,
             },
         }
@@ -559,7 +543,6 @@ fn plain_meta(repeatable: bool) -> CmdMeta {
         repeatable,
         clears_extend: false,
         aligns_view: false,
-        manages_own_session: false,
         key_only: false,
     }
 }
