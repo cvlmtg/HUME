@@ -1,6 +1,7 @@
 //! Closed folds: what they hide, how they follow edits, and the rule that
 //! no selection ends out of sight.
 
+use super::conceal_bridge::{decorated_editor, hiding, revealing};
 use super::*;
 use crate::editor::settings::{SettingText, SignColumnConfig};
 use hume_engine::folds::Fold;
@@ -181,6 +182,55 @@ fn an_undo_landing_inside_a_fold_opens_it() {
     keys(&mut ed, "u");
     assert_eq!(state(&ed), "fn f() {\n    abc\n    -[d]>\n}\nz\ny\n");
     assert_eq!(closed(&ed), []);
+}
+
+// Conceals on a closed fold's lines
+
+/// `j` then `k` from [`FN_ON_F`] laid out as `wrap`, `fn ` hidden on the
+/// fold's shown first line.
+fn j_and_k_across_a_closed_fold_with_conceals(wrap: hume_engine::pane::WrapMode) {
+    let (mut ed, _file) = decorated_editor(FN_ON_F);
+    pin_wrap(&mut ed, wrap);
+    super::conceal_bridge::set(&mut ed, "md", vec![hiding(0, 3)]);
+    close(&mut ed, &[fn_fold()]);
+
+    keys(&mut ed, "j");
+    assert_eq!(state(&ed), "fn f() {\n    abc\n    d\n-[}]>\nz\ny\n");
+    assert_eq!(closed(&ed), [(0, 3)]);
+
+    keys(&mut ed, "k");
+    assert_eq!(state(&ed), FN_ON_F);
+    assert_eq!(closed(&ed), [(0, 3)]);
+}
+
+#[test]
+fn j_and_k_across_a_closed_fold_whose_shown_line_has_conceals_keep_it_closed() {
+    j_and_k_across_a_closed_fold_with_conceals(hume_engine::pane::WrapMode::None);
+}
+
+#[test]
+fn j_and_k_across_a_closed_fold_whose_shown_line_has_conceals_keep_it_closed_under_soft_wrap() {
+    j_and_k_across_a_closed_fold_with_conceals(hume_engine::pane::WrapMode::Soft { width: 0 });
+}
+
+#[test]
+fn selection_covering_a_closed_fold_whose_first_line_reveals_a_block_keeps_it_closed() {
+    let input = "fn f() {\n-[    abc\n    d\n]>}\nz\ny\n";
+    let (mut ed, _file) = decorated_editor(input);
+    pin_no_wrap(&mut ed);
+    // `fn ` hidden, revealed with the whole function: chars 0 to `z`'s 25.
+    super::conceal_bridge::set(&mut ed, "md", vec![revealing(hiding(0, 3), 0, 25)]);
+    close(&mut ed, &[fn_fold()]);
+    let pid = ed.view.focused_pane();
+
+    let buf = ed.render_to_buf(hume_grid::Rect::new(0, 0, 80, 25));
+
+    assert_eq!(
+        super::scope_headers::pane_rows(&ed, &buf, pid, 2),
+        ["fn f() {", "}"]
+    );
+    assert_eq!(state(&ed), input);
+    assert_eq!(closed(&ed), [(0, 3)]);
 }
 
 // Following edits

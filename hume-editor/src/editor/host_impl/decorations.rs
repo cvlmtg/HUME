@@ -1,18 +1,24 @@
 //! `EditorHostImpl`'s inlay hints, signs, virtual lines, extra highlights,
-//! EOL text, statusline text, and the diagnostic pull/count reads.
+//! conceals, EOL text, statusline text, and the diagnostic pull/count reads.
 //!
 //! `validate_offset` is `pub(super)` because `host_impl/tests.rs`, a
 //! sibling of this module, calls it.
 
 use hume_core::{BufferId, DiagSeverity, Side};
-use hume_rope::line::ContentLine;
+use hume_decorations::{ConcealEntry, ConcealEntrySpan};
+use hume_engine::providers::{ConcealText, conceal_ranges_overlap};
+use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
+use crate::editor::buffer::offsets::{
+    checked_char_offset, checked_char_range, widened_to_clusters,
+};
 use crate::statusline::StatusElement;
 
 use super::EditorHostImpl;
 use hume_scripting::host::{DecorationHost, DiagnosticCounts, MarkedLines, SetError, each_entry};
+use hume_scripting::{ConcealSpec, ConcealSpecSpan, ConcealSpecText};
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {
     fn set_inlay_hints(
@@ -136,6 +142,20 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    fn set_conceals(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        entries: Vec<ConcealSpec>,
+    ) -> Result<(), SetError> {
+        let entries = self.conceal_entries(bid, entries)?;
+        self.state
+            .config
+            .decorations
+            .set_conceals(source, bid, entries);
+        Ok(())
+    }
+
     fn set_eol_text(
         &mut self,
         source: String,
@@ -238,6 +258,87 @@ impl EditorHostImpl<'_> {
             .decorations
             .add_extra_highlights(source, bid, entries);
         Ok(())
+    }
+
+    /// `specs` as conceals of `bid`'s text, in position order. Each entry's
+    /// range is checked and widened to whole clusters, must stay on one line
+    /// without covering its `\n` and must not overlap another
+    /// ([`conceal_ranges_overlap`]); an `Inserted` may sit before a line's
+    /// `\n` but not at the text's end.
+    fn conceal_entries(
+        &mut self,
+        bid: BufferId,
+        specs: Vec<ConcealSpec>,
+    ) -> Result<Vec<ConcealEntry>, SetError> {
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let mut placed = each_entry(specs.into_iter().enumerate().collect(), |(index, spec)| {
+            let mut shown = |t: ConcealSpecText| ConcealText {
+                text: t.text.into(),
+                scope: t.scope.map(|name| self.view.registry.intern(&name)),
+            };
+            let fail = |e: String| format!("range {e}");
+            let (chars, span) = match spec.span {
+                ConcealSpecSpan::Hidden {
+                    start,
+                    end,
+                    text: replacement,
+                } => {
+                    let range = checked_char_range(text, start, end).map_err(fail)?;
+                    if range.is_empty() {
+                        return Err(fail(format!("{start}..{end} is empty")));
+                    }
+                    let chars = widened_to_clusters(text, range);
+                    let span = ConcealEntrySpan::Hidden {
+                        start: chars.start,
+                        end: chars.end,
+                        text: replacement.map(&mut shown),
+                    };
+                    (chars, span)
+                }
+                ConcealSpecSpan::Inserted { at, text: drawn } => {
+                    let at = checked_char_offset(text, at).map_err(fail)?;
+                    if at == text.end() {
+                        return Err(format!("offset {} is past the last line break", at.index()));
+                    }
+                    let at = widened_to_clusters(text, ExclusiveRange::new(at, at)).start;
+                    (
+                        ExclusiveRange::new(at, at),
+                        ConcealEntrySpan::Inserted {
+                            at,
+                            text: shown(drawn),
+                        },
+                    )
+                }
+            };
+            let reveal = spec.reveal.map(|marked| {
+                let lines = marked.lines();
+                ExclusiveRange::new(
+                    text.line_to_char(RopeyLine::from(lines.start)),
+                    text.line_to_char(RopeyLine::from(lines.end)),
+                )
+            });
+            let entry = ConcealEntry { span, reveal };
+            if !entry.within_line(text) {
+                return Err(fail(format!(
+                    "{}..{} must stay within one line and not cover its newline",
+                    chars.start.index(),
+                    chars.end.index()
+                )));
+            }
+            Ok((index, chars, entry))
+        })?;
+        placed.sort_by_key(|(_, chars, _)| (chars.start, chars.end));
+        // Sorted by start, an entry that overlaps any earlier one overlaps
+        // its predecessor, so adjacent pairs are enough.
+        for (earlier, later) in placed.iter().zip(placed.iter().skip(1)) {
+            if conceal_ranges_overlap(earlier.1, later.1) {
+                return Err(SetError::Entry {
+                    index: later.0,
+                    message: format!("overlaps entry {}", earlier.0),
+                });
+            }
+        }
+        Ok(placed.into_iter().map(|(_, _, entry)| entry).collect())
     }
 
     /// Each `(start, end, scope)` char range of `bid`'s text as an extra

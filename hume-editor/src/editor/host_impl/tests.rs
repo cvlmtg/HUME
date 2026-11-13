@@ -121,3 +121,175 @@ fn validate_offset_rejects_after_on_the_trailing_newline() {
     let err = validate_offset(&text, 3, Side::After).unwrap_err();
     assert!(err.contains("trailing"), "got: {err}");
 }
+
+// ── `set_conceals` ───────────────────────────────────────────────────────────
+
+mod conceals {
+    use hume_decorations::{ConcealEntry, ConcealEntrySpan};
+    use hume_editing::text::BufferText;
+    use hume_scripting::host::{DecorationHost, SetError};
+    use hume_scripting::{ConcealSpec, ConcealSpecSpan, ConcealSpecText};
+
+    use crate::editor::Editor;
+    use crate::editor::tests::init_host;
+
+    const SOURCE: &str = "src";
+
+    fn editor(text: &str) -> Editor {
+        Editor::for_testing(BufferText::from(text))
+    }
+
+    fn set(ed: &mut Editor, specs: Vec<ConcealSpec>) -> Result<(), SetError> {
+        let bid = ed.focused_buffer_id();
+        let mut host = init_host!(ed);
+        host.set_conceals(SOURCE.to_owned(), bid, specs)
+    }
+
+    fn entries(ed: &Editor) -> &[ConcealEntry] {
+        ed.state
+            .config
+            .decorations
+            .conceals_for(SOURCE, ed.focused_buffer_id())
+    }
+
+    /// Each stored entry's char range; an inserted one is empty at its `at`.
+    fn stored(ed: &Editor) -> Vec<(usize, usize)> {
+        entries(ed)
+            .iter()
+            .map(|entry| match entry.span {
+                ConcealEntrySpan::Hidden { start, end, .. } => (start.index(), end.index()),
+                ConcealEntrySpan::Inserted { at, .. } => (at.index(), at.index()),
+            })
+            .collect()
+    }
+
+    fn hidden(start: usize, end: usize) -> ConcealSpec {
+        ConcealSpec {
+            span: ConcealSpecSpan::Hidden {
+                start,
+                end,
+                text: None,
+            },
+            reveal: None,
+        }
+    }
+
+    fn inserted(at: usize) -> ConcealSpec {
+        ConcealSpec {
+            span: ConcealSpecSpan::Inserted {
+                at,
+                text: ConcealSpecText {
+                    text: "┃ ".into(),
+                    scope: None,
+                },
+            },
+            reveal: None,
+        }
+    }
+
+    fn refusal(result: Result<(), SetError>, index: usize) -> String {
+        match result.unwrap_err() {
+            SetError::Entry { index: i, message } if i == index => message,
+            other => panic!("expected a refusal naming entry {index}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_conceals_rejects_a_range_crossing_a_line_break() {
+        let mut ed = editor("ab\ncd\n");
+        let message = refusal(set(&mut ed, vec![hidden(1, 4)]), 0);
+        assert!(message.contains("one line"), "got: {message}");
+        assert!(stored(&ed).is_empty());
+    }
+
+    #[test]
+    fn set_conceals_rejects_a_range_covering_the_newline() {
+        let mut ed = editor("abc\n");
+        let message = refusal(set(&mut ed, vec![hidden(1, 4)]), 0);
+        assert!(message.contains("one line"), "got: {message}");
+        assert!(stored(&ed).is_empty());
+    }
+
+    #[test]
+    fn set_conceals_rejects_an_empty_hidden_range() {
+        let mut ed = editor("abc\n");
+        let message = refusal(set(&mut ed, vec![hidden(2, 2)]), 0);
+        assert!(message.contains("empty"), "got: {message}");
+        assert!(stored(&ed).is_empty());
+    }
+
+    #[test]
+    fn set_conceals_rejects_an_empty_range_past_the_last_line_break() {
+        let mut ed = editor("abc\n");
+        let message = refusal(set(&mut ed, vec![inserted(4)]), 0);
+        assert!(
+            message.contains("past the last line break"),
+            "got: {message}"
+        );
+        assert!(stored(&ed).is_empty());
+    }
+
+    #[test]
+    fn set_conceals_rejects_overlapping_entries_naming_the_second() {
+        let mut ed = editor("abcdef\n");
+        let message = refusal(set(&mut ed, vec![hidden(0, 3), hidden(2, 4)]), 1);
+        assert!(message.contains("overlaps entry 0"), "got: {message}");
+        assert!(stored(&ed).is_empty());
+    }
+
+    #[test]
+    fn set_conceals_widens_to_clusters() {
+        // "e" + U+0301 is chars 0..2, one cluster; "x" is char 2.
+        let mut ed = editor("e\u{301}x\n");
+        set(&mut ed, vec![hidden(1, 2)]).unwrap();
+        assert_eq!(stored(&ed), [(0, 2)]);
+    }
+
+    #[test]
+    fn set_conceals_snaps_an_inserted_conceal_and_allows_the_newline() {
+        let mut ed = editor("e\u{301}x\n");
+        set(&mut ed, vec![inserted(3), inserted(1)]).unwrap();
+        assert_eq!(stored(&ed), [(0, 0), (3, 3)]);
+    }
+
+    #[test]
+    fn set_conceals_interns_the_replacement_scope() {
+        let mut ed = editor("abc\n");
+        let mut spec = hidden(0, 2);
+        spec.span = ConcealSpecSpan::Hidden {
+            start: 0,
+            end: 2,
+            text: Some(ConcealSpecText {
+                text: "H1 ".into(),
+                scope: Some("markup.heading.1".into()),
+            }),
+        };
+        set(&mut ed, vec![spec]).unwrap();
+        let expected = ed.view.registry.intern("markup.heading.1");
+        let [entry] = entries(&ed) else {
+            panic!("one entry")
+        };
+        let ConcealEntrySpan::Hidden {
+            text: Some(shown), ..
+        } = &entry.span
+        else {
+            panic!("a hidden entry with text")
+        };
+        assert_eq!(&*shown.text, "H1 ");
+        assert_eq!(shown.scope, Some(expected));
+    }
+
+    #[test]
+    fn set_conceals_replaces_wholesale_and_bumps_the_generation() {
+        let mut ed = editor("abcdef\n");
+        let bid = ed.focused_buffer_id();
+        let generation = |ed: &Editor| ed.state.config.decorations.generation(bid);
+        let start = generation(&ed);
+        set(&mut ed, vec![hidden(0, 1), hidden(2, 3)]).unwrap();
+        let first = generation(&ed);
+        assert!(first > start);
+        set(&mut ed, vec![hidden(4, 5)]).unwrap();
+        assert_eq!(stored(&ed), [(4, 5)]);
+        assert!(generation(&ed) > first);
+    }
+}

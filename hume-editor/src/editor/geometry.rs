@@ -7,6 +7,7 @@ use hume_engine::builtins::sign_column::SignColumn;
 use hume_engine::display_lines::DisplayLineInputs;
 use hume_engine::folds::HiddenLines;
 use hume_engine::layout::PaneGeometry;
+use hume_engine::line_set::LineSet;
 use hume_engine::pane::ViewGeometry;
 use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
 use hume_engine::providers::{GutterInputs, SyntaxSource};
@@ -27,7 +28,8 @@ use super::{EditorState, commands};
 /// `PaneBufferState::last_layout_key` and compares it against a fresh one
 /// each time it runs (resize, wrap-mode change, buffer switch, decoration
 /// generation, a parse landing while headers are on, a fold opening or
-/// closing, and any content edit to the buffer, since `buffer_tag` includes
+/// closing, the lines the selections touch changing in a buffer with
+/// conceals, and any content edit to the buffer, since `buffer_tag` includes
 /// `generation`). A change reveals only a pane that isn't
 /// [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked):
 /// a parked pane's own edit still reveals it, through `reveal_pending`
@@ -48,6 +50,24 @@ impl LayoutKey {
     /// The part of `self` a `DisplayLineMap` is built from.
     pub(in crate::editor) fn inputs(&self) -> DisplayLineInputs {
         self.inputs.clone()
+    }
+
+    /// [`Self::inputs`] with every line revealed: the layout of the raw
+    /// text, which vertical motion places the cursor by so a column means
+    /// the same on a concealed line as on a raw one.
+    pub(in crate::editor) fn raw_inputs(&self) -> DisplayLineInputs {
+        let DisplayLineInputs {
+            format,
+            hidden,
+            content_width,
+            revealed: _,
+        } = &self.inputs;
+        DisplayLineInputs {
+            format: *format,
+            hidden: hidden.clone(),
+            content_width: *content_width,
+            revealed: RevealedLines::All,
+        }
     }
 
     /// The pane's scroll-margin geometry, `None` for a pane with no rows.
@@ -241,17 +261,27 @@ impl EditorState {
         pid: hume_core::PaneId,
         size: hume_engine::pipeline::PaneSize,
     ) -> LayoutKey {
-        let doc = self.buffers.get(view.panes[pid].buffer_id());
+        let bid = view.panes[pid].buffer_id();
+        let doc = self.buffers.get(bid);
         let context = ContextSettings {
             enabled: doc.overrides.context_enabled(&self.settings),
             outer_level: doc.overrides.context_outer_level(&self.settings),
+        };
+        // A buffer without conceals lays out as its raw text, so the drawn
+        // and raw walks share the line store and a moving selection leaves
+        // the key alone.
+        let revealed = if self.config.decorations.has_conceals(bid) {
+            let sels = self.panes.entries.shown(&view.panes, pid).view(doc.text());
+            RevealedLines::Lines(LineSet::from_ranges(sels.iter().map(|sel| sel.lines())))
+        } else {
+            RevealedLines::All
         };
         LayoutKey {
             inputs: DisplayLineInputs {
                 format: self.format_key(&view.panes[pid]),
                 hidden: self.hidden_lines(view, pid).clone(),
                 content_width: self.pane_geometry(view, pid, size).content_width,
-                revealed: RevealedLines::default(),
+                revealed,
             },
             size,
             scroll_margin: self.settings.scroll_margin,

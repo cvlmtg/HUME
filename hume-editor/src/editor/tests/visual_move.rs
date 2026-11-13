@@ -1,9 +1,11 @@
+use super::conceal_bridge::{decorated_editor, hiding};
 use super::doubles::InlineHint;
 use super::*;
 use crate::editor::settings::WordSelectsWhitespace;
 use hume_editing::selection::StickyDisplayCol;
 use hume_platform::dirs::Dirs;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
+use hume_rope::line::ContentLine;
 use hume_rope::offset::CharOffset;
 use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
@@ -1555,4 +1557,78 @@ fn j_right_after_widening_the_sign_column_wraps_at_the_narrower_width() {
     // three sign slots plus padding (4 cells), leaving 80 - 6 = 74 columns,
     // so `j` from column 2 lands on the second display line's column 2.
     assert_eq!(ed.current_view().primary().head().offset(), co(2 + 74));
+}
+
+// ── Concealed lines ───────────────────────────────────────────────────────────
+//
+// `j`/`k` and `C` place the cursor by the raw text, so a line drawn with
+// hidden markers keeps the column the raw line has.
+
+/// An editor on `input` laid out as `wrap`, with chars `0..2` and `6..8` of
+/// line `line` (the markers of `**bold**`) hidden.
+fn bold_markers_hidden(
+    input: &str,
+    line: usize,
+    wrap: hume_engine::pane::WrapMode,
+) -> (Editor, tempfile::TempPath) {
+    let (mut ed, file) = decorated_editor(input);
+    pin_wrap(&mut ed, wrap);
+    let start = ed
+        .doc()
+        .text()
+        .lines()
+        .start(ContentLine::new(line))
+        .offset()
+        .index();
+    super::conceal_bridge::set(
+        &mut ed,
+        "md",
+        vec![hiding(start, start + 2), hiding(start + 6, start + 8)],
+    );
+    (ed, file)
+}
+
+fn j_onto_a_concealed_line(wrap: hume_engine::pane::WrapMode) {
+    let (mut ed, _file) = bold_markers_hidden("ab-[c]>def\n**bold**\n", 1, wrap);
+    ed.handle_key(key('j'));
+    assert_eq!(state(&ed), "abcdef\n**-[b]>old**\n");
+}
+
+fn j_then_k_round_trips_through(wrap: hume_engine::pane::WrapMode) {
+    let (mut ed, _file) = bold_markers_hidden("**bo-[l]>d**\nabcdef\n", 0, wrap);
+    ed.handle_key(key('j'));
+    assert_eq!(state(&ed), "**bold**\nabcd-[e]>f\n");
+    ed.handle_key(key('k'));
+    assert_eq!(state(&ed), "**bo-[l]>d**\nabcdef\n");
+}
+
+#[test]
+fn j_onto_a_concealed_line_lands_on_the_raw_column() {
+    j_onto_a_concealed_line(hume_engine::pane::WrapMode::None);
+}
+
+#[test]
+fn j_onto_a_concealed_line_lands_on_the_raw_column_under_soft_wrap() {
+    j_onto_a_concealed_line(hume_engine::pane::WrapMode::Soft { width: 0 });
+}
+
+#[test]
+fn j_then_k_round_trips() {
+    j_then_k_round_trips_through(hume_engine::pane::WrapMode::None);
+}
+
+#[test]
+fn j_then_k_round_trips_under_soft_wrap() {
+    j_then_k_round_trips_through(hume_engine::pane::WrapMode::Soft { width: 0 });
+}
+
+#[test]
+fn copy_selection_down_onto_a_concealed_line() {
+    let (mut ed, _file) = bold_markers_hidden(
+        "ab-[c]>def\n**bold**\n",
+        1,
+        hume_engine::pane::WrapMode::None,
+    );
+    keys(&mut ed, "C");
+    assert_eq!(state(&ed), "ab-[c]>def\n**-{b}>old**\n");
 }

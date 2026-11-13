@@ -581,10 +581,11 @@ pub(crate) struct Editor {
         ),
     >,
     /// `(buffer_id, decorations.generation(buffer_id))` as of each pane's
-    /// last mirror into its `PaneVirtualLines`. `prepare_frame` skips the
-    /// rebuild when neither changed; the buffer id makes a buffer switch
-    /// rebuild even when the stamps happen to match.
-    virtual_lines_synced: rustc_hash::FxHashMap<PaneId, (BufferId, u64)>,
+    /// last whole-buffer mirror (its virtual lines and conceals).
+    /// `sync_buffer_mirrors` skips the rebuild when neither changed; the
+    /// buffer id makes a buffer switch rebuild even when the stamps happen
+    /// to match.
+    buffer_mirrors_synced: rustc_hash::FxHashMap<PaneId, (BufferId, u64)>,
     /// Whether [`Editor::run`]'s event loop owns the terminal, and the
     /// handle to drive it when it does. `Off` in tests and headless
     /// `run_keys`, where dispatch skips the inline-output terminal bracket.

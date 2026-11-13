@@ -345,7 +345,7 @@ fn clear_entries_keeps_sign_source_registrations() {
 
 #[test]
 fn clear_entries_bumps_generation() {
-    // A pane's `virtual_lines_synced` cache keys on
+    // A pane's `buffer_mirrors_synced` cache keys on
     // `(BufferId, generation(BufferId))` (`decoration_providers.rs`).
     // `clear_entries` mutates the `virtual_lines` store without going
     // through `set_virtual_lines`, so if it didn't also touch `a`'s stamp, a
@@ -805,6 +805,341 @@ fn added_extra_highlights_merge_in_anchor_order_into_their_own_source() {
     assert_eq!(spans("zeta"), [(4, 6), (10, 12), (20, 22), (30, 31)]);
     assert_eq!(spans("alpha"), [(0, 2)]);
     assert_eq!(spans("new"), [(1, 3)]);
+}
+
+fn conceal_text() -> ConcealText {
+    ConcealText {
+        text: "*".into(),
+        scope: None,
+    }
+}
+
+fn hidden(start: usize, end: usize) -> ConcealEntry {
+    ConcealEntry {
+        span: ConcealEntrySpan::Hidden {
+            start: co(start),
+            end: co(end),
+            text: None,
+        },
+        reveal: None,
+    }
+}
+
+fn inserted(at: usize) -> ConcealEntry {
+    ConcealEntry {
+        span: ConcealEntrySpan::Inserted {
+            at: co(at),
+            text: conceal_text(),
+        },
+        reveal: None,
+    }
+}
+
+fn revealing(mut entry: ConcealEntry, start: usize, end: usize) -> ConcealEntry {
+    entry.reveal = Some(ExclusiveRange::new(co(start), co(end)));
+    entry
+}
+
+/// `'h'` and the range of a `Hidden`, `'i'` and the position twice of an
+/// `Inserted`, in stored order.
+fn conceal_spans(
+    store: &DecorationStores,
+    source: &str,
+    bid: BufferId,
+) -> Vec<(char, usize, usize)> {
+    store
+        .conceals_for(source, bid)
+        .iter()
+        .map(|e| match e.span {
+            ConcealEntrySpan::Hidden { start, end, .. } => ('h', start.index(), end.index()),
+            ConcealEntrySpan::Inserted { at, .. } => ('i', at.index(), at.index()),
+        })
+        .collect()
+}
+
+fn conceal_reveals(
+    store: &DecorationStores,
+    source: &str,
+    bid: BufferId,
+) -> Vec<Option<(usize, usize)>> {
+    store
+        .conceals_for(source, bid)
+        .iter()
+        .map(|e| e.reveal.map(|r| (r.start.index(), r.end.index())))
+        .collect()
+}
+
+/// A store holding `entries` under source `"md"` for a fresh buffer, with
+/// that buffer.
+fn conceal_store(entries: Vec<ConcealEntry>) -> (DecorationStores, BufferId) {
+    let mut store = DecorationStores::default();
+    let (a, _) = make_two_bids();
+    store.set_conceals("md".to_string(), a, entries);
+    (store, a)
+}
+
+/// `"**bold**\nrow\n"`: the `**` pairs are chars 0..2 and 6..8, the first
+/// `\n` is char 8.
+const BOLD: &str = "**bold**\nrow\n";
+
+#[test]
+fn conceal_before_an_edit_stays_and_one_after_it_shifts() {
+    let (mut store, a) = conceal_store(vec![hidden(0, 2), hidden(6, 8)]);
+
+    remap(&mut store, a, BOLD, |b| {
+        b.retain_to(co(3)).insert("xy");
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('h', 0, 2), ('h', 8, 10)]);
+}
+
+#[test]
+fn edit_inside_a_conceal_grows_it() {
+    let (mut store, a) = conceal_store(vec![hidden(0, 2)]);
+
+    remap(&mut store, a, BOLD, |b| {
+        b.retain_to(co(1)).insert("x");
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('h', 0, 3)]);
+}
+
+#[test]
+fn text_typed_at_a_hidden_runs_start_lands_outside_it() {
+    let (mut store, a) = conceal_store(vec![hidden(0, 2)]);
+
+    remap(&mut store, a, BOLD, |b| {
+        b.insert("z");
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('h', 1, 3)]);
+}
+
+#[test]
+fn text_typed_at_a_hidden_runs_end_lands_outside_it() {
+    let (mut store, a) = conceal_store(vec![hidden(6, 8)]);
+
+    remap(&mut store, a, BOLD, |b| {
+        b.retain_to(co(8)).insert("z");
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('h', 6, 8)]);
+}
+
+#[test]
+fn covering_delete_drops_a_hidden_conceal() {
+    let (mut store, a) = conceal_store(vec![hidden(0, 2), hidden(6, 8)]);
+
+    // Delete "d**".
+    remap(&mut store, a, BOLD, |b| {
+        b.retain_to(co(5)).delete_to(co(8));
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('h', 0, 2)]);
+}
+
+#[test]
+fn newline_typed_inside_a_conceal_drops_it() {
+    let (mut store, a) = conceal_store(vec![hidden(0, 2), hidden(6, 8)]);
+
+    // "*\n*bold**\nrow\n": the first pair now straddles a break, the second
+    // sits whole on the new second line.
+    remap(&mut store, a, BOLD, |b| {
+        b.retain_to(co(1)).insert("\n");
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('h', 7, 9)]);
+}
+
+#[test]
+fn newline_typed_inside_a_conceal_at_the_line_end_drops_it() {
+    let (mut store, a) = conceal_store(vec![hidden(6, 8)]);
+
+    // "**bold*\n*\nrow\n": the closing pair now straddles a break.
+    remap(&mut store, a, BOLD, |b| {
+        b.retain_to(co(7)).insert("\n");
+    });
+
+    assert!(conceal_spans(&store, "md", a).is_empty());
+}
+
+#[test]
+fn inserted_conceal_survives_an_edit_before_it() {
+    let (mut store, a) = conceal_store(vec![inserted(8)]);
+
+    remap(&mut store, a, BOLD, |b| {
+        b.insert("xy");
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('i', 10, 10)]);
+}
+
+#[test]
+fn inserted_conceal_survives_a_deletion_covering_its_position() {
+    let (mut store, a) = conceal_store(vec![inserted(5)]);
+
+    remap(&mut store, a, BOLD, |b| {
+        b.retain_to(co(3)).delete_to(co(7));
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('i', 3, 3)]);
+}
+
+#[test]
+fn inserted_conceal_at_an_insertion_point_stays_before_the_typed_text() {
+    let (mut store, a) = conceal_store(vec![inserted(5)]);
+
+    remap(&mut store, a, BOLD, |b| {
+        b.retain_to(co(5)).insert("z");
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('i', 5, 5)]);
+}
+
+#[test]
+fn remap_keeps_entries_sorted_by_anchor() {
+    let (mut store, a) = conceal_store(vec![hidden(5, 7), inserted(5)]);
+
+    // The hidden start moves past the typed "z", the inserted point stays
+    // before it.
+    remap(&mut store, a, BOLD, |b| {
+        b.retain_to(co(5)).insert("z");
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('i', 5, 5), ('h', 6, 8)]);
+}
+
+#[test]
+fn every_source_remaps() {
+    let mut store = DecorationStores::default();
+    let (a, _) = make_two_bids();
+    store.set_conceals("a".to_string(), a, vec![hidden(6, 8)]);
+    store.set_conceals("b".to_string(), a, vec![inserted(8), hidden(0, 2)]);
+
+    remap(&mut store, a, BOLD, |b| {
+        b.insert("z");
+    });
+
+    assert_eq!(conceal_spans(&store, "a", a), [('h', 7, 9)]);
+    assert_eq!(conceal_spans(&store, "b", a), [('h', 1, 3), ('i', 9, 9)]);
+}
+
+/// Rows `| a |\n` (chars 0..6) and `| b |\n` (6..12), then `x\n`.
+const TABLE: &str = "| a |\n| b |\nx\n";
+
+#[test]
+fn line_added_inside_a_table_grows_its_reveal_span() {
+    let (mut store, a) = conceal_store(vec![revealing(hidden(0, 1), 0, 12)]);
+
+    remap(&mut store, a, TABLE, |b| {
+        b.retain_to(co(6)).insert("| c |\n");
+    });
+
+    assert_eq!(conceal_reveals(&store, "md", a), [Some((0, 18))]);
+}
+
+#[test]
+fn reveal_span_that_collapses_becomes_none() {
+    let (mut store, a) = conceal_store(vec![revealing(inserted(2), 0, 6)]);
+
+    remap(&mut store, a, TABLE, |b| {
+        b.delete_to(co(6));
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('i', 0, 0)]);
+    assert_eq!(conceal_reveals(&store, "md", a), [None]);
+}
+
+#[test]
+fn reveal_spans_that_are_not_sorted_along_the_entries_still_remap() {
+    let (mut store, a) = conceal_store(vec![
+        revealing(hidden(0, 1), 6, 12),
+        revealing(hidden(7, 8), 0, 6),
+    ]);
+
+    remap(&mut store, a, TABLE, |b| {
+        b.retain_to(co(3)).insert("z");
+    });
+
+    assert_eq!(conceal_spans(&store, "md", a), [('h', 0, 1), ('h', 8, 9)]);
+    assert_eq!(
+        conceal_reveals(&store, "md", a),
+        [Some((7, 13)), Some((0, 7))]
+    );
+}
+
+#[test]
+fn within_line_accepts_a_span_ending_at_the_line_break_and_refuses_one_past_it() {
+    let text = BufferText::from("**bold**\nx\n");
+
+    // The first line's `\n` is char 8.
+    assert!(hidden(6, 8).within_line(&text));
+    assert!(!hidden(6, 9).within_line(&text));
+    assert!(inserted(8).within_line(&text));
+    assert!(!hidden(40, 42).within_line(&text));
+}
+
+#[test]
+fn has_any_and_clear_entries_include_conceals() {
+    let (mut store, a) = conceal_store(vec![hidden(0, 2)]);
+    assert!(store.has_any(a));
+    assert!(store.has_conceals(a));
+
+    store.clear_entries(a);
+
+    assert!(!store.has_any(a));
+    assert!(!store.has_conceals(a));
+    assert!(store.conceals_for("md", a).is_empty());
+}
+
+#[test]
+fn set_conceals_replaces_the_source_wholesale() {
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids();
+    store.set_conceals("md".to_string(), a, vec![hidden(6, 8), hidden(0, 2)]);
+    store.set_conceals("other".to_string(), a, vec![inserted(3)]);
+    store.set_conceals("md".to_string(), b, vec![inserted(1)]);
+    assert_eq!(conceal_spans(&store, "md", a), [('h', 0, 2), ('h', 6, 8)]);
+
+    store.set_conceals("md".to_string(), a, vec![inserted(4)]);
+
+    assert_eq!(conceal_spans(&store, "md", a), [('i', 4, 4)]);
+    assert_eq!(conceal_spans(&store, "other", a), [('i', 3, 3)]);
+    assert_eq!(conceal_spans(&store, "md", b), [('i', 1, 1)]);
+    let sources: Vec<&str> = store.conceals_for_buffer(a).map(|(s, _)| s).collect();
+    assert_eq!(sources, ["md", "other"]);
+}
+
+/// Header-row layouts are cached until the buffer's stamp changes, so a
+/// conceal write or move must stamp.
+#[test]
+fn set_conceals_bumps_the_generation() {
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids();
+    let (a_before, b_before) = (store.generation(a), store.generation(b));
+
+    store.set_conceals("md".to_string(), a, vec![hidden(0, 2)]);
+
+    assert_ne!(store.generation(a), a_before);
+    assert_eq!(store.generation(b), b_before);
+}
+
+#[test]
+fn remap_bumps_the_generation_of_a_buffer_holding_conceals_only() {
+    let mut store = DecorationStores::default();
+    let (a, other) = make_two_bids();
+    store.set_conceals("md".to_string(), a, vec![hidden(6, 8)]);
+    let (a_before, other_before) = (store.generation(a), store.generation(other));
+
+    remap(&mut store, a, BOLD, |b| {
+        b.insert("z");
+    });
+    remap(&mut store, other, BOLD, |b| {
+        b.insert("z");
+    });
+
+    assert_ne!(store.generation(a), a_before);
+    assert_eq!(store.generation(other), other_before);
 }
 
 /// The line-anchored remap rule stated per entry: find the line's `\n`,

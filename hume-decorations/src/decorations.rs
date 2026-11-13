@@ -1,5 +1,6 @@
 //! Steel-writable decoration stores: inlay hints, gutter signs, virtual
-//! lines, end-of-line text, extra highlights, and line backgrounds. Not
+//! lines, end-of-line text, extra highlights, line backgrounds, and
+//! conceals. Not
 //! LSP-specific (any plugin can set them): LSP is their first client, not
 //! their owner. Every
 //! kind is keyed the same way: `BufferId` first, then a per-buffer
@@ -17,7 +18,8 @@
 //! instead of an allocation per entry per frame. Every render provider reads
 //! these fresh every frame; `virtual_lines` is the exception: the
 //! whole-buffer rebuild (not viewport-filtered, since it also runs in
-//! scroll/cursor math) gates on `generation` instead (see that field's doc).
+//! scroll/cursor math) gates on `generation` instead (see that field's doc),
+//! and `conceals` follows it.
 
 use std::sync::Arc;
 
@@ -26,6 +28,8 @@ use rustc_hash::FxHashMap;
 use hume_core::{BufferId, Side};
 use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
 use hume_editing::edit::TextChange;
+use hume_editing::text::BufferText;
+use hume_engine::providers::ConcealText;
 use hume_engine::types::ScopeId;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -102,6 +106,53 @@ pub struct LineBgEntry {
     pub scope: ScopeId,
 }
 
+/// What a [`ConcealEntry`] does, in buffer char offsets: the stored
+/// counterpart of `hume_engine::providers::ConcealSpan`.
+#[derive(Debug)]
+pub enum ConcealEntrySpan {
+    /// Hide the clusters in `start..end`, drawing `text` in their place when
+    /// set. Non-empty, inside one line, never covering that line's `\n`
+    /// (see [`ConcealEntry::within_line`]).
+    Hidden {
+        start: CharOffset,
+        end: CharOffset,
+        text: Option<ConcealText>,
+    },
+    /// Draw `text` before the char at `at` (a line's `\n` included).
+    Inserted { at: CharOffset, text: ConcealText },
+}
+
+/// One `(set-conceals! …)` entry. `reveal` is the char span of the lines
+/// revealed as one unit with this entry's own: from the start of its first
+/// line to the start of the line after its last.
+#[derive(Debug)]
+pub struct ConcealEntry {
+    pub span: ConcealEntrySpan,
+    pub reveal: Option<ExclusiveRange<CharOffset>>,
+}
+
+impl ConcealEntry {
+    fn hidden_bounds_mut(&mut self) -> Option<(&mut CharOffset, &mut CharOffset)> {
+        match &mut self.span {
+            ConcealEntrySpan::Hidden { start, end, .. } => Some((start, end)),
+            ConcealEntrySpan::Inserted { .. } => None,
+        }
+    }
+
+    /// Whether the span stays inside one line without covering its `\n`: an
+    /// `Inserted` always does, a `Hidden` does when it ends at or before the
+    /// `\n` of the line it starts on. A start past the text's end counts as
+    /// the last line, so a stale entry fails rather than panics.
+    pub fn within_line(&self, text: &BufferText) -> bool {
+        match self.span {
+            ConcealEntrySpan::Inserted { .. } => true,
+            ConcealEntrySpan::Hidden { start, end, .. } => {
+                end <= text.lines().newline(text.char_to_line(start)).offset()
+            }
+        }
+    }
+}
+
 /// What every entry kind is sorted and searched by: a char offset for a
 /// decoration on characters, a line for one on a whole line.
 /// [`SourceStore::set`] sorts by it so the remap chokepoint can map a
@@ -143,6 +194,13 @@ impl Anchored for ExtraHighlightEntry {
     type Anchor = CharOffset;
     fn anchor(&self) -> CharOffset {
         self.start
+    }
+}
+
+impl Anchored for ConcealEntry {
+    type Anchor = CharOffset;
+    fn anchor(&self) -> CharOffset {
+        self.chars().start
     }
 }
 
@@ -465,11 +523,9 @@ impl<K, T: LineAnchored> SourceStore<K, T> {
 impl<K, T: RangeAnchored> SourceStore<K, T> {
     /// Remaps every range-anchored entry for `bid` through `cs`, dropping any
     /// range a covering deletion collapsed to zero width. Returns whether
-    /// `bid` had any entry to remap, same as `remap_points`. The one other
-    /// implementor of this policy before it moved here
-    /// (`DiagnosticsStore::remap_through`) was a near-verbatim copy of this
-    /// method against `StoredDiag` instead of `ExtraHighlightEntry`; this
-    /// generic version now backs both.
+    /// `bid` had any entry to remap, same as `remap_points`. Both
+    /// range-anchored stores use it: `ExtraHighlightEntry` here and
+    /// `StoredDiag` in `hume-editor`'s diagnostics store.
     pub fn remap_ranges(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
         let mut touched = false;
         for spans in self.sources_mut(bid) {
@@ -502,6 +558,75 @@ impl<K, T: RangeAnchored> SourceStore<K, T> {
     }
 }
 
+impl<K> SourceStore<K, ConcealEntry> {
+    /// Remaps every conceal for `bid` through `change`. Not a
+    /// [`RangeAnchored`] kind: the two spans map through different rules.
+    ///
+    /// A `Hidden` span maps as a range (`ChangeSet::map_ranges`, the rule
+    /// `remap_ranges` applies to extra highlights), so text typed at either
+    /// edge lands outside it; it is dropped when its range collapses or the
+    /// edit left it across a line break ([`ConcealEntry::within_line`]). An
+    /// `Inserted` point stays before the char it was drawn before
+    /// (`Assoc::Before`, the inlay-hint rule) and is kept even when a deletion
+    /// consumed that char. A `reveal` span maps as a range and becomes `None`
+    /// when it collapses. Returns whether `bid` had any entry to remap, same
+    /// as `remap_points`.
+    fn remap_conceals(&mut self, bid: BufferId, change: &TextChange) -> bool {
+        let cs = change.changes();
+        let mut touched = false;
+        for entries in self.sources_mut(bid) {
+            if entries.is_empty() {
+                continue;
+            }
+            touched = true;
+
+            let mut hidden: Vec<ExclusiveRange<CharOffset>> = entries
+                .iter_mut()
+                .filter_map(|e| e.hidden_bounds_mut())
+                .map(|(start, end)| ExclusiveRange::new(*start, *end))
+                .collect();
+            cs.map_ranges(&mut hidden);
+            for ((start, end), range) in entries
+                .iter_mut()
+                .filter_map(|e| e.hidden_bounds_mut())
+                .zip(hidden)
+            {
+                (*start, *end) = (range.start, range.end);
+            }
+
+            // Reveal spans are not sorted along the entries, so they map in
+            // their own start order.
+            let mut reveals: Vec<(usize, ExclusiveRange<CharOffset>)> = entries
+                .iter()
+                .enumerate()
+                .filter_map(|(i, e)| e.reveal.map(|r| (i, r)))
+                .collect();
+            reveals.sort_by_key(|&(_, r)| r.start);
+            let mut spans: Vec<ExclusiveRange<CharOffset>> =
+                reveals.iter().map(|&(_, r)| r).collect();
+            cs.map_ranges(&mut spans);
+            for (&(i, _), span) in reveals.iter().zip(spans) {
+                entries[i].reveal = (!span.is_empty()).then_some(span);
+            }
+
+            let mut points = PosMapCursor::new(cs.ops());
+            entries.retain_mut(|entry| match entry.span {
+                ConcealEntrySpan::Hidden { start, end, .. } => {
+                    start < end && entry.within_line(change.after())
+                }
+                ConcealEntrySpan::Inserted { ref mut at, .. } => {
+                    *at = points.map(*at, Assoc::Before);
+                    true
+                }
+            });
+            // A `Hidden` start maps past text typed at it where an
+            // `Inserted` at the same offset stays before it.
+            entries.sort_by_key(Anchored::anchor);
+        }
+        touched
+    }
+}
+
 #[derive(Default)]
 pub struct DecorationStores {
     inlay_hints: SourceStore<String, InlayHintEntry>,
@@ -510,6 +635,7 @@ pub struct DecorationStores {
     extra_highlights: SourceStore<String, ExtraHighlightEntry>,
     eol_text: SourceStore<String, EolTextEntry>,
     line_backgrounds: SourceStore<String, LineBgEntry>,
+    conceals: SourceStore<String, ConcealEntry>,
     /// Every buffer's registered sign sources, each buffer's list kept
     /// sorted `(priority desc, name asc)`: that order *is* the buffer's
     /// sign-priority ladder (`register_sign_source`/`sign_slot`/
@@ -534,7 +660,10 @@ pub struct DecorationStores {
     /// when *its buffer's* stamp changed since its last sync, rather than
     /// every frame (unlike inlay hints/EOL text, that sync runs in
     /// scroll/cursor math too, not just render, so avoiding needless
-    /// per-frame rebuild work matters more there).
+    /// per-frame rebuild work matters more there). A conceal changes how
+    /// every line, a pinned header row included, lays out, so `set_conceals`
+    /// and a conceal remap stamp too: the editor's layout key carries the
+    /// stamp.
     ///
     /// Per-buffer, not one store-wide counter: `remap_through` runs once per
     /// queued edit for *every* LSP-attached buffer, decorated or not
@@ -560,9 +689,9 @@ impl DecorationStores {
     /// back to stamp `0`) on every reload, a buffer that goes untouched
     /// across two-or-more reloads could otherwise see the *same* stamp
     /// sequence repeat (`0, 1, 2, …` again), which could coincidentally
-    /// equal a pane's already-synced stamp in `hume-editor`'s `Editor::virtual_lines_synced`
+    /// equal a pane's already-synced stamp in `hume-editor`'s `Editor::buffer_mirrors_synced`
     /// left over from before the *first* reload, skipping the sync that
-    /// should clear the pane's stale `Arc` of the old virtual lines. A
+    /// should clear the pane's stale whole-buffer mirrors. A
     /// single ever-increasing clock, carried forward across every reset,
     /// guarantees no stamp value is ever reused for the life of the
     /// session, so that ABA collision can't happen no matter how many
@@ -816,6 +945,33 @@ impl DecorationStores {
             .flat_map(|(s, es)| es.iter().map(move |e| (s.as_str(), e)))
     }
 
+    /// Replaces `source`'s conceals for `bid` wholesale. Every entry must
+    /// satisfy [`ConcealEntry::within_line`].
+    pub fn set_conceals(&mut self, source: String, bid: BufferId, entries: Vec<ConcealEntry>) {
+        self.conceals.set(source, bid, entries);
+        self.touch(bid);
+    }
+
+    /// All conceals for `bid`, across every source in ascending source-name
+    /// order, paired with their source name. The pane mirror flattens them
+    /// per line in that order.
+    pub fn conceals_for_buffer(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = (&str, &ConcealEntry)> {
+        self.conceals.for_buffer(bid).map(|(s, e)| (s.as_str(), e))
+    }
+
+    /// Whether any source holds a conceal for `bid`.
+    pub fn has_conceals(&self, bid: BufferId) -> bool {
+        !self.conceals.is_empty_for(bid)
+    }
+
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn conceals_for(&self, source: &str, bid: BufferId) -> &[ConcealEntry] {
+        self.conceals.entries_for(source, bid)
+    }
+
     /// Replaces `source`'s extra highlights for `bid` wholesale.
     pub fn set_extra_highlights(
         &mut self,
@@ -885,6 +1041,7 @@ impl DecorationStores {
             eol_text,
             line_backgrounds,
             extra_highlights,
+            conceals,
             sign_sources: _,
             generation: _,
             clock: _,
@@ -895,6 +1052,7 @@ impl DecorationStores {
             || !eol_text.is_empty_for(bid)
             || !line_backgrounds.is_empty_for(bid)
             || !extra_highlights.is_empty_for(bid)
+            || !conceals.is_empty_for(bid)
     }
 
     /// Drops every entry for `bid`, across every source and every kind,
@@ -903,8 +1061,9 @@ impl DecorationStores {
     /// sources stay registered: a registration holds no position.
     ///
     /// The buffer keeps its `BufferId`, so clearing `virtual_lines` without
-    /// touching `bid`'s stamp would leave a pane's `virtual_lines_synced`
-    /// entry looking current, mirroring the replaced text's virtual lines.
+    /// touching `bid`'s stamp would leave a pane's `buffer_mirrors_synced`
+    /// entry looking current, mirroring the replaced text's virtual lines and
+    /// conceals.
     /// Touching unconditionally, not only when a kind had entries, forces
     /// every pane on `bid` to resync.
     ///
@@ -919,6 +1078,7 @@ impl DecorationStores {
             eol_text,
             line_backgrounds,
             extra_highlights,
+            conceals,
             sign_sources: _,
             generation: _,
             clock: _,
@@ -929,6 +1089,7 @@ impl DecorationStores {
         eol_text.remove_buffer(bid);
         line_backgrounds.remove_buffer(bid);
         extra_highlights.remove_buffer(bid);
+        conceals.remove_buffer(bid);
         self.touch(bid);
     }
 
@@ -963,13 +1124,14 @@ impl DecorationStores {
             eol_text,
             line_backgrounds,
             extra_highlights,
+            conceals,
             sign_sources: _,
             generation: _,
             clock: _,
         } = self;
         // Every kind always attempts its remap; only whether to bump the
         // stamp is conditional. The array literal's eager evaluation (not
-        // the iterator adapters below) is what guarantees none of these six
+        // the iterator adapters below) is what guarantees none of these seven
         // calls get short-circuited away.
         let cs = change.changes();
         let touched = [
@@ -979,6 +1141,7 @@ impl DecorationStores {
             eol_text.remap_lines(bid, change),
             line_backgrounds.remap_lines(bid, change),
             extra_highlights.remap_ranges(bid, cs),
+            conceals.remap_conceals(bid, change),
         ]
         .into_iter()
         .any(|kind_touched| kind_touched);

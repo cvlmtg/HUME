@@ -1,10 +1,10 @@
 //! Steel-writable decoration stores plus their concrete
 //! `hume_engine::providers` implementations: gutter signs, inlay hints,
 //! virtual lines, end-of-line text, bracket/search/diagnostic/extra
-//! highlights, and line backgrounds. `decorations` is the write half a
+//! highlights, line backgrounds, and conceals. `decorations` is the write half a
 //! plugin's `set-signs!`/`set-inlay-hints!`/etc. populates, plus the
 //! `ChangeSet` remapping that keeps entries positioned through edits;
-//! `signs`/`inline_decorations`/`virtual_lines`/`line_backgrounds`/
+//! `signs`/`inline_decorations`/`virtual_lines`/`line_backgrounds`/`conceals`/
 //! `highlight_providers` are the read half, each a [`SharedSlot`] handle
 //! `hume-editor`'s per-frame sync writes into
 //! and a provider impl reads during render.
@@ -15,6 +15,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 
+mod conceals;
 pub mod decorations;
 mod highlight_providers;
 mod inline_decorations;
@@ -30,26 +31,27 @@ mod virtual_lines;
 // `pub` (not folded away) since `Anchored`/`SourceStore`'s `K`/`T`
 // bounds and a few internal helpers are easiest to browse in place.
 pub use decorations::{
-    Anchored, DecorationStores, EolTextEntry, ExtraHighlightEntry, InlayHintEntry, LineBgEntry,
-    RangeAnchored, SignEntry, SourceStore, VirtualLineEntry,
+    Anchored, ConcealEntry, ConcealEntrySpan, DecorationStores, EolTextEntry, ExtraHighlightEntry,
+    InlayHintEntry, LineBgEntry, RangeAnchored, SignEntry, SourceStore, VirtualLineEntry,
 };
 
 use rustc_hash::FxHashMap;
 
 use hume_engine::builtins::sign_column::{Sign, SignColumn};
 use hume_engine::lock::SharedSlot;
-use hume_engine::providers::{HighlightTier, InlineInsert, ProviderSet, VirtualLine};
+use hume_engine::providers::{Conceal, HighlightTier, InlineInsert, ProviderSet, VirtualLine};
 use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
 
+use conceals::{ConcealMap, PaneConceals};
 use highlight_providers::{PaneHighlights, ScopedHighlighter};
 use inline_decorations::{InlineDecorationMap, InlineDecorationProvider};
 use line_backgrounds::{LineBgMap, PaneLineBackgrounds};
 use signs::{SharedSignSource, SignMap};
 use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 
-/// A pane's six render-decoration handles, allocated together by
+/// A pane's seven render-decoration handles, allocated together by
 /// [`build_providers`] and stored as the `render` field of the pane's one
 /// `hume-editor` `PaneEntry`. They are always seeded and dropped as a
 /// unit (never independently), and every read site borrows the entry
@@ -70,6 +72,7 @@ pub struct PaneDecorationHandles {
     /// coexist on the same line without one clobbering the other.
     eol_text: InlineDecorationMap,
     line_backgrounds: LineBgMap,
+    conceals: ConcealMap,
 }
 
 impl PaneDecorationHandles {
@@ -96,6 +99,10 @@ impl PaneDecorationHandles {
 
     pub fn set_line_backgrounds(&self, by_line: FxHashMap<ContentLine, ScopeId>) {
         self.line_backgrounds.set(by_line);
+    }
+
+    pub fn set_conceals(&self, by_line: FxHashMap<ContentLine, Vec<Conceal>>) {
+        self.conceals.set(by_line);
     }
 
     pub fn set_search(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
@@ -165,12 +172,16 @@ impl PaneDecorationHandles {
     pub fn line_backgrounds(&self) -> FxHashMap<ContentLine, ScopeId> {
         self.line_backgrounds.read().clone()
     }
+
+    pub fn conceals(&self) -> FxHashMap<ContentLine, Vec<Conceal>> {
+        self.conceals.read().clone()
+    }
 }
 
 /// Build every decoration-facing provider for a new pane and register them
 /// into `providers`: the sign-column gutter, bracket/search/diagnostic/extra
 /// highlight sources, inlay-hint and EOL-text decoration, virtual-line
-/// source, and line-background tint, plus the [`PaneDecorationHandles`]
+/// source, line-background tint, and conceal source, plus the [`PaneDecorationHandles`]
 /// bundle `hume-editor`'s per-frame sync writes into. Registers the sign
 /// column first: the caller must add its own (non-decoration) line-number
 /// gutter column right after, so the two columns render left-to-right in
@@ -198,6 +209,7 @@ pub fn build_providers(
     let eol_text_map: InlineDecorationMap = SharedSlot::new(FxHashMap::default());
     let virtual_line_map: VirtualLineMap = SharedSlot::new(FxHashMap::default());
     let line_bg_map: LineBgMap = SharedSlot::new(FxHashMap::default());
+    let conceal_map: ConcealMap = SharedSlot::new(FxHashMap::default());
 
     providers.add_gutter_column(Box::new(SignColumn::new(
         Box::new(SharedSignSource::new(signs.clone())),
@@ -232,6 +244,9 @@ pub fn build_providers(
     providers.add_decoration_source(Box::new(PaneLineBackgrounds {
         data: line_bg_map.clone(),
     }));
+    providers.add_decoration_source(Box::new(PaneConceals {
+        data: conceal_map.clone(),
+    }));
 
     PaneDecorationHandles {
         highlights,
@@ -240,5 +255,6 @@ pub fn build_providers(
         virtual_lines: virtual_line_map,
         eol_text: eol_text_map,
         line_backgrounds: line_bg_map,
+        conceals: conceal_map,
     }
 }

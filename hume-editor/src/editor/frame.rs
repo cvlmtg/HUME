@@ -398,7 +398,7 @@ impl Editor {
         buf
     }
 
-    /// Drop `viewport_debounce`/`last_visible_range`/`virtual_lines_synced`
+    /// Drop `viewport_debounce`/`last_visible_range`/`buffer_mirrors_synced`
     /// entries whose pane no longer exists in `self.view.panes`. A pending
     /// debounce timer is cancelled outright (its `TimerPayload` no-ops via
     /// `queue_viewport_change`'s own liveness check anyway, but there is no
@@ -412,7 +412,7 @@ impl Editor {
         let panes = &self.view.panes;
         self.last_visible_range
             .retain(|pid, _| panes.contains_key(*pid));
-        self.virtual_lines_synced
+        self.buffer_mirrors_synced
             .retain(|pid, _| panes.contains_key(*pid));
         let timers = &mut self.timers;
         self.viewport_debounce.retain(|pid, id| {
@@ -508,7 +508,7 @@ impl Editor {
     /// rope.
     ///
     /// Order matters twice. Providers that change display-line counts
-    /// (signs, inlay hints, virtual lines, EOL text) sync before the scroll
+    /// (signs, inlay hints, virtual lines, conceals, EOL text) sync before the scroll
     /// pass, so the cursor is positioned against the layout render will
     /// draw. Cursor-anchored overlays sync after it, because they need the
     /// cursor's final screen cell.
@@ -631,7 +631,7 @@ impl Editor {
 
     /// Sync everything that changes display-line counts or columns into the
     /// `sizes` panes, before a reveal lays them out. Signs set the gutter
-    /// width and so the wrap column; the other three are `DisplayLineMap`
+    /// width and so the wrap column; the others are `DisplayLineMap`
     /// providers. The snapshot is of each view before the reveal moves it,
     /// so a line the reveal exposes gets its hints one pass late. Syncing
     /// after the reveal would instead let reveal and render disagree on
@@ -640,7 +640,7 @@ impl Editor {
         let panes = self.decorated_panes(sizes, &[]);
         self.update_sign_providers(&panes);
         self.update_inlay_hint_providers(&panes);
-        self.update_virtual_line_providers(&panes);
+        self.sync_buffer_mirrors(&panes);
         self.update_eol_text_providers(&panes);
     }
 

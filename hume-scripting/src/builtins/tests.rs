@@ -304,6 +304,10 @@ fn every_source_name_refuses_an_empty_name_through_real_registration() {
             "(set-extra-highlights! (focused-pane) {src} (list))",
         ),
         (
+            "set-conceals!",
+            "(set-conceals! (focused-pane) {src} (list))",
+        ),
+        (
             "set-line-backgrounds!",
             "(set-line-backgrounds! (focused-pane) {src} (list))",
         ),

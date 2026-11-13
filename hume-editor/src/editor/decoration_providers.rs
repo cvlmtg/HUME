@@ -1,8 +1,8 @@
 //! Per-frame sync of highlight/sign/inlay-hint/virtual-line/EOL-text/
-//! line-background decoration data from editor-authoritative stores to the
-//! shared `Arc` buffers the engine's providers read during rendering. Driven
-//! by `prepare_frame`'s decoration syncs, and for the providers that change
-//! layout also by `Editor::settle_views` before each input.
+//! conceal/line-background decoration data from editor-authoritative stores
+//! to the shared `Arc` buffers the engine's providers read during rendering.
+//! Driven by `prepare_frame`'s decoration syncs, and for the providers that
+//! change layout also by `Editor::settle_views` before each input.
 
 use hume_core::{BufferId, DiagSeverity, PaneId, Side};
 use hume_engine::pipeline::{PaneSize, SettledRows};
@@ -10,9 +10,12 @@ use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, u
 use hume_engine::types::EditorMode;
 
 use super::Editor;
+use hume_decorations::{ConcealEntry, ConcealEntrySpan};
+use hume_engine::providers::{Conceal, ConcealSpan, conceal_ranges_overlap};
 use hume_ops::pair::matching_bracket;
 use hume_rope::column::ByteCol;
-use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_rope::line::ContentLine;
+use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 
 /// One pane's identity plus its on-screen slice, as of the moment
 /// [`Editor::decorated_panes`] was called. Every render bridge below reads
@@ -494,23 +497,44 @@ impl Editor {
         }
     }
 
-    /// Sync per-pane virtual-line decorations from the
-    /// `decorations.virtual_lines` store to each pane's virtual-line
+    /// Rebuild every pane's whole-buffer mirrors (virtual lines and conceals)
+    /// when `decorations.generation(bid)` changed since the pane's last
+    /// sync, or the pane's buffer changed. They are whole-buffer rebuilds
+    /// (not viewport-filtered, since `DisplayLineMap::block` needs every
+    /// anchor regardless of scroll position, and a conceal's reveal span can
+    /// reach any line) that clone every entry, so redoing them
+    /// unconditionally every frame costs more than the other bridges'
+    /// viewport-filtered passes. The stamp is per-buffer (not a single
+    /// store-wide counter): an edit only bumps the buffer it edited, so
+    /// typing in one buffer does not force every pane on every *other*
+    /// buffer to resync too. One stamp covers both mirrors, so this is the
+    /// only place that reads or writes it. No viewport dependency: any
+    /// [`Self::decorated_panes`] snapshot works, since only `pid`/`bid` are
+    /// read per pane.
+    ///
+    /// A mirror appearing or changing shape above the cursor can move its
+    /// own display line relative to the viewport without the selection
+    /// itself moving. `EditorState::layout_key`'s `buffer_tag` carries
+    /// `decorations.generation(bid)`, so `frame::reveal_due_cursor` derives
+    /// the reveal from that rather than this function raising it directly.
+    pub(super) fn sync_buffer_mirrors(&mut self, panes: &[DecoratedPane]) {
+        for p in panes {
+            let (pid, bid) = (p.pid, p.bid);
+            let stamp = (bid, self.state.config.decorations.generation(bid));
+            if self.buffer_mirrors_synced.get(&pid) == Some(&stamp) {
+                continue;
+            }
+            self.update_virtual_line_providers(pid, bid);
+            self.update_conceal_providers(pid, bid);
+            self.buffer_mirrors_synced.insert(pid, stamp);
+        }
+    }
+
+    /// Mirror `decorations.virtual_lines` into pane `pid`'s virtual-line
     /// decoration handle, a `DisplayLineMap::block` provider, so this feeds
-    /// row *counts* the same way inlay hints/EOL text feed wrap columns.
-    /// Unlike those two, this only rebuilds when `decorations.generation(bid)`
-    /// changed since the pane's last sync, or the pane's buffer changed: a
-    /// whole-buffer rebuild (not viewport-filtered, since `DisplayLineMap::block`
-    /// needs every anchor regardless of scroll position) with a
-    /// `content` clone per entry is costlier to redo unconditionally
-    /// every frame than the other bridges' viewport-filtered passes. The
-    /// stamp is per-buffer (not a single store-wide counter): an edit only
-    /// bumps the buffer it edited, so typing in one buffer does not force
-    /// every pane on every *other* buffer to resync too. No
-    /// viewport dependency: any [`Self::decorated_panes`] snapshot works, since only
-    /// `pid`/`bid` are read per pane. Two sources
-    /// anchored to the same line stack rather than collapse (unlike EOL
-    /// text and line backgrounds, which `first_per_line` folds):
+    /// row *counts* the same way inlay hints/EOL text feed wrap columns. Two
+    /// sources anchored to the same line stack rather than collapse (unlike
+    /// EOL text and line backgrounds, which `first_per_line` folds):
     /// `virtual_lines_for_buffer` (`SourceStore::for_buffer`) yields sources
     /// ascending by name, and `DisplayLineMap::block`'s side sort is stable, so
     /// they render in alphabetical-by-source order, not registration order.
@@ -524,43 +548,54 @@ impl Editor {
     /// Always `Some`, never left as the engine's own `None` fallback, so a
     /// theme that puts a `bg` on `ui.virtual` reaches the row fill exactly
     /// the same way an explicit `scope` would.
-    pub(super) fn update_virtual_line_providers(&mut self, panes: &[DecoratedPane]) {
+    fn update_virtual_line_providers(&mut self, pid: PaneId, bid: BufferId) {
         use hume_engine::providers::VirtualLine;
 
-        for p in panes {
-            let (pid, bid) = (p.pid, p.bid);
-            let current_gen = self.state.config.decorations.generation(bid);
-            if self.virtual_lines_synced.get(&pid) == Some(&(bid, current_gen)) {
-                continue;
-            }
-
-            let mut by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<VirtualLine>> =
-                rustc_hash::FxHashMap::default();
-            for entry in self.state.config.decorations.virtual_lines_for_buffer(bid) {
-                let line = entry.line;
-                by_line.entry(line).or_default().push(VirtualLine {
-                    line,
-                    side: entry.side,
-                    // Overwritten by the engine at collection time with the
-                    // registration-assigned id (see `ProviderSet::add_decoration_source`).
-                    provider_id: 0,
-                    content: entry.content.clone(),
-                    base_scope: Some(entry.scope),
-                });
-            }
-
-            self.state.panes.entries[pid]
-                .render
-                .set_virtual_lines(by_line);
-            self.virtual_lines_synced.insert(pid, (bid, current_gen));
-            // A virtual-line block appearing or changing shape above the
-            // cursor can move its own display line relative to the
-            // viewport without the selection itself moving.
-            // `EditorState::layout_key`'s `buffer_tag` carries
-            // `decorations.generation(bid)`, so `frame::reveal_due_cursor`
-            // derives the reveal from that rather than this function
-            // raising it directly.
+        let mut by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<VirtualLine>> =
+            rustc_hash::FxHashMap::default();
+        for entry in self.state.config.decorations.virtual_lines_for_buffer(bid) {
+            let line = entry.line;
+            by_line.entry(line).or_default().push(VirtualLine {
+                line,
+                side: entry.side,
+                // Overwritten by the engine at collection time with the
+                // registration-assigned id (see `ProviderSet::add_decoration_source`).
+                provider_id: 0,
+                content: entry.content.clone(),
+                base_scope: Some(entry.scope),
+            });
         }
+
+        self.state.panes.entries[pid]
+            .render
+            .set_virtual_lines(by_line);
+    }
+
+    /// Mirror `decorations.conceals` into pane `pid`'s conceal handle, one
+    /// per-line list the formatter reads. Sources go in ascending name order
+    /// and a conceal is kept only when it overlaps none already kept on its
+    /// line under [`conceal_ranges_overlap`], so an earlier source wins and a
+    /// dropped conceal is dropped whole. Each line's list is then sorted by
+    /// byte range, the order the formatter requires.
+    fn update_conceal_providers(&mut self, pid: PaneId, bid: BufferId) {
+        let text = self.state.buffers.get(bid).text();
+        let mut by_line: rustc_hash::FxHashMap<ContentLine, Vec<Conceal>> =
+            rustc_hash::FxHashMap::default();
+        for (_, entry) in self.state.config.decorations.conceals_for_buffer(bid) {
+            let (line, conceal) = line_conceal(text, entry);
+            let kept = by_line.entry(line).or_default();
+            if !kept
+                .iter()
+                .any(|k| conceal_ranges_overlap(k.bytes(), conceal.bytes()))
+            {
+                kept.push(conceal);
+            }
+        }
+        for kept in by_line.values_mut() {
+            kept.sort_by_key(|c| (c.bytes().start, c.bytes().end));
+        }
+
+        self.state.panes.entries[pid].render.set_conceals(by_line);
     }
 
     /// Write per-frame line-background data to every pane's own
@@ -590,6 +625,42 @@ impl Editor {
                 .set_line_backgrounds(by_line);
         }
     }
+}
+
+/// `entry` as the engine's per-line [`Conceal`], with the line it sits on.
+/// A `\n` char resolves to its own line, so a span ending at or an insert
+/// drawn before a line's `\n` stays on that line.
+fn line_conceal(
+    text: &hume_editing::text::BufferText,
+    entry: &ConcealEntry,
+) -> (ContentLine, Conceal) {
+    let columns = text.columns();
+    let (line, start) = columns.byte_position(match entry.span {
+        ConcealEntrySpan::Hidden { start, .. } => start,
+        ConcealEntrySpan::Inserted { at, .. } => at,
+    });
+    let span = match &entry.span {
+        ConcealEntrySpan::Hidden {
+            end, text: shown, ..
+        } => ConcealSpan::Hidden {
+            bytes: ExclusiveRange::new(start, columns.byte_position(*end).1),
+            text: shown.clone(),
+        },
+        ConcealEntrySpan::Inserted { text: shown, .. } => ConcealSpan::Inserted {
+            at: start,
+            text: shown.clone(),
+        },
+    };
+    // The span's last char is the one before its exclusive end: a span that
+    // ends where a line starts stops at the previous line.
+    let reveal = entry.reveal.filter(|r| r.end > r.start).map(|r| {
+        InclusiveRange::new(
+            text.char_to_line(r.start),
+            text.char_to_line(r.end.retreat(1)),
+        )
+    });
+    // Trusted narrow: a conceal sits on a real line, never the phantom one.
+    (ContentLine::new(line.index()), Conceal { span, reveal })
 }
 
 /// The first entry for each line of `entries`. The EOL text and line

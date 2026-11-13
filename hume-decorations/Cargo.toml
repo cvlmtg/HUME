@@ -17,7 +17,7 @@ proptest = "1.11.0"
 [features]
 # Exposes DecorationStores' test-only accessors (signs_for,
 # virtual_lines_for, line_backgrounds_for, extra_highlights_for,
-# inlay_hints_for_buffer) to hume-editor's own test code, which asserts on
+# inlay_hints_for_buffer, conceals_for) to hume-editor's own test code, which asserts on
 # what a plugin published rather than what a viewport shows. Mirrors the
 # hume-lsp/hume-treesitter/hume-scripting precedent.
 test-util = []

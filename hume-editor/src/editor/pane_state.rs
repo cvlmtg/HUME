@@ -75,11 +75,12 @@ pub(crate) struct PaneBufferState {
     /// This pane's [`LayoutKey`] as of the last read of one:
     /// `frame::reveal_due_cursor`'s own memo, compared against a fresh
     /// `EditorState::layout_key` each time it runs to derive reveals for
-    /// every non-selection source at once: a resize, a wrap-mode pin or
+    /// every layout change at once: a resize, a wrap-mode pin or
     /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
     /// pair is `None`, so it always differs), a decoration-generation
     /// change (inlay hints, EOL text, virtual lines, signs), a fold opening
-    /// or closing, and any edit to the buffer at all (its text generation),
+    /// or closing, the lines the selections touch changing in a buffer with
+    /// conceals, and any edit to the buffer at all (its text generation),
     /// including one made through a sibling pane. A changed key reveals only when [`PaneBufferState::parked`] is
     /// `false`: a pane parked behind an unfollowable scroll must not snap
     /// back onto its cursor just because something changed elsewhere in the

@@ -1429,3 +1429,35 @@ fn diagnostics_for_buffer_errors_loudly_on_an_unknown_severity_name() {
         "an unknown severity name must be reported loudly, naming the bad value: {log:?}"
     );
 }
+
+/// A `'reveal` is stored as the char span from its first line's start to the
+/// start of the line after its last; an `'end-line` equal to the content line
+/// count ends at the text's end.
+#[test]
+fn set_conceals_stores_the_reveal_as_line_start_offsets() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>\nb\nc\nd\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "arm-conceals" "" (lambda (bid)
+             (set-conceals! bid "src"
+               (list (hash 'start-char 0 'end-char 1 'reveal (hash 'start-line 1 'end-line 3))
+                     (hash 'start-char 2 'end-char 3 'reveal (hash 'start-line 2 'end-line 4))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm-conceals");
+
+    let spans: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .conceals_for("src", bid)
+        .iter()
+        .map(|e| e.reveal.map(|r| (r.start.index(), r.end.index())))
+        .collect();
+    assert_eq!(spans, [Some((2, 6)), Some((4, 8))]);
+}

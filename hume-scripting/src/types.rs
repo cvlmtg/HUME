@@ -6,6 +6,7 @@ use hume_core::{
 use hume_rope::spanned::SpannedText;
 
 use crate::command_procs::{MappableProc, TypedProc};
+use crate::host::MarkedLines;
 
 mod lsp;
 pub use lsp::{
@@ -117,6 +118,39 @@ pub struct VirtualLineSpec {
     pub side: Side,
     /// Whole-line base style; chars not covered by a segment fall back to
     /// this (or `ui.virtual` if also absent).
+    pub scope: Option<String>,
+}
+
+/// One `(set-conceals! …)` entry, decoded from its Steel hashmap shape. The
+/// decoder never produces an empty hidden range; the host refuses one built
+/// by hand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConcealSpec {
+    pub span: ConcealSpecSpan,
+    /// `'reveal`: the lines revealed as one unit with this entry's own.
+    pub reveal: Option<MarkedLines>,
+}
+
+/// What a [`ConcealSpec`] does, in char offsets of the buffer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConcealSpecSpan {
+    /// `'start-char`..`'end-char`, non-empty, hidden and drawn as `text` when
+    /// given.
+    Hidden {
+        start: usize,
+        end: usize,
+        text: Option<ConcealSpecText>,
+    },
+    /// An empty `'start-char`..`'end-char` with `'text`: drawn before the
+    /// char at `at`.
+    Inserted { at: usize, text: ConcealSpecText },
+}
+
+/// A conceal's drawn text and the scope naming its style.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConcealSpecText {
+    /// Non-empty, free of line breaks and control characters.
+    pub text: String,
     pub scope: Option<String>,
 }
 

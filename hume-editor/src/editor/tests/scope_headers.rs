@@ -100,7 +100,7 @@ fn nested_markdown(depth: usize) -> String {
 }
 
 /// The pane `pid`'s rect on the last drawn frame and its gutter width.
-fn drawn_pane(ed: &Editor, buf: &Grid, pid: PaneId) -> (Rect, u16) {
+pub(super) fn drawn_pane(ed: &Editor, buf: &Grid, pid: PaneId) -> (Rect, u16) {
     let (width, height) = buf.size();
     let (origin, size) = (0..height)
         .flat_map(|y| (0..width).map(move |x| Position::new(x, y)))
@@ -120,7 +120,7 @@ fn drawn_pane(ed: &Editor, buf: &Grid, pid: PaneId) -> (Rect, u16) {
 
 /// The text of pane `pid`'s first `n` rows past its gutter, trailing blanks
 /// dropped.
-fn pane_rows(ed: &Editor, buf: &Grid, pid: PaneId, n: u16) -> Vec<String> {
+pub(super) fn pane_rows(ed: &Editor, buf: &Grid, pid: PaneId, n: u16) -> Vec<String> {
     let (rect, gutter) = drawn_pane(ed, buf, pid);
     (0..n)
         .map(|row| {
@@ -846,6 +846,38 @@ fn press_on_a_header_row_selects_that_line_and_reveals_it() {
 
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), pressed);
+}
+
+#[test]
+fn press_on_a_header_row_lands_on_the_cluster_its_concealed_row_draws() {
+    let source = two_fn_impl();
+    let (mut ed, _file) = decorated_rust_context_editor(&source);
+    let pid = ed.view.focused_pane();
+    let fn_kw = char_at_column(&ed, 1, 4).index();
+    super::conceal_bridge::set(
+        &mut ed,
+        "md",
+        vec![super::conceal_bridge::hidden(fn_kw, fn_kw + 3, "λ")],
+    );
+    let buf = wheel_down(&mut ed, pid, 10);
+    let line_1 = char_at_column(&ed, 1, 0).index();
+    assert_eq!(
+        drawn_rows(&mut ed, pid, 2)[1],
+        DrawnRow {
+            line: 1,
+            shown: vec![line_1..fn_kw, fn_kw + 3..line_1 + 12],
+        },
+        "premise: the header row draws `λ` in place of `fn `"
+    );
+    insta::assert_snapshot!(pane_rows(&ed, &buf, pid, 2)[1], @"    λa() {");
+
+    // Column 5 is `a` on the drawn row; raw, it is the `n` of `fn`.
+    press_at(&mut ed, &buf, pid, 5, 1);
+
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        char_at_column(&ed, 1, 7)
+    );
 }
 
 #[test]

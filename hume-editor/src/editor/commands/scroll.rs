@@ -59,12 +59,16 @@ fn move_view(
             entries: &mut state.panes.entries,
         });
     }
+    // Built after `f`: in a buffer with conceals the moved selections reveal
+    // other lines, and recording the pre-move key would read as a layout
+    // change and reveal again before the next input.
+    let moved = state.layout_key(view, pid, size);
     reveal_due_cursor(
         &state.buffers,
         &mut state.panes.entries,
         &mut view.panes,
         pid,
-        &key,
+        &moved,
     );
 }
 

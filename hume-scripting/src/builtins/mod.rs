@@ -528,6 +528,7 @@ builtins! {
     cmd "set-virtual-lines!" decorations::set_virtual_lines(pane: args::LiveBuffer, source: args::SourceName, lines: SteelVal);
     cmd "%set-eol-text!" => "set-eol-text!" decorations::set_eol_text(pane: args::LiveBuffer, source: args::SourceName, lines: SteelVal, hide_on_insert_line: SteelVal);
     cmd "set-extra-highlights!" decorations::set_extra_highlights(pane: args::LiveBuffer, source: args::SourceName, spans: SteelVal);
+    cmd "set-conceals!" decorations::set_conceals(pane: args::LiveBuffer, source: args::SourceName, entries: SteelVal);
     cmd "set-line-backgrounds!" decorations::set_line_backgrounds(pane: args::LiveBuffer, source: args::SourceName, entries: SteelVal);
     cmd "set-statusline-text!" decorations::set_statusline_text(pane: args::LiveBuffer, source: args::SourceName, text: SteelVal);
     cmd "%diagnostics-for-buffer" => "diagnostics-for-buffer" decorations::diagnostics_for_buffer(pane: args::ArgPane, severity: SteelVal, range: SteelVal);

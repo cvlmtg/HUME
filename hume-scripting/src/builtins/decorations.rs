@@ -1,7 +1,7 @@
 //! Decoration stores (inlay hints, signs, virtual lines, EOL text, extra
-//! highlights, line backgrounds, statusline text) and the diagnostics pull
-//! API. Not LSP-specific (any Steel plugin can populate these), but LSP is
-//! the first and heaviest client.
+//! highlights, conceals, line backgrounds, statusline text) and the
+//! diagnostics pull API. Not LSP-specific (any Steel plugin can populate
+//! these), but LSP is the first and heaviest client.
 
 use hume_core::{BufferId, DiagSeverity, Side};
 use steel::rerrs::SteelErr;
@@ -10,14 +10,14 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::host::{DiagnosticEntry, DiagnosticRange, MarkedLines, SetError, each_entry};
 use crate::json::{WireOrigin, to_steel_handle};
-use crate::types::VirtualLineSpec;
+use crate::types::{ConcealSpec, ConcealSpecSpan, ConcealSpecText, VirtualLineSpec};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry, START_CHAR,
-    START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg, item_label, list_of, not_live_err,
-    optional_hash_entry, optional_symbol_arg, spanned_text, string_arg, symbol_arg,
-    symbol_enum_arg, symbol_hash,
+    ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry,
+    LINE_RANGE_KEYS, START_CHAR, START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg,
+    item_label, list_of, not_live_err, optional_hash_entry, optional_symbol_arg, spanned_text,
+    string_arg, symbol_arg, symbol_enum_arg, symbol_hash,
 };
 use super::buffers::{content_line_arg, content_line_bound};
 use super::errors::{generic_err, require_cap};
@@ -101,16 +101,12 @@ pub(crate) fn set_signs(
 ) -> SteelResult {
     let list = "signs";
     let parsed = hash_list(signs, list, &["line", END_LINE, "text", "scope"], |entry| {
-        let text = entry.string("text")?;
         // A sign is a glyph in a fixed-width gutter lane, where no control
         // character has a meaning: the gutter would draw a tab as one blank
         // cell and any other control character as its codepoint
         // placeholder. `set-virtual-lines!` keeps them, because its line is
         // formatted like buffer text and a tab expands to the next tab stop.
-        if text.contains(char::is_control) {
-            steel::stop!(Generic =>
-                "'text must not contain a control character, got {:?}", text);
-        }
+        let text = entry.cell_text("text")?;
         Ok((entry.line_and_end_line()?, text, entry.string("scope")?))
     })?;
     let line_count = decorated_line_count(ctx, bid)?;
@@ -248,6 +244,11 @@ const LINE_TEXT_SCOPE: &[&str] = &["line", "text", "scope"];
 /// The list `set-virtual-lines!` takes, named in its errors.
 const VIRTUAL_LINES: &str = "lines";
 
+/// The list `set-conceals!` takes, named in its errors.
+const CONCEALS: &str = "entries";
+
+const CONCEAL_KEYS: &[&str] = &[START_CHAR, END_CHAR, "text", "scope", "reveal"];
+
 const START_END_CHAR_SCOPE: &[&str] = &[START_CHAR, END_CHAR, "scope"];
 const START_END_CHAR_COL_SCOPE: &[&str] = &[START_CHAR_COL, END_CHAR_COL, "scope"];
 
@@ -279,15 +280,100 @@ fn marked_lines(
     (line, end): (usize, Option<usize>),
     line_count: usize,
 ) -> Result<MarkedLines, String> {
-    let start = content_line_arg(line, line_count)?;
-    let Some(end) = end else {
-        return Ok(MarkedLines::one(start));
-    };
+    match end {
+        None => Ok(MarkedLines::one(content_line_arg(line, line_count)?)),
+        Some(end) => marked_run("line", line, end, line_count),
+    }
+}
+
+/// The lines from `start`, named by the key `start_key`, up to `'end-line`
+/// `end` (exclusive), in a buffer of `line_count` content lines.
+fn marked_run(
+    start_key: &str,
+    start: usize,
+    end: usize,
+    line_count: usize,
+) -> Result<MarkedLines, String> {
+    let first = content_line_arg(start, line_count)?;
     let end_line = content_line_bound(end, line_count).ok_or_else(|| {
         format!("'end-line {end} is past the last line (buffer has {line_count} content lines)")
     })?;
-    MarkedLines::run(start, end_line)
-        .ok_or_else(|| format!("'end-line {end} is not after 'line {line}"))
+    MarkedLines::run(first, end_line)
+        .ok_or_else(|| format!("'end-line {end} is not after '{start_key} {start}"))
+}
+
+/// `(set-conceals! pane source entries)`: `entries`: list of `(hash 'start-char
+/// 'end-char)` entries hiding that char range, each with an optional `'text`
+/// drawn in its place, an optional `'scope` styling it, and an optional
+/// `'reveal` `(hash 'start-line s 'end-line e)` naming lines revealed with it.
+/// An empty range with `'text` draws the text before that char and hides
+/// nothing.
+pub(crate) fn set_conceals(
+    ctx: &mut SteelCtx,
+    bid: BufferId,
+    source: String,
+    entries: SteelVal,
+) -> SteelResult {
+    let line_count = decorated_line_count(ctx, bid)?;
+    let parsed = conceal_specs(entries, line_count)?;
+    require_cap(ctx.host.decorations())?
+        .set_conceals(source, bid, parsed)
+        .map_err(set_err(CONCEALS))?;
+    Ok(SteelVal::Void)
+}
+
+/// Decodes `entries` for a buffer of `line_count` content lines. The one
+/// place a conceal's variant is chosen: an empty range with `'text` is
+/// `Inserted`, a non-empty one `Hidden`, and every other combination of
+/// range, `'text` and `'scope` is refused here.
+fn conceal_specs(entries: SteelVal, line_count: usize) -> Result<Vec<ConcealSpec>, SteelErr> {
+    hash_list(entries, CONCEALS, CONCEAL_KEYS, |entry| {
+        conceal_spec(entry, line_count)
+    })
+}
+
+fn conceal_spec(entry: &HashEntry, line_count: usize) -> Result<ConcealSpec, SteelErr> {
+    let (start, end) = entry.char_range()?;
+    if end < start {
+        steel::stop!(Generic => "{}: {} is before '{} {}", entry.label(END_CHAR), end, START_CHAR, start);
+    }
+    let shown = conceal_text(entry)?;
+    let reveal_label = entry.label("reveal");
+    let reveal = entry
+        .optional("reveal")
+        .map(|v| optional_hash_entry(v, &reveal_label, LINE_RANGE_KEYS))
+        .transpose()?
+        .flatten()
+        .map(|lines| {
+            let (first, end) = lines.line_range()?;
+            marked_run(START_LINE, first, end, line_count)
+                .map_err(|e| generic_err(format!("{reveal_label}: {e}")))
+        })
+        .transpose()?;
+    let span = match (start == end, shown) {
+        (false, text) => ConcealSpecSpan::Hidden { start, end, text },
+        (true, Some(text)) => ConcealSpecSpan::Inserted { at: start, text },
+        (true, None) => {
+            steel::stop!(Generic => "{}: is required for an empty range", entry.label("text"))
+        }
+    };
+    Ok(ConcealSpec { span, reveal })
+}
+
+/// An entry's `'text` and `'scope`: `'scope` needs `'text`, and `'text` is a
+/// non-empty single line free of control characters.
+fn conceal_text(entry: &HashEntry) -> Result<Option<ConcealSpecText>, SteelErr> {
+    let scope = entry.optional_string("scope")?;
+    let Some(text) = entry.optional_cell_text("text")? else {
+        if scope.is_some() {
+            steel::stop!(Generic => "{}: needs 'text", entry.label("scope"));
+        }
+        return Ok(None);
+    };
+    if text.is_empty() {
+        steel::stop!(Generic => "{}: must not be empty", entry.label("text"));
+    }
+    Ok(Some(ConcealSpecText { text, scope }))
 }
 
 /// `(set-eol-text! pane source lines #:hide-on-insert-line #f)`: `lines`: list

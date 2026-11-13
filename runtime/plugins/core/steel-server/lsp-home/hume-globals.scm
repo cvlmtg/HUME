@@ -358,6 +358,7 @@
 (#%register-global "set-attachment-hook-triggers!")
 (#%register-global "set-buffer-option!")
 (#%register-global "set-completion-triggers!")
+(#%register-global "set-conceals!")
 (#%register-global "set-cwd!")
 (#%register-global "set-default-language-servers!")
 (#%register-global "set-eol-text!")

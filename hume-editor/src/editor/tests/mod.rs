@@ -1459,7 +1459,7 @@ impl Editor {
             viewport_debounce: rustc_hash::FxHashMap::default(),
             diagnostic_pull_debounce: rustc_hash::FxHashMap::default(),
             last_visible_range: rustc_hash::FxHashMap::default(),
-            virtual_lines_synced: rustc_hash::FxHashMap::default(),
+            buffer_mirrors_synced: rustc_hash::FxHashMap::default(),
             tui: super::tui::Tui::Off,
             applied_mouse_mode: None,
             applied_cwd: None,
@@ -1939,6 +1939,7 @@ mod command_mode;
 mod commands;
 mod comment;
 mod completion;
+mod conceal_bridge;
 mod copy_selection;
 mod count_prefix;
 mod crash_dump;

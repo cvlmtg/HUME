@@ -1,5 +1,6 @@
 use super::*;
 use crate::testing::test_support::{SteelCtxTestHarness, default_bid, default_pane};
+use hume_rope::line::ContentLine;
 use hume_rope::spanned::SpannedText;
 use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
@@ -147,7 +148,7 @@ fn set_signs_rejects_a_control_character_in_the_glyph() {
     );
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("'text must not contain a control character"),
+        msg.contains("signs 0 'text: must not contain a line break or control character"),
         "got: {msg}"
     );
 }
@@ -598,4 +599,221 @@ fn virtual_line_spec_rejects_segment_missing_a_key() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("missing 'scope"), "got: {err}");
+}
+
+// ── `conceal_specs` decoder ──────────────────────────────────────────────────
+
+/// A `(hash 'start-char s 'end-char e …extra)` conceal entry.
+fn conceal_entry(start: isize, end: isize, extra: Vec<(&str, SteelVal)>) -> SteelVal {
+    let mut pairs = vec![
+        ("start-char", SteelVal::IntV(start)),
+        ("end-char", SteelVal::IntV(end)),
+    ];
+    pairs.extend(extra);
+    hashmap(pairs)
+}
+
+fn text(s: &str) -> (&'static str, SteelVal) {
+    ("text", SteelVal::StringV(s.into()))
+}
+
+fn reveal(start: isize, end: isize) -> (&'static str, SteelVal) {
+    (
+        "reveal",
+        hashmap(vec![
+            ("start-line", SteelVal::IntV(start)),
+            ("end-line", SteelVal::IntV(end)),
+        ]),
+    )
+}
+
+fn decode_conceal(entry: SteelVal) -> Result<Vec<ConcealSpec>, String> {
+    conceal_specs(list(vec![entry]), 10).map_err(|e| e.to_string())
+}
+
+#[test]
+fn set_conceals_without_decoration_host_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
+    assert_unsupported(set_conceals(
+        &mut ctx,
+        default_bid(),
+        "test".to_string(),
+        empty,
+    ));
+}
+
+#[test]
+fn conceal_rejects_an_empty_text() {
+    let err = decode_conceal(conceal_entry(0, 2, vec![text("")])).unwrap_err();
+    assert!(
+        err.contains("entries 0 'text: must not be empty"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn conceal_rejects_a_newline_in_text() {
+    let err = decode_conceal(conceal_entry(0, 2, vec![text("a\nb")])).unwrap_err();
+    assert!(
+        err.contains("entries 0 'text: must not contain a line break or control character"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn conceal_rejects_a_control_character_in_text() {
+    let err = decode_conceal(conceal_entry(0, 2, vec![text("a\tb")])).unwrap_err();
+    assert!(
+        err.contains("entries 0 'text: must not contain a line break or control character"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn conceal_rejects_an_empty_range_without_text() {
+    let err = decode_conceal(conceal_entry(3, 3, vec![])).unwrap_err();
+    assert!(
+        err.contains("entries 0 'text: is required for an empty range"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn conceal_with_an_empty_range_and_text_decodes_as_inserted() {
+    let specs = decode_conceal(conceal_entry(
+        3,
+        3,
+        vec![
+            text("┃ "),
+            ("scope", SteelVal::StringV("markup.quote".into())),
+        ],
+    ))
+    .unwrap();
+    assert_eq!(
+        specs,
+        [ConcealSpec {
+            span: ConcealSpecSpan::Inserted {
+                at: 3,
+                text: ConcealSpecText {
+                    text: "┃ ".into(),
+                    scope: Some("markup.quote".into()),
+                },
+            },
+            reveal: None,
+        }]
+    );
+}
+
+#[test]
+fn conceal_rejects_a_scope_without_text() {
+    let err = decode_conceal(conceal_entry(
+        0,
+        2,
+        vec![("scope", SteelVal::StringV("markup.quote".into()))],
+    ))
+    .unwrap_err();
+    assert!(err.contains("entries 0 'scope: needs 'text"), "got: {err}");
+}
+
+#[test]
+fn conceal_rejects_an_end_before_the_start() {
+    let err = decode_conceal(conceal_entry(5, 2, vec![])).unwrap_err();
+    assert!(
+        err.contains("entries 0 'end-char: 2 is before 'start-char 5"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn conceal_rejects_a_reveal_whose_end_line_is_not_after_its_start_line() {
+    let err = decode_conceal(conceal_entry(0, 2, vec![reveal(3, 3)])).unwrap_err();
+    assert!(
+        err.contains("entries 0 'reveal: 'end-line 3 is not after 'start-line 3"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn conceal_rejects_a_reveal_past_the_last_line() {
+    let err = decode_conceal(conceal_entry(0, 2, vec![reveal(8, 11)])).unwrap_err();
+    assert!(
+        err.contains("entries 0 'reveal: 'end-line 11 is past the last line"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_reveal_of_false_decodes_as_no_reveal() {
+    let specs = decode_conceal(conceal_entry(
+        0,
+        2,
+        vec![("reveal", SteelVal::BoolV(false))],
+    ))
+    .unwrap();
+    assert_eq!(
+        specs,
+        [ConcealSpec {
+            span: ConcealSpecSpan::Hidden {
+                start: 0,
+                end: 2,
+                text: None,
+            },
+            reveal: None,
+        }]
+    );
+}
+
+#[test]
+fn conceal_rejects_a_reveal_that_is_not_a_hashmap() {
+    let err = decode_conceal(conceal_entry(0, 2, vec![("reveal", SteelVal::IntV(3))])).unwrap_err();
+    assert!(
+        err.contains("entries 0 'reveal: expected a hashmap"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_well_formed_hidden_entry_decodes_to_its_spec() {
+    let specs = decode_conceal(conceal_entry(
+        4,
+        6,
+        vec![
+            text("H1 "),
+            ("scope", SteelVal::StringV("markup.heading.1".into())),
+            reveal(2, 5),
+        ],
+    ))
+    .unwrap();
+    assert_eq!(
+        specs,
+        [ConcealSpec {
+            span: ConcealSpecSpan::Hidden {
+                start: 4,
+                end: 6,
+                text: Some(ConcealSpecText {
+                    text: "H1 ".into(),
+                    scope: Some("markup.heading.1".into()),
+                }),
+            },
+            reveal: Some(MarkedLines::run(ContentLine::new(2), ContentLine::new(5)).unwrap()),
+        }]
+    );
+}
+
+#[test]
+fn a_hidden_entry_without_text_decodes_with_no_replacement() {
+    let specs = decode_conceal(conceal_entry(0, 2, vec![])).unwrap();
+    assert_eq!(
+        specs,
+        [ConcealSpec {
+            span: ConcealSpecSpan::Hidden {
+                start: 0,
+                end: 2,
+                text: None,
+            },
+            reveal: None,
+        }]
+    );
 }

@@ -653,6 +653,28 @@ impl HashEntry<'_> {
             .transpose()
     }
 
+    /// [`string`](Self::string) for text drawn in one cell run, which refuses
+    /// a line break or any other control character.
+    pub(crate) fn cell_text(&self, key: &str) -> Result<String, SteelErr> {
+        self.checked_cell_text(self.string(key)?, key)
+    }
+
+    /// [`cell_text`](Self::cell_text) for an optional key.
+    pub(crate) fn optional_cell_text(&self, key: &str) -> Result<Option<String>, SteelErr> {
+        self.optional_string(key)?
+            .map(|text| self.checked_cell_text(text, key))
+            .transpose()
+    }
+
+    fn checked_cell_text(&self, text: String, key: &str) -> Result<String, SteelErr> {
+        if text.contains(char::is_control) {
+            steel::stop!(Generic =>
+                "{}: must not contain a line break or control character, got {:?}",
+                self.label(key), text);
+        }
+        Ok(text)
+    }
+
     /// The `'start-char`/`'end-char` pair of an entry decoded with both keys
     /// in its key set, both required.
     pub(crate) fn char_range(&self) -> Result<(usize, usize), SteelErr> {

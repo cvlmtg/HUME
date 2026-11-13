@@ -51,6 +51,7 @@ const PANE_PROBES: &[&str] = &[
     r#"(set-virtual-lines! p "src" (list))"#,
     r#"(set-eol-text! p "src" (list))"#,
     r#"(set-extra-highlights! p "src" (list))"#,
+    r#"(set-conceals! p "src" (list))"#,
     r#"(set-line-backgrounds! p "src" (list))"#,
     r#"(set-statusline-text! p "src" "text")"#,
     "(apply-text-edits! p (list))",

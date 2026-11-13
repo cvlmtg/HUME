@@ -264,7 +264,7 @@ fn wq_with_multiple_panes_closes_focused_pane_not_editor() {
     );
 }
 
-/// `viewport_debounce`/`last_visible_range`/`virtual_lines_synced` live on
+/// `viewport_debounce`/`last_visible_range`/`buffer_mirrors_synced` live on
 /// `Editor` rather than `EditorState.panes`, so `drop_pane_state` can't clear
 /// them directly. `prepare_frame`'s `prune_closed_pane_caches` sweep is the
 /// only place that reclaims a closed pane's entries. Without it these three
@@ -288,8 +288,8 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
         "sanity: prepare_frame populated pane B's scroll-key cache entry"
     );
     assert!(
-        ed.virtual_lines_synced.contains_key(&pid_b),
-        "sanity: prepare_frame populated pane B's virtual-line-sync cache entry"
+        ed.buffer_mirrors_synced.contains_key(&pid_b),
+        "sanity: prepare_frame populated pane B's mirror-sync cache entry"
     );
     assert!(
         ed.viewport_debounce.contains_key(&pid_b),
@@ -307,8 +307,8 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
         "closed pane's scroll-key entry must be reclaimed"
     );
     assert!(
-        !ed.virtual_lines_synced.contains_key(&pid_b),
-        "closed pane's virtual-line-sync entry must be reclaimed"
+        !ed.buffer_mirrors_synced.contains_key(&pid_b),
+        "closed pane's mirror-sync entry must be reclaimed"
     );
     assert!(
         !ed.viewport_debounce.contains_key(&pid_b),
@@ -316,7 +316,7 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
     );
 }
 
-/// `virtual_lines_synced`'s cache key must include the pane's buffer, not
+/// `buffer_mirrors_synced`'s cache key must include the pane's buffer, not
 /// just `decorations.generation()`. A generation-only key would keep a pane
 /// mirroring its *previous* buffer's virtual lines after a switch, since
 /// switching a buffer doesn't bump the generation.
@@ -368,6 +368,56 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
         "after switching to buffer B, the pane must no longer mirror buffer \
          A's virtual lines; a generation-only sync gate would leave line 0 \
          populated with A's stale entry"
+    );
+}
+
+/// The conceal mirror shares the virtual-line mirror's stamp, so a buffer
+/// switch that leaves the generation unchanged must still replace the pane's
+/// conceals with the new buffer's.
+#[test]
+fn switching_a_panes_buffer_rebuilds_its_conceals() {
+    use hume_decorations::{ConcealEntry, ConcealEntrySpan};
+    use hume_engine::providers::ConcealText;
+
+    let mut ed = editor_from("-[*]>*b**\n");
+    let bid_a = ed.focused_buffer_id();
+    let pid = ed.split_onto(bid_a, hume_engine::pipeline::Direction::Horizontal);
+    ed.switch_focused_pane(pid);
+
+    ed.state.config.decorations.set_conceals(
+        "test".to_string(),
+        bid_a,
+        vec![ConcealEntry {
+            span: ConcealEntrySpan::Inserted {
+                at: hume_rope::offset::CharOffset::new(0),
+                text: ConcealText {
+                    text: "x".into(),
+                    scope: None,
+                },
+            },
+            reveal: None,
+        }],
+    );
+    ed.resize_terminal(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+    assert!(
+        ed.state.panes.entries[pid]
+            .render
+            .conceals()
+            .contains_key(&hume_rope::line::ContentLine::new(0)),
+        "sanity: pane A mirrors buffer A's conceal at line 0"
+    );
+
+    let bid_b = ed.open_scratch(hume_editing::text::BufferText::empty());
+    ed.enter_buffer(FocusedPane::current(&ed.view), bid_b);
+    ed.resize_terminal(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+
+    assert!(
+        ed.state.panes.entries[pid].render.conceals().is_empty(),
+        "after switching to buffer B, the pane's conceal mirror must be empty"
     );
 }
 
