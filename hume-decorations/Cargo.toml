@@ -25,3 +25,7 @@ test-util = []
 [[bench]]
 name = "remap_lines"
 harness = false
+
+[[bench]]
+name = "remap_conceals"
+harness = false
