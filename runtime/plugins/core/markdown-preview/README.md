@@ -1,7 +1,7 @@
 # core:markdown-preview
 
 Draws Markdown without its syntax, in the style of Obsidian's live preview. A heading's
-`#` marker becomes a glyph for its level, list bullets become dots, task boxes become
+`#` marker becomes its level number in a colored block, list bullets become dots, task boxes become
 checkboxes, quote markers become bars, rules become a line of dashes, code fences
 disappear behind a background band, and tables become box grids. Emphasis, strikethrough
 and code spans lose their delimiters, links show only their text, and escapes and entities
@@ -55,7 +55,7 @@ The choices the plugin and the Rust surface under it are built on:
 - **Code blocks:** a background band over every line of the block. The fence characters
   are hidden and the info string stays as the label.
 - **Shortcut links** (`[text]`) stay raw, and so does Markdown inside a fenced code block.
-- **Header rows:** a pinned heading draws its glyph and bold text like the same line in the
+- **Header rows:** a pinned heading draws its level number and bold text like the same line in the
   body. Header rows draw conceals and the search, diagnostic and extra highlights, and no
   inlay hints, virtual lines, line backgrounds or selections.
 - **Viewport:** a render covers the visible lines widened to whole syntax nodes (see
@@ -147,7 +147,7 @@ decides how far past the visible lines an element is fetched:
 
 - Headings are rooted at `section`: `(section (atx_heading (atx_h1_marker) @heading.1))`.
   Every section that overlaps the range returns its heading, ancestors included, so the
-  heading of a section scrolled into a sticky header row keeps its glyph and bold text.
+  heading of a section scrolled into a sticky header row keeps its level number and bold text.
 - Fences are rooted at `fenced_code_block`. A block one line of which is visible comes back
   whole: both fence lines, and the line span its band and reveal need.
 - Tables are rooted at `pipe_table`, their rows and cells included. A table one row of
@@ -170,7 +170,7 @@ Captures are grouped by name. Each element below is one or two capture names in
 
 | Element | Node | Drawn as |
 |---|---|---|
-| ATX heading | the `atx_hN_marker` of a section's `atx_heading` | The marker and the space after it become `▉ ▊ ▋ ▌ ▍ ▎` (levels 1 to 6) and a space, scope `markup.heading.N`. The heading's `inline` gets `markup.heading.N.text` and its line `markup.heading.N.line` |
+| ATX heading | the `atx_hN_marker` of a section's `atx_heading` | The marker becomes the level number with a space on each side, scope `markup.heading.N.marker`, which the bundled themes draw reversed. The space after it stays. The heading's `inline` gets `markup.heading.N.text` and its line `markup.heading.N.line` |
 | Setext heading | `setext_heading` with `setext_hN_underline` | No conceal: the text's `inline` gets `markup.heading.N.text`, and every line of the heading, underline included, `markup.heading.N.line` |
 | Bullet | `list_marker_minus`, `_plus`, `_star` | Its first char becomes `•`, unscoped, so the bullet keeps its syntax color. Ordered markers stay raw |
 | Task | `task_list_marker_unchecked`, `_checked` | The bullet and the box become `☐` or `☑`, scope `markup.list.unchecked` or `markup.list.checked`. A box starts where its bullet ends |
@@ -202,9 +202,8 @@ that is a link's whole text has the same range as that text, and is not its link
 
 Every conceal ends at most at the end of its line's text: `render.scm` clamps each one
 before the setter, which refuses a conceal covering a line break. A `thematic_break` node
-ends after its line break, and an empty ATX heading (`#` alone) has no space after its
-marker. A link whose destination or title runs onto a later line hides only up to the end
-of its first line.
+ends after its line break. A link whose destination or title runs onto a later line hides
+only up to the end of its first line.
 
 ### Tables
 

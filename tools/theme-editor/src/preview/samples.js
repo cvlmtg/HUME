@@ -92,21 +92,21 @@ export const HTML_SAMPLE = {
 
 export const MARKDOWN_SAMPLE = {
   name: "README.md",
-  cursorLine: 1,
+  cursorLine: 9,
   sticky: [3],
   diagnostics: [{ line: 8, sev: "hint", msg: "consider a table of contents" }],
   lines: [
-    { n: 1, rowScope: "markup.heading.1.line", t: [["# ", "markup.heading.marker"], ["G", "markup.heading.1.text", "cursor"], ["etting started", "markup.heading.1.text", "sel"]] },
-    { n: 2, rowScope: "markup.heading.2.line", t: [["▊ ", "markup.heading.2"], ["Installation", "markup.heading.2.text"]] },
-    { n: 3, rowScope: "markup.heading.3.line", t: [["▋ ", "markup.heading.3"], ["Configuration", "markup.heading.3.text"]] },
-    { n: 4, rowScope: "markup.heading.4.line", t: [["▌ ", "markup.heading.4"], ["Themes", "markup.heading.4.text"]] },
-    { n: 5, rowScope: "markup.heading.5.line", t: [["▍ ", "markup.heading.5"], ["Scopes", "markup.heading.5.text"]] },
-    { n: 6, rowScope: "markup.heading.6.line", t: [["▎ ", "markup.heading.6"], ["Notes", "markup.heading.6.text"]] },
+    { n: 1, rowScope: "markup.heading.1.line", t: [[" 1 ", "markup.heading.1.marker"], [" ", ""], ["Getting started", "markup.heading.1.text"]] },
+    { n: 2, rowScope: "markup.heading.2.line", t: [[" 2 ", "markup.heading.2.marker"], [" ", ""], ["Installation", "markup.heading.2.text"]] },
+    { n: 3, rowScope: "markup.heading.3.line", t: [[" 3 ", "markup.heading.3.marker"], [" ", ""], ["Configuration", "markup.heading.3.text"]] },
+    { n: 4, rowScope: "markup.heading.4.line", t: [[" 4 ", "markup.heading.4.marker"], [" ", ""], ["Themes", "markup.heading.4.text"]] },
+    { n: 5, rowScope: "markup.heading.5.line", t: [[" 5 ", "markup.heading.5.marker"], [" ", ""], ["Scopes", "markup.heading.5.text"]] },
+    { n: 6, rowScope: "markup.heading.6.line", t: [[" 6 ", "markup.heading.6.marker"], [" ", ""], ["Notes", "markup.heading.6.text"]] },
     { n: 7, t: [] },
     { n: 8, t: [["A theme is ", ""], ["**bold**", "markup.bold"], [", ", ""], ["_italic_", "markup.italic"], [", or ", ""], ["~~struck~~", "markup.strikethrough"], [". Edit ", ""], ["`config.toml`", "markup.raw"], [" to change it.", ""]] },
-    { n: 9, t: [["S", "", "cursor2"], ["ee ", "", "sel2"], ["[the guide]", "markup.link.text"], ["(", ""], ["https://hume.dev/themes", "markup.link.url"], [")", ""], [" or ", ""], ["[helix]", "markup.link.label"], [", or just ", ""], ["<https://hume.dev>", "markup.link"], [".", ""]] },
+    { n: 9, t: [["S", "", "cursor"], ["ee ", "", "sel"], ["[the guide]", "markup.link.text"], ["(", ""], ["https://hume.dev/themes", "markup.link.url"], [")", ""], [" or ", ""], ["[helix]", "markup.link.label"], [", or just ", ""], ["<https://hume.dev>", "markup.link"], [".", ""]] },
     { n: 10, t: [["> ", ""], ["A theme is just a TOML file.", "markup.quote"]] },
-    { n: 11, t: [["- ", "markup.list"], ["run ", ""], ["`hume --version`", "markup.raw.inline"]] },
+    { n: 11, t: [["- ", "markup.list"], ["r", "", "cursor2"], ["un ", "", "sel2"], ["`hume --version`", "markup.raw.inline"]] },
     { n: 12, t: [["- [x] ", "markup.list.checked"], ["ship the default theme", ""]] },
     { n: 13, t: [["- [ ] ", "markup.list.unchecked"], ["ship a light theme", ""]] },
     { n: 14, rowScope: "markup.raw.block.line", t: [["```toml", "markup.raw.block"]] },
@@ -228,7 +228,12 @@ export const NEIGHBOR_TOP = [
 
 export const NEIGHBOR_BOTTOM = [
   { n: 1, t: [["# ", "markup.heading.marker"], ["N", "markup.heading.1", "head"], ["otes", "markup.heading.1"]] },
-  { n: 2, t: [["- ", "markup.list"], ["sand theme, dusk palette", ""]] },
+  { n: 2, t: [["## ", "markup.heading.marker"], ["Palette", "markup.heading.2"]] },
+  { n: 3, t: [["### ", "markup.heading.marker"], ["Dusk", "markup.heading.3"]] },
+  { n: 4, t: [["#### ", "markup.heading.marker"], ["Sand", "markup.heading.4"]] },
+  { n: 5, t: [["##### ", "markup.heading.marker"], ["Plum", "markup.heading.5"]] },
+  { n: 6, t: [["###### ", "markup.heading.marker"], ["Text", "markup.heading.6"]] },
+  { n: 7, t: [["- ", "markup.list"], ["sand theme, dusk palette", ""]] },
 ];
 
 export const BUFFERS = [RUST_SAMPLE, HTML_SAMPLE, MARKDOWN_SAMPLE, DIFF_SAMPLE];

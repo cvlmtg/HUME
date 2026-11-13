@@ -232,8 +232,9 @@ export function cssUnderlineStyle(s) {
 
 // Build a React style object for a token or markup span from its scope's theme style.
 // `tag` (optional) overrides fg/bg and appends modifiers (used for cursor/selection/match).
-// `editorBg` is the canvas background, the `reversed` modifier's fallback fg
-// when the scope carries no bg of its own to swap against.
+// `editorBg` is the background under the token (the canvas, or the band of
+// its row), the `reversed` modifier's fallback fg when the scope carries no
+// bg of its own to swap against.
 export function tokenStyle(scopeId, theme, fallbackFg, editorBg, tag) {
   const s = scopeId ? fullStyle(scopeId, theme) : null;
   let fg = tag?.fg ?? s?.fg ?? fallbackFg;

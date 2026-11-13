@@ -214,17 +214,23 @@
 # Markdown scopes upstream leaves unset.
 "markup.heading.marker" = { fg = "comment" }
 "markup.link" = { fg = "cyan", modifiers = ["underlined"] }
-# HUME's markdown preview: heading text, heading band and code-block band.
+# HUME's markdown preview: heading level, heading text, heading band and code-block band.
+"markup.heading.1.marker" = { fg = "purple", modifiers = [ "reversed" ] }
 "markup.heading.1.text" = { fg = "purple", modifiers = [ "bold" ] }
 "markup.heading.1.line" = { bg = "heading_1_bg" }
+"markup.heading.2.marker" = { fg = "purple", modifiers = [ "reversed" ] }
 "markup.heading.2.text" = { fg = "purple", modifiers = [ "bold" ] }
 "markup.heading.2.line" = { bg = "heading_2_bg" }
+"markup.heading.3.marker" = { fg = "purple", modifiers = [ "reversed" ] }
 "markup.heading.3.text" = { fg = "purple", modifiers = [ "bold" ] }
 "markup.heading.3.line" = { bg = "heading_3_bg" }
+"markup.heading.4.marker" = { fg = "purple", modifiers = [ "reversed" ] }
 "markup.heading.4.text" = { fg = "purple", modifiers = [ "bold" ] }
 "markup.heading.4.line" = { bg = "heading_4_bg" }
+"markup.heading.5.marker" = { fg = "purple", modifiers = [ "reversed" ] }
 "markup.heading.5.text" = { fg = "purple", modifiers = [ "bold" ] }
 "markup.heading.5.line" = { bg = "heading_5_bg" }
+"markup.heading.6.marker" = { fg = "purple", modifiers = [ "reversed" ] }
 "markup.heading.6.text" = { fg = "purple", modifiers = [ "bold" ] }
 "markup.heading.6.line" = { bg = "heading_6_bg" }
 "markup.raw.block.line" = { bg = "code_block_bg" }

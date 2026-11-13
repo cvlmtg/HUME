@@ -313,7 +313,7 @@ fn plugin_activates_on_a_markdown_buffer_with_no_events_clause() {
 }
 
 #[test]
-fn atx_heading_sets_glyph_conceal_band_and_text_highlight() {
+fn atx_heading_marker_becomes_its_level_with_band_and_text_highlight() {
     let mut p = preview();
     // Line starts: 0, 4, 9, 15, 22, 30; each marker is followed by one
     // space and a one-letter text.
@@ -322,12 +322,12 @@ fn atx_heading_sets_glyph_conceal_band_and_text_highlight() {
     assert_eq!(
         p.conceals(bid),
         [
-            replaced(0, 2, "▉ ", Some("markup.heading.1")),
-            replaced(4, 7, "▊ ", Some("markup.heading.2")),
-            replaced(9, 13, "▋ ", Some("markup.heading.3")),
-            replaced(15, 20, "▌ ", Some("markup.heading.4")),
-            replaced(22, 28, "▍ ", Some("markup.heading.5")),
-            replaced(30, 37, "▎ ", Some("markup.heading.6")),
+            replaced(0, 1, " 1 ", Some("markup.heading.1.marker")),
+            replaced(4, 6, " 2 ", Some("markup.heading.2.marker")),
+            replaced(9, 12, " 3 ", Some("markup.heading.3.marker")),
+            replaced(15, 19, " 4 ", Some("markup.heading.4.marker")),
+            replaced(22, 27, " 5 ", Some("markup.heading.5.marker")),
+            replaced(30, 36, " 6 ", Some("markup.heading.6.marker")),
         ]
     );
     assert_eq!(
@@ -1051,7 +1051,7 @@ fn table_border_is_skipped_next_to_text_and_at_the_buffer_edges() {
         0,
         12,
     );
-    expected.push(replaced(12, 14, "▉ ", Some("markup.heading.1")));
+    expected.push(replaced(12, 13, " 1 ", Some("markup.heading.1.marker")));
     expected.extend(revealing(
         vec![bar(19, 21, "│ "), bar(22, 24, " │"), bar(25, 30, "├───┤")],
         19,
@@ -1529,13 +1529,13 @@ fn language_change_away_from_markdown_clears_the_sources() {
 #[test]
 fn missing_inline_grammar_draws_the_block_elements_alone() {
     let mut p = preview_with(None, false);
-    // "# a *b*\n": the marker and its space 0..2; the emphasis delimiters
+    // "# a *b*\n": the marker 0..1; the emphasis delimiters
     // at 4 and 6 stay raw.
     let bid = p.open("a.md", "# a *b*\n");
     p.render();
     assert_eq!(
         p.conceals(bid),
-        [replaced(0, 2, "▉ ", Some("markup.heading.1"))]
+        [replaced(0, 1, " 1 ", Some("markup.heading.1.marker"))]
     );
 }
 

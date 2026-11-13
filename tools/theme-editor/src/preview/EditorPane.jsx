@@ -358,7 +358,7 @@ export default function EditorPane({ theme }) {
                       <span style={{ display: "inline-block", width: 36, textAlign: "right", paddingRight: 12, color: isCur ? lnrS : lnr, userSelect: "none", flexShrink: 0, fontSize: 12 }}>{line.n}</span>
                       <span style={{ whiteSpace: "pre" }}>
                         {line.t.length === 0 && <span>{" "}</span>}
-                        {line.t.map((tok, i) => renderToken(tok, i, tagStyle(tok[2], d), theme, FG, BG))}
+                        {line.t.map((tok, i) => renderToken(tok, i, tagStyle(tok[2], d), theme, FG, line.rowScope ? bgc(line.rowScope, theme, BG) : BG))}
                       </span>
                       {d && (
                         <span style={{ marginLeft: 12, whiteSpace: "pre", ...tokenStyle(d.sev + ".diagnostic.inline", theme, FG, BG, null) }}>

@@ -1,9 +1,8 @@
 ---
 source: hume-editor/src/editor/tests/unix/markdown_preview_plugin.rs
-assertion_line: 1593
 expression: p.snapshot()
 ---
-<fg=#665c54,bg=#3c3836>   1 ▾ </><fg=#8ec07c,bg=#3c3836>▉ </><fg=#8ec07c,bg=#3c3836,bold>Head</>
+<fg=#665c54,bg=#3c3836>   1 ▾ </><fg=#3c3836,bg=#8ec07c> 1 </><fg=#8ec07c,bg=#3c3836> </><fg=#8ec07c,bg=#3c3836,bold>Head</>
 <fg=#665c54,bg=#282828>   4   </><fg=#ebdbb2,bg=#282828>x</>
 <fg=#665c54,bg=#282828>   3   </><fg=#ebdbb2,bg=#282828>x</>
 <fg=#665c54,bg=#282828>   2   </><fg=#ebdbb2,bg=#282828>x</>

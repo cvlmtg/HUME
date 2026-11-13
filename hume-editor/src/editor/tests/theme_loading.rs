@@ -223,43 +223,49 @@ fn bundled_theme_diff_line_tints_are_pairwise_distinct() {
     }
 }
 
-/// The three scopes each markdown heading level uses, level 1 first.
-const HEADING_SCOPES: [(&str, &str, &str); 6] = [
+/// The four scopes each markdown heading level uses, level 1 first.
+const HEADING_SCOPES: [(&str, &str, &str, &str); 6] = [
     (
         "markup.heading.1",
+        "markup.heading.1.marker",
         "markup.heading.1.text",
         "markup.heading.1.line",
     ),
     (
         "markup.heading.2",
+        "markup.heading.2.marker",
         "markup.heading.2.text",
         "markup.heading.2.line",
     ),
     (
         "markup.heading.3",
+        "markup.heading.3.marker",
         "markup.heading.3.text",
         "markup.heading.3.line",
     ),
     (
         "markup.heading.4",
+        "markup.heading.4.marker",
         "markup.heading.4.text",
         "markup.heading.4.line",
     ),
     (
         "markup.heading.5",
+        "markup.heading.5.marker",
         "markup.heading.5.text",
         "markup.heading.5.line",
     ),
     (
         "markup.heading.6",
+        "markup.heading.6.marker",
         "markup.heading.6.text",
         "markup.heading.6.line",
     ),
 ];
 
 /// The six heading band tints must differ from each other in every bundled
-/// theme: a band is what tells one heading level from another once the glyph
-/// is the same character at every depth. A missing `.line` entry resolves
+/// theme, so heading levels next to each other read apart before their
+/// level numbers do. A missing `.line` entry resolves
 /// through `markup.heading.N` to a style with no background, which this also
 /// rejects.
 #[test]
@@ -267,7 +273,7 @@ fn bundled_theme_heading_band_tints_are_pairwise_distinct() {
     for (name, theme) in load_bundled_themes() {
         let bgs: Vec<_> = HEADING_SCOPES
             .iter()
-            .map(|&(_, _, line)| {
+            .map(|&(_, _, _, line)| {
                 let bg = theme.resolve_by_name(hume_engine::types::Scope(line)).bg;
                 assert!(
                     bg.is_some(),
@@ -293,11 +299,11 @@ fn bundled_theme_heading_band_tints_are_pairwise_distinct() {
 
 /// Each `markup.heading.N.text` is bold and keeps the color the theme already
 /// gives `markup.heading.N`, so the heading text does not change hue when the
-/// plugin hides the raw `#` marker behind the glyph.
+/// plugin hides the raw `#` marker behind the level number.
 #[test]
 fn bundled_theme_heading_text_is_bold_in_its_headings_color() {
     for (name, theme) in load_bundled_themes() {
-        for (heading, text, _) in HEADING_SCOPES {
+        for (heading, _, text, _) in HEADING_SCOPES {
             let text_style = theme.resolve_by_name(hume_engine::types::Scope(text));
             let heading_style = theme.resolve_by_name(hume_engine::types::Scope(heading));
             assert!(
@@ -309,6 +315,29 @@ fn bundled_theme_heading_text_is_bold_in_its_headings_color() {
             assert_eq!(
                 text_style.fg, heading_style.fg,
                 "bundled theme '{name}': '{text}' differs in color from '{heading}'"
+            );
+        }
+    }
+}
+
+/// Each `markup.heading.N.marker` is the level number drawn reversed in the
+/// color of `markup.heading.N`, so the number shows as a block of the heading's
+/// color with the band's tint inside it.
+#[test]
+fn bundled_theme_heading_marker_is_reversed_in_its_headings_color() {
+    for (name, theme) in load_bundled_themes() {
+        for (heading, marker, _, _) in HEADING_SCOPES {
+            let marker_style = theme.resolve_by_name(hume_engine::types::Scope(marker));
+            let heading_style = theme.resolve_by_name(hume_engine::types::Scope(heading));
+            assert!(
+                marker_style
+                    .modifiers
+                    .contains(hume_engine::types::Modifiers::REVERSED),
+                "bundled theme '{name}': '{marker}' is not reversed"
+            );
+            assert_eq!(
+                marker_style.fg, heading_style.fg,
+                "bundled theme '{name}': '{marker}' differs in color from '{heading}'"
             );
         }
     }

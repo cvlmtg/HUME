@@ -4,8 +4,6 @@
 
 (provide md-preview/block-elements)
 
-(define md-preview/glyphs (hash 1 "▉" 2 "▊" 3 "▋" 4 "▌" 5 "▍" 6 "▎"))
-
 (define (md-preview/heading-scope n suffix)
   (string-append "markup.heading." (number->string n) suffix))
 
@@ -29,9 +27,9 @@
         (lambda (c)
           (let ([start (md-preview/capture-start c)])
             (emit! 'conceal
-                   (md-preview/conceal start (+ (md-preview/capture-end c) 1)
-                                       (string-append (hash-ref md-preview/glyphs n) " ")
-                                       (md-preview/heading-scope n "")
+                   (md-preview/conceal start (md-preview/capture-end c)
+                                       (string-append " " (number->string n) " ")
+                                       (md-preview/heading-scope n ".marker")
                                        #f))
             (emit! 'band (hash 'line (line-of start) 'scope (md-preview/heading-scope n ".line")))))
         (md-preview/captured groups (md-preview/heading n)))

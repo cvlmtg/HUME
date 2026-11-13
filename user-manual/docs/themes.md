@@ -86,6 +86,7 @@ These have no Helix equivalent:
 - `ui.virtual.invisible`: the `<200b>`-style stand-in for a character the terminal must not be shown as itself (see [Buffer options](settings.md#buffer-options))
 - `diff.plus.line` / `diff.minus.line` / `diff.delta.line`: the whole-line background tint `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also colors the text of a deleted line). Left undefined, they paint nothing: an unmodified Helix theme colors the gutter marker (through `diff.plus`, `diff.minus` and `diff.delta`) but paints no line tint
 - `diff.plus.word` / `diff.minus.word`: word-level highlight inside a changed line (`core:git-diff`'s inline diff), inside the line-level `.line` tint above
+- `markup.heading.1.marker` to `markup.heading.6.marker`: the level number that stands in for a heading's `#` marker in the Markdown preview, which the bundled themes color like `markup.heading.N` and draw reversed. An unset one falls back to `markup.heading.N`
 - `markup.heading.1.text` to `markup.heading.6.text`: the text of a heading in the Markdown preview, which the bundled themes color like `markup.heading.N` and make bold. An unset one falls back to `markup.heading.N`
 - `markup.heading.1.line` to `markup.heading.6.line`: the whole-line background tint behind a heading in the Markdown preview, one per level. Left undefined, they paint nothing
 - `markup.raw.block.line`: the whole-line background tint behind a fenced code block in the Markdown preview. Left undefined, it paints nothing
