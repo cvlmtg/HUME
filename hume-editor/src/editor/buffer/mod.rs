@@ -295,6 +295,11 @@ pub(crate) struct Buffer {
     /// `on-undo-history-changed` event, diffed the same way
     /// `announced_generation` is (see `BufferStore::take_history_changed`).
     pub(in crate::editor) announced_history: HistoryMark,
+    /// The `Syntax::committed_gen` most recently announced as an
+    /// `on-syntax-changed` event, diffed the same way `announced_generation`
+    /// is (see `BufferStore::take_syntax_changed`). `None` while no tree is
+    /// committed.
+    pub(in crate::editor) announced_syntax: Option<u64>,
     /// Per-buffer tree-sitter syntax attachment: grammar identity, committed
     /// parse layers, generation bookkeeping, and in-flight state, all in one
     /// place. `None` when no grammar is attached or the buffer exceeds
@@ -402,6 +407,7 @@ impl Buffer {
             announced_generation,
             change_log: ChangeLog::default(),
             announced_history,
+            announced_syntax: None,
             syntax: None,
             hold: Weak::new(),
             open_announced: false,

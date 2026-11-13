@@ -208,6 +208,29 @@ fn a_hook_registered_by_another_owners_command_follows_that_owners_scope() {
     assert_eq!(logged_since(&ed, start), ["user text"]);
 }
 
+/// Two shown buffers parse, a markdown one and a rust one: the plugin
+/// declared for markdown hears of the markdown tree only.
+#[test]
+fn a_scoped_plugin_gets_a_syntax_change_only_for_a_buffer_of_its_language() {
+    test_fixtures::require_grammars(&["markdown", "rust"]);
+    let (mut ed, _dir) = setup_lazy_editor(
+        &declared(r#""markdown""#),
+        r#"(register-hook! 'on-syntax-changed
+             (lambda (p) (log! 'trace (string-append "tp syntax " (get-buffer-option p "language")))))"#,
+    );
+    register_markdown(&mut ed);
+    attach_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
+    let markdown = opened_buffer(&mut ed);
+    set_language(&mut ed, markdown, Some("markdown"));
+    let rust = ed.open_scratch(BufferText::from("fn a() {}\n"));
+    ed.split_onto(rust, hume_engine::pipeline::Direction::Horizontal);
+    set_language(&mut ed, rust, Some("rust"));
+    for _ in 0..4 {
+        ed.settle();
+    }
+    assert_eq!(tp_log(&ed), ["syntax markdown"]);
+}
+
 // ── A language change ─────────────────────────────────────────────────
 
 #[test]

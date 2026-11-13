@@ -14,5 +14,6 @@ mod buffer_enter_focus;
 mod dispatch_hygiene;
 mod mode_and_startup;
 mod settle_queue;
+mod syntax_changed;
 mod text_changed;
 mod text_changed_edge_cases;

@@ -334,6 +334,7 @@ A plugin reacts to editor events by registering a hook handler with `register-ho
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: `key` is a string, `value` the option's new value as `get-option` returns it |
 | `on-text-changed` | A buffer's text changes | `(pane changes)`: `changes` is a list of hunks shaped like those `diff-lines` returns, from the text at the previous `on-text-changed` (the old side) to the current one, or `#f` when HUME can't say what changed |
 | `on-undo-history-changed` | A buffer's undo history changes: an edit is recorded, an undo, redo or jump moves to another revision, or a write changes which revision is saved | `(pane)`: pull the tree with `buffer-undo-tree` |
+| `on-syntax-changed` | A buffer's syntax tree is parsed or reparsed, so `syntax-captures` answers from the new tree; also when the buffer loses its tree (its language is cleared, or it grows past `syntax-highlight-max-bytes`), where `syntax-captures` returns an empty list | `(pane)` |
 
 `on-before-buffer-save` fires for `:w`, `:wq` and `:wa`, but not for a write that doesn't reach the buffer's own file (a read-only buffer, a buffer with no path). The file is written once every handler has finished:
 

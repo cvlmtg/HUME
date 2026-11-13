@@ -14,6 +14,7 @@ use hume_core::BufferId;
 use hume_editing::hunk::ChangeHunk;
 use hume_engine::pipeline::Cycle;
 use hume_platform::path::AbsolutePath;
+use hume_treesitter::syntax::Syntax;
 
 use crate::editor::buffer::{Buffer, NewBuffer, Origin, SavedSelections, ViewLabel};
 use crate::editor::clock::Clock;
@@ -211,6 +212,20 @@ impl BufferStore {
             let mark = buf.history_mark();
             let changed = mark != buf.announced_history;
             buf.announced_history = mark;
+            changed.then_some(id)
+        })
+    }
+
+    /// Every open buffer whose committed syntax tree changed since the last
+    /// call: the observation-point source for `on-syntax-changed`
+    /// (`EditorEvent::OnSyntaxChanged`'s doc has the contract). Same
+    /// advance-as-it-reports shape as [`Self::take_text_changed`], over
+    /// `Syntax::committed_gen`; a buffer with no syntax reads as `None`.
+    pub(in crate::editor) fn take_syntax_changed(&mut self) -> Vec<BufferId> {
+        self.take_announced(|id, buf| {
+            let stamp = buf.syntax.as_ref().and_then(Syntax::committed_gen);
+            let changed = stamp != buf.announced_syntax;
+            buf.announced_syntax = stamp;
             changed.then_some(id)
         })
     }

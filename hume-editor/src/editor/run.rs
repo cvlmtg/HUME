@@ -540,6 +540,7 @@ impl Editor {
             // dispatch reads a current tree instead of rebuilding one
             // `ensure_syntax_current` would parse inline.
             self.install_parse_results();
+            self.detect_syntax_changed();
             match event {
                 TerminalEvent::WindowResized(_) => {
                     // Drain any additional resize events that are already queued

@@ -72,6 +72,7 @@ fn all_variants() -> Vec<EditorEvent> {
             changes: None,
         },
         EditorEvent::OnUndoHistoryChanged { buffer },
+        EditorEvent::OnSyntaxChanged { buffer },
     ]
 }
 
@@ -193,6 +194,7 @@ fn buffer_only_events_carry_one_pane_less_handle_arg() {
         EditorEvent::OnBufferSave { buffer },
         EditorEvent::OnDiagnosticsChanged { buffer },
         EditorEvent::OnUndoHistoryChanged { buffer },
+        EditorEvent::OnSyntaxChanged { buffer },
     ] {
         let label = format!("{event:?}");
         let args = event.into_steel_args();

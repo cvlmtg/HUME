@@ -71,6 +71,7 @@ impl Editor {
         // callback), and the frame drawn next must not highlight that text
         // at the old tree's offsets.
         self.reparse_stale_buffers();
+        self.detect_syntax_changed();
         // After the drain, so the `OnBufferOpen`/`OnLanguageSet` hooks have
         // run: centring counts a band one of them opened.
         self.apply_startup_positions();
@@ -258,6 +259,20 @@ impl Editor {
         }
     }
 
+    /// Observation point for `on-syntax-changed`
+    /// (`EditorEvent::OnSyntaxChanged`'s doc), run after each parse install:
+    /// in `settle` after `reparse_stale_buffers`, and in `Editor::run` after
+    /// the install that precedes a dispatched key. Not inside
+    /// `drain_pending_work`'s fixpoint: an event queued here is drained by
+    /// the next `settle`, which the run loop reaches at once because pending
+    /// work keeps its wait at zero.
+    pub(in crate::editor) fn detect_syntax_changed(&mut self) {
+        for buffer in self.state.buffers.take_syntax_changed() {
+            self.state
+                .queue_event(EditorEvent::OnSyntaxChanged { buffer });
+        }
+    }
+
     /// Run one snapshot of `pending_work` in queued order: event handlers
     /// fire one event at a time, and a contiguous run of unguarded `Call`s
     /// goes to `run_steel_calls` as one batch before the next
@@ -357,7 +372,8 @@ impl Editor {
             | EditorEvent::OnOptionChange { .. }
             | EditorEvent::OnLspNotification { .. }
             | EditorEvent::OnTextChanged { .. }
-            | EditorEvent::OnUndoHistoryChanged { .. } => {}
+            | EditorEvent::OnUndoHistoryChanged { .. }
+            | EditorEvent::OnSyntaxChanged { .. } => {}
         }
     }
 

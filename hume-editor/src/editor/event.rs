@@ -214,6 +214,18 @@ pub(in crate::editor) enum EditorEvent {
     OnUndoHistoryChanged {
         buffer: BufferId,
     },
+    /// Fires when a buffer's committed syntax tree changes: its first parse,
+    /// each reparse, and a detach or re-attach. A handler for a buffer that
+    /// has a tree can read it with `syntax-captures`. Raised by diffing
+    /// `Syntax::committed_gen` against a per-buffer `announced_syntax`
+    /// baseline (`Editor::detect_syntax_changed`,
+    /// `BufferStore::take_syntax_changed`) after each parse install, so a
+    /// parse that lands while the editor is idle fires with no further
+    /// input, on the next pass of the run loop. Several installs between two
+    /// observations coalesce into one event.
+    OnSyntaxChanged {
+        buffer: BufferId,
+    },
     /// Fires after a successful `:set global`/`set-option!`/`:theme` write.
     /// `settings::ops::apply_global` is the single production path every one
     /// of those funnels through, so this is the one place to raise it.
@@ -277,9 +289,8 @@ impl EditorEvent {
             | EditorEvent::OnDiagnosticsChanged { buffer }
             | EditorEvent::OnInlayHintsRefresh { buffer, .. }
             | EditorEvent::OnTextChanged { buffer, .. }
-            | EditorEvent::OnUndoHistoryChanged { buffer } => {
-                Some(PaneHandle::buffer_only(*buffer))
-            }
+            | EditorEvent::OnUndoHistoryChanged { buffer }
+            | EditorEvent::OnSyntaxChanged { buffer } => Some(PaneHandle::buffer_only(*buffer)),
             EditorEvent::OnBufferEnter { target }
             | EditorEvent::OnViewportChange { target, .. }
             | EditorEvent::OnTriggerChar { target, .. }
@@ -314,7 +325,8 @@ impl EditorEvent {
             | EditorEvent::OnCompletionAccept { .. }
             | EditorEvent::OnOptionChange { .. }
             | EditorEvent::OnTextChanged { .. }
-            | EditorEvent::OnUndoHistoryChanged { .. } => None,
+            | EditorEvent::OnUndoHistoryChanged { .. }
+            | EditorEvent::OnSyntaxChanged { .. } => None,
         }
     }
 
@@ -342,7 +354,8 @@ impl EditorEvent {
             | EditorEvent::OnCompletionAccept { .. }
             | EditorEvent::OnOptionChange { .. }
             | EditorEvent::OnTextChanged { .. }
-            | EditorEvent::OnUndoHistoryChanged { .. } => None,
+            | EditorEvent::OnUndoHistoryChanged { .. }
+            | EditorEvent::OnSyntaxChanged { .. } => None,
         }
     }
 }
@@ -433,6 +446,7 @@ editor_event_names! {
         OnOptionChange => "on-option-change" (2, Editor),
         OnTextChanged => "on-text-changed" (2, Buffer),
         OnUndoHistoryChanged => "on-undo-history-changed" (1, Buffer),
+        OnSyntaxChanged => "on-syntax-changed" (1, Buffer),
     }
     held {
         OnBeforeBufferSave => BEFORE_BUFFER_SAVE (1, Buffer),
@@ -451,7 +465,8 @@ impl EditorEvent {
             | EditorEvent::OnBufferClose { buffer, .. }
             | EditorEvent::OnBufferSave { buffer }
             | EditorEvent::OnDiagnosticsChanged { buffer }
-            | EditorEvent::OnUndoHistoryChanged { buffer } => {
+            | EditorEvent::OnUndoHistoryChanged { buffer }
+            | EditorEvent::OnSyntaxChanged { buffer } => {
                 vec![SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val()]
             }
             EditorEvent::OnTextChanged { buffer, changes } => {
