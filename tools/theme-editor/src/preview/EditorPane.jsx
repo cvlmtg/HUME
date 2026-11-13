@@ -349,8 +349,9 @@ export default function EditorPane({ theme }) {
                 {buf.lines.map(line => {
                   const isCur = line.n === buf.cursorLine;
                   const d = diag.find(x => x.line === line.n);
+                  const lineBg = line.rowScope ? bgc(line.rowScope, theme, "transparent") : "transparent";
                   return (
-                    <div key={line.n} style={{ display: "flex", padding: "0 12px 0 0", background: isCur ? cursorlineBg : "transparent", minHeight: 20 }}>
+                    <div key={line.n} style={{ display: "flex", padding: "0 12px 0 0", background: isCur ? cursorlineBg : lineBg, minHeight: 20 }}>
                       <span style={{ width: 16, textAlign: "center", color: d ? fgc(d.sev, theme, FG) : "transparent", flexShrink: 0, fontSize: 12 }}>
                         {d ? "●" : ""}
                       </span>

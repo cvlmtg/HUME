@@ -111,6 +111,12 @@ inherits = "kanagawa"
 "markup.link.label" = "dragonBlue2"
 "markup.quote" = "springViolet1"
 "markup.raw" = "dragonGreen2"
+"markup.heading.1.text" = { fg = "dragonOrange", modifiers = [ "bold" ] }
+"markup.heading.2.text" = { fg = "dragonYellow", modifiers = [ "bold" ] }
+"markup.heading.3.text" = { fg = "dragonBlue2", modifiers = [ "bold" ] }
+"markup.heading.4.text" = { fg = "dragonWhite", modifiers = [ "bold" ] }
+"markup.heading.5.text" = { fg = "dragonRed", modifiers = [ "bold" ] }
+"markup.heading.6.text" = { fg = "dragonPink", modifiers = [ "bold" ] }
 
 [palette]
 dragonBlack0 = "#0d0c0c"
@@ -149,3 +155,10 @@ diff_plus_word_bg = "#404b3f"
 diff_minus_bg = "#372726"
 diff_minus_word_bg = "#563836"
 diff_delta_bg = "#282a2c"
+heading_1_bg = "#312A26"
+heading_2_bg = "#302C26"
+heading_3_bg = "#262728"
+heading_4_bg = "#292828"
+heading_5_bg = "#261E1D"
+heading_6_bg = "#201D1E"
+code_block_bg = "#242322"

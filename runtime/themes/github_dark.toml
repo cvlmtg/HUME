@@ -160,6 +160,20 @@ error = "danger.fg"
 # Markdown scopes upstream leaves unset.
 "markup.heading.marker" = { fg = "border.default" }
 "markup.link" = { fg = "accent.fg", modifiers = ["underlined"] }
+# HUME's markdown preview: heading text, heading band and code-block band.
+"markup.heading.1.text" = { fg = "scale.blue.2", modifiers = [ "bold" ] }
+"markup.heading.1.line" = { bg = "heading_1_bg" }
+"markup.heading.2.text" = { fg = "scale.blue.2", modifiers = [ "bold" ] }
+"markup.heading.2.line" = { bg = "heading_2_bg" }
+"markup.heading.3.text" = { fg = "scale.blue.2", modifiers = [ "bold" ] }
+"markup.heading.3.line" = { bg = "heading_3_bg" }
+"markup.heading.4.text" = { fg = "scale.blue.2", modifiers = [ "bold" ] }
+"markup.heading.4.line" = { bg = "heading_4_bg" }
+"markup.heading.5.text" = { fg = "scale.blue.2", modifiers = [ "bold" ] }
+"markup.heading.5.line" = { bg = "heading_5_bg" }
+"markup.heading.6.text" = { fg = "scale.blue.2", modifiers = [ "bold" ] }
+"markup.heading.6.line" = { bg = "heading_6_bg" }
+"markup.raw.block.line" = { bg = "code_block_bg" }
 
 [palette]
 "accent.emphasis" = "#1f6feb"
@@ -317,3 +331,10 @@ diff_plus_word_bg = "#1f4d2c"
 diff_minus_bg = "#371d20"
 diff_minus_word_bg = "#622829"
 diff_delta_bg = "#292419"
+"heading_1_bg" = "#1e2d3c"
+"heading_2_bg" = "#1c2a37"
+"heading_3_bg" = "#1a2633"
+"heading_4_bg" = "#18222e"
+"heading_5_bg" = "#161f2a"
+"heading_6_bg" = "#131c25"
+"code_block_bg" = "#161a20"

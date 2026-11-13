@@ -223,6 +223,110 @@ fn bundled_theme_diff_line_tints_are_pairwise_distinct() {
     }
 }
 
+/// The three scopes each markdown heading level uses, level 1 first.
+const HEADING_SCOPES: [(&str, &str, &str); 6] = [
+    (
+        "markup.heading.1",
+        "markup.heading.1.text",
+        "markup.heading.1.line",
+    ),
+    (
+        "markup.heading.2",
+        "markup.heading.2.text",
+        "markup.heading.2.line",
+    ),
+    (
+        "markup.heading.3",
+        "markup.heading.3.text",
+        "markup.heading.3.line",
+    ),
+    (
+        "markup.heading.4",
+        "markup.heading.4.text",
+        "markup.heading.4.line",
+    ),
+    (
+        "markup.heading.5",
+        "markup.heading.5.text",
+        "markup.heading.5.line",
+    ),
+    (
+        "markup.heading.6",
+        "markup.heading.6.text",
+        "markup.heading.6.line",
+    ),
+];
+
+/// The six heading band tints must differ from each other in every bundled
+/// theme: a band is what tells one heading level from another once the glyph
+/// is the same character at every depth. A missing `.line` entry resolves
+/// through `markup.heading.N` to a style with no background, which this also
+/// rejects.
+#[test]
+fn bundled_theme_heading_band_tints_are_pairwise_distinct() {
+    for (name, theme) in load_bundled_themes() {
+        let bgs: Vec<_> = HEADING_SCOPES
+            .iter()
+            .map(|&(_, _, line)| {
+                let bg = theme.resolve_by_name(hume_engine::types::Scope(line)).bg;
+                assert!(
+                    bg.is_some(),
+                    "bundled theme '{name}': '{line}' has no background"
+                );
+                bg
+            })
+            .collect();
+        for i in 0..bgs.len() {
+            for j in (i + 1)..bgs.len() {
+                assert_ne!(
+                    bgs[i],
+                    bgs[j],
+                    "bundled theme '{name}': heading levels {} and {} share the band tint {:?}",
+                    i + 1,
+                    j + 1,
+                    bgs[i]
+                );
+            }
+        }
+    }
+}
+
+/// Each `markup.heading.N.text` is bold and keeps the color the theme already
+/// gives `markup.heading.N`, so the heading text does not change hue when the
+/// plugin hides the raw `#` marker behind the glyph.
+#[test]
+fn bundled_theme_heading_text_is_bold_in_its_headings_color() {
+    for (name, theme) in load_bundled_themes() {
+        for (heading, text, _) in HEADING_SCOPES {
+            let text_style = theme.resolve_by_name(hume_engine::types::Scope(text));
+            let heading_style = theme.resolve_by_name(hume_engine::types::Scope(heading));
+            assert!(
+                text_style
+                    .modifiers
+                    .contains(hume_engine::types::Modifiers::BOLD),
+                "bundled theme '{name}': '{text}' is not bold"
+            );
+            assert_eq!(
+                text_style.fg, heading_style.fg,
+                "bundled theme '{name}': '{text}' differs in color from '{heading}'"
+            );
+        }
+    }
+}
+
+/// A fenced code block's band needs a background of its own: the scope it
+/// falls back to, `markup.raw.block`, styles the text and carries none.
+#[test]
+fn bundled_theme_code_block_band_has_a_background() {
+    for (name, theme) in load_bundled_themes() {
+        let style = theme.resolve_by_name(hume_engine::types::Scope("markup.raw.block.line"));
+        assert!(
+            style.bg.is_some(),
+            "bundled theme '{name}': 'markup.raw.block.line' has no background"
+        );
+    }
+}
+
 /// A mode scope that differs from the base row style must differ in its
 /// `bg`: the whole-row tint (`EditorColors::from_theme`, `hume-editor/src/statusline/colors.rs`) reads
 /// a single style per mode and paints it across the entire statusline, so a

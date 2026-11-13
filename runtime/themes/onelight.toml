@@ -250,6 +250,20 @@
 # `diff.plus.line`/`diff.minus.line`-tinted line.
 "diff.plus.word" = { fg = "black", bg = "diff_plus_word_bg", modifiers = ["bold"] }
 "diff.minus.word" = { fg = "black", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
+# HUME's markdown preview: heading text, heading band and code-block band.
+"markup.heading.1.text" = { fg = "red", modifiers = [ "bold" ] }
+"markup.heading.1.line" = { bg = "heading_1_bg" }
+"markup.heading.2.text" = { fg = "gold", modifiers = [ "bold" ] }
+"markup.heading.2.line" = { bg = "heading_2_bg" }
+"markup.heading.3.text" = { fg = "yellow", modifiers = [ "bold" ] }
+"markup.heading.3.line" = { bg = "heading_3_bg" }
+"markup.heading.4.text" = { fg = "green", modifiers = [ "bold" ] }
+"markup.heading.4.line" = { bg = "heading_4_bg" }
+"markup.heading.5.text" = { fg = "blue", modifiers = [ "bold" ] }
+"markup.heading.5.line" = { bg = "heading_5_bg" }
+"markup.heading.6.text" = { fg = "purple", modifiers = [ "bold" ] }
+"markup.heading.6.line" = { bg = "heading_6_bg" }
+"markup.raw.block.line" = { bg = "code_block_bg" }
 
 [palette]
 white = "#FAFAFA"
@@ -283,3 +297,10 @@ diff_plus_word_bg = "#addbb8"
 diff_minus_bg = "#f3cdcd"
 diff_minus_word_bg = "#eda0a0"
 diff_delta_bg = "#d7e5fb"
+heading_1_bg = "#F4D2D2"
+heading_2_bg = "#F5E3D7"
+heading_3_bg = "#FBE9DC"
+heading_4_bg = "#E5F1E8"
+heading_5_bg = "#E6EEFA"
+heading_6_bg = "#F6EBF5"
+code_block_bg = "#EBECEC"

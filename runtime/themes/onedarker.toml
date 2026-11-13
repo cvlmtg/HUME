@@ -176,6 +176,20 @@
 # Markdown scopes upstream leaves unset.
 "markup.heading.marker" = { fg = "light-gray" }
 "markup.link" = { fg = "blue", modifiers = ["underlined"] }
+# HUME's markdown preview: heading text, heading band and code-block band.
+"markup.heading.1.text" = { fg = "red", modifiers = [ "bold" ] }
+"markup.heading.1.line" = { bg = "heading_1_bg" }
+"markup.heading.2.text" = { fg = "red", modifiers = [ "bold" ] }
+"markup.heading.2.line" = { bg = "heading_2_bg" }
+"markup.heading.3.text" = { fg = "red", modifiers = [ "bold" ] }
+"markup.heading.3.line" = { bg = "heading_3_bg" }
+"markup.heading.4.text" = { fg = "red", modifiers = [ "bold" ] }
+"markup.heading.4.line" = { bg = "heading_4_bg" }
+"markup.heading.5.text" = { fg = "red", modifiers = [ "bold" ] }
+"markup.heading.5.line" = { bg = "heading_5_bg" }
+"markup.heading.6.text" = { fg = "red", modifiers = [ "bold" ] }
+"markup.heading.6.line" = { bg = "heading_6_bg" }
+"markup.raw.block.line" = { bg = "code_block_bg" }
 
 [palette]
 
@@ -206,3 +220,10 @@ diff_plus_word_bg = "#3b4c36"
 diff_minus_bg = "#372428"
 diff_minus_word_bg = "#593035"
 diff_delta_bg = "#1e2b36"
+heading_1_bg = "#342326"
+heading_2_bg = "#302224"
+heading_3_bg = "#2C2023"
+heading_4_bg = "#291F22"
+heading_5_bg = "#251D20"
+heading_6_bg = "#211C1E"
+code_block_bg = "#202326"

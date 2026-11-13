@@ -168,6 +168,20 @@ warning = { fg = "#ffc777" }
 
 # Markdown scopes upstream leaves unset.
 "markup.heading.marker" = { fg = "fg_gutter" }
+# HUME's markdown preview: heading text, heading band and code-block band.
+"markup.heading.1.text" = { fg = "blue", modifiers = [ "bold" ] }
+"markup.heading.1.line" = { bg = "heading_1_bg" }
+"markup.heading.2.text" = { fg = "blue", modifiers = [ "bold" ] }
+"markup.heading.2.line" = { bg = "heading_2_bg" }
+"markup.heading.3.text" = { fg = "blue", modifiers = [ "bold" ] }
+"markup.heading.3.line" = { bg = "heading_3_bg" }
+"markup.heading.4.text" = { fg = "blue", modifiers = [ "bold" ] }
+"markup.heading.4.line" = { bg = "heading_4_bg" }
+"markup.heading.5.text" = { fg = "blue", modifiers = [ "bold" ] }
+"markup.heading.5.line" = { bg = "heading_5_bg" }
+"markup.heading.6.text" = { fg = "blue", modifiers = [ "bold" ] }
+"markup.heading.6.line" = { bg = "heading_6_bg" }
+"markup.raw.block.line" = { bg = "code_block_bg" }
 
 [palette]
 bg = "#222436"
@@ -260,3 +274,10 @@ diff_plus_word_bg = "#5c6b55"
 diff_minus_bg = "#4a3343"
 diff_minus_word_bg = "#724150"
 diff_delta_bg = "#2f3752"
+heading_1_bg = "#313956"
+heading_2_bg = "#2f3752"
+heading_3_bg = "#2e344e"
+heading_4_bg = "#2c314a"
+heading_5_bg = "#2a2f46"
+heading_6_bg = "#282c42"
+code_block_bg = "#2e3043"

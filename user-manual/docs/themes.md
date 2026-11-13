@@ -86,6 +86,9 @@ These have no Helix equivalent:
 - `ui.virtual.invisible`: the `<200b>`-style stand-in for a character the terminal must not be shown as itself (see [Buffer options](settings.md#buffer-options))
 - `diff.plus.line` / `diff.minus.line` / `diff.delta.line`: the whole-line background tint `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also colors the text of a deleted line). Left undefined, they paint nothing: an unmodified Helix theme colors the gutter marker (through `diff.plus`, `diff.minus` and `diff.delta`) but paints no line tint
 - `diff.plus.word` / `diff.minus.word`: word-level highlight inside a changed line (`core:git-diff`'s inline diff), inside the line-level `.line` tint above
+- `markup.heading.1.text` to `markup.heading.6.text`: the text of a heading in the Markdown preview, which the bundled themes color like `markup.heading.N` and make bold. An unset one falls back to `markup.heading.N`
+- `markup.heading.1.line` to `markup.heading.6.line`: the whole-line background tint behind a heading in the Markdown preview, one per level. Left undefined, they paint nothing
+- `markup.raw.block.line`: the whole-line background tint behind a fenced code block in the Markdown preview. Left undefined, it paints nothing
 - `diagnostic.error.message` / `.warning.message` / `.info.message` / `.hint.message` and their `.message-text` counterparts: the `:messages` log's severity badge and body text
 - `error.diagnostic.inline` / `warning.diagnostic.inline` / `info.diagnostic.inline` / `hint.diagnostic.inline`: the diagnostic summary shown at the end of an offending line. Separate from `diagnostic.error` and friends, which style the squiggle under the code itself, so the summary doesn't pick up that scope's underline. Each falls back to the matching `error`/`warning`/`info`/`hint` gutter color when unset
 

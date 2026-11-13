@@ -51,6 +51,7 @@ function referencedScopes() {
   const scopes = new Set(CHROME_SCOPES);
   for (const buf of [RUST_SAMPLE, HTML_SAMPLE, MARKDOWN_SAMPLE]) {
     for (const line of buf.lines) {
+      if (line.rowScope) scopes.add(line.rowScope);
       for (const [, scope] of line.t) if (scope) scopes.add(scope);
     }
   }

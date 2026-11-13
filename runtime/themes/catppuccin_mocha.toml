@@ -204,6 +204,20 @@ hint = "teal"
 # Markdown scopes upstream leaves unset.
 "markup.heading.marker" = { fg = "overlay1" }
 "markup.link" = { fg = "blue", modifiers = ["underlined"] }
+# HUME's markdown preview: heading text, heading band and code-block band.
+"markup.heading.1.text" = { fg = "red", modifiers = [ "bold" ] }
+"markup.heading.1.line" = { bg = "heading_1_bg" }
+"markup.heading.2.text" = { fg = "peach", modifiers = [ "bold" ] }
+"markup.heading.2.line" = { bg = "heading_2_bg" }
+"markup.heading.3.text" = { fg = "yellow", modifiers = [ "bold" ] }
+"markup.heading.3.line" = { bg = "heading_3_bg" }
+"markup.heading.4.text" = { fg = "green", modifiers = [ "bold" ] }
+"markup.heading.4.line" = { bg = "heading_4_bg" }
+"markup.heading.5.text" = { fg = "sapphire", modifiers = [ "bold" ] }
+"markup.heading.5.line" = { bg = "heading_5_bg" }
+"markup.heading.6.text" = { fg = "lavender", modifiers = [ "bold" ] }
+"markup.heading.6.line" = { bg = "heading_6_bg" }
+"markup.raw.block.line" = { bg = "code_block_bg" }
 
 [palette]
 rosewater = "#f5e0dc"
@@ -250,3 +264,10 @@ diff_plus_word_bg = "#4f6557"
 diff_minus_bg = "#443244"
 diff_minus_word_bg = "#6b455a"
 diff_delta_bg = "#2d334b"
+heading_1_bg = "#402f42"
+heading_2_bg = "#3d333a"
+heading_3_bg = "#38363d"
+heading_4_bg = "#2c323a"
+heading_5_bg = "#252c3d"
+heading_6_bg = "#27283a"
+code_block_bg = "#2a2b3c"
