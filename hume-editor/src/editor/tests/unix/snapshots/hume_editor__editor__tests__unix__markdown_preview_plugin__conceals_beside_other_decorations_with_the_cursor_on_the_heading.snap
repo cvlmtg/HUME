@@ -1,0 +1,22 @@
+---
+source: hume-editor/src/editor/tests/unix/markdown_preview_plugin.rs
+assertion_line: 1657
+expression: p.snapshot()
+---
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836> 1 ▾ </><fg=#3c3836,bg=#bdae93>#</><fg=#8ec07c,bg=#3c3836> </><fg=#8ec07c,bg=#3c3836,bold>A heading</><fg=#928374,bg=#3c3836,bold>: hint</><fg=#8ec07c,bg=#3c3836,bold> long enough to</>
+<fg=#665c54,bg=#3c3836>       </><fg=#8ec07c,bg=#3c3836,bold>wrap past the edge</>
+<fg=#665c54,bg=#282828>   1   </><fg=#fe8019,bg=#282828>┌───┬───┐</>
+<fg=#665c54,bg=#282828>   2   </><fg=#fe8019,bg=#282828>│ </><fg=#ebdbb2,bg=#282828>a</><fg=#fe8019,bg=#282828> │ </><fg=#ebdbb2,bg=#282828>b</><fg=#fe8019,bg=#282828> │</>
+<fg=#665c54,bg=#282828>   3   </><fg=#fe8019,bg=#282828>├───┼───┤</>
+<fg=#665c54,bg=#282828>   4   </><fg=#fe8019,bg=#282828>│ </><fg=#ebdbb2,bg=#282828>c</><fg=#fe8019,bg=#282828> │ </><fg=#ebdbb2,bg=#282828>d</><fg=#fe8019,bg=#282828> │</><fg=#fabd2f,bg=#282828,underline>eol</>
+<fg=#665c54,bg=#282828>   5   </><fg=#fe8019,bg=#282828>└───┴───┘</>
+<fg=#665c54,bg=#282828>       </><fg=#fabd2f,bg=#282828,underline>virtual</>
+<fg=#665c54,bg=#363532>   6 ▾ </><fg=#fb4934,bg=#363532>sh</>
+<fg=#665c54,bg=#363532>   7   </><fg=#ebdbb2,bg=#363532>echo hi</>
+<fg=#665c54,bg=#363532>   8</>
+<fg=#665c54,bg=#282828>   9   </><fg=#ebdbb2,bg=#282828>end</>
+<fg=#665c54,bg=#282828>  10</>
+<fg=#665c54,bg=#384035>  11 ▸ </><fg=#8ec07c,bg=#384035>▉ </><fg=#8ec07c,bg=#384035,bold>Folded</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>

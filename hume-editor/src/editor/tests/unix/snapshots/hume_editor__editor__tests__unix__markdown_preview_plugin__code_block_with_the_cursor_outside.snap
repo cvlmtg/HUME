@@ -1,0 +1,16 @@
+---
+source: hume-editor/src/editor/tests/unix/markdown_preview_plugin.rs
+assertion_line: 1545
+expression: p.snapshot()
+---
+<fg=#665c54,bg=#282828>  7 ▾ </><fg=#ebdbb2,bg=#282828>Text</>
+<fg=#665c54,bg=#282828>  6</>
+<fg=#665c54,bg=#363532>  5 ▾ </><fg=#fb4934,bg=#363532>rust</>
+<fg=#665c54,bg=#363532>  4   </><fg=#ebdbb2,bg=#363532>fn main() {</>
+<fg=#665c54,bg=#363532>  3   </><fg=#ebdbb2,bg=#363532>}</>
+<fg=#665c54,bg=#363532>  2</>
+<fg=#665c54,bg=#282828>  1</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>8   </><fg=#3c3836,bg=#bdae93>e</><fg=#ebdbb2,bg=#3c3836>nd</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>

@@ -777,6 +777,7 @@ mod lsp_references;
 mod lsp_rename;
 mod lsp_sighelp;
 mod lsp_symbols;
+mod markdown_preview_plugin;
 mod multi_pane;
 mod picker_source;
 mod picker_source_steel;

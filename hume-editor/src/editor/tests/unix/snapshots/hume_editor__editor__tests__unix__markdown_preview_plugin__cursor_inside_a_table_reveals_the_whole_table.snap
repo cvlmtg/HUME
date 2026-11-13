@@ -1,0 +1,16 @@
+---
+source: hume-editor/src/editor/tests/unix/markdown_preview_plugin.rs
+assertion_line: 1519
+expression: p.snapshot()
+---
+<fg=#665c54,bg=#282828>  5 ▾ </><fg=#ebdbb2,bg=#282828>Intro</>
+<fg=#665c54,bg=#282828>  4</>
+<fg=#665c54,bg=#282828>  3   </><fg=#fe8019,bg=#282828>|</><fg=#ebdbb2,bg=#282828> a </><fg=#fe8019,bg=#282828>|</><fg=#ebdbb2,bg=#282828> b </><fg=#fe8019,bg=#282828>|</>
+<fg=#665c54,bg=#282828>  2   </><fg=#fe8019,bg=#282828>|---|---|</>
+<fg=#665c54,bg=#282828>  1   </><fg=#fe8019,bg=#282828>|</><fg=#ebdbb2,bg=#282828> c </><fg=#fe8019,bg=#282828>|</><fg=#ebdbb2,bg=#282828> d </><fg=#fe8019,bg=#282828>|</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>6   </><fg=#3c3836,bg=#bdae93>|</><fg=#ebdbb2,bg=#3c3836> e </><fg=#fe8019,bg=#3c3836>|</><fg=#ebdbb2,bg=#3c3836> f </><fg=#fe8019,bg=#3c3836>|</>
+<fg=#665c54,bg=#282828>  1</>
+<fg=#665c54,bg=#282828>  2   </><fg=#ebdbb2,bg=#282828>Outro</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>

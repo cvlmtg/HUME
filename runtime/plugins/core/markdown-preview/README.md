@@ -1,0 +1,271 @@
+# core:markdown-preview
+
+Draws Markdown without its syntax, in the style of Obsidian's live preview. A heading's
+`#` marker becomes a glyph for its level, list bullets become dots, task boxes become
+checkboxes, quote markers become bars, rules become a line of dashes, code fences
+disappear behind a background band, and tables become box grids. Emphasis, strikethrough
+and code spans lose their delimiters, links show only their text, and escapes and entities
+show the character they stand for. Every line a selection touches shows its source, and a
+code block or a table shows its source as a whole while a selection is inside it.
+
+## Usage
+
+```scheme
+(load-plugin! "core:stdlib")
+(load-plugin! "core:markdown-preview" #:config (hash 'enabled #t 'rule-width 40))
+```
+
+- **Depends on:** `core:stdlib`, for config validation.
+- **Activates on:** the first buffer whose language is `markdown`, or either command
+  (`manifest.scm`). The manifest lists no events: a `#:languages` manifest may list no
+  buffer event, and the language is the trigger.
+- **Grammars:** `markdown` and `markdown.inline`. The first buffer opened without one of
+  them logs one warning per missing grammar per session, naming the
+  `:plum-install-grammar` command that installs it.
+
+## Configuration
+
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `'enabled` | bool | `#t` | Whether the preview starts on for each buffer |
+| `'rule-width` | integer ≥ 1 | `40` | How many `─` a horizontal rule draws. Plugins cannot read the pane width |
+
+## Commands
+
+| Command | Effect |
+|---|---|
+| `:toggle-markdown-preview` | Turn the preview off for the current buffer, clearing everything it drew, or back on, rendering at once |
+| `markdown-preview/toggle` | The same function, bindable |
+
+## How it works
+
+### Files
+
+| File | Role |
+|---|---|
+| `manifest.scm` | Lazy activation on the language and the two commands |
+| `plugin.scm` | Config, the hooks and the commands |
+| `lib/state.scm` | Per-buffer state, keyed by `(buffer-key pane)`: whether the preview is on, and the generation the buffer's last parsed tree was built from. The grammar names warned about this session |
+| `lib/queries.scm` | The block and inline queries, their capture names, the capture accessors, the grouping of captures by name, and the conceal constructor and order |
+| `lib/blocks.scm` | Block captures to conceals, line backgrounds and highlights. Calls no editor builtin: lines come in as procedures |
+| `lib/table.scm` | Table captures to conceals, and the line range the inline query covers. Reads no buffer either: lines come in as procedures, and cells are measured with `string-width` |
+| `lib/inline.scm` | Inline captures to conceals. Calls no editor builtin either |
+| `lib/entities.scm` | The named entities the plugin replaces, and the numeric references it accepts |
+| `lib/render.scm` | The render funnel: the line ranges, the two `syntax-captures` calls, the fenced-block filter, the disjoint pass, the three setters |
+
+### Rendering
+
+`render-buffer!` is the one path that draws a buffer. Three callers reach it:
+
+- `on-viewport-change`, with the pane in hand. Rust debounces it by
+  `hook-viewport-debounce-ms` (150 ms by default), and it fires when a pane's visible lines
+  change, including a pane's first frame on a buffer, a buffer switch, and a tab coming
+  back.
+- `on-syntax-changed`, after `debounce-by 50` keyed by `buffer-key`. It fires after every
+  parse of the buffer, the first one included.
+- The toggle command, when it turns the preview on.
+
+`on-buffer-open` renders nothing: the pane's first frame and the first parse both follow
+it. It only checks the grammars. `on-buffer-close` drops the buffer's state, so a render
+still waiting on its debounce does nothing, and clears the three sources when the buffer
+stays open, as it does when its language changes away from `markdown`.
+
+A render queries the `markdown` layers with the block query, then the `markdown.inline`
+layers with the inline query. The inline query covers the same range, widened to every
+line of each table the block query returned, so the cells of a table crossing the window
+edge are measured with their inline conceals too. Without a `markdown.inline` grammar the
+render skips the inline query, which would raise, and draws the block elements alone.
+
+A render runs only while the buffer's tree matches its text. The `on-syntax-changed`
+handler stores `(buffer-generation pane)` at once, before its debounce, and
+`render-buffer!` compares it with the buffer's current generation. When they differ, the
+text has changed since the last parse, and the render is skipped: the parse that is
+pending fires `on-syntax-changed` again. A render therefore never makes `syntax-captures`
+parse the buffer on the spot. A buffer that no pane shows is not drawn.
+
+Each render replaces the plugin's three sources (`"markdown-preview"` for conceals, line
+backgrounds and extra highlights) as a whole, for every pane on the buffer. So it covers
+one line range: the hull of `viewport-range` over `(buffer-panes pane)`, from the line
+above the first line any pane shows to the last line any pane shows. Two panes far apart
+in one buffer fetch the lines between them too. Lines outside the range are drawn raw
+until a render covers them. The line above the panes is in the range so that a table
+ending just above the first shown line comes back: the empty line after it, at the top of
+a pane, carries that table's bottom border (see [Tables](#tables)).
+
+### Widening by query roots
+
+`syntax-captures` returns a match when the node its pattern is rooted at overlaps the
+range, with every capture of the match, inside the range or not. So each pattern's root
+decides how far past the visible lines an element is fetched:
+
+- Headings are rooted at `section`: `(section (atx_heading (atx_h1_marker) @heading.1))`.
+  Every section that overlaps the range returns its heading, ancestors included, so the
+  heading of a section scrolled into a sticky header row keeps its glyph and bold text.
+- Fences are rooted at `fenced_code_block`. A block one line of which is visible comes back
+  whole: both fence lines, and the line span its band and reveal need.
+- Tables are rooted at `pipe_table`, their rows and cells included. A table one row of
+  which is visible comes back whole, so every row is padded to the same widths and every
+  conceal reveals over the whole table.
+- Bullets, task boxes, quote markers, block continuations and rules are rooted at
+  themselves, so only the ones on the visible lines come back. The continuations a code
+  block's content holds are also captured rooted at `code_fence_content`, so they come
+  back with the whole block (see [Fenced blocks](#fenced-blocks)).
+- Setext headings are rooted at `setext_heading`. The markdown grammar opens no section for
+  them.
+- Inline delimiters are rooted at their construct: `(emphasis (emphasis_delimiter) @span-delimiter)`.
+  An emphasis that starts on the last visible line and ends below it returns both
+  delimiters. Links are rooted at the link, escapes, entities and autolinks at themselves.
+
+### Block elements
+
+Captures are grouped by name. Each element below is one or two capture names in
+`queries.scm` and one function in `blocks.scm`.
+
+| Element | Node | Drawn as |
+|---|---|---|
+| ATX heading | the `atx_hN_marker` of a section's `atx_heading` | The marker and the space after it become `▉ ▊ ▋ ▌ ▍ ▎` (levels 1 to 6) and a space, scope `markup.heading.N`. The heading's `inline` gets `markup.heading.N.text` and its line `markup.heading.N.line` |
+| Setext heading | `setext_heading` with `setext_hN_underline` | No conceal: the text's `inline` gets `markup.heading.N.text`, and every line of the heading, underline included, `markup.heading.N.line` |
+| Bullet | `list_marker_minus`, `_plus`, `_star` | Its first char becomes `•`, unscoped, so the bullet keeps its syntax color. Ordered markers stay raw |
+| Task | `task_list_marker_unchecked`, `_checked` | The bullet and the box become `☐` or `☑`, scope `markup.list.unchecked` or `markup.list.checked`. A box starts where its bullet ends |
+| Quote marker | `block_quote_marker`, and each `>` in a `block_continuation` | The `>` becomes `┃`, scope `markup.quote`. The space after it stays |
+| Lazy quote line | a line of a `block_quote` with no marker on it | `┃ ` inserted at the line's first non-blank char |
+| Rule | `thematic_break` | `─` repeated `'rule-width` times, scope `punctuation.special` |
+| Fence | `fenced_code_block` and its `fenced_code_block_delimiter`s | Both delimiters are hidden and reveal with the block's lines. The info string stays. Every line of the block gets `markup.raw.block.line`, which stays while the block is revealed |
+
+A quote marker's continuation on a later line of the same paragraph is a
+`block_continuation`, not a `block_quote_marker`. A continuation holds every marker of its
+line, `> > ` for a line two quotes deep, and the indentation of a list item when there is
+one, so the plugin draws a bar on each `>` in it.
+
+### Inline elements
+
+| Element | Node | Drawn as |
+|---|---|---|
+| Emphasis, strikethrough, code span | `emphasis_delimiter` in `emphasis`, `strong_emphasis` or `strikethrough`; `code_span_delimiter` in `code_span` | Each delimiter is hidden and reveals over the lines of the construct it belongs to |
+| Link, image | `inline_link`, `full_reference_link`, `collapsed_reference_link` with a `link_text`; `image` with an `image_description` | Everything before the text and everything after it is hidden. A link or image with no text stays raw |
+| Shortcut link | `shortcut_link` | Raw. The inline grammar parses any bracketed text as one, definition or not, so hiding its brackets would also strip `[TODO]`, `[!NOTE]`, `[^1]` and `[-]` |
+| Autolink | `uri_autolink`, `email_autolink` | `<` and `>` are hidden |
+| Backslash escape | `backslash_escape` | The backslash is hidden |
+| Entity | `entity_reference`, `numeric_character_reference` | Replaced by its character, unscoped. A name outside the table in `entities.scm` stays raw, and so does a numeric reference to a control character (a line break included), a surrogate, or a value past the last code point |
+
+`inline.scm` walks the captures in order with a stack of the spans and links that are
+still open at each capture. A delimiter belongs to the innermost open span, whose lines
+it reveals over. A text belongs to the innermost open link starting before it: an image
+that is a link's whole text has the same range as that text, and is not its link.
+
+Every conceal ends at most at the end of its line's text: `render.scm` clamps each one
+before the setter, which refuses a conceal covering a line break. A `thematic_break` node
+ends after its line break, and an empty ATX heading (`#` alone) has no space after its
+marker. A link whose destination or title runs onto a later line hides only up to the end
+of its first line.
+
+### Tables
+
+`table.scm` draws each `pipe_table` as a box grid of `punctuation.special` text. Every
+conceal it sets reveals over the table's lines, and so does every inline conceal inside the
+table, whatever its own reveal span: a selection on any row shows the whole table raw.
+
+| Element | Node | Drawn as |
+|---|---|---|
+| Cell separator | the run between two `pipe_table_cell`s' text: the trailing blanks of the left cell and the `\|` | The left cell's padding, ` │ `, and the right cell's padding |
+| Row edge | the run from a row's start to its first cell, and from its last cell's text to its end | `│ ` and the first cell's padding, or the last cell's padding and ` │`. A row without an outer pipe gets the same text inserted at the row's start or end |
+| Missing cells | a row with fewer cells than the table has columns | After the row's last edge, each missing column as blanks of its width between a space and ` │` |
+| Delimiter row | `pipe_table_delimiter_row` | `├─┼─┤`, each column's `─` run two wider than the column |
+| Top border | the line above the table, when it exists and is empty | `┌─┬─┐` inserted at its start, indented by the display width of what precedes the table on its first line |
+| Bottom border | the line below the table, when it exists and is empty | `└─┴─┘`, the same way |
+
+A cell's text runs from the cell's start to its last non-blank char: the grammar leaves
+the blanks before a cell's text out of the cell and the blanks after it in. A column is as
+wide as its widest cell, measured with `string-width` over the text the cell shows: the
+cell's own inline conceals applied, hidden text dropped and replacement text counted. The
+delimiter row's cells give each column its alignment: a `:` at the start aligns it left,
+at the end right, at both ends centre, and none left. When a centred cell's padding is
+odd, the extra blank goes after it. The table has as many columns as its longest row, delimiter row included.
+
+One empty line between two tables carries the upper table's bottom border alone. A top
+border is set only when the line above its line lies in the render's range or does not
+exist: the plugin knows that a table ends on a line only when the block query returned
+that table.
+
+Limitations:
+
+- A border is drawn only while a row of its table is in a render's range, and only on an
+  empty line: a line with any text, blanks included, gets none. A top border whose line
+  lies above the range is not drawn either.
+- A table wider than the pane draws a broken grid under soft wrap: replacement text does
+  not wrap, so the borders and the delimiter row are cut at the pane edge, and a row wraps
+  inside its cells.
+- A tab inside a cell breaks the column alignment: `string-width` measures it at a fixed
+  tab width.
+
+### Disjoint conceals
+
+The setter refuses two conceals of one source that overlap, and inline conceals can: an
+escape or an entity inside a link's destination or title lies inside the conceal hiding
+that part. `render.scm` sorts the conceals by start, the longer first at one start, and
+keeps each one that overlaps no conceal kept before it, by the setter's rule: two hidden
+ranges overlap when they share a char, an insert overlaps a hidden range it lies strictly
+inside, and two inserts overlap at one position. The conceal hiding more wins, and the
+one it drops lay inside text that is hidden anyway.
+
+### Fenced blocks
+
+The block query also runs over the layers injected into code blocks: a fence whose info
+string names `markdown` is parsed as markdown, and its headings and lists come back with
+the rest. The filter in `render.scm` drops them. It walks the `code_fence_content`
+captures in order, keeps each one that does not lie inside an earlier kept one (the
+outermost blocks, nested fences inside them included), and drops every capture lying
+inside a kept content. The block's own captures lie outside its content and are kept.
+The inline captures go through the same filter, against the contents the block query
+found: an injected markdown layer brings its own `markdown.inline` layers.
+
+One kind of capture inside a content is kept: a `block_continuation` that is a child of
+`code_fence_content`, captured as `fence-continuation`. In a code block inside a quote, the
+content holds the quote's markers of every line after the first content line, and these
+continuations carry them. A capture of the root layer lies inside the outermost content
+alone. An injected layer's continuation inside its own code block lies inside that
+block's content too, so a `fence-continuation` is kept only when the outermost content is
+the one `code_fence_content` capture containing it.
+
+### Node shapes
+
+Checked by parsing samples with the pinned grammar fixtures (`tests/fixtures/grammars`):
+
+- `list_marker_minus` and its siblings include the space after the marker. The task box
+  `task_list_marker_unchecked` follows the marker directly; the space after the box belongs
+  to the paragraph.
+- `atx_hN_marker` is the `#` run alone. The heading's text is an `inline` child, absent for
+  an empty heading. A closing `#` run is part of the `inline`.
+- Every `atx_heading` is the first child of a `section`, a heading inside a quote
+  included. `setext_heading` is a child of the enclosing section.
+- `block_quote_marker` is `> ` or `>`. On a quote's later lines the markers are a
+  `block_continuation`, which may hold several (`> > `). A lazy line has none.
+- `thematic_break` includes the line break after it.
+- `fenced_code_block` spans its fence lines and their line breaks. `info_string` follows
+  the opening delimiter. `code_fence_content` runs from the first content line, after that
+  line's `block_continuation`, to the closing delimiter, so it holds the continuations of
+  every later line of a block inside a quote or a list item. An unclosed fence runs to the
+  end of the document.
+- A fence whose info string is `markdown` injects a markdown layer over its content.
+- Each `emphasis_delimiter` is one char: `**` is two delimiters, and `***a***` is an
+  `emphasis` holding a `strong_emphasis`. `~~a~~` is a `strikethrough` holding a
+  `strikethrough`, one `~` each side of each. A `code_span_delimiter` is the whole backtick
+  run.
+- A link's `link_text` and an image's `image_description` sit between `[` and `]`. A link
+  without text has neither. A `full_reference_link`'s label is a `link_label` holding its
+  own brackets; a `collapsed_reference_link` ends in a bare `[]`.
+- An escape or an entity can sit inside a `link_destination` or a `link_title`. Inside a
+  code span, `&` and `\` are anonymous nodes.
+- The inline grammar parses an entity name it does not know (`&bogus;`) as plain `&` and
+  `;` tokens, and every numeric reference as a `numeric_character_reference`, whatever its
+  value.
+- A `pipe_table` holds a `pipe_table_header`, a `pipe_table_delimiter_row` and any
+  `pipe_table_row`s, and runs to the start of the line after its last row. The pipes are
+  anonymous `|` nodes. A `pipe_table_cell` starts at its text and keeps the blanks after
+  it; a cell of blanks only keeps them all, and `||` holds an empty cell. A
+  `pipe_table_delimiter_cell` is the `:`/`-` run alone. A row without outer pipes starts
+  and ends at its cells. An escaped `\|` stays inside its cell, as a `backslash_escape` of
+  the cell's `markdown.inline` layer.
+- A table inside a list item or a quote starts after its first line's indentation or
+  marker; each later row follows a `block_continuation`. A line without a pipe right after
+  a table is one more row; a heading or an empty line ends the table.
