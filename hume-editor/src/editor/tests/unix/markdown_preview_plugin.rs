@@ -832,6 +832,34 @@ fn table_cells_are_padded_to_the_widest_cell_after_inline_conceals() {
 }
 
 #[test]
+fn bold_inside_a_link_inside_a_table_cell_sets_without_an_overlap_error() {
+    let mut p = preview();
+    // "| [**b**](u) | x |\n" 0..19, "|---|---|\n" 19..29. The link
+    // `[**b**](u)` is 2..12 and shows `b`, so both columns are 1 wide.
+    let bid = p.open("a.md", "| [**b**](u) | x |\n|---|---|\n");
+    p.render();
+    assert_eq!(
+        p.conceals(bid),
+        revealing(
+            vec![
+                bar(0, 2, "│ "),
+                hidden(2, 3),
+                hidden(3, 4),
+                hidden(4, 5),
+                hidden(6, 7),
+                hidden(7, 8),
+                hidden(8, 12),
+                bar(12, 15, " │ "),
+                bar(16, 18, " │"),
+                bar(19, 28, "├───┼───┤"),
+            ],
+            0,
+            29
+        )
+    );
+}
+
+#[test]
 fn delimiter_row_becomes_a_box_rule() {
     let mut p = preview();
     // "| a | b |\n" 0..10, "|---|---|\n" 10..20: two columns one cell wide.

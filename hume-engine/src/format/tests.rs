@@ -1358,9 +1358,9 @@ fn insert_at(at: usize, text: &str) -> Conceal {
 }
 
 /// Format the first line of `text` with `conceals`, then check what every
-/// conceal test relies on: `pos` never decreases along a display line, and a
-/// cell standing for buffer bytes inside a hidden run is that run's
-/// replacement. Cells with an empty byte range (inserts, `Inserted`
+/// conceal test relies on: `pos` and `display_col` never decrease along a
+/// display line, and a cell standing for buffer bytes inside a hidden run is
+/// that run's replacement. Cells with an empty byte range (inserts, `Inserted`
 /// conceals, the EOL sentinel) stand for no bytes and fall outside it.
 fn format_line0(
     text: &str,
@@ -1392,6 +1392,13 @@ fn format_line0(
             cells.windows(2).all(|w| w[0].pos <= w[1].pos),
             "pos must be non-decreasing along a display line: {:?}",
             cells.iter().map(|g| g.pos).collect::<Vec<_>>()
+        );
+        assert!(
+            cells
+                .windows(2)
+                .all(|w| w[0].display_col <= w[1].display_col),
+            "display_col must be non-decreasing along a display line: {:?}",
+            cells.iter().map(|g| g.display_col).collect::<Vec<_>>()
         );
     }
     for g in fmt.graphemes.iter().filter(|g| !g.byte_range.is_empty()) {

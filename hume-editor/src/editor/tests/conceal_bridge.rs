@@ -130,12 +130,13 @@ fn later_source_conceal_strictly_containing_an_earlier_one_is_dropped_whole() {
 
 #[test]
 fn two_sources_inserted_conceals_at_one_position_keep_the_first_source_only() {
-    let mut ed = editor_from("-[*]>*bold**\n");
-    set(&mut ed, "b", vec![inserted(0, "B")]);
-    set(&mut ed, "a", vec![inserted(0, "A")]);
-    draw(&mut ed);
+    let (mut ed, _file) = decorated_editor("-[x]>\n**bold**\n");
+    set(&mut ed, "b", vec![inserted(2, "B")]);
+    set(&mut ed, "a", vec![inserted(2, "A")]);
+    let pid = ed.view.focused_pane();
 
-    assert_eq!(mirrored(&ed, 0), vec![(span(0, 0), "A".into(), None)]);
+    assert_eq!(drawn_rows(&mut ed, pid, 2), ["x", "A**bold**"]);
+    assert_eq!(mirrored(&ed, 1), vec![(span(0, 0), "A".into(), None)]);
 }
 
 #[test]

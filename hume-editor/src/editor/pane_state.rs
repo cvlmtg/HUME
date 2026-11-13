@@ -78,7 +78,7 @@ pub(crate) struct PaneBufferState {
     /// every layout change at once: a resize, a wrap-mode pin or
     /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
     /// pair is `None`, so it always differs), a decoration-generation
-    /// change (inlay hints, EOL text, virtual lines, signs), a fold opening
+    /// change (inlay hints, EOL text, virtual lines, signs, conceals), a fold opening
     /// or closing, the lines the selections touch changing in a buffer with
     /// conceals, and any edit to the buffer at all (its text generation),
     /// including one made through a sibling pane. A changed key reveals only when [`PaneBufferState::parked`] is

@@ -404,8 +404,9 @@ pub fn format_buffer_line(
             graphemes_out.push(Grapheme {
                 byte_range: eol_bytes,
                 // Same cluster as the EOL sentinel (the `\n`). Style-stage
-                // lookups resolve to the *first* grapheme at a given cluster,
-                // which is the EOL sentinel pushed earlier in this function.
+                // lookups resolve to the first non-`Virtual` grapheme at a
+                // given cluster, which is the EOL sentinel pushed earlier in
+                // this function.
                 // The indicator itself is never the cursor-cell match.
                 pos: break_pos,
                 display_col: state.current_display_col,

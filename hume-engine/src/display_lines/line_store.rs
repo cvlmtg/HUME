@@ -20,10 +20,12 @@
 //! formats.
 //!
 //! [`EngineView::begin_frame`](crate::pipeline::EngineView::begin_frame)
-//! rewinds every store, and correctness depends on it: inlay-hint and EOL-text
-//! mirrors are rebuilt per frame for the visible viewport without bumping the
-//! decoration generation, so a line scrolling into view can change its wrap
-//! count under an unchanged key.
+//! rewinds every pane's store, and correctness depends on it: inlay-hint and
+//! EOL-text mirrors are rebuilt per frame for the visible viewport without
+//! bumping the decoration generation, so a line scrolling into view can change
+//! its wrap count under an unchanged key. The scope-header store needs no
+//! rewind: it formats with the conceal layer only, so its key covers
+//! everything its layout reads.
 
 use rustc_hash::FxHashMap;
 
