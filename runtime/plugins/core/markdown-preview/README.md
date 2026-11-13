@@ -37,6 +37,53 @@ code block or a table shows its source as a whole while a selection is inside it
 | `:toggle-markdown-preview` | Turn the preview off for the current buffer, clearing everything it drew, or back on, rendering at once |
 | `markdown-preview/toggle` | The same function, bindable |
 
+## Decisions
+
+The choices the plugin and the Rust surface under it are built on:
+
+- **Reveal:** every line a selection touches shows its source, in every mode. A table or a
+  fenced block reveals as a whole while a selection is inside it. A revealed line keeps its
+  heading bold and band: only the hidden or replaced text comes back, and on the primary
+  cursor's line the cursorline background wins over a band.
+- **Layout:** `j` and `k` resolve their target line against its revealed layout, because
+  landing on a line reveals it. Mouse clicks and scrolling use the drawn layout.
+- **Inserts:** a conceal with an empty range is an insert that follows the reveal rule.
+  Table borders, the outer bars of a table written without outer pipes, and the bar of a
+  quote line with no `>` are inserts.
+- **Borders:** a table's top and bottom borders are drawn on the empty lines next to it, so
+  the table keeps its height when it reveals.
+- **Code blocks:** a background band over every line of the block. The fence characters
+  are hidden and the info string stays as the label.
+- **Shortcut links** (`[text]`) stay raw, and so does Markdown inside a fenced code block.
+- **Header rows:** a pinned heading draws its glyph and bold text like the same line in the
+  body. Header rows draw conceals and the search, diagnostic and extra highlights, and no
+  inlay hints, virtual lines, line backgrounds or selections.
+- **Viewport:** a render covers the visible lines widened to whole syntax nodes (see
+  [Widening by query roots](#widening-by-query-roots)), not the whole buffer.
+- **Rust surface:** the editor functions `set-conceals!` and `syntax-captures` (with its
+  `#:range`) and the `on-syntax-changed` hook. There is no query handle.
+
+## Limitations
+
+- Replacement text does not wrap and has no break points. A rule wider than the pane is
+  cut, and a table row loses the break points its whitespace gave it.
+- A table wider than the pane draws a broken grid under soft wrap: borders and the delimiter
+  row are cut at the pane edge, and a row wraps inside its cells.
+- A border is drawn only while a row of its table is in a render's range, and only on an
+  empty line: a line with any text, blanks included, gets none. A top border whose line
+  lies above the range is not drawn either.
+- A tab inside a table cell breaks the column alignment: `string-width` measures it at a
+  fixed tab width.
+- Search, diagnostic and bracket highlights inside hidden text are not drawn on a line no
+  selection touches.
+- Dragging the mouse across concealed lines reveals them as the selection grows, which
+  shifts their columns under the pointer.
+- Lines scrolled into view draw raw until the render that covers them runs, which is
+  `hook-viewport-debounce-ms` after the scrolling stops. The plugin adds no delay setting
+  of its own.
+- A table or fenced block larger than the viewport is fetched and drawn whole by every
+  render that shows one of its rows, so such a render costs as much as the block is long.
+
 ## How it works
 
 ### Files
@@ -187,16 +234,7 @@ border is set only when the line above its line lies in the render's range or do
 exist: the plugin knows that a table ends on a line only when the block query returned
 that table.
 
-Limitations:
-
-- A border is drawn only while a row of its table is in a render's range, and only on an
-  empty line: a line with any text, blanks included, gets none. A top border whose line
-  lies above the range is not drawn either.
-- A table wider than the pane draws a broken grid under soft wrap: replacement text does
-  not wrap, so the borders and the delimiter row are cut at the pane edge, and a row wraps
-  inside its cells.
-- A tab inside a cell breaks the column alignment: `string-width` measures it at a fixed
-  tab width.
+The table-specific limitations are under [Limitations](#limitations).
 
 ### Disjoint conceals
 

@@ -1,6 +1,6 @@
 # Core Plugins
 
-HUME ships these plugins under the `core:` namespace: a plugin and grammar manager, language server support and an installer for the servers, a language server for your Scheme config, fuzzy pickers, live git diff, an undo-history graph, completion from the words in a buffer, a few keymap alternatives, and the standard library the others build on. None of them load automatically: nothing runs until you ask for it in your [`init.scm`](configuration.md).
+HUME ships these plugins under the `core:` namespace: a plugin and grammar manager, language server support and an installer for the servers, a language server for your Scheme config, fuzzy pickers, live git diff, an undo-history graph, Markdown drawn without its syntax, completion from the words in a buffer, a few keymap alternatives, and the standard library the others build on. None of them load automatically: nothing runs until you ask for it in your [`init.scm`](configuration.md).
 
 Bring a plugin in with `load-plugin!`:
 
@@ -239,6 +239,44 @@ While the drawer is open:
 - In a read-only buffer, `Enter` reports an error instead of jumping.
 
 The history lives in memory only, so it starts fresh each time you open a file.
+
+## core:markdown-preview
+
+Draws Markdown without its syntax, in the style of a rendered preview, right in the buffer you edit. A heading's `#` becomes a glyph for its level over a tinted band, bullets become dots, task boxes become checkboxes, quotes get a bar, horizontal rules become a line, code fences give way to a background band, and tables are drawn as box grids. Emphasis, strikethrough and code spans lose their markers, links show only their text, and escapes and entities (`\*`, `&amp;`, `&#65;`) show the character they stand for.
+
+```scheme
+(load-plugin! "core:stdlib")
+(load-plugin! "core:markdown-preview")
+```
+
+Requires `core:stdlib` loaded first. It starts when you open a Markdown file.
+
+It needs the `markdown` and `markdown.inline` grammars: install them with `:plum-install-grammar` if HUME warns that one is missing. Without `markdown.inline`, the headings, lists, quotes, rules, code blocks and tables are drawn and the emphasis, links and escapes stay as written.
+
+Every line the cursor or a selection touches shows its source, in every mode. While a selection is inside a code block or a table, the whole block shows its source.
+
+Ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block are left as written. The colors and bands come from the [theme](themes.md#scopes-hume-adds).
+
+Only the lines on screen are drawn. After you scroll, the lines that came into view appear as written until `hook-viewport-debounce-ms` after you stop; lower it in [Settings](settings.md#global-options) to shorten the wait.
+
+| Command | Effect |
+|---------|--------|
+| `:toggle-markdown-preview` | Turn the preview off for the current buffer, or back on |
+| `markdown-preview/toggle` | The same, as an editor command you can bind to a key |
+
+Configure with `#:config`:
+
+```scheme
+(load-plugin! "core:markdown-preview"
+  #:config (hash 'enabled #f 'rule-width 60))
+```
+
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `'enabled` | boolean | `#t` | Whether the preview starts on in each buffer |
+| `'rule-width` | integer (≥ 1) | `40` | How many `─` a horizontal rule draws |
+
+A table wider than the pane draws a broken grid when soft wrap is on. A table's top and bottom border appear only on an empty line next to it. A tab inside a table cell throws its column out of line.
 
 ## core:buffer-words
 
