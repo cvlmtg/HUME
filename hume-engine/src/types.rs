@@ -31,12 +31,14 @@ pub use hume_grid::{Modifiers, ResolvedStyle, UnderlineStyle};
 /// through Style into Render.
 #[derive(Copy, Clone, Debug)]
 pub struct Grapheme {
-    /// Byte range within the materialized line buffer (empty for virtual content).
+    /// Byte range within the materialized line buffer: the concealed bytes
+    /// for a `Replacement`, empty for any other virtual content.
     pub byte_range: ExclusiveRange<ByteCol>,
     /// The buffer cluster this cell shows or stands at, so the style stage
     /// needs no rope lookups. A content line's inline-insert (`Virtual`)
-    /// cells and newline indicator carry the cluster they sit at or precede.
-    /// `None` for a virtual display line's cells.
+    /// cells and newline indicator carry the cluster they sit at or precede,
+    /// and a `Replacement` the first cluster it hides. `None` for a virtual
+    /// display line's cells.
     pub pos: Option<ClusterStart>,
     /// 0-based display column within this grapheme's display line. A wrap
     /// continuation renumbers from its own left edge (its indent, under
@@ -52,13 +54,14 @@ pub struct Grapheme {
     /// Indent depth at this display column, used for indent guide rendering.
     pub indent_depth: u8,
     /// Scope this cell's decoration was interned with. `None` for a real
-    /// buffer grapheme, styled by the highlight tiers instead.
+    /// buffer grapheme, styled by the highlight tiers instead, and for a
+    /// decoration drawn without a scope of its own.
     pub scope: Option<ScopeId>,
 }
 
 /// What a grapheme cell displays.
 ///
-/// `Whitespace`, `Placeholder`, and `Virtual` hold a `(start, len)` range
+/// `Whitespace`, `Placeholder`, `Virtual` and `Replacement` hold a `(start, len)` range
 /// into a per-line text arena (`LineFormat::virtual_texts` or
 /// `VirtualFormat::texts`) rather than a string: their text is not
 /// `'static`, and `CellContent` must stay `Copy` on the per-cell hot path.
@@ -84,6 +87,46 @@ pub enum CellContent {
     /// An inline virtual decoration (inlay hint, ghost text) or a
     /// virtual-line cell.
     Virtual { start: u32, len: u16 },
+    /// Text a conceal draws in place of the buffer bytes in `byte_range`.
+    /// Unlike `Virtual` it stands for real text, so the cursor can land on
+    /// it, at the first cluster it hides.
+    Replacement { start: u32, len: u16 },
+}
+
+/// Whether the cursor can stand on a cell. The lookups from a buffer position
+/// to a cell, and from a display column back to a position, both ask this.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum CursorStop {
+    /// Stands for real buffer text.
+    Text,
+    /// The end-of-line sentinel: a stop only when no text cell can answer.
+    LineEnd,
+    /// Decoration text, or the second cell of a wide cluster. It shares its
+    /// `pos` with the cell the cursor belongs on, and a wide cluster's
+    /// continuation sits at the column where the next cell starts.
+    Skip,
+}
+
+impl Grapheme {
+    /// An exhaustive match, so a new `CellContent` variant forces a decision.
+    pub(crate) fn cursor_stop(&self) -> CursorStop {
+        match self.content {
+            CellContent::Grapheme | CellContent::Replacement { .. } => CursorStop::Text,
+            CellContent::Empty => CursorStop::LineEnd,
+            CellContent::Virtual { .. } | CellContent::WidthContinuation => CursorStop::Skip,
+            // These stand for real text unless they decorate: decoration
+            // text has an empty `byte_range`.
+            CellContent::Whitespace { .. }
+            | CellContent::TabFill
+            | CellContent::Placeholder { .. } => {
+                if self.byte_range.is_empty() {
+                    CursorStop::Skip
+                } else {
+                    CursorStop::Text
+                }
+            }
+        }
+    }
 }
 
 // Display Line

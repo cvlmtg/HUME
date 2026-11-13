@@ -36,7 +36,10 @@ use crate::folds::HiddenLines;
 use crate::format::{FormatBound, LineFormat, format_buffer_line, format_virtual_lines};
 use crate::pane::WrapMode;
 use crate::pipeline::ContentWidth;
-use crate::providers::{Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine};
+use crate::providers::{
+    Conceal, Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine,
+};
+use crate::reveal::RevealedLines;
 use crate::types::{DisplayLine, Grapheme, ScopeId};
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
@@ -109,6 +112,8 @@ pub struct DisplayLineInputs {
     /// The lines the pane's closed folds hide.
     pub hidden: HiddenLines,
     pub content_width: ContentWidth,
+    /// The lines the pane shows raw.
+    pub revealed: RevealedLines,
 }
 
 /// The single authority on the document's display-line list. See the module doc.
@@ -123,6 +128,9 @@ pub struct DisplayLineMap<'a> {
     hidden: HiddenLines,
     content_width: NonZeroU16,
     h_window: Option<Range<DisplayLineCol>>,
+    /// The decoration kinds this map lays lines out with. Not part of any
+    /// key: a map that narrows it has a store of its own.
+    layout_kinds: DecorationKinds,
     /// Everything this map knows about the lines it has visited: the
     /// pane's own store, so every other walk of that pane this frame shares
     /// what this one formats. See [`line_store`]'s module doc.
@@ -130,13 +138,18 @@ pub struct DisplayLineMap<'a> {
     /// Inline inserts for the line currently being formatted. Reused across
     /// the lines one map visits.
     inline_inserts: Vec<InlineInsert>,
+    /// Conceals for the line currently being formatted, less those the key's
+    /// revealed lines leave out, sorted as `format_buffer_line` requires.
+    /// Reused like `inline_inserts`.
+    conceals: Vec<Conceal>,
     /// Provider virtual lines for the line whose block shape is being built.
     /// Reused across lines; laid out into the line's entry right after
     /// intake.
     virtual_lines: Vec<VirtualLine>,
-    /// Scratch for one `DecorationSource::decorations_for_line` call at a
-    /// time, drained into `virtual_lines`/`inline_inserts` immediately
-    /// after, so this stays empty between calls. Reused across providers and
+    /// Scratch for `DecorationSource::decorations_for_line` output, drained
+    /// into `virtual_lines` after each virtual-line provider and into
+    /// `inline_inserts`/`conceals` after a line's one inline-and-conceal
+    /// query, so it stays empty between queries. Reused across providers and
     /// lines to avoid a per-call allocation.
     decorations: Vec<Decoration>,
 }
@@ -152,6 +165,7 @@ impl<'a> DisplayLineMap<'a> {
             format: key,
             hidden,
             content_width,
+            revealed,
         } = inputs;
         let content_width = content_width.get();
         debug_assert!(
@@ -160,8 +174,8 @@ impl<'a> DisplayLineMap<'a> {
              without it `last_line`'s content-line derivation drops the \
              rope's actual last content line"
         );
-        let key = key.resolve(content_width);
-        store.scope(key);
+        let key = key.resolve(content_width, revealed);
+        store.scope(key.clone());
         Self {
             rope,
             key,
@@ -169,8 +183,10 @@ impl<'a> DisplayLineMap<'a> {
             hidden,
             content_width,
             h_window: None,
+            layout_kinds: DecorationKinds::LAYOUT,
             store,
             inline_inserts: Vec::new(),
+            conceals: Vec::new(),
             virtual_lines: Vec::new(),
             decorations: Vec::new(),
         }
@@ -207,6 +223,24 @@ impl<'a> DisplayLineMap<'a> {
              passes h_window through to the formatter even while wrapping"
         );
         self.h_window = h_window;
+        self
+    }
+
+    /// Lay lines out with the providers of `kinds` only, a subset of
+    /// [`DecorationKinds::LAYOUT`] (a map holds every layout kind until
+    /// narrowed).
+    ///
+    /// A provider is queried when its kinds meet this set, so one that
+    /// declares nothing in it is never called. The map must have a store to
+    /// itself: the mask is not in the store's key, so a store shared with a
+    /// map of another mask would serve lines laid out with the wrong
+    /// providers.
+    pub fn with_layout_kinds(mut self, kinds: DecorationKinds) -> Self {
+        debug_assert!(
+            DecorationKinds::LAYOUT.contains(kinds),
+            "{kinds:?} holds a kind that does not shape layout"
+        );
+        self.layout_kinds = kinds;
         self
     }
 
@@ -288,10 +322,10 @@ impl<'a> DisplayLineMap<'a> {
         let idx = self.store.insert(line);
         self.virtual_lines.clear();
         self.decorations.clear();
-        for (id, provider) in self
-            .providers
-            .decoration_sources(DecorationKinds::VIRTUAL_LINE)
-        {
+        for (id, provider) in self.providers.decoration_sources(
+            self.layout_kinds
+                .intersection(DecorationKinds::VIRTUAL_LINE),
+        ) {
             let start = self.virtual_lines.len();
             provider.decorations_for_line(line, &mut self.decorations);
             // A provider that declared VIRTUAL_LINE but emitted something
@@ -450,23 +484,39 @@ impl<'a> DisplayLineMap<'a> {
             return;
         }
 
-        // Inline inserts are queried here, not just at render time: they
-        // participate in wrapping, so counting display lines without them
-        // makes the display-line list disagree with what the renderer
+        // Inline inserts and conceals are queried here, not just at render
+        // time: they change a line's width, so counting display lines without
+        // them makes the display-line list disagree with what the renderer
         // emits the moment an inlay hint pushes a line past the wrap column.
         self.inline_inserts.clear();
+        self.conceals.clear();
         self.decorations.clear();
-        for (_, provider) in self.providers.decoration_sources(DecorationKinds::INLINE) {
+        for (_, provider) in self.providers.decoration_sources(
+            self.layout_kinds
+                .intersection(DecorationKinds::INLINE | DecorationKinds::CONCEAL),
+        ) {
             provider.decorations_for_line(line, &mut self.decorations);
         }
-        // A provider that declared INLINE but emitted something else is a
-        // provider bug: ignored, not a panic.
-        self.inline_inserts
-            .extend(self.decorations.drain(..).filter_map(|d| match d {
-                Decoration::Inline(ins) => Some(ins),
-                _ => None,
-            }));
+        for d in self.decorations.drain(..) {
+            match d {
+                Decoration::Inline(ins) => self.inline_inserts.push(ins),
+                Decoration::Conceal(conceal) => self.conceals.push(conceal),
+                // A provider that declared INLINE or CONCEAL but emitted
+                // another kind is a provider bug: ignored, not a panic.
+                Decoration::Highlight { .. }
+                | Decoration::VirtualLine(_)
+                | Decoration::LineBg(_) => {}
+            }
+        }
+        let revealed = &self.key.revealed;
+        let line_revealed = revealed.reveals(line);
+        self.conceals
+            .retain(|c| !line_revealed && !c.reveal.is_some_and(|span| revealed.reveals_any(span)));
         self.inline_inserts.sort_by_key(|i| i.byte_offset);
+        self.conceals.sort_by_key(|c| {
+            let bytes = c.bytes();
+            (bytes.start, bytes.end)
+        });
 
         let format = &mut self.store.entry_mut(idx).format;
         format.reset();
@@ -477,6 +527,7 @@ impl<'a> DisplayLineMap<'a> {
             self.h_window.clone(),
             bound,
             &self.inline_inserts,
+            &self.conceals,
             format,
         );
         format.extent = Some(bound);

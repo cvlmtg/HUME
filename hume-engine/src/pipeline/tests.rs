@@ -64,6 +64,7 @@ fn render_test_pane(
             settings.gutter,
         )
         .content_width,
+        revealed: crate::reveal::RevealedLines::default(),
     };
     let mut rows_store = crate::display_lines::line_store::PaneLineStore::new();
     let mut rows_dlm = crate::display_lines::DisplayLineMap::new(

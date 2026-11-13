@@ -14,7 +14,7 @@ use crate::display_lines::line_store::{FormatKey, PaneLineStore};
 use crate::display_lines::{DisplayLineInputs, DisplayLineMap, DisplayLinePos, h_window};
 use crate::folds::HiddenLines;
 use crate::pane::{ViewGeometry, WrapMode};
-use crate::providers::{ProviderSet, SyntaxSource};
+use crate::providers::{DecorationKinds, ProviderSet, SyntaxSource};
 
 /// The most header rows a pane shows.
 const MAX_SCOPE_HEADERS: usize = 3;
@@ -185,22 +185,26 @@ impl PaneRows {
 }
 
 /// What header rows are laid out with: a line store of their own, apart
-/// from the pane's, whose key they do not share, and no decoration
-/// providers, so a header row shows its line's text alone.
+/// from the pane's, whose key they do not share.
+///
+/// A header row lays its line out with the pane's conceals and paints the
+/// pane's highlights, so a pinned heading draws as its body does. It shows
+/// no inline insert, virtual line, line tint or selection.
 #[derive(Default)]
 pub struct HeaderLayout {
     store: PaneLineStore,
-    providers: ProviderSet,
 }
 
 impl HeaderLayout {
     /// The map a header row is laid out through, whole lines, for a hit
     /// test: the pane's `inputs` with wrapping off, so a long header line is
     /// cut at the pane's edge in every wrap mode, and with no line hidden,
-    /// since each row lays out one line on its own.
+    /// since each row lays out one line on its own. The pane's revealed
+    /// lines stay, so a revealed heading draws raw.
     pub fn display_map<'a>(
         &'a mut self,
         rope: &'a Rope,
+        providers: &'a ProviderSet,
         inputs: &DisplayLineInputs,
     ) -> DisplayLineMap<'a> {
         let inputs = DisplayLineInputs {
@@ -210,8 +214,10 @@ impl HeaderLayout {
             },
             hidden: HiddenLines::default(),
             content_width: inputs.content_width,
+            revealed: inputs.revealed.clone(),
         };
-        DisplayLineMap::new(rope, &self.providers, inputs, &mut self.store)
+        DisplayLineMap::new(rope, providers, inputs, &mut self.store)
+            .with_layout_kinds(DecorationKinds::CONCEAL)
     }
 
     /// [`Self::display_map`] clipped to the columns the header rows draw,
@@ -222,13 +228,15 @@ impl HeaderLayout {
     pub(crate) fn render_map<'a>(
         &'a mut self,
         rope: &'a Rope,
+        providers: &'a ProviderSet,
         inputs: &DisplayLineInputs,
     ) -> DisplayLineMap<'a> {
-        self.display_map(rope, inputs).with_h_window(h_window(
-            WrapMode::None,
-            DisplayLineCol::new(0),
-            inputs.content_width,
-        ))
+        self.display_map(rope, providers, inputs)
+            .with_h_window(h_window(
+                WrapMode::None,
+                DisplayLineCol::new(0),
+                inputs.content_width,
+            ))
     }
 }
 

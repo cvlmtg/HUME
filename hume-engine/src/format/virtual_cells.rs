@@ -1,6 +1,6 @@
-//! The single emitter behind both kinds of virtual text: inline inserts
-//! and standalone provider virtual lines. See [`VirtualCells`]'s own doc for
-//! why one emitter serves both.
+//! The single emitter behind every kind of virtual text: inline inserts,
+//! conceal text and standalone provider virtual lines. See [`VirtualCells`]'s
+//! own doc for why one emitter serves them all.
 
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::{ByteCol, DisplayLineCol};
@@ -43,24 +43,35 @@ pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
 /// at all (`pos: None`, `indent_depth: 0`).
 pub(crate) struct VirtualRun<'a> {
     pub text: &'a str,
-    /// A virtual cell occupies no buffer bytes, so this is never a real span
-    /// but just the one position each of `push_virtual_cells`'s output
-    /// `Grapheme`s reuses for both ends of their own (always-empty)
-    /// `byte_range`. That value still matters: `DisplayLineMap`'s `NearestContent`
-    /// filter reads emptiness to tell a `Whitespace`/`Placeholder` cell that
-    /// is real content from one that only decorates, and `style_display_line` reads
-    /// it as the byte position highlighting layers against.
-    pub byte_offset: usize,
-    /// For an inline insert, the cluster of the real grapheme it precedes:
-    /// keeps the display line non-decreasing in `pos`, which
+    /// The buffer bytes every cell of the run stands for, written as each
+    /// cell's `byte_range`: a conceal's hidden bytes for its replacement
+    /// text, whose plain clusters become `Replacement` cells. Empty for a run
+    /// that stands for no buffer text (an inline insert, an `Inserted`
+    /// conceal, a virtual display line): its position then still matters,
+    /// since `DisplayLineMap`'s `NearestContent` filter reads emptiness to
+    /// tell a `Whitespace`/`Placeholder` cell that is real content from one
+    /// that only decorates, and `style_display_line` reads the start as the
+    /// byte position highlighting layers against.
+    pub bytes: ExclusiveRange<ByteCol>,
+    /// For an inline insert or an `Inserted` conceal, the cluster of the
+    /// real grapheme it precedes; for a replacement, the first cluster it
+    /// hides. Keeps the display line non-decreasing in `pos`, which
     /// `resolve_grapheme_display_col`'s partition_point requires. Mid-line
     /// inserts are pushed before that grapheme, so ties resolve to the
     /// insert first; `resolve_grapheme_display_col` skips forward past
-    /// `Virtual` cells to reach the real one. Trailing inserts share the EOL
+    /// the insert's cells to reach the real one. Trailing inserts share the EOL
     /// sentinel's cluster (the `\n`) since there is no later real grapheme on
     /// the display line to precede.
     pub pos: Option<ClusterStart>,
     pub indent_depth: u8,
+}
+
+impl VirtualRun<'_> {
+    /// The columns the run takes when it starts at `display_col`, capped at
+    /// a cell width's `u8`.
+    pub(super) fn width_at(&self, display_col: DisplayLineCol, tab_width: u8) -> u8 {
+        hume_rope::width::str_width(self.text, display_col.get() as usize, tab_width).min(255) as u8
+    }
 }
 
 /// Writes the cells of one [`VirtualRun`], one grapheme cluster at a time.
@@ -161,10 +172,7 @@ impl<'a> VirtualCells<'a> {
         scope: Option<ScopeId>,
     ) {
         let run = self.run;
-        // A virtual cell occupies no buffer bytes (see `VirtualRun::byte_offset`'s
-        // doc), so every cell this run produces reuses the same always-empty range.
-        let byte_range =
-            ExclusiveRange::new(ByteCol::new(run.byte_offset), ByteCol::new(run.byte_offset));
+        let byte_range = run.bytes;
         // Cluster::width() reads classify()'s own decision, not a second raw measurement.
         let width = classified.width() as u8;
 
@@ -185,10 +193,15 @@ impl<'a> VirtualCells<'a> {
                 let (start, len) = push_arena_text(self.arena, p.as_str());
                 CellContent::Placeholder { start, len }
             }
-            Cluster::Plain { .. } => CellContent::Virtual {
-                start: self.text_start + byte_offset as u32,
-                len: cluster.len() as u16,
-            },
+            Cluster::Plain { .. } => {
+                let start = self.text_start + byte_offset as u32;
+                let len = cluster.len() as u16;
+                if byte_range.is_empty() {
+                    CellContent::Virtual { start, len }
+                } else {
+                    CellContent::Replacement { start, len }
+                }
+            }
         };
 
         self.graphemes_out.push(Grapheme {
@@ -228,11 +241,11 @@ impl<'a> VirtualCells<'a> {
 /// backend paints cell-by-cell, clobbering everything past the first
 /// character.
 ///
-/// The emitter behind inline inserts, which wrap as a unit; wrapped virtual
-/// display lines push through [`VirtualCells`] directly. They differ only in
-/// the identity their cells carry (`run`) and in how each cell's scope
-/// resolves (`scope_at`, a constant for an insert, an interval cursor for a
-/// virtual display line).
+/// The emitter behind inline inserts and conceal text, which wrap as a
+/// unit; wrapped virtual display lines push through [`VirtualCells`]
+/// directly. They differ only in the identity their cells carry (`run`) and
+/// in how each cell's scope resolves (`scope_at`, a constant for an insert
+/// or a conceal, an interval cursor for a virtual display line).
 pub(crate) fn push_virtual_cells(
     arena: &mut String,
     graphemes_out: &mut Vec<Grapheme>,

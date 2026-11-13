@@ -179,6 +179,7 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
             },
             hidden: crate::folds::HiddenLines::default(),
             content_width: crate::pipeline::ContentWidth::for_test(80),
+            revealed: crate::reveal::RevealedLines::default(),
         },
         &mut s,
     );
@@ -514,4 +515,164 @@ fn content_display_line_clusters_rejects_a_virtual_display_line() {
         Some(ex(0, 4)),
         "display line 1 is the line's first content display line"
     );
+}
+
+/// `ConcealSource` hiding `# ` on line 0 behind `text`.
+fn heading_glyph(text: &str) -> ProviderSet {
+    concealed(vec![(0, vec![hidden(0, 2, Some(text))])])
+}
+
+#[test]
+fn char_at_cell_on_a_replacement_returns_the_concealed_start() {
+    // `▉ ` stands for `# ` across columns 0-1: a click on either lands on
+    // the `#` it hides (char 0), not on the space.
+    let rope = Rope::from_str("# T\n");
+    let providers = heading_glyph("▉ ");
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
+            dc(1),
+            DisplayColTarget::Cell
+        ),
+        at(&rope, 0)
+    );
+}
+
+#[test]
+fn nearest_content_can_land_on_a_replacement() {
+    // `▉▉▉ ` takes columns 0-3 for the hidden `# `, `T` sits at column 4.
+    // Sticky column 3 is on the replacement, nearer than `T`.
+    let rope = Rope::from_str("# T\n");
+    let providers = heading_glyph("▉▉▉ ");
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
+            dc(3),
+            DisplayColTarget::NearestContent
+        ),
+        at(&rope, 0)
+    );
+}
+
+#[test]
+fn position_in_a_hidden_run_at_line_start_locates_to_column_0() {
+    // Soft wrap formats the whole line: `b` is the first cell, at column 0,
+    // and the hidden `*` before it sits there too.
+    let rope = Rope::from_str("**b\n");
+    let providers = concealed(vec![(0, vec![hidden(0, 2, None)])]);
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::Soft { width: 80 }, &providers, &mut s);
+
+    assert_eq!(
+        dlm.locate(at(&rope, 1)),
+        (DisplayLinePos::new(ContentLine::new(0), 0), dc(0))
+    );
+}
+
+#[test]
+fn position_in_a_leading_hidden_run_with_a_bounded_scan_locates_to_column_0() {
+    // Unwrapped, the scan stops on the hidden target before any cell.
+    let rope = Rope::from_str("**b\n");
+    let providers = concealed(vec![(0, vec![hidden(0, 2, None)])]);
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        dlm.locate(at(&rope, 1)),
+        (DisplayLinePos::new(ContentLine::new(0), 0), dc(0))
+    );
+}
+
+#[test]
+fn position_in_a_hidden_run_at_a_wrap_boundary_locates() {
+    // Width 4: `abcd` fills display line 0, the hidden `**` takes no room,
+    // and `e` opens display line 1. The hidden chars sit at the end of
+    // display line 0, where `abcd` ends.
+    let rope = Rope::from_str("abcd**ef\n");
+    let providers = concealed(vec![(0, vec![hidden(4, 6, None)])]);
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+
+    for hidden_char in [4, 5] {
+        assert_eq!(
+            dlm.locate(at(&rope, hidden_char)),
+            (DisplayLinePos::new(ContentLine::new(0), 0), dc(4)),
+            "char {hidden_char}"
+        );
+    }
+    assert_eq!(
+        dlm.locate(at(&rope, 6)),
+        (DisplayLinePos::new(ContentLine::new(0), 1), dc(0)),
+        "`e`"
+    );
+}
+
+#[test]
+fn position_in_a_hidden_run_whose_replacement_wrapped_locates_on_the_continuation_line() {
+    // Width 4: `abc` leaves one column, so the two-column `RR` standing for
+    // the hidden `**` opens display line 1 and `d` follows it. The hidden
+    // chars go where their replacement went.
+    let rope = Rope::from_str("abc**d\n");
+    let providers = concealed(vec![(0, vec![replaced(3, 5, "RR", None)])]);
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+
+    for (char_idx, col) in [(3, 0), (4, 2), (5, 2)] {
+        assert_eq!(
+            dlm.locate(at(&rope, char_idx)),
+            (DisplayLinePos::new(ContentLine::new(0), 1), dc(col)),
+            "char {char_idx}"
+        );
+    }
+}
+
+#[test]
+fn position_on_a_line_with_only_an_inserted_conceal_locates_to_a_real_cell() {
+    // `• ` is drawn before `a` on line 0 and before the line break of the
+    // empty line 1; each position lands on the cell after it.
+    let rope = Rope::from_str("ab\n\n");
+    let providers = concealed(vec![
+        (0, vec![inserted(0, "• ")]),
+        (1, vec![inserted(0, "• ")]),
+    ]);
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        dlm.locate(at(&rope, 0)),
+        (DisplayLinePos::new(ContentLine::new(0), 0), dc(2)),
+        "`a`"
+    );
+    assert_eq!(
+        dlm.locate(at(&rope, 3)),
+        (DisplayLinePos::new(ContentLine::new(1), 0), dc(2)),
+        "the empty line's break"
+    );
+}
+
+#[test]
+fn buffer_line_col_through_a_hidden_run() {
+    // Width 3: visible `abcdef` wraps as `abc` / `def` / the line break,
+    // with the hidden `**` at the first boundary.
+    let line = "abc**def";
+    let rope = Rope::from_str(&format!("{line}\n"));
+    let conceal = 3..5;
+    let providers = concealed(vec![(0, vec![hidden(conceal.start, conceal.end, None)])]);
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::Soft { width: 3 }, &providers, &mut s);
+
+    for char_idx in 0..=line.len() {
+        let visible_before = (0..char_idx).filter(|i| !conceal.contains(i)).count() as u32;
+        assert_eq!(
+            dlm.buffer_line_col(at(&rope, char_idx)),
+            ldc(visible_before),
+            "char {char_idx}"
+        );
+    }
 }

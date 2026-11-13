@@ -10,14 +10,6 @@ fn fold(first: usize, last: usize, shows_last: bool) -> Fold {
     Fold::new(line(first), line(last), shows_last).expect("fold hides at least one line")
 }
 
-fn ranges(hidden: &HiddenLines) -> Vec<(usize, usize)> {
-    hidden
-        .0
-        .iter()
-        .map(|r| (r.start.index(), r.end.index()))
-        .collect()
-}
-
 /// Every hidden line of `folds`, listed one by one.
 fn hidden_set(folds: &[Fold]) -> BTreeSet<usize> {
     folds
@@ -51,18 +43,6 @@ fn a_fold_spans_its_first_through_its_last_line() {
     let f = fold(3, 6, true);
     let spanned: Vec<usize> = (0..10).filter(|&n| f.spans(line(n))).collect();
     assert_eq!(spanned, [3, 4, 5, 6]);
-}
-
-#[test]
-fn nested_overlapping_and_adjacent_folds_merge() {
-    let nested = HiddenLines::from_folds([fold(1, 9, false), fold(3, 5, false)]);
-    assert_eq!(ranges(&nested), [(2, 9)]);
-
-    let adjacent = HiddenLines::from_folds([fold(4, 8, false), fold(1, 4, false)]);
-    assert_eq!(ranges(&adjacent), [(2, 8)]);
-
-    let apart = HiddenLines::from_folds([fold(1, 3, false), fold(4, 6, true)]);
-    assert_eq!(ranges(&apart), [(2, 3), (5, 5)]);
 }
 
 #[test]

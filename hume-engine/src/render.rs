@@ -397,7 +397,7 @@ pub(crate) fn compose_display_line(
                     canvas.write_cell(ex, y, " ", 1, cell_style, cell_end);
                 }
             }
-            CellContent::Virtual { start, len } => {
+            CellContent::Virtual { start, len } | CellContent::Replacement { start, len } => {
                 let s = resolve_arena_text(virtual_texts, *start, *len);
                 if screen_x + g.width as u16 > right_edge {
                     // Same straddle policy as `Grapheme` above: a wide

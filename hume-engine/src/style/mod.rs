@@ -10,7 +10,9 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::providers::Decoration;
 use crate::theme::Theme;
-use crate::types::{DisplayLine, EditorMode, Grapheme, PaintedSelections, ResolvedStyle};
+use crate::types::{
+    CursorStop, DisplayLine, EditorMode, Grapheme, PaintedSelections, ResolvedStyle,
+};
 
 // Scratch storage
 
@@ -175,10 +177,11 @@ pub(crate) fn style_display_line(
             | crate::types::CellContent::TabFill
             | crate::types::CellContent::WidthContinuation
             | crate::types::CellContent::Empty
-            | crate::types::CellContent::Virtual { .. } => {}
+            | crate::types::CellContent::Virtual { .. }
+            | crate::types::CellContent::Replacement { .. } => {}
         }
 
-        // Tier 2e: the cell's own scope (inline-insert decorations). Layered
+        // Tier 2e: the cell's own scope (inline inserts, conceal text). Layered
         // after syntax/search/diagnostic/bracket highlights so a decoration's
         // scope wins over whatever highlight tier would otherwise apply at
         // this column, but still under selection/cursor tiers below.
@@ -383,11 +386,11 @@ fn collect_head_display_cols(
 /// (it belongs to an earlier wrap segment and must not be claimed for this
 /// display line).
 ///
-/// A display line's graphemes are non-decreasing in `pos` (inline-insert
-/// `Virtual` cells carry the cluster of the real grapheme they precede,
-/// pushed just before it), so `partition_point` can land on an insert rather
-/// than the real grapheme at that cluster. The loop below skips forward past
-/// any such ties.
+/// A display line's graphemes are non-decreasing in `pos` (decoration cells
+/// carry the cluster of the real grapheme they precede, pushed just before
+/// it), so `partition_point` can land on a decoration rather than the real
+/// grapheme at that cluster. The loop below skips forward past every such
+/// tie that is not a [`CursorStop`].
 ///
 /// `pub(crate)`: also the resolver `display_lines::DisplayLineMap::locate_in_line` uses, so the
 /// two column-lookup paths (selection styling, cursor placement) can't drift
@@ -406,12 +409,13 @@ pub(crate) fn resolve_grapheme_display_col(
     if idx == 0 && gs.first().is_some_and(|g| pos < g.pos) {
         return None;
     }
-    // The cursor/selection must land on the real character, not an inline-insert
-    // decoration sharing its cluster, so skip forward past any `Virtual` cells.
+    // The cursor/selection must land on the real character, not a decoration
+    // sharing its cluster.
     let mut idx = idx;
-    while gs.get(idx).is_some_and(|g| {
-        g.pos == pos && matches!(g.content, crate::types::CellContent::Virtual { .. })
-    }) {
+    while gs
+        .get(idx)
+        .is_some_and(|g| g.pos == pos && g.cursor_stop() == CursorStop::Skip)
+    {
         idx += 1;
     }
     gs.get(idx).map(|g| (g.display_col, g.width as u32))

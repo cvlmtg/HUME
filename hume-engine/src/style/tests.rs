@@ -1434,6 +1434,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
         None,
         crate::format::FormatBound::Full,
         &inserts,
+        &[],
         &mut fmt,
     );
 
@@ -1496,6 +1497,7 @@ fn a_selection_ending_on_the_line_break_leaves_end_of_line_inserts_unselected() 
         None,
         crate::format::FormatBound::Full,
         &inserts,
+        &[],
         &mut fmt,
     );
 
@@ -1559,6 +1561,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
         None,
         crate::format::FormatBound::Full,
         &[],
+        &[],
         &mut fmt,
     );
 
@@ -1620,6 +1623,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
         },
         None,
         crate::format::FormatBound::Full,
+        &[],
         &[],
         &mut fmt,
     );
@@ -1683,6 +1687,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
         None,
         crate::format::FormatBound::Full,
         &[],
+        &[],
         &mut fmt,
     );
 
@@ -1745,6 +1750,7 @@ fn insert_mid_display_line_head_resolves_to_real_grapheme_col() {
         None,
         crate::format::FormatBound::Full,
         &inserts,
+        &[],
         &mut fmt,
     );
 
@@ -1791,6 +1797,88 @@ fn insert_mid_display_line_head_resolves_to_real_grapheme_col() {
     );
 }
 
+/// Format `text`'s first line with `inserts` and `conceals`, put a one-cell
+/// cursor at char `head`, and return the cells the cursor style lands on.
+fn cursor_cells(
+    text: &str,
+    inserts: &[crate::providers::InlineInsert],
+    conceals: &[crate::providers::Conceal],
+    head: usize,
+) -> Vec<CellContent> {
+    let rope = ropey::Rope::from_str(text);
+    let mut registry = crate::theme::ScopeRegistry::new();
+    registry.intern("test");
+    let mut fmt = crate::format::LineFormat::new();
+    crate::format::format_buffer_line(
+        &rope,
+        RopeyLine::new(0),
+        &crate::display_lines::line_store::FormatParams {
+            wrap: crate::pane::WrapMode::None.resolve(std::num::NonZeroU16::MIN),
+            tab_width: 4,
+            whitespace: crate::pane::WhitespaceConfig::default(),
+        },
+        None,
+        crate::format::FormatBound::Full,
+        inserts,
+        conceals,
+        &mut fmt,
+    );
+    let mut theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
+    theme.bake(&registry);
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &fmt.display_lines,
+        &fmt.graphemes,
+        &[Sel { anchor: head, head }],
+        EditorMode::Normal,
+        true,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+    fmt.graphemes
+        .iter()
+        .zip(&scratch.styles)
+        .filter(|(_, style)| style.fg == Some(Rgb(255, 0, 0)))
+        .map(|(g, _)| g.content)
+        .collect()
+}
+
+fn insert_at_byte_2(text: &str) -> Vec<crate::providers::InlineInsert> {
+    vec![crate::providers::InlineInsert {
+        byte_offset: hume_rope::column::ByteCol::new(2),
+        text: text.into(),
+        scope: crate::types::ScopeId(0),
+    }]
+}
+
+#[test]
+fn cursor_skips_the_tab_fill_of_an_insert_sharing_its_cluster() {
+    let cells = cursor_cells("abcdef", &insert_at_byte_2("\tX"), &[], 2);
+    assert!(
+        matches!(cells.as_slice(), [CellContent::Grapheme]),
+        "the cursor styles only 'c': {cells:?}"
+    );
+}
+
+#[test]
+fn cursor_skips_the_placeholder_of_an_insert_sharing_its_cluster() {
+    let cells = cursor_cells("abcdef", &insert_at_byte_2("\u{1}"), &[], 2);
+    assert!(
+        matches!(cells.as_slice(), [CellContent::Grapheme]),
+        "the cursor styles only 'c': {cells:?}"
+    );
+}
+
+#[test]
+fn cursor_on_the_line_break_skips_an_inserted_conceal_with_a_tab() {
+    let cells = cursor_cells("abc\n", &[], &[crate::test_support::inserted(3, "\t")], 3);
+    assert!(
+        matches!(cells.as_slice(), [CellContent::Empty]),
+        "the cursor styles only the line-end cell: {cells:?}"
+    );
+}
+
 #[test]
 fn selection_spanning_display_line_start_insert_begins_at_first_real_grapheme() {
     // Insert at byte 0: the display line starts with a virtual cell at display_col 0,
@@ -1817,6 +1905,7 @@ fn selection_spanning_display_line_start_insert_begins_at_first_real_grapheme() 
         None,
         crate::format::FormatBound::Full,
         &inserts,
+        &[],
         &mut fmt,
     );
 
@@ -1863,4 +1952,127 @@ fn selection_spanning_display_line_start_insert_begins_at_first_real_grapheme() 
         "'a' is the first real grapheme: selection span must start here"
     );
     assert_eq!(scratch.styles[b_idx].bg, Some(Rgb(0, 0, 255)));
+}
+
+// ── Conceal replacement styling ─────────────────────────────────────────
+
+/// One syntax span on every line.
+struct OneSpan(
+    ExclusiveRange<hume_rope::column::ByteCol>,
+    crate::types::ScopeId,
+);
+
+impl crate::providers::SyntaxSource for OneSpan {
+    fn spans_for_line(
+        &self,
+        _: ContentLine,
+        _: &ropey::Rope,
+        out: &mut Vec<(
+            ExclusiveRange<hume_rope::column::ByteCol>,
+            crate::types::ScopeId,
+        )>,
+    ) {
+        out.push((self.0, self.1));
+    }
+
+    fn header_lines(&self, _: ContentLine, _: &ropey::Rope, out: &mut Vec<ContentLine>) {
+        out.clear();
+    }
+
+    fn fold_starts(
+        &self,
+        _: hume_rope::offset::InclusiveRange<ContentLine>,
+        _: &ropey::Rope,
+        _: &mut Vec<ContentLine>,
+    ) {
+    }
+}
+
+/// The style of the first cell of `# T`, its `# ` concealed by `▉ ` drawn in
+/// `conceal_scope`, under a syntax span `heading` over the `#`. Styled
+/// without selections, as a scope header row is, so only highlights and
+/// the cell's own scope apply.
+fn concealed_heading_style(conceal_scope: Option<&str>) -> ResolvedStyle {
+    let rope = ropey::Rope::from_str("# T\n");
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let heading = registry.intern("heading");
+    let scope = conceal_scope.map(|name| registry.intern(name));
+    let conceal = crate::providers::Conceal {
+        span: crate::providers::ConcealSpan::Hidden {
+            bytes: crate::test_support::byte_range(0, 2),
+            text: Some(crate::providers::ConcealText {
+                text: "▉ ".into(),
+                scope,
+            }),
+        },
+        reveal: None,
+    };
+    let mut fmt = crate::format::LineFormat::new();
+    crate::format::format_buffer_line(
+        &rope,
+        RopeyLine::new(0),
+        &crate::display_lines::line_store::FormatParams {
+            wrap: crate::pane::WrapMode::None.resolve(std::num::NonZeroU16::MIN),
+            tab_width: 4,
+            whitespace: crate::pane::WhitespaceConfig::default(),
+        },
+        None,
+        crate::format::FormatBound::Full,
+        &[],
+        &[conceal],
+        &mut fmt,
+    );
+    assert!(matches!(
+        fmt.graphemes[0].content,
+        CellContent::Replacement { .. }
+    ));
+
+    let mut theme = theme_with([
+        ("heading", bg(Rgb(0, 0, 255))),
+        ("glyph", fg(Rgb(255, 0, 0))),
+    ]);
+    theme.bake(&registry);
+    let syntax = OneSpan(crate::test_support::byte_range(0, 1), heading);
+    let mut scratch = StyleScratch::new();
+    scratch
+        .styles
+        .resize(fmt.graphemes.len(), ResolvedStyle::default());
+    rebuild_line_decorations(
+        ContentLine::new(0),
+        Some(&syntax),
+        &ProviderSet::new(),
+        &rope,
+        &mut scratch,
+    );
+    let line_chars = ExclusiveRange::new(co(0), co(4));
+    style_display_line(
+        &fmt.display_lines[0],
+        &fmt.graphemes,
+        line_chars,
+        None,
+        None,
+        &theme,
+        &mut scratch,
+    );
+    scratch.styles[0]
+}
+
+#[test]
+fn replacement_cell_layers_its_scope_over_the_syntax_highlight() {
+    let style = concealed_heading_style(Some("glyph"));
+    assert_eq!(
+        (style.fg, style.bg),
+        (Some(Rgb(255, 0, 0)), Some(Rgb(0, 0, 255))),
+        "the conceal's fg over the heading span's bg"
+    );
+}
+
+#[test]
+fn replacement_without_scope_keeps_the_syntax_highlight() {
+    let style = concealed_heading_style(None);
+    assert_eq!(
+        (style.fg, style.bg),
+        (None, Some(Rgb(0, 0, 255))),
+        "the heading span's style alone"
+    );
 }

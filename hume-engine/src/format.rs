@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::ops::{ControlFlow, Range};
 
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::ExclusiveRange;
@@ -6,8 +6,8 @@ use ropey::Rope;
 
 use crate::display_lines::line_store::FormatParams;
 use crate::pane::ResolvedWrap;
-use crate::providers::{InlineInsert, ProviderId};
-use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme};
+use crate::providers::{Conceal, ConcealSpan, InlineInsert, ProviderId, conceal_ranges_overlap};
+use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme, ScopeId};
 
 mod cells;
 mod scratch;
@@ -43,6 +43,16 @@ use cells::grapheme_display;
 /// `bound` stops the scan once the requesting query's answer is determined;
 /// see [`FormatBound`]. Pass [`FormatBound::Full`] whenever the display line
 /// count or the line's tail matters.
+///
+/// `conceals` is sorted by `(bytes().start, bytes().end)` with no two
+/// overlapping under [`conceal_ranges_overlap`]. A cluster whose start byte
+/// lies in a hidden run emits nothing and takes no width; the run's text,
+/// if any, is drawn in its place as one unit at its first hidden cluster.
+/// The runs drawn before one cluster come in a fixed order: inline inserts,
+/// then an `Inserted` conceal, then a replacement. An inline insert strictly
+/// inside a hidden run is dropped: the cluster it would precede has no cell.
+// Each argument is a separate input to the line's layout, none derived from another.
+#[allow(clippy::too_many_arguments)]
 pub fn format_buffer_line(
     rope: &Rope,
     line_idx: hume_rope::line::RopeyLine,
@@ -50,6 +60,7 @@ pub fn format_buffer_line(
     h_window: Option<Range<DisplayLineCol>>,
     bound: FormatBound,
     inline_inserts: &[InlineInsert],
+    conceals: &[Conceal],
     out: &mut LineFormat,
 ) {
     let &FormatParams {
@@ -57,6 +68,13 @@ pub fn format_buffer_line(
         tab_width,
         ref whitespace,
     } = params;
+    debug_assert!(
+        conceals.windows(2).all(|w| {
+            let (a, b) = (w[0].bytes(), w[1].bytes());
+            (a.start, a.end) <= (b.start, b.end) && !conceal_ranges_overlap(a, b)
+        }),
+        "conceals must be sorted by range and must not overlap"
+    );
     out.line_text.load(rope, line_idx);
     let had_newline = out.line_text.break_pos().is_some();
     let line_str = out.line_text.as_str();
@@ -75,6 +93,14 @@ pub fn format_buffer_line(
     let virtual_texts_out = &mut out.virtual_texts;
 
     let mut insert_idx = 0usize;
+    let mut conceal_idx = 0usize;
+    // End of the hidden run the scan is inside: a cluster starting before
+    // it is hidden.
+    let mut hidden_until = ByteCol::new(0);
+    let emitter = RunEmitter {
+        tab_width,
+        h_window: h_window.as_ref(),
+    };
     let mut state = WrapState::start(
         WrapOwner::Buffer(line_idx),
         wrap,
@@ -92,89 +118,78 @@ pub fn format_buffer_line(
     let mut clipped = false;
 
     'lines: for cluster in out.line_text.clusters() {
-        let byte_offset = cluster.bytes.start.index();
+        let at = cluster.bytes.start;
+        let byte_offset = at.index();
         let grapheme_str = cluster.text;
         // ── Inject inline inserts before this byte offset ─────────────────
         while insert_idx < inline_inserts.len()
             && inline_inserts[insert_idx].byte_offset.index() <= byte_offset
         {
-            if h_window
-                .as_ref()
-                .is_some_and(|w| state.current_display_col >= w.end)
+            let ins = &inline_inserts[insert_idx];
+            insert_idx += 1;
+            if strictly_hidden(conceals, ins.byte_offset) {
+                continue;
+            }
+            let run = VirtualRun {
+                text: &ins.text,
+                bytes: ExclusiveRange::new(at, at),
+                pos: Some(cluster.start),
+                indent_depth,
+            };
+            if emitter
+                .emit(
+                    &run,
+                    Some(ins.scope),
+                    &mut state,
+                    lines_out,
+                    graphemes_out,
+                    virtual_texts_out,
+                )
+                .is_break()
             {
                 clipped = true;
                 break 'lines;
             }
-            let ins = &inline_inserts[insert_idx];
-            if state.wrap_width.is_none() && h_window.is_none() {
-                // No wrapping and no horizontal window: `maybe_wrap` below
-                // would be a no-op and the visibility check would
-                // short-circuit on `h_window`'s own `None`. The only thing
-                // the insert's width would answer in that case is "is it
-                // empty", cheaper to ask directly than to walk every
-                // grapheme cluster to sum a width nothing downstream reads.
-                if !ins.text.is_empty() {
-                    push_virtual_cells(
-                        virtual_texts_out,
-                        graphemes_out,
-                        &VirtualRun {
-                            text: &ins.text,
-                            byte_offset,
-                            pos: Some(cluster.start),
-                            indent_depth,
-                        },
-                        tab_width,
-                        &mut state.current_display_col,
-                        |_| Some(ins.scope),
-                    );
-                }
-            } else {
-                // `wrap_width`/`h_window` are mutually exclusive
-                // (`DisplayLineMap::with_h_window`'s own debug_assert: h_window is a
-                // `WrapMode::None`-only clip), so exactly one of the two
-                // branches below ever does anything to `ins_width`:
-                // `maybe_wrap` moves `current_display_col` only when
-                // wrapping, and the `visible` check only reads `ins_width`
-                // when `h_window` is `Some`, which is only when not
-                // wrapping, i.e. before `maybe_wrap` had any chance to move
-                // anything. Either way `ins_width` is measured at the exact
-                // column it's later used against; nothing here can go stale.
-                let ins_width = hume_rope::width::str_width(
-                    &ins.text,
-                    state.current_display_col.get() as usize,
-                    tab_width,
-                )
-                .min(255) as u8;
-                if ins_width > 0 {
-                    state.maybe_wrap(ins_width, indent_depth, lines_out, graphemes_out);
-                    let visible = h_window.as_ref().is_none_or(|w| {
-                        state
-                            .current_display_col
-                            .advance_saturating(ins_width as u32)
-                            > w.start
-                    });
-                    if visible {
-                        push_virtual_cells(
-                            virtual_texts_out,
-                            graphemes_out,
-                            &VirtualRun {
-                                text: &ins.text,
-                                byte_offset,
-                                pos: Some(cluster.start),
-                                indent_depth,
-                            },
-                            tab_width,
-                            &mut state.current_display_col,
-                            |_| Some(ins.scope),
-                        );
-                    } else {
-                        state.current_display_col = state
-                            .current_display_col
-                            .advance_saturating(ins_width as u32);
+        }
+
+        while let Some(conceal) = conceals.get(conceal_idx)
+            && conceal.bytes().start <= at
+        {
+            conceal_idx += 1;
+            let (bytes, text) = match &conceal.span {
+                ConcealSpan::Inserted { text, .. } => (ExclusiveRange::new(at, at), Some(text)),
+                ConcealSpan::Hidden { bytes, text } => {
+                    // A run no cluster starts in hides nothing.
+                    if at >= bytes.end {
+                        continue;
                     }
+                    hidden_until = bytes.end;
+                    (*bytes, text.as_ref())
                 }
+            };
+            let Some(text) = text else {
+                continue;
+            };
+            let run = VirtualRun {
+                text: &text.text,
+                bytes,
+                pos: Some(cluster.start),
+                indent_depth,
+            };
+            if emitter
+                .emit(
+                    &run,
+                    text.scope,
+                    &mut state,
+                    lines_out,
+                    graphemes_out,
+                    virtual_texts_out,
+                )
+                .is_break()
+            {
+                clipped = true;
+                break 'lines;
             }
-            insert_idx += 1;
         }
 
         if h_window
@@ -183,6 +198,14 @@ pub fn format_buffer_line(
         {
             clipped = true;
             break 'lines;
+        }
+
+        if at < hidden_until {
+            if bound.reached_hidden(cluster.bytes) {
+                clipped = true;
+                break 'lines;
+            }
+            continue;
         }
 
         // ── Skip newlines (line_str is already stripped; this guards edge cases) ──
@@ -295,6 +318,35 @@ pub fn format_buffer_line(
         let eol_bytes =
             ExclusiveRange::new(ByteCol::new(line_str.len()), ByteCol::new(line_str.len()));
 
+        // An `Inserted` conceal past the last cluster start (at the line's
+        // `\n`, or anywhere on an empty line) draws before the sentinel. A
+        // `Hidden` left here has no cluster start inside it, so it hides
+        // nothing.
+        for conceal in &conceals[conceal_idx..] {
+            if let ConcealSpan::Inserted { text, .. } = &conceal.span {
+                let run = VirtualRun {
+                    text: &text.text,
+                    bytes: eol_bytes,
+                    pos: break_pos,
+                    indent_depth,
+                };
+                state.maybe_wrap(
+                    run.width_at(state.current_display_col, tab_width),
+                    indent_depth,
+                    lines_out,
+                    graphemes_out,
+                );
+                push_virtual_cells(
+                    virtual_texts_out,
+                    graphemes_out,
+                    &run,
+                    tab_width,
+                    &mut state.current_display_col,
+                    |_| text.scope,
+                );
+            }
+        }
+
         // Emit an Empty grapheme at the trailing `\n` whenever the line has
         // one. This gives the cursor/selection-head a cell to land on when
         // positioned on the newline character (e.g. after `x` selects the
@@ -324,13 +376,16 @@ pub fn format_buffer_line(
         }
 
         // ── Emit any trailing inline inserts ────────────────────────────────
-        for ins in &inline_inserts[insert_idx..] {
+        for ins in inline_inserts[insert_idx..]
+            .iter()
+            .filter(|ins| !strictly_hidden(conceals, ins.byte_offset))
+        {
             push_virtual_cells(
                 virtual_texts_out,
                 graphemes_out,
                 &VirtualRun {
                     text: &ins.text,
-                    byte_offset: line_str.len(),
+                    bytes: eol_bytes,
                     pos: break_pos,
                     indent_depth,
                 },
@@ -364,6 +419,86 @@ pub fn format_buffer_line(
 
     // Close the last display line.
     close_display_line_at(lines_out, state.line_g_start, graphemes_out.len());
+}
+
+/// Whether `at` lies inside one of `conceals`' hidden runs, past its start.
+/// `conceals` is canonical, so their ends never decrease along the list.
+fn strictly_hidden(conceals: &[Conceal], at: ByteCol) -> bool {
+    let i = conceals.partition_point(|c| c.bytes().end <= at);
+    conceals
+        .get(i)
+        .is_some_and(|c| matches!(c.span, ConcealSpan::Hidden { .. }) && c.bytes().start < at)
+}
+
+/// The per-call constants of [`format_buffer_line`]'s cluster loop that
+/// emitting a run of virtual text reads.
+struct RunEmitter<'a> {
+    tab_width: u8,
+    h_window: Option<&'a Range<DisplayLineCol>>,
+}
+
+impl RunEmitter<'_> {
+    /// Emit `run` before the cluster the loop is at, as one unit: wrap first
+    /// if it overflows, push its cells if any column of it is inside
+    /// `h_window`, and advance the column past it either way. Returns
+    /// `Break` without emitting when the column is already at the window's
+    /// right edge, which ends the scan.
+    fn emit(
+        &self,
+        run: &VirtualRun<'_>,
+        scope: Option<ScopeId>,
+        state: &mut WrapState,
+        lines_out: &mut Vec<DisplayLine>,
+        graphemes_out: &mut Vec<Grapheme>,
+        virtual_texts_out: &mut String,
+    ) -> ControlFlow<()> {
+        if self
+            .h_window
+            .is_some_and(|w| state.current_display_col >= w.end)
+        {
+            return ControlFlow::Break(());
+        }
+        if state.wrap_width.is_none() && self.h_window.is_none() {
+            // Neither wrapping nor a window: the run's width would be read by
+            // nothing, so only emptiness is asked.
+            if !run.text.is_empty() {
+                push_virtual_cells(
+                    virtual_texts_out,
+                    graphemes_out,
+                    run,
+                    self.tab_width,
+                    &mut state.current_display_col,
+                    |_| scope,
+                );
+            }
+            return ControlFlow::Continue(());
+        }
+        // `wrap_width` and `h_window` are never both set (`DisplayLineMap::with_h_window`
+        // asserts a window is `WrapMode::None`-only), so `maybe_wrap` moves the
+        // column only when wrapping and the visibility check reads the width
+        // only under a window: the width is measured at the column it is used at.
+        let width = run.width_at(state.current_display_col, self.tab_width);
+        if width == 0 {
+            return ControlFlow::Continue(());
+        }
+        state.maybe_wrap(width, run.indent_depth, lines_out, graphemes_out);
+        let visible = self
+            .h_window
+            .is_none_or(|w| state.current_display_col.advance_saturating(width as u32) > w.start);
+        if visible {
+            push_virtual_cells(
+                virtual_texts_out,
+                graphemes_out,
+                run,
+                self.tab_width,
+                &mut state.current_display_col,
+                |_| scope,
+            );
+        } else {
+            state.current_display_col = state.current_display_col.advance_saturating(width as u32);
+        }
+        ControlFlow::Continue(())
+    }
 }
 
 // Wrap owner

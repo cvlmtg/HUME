@@ -5,7 +5,7 @@ use ropey::Rope;
 
 use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::DecorationSource;
+use crate::providers::{Conceal, ConcealSpan, ConcealText, DecorationSource};
 use crate::test_doubles::VirtualLineBlock;
 use crate::test_support::{at, co};
 use crate::types::{CellContent, ScopeId};
@@ -18,6 +18,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 mod block;
 mod bounded_format;
 mod buffer_line_col;
+mod conceal;
 mod folds;
 mod locate;
 mod render;
@@ -101,6 +102,44 @@ fn with_counting_insert(
     (providers, calls)
 }
 
+/// A `ConcealSource` giving each listed line its conceals.
+fn concealed(lines: Vec<(usize, Vec<Conceal>)>) -> ProviderSet {
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(crate::test_doubles::ConcealSource::new(
+        lines
+            .into_iter()
+            .map(|(line, conceals)| (ContentLine::new(line), conceals))
+            .collect(),
+    )));
+    providers
+}
+
+fn hidden(start: usize, end: usize, text: Option<&str>) -> Conceal {
+    Conceal {
+        span: ConcealSpan::Hidden {
+            bytes: crate::test_support::byte_range(start, end),
+            text: text.map(|text| ConcealText {
+                text: text.into(),
+                scope: None,
+            }),
+        },
+        reveal: None,
+    }
+}
+
+fn inserted(at: usize, text: &str) -> Conceal {
+    Conceal {
+        span: ConcealSpan::Inserted {
+            at: hume_rope::column::ByteCol::new(at),
+            text: ConcealText {
+                text: text.into(),
+                scope: None,
+            },
+        },
+        reveal: None,
+    }
+}
+
 /// Reconstruct the text a rendered display line puts on screen, cell by cell. Derived
 /// from the `Grapheme`/`CellContent` contract rather than from anything
 /// `DisplayLineMap` computed, so it is an independent check of the render accessors.
@@ -109,6 +148,7 @@ fn display_line_text(r: &RenderDisplayLine<'_>) -> String {
         .iter()
         .filter_map(|g| match g.content {
             CellContent::Virtual { start, len }
+            | CellContent::Replacement { start, len }
             | CellContent::Whitespace { start, len }
             | CellContent::Placeholder { start, len } => {
                 let start = start as usize;

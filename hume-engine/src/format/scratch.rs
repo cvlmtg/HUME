@@ -27,9 +27,10 @@ pub struct LineFormat {
     /// Pre-materialised text for this line, read back as
     /// `RenderDisplayLine::line_text`.
     pub line_text: LineText,
-    /// Arena backing this line's `CellContent::Virtual` (inline inserts) and
+    /// Arena backing this line's `CellContent::Virtual` (inline inserts,
+    /// `Inserted` conceals), `Replacement` (a hidden run's conceal text) and
     /// `Whitespace` (indicator glyphs) text ranges, none of which can be
-    /// `&'static str` (LSP hints, Steel-configured icons). `TabFill` needs no
+    /// `&'static str` (LSP hints, plugin conceal text, Steel-configured icons). `TabFill` needs no
     /// arena entry: its text is always a single space.
     pub virtual_texts: String,
     /// How much of the line the buffers above cover, or `None` when nothing
@@ -250,6 +251,17 @@ impl FormatBound {
             Self::Full => false,
             Self::ToByte(b) => bytes.contains(b),
             Self::ToDisplayCol(t) => start_display_col > t,
+        }
+    }
+
+    /// Whether a hidden cluster spanning `bytes` carries the scan past this
+    /// bound. Only a byte bound can: a hidden cluster has no column of its
+    /// own, so the next emitted cell decides a column bound, which keeps a
+    /// bounded scan a prefix of `Full`.
+    pub(super) fn reached_hidden(self, bytes: ExclusiveRange<ByteCol>) -> bool {
+        match self {
+            Self::ToByte(b) => bytes.contains(b),
+            Self::Full | Self::ToDisplayCol(_) => false,
         }
     }
 }

@@ -8,7 +8,7 @@ use hume_rope::column::{BufferLineCol, ByteCol, DisplayLineCol};
 use hume_rope::line::{ContentLine, RopeyLine};
 
 use crate::format::FormatBound;
-use crate::types::{CellContent, DisplayLine};
+use crate::types::{CursorStop, DisplayLine};
 
 use super::DisplayLineMap;
 use super::pos::{DisplayColTarget, DisplayLinePos};
@@ -51,65 +51,55 @@ impl<'a> DisplayLineMap<'a> {
     /// (line-relative, resolved by the caller), and at what column. `idx` must
     /// come from an [`DisplayLineMap::ensure_formatted`] bounded at least as far as
     /// `ToByte(target_byte)`.
+    ///
+    /// A display line holds the bytes from its first cell's up to the next
+    /// display line's first cell's; the first starts at byte 0 and the last
+    /// runs to the line's end. A concealed byte, which has no cell, belongs to
+    /// the display line whose cells precede it (the first one when it opens
+    /// the line), and sits at the column of the first cell after it there, or
+    /// at that display line's end.
     fn locate_in_line(
         &self,
         idx: usize,
         target_byte: ByteCol,
         pos: ClusterStart,
     ) -> (usize, DisplayLineCol) {
-        let entry = self.store.entry(idx);
-        let format = &entry.format;
+        let format = &self.store.entry(idx).format;
         let lines = &format.display_lines;
         let graphemes = &format.graphemes;
+        let first_cell = |dline: &DisplayLine| graphemes[dline.graphemes.clone()].first();
 
-        for (i, dline) in lines.iter().enumerate() {
-            if dline.graphemes.is_empty() {
-                continue;
-            }
-            let first = &graphemes[dline.graphemes.start];
-            let last = &graphemes[dline.graphemes.end - 1];
-            let is_last = i + 1 == lines.len();
-            if target_byte >= first.byte_range.start
-                && (target_byte < last.byte_range.end || is_last)
-            {
-                // The real grapheme, not an inline-insert decoration sharing
-                // its `pos`: `style::resolve_grapheme_display_col` skips
-                // forward past any `Virtual` cells to reach it, the same rule
-                // selection styling applies.
-                let display_col =
-                    crate::style::resolve_grapheme_display_col(pos, graphemes, &dline.graphemes)
-                        .map_or_else(
-                            // Past every grapheme on the display line (end of line).
-                            || last.display_col.advance_saturating(last.width as u32),
-                            |(display_col, _)| display_col,
-                        );
-                return (i, display_col);
-            }
+        let last_sub = lines
+            .len()
+            .checked_sub(1)
+            .expect("a formatted line has at least one display line");
+        let sub = lines[1..]
+            .iter()
+            .position(|next| first_cell(next).is_some_and(|g| target_byte < g.byte_range.start))
+            .unwrap_or(last_sub);
+        let dline = &lines[sub];
+        let Some(first) = first_cell(dline) else {
+            // A bounded scan stopped before the first cell: the target is
+            // inside a concealed run at the line's start.
+            return (sub, DisplayLineCol::new(0));
+        };
+        if first.pos.is_some_and(|first_pos| pos < first_pos) {
+            return (sub, first.display_col);
         }
-
-        // No display line claimed the offset: answer with the end of the
-        // last one. Every content display line has at least one grapheme
-        // (an empty line still gets its EOL sentinel), and the last one's
-        // `is_last` branch above matches any `target_byte` at or past its
-        // own start, so reaching here means either `lines` is empty or
-        // every display line was skipped for having no graphemes, both of
-        // which indicate a formatting bug rather than a normal input.
-        debug_assert!(
-            !lines.is_empty(),
-            "locate_in_line: line {}, {pos:?} matched \
-             no display line; every content display line should claim \
-             some byte range of the line",
-            entry.line.index()
-        );
-        let last_dline = lines.len().saturating_sub(1);
-        let display_col = lines
-            .get(last_dline)
-            .filter(|r| !r.graphemes.is_empty())
-            .map_or(DisplayLineCol::new(0), |r| {
-                let lg = &graphemes[r.graphemes.end - 1];
-                lg.display_col.advance_saturating(lg.width as u32)
-            });
-        (last_dline, display_col)
+        // The real grapheme, not a decoration sharing its `pos`:
+        // `style::resolve_grapheme_display_col` skips forward past those, the
+        // same rule selection styling applies.
+        let display_col =
+            crate::style::resolve_grapheme_display_col(pos, graphemes, &dline.graphemes)
+                .map_or_else(
+                    // Past every cell on the display line (end of line).
+                    || {
+                        let last = &graphemes[dline.graphemes.end - 1];
+                        last.display_col.advance_saturating(last.width as u32)
+                    },
+                    |(display_col, _)| display_col,
+                );
+        (sub, display_col)
     }
 
     /// The display line `pos` sits on, without resolving its column.
@@ -194,37 +184,10 @@ impl<'a> DisplayLineMap<'a> {
                 .pos
                 .expect("a content display line's cells carry a position"),
             DisplayColTarget::NearestContent | DisplayColTarget::NearestInsertionPoint => {
-                // Eligibility by content type: `Grapheme` is real content,
-                // always eligible. `WidthContinuation` is excluded even
-                // though it shares its primary's `pos` (so admitting
-                // it can never answer anything the primary itself wouldn't):
-                // its `display_col` sits one column *past* the wide glyph,
-                // which is exactly where the next real cell starts, so a
-                // target landing on that boundary ties between the two, and
-                // `min_by_key` keeps the first tied element, which is the
-                // continuation (pushed immediately after its primary, ahead
-                // of whatever comes next). Left in, that tie wins
-                // over the following cell's own, distinct `pos`.
-                // `Empty` (EOL sentinel) has a buffer position but isn't
-                // content, so `NearestContent` takes it only when nothing
-                // else can answer (an empty line), gated on `admit_eol`;
-                // `NearestInsertionPoint` admits it as one more candidate,
-                // and since it follows every content cell on its display
-                // line, a tie goes to content. `Virtual` (inline-insert)
-                // carries the cluster of the real grapheme it precedes, so
-                // minimising distance against it elsewhere on the display
-                // line would land on a character that cell isn't at. It's excluded outright,
-                // not just deprioritised. `Whitespace`/`TabFill` cover
-                // tab/space glyphs and blank tab fill, which *are* real
-                // content, except the newline indicator, which shares the
-                // EOL sentinel's column and must be excluded the same way,
-                // singled out by `byte_range` being empty, just like the
-                // sentinel it's drawn on top of (`format.rs`'s
-                // newline-indicator push).
-                //
-                // An exhaustive match (not a chain of exclusion filters) so a
-                // future `CellContent` variant forces a decision here instead
-                // of silently defaulting to eligible.
+                // `NearestContent` takes the EOL sentinel only when nothing
+                // else can answer; `NearestInsertionPoint` admits it as one
+                // more candidate, and since it follows every content cell on
+                // its display line, a tie goes to content.
                 let nearest = |admit_eol: bool| {
                     graphemes
                         .iter()
@@ -234,18 +197,10 @@ impl<'a> DisplayLineMap<'a> {
                         // ever formats content display lines, but guarded
                         // defensively.
                         .filter(|g| g.pos.is_some())
-                        .filter(|g| match g.content {
-                            CellContent::Grapheme => true,
-                            CellContent::WidthContinuation => false,
-                            CellContent::Empty => admit_eol,
-                            CellContent::Virtual { .. } => false,
-                            // A substitution standing in for real buffer text
-                            // is a position the cursor can land on; one
-                            // standing in for decoration text (`push_virtual_cells`)
-                            // has an empty byte range and is not.
-                            CellContent::Whitespace { .. }
-                            | CellContent::TabFill
-                            | CellContent::Placeholder { .. } => !g.byte_range.is_empty(),
+                        .filter(|g| match g.cursor_stop() {
+                            CursorStop::Text => true,
+                            CursorStop::LineEnd => admit_eol,
+                            CursorStop::Skip => false,
                         })
                         .min_by_key(|g| target_display_col.abs_diff(g.display_col))
                         .and_then(|g| g.pos)

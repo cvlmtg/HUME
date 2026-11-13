@@ -4,7 +4,8 @@ use std::sync::Arc;
 use bitflags::bitflags;
 use hume_grid::Rect;
 use hume_rope::column::ByteCol;
-use hume_rope::offset::ExclusiveRange;
+use hume_rope::line::ContentLine;
+use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 use hume_rope::spanned::SpannedText;
 
 use crate::render::Canvas;
@@ -270,13 +271,69 @@ pub struct InlineInsert {
     pub scope: ScopeId,
 }
 
+// Conceal
+
+/// Text a [`Conceal`] draws, styled by `scope` layered over the highlight
+/// at the conceal's start (`None` keeps that highlight alone).
+#[derive(Clone, Debug)]
+pub struct ConcealText {
+    pub text: Arc<str>,
+    pub scope: Option<ScopeId>,
+}
+
+/// What a [`Conceal`] does to its line, in byte columns relative to the line
+/// start.
+#[derive(Clone, Debug)]
+pub enum ConcealSpan {
+    /// Hide every cluster whose start byte lies in `bytes`, drawing `text`
+    /// in their place when set. `bytes` is non-empty, stays on its line and
+    /// never covers the `\n`: producers enforce this and the formatter trusts
+    /// it.
+    Hidden {
+        bytes: ExclusiveRange<ByteCol>,
+        text: Option<ConcealText>,
+    },
+    /// Draw `text` before the cluster at `at` (the line's `\n` included),
+    /// hiding nothing.
+    Inserted { at: ByteCol, text: ConcealText },
+}
+
+/// One piece of a buffer line drawn as something other than its text.
+#[derive(Clone, Debug)]
+pub struct Conceal {
+    pub span: ConcealSpan,
+    /// Lines revealed as one unit with this conceal's own: revealing any of
+    /// them shows this conceal's line raw too (a table or fenced block
+    /// reveals whole).
+    pub reveal: Option<InclusiveRange<ContentLine>>,
+}
+
+impl Conceal {
+    /// The bytes this conceal occupies: an [`ConcealSpan::Inserted`]'s is
+    /// empty at its `at`.
+    pub fn bytes(&self) -> ExclusiveRange<ByteCol> {
+        match self.span {
+            ConcealSpan::Hidden { bytes, .. } => bytes,
+            ConcealSpan::Inserted { at, .. } => ExclusiveRange::new(at, at),
+        }
+    }
+}
+
+/// Whether two conceal ranges claim a common position: they share an
+/// element, an empty one sits strictly inside a non-empty one, or both are
+/// empty at one position. An empty range at either end of a non-empty one
+/// does not overlap it: a point drawn at a hidden run's edge stays outside it.
+pub fn conceal_ranges_overlap<T: Copy + Ord>(a: ExclusiveRange<T>, b: ExclusiveRange<T>) -> bool {
+    (a.start < b.end && b.start < a.end) || (a.is_empty() && a == b)
+}
+
 // Decoration source
 
 /// One piece of per-line decoration data a [`DecorationSource`] can produce.
 /// A single query result covering every kind (highlight spans, virtual
-/// lines, inline inserts, line backgrounds), so a provider that wants to
-/// emit more than one kind (or a kind that varies by line) only implements
-/// one trait.
+/// lines, inline inserts, line backgrounds, conceals), so a provider that
+/// wants to emit more than one kind (or a kind that varies by line) only
+/// implements one trait.
 pub enum Decoration {
     /// A byte range relative to the line start, plus the tier
     /// this span layers at. Tier is data here, not a per-provider property,
@@ -290,6 +347,7 @@ pub enum Decoration {
     Inline(InlineInsert),
     /// Full-row background tint for the queried line.
     LineBg(ScopeId),
+    Conceal(Conceal),
 }
 
 bitflags! {
@@ -303,21 +361,21 @@ bitflags! {
         const VIRTUAL_LINE = 0b0010;
         const INLINE       = 0b0100;
         const LINE_BG      = 0b1000;
+        const CONCEAL      = 0b1_0000;
     }
 }
 
 impl DecorationKinds {
     /// Kinds the paint stage queries in one pass (`style::rebuild_line_decorations`)
-    /// (render-only, never consulted by layout). The layout stage has no
-    /// analogous combined constant: `display_lines::DisplayLineMap` queries `VIRTUAL_LINE` and
-    /// `INLINE` separately, at different points in the display-line walk (`block()`
-    /// for virtual lines, `ensure_formatted()` for inline inserts), so a `LAYOUT`
-    /// union would have no correct caller.
+    /// (render-only, never consulted by layout).
     pub const PAINT: Self = Self::HIGHLIGHT.union(Self::LINE_BG);
+    /// Kinds that shape a buffer line's display lines rather than paint over
+    /// them.
+    pub const LAYOUT: Self = Self::VIRTUAL_LINE.union(Self::INLINE).union(Self::CONCEAL);
 }
 
 /// A source of per-line decorations (highlight spans, virtual lines, inline
-/// inserts, line backgrounds). Called once per queried buffer line; the
+/// inserts, line backgrounds, conceals). Called once per queried buffer line; the
 /// caller clears `out` before the first provider for each line (or per
 /// provider, when order matters), providers only append.
 ///
@@ -423,10 +481,10 @@ impl ProviderSet {
 
     /// Decoration sources whose declared [`DecorationKinds`] intersect
     /// `want`, the kind-routing chokepoint: the layout stage (`display_lines::DisplayLineMap`)
-    /// queries `VIRTUAL_LINE` and `INLINE` separately, the paint stage
-    /// (`style::rebuild_line_decorations`) queries `DecorationKinds::PAINT`
-    /// (`HIGHLIGHT | LINE_BG`) in one pass, so no stage pays for a provider
-    /// whose output it would discard.
+    /// queries `VIRTUAL_LINE` for a line's block and `INLINE | CONCEAL` in one
+    /// pass for its format, the paint stage (`style::rebuild_line_decorations`)
+    /// queries `DecorationKinds::PAINT` (`HIGHLIGHT | LINE_BG`) in one pass, so
+    /// no stage pays for a provider whose output it would discard.
     pub(crate) fn decoration_sources(
         &self,
         want: DecorationKinds,

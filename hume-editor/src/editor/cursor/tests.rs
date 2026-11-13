@@ -45,6 +45,7 @@ fn map<'a>(
             },
             hidden: hume_engine::folds::HiddenLines::default(),
             content_width: ContentWidth::for_test(content_width),
+            revealed: hume_engine::reveal::RevealedLines::default(),
         },
         store,
     )

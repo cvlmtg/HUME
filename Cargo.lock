@@ -948,6 +948,7 @@ dependencies = [
  "rustc-hash",
  "slotmap",
  "tempfile",
+ "test-fixtures",
  "toml",
  "unicode-segmentation",
 ]

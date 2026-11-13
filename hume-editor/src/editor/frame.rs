@@ -602,13 +602,13 @@ impl Editor {
                 self.debounce_viewport_change(pid);
             }
         }
+        // Highlights and line tints only affect painting, so they sync after
+        // the scroll from a fresh snapshot of the final viewport and its
+        // header rows.
+        let panes = self.decorated_panes(&sizes, &pane_rows);
         // Render draws the rows this pass settled, so it walks no scope
         // header again.
         ctx.set_pane_rows(pane_rows);
-
-        // Highlights and line tints only affect painting, so they sync after
-        // the scroll from a fresh snapshot of the final viewport.
-        let panes = self.decorated_panes(&sizes);
         self.update_highlight_providers(&panes);
         self.update_line_bg_providers(&panes);
 
@@ -637,7 +637,7 @@ impl Editor {
     /// after the reveal would instead let reveal and render disagree on
     /// layout.
     fn sync_layout_providers(&mut self, sizes: &[(PaneId, PaneSize)]) {
-        let panes = self.decorated_panes(sizes);
+        let panes = self.decorated_panes(sizes, &[]);
         self.update_sign_providers(&panes);
         self.update_inlay_hint_providers(&panes);
         self.update_virtual_line_providers(&panes);

@@ -164,6 +164,7 @@ fn a_changed_key_drops_the_scope() {
             },
             hidden: crate::folds::HiddenLines::default(),
             content_width: crate::pipeline::ContentWidth::for_test(80),
+            revealed: crate::reveal::RevealedLines::default(),
         },
         &mut store,
     )
@@ -183,6 +184,7 @@ fn a_changed_key_drops_the_scope() {
             },
             hidden: crate::folds::HiddenLines::default(),
             content_width: crate::pipeline::ContentWidth::for_test(80),
+            revealed: crate::reveal::RevealedLines::default(),
         },
         &mut store,
     )
@@ -244,6 +246,7 @@ fn a_shape_only_entry_allocates_no_format_buffers() {
             },
             hidden: crate::folds::HiddenLines::default(),
             content_width: crate::pipeline::ContentWidth::for_test(80),
+            revealed: crate::reveal::RevealedLines::default(),
         },
         &mut store,
     )
@@ -324,6 +327,7 @@ fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
             },
             hidden: crate::folds::HiddenLines::default(),
             content_width: crate::pipeline::ContentWidth::for_test(80),
+            revealed: crate::reveal::RevealedLines::default(),
         },
         &mut store,
     )
@@ -333,4 +337,33 @@ fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
     store.rewind();
 
     (before, store.entry(0).format.graphemes.capacity())
+}
+
+#[test]
+fn inline_and_conceal_providers_are_each_queried_once_per_formatted_line() {
+    let r = Rope::from_str("**ab\n");
+    let (mut providers, insert_calls) = with_counting_insert(ContentLine::new(0), 0, "x");
+    let conceal_calls = Rc::new(Cell::new(0));
+    providers.add_decoration_source(Box::new(
+        crate::test_doubles::ConcealSource::new(vec![(
+            ContentLine::new(0),
+            vec![crate::providers::Conceal {
+                span: crate::providers::ConcealSpan::Hidden {
+                    bytes: crate::test_support::byte_range(0, 2),
+                    text: None,
+                },
+                reveal: None,
+            }],
+        )])
+        .counting(Rc::clone(&conceal_calls)),
+    ));
+    let mut store = PaneLineStore::new();
+    let mut dlm = map(&r, WrapMode::Soft { width: 80 }, &providers, &mut store);
+    dlm.block(ContentLine::new(0));
+
+    assert_eq!(
+        (insert_calls.get(), conceal_calls.get()),
+        (1, 1),
+        "one format queries each layout provider once"
+    );
 }

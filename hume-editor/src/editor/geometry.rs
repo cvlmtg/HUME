@@ -10,6 +10,7 @@ use hume_engine::layout::PaneGeometry;
 use hume_engine::pane::ViewGeometry;
 use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
 use hume_engine::providers::{GutterInputs, SyntaxSource};
+use hume_engine::reveal::RevealedLines;
 use hume_engine::scope_headers::{ContextSettings, ScopeHeaderInputs};
 use hume_treesitter::syntax::Syntax;
 
@@ -250,6 +251,7 @@ impl EditorState {
                 format: self.format_key(&view.panes[pid]),
                 hidden: self.hidden_lines(view, pid).clone(),
                 content_width: self.pane_geometry(view, pid, size).content_width,
+                revealed: RevealedLines::default(),
             },
             size,
             scroll_margin: self.settings.scroll_margin,

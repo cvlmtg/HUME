@@ -170,3 +170,21 @@ fn a_gutter_cell_belongs_to_the_lane_drawn_over_it() {
         ]
     );
 }
+
+#[test]
+fn conceal_ranges_overlap_on_a_shared_or_strictly_inner_position() {
+    let r = |start: usize, end: usize| ExclusiveRange::new(start, end);
+    let cases = [
+        (r(0, 3), r(2, 4), true, "non-empty ranges sharing byte 2"),
+        (r(0, 2), r(2, 4), false, "non-empty ranges that only touch"),
+        (r(1, 1), r(0, 3), true, "an empty range strictly inside"),
+        (r(0, 0), r(0, 3), false, "an empty range at the start"),
+        (r(3, 3), r(0, 3), false, "an empty range at the end"),
+        (r(2, 2), r(2, 2), true, "two empty ranges at one position"),
+        (r(1, 1), r(2, 2), false, "two empty ranges apart"),
+    ];
+    for (a, b, overlap, case) in cases {
+        assert_eq!(conceal_ranges_overlap(a, b), overlap, "{case}");
+        assert_eq!(conceal_ranges_overlap(b, a), overlap, "{case}, swapped");
+    }
+}

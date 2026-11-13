@@ -26,11 +26,13 @@ pub mod folds;
 pub mod format;
 pub mod interval_sweep;
 pub mod layout;
+pub mod line_set;
 pub mod lock;
 pub mod pane;
 pub mod pipeline;
 pub mod providers;
 pub mod render;
+pub mod reveal;
 pub mod scope_headers;
 pub mod style;
 #[cfg(any(test, feature = "test-util"))]

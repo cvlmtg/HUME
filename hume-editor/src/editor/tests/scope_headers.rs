@@ -375,9 +375,10 @@ fn header_rows_use_popup_background_when_ui_context_is_unset() {
 
 /// Line 0 heads row 0 from above the top. Line 1 heads row 1 while it is the
 /// top line itself, inside the range the pane's decorations are synced for.
-/// Line 5 is a body row and shows each decoration.
+/// Line 5 is a body row and shows each decoration. A header row draws the
+/// highlight on its line and none of the hint, EOL text or sign.
 #[test]
-fn header_rows_draw_their_lines_without_decorations() {
+fn header_rows_draw_highlights_but_no_layout_decorations() {
     let source = two_fn_impl();
     let mut ed = rust_context_editor(&source);
     let bid = ed.focused_buffer_id();
@@ -472,9 +473,10 @@ fn header_rows_draw_their_lines_without_decorations() {
     for row in 0..2 {
         assert!(!gutter_text(row).contains('!'), "header row {row}'s gutter");
         for x in rect.x + gutter..rect.right() {
+            let highlighted = x < rect.x + gutter + 4;
             assert_eq!(
                 buf[(x, rect.y + row)].style().bg,
-                header_bg,
+                if highlighted { marked_bg } else { header_bg },
                 "header row {row}, column {x}"
             );
         }
@@ -917,5 +919,140 @@ fn press_on_row_zero_with_headers_off_selects_the_top_line() {
     assert_eq!(
         ed.current_view().primary().head().offset(),
         char_at_column(&ed, 10, 0)
+    );
+}
+
+/// A diagnostic over `start..end` of `bid`, as the store holds one.
+fn error_diagnostic(
+    start: hume_rope::offset::CharOffset,
+    end: hume_rope::offset::CharOffset,
+) -> crate::editor::lsp::diagnostics::StoredDiag {
+    crate::editor::lsp::diagnostics::StoredDiag {
+        start,
+        end,
+        severity: hume_core::DiagSeverity::Error,
+        message: "boom".to_owned(),
+        code: None,
+        source: None,
+        raw: std::sync::Arc::new(serde_json::Value::Null),
+        server: hume_scripting::ServerRef {
+            id: hume_lsp::backend::ServerId(0),
+            name: hume_core::ServerName::parse("test-server").unwrap(),
+        },
+        encoding: hume_rope::position_encoding::PositionEncoding::Utf16,
+    }
+}
+
+/// Line 0 (`impl S {`) heads row 0 from above the viewport: its search
+/// match over `impl` and its diagnostic over `S` both draw on the row.
+#[test]
+fn header_row_above_the_viewport_draws_search_and_diagnostic_highlights() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let bid = ed.focused_buffer_id();
+    let pid = focused_split(&mut ed, bid);
+    pin_no_wrap(&mut ed);
+    ed.state.buffers.get_mut(bid).search_pattern =
+        crate::editor::search::SearchPattern::compile("impl");
+    ed.state.buffer_positions.diagnostics.replace(
+        hume_lsp::backend::ServerId(0),
+        bid,
+        vec![error_diagnostic(
+            char_at_column(&ed, 0, 5),
+            char_at_column(&ed, 0, 6),
+        )],
+    );
+    let resolve = |name| {
+        ed.view
+            .theme
+            .resolve_by_name(hume_engine::types::Scope(name))
+    };
+    let search = resolve(hume_engine::theme::CURSOR_MATCH_SEARCH);
+    let diagnostic = resolve(hume_engine::theme::diagnostic_scopes::highlight(
+        hume_core::DiagSeverity::Error,
+    ));
+    assert!(
+        search.bg.is_some() && diagnostic.underline != Default::default(),
+        "premise: the match has a background and the diagnostic an underline"
+    );
+
+    let buf = wheel_down(&mut ed, pid, 10);
+    assert_eq!(top_line(&ed, pid), 10, "premise: line 0 is above the top");
+    assert_eq!(
+        pane_rows(&ed, &buf, pid, 1),
+        [line_of(&source, 0)],
+        "premise: row 0 is line 0's header"
+    );
+
+    let (rect, gutter) = drawn_pane(&ed, &buf, pid);
+    let style = |col: u16| buf[(rect.x + gutter + col, rect.y)].style();
+    assert_eq!(
+        (0..4).map(|col| style(col).bg).collect::<Vec<_>>(),
+        [search.bg; 4],
+        "`impl`, the search match"
+    );
+    assert_eq!(
+        style(5).underline,
+        diagnostic.underline,
+        "`S`, the diagnostic"
+    );
+    assert_eq!(style(4).underline, Default::default(), "the space between");
+}
+
+/// The extra-highlight mirror of a pane covers the viewport, one row more,
+/// and the pane's header lines, however many lines carry a highlight.
+#[test]
+fn paint_mirrors_cover_at_most_the_viewport_plus_one_row_and_the_header_lines() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let bid = ed.focused_buffer_id();
+    let pid = focused_split(&mut ed, bid);
+    pin_no_wrap(&mut ed);
+    let marked = ed.view.registry.intern("ui.selection");
+    let line_count = source.lines().count();
+    ed.state.config.decorations.set_extra_highlights(
+        "test".to_owned(),
+        bid,
+        (0..line_count)
+            .map(|line| hume_decorations::ExtraHighlightEntry {
+                start: char_at_column(&ed, line, 0),
+                end: char_at_column(&ed, line, 1),
+                scope: marked,
+            })
+            .collect(),
+    );
+
+    let buf = wheel_down(&mut ed, pid, 10);
+    assert_eq!(
+        pane_rows(&ed, &buf, pid, 3),
+        [
+            line_of(&source, 0),
+            line_of(&source, 1),
+            line_of(&source, 12)
+        ],
+        "premise: lines 0 and 1 head rows 0 and 1, and the top is line 10"
+    );
+    let (rect, _) = drawn_pane(&ed, &buf, pid);
+    let mut covered: Vec<usize> = ed.state.panes.entries[pid]
+        .render
+        .highlights(hume_engine::providers::HighlightTier::Extra)
+        .iter()
+        .map(|&(line, ..)| line.index())
+        .collect();
+    covered.dedup();
+
+    assert!(
+        covered.contains(&0) && covered.contains(&1),
+        "the header lines are covered: {covered:?}"
+    );
+    assert!(
+        covered.iter().all(|&line| !(2..10).contains(&line)),
+        "no line between the headers and the top: {covered:?}"
+    );
+    assert!(
+        covered.len() <= usize::from(rect.height) + 1 + 2,
+        "{} lines for a {}-row pane with two headers",
+        covered.len(),
+        rect.height
     );
 }

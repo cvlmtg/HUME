@@ -247,7 +247,7 @@ pub(crate) fn render_pane(
     }
     // Header rows are formatted and drawn from column 0 whatever the pane's
     // horizontal scroll.
-    let mut header_dlm = header_layout.render_map(pane_ctx.rope, inputs);
+    let mut header_dlm = header_layout.render_map(pane_ctx.rope, pane_ctx.providers, inputs);
     let header_providers = header_dlm.providers();
     let header_ctx = ComposeCtx {
         horizontal_offset: DisplayLineCol::new(0),

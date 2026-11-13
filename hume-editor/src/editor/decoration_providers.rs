@@ -5,7 +5,7 @@
 //! layout also by `Editor::settle_views` before each input.
 
 use hume_core::{BufferId, DiagSeverity, PaneId, Side};
-use hume_engine::pipeline::PaneSize;
+use hume_engine::pipeline::{PaneSize, SettledRows};
 use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, ui_scopes};
 use hume_engine::types::EditorMode;
 
@@ -32,10 +32,23 @@ pub(super) struct DecoratedPane {
     /// Rust-side store (diagnostics, decorations) instead of the whole
     /// buffer.
     pub(super) chars: ExclusiveRange<CharOffset>,
+    /// The chars of each line a header row draws that `chars` does not
+    /// already hold, so a heading scrolled above the viewport still shows
+    /// its highlights. Empty for a snapshot taken without the pane's settled
+    /// rows.
+    pub(super) header_chars: Vec<ExclusiveRange<CharOffset>>,
     /// The primary cursor's line while this pane owns the Insert session,
     /// `None` otherwise. Diagnostic decorations on it are hidden unless
     /// `lsp-diagnostics-on-insert-line` is set.
     pub(super) insert_line: Option<hume_rope::line::ContentLine>,
+}
+
+impl DecoratedPane {
+    /// The char ranges a highlight bridge fills: the viewport, then each
+    /// header line above it.
+    fn paint_ranges(&self) -> impl Iterator<Item = ExclusiveRange<CharOffset>> + '_ {
+        std::iter::once(self.chars).chain(self.header_chars.iter().copied())
+    }
 }
 
 impl Editor {
@@ -65,11 +78,20 @@ impl Editor {
     /// `geometry::pane_visible_range`, which differs in that one-row slack
     /// and in leaving the top line unclamped.
     ///
+    /// `rows` are the rows the reveal that just ran settled, from which the
+    /// snapshot reads each pane's header lines. A snapshot taken before a
+    /// reveal passes none: only the highlight bridges read the header ranges,
+    /// and they run after it.
+    ///
     /// Scoped to `active` (the active tab's panes, each with its size in the
     /// frame's layout; see `EngineView::active_pane_ids`) rather than the
     /// whole pool: a background tab's pane isn't decorated or mirrored while
     /// hidden, so it has no "current frame" viewport for this to snapshot.
-    pub(super) fn decorated_panes(&self, active: &[(PaneId, PaneSize)]) -> Vec<DecoratedPane> {
+    pub(super) fn decorated_panes(
+        &self,
+        active: &[(PaneId, PaneSize)],
+        rows: &[(PaneId, SettledRows)],
+    ) -> Vec<DecoratedPane> {
         active
             .iter()
             .map(|&(pid, size)| {
@@ -97,6 +119,18 @@ impl Editor {
                         .primary()
                         .head_line()
                 });
+                let header_chars = rows
+                    .iter()
+                    .filter(|(row_pid, _)| *row_pid == pid)
+                    .flat_map(|(_, settled)| settled.rows.headers())
+                    .filter(|&&line| !lines.contains(line))
+                    .map(|&line| {
+                        ExclusiveRange::new(
+                            text.line_to_char(line.into()),
+                            text.line_to_char(line.advance(1).into()),
+                        )
+                    })
+                    .collect();
                 DecoratedPane {
                     pid,
                     bid,
@@ -106,6 +140,7 @@ impl Editor {
                         text.line_to_char(lines.start.into()),
                         text.line_to_char(lines.end.into()),
                     ),
+                    header_chars,
                 }
             })
             .collect()
@@ -116,7 +151,8 @@ impl Editor {
     ///
     /// Called once per frame, after scroll is resolved and before `term.draw`.
     /// Bracket matching is suppressed in Insert mode. Each pane's search
-    /// highlights are computed from **that pane's own buffer and viewport**:
+    /// highlights are computed from **that pane's own buffer, viewport and
+    /// header lines**:
     /// panes never share highlight data (see [`hume_decorations::PaneDecorationHandles`]),
     /// so a pane viewing a different buffer, or the same buffer scrolled
     /// elsewhere, never inherits another pane's matches.
@@ -142,23 +178,24 @@ impl Editor {
             // refreshes. No-op when the cache already matches this revision.
             super::search::ops::update_buffer_matches(&mut self.state.buffers, bid);
 
-            let visible = p.lines;
             let buf = self.state.buffers.get(bid);
             let text = buf.text();
 
             // Matches are sorted by document order. Binary-search to the first
-            // match that starts at or after this pane's `top_line`.
-            let top_char = text.line_to_char(visible.start.into());
+            // match that starts at or after each range.
             let matches = buf.search_matches.matches(text);
-            let first = matches.partition_point(|span| span.start().offset() < top_char);
             let mut spans = Vec::new();
-            for &span in &matches[first..] {
-                let start_line = text.char_to_line(span.start().offset());
-                if start_line >= visible.end {
-                    break;
+            for range in p.paint_ranges() {
+                let first = matches.partition_point(|span| span.start().offset() < range.start);
+                for &span in &matches[first..] {
+                    if span.start().offset() >= range.end {
+                        break;
+                    }
+                    push_match_highlight_lines(text, span.chars(), search_scope, &mut spans);
                 }
-                push_match_highlight_lines(text, span.chars(), search_scope, &mut spans);
             }
+            // The provider reads by line, and the header ranges lie above the viewport's.
+            spans.sort_by_key(|&(line, start, ..)| (line, start));
             self.state.panes.entries[pid].render.set_search(spans);
         }
 
@@ -217,29 +254,29 @@ impl Editor {
             });
             for p in panes {
                 let (pid, bid) = (p.pid, p.bid);
-                let visible = p.chars;
-
                 let buf = self.state.buffers.get(bid);
                 let text = buf.text();
 
                 let diag_spans = {
                     let mut raw = Vec::new();
-                    for d in self
-                        .state
-                        .buffer_positions
-                        .diagnostics
-                        .for_range_unsorted(bid, visible, floor)
-                    {
-                        let start = d.start.max(visible.start);
-                        let end = d.end.min(visible.end);
-                        // The most severe diagnostic wins an overlap.
-                        push_priority_highlight_lines(
-                            text,
-                            ExclusiveRange::new(start, end),
-                            d.severity.rank(),
-                            diag_scopes[usize::from(d.severity.rank())],
-                            &mut raw,
-                        );
+                    for visible in p.paint_ranges() {
+                        for d in self
+                            .state
+                            .buffer_positions
+                            .diagnostics
+                            .for_range_unsorted(bid, visible, floor)
+                        {
+                            let start = d.start.max(visible.start);
+                            let end = d.end.min(visible.end);
+                            // The most severe diagnostic wins an overlap.
+                            push_priority_highlight_lines(
+                                text,
+                                ExclusiveRange::new(start, end),
+                                d.severity.rank(),
+                                diag_scopes[usize::from(d.severity.rank())],
+                                &mut raw,
+                            );
+                        }
                     }
                     let mut spans = flatten_priority_overlaps(raw);
                     if !on_insert_line {
@@ -250,31 +287,33 @@ impl Editor {
 
                 let extra_spans = {
                     let mut raw = Vec::new();
-                    for e in self
-                        .state
-                        .config
-                        .decorations
-                        .extra_highlights_starting_before(bid, visible.end)
-                    {
-                        if e.end <= visible.start {
-                            continue;
+                    for visible in p.paint_ranges() {
+                        for e in self
+                            .state
+                            .config
+                            .decorations
+                            .extra_highlights_starting_before(bid, visible.end)
+                        {
+                            if e.end <= visible.start {
+                                continue;
+                            }
+                            let start = e.start.max(visible.start);
+                            let end = e.end.min(visible.end);
+                            // No severity concept for plugin-supplied spans:
+                            // uniform priority; overlap ties resolve by push
+                            // order, which `extra_highlights_starting_before`
+                            // yields ascending by source name, so the
+                            // alphabetically-first source wins, deterministic
+                            // across sessions rather than whichever source
+                            // happened to call `set-extra-highlights!` first.
+                            push_priority_highlight_lines(
+                                text,
+                                ExclusiveRange::new(start, end),
+                                0,
+                                e.scope,
+                                &mut raw,
+                            );
                         }
-                        let start = e.start.max(visible.start);
-                        let end = e.end.min(visible.end);
-                        // No severity concept for plugin-supplied spans:
-                        // uniform priority; overlap ties resolve by push
-                        // order, which `extra_highlights_starting_before`
-                        // yields ascending by source name, so the
-                        // alphabetically-first source wins, deterministic
-                        // across sessions rather than whichever source
-                        // happened to call `set-extra-highlights!` first.
-                        push_priority_highlight_lines(
-                            text,
-                            ExclusiveRange::new(start, end),
-                            0,
-                            e.scope,
-                            &mut raw,
-                        );
                     }
                     flatten_priority_overlaps(raw)
                 };

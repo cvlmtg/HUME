@@ -110,6 +110,7 @@ pub(crate) fn map_hiding<'a>(
             },
             hidden,
             content_width: crate::pipeline::ContentWidth::for_test(content_width),
+            revealed: crate::reveal::RevealedLines::default(),
         },
         store,
     )

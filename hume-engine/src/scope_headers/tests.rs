@@ -1,14 +1,26 @@
+use std::cell::Cell;
+use std::rc::Rc;
+
 use ropey::Rope;
 
 use super::*;
+use crate::display_lines::DisplayColTarget;
 use crate::display_lines::line_store::PaneLineStore;
 use crate::folds::{Fold, HiddenLines};
-use crate::pane::WrapMode;
-use crate::pipeline::PaneSize;
-use crate::providers::ProviderSet;
-use crate::test_doubles::{ScopeTable, VirtualLineBlock};
-use crate::test_support::{map, map_hiding};
+use crate::line_set::LineSet;
+use crate::pane::{WhitespaceConfig, WrapMode};
+use crate::pipeline::{ContentWidth, PaneSize};
+use crate::providers::{
+    Conceal, ConcealSpan, ConcealText, Decoration, DecorationKinds, DecorationSource,
+    HighlightTier, InlineInsert, ProviderSet,
+};
+use crate::reveal::RevealedLines;
+use crate::test_doubles::{ConcealSource, ScopeTable, VirtualLineBlock};
+use crate::test_support::{at, bg, byte_range, map, map_hiding, theme_with};
+use crate::types::{CellContent, ResolvedStyle};
 use hume_core::Side;
+use hume_grid::Rgb;
+use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 
 const SHOWN: ContextSettings = ContextSettings {
     enabled: true,
@@ -247,4 +259,267 @@ fn a_header_line_a_fold_hides_is_not_shown() {
     };
     let rows = rows_of(&mut dlm, top(11), 24, inputs);
     assert_eq!(rows.headers(), [ContentLine::new(0)]);
+}
+
+/// The inputs of a pane that lays its lines out at 80 columns with
+/// `revealed` shown raw.
+fn pane_inputs(revealed: RevealedLines) -> DisplayLineInputs {
+    DisplayLineInputs {
+        format: FormatKey {
+            buffer_tag: [0; 3],
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        },
+        hidden: HiddenLines::default(),
+        content_width: ContentWidth::for_test(80),
+        revealed,
+    }
+}
+
+fn hidden(start: usize, end: usize, text: Option<&str>) -> Conceal {
+    Conceal {
+        span: ConcealSpan::Hidden {
+            bytes: byte_range(start, end),
+            text: text.map(|text| ConcealText {
+                text: text.into(),
+                scope: None,
+            }),
+        },
+        reveal: None,
+    }
+}
+
+/// A HIGHLIGHT and INLINE source that tints bytes 0..1 of every line with
+/// `scope` and inserts `>>` at byte 0, counting its queries.
+struct InlineAndHighlight {
+    scope: crate::types::ScopeId,
+    calls: Rc<Cell<usize>>,
+}
+
+impl DecorationSource for InlineAndHighlight {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::INLINE | DecorationKinds::HIGHLIGHT
+    }
+
+    fn decorations_for_line(&self, _line: ContentLine, out: &mut Vec<Decoration>) {
+        self.calls.set(self.calls.get() + 1);
+        out.push(Decoration::Inline(InlineInsert {
+            byte_offset: hume_rope::column::ByteCol::new(0),
+            text: ">>".into(),
+            scope: self.scope,
+        }));
+        out.push(Decoration::Highlight {
+            range: byte_range(0, 1),
+            scope: self.scope,
+            tier: HighlightTier::Extra,
+        });
+    }
+}
+
+/// Each cell `line`'s header row draws, as its kind and the bytes of the
+/// line it stands for. A cell with no text of its own (the line break) is
+/// left out.
+fn header_cells(
+    layout: &mut HeaderLayout,
+    rope: &Rope,
+    providers: &ProviderSet,
+    inputs: &DisplayLineInputs,
+    line: usize,
+) -> Vec<(&'static str, usize, usize)> {
+    let mut dlm = layout.display_map(rope, providers, inputs);
+    let pos = dlm.first_content_display_line(ContentLine::new(line));
+    let rendered = dlm.render_display_line(pos);
+    rendered.graphemes[rendered.display_line.graphemes.clone()]
+        .iter()
+        .filter_map(|g| {
+            let kind = match g.content {
+                CellContent::Grapheme => "text",
+                CellContent::Replacement { .. } => "replacement",
+                CellContent::Virtual { .. } => "virtual",
+                _ => return None,
+            };
+            Some((kind, g.byte_range.start.index(), g.byte_range.end.index()))
+        })
+        .collect()
+}
+
+#[test]
+fn header_row_draws_a_replacement_and_hides_its_bytes() {
+    let rope = Rope::from_str("**a** b\nx\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(ConcealSource::new(vec![(
+        ContentLine::new(0),
+        vec![hidden(0, 2, Some("•")), hidden(3, 5, None)],
+    )])));
+    let cells = header_cells(
+        &mut HeaderLayout::default(),
+        &rope,
+        &providers,
+        &pane_inputs(RevealedLines::default()),
+        0,
+    );
+    assert_eq!(
+        cells,
+        [
+            ("replacement", 0, 2),
+            ("text", 2, 3),
+            ("text", 5, 6),
+            ("text", 6, 7)
+        ]
+    );
+}
+
+#[test]
+fn header_row_draws_no_inline_insert_and_no_virtual_line_from_the_pane_set() {
+    let rope = Rope::from_str("**a**\n**b**\nc\n");
+    let (inline_calls, virtual_calls, conceal_calls) = (
+        Rc::new(Cell::new(0)),
+        Rc::new(Cell::new(0)),
+        Rc::new(Cell::new(0)),
+    );
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(InlineAndHighlight {
+        scope: crate::types::ScopeId(0),
+        calls: Rc::clone(&inline_calls),
+    }));
+    providers.add_decoration_source(Box::new(
+        VirtualLineBlock::uniform(Side::After, ContentLine::new(0), 1, "v")
+            .counting(Rc::clone(&virtual_calls)),
+    ));
+    providers.add_decoration_source(Box::new(
+        ConcealSource::new(vec![
+            (ContentLine::new(0), vec![hidden(0, 2, None)]),
+            (ContentLine::new(1), vec![hidden(0, 2, None)]),
+        ])
+        .counting(Rc::clone(&conceal_calls)),
+    ));
+    let inputs = pane_inputs(RevealedLines::default());
+    let mut layout = HeaderLayout::default();
+    let first = header_cells(&mut layout, &rope, &providers, &inputs, 0);
+    let second = header_cells(&mut layout, &rope, &providers, &inputs, 1);
+
+    let past_the_marker = [("text", 2, 3), ("text", 3, 4), ("text", 4, 5)];
+    assert_eq!(
+        (first, second),
+        (past_the_marker.to_vec(), past_the_marker.to_vec()),
+        "a header row's cells are the line's own, less its concealed bytes"
+    );
+    assert_eq!(
+        (inline_calls.get(), virtual_calls.get(), conceal_calls.get()),
+        (0, 0, 2),
+        "no INLINE or VIRTUAL_LINE query, one CONCEAL query per header line"
+    );
+}
+
+#[test]
+fn header_line_in_the_pane_revealed_set_draws_raw() {
+    let rope = Rope::from_str("**a**\n**b**\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(ConcealSource::new(vec![
+        (ContentLine::new(0), vec![hidden(0, 2, None)]),
+        (ContentLine::new(1), vec![hidden(0, 2, None)]),
+    ])));
+    let revealed = RevealedLines::Lines(LineSet::from_ranges([InclusiveRange::new(
+        ContentLine::new(1),
+        ContentLine::new(1),
+    )]));
+    let inputs = pane_inputs(revealed);
+    let mut layout = HeaderLayout::default();
+
+    assert_eq!(
+        header_cells(&mut layout, &rope, &providers, &inputs, 0),
+        [("text", 2, 3), ("text", 3, 4), ("text", 4, 5)],
+        "line 0 is not revealed"
+    );
+    assert_eq!(
+        header_cells(&mut layout, &rope, &providers, &inputs, 1),
+        [
+            ("text", 0, 1),
+            ("text", 1, 2),
+            ("text", 2, 3),
+            ("text", 3, 4),
+            ("text", 4, 5)
+        ],
+        "line 1 is revealed"
+    );
+}
+
+#[test]
+fn header_row_takes_a_highlight_decorations_scope() {
+    let rope = Rope::from_str("abc\n");
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let scope = registry.intern("marked");
+    let mut theme = theme_with([("marked", bg(Rgb(0, 0, 255)))]);
+    theme.bake(&registry);
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(InlineAndHighlight {
+        scope,
+        calls: Rc::new(Cell::new(0)),
+    }));
+    let inputs = pane_inputs(RevealedLines::default());
+    let mut layout = HeaderLayout::default();
+    let mut dlm = layout.display_map(&rope, &providers, &inputs);
+    let header_providers = dlm.providers();
+    let pos = dlm.first_content_display_line(ContentLine::new(0));
+    let rendered = dlm.render_display_line(pos);
+
+    let mut scratch = crate::style::StyleScratch::new();
+    scratch
+        .styles
+        .resize(rendered.graphemes.len(), ResolvedStyle::default());
+    crate::style::rebuild_line_decorations(
+        ContentLine::new(0),
+        None,
+        header_providers,
+        &rope,
+        &mut scratch,
+    );
+    crate::style::style_display_line(
+        rendered.display_line,
+        rendered.graphemes,
+        ExclusiveRange::new(
+            hume_rope::offset::CharOffset::new(0),
+            hume_rope::offset::CharOffset::new(4),
+        ),
+        None,
+        None,
+        &theme,
+        &mut scratch,
+    );
+    let styles: Vec<_> = scratch.styles[rendered.display_line.graphemes.clone()]
+        .iter()
+        .map(|style| style.bg)
+        .collect();
+    assert_eq!(
+        styles[..3],
+        [Some(Rgb(0, 0, 255)), None, None],
+        "the highlight covers byte 0 only"
+    );
+}
+
+#[test]
+fn hit_test_on_a_header_replacement_returns_the_concealed_start() {
+    let rope = Rope::from_str("**a**\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(ConcealSource::new(vec![(
+        ContentLine::new(0),
+        vec![hidden(0, 2, Some("•"))],
+    )])));
+    let inputs = pane_inputs(RevealedLines::default());
+    let mut layout = HeaderLayout::default();
+    let mut dlm = layout.display_map(&rope, &providers, &inputs);
+    let pos = dlm.first_content_display_line(ContentLine::new(0));
+    let col = |n| hume_rope::column::DisplayLineCol::new(n);
+
+    assert_eq!(
+        dlm.char_at(pos, col(0), DisplayColTarget::Cell),
+        at(&rope, 0),
+        "the replacement stands for the cluster its run starts at"
+    );
+    assert_eq!(
+        dlm.char_at(pos, col(1), DisplayColTarget::Cell),
+        at(&rope, 2),
+        "the cell after it is the first cluster past the run"
+    );
 }

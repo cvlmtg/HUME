@@ -325,6 +325,7 @@ fn wrap_width_one_emits_one_grapheme_per_display_line_without_hanging() {
             },
             hidden: crate::folds::HiddenLines::default(),
             content_width: crate::pipeline::ContentWidth::for_test(80),
+            revealed: crate::reveal::RevealedLines::default(),
         },
         &mut s,
     );

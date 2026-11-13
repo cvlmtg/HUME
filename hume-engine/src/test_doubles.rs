@@ -12,7 +12,9 @@ use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 use hume_rope::spanned::SpannedText;
 use ropey::Rope;
 
-use crate::providers::{Decoration, DecorationKinds, DecorationSource, SyntaxSource, VirtualLine};
+use crate::providers::{
+    Conceal, Decoration, DecorationKinds, DecorationSource, SyntaxSource, VirtualLine,
+};
 use crate::types::ScopeId;
 
 /// What each of a [`VirtualLineBlock`]'s display lines says.
@@ -98,6 +100,43 @@ impl DecorationSource for VirtualLineBlock {
                 base_scope: None,
             }));
         }
+    }
+}
+
+/// A CONCEAL source answering a fixed table of lines, and nothing for any
+/// other line.
+pub struct ConcealSource {
+    lines: Vec<(ContentLine, Vec<Conceal>)>,
+    calls: Option<Rc<Cell<usize>>>,
+}
+
+impl ConcealSource {
+    /// Each listed line gets its conceals, in the order given.
+    pub fn new(lines: Vec<(ContentLine, Vec<Conceal>)>) -> Self {
+        Self { lines, calls: None }
+    }
+
+    /// Count queries for the table's own lines only: a walk queries every
+    /// line it passes, which an unnarrowed counter would measure instead.
+    pub fn counting(mut self, calls: Rc<Cell<usize>>) -> Self {
+        self.calls = Some(calls);
+        self
+    }
+}
+
+impl DecorationSource for ConcealSource {
+    fn kinds(&self) -> DecorationKinds {
+        DecorationKinds::CONCEAL
+    }
+
+    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
+        let Some((_, conceals)) = self.lines.iter().find(|(line, _)| *line == line_idx) else {
+            return;
+        };
+        if let Some(calls) = &self.calls {
+            calls.set(calls.get() + 1);
+        }
+        out.extend(conceals.iter().cloned().map(Decoration::Conceal));
     }
 }
 

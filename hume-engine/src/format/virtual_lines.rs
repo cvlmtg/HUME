@@ -2,6 +2,7 @@
 
 use hume_rope::column::ByteCol;
 use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::offset::ExclusiveRange;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::pane::ResolvedWrap;
@@ -50,7 +51,7 @@ pub(crate) fn format_virtual_lines(
         let mut scope_cursor = IntervalCursor::new(vl.content.spans());
         let run = VirtualRun {
             text,
-            byte_offset: 0, // no buffer position
+            bytes: ExclusiveRange::new(ByteCol::new(0), ByteCol::new(0)), // no buffer position
             pos: None,
             indent_depth: 0,
         };

@@ -75,6 +75,7 @@ Core text-editing model: the document, selections, edits as data, and the undo t
 - hume-core
 - hume-grid
 - hume-rope
+- test-fixtures *(dev-only)*
 ### Used by
 - hume-treesitter
 - hume-editor
@@ -139,6 +140,7 @@ Tree-sitter integration: grammar registry, incremental parsing, syntax highlight
 - hume-rope *(dev-only)*
 - hume-editing *(dev-only)*
 - hume-ops *(dev-only)*
+- hume-engine *(dev-only)*
 - hume-treesitter *(dev-only)*
 - hume-editor *(dev-only)*
 ## Description

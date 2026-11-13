@@ -372,8 +372,11 @@ impl Editor {
             ),
             PaneRow::Header(line) => {
                 let mut header_layout = HeaderLayout::default();
-                let mut header_dlm =
-                    header_layout.display_map(doc.text().rope(), &layout_key.inputs());
+                let mut header_dlm = header_layout.display_map(
+                    doc.text().rope(),
+                    &self.view.panes[pid].providers,
+                    &layout_key.inputs(),
+                );
                 cursor::header_to_cluster(hit.x(), gutter_width, &mut header_dlm, line)
             }
         }

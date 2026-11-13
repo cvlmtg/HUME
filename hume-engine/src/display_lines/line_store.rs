@@ -8,13 +8,16 @@
 //! A [`PaneLineStore`] lives on its [`Pane`](crate::pane::Pane), so the scroll
 //! pass, render pass and between-frame consumers (mouse, visual movement,
 //! `z`-scroll) share entries. It is per pane because [`ResolvedFormatKey`] names no
-//! pane: two panes on the same buffer and width resolve an identical key.
+//! pane: two panes on the same buffer and width can resolve an identical key.
 //!
 //! A store drops its entries when its [`ResolvedFormatKey`] changes. The unwrapped
 //! render's `h_window` is not in the key because it doesn't affect block
 //! shape; it lives on [`LineFormat`], where
 //! [`LineFormat::covers`](crate::format::LineFormat::covers) keeps windowed and
-//! unwindowed formats apart.
+//! unwindowed formats apart. The revealed lines are in the key, since they
+//! decide which conceals a line formats with; the lines closed folds hide
+//! are not, since they decide which lines a walk visits, never how one
+//! formats.
 //!
 //! [`EngineView::begin_frame`](crate::pipeline::EngineView::begin_frame)
 //! rewinds every store, and correctness depends on it: inlay-hint and EOL-text
@@ -28,6 +31,7 @@ use crate::format::{LineFormat, VirtualFormat};
 use std::num::NonZeroU16;
 
 use crate::pane::{ResolvedWrap, WhitespaceConfig, WrapMode};
+use crate::reveal::RevealedLines;
 use hume_rope::line::ContentLine;
 
 /// The caller's identification of a buffer *state* (which buffer, at which
@@ -60,7 +64,7 @@ pub struct FormatKey {
 }
 
 impl FormatKey {
-    pub fn resolve(self, content_width: NonZeroU16) -> ResolvedFormatKey {
+    pub fn resolve(self, content_width: NonZeroU16, revealed: RevealedLines) -> ResolvedFormatKey {
         ResolvedFormatKey {
             buffer_tag: self.buffer_tag,
             params: FormatParams {
@@ -68,12 +72,14 @@ impl FormatKey {
                 tab_width: self.tab_width,
                 whitespace: self.whitespace,
             },
+            revealed,
         }
     }
 }
 
 /// Everything a line's block shape depends on besides the line's own text:
-/// a [`FormatKey`] resolved against one content width.
+/// a [`FormatKey`] resolved against one content width, and the lines whose
+/// conceals the layout leaves out.
 ///
 /// Excludes the horizontal clip (`h_window`) a `WrapMode::None`
 /// render applies: block shape doesn't depend on it, only the formatted
@@ -85,10 +91,11 @@ impl FormatKey {
 /// this key, and one that doesn't (a resize under `WrapMode::None`, or under
 /// a wrap mode with an explicit column) would only rewind a store whose
 /// entries stayed valid.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ResolvedFormatKey {
     pub buffer_tag: BufferTag,
     pub params: FormatParams,
+    pub revealed: RevealedLines,
 }
 
 /// The formatting settings in a [`ResolvedFormatKey`]: what

@@ -154,11 +154,10 @@ pub(crate) fn rebuild_line_decorations(
                 scratch.tier_bufs.tier_mut(tier).push((range, scope))
             }
             Decoration::LineBg(scope) => tint = Some(scope),
-            Decoration::VirtualLine(_) | Decoration::Inline(_) => {
-                // A provider that declared PAINT but emitted a
-                // VIRTUAL_LINE/INLINE kind is a provider bug: ignored, not
-                // a panic, same posture `display_lines::DisplayLineMap` takes for the
-                // reverse case.
+            Decoration::VirtualLine(_) | Decoration::Inline(_) | Decoration::Conceal(_) => {
+                // A provider that declared PAINT but emitted a layout kind
+                // is a provider bug: ignored, not a panic, same posture
+                // `display_lines::DisplayLineMap` takes for the reverse case.
             }
         }
     }

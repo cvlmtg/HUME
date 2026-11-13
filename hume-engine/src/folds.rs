@@ -4,10 +4,10 @@
 //! the union of the lines a pane's closed folds hide, the one input the
 //! display-line map steps over.
 
-use std::sync::Arc;
-
 use hume_rope::line::ContentLine;
 use hume_rope::offset::InclusiveRange;
+
+use crate::line_set::LineSet;
 
 /// A foldable region: `first ..= last`, of which a closed fold hides every
 /// line after `first`, except `last` when `shows_last` (a line holding only
@@ -63,27 +63,15 @@ impl Fold {
     }
 }
 
-/// The lines a set of closed folds hides: sorted ranges, apart from each
-/// other by at least one shown line. Line 0 is never hidden, since every
-/// fold shows its first line.
+/// The lines a set of closed folds hides. Line 0 is never hidden, since
+/// every fold shows its first line.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
-pub struct HiddenLines(Arc<[InclusiveRange<ContentLine>]>);
+pub struct HiddenLines(LineSet);
 
 impl HiddenLines {
     /// The lines `folds` hide, closed all at once.
     pub fn from_folds(folds: impl IntoIterator<Item = Fold>) -> Self {
-        let mut hidden: Vec<_> = folds.into_iter().map(Fold::hidden).collect();
-        hidden.sort_unstable_by_key(|r| r.start);
-        let mut merged: Vec<InclusiveRange<ContentLine>> = Vec::with_capacity(hidden.len());
-        for range in hidden {
-            match merged.last_mut() {
-                Some(last) if range.start <= last.end.advance(1) => {
-                    last.end = last.end.max(range.end);
-                }
-                _ => merged.push(range),
-            }
-        }
-        Self(merged.into())
+        Self(LineSet::from_ranges(folds.into_iter().map(Fold::hidden)))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -91,19 +79,19 @@ impl HiddenLines {
     }
 
     pub fn is_hidden(&self, line: ContentLine) -> bool {
-        self.hiding(line).is_some()
+        self.0.contains(line)
     }
 
     /// Whether a closed fold starts at `line`: `line` is shown and the line
     /// after it is not.
     pub fn closed_at(&self, line: ContentLine) -> bool {
-        let next = self.0.partition_point(|r| r.start <= line);
-        self.0.get(next).is_some_and(|r| r.start == line.advance(1))
+        let next = line.advance(1);
+        self.0.containing(next).is_some_and(|r| r.start == next)
     }
 
     /// `line`, or the line showing in its place when a fold hides it.
     pub fn shown_at_or_before(&self, line: ContentLine) -> ContentLine {
-        match self.hiding(line) {
+        match self.0.containing(line) {
             Some(range) => range.start.retreat_saturating(1),
             None => line,
         }
@@ -122,7 +110,7 @@ impl HiddenLines {
         }
         let mut line = from;
         let mut left = n;
-        for range in &self.0[self.first_ending_at_or_after(from)..] {
+        for range in self.0.ending_at_or_after(from) {
             if range.start > line {
                 let gap = range.start.lines_since(line) - 1;
                 if left <= gap {
@@ -140,9 +128,7 @@ impl HiddenLines {
         &self,
         lines: InclusiveRange<ContentLine>,
     ) -> impl Iterator<Item = InclusiveRange<ContentLine>> + '_ {
-        let mut hidden = self.0[self.first_ending_at_or_after(lines.start)..]
-            .iter()
-            .peekable();
+        let mut hidden = self.0.ending_at_or_after(lines.start).iter().peekable();
         let mut from = Some(lines.start);
         std::iter::from_fn(move || {
             let mut start = from?;
@@ -165,17 +151,6 @@ impl HiddenLines {
             };
             Some(InclusiveRange::new(start, end))
         })
-    }
-
-    fn hiding(&self, line: ContentLine) -> Option<InclusiveRange<ContentLine>> {
-        self.0
-            .get(self.first_ending_at_or_after(line))
-            .filter(|r| r.start <= line)
-            .copied()
-    }
-
-    fn first_ending_at_or_after(&self, line: ContentLine) -> usize {
-        self.0.partition_point(|r| r.end < line)
     }
 }
 
