@@ -149,7 +149,7 @@ fn line_store_does_not_leak_between_panes() {
 /// A `z`-scroll and the frame pipeline share one store, so this pins the
 /// rewind from the *between-frame* entry point; the sibling test below
 /// drives the render path into the same store. Entries must not survive a
-/// frame: the per-pane inlay-hint/virtual-line mirrors are rebuilt every
+/// frame: the per-pane inlay-hint/EOL-text mirrors are rebuilt every
 /// frame filtered to that frame's viewport without bumping the decoration
 /// generation (`line_store`'s module doc), so a stale entry from before the
 /// rebuild can describe a block shape that no longer holds.

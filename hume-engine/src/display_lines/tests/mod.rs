@@ -5,9 +5,9 @@ use ropey::Rope;
 
 use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::{Conceal, ConcealSpan, ConcealText, DecorationSource};
+use crate::providers::{Conceal, DecorationSource};
 use crate::test_doubles::VirtualLineBlock;
-use crate::test_support::{at, co};
+use crate::test_support::{at, co, hidden, inserted, replaced};
 use crate::types::{CellContent, ScopeId};
 use hume_core::Side;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
@@ -112,32 +112,6 @@ fn concealed(lines: Vec<(usize, Vec<Conceal>)>) -> ProviderSet {
             .collect(),
     )));
     providers
-}
-
-fn hidden(start: usize, end: usize, text: Option<&str>) -> Conceal {
-    Conceal {
-        span: ConcealSpan::Hidden {
-            bytes: crate::test_support::byte_range(start, end),
-            text: text.map(|text| ConcealText {
-                text: text.into(),
-                scope: None,
-            }),
-        },
-        reveal: None,
-    }
-}
-
-fn inserted(at: usize, text: &str) -> Conceal {
-    Conceal {
-        span: ConcealSpan::Inserted {
-            at: hume_rope::column::ByteCol::new(at),
-            text: ConcealText {
-                text: text.into(),
-                scope: None,
-            },
-        },
-        reveal: None,
-    }
 }
 
 /// Reconstruct the text a rendered display line puts on screen, cell by cell. Derived

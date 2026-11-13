@@ -23,10 +23,12 @@ use crate::display_lines::{DisplayLineInputs, DisplayLineMap, RenderDisplayLine}
 use crate::folds::HiddenLines;
 use crate::pane::{ViewGeometry, WhitespaceConfig, WrapMode};
 use crate::pipeline::PaneSize;
-use crate::providers::{GutterRow, ProviderSet};
+use crate::providers::{Conceal, ConcealSpan, ConcealText, GutterRow, ProviderSet};
 use crate::scope_headers::ScopeHeaderInputs;
 use crate::theme::Theme;
-use crate::types::{DisplayLine, Grapheme, PaintedSelection, PaintedSelections, ResolvedStyle};
+use crate::types::{
+    DisplayLine, Grapheme, PaintedSelection, PaintedSelections, ResolvedStyle, ScopeId,
+};
 
 pub(crate) fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
@@ -136,6 +138,46 @@ pub(crate) fn theme_with<const N: usize>(entries: [(&'static str, ResolvedStyle)
 
 pub(crate) fn byte_range(start: usize, end: usize) -> ExclusiveRange<ByteCol> {
     ExclusiveRange::new(ByteCol::new(start), ByteCol::new(end))
+}
+
+/// A conceal hiding bytes `start..end` and drawing nothing in their place.
+pub(crate) fn hidden(start: usize, end: usize) -> Conceal {
+    Conceal {
+        span: ConcealSpan::Hidden {
+            bytes: byte_range(start, end),
+            text: None,
+        },
+        reveal: None,
+    }
+}
+
+/// A conceal hiding bytes `start..end` and drawing `text` in their place,
+/// styled by `scope`.
+pub(crate) fn replaced(start: usize, end: usize, text: &str, scope: Option<ScopeId>) -> Conceal {
+    Conceal {
+        span: ConcealSpan::Hidden {
+            bytes: byte_range(start, end),
+            text: Some(ConcealText {
+                text: text.into(),
+                scope,
+            }),
+        },
+        reveal: None,
+    }
+}
+
+/// A conceal drawing `text` before byte `at`.
+pub(crate) fn inserted(at: usize, text: &str) -> Conceal {
+    Conceal {
+        span: ConcealSpan::Inserted {
+            at: ByteCol::new(at),
+            text: ConcealText {
+                text: text.into(),
+                scope: None,
+            },
+        },
+        reveal: None,
+    }
 }
 
 /// Build a `RenderDisplayLine` for a direct `compose_display_line` call.

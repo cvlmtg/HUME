@@ -281,9 +281,8 @@ fn range_past_the_line_count_raises() {
         r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:range (hash 'start-line 0 'end-line 6))"#,
     );
     assert!(
-        errors
-            .iter()
-            .any(|e| e.contains("syntax-captures: range 0..6 out of bounds for a 5-line buffer")),
+        errors.iter().any(|e| e
+            .contains("syntax-captures: #:range: range 0..6 out of bounds for a 5-line buffer")),
         "{errors:?}"
     );
 }
@@ -298,9 +297,8 @@ fn reversed_range_raises() {
         r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:range (hash 'start-line 3 'end-line 1))"#,
     );
     assert!(
-        errors
-            .iter()
-            .any(|e| e.contains("syntax-captures: range 3..1 out of bounds for a 5-line buffer")),
+        errors.iter().any(|e| e
+            .contains("syntax-captures: #:range: range 3..1 out of bounds for a 5-line buffer")),
         "{errors:?}"
     );
 }

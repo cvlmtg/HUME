@@ -128,10 +128,10 @@ impl PaneDecorationHandles {
 /// asserts on what a pane's decoration providers actually hold (the raw
 /// per-line map) rather than what a viewport shows. Return cloned data, not
 /// the underlying [`SharedSlot`] handle. This mirrors the `test-util`-gated
-/// accessors on `DecorationStores` below, and lets `signs`/`inline_
-/// decorations`/`virtual_lines`/`line_backgrounds` stay `pub(crate)` instead
-/// of `pub`: nothing outside this crate needs the handle type itself, only
-/// the data it holds at the moment of the read.
+/// accessors on `DecorationStores` below, and lets the `signs`,
+/// `inline_decorations`, `virtual_lines`, `line_backgrounds` and `conceals`
+/// handle types stay crate-private: nothing outside this crate needs the
+/// handle type itself, only the data it holds at the moment of the read.
 #[cfg(any(test, feature = "test-util"))]
 impl PaneDecorationHandles {
     /// `tier`'s spans, for every [`HighlightTier`] variant `PaneHighlights`

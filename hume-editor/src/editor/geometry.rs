@@ -53,8 +53,8 @@ impl LayoutKey {
     }
 
     /// [`Self::inputs`] with every line revealed: the layout of the raw
-    /// text, which vertical motion places the cursor by so a column means
-    /// the same on a concealed line as on a raw one.
+    /// text, which vertical motion and a scroll place the cursor by so a
+    /// column means the same on a concealed line as on a raw one.
     pub(in crate::editor) fn raw_inputs(&self) -> DisplayLineInputs {
         let DisplayLineInputs {
             format,

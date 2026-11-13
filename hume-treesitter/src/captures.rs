@@ -2,10 +2,10 @@
 //! nodes a plugin asks for by name, as char ranges.
 
 use std::cmp::Reverse;
-use std::ops::Range;
 use std::sync::Arc;
 
-use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_rope::line::ContentLine;
+use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 use ropey::Rope;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor, QueryError};
@@ -54,35 +54,26 @@ impl CaptureQuery {
     }
 
     /// Replace `out` with every capture of every match over each layer of
-    /// `layers` parsed with this query's bundle, injected layers included,
-    /// predicates evaluated against `rope`. Sorted by start, then by end
+    /// `layers` parsed with this query's bundle over any of `lines`,
+    /// injected layers included, predicates evaluated against `rope`. Sorted by start, then by end
     /// descending, so an enclosing node precedes the nodes it starts with.
     ///
-    /// With `bytes`, a match is returned when the node its pattern is rooted
-    /// at intersects that byte range, with every capture of the match, inside
-    /// the range or not. A pattern rooted at a table returns the whole table,
-    /// one rooted at a delimiter only the delimiters in the range. An empty
-    /// range returns nothing.
+    /// A match is returned when the node its pattern is rooted at intersects
+    /// `lines`, with every capture of the match, inside the lines or not. A
+    /// pattern rooted at a table returns the whole table, one rooted at a
+    /// delimiter only the delimiters on the lines.
     pub fn collect(
         &self,
         layers: &SyntaxLayers,
         rope: &Rope,
-        bytes: Option<Range<usize>>,
+        lines: InclusiveRange<ContentLine>,
         out: &mut Vec<Capture>,
     ) {
         out.clear();
-        if bytes.as_ref().is_some_and(Range::is_empty) {
-            return;
-        }
         let mut cursor = QueryCursor::new();
-        if let Some(bytes) = bytes {
-            cursor.set_byte_range(bytes);
-        }
-        for layer in layers
-            .layers
-            .iter()
-            .filter(|layer| layer.bundle.config_gen == self.config_gen)
-        {
+        let (bytes, covering) = layers.covering_lines(rope, lines);
+        cursor.set_byte_range(bytes);
+        for layer in covering.filter(|layer| layer.bundle.config_gen == self.config_gen) {
             let mut matches =
                 cursor.matches(&self.query, layer.tree.root_node(), RopeProvider(rope));
             while let Some(m) = matches.next() {

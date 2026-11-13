@@ -1,8 +1,8 @@
 //! `EditorHostImpl`'s tree-sitter queries over a buffer's syntax tree.
 
 use hume_core::BufferId;
-use hume_rope::line::{ContentLine, RopeyLine};
-use hume_rope::offset::ExclusiveRange;
+use hume_rope::line::ContentLine;
+use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 use hume_scripting::host::{CaptureEntry, Captures, SyntaxHost};
 
 use super::EditorHostImpl;
@@ -14,7 +14,7 @@ impl<'a> SyntaxHost for EditorHostImpl<'a> {
         bid: BufferId,
         language: &str,
         query: &str,
-        range: Option<ExclusiveRange<ContentLine>>,
+        range: ExclusiveRange<ContentLine>,
     ) -> Result<Captures, String> {
         let bundle = GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry)
             .grammar_named(language)
@@ -36,18 +36,14 @@ impl<'a> SyntaxHost for EditorHostImpl<'a> {
         );
         let buf = self.state.buffers.get(bid);
         let text = buf.text();
-        let rope = text.rope();
-        // The exclusive end may be one past the last line, where
-        // `line_to_char` yields the text's end.
-        let bytes = range.map(|lines| {
-            let char_to_byte = |line: ContentLine| {
-                rope.char_to_byte(text.line_to_char(RopeyLine::from(line)).index())
-            };
-            char_to_byte(lines.start)..char_to_byte(lines.end)
-        });
         let mut captures = Vec::new();
-        if let Some(layers) = buf.current_layers() {
-            query.collect(layers, rope, bytes, &mut captures);
+        // An empty range captures nothing.
+        if !range.is_empty()
+            && let Some(layers) = buf.current_layers()
+        {
+            // Non-empty, so the exclusive end is past a real line.
+            let lines = InclusiveRange::new(range.start, range.end.retreat_saturating(1));
+            query.collect(layers, text.rope(), lines, &mut captures);
         }
         Ok(Captures {
             names: query.names().to_vec(),

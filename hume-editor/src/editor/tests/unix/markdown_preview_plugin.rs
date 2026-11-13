@@ -498,6 +498,18 @@ fn fence_lines_hide_their_fence_chars_keep_the_info_string_and_band_the_block() 
 }
 
 #[test]
+fn an_unclosed_fence_runs_to_the_end_of_the_document() {
+    let mut p = preview();
+    // "```rust\n" 0..8, "fn f() {}\n" 8..18, "# h\n" 18..22: no closing fence,
+    // so the heading line is code.
+    let bid = p.open("a.md", "```rust\nfn f() {}\n# h\n");
+    p.render();
+    assert_eq!(p.conceals(bid), [hidden(0, 3).revealing(0, 22)]);
+    assert_eq!(p.bands(bid), bands(0..3, "markup.raw.block.line"));
+    assert_eq!(p.highlights(bid), []);
+}
+
+#[test]
 fn markdown_fence_sets_conceals_for_its_two_fence_lines_only() {
     let mut p = preview();
     // "```markdown\n" 0..12, "# h\n" 12..16, "**b**\n" 16..22, "- c\n"
@@ -856,6 +868,31 @@ fn bold_inside_a_link_inside_a_table_cell_sets_without_an_overlap_error() {
             0,
             29
         )
+    );
+}
+
+#[test]
+fn a_table_inside_a_quote_keeps_its_quote_bars() {
+    let mut p = preview();
+    // "> | a | b |\n" 0..12, "> |---|---|\n" 12..24, "> | c | d |\n" 24..36: the
+    // table's cells start after each line's marker.
+    let bid = p.open("a.md", "> | a | b |\n> |---|---|\n> | c | d |\n");
+    p.render();
+    let quote = |at| replaced(at, at + 1, "┃", Some("markup.quote"));
+    assert_eq!(
+        p.conceals(bid),
+        [
+            quote(0),
+            bar(2, 4, "│ ").revealing(0, 36),
+            bar(5, 8, " │ ").revealing(0, 36),
+            bar(9, 11, " │").revealing(0, 36),
+            quote(12),
+            bar(14, 23, "├───┼───┤").revealing(0, 36),
+            quote(24),
+            bar(26, 28, "│ ").revealing(0, 36),
+            bar(29, 32, " │ ").revealing(0, 36),
+            bar(33, 35, " │").revealing(0, 36),
+        ]
     );
 }
 

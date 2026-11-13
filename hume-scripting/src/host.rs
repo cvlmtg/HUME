@@ -103,9 +103,9 @@ pub trait EditorHost {
     fn completions(&mut self) -> Option<&mut dyn CompletionHost> {
         None
     }
-    /// Inlay hints / signs / virtual lines / extra highlights / inline
-    /// diagnostics / diagnostic pull, or `None` for hosts with no decoration
-    /// stores to write into.
+    /// Inlay hints / signs / virtual lines / conceals / extra highlights /
+    /// line backgrounds / inline diagnostics / diagnostic pull, or `None` for
+    /// hosts with no decoration stores to write into.
     fn decorations(&mut self) -> Option<&mut dyn DecorationHost> {
         None
     }

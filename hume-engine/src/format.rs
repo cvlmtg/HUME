@@ -70,8 +70,8 @@ pub fn format_buffer_line(
     } = params;
     debug_assert!(
         conceals.windows(2).all(|w| {
-            let (a, b) = (w[0].bytes(), w[1].bytes());
-            (a.start, a.end) <= (b.start, b.end) && !conceal_ranges_overlap(a, b)
+            w[0].format_order() <= w[1].format_order()
+                && !conceal_ranges_overlap(w[0].bytes(), w[1].bytes())
         }),
         "conceals must be sorted by range and must not overlap"
     );

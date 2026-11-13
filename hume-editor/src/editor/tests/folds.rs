@@ -223,11 +223,14 @@ fn selection_covering_a_closed_fold_whose_first_line_reveals_a_block_keeps_it_cl
     close(&mut ed, &[fn_fold()]);
     let pid = ed.view.focused_pane();
 
-    let buf = ed.render_to_buf(hume_grid::Rect::new(0, 0, 80, 25));
+    ed.render_to_buf(hume_grid::Rect::new(0, 0, 80, 25));
 
     assert_eq!(
-        super::scope_headers::pane_rows(&ed, &buf, pid, 2),
-        ["fn f() {", "}"]
+        super::scope_headers::drawn_rows(&mut ed, pid, 2),
+        [
+            super::scope_headers::drawn(0, 0..8),
+            super::scope_headers::drawn(3, 23..24)
+        ]
     );
     assert_eq!(state(&ed), input);
     assert_eq!(closed(&ed), [(0, 3)]);

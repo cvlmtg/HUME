@@ -17,7 +17,7 @@
 
 (define (md-preview/heading-texts! groups name n emit!)
   (for-each
-    (lambda (c) (emit! 'highlight (md-preview/highlight c (md-preview/heading-scope n ".text"))))
+    (lambda (c) (emit! 'highlights (md-preview/highlight c (md-preview/heading-scope n ".text"))))
     (md-preview/captured groups name)))
 
 (define (md-preview/atx-headings! groups line-of emit!)
@@ -26,12 +26,12 @@
       (for-each
         (lambda (c)
           (let ([start (md-preview/capture-start c)])
-            (emit! 'conceal
+            (emit! 'conceals
                    (md-preview/conceal start (md-preview/capture-end c)
                                        (string-append " " (number->string n) " ")
                                        (md-preview/heading-scope n ".marker")
                                        #f))
-            (emit! 'band (hash 'line (line-of start) 'scope (md-preview/heading-scope n ".line")))))
+            (emit! 'bands (hash 'line (line-of start) 'scope (md-preview/heading-scope n ".line")))))
         (md-preview/captured groups (md-preview/heading n)))
       (md-preview/heading-texts! groups (md-preview/heading-text n) n emit!))
     md-preview/atx-levels))
@@ -41,8 +41,8 @@
     (lambda (n)
       (for-each
         (lambda (c)
-          (emit! 'band (md-preview/band (md-preview/line-span line-of c)
-                                        (md-preview/heading-scope n ".line"))))
+          (emit! 'bands (md-preview/band (md-preview/line-span line-of c)
+                                         (md-preview/heading-scope n ".line"))))
         (md-preview/captured groups (md-preview/setext n)))
       (md-preview/heading-texts! groups (md-preview/setext-text n) n emit!))
     md-preview/setext-levels))
@@ -60,7 +60,7 @@
       (lambda (bullet)
         (let* ([start (md-preview/capture-start bullet)]
                [task (hash-try-get tasks (md-preview/capture-end bullet))])
-          (emit! 'conceal
+          (emit! 'conceals
                  (if task
                      (let ([glyph (hash-ref md-preview/boxes (car task))])
                        (md-preview/conceal start (md-preview/capture-end task) (car glyph) (cdr glyph) #f))
@@ -68,17 +68,14 @@
       (md-preview/captured groups "bullet"))))
 
 (define (md-preview/content-start text)
-  (let loop ([chars (string->list text)] [i 0])
-    (cond
-      [(null? chars) #f]
-      [(char-whitespace? (car chars)) (loop (cdr chars) (+ i 1))]
-      [else i])))
+  (let ([rest (trim-start text)])
+    (and (not (string=? rest "")) (- (string-length text) (string-length rest)))))
 
 (define (md-preview/quotes! groups range line-of line-info emit!)
   (let ([marked (box (hash))])
     (define (bar! at)
       (set-box! marked (hash-insert (unbox marked) (line-of at) #t))
-      (emit! 'conceal (md-preview/conceal at (+ at 1) "┃" "markup.quote" #f)))
+      (emit! 'conceals (md-preview/conceal at (+ at 1) "┃" "markup.quote" #f)))
     (for-each (lambda (c) (bar! (md-preview/capture-start c)))
               (md-preview/captured groups "quote-marker"))
     (for-each
@@ -104,7 +101,7 @@
                        [content (md-preview/content-start (cdr info))])
                   (when content
                     (let ([at (+ (car info) content)])
-                      (emit! 'conceal (md-preview/conceal at at "┃ " "markup.quote" #f))))))
+                      (emit! 'conceals (md-preview/conceal at at "┃ " "markup.quote" #f))))))
               (loop (+ line 1))))))
       (md-preview/captured groups "quote"))))
 
@@ -112,8 +109,8 @@
   (let ([rule (make-string rule-width #\─)])
     (for-each
       (lambda (c)
-        (emit! 'conceal (md-preview/conceal (md-preview/capture-start c) (md-preview/capture-end c)
-                                            rule "punctuation.special" #f)))
+        (emit! 'conceals (md-preview/conceal (md-preview/capture-start c) (md-preview/capture-end c)
+                                             rule "punctuation.special" #f)))
       (md-preview/captured groups "rule"))))
 
 (define (md-preview/fences! groups line-of emit!)
@@ -121,17 +118,17 @@
     (for-each
       (lambda (fence)
         (let ([span (md-preview/line-span line-of fence)])
-          (emit! 'band (md-preview/band span "markup.raw.block.line"))
+          (emit! 'bands (md-preview/band span "markup.raw.block.line"))
           (for-each
             (lambda (d)
               (when (md-preview/inside? d fence)
-                (emit! 'conceal (md-preview/conceal (md-preview/capture-start d) (md-preview/capture-end d)
-                                                    #f #f span))))
+                (emit! 'conceals (md-preview/conceal (md-preview/capture-start d) (md-preview/capture-end d)
+                                                     #f #f span))))
             delimiters)))
       (md-preview/captured groups "fence"))))
 
 (define (md-preview/block-elements groups range line-of line-info rule-width)
-  (let* ([found (box (hash 'conceal '() 'band '() 'highlight '()))]
+  (let* ([found (box (hash 'conceals '() 'bands '() 'highlights '()))]
          [emit! (lambda (kind item)
                   (let ([table (unbox found)])
                     (set-box! found (hash-insert table kind (cons item (hash-ref table kind))))))])
@@ -141,7 +138,4 @@
     (md-preview/quotes! groups range line-of line-info emit!)
     (md-preview/rules! groups rule-width emit!)
     (md-preview/fences! groups line-of emit!)
-    (let ([table (unbox found)])
-      (hash 'conceals (hash-ref table 'conceal)
-            'bands (hash-ref table 'band)
-            'highlights (hash-ref table 'highlight)))))
+    (unbox found)))

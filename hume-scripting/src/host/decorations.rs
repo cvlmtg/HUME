@@ -152,8 +152,8 @@ pub trait DecorationHost {
     /// `(set-conceals! pane source entries)`: replaces `source`'s conceals
     /// for `bid` wholesale. Char offsets are checked against the buffer and
     /// widened to whole clusters; `Err` names the first entry that is out of
-    /// range, crosses a line break, covers a line's `\n`, or overlaps an
-    /// earlier one. A `reveal` is caller-validated against
+    /// range, crosses a line break, covers a line's `\n`, is an insert at
+    /// the text's end, or overlaps an earlier one. A `reveal` is caller-validated against
     /// `BufferHost::buffer_line_count`.
     fn set_conceals(
         &mut self,

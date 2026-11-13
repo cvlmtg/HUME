@@ -8,6 +8,7 @@ use super::super::EditorState;
 use super::super::buffer::store::BufferStore;
 use super::super::doc_ops;
 use super::super::frame::{reveal_due_cursor, settled_pane_view};
+use super::super::geometry::LayoutKey;
 use super::super::pane_state::PaneEntries;
 use super::{CommandPane, sticky_landing};
 use crate::editor::error::CommandError;
@@ -15,53 +16,56 @@ use hume_editing::selection::Selection;
 
 // ── Moving the view ───────────────────────────────────────────────────────────
 
-/// What [`move_view`] hands its caller: the pane's settled display lines and
-/// viewport, its scroll geometry, and the selection stores, free to write
-/// while the map is held.
+/// What [`with_settled_view`] hands its caller: the pane's settled display
+/// lines and viewport, its scroll geometry, and the selection stores.
 struct ViewMove<'a> {
     dlm: DisplayLineMap<'a>,
     viewport: &'a mut Viewport,
     geo: ViewGeometry<'a>,
     buffers: &'a BufferStore,
-    entries: &'a mut PaneEntries,
+    entries: &'a PaneEntries,
 }
 
-/// Move pane `pid`'s view between frames with `f`, laid out at `size`. `f`
+/// Run `f` on pane `pid`'s view between frames, laid out as `key`. `f`
 /// starts from the view the last cursor move would have drawn, whether or
-/// not a frame drew it, and the reveal `f` leaves due runs after it, so
-/// `PaneBufferState::parked` describes the view `f` ends on. A pane with no
-/// rows has no view to move, and `f` does not run.
-fn move_view(
+/// not a frame drew it. A pane with no rows has no view to move: `f` does
+/// not run and the result is `None`.
+fn with_settled_view<R>(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    pid: PaneId,
+    key: &LayoutKey,
+    f: impl FnOnce(ViewMove<'_>) -> R,
+) -> Option<R> {
+    let buffer = state.buffers.get(view.panes[pid].buffer_id());
+    let (dlm, viewport) = settled_pane_view(
+        &state.buffers,
+        &mut state.panes.entries,
+        &mut view.panes,
+        pid,
+        key,
+    );
+    let geo = key.geometry(buffer.syntax_source())?;
+    Some(f(ViewMove {
+        dlm,
+        viewport,
+        geo,
+        buffers: &state.buffers,
+        entries: &state.panes.entries,
+    }))
+}
+
+/// Run the reveal a view move leaves due on pane `pid`, so
+/// `PaneBufferState::parked` describes the view the move ended on.
+fn reveal_after_view_move(
     state: &mut EditorState,
     view: &mut EngineView,
     pid: PaneId,
     size: PaneSize,
-    f: impl FnOnce(ViewMove<'_>),
 ) {
-    let key = state.layout_key(view, pid, size);
-    let buffer = state.buffers.get(view.panes[pid].buffer_id());
-    {
-        let (dlm, viewport) = settled_pane_view(
-            &state.buffers,
-            &mut state.panes.entries,
-            &mut view.panes,
-            pid,
-            &key,
-        );
-        let Some(geo) = key.geometry(buffer.syntax_source()) else {
-            return;
-        };
-        f(ViewMove {
-            dlm,
-            viewport,
-            geo,
-            buffers: &state.buffers,
-            entries: &mut state.panes.entries,
-        });
-    }
-    // Built after `f`: in a buffer with conceals the moved selections reveal
-    // other lines, and recording the pre-move key would read as a layout
-    // change and reveal again before the next input.
+    // Built after the move: in a buffer with conceals the moved selections
+    // reveal other lines, and recording the pre-move key would read as a
+    // layout change and reveal again before the next input.
     let moved = state.layout_key(view, pid, size);
     reveal_due_cursor(
         &state.buffers,
@@ -93,6 +97,10 @@ fn move_view(
 /// it back inside the scroll-margin band) instead of being snapped back by
 /// the reveal that follows. See `carry`'s own doc for why a selection it
 /// can't place stays untouched rather than collapsing.
+///
+/// The scroll and `carry` walk the drawn layout, the rows on screen. The
+/// cursor's column resolves on the raw layout, as `j`/`k` place it: the line
+/// it lands on reveals once it holds the cursor.
 pub(in crate::editor) fn scroll_view(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -109,11 +117,12 @@ pub(in crate::editor) fn scroll_view(
     } else {
         -(count as isize)
     };
-    move_view(
+    let key = state.layout_key(view, pid, size);
+    let Some(landings) = with_settled_view(
         state,
         view,
         pid,
-        size,
+        &key,
         |ViewMove {
              mut dlm,
              viewport,
@@ -123,31 +132,53 @@ pub(in crate::editor) fn scroll_view(
          }| {
             viewport.scroll_by(&mut dlm, geo, delta);
             let top = geo.carry_top(&mut dlm, viewport.top());
-
-            // `apply_doc_motion`'s own head-before/after comparison is what raises
-            // `PaneBufferState::reveal_pending` here. No separate pin to track: a
-            // scroll that couldn't carry a selection anywhere (parked behind a
-            // virtual block, or already at a document edge) leaves that selection's
-            // head unchanged, which is exactly the case the funnel already treats
-            // as "nothing to reveal".
-            doc_ops::apply_doc_motion(buffers, entries, pid, buf_id, |st| {
-                st.map(|sel| {
+            let text = buffers.get(buf_id).text();
+            entries
+                .seeded(pid, buf_id)
+                .view(text)
+                .iter()
+                .map(|sel| {
                     let (head_pos, target_col) = dlm.locate(sel.head());
-                    let Some(landed) = carry(&mut dlm, geo, top, head_pos, delta) else {
-                        // Parked behind a virtual block or at a document edge.
-                        return sel.selection();
-                    };
-                    let new_head = dlm.char_at(landed, target_col, landing);
-                    let anchor = if mode == MotionMode::Extend {
-                        sel.anchor()
-                    } else {
-                        new_head
-                    };
-                    Selection::new(anchor, new_head)
+                    // `None`: parked behind a virtual block or at a document edge.
+                    carry(&mut dlm, geo, top, head_pos, delta).map(|landed| (landed, target_col))
                 })
-            });
+                .collect::<Vec<_>>()
+        },
+    ) else {
+        return;
+    };
+
+    let mut raw =
+        view.panes[pid].display_lines(state.buffers.get(buf_id).text().rope(), key.raw_inputs());
+    // `apply_doc_motion`'s own head-before/after comparison is what raises
+    // `PaneBufferState::reveal_pending` here. No separate pin to track: a
+    // scroll that couldn't carry a selection anywhere leaves that selection's
+    // head unchanged, which is the case the funnel already treats as
+    // "nothing to reveal".
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.entries,
+        pid,
+        buf_id,
+        |st| {
+            let mut landings = landings.into_iter();
+            st.map(|sel| {
+                let Some((landed, target_col)) =
+                    landings.next().expect("one landing per selection")
+                else {
+                    return sel.selection();
+                };
+                let new_head = raw.char_at(landed, target_col, landing);
+                let anchor = if mode == MotionMode::Extend {
+                    sel.anchor()
+                } else {
+                    new_head
+                };
+                Selection::new(anchor, new_head)
+            })
         },
     );
+    reveal_after_view_move(state, view, pid, size);
 }
 
 /// How far `Ctrl-d`/`Ctrl-u` move given `visible_rows` rows on screen. The
@@ -237,11 +268,12 @@ fn cmd_view_scroll_to_display_line(
         .view(state.buffers.get(buf_id).text())
         .primary()
         .head();
-    move_view(
+    let key = state.layout_key(view, pid, size);
+    let aligned = with_settled_view(
         state,
         view,
         pid,
-        size,
+        &key,
         |ViewMove {
              mut dlm,
              viewport,
@@ -252,6 +284,9 @@ fn cmd_view_scroll_to_display_line(
             viewport.align(&mut dlm, geo, cursor_pos, target_display_line);
         },
     );
+    if aligned.is_some() {
+        reveal_after_view_move(state, view, pid, size);
+    }
 }
 
 /// Center the head in the viewport, like `z z`. Infallible core shared by

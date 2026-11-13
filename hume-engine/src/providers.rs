@@ -317,6 +317,13 @@ impl Conceal {
             ConcealSpan::Inserted { at, .. } => ExclusiveRange::new(at, at),
         }
     }
+
+    /// The order `format_buffer_line` takes a line's conceals in: by start
+    /// byte, then end byte.
+    pub(crate) fn format_order(&self) -> (ByteCol, ByteCol) {
+        let bytes = self.bytes();
+        (bytes.start, bytes.end)
+    }
 }
 
 /// Whether two conceal ranges claim a common position: they share an

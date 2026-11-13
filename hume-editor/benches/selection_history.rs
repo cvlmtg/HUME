@@ -5,7 +5,7 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use hume_editor::testing::SelectionHistoryBench;
+use hume_editor::testing::{Keys, SelectionHistoryBench};
 
 const LINES: usize = 2_000;
 const CURSORS: usize = 50;
@@ -27,20 +27,20 @@ fn bench_selection_history(c: &mut Criterion) {
     group.sample_size(10);
 
     let mut bench = fixture(&dir);
-    let edit_pair = SelectionHistoryBench::keys("du");
+    let edit_pair = Keys::parse("du");
     group.bench_function("edit_pair", |b| {
         b.iter(|| bench.press(black_box(&edit_pair)));
     });
 
     let mut bench = fixture(&dir);
-    bench.press(&SelectionHistoryBench::keys("i"));
-    let keystroke = SelectionHistoryBench::keys("x<backspace>");
+    bench.press(&Keys::parse("i"));
+    let keystroke = Keys::parse("x<backspace>");
     group.bench_function("insert_keystroke", |b| {
         b.iter(|| bench.press(black_box(&keystroke)));
     });
 
     let mut bench = fixture(&dir);
-    let burst = SelectionHistoryBench::keys(&format!("{}mumU", "du".repeat(10)));
+    let burst = Keys::parse(&format!("{}mumU", "du".repeat(10)));
     group.bench_function("edit_burst_then_walk", |b| {
         b.iter(|| bench.press(black_box(&burst)));
     });

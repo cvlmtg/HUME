@@ -405,10 +405,9 @@ fn remap_through_only_touches_a_buffer_that_has_decorations() {
     assert_eq!(
         store.generation(b),
         b_generation_before,
-        "remap_through must not touch a buffer with nothing to remap: this \
-         is the fix for the keystroke-storm bug: typing in an LSP-attached \
-         but undecorated buffer must not invalidate every pane's \
-         virtual-lines resync cache"
+        "remap_through must not touch a buffer with nothing to remap: typing \
+         in an LSP-attached but undecorated buffer must not invalidate every \
+         pane's mirror resync cache"
     );
 }
 

@@ -90,6 +90,9 @@ export const HTML_SAMPLE = {
   ],
 };
 
+// The Markdown buffer as `core:markdown-preview` draws it
+// (`runtime/plugins/core/markdown-preview/`): lines a selection touches (9, 11)
+// show their source.
 export const MARKDOWN_SAMPLE = {
   name: "README.md",
   cursorLine: 9,
@@ -103,15 +106,15 @@ export const MARKDOWN_SAMPLE = {
     { n: 5, rowScope: "markup.heading.5.line", t: [[" 5 ", "markup.heading.5.marker"], [" ", ""], ["Scopes", "markup.heading.5.text"]] },
     { n: 6, rowScope: "markup.heading.6.line", t: [[" 6 ", "markup.heading.6.marker"], [" ", ""], ["Notes", "markup.heading.6.text"]] },
     { n: 7, t: [] },
-    { n: 8, t: [["A theme is ", ""], ["**bold**", "markup.bold"], [", ", ""], ["_italic_", "markup.italic"], [", or ", ""], ["~~struck~~", "markup.strikethrough"], [". Edit ", ""], ["`config.toml`", "markup.raw"], [" to change it.", ""]] },
+    { n: 8, t: [["A theme is ", ""], ["bold", "markup.bold"], [", ", ""], ["italic", "markup.italic"], [", or ", ""], ["struck", "markup.strikethrough"], [". Edit ", ""], ["config.toml", "markup.raw"], [" to change it.", ""]] },
     { n: 9, t: [["S", "", "cursor"], ["ee ", "", "sel"], ["[the guide]", "markup.link.text"], ["(", ""], ["https://hume.dev/themes", "markup.link.url"], [")", ""], [" or ", ""], ["[helix]", "markup.link.label"], [", or just ", ""], ["<https://hume.dev>", "markup.link"], [".", ""]] },
-    { n: 10, t: [["> ", ""], ["A theme is just a TOML file.", "markup.quote"]] },
+    { n: 10, t: [["┃", "markup.quote"], [" ", ""], ["A theme is just a TOML file.", "markup.quote"]] },
     { n: 11, t: [["- ", "markup.list"], ["r", "", "cursor2"], ["un ", "", "sel2"], ["`hume --version`", "markup.raw.inline"]] },
-    { n: 12, t: [["- [x] ", "markup.list.checked"], ["ship the default theme", ""]] },
-    { n: 13, t: [["- [ ] ", "markup.list.unchecked"], ["ship a light theme", ""]] },
-    { n: 14, rowScope: "markup.raw.block.line", t: [["```toml", "markup.raw.block"]] },
+    { n: 12, t: [["☑", "markup.list.checked"], [" ship the default theme", ""]] },
+    { n: 13, t: [["☐", "markup.list.unchecked"], [" ship a light theme", ""]] },
+    { n: 14, rowScope: "markup.raw.block.line", t: [["toml", "markup.raw.block"]] },
     { n: 15, rowScope: "markup.raw.block.line", t: [['"ui.cursor" = { bg = "blue" }', "markup.raw.block"]] },
-    { n: 16, rowScope: "markup.raw.block.line", t: [["```", "markup.raw.block"]] },
+    { n: 16, rowScope: "markup.raw.block.line", t: [] },
     { n: 17, t: [["Table of Contents", "markup.heading"]] },
   ],
 };

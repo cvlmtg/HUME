@@ -25,9 +25,9 @@ fn open_and_parse(name: &str, symbol: &str, source: &str) -> (tree_sitter::Tree,
 
 /// `name`'s grammar fixture attached through a fresh registry with
 /// `query_src` as its highlights query and no optional queries, captures
-/// interned into a fresh [`ScopeRegistry`]. A layer carries its whole
-/// bundle, not just a highlighter, so integration tests exercising
-/// `layer_highlights_for_line` need one too.
+/// interned into a fresh [`ScopeRegistry`]. A syntax layer holds its grammar
+/// bundle, so integration tests exercising `layer_highlights_for_line` need
+/// one too.
 fn bundle_for(name: &str, symbol: &str, query_src: &str) -> (Arc<GrammarBundle>, ScopeRegistry) {
     let mut highlights = tempfile::NamedTempFile::new().expect("create highlights file");
     highlights

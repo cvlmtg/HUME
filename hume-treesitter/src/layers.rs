@@ -98,8 +98,7 @@ impl SyntaxLayers {
         rope: &ropey::Rope,
         lines: InclusiveRange<ContentLine>,
     ) -> (Range<usize>, impl Iterator<Item = &SyntaxLayer>) {
-        let start = rope.line_to_byte(lines.start.index());
-        let end = hume_rope::lines::next_line_start_byte(rope, lines.end.into());
+        let Range { start, end } = lines_bytes(rope, lines);
         let covering = self
             .layers
             .iter()
@@ -336,6 +335,12 @@ pub fn first_layer_mismatch(
                 field: LayerField::Absent,
             })
         })
+}
+
+/// The bytes of every line in `lines`, each with its `\n`.
+fn lines_bytes(rope: &ropey::Rope, lines: InclusiveRange<ContentLine>) -> Range<usize> {
+    rope.line_to_byte(lines.start.index())
+        ..hume_rope::lines::next_line_start_byte(rope, lines.end.into())
 }
 
 /// True if `layer` was parsed over the byte range `[line_start, line_end)`.

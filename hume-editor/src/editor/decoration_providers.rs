@@ -10,7 +10,7 @@ use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, u
 use hume_engine::types::EditorMode;
 
 use super::Editor;
-use hume_decorations::{ConcealEntry, ConcealEntrySpan};
+use hume_decorations::{Anchored, ConcealEntry, ConcealEntrySpan};
 use hume_engine::providers::{Conceal, ConcealSpan, conceal_ranges_overlap};
 use hume_ops::pair::matching_bracket;
 use hume_rope::column::ByteCol;
@@ -127,12 +127,7 @@ impl Editor {
                     .filter(|(row_pid, _)| *row_pid == pid)
                     .flat_map(|(_, settled)| settled.rows.headers())
                     .filter(|&&line| !lines.contains(line))
-                    .map(|&line| {
-                        ExclusiveRange::new(
-                            text.line_to_char(line.into()),
-                            text.line_to_char(line.advance(1).into()),
-                        )
-                    })
+                    .map(|&line| text.lines().range(line).chars())
                     .collect();
                 DecoratedPane {
                     pid,
@@ -184,17 +179,19 @@ impl Editor {
             let buf = self.state.buffers.get(bid);
             let text = buf.text();
 
-            // Matches are sorted by document order. Binary-search to the first
-            // match that starts at or after each range.
+            // Matches are sorted by document order and do not overlap, so
+            // their ends are sorted too. Binary-search to the first match
+            // that reaches each range, and paint the part inside it.
             let matches = buf.search_matches.matches(text);
             let mut spans = Vec::new();
             for range in p.paint_ranges() {
-                let first = matches.partition_point(|span| span.start().offset() < range.start);
-                for &span in &matches[first..] {
-                    if span.start().offset() >= range.end {
-                        break;
-                    }
-                    push_match_highlight_lines(text, span.chars(), search_scope, &mut spans);
+                let first = matches.partition_point(|span| span.chars().end <= range.start);
+                let pieces = matches[first..]
+                    .iter()
+                    .take_while(|span| span.start().offset() < range.end)
+                    .filter_map(|span| span.chars().intersection(range));
+                for piece in pieces {
+                    push_match_highlight_lines(text, piece, search_scope, &mut spans);
                 }
             }
             // The provider reads by line, and the header ranges lie above the viewport's.
@@ -269,12 +266,15 @@ impl Editor {
                             .diagnostics
                             .for_range_unsorted(bid, visible, floor)
                         {
-                            let start = d.start.max(visible.start);
-                            let end = d.end.min(visible.end);
+                            let Some(piece) =
+                                ExclusiveRange::new(d.start, d.end).intersection(visible)
+                            else {
+                                continue;
+                            };
                             // The most severe diagnostic wins an overlap.
                             push_priority_highlight_lines(
                                 text,
-                                ExclusiveRange::new(start, end),
+                                piece,
                                 d.severity.rank(),
                                 diag_scopes[usize::from(d.severity.rank())],
                                 &mut raw,
@@ -290,18 +290,23 @@ impl Editor {
 
                 let extra_spans = {
                     let mut raw = Vec::new();
-                    for visible in p.paint_ranges() {
-                        for e in self
-                            .state
-                            .config
-                            .decorations
-                            .extra_highlights_starting_before(bid, visible.end)
-                        {
-                            if e.end <= visible.start {
+                    let scan_end = p
+                        .paint_ranges()
+                        .map(|range| range.end)
+                        .max()
+                        .expect("the viewport is a paint range");
+                    for e in self
+                        .state
+                        .config
+                        .decorations
+                        .extra_highlights_starting_before(bid, scan_end)
+                    {
+                        for visible in p.paint_ranges() {
+                            let Some(piece) =
+                                ExclusiveRange::new(e.start, e.end).intersection(visible)
+                            else {
                                 continue;
-                            }
-                            let start = e.start.max(visible.start);
-                            let end = e.end.min(visible.end);
+                            };
                             // No severity concept for plugin-supplied spans:
                             // uniform priority; overlap ties resolve by push
                             // order, which `extra_highlights_starting_before`
@@ -309,13 +314,7 @@ impl Editor {
                             // alphabetically-first source wins, deterministic
                             // across sessions rather than whichever source
                             // happened to call `set-extra-highlights!` first.
-                            push_priority_highlight_lines(
-                                text,
-                                ExclusiveRange::new(start, end),
-                                0,
-                                e.scope,
-                                &mut raw,
-                            );
+                            push_priority_highlight_lines(text, piece, 0, e.scope, &mut raw);
                         }
                     }
                     flatten_priority_overlaps(raw)
@@ -508,7 +507,7 @@ impl Editor {
     /// store-wide counter): an edit only bumps the buffer it edited, so
     /// typing in one buffer does not force every pane on every *other*
     /// buffer to resync too. One stamp covers both mirrors, so this is the
-    /// only place that reads or writes it. No viewport dependency: any
+    /// only place that stamps it. No viewport dependency: any
     /// [`Self::decorated_panes`] snapshot works, since only `pid`/`bid` are
     /// read per pane.
     ///
@@ -575,8 +574,7 @@ impl Editor {
     /// per-line list the formatter reads. Sources go in ascending name order
     /// and a conceal is kept only when it overlaps none already kept on its
     /// line under [`conceal_ranges_overlap`], so an earlier source wins and a
-    /// dropped conceal is dropped whole. Each line's list is then sorted by
-    /// byte range, the order the formatter requires.
+    /// dropped conceal is dropped whole.
     fn update_conceal_providers(&mut self, pid: PaneId, bid: BufferId) {
         let text = self.state.buffers.get(bid).text();
         let mut by_line: rustc_hash::FxHashMap<ContentLine, Vec<Conceal>> =
@@ -591,10 +589,6 @@ impl Editor {
                 kept.push(conceal);
             }
         }
-        for kept in by_line.values_mut() {
-            kept.sort_by_key(|c| (c.bytes().start, c.bytes().end));
-        }
-
         self.state.panes.entries[pid].render.set_conceals(by_line);
     }
 
@@ -635,10 +629,7 @@ fn line_conceal(
     entry: &ConcealEntry,
 ) -> (ContentLine, Conceal) {
     let columns = text.columns();
-    let (line, start) = columns.byte_position(match entry.span {
-        ConcealEntrySpan::Hidden { start, .. } => start,
-        ConcealEntrySpan::Inserted { at, .. } => at,
-    });
+    let (line, start) = columns.byte_position(entry.anchor());
     let span = match &entry.span {
         ConcealEntrySpan::Hidden {
             end, text: shown, ..

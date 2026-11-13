@@ -116,6 +116,14 @@ impl<T: Copy + PartialOrd> ExclusiveRange<T> {
     }
 }
 
+impl<T: Copy + Ord> ExclusiveRange<T> {
+    /// The positions both ranges cover, or `None` when there are none.
+    pub fn intersection(self, other: Self) -> Option<Self> {
+        let shared = Self::new(self.start.max(other.start), self.end.min(other.end));
+        (shared.start < shared.end).then_some(shared)
+    }
+}
+
 impl<T: PartialEq> ExclusiveRange<T> {
     /// Whether the range covers nothing (`start == end`).
     pub fn is_empty(&self) -> bool {

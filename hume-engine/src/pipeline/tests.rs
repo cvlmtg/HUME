@@ -101,6 +101,7 @@ fn render_test_pane(
         &mut pane_ctx,
         &mut FrameScratch::new(),
         &mut crate::display_lines::line_store::PaneLineStore::new(),
+        &mut crate::scope_headers::HeaderLayout::default(),
         &mut buf,
     );
     buf

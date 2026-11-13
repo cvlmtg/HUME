@@ -166,7 +166,7 @@ The popup, menu, drawer, and picker overlay widgets.
 ### Used by
 - hume-editor
 ## Description
-Stores for the gutter signs, inlay hints, virtual lines, and highlights that scripts set, and the providers that render them.
+Stores for what scripts draw into a buffer (gutter signs, inlay hints, virtual lines, end-of-line text, highlights, line backgrounds, conceals), and the providers that render them.
 
 # hume-editor
 ### Depends on

@@ -28,7 +28,7 @@ use hume_engine::display_lines::{BlockSlot, DisplayLineMap};
 use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{PaneHit, SeamHandle};
 use hume_engine::providers::FoldMark;
-use hume_engine::scope_headers::{HeaderLayout, PaneRow};
+use hume_engine::scope_headers::PaneRow;
 use hume_grid::{Position, Rect};
 use hume_platform::terminal::MouseReporting;
 use hume_rope::line::ContentLine;
@@ -371,10 +371,10 @@ impl Editor {
                 pos,
             ),
             PaneRow::Header(line) => {
-                let mut header_layout = HeaderLayout::default();
-                let mut header_dlm = header_layout.display_map(
+                let pane = &mut self.view.panes[pid];
+                let mut header_dlm = pane.header_layout.display_map(
                     doc.text().rope(),
-                    &self.view.panes[pid].providers,
+                    &pane.providers,
                     &layout_key.inputs(),
                 );
                 cursor::header_to_cluster(hit.x(), gutter_width, &mut header_dlm, line)

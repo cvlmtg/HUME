@@ -733,8 +733,6 @@ pub(crate) fn char_range_value(start: usize, end: usize) -> SteelVal {
 }
 
 /// A content-line range as Steel sees it: `(hash 'start-line s 'end-line e)`.
-/// The one shape `viewport-range` returns, `buffer-lines` takes as `#:range`
-/// and `on-viewport-change` passes.
 pub fn line_range_value(
     range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
 ) -> SteelVal {

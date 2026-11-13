@@ -111,6 +111,8 @@ inherits = "kanagawa"
 "markup.link.label" = "dragonBlue2"
 "markup.quote" = "springViolet1"
 "markup.raw" = "dragonGreen2"
+
+# HUME's markdown preview: heading level, heading text, heading band and code-block band.
 "markup.heading.1.marker" = { fg = "dragonOrange", modifiers = [ "reversed" ] }
 "markup.heading.1.text" = { fg = "dragonOrange", modifiers = [ "bold" ] }
 "markup.heading.2.marker" = { fg = "dragonYellow", modifiers = [ "reversed" ] }
@@ -161,6 +163,8 @@ diff_plus_word_bg = "#404b3f"
 diff_minus_bg = "#372726"
 diff_minus_word_bg = "#563836"
 diff_delta_bg = "#282a2c"
+
+# HUME's markdown preview: heading bands and code-block band.
 heading_1_bg = "#312A26"
 heading_2_bg = "#302C26"
 heading_3_bg = "#262728"

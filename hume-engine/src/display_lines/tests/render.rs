@@ -295,7 +295,10 @@ fn render_display_line_yields_correct_content_display_lines_after_a_virtual_disp
 #[test]
 fn render_display_line_draws_a_replacement_and_an_inserted_conceal() {
     let rope = Rope::from_str("# Title\n");
-    let providers = concealed(vec![(0, vec![hidden(0, 2, Some("◆ ")), inserted(7, " ¶")])]);
+    let providers = concealed(vec![(
+        0,
+        vec![replaced(0, 2, "◆ ", None), inserted(7, " ¶")],
+    )]);
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 

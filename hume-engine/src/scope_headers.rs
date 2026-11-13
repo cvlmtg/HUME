@@ -216,8 +216,13 @@ impl HeaderLayout {
             content_width: inputs.content_width,
             revealed: inputs.revealed.clone(),
         };
-        DisplayLineMap::new(rope, providers, inputs, &mut self.store)
-            .with_layout_kinds(DecorationKinds::CONCEAL)
+        DisplayLineMap::narrowed(
+            rope,
+            providers,
+            inputs,
+            &mut self.store,
+            DecorationKinds::CONCEAL,
+        )
     }
 
     /// [`Self::display_map`] clipped to the columns the header rows draw,

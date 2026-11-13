@@ -24,8 +24,8 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 const LINES: usize = 5_000;
 const LINE: &str = "**bold** words and *it* here\n";
 
-/// Lines that give two conceals each as many as the plugin's render of an
-/// 80x25 pane at the top of the sample sets (86).
+/// Lines of two conceals each that match the 86 conceals `core:markdown-preview`
+/// sets for an 80x25 pane at the top of `hume-editor`'s Markdown bench sample.
 const VIEWPORT_LINES: usize = 43;
 
 fn buffer_id() -> BufferId {

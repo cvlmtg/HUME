@@ -27,10 +27,8 @@
     (lambda (name)
       (unless (language-has-grammar? name)
         (md-preview/warn-once! name
-          (lambda ()
-            (log! 'warning
-                  (string-append "markdown-preview: no " name " grammar, so its syntax shows raw;"
-                                 " run :plum-install-grammar " name))))))
+          (string-append "markdown-preview: no " name " grammar, so its syntax shows raw;"
+                         " run :plum-install-grammar " name))))
     '("markdown" "markdown.inline")))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────

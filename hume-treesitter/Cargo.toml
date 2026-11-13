@@ -44,3 +44,7 @@ harness = false
 [[bench]]
 name = "fold_starts"
 harness = false
+
+[[bench]]
+name = "captures"
+harness = false

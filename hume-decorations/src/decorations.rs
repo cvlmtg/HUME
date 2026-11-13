@@ -139,6 +139,14 @@ impl ConcealEntry {
         }
     }
 
+    /// The chars the span occupies: an `Inserted`'s is empty at its `at`.
+    pub fn chars(&self) -> ExclusiveRange<CharOffset> {
+        match self.span {
+            ConcealEntrySpan::Hidden { start, end, .. } => ExclusiveRange::new(start, end),
+            ConcealEntrySpan::Inserted { at, .. } => ExclusiveRange::new(at, at),
+        }
+    }
+
     /// Whether the span stays inside one line without covering its `\n`: an
     /// `Inserted` always does, a `Hidden` does when it ends at or before the
     /// `\n` of the line it starts on. A start past the text's end counts as
@@ -655,21 +663,20 @@ pub struct DecorationStores {
     sign_sources: FxHashMap<BufferId, Vec<(String, i64)>>,
     /// Per-buffer dirty-tracking stamp, touched by every `set_*` and
     /// `clear_entries` for that buffer, and by `remap_through` when a remap
-    /// actually moved one of that buffer's entries. The virtual-lines
-    /// render write side mirrors `virtual_lines` into a per-pane Arc only
-    /// when *its buffer's* stamp changed since its last sync, rather than
+    /// actually moved one of that buffer's entries. The editor mirrors
+    /// `virtual_lines` and the conceals into per-pane maps only when
+    /// *its buffer's* stamp changed since its last sync, rather than
     /// every frame (unlike inlay hints/EOL text, that sync runs in
     /// scroll/cursor math too, not just render, so avoiding needless
     /// per-frame rebuild work matters more there). A conceal changes how
-    /// every line, a pinned header row included, lays out, so `set_conceals`
-    /// and a conceal remap stamp too: the editor's layout key carries the
-    /// stamp.
+    /// every line, a pinned header row included, lays out, so the editor's
+    /// layout key carries the stamp as well.
     ///
     /// Per-buffer, not one store-wide counter: `remap_through` runs once per
     /// queued edit for *every* LSP-attached buffer, decorated or not
     /// (`record_lsp_edits`'s gate is `lsp_server.is_some() || has_any(bid)`),
     /// so a single global counter would bump on every keystroke in any
-    /// LSP-attached buffer, and the virtual-lines resync skip would never
+    /// LSP-attached buffer, and the pane mirror resync skip would never
     /// actually fire while typing. Per-buffer stamps mean typing in one
     /// buffer doesn't invalidate every pane on every other buffer.
     generation: FxHashMap<BufferId, u64>,
@@ -1107,11 +1114,11 @@ impl DecorationStores {
     /// stamp only if some kind actually had an entry to remap: that
     /// chokepoint carries *every* edit through here, decorated buffer or
     /// not, so touching unconditionally would stamp a
-    /// zero-decoration buffer on every keystroke, defeating the
-    /// virtual-lines pane sync's whole reason to check the stamp in the
-    /// first place. A remap that *did* touch something still moved
-    /// positions, so cached consumers (the virtual-lines pane sync) must
-    /// resync even though nothing called a `set_*` method.
+    /// zero-decoration buffer on every keystroke, defeating the pane
+    /// mirror sync's whole reason to check the stamp in the first place. A
+    /// remap that *did* touch something still moved positions, so cached
+    /// consumers (`hume-editor`'s `sync_buffer_mirrors`) must resync even
+    /// though nothing called a `set_*` method.
     ///
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
     /// compile here until it is listed, so a kind can never silently skip

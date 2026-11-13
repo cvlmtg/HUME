@@ -2,6 +2,7 @@
 // `decorations.conceals` entries into each pane's `PaneConceals` map. Then
 // the lines each pane's selections touch, which it draws raw.
 
+use super::scope_headers::{DrawnRow, drawn};
 use super::*;
 use hume_decorations::{ConcealEntry, ConcealEntrySpan};
 use hume_engine::pipeline::RenderContext;
@@ -65,7 +66,7 @@ fn draw(ed: &mut Editor) {
 }
 
 /// What the focused pane's mirror holds for `line`: each conceal's byte
-/// range, its text, and its reveal lines.
+/// range, its text, and its reveal lines, by byte range.
 fn mirrored(
     ed: &Editor,
     line: usize,
@@ -79,7 +80,7 @@ fn mirrored(
     let concealed: &[Conceal] = by_line
         .get(&ContentLine::new(line))
         .map_or(&[], Vec::as_slice);
-    concealed
+    let mut held: Vec<_> = concealed
         .iter()
         .map(|c| {
             let text = match &c.span {
@@ -93,7 +94,9 @@ fn mirrored(
                 c.reveal,
             )
         })
-        .collect()
+        .collect();
+    held.sort_by_key(|(bytes, ..)| (bytes.start, bytes.end));
+    held
 }
 
 pub(super) fn set(ed: &mut Editor, source: &str, entries: Vec<ConcealEntry>) {
@@ -135,7 +138,10 @@ fn two_sources_inserted_conceals_at_one_position_keep_the_first_source_only() {
     set(&mut ed, "a", vec![inserted(2, "A")]);
     let pid = ed.view.focused_pane();
 
-    assert_eq!(drawn_rows(&mut ed, pid, 2), ["x", "A**bold**"]);
+    insta::assert_snapshot!(frame_text(&mut ed, pid, 2), @"
+    x
+    A**bold**
+    ");
     assert_eq!(mirrored(&ed, 1), vec![(span(0, 0), "A".into(), None)]);
 }
 
@@ -188,10 +194,16 @@ pub(super) fn decorated_editor(marked: &str) -> (Editor, tempfile::TempPath) {
     (ed, file)
 }
 
-/// Rows `0..n` of pane `pid` on a fresh frame.
-fn drawn_rows(ed: &mut Editor, pid: PaneId, n: u16) -> Vec<String> {
+/// Rows `0..n` of pane `pid` on a fresh frame, as the chars they draw.
+fn frame_rows(ed: &mut Editor, pid: PaneId, n: u16) -> Vec<DrawnRow> {
+    ed.render_to_buf(VIEW);
+    super::scope_headers::drawn_rows(ed, pid, n)
+}
+
+/// Rows `0..n` of pane `pid` on a fresh frame, as drawn text.
+fn frame_text(ed: &mut Editor, pid: PaneId, n: u16) -> String {
     let buf = ed.render_to_buf(VIEW);
-    super::scope_headers::pane_rows(ed, &buf, pid, n)
+    super::scope_headers::pane_rows(ed, &buf, pid, n).join("\n")
 }
 
 #[test]
@@ -201,8 +213,8 @@ fn cursor_move_reveals_without_touching_the_mirror_or_generation() {
     let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     assert_eq!(
-        drawn_rows(&mut ed, pid, 2),
-        ["x", "bold"],
+        frame_rows(&mut ed, pid, 2),
+        [drawn(0, 0..1), drawn(1, 4..8)],
         "premise: line 1 draws concealed"
     );
     let generation = ed.state.config.decorations.generation(bid);
@@ -210,7 +222,10 @@ fn cursor_move_reveals_without_touching_the_mirror_or_generation() {
 
     ed.feed_key(key('j'));
 
-    assert_eq!(drawn_rows(&mut ed, pid, 2), ["x", "**bold**"]);
+    assert_eq!(
+        frame_rows(&mut ed, pid, 2),
+        [drawn(0, 0..1), drawn(1, 2..10)]
+    );
     assert_eq!(ed.state.config.decorations.generation(bid), generation);
     assert_eq!(mirrored(&ed, 1), mirror);
 }
@@ -228,8 +243,8 @@ fn two_panes_on_one_buffer_reveal_independently() {
     let b = ed.view.focused_pane();
     select(&mut ed, &[(6, 6)], 0);
 
-    assert_eq!(drawn_rows(&mut ed, a, 2), ["**a**", "b"]);
-    assert_eq!(drawn_rows(&mut ed, b, 2), ["a", "**b**"]);
+    assert_eq!(frame_rows(&mut ed, a, 2), [drawn(0, 0..5), drawn(1, 8..9)]);
+    assert_eq!(frame_rows(&mut ed, b, 2), [drawn(0, 2..3), drawn(1, 6..11)]);
 }
 
 #[test]
@@ -267,12 +282,16 @@ fn click_on_a_heading_glyph_lands_on_the_hash() {
     let (mut ed, _file) = decorated_editor("-[x]>\n# Title\n");
     set(&mut ed, "md", vec![hidden(2, 4, "H1 ")]);
     let pid = ed.view.focused_pane();
-    let buf = ed.render_to_buf(VIEW);
     assert_eq!(
-        super::scope_headers::pane_rows(&ed, &buf, pid, 2),
-        ["x", "H1 Title"],
+        frame_rows(&mut ed, pid, 2),
+        [drawn(0, 0..1), drawn(1, 4..9)],
         "premise: the glyph stands in for `# `"
     );
+    insta::assert_snapshot!(frame_text(&mut ed, pid, 2), @"
+    x
+    H1 Title
+    ");
+    let buf = ed.render_to_buf(VIEW);
     let (rect, gutter) = super::scope_headers::drawn_pane(&ed, &buf, pid);
 
     // Column 2 is the glyph's last cell; raw, it would be the `T`.

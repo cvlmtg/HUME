@@ -519,7 +519,7 @@ fn content_display_line_clusters_rejects_a_virtual_display_line() {
 
 /// `ConcealSource` hiding `# ` on line 0 behind `text`.
 fn heading_glyph(text: &str) -> ProviderSet {
-    concealed(vec![(0, vec![hidden(0, 2, Some(text))])])
+    concealed(vec![(0, vec![replaced(0, 2, text, None)])])
 }
 
 #[test]
@@ -565,7 +565,7 @@ fn position_in_a_hidden_run_at_line_start_locates_to_column_0() {
     // Soft wrap formats the whole line: `b` is the first cell, at column 0,
     // and the hidden `*` before it sits there too.
     let rope = Rope::from_str("**b\n");
-    let providers = concealed(vec![(0, vec![hidden(0, 2, None)])]);
+    let providers = concealed(vec![(0, vec![hidden(0, 2)])]);
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::Soft { width: 80 }, &providers, &mut s);
 
@@ -579,7 +579,7 @@ fn position_in_a_hidden_run_at_line_start_locates_to_column_0() {
 fn position_in_a_leading_hidden_run_with_a_bounded_scan_locates_to_column_0() {
     // Unwrapped, the scan stops on the hidden target before any cell.
     let rope = Rope::from_str("**b\n");
-    let providers = concealed(vec![(0, vec![hidden(0, 2, None)])]);
+    let providers = concealed(vec![(0, vec![hidden(0, 2)])]);
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
@@ -595,7 +595,7 @@ fn position_in_a_hidden_run_at_a_wrap_boundary_locates() {
     // and `e` opens display line 1. The hidden chars sit at the end of
     // display line 0, where `abcd` ends.
     let rope = Rope::from_str("abcd**ef\n");
-    let providers = concealed(vec![(0, vec![hidden(4, 6, None)])]);
+    let providers = concealed(vec![(0, vec![hidden(4, 6)])]);
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
@@ -663,7 +663,7 @@ fn buffer_line_col_through_a_hidden_run() {
     let line = "abc**def";
     let rope = Rope::from_str(&format!("{line}\n"));
     let conceal = 3..5;
-    let providers = concealed(vec![(0, vec![hidden(conceal.start, conceal.end, None)])]);
+    let providers = concealed(vec![(0, vec![hidden(conceal.start, conceal.end)])]);
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::Soft { width: 3 }, &providers, &mut s);
 

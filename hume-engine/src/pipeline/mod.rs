@@ -49,8 +49,6 @@ pub struct FrameScratch {
     pub style: StyleScratch,
     /// Pre-computed gutter lane widths used by the render stage.
     pub lane_widths: Vec<u16>,
-    /// What the scope header rows of the pane being drawn are laid out with.
-    pub header_layout: crate::scope_headers::HeaderLayout,
     /// The fold marks of the lines of the pane being drawn.
     pub fold_starts: crate::builtins::fold_column::FoldStarts,
 }
@@ -60,7 +58,6 @@ impl FrameScratch {
         Self {
             style: StyleScratch::new(),
             lane_widths: Vec::new(),
-            header_layout: crate::scope_headers::HeaderLayout::default(),
             fold_starts: crate::builtins::fold_column::FoldStarts::default(),
         }
     }
@@ -617,13 +614,15 @@ impl EngineView {
                 .expect("no rows for a live pane, see RenderContext::set_pane_rows");
 
             // The one place that can say these are disjoint parts of one pane:
-            // the render pass reads three of its fields while writing two:
-            // `line_store`, and `viewport`'s own resolved top (`Viewport::top_at`).
+            // the render pass reads two of its fields while writing three:
+            // `line_store`, `header_layout`, and `viewport`'s own resolved top
+            // (`Viewport::top_at`).
             let Pane {
                 viewport,
                 providers,
                 selections,
                 line_store,
+                header_layout,
                 ..
             } = pane;
 
@@ -650,7 +649,7 @@ impl EngineView {
                     .map(|bg| (bg, PANE_DIM_FACTOR)),
                 default_gutter_scope: self.default_gutter_scope,
             };
-            render_pane(&mut pane_ctx, scratch, line_store, grid);
+            render_pane(&mut pane_ctx, scratch, line_store, header_layout, grid);
             self.drawn.record_pane(pane_id, rect);
         }
 

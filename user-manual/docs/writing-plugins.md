@@ -351,7 +351,7 @@ Closing the buffer while its save waits drops the save; `:reload-config` lets it
 
 A plugin declared with `#:languages` (see [Shipping a manifest](#shipping-a-manifest)) hears only about buffers of those languages: none of its hooks fire for any other buffer. The hooks about no buffer (`on-focus-gained`, `on-mode-change`, `on-option-change` and `on-lsp-notification`) fire as usual. In one of them, take the buffer to act on with `(focused-pane #:in-scope #t)`, which is `#f` when the focused buffer is of another language: plain `(focused-pane)` names whatever buffer the user is on. When a buffer's language changes to one in the list, the plugin gets `on-language-set` and then `on-buffer-open` for it, as for a buffer just opened. When it changes to one outside the list, the plugin gets `on-buffer-close`, as for a buffer just closed. So the pairing above holds for each plugin.
 
-That buffer is still open, though, and keeps whatever the plugin drew in it: signs, end-of-line text, inlay hints, virtual lines, highlights, line backgrounds and statusline text. HUME clears none of them, so an `on-buffer-close` handler clears what its plugin drew when `(buffer-live? pane)` is `#t`, and gives back a sign slot with `unregister-sign-source!`:
+That buffer is still open, though, and keeps whatever the plugin drew in it: signs, end-of-line text, inlay hints, virtual lines, highlights, line backgrounds, conceals and statusline text. HUME clears none of them, so an `on-buffer-close` handler clears what its plugin drew when `(buffer-live? pane)` is `#t`, and gives back a sign slot with `unregister-sign-source!`:
 
 ```scheme
 (register-hook! 'on-buffer-close

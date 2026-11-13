@@ -604,3 +604,22 @@ fn register_grammar_resolves_relative_paths_against_the_editor_cwd() {
         other => panic!("expected a Grammar entry, got: {other:?}"),
     }
 }
+
+// ── %syntax-captures ─────────────────────────────────────────────────────
+
+/// A host with no `SyntaxHost` capability raises `require_cap`'s one message,
+/// not a complaint about the buffer or the range.
+#[test]
+fn syntax_captures_reports_an_unsupported_host() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = syntax_captures(
+        &mut ctx,
+        hume_core::BufferId::default(),
+        "markdown".to_string(),
+        "(atx_heading) @h".to_string(),
+        SteelVal::BoolV(false),
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
+}

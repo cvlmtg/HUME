@@ -739,7 +739,7 @@ fn conceal_rejects_a_reveal_whose_end_line_is_not_after_its_start_line() {
 fn conceal_rejects_a_reveal_past_the_last_line() {
     let err = decode_conceal(conceal_entry(0, 2, vec![reveal(8, 11)])).unwrap_err();
     assert!(
-        err.contains("entries 0 'reveal: 'end-line 11 is past the last line"),
+        err.contains("entries 0 'reveal: range 8..11 out of bounds for a 10-line buffer"),
         "got: {err}"
     );
 }

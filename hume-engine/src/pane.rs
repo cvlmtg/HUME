@@ -4,7 +4,7 @@ use slotmap::SecondaryMap;
 
 use crate::display_lines::{DisplayLineInputs, DisplayLineMap, DisplayLinePos};
 use crate::providers::ProviderSet;
-use crate::scope_headers::{PaneRows, ScopeHeaderInputs};
+use crate::scope_headers::{HeaderLayout, PaneRows, ScopeHeaderInputs};
 use crate::types::PaintedSelections;
 use hume_core::BufferId;
 use hume_rope::column::DisplayLineCol;
@@ -302,6 +302,10 @@ pub struct Pane {
     /// step also runs before any pane renders, so one shared store would hold
     /// only the last pane's lines.
     pub line_store: crate::display_lines::line_store::PaneLineStore,
+    /// What this pane's scope header rows are laid out with. Per pane for
+    /// the same reason as `line_store`: a header row lays out with this
+    /// pane's providers under a key that names no pane.
+    pub header_layout: HeaderLayout,
 }
 
 impl Pane {
@@ -315,6 +319,7 @@ impl Pane {
             providers: ProviderSet::new(),
             wraps: SecondaryMap::new(),
             line_store: crate::display_lines::line_store::PaneLineStore::new(),
+            header_layout: HeaderLayout::default(),
         }
     }
 
@@ -330,7 +335,8 @@ impl Pane {
             selections: _, // engine render copy, repopulated every frame
             providers: _,  // allocated per pane in build_pane
             wraps,
-            line_store: _, // per-frame scratch, rewound every frame
+            line_store: _,    // per-frame scratch, rewound every frame
+            header_layout: _, // laid out again for this pane's own providers
         } = src;
         self.viewport = *viewport;
         self.saved_scrolls = saved_scrolls.clone();

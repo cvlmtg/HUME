@@ -13,11 +13,11 @@ use crate::{Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    HashEntry, cons_pair, hash_entry, list_of, list_to_strings, not_live_err, optional_hash_entry,
+    HashEntry, cons_pair, hash_entry, list_of, list_to_strings, optional_hash_entry,
     optional_list_to_string_pairs, optional_list_to_strings, optional_path_arg,
     optional_string_arg, path_arg, string_arg, under_cwd,
 };
-use super::buffers::line_range_arg;
+use super::buffers::{line_range_arg, live_line_count};
 use super::errors::{generic_err, require_cap};
 
 /// `(%define-language! name extensions globs shebangs)`: init-only.
@@ -281,10 +281,8 @@ pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelR
 /// name without its `@`, one string shared by every entry of that name. `'()`
 /// when the buffer has no tree for its current text.
 ///
-/// With a `range`, a match is returned when the node its pattern is rooted at
-/// intersects those lines, with every capture of the match, inside the range
-/// or not. A pattern rooted at a table returns the whole table; one rooted at
-/// a delimiter returns the delimiters in the range only.
+/// A `range` limits the matches as [`crate::host::SyntaxHost::syntax_captures`]
+/// describes.
 ///
 /// Raises when `language` has no grammar, `query-source` does not compile, or
 /// `range` is malformed or past the buffer's line count.
@@ -295,11 +293,8 @@ pub(crate) fn syntax_captures(
     query: String,
     range: SteelVal,
 ) -> SteelResult {
-    let line_count = ctx
-        .host
-        .buffers()
-        .buffer_line_count(bid)
-        .ok_or_else(|| not_live_err("pane", bid))?;
+    require_cap(ctx.host.syntax())?;
+    let line_count = live_line_count(ctx, bid)?;
     let range = line_range_arg(range, line_count)?;
     let captures = require_cap(ctx.host.syntax())?
         .syntax_captures(bid, &language, &query, range)

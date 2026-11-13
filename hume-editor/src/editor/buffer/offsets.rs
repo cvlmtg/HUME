@@ -2,6 +2,7 @@
 //! they claim to address.
 
 use hume_editing::text::BufferText;
+use hume_rope::cluster::ClusterRange;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// A char offset a script computed for `text`, which may be `text`'s length
@@ -33,6 +34,19 @@ pub(in crate::editor) fn checked_char_range(
         return Err(format!("{start}..{end} ends before it starts"));
     }
     Ok(ExclusiveRange::new(start_at, end_at))
+}
+
+/// The non-empty char range `start..end` a script computed for `text`,
+/// checked as by [`checked_char_range`] and widened to the clusters it
+/// touches. The error is worded as [`checked_char_range`]'s.
+pub(in crate::editor) fn checked_cluster_range(
+    text: &BufferText,
+    start: usize,
+    end: usize,
+) -> Result<ClusterRange, String> {
+    let range = checked_char_range(text, start, end)?;
+    text.covering(range)
+        .ok_or_else(|| format!("{start}..{end} is empty"))
 }
 
 /// `range`, a checked range of `text`, on cluster boundaries: an edge inside

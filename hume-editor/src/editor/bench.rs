@@ -26,6 +26,14 @@ const FILL_HISTORY: &str = "x;x;x;x;x;x;x;x;x;x;";
 pub struct Keys(Vec<KeyEvent>);
 
 impl Keys {
+    /// `keys` in golf-stream notation (`<esc>`, `<c-p>`).
+    ///
+    /// # Panics
+    /// Panics if `keys` does not parse.
+    pub fn parse(keys: &str) -> Self {
+        Self(hume_scripting::parse_key_stream(keys).expect("bench keys parse"))
+    }
+
     /// Feeds each key to `editor`, settling after each as `run_keys` does.
     fn press(&self, editor: &mut Editor) {
         for &key in &self.0 {
@@ -65,7 +73,7 @@ impl SelectionHistoryBench {
         .expect("the editor starts headless");
         let mut bench = Self { editor };
         bench.editor.settle();
-        bench.press(&Self::keys(&format!(
+        bench.press(&Keys::parse(&format!(
             "{UNDO_LEVELS}{}C{FILL_HISTORY}",
             cursors - 1
         )));
@@ -75,14 +83,6 @@ impl SelectionHistoryBench {
             "the setup logged an error"
         );
         bench
-    }
-
-    /// `keys` in golf-stream notation (`<esc>`, `<c-p>`).
-    ///
-    /// # Panics
-    /// Panics if `keys` does not parse.
-    pub fn keys(keys: &str) -> Keys {
-        Keys(hume_scripting::parse_key_stream(keys).expect("bench keys parse"))
     }
 
     /// Feeds `keys` one at a time, settling after each as `run_keys` does.
@@ -264,9 +264,7 @@ impl ConcealBench {
         let mut bench = Self { editor, down: true };
         bench.editor.resize_terminal(80, 25);
         bench.editor.settle();
-        bench.press(&SelectionHistoryBench::keys(
-            ":set global wrap-mode=soft<ret>",
-        ));
+        Keys::parse(":set global wrap-mode=soft<ret>").press(&mut bench.editor);
         if let Some(size) = conceals {
             let bid = bench.editor.focused_buffer_id();
             bench.editor.state.config.decorations.set_conceals(
@@ -284,30 +282,15 @@ impl ConcealBench {
         bench
     }
 
-    /// How many conceals the sample holds.
-    pub fn conceal_count(&self) -> usize {
-        let bid = self.editor.focused_buffer_id();
-        self.editor
-            .state
-            .config
-            .decorations
-            .conceals_for_buffer(bid)
-            .count()
-    }
-
     fn draw(&mut self) {
         self.editor.settle();
         self.editor.prepare_frame(&mut RenderContext::new());
     }
 
-    fn press(&mut self, keys: &Keys) {
-        keys.press(&mut self.editor);
-    }
-
     /// Selects every match of `pattern` in the buffer, returning how many
     /// selections the pane then holds.
     pub fn select_matches(&mut self, pattern: &str) -> usize {
-        self.press(&SelectionHistoryBench::keys(&format!("%s{pattern}<ret>")));
+        Keys::parse(&format!("%s{pattern}<ret>")).press(&mut self.editor);
         self.editor.current_view().len()
     }
 
@@ -333,7 +316,7 @@ impl ConcealBench {
     pub fn reveal_all_j_then_settle(&mut self) {
         let key = if self.down { "j" } else { "k" };
         self.down = !self.down;
-        self.press(&SelectionHistoryBench::keys(key));
+        Keys::parse(key).press(&mut self.editor);
         self.editor.settle_views();
     }
 

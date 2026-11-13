@@ -7,13 +7,11 @@
 use hume_core::{BufferId, DiagSeverity, Side};
 use hume_decorations::{ConcealEntry, ConcealEntrySpan};
 use hume_engine::providers::{ConcealText, conceal_ranges_overlap};
-use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
-use crate::editor::buffer::offsets::{
-    checked_char_offset, checked_char_range, widened_to_clusters,
-};
+use crate::editor::buffer::offsets::{checked_char_offset, checked_cluster_range};
 use crate::statusline::StatusElement;
 
 use super::EditorHostImpl;
@@ -277,68 +275,64 @@ impl EditorHostImpl<'_> {
                 scope: t.scope.map(|name| self.view.registry.intern(&name)),
             };
             let fail = |e: String| format!("range {e}");
-            let (chars, span) = match spec.span {
+            let span = match spec.span {
                 ConcealSpecSpan::Hidden {
                     start,
                     end,
                     text: replacement,
                 } => {
-                    let range = checked_char_range(text, start, end).map_err(fail)?;
-                    if range.is_empty() {
-                        return Err(fail(format!("{start}..{end} is empty")));
-                    }
-                    let chars = widened_to_clusters(text, range);
-                    let span = ConcealEntrySpan::Hidden {
+                    let chars = checked_cluster_range(text, start, end)
+                        .map_err(fail)?
+                        .chars();
+                    ConcealEntrySpan::Hidden {
                         start: chars.start,
                         end: chars.end,
                         text: replacement.map(&mut shown),
-                    };
-                    (chars, span)
+                    }
                 }
                 ConcealSpecSpan::Inserted { at, text: drawn } => {
                     let at = checked_char_offset(text, at).map_err(fail)?;
                     if at == text.end() {
                         return Err(format!("offset {} is past the last line break", at.index()));
                     }
-                    let at = widened_to_clusters(text, ExclusiveRange::new(at, at)).start;
-                    (
-                        ExclusiveRange::new(at, at),
-                        ConcealEntrySpan::Inserted {
-                            at,
-                            text: shown(drawn),
-                        },
-                    )
+                    ConcealEntrySpan::Inserted {
+                        at: text.snap(at).offset(),
+                        text: shown(drawn),
+                    }
                 }
             };
             let reveal = spec.reveal.map(|marked| {
                 let lines = marked.lines();
-                ExclusiveRange::new(
-                    text.line_to_char(RopeyLine::from(lines.start)),
-                    text.line_to_char(RopeyLine::from(lines.end)),
-                )
+                text.lines()
+                    .span(lines.start, lines.end.retreat_saturating(1))
+                    .chars()
             });
             let entry = ConcealEntry { span, reveal };
             if !entry.within_line(text) {
+                let chars = entry.chars();
                 return Err(fail(format!(
                     "{}..{} must stay within one line and not cover its newline",
                     chars.start.index(),
                     chars.end.index()
                 )));
             }
-            Ok((index, chars, entry))
+            Ok((index, entry))
         })?;
-        placed.sort_by_key(|(_, chars, _)| (chars.start, chars.end));
+        placed.sort_by_key(|(_, entry)| {
+            let chars = entry.chars();
+            (chars.start, chars.end)
+        });
         // Sorted by start, an entry that overlaps any earlier one overlaps
         // its predecessor, so adjacent pairs are enough.
-        for (earlier, later) in placed.iter().zip(placed.iter().skip(1)) {
-            if conceal_ranges_overlap(earlier.1, later.1) {
+        for ((earlier, a), (later, b)) in placed.iter().zip(placed.iter().skip(1)) {
+            if conceal_ranges_overlap(a.chars(), b.chars()) {
                 return Err(SetError::Entry {
-                    index: later.0,
-                    message: format!("overlaps entry {}", earlier.0),
+                    index: *later,
+                    message: format!("overlaps entry {earlier}"),
                 });
             }
         }
-        Ok(placed.into_iter().map(|(_, _, entry)| entry).collect())
+        Ok(placed.into_iter().map(|(_, entry)| entry).collect())
     }
 
     /// Each `(start, end, scope)` char range of `bid`'s text as an extra
@@ -351,13 +345,10 @@ impl EditorHostImpl<'_> {
         let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
         each_entry(spans, |(start, end, scope)| {
             let fail = |e: String| format!("range {e}");
-            let range = crate::editor::buffer::offsets::checked_char_range(text, start, end)
-                .map_err(fail)?;
-            if range.is_empty() {
-                return Err(fail(format!("{start}..{end} is empty")));
-            }
-            // Widened to whole clusters: the renderer paints a cluster at a time.
-            let range = crate::editor::buffer::offsets::widened_to_clusters(text, range);
+            // Whole clusters: the renderer paints a cluster at a time.
+            let range = checked_cluster_range(text, start, end)
+                .map_err(fail)?
+                .chars();
             Ok(hume_decorations::ExtraHighlightEntry {
                 start: range.start,
                 end: range.end,

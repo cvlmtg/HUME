@@ -80,6 +80,29 @@ fn exclusive_range_excludes_its_own_end() {
 }
 
 #[test]
+fn exclusive_range_intersection_is_the_shared_part_or_none() {
+    let range = |a, b| ExclusiveRange::new(CharOffset::new(a), CharOffset::new(b));
+    assert_eq!(range(2, 8).intersection(range(5, 12)), Some(range(5, 8)));
+    assert_eq!(range(2, 8).intersection(range(3, 6)), Some(range(3, 6)));
+    assert_eq!(range(2, 8).intersection(range(0, 20)), Some(range(2, 8)));
+    assert_eq!(
+        range(2, 5).intersection(range(5, 9)),
+        None,
+        "they only touch"
+    );
+    assert_eq!(
+        range(2, 4).intersection(range(6, 9)),
+        None,
+        "they are apart"
+    );
+    assert_eq!(
+        range(3, 3).intersection(range(0, 9)),
+        None,
+        "an empty range"
+    );
+}
+
+#[test]
 fn inclusive_range_covers_its_own_end() {
     let r = InclusiveRange::new(CharOffset::new(2), CharOffset::new(5));
     assert!(!r.contains(CharOffset::new(1)));

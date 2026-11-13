@@ -14,18 +14,21 @@
 //! render's `h_window` is not in the key because it doesn't affect block
 //! shape; it lives on [`LineFormat`], where
 //! [`LineFormat::covers`](crate::format::LineFormat::covers) keeps windowed and
-//! unwindowed formats apart. The revealed lines are in the key, since they
-//! decide which conceals a line formats with; the lines closed folds hide
-//! are not, since they decide which lines a walk visits, never how one
-//! formats.
+//! unwindowed formats apart. The revealed lines and the decoration kinds
+//! the layout queries are in the key, since they decide which conceals and
+//! decorations a line formats with; the lines closed folds hide are not,
+//! since they decide which lines a walk visits, never how one formats.
 //!
 //! [`EngineView::begin_frame`](crate::pipeline::EngineView::begin_frame)
 //! rewinds every pane's store, and correctness depends on it: inlay-hint and
 //! EOL-text mirrors are rebuilt per frame for the visible viewport without
 //! bumping the decoration generation, so a line scrolling into view can change
 //! its wrap count under an unchanged key. The scope-header store needs no
-//! rewind: it formats with the conceal layer only, so its key covers
-//! everything its layout reads.
+//! rewind: it formats with the conceal layer only, and the one format that
+//! can lag its key is a hit test's, laid out before the conceal mirror caught
+//! up. A hit test formats unwindowed and the render windowed, and
+//! [`LineFormat::covers`](crate::format::LineFormat::covers) compares the
+//! window exactly, so the render never reuses it.
 
 use rustc_hash::FxHashMap;
 
@@ -33,6 +36,7 @@ use crate::format::{LineFormat, VirtualFormat};
 use std::num::NonZeroU16;
 
 use crate::pane::{ResolvedWrap, WhitespaceConfig, WrapMode};
+use crate::providers::DecorationKinds;
 use crate::reveal::RevealedLines;
 use hume_rope::line::ContentLine;
 
@@ -66,7 +70,12 @@ pub struct FormatKey {
 }
 
 impl FormatKey {
-    pub fn resolve(self, content_width: NonZeroU16, revealed: RevealedLines) -> ResolvedFormatKey {
+    pub fn resolve(
+        self,
+        content_width: NonZeroU16,
+        revealed: RevealedLines,
+        layout_kinds: DecorationKinds,
+    ) -> ResolvedFormatKey {
         ResolvedFormatKey {
             buffer_tag: self.buffer_tag,
             params: FormatParams {
@@ -75,13 +84,14 @@ impl FormatKey {
                 whitespace: self.whitespace,
             },
             revealed,
+            layout_kinds,
         }
     }
 }
 
 /// Everything a line's block shape depends on besides the line's own text:
-/// a [`FormatKey`] resolved against one content width, and the lines whose
-/// conceals the layout leaves out.
+/// a [`FormatKey`] resolved against one content width, the lines whose
+/// conceals the layout leaves out, and the decoration kinds it queries.
 ///
 /// Excludes the horizontal clip (`h_window`) a `WrapMode::None`
 /// render applies: block shape doesn't depend on it, only the formatted
@@ -98,6 +108,8 @@ pub struct ResolvedFormatKey {
     pub buffer_tag: BufferTag,
     pub params: FormatParams,
     pub revealed: RevealedLines,
+    /// The providers the layout queries: a subset of [`DecorationKinds::LAYOUT`].
+    pub layout_kinds: DecorationKinds,
 }
 
 /// The formatting settings in a [`ResolvedFormatKey`]: what

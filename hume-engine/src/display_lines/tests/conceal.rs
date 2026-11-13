@@ -75,7 +75,7 @@ fn counted_line_0() -> (ProviderSet, Rc<Cell<usize>>) {
     let calls = Rc::new(Cell::new(0));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(
-        ConcealSource::new(vec![(ContentLine::new(0), vec![hidden(0, 2, None)])])
+        ConcealSource::new(vec![(ContentLine::new(0), vec![hidden(0, 2)])])
             .counting(Rc::clone(&calls)),
     ));
     (providers, calls)
@@ -97,8 +97,8 @@ fn format_line_0(
 fn conceal_on_a_revealed_line_is_dropped() {
     let rope = Rope::from_str("**a**\n**b**\n");
     let providers = concealed(vec![
-        (0, vec![hidden(0, 2, None), hidden(3, 5, None)]),
-        (1, vec![hidden(0, 2, None), hidden(3, 5, None)]),
+        (0, vec![hidden(0, 2), hidden(3, 5)]),
+        (1, vec![hidden(0, 2), hidden(3, 5)]),
     ]);
 
     assert_eq!(shown(&rope, &providers, lines(&[(0, 0)])), ["**a**", "b"]);
@@ -107,7 +107,7 @@ fn conceal_on_a_revealed_line_is_dropped() {
 #[test]
 fn conceal_with_a_reveal_span_is_dropped_when_its_own_line_is_revealed() {
     let rope = Rope::from_str("**a**\nb\nc\n");
-    let providers = concealed(vec![(0, vec![revealing(hidden(0, 2, None), 1, 2)])]);
+    let providers = concealed(vec![(0, vec![revealing(hidden(0, 2), 1, 2)])]);
 
     assert_eq!(
         shown(&rope, &providers, lines(&[(0, 0)]))[0],
@@ -124,7 +124,7 @@ fn conceal_with_a_reveal_span_is_dropped_when_its_own_line_is_revealed() {
 #[test]
 fn cursor_on_table_row_3_reveals_row_1() {
     let rope = Rope::from_str("|a|\n|b|\n|c|\n");
-    let row = || vec![revealing(hidden(0, 1, None), 0, 2)];
+    let row = || vec![revealing(hidden(0, 1), 0, 2)];
     let providers = concealed(vec![(0, row()), (1, row()), (2, row())]);
 
     assert_eq!(
@@ -160,8 +160,8 @@ fn inserted_conceal_with_a_reveal_span_drops_for_a_span_line_and_for_its_own_lin
 fn all_shows_every_line_raw() {
     let rope = Rope::from_str("**a**\n# b\n");
     let providers = concealed(vec![
-        (0, vec![hidden(0, 2, None), hidden(3, 5, None)]),
-        (1, vec![hidden(0, 2, Some("◆ ")), inserted(3, "¶")]),
+        (0, vec![hidden(0, 2), hidden(3, 5)]),
+        (1, vec![replaced(0, 2, "◆ ", None), inserted(3, "¶")]),
     ]);
 
     assert_eq!(
@@ -191,7 +191,9 @@ fn changed_revealed_set_rewinds_the_store() {
         &mut store,
     );
 
-    assert_eq!(calls.get(), 2);
+    // A revealed line queries no conceal source: the one query is the
+    // second format's.
+    assert_eq!(calls.get(), 1);
 }
 
 #[test]
@@ -215,7 +217,9 @@ fn reveal_all_then_drawn_map_reformat() {
         &mut store,
     );
 
-    assert_eq!(calls.get(), 2);
+    // A revealed line queries no conceal source: the one query is the
+    // second format's.
+    assert_eq!(calls.get(), 1);
 }
 
 #[test]

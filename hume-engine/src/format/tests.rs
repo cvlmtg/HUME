@@ -1,5 +1,6 @@
 use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
+use crate::test_support::{hidden, inserted, replaced};
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::line::RopeyLine;
 use hume_rope::lines::ropey_line_count;
@@ -829,21 +830,9 @@ fn display_line_positions_are_non_decreasing_with_inline_inserts() {
     // trailing insert takes the `\n`'s position.
     let rope = Rope::from_str("abcdef\n");
     let inserts = vec![
-        InlineInsert {
-            byte_offset: ByteCol::new(0),
-            text: "Z".into(),
-            scope: crate::types::ScopeId(0),
-        },
-        InlineInsert {
-            byte_offset: ByteCol::new(2),
-            text: "XY".into(),
-            scope: crate::types::ScopeId(0),
-        },
-        InlineInsert {
-            byte_offset: ByteCol::new(6),
-            text: "W".into(),
-            scope: crate::types::ScopeId(0),
-        },
+        inline_insert(0, "Z"),
+        inline_insert(2, "XY"),
+        inline_insert(6, "W"),
     ];
     let mut scratch = LineFormat::new();
     format_buffer_line(
@@ -878,11 +867,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
     // (300 % 256 = 44 would be the buggy value).
     let rope = Rope::from_str("x");
     let text = String::from_utf8(vec![b'a'; 300]).unwrap();
-    let inserts = vec![InlineInsert {
-        byte_offset: ByteCol::new(0),
-        text: text.into(),
-        scope: crate::types::ScopeId(0),
-    }];
+    let inserts = vec![inline_insert(0, &text)];
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
@@ -917,11 +902,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
 /// returning the format so a test can read cells and resolve arena text.
 fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> LineFormat {
     let rope = Rope::from_str(line);
-    let inserts = vec![InlineInsert {
-        byte_offset: ByteCol::new(byte_offset),
-        text: text.into(),
-        scope: crate::types::ScopeId(0),
-    }];
+    let inserts = vec![inline_insert(byte_offset, text)];
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
@@ -1182,11 +1163,8 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
     // insert: one Virtual cell per grapheme cluster, not a single wide
     // cell whose text a `Cell` can only paint at one column.
     let rope = Rope::from_str("abc");
-    let inserts = vec![InlineInsert {
-        byte_offset: ByteCol::new(3), // == line_str.len(): never matched by the in-loop
-        text: "hello".into(),
-        scope: crate::types::ScopeId(0),
-    }];
+    // The offset equals the line's length, so the in-loop match never takes it.
+    let inserts = vec![inline_insert(3, "hello")];
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
@@ -1222,11 +1200,7 @@ fn trailing_insert_under_soft_wrap_does_not_wrap() {
     // A trailing insert wider than the columns left on the last display line
     // stays on it: only the EOL sentinel and in-line runs ask to wrap.
     let rope = Rope::from_str("abc");
-    let inserts = vec![InlineInsert {
-        byte_offset: ByteCol::new(3),
-        text: "hello".into(),
-        scope: crate::types::ScopeId(0),
-    }];
+    let inserts = vec![inline_insert(3, "hello")];
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
@@ -1319,42 +1293,6 @@ fn clear_and_shrink_keeps_an_ordinary_virtual_format() {
 
 fn bc(n: usize) -> ByteCol {
     ByteCol::new(n)
-}
-
-fn hide(start: usize, end: usize) -> Conceal {
-    Conceal {
-        span: ConcealSpan::Hidden {
-            bytes: ExclusiveRange::new(bc(start), bc(end)),
-            text: None,
-        },
-        reveal: None,
-    }
-}
-
-fn replace(start: usize, end: usize, text: &str, scope: Option<ScopeId>) -> Conceal {
-    Conceal {
-        span: ConcealSpan::Hidden {
-            bytes: ExclusiveRange::new(bc(start), bc(end)),
-            text: Some(crate::providers::ConcealText {
-                text: text.into(),
-                scope,
-            }),
-        },
-        reveal: None,
-    }
-}
-
-fn insert_at(at: usize, text: &str) -> Conceal {
-    Conceal {
-        span: ConcealSpan::Inserted {
-            at: bc(at),
-            text: crate::providers::ConcealText {
-                text: text.into(),
-                scope: None,
-            },
-        },
-        reveal: None,
-    }
 }
 
 /// Format the first line of `text` with `conceals`, then check what every
@@ -1464,7 +1402,12 @@ fn drawn_cell<'a>(fmt: &'a LineFormat, line: &'a str, g: &Grapheme) -> (&'a str,
 
 #[test]
 fn hidden_run_emits_no_cells_and_no_width() {
-    let fmt = do_format_with("**bold**\n", WrapMode::None, &[], &[hide(0, 2), hide(6, 8)]);
+    let fmt = do_format_with(
+        "**bold**\n",
+        WrapMode::None,
+        &[],
+        &[hidden(0, 2), hidden(6, 8)],
+    );
     assert_eq!(
         drawn(&fmt, "**bold**"),
         [("b", 0), ("o", 1), ("l", 2), ("d", 3), ("", 4)],
@@ -1483,7 +1426,7 @@ fn replacement_cells_stand_for_the_hidden_bytes() {
         "# Title\n",
         WrapMode::None,
         &[],
-        &[replace(0, 2, "▉ ", scope)],
+        &[replaced(0, 2, "▉ ", scope)],
     );
     let replacement: Vec<&Grapheme> = fmt
         .graphemes
@@ -1505,7 +1448,7 @@ fn replacement_without_scope_has_none() {
         "# Title\n",
         WrapMode::None,
         &[],
-        &[replace(0, 2, "▉ ", None)],
+        &[replaced(0, 2, "▉ ", None)],
     );
     let scopes: Vec<Option<ScopeId>> = fmt
         .graphemes
@@ -1518,7 +1461,7 @@ fn replacement_without_scope_has_none() {
 
 #[test]
 fn hidden_without_text_hides_only() {
-    let fmt = do_format_with("# Title\n", WrapMode::None, &[], &[hide(0, 2)]);
+    let fmt = do_format_with("# Title\n", WrapMode::None, &[], &[hidden(0, 2)]);
     assert!(
         !fmt.graphemes
             .iter()
@@ -1535,7 +1478,7 @@ fn wide_replacement_has_a_width_continuation() {
         "# Title\n",
         WrapMode::None,
         &[],
-        &[replace(0, 2, CJK, None)],
+        &[replaced(0, 2, CJK, None)],
     );
     let g = &fmt.graphemes;
     assert!(matches!(g[0].content, CellContent::Replacement { .. }));
@@ -1552,7 +1495,7 @@ fn replacement_holding_a_combining_mark_is_one_cell() {
         "# Title\n",
         WrapMode::None,
         &[],
-        &[replace(0, 2, COMBINING, None)],
+        &[replaced(0, 2, COMBINING, None)],
     );
     assert_eq!(drawn(&fmt, "# Title")[..2], [(COMBINING, 0), ("T", 1)]);
 }
@@ -1566,7 +1509,7 @@ fn cjk_beside_a_hidden_run_keeps_its_column() {
         &format!("{line}\n"),
         WrapMode::None,
         &[],
-        &[hide(0, 2), hide(cjk_end, cjk_end + 2)],
+        &[hidden(0, 2), hidden(cjk_end, cjk_end + 2)],
     );
     assert_eq!(drawn(&fmt, &line), [(CJK, 0), ("", 2), ("", 2)]);
     assert_eq!(fmt.graphemes[0].width, 2);
@@ -1580,7 +1523,7 @@ fn hidden_run_covering_a_combining_sequence() {
         &format!("{line}\n"),
         WrapMode::None,
         &[],
-        &[hide(1, 1 + COMBINING.len())],
+        &[hidden(1, 1 + COMBINING.len())],
     );
     assert_eq!(drawn(&fmt, &line), [("a", 0), ("b", 1), ("", 2)]);
 }
@@ -1592,7 +1535,12 @@ fn range_starting_inside_a_cluster_leaves_it_shown() {
     // starts at byte 1, outside the range, so it shows; `b` starts inside.
     let line = format!("a{COMBINING}b");
     let b = 1 + COMBINING.len();
-    let fmt = do_format_with(&format!("{line}\n"), WrapMode::None, &[], &[hide(3, b + 1)]);
+    let fmt = do_format_with(
+        &format!("{line}\n"),
+        WrapMode::None,
+        &[],
+        &[hidden(3, b + 1)],
+    );
     assert_eq!(drawn(&fmt, &line), [("a", 0), (COMBINING, 1), ("", 2)]);
 }
 
@@ -1602,7 +1550,7 @@ fn range_ending_inside_a_cluster_hides_it() {
     // The range ends one byte into the mark: the cluster starting at byte 1
     // is inside it and hides whole, `b` after it shows.
     let line = format!("a{COMBINING}b");
-    let fmt = do_format_with(&format!("{line}\n"), WrapMode::None, &[], &[hide(0, 3)]);
+    let fmt = do_format_with(&format!("{line}\n"), WrapMode::None, &[], &[hidden(0, 3)]);
     assert_eq!(drawn(&fmt, &line), [("b", 0), ("", 1)]);
 }
 
@@ -1614,7 +1562,7 @@ fn soft_wrap_counts_only_visible_cells() {
     let wrap = WrapMode::Soft { width: 5 };
     let raw = do_format_with(text, wrap, &[], &[]);
     assert_eq!(raw.display_lines.len(), 3, "raw text wraps twice");
-    let fmt = do_format_with(text, wrap, &[], &[hide(0, 2), hide(10, 12)]);
+    let fmt = do_format_with(text, wrap, &[], &[hidden(0, 2), hidden(10, 12)]);
     assert_eq!(fmt.display_lines.len(), 2, "visible text wraps once");
     let second = &fmt.graphemes[fmt.display_lines[1].graphemes.clone()];
     assert_eq!((off(&second[0]), second[0].display_col), (7, dc(0)));
@@ -1628,7 +1576,7 @@ fn word_wrap_breaks_on_visible_whitespace() {
     let wrap = WrapMode::Word { width: 6 };
     let raw = do_format_with(text, wrap, &[], &[]);
     assert_eq!(raw.display_lines.len(), 3, "raw text wraps twice");
-    let fmt = do_format_with(text, wrap, &[], &[hide(0, 2), hide(6, 8)]);
+    let fmt = do_format_with(text, wrap, &[], &[hidden(0, 2), hidden(6, 8)]);
     assert_eq!(fmt.display_lines.len(), 2, "visible text wraps once");
     let second = &fmt.graphemes[fmt.display_lines[1].graphemes.clone()];
     assert_eq!((off(&second[0]), second[0].display_col), (9, dc(0)));
@@ -1682,7 +1630,7 @@ fn h_window_clips_after_a_hidden_run() {
         Some(dc(0)..dc(4)),
         FormatBound::Full,
         &[],
-        &[hide(0, 2)],
+        &[hidden(0, 2)],
     );
     assert_eq!(
         drawn(&fmt, "**abcdefgh"),
@@ -1734,7 +1682,7 @@ fn cell_key(g: &Grapheme) -> (ExclusiveRange<ByteCol>, Option<usize>, DisplayLin
 #[test]
 fn to_byte_bound_inside_a_hidden_run_stops_the_scan() {
     let text = "ab**cd\n";
-    let conceals = [replace(2, 4, "▉", None)];
+    let conceals = [replaced(2, 4, "▉", None)];
     let full = do_format_with(text, WrapMode::None, &[], &conceals);
     let bounded = format_line0(
         text,
@@ -1765,7 +1713,7 @@ fn to_byte_bound_inside_a_leading_hidden_run_leaves_zero_cells() {
         None,
         FormatBound::ToByte(bc(1)),
         &[],
-        &[hide(0, 2)],
+        &[hidden(0, 2)],
     );
     assert_eq!(fmt.display_lines.len(), 1);
     assert!(fmt.graphemes.is_empty(), "{:?}", fmt.graphemes);
@@ -1782,7 +1730,7 @@ fn to_display_col_bound_past_a_hidden_run_emits_the_next_visible_cell() {
         None,
         FormatBound::ToDisplayCol(dc(3)),
         &[],
-        &[hide(1, 3)],
+        &[hidden(1, 3)],
     );
     let cells: Vec<(usize, DisplayLineCol)> = fmt
         .graphemes
@@ -1794,7 +1742,7 @@ fn to_display_col_bound_past_a_hidden_run_emits_the_next_visible_cell() {
 
 #[test]
 fn inserted_conceal_at_line_start_draws_virtual_cells_before_the_first_cluster() {
-    let fmt = do_format_with("abc\n", WrapMode::None, &[], &[insert_at(0, "• ")]);
+    let fmt = do_format_with("abc\n", WrapMode::None, &[], &[inserted(0, "• ")]);
     assert_eq!(
         drawn(&fmt, "abc"),
         [("•", 0), (" ", 1), ("a", 2), ("b", 3), ("c", 4), ("", 5)]
@@ -1808,7 +1756,7 @@ fn inserted_conceal_at_line_start_draws_virtual_cells_before_the_first_cluster()
 
 #[test]
 fn inserted_conceal_mid_line() {
-    let fmt = do_format_with("abc\n", WrapMode::None, &[], &[insert_at(1, "X")]);
+    let fmt = do_format_with("abc\n", WrapMode::None, &[], &[inserted(1, "X")]);
     assert_eq!(
         drawn(&fmt, "abc"),
         [("a", 0), ("X", 1), ("b", 2), ("c", 3), ("", 4)]
@@ -1822,12 +1770,8 @@ fn inserted_conceal_mid_line() {
 
 #[test]
 fn inserted_conceal_at_the_line_end_precedes_the_eol_sentinel() {
-    let inserts = [InlineInsert {
-        byte_offset: bc(2),
-        text: "Z".into(),
-        scope: ScopeId(0),
-    }];
-    let fmt = do_format_with("ab\n", WrapMode::None, &inserts, &[insert_at(2, "XY")]);
+    let inserts = [inline_insert(2, "Z")];
+    let fmt = do_format_with("ab\n", WrapMode::None, &inserts, &[inserted(2, "XY")]);
     assert_eq!(
         drawn(&fmt, "ab"),
         [("a", 0), ("b", 1), ("X", 2), ("Y", 3), ("", 4), ("Z", 4)],
@@ -1840,7 +1784,7 @@ fn inserted_conceal_at_the_line_end_precedes_the_eol_sentinel() {
 
 #[test]
 fn inserted_conceal_on_an_empty_line_starts_at_column_0() {
-    let fmt = do_format_with("\n", WrapMode::None, &[], &[insert_at(0, "--")]);
+    let fmt = do_format_with("\n", WrapMode::None, &[], &[inserted(0, "--")]);
     assert_eq!(drawn(&fmt, ""), [("-", 0), ("-", 1), ("", 2)]);
     assert!(matches!(fmt.graphemes[2].content, CellContent::Empty));
 }
@@ -1880,16 +1824,12 @@ fn inserted_conceal_filling_the_line_end_wraps_the_eol_sentinel() {
 
 #[test]
 fn insert_then_inserted_conceal_then_replacement_at_one_byte() {
-    let inserts = [InlineInsert {
-        byte_offset: bc(2),
-        text: "N".into(),
-        scope: ScopeId(0),
-    }];
+    let inserts = [inline_insert(2, "N")];
     let fmt = do_format_with(
         "ab**c**\n",
         WrapMode::None,
         &inserts,
-        &[insert_at(2, "I"), replace(2, 4, "R", None)],
+        &[inserted(2, "I"), replaced(2, 4, "R", None)],
     );
     assert_eq!(
         drawn(&fmt, "ab**c**")[..6],
@@ -1913,14 +1853,24 @@ fn insert_then_inserted_conceal_then_replacement_at_one_byte() {
 #[cfg(debug_assertions)]
 #[should_panic(expected = "conceals must be sorted")]
 fn unsorted_conceals_fail_the_input_check() {
-    do_format_with("abcdef\n", WrapMode::None, &[], &[hide(4, 6), hide(0, 2)]);
+    do_format_with(
+        "abcdef\n",
+        WrapMode::None,
+        &[],
+        &[hidden(4, 6), hidden(0, 2)],
+    );
 }
 
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic(expected = "conceals must be sorted")]
 fn overlapping_conceals_fail_the_input_check() {
-    do_format_with("abcdef\n", WrapMode::None, &[], &[hide(0, 3), hide(2, 4)]);
+    do_format_with(
+        "abcdef\n",
+        WrapMode::None,
+        &[],
+        &[hidden(0, 3), hidden(2, 4)],
+    );
 }
 
 fn inline_insert(at: usize, text: &str) -> InlineInsert {
@@ -1937,7 +1887,7 @@ fn insert_strictly_inside_a_conceal_is_dropped() {
         "**bold**\n",
         WrapMode::None,
         &[inline_insert(1, "X"), inline_insert(7, "Y")],
-        &[hide(0, 2), replace(6, 8, "R", None)],
+        &[hidden(0, 2), replaced(6, 8, "R", None)],
     );
     assert_eq!(
         drawn(&fmt, "**bold**"),
@@ -1952,7 +1902,7 @@ fn insert_strictly_inside_a_conceal_is_dropped() {
         &format!("{line}\n"),
         WrapMode::None,
         &[inline_insert(2, "X")],
-        &[hide(1, line.len())],
+        &[hidden(1, line.len())],
     );
     assert_eq!(drawn(&fmt, &line), [("a", 0), ("", 1)]);
 }
@@ -1963,7 +1913,7 @@ fn insert_at_a_conceal_start_comes_first() {
         "ab**c\n",
         WrapMode::None,
         &[inline_insert(2, "N")],
-        &[replace(2, 4, "R", None)],
+        &[replaced(2, 4, "R", None)],
     );
     assert_eq!(
         drawn(&fmt, "ab**c"),
@@ -1978,7 +1928,7 @@ fn insert_after_a_conceal_keeps_its_place() {
         "ab**c\n",
         WrapMode::None,
         &[inline_insert(4, "N")],
-        &[hide(2, 4)],
+        &[hidden(2, 4)],
     );
     assert_eq!(
         drawn(&fmt, "ab**c"),

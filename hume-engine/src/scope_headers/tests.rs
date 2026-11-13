@@ -11,12 +11,11 @@ use crate::line_set::LineSet;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::pipeline::{ContentWidth, PaneSize};
 use crate::providers::{
-    Conceal, ConcealSpan, ConcealText, Decoration, DecorationKinds, DecorationSource,
-    HighlightTier, InlineInsert, ProviderSet,
+    Decoration, DecorationKinds, DecorationSource, HighlightTier, InlineInsert, ProviderSet,
 };
 use crate::reveal::RevealedLines;
 use crate::test_doubles::{ConcealSource, ScopeTable, VirtualLineBlock};
-use crate::test_support::{at, bg, byte_range, map, map_hiding, theme_with};
+use crate::test_support::{at, bg, byte_range, hidden, map, map_hiding, replaced, theme_with};
 use crate::types::{CellContent, ResolvedStyle};
 use hume_core::Side;
 use hume_grid::Rgb;
@@ -277,19 +276,6 @@ fn pane_inputs(revealed: RevealedLines) -> DisplayLineInputs {
     }
 }
 
-fn hidden(start: usize, end: usize, text: Option<&str>) -> Conceal {
-    Conceal {
-        span: ConcealSpan::Hidden {
-            bytes: byte_range(start, end),
-            text: text.map(|text| ConcealText {
-                text: text.into(),
-                scope: None,
-            }),
-        },
-        reveal: None,
-    }
-}
-
 /// A HIGHLIGHT and INLINE source that tints bytes 0..1 of every line with
 /// `scope` and inserts `>>` at byte 0, counting its queries.
 struct InlineAndHighlight {
@@ -350,7 +336,7 @@ fn header_row_draws_a_replacement_and_hides_its_bytes() {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(ConcealSource::new(vec![(
         ContentLine::new(0),
-        vec![hidden(0, 2, Some("•")), hidden(3, 5, None)],
+        vec![replaced(0, 2, "•", None), hidden(3, 5)],
     )])));
     let cells = header_cells(
         &mut HeaderLayout::default(),
@@ -389,8 +375,8 @@ fn header_row_draws_no_inline_insert_and_no_virtual_line_from_the_pane_set() {
     ));
     providers.add_decoration_source(Box::new(
         ConcealSource::new(vec![
-            (ContentLine::new(0), vec![hidden(0, 2, None)]),
-            (ContentLine::new(1), vec![hidden(0, 2, None)]),
+            (ContentLine::new(0), vec![hidden(0, 2)]),
+            (ContentLine::new(1), vec![hidden(0, 2)]),
         ])
         .counting(Rc::clone(&conceal_calls)),
     ));
@@ -417,8 +403,8 @@ fn header_line_in_the_pane_revealed_set_draws_raw() {
     let rope = Rope::from_str("**a**\n**b**\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(ConcealSource::new(vec![
-        (ContentLine::new(0), vec![hidden(0, 2, None)]),
-        (ContentLine::new(1), vec![hidden(0, 2, None)]),
+        (ContentLine::new(0), vec![hidden(0, 2)]),
+        (ContentLine::new(1), vec![hidden(0, 2)]),
     ])));
     let revealed = RevealedLines::Lines(LineSet::from_ranges([InclusiveRange::new(
         ContentLine::new(1),
@@ -504,7 +490,7 @@ fn hit_test_on_a_header_replacement_returns_the_concealed_start() {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(ConcealSource::new(vec![(
         ContentLine::new(0),
-        vec![hidden(0, 2, Some("•"))],
+        vec![replaced(0, 2, "•", None)],
     )])));
     let inputs = pane_inputs(RevealedLines::default());
     let mut layout = HeaderLayout::default();

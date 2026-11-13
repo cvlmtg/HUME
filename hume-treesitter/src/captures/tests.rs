@@ -1,7 +1,9 @@
-use std::ops::Range;
 use std::sync::Arc;
 
 use hume_editing::text::BufferText;
+use hume_rope::line::ContentLine;
+use hume_rope::lines::last_content_line;
+use hume_rope::offset::InclusiveRange;
 use test_fixtures::require_grammars;
 use tree_sitter::QueryErrorKind;
 
@@ -11,12 +13,12 @@ use crate::syntax::Syntax;
 use crate::test_support::{fixture_markdown, make_bundle, syntax_with};
 
 /// `(name, start char, end char)` of each capture `source` yields over
-/// `syntax`'s layers, compiled by `bundle`, restricted to the bytes `bytes`
-/// names when given.
+/// `syntax`'s layers, compiled by `bundle`, restricted to `lines`, or over
+/// every line when `None`.
 fn captures(
     bundle: &GrammarBundle,
     source: &str,
-    bytes: Option<Range<usize>>,
+    lines: Option<InclusiveRange<ContentLine>>,
     syntax: &Syntax,
     text: &BufferText,
 ) -> Vec<(String, usize, usize)> {
@@ -25,7 +27,9 @@ fn captures(
     query.collect(
         syntax.layers().expect("a committed tree"),
         text.rope(),
-        bytes,
+        lines.unwrap_or_else(|| {
+            InclusiveRange::new(ContentLine::default(), last_content_line(text.rope()))
+        }),
         &mut out,
     );
     out.iter()
@@ -41,6 +45,13 @@ fn captures(
 
 fn capture(name: &str, start: usize, end: usize) -> (String, usize, usize) {
     (name.to_owned(), start, end)
+}
+
+fn line(line: usize) -> Option<InclusiveRange<ContentLine>> {
+    Some(InclusiveRange::new(
+        ContentLine::new(line),
+        ContentLine::new(line),
+    ))
 }
 
 /// `source` parsed by the markdown fixture with `markdown.inline` loaded
@@ -94,6 +105,16 @@ fn injected_inline_layer_captures_are_included() {
 }
 
 #[test]
+fn a_range_returns_only_the_inline_layers_it_covers() {
+    // Line 0 is chars 0..10, the blank line 10..11, line 2 starts at 11.
+    let (syntax, text, inline) = markdown_with_inline("a *one* b\n\nc *two* d\n");
+    assert_eq!(
+        captures(&inline, "(emphasis) @e", line(2), &syntax, &text),
+        [capture("e", 13, 18)]
+    );
+}
+
+#[test]
 fn eq_predicate_filters_matches() {
     require_grammars(&["markdown"]);
     let bundle = fixture_markdown();
@@ -124,9 +145,9 @@ fn a_layer_of_another_bundle_is_skipped() {
     );
 }
 
-/// A table between two paragraphs. Lines, by char offset: `intro` 0..6,
-/// blank, header 7..17, delimiter 17..27, row c/d 27..37, row e/f 37..47,
-/// blank, `outer` 48..54. A row node stops before its line break and a cell
+/// A table between two paragraphs. Lines 0 to 7, by char offset: `intro`
+/// 0..6, blank, header 7..17, delimiter 17..27, row c/d 27..37, row e/f
+/// 37..47, blank, `outer` 48..54. A row node stops before its line break and a cell
 /// node takes the space after its text.
 const TABLE: &str = "intro\n\n| a | b |\n|---|---|\n| c | d |\n| e | f |\n\nouter\n";
 
@@ -135,11 +156,11 @@ fn range_inside_a_table_returns_every_row_for_a_table_rooted_pattern() {
     require_grammars(&["markdown"]);
     let bundle = fixture_markdown();
     let (syntax, text) = syntax_with(Arc::clone(&bundle), TABLE);
-    // The `e` of the last row.
+    // The last row.
     let got = captures(
         &bundle,
         "(pipe_table (pipe_table_row) @row)",
-        Some(39..40),
+        line(5),
         &syntax,
         &text,
     );
@@ -151,22 +172,16 @@ fn range_inside_a_table_returns_only_intersecting_cells_for_a_cell_rooted_patter
     require_grammars(&["markdown"]);
     let bundle = fixture_markdown();
     let (syntax, text) = syntax_with(Arc::clone(&bundle), TABLE);
-    // The `e` of the last row's first cell, with the spaces around it.
-    let got = captures(
-        &bundle,
-        "(pipe_table_cell) @cell",
-        Some(38..41),
-        &syntax,
-        &text,
-    );
-    assert_eq!(got, [capture("cell", 39, 41)]);
+    // The last row, whose cells `e` and `f` take 39..41 and 43..45.
+    let got = captures(&bundle, "(pipe_table_cell) @cell", line(5), &syntax, &text);
+    assert_eq!(got, [capture("cell", 39, 41), capture("cell", 43, 45)]);
 }
 
 #[test]
 fn range_on_a_nested_section_returns_the_ancestor_headings() {
     require_grammars(&["markdown"]);
     let bundle = fixture_markdown();
-    // Headings: `# A` 0..4, `## B` 11..16, `### C` 23..29; `end` 30..34.
+    // Headings: `# A` 0..4, `## B` 11..16, `### C` 23..29; `end` on line 10.
     let (syntax, text) = syntax_with(
         Arc::clone(&bundle),
         "# A\n\ntext\n\n## B\n\nmore\n\n### C\n\nend\n",
@@ -174,7 +189,7 @@ fn range_on_a_nested_section_returns_the_ancestor_headings() {
     let got = captures(
         &bundle,
         "(section (atx_heading) @h)",
-        Some(30..33),
+        line(10),
         &syntax,
         &text,
     );
@@ -185,22 +200,6 @@ fn range_on_a_nested_section_returns_the_ancestor_headings() {
             capture("h", 11, 16),
             capture("h", 23, 29)
         ]
-    );
-}
-
-/// `0..0` is the range tree-sitter would read as unbounded.
-#[test]
-fn empty_range_returns_nothing() {
-    require_grammars(&["markdown"]);
-    let bundle = fixture_markdown();
-    let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n\n## B\n");
-    assert_eq!(
-        captures(&bundle, "(atx_heading) @h", Some(0..0), &syntax, &text),
-        []
-    );
-    assert_eq!(
-        captures(&bundle, "(atx_heading) @h", Some(5..5), &syntax, &text),
-        []
     );
 }
 

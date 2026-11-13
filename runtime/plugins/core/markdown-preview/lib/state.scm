@@ -33,7 +33,7 @@
     (md-preview/entry-set! pane 'enabled? on?)
     on?))
 
-(define (md-preview/warn-once! name warn!)
+(define (md-preview/warn-once! name message)
   (unless (member name (unbox md-preview/*warned*))
     (set-box! md-preview/*warned* (cons name (unbox md-preview/*warned*)))
-    (warn!)))
+    (log! 'warning message)))

@@ -36,14 +36,14 @@ pub trait SyntaxHost {
     /// and with the position and kind of the error when `query` does not
     /// compile.
     ///
-    /// With `range`, a match is returned when the node its pattern is rooted
-    /// at intersects those lines, with every capture of the match, inside the
-    /// range or not. `range` ends at most one past the last content line.
+    /// Only the matches `hume_treesitter::CaptureQuery::collect` returns for
+    /// the lines of `range`, which ends at most one past the last content
+    /// line.
     fn syntax_captures(
         &mut self,
         bid: BufferId,
         language: &str,
         query: &str,
-        range: Option<ExclusiveRange<ContentLine>>,
+        range: ExclusiveRange<ContentLine>,
     ) -> Result<Captures, String>;
 }

@@ -127,8 +127,11 @@ A render runs only while the buffer's tree matches its text. The `on-syntax-chan
 handler stores `(buffer-generation pane)` at once, before its debounce, and
 `render-buffer!` compares it with the buffer's current generation. When they differ, the
 text has changed since the last parse, and the render is skipped: the parse that is
-pending fires `on-syntax-changed` again. A render therefore never makes `syntax-captures`
-parse the buffer on the spot. A buffer that no pane shows is not drawn.
+pending fires `on-syntax-changed` again. A render therefore does not make `syntax-captures`
+parse the buffer on the spot, with one exception: when a parse lands in the same wake as a
+key that edits the buffer, the handler runs after the edit and stores the edited text's
+generation, so a render before the next parse lands parses on the spot. A buffer that no
+pane shows is not drawn.
 
 Each render replaces the plugin's three sources (`"markdown-preview"` for conceals, line
 backgrounds and extra highlights) as a whole, for every pane on the buffer. So it covers

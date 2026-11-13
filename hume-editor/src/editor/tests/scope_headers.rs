@@ -5,10 +5,13 @@
 // plus their `context.scm`: run scripts/fetch-test-grammars.sh.
 
 use super::*;
-use hume_core::OptionalQuery;
+use hume_core::{OptionalQuery, QueryFiles};
 use hume_engine::pipeline::Direction;
+use hume_engine::scope_headers::PaneRow;
+use hume_engine::types::CellContent;
 use hume_grid::{Grid, Position, Rect};
-use test_fixtures::{require_grammars, require_helix_query};
+use hume_rope::line::ContentLine;
+use test_fixtures::{grammar_query_path, require_grammars, require_helix_query};
 
 /// The frame most tests here draw.
 const VIEW: Rect = Rect::new(0, 0, 80, 25);
@@ -133,6 +136,93 @@ pub(super) fn pane_rows(ed: &Editor, buf: &Grid, pid: PaneId, n: u16) -> Vec<Str
         .collect()
 }
 
+/// One row a pane draws, read from the layout the frame draws by.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct DrawnRow {
+    /// The buffer line the row shows.
+    pub line: usize,
+    /// The buffer chars the row draws as themselves, as runs of consecutive
+    /// chars. Text a conceal draws in their place is not among them.
+    pub shown: Vec<std::ops::Range<usize>>,
+}
+
+/// A [`DrawnRow`] showing the one run `shown` of `line`'s chars.
+pub(super) fn drawn(line: usize, shown: std::ops::Range<usize>) -> DrawnRow {
+    DrawnRow {
+        line,
+        shown: vec![shown],
+    }
+}
+
+/// `row` as a [`DrawnRow`]. The display line is read whole, whatever the
+/// pane's width or horizontal scroll.
+fn read_row(line: ContentLine, row: hume_engine::display_lines::RenderDisplayLine<'_>) -> DrawnRow {
+    let mut shown: Vec<std::ops::Range<usize>> = Vec::new();
+    for cell in &row.graphemes[row.display_line.graphemes.clone()] {
+        let (CellContent::Grapheme, Some(pos)) = (cell.content, cell.pos) else {
+            continue;
+        };
+        let start = pos.offset().index();
+        let len = row.line_text[cell.byte_range.as_byte_range()]
+            .chars()
+            .count();
+        match shown.last_mut() {
+            Some(run) if run.end == start => run.end += len,
+            _ => shown.push(start..start + len),
+        }
+    }
+    DrawnRow {
+        line: line.index(),
+        shown,
+    }
+}
+
+/// Rows `0..n` of pane `pid` as the last frame drew them.
+pub(super) fn drawn_rows(ed: &mut Editor, pid: PaneId, n: u16) -> Vec<DrawnRow> {
+    let size = ed.pane_size(pid);
+    let layout_key = ed.state.layout_key(&ed.view, pid, size);
+    let bid = ed.view.panes[pid].buffer_id();
+    let Editor { state, view, .. } = ed;
+    let rope = state.buffers.get(bid).text().rope();
+    let mut rows: Vec<Result<DrawnRow, ContentLine>> = Vec::new();
+    {
+        let (mut dlm, viewport) = crate::editor::frame::settled_pane_view(
+            &state.buffers,
+            &mut state.panes.entries,
+            &mut view.panes,
+            pid,
+            &layout_key,
+        );
+        let geo = layout_key
+            .geometry(state.buffers.get(bid).syntax_source())
+            .expect("the pane has rows");
+        let pane_rows = geo.rows(&mut dlm, viewport);
+        for y in 0..n {
+            rows.push(match pane_rows.row_at(&mut dlm, y) {
+                PaneRow::Body(pos) => Ok(read_row(pos.line, dlm.render_display_line(pos))),
+                PaneRow::Header(line) => Err(line),
+            });
+        }
+    }
+    let pane = &mut view.panes[pid];
+    let mut header_dlm =
+        pane.header_layout
+            .display_map(rope, &pane.providers, &layout_key.inputs());
+    rows.into_iter()
+        .map(|row| {
+            row.unwrap_or_else(|line| {
+                let pos = header_dlm.first_content_display_line(line);
+                read_row(line, header_dlm.render_display_line(pos))
+            })
+        })
+        .collect()
+}
+
+/// The buffer line each of rows `0..n` of pane `pid` shows.
+pub(super) fn drawn_lines(ed: &mut Editor, pid: PaneId, n: u16) -> Vec<usize> {
+    drawn_rows(ed, pid, n).iter().map(|row| row.line).collect()
+}
+
 /// Rows `0..n` of the focused pane.
 fn top_rows(ed: &Editor, buf: &Grid, n: u16) -> Vec<String> {
     pane_rows(ed, buf, ed.view.focused_pane(), n)
@@ -173,32 +263,19 @@ fn push_up_drops_the_fn_header_when_its_closing_brace_is_under_it() {
     let mut ed = rust_context_editor(&source);
     let pid = ed.view.focused_pane();
 
-    let buf = wheel_down(&mut ed, pid, 10);
+    wheel_down(&mut ed, pid, 10);
     assert_eq!(top_line(&ed, pid), 10);
-    assert_eq!(
-        top_rows(&ed, &buf, 3),
-        [
-            line_of(&source, 0),
-            line_of(&source, 1),
-            line_of(&source, 12)
-        ]
-    );
+    assert_eq!(drawn_lines(&mut ed, pid, 3), [0, 1, 12]);
 
     // The first fn's `}` (line 32) is the line at row 1.
-    let buf = wheel_down(&mut ed, pid, 21);
+    wheel_down(&mut ed, pid, 21);
     assert_eq!(top_line(&ed, pid), 31);
-    assert_eq!(
-        top_rows(&ed, &buf, 2),
-        [line_of(&source, 0), line_of(&source, 32)]
-    );
+    assert_eq!(drawn_lines(&mut ed, pid, 2), [0, 32]);
 
     // The blank line after it is at row 1: still only the `impl` header.
-    let buf = wheel_down(&mut ed, pid, 1);
+    wheel_down(&mut ed, pid, 1);
     assert_eq!(top_line(&ed, pid), 32);
-    assert_eq!(
-        top_rows(&ed, &buf, 2),
-        [line_of(&source, 0), line_of(&source, 33)]
-    );
+    assert_eq!(drawn_lines(&mut ed, pid, 2), [0, 33]);
 }
 
 #[test]
@@ -207,12 +284,13 @@ fn short_pane_keeps_two_headers_by_the_outer_level_setting() {
     seek_to_line(&mut ed, 25);
     let rect = Rect::new(0, 0, 20, 6);
 
-    let buf = ed.render_to_buf(rect);
-    assert_eq!(top_rows(&ed, &buf, 2), ["## b", "### c"]);
+    ed.render_to_buf(rect);
+    let pid = ed.view.focused_pane();
+    assert_eq!(drawn_lines(&mut ed, pid, 2), [1, 2]);
 
     run_set(&mut ed, "buffer context-outer-level=true").expect("the setting applies");
-    let buf = ed.render_to_buf(rect);
-    assert_eq!(top_rows(&ed, &buf, 2), ["# a", "### c"]);
+    ed.render_to_buf(rect);
+    assert_eq!(drawn_lines(&mut ed, pid, 2), [0, 2]);
 }
 
 #[test]
@@ -220,12 +298,13 @@ fn tall_pane_keeps_three_headers_by_the_outer_level_setting() {
     let mut ed = markdown_context_editor(&nested_markdown(4));
     seek_to_line(&mut ed, 40);
 
-    let buf = ed.render_to_buf(VIEW);
-    assert_eq!(top_rows(&ed, &buf, 3), ["## b", "### c", "#### d"]);
+    ed.render_to_buf(VIEW);
+    let pid = ed.view.focused_pane();
+    assert_eq!(drawn_lines(&mut ed, pid, 3), [1, 2, 3]);
 
     run_set(&mut ed, "buffer context-outer-level=true").expect("the setting applies");
-    let buf = ed.render_to_buf(VIEW);
-    assert_eq!(top_rows(&ed, &buf, 3), ["# a", "### c", "#### d"]);
+    ed.render_to_buf(VIEW);
+    assert_eq!(drawn_lines(&mut ed, pid, 3), [0, 2, 3]);
 }
 
 /// Two panes on two buffers of the same nested markdown, each cursor on
@@ -246,9 +325,9 @@ fn two_markdown_panes(setting: &str) -> (Editor, PaneId, PaneId, String) {
 fn outer_level_is_per_buffer() {
     let (mut ed, first, second, _) = two_markdown_panes("buffer context-outer-level=true");
 
-    let buf = ed.render_to_buf(VIEW);
-    assert_eq!(pane_rows(&ed, &buf, first, 3), ["## b", "### c", "#### d"]);
-    assert_eq!(pane_rows(&ed, &buf, second, 3), ["# a", "### c", "#### d"]);
+    ed.render_to_buf(VIEW);
+    assert_eq!(drawn_lines(&mut ed, first, 3), [1, 2, 3]);
+    assert_eq!(drawn_lines(&mut ed, second, 3), [0, 2, 3]);
 }
 
 /// An `impl` line longer than a 30-column pane, over one function with a
@@ -354,14 +433,10 @@ fn header_rows_use_popup_background_when_ui_context_is_unset() {
 
     let (rect, gutter) = drawn_pane(&ed, &buf, pid);
     assert!(gutter > 0, "premise: the split pane draws a gutter");
-    let source = wide_impl(false);
-    assert_eq!(
-        pane_rows(&ed, &buf, pid, 2),
-        [
-            line_of(&source, 0)[..usize::from(rect.width - gutter)].to_owned(),
-            line_of(&source, 1)
-        ]
-    );
+    insta::assert_snapshot!(pane_rows(&ed, &buf, pid, 2).join("\n"), @"
+    impl Iterator for AVery
+        fn next() {
+    ");
     for row in 0..2 {
         for x in rect.x..rect.right() {
             assert_eq!(
@@ -460,16 +535,18 @@ fn header_rows_draw_highlights_but_no_layout_decorations() {
             .map(|x| cell(&buf, x, rect.y + row))
             .collect()
     };
-    let body = pane_rows(&ed, &buf, pid, 5).remove(4);
-    assert_eq!(
-        (body.as_str(), gutter_text(4).contains('!')),
-        ("    H:    let x3 = 3; EOL", true),
-        "premise: a body row draws its line's hint, EOL text and sign"
+    insta::assert_snapshot!(
+        pane_rows(&ed, &buf, pid, 5).remove(4),
+        @"    H:    let x3 = 3; EOL"
     );
-    assert_eq!(
-        pane_rows(&ed, &buf, pid, 2),
-        [line_of(&source, 0), line_of(&source, 1)]
+    assert!(
+        gutter_text(4).contains('!'),
+        "premise: a body row draws its line's sign"
     );
+    insta::assert_snapshot!(pane_rows(&ed, &buf, pid, 2).join("\n"), @"
+    impl S {
+        fn a() {
+    ");
     for row in 0..2 {
         assert!(!gutter_text(row).contains('!'), "header row {row}'s gutter");
         for x in rect.x + gutter..rect.right() {
@@ -492,34 +569,22 @@ fn two_panes_on_one_buffer_show_their_own_headers() {
     let second = ed.split_onto(bid, Direction::Horizontal);
 
     wheel_down(&mut ed, first, 33);
-    let buf = wheel_down(&mut ed, second, 10);
+    wheel_down(&mut ed, second, 10);
     assert_eq!(top_line(&ed, first), 33);
     assert_eq!(top_line(&ed, second), 10);
 
-    assert_eq!(
-        pane_rows(&ed, &buf, first, 2),
-        [line_of(&source, 0), line_of(&source, 34)]
-    );
-    assert_eq!(
-        pane_rows(&ed, &buf, second, 3),
-        [
-            line_of(&source, 0),
-            line_of(&source, 1),
-            line_of(&source, 12)
-        ]
-    );
+    assert_eq!(drawn_lines(&mut ed, first, 2), [0, 34]);
+    assert_eq!(drawn_lines(&mut ed, second, 3), [0, 1, 12]);
 }
 
 #[test]
 fn context_enabled_off_on_one_buffer_only() {
-    let (mut ed, first, second, source) = two_markdown_panes("buffer context-enabled=false");
+    let (mut ed, first, second, _) = two_markdown_panes("buffer context-enabled=false");
 
-    let buf = ed.render_to_buf(VIEW);
-    assert_eq!(pane_rows(&ed, &buf, first, 1), ["## b"]);
-    assert_eq!(
-        pane_rows(&ed, &buf, second, 1),
-        [line_of(&source, top_line(&ed, second))]
-    );
+    ed.render_to_buf(VIEW);
+    assert_eq!(drawn_lines(&mut ed, first, 1), [1]);
+    let second_top = top_line(&ed, second);
+    assert_eq!(drawn_lines(&mut ed, second, 1), [second_top]);
 }
 
 #[test]
@@ -528,12 +593,9 @@ fn defaults_show_headers() {
     let source = two_fn_impl();
     let mut ed = rust_context_editor(&source);
     let pid = ed.view.focused_pane();
-    let buf = wheel_down(&mut ed, pid, 10);
+    wheel_down(&mut ed, pid, 10);
 
-    assert_eq!(
-        top_rows(&ed, &buf, 2),
-        [line_of(&source, 0), line_of(&source, 1)]
-    );
+    assert_eq!(drawn_lines(&mut ed, pid, 2), [0, 1]);
     assert_eq!(
         log_probe(
             &mut ed,
@@ -549,12 +611,10 @@ fn pane_of_height_one_shows_no_header() {
     let source = nested_markdown(3);
     let mut ed = markdown_context_editor(&source);
     seek_to_line(&mut ed, 25);
-    let buf = ed.render_to_buf(Rect::new(0, 0, 20, 2));
+    ed.render_to_buf(Rect::new(0, 0, 20, 2));
     let pid = ed.view.focused_pane();
-    assert_eq!(
-        top_rows(&ed, &buf, 1),
-        [line_of(&source, top_line(&ed, pid))]
-    );
+    let top = top_line(&ed, pid);
+    assert_eq!(drawn_lines(&mut ed, pid, 1), [top]);
 }
 
 /// A tall virtual block under line 10 leaves the cursor there while the
@@ -575,7 +635,7 @@ fn a_parked_cursor_under_a_header_row_has_no_caret() {
             "V",
         ),
     ));
-    let buf = wheel_down(&mut ed, pid, 7);
+    wheel_down(&mut ed, pid, 7);
 
     assert_eq!(top_line(&ed, pid), 9, "premise: the view scrolled");
     assert_eq!(
@@ -584,8 +644,8 @@ fn a_parked_cursor_under_a_header_row_has_no_caret() {
         "premise: the cursor stayed on line 10"
     );
     assert_eq!(
-        pane_rows(&ed, &buf, pid, 2),
-        [line_of(&source, 0), line_of(&source, 1)],
+        drawn_lines(&mut ed, pid, 2),
+        [0, 1],
         "premise: two header rows cover rows 0 and 1"
     );
     assert_eq!(frame(&mut ed, 80, 25).cursor_content_pos, None);
@@ -624,8 +684,8 @@ fn a_header_row_on_the_cursors_line_does_not_mark_its_number() {
         "premise: the view parks inside the block"
     );
     assert_eq!(
-        pane_rows(&ed, &buf, pid, 2),
-        [line_of(&source, 0), line_of(&source, 1)],
+        drawn_lines(&mut ed, pid, 2),
+        [0, 1],
         "premise: the fn line is header row 1"
     );
 
@@ -647,7 +707,7 @@ fn a_header_row_on_the_cursors_line_does_not_mark_its_number() {
 /// The focused pane after a settled `view`-sized frame: where its cursor is
 /// drawn, as `(row, text of the cell there)`, and how many of its top rows
 /// are scope headers (leading rows whose text is a line above the top line).
-fn cursor_row_and_headers(ed: &mut Editor, source: &str, view: Rect) -> (u16, String, usize) {
+fn cursor_row_and_headers(ed: &mut Editor, view: Rect) -> (u16, String, usize) {
     let (cursor_x, row) = frame(ed, view.width, view.height)
         .cursor_content_pos
         .expect("the cursor is on screen");
@@ -655,12 +715,10 @@ fn cursor_row_and_headers(ed: &mut Editor, source: &str, view: Rect) -> (u16, St
     let pid = ed.view.focused_pane();
     let (rect, gutter) = drawn_pane(ed, &buf, pid);
     let shown = cell(&buf, rect.x + gutter + cursor_x, rect.y + row);
-    let above: Vec<String> = (0..top_line(ed, pid))
-        .map(|line| line_of(source, line))
-        .collect();
-    let headers = top_rows(ed, &buf, 3)
-        .iter()
-        .take_while(|text| above.contains(text))
+    let top = top_line(ed, pid);
+    let headers = drawn_lines(ed, pid, 3)
+        .into_iter()
+        .take_while(|&line| line < top)
         .count();
     (row, shown, headers)
 }
@@ -707,7 +765,7 @@ fn landed_parse_resettles_the_view() {
         "premise: the cursor is in the band"
     );
 
-    let (row, shown, headers) = cursor_row_and_headers(&mut ed, &source, VIEW);
+    let (row, shown, headers) = cursor_row_and_headers(&mut ed, VIEW);
     assert!(headers >= 1, "premise: the landed parse shows headers");
     assert!(
         usize::from(row) > headers,
@@ -726,7 +784,7 @@ fn cursor_moving_up_never_lands_on_a_header_row() {
     let mut deepest = 0;
     for step in 0..40 {
         press(&mut ed, "k");
-        let (row, shown, headers) = cursor_row_and_headers(&mut ed, &source, VIEW);
+        let (row, shown, headers) = cursor_row_and_headers(&mut ed, VIEW);
         deepest = deepest.max(headers);
         assert!(
             usize::from(row) > headers,
@@ -747,8 +805,7 @@ fn cursor_in_a_short_pane_stays_below_the_headers() {
     let mut deepest = 0;
     for step in 0..40 {
         press(&mut ed, "k");
-        let (row, shown, headers) =
-            cursor_row_and_headers(&mut ed, &source, Rect::new(0, 0, 80, 4));
+        let (row, shown, headers) = cursor_row_and_headers(&mut ed, Rect::new(0, 0, 80, 4));
         deepest = deepest.max(headers);
         assert!(
             usize::from(row) >= headers,
@@ -793,8 +850,8 @@ fn context_enabled_off_keeps_the_margin() {
         for ed in [&mut with_grammar, &mut without] {
             press(ed, "k");
         }
-        let with_row = cursor_row_and_headers(&mut with_grammar, &source, VIEW).0;
-        let without_row = cursor_row_and_headers(&mut without, &source, VIEW).0;
+        let with_row = cursor_row_and_headers(&mut with_grammar, VIEW).0;
+        let without_row = cursor_row_and_headers(&mut without, VIEW).0;
         assert_eq!(with_row, without_row, "step {step}");
     }
 }
@@ -822,14 +879,7 @@ fn press_on_a_header_row_selects_that_line_and_reveals_it() {
     let mut ed = rust_context_editor(&source);
     let pid = ed.view.focused_pane();
     let buf = wheel_down(&mut ed, pid, 10);
-    assert_eq!(
-        top_rows(&ed, &buf, 3),
-        [
-            line_of(&source, 0),
-            line_of(&source, 1),
-            line_of(&source, 12)
-        ]
-    );
+    assert_eq!(drawn_lines(&mut ed, pid, 3), [0, 1, 12]);
 
     press_at(&mut ed, &buf, pid, 4, 1);
 
@@ -837,15 +887,75 @@ fn press_on_a_header_row_selects_that_line_and_reveals_it() {
     assert_eq!(sel.anchor().offset(), char_at_column(&ed, 1, 4));
     assert_eq!(sel.head().offset(), char_at_column(&ed, 1, 4));
     let pressed = state(&ed);
-    let buf = ed.render_to_buf(VIEW);
+    ed.render_to_buf(VIEW);
     assert_eq!(top_line(&ed, pid), 0);
-    assert_eq!(
-        top_rows(&ed, &buf, 2),
-        [line_of(&source, 0), line_of(&source, 1)]
-    );
+    assert_eq!(drawn_lines(&mut ed, pid, 2), [0, 1]);
 
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), pressed);
+}
+
+/// [`rust_context_editor`] opened as startup opens an editor, so its pane
+/// carries the conceal provider. The returned guard keeps the file alive.
+fn decorated_rust_context_editor(source: &str) -> (Editor, tempfile::TempPath) {
+    require_grammars(&["rust"]);
+    let files = QueryFiles::new(grammar_query_path("rust")).with(
+        OptionalQuery::Context,
+        require_helix_query("rust", OptionalQuery::Context.file_name()),
+    );
+    let (mut ed, file) = super::conceal_bridge::decorated_editor(&cursor_on_first_cluster(source));
+    let bid = ed.focused_buffer_id();
+    attach_fixture_grammar_with(&mut ed, "rust", "tree_sitter_rust", &files);
+    super::language::attach_host(&mut ed, "");
+    let lang = ed.state.config.languages.intern("rust");
+    ed.set_buffer_language_explicit(bid, Some(lang), ConfigOrigin::User)
+        .expect_open();
+    ed.state.settings.indent_guides = false;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while ed.doc().current_layers().is_none() {
+        ed.render_to_buf(VIEW);
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the first parse never landed"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    (ed, file)
+}
+
+#[test]
+fn press_on_a_header_row_after_conceals_clear_leaves_the_header_raw_next_frame() {
+    let source = two_fn_impl();
+    let (mut ed, _file) = decorated_rust_context_editor(&source);
+    let pid = ed.view.focused_pane();
+    let fn_kw = char_at_column(&ed, 1, 4).index();
+    super::conceal_bridge::set(
+        &mut ed,
+        "md",
+        vec![super::conceal_bridge::hiding(fn_kw, fn_kw + 3)],
+    );
+    let buf = wheel_down(&mut ed, pid, 10);
+    let line_1 = char_at_column(&ed, 1, 0).index();
+    assert_eq!(
+        drawn_rows(&mut ed, pid, 2)[1],
+        DrawnRow {
+            line: 1,
+            shown: vec![line_1..fn_kw, fn_kw + 3..line_1 + 12],
+        },
+        "premise: the header row draws without `fn `"
+    );
+
+    // No frame between the clear and the press, so the pane's conceal
+    // mirror still holds the entry.
+    super::conceal_bridge::set(&mut ed, "md", vec![]);
+    press_at(&mut ed, &buf, pid, 4, 1);
+    set_cursor(&mut ed, 0);
+    wheel_down(&mut ed, pid, 10);
+
+    assert_eq!(
+        drawn_rows(&mut ed, pid, 2)[1],
+        drawn(1, line_1..line_1 + 12)
+    );
 }
 
 #[test]
@@ -888,7 +998,7 @@ fn press_on_a_header_counts_columns_from_zero_under_horizontal_scroll() {
     let buf = ed.render_to_buf(SNAP_VIEW);
     let pid = ed.view.focused_pane();
     assert!(ed.pane_viewport(pid).horizontal_offset().get() > 0);
-    assert!(top_rows(&ed, &buf, 1)[0].starts_with("impl"));
+    insta::assert_snapshot!(top_rows(&ed, &buf, 1).join("\n"), @"impl Iterator for AVery");
 
     press_at(&mut ed, &buf, pid, 5, 0);
 
@@ -903,7 +1013,7 @@ fn press_on_a_wrapped_header_lands_where_the_row_draws_it() {
     let mut ed = snapshot_editor(false, 15);
     let buf = ed.render_to_buf(SNAP_VIEW);
     let pid = ed.view.focused_pane();
-    assert_eq!(top_rows(&ed, &buf, 1), ["impl Iterator for AVery"]);
+    insta::assert_snapshot!(top_rows(&ed, &buf, 1).join("\n"), @"impl Iterator for AVery");
 
     // Column 20 is past where the line's first wrap segment breaks.
     press_at(&mut ed, &buf, pid, 20, 0);
@@ -924,10 +1034,7 @@ fn drag_onto_a_header_row_extends_to_its_line() {
     press_at(&mut ed, &buf, pid, 12, 5);
     let anchor = ed.current_view().primary().anchor().offset();
     let buf = ed.render_to_buf(VIEW);
-    assert_eq!(
-        top_rows(&ed, &buf, 2),
-        [line_of(&source, 0), line_of(&source, 1)]
-    );
+    assert_eq!(drawn_lines(&mut ed, pid, 2), [0, 1]);
 
     let (rect, gutter) = drawn_pane(&ed, &buf, pid);
     ed.handle_input(mouse_drag(rect.x + gutter + 4, rect.y + 1));
@@ -944,7 +1051,7 @@ fn press_on_row_zero_with_headers_off_selects_the_top_line() {
     run_set(&mut ed, "buffer context-enabled=false").expect("the setting applies");
     let pid = ed.view.focused_pane();
     let buf = wheel_down(&mut ed, pid, 10);
-    assert_eq!(top_rows(&ed, &buf, 1), [line_of(&source, 10)]);
+    assert_eq!(drawn_lines(&mut ed, pid, 1), [10]);
 
     press_at(&mut ed, &buf, pid, 0, 0);
 
@@ -1011,8 +1118,8 @@ fn header_row_above_the_viewport_draws_search_and_diagnostic_highlights() {
     let buf = wheel_down(&mut ed, pid, 10);
     assert_eq!(top_line(&ed, pid), 10, "premise: line 0 is above the top");
     assert_eq!(
-        pane_rows(&ed, &buf, pid, 1),
-        [line_of(&source, 0)],
+        drawn_lines(&mut ed, pid, 1),
+        [0],
         "premise: row 0 is line 0's header"
     );
 
@@ -1029,6 +1136,55 @@ fn header_row_above_the_viewport_draws_search_and_diagnostic_highlights() {
         "`S`, the diagnostic"
     );
     assert_eq!(style(4).underline, Default::default(), "the space between");
+}
+
+/// The search-match mirror of `pid` as `(line, start byte, end byte)`.
+fn search_match_pieces(ed: &Editor, pid: PaneId) -> Vec<(usize, usize, usize)> {
+    pane_highlights(ed, pid, hume_engine::providers::HighlightTier::SearchMatch)
+        .into_iter()
+        .map(|(line, start, end, _)| (line.index(), start.index(), end.index()))
+        .collect()
+}
+
+/// A match that starts on the line above the viewport still paints its
+/// part on the top line.
+#[test]
+fn search_match_starting_above_the_viewport_paints_its_part_in_it() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let bid = ed.focused_buffer_id();
+    let pid = focused_split(&mut ed, bid);
+    pin_no_wrap(&mut ed);
+    // Line 9 is `let x7 = 7;` and line 10 `let x8 = 8;`.
+    ed.state.buffers.get_mut(bid).search_pattern =
+        crate::editor::search::SearchPattern::compile("x7 = 7;\n        let x8");
+    wheel_down(&mut ed, pid, 10);
+    assert_eq!(top_line(&ed, pid), 10, "premise: line 9 is above the top");
+
+    assert_eq!(search_match_pieces(&ed, pid), [(10, 0, 14)]);
+}
+
+/// A match that starts on a header line paints that header line and the
+/// lines it covers that are drawn, and no line between the headers and the
+/// top.
+#[test]
+fn search_match_starting_on_a_header_line_paints_only_the_drawn_lines() {
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let bid = ed.focused_buffer_id();
+    let pid = focused_split(&mut ed, bid);
+    pin_no_wrap(&mut ed);
+    // From `S` on line 0 through `let x0` on line 2.
+    ed.state.buffers.get_mut(bid).search_pattern =
+        crate::editor::search::SearchPattern::compile("S \\{\n    fn a\\(\\) \\{\n        let x0");
+    wheel_down(&mut ed, pid, 10);
+    assert_eq!(
+        drawn_lines(&mut ed, pid, 3),
+        [0, 1, 12],
+        "premise: lines 0 and 1 head rows 0 and 1, and the top is line 10"
+    );
+
+    assert_eq!(search_match_pieces(&ed, pid), [(0, 5, 8), (1, 0, 12)]);
 }
 
 /// The extra-highlight mirror of a pane covers the viewport, one row more,
@@ -1056,12 +1212,8 @@ fn paint_mirrors_cover_at_most_the_viewport_plus_one_row_and_the_header_lines() 
 
     let buf = wheel_down(&mut ed, pid, 10);
     assert_eq!(
-        pane_rows(&ed, &buf, pid, 3),
-        [
-            line_of(&source, 0),
-            line_of(&source, 1),
-            line_of(&source, 12)
-        ],
+        drawn_lines(&mut ed, pid, 3),
+        [0, 1, 12],
         "premise: lines 0 and 1 head rows 0 and 1, and the top is line 10"
     );
     let (rect, _) = drawn_pane(&ed, &buf, pid);

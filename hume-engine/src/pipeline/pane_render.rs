@@ -33,6 +33,7 @@ pub(crate) fn render_pane(
     pane_ctx: &mut PaneRenderCtx,
     scratch: &mut FrameScratch,
     store: &mut crate::display_lines::line_store::PaneLineStore,
+    header_layout: &mut crate::scope_headers::HeaderLayout,
     grid: &mut Grid,
 ) {
     use crate::layout;
@@ -59,7 +60,6 @@ pub(crate) fn render_pane(
     let FrameScratch {
         style,
         lane_widths,
-        header_layout,
         fold_starts,
     } = scratch;
 

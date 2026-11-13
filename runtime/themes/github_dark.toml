@@ -337,6 +337,8 @@ diff_plus_word_bg = "#1f4d2c"
 diff_minus_bg = "#371d20"
 diff_minus_word_bg = "#622829"
 diff_delta_bg = "#292419"
+
+# HUME's markdown preview: heading bands and code-block band.
 "heading_1_bg" = "#1e2d3c"
 "heading_2_bg" = "#1c2a37"
 "heading_3_bg" = "#1a2633"

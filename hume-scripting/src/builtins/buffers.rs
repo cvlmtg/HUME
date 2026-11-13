@@ -292,12 +292,17 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) ->
 /// the statusline and `:w`). O(1): reads `buffer_line_count` directly rather
 /// than counting a materialized `(buffer-lines pane)` list.
 pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
-    let count = ctx
-        .host
+    Ok(SteelVal::IntV(live_line_count(ctx, bid)? as isize))
+}
+
+/// `bid`'s content line count. `bid` was checked live when the pane argument
+/// resolved, so the not-live error is for a host that answers inconsistently
+/// with `buffer_exists`.
+pub(super) fn live_line_count(ctx: &mut SteelCtx, bid: BufferId) -> Result<usize, SteelErr> {
+    ctx.host
         .buffers()
         .buffer_line_count(bid)
-        .ok_or_else(|| not_live_err("pane", bid))?;
-    Ok(SteelVal::IntV(count as isize))
+        .ok_or_else(|| not_live_err("pane", bid))
 }
 
 /// `(buffer-char-count pane)` → int: `pane`'s buffer's length in chars,
@@ -320,50 +325,63 @@ pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResul
 /// count). Raises rather than clamping on a missing end, `start-line >
 /// end-line`, or `end-line` past the line count.
 pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -> SteelResult {
-    // One error message for both lookups below: the second is unreachable
-    // in practice (nothing can close `bid` between two synchronous host
-    // calls) but the trait returns `Option`, so it's handled, not assumed.
-    let invalid_id = || not_live_err("pane", bid);
-    let line_count = ctx
-        .host
-        .buffers()
-        .buffer_line_count(bid)
-        .ok_or_else(invalid_id)?;
-    let range = line_range_arg(range, line_count)?.unwrap_or_else(|| {
-        hume_rope::offset::ExclusiveRange::new(
-            hume_rope::line::ContentLine::default(),
-            hume_rope::line::ContentLine::new(line_count),
-        )
-    });
+    let line_count = live_line_count(ctx, bid)?;
+    let range = line_range_arg(range, line_count)?;
+    // Unreachable in practice (nothing can close `bid` between two
+    // synchronous host calls), but the trait returns `Option`.
     let lines = ctx
         .host
         .buffers()
         .buffer_lines(bid, range)
-        .ok_or_else(invalid_id)?;
+        .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(string_list(lines))
 }
 
 /// A `#:range` argument, a line range value (see [`line_range_value`]) or
-/// `#f`, as content lines of a buffer with `line_count` of them, `None` for
-/// `#f`. Raises rather than clamping on a missing end, `start-line >
-/// end-line`, or `end-line` past `line_count`.
+/// `#f` for every line, as content lines of a buffer with `line_count` of
+/// them. Raises rather than clamping, as [`optional_line_range_arg`] refuses.
 pub(super) fn line_range_arg(
     range: SteelVal,
     line_count: usize,
+) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, SteelErr> {
+    const LABEL: &str = "#:range";
+    match optional_line_range_arg(range, LABEL, line_count)? {
+        Some(range) => Ok(range),
+        None => line_range_bounds(0, line_count, LABEL, line_count),
+    }
+}
+
+/// A line range value as content lines of a buffer with `line_count` of them,
+/// or `None` for `#f`. Errors name `label`, and refuse `start > end`, `end`
+/// past `line_count`, and a missing key.
+pub(super) fn optional_line_range_arg(
+    val: SteelVal,
+    label: &str,
+    line_count: usize,
 ) -> Result<Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>, SteelErr> {
-    let Some(range) = optional_hash_entry(range, "#:range", LINE_RANGE_KEYS)? else {
-        return Ok(None);
-    };
-    let (start, end) = range.line_range()?;
+    optional_hash_entry(val, label, LINE_RANGE_KEYS)?
+        .map(|entry| {
+            let (start, end) = entry.line_range()?;
+            line_range_bounds(start, end, label, line_count)
+        })
+        .transpose()
+}
+
+fn line_range_bounds(
+    start: usize,
+    end: usize,
+    label: &str,
+    line_count: usize,
+) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, SteelErr> {
     match (
         content_line_bound(start, line_count),
         content_line_bound(end, line_count),
     ) {
         (Some(start), Some(end)) if start <= end => {
-            Ok(Some(hume_rope::offset::ExclusiveRange::new(start, end)))
+            Ok(hume_rope::offset::ExclusiveRange::new(start, end))
         }
         _ => Err(generic_err(format!(
-            "range {start}..{end} out of bounds for a {line_count}-line buffer"
+            "{label}: range {start}..{end} out of bounds for a {line_count}-line buffer"
         ))),
     }
 }
@@ -616,18 +634,15 @@ pub(super) fn content_line_bound(
 /// `lsp-range->char-range`, `path->display`), not the `buffer-text`/
 /// `buffer-lines` accessor family.
 pub(crate) fn line_to_char_offset(ctx: &mut SteelCtx, bid: BufferId, line: usize) -> SteelResult {
-    let invalid_id = || not_live_err("pane", bid);
-    let line_count = ctx
-        .host
-        .buffers()
-        .buffer_line_count(bid)
-        .ok_or_else(invalid_id)?;
+    let line_count = live_line_count(ctx, bid)?;
     let line = content_line_arg(line, line_count).map_err(generic_err)?;
+    // Unreachable in practice (nothing can close `bid` between two
+    // synchronous host calls), but the trait returns `Option`.
     let offset = ctx
         .host
         .buffers()
         .line_to_char_offset(bid, line)
-        .ok_or_else(invalid_id)?;
+        .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(SteelVal::IntV(offset as isize))
 }
 

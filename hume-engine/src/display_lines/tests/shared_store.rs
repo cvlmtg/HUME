@@ -197,6 +197,55 @@ fn a_changed_key_drops_the_scope() {
     );
 }
 
+fn narrowed_map<'a>(
+    rope: &'a Rope,
+    wrap: WrapMode,
+    providers: &'a ProviderSet,
+    store: &'a mut PaneLineStore,
+    kinds: DecorationKinds,
+) -> DisplayLineMap<'a> {
+    DisplayLineMap::narrowed(
+        rope,
+        providers,
+        DisplayLineInputs {
+            format: FormatKey {
+                buffer_tag: [0; 3],
+                wrap_mode: wrap,
+                tab_width: 4,
+                whitespace: ws(),
+            },
+            hidden: crate::folds::HiddenLines::default(),
+            content_width: crate::pipeline::ContentWidth::for_test(80),
+            revealed: crate::reveal::RevealedLines::default(),
+        },
+        store,
+        kinds,
+    )
+}
+
+/// A map that lays lines out with the conceal providers only must not leave
+/// its entries for a full map over the same store: the full map also runs the
+/// inline providers.
+#[test]
+fn lines_laid_out_with_conceals_only_are_not_served_to_a_full_map() {
+    let r = Rope::from_str("alpha\nbravo\n");
+    let (providers, calls) = with_counting_insert(ContentLine::new(0), 0, "x");
+    let mut store = PaneLineStore::new();
+    let wrap = WrapMode::Soft { width: 80 };
+
+    narrowed_map(&r, wrap, &providers, &mut store, DecorationKinds::CONCEAL)
+        .block(ContentLine::new(0));
+    assert_eq!(
+        calls.get(),
+        0,
+        "premise: no conceal-only map queries inline"
+    );
+
+    map(&r, wrap, &providers, &mut store).block(ContentLine::new(0));
+
+    assert_eq!(calls.get(), 1);
+}
+
 /// Entries must not outlive the frame that produced them: the per-pane
 /// inline-insert mirrors are rebuilt each frame filtered to that frame's
 /// viewport, without bumping anything the key can see. `rewind` is what
@@ -347,13 +396,7 @@ fn inline_and_conceal_providers_are_each_queried_once_per_formatted_line() {
     providers.add_decoration_source(Box::new(
         crate::test_doubles::ConcealSource::new(vec![(
             ContentLine::new(0),
-            vec![crate::providers::Conceal {
-                span: crate::providers::ConcealSpan::Hidden {
-                    bytes: crate::test_support::byte_range(0, 2),
-                    text: None,
-                },
-                reveal: None,
-            }],
+            vec![crate::test_support::hidden(0, 2)],
         )])
         .counting(Rc::clone(&conceal_calls)),
     ));

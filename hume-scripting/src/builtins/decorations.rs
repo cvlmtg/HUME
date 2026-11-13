@@ -14,12 +14,14 @@ use crate::types::{ConcealSpec, ConcealSpecSpan, ConcealSpecText, VirtualLineSpe
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry,
-    LINE_RANGE_KEYS, START_CHAR, START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg,
-    item_label, list_of, not_live_err, optional_hash_entry, optional_symbol_arg, spanned_text,
-    string_arg, symbol_arg, symbol_enum_arg, symbol_hash,
+    ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry, START_CHAR,
+    START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg, item_label, list_of,
+    optional_hash_entry, optional_symbol_arg, spanned_text, string_arg, symbol_arg,
+    symbol_enum_arg, symbol_hash,
 };
-use super::buffers::{content_line_arg, content_line_bound};
+use super::buffers::{
+    content_line_arg, content_line_bound, live_line_count, optional_line_range_arg,
+};
 use super::errors::{generic_err, require_cap};
 use super::ids::DocRange;
 
@@ -268,10 +270,7 @@ fn set_err(list: &str) -> impl Fn(SetError) -> SteelErr + '_ {
 /// the buffer.
 fn decorated_line_count(ctx: &mut SteelCtx, bid: BufferId) -> Result<usize, SteelErr> {
     require_cap(ctx.host.decorations())?;
-    ctx.host
-        .buffers()
-        .buffer_line_count(bid)
-        .ok_or_else(|| not_live_err("pane", bid))
+    live_line_count(ctx, bid)
 }
 
 /// The lines an entry's `'line` and optional `'end-line` mark in a buffer
@@ -280,26 +279,15 @@ fn marked_lines(
     (line, end): (usize, Option<usize>),
     line_count: usize,
 ) -> Result<MarkedLines, String> {
-    match end {
-        None => Ok(MarkedLines::one(content_line_arg(line, line_count)?)),
-        Some(end) => marked_run("line", line, end, line_count),
-    }
-}
-
-/// The lines from `start`, named by the key `start_key`, up to `'end-line`
-/// `end` (exclusive), in a buffer of `line_count` content lines.
-fn marked_run(
-    start_key: &str,
-    start: usize,
-    end: usize,
-    line_count: usize,
-) -> Result<MarkedLines, String> {
-    let first = content_line_arg(start, line_count)?;
+    let start = content_line_arg(line, line_count)?;
+    let Some(end) = end else {
+        return Ok(MarkedLines::one(start));
+    };
     let end_line = content_line_bound(end, line_count).ok_or_else(|| {
         format!("'end-line {end} is past the last line (buffer has {line_count} content lines)")
     })?;
-    MarkedLines::run(first, end_line)
-        .ok_or_else(|| format!("'end-line {end} is not after '{start_key} {start}"))
+    MarkedLines::run(start, end_line)
+        .ok_or_else(|| format!("'end-line {end} is not after 'line {line}"))
 }
 
 /// `(set-conceals! pane source entries)`: `entries`: list of `(hash 'start-char
@@ -341,13 +329,17 @@ fn conceal_spec(entry: &HashEntry, line_count: usize) -> Result<ConcealSpec, Ste
     let reveal_label = entry.label("reveal");
     let reveal = entry
         .optional("reveal")
-        .map(|v| optional_hash_entry(v, &reveal_label, LINE_RANGE_KEYS))
+        .map(|v| optional_line_range_arg(v, &reveal_label, line_count))
         .transpose()?
         .flatten()
-        .map(|lines| {
-            let (first, end) = lines.line_range()?;
-            marked_run(START_LINE, first, end, line_count)
-                .map_err(|e| generic_err(format!("{reveal_label}: {e}")))
+        .map(|range| {
+            MarkedLines::run(range.start, range.end).ok_or_else(|| {
+                generic_err(format!(
+                    "{reveal_label}: '{END_LINE} {} is not after '{START_LINE} {}",
+                    range.end.index(),
+                    range.start.index()
+                ))
+            })
         })
         .transpose()?;
     let span = match (start == end, shown) {

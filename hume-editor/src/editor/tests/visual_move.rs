@@ -1622,13 +1622,50 @@ fn j_then_k_round_trips_under_soft_wrap() {
     j_then_k_round_trips_through(hume_engine::pane::WrapMode::Soft { width: 0 });
 }
 
-#[test]
-fn copy_selection_down_onto_a_concealed_line() {
-    let (mut ed, _file) = bold_markers_hidden(
-        "ab-[c]>def\n**bold**\n",
-        1,
-        hume_engine::pane::WrapMode::None,
-    );
+fn copy_selection_down_onto_a_concealed_line(wrap: hume_engine::pane::WrapMode) {
+    let (mut ed, _file) = bold_markers_hidden("ab-[c]>def\n**bold**\n", 1, wrap);
     keys(&mut ed, "C");
     assert_eq!(state(&ed), "ab-[c]>def\n**-{b}>old**\n");
+}
+
+#[test]
+fn copy_selection_down_onto_a_concealed_line_lands_on_the_raw_column() {
+    copy_selection_down_onto_a_concealed_line(hume_engine::pane::WrapMode::None);
+}
+
+#[test]
+fn copy_selection_down_onto_a_concealed_line_lands_on_the_raw_column_under_soft_wrap() {
+    copy_selection_down_onto_a_concealed_line(hume_engine::pane::WrapMode::Soft { width: 0 });
+}
+
+fn scroll_onto_a_concealed_line(wrap: hume_engine::pane::WrapMode) {
+    use crate::editor::commands::scroll_view;
+    use hume_ops::MotionMode;
+
+    let (mut ed, _file) = bold_markers_hidden("ab-[c]>def\n**bold**\n", 1, wrap);
+    // A frame syncs the conceals into the pane: the scroll walks the drawn layout.
+    ed.settle();
+    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+    let pid = ed.view.focused_pane();
+    let size = ed.pane_size(pid);
+    scroll_view(
+        &mut ed.state,
+        &mut ed.view,
+        pid,
+        size,
+        1,
+        true,
+        MotionMode::Move,
+    );
+    assert_eq!(state(&ed), "abcdef\n**-[b]>old**\n");
+}
+
+#[test]
+fn scroll_onto_a_concealed_line_lands_on_the_raw_column() {
+    scroll_onto_a_concealed_line(hume_engine::pane::WrapMode::None);
+}
+
+#[test]
+fn scroll_onto_a_concealed_line_lands_on_the_raw_column_under_soft_wrap() {
+    scroll_onto_a_concealed_line(hume_engine::pane::WrapMode::Soft { width: 0 });
 }
