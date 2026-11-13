@@ -17,7 +17,7 @@ use crate::editor::timer_bridge::Timers;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     DiffHost, EditHost, EditorHost, EventHost, FocusedHandle, LanguageHost, LspHost, OutputHost,
-    RegisterHost, SettingsHost, ShownHandle, TimerHost, UiHost,
+    RegisterHost, SettingsHost, ShownHandle, SyntaxHost, TimerHost, UiHost,
 };
 
 use super::EditorState;
@@ -37,6 +37,7 @@ mod lsp;
 mod output;
 mod registers;
 mod settings;
+mod syntax;
 mod timers;
 mod ui;
 
@@ -197,6 +198,9 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Some(self)
     }
     fn diff(&mut self) -> Option<&mut dyn DiffHost> {
+        Some(self)
+    }
+    fn syntax(&mut self) -> Option<&mut dyn SyntaxHost> {
         Some(self)
     }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {

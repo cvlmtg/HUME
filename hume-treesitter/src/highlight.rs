@@ -64,12 +64,10 @@ pub struct TreeSitterHighlighter {
 }
 
 impl TreeSitterHighlighter {
-    /// Create a provider from a pre-compiled, shared query.
-    ///
-    /// Use this when the `Query` has already been compiled at language
-    /// registration time (e.g. from `GrammarBundle.query`) to avoid
-    /// re-parsing the `highlights.scm` source per buffer open.
-    pub fn from_shared_query(query: Arc<Query>, registry: &mut ScopeRegistry) -> Self {
+    /// Create a provider from a query compiled once per grammar bundle and
+    /// shared by every buffer's highlighting, so `highlights.scm` is not
+    /// re-parsed per buffer open.
+    pub(crate) fn from_shared_query(query: Arc<Query>, registry: &mut ScopeRegistry) -> Self {
         // Leading-underscore captures (e.g. `@_f`, `@_lib`) are the queries'
         // convention for pattern-internal predicate helpers, never meant to
         // be styled, so map them to `None` so they never emit a span.

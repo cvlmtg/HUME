@@ -3,8 +3,9 @@
 use steel::rvals::SteelVal;
 
 use hume_core::{
-    BlockCommentTokens, FileExtension, FileGlob, GrammarSource, LanguageField, LanguageFields,
-    LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFiles, ShebangInterpreter,
+    BlockCommentTokens, BufferId, FileExtension, FileGlob, GrammarSource, LanguageField,
+    LanguageFields, LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFiles,
+    ShebangInterpreter,
 };
 use steel::rerrs::SteelErr;
 
@@ -12,11 +13,12 @@ use crate::{Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    HashEntry, cons_pair, hash_entry, list_of, list_to_strings, optional_hash_entry,
+    HashEntry, cons_pair, hash_entry, list_of, list_to_strings, not_live_err, optional_hash_entry,
     optional_list_to_string_pairs, optional_list_to_strings, optional_path_arg,
     optional_string_arg, path_arg, string_arg, under_cwd,
 };
-use super::errors::generic_err;
+use super::buffers::line_range_arg;
+use super::errors::{generic_err, require_cap};
 
 /// `(%define-language! name extensions globs shebangs)`: init-only.
 ///
@@ -265,6 +267,55 @@ pub(crate) fn grammar_optional_queries() -> SteelResult {
 pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
     let name = string_arg(name, "name")?;
     Ok(SteelVal::BoolV(ctx.host.language().has_grammar(&name)))
+}
+
+/// `(%syntax-captures pane language query-source range)`: Rust half of the
+/// bootstrap-wrapped `(syntax-captures pane language query-source #:range ..)`.
+/// `range` is a line range value (see [`super::args::line_range_value`], the
+/// shape `viewport-range` returns) or `#f` for the whole buffer.
+///
+/// Returns a list of `(list name start-char end-char)`, one per node
+/// `query-source` captures in `pane`'s buffer, over every layer of `language`
+/// (the root, or a language it injects), as
+/// [`crate::host::SyntaxHost::syntax_captures`] gives them: `name` the capture
+/// name without its `@`, one string shared by every entry of that name. `'()`
+/// when the buffer has no tree for its current text.
+///
+/// With a `range`, a match is returned when the node its pattern is rooted at
+/// intersects those lines, with every capture of the match, inside the range
+/// or not. A pattern rooted at a table returns the whole table; one rooted at
+/// a delimiter returns the delimiters in the range only.
+///
+/// Raises when `language` has no grammar, `query-source` does not compile, or
+/// `range` is malformed or past the buffer's line count.
+pub(crate) fn syntax_captures(
+    ctx: &mut SteelCtx,
+    bid: BufferId,
+    language: String,
+    query: String,
+    range: SteelVal,
+) -> SteelResult {
+    let line_count = ctx
+        .host
+        .buffers()
+        .buffer_line_count(bid)
+        .ok_or_else(|| not_live_err("pane", bid))?;
+    let range = line_range_arg(range, line_count)?;
+    let captures = require_cap(ctx.host.syntax())?
+        .syntax_captures(bid, &language, &query, range)
+        .map_err(generic_err)?;
+    let names: Vec<SteelVal> = captures
+        .names
+        .iter()
+        .map(|name| SteelVal::StringV(name.as_ref().into()))
+        .collect();
+    Ok(list_of(captures.entries.iter().map(|entry| {
+        list_of([
+            names[entry.name as usize].clone(),
+            SteelVal::IntV(entry.start_char as isize),
+            SteelVal::IntV(entry.end_char as isize),
+        ])
+    })))
 }
 
 #[cfg(test)]

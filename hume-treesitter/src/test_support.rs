@@ -11,8 +11,7 @@ use hume_engine::theme::ScopeRegistry;
 
 use crate::grammar::LoadedGrammar;
 use crate::registry::{
-    CompiledQueries, GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, compile_queries,
-    next_config_gen,
+    GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, compile_queries, new_bundle,
 };
 use crate::syntax::Syntax;
 
@@ -40,31 +39,14 @@ pub(crate) fn make_bundle(
     optional: &[(OptionalQuery, &str)],
 ) -> Arc<GrammarBundle> {
     let grammar = open_grammar(name, symbol);
-    let CompiledQueries {
-        highlighter,
-        injections,
-        textobjects,
-        indents,
-        context,
-        folds,
-    } = compile_queries(
+    let compiled = compile_queries(
         grammar.language(),
         highlights_src,
         optional,
         &mut ScopeRegistry::new(),
     )
     .expect("compile queries");
-    Arc::new(GrammarBundle {
-        grammar,
-        highlighter,
-        injections,
-        textobjects,
-        indents,
-        context,
-        folds,
-        config_gen: next_config_gen(),
-        language: test_language_id(name),
-    })
+    new_bundle(test_language_id(name), grammar, compiled)
 }
 
 /// The fetched Helix `kind` query for `language`.

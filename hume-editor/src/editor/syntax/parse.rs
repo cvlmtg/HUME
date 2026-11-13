@@ -274,6 +274,8 @@ pub(in crate::editor) enum SyntaxUse {
     Indent,
     /// The regions a pane can fold.
     Folds,
+    /// The captures of a script's query over the layers of this language.
+    Captures(LanguageId),
 }
 
 /// Bring `bid`'s committed tree up to date with its current text,
@@ -303,9 +305,11 @@ pub(in crate::editor) enum SyntaxUse {
 /// - for [`SyntaxUse::Indent`], no layer has an indents query;
 /// - for [`SyntaxUse::Folds`], no layer has a fold query;
 /// - for [`SyntaxUse::InjectedLanguages`], the root grammar has no
-///   injections query, so there is no layer but the root.
+///   injections query, so there is no layer but the root;
+/// - for [`SyntaxUse::Captures`]`(id)`, the root is not `id` and has no
+///   injections query, so no layer of `id` exists or can appear.
 ///
-/// The last four do not apply while injections await resolving again with
+/// The last five do not apply while injections await resolving again with
 /// a grammar loaded since: the layer that grammar injects can have the
 /// query.
 pub(in crate::editor) fn ensure_syntax_current(
@@ -344,6 +348,9 @@ pub(in crate::editor) fn ensure_syntax_current(
                 .any(|layer| layer.bundle.indents.is_some()),
             SyntaxUse::Folds => layers.can_fold(),
             SyntaxUse::InjectedLanguages => syn.bundle().injections.is_some(),
+            SyntaxUse::Captures(id) => {
+                syn.bundle().language == id || syn.bundle().injections.is_some()
+            }
         };
     if !can_change {
         return;

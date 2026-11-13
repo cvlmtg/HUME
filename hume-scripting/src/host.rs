@@ -20,6 +20,7 @@ mod lsp;
 mod output;
 mod registers;
 mod settings;
+mod syntax;
 mod timers;
 mod token;
 mod ui;
@@ -49,6 +50,7 @@ pub use lsp::{
 pub use output::{ClaimRefused, OutputHost};
 pub use registers::RegisterHost;
 pub use settings::{SettingsHost, option_value_to_steel};
+pub use syntax::{CaptureEntry, Captures, SyntaxHost};
 pub use timers::{TimerHandle, TimerHost};
 pub use token::{TrackedFate, TrackedHold, token_to_steel};
 pub use ui::{
@@ -131,6 +133,11 @@ pub trait EditorHost {
     /// `(diff-buffer-lines …)` / `(buffer-revision-diff …)`, or `None` for
     /// hosts with no buffers to diff (test stubs).
     fn diff(&mut self) -> Option<&mut dyn DiffHost> {
+        None
+    }
+    /// `(syntax-captures …)`, or `None` for hosts with no syntax trees
+    /// (test stubs).
+    fn syntax(&mut self) -> Option<&mut dyn SyntaxHost> {
         None
     }
     /// Terminal-safety state around `#:inline-output` commands, or `None` for

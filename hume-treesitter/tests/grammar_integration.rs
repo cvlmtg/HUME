@@ -1,8 +1,10 @@
+use std::io::Write;
 use std::sync::Arc;
 
+use hume_core::{ConfigOrigin, GrammarSource, QueryFiles};
 use hume_engine::theme::ScopeRegistry;
 use hume_treesitter::grammar::LoadedGrammar;
-use hume_treesitter::highlight::{TreeSitterHighlighter, layer_highlights_for_line};
+use hume_treesitter::highlight::layer_highlights_for_line;
 use hume_treesitter::injections::InjectionSites;
 use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
 use hume_treesitter::registry::{GrammarBundle, LanguageRegistry};
@@ -21,33 +23,26 @@ fn open_and_parse(name: &str, symbol: &str, source: &str) -> (tree_sitter::Tree,
     (tree, rope)
 }
 
-/// Open `name`'s grammar fresh (leaked/mmap'd once per process, so a second
-/// open of a fixture already opened by `open_and_parse` is free) and compile
-/// `query_src` against it as a minimal `GrammarBundle` (no optional
-/// queries), interning captures into a fresh [`ScopeRegistry`]. A layer
-/// now carries its whole bundle, not just a highlighter, so integration
-/// tests exercising `layer_highlights_for_line` need one too.
+/// `name`'s grammar fixture attached through a fresh registry with
+/// `query_src` as its highlights query and no optional queries, captures
+/// interned into a fresh [`ScopeRegistry`]. A layer carries its whole
+/// bundle, not just a highlighter, so integration tests exercising
+/// `layer_highlights_for_line` need one too.
 fn bundle_for(name: &str, symbol: &str, query_src: &str) -> (Arc<GrammarBundle>, ScopeRegistry) {
-    let gpath = grammar_parser_path(name);
-    let grammar = LoadedGrammar::open(&gpath, symbol).expect("open grammar");
-    let query =
-        Arc::new(tree_sitter::Query::new(grammar.language(), query_src).expect("compile query"));
+    let mut highlights = tempfile::NamedTempFile::new().expect("create highlights file");
+    highlights
+        .write_all(query_src.as_bytes())
+        .expect("write highlights file");
+    let source = GrammarSource {
+        path: grammar_parser_path(name),
+        symbol: symbol.to_owned(),
+        queries: QueryFiles::new(highlights.path().to_owned()),
+    };
     let mut scope_reg = ScopeRegistry::new();
-    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
-        query,
-        &mut scope_reg,
-    ));
-    let bundle = Arc::new(GrammarBundle {
-        grammar,
-        highlighter,
-        injections: None,
-        textobjects: None,
-        indents: None,
-        context: None,
-        folds: None,
-        config_gen: 0,
-        language: LanguageRegistry::for_testing().intern(name),
-    });
+    let bundle = LanguageRegistry::for_testing()
+        .attach_grammar(name, &source, ConfigOrigin::User, &mut scope_reg)
+        .expect("attach grammar")
+        .expect("a fresh registry applies the registration");
     (bundle, scope_reg)
 }
 

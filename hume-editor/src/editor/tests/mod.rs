@@ -2048,6 +2048,7 @@ mod statusline_steel;
 mod structural;
 mod surround;
 mod sync_dispatch;
+mod syntax_captures;
 mod tab;
 mod tabs;
 mod terminator;

@@ -2,13 +2,14 @@ use rustc_hash::FxHashMap;
 use std::borrow::Borrow;
 use std::hash::Hash;
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use globset::{GlobSet, GlobSetBuilder};
 use hume_platform::path::AbsolutePath;
 use ropey::Rope;
 
+use crate::captures::CaptureQuery;
 use crate::context::ContextQuery;
 use crate::fold::FoldQuery;
 use crate::grammar::LoadedGrammar;
@@ -93,6 +94,31 @@ pub struct GrammarBundle {
     pub config_gen: u32,
     /// The language this grammar was loaded for.
     pub language: LanguageId,
+    /// Capture queries compiled against this grammar, by source text. A
+    /// re-registered grammar is a new bundle, so an entry never outlives the
+    /// grammar it was compiled for. `Mutex` because a bundle is shared with
+    /// the parse worker thread.
+    capture_queries: Mutex<FxHashMap<Box<str>, Arc<CaptureQuery>>>,
+}
+
+impl GrammarBundle {
+    /// The query `source` compiles to against this grammar: the cached one,
+    /// or a fresh compile, cached when it succeeds.
+    pub fn capture_query(
+        &self,
+        source: &str,
+    ) -> Result<Arc<CaptureQuery>, tree_sitter::QueryError> {
+        let mut cache = self
+            .capture_queries
+            .lock()
+            .expect("capture query cache lock poisoned");
+        if let Some(query) = cache.get(source) {
+            return Ok(Arc::clone(query));
+        }
+        let query = Arc::new(CaptureQuery::new(self, source)?);
+        cache.insert(source.into(), Arc::clone(&query));
+        Ok(query)
+    }
 }
 
 /// A language's grammar, from registration through its first load.
@@ -104,7 +130,7 @@ enum GrammarSlot {
 /// A fresh `GrammarBundle::config_gen`. Process-wide, so bundles of two
 /// registries never share one: a config reload replaces the registry while
 /// the parse worker may still hold a request built against the outgoing one.
-pub(crate) fn next_config_gen() -> u32 {
+fn next_config_gen() -> u32 {
     static NEXT: AtomicU32 = AtomicU32::new(0);
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
@@ -215,7 +241,7 @@ fn compile_source(
     Ok((grammar, compiled))
 }
 
-fn new_bundle(
+pub(crate) fn new_bundle(
     language: LanguageId,
     grammar: LoadedGrammar,
     compiled: CompiledQueries,
@@ -238,6 +264,7 @@ fn new_bundle(
         folds,
         config_gen: next_config_gen(),
         language,
+        capture_queries: Mutex::default(),
     })
 }
 

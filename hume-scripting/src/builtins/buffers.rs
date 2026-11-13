@@ -320,9 +320,6 @@ pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResul
 /// count). Raises rather than clamping on a missing end, `start-line >
 /// end-line`, or `end-line` past the line count.
 pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -> SteelResult {
-    let range = optional_hash_entry(range, "#:range", LINE_RANGE_KEYS)?
-        .map(|range| range.line_range())
-        .transpose()?;
     // One error message for both lookups below: the second is unreachable
     // in practice (nothing can close `bid` between two synchronous host
     // calls) but the trait returns `Option`, so it's handled, not assumed.
@@ -332,26 +329,43 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -
         .buffers()
         .buffer_line_count(bid)
         .ok_or_else(invalid_id)?;
-    let (start, end) = range.unwrap_or((0, line_count));
-    let range = match (
-        content_line_bound(start, line_count),
-        content_line_bound(end, line_count),
-    ) {
-        (Some(start), Some(end)) if start <= end => {
-            hume_rope::offset::ExclusiveRange::new(start, end)
-        }
-        _ => {
-            return Err(generic_err(format!(
-                "range {start}..{end} out of bounds for a {line_count}-line buffer"
-            )));
-        }
-    };
+    let range = line_range_arg(range, line_count)?.unwrap_or_else(|| {
+        hume_rope::offset::ExclusiveRange::new(
+            hume_rope::line::ContentLine::default(),
+            hume_rope::line::ContentLine::new(line_count),
+        )
+    });
     let lines = ctx
         .host
         .buffers()
         .buffer_lines(bid, range)
         .ok_or_else(invalid_id)?;
     Ok(string_list(lines))
+}
+
+/// A `#:range` argument, a line range value (see [`line_range_value`]) or
+/// `#f`, as content lines of a buffer with `line_count` of them, `None` for
+/// `#f`. Raises rather than clamping on a missing end, `start-line >
+/// end-line`, or `end-line` past `line_count`.
+pub(super) fn line_range_arg(
+    range: SteelVal,
+    line_count: usize,
+) -> Result<Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>, SteelErr> {
+    let Some(range) = optional_hash_entry(range, "#:range", LINE_RANGE_KEYS)? else {
+        return Ok(None);
+    };
+    let (start, end) = range.line_range()?;
+    match (
+        content_line_bound(start, line_count),
+        content_line_bound(end, line_count),
+    ) {
+        (Some(start), Some(end)) if start <= end => {
+            Ok(Some(hume_rope::offset::ExclusiveRange::new(start, end)))
+        }
+        _ => Err(generic_err(format!(
+            "range {start}..{end} out of bounds for a {line_count}-line buffer"
+        ))),
+    }
 }
 
 // ── Mutating builtins ─────────────────────────────────────────────────────────

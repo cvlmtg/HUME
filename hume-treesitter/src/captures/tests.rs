@@ -1,0 +1,233 @@
+use std::ops::Range;
+use std::sync::Arc;
+
+use hume_editing::text::BufferText;
+use test_fixtures::require_grammars;
+use tree_sitter::QueryErrorKind;
+
+use super::Capture;
+use crate::registry::{GrammarBundle, GrammarSnapshot};
+use crate::syntax::Syntax;
+use crate::test_support::{fixture_markdown, make_bundle, syntax_with};
+
+/// `(name, start char, end char)` of each capture `source` yields over
+/// `syntax`'s layers, compiled by `bundle`, restricted to the bytes `bytes`
+/// names when given.
+fn captures(
+    bundle: &GrammarBundle,
+    source: &str,
+    bytes: Option<Range<usize>>,
+    syntax: &Syntax,
+    text: &BufferText,
+) -> Vec<(String, usize, usize)> {
+    let query = bundle.capture_query(source).expect("query compiles");
+    let mut out = Vec::new();
+    query.collect(
+        syntax.layers().expect("a committed tree"),
+        text.rope(),
+        bytes,
+        &mut out,
+    );
+    out.iter()
+        .map(|Capture { name, range }| {
+            (
+                query.names()[*name as usize].to_string(),
+                range.start.index(),
+                range.end.index(),
+            )
+        })
+        .collect()
+}
+
+fn capture(name: &str, start: usize, end: usize) -> (String, usize, usize) {
+    (name.to_owned(), start, end)
+}
+
+/// `source` parsed by the markdown fixture with `markdown.inline` loaded
+/// for its injections, and that inline bundle.
+fn markdown_with_inline(source: &str) -> (Syntax, BufferText, Arc<GrammarBundle>) {
+    require_grammars(&["markdown", "markdown.inline"]);
+    let inline = make_bundle("markdown.inline", "tree_sitter_markdown_inline", "", &[]);
+    let langs: Arc<GrammarSnapshot> = Arc::new(
+        [("markdown.inline".to_owned(), Arc::clone(&inline))]
+            .into_iter()
+            .collect(),
+    );
+    let text = BufferText::from(source);
+    let syntax = Syntax::attach_sync(fixture_markdown(), &text, &langs);
+    (syntax, text, inline)
+}
+
+#[test]
+fn root_captures_are_sorted_by_start_then_end_desc() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    // "# A\n" 0..4, "\n", "## B\n" 5..10, "\n", "some text\n" 11..21.
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n\n## B\n\nsome text\n");
+    let got = captures(
+        &bundle,
+        "(paragraph) @p (atx_heading) @h (section) @s",
+        None,
+        &syntax,
+        &text,
+    );
+    assert_eq!(
+        got,
+        [
+            capture("s", 0, 21),
+            capture("h", 0, 4),
+            capture("s", 5, 21),
+            capture("h", 5, 10),
+            capture("p", 11, 21),
+        ]
+    );
+}
+
+#[test]
+fn injected_inline_layer_captures_are_included() {
+    // "é" is two bytes and one char: "é *x*" puts the emphasis at chars 2..5.
+    let (syntax, text, inline) = markdown_with_inline("é *x* y\n");
+    assert_eq!(
+        captures(&inline, "(emphasis) @e", None, &syntax, &text),
+        [capture("e", 2, 5)]
+    );
+}
+
+#[test]
+fn eq_predicate_filters_matches() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n\n## B\n\n# C\n");
+    let got = captures(
+        &bundle,
+        r##"((atx_heading [(atx_h1_marker) (atx_h2_marker)] @m) (#eq? @m "#"))"##,
+        None,
+        &syntax,
+        &text,
+    );
+    assert_eq!(got, [capture("m", 0, 1), capture("m", 11, 12)]);
+}
+
+#[test]
+fn a_layer_of_another_bundle_is_skipped() {
+    require_grammars(&["markdown"]);
+    let parsed_with = fixture_markdown();
+    let reregistered = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&parsed_with), "# A\n");
+    assert_eq!(
+        captures(&parsed_with, "(atx_heading) @h", None, &syntax, &text),
+        [capture("h", 0, 4)]
+    );
+    assert_eq!(
+        captures(&reregistered, "(atx_heading) @h", None, &syntax, &text),
+        []
+    );
+}
+
+/// A table between two paragraphs. Lines, by char offset: `intro` 0..6,
+/// blank, header 7..17, delimiter 17..27, row c/d 27..37, row e/f 37..47,
+/// blank, `outer` 48..54. A row node stops before its line break and a cell
+/// node takes the space after its text.
+const TABLE: &str = "intro\n\n| a | b |\n|---|---|\n| c | d |\n| e | f |\n\nouter\n";
+
+#[test]
+fn range_inside_a_table_returns_every_row_for_a_table_rooted_pattern() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), TABLE);
+    // The `e` of the last row.
+    let got = captures(
+        &bundle,
+        "(pipe_table (pipe_table_row) @row)",
+        Some(39..40),
+        &syntax,
+        &text,
+    );
+    assert_eq!(got, [capture("row", 27, 36), capture("row", 37, 46)]);
+}
+
+#[test]
+fn range_inside_a_table_returns_only_intersecting_cells_for_a_cell_rooted_pattern() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), TABLE);
+    // The `e` of the last row's first cell, with the spaces around it.
+    let got = captures(
+        &bundle,
+        "(pipe_table_cell) @cell",
+        Some(38..41),
+        &syntax,
+        &text,
+    );
+    assert_eq!(got, [capture("cell", 39, 41)]);
+}
+
+#[test]
+fn range_on_a_nested_section_returns_the_ancestor_headings() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    // Headings: `# A` 0..4, `## B` 11..16, `### C` 23..29; `end` 30..34.
+    let (syntax, text) = syntax_with(
+        Arc::clone(&bundle),
+        "# A\n\ntext\n\n## B\n\nmore\n\n### C\n\nend\n",
+    );
+    let got = captures(
+        &bundle,
+        "(section (atx_heading) @h)",
+        Some(30..33),
+        &syntax,
+        &text,
+    );
+    assert_eq!(
+        got,
+        [
+            capture("h", 0, 4),
+            capture("h", 11, 16),
+            capture("h", 23, 29)
+        ]
+    );
+}
+
+/// `0..0` is the range tree-sitter would read as unbounded.
+#[test]
+fn empty_range_returns_nothing() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n\n## B\n");
+    assert_eq!(
+        captures(&bundle, "(atx_heading) @h", Some(0..0), &syntax, &text),
+        []
+    );
+    assert_eq!(
+        captures(&bundle, "(atx_heading) @h", Some(5..5), &syntax, &text),
+        []
+    );
+}
+
+#[test]
+fn compile_error_reports_row_column_and_kind() {
+    require_grammars(&["markdown"]);
+    let Err(error) = fixture_markdown().capture_query("(atx_heading) @h\n  (no_such_node) @n")
+    else {
+        panic!("an unknown node type does not compile");
+    };
+    assert_eq!(
+        (error.row, error.column, error.kind),
+        (1, 3, QueryErrorKind::NodeType)
+    );
+}
+
+#[test]
+fn capture_query_compiles_once_per_bundle_and_source() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let first = bundle.capture_query("(atx_heading) @h").expect("compiles");
+    let again = bundle.capture_query("(atx_heading) @h").expect("compiles");
+    let other = bundle.capture_query("(paragraph) @p").expect("compiles");
+    assert!(Arc::ptr_eq(&first, &again));
+    assert!(!Arc::ptr_eq(&first, &other));
+    let elsewhere = fixture_markdown()
+        .capture_query("(atx_heading) @h")
+        .expect("compiles");
+    assert!(!Arc::ptr_eq(&first, &elsewhere));
+}

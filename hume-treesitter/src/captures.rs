@@ -1,0 +1,103 @@
+//! Captures of a caller-supplied query over every layer of one grammar: the
+//! nodes a plugin asks for by name, as char ranges.
+
+use std::cmp::Reverse;
+use std::ops::Range;
+use std::sync::Arc;
+
+use hume_rope::offset::{CharOffset, ExclusiveRange};
+use ropey::Rope;
+use streaming_iterator::StreamingIterator;
+use tree_sitter::{Query, QueryCursor, QueryError};
+
+use crate::highlight::RopeProvider;
+use crate::layers::SyntaxLayers;
+use crate::registry::GrammarBundle;
+
+/// A query compiled by one `GrammarBundle`. It reads only the layers parsed
+/// with that bundle, so it never runs over a tree of another grammar build.
+pub struct CaptureQuery {
+    query: Query,
+    /// Capture names by capture index.
+    names: Vec<Arc<str>>,
+    /// The `config_gen` of the bundle that compiled it.
+    config_gen: u32,
+}
+
+/// A captured node, `range` in chars of the text its layer was parsed from.
+/// `name` indexes [`CaptureQuery::names`] of the query that produced it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Capture {
+    pub name: u32,
+    pub range: ExclusiveRange<CharOffset>,
+}
+
+impl CaptureQuery {
+    /// `source` compiled against `bundle`'s grammar.
+    pub(crate) fn new(bundle: &GrammarBundle, source: &str) -> Result<Self, QueryError> {
+        let query = Query::new(bundle.grammar.language(), source)?;
+        let names = query
+            .capture_names()
+            .iter()
+            .map(|&n| Arc::from(n))
+            .collect();
+        Ok(Self {
+            query,
+            names,
+            config_gen: bundle.config_gen,
+        })
+    }
+
+    /// The capture names, by [`Capture::name`].
+    pub fn names(&self) -> &[Arc<str>] {
+        &self.names
+    }
+
+    /// Replace `out` with every capture of every match over each layer of
+    /// `layers` parsed with this query's bundle, injected layers included,
+    /// predicates evaluated against `rope`. Sorted by start, then by end
+    /// descending, so an enclosing node precedes the nodes it starts with.
+    ///
+    /// With `bytes`, a match is returned when the node its pattern is rooted
+    /// at intersects that byte range, with every capture of the match, inside
+    /// the range or not. A pattern rooted at a table returns the whole table,
+    /// one rooted at a delimiter only the delimiters in the range. An empty
+    /// range returns nothing.
+    pub fn collect(
+        &self,
+        layers: &SyntaxLayers,
+        rope: &Rope,
+        bytes: Option<Range<usize>>,
+        out: &mut Vec<Capture>,
+    ) {
+        out.clear();
+        if bytes.as_ref().is_some_and(Range::is_empty) {
+            return;
+        }
+        let mut cursor = QueryCursor::new();
+        if let Some(bytes) = bytes {
+            cursor.set_byte_range(bytes);
+        }
+        for layer in layers
+            .layers
+            .iter()
+            .filter(|layer| layer.bundle.config_gen == self.config_gen)
+        {
+            let mut matches =
+                cursor.matches(&self.query, layer.tree.root_node(), RopeProvider(rope));
+            while let Some(m) = matches.next() {
+                out.extend(m.captures().iter().map(|capture| Capture {
+                    name: capture.index,
+                    range: ExclusiveRange::new(
+                        CharOffset::new(rope.byte_to_char(capture.node.start_byte())),
+                        CharOffset::new(rope.byte_to_char(capture.node.end_byte())),
+                    ),
+                }));
+            }
+        }
+        out.sort_by_key(|capture| (capture.range.start, Reverse(capture.range.end)));
+    }
+}
+
+#[cfg(test)]
+mod tests;
