@@ -816,8 +816,7 @@ fn conceal_text() -> ConcealText {
 fn hidden(start: usize, end: usize) -> ConcealEntry {
     ConcealEntry {
         span: ConcealEntrySpan::Hidden {
-            start: co(start),
-            end: co(end),
+            chars: ExclusiveRange::new(co(start), co(end)),
             text: None,
         },
         reveal: None,
@@ -849,9 +848,12 @@ fn conceal_spans(
     store
         .conceals_for(source, bid)
         .iter()
-        .map(|e| match e.span {
-            ConcealEntrySpan::Hidden { start, end, .. } => ('h', start.index(), end.index()),
-            ConcealEntrySpan::Inserted { at, .. } => ('i', at.index(), at.index()),
+        .map(|e| {
+            let kind = match e.span {
+                ConcealEntrySpan::Hidden { .. } => 'h',
+                ConcealEntrySpan::Inserted { .. } => 'i',
+            };
+            (kind, e.chars().start.index(), e.chars().end.index())
         })
         .collect()
 }
@@ -1105,8 +1107,12 @@ fn set_conceals_replaces_the_source_wholesale() {
     assert_eq!(conceal_spans(&store, "md", a), [('i', 4, 4)]);
     assert_eq!(conceal_spans(&store, "other", a), [('i', 3, 3)]);
     assert_eq!(conceal_spans(&store, "md", b), [('i', 1, 1)]);
-    let sources: Vec<&str> = store.conceals_for_buffer(a).map(|(s, _)| s).collect();
-    assert_eq!(sources, ["md", "other"]);
+    // Source-name order puts "md"'s entry at 4 before "other"'s at 3.
+    let order: Vec<usize> = store
+        .conceals_for_buffer(a)
+        .map(|e| e.chars().start.index())
+        .collect();
+    assert_eq!(order, [4, 3]);
 }
 
 /// Header-row layouts are cached until the buffer's stamp changes, so a

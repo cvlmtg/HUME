@@ -280,16 +280,12 @@ impl EditorHostImpl<'_> {
                     start,
                     end,
                     text: replacement,
-                } => {
-                    let chars = checked_cluster_range(text, start, end)
+                } => ConcealEntrySpan::Hidden {
+                    chars: checked_cluster_range(text, start, end)
                         .map_err(fail)?
-                        .chars();
-                    ConcealEntrySpan::Hidden {
-                        start: chars.start,
-                        end: chars.end,
-                        text: replacement.map(&mut shown),
-                    }
-                }
+                        .chars(),
+                    text: replacement.map(&mut shown),
+                },
                 ConcealSpecSpan::Inserted { at, text: drawn } => {
                     let at = checked_char_offset(text, at).map_err(fail)?;
                     if at == text.end() {

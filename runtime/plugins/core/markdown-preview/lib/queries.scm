@@ -2,7 +2,7 @@
 
 (provide md-preview/block-query md-preview/inline-query md-preview/atx-levels md-preview/setext-levels
          md-preview/capture-start md-preview/capture-end md-preview/line-span md-preview/inside?
-         md-preview/line-slice
+         md-preview/line-slice md-preview/bucket md-preview/extent md-preview/records
          md-preview/conceal
          md-preview/conceal-before? md-preview/group md-preview/captured
          md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text)
@@ -20,6 +20,25 @@
 (define (md-preview/inside? capture container)
   (and (>= (md-preview/capture-start capture) (md-preview/capture-start container))
        (<= (md-preview/capture-end capture) (md-preview/capture-end container))))
+
+(define (md-preview/bucket spans items item-start)
+  (let loop ([spans spans] [items items] [buckets '()])
+    (cond
+      [(null? spans) (reverse buckets)]
+      [(and (pair? items) (< (item-start (car items)) (car (car spans))))
+       (loop spans (cdr items) buckets)]
+      [else
+       (let take ([items items] [taken '()])
+         (if (and (pair? items) (<= (item-start (car items)) (cdr (car spans))))
+             (take (cdr items) (cons (car items) taken))
+             (loop (cdr spans) items (cons (reverse taken) buckets))))])))
+
+(define (md-preview/extent capture)
+  (cons (md-preview/capture-start capture) (- (md-preview/capture-end capture) 1)))
+
+(define (md-preview/records containers items)
+  (map cons containers
+       (md-preview/bucket (map md-preview/extent containers) items md-preview/capture-start)))
 
 (define (md-preview/line-slice start end line-of line-info)
   (let ([info (line-info (line-of start))])

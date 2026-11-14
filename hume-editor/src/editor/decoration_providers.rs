@@ -37,7 +37,7 @@ pub(super) struct DecoratedPane {
     pub(super) chars: ExclusiveRange<CharOffset>,
     /// The chars of each line a header row draws that `chars` does not
     /// already hold, so a heading scrolled above the viewport still shows
-    /// its highlights. Empty for a snapshot taken without the pane's settled
+    /// its highlights. Every such line lies above the viewport. Empty for a snapshot taken without the pane's settled
     /// rows.
     pub(super) header_chars: Vec<ExclusiveRange<CharOffset>>,
     /// The primary cursor's line while this pane owns the Insert session,
@@ -290,16 +290,11 @@ impl Editor {
 
                 let extra_spans = {
                     let mut raw = Vec::new();
-                    let scan_end = p
-                        .paint_ranges()
-                        .map(|range| range.end)
-                        .max()
-                        .expect("the viewport is a paint range");
                     for e in self
                         .state
                         .config
                         .decorations
-                        .extra_highlights_starting_before(bid, scan_end)
+                        .extra_highlights_starting_before(bid, p.chars.end)
                     {
                         for visible in p.paint_ranges() {
                             let Some(piece) =
@@ -579,7 +574,7 @@ impl Editor {
         let text = self.state.buffers.get(bid).text();
         let mut by_line: rustc_hash::FxHashMap<ContentLine, Vec<Conceal>> =
             rustc_hash::FxHashMap::default();
-        for (_, entry) in self.state.config.decorations.conceals_for_buffer(bid) {
+        for entry in self.state.config.decorations.conceals_for_buffer(bid) {
             let (line, conceal) = line_conceal(text, entry);
             let kept = by_line.entry(line).or_default();
             if !kept
@@ -631,10 +626,8 @@ fn line_conceal(
     let columns = text.columns();
     let (line, start) = columns.byte_position(entry.anchor());
     let span = match &entry.span {
-        ConcealEntrySpan::Hidden {
-            end, text: shown, ..
-        } => ConcealSpan::Hidden {
-            bytes: ExclusiveRange::new(start, columns.byte_position(*end).1),
+        ConcealEntrySpan::Hidden { chars, text: shown } => ConcealSpan::Hidden {
+            bytes: ExclusiveRange::new(start, columns.byte_position(chars.end).1),
             text: shown.clone(),
         },
         ConcealEntrySpan::Inserted { text: shown, .. } => ConcealSpan::Inserted {

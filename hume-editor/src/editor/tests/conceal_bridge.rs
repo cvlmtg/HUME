@@ -22,8 +22,7 @@ fn label(text: &str) -> ConcealText {
 pub(super) fn hidden(start: usize, end: usize, text: &str) -> ConcealEntry {
     ConcealEntry {
         span: ConcealEntrySpan::Hidden {
-            start: co(start),
-            end: co(end),
+            chars: ExclusiveRange::new(co(start), co(end)),
             text: Some(label(text)),
         },
         reveal: None,
@@ -34,8 +33,7 @@ pub(super) fn hidden(start: usize, end: usize, text: &str) -> ConcealEntry {
 pub(super) fn hiding(start: usize, end: usize) -> ConcealEntry {
     ConcealEntry {
         span: ConcealEntrySpan::Hidden {
-            start: co(start),
-            end: co(end),
+            chars: ExclusiveRange::new(co(start), co(end)),
             text: None,
         },
         reveal: None,
@@ -272,9 +270,13 @@ fn ctrl_d_in_a_concealed_buffer_leaves_the_view_settled() {
 fn a_buffer_without_conceals_lays_out_the_same_drawn_and_raw() {
     let (ed, _file) = decorated_editor("0\n1\n2\n-[3]>\n4\n");
     let pid = ed.view.focused_pane();
-    let key = ed.state.layout_key(&ed.view, pid, ed.pane_size(pid));
+    let size = ed.pane_size(pid);
+    let key = ed.state.layout_key(&ed.view, pid, size);
 
-    assert_eq!(key.inputs(), key.raw_inputs());
+    assert_eq!(
+        key.inputs(),
+        ed.state.raw_layout_inputs(&ed.view, pid, size)
+    );
 }
 
 #[test]

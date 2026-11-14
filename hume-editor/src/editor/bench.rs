@@ -49,6 +49,31 @@ pub struct SelectionHistoryBench {
     editor: Editor,
 }
 
+/// An editor opened on `file` with no config and no terminal.
+fn headless_editor(file: &Path) -> Editor {
+    let cwd = AbsolutePath::current_dir().expect("the bench runs in a directory");
+    let input = FileArg {
+        path: AbsolutePath::from_path(file, &cwd).expect("the bench file has a path"),
+        pos: None,
+    };
+    Editor::start(
+        std::slice::from_ref(&input),
+        Driver::Headless,
+        Dirs::none(),
+        ConfigSource::Skip,
+        cwd,
+    )
+    .expect("the editor starts headless")
+}
+
+fn assert_setup_clean(editor: &Editor) {
+    assert_eq!(
+        editor.state.message_log.totals().0,
+        0,
+        "the setup logged an error"
+    );
+}
+
 impl SelectionHistoryBench {
     /// Opens `file` with no config, puts a cursor on each of its first
     /// `cursors` lines (at least two) and fills the history.
@@ -58,30 +83,14 @@ impl SelectionHistoryBench {
     /// setup logs an error.
     pub fn new(file: &Path, cursors: usize) -> Self {
         assert!(cursors >= 2, "the setup copies the first cursor down");
-        let cwd = AbsolutePath::current_dir().expect("the bench runs in a directory");
-        let input = FileArg {
-            path: AbsolutePath::from_path(file, &cwd).expect("the bench file has a path"),
-            pos: None,
-        };
-        let editor = Editor::start(
-            std::slice::from_ref(&input),
-            Driver::Headless,
-            Dirs::none(),
-            ConfigSource::Skip,
-            cwd,
-        )
-        .expect("the editor starts headless");
+        let editor = headless_editor(file);
         let mut bench = Self { editor };
         bench.editor.settle();
         bench.press(&Keys::parse(&format!(
             "{UNDO_LEVELS}{}C{FILL_HISTORY}",
             cursors - 1
         )));
-        assert_eq!(
-            bench.editor.state.message_log.totals().0,
-            0,
-            "the setup logged an error"
-        );
+        assert_setup_clean(&bench.editor);
         bench
     }
 
@@ -136,8 +145,7 @@ fn hidden(
 ) -> ConcealEntry {
     ConcealEntry {
         span: ConcealEntrySpan::Hidden {
-            start: CharOffset::new(start),
-            end: CharOffset::new(end),
+            chars: ExclusiveRange::new(CharOffset::new(start), CharOffset::new(end)),
             text: glyph.map(|g| ConcealText {
                 text: g.into(),
                 scope: None,
@@ -248,19 +256,7 @@ impl ConcealBench {
     pub fn new(file: &Path, lines: usize, conceals: Option<StoreSize>) -> Self {
         let text = markdown_sample(lines);
         std::fs::write(file, &text).expect("the bench file is written");
-        let cwd = AbsolutePath::current_dir().expect("the bench runs in a directory");
-        let input = FileArg {
-            path: AbsolutePath::from_path(file, &cwd).expect("the bench file has a path"),
-            pos: None,
-        };
-        let editor = Editor::start(
-            std::slice::from_ref(&input),
-            Driver::Headless,
-            Dirs::none(),
-            ConfigSource::Skip,
-            cwd,
-        )
-        .expect("the editor starts headless");
+        let editor = headless_editor(file);
         let mut bench = Self { editor, down: true };
         bench.editor.resize_terminal(80, 25);
         bench.editor.settle();
@@ -274,11 +270,7 @@ impl ConcealBench {
             );
         }
         bench.draw();
-        assert_eq!(
-            bench.editor.state.message_log.totals().0,
-            0,
-            "the setup logged an error"
-        );
+        assert_setup_clean(&bench.editor);
         bench
     }
 

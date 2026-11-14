@@ -156,10 +156,7 @@ mod conceals {
     fn stored(ed: &Editor) -> Vec<(usize, usize)> {
         entries(ed)
             .iter()
-            .map(|entry| match entry.span {
-                ConcealEntrySpan::Hidden { start, end, .. } => (start.index(), end.index()),
-                ConcealEntrySpan::Inserted { at, .. } => (at.index(), at.index()),
-            })
+            .map(|entry| (entry.chars().start.index(), entry.chars().end.index()))
             .collect()
     }
 

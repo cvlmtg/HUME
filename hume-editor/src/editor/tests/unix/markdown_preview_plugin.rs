@@ -178,12 +178,11 @@ impl Preview {
             .conceals_for(SOURCE, bid)
             .iter()
             .map(|entry| {
-                let (start, end, text) = match &entry.span {
-                    ConcealEntrySpan::Hidden { start, end, text } => {
-                        (start.index(), end.index(), text.as_ref())
-                    }
-                    ConcealEntrySpan::Inserted { at, text } => (at.index(), at.index(), Some(text)),
+                let text = match &entry.span {
+                    ConcealEntrySpan::Hidden { text, .. } => text.as_ref(),
+                    ConcealEntrySpan::Inserted { text, .. } => Some(text),
                 };
+                let (start, end) = (entry.chars().start.index(), entry.chars().end.index());
                 Conceal {
                     start,
                     end,

@@ -148,8 +148,8 @@ pub(in crate::editor) fn scroll_view(
         return;
     };
 
-    let mut raw =
-        view.panes[pid].display_lines(state.buffers.get(buf_id).text().rope(), key.raw_inputs());
+    let inputs = state.raw_layout_inputs(view, pid, size);
+    let mut raw = view.panes[pid].display_lines(state.buffers.get(buf_id).text().rope(), inputs);
     // `apply_doc_motion`'s own head-before/after comparison is what raises
     // `PaneBufferState::reveal_pending` here. No separate pin to track: a
     // scroll that couldn't carry a selection anywhere leaves that selection's

@@ -11,8 +11,8 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, CHAR_RANGE_KEYS, HashEntry, LINE_RANGE_KEYS, bool_arg, char_range_value, hash_entry,
-    line_range_value, list_of, not_live_err, optional_hash_entry, optional_list_items,
+    ArgPane, CHAR_RANGE_KEYS, HashEntry, LINE_RANGE_KEYS, bool_arg, char_range_value,
+    line_range_value, list_of, not_live_err, optional_hash_entry, optional_hash_list,
     relative_base_arg, string_list, symbol_hash,
 };
 use super::errors::generic_err;
@@ -326,8 +326,12 @@ pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResul
 /// count). Raises rather than clamping on a missing end, `start-line >
 /// end-line`, or `end-line` past the line count.
 pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -> SteelResult {
+    const LABEL: &str = "#:range";
     let line_count = live_line_count(ctx, bid)?;
-    let range = line_range_arg(range, line_count)?;
+    let range = match optional_line_range_arg(range, LABEL, line_count)? {
+        Some(range) => range,
+        None => line_range_bounds(0, line_count, LABEL, line_count)?,
+    };
     // Unreachable in practice (nothing can close `bid` between two
     // synchronous host calls), but the trait returns `Option`.
     let lines = ctx
@@ -336,20 +340,6 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -
         .buffer_lines(bid, range)
         .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(string_list(lines))
-}
-
-/// A `#:range` argument, a line range value (see [`line_range_value`]) or
-/// `#f` for every line, as content lines of a buffer with `line_count` of
-/// them. Raises rather than clamping, as [`optional_line_range_arg`] refuses.
-fn line_range_arg(
-    range: SteelVal,
-    line_count: usize,
-) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, SteelErr> {
-    const LABEL: &str = "#:range";
-    match optional_line_range_arg(range, LABEL, line_count)? {
-        Some(range) => Ok(range),
-        None => line_range_bounds(0, line_count, LABEL, line_count),
-    }
 }
 
 /// A `#:ranges` argument, a list of line range values (see
@@ -361,14 +351,11 @@ pub(super) fn line_ranges_arg(
     line_count: usize,
 ) -> Result<Vec<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>, SteelErr> {
     const LABEL: &str = "#:ranges";
-    match optional_list_items(ranges, LABEL)? {
+    match optional_hash_list(ranges, LABEL, LINE_RANGE_KEYS, |entry| {
+        line_range_entry(entry, LABEL, line_count)
+    })? {
+        Some(ranges) => Ok(ranges),
         None => Ok(vec![line_range_bounds(0, line_count, LABEL, line_count)?]),
-        Some(items) => items
-            .into_iter()
-            .map(|item| {
-                line_range_entry(hash_entry(item, LABEL, LINE_RANGE_KEYS)?, LABEL, line_count)
-            })
-            .collect(),
     }
 }
 
@@ -380,7 +367,7 @@ pub(super) fn optional_line_range_arg(
     line_count: usize,
 ) -> Result<Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>, SteelErr> {
     optional_hash_entry(val, label, LINE_RANGE_KEYS)?
-        .map(|entry| line_range_entry(entry, label, line_count))
+        .map(|entry| line_range_entry(&entry, label, line_count))
         .transpose()
 }
 
@@ -388,7 +375,7 @@ pub(super) fn optional_line_range_arg(
 /// `line_count` of them. Errors name `label`, and refuse `start > end`, `end`
 /// past `line_count`, and a missing key.
 fn line_range_entry(
-    entry: HashEntry,
+    entry: &HashEntry,
     label: &str,
     line_count: usize,
 ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, SteelErr> {

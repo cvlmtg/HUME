@@ -330,20 +330,19 @@ pub fn format_buffer_line(
                     pos: break_pos,
                     indent_depth,
                 };
-                state.maybe_wrap(
-                    run.width_at(state.current_display_col, tab_width),
-                    indent_depth,
-                    lines_out,
-                    graphemes_out,
-                );
-                push_virtual_cells(
-                    virtual_texts_out,
-                    graphemes_out,
-                    &run,
-                    tab_width,
-                    &mut state.current_display_col,
-                    |_| text.scope,
-                );
+                if emitter
+                    .emit(
+                        &run,
+                        text.scope,
+                        &mut state,
+                        lines_out,
+                        graphemes_out,
+                        virtual_texts_out,
+                    )
+                    .is_break()
+                {
+                    break;
+                }
             }
         }
 
@@ -439,11 +438,11 @@ struct RunEmitter<'a> {
 }
 
 impl RunEmitter<'_> {
-    /// Emit `run` before the cluster the loop is at, as one unit: wrap first
-    /// if it overflows, push its cells if any column of it is inside
-    /// `h_window`, and advance the column past it either way. Returns
-    /// `Break` without emitting when the column is already at the window's
-    /// right edge, which ends the scan.
+    /// Emit `run` before the cluster or line end the loop is at, as one
+    /// unit: wrap first if it overflows, push its cells if any column of it
+    /// is inside `h_window`, and advance the column past it either way.
+    /// Returns `Break` without emitting when the column is already at the
+    /// window's right edge, which ends the scan.
     fn emit(
         &self,
         run: &VirtualRun<'_>,

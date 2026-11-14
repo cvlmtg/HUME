@@ -42,8 +42,7 @@ fn at(line: usize, col: usize) -> CharOffset {
 fn conceals(lines: Range<usize>) -> Vec<ConcealEntry> {
     let hide = |line, start, end, reveal| ConcealEntry {
         span: ConcealEntrySpan::Hidden {
-            start: at(line, start),
-            end: at(line, end),
+            chars: ExclusiveRange::new(at(line, start), at(line, end)),
             text: Some(ConcealText {
                 text: "·".into(),
                 scope: None,

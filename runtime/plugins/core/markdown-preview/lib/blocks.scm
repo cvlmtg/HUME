@@ -117,18 +117,17 @@
       (md-preview/captured groups "rule"))))
 
 (define (md-preview/fences! groups line-of emit!)
-  (let ([delimiters (md-preview/captured groups "fence-delimiter")])
-    (for-each
-      (lambda (fence)
-        (let ([span (md-preview/line-span line-of fence)])
-          (emit! 'bands (md-preview/band span "markup.raw.block.line"))
-          (for-each
-            (lambda (d)
-              (when (md-preview/inside? d fence)
-                (emit! 'conceals (md-preview/conceal (md-preview/capture-start d) (md-preview/capture-end d)
-                                                     #f #f span))))
-            delimiters)))
-      (md-preview/captured groups "fence"))))
+  (for-each
+    (lambda (record)
+      (let ([span (md-preview/line-span line-of (car record))])
+        (emit! 'bands (md-preview/band span "markup.raw.block.line"))
+        (for-each
+          (lambda (d)
+            (emit! 'conceals (md-preview/conceal (md-preview/capture-start d) (md-preview/capture-end d)
+                                                 #f #f span)))
+          (cdr record))))
+    (md-preview/records (md-preview/captured groups "fence")
+                        (md-preview/captured groups "fence-delimiter"))))
 
 (define (md-preview/block-elements groups ranges line-of line-info rule-width)
   (let* ([found (box (hash 'conceals '() 'bands '() 'highlights '()))]

@@ -11,24 +11,6 @@
 
 (define (md-preview/char-start conceal) (hash-ref conceal 'start-char))
 
-(define (md-preview/bucket spans items item-start)
-  (let loop ([spans spans] [items items] [buckets '()])
-    (cond
-      [(null? spans) (reverse buckets)]
-      [(and (pair? items) (< (item-start (car items)) (car (car spans))))
-       (loop spans (cdr items) buckets)]
-      [else
-       (let take ([items items] [taken '()])
-         (if (and (pair? items) (<= (item-start (car items)) (cdr (car spans))))
-             (take (cdr items) (cons (car items) taken))
-             (loop (cdr spans) items (cons (reverse taken) buckets))))])))
-
-(define (md-preview/extent capture)
-  (cons (md-preview/capture-start capture) (- (md-preview/capture-end capture) 1)))
-
-(define (md-preview/records rows cells)
-  (map cons rows (md-preview/bucket (map md-preview/extent rows) cells md-preview/capture-start)))
-
 (define (md-preview/cell-span cell line-of line-info)
   (let ([start (md-preview/capture-start cell)])
     (cons start

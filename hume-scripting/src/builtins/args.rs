@@ -846,6 +846,18 @@ pub(crate) fn hash_list<T>(
         .collect()
 }
 
+/// [`hash_list`] of a value that may be `#f` (absent).
+pub(crate) fn optional_hash_list<T>(
+    val: SteelVal,
+    ctx_name: &str,
+    keys: &[&str],
+    row: impl FnMut(&HashEntry) -> Result<T, SteelErr>,
+) -> Result<Option<Vec<T>>, SteelErr> {
+    optional(val, ctx_name, |val, ctx_name| {
+        hash_list(val, ctx_name, keys, row)
+    })
+}
+
 // ── List encoders ─────────────────────────────────────────────────────────────
 
 /// Builds a proper Steel list from already-encoded `SteelVal`s: the shared

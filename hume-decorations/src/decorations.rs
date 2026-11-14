@@ -110,12 +110,11 @@ pub struct LineBgEntry {
 /// counterpart of `hume_engine::providers::ConcealSpan`.
 #[derive(Debug)]
 pub enum ConcealEntrySpan {
-    /// Hide the clusters in `start..end`, drawing `text` in their place when
-    /// set. Non-empty, inside one line, never covering that line's `\n`
-    /// (see [`ConcealEntry::within_line`]).
+    /// Hide the clusters in `chars`, drawing `text` in their place when set.
+    /// Non-empty, inside one line, never covering that line's `\n` (see
+    /// [`ConcealEntry::within_line`]).
     Hidden {
-        start: CharOffset,
-        end: CharOffset,
+        chars: ExclusiveRange<CharOffset>,
         text: Option<ConcealText>,
     },
     /// Draw `text` before the char at `at` (a line's `\n` included).
@@ -132,9 +131,9 @@ pub struct ConcealEntry {
 }
 
 impl ConcealEntry {
-    fn hidden_bounds_mut(&mut self) -> Option<(&mut CharOffset, &mut CharOffset)> {
+    fn hidden_chars_mut(&mut self) -> Option<&mut ExclusiveRange<CharOffset>> {
         match &mut self.span {
-            ConcealEntrySpan::Hidden { start, end, .. } => Some((start, end)),
+            ConcealEntrySpan::Hidden { chars, .. } => Some(chars),
             ConcealEntrySpan::Inserted { .. } => None,
         }
     }
@@ -142,7 +141,7 @@ impl ConcealEntry {
     /// The chars the span occupies: an `Inserted`'s is empty at its `at`.
     pub fn chars(&self) -> ExclusiveRange<CharOffset> {
         match self.span {
-            ConcealEntrySpan::Hidden { start, end, .. } => ExclusiveRange::new(start, end),
+            ConcealEntrySpan::Hidden { chars, .. } => chars,
             ConcealEntrySpan::Inserted { at, .. } => ExclusiveRange::new(at, at),
         }
     }
@@ -154,8 +153,12 @@ impl ConcealEntry {
     pub fn within_line(&self, text: &BufferText) -> bool {
         match self.span {
             ConcealEntrySpan::Inserted { .. } => true,
-            ConcealEntrySpan::Hidden { start, end, .. } => {
-                end <= text.lines().newline(text.char_to_line(start)).offset()
+            ConcealEntrySpan::Hidden { chars, .. } => {
+                chars.end
+                    <= text
+                        .lines()
+                        .newline(text.char_to_line(chars.start))
+                        .offset()
             }
         }
     }
@@ -590,16 +593,15 @@ impl<K> SourceStore<K, ConcealEntry> {
 
             let mut hidden: Vec<ExclusiveRange<CharOffset>> = entries
                 .iter_mut()
-                .filter_map(|e| e.hidden_bounds_mut())
-                .map(|(start, end)| ExclusiveRange::new(*start, *end))
+                .filter_map(|e| e.hidden_chars_mut().map(|chars| *chars))
                 .collect();
             cs.map_ranges(&mut hidden);
-            for ((start, end), range) in entries
+            for (chars, range) in entries
                 .iter_mut()
-                .filter_map(|e| e.hidden_bounds_mut())
+                .filter_map(|e| e.hidden_chars_mut())
                 .zip(hidden)
             {
-                (*start, *end) = (range.start, range.end);
+                *chars = range;
             }
 
             // Reveal spans are not sorted along the entries, so they map in
@@ -619,8 +621,8 @@ impl<K> SourceStore<K, ConcealEntry> {
 
             let mut points = PosMapCursor::new(cs.ops());
             entries.retain_mut(|entry| match entry.span {
-                ConcealEntrySpan::Hidden { start, end, .. } => {
-                    start < end && entry.within_line(change.after())
+                ConcealEntrySpan::Hidden { chars, .. } => {
+                    !chars.is_empty() && entry.within_line(change.after())
                 }
                 ConcealEntrySpan::Inserted { ref mut at, .. } => {
                     *at = points.map(*at, Assoc::Before);
@@ -960,13 +962,9 @@ impl DecorationStores {
     }
 
     /// All conceals for `bid`, across every source in ascending source-name
-    /// order, paired with their source name. The pane mirror flattens them
-    /// per line in that order.
-    pub fn conceals_for_buffer(
-        &self,
-        bid: BufferId,
-    ) -> impl Iterator<Item = (&str, &ConcealEntry)> {
-        self.conceals.for_buffer(bid).map(|(s, e)| (s.as_str(), e))
+    /// order. The pane mirror flattens them per line in that order.
+    pub fn conceals_for_buffer(&self, bid: BufferId) -> impl Iterator<Item = &ConcealEntry> {
+        self.conceals.for_buffer(bid).map(|(_, e)| e)
     }
 
     /// Whether any source holds a conceal for `bid`.
