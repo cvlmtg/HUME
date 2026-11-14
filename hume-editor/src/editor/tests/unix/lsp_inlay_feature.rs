@@ -1077,13 +1077,13 @@ fn split_long_fixture(
             }
         },
     );
-    let top = rig.ed.view.focused_pane();
+    let first = rig.ed.view.focused_pane();
     rig.ed.execute_typed("vsplit", None).unwrap();
-    let bottom = rig.ed.view.focused_pane();
+    let second = rig.ed.view.focused_pane();
     seek_to_line(&mut rig.ed, line);
     fire_viewport_change(&mut rig.ed);
     settle_until_idle(&mut rig.ed);
-    (rig, guard, top, bottom)
+    (rig, guard, first, second)
 }
 
 /// The lines pane `pid` showed on the last frame.
@@ -1127,18 +1127,18 @@ fn two_panes_far_apart_each_request_their_own_lines() {
         (0, 4, serde_json::json!(": i32")),
         (99, 4, serde_json::json!(": i32")),
     ];
-    let (mut rig, _guard, top, bottom) = split_long_fixture(tmp.path(), 99, &[both, both]);
+    let (mut rig, _guard, first, second) = split_long_fixture(tmp.path(), 99, &[both, both]);
     let bid = rig.ed.focused_buffer_id();
-    let (top, bottom) = (visible(&rig.ed, top), visible(&rig.ed, bottom));
+    let (first, second) = (visible(&rig.ed, first), visible(&rig.ed, second));
     assert!(
-        top.1 < bottom.0 && bottom.1 == 100,
-        "premise: {top:?} and {bottom:?} are apart, the second at the end"
+        first.1 < second.0 && second.1 == 100,
+        "premise: {first:?} and {second:?} are apart, the second at the end"
     );
 
     type_cmd(&mut rig.ed, ":toggle-inlay-hints");
     settle_until_idle(&mut rig.ed);
 
-    assert_eq!(requested_ranges(&rig.requests), [top, bottom]);
+    assert_eq!(requested_ranges(&rig.requests), [first, second]);
     assert_eq!(
         hint_positions(&rig.ed, bid),
         [long_fixture_offset(0), long_fixture_offset(99)]
@@ -1148,14 +1148,14 @@ fn two_panes_far_apart_each_request_their_own_lines() {
 #[test]
 fn overlapping_panes_send_one_request() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut rig, _guard, top, bottom) = split_long_fixture(tmp.path(), 0, &[&[]]);
-    let (top, bottom) = (visible(&rig.ed, top), visible(&rig.ed, bottom));
-    assert_eq!(top, bottom, "premise: both panes show the top");
+    let (mut rig, _guard, first, second) = split_long_fixture(tmp.path(), 0, &[&[]]);
+    let (first, second) = (visible(&rig.ed, first), visible(&rig.ed, second));
+    assert_eq!(first, second, "premise: both panes show the top");
 
     type_cmd(&mut rig.ed, ":toggle-inlay-hints");
     settle_until_idle(&mut rig.ed);
 
-    assert_eq!(requested_ranges(&rig.requests), [top]);
+    assert_eq!(requested_ranges(&rig.requests), [first]);
 }
 
 #[test]
@@ -1163,14 +1163,35 @@ fn hints_wait_for_every_range_to_answer() {
     let tmp = tempfile::tempdir().unwrap();
     // One answer: the first pane's request gets it, the second's stays in
     // flight.
-    let first: &[(u32, u32, serde_json::Value)] = &[(0, 4, serde_json::json!(": i32"))];
-    let (mut rig, _guard, _top, _bottom) = split_long_fixture(tmp.path(), 99, &[first]);
+    let answer: &[(u32, u32, serde_json::Value)] = &[(0, 4, serde_json::json!(": i32"))];
+    let (mut rig, _guard, _first, _second) = split_long_fixture(tmp.path(), 99, &[answer]);
     let bid = rig.ed.focused_buffer_id();
 
     type_cmd(&mut rig.ed, ":toggle-inlay-hints");
     settle_until_idle(&mut rig.ed);
 
+    assert_eq!(requested_ranges(&rig.requests).len(), 2, "premise");
     assert_eq!(hint_positions(&rig.ed, bid), Vec::<usize>::new());
+}
+
+/// A round with fewer ranges than the unanswered one before it cancels every
+/// request of that round, not only those it files under the same keys.
+#[test]
+fn a_shorter_round_cancels_every_request_of_the_one_before() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard, _first, _second) = split_long_fixture(tmp.path(), 99, &[]);
+    let sid = rig.sid("rust-analyzer");
+    type_cmd(&mut rig.ed, ":toggle-inlay-hints");
+    settle_until_idle(&mut rig.ed);
+    assert_eq!(requested_ranges(&rig.requests).len(), 2, "premise");
+
+    seek_to_line(&mut rig.ed, 0);
+    fire_viewport_change(&mut rig.ed);
+    settle_until_idle(&mut rig.ed);
+
+    assert_eq!(requested_ranges(&rig.requests).len(), 3);
+    assert_eq!(rig.sent(sid, "$/cancelRequest").len(), 2);
+    assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 1);
 }
 
 #[test]

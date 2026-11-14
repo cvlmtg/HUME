@@ -174,6 +174,26 @@ impl ExclusiveRange<ContentLine> {
     }
 }
 
+/// `ranges` without the empty ones, sorted by start, with the ranges that
+/// overlap or touch joined, so no line is in two of them.
+pub fn join_line_ranges(
+    ranges: impl IntoIterator<Item = ExclusiveRange<ContentLine>>,
+) -> Vec<ExclusiveRange<ContentLine>> {
+    let mut sorted: Vec<_> = ranges
+        .into_iter()
+        .filter(|range| !range.is_empty())
+        .collect();
+    sorted.sort_by_key(|range| range.start);
+    let mut joined: Vec<ExclusiveRange<ContentLine>> = Vec::with_capacity(sorted.len());
+    for range in sorted {
+        match joined.last_mut() {
+            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            _ => joined.push(range),
+        }
+    }
+    joined
+}
+
 impl RopeyLineCount {
     pub(crate) fn new(count: usize) -> Self {
         Self(count)

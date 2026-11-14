@@ -8,6 +8,7 @@
 ### Plugins & scripting
 - `core:markdown-preview` draws Markdown without its syntax, and the lines you are on show their source. It needs the `markdown` and `markdown.inline` grammars.
 - `set-conceals!` hides part of a line or draws other text in its place, `syntax-captures` returns the nodes a tree-sitter query captures (`#:ranges` limits it to some lines), and the `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.
+- `buffer-viewport-ranges` returns the lines every pane on a buffer shows, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
 
 ### Fixes
 - Inlay hints show in every pane on a buffer, not only one of them.

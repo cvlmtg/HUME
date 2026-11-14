@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
-use hume_rope::lines::last_content_line;
-use hume_rope::offset::InclusiveRange;
+use hume_rope::lines::content_line_count;
+use hume_rope::offset::ExclusiveRange;
 use test_fixtures::require_grammars;
 use tree_sitter::QueryErrorKind;
 
@@ -18,15 +18,15 @@ use crate::test_support::{fixture_markdown, make_bundle, syntax_with};
 fn captures(
     bundle: &GrammarBundle,
     source: &str,
-    lines: Option<&[InclusiveRange<ContentLine>]>,
+    lines: Option<&[ExclusiveRange<ContentLine>]>,
     syntax: &Syntax,
     text: &BufferText,
 ) -> Vec<(String, usize, usize)> {
     let query = bundle.capture_query(source).expect("query compiles");
     let mut out = Vec::new();
-    let every_line = [InclusiveRange::new(
+    let every_line = [ExclusiveRange::new(
         ContentLine::default(),
-        last_content_line(text.rope()),
+        content_line_count(text.rope()).end_exclusive(),
     )];
     query.collect(
         syntax.layers().expect("a committed tree"),
@@ -49,8 +49,9 @@ fn capture(name: &str, start: usize, end: usize) -> (String, usize, usize) {
     (name.to_owned(), start, end)
 }
 
-fn lines(first: usize, last: usize) -> InclusiveRange<ContentLine> {
-    InclusiveRange::new(ContentLine::new(first), ContentLine::new(last))
+/// Lines `first` through `last`.
+fn lines(first: usize, last: usize) -> ExclusiveRange<ContentLine> {
+    ExclusiveRange::new(ContentLine::new(first), ContentLine::new(last + 1))
 }
 
 /// `source` parsed by the markdown fixture with `markdown.inline` loaded
@@ -268,6 +269,21 @@ fn overlapping_ranges_capture_each_match_once() {
             capture("cell", 43, 45)
         ]
     );
+}
+
+#[test]
+fn a_node_two_patterns_capture_under_one_name_is_captured_once() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n");
+    let got = captures(
+        &bundle,
+        "(atx_heading) @h\n(section (atx_heading) @h)",
+        None,
+        &syntax,
+        &text,
+    );
+    assert_eq!(got, [capture("h", 0, 4)]);
 }
 
 #[test]

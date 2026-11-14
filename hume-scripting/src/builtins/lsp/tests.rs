@@ -888,6 +888,46 @@ fn lsp_request_refuses_a_string_supersede_key() {
     assert!(lsp_requests(&ctx).is_empty());
 }
 
+/// `Effect::LspCancel` entries queued so far on a live `ctx`, in emission
+/// order.
+fn lsp_cancels(ctx: &SteelCtx) -> Vec<(BufferId, crate::host::SupersedeKey)> {
+    ctx.effects
+        .iter()
+        .filter_map(|e| match e.effect {
+            Effect::LspCancel { bid, key } => Some((bid, key)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn lsp_cancel_queues_the_key_for_the_buffer() {
+    let key = crate::host::SupersedeKey::from_raw(7);
+    let bid = default_pane().buffer();
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    lsp_cancel(&mut ctx, bid, key.into_steel_val()).expect("a minted key is taken");
+    assert_eq!(lsp_cancels(&ctx), [(bid, key)]);
+}
+
+#[test]
+fn lsp_cancel_refuses_a_string_key() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = lsp_cancel(
+        &mut ctx,
+        default_pane().buffer(),
+        "completion".into_steelval().unwrap(),
+    )
+    .expect_err("a string key is refused");
+    assert!(
+        err.to_string()
+            .contains("key: expected a key from lsp-supersede-key"),
+        "got: {err}"
+    );
+    assert!(lsp_cancels(&ctx).is_empty());
+}
+
 /// Each call mints a key no earlier call returned.
 #[test]
 fn lsp_supersede_key_mints_a_new_key_per_call() {

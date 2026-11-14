@@ -201,4 +201,13 @@ pub trait BufferHost {
         &mut self,
         pane: ShownHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String>;
+
+    /// The content lines every pane showing `id` shows, as
+    /// [`viewport_range`](Self::viewport_range) gives them, joined by
+    /// [`hume_rope::line::join_line_ranges`], for
+    /// `(buffer-viewport-ranges pane)`. Empty when no pane shows `id`.
+    fn buffer_viewport_ranges(
+        &mut self,
+        id: BufferId,
+    ) -> Vec<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>;
 }

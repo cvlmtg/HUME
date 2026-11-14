@@ -496,6 +496,7 @@ builtins! {
     cmd  "lsp-server-status" lsp::lsp_server_status();
     open "lsp-server-registered?" lsp::lsp_server_registered(name: SteelVal);
     open "lsp-supersede-key" lsp::lsp_supersede_key();
+    cmd "lsp-cancel!" lsp::lsp_cancel(pane: args::LiveBuffer, key: SteelVal);
     cmd "lsp-document-params" lsp::lsp_document_params(pane: args::LiveBuffer);
     cmd "lsp-position-params" lsp::lsp_position_params(pane: args::ShownPane);
     cmd "track-position!" lsp::track_position(pane: args::ShownPane);
@@ -511,6 +512,7 @@ builtins! {
     cmd "lsp-locations->places" lsp::lsp_locations_to_places(locs: SteelVal);
     cmd "lsp-locations->merged-places" lsp::lsp_locations_to_merged_places(locs: SteelVal);
     cmd "viewport-range" buffers::viewport_range(pane: args::ShownPane);
+    cmd "buffer-viewport-ranges" buffers::buffer_viewport_ranges(pane: args::LiveBuffer);
     cmd "buffer-generation" buffers::buffer_generation(pane: args::LiveBuffer);
     cmd "buffer-search" buffers::buffer_search(pane: args::LiveBuffer, pattern: String);
     cmd "word-search-pattern" buffers::word_search_pattern(pane: args::LiveBuffer, word: String);

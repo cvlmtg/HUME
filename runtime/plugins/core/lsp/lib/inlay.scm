@@ -21,6 +21,13 @@
     (set! lsp/*inlay-keys* (append lsp/*inlay-keys* (list (lsp-supersede-key)))))
   (list-ref lsp/*inlay-keys* index))
 
+(define (lsp/cancel-inlay-keys-from! pane from)
+  (let loop ((keys lsp/*inlay-keys*) (index 0))
+    (unless (null? keys)
+      (when (>= index from)
+        (lsp-cancel! pane (car keys)))
+      (loop (cdr keys) (+ index 1)))))
+
 (define (lsp/inlay-on? pane)
   (let ((key (buffer-key pane)))
     (if (hash-contains? lsp/*inlay-overrides* key)
@@ -43,24 +50,6 @@
          (text (if pad-right (string-append text " ") text))
          (offset (lsp-position->char-offset pane (json-ref hint "position"))))
     (and offset (hash 'char-offset offset 'text text 'side 'before))))
-
-(define (lsp/range-before? a b)
-  (< (hash-ref a 'start-line) (hash-ref b 'start-line)))
-
-;; The lines the panes on `pane`'s buffer show, sorted, ranges that overlap or touch joined.
-(define (lsp/inlay-ranges pane)
-  (let loop ((ranges (sort (map viewport-range (buffer-panes pane)) lsp/range-before?))
-             (joined '()))
-    (cond
-      ((null? ranges) (reverse joined))
-      ((and (pair? joined)
-            (<= (hash-ref (car ranges) 'start-line) (hash-ref (car joined) 'end-line)))
-       (loop (cdr ranges)
-             (cons (hash-insert (car joined) 'end-line
-                                (max (hash-ref (car joined) 'end-line)
-                                     (hash-ref (car ranges) 'end-line)))
-                   (cdr joined))))
-      (else (loop (cdr ranges) (cons (car ranges) joined))))))
 
 (define (lsp/hint-in-range? hint range)
   (let ((line (json-ref hint "position" "line")))
@@ -96,6 +85,7 @@
          (round (+ 1 (or (hash-try-get lsp/*inlay-rounds* key) 0)))
          (answers (box '())))
     (set! lsp/*inlay-rounds* (hash-insert lsp/*inlay-rounds* key round))
+    (lsp/cancel-inlay-keys-from! pane (length ranges))
     (let loop ((rest ranges) (index 0))
       (unless (null? rest)
         (let ((range (car rest)))
@@ -118,7 +108,7 @@
     (lambda (pane)
       (let ((pane (lsp/resolve-pane pane)))
         (when (and pane (lsp/inlay-on? pane))
-          (lsp/request-round! pane (lsp/inlay-ranges pane)))))
+          (lsp/request-round! pane (buffer-viewport-ranges pane)))))
     #:key (lambda (p . _) (buffer-key p))))
 
 (define (lsp/refresh-hints pane)

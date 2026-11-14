@@ -181,6 +181,12 @@ pub enum Effect {
     GrammarSweep(String),
     LspRequest(PendingLspRequest),
     LspNotify(PendingLspNotify),
+    /// `(lsp-cancel! pane key)`: queued with the requests, so it cancels a
+    /// request the same evaluation queued before it.
+    LspCancel {
+        bid: BufferId,
+        key: crate::host::SupersedeKey,
+    },
     /// `(bind-key! …)` / `(bind-key-extend! …)`: applied to the global keymap,
     /// or with `#:keymap` to that named keymap.
     ///

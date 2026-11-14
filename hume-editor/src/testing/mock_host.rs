@@ -267,6 +267,12 @@ impl BufferHost for MockHost {
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
         Err("MockHost: viewport_range not available".into())
     }
+    fn buffer_viewport_ranges(
+        &mut self,
+        _id: BufferId,
+    ) -> Vec<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>> {
+        Vec::new()
+    }
 }
 
 impl SettingsHost for MockHost {

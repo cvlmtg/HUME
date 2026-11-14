@@ -6,7 +6,7 @@ use hume_core::{GrammarSource, OptionalQuery, QueryFiles};
 use hume_editing::text::BufferText;
 use hume_engine::theme::ScopeRegistry;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::InclusiveRange;
+use hume_rope::offset::ExclusiveRange;
 use hume_treesitter::registry::{GrammarBundle, GrammarSnapshot, LanguageRegistry};
 use hume_treesitter::syntax::Syntax;
 use test_fixtures::{
@@ -74,7 +74,7 @@ fn bench_captures_in_a_range(c: &mut Criterion) {
         .expect("the query compiles");
 
     let first = ContentLine::new(PARAGRAPHS);
-    let ranges = [InclusiveRange::new(first, first.advance(ROWS - 1))];
+    let ranges = [ExclusiveRange::new(first, first.advance(ROWS))];
     let mut out = Vec::new();
     query.collect(layers, text.rope(), &ranges, &mut out);
     assert_eq!(

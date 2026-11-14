@@ -4,10 +4,9 @@
 use std::cmp::Reverse;
 use std::sync::Arc;
 
-use hume_rope::line::ContentLine;
+use hume_rope::line::{ContentLine, join_line_ranges};
 use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 use ropey::Rope;
-use rustc_hash::FxHashSet;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor, QueryError};
 
@@ -54,42 +53,37 @@ impl CaptureQuery {
         &self.names
     }
 
-    /// Replace `out` with every capture of every match over each layer of
-    /// `layers` parsed with this query's bundle over the lines of any range
-    /// in `lines`, injected layers included, predicates evaluated against
-    /// `rope`. Sorted by start, then by end descending, so an enclosing node
-    /// precedes the nodes it starts with.
+    /// Replace `out` with the captures of the matches over each layer of
+    /// `layers` parsed with this query's bundle over the lines of `lines`,
+    /// injected layers included, predicates evaluated against `rope`. The
+    /// ranges may come in any order and overlap; no line is walked twice.
     ///
-    /// A match is returned when the node its pattern is rooted at intersects
-    /// one of the ranges, with every capture of the match, inside the lines
-    /// or not. A pattern rooted at a table returns the whole table, one
-    /// rooted at a delimiter only the delimiters on the lines. A match that
-    /// several ranges reach is returned once.
+    /// `out` is sorted by start, then by end descending, so an enclosing node
+    /// precedes the nodes it starts with, then by name. Each distinct capture
+    /// is there once, however many matches or ranges reach it.
+    ///
+    /// A match counts when the node its pattern is rooted at intersects one
+    /// of the ranges, with every capture of the match, inside the lines or
+    /// not. A pattern rooted at a table returns the whole table, one rooted
+    /// at a delimiter only the delimiters on the lines.
     pub fn collect(
         &self,
         layers: &SyntaxLayers,
         rope: &Rope,
-        lines: &[InclusiveRange<ContentLine>],
+        lines: &[ExclusiveRange<ContentLine>],
         out: &mut Vec<Capture>,
     ) {
         out.clear();
         let mut cursor = QueryCursor::new();
-        let mut seen = FxHashSet::default();
-        for lines in joined(lines) {
+        for range in join_line_ranges(lines.iter().copied()) {
+            // Joined ranges are non-empty, so the last line is one before the end.
+            let lines = InclusiveRange::new(range.start, range.end.retreat_saturating(1));
             let (bytes, covering) = layers.covering_lines(rope, lines);
             cursor.set_byte_range(bytes);
             for layer in covering.filter(|layer| layer.bundle.config_gen == self.config_gen) {
-                let root = layer.tree.root_node();
-                let mut matches = cursor.matches(&self.query, root, RopeProvider(rope));
+                let mut matches =
+                    cursor.matches(&self.query, layer.tree.root_node(), RopeProvider(rope));
                 while let Some(m) = matches.next() {
-                    let nodes: Vec<_> = m
-                        .captures()
-                        .iter()
-                        .map(|capture| (capture.index, capture.node.id()))
-                        .collect();
-                    if !seen.insert((root.id(), m.pattern_index, nodes)) {
-                        continue;
-                    }
                     out.extend(m.captures().iter().map(|capture| Capture {
                         name: capture.index,
                         range: ExclusiveRange::new(
@@ -100,23 +94,15 @@ impl CaptureQuery {
                 }
             }
         }
-        out.sort_by_key(|capture| (capture.range.start, Reverse(capture.range.end)));
+        out.sort_by_key(|capture| {
+            (
+                capture.range.start,
+                Reverse(capture.range.end),
+                capture.name,
+            )
+        });
+        out.dedup();
     }
-}
-
-/// `lines` sorted by start, with the ranges that overlap or touch joined, so
-/// no line is walked twice.
-fn joined(lines: &[InclusiveRange<ContentLine>]) -> Vec<InclusiveRange<ContentLine>> {
-    let mut sorted = lines.to_vec();
-    sorted.sort_by_key(|range| range.start);
-    let mut out: Vec<InclusiveRange<ContentLine>> = Vec::with_capacity(sorted.len());
-    for range in sorted {
-        match out.last_mut() {
-            Some(last) if range.start <= last.end.advance(1) => last.end = last.end.max(range.end),
-            _ => out.push(range),
-        }
-    }
-    out
 }
 
 #[cfg(test)]

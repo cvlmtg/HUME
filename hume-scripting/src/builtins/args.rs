@@ -332,16 +332,19 @@ pub(crate) fn job_arg(val: &SteelVal, ctx_name: &str) -> Result<JobHandle, Steel
     })
 }
 
+/// A key `lsp-supersede-key` minted.
+pub(crate) fn supersede_key_arg(val: SteelVal, ctx_name: &str) -> Result<SupersedeKey, SteelErr> {
+    super::ids::downcast(&val)
+        .ok_or_else(|| generic_err(format!("{ctx_name}: expected a key from lsp-supersede-key")))
+}
+
 /// A `#:supersede` key that may be `#f` (absent), as `lsp-supersede-key`
 /// hands it out.
 pub(crate) fn optional_supersede_key_arg(
     val: SteelVal,
     ctx_name: &str,
 ) -> Result<Option<SupersedeKey>, SteelErr> {
-    optional(val, ctx_name, |v, ctx| {
-        super::ids::downcast(&v)
-            .ok_or_else(|| generic_err(format!("{ctx}: expected a key from lsp-supersede-key")))
-    })
+    optional(val, ctx_name, supersede_key_arg)
 }
 
 /// A generation of `buffer` that may be `#f` (absent), as `buffer-generation`

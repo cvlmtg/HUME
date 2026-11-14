@@ -19,7 +19,7 @@ use super::SteelResult;
 use super::args::{
     bool_arg, callable_arg, checked_params, list_of, optional_server_arg, optional_string_arg,
     optional_supersede_key_arg, optional_symbol_arg, optional_token_arg, pair_fields, server_arg,
-    string_arg, string_list, strings_arg, symbol_enum_arg, symbol_hash,
+    string_arg, string_list, strings_arg, supersede_key_arg, symbol_enum_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
 use super::hooks::{known_event, register_entry};
@@ -454,6 +454,15 @@ pub(crate) fn lsp_supersede_key(ctx: &mut SteelCtx) -> SteelResult {
     Ok(require_cap(ctx.host.lsp())?
         .new_supersede_key()
         .into_steel_val())
+}
+
+/// `(lsp-cancel! pane key)`: cancels the request `pane`'s buffer has in
+/// flight under supersede `key`, as a new request under `key` would,
+/// without sending one. Nothing happens when none is in flight.
+pub(crate) fn lsp_cancel(ctx: &mut SteelCtx, bid: BufferId, key: SteelVal) -> SteelResult {
+    let key = supersede_key_arg(key, "key")?;
+    ctx.push_effect(Effect::LspCancel { bid, key });
+    Ok(SteelVal::Void)
 }
 
 /// `(lsp-server-registered? name)` → bool. Reads through the

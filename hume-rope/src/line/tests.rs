@@ -133,3 +133,39 @@ fn exclusive_line_range_that_starts_at_or_past_its_end_is_empty() {
     assert_eq!(lines_of(at.iter()), Vec::<usize>::new());
     assert_eq!(lines_of(past.iter()), Vec::<usize>::new());
 }
+
+fn lines(start: usize, end: usize) -> ExclusiveRange<ContentLine> {
+    ExclusiveRange::new(ContentLine::new(start), ContentLine::new(end))
+}
+
+#[test]
+fn join_line_ranges_keeps_ranges_apart_sorted() {
+    assert_eq!(
+        join_line_ranges([lines(50, 60), lines(0, 10)]),
+        [lines(0, 10), lines(50, 60)]
+    );
+}
+
+#[test]
+fn join_line_ranges_joins_overlapping_touching_and_contained_ranges() {
+    assert_eq!(
+        join_line_ranges([lines(0, 10), lines(5, 20)]),
+        [lines(0, 20)]
+    );
+    assert_eq!(
+        join_line_ranges([lines(10, 20), lines(0, 10)]),
+        [lines(0, 20)]
+    );
+    assert_eq!(
+        join_line_ranges([lines(0, 20), lines(5, 10)]),
+        [lines(0, 20)]
+    );
+}
+
+#[test]
+fn join_line_ranges_drops_empty_ranges() {
+    assert_eq!(
+        join_line_ranges([lines(3, 3), lines(20, 30), lines(40, 40)]),
+        [lines(20, 30)]
+    );
+}

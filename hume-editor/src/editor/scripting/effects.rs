@@ -70,6 +70,7 @@ impl Editor {
                 }
                 Effect::LspRequest(req) => self.state.lsp_send_request(&self.view, req),
                 Effect::LspNotify(notify) => self.state.lsp_send_notify(notify),
+                Effect::LspCancel { bid, key } => self.state.lsp_cancel(bid, key),
                 Effect::BindKey {
                     mode,
                     keys,

@@ -169,8 +169,10 @@
       '()))
 
 (define (md-preview/in-ranges? line ranges)
-  (pair? (filter (lambda (r) (and (<= (hash-ref r 'start-line) line) (< line (hash-ref r 'end-line))))
-                 ranges)))
+  (and (call! "stdlib/find"
+              (lambda (r) (and (<= (hash-ref r 'start-line) line) (< line (hash-ref r 'end-line))))
+              ranges)
+       #t))
 
 (define (md-preview/edges layouts ranges line-info line-count)
   (let* ([bottoms (map (lambda (t)

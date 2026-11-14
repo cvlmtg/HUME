@@ -129,14 +129,14 @@ pane shows is not drawn.
 
 Each render replaces the plugin's three sources (`"markdown-preview"` for conceals, line
 backgrounds and extra highlights) as a whole, for every pane on the buffer. So it covers
-the lines of every pane in `(buffer-panes pane)` at once: one range per pane, from the line
-above the pane's first shown line to its last shown line. Both queries take the list as
-`#:ranges`, and `syntax-captures` returns a match once even when several ranges reach it,
-such as a section or a code block two panes both show part of. The lines between two
-panes far apart are not fetched, and lines outside every range are drawn raw until a
-render covers them. The line above a pane is in its range so that a table ending just
-above the pane's first shown line comes back: the empty line after it, at the top of the
-pane, carries that table's bottom border (see [Tables](#tables)).
+the lines `(buffer-viewport-ranges pane)` names at once, each range starting one line
+above the first line it names. Both queries take the list as `#:ranges`, and
+`syntax-captures` returns a match once even when several ranges reach it, such as a
+section or a code block two panes both show part of. The lines between two panes far
+apart are not fetched, and lines outside every range are drawn raw until a render covers
+them. The line above a range is in it so that a table ending just above a pane's first
+shown line comes back: the empty line after it, at the top of the pane, carries that
+table's bottom border (see [Tables](#tables)).
 
 ### Widening by query roots
 

@@ -361,6 +361,12 @@ impl EditorState {
         }
     }
 
+    /// Cancels the script request `bid` has in flight under `key`, for
+    /// `lsp-cancel!`.
+    pub(in crate::editor) fn lsp_cancel(&mut self, bid: BufferId, key: SupersedeKey) {
+        self.cancel_superseded(DeliveryKey::Script(key, bid));
+    }
+
     /// Sends pending text changes and cancels the delivery filed under
     /// `supersede`: the first step of every request, so a key's previous
     /// request is retired whether or not the new one reaches a server.

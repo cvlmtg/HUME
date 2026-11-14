@@ -2,7 +2,7 @@
 
 use hume_core::BufferId;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::{ExclusiveRange, InclusiveRange};
+use hume_rope::offset::ExclusiveRange;
 use hume_scripting::host::{CaptureEntry, Captures, SyntaxHost};
 
 use super::EditorHostImpl;
@@ -37,15 +37,8 @@ impl<'a> SyntaxHost for EditorHostImpl<'a> {
         let buf = self.state.buffers.get(bid);
         let text = buf.text();
         let mut captures = Vec::new();
-        // An empty range captures nothing. A non-empty one ends past a real
-        // line, so its last line is one before its end.
-        let lines: Vec<_> = ranges
-            .iter()
-            .filter(|range| !range.is_empty())
-            .map(|range| InclusiveRange::new(range.start, range.end.retreat_saturating(1)))
-            .collect();
         if let Some(layers) = buf.current_layers() {
-            query.collect(layers, text.rope(), &lines, &mut captures);
+            query.collect(layers, text.rope(), ranges, &mut captures);
         }
         Ok(Captures {
             names: query.names().to_vec(),

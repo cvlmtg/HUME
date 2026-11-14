@@ -11,7 +11,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, CHAR_RANGE_KEYS, LINE_RANGE_KEYS, bool_arg, char_range_value, hash_entry,
+    ArgPane, CHAR_RANGE_KEYS, HashEntry, LINE_RANGE_KEYS, bool_arg, char_range_value, hash_entry,
     line_range_value, list_of, not_live_err, optional_hash_entry, optional_list_items,
     relative_base_arg, string_list, symbol_hash,
 };
@@ -341,7 +341,7 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -
 /// A `#:range` argument, a line range value (see [`line_range_value`]) or
 /// `#f` for every line, as content lines of a buffer with `line_count` of
 /// them. Raises rather than clamping, as [`optional_line_range_arg`] refuses.
-pub(super) fn line_range_arg(
+fn line_range_arg(
     range: SteelVal,
     line_count: usize,
 ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, SteelErr> {
@@ -354,8 +354,8 @@ pub(super) fn line_range_arg(
 
 /// A `#:ranges` argument, a list of line range values (see
 /// [`line_range_value`]) or `#f` for every line, as content lines of a buffer
-/// with `line_count` of them. Raises rather than clamping, as
-/// [`optional_line_range_arg`] refuses, and on a value that is not a list.
+/// with `line_count` of them. Raises on a value that is not a list, and on
+/// an item [`line_range_entry`] refuses.
 pub(super) fn line_ranges_arg(
     ranges: SteelVal,
     line_count: usize,
@@ -366,27 +366,34 @@ pub(super) fn line_ranges_arg(
         Some(items) => items
             .into_iter()
             .map(|item| {
-                let (start, end) = hash_entry(item, LABEL, LINE_RANGE_KEYS)?.line_range()?;
-                line_range_bounds(start, end, LABEL, line_count)
+                line_range_entry(hash_entry(item, LABEL, LINE_RANGE_KEYS)?, LABEL, line_count)
             })
             .collect(),
     }
 }
 
 /// A line range value as content lines of a buffer with `line_count` of them,
-/// or `None` for `#f`. Errors name `label`, and refuse `start > end`, `end`
-/// past `line_count`, and a missing key.
+/// or `None` for `#f`, as [`line_range_entry`] reads it.
 pub(super) fn optional_line_range_arg(
     val: SteelVal,
     label: &str,
     line_count: usize,
 ) -> Result<Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>, SteelErr> {
     optional_hash_entry(val, label, LINE_RANGE_KEYS)?
-        .map(|entry| {
-            let (start, end) = entry.line_range()?;
-            line_range_bounds(start, end, label, line_count)
-        })
+        .map(|entry| line_range_entry(entry, label, line_count))
         .transpose()
+}
+
+/// A line range value's `entry` as content lines of a buffer with
+/// `line_count` of them. Errors name `label`, and refuse `start > end`, `end`
+/// past `line_count`, and a missing key.
+fn line_range_entry(
+    entry: HashEntry,
+    label: &str,
+    line_count: usize,
+) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, SteelErr> {
+    let (start, end) = entry.line_range()?;
+    line_range_bounds(start, end, label, line_count)
 }
 
 fn line_range_bounds(
@@ -682,6 +689,19 @@ pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResu
         .viewport_range(pane)
         .map_err(generic_err)?;
     Ok(line_range_value(range))
+}
+
+/// `(buffer-viewport-ranges pane)` → the lines every pane showing `pane`'s
+/// buffer shows, as a list of `viewport-range` values sorted by start, the
+/// ranges that overlap or touch joined. `'()` when no pane shows the buffer.
+pub(crate) fn buffer_viewport_ranges(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
+    let ranges = ctx
+        .host
+        .buffers()
+        .buffer_viewport_ranges(bid)
+        .into_iter()
+        .map(line_range_value);
+    Ok(list_of(ranges))
 }
 
 /// `(selections-linewise? pane)`.

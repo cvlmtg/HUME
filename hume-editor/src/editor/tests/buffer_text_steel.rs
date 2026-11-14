@@ -395,6 +395,50 @@ fn viewport_range_passes_straight_to_buffer_lines() {
     assert!(fired, "only the two visible lines must be read");
 }
 
+/// 100 lines, the cursor at the start, split side by side, the focused pane
+/// moved to `line`.
+fn split_at(line: usize) -> Editor {
+    let mut ed = editor_from(&format!("-[x]>\n{}", "x\n".repeat(99)));
+    ed.execute_typed("vsplit", None).unwrap();
+    seek_to_line(&mut ed, line);
+    ed
+}
+
+/// Two panes far apart give two ranges, the one higher in the buffer first,
+/// though `buffer-panes` lists the focused, lower one first.
+#[test]
+fn buffer_viewport_ranges_keeps_panes_far_apart_separate() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = split_at(99);
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::for_testing(&Dirs::none()),
+        tmp.path(),
+        r#"(let* ((shown (map viewport-range (buffer-panes bid)))
+                  (lower (car shown))
+                  (upper (cadr shown)))
+             (and (< (hash-ref upper 'end-line) (hash-ref lower 'start-line))
+                  (equal? (buffer-viewport-ranges bid) (list upper lower))))"#,
+    );
+    assert!(fired, "each pane's lines must come back as their own range");
+}
+
+/// Two panes showing the same lines give one range.
+#[test]
+fn buffer_viewport_ranges_joins_panes_showing_the_same_lines() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = split_at(0);
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::for_testing(&Dirs::none()),
+        tmp.path(),
+        r#"(equal? (buffer-viewport-ranges bid) (list (viewport-range bid)))"#,
+    );
+    assert!(fired, "the two panes' lines must come back as one range");
+}
+
 /// A stale bid raises "invalid buffer id" for both `buffer-text` and
 /// `buffer-lines`, not an empty string/list.
 fn assert_stale_bid_raises(builtin_call: &str, builtin_name: &str) {

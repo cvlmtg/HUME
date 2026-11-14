@@ -15,11 +15,10 @@
   (set-line-backgrounds! pane md-preview/source '())
   (set-extra-highlights! pane md-preview/source '()))
 
-(define (md-preview/render-ranges panes)
-  (map (lambda (pane)
-         (let ([shown (viewport-range pane)])
-           (hash-insert shown 'start-line (max 0 (- (hash-ref shown 'start-line) 1)))))
-       panes))
+(define (md-preview/render-ranges pane)
+  (map (lambda (shown)
+         (hash-insert shown 'start-line (max 0 (- (hash-ref shown 'start-line) 1))))
+       (buffer-viewport-ranges pane)))
 
 (define (md-preview/line-reader pane)
   (let ([memo (box (hash))])
@@ -118,6 +117,6 @@
     (when (and entry
                (hash-ref entry 'enabled?)
                (equal? (hash-ref entry 'generation) (buffer-generation pane)))
-      (let ([panes (buffer-panes pane)])
-        (unless (null? panes)
-          (md-preview/draw! pane (md-preview/render-ranges panes) rule-width))))))
+      (let ([ranges (md-preview/render-ranges pane)])
+        (unless (null? ranges)
+          (md-preview/draw! pane ranges rule-width))))))
