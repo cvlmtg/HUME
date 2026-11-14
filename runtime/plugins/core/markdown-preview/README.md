@@ -1,12 +1,6 @@
 # core:markdown-preview
 
-Draws Markdown without its syntax, in the style of Obsidian's live preview. A heading's
-`#` marker becomes its level number in a colored block, list bullets become dots, task boxes become
-checkboxes, quote markers become bars, rules become a line of dashes, code fences
-disappear behind a background band, and tables become box grids. Emphasis, strikethrough
-and code spans lose their delimiters, links show only their text, and escapes and entities
-show the character they stand for. Every line a selection touches shows its source, and a
-code block or a table shows its source as a whole while a selection is inside it.
+Draws Markdown without its syntax, in the style of Obsidian's live preview. Every line a selection touches shows its source, and a code block or a table shows its source as a whole while a selection is inside it.
 
 ## Usage
 
