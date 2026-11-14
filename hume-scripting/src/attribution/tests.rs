@@ -280,7 +280,7 @@ fn parse_installed_rejects_local_ids() {
 /// `hume`, while one `init.scm` defines is the user's.
 #[test]
 fn a_bundled_runtime_file_attributes_to_hume() {
-    use crate::{ScriptingHost, null_host::CommandStoreHost};
+    use crate::{ScriptingHost, testing::null_host::CommandStoreHost};
     use hume_platform::dirs::Dirs;
     use steel::rvals::SteelVal;
     let dir = tempfile::tempdir().unwrap();

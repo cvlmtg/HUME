@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::hash_field;
+use crate::testing::test_support::hash_field;
 
 fn int(n: usize) -> SteelVal {
     SteelVal::IntV(n as isize)
@@ -52,7 +52,7 @@ fn version_builtins_reject_a_wrong_argument_count() {
     ] {
         let mut host = crate::ScriptingHost::for_testing(&hume_platform::dirs::Dirs::none());
         let err = host
-            .eval_source(expr, &mut crate::null_host::NullHost)
+            .eval_source(expr, &mut crate::testing::null_host::NullHost)
             .expect_err(expr);
         assert!(err.contains("ArityMismatch"), "{expr}: {err}");
         assert!(err.contains(message), "{expr}: {err}");

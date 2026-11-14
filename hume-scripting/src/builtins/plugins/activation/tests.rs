@@ -9,7 +9,7 @@ use crate::attribution::{EntryId, PluginId};
 use crate::command_procs::CommandProc;
 use crate::host::CommandHost as _;
 use crate::lazy::PluginState;
-use crate::null_host::{CommandStoreHost, NullHost};
+use crate::testing::null_host::{CommandStoreHost, NullHost};
 
 /// Write a Steel source file into `dir` and return its path.
 fn write_plugin(dir: &TempDir, name: &str, src: &str) -> std::path::PathBuf {
@@ -307,7 +307,7 @@ fn begin_lazy_activation_declared_returns_require_string() {
         r#"(define-command! "p-cmd" "doc" (lambda () 0))"#,
     );
     let id = plugin_id("core:p");
-    let mut h = crate::test_support::SteelCtxTestHarness::new();
+    let mut h = crate::testing::test_support::SteelCtxTestHarness::new();
     h.state
         .registries
         .lazy_registry
@@ -978,7 +978,7 @@ fn a_called_command_may_define_the_running_bodys_activation_command() {
 #[test]
 fn leaving_a_call_with_a_body_open_above_it_fails_that_body() {
     let id = plugin_id("core:open");
-    let mut h = crate::test_support::SteelCtxTestHarness::new();
+    let mut h = crate::testing::test_support::SteelCtxTestHarness::new();
     h.state
         .registries
         .lazy_registry
@@ -1284,7 +1284,7 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
 /// overflow.
 #[test]
 fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
-    use crate::{ScriptingHost, null_host::NullHost};
+    use crate::{ScriptingHost, testing::null_host::NullHost};
     use std::io::Write as _;
     use tempfile::TempDir;
 
@@ -1334,7 +1334,7 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
     let dir = TempDir::new().unwrap();
     let path = write_plugin(&dir, "ok.scm", "(define x 1)");
     let id = plugin_id("core:ok");
-    let mut h = crate::test_support::SteelCtxTestHarness::new();
+    let mut h = crate::testing::test_support::SteelCtxTestHarness::new();
     h.state
         .registries
         .lazy_registry
@@ -1374,7 +1374,7 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
 fn begin_lazy_activation_depth_cap_fails_the_entry_and_drops_its_stub() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
-    use crate::null_host::CommandStoreHost;
+    use crate::testing::null_host::CommandStoreHost;
     use std::io::Write as _;
     use tempfile::TempDir;
 
@@ -1450,7 +1450,7 @@ fn begin_lazy_activation_depth_cap_fails_the_entry_and_drops_its_stub() {
 #[test]
 fn begin_lazy_activation_escapes_backslashes_in_path() {
     let id = plugin_id("core:winpath");
-    let mut h = crate::test_support::SteelCtxTestHarness::new();
+    let mut h = crate::testing::test_support::SteelCtxTestHarness::new();
     h.state.registries.lazy_registry.plugins.insert(
         id.clone(),
         PluginState::Declared {

@@ -113,7 +113,7 @@ fn scan_does_not_read_the_install_requirements() {
         data_tmp.path(),
         &format!(
             "(load-plugin! \"core:stdlib\")\n{}",
-            hume_scripting::eager_load_scm("core:lsp-install", None)
+            hume_scripting::testing::eager_load_scm("core:lsp-install", None)
         ),
     );
 

@@ -64,8 +64,8 @@ fn setup_with_source(
     extra: &str,
 ) -> (Editor, RealRuntimeDirs) {
     let load_git_diff = match config_expr {
-        Some(cfg) => hume_scripting::eager_load_scm("core:git-diff", Some(cfg)),
-        None => hume_scripting::eager_load_scm("core:git-diff", None),
+        Some(cfg) => hume_scripting::testing::eager_load_scm("core:git-diff", Some(cfg)),
+        None => hume_scripting::testing::eager_load_scm("core:git-diff", None),
     };
     setup_with_init(tmp, &format!("{load_git_diff}\n{extra}"))
 }
@@ -1431,7 +1431,10 @@ fn bad_branch_style_fails_plugin_load_with_prefixed_error() {
         guard.dirs(),
         &format!(
             "(load-plugin! \"core:stdlib\")\n{}",
-            hume_scripting::eager_load_scm("core:git-diff", Some("(hash 'branch-style 'bogus)"))
+            hume_scripting::testing::eager_load_scm(
+                "core:git-diff",
+                Some("(hash 'branch-style 'bogus)")
+            )
         ),
         "git-diff",
         &["branch-style", "must be one of 'parens, 'icon"],
@@ -1607,7 +1610,7 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
         guard.dirs(),
         &format!(
             "(load-plugin! \"core:stdlib\")\n{}",
-            hume_scripting::eager_load_scm("core:git-diff", Some("(hash 'signs \"yes\")"))
+            hume_scripting::testing::eager_load_scm("core:git-diff", Some("(hash 'signs \"yes\")"))
         ),
         "git-diff",
         &["must be #t or #f"],
@@ -1894,7 +1897,7 @@ fn rust_only_git_diff(config: Option<&str>) -> String {
     format!(
         "(%define-language! \"rust\" '(\"rs\") '() '())\n\
          (declare-plugin! \"core:git-diff\" #:languages '(\"rust\"))\n{}",
-        hume_scripting::eager_load_scm("core:git-diff", config)
+        hume_scripting::testing::eager_load_scm("core:git-diff", config)
     )
 }
 

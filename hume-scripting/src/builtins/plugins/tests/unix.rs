@@ -50,7 +50,7 @@ fn status_row(host: &ScriptingHost, plugin: &str) -> String {
 /// own message, not the "add #:commands" hint for a declaration with none.
 #[test]
 fn declare_plugin_builtin_collision_raises_like_define_command() {
-    use crate::null_host::CommandStoreHost;
+    use crate::testing::null_host::CommandStoreHost;
 
     let (_dir, mut host) = host_with_plugin("test-collision", &[("plugin.scm", "")]);
     let mut store = CommandStoreHost::with_natives(&["insert-mode"]);
@@ -75,7 +75,7 @@ fn declare_plugin_builtin_collision_raises_like_define_command() {
 /// PLUM's list.
 #[test]
 fn declare_plugin_with_a_taken_command_name_records_nothing() {
-    use crate::null_host::CommandStoreHost;
+    use crate::testing::null_host::CommandStoreHost;
 
     let (_dir, mut host) = host_with_plugin("collided", &[("plugin.scm", "")]);
     let mut store = CommandStoreHost::with_natives(&["insert-mode"]);
@@ -100,7 +100,7 @@ fn declare_plugin_raises_for_a_command_an_eager_plugin_defined() {
     use crate::attribution::Owner;
     use crate::command_procs::{CommandProc, MappableProc};
     use crate::host::EditorHost;
-    use crate::null_host::CommandStoreHost;
+    use crate::testing::null_host::CommandStoreHost;
     use steel::rvals::SteelVal;
 
     // Plugin file must exist so declare-plugin! proceeds past the path check.
@@ -143,7 +143,7 @@ fn declare_plugin_raises_for_a_command_an_eager_plugin_defined() {
 #[test]
 fn declare_plugin_typed_collision_raises_and_claims_nothing() {
     use crate::host::EditorHost;
-    use crate::null_host::CommandStoreHost;
+    use crate::testing::null_host::CommandStoreHost;
 
     let (_dir, mut host) = host_with_plugin("tp", &[("plugin.scm", "")]);
     let mut editor_host = CommandStoreHost::default();
@@ -183,7 +183,7 @@ fn declare_plugin_typed_collision_raises_and_claims_nothing() {
 /// One declaration claims each name once, across both lists.
 #[test]
 fn declare_plugin_raises_for_a_name_listed_twice() {
-    use crate::null_host::CommandStoreHost;
+    use crate::testing::null_host::CommandStoreHost;
 
     for lists in [
         r#"#:commands '("dup-a" "dup-a")"#,
@@ -205,7 +205,7 @@ fn declare_plugin_raises_for_a_name_listed_twice() {
 #[test]
 fn declaring_an_entry_twice_raises() {
     use crate::host::EditorHost;
-    use crate::null_host::CommandStoreHost;
+    use crate::testing::null_host::CommandStoreHost;
 
     let (_dir, mut host) = host_with_plugin("tp", &[("plugin.scm", "")]);
     let mut editor_host = CommandStoreHost::default();
@@ -232,7 +232,7 @@ fn declaring_an_entry_twice_raises() {
 /// it twice is the same mistake.
 #[test]
 fn declaring_an_absent_plugin_twice_raises() {
-    use crate::null_host::NullHost;
+    use crate::testing::null_host::NullHost;
 
     let (_dir, mut host) = host_with_plugin("present", &[("plugin.scm", "")]);
     host.eval_source(
@@ -255,7 +255,7 @@ fn declaring_an_absent_plugin_twice_raises() {
 /// An entry that already ran is still declared.
 #[test]
 fn declaring_a_loaded_entry_again_raises() {
-    use crate::null_host::NullHost;
+    use crate::testing::null_host::NullHost;
 
     let (_dir, mut host) = host_with_plugin("tp", &[("plugin.scm", "")]);
     host.eval_source(
@@ -288,7 +288,7 @@ fn declaring_a_loaded_entry_again_raises() {
 /// A secondary entry declared twice names the entry.
 #[test]
 fn declaring_a_secondary_entry_twice_names_it() {
-    use crate::null_host::NullHost;
+    use crate::testing::null_host::NullHost;
 
     let (_dir, mut host) = host_with_plugin("tp", &[("plugin.scm", ""), ("extra.scm", "")]);
     let declare = r#"(declare-plugin! "user/tp" #:entry "extra.scm" #:events '(on-buffer-open))"#;
@@ -312,7 +312,7 @@ fn declaring_a_secondary_entry_twice_names_it() {
 /// `attribution`.
 #[test]
 fn plugin_config_survives_lazy_declare_to_activation() {
-    use crate::{ScriptingHost, null_host::NullHost};
+    use crate::{ScriptingHost, testing::null_host::NullHost};
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -358,7 +358,7 @@ fn plugin_config_survives_lazy_declare_to_activation() {
 #[test]
 fn load_plugin_evaluates_manifest_scm() {
     use crate::host::EditorHost;
-    use crate::null_host::CommandStoreHost;
+    use crate::testing::null_host::CommandStoreHost;
 
     let (_dir, mut host) = host_with_plugin(
         "mftest",
@@ -394,7 +394,7 @@ fn load_plugin_evaluates_manifest_scm() {
 /// body reading `(plugin-config)` at activation sees the user's value.
 #[test]
 fn load_plugin_config_reaches_a_manifest_declared_entry() {
-    use crate::null_host::NullHost;
+    use crate::testing::null_host::NullHost;
 
     let (_dir, mut host) = host_with_plugin(
         "cfgmftest",
@@ -433,7 +433,7 @@ fn load_plugin_config_reaches_a_manifest_declared_entry() {
 /// so `load-plugin!` loads its `plugin.scm` right away.
 #[test]
 fn load_plugin_without_manifest_loads_eagerly() {
-    use crate::null_host::NullHost;
+    use crate::testing::null_host::NullHost;
 
     let (_dir, mut host) =
         host_with_plugin("nomf", &[("plugin.scm", r#"(log! 'info "body-ran")"#)]);
@@ -457,7 +457,7 @@ fn load_plugin_without_manifest_loads_eagerly() {
 /// misconfigured plugin, not a "not installed yet" state.
 #[test]
 fn load_plugin_dir_with_neither_manifest_nor_plugin_scm_errors() {
-    use crate::{ScriptingHost, null_host::NullHost};
+    use crate::{ScriptingHost, testing::null_host::NullHost};
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -484,7 +484,7 @@ fn load_plugin_dir_with_neither_manifest_nor_plugin_scm_errors() {
 /// The `manifest_resolving` mismatch guard in `declare_plugin` enforces this.
 #[test]
 fn manifest_declaring_different_plugin_name_errors() {
-    use crate::{ScriptingHost, null_host::NullHost};
+    use crate::{ScriptingHost, testing::null_host::NullHost};
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -535,7 +535,7 @@ fn manifest_declaring_different_plugin_name_errors() {
 /// error would point at a line that doesn't exist in their config.
 #[test]
 fn manifest_bad_events_names_manifest_scm_and_plugin() {
-    use crate::{ScriptingHost, null_host::NullHost};
+    use crate::{ScriptingHost, testing::null_host::NullHost};
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -574,7 +574,7 @@ fn manifest_bad_events_names_manifest_scm_and_plugin() {
 /// and be contained: the entry could never activate.
 #[test]
 fn manifest_whose_declare_has_no_triggers_errors_and_is_contained() {
-    use crate::{ScriptingHost, null_host::NullHost};
+    use crate::{ScriptingHost, testing::null_host::NullHost};
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -615,7 +615,7 @@ fn manifest_whose_declare_has_no_triggers_errors_and_is_contained() {
 /// The post-eval check in `%finish-manifest-load!` catches this case.
 #[test]
 fn manifest_that_never_declares_errors() {
-    use crate::{ScriptingHost, null_host::NullHost};
+    use crate::{ScriptingHost, testing::null_host::NullHost};
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -652,7 +652,7 @@ fn manifest_that_never_declares_errors() {
 /// `manifest.scm`, so the manifest's activation entries register once.
 #[test]
 fn load_plugin_second_call_is_silent_noop() {
-    use crate::{ScriptingHost, null_host::NullHost};
+    use crate::{ScriptingHost, testing::null_host::NullHost};
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -692,7 +692,7 @@ fn load_plugin_second_call_is_silent_noop() {
 /// absence once.
 #[test]
 fn declaring_two_entries_of_an_absent_plugin_reports_it_once() {
-    use crate::null_host::NullHost;
+    use crate::testing::null_host::NullHost;
 
     let (_dir, mut host) = host_with_plugin("present", &[("plugin.scm", "")]);
     host.eval_source(
@@ -713,7 +713,7 @@ fn declaring_two_entries_of_an_absent_plugin_reports_it_once() {
 /// `:plugin-status` lists a plugin that is not installed, with its own state.
 #[test]
 fn status_lists_an_absent_plugin() {
-    use crate::null_host::NullHost;
+    use crate::testing::null_host::NullHost;
 
     let (_dir, mut host) = host_with_plugin("present", &[("plugin.scm", "")]);
     host.eval_source(r#"(load-plugin! "user/gone")"#, &mut NullHost)
@@ -727,7 +727,7 @@ fn status_lists_an_absent_plugin() {
 /// `:plugin-status` still shows the plugin as failed.
 #[test]
 fn failed_manifest_without_entries_is_listed_and_has_no_entry_row() {
-    use crate::null_host::NullHost;
+    use crate::testing::null_host::NullHost;
 
     let (_dir, mut host) = host_with_plugin(
         "badmf",

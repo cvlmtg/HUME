@@ -1,6 +1,6 @@
 use hume_platform::dirs::Dirs;
 
-use crate::pane_probes::{PaneNeed, declared_pane_needs, pane_probes};
+use crate::testing::pane_probes::{PaneNeed, declared_pane_needs, pane_probes};
 
 // The tests below exercise table entries through a real `ScriptingHost`
 // (register_all → Steel dispatch → the wrapper closure) rather than calling
@@ -32,7 +32,7 @@ fn cmd_builtins_are_refused_during_init_through_real_registration() {
     for (name, expr) in probes {
         let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
         let err = host
-            .eval_source(&expr, &mut crate::null_host::NullHost)
+            .eval_source(&expr, &mut crate::testing::null_host::NullHost)
             .expect_err(&expr);
         assert!(
             err.contains(&format!("{name}: not available during init evaluation")),
@@ -48,15 +48,15 @@ fn text_diffs_answer_during_init_through_real_registration() {
     let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
     host.eval_source(
         r#"(define lines (diff-lines "a\n" "b\n")) (define words (diff-words "a" "b"))"#,
-        &mut crate::null_host::NullHost,
+        &mut crate::testing::null_host::NullHost,
     )
     .expect("both diffs answer during init");
     for name in ["lines", "words"] {
         let result = host
-            .eval_source_for_value(name, &mut crate::null_host::NullHost)
+            .eval_source_for_value(name, &mut crate::testing::null_host::NullHost)
             .expect(name);
         let steel::rvals::SteelVal::ListV(hunks) =
-            crate::test_support::hash_field(&result, "hunks")
+            crate::testing::test_support::hash_field(&result, "hunks")
         else {
             panic!("{name}: 'hunks is not a list: {result:?}");
         };
@@ -73,7 +73,7 @@ fn lsp_label_offsets_to_text_checks_its_offsets_during_init() {
     let err = host
         .eval_source(
             r#"(lsp-label-offsets->text "ab" (json-parse "[0,1]"))"#,
-            &mut crate::null_host::NullHost,
+            &mut crate::testing::null_host::NullHost,
         )
         .expect_err("a hand-built offsets handle raises");
     assert!(
@@ -171,7 +171,7 @@ fn a_builtin_error_names_the_builtin_a_plugin_calls() {
 /// Define a command whose body is `body`, then call it as a command.
 fn call_probe(body: &str) -> Result<Vec<crate::Effect>, crate::EvalError> {
     let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
-    let mut store = crate::null_host::CommandStoreHost::default();
+    let mut store = crate::testing::null_host::CommandStoreHost::default();
     host.eval_source(
         &format!(r#"(define-command! "probe" "doc" (lambda () {body}))"#),
         &mut store,
@@ -343,7 +343,7 @@ fn every_source_name_refuses_an_empty_name_through_real_registration() {
         let expr =
             format!("(register-completion-source! {src} (lambda (req) (void)) #:target 'buffer)");
         let err = crate::ScriptingHost::for_testing(&Dirs::none())
-            .eval_source(&expr, &mut crate::null_host::NullHost)
+            .eval_source(&expr, &mut crate::testing::null_host::NullHost)
             .expect_err(&expr);
         refused("register-completion-source!", &expr, &err);
     }

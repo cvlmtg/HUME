@@ -1,6 +1,6 @@
 use super::*;
 use crate::builtins::args::{list_of, string_list, symbol_hash};
-use crate::test_support::{SteelCtxTestHarness, hash_field};
+use crate::testing::test_support::{SteelCtxTestHarness, hash_field};
 
 // ── Type errors ────────────────────────────────────────────────────────────
 

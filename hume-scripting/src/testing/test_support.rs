@@ -6,7 +6,7 @@
 use crate::HostState;
 use crate::builtins::dirs::ScriptDirs;
 use crate::context::SteelCtx;
-use crate::null_host::NullHost;
+use crate::testing::null_host::NullHost;
 
 /// A stand-in bid for a builtin test that doesn't care which buffer it
 /// names: [`NullHost`]/[`crate::testing`] mocks don't track real buffers,
@@ -94,7 +94,7 @@ impl SteelCtxTestHarness {
 
     /// Build an init-mode `SteelCtx` over a caller-supplied host instead of the
     /// harness's `NullHost`, for tests that need specific host behaviour
-    /// (e.g. [`crate::null_host::CommandStoreHost`]).
+    /// (e.g. [`crate::testing::null_host::CommandStoreHost`]).
     pub(crate) fn ctx_init_with_host<'a>(
         &'a mut self,
         host: &'a mut dyn crate::host::EditorHost,
@@ -124,7 +124,7 @@ impl SteelCtxTestHarness {
 
     /// Build a command-mode `SteelCtx` over a caller-supplied host instead of
     /// the harness's `NullHost`, for tests that need specific host behaviour
-    /// (e.g. [`crate::null_host::RecordingInlineOutputHost`]).
+    /// (e.g. [`crate::testing::null_host::RecordingInlineOutputHost`]).
     pub(crate) fn ctx_with_host<'a>(
         &'a mut self,
         host: &'a mut dyn crate::host::EditorHost,

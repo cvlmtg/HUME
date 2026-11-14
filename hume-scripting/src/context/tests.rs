@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::SteelCtxTestHarness;
+use crate::testing::test_support::SteelCtxTestHarness;
 use hume_core::Severity;
 
 // ── Mode discriminant ─────────────────────────────────────────────────────

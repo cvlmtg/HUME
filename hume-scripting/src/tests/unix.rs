@@ -78,7 +78,7 @@ fn run_capture_covers_success_failure_and_spawn_error() {
 #[test]
 fn native_error_reraised_from_a_handler_reaches_the_enclosing_handler() {
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    let mut inline_host = crate::null_host::RecordingInlineOutputHost::default();
+    let mut inline_host = crate::testing::null_host::RecordingInlineOutputHost::default();
     let src = r#"
         (define (inner-fetch)
           (with-handler
@@ -103,7 +103,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
     // wrapped by an inner with-handler at all; it propagates in one hop
     // straight to the outer tolerant handler.
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    let mut inline_host = crate::null_host::RecordingInlineOutputHost::default();
+    let mut inline_host = crate::testing::null_host::RecordingInlineOutputHost::default();
     let src = r#"
         (define (inner-fetch)
           (run-inline-output! "false" '()))
@@ -122,7 +122,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
 #[test]
 fn dynamic_wind_cleanup_runs_when_an_outer_handler_catches_the_bodys_error() {
     let mut host = ScriptingHost::for_testing(&Dirs::none());
-    let mut inline_host = crate::null_host::RecordingInlineOutputHost::default();
+    let mut inline_host = crate::testing::null_host::RecordingInlineOutputHost::default();
     let src = r#"
         (define cleanup-ran #f)
         (define (inner-fetch)

@@ -1,6 +1,6 @@
 use super::*;
 use crate::host::StoredLanguage;
-use crate::test_support::{SteelCtxTestHarness, default_bid};
+use crate::testing::test_support::{SteelCtxTestHarness, default_bid};
 use hume_core::{BufferId, BufferOptionWrite, ConfigOrigin, OnUnsaved, OptionInput};
 use steel::rvals::IntoSteelVal as _;
 
@@ -258,14 +258,14 @@ fn set_buffer_option_queues_each_language_change_the_host_returns() {
 // A direct call to this function (as every other test in this file makes)
 // can't reach that check at all, since it bypasses the registration layer.
 
-/// A [`crate::null_host::NullHost`] wrapper that reports every buffer id as
+/// A [`crate::testing::null_host::NullHost`] wrapper that reports every buffer id as
 /// existing, accepts every option write, and records each
 /// `set_buffer_option` call, so a test can prove the builtin's guards were
 /// all passed and the exact `(key, value, bid)` the host received, without a
 /// real editor.
 #[derive(Default)]
 struct RecordingBufferOptionHost {
-    inner: crate::null_host::NullHost,
+    inner: crate::testing::null_host::NullHost,
     pub(crate) calls: Vec<(String, OptionInput, BufferId)>,
     /// The origin each global or buffer write arrived with, in order.
     pub(crate) origins: Vec<ConfigOrigin>,

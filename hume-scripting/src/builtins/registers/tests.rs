@@ -1,6 +1,6 @@
 use super::*;
 use crate::host::NativeCall;
-use crate::test_support::SteelCtxTestHarness;
+use crate::testing::test_support::SteelCtxTestHarness;
 use hume_platform::dirs::Dirs;
 
 #[test]
@@ -181,12 +181,12 @@ fn valid_test_register_name(ch: char) -> bool {
     ch.is_ascii_digit() || matches!(ch, 'k' | 'c' | 'b')
 }
 
-/// [`crate::null_host::NullHost`] wrapper with real register-name validation
+/// [`crate::testing::null_host::NullHost`] wrapper with real register-name validation
 /// but no [`crate::host::RegisterHost`] capability. Isolates "capability
 /// missing" from "name rejected" in the tests above.
 #[derive(Default)]
 struct ValidNameHost {
-    inner: crate::null_host::NullHost,
+    inner: crate::testing::null_host::NullHost,
 }
 
 impl crate::host::EditorHost for ValidNameHost {

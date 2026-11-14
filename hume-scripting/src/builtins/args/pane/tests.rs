@@ -23,7 +23,7 @@ fn every_pane_argument_type_rejects_a_non_pane() {
 
 #[test]
 fn every_pane_argument_type_decodes_the_handle_it_was_given() {
-    let handle = crate::test_support::default_pane_with_pane();
+    let handle = crate::testing::test_support::default_pane_with_pane();
     let val = SteelPane::new(handle).into_steel_val();
     assert_eq!(
         [

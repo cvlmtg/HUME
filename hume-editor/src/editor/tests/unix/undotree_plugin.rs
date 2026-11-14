@@ -297,7 +297,7 @@ fn setup(tmp: &Path) -> (Editor, RealRuntimeDirs) {
     run(
         &mut ed,
         tmp,
-        &hume_scripting::eager_load_scm("core:undotree", None),
+        &hume_scripting::testing::eager_load_scm("core:undotree", None),
     );
     ed.settle();
     (ed, guard)
@@ -554,8 +554,8 @@ fn setup_with_git_diff(tmp: &Path) -> (Editor, RealRuntimeDirs) {
     ed.state.dirs = guard.dirs();
     let load = format!(
         "(load-plugin! \"core:stdlib\")\n{}\n{}",
-        hume_scripting::eager_load_scm("core:git-diff", None),
-        hume_scripting::eager_load_scm("core:undotree", None),
+        hume_scripting::testing::eager_load_scm("core:git-diff", None),
+        hume_scripting::testing::eager_load_scm("core:undotree", None),
     );
     run(&mut ed, tmp, &load);
     ed.settle();
@@ -771,8 +771,8 @@ fn undotree_session_ends_when_clearing_the_diff_raises() {
     ed.state.dirs = guard.dirs();
     let load = format!(
         "(load-plugin! \"core:stdlib\")\n{}\n{}",
-        hume_scripting::eager_load_scm("core:git-diff", None),
-        hume_scripting::eager_load_scm("core:undotree", None),
+        hume_scripting::testing::eager_load_scm("core:git-diff", None),
+        hume_scripting::testing::eager_load_scm("core:undotree", None),
     );
     run(&mut ed, tmp.path(), &load);
     ed.settle();
@@ -799,8 +799,8 @@ fn undotree_redraws_the_diff_only_when_the_revision_changes() {
     ed.state.dirs = _guard.dirs();
     let load = format!(
         "(load-plugin! \"core:stdlib\")\n{}\n{}\n{}",
-        hume_scripting::eager_load_scm("core:git-diff", None),
-        hume_scripting::eager_load_scm("core:undotree", None),
+        hume_scripting::testing::eager_load_scm("core:git-diff", None),
+        hume_scripting::testing::eager_load_scm("core:undotree", None),
         r#"(define-command! "clear-diff-probe" "Clear the undotree diff."
              (lambda (pane) (set-virtual-lines! pane "undotree" (list))))"#,
     );
@@ -993,8 +993,8 @@ fn undotree_session_survives_a_raising_diff_renderer() {
     ed.state.dirs = guard.dirs();
     let load = format!(
         "(load-plugin! \"core:stdlib\")\n{}\n{}",
-        hume_scripting::eager_load_scm("core:git-diff", None),
-        hume_scripting::eager_load_scm("core:undotree", None),
+        hume_scripting::testing::eager_load_scm("core:git-diff", None),
+        hume_scripting::testing::eager_load_scm("core:undotree", None),
     );
     run(&mut ed, tmp.path(), &load);
     ed.settle();
@@ -1084,7 +1084,7 @@ fn setup_with_foreign_drawer(tmp: &Path) -> (Editor, RealRuntimeDirs) {
 (define-command! "foreign-drawer" "Open an unrelated drawer."
   (lambda (pane)
     (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "foreign")) (lambda (i tok) (begin)))))"#,
-        hume_scripting::eager_load_scm("core:undotree", None)
+        hume_scripting::testing::eager_load_scm("core:undotree", None)
     );
     run(&mut ed, tmp, &source);
     ed.settle();

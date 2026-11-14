@@ -8,7 +8,7 @@ use crate::command_procs::CommandProc;
 use crate::host::CommandHost as _;
 use crate::host::EditorHost;
 use crate::lazy::PluginState;
-use crate::null_host::{CommandStoreHost, NullHost};
+use crate::testing::null_host::{CommandStoreHost, NullHost};
 use hume_platform::dirs::Dirs;
 use tempfile::TempDir;
 

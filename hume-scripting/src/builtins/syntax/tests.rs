@@ -1,7 +1,7 @@
 use super::super::args::{cons_pair, string_list, symbol_hash};
 use super::*;
 use crate::PendingLanguageReg;
-use crate::test_support::{SteelCtxTestHarness, str_val};
+use crate::testing::test_support::{SteelCtxTestHarness, str_val};
 use hume_core::{
     BlockCommentTokens, ConfigOrigin, LanguageFields, LineCommentTokens, OptionalQuery,
 };

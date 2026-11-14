@@ -1,7 +1,7 @@
 use super::*;
 use crate::builtins::args::symbol_hash;
 use crate::json::JsonHandle;
-use crate::test_support::{
+use crate::testing::test_support::{
     SteelCtxTestHarness, default_focused, default_pane, default_shown, str_val,
 };
 use hume_rope::position_encoding::PositionEncoding;

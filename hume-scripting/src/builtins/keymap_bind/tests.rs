@@ -1,6 +1,6 @@
 use super::*;
 use crate::host::KeymapTarget;
-use crate::test_support::{SteelCtxTestHarness, sym};
+use crate::testing::test_support::{SteelCtxTestHarness, sym};
 
 /// Effects queued so far, in emission order.
 fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
@@ -435,7 +435,7 @@ fn bind_key_permitted_during_plugin_load() {
 
 #[test]
 fn attach_keymap_queues_an_attach_for_the_panes_buffer() {
-    use crate::test_support::default_bid;
+    use crate::testing::test_support::default_bid;
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx();
@@ -453,7 +453,7 @@ fn attach_keymap_queues_an_attach_for_the_panes_buffer() {
 
 #[test]
 fn detach_keymap_queues_a_detach_for_the_panes_buffer() {
-    use crate::test_support::default_bid;
+    use crate::testing::test_support::default_bid;
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx();
@@ -471,7 +471,7 @@ fn detach_keymap_queues_a_detach_for_the_panes_buffer() {
 
 #[test]
 fn attach_keymap_takes_a_string_name() {
-    use crate::test_support::default_bid;
+    use crate::testing::test_support::default_bid;
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx();

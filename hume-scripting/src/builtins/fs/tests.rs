@@ -1,6 +1,6 @@
 use super::*;
 use crate::builtins::dirs::ScriptDirs;
-use crate::test_support::SteelCtxTestHarness;
+use crate::testing::test_support::SteelCtxTestHarness;
 use hume_platform::dirs::Dirs;
 use tempfile::TempDir;
 
@@ -202,7 +202,7 @@ fn path_separator_resolves_inside_loaded_plugin() {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
-    let mut null_host = crate::null_host::NullHost;
+    let mut null_host = crate::testing::null_host::NullHost;
     host.eval_source(r#"(load-plugin! "user/probe")"#, &mut null_host)
         .expect("(path-separator) must be callable from inside a loaded plugin");
 
@@ -254,7 +254,7 @@ fn data_dir_resolves_through_real_registration() {
         data: Some(data_dir.clone()),
         ..Dirs::none()
     });
-    let mut null_host = crate::null_host::NullHost;
+    let mut null_host = crate::testing::null_host::NullHost;
     host.eval_source(r#"(log! 'info (data-dir))"#, &mut null_host)
         .expect("(data-dir) must evaluate through the real registration table");
 
@@ -280,7 +280,7 @@ fn data_dir_resolves_through_real_registration() {
 /// `ScriptingHost` over `NullHost`.
 fn eval_result(source: &str) -> Result<SteelVal, String> {
     let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
-    host.eval_source_for_value(source, &mut crate::null_host::NullHost)
+    host.eval_source_for_value(source, &mut crate::testing::null_host::NullHost)
 }
 
 /// `source`'s value, as [`eval_result`] evaluates it.

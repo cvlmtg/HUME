@@ -1638,7 +1638,7 @@ fn plum_init_source(init_src: &str, config: Option<&str>) -> String {
         "{init_src}\n(load-plugin! \"core:stdlib\")\n{}\n\
          (%activate-plugin-inline! \"core:plum\" \"grammars.scm\")\n\
          (%activate-plugin-inline! \"core:plum\" \"themes.scm\")",
-        hume_scripting::eager_load_scm("core:plum", config)
+        hume_scripting::testing::eager_load_scm("core:plum", config)
     )
 }
 

@@ -1,6 +1,6 @@
 use super::*;
 use crate::host::PendingTarget;
-use crate::test_support::{SteelCtxTestHarness, sym};
+use crate::testing::test_support::{SteelCtxTestHarness, sym};
 
 fn dummy_proc(_: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     Ok(SteelVal::Void)
@@ -174,7 +174,7 @@ fn register_rejects_an_unknown_target() {
 #[test]
 fn register_rejects_a_non_callable_proc() {
     let mut host = crate::ScriptingHost::for_testing(&hume_platform::dirs::Dirs::none());
-    let mut store = crate::null_host::CommandStoreHost::default();
+    let mut store = crate::testing::null_host::CommandStoreHost::default();
     let err = host
         .eval_source(
             r#"(register-completion-source! "src" "not a proc" #:target 'buffer)"#,
@@ -235,7 +235,7 @@ fn set_attachment_completion_triggers_queues_an_attachment_scope() {
         id: hume_lsp::backend::ServerId(4),
         name: hume_core::ServerName::parse("ra-lint").unwrap(),
     };
-    let pane = crate::test_support::default_pane();
+    let pane = crate::testing::test_support::default_pane();
     set_attachment_completion_triggers(
         &mut ctx,
         pane.buffer(),
@@ -280,7 +280,7 @@ fn an_attachment_server_that_is_not_a_server_raises() {
     let mut ctx = h.ctx();
     let err = set_attachment_hook_triggers(
         &mut ctx,
-        crate::test_support::default_pane().buffer(),
+        crate::testing::test_support::default_pane().buffer(),
         "src".to_string(),
         SteelVal::StringV("rust".into()),
         SteelVal::SymbolV("completion".into()),
@@ -300,7 +300,7 @@ fn an_attachment_feature_that_is_not_a_feature_raises() {
     };
     let err = set_attachment_hook_triggers(
         &mut ctx,
-        crate::test_support::default_pane().buffer(),
+        crate::testing::test_support::default_pane().buffer(),
         "src".to_string(),
         server.into_steel_val(),
         SteelVal::SymbolV("nonsense".into()),

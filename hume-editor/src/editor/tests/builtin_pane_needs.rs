@@ -2,7 +2,7 @@
 // editor: the shown/focused check runs only here, at the host method that
 // acts through the pane.
 
-use hume_scripting::pane_probes::{PaneNeed, pane_probes};
+use hume_scripting::testing::pane_probes::{PaneNeed, pane_probes};
 
 use super::*;
 

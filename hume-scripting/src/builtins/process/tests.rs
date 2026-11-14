@@ -1,6 +1,6 @@
 use super::*;
-use crate::null_host::RecordingInlineOutputHost;
-use crate::test_support::SteelCtxTestHarness;
+use crate::testing::null_host::RecordingInlineOutputHost;
+use crate::testing::test_support::SteelCtxTestHarness;
 use steel::rerrs::SteelErr;
 
 // ── run_inline_output (%run-inline-output!) ─────────────────────────────

@@ -32,7 +32,7 @@ fn setup_stdlib_editor() -> (Editor, ScriptingHost, RuntimeDirs, tempfile::TempD
         &init_path,
         format!(
             "{}\n(%activate-plugin-inline! \"core:stdlib\" \"files.scm\")",
-            hume_scripting::eager_load_scm("core:stdlib", None)
+            hume_scripting::testing::eager_load_scm("core:stdlib", None)
         ),
     )
     .unwrap();

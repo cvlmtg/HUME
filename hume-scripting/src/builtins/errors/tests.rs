@@ -1,6 +1,6 @@
 use super::*;
 use crate::attribution::{EntryId, PluginId};
-use crate::test_support::SteelCtxTestHarness;
+use crate::testing::test_support::SteelCtxTestHarness;
 
 /// `require_cmd` rejects `Init` and `PluginLoad`, allows the other two.
 ///

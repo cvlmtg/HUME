@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane};
+use crate::testing::test_support::{SteelCtxTestHarness, default_bid, default_pane};
 use hume_rope::spanned::SpannedText;
 use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;

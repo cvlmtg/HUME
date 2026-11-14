@@ -38,18 +38,10 @@ mod plugin_record;
 mod command_procs;
 mod context;
 mod eval;
-#[cfg(test)]
-mod null_host;
-#[cfg(any(test, feature = "test-util"))]
-pub mod pane_probes;
 mod read_only_host;
 mod rooted;
 #[cfg(any(test, feature = "test-util"))]
-mod test_scm;
-#[cfg(test)]
-mod test_support;
-#[cfg(any(test, feature = "test-util"))]
-pub use test_scm::eager_load_scm;
+pub mod testing;
 mod types;
 mod visibility;
 pub use visibility::{Audience, BufferVisibility};

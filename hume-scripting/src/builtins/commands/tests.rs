@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::SteelCtxTestHarness;
+use crate::testing::test_support::SteelCtxTestHarness;
 
 fn make_list(vals: Vec<SteelVal>) -> SteelVal {
     SteelVal::ListV(vals.into_iter().collect())
@@ -10,8 +10,8 @@ fn plum_entry() -> crate::attribution::EntryId {
 }
 
 /// A host holding one command, `my-cmd`, defined as `proc`.
-fn plum_defined(proc: CommandProc) -> crate::null_host::CommandStoreHost {
-    let mut host = crate::null_host::CommandStoreHost::default();
+fn plum_defined(proc: CommandProc) -> crate::testing::null_host::CommandStoreHost {
+    let mut host = crate::testing::null_host::CommandStoreHost::default();
     host.define("my-cmd", proc);
     host
 }
@@ -288,7 +288,7 @@ fn define_typed_command_propagates_host_rejection() {
         Ok(SteelVal::Void)
     }
     let mut h = SteelCtxTestHarness::new();
-    let mut host = crate::null_host::NullHost;
+    let mut host = crate::testing::null_host::NullHost;
     let mut ctx = h.ctx_init_with_host(&mut host);
     let err = define_typed_command(
         &mut ctx,
@@ -352,7 +352,7 @@ fn define_command_propagates_host_rejection() {
         Ok(SteelVal::Void)
     }
     let mut h = SteelCtxTestHarness::new();
-    let mut host = crate::null_host::NullHost;
+    let mut host = crate::testing::null_host::NullHost;
     let mut ctx = h.ctx_init_with_host(&mut host);
     let err = define_command(
         &mut ctx,

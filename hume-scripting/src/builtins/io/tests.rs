@@ -1,6 +1,6 @@
 use super::*;
-use crate::null_host::RecordingInlineOutputHost;
-use crate::test_support::SteelCtxTestHarness;
+use crate::testing::null_host::RecordingInlineOutputHost;
+use crate::testing::test_support::SteelCtxTestHarness;
 
 /// `print!`'s result on a host whose inline-output frame is open when
 /// `frame_open`, and how many times it left the editor's screen.
@@ -35,7 +35,7 @@ fn print_raises_outside_an_inline_output_command() {
 #[test]
 fn print_reaches_the_terminal_from_a_required_module() {
     use crate::ScriptingHost;
-    use crate::null_host::CommandStoreHost;
+    use crate::testing::null_host::CommandStoreHost;
     use hume_platform::dirs::Dirs;
 
     let tmp = tempfile::tempdir().unwrap();

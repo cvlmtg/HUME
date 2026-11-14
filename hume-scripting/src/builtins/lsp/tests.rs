@@ -1,8 +1,8 @@
 use super::params::position_params_value;
 use super::*;
 use crate::json::JsonHandle;
-use crate::null_host::EmptyLspHost;
-use crate::test_support::{
+use crate::testing::null_host::EmptyLspHost;
+use crate::testing::test_support::{
     SteelCtxTestHarness, default_bid, default_focused, default_pane, default_pane_with_pane,
     default_shown, hash_field,
 };
@@ -1690,7 +1690,7 @@ fn the_tracking_token_builtins_reject_init_context() {
         "keep-tracked-position!",
     ] {
         let mut host = crate::ScriptingHost::for_testing(&Dirs::none());
-        let mut null_host = crate::null_host::NullHost;
+        let mut null_host = crate::testing::null_host::NullHost;
         let err = host
             .eval_source(&format!("({name} #f)"), &mut null_host)
             .expect_err("a cmd builtin must be rejected during init.scm eval");

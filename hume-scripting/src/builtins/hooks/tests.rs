@@ -2,8 +2,8 @@ use hume_platform::dirs::Dirs;
 
 use super::*;
 use crate::ScriptingHost;
-use crate::null_host::NullHost;
-use crate::test_support::SteelCtxTestHarness;
+use crate::testing::null_host::NullHost;
+use crate::testing::test_support::SteelCtxTestHarness;
 use crate::visibility::Audience;
 
 fn noop_proc(_args: &[SteelVal]) -> SteelResult {
@@ -228,7 +228,7 @@ mod held {
     use crate::host::{
         BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, SettingsHost,
     };
-    use crate::null_host::{HELD_EVENT, NullHost};
+    use crate::testing::null_host::{HELD_EVENT, NullHost};
     use crate::{Audience, EvalError, ScriptingHost};
     use hume_core::HostToken;
     use hume_platform::dirs::Dirs;

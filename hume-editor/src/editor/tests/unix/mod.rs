@@ -280,7 +280,7 @@ impl RigSpec<'_> {
 fn core_lsp_init(config: Option<&str>) -> String {
     format!(
         "{RUST_ANALYZER}\n(load-plugin! \"core:stdlib\")\n{}",
-        hume_scripting::eager_load_scm("core:lsp", config)
+        hume_scripting::testing::eager_load_scm("core:lsp", config)
     )
 }
 
@@ -626,7 +626,7 @@ fn load_lsp_install_eager(ed: &mut Editor, data_dir: &Path) {
         data_dir,
         &format!(
             "(load-plugin! \"core:stdlib\")\n{}",
-            hume_scripting::eager_load_scm("core:lsp-install", None)
+            hume_scripting::testing::eager_load_scm("core:lsp-install", None)
         ),
     );
 }
@@ -639,7 +639,7 @@ fn load_lsp(ed: &mut Editor, data_dir: &Path) {
         data_dir,
         &format!(
             "(load-plugin! \"core:stdlib\")\n{}",
-            hume_scripting::eager_load_scm("core:lsp", None)
+            hume_scripting::testing::eager_load_scm("core:lsp", None)
         ),
     );
 }
