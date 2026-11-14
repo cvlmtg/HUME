@@ -7,7 +7,10 @@
 
 ### Plugins & scripting
 - `core:markdown-preview` draws Markdown without its syntax, and the lines you are on show their source. It needs the `markdown` and `markdown.inline` grammars.
-- `set-conceals!` hides part of a line or draws other text in its place, `syntax-captures` returns the nodes a tree-sitter query captures (`#:range` limits it to some lines), and the `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.
+- `set-conceals!` hides part of a line or draws other text in its place, `syntax-captures` returns the nodes a tree-sitter query captures (`#:ranges` limits it to some lines), and the `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.
+
+### Fixes
+- Inlay hints show in every pane on a buffer, not only one of them.
 
 ## [0.21.0] - 2026-11-12
 

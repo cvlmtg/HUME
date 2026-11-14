@@ -74,9 +74,9 @@ fn bench_captures_in_a_range(c: &mut Criterion) {
         .expect("the query compiles");
 
     let first = ContentLine::new(PARAGRAPHS);
-    let range = InclusiveRange::new(first, first.advance(ROWS - 1));
+    let ranges = [InclusiveRange::new(first, first.advance(ROWS - 1))];
     let mut out = Vec::new();
-    query.collect(layers, text.rope(), range, &mut out);
+    query.collect(layers, text.rope(), &ranges, &mut out);
     assert_eq!(
         out.len(),
         ROWS / 2,
@@ -84,7 +84,7 @@ fn bench_captures_in_a_range(c: &mut Criterion) {
     );
 
     c.bench_function("captures_inline_range", |b| {
-        b.iter(|| query.collect(layers, text.rope(), black_box(range), &mut out));
+        b.iter(|| query.collect(layers, text.rope(), black_box(&ranges), &mut out));
     });
 }
 

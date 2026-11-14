@@ -105,7 +105,7 @@ This plugin is the only place a diagnostic becomes a gutter mark.
 
 ## Inlay hints
 
-Hints are requested for the visible lines. Each buffer starts with the `inlay-hints`
+Hints are requested for the lines every pane on the buffer shows. Each buffer starts with the `inlay-hints`
 config value (default off), and `:toggle-inlay-hints` flips the current buffer. Only
 toggled buffers are recorded, keyed by `buffer-key`, so a buffer open before the plugin
 activated needs no setup; `on-buffer-close` drops the record, and clears the hints of a
@@ -135,9 +135,19 @@ refresh. When the debounce fires, the refresh:
    the active tab, then other tabs (see the
    [core plugins index](../../README.md#pane-values-vs-pane-less-values)).
 2. Sends nothing when the buffer's hints are off or no pane shows the buffer.
-3. Otherwise asks every server of the buffer that offers inlay hints, and merges their
-   hints into one set. Sending cancels the same buffer's previous request if it is still
-   unanswered, so a slow server is never left with a queue of stale requests.
+3. Otherwise takes `viewport-range` of every pane in `buffer-panes`, sorted, with ranges
+   that overlap or touch joined, so two panes showing the same lines send one request and
+   two panes far apart send one each, never the lines between them.
+4. Sends one request per range, a round, each asking every server of the buffer that
+   offers inlay hints. Request *n* of a round is filed under supersede key *n*, so it
+   cancels request *n* of the buffer's previous round if that is still unanswered, and a
+   slow server is never left with a queue of stale requests. An answer to a request of an
+   earlier round is dropped.
+
+The hints are set once every request of the round has answered, as one set, since
+`set-inlay-hints!` replaces the plugin's hints for the whole buffer. A range's hints are
+those on its own lines: a server may answer with hints outside the range it was asked
+for, and keeping them would set a hint twice where two ranges meet.
 
 On the response:
 
@@ -151,9 +161,9 @@ On the response:
   none, so the hints left from an earlier, larger answer go.
 - A response arriving after the buffer's hints were turned off is dropped.
 - A request no server could take clears the buffer's hints.
-- When every server failed (an error, a timeout, a stop), the existing hints stay and each
-  error is reported. A failure says nothing about what the buffer has, where a null answer
-  says there are none.
+- When every server failed for one of the round's ranges (an error, a timeout, a stop),
+  the existing hints stay and each error is reported. A failure says nothing about what
+  the buffer has, where a null answer says there are none.
 
 Toggling a buffer off clears this plugin's hint source for it, and toggling it on
 refreshes it. Other buffers are untouched. A detach refreshes the buffer, so the other

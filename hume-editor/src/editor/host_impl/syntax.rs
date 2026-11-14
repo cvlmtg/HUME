@@ -14,7 +14,7 @@ impl<'a> SyntaxHost for EditorHostImpl<'a> {
         bid: BufferId,
         language: &str,
         query: &str,
-        range: ExclusiveRange<ContentLine>,
+        ranges: &[ExclusiveRange<ContentLine>],
     ) -> Result<Captures, String> {
         let bundle = GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry)
             .grammar_named(language)
@@ -37,13 +37,15 @@ impl<'a> SyntaxHost for EditorHostImpl<'a> {
         let buf = self.state.buffers.get(bid);
         let text = buf.text();
         let mut captures = Vec::new();
-        // An empty range captures nothing.
-        if !range.is_empty()
-            && let Some(layers) = buf.current_layers()
-        {
-            // Non-empty, so the exclusive end is past a real line.
-            let lines = InclusiveRange::new(range.start, range.end.retreat_saturating(1));
-            query.collect(layers, text.rope(), lines, &mut captures);
+        // An empty range captures nothing. A non-empty one ends past a real
+        // line, so its last line is one before its end.
+        let lines: Vec<_> = ranges
+            .iter()
+            .filter(|range| !range.is_empty())
+            .map(|range| InclusiveRange::new(range.start, range.end.retreat_saturating(1)))
+            .collect();
+        if let Some(layers) = buf.current_layers() {
+            query.collect(layers, text.rope(), &lines, &mut captures);
         }
         Ok(Captures {
             names: query.names().to_vec(),

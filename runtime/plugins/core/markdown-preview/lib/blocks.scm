@@ -71,7 +71,7 @@
   (let ([rest (trim-start text)])
     (and (not (string=? rest "")) (- (string-length text) (string-length rest)))))
 
-(define (md-preview/quotes! groups range line-of line-info emit!)
+(define (md-preview/quotes! groups ranges line-of line-info emit!)
   (let ([marked (box (hash))])
     (define (bar! at)
       (set-box! marked (hash-insert (unbox marked) (line-of at) #t))
@@ -91,18 +91,21 @@
               (md-preview/captured groups "fence-continuation")))
     (for-each
       (lambda (block)
-        (let* ([span (md-preview/line-span line-of block)]
-               [end (min (hash-ref range 'end-line) (hash-ref span 'end-line))])
-          (let loop ([line (max (hash-ref range 'start-line) (hash-ref span 'start-line))])
-            (when (< line end)
-              (unless (hash-contains? (unbox marked) line)
-                (set-box! marked (hash-insert (unbox marked) line #t))
-                (let* ([info (line-info line)]
-                       [content (md-preview/content-start (cdr info))])
-                  (when content
-                    (let ([at (+ (car info) content)])
-                      (emit! 'conceals (md-preview/conceal at at "┃ " "markup.quote" #f))))))
-              (loop (+ line 1))))))
+        (let ([span (md-preview/line-span line-of block)])
+          (for-each
+            (lambda (range)
+              (let ([end (min (hash-ref range 'end-line) (hash-ref span 'end-line))])
+                (let loop ([line (max (hash-ref range 'start-line) (hash-ref span 'start-line))])
+                  (when (< line end)
+                    (unless (hash-contains? (unbox marked) line)
+                      (set-box! marked (hash-insert (unbox marked) line #t))
+                      (let* ([info (line-info line)]
+                             [content (md-preview/content-start (cdr info))])
+                        (when content
+                          (let ([at (+ (car info) content)])
+                            (emit! 'conceals (md-preview/conceal at at "┃ " "markup.quote" #f))))))
+                    (loop (+ line 1))))))
+            ranges)))
       (md-preview/captured groups "quote"))))
 
 (define (md-preview/rules! groups rule-width emit!)
@@ -127,7 +130,7 @@
             delimiters)))
       (md-preview/captured groups "fence"))))
 
-(define (md-preview/block-elements groups range line-of line-info rule-width)
+(define (md-preview/block-elements groups ranges line-of line-info rule-width)
   (let* ([found (box (hash 'conceals '() 'bands '() 'highlights '()))]
          [emit! (lambda (kind item)
                   (let ([table (unbox found)])
@@ -135,7 +138,7 @@
     (md-preview/atx-headings! groups line-of emit!)
     (md-preview/setext-headings! groups line-of emit!)
     (md-preview/lists! groups emit!)
-    (md-preview/quotes! groups range line-of line-info emit!)
+    (md-preview/quotes! groups ranges line-of line-info emit!)
     (md-preview/rules! groups rule-width emit!)
     (md-preview/fences! groups line-of emit!)
     (unbox found)))

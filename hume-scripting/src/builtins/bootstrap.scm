@@ -148,8 +148,8 @@
 (define (buffer-lines pane #:range [range #f])
   (%buffer-lines pane range))
 
-(define (syntax-captures pane language query #:range [range #f])
-  (%syntax-captures pane language query range))
+(define (syntax-captures pane language query #:ranges [ranges #f])
+  (%syntax-captures pane language query ranges))
 
 (define (bind-key! mode key cmd #:keymap [keymap #f])
   (%bind-key! mode key cmd keymap))

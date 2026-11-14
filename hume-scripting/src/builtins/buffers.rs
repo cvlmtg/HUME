@@ -11,8 +11,9 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, CHAR_RANGE_KEYS, LINE_RANGE_KEYS, bool_arg, char_range_value, line_range_value,
-    list_of, not_live_err, optional_hash_entry, relative_base_arg, string_list, symbol_hash,
+    ArgPane, CHAR_RANGE_KEYS, LINE_RANGE_KEYS, bool_arg, char_range_value, hash_entry,
+    line_range_value, list_of, not_live_err, optional_hash_entry, optional_list_items,
+    relative_base_arg, string_list, symbol_hash,
 };
 use super::errors::generic_err;
 use super::ids::{BufferGeneration, SteelBufferKey, SteelPane};
@@ -348,6 +349,27 @@ pub(super) fn line_range_arg(
     match optional_line_range_arg(range, LABEL, line_count)? {
         Some(range) => Ok(range),
         None => line_range_bounds(0, line_count, LABEL, line_count),
+    }
+}
+
+/// A `#:ranges` argument, a list of line range values (see
+/// [`line_range_value`]) or `#f` for every line, as content lines of a buffer
+/// with `line_count` of them. Raises rather than clamping, as
+/// [`optional_line_range_arg`] refuses, and on a value that is not a list.
+pub(super) fn line_ranges_arg(
+    ranges: SteelVal,
+    line_count: usize,
+) -> Result<Vec<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>, SteelErr> {
+    const LABEL: &str = "#:ranges";
+    match optional_list_items(ranges, LABEL)? {
+        None => Ok(vec![line_range_bounds(0, line_count, LABEL, line_count)?]),
+        Some(items) => items
+            .into_iter()
+            .map(|item| {
+                let (start, end) = hash_entry(item, LABEL, LINE_RANGE_KEYS)?.line_range()?;
+                line_range_bounds(start, end, LABEL, line_count)
+            })
+            .collect(),
     }
 }
 

@@ -245,18 +245,19 @@ fn buffer_with_no_syntax_returns_the_empty_list() {
 }
 
 #[test]
-fn range_keyword_returns_the_captures_of_the_lines_it_names() {
+fn ranges_keyword_returns_the_captures_of_the_lines_each_range_names() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor(THREE_HEADINGS);
-    let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:range (hash 'start-line 2 'end-line 3))"#;
-    assert_eq!(captures(&mut ed, tmp.path(), call), "[h 5..9;]");
+    let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h"
+                    #:ranges (list (hash 'start-line 4 'end-line 5) (hash 'start-line 0 'end-line 1)))"#;
+    assert_eq!(captures(&mut ed, tmp.path(), call), "[h 0..4;h 10..14;]");
 }
 
 #[test]
-fn range_covering_the_buffer_returns_every_capture() {
+fn a_range_covering_the_buffer_returns_every_capture() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor(THREE_HEADINGS);
-    let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:range (hash 'start-line 0 'end-line 5))"#;
+    let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:ranges (list (hash 'start-line 0 'end-line 5)))"#;
     assert_eq!(
         captures(&mut ed, tmp.path(), call),
         "[h 0..4;h 5..9;h 10..14;]"
@@ -264,58 +265,84 @@ fn range_covering_the_buffer_returns_every_capture() {
 }
 
 #[test]
-fn empty_range_returns_the_empty_list() {
+fn an_empty_range_returns_the_empty_list() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor(THREE_HEADINGS);
-    let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:range (hash 'start-line 0 'end-line 0))"#;
+    let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:ranges (list (hash 'start-line 0 'end-line 0)))"#;
     assert_eq!(captures(&mut ed, tmp.path(), call), "[]");
 }
 
 #[test]
-fn range_past_the_line_count_raises() {
+fn an_empty_ranges_list_returns_the_empty_list() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor(THREE_HEADINGS);
+    let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:ranges '())"#;
+    assert_eq!(captures(&mut ed, tmp.path(), call), "[]");
+}
+
+#[test]
+fn a_range_past_the_line_count_raises() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor(THREE_HEADINGS);
     let errors = errors_of(
         &mut ed,
         tmp.path(),
-        r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:range (hash 'start-line 0 'end-line 6))"#,
+        r#"(syntax-captures bid "markdown" "(atx_heading) @h"
+             #:ranges (list (hash 'start-line 0 'end-line 1) (hash 'start-line 0 'end-line 6)))"#,
     );
     assert!(
         errors.iter().any(|e| e
-            .contains("syntax-captures: #:range: range 0..6 out of bounds for a 5-line buffer")),
+            .contains("syntax-captures: #:ranges: range 0..6 out of bounds for a 5-line buffer")),
         "{errors:?}"
     );
 }
 
 #[test]
-fn reversed_range_raises() {
+fn a_reversed_range_raises() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor(THREE_HEADINGS);
     let errors = errors_of(
         &mut ed,
         tmp.path(),
-        r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:range (hash 'start-line 3 'end-line 1))"#,
+        r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:ranges (list (hash 'start-line 3 'end-line 1)))"#,
     );
     assert!(
         errors.iter().any(|e| e
-            .contains("syntax-captures: #:range: range 3..1 out of bounds for a 5-line buffer")),
+            .contains("syntax-captures: #:ranges: range 3..1 out of bounds for a 5-line buffer")),
         "{errors:?}"
     );
 }
 
 #[test]
-fn range_without_an_end_raises() {
+fn a_range_without_an_end_raises() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor(THREE_HEADINGS);
     let errors = errors_of(
         &mut ed,
         tmp.path(),
-        r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:range (hash 'start-line 1))"#,
+        r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:ranges (list (hash 'start-line 1)))"#,
     );
     assert!(
         errors
             .iter()
-            .any(|e| e.contains("syntax-captures: #:range")),
+            .any(|e| e.contains("syntax-captures: #:ranges")),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn a_range_outside_a_list_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor(THREE_HEADINGS);
+    let errors = errors_of(
+        &mut ed,
+        tmp.path(),
+        r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:ranges (hash 'start-line 0 'end-line 1))"#,
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("syntax-captures: #:ranges: expected a list")),
         "{errors:?}"
     );
 }
@@ -335,14 +362,14 @@ fn scrolled_to_the_tail(tmp: &std::path::Path) -> Editor {
     ed
 }
 
-/// The viewport range is the call's `#:range` as it stands: a section-rooted
+/// The viewport range is the call's one range as it stands: a section-rooted
 /// pattern returns the headings of the sections the visible tail sits in,
 /// which start above it.
 #[test]
 fn viewport_range_feeds_syntax_captures_unchanged() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = scrolled_to_the_tail(tmp.path());
-    let call = r#"(syntax-captures bid "markdown" "(section (atx_heading) @h)" #:range (viewport-range bid))"#;
+    let call = r#"(syntax-captures bid "markdown" "(section (atx_heading) @h)" #:ranges (list (viewport-range bid)))"#;
     assert_eq!(
         captures(&mut ed, tmp.path(), call),
         "[h 0..4;h 11..16;h 23..29;]"
@@ -355,8 +382,7 @@ fn viewport_range_feeds_syntax_captures_unchanged() {
 fn heading_rooted_pattern_over_the_viewport_range_returns_no_hidden_heading() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = scrolled_to_the_tail(tmp.path());
-    let call =
-        r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:range (viewport-range bid))"#;
+    let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:ranges (list (viewport-range bid)))"#;
     assert_eq!(captures(&mut ed, tmp.path(), call), "[]");
 }
 

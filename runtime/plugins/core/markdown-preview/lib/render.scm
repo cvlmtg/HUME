@@ -15,10 +15,11 @@
   (set-line-backgrounds! pane md-preview/source '())
   (set-extra-highlights! pane md-preview/source '()))
 
-(define (md-preview/render-range panes)
-  (let ([ranges (map viewport-range panes)])
-    (hash 'start-line (max 0 (- (apply min (map (lambda (r) (hash-ref r 'start-line)) ranges)) 1))
-          'end-line (apply max (map (lambda (r) (hash-ref r 'end-line)) ranges)))))
+(define (md-preview/render-ranges panes)
+  (map (lambda (pane)
+         (let ([shown (viewport-range pane)])
+           (hash-insert shown 'start-line (max 0 (- (hash-ref shown 'start-line) 1)))))
+       panes))
 
 (define (md-preview/line-reader pane)
   (let ([memo (box (hash))])
@@ -83,24 +84,25 @@
              (loop (cdr cs) hidden-start hidden-end inserted-at kept)]
             [else (loop (cdr cs) hidden-start hidden-end start (cons c kept))])))))
 
-(define (md-preview/draw! pane range rule-width)
+(define (md-preview/draw! pane ranges rule-width)
   (let* ([lines (md-preview/line-reader pane)]
          [line-of (car lines)]
          [line-info (cdr lines)]
-         [blocks (syntax-captures pane "markdown" md-preview/block-query #:range range)]
+         [blocks (syntax-captures pane "markdown" md-preview/block-query #:ranges ranges)]
          [contents (md-preview/fence-contents blocks)]
          [groups (md-preview/group (md-preview/outside-fences blocks contents))]
-         [elements (md-preview/block-elements groups range line-of line-info rule-width)]
-         [inline-range (md-preview/table-range range (md-preview/captured groups "table") line-of)]
+         [elements (md-preview/block-elements groups ranges line-of line-info rule-width)]
+         [inline-ranges (append ranges
+                                (md-preview/table-spans (md-preview/captured groups "table") line-of))]
          [inline (if (language-has-grammar? "markdown.inline")
                      (md-preview/inline-elements
                        (md-preview/outside-fences
                          (syntax-captures pane "markdown.inline" md-preview/inline-query
-                                          #:range inline-range)
+                                          #:ranges inline-ranges)
                          contents)
                        line-of line-info)
                      '())]
-         [tables (md-preview/table-elements groups inline range line-of line-info
+         [tables (md-preview/table-elements groups inline ranges line-of line-info
                                             (buffer-line-count pane))])
     (set-conceals! pane md-preview/source
                    (md-preview/disjoint
@@ -118,4 +120,4 @@
                (equal? (hash-ref entry 'generation) (buffer-generation pane)))
       (let ([panes (buffer-panes pane)])
         (unless (null? panes)
-          (md-preview/draw! pane (md-preview/render-range panes) rule-width))))))
+          (md-preview/draw! pane (md-preview/render-ranges panes) rule-width))))))

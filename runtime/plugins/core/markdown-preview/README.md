@@ -55,7 +55,7 @@ The choices the plugin and the Rust surface under it are built on:
 - **Viewport:** a render covers the visible lines widened to whole syntax nodes (see
   [Widening by query roots](#widening-by-query-roots)), not the whole buffer.
 - **Rust surface:** the editor functions `set-conceals!` and `syntax-captures` (with its
-  `#:range`) and the `on-syntax-changed` hook. There is no query handle.
+  `#:ranges`) and the `on-syntax-changed` hook. There is no query handle.
 
 ## Limitations
 
@@ -63,9 +63,9 @@ The choices the plugin and the Rust surface under it are built on:
   cut, and a table row loses the break points its whitespace gave it.
 - A table wider than the pane draws a broken grid under soft wrap: borders and the delimiter
   row are cut at the pane edge, and a row wraps inside its cells.
-- A border is drawn only while a row of its table is in a render's range, and only on an
-  empty line: a line with any text, blanks included, gets none. A top border whose line
-  lies above the range is not drawn either.
+- A border is drawn only while a row of its table is in one of a render's ranges, and only
+  on an empty line: a line with any text, blanks included, gets none. A top border whose
+  line lies just above a range is not drawn either.
 - A tab inside a table cell breaks the column alignment: `string-width` measures it at a
   fixed tab width.
 - Search, diagnostic and bracket highlights inside hidden text are not drawn on a line no
@@ -89,10 +89,10 @@ The choices the plugin and the Rust surface under it are built on:
 | `lib/state.scm` | Per-buffer state, keyed by `(buffer-key pane)`: whether the preview is on, and the generation the buffer's last parsed tree was built from. The grammar names warned about this session |
 | `lib/queries.scm` | The block and inline queries, their capture names, the capture accessors, the grouping of captures by name, and the conceal constructor and order |
 | `lib/blocks.scm` | Block captures to conceals, line backgrounds and highlights. Calls no editor builtin: lines come in as procedures |
-| `lib/table.scm` | Table captures to conceals, and the line range the inline query covers. Reads no buffer either: lines come in as procedures, and cells are measured with `string-width` |
+| `lib/table.scm` | Table captures to conceals, and the line spans of the tables, which the inline query also covers. Reads no buffer either: lines come in as procedures, and cells are measured with `string-width` |
 | `lib/inline.scm` | Inline captures to conceals. Calls no editor builtin either |
 | `lib/entities.scm` | The named entities the plugin replaces, and the numeric references it accepts |
-| `lib/render.scm` | The render funnel: the line ranges, the two `syntax-captures` calls, the fenced-block filter, the disjoint pass, the three setters |
+| `lib/render.scm` | The render funnel: the pane ranges, the two `syntax-captures` calls, the fenced-block filter, the disjoint pass, the three setters |
 
 ### Rendering
 
@@ -112,9 +112,9 @@ still waiting on its debounce does nothing, and clears the three sources when th
 stays open, as it does when its language changes away from `markdown`.
 
 A render queries the `markdown` layers with the block query, then the `markdown.inline`
-layers with the inline query. The inline query covers the same range, widened to every
-line of each table the block query returned, so the cells of a table crossing the window
-edge are measured with their inline conceals too. Without a `markdown.inline` grammar the
+layers with the inline query. The inline query covers the same ranges, plus every line of
+each table the block query returned, so the cells of a table crossing the window edge are
+measured with their inline conceals too. Without a `markdown.inline` grammar the
 render skips the inline query, which would raise, and draws the block elements alone.
 
 A render runs only while the buffer's tree matches its text. The `on-syntax-changed`
@@ -129,21 +129,23 @@ pane shows is not drawn.
 
 Each render replaces the plugin's three sources (`"markdown-preview"` for conceals, line
 backgrounds and extra highlights) as a whole, for every pane on the buffer. So it covers
-one line range: the hull of `viewport-range` over `(buffer-panes pane)`, from the line
-above the first line any pane shows to the last line any pane shows. Two panes far apart
-in one buffer fetch the lines between them too. Lines outside the range are drawn raw
-until a render covers them. The line above the panes is in the range so that a table
-ending just above the first shown line comes back: the empty line after it, at the top of
-a pane, carries that table's bottom border (see [Tables](#tables)).
+the lines of every pane in `(buffer-panes pane)` at once: one range per pane, from the line
+above the pane's first shown line to its last shown line. Both queries take the list as
+`#:ranges`, and `syntax-captures` returns a match once even when several ranges reach it,
+such as a section or a code block two panes both show part of. The lines between two
+panes far apart are not fetched, and lines outside every range are drawn raw until a
+render covers them. The line above a pane is in its range so that a table ending just
+above the pane's first shown line comes back: the empty line after it, at the top of the
+pane, carries that table's bottom border (see [Tables](#tables)).
 
 ### Widening by query roots
 
-`syntax-captures` returns a match when the node its pattern is rooted at overlaps the
-range, with every capture of the match, inside the range or not. So each pattern's root
+`syntax-captures` returns a match when the node its pattern is rooted at overlaps one of
+the ranges, with every capture of the match, inside the ranges or not. So each pattern's root
 decides how far past the visible lines an element is fetched:
 
 - Headings are rooted at `section`: `(section (atx_heading (atx_h1_marker) @heading.1))`.
-  Every section that overlaps the range returns its heading, ancestors included, so the
+  Every section that overlaps a range returns its heading, ancestors included, so the
   heading of a section scrolled into a sticky header row keeps its level number and bold text.
 - Fences are rooted at `fenced_code_block`. A block one line of which is visible comes back
   whole: both fence lines, and the line span its band and reveal need.
@@ -226,8 +228,8 @@ at the end right, at both ends centre, and none left. When a centred cell's padd
 odd, the extra blank goes after it. The table has as many columns as its longest row, delimiter row included.
 
 One empty line between two tables carries the upper table's bottom border alone. A top
-border is set only when the line above its line lies in the render's range or does not
-exist: the plugin knows that a table ends on a line only when the block query returned
+border is set only when the line above its line lies in one of the render's ranges or does
+not exist: the plugin knows that a table ends on a line only when the block query returned
 that table.
 
 The table-specific limitations are under [Limitations](#limitations).

@@ -17,7 +17,7 @@ use super::args::{
     optional_list_to_string_pairs, optional_list_to_strings, optional_path_arg,
     optional_string_arg, path_arg, string_arg, under_cwd,
 };
-use super::buffers::{line_range_arg, live_line_count};
+use super::buffers::{line_ranges_arg, live_line_count};
 use super::errors::{generic_err, require_cap};
 
 /// `(%define-language! name extensions globs shebangs)`: init-only.
@@ -269,10 +269,11 @@ pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelR
     Ok(SteelVal::BoolV(ctx.host.language().has_grammar(&name)))
 }
 
-/// `(%syntax-captures pane language query-source range)`: Rust half of the
-/// bootstrap-wrapped `(syntax-captures pane language query-source #:range ..)`.
-/// `range` is a line range value (see [`super::args::line_range_value`], the
-/// shape `viewport-range` returns) or `#f` for the whole buffer.
+/// `(%syntax-captures pane language query-source ranges)`: Rust half of the
+/// bootstrap-wrapped `(syntax-captures pane language query-source #:ranges ..)`.
+/// `ranges` is a list of line range values (see
+/// [`super::args::line_range_value`], the shape `viewport-range` returns) or
+/// `#f` for the whole buffer.
 ///
 /// Returns a list of `(list name start-char end-char)`, one per node
 /// `query-source` captures in `pane`'s buffer, over every layer of `language`
@@ -281,23 +282,24 @@ pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelR
 /// name without its `@`, one string shared by every entry of that name. `'()`
 /// when the buffer has no tree for its current text.
 ///
-/// A `range` limits the matches as [`crate::host::SyntaxHost::syntax_captures`]
+/// `ranges` limits the matches as [`crate::host::SyntaxHost::syntax_captures`]
 /// describes.
 ///
 /// Raises when `language` has no grammar, `query-source` does not compile, or
-/// `range` is malformed or past the buffer's line count.
+/// `ranges` is not a list or holds a range that is malformed or past the
+/// buffer's line count.
 pub(crate) fn syntax_captures(
     ctx: &mut SteelCtx,
     bid: BufferId,
     language: String,
     query: String,
-    range: SteelVal,
+    ranges: SteelVal,
 ) -> SteelResult {
     require_cap(ctx.host.syntax())?;
     let line_count = live_line_count(ctx, bid)?;
-    let range = line_range_arg(range, line_count)?;
+    let ranges = line_ranges_arg(ranges, line_count)?;
     let captures = require_cap(ctx.host.syntax())?
-        .syntax_captures(bid, &language, &query, range)
+        .syntax_captures(bid, &language, &query, &ranges)
         .map_err(generic_err)?;
     let names: Vec<SteelVal> = captures
         .names

@@ -26,7 +26,7 @@ pub struct CaptureEntry {
 
 /// Queries over a buffer's syntax tree, accessed through
 /// [`EditorHost::syntax`](super::EditorHost::syntax). Backs
-/// `(syntax-captures pane language query-source #:range range)`.
+/// `(syntax-captures pane language query-source #:ranges ranges)`.
 pub trait SyntaxHost {
     /// The captures of `query`, compiled against `language`'s grammar, over
     /// each layer of `bid`'s tree parsed with that grammar, injected layers
@@ -37,13 +37,13 @@ pub trait SyntaxHost {
     /// compile.
     ///
     /// Only the matches `hume_treesitter::CaptureQuery::collect` returns for
-    /// the lines of `range`, which ends at most one past the last content
-    /// line.
+    /// the lines of `ranges`, each ending at most one past the last content
+    /// line, in any order and overlapping or not.
     fn syntax_captures(
         &mut self,
         bid: BufferId,
         language: &str,
         query: &str,
-        range: ExclusiveRange<ContentLine>,
+        ranges: &[ExclusiveRange<ContentLine>],
     ) -> Result<Captures, String>;
 }

@@ -2,17 +2,12 @@
 
 (require "queries.scm")
 
-(provide md-preview/table-range md-preview/table-elements)
+(provide md-preview/table-spans md-preview/table-elements)
 
 (define md-preview/table-scope "punctuation.special")
 
-(define (md-preview/table-range range tables line-of)
-  (if (null? tables)
-      range
-      (hash 'start-line (min (hash-ref range 'start-line)
-                             (hash-ref (md-preview/line-span line-of (car tables)) 'start-line))
-            'end-line (max (hash-ref range 'end-line)
-                           (hash-ref (md-preview/line-span line-of (last tables)) 'end-line)))))
+(define (md-preview/table-spans tables line-of)
+  (map (lambda (t) (md-preview/line-span line-of t)) tables))
 
 (define (md-preview/char-start conceal) (hash-ref conceal 'start-char))
 
@@ -173,14 +168,18 @@
                 (hash-ref layout 'reveal))))
       '()))
 
-(define (md-preview/edges layouts range line-info line-count)
+(define (md-preview/in-ranges? line ranges)
+  (pair? (filter (lambda (r) (and (<= (hash-ref r 'start-line) line) (< line (hash-ref r 'end-line))))
+                 ranges)))
+
+(define (md-preview/edges layouts ranges line-info line-count)
   (let* ([bottoms (map (lambda (t)
                          (let ([below (hash-ref (hash-ref t 'reveal) 'end-line)])
                            (and (< below line-count) (md-preview/empty-line? below line-info) below)))
                        layouts)]
          [tops (map (lambda (t)
                       (let ([above (- (hash-ref (hash-ref t 'reveal) 'start-line) 1)])
-                        (and (or (= above 0) (> above (hash-ref range 'start-line)))
+                        (and (or (= above 0) (md-preview/in-ranges? (- above 1) ranges))
                              (md-preview/empty-line? above line-info)
                              (not (member above bottoms))
                              above)))
@@ -202,7 +201,7 @@
        (loop spans reveals (cdr cs) (cons (hash-insert (car cs) 'reveal (car reveals)) out))]
       [else (loop spans reveals (cdr cs) (cons (car cs) out))])))
 
-(define (md-preview/table-elements groups inline range line-of line-info line-count)
+(define (md-preview/table-elements groups inline ranges line-of line-info line-count)
   (let* ([tables (md-preview/captured groups "table")]
          [spans (map md-preview/extent tables)]
          [inline (sort inline md-preview/conceal-before?)]
@@ -221,6 +220,6 @@
                                           record-start)
                        (md-preview/bucket spans inline md-preview/char-start))])
     (hash 'conceals (foldl (lambda (t out) (append (hash-ref t 'conceals) out))
-                           (md-preview/edges layouts range line-info line-count)
+                           (md-preview/edges layouts ranges line-info line-count)
                            layouts)
           'inline (md-preview/within-tables spans (map (lambda (t) (hash-ref t 'reveal)) layouts) inline))))

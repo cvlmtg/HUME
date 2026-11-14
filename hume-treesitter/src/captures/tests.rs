@@ -13,23 +13,25 @@ use crate::syntax::Syntax;
 use crate::test_support::{fixture_markdown, make_bundle, syntax_with};
 
 /// `(name, start char, end char)` of each capture `source` yields over
-/// `syntax`'s layers, compiled by `bundle`, restricted to `lines`, or over
-/// every line when `None`.
+/// `syntax`'s layers, compiled by `bundle`, restricted to the line ranges
+/// `lines`, or over every line when `None`.
 fn captures(
     bundle: &GrammarBundle,
     source: &str,
-    lines: Option<InclusiveRange<ContentLine>>,
+    lines: Option<&[InclusiveRange<ContentLine>]>,
     syntax: &Syntax,
     text: &BufferText,
 ) -> Vec<(String, usize, usize)> {
     let query = bundle.capture_query(source).expect("query compiles");
     let mut out = Vec::new();
+    let every_line = [InclusiveRange::new(
+        ContentLine::default(),
+        last_content_line(text.rope()),
+    )];
     query.collect(
         syntax.layers().expect("a committed tree"),
         text.rope(),
-        lines.unwrap_or_else(|| {
-            InclusiveRange::new(ContentLine::default(), last_content_line(text.rope()))
-        }),
+        lines.unwrap_or(&every_line),
         &mut out,
     );
     out.iter()
@@ -47,11 +49,8 @@ fn capture(name: &str, start: usize, end: usize) -> (String, usize, usize) {
     (name.to_owned(), start, end)
 }
 
-fn line(line: usize) -> Option<InclusiveRange<ContentLine>> {
-    Some(InclusiveRange::new(
-        ContentLine::new(line),
-        ContentLine::new(line),
-    ))
+fn lines(first: usize, last: usize) -> InclusiveRange<ContentLine> {
+    InclusiveRange::new(ContentLine::new(first), ContentLine::new(last))
 }
 
 /// `source` parsed by the markdown fixture with `markdown.inline` loaded
@@ -109,7 +108,13 @@ fn a_range_returns_only_the_inline_layers_it_covers() {
     // Line 0 is chars 0..10, the blank line 10..11, line 2 starts at 11.
     let (syntax, text, inline) = markdown_with_inline("a *one* b\n\nc *two* d\n");
     assert_eq!(
-        captures(&inline, "(emphasis) @e", line(2), &syntax, &text),
+        captures(
+            &inline,
+            "(emphasis) @e",
+            Some(&[lines(2, 2)]),
+            &syntax,
+            &text
+        ),
         [capture("e", 13, 18)]
     );
 }
@@ -160,7 +165,7 @@ fn range_inside_a_table_returns_every_row_for_a_table_rooted_pattern() {
     let got = captures(
         &bundle,
         "(pipe_table (pipe_table_row) @row)",
-        line(5),
+        Some(&[lines(5, 5)]),
         &syntax,
         &text,
     );
@@ -173,7 +178,13 @@ fn range_inside_a_table_returns_only_intersecting_cells_for_a_cell_rooted_patter
     let bundle = fixture_markdown();
     let (syntax, text) = syntax_with(Arc::clone(&bundle), TABLE);
     // The last row, whose cells `e` and `f` take 39..41 and 43..45.
-    let got = captures(&bundle, "(pipe_table_cell) @cell", line(5), &syntax, &text);
+    let got = captures(
+        &bundle,
+        "(pipe_table_cell) @cell",
+        Some(&[lines(5, 5)]),
+        &syntax,
+        &text,
+    );
     assert_eq!(got, [capture("cell", 39, 41), capture("cell", 43, 45)]);
 }
 
@@ -189,7 +200,7 @@ fn range_on_a_nested_section_returns_the_ancestor_headings() {
     let got = captures(
         &bundle,
         "(section (atx_heading) @h)",
-        line(10),
+        Some(&[lines(10, 10)]),
         &syntax,
         &text,
     );
@@ -199,6 +210,62 @@ fn range_on_a_nested_section_returns_the_ancestor_headings() {
             capture("h", 0, 4),
             capture("h", 11, 16),
             capture("h", 23, 29)
+        ]
+    );
+}
+
+#[test]
+fn a_node_spanning_two_ranges_is_captured_once() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), TABLE);
+    // The header and the last row: both reach the one table.
+    let got = captures(
+        &bundle,
+        "(pipe_table (pipe_table_row) @row)",
+        Some(&[lines(2, 2), lines(5, 5)]),
+        &syntax,
+        &text,
+    );
+    assert_eq!(got, [capture("row", 27, 36), capture("row", 37, 46)]);
+}
+
+#[test]
+fn lines_between_two_ranges_are_not_captured() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    // Headings `# A` 0..4, `# B` 5..9 and `# C` 10..14 on lines 0, 2 and 4.
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n\n# B\n\n# C\n");
+    let got = captures(
+        &bundle,
+        "(atx_heading) @h",
+        Some(&[lines(4, 4), lines(0, 0)]),
+        &syntax,
+        &text,
+    );
+    assert_eq!(got, [capture("h", 0, 4), capture("h", 10, 14)]);
+}
+
+#[test]
+fn overlapping_ranges_capture_each_match_once() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), TABLE);
+    // The rows c/d and e/f, whose cells take 29..31, 33..35, 39..41 and 43..45.
+    let got = captures(
+        &bundle,
+        "(pipe_table_cell) @cell",
+        Some(&[lines(4, 5), lines(5, 5)]),
+        &syntax,
+        &text,
+    );
+    assert_eq!(
+        got,
+        [
+            capture("cell", 29, 31),
+            capture("cell", 33, 35),
+            capture("cell", 39, 41),
+            capture("cell", 43, 45)
         ]
     );
 }

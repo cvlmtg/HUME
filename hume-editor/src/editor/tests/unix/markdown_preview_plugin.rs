@@ -1413,25 +1413,112 @@ fn a_heading_above_the_window_is_set_for_its_pinned_section() {
     assert_eq!(p.conceal_starts(bid), [starts[10], starts[20]]);
 }
 
-#[test]
-fn two_panes_on_one_buffer_render_the_hull_of_both_viewports() {
-    let mut p = preview();
-    let text = sectioned(100);
-    let bid = p.open("a.md", &text);
+/// Two side-by-side panes on `text`'s buffer: the first at the top, the
+/// second at `line`. Returns the buffer and the two panes.
+fn two_panes(p: &mut Preview, text: &str, line: usize) -> (BufferId, PaneId, PaneId) {
+    let bid = p.open("a.md", text);
     let top = p.ed.view.focused_pane();
     p.ed.execute_typed("vsplit", None).unwrap();
     let bottom = p.ed.view.focused_pane();
-    seek_to_line(&mut p.ed, 80);
+    seek_to_line(&mut p.ed, line);
+    (bid, top, bottom)
+}
+
+/// The lines a render covers for a pane showing `shown`: those lines and the
+/// one above them.
+fn covered(shown: &std::ops::Range<usize>) -> std::ops::Range<usize> {
+    shown.start.saturating_sub(1)..shown.end
+}
+
+#[test]
+fn two_panes_on_one_buffer_render_each_viewport_and_not_the_lines_between() {
+    let mut p = preview();
+    let text = sectioned(100);
+    let (bid, top, bottom) = two_panes(&mut p, &text, 80);
     p.render();
     let (top, bottom) = (p.visible(top), p.visible(bottom));
     assert!(
         top.end <= 30 && bottom.start >= 40 && bottom.end <= 90,
         "premise: {top:?} and {bottom:?} leave the section at 30 between them and the one at 90 after"
     );
-    assert_eq!(
-        p.conceal_starts(bid),
-        sections_meeting(&text, top.start..bottom.end)
+    let mut expected = sections_meeting(&text, covered(&top));
+    expected.extend(sections_meeting(&text, covered(&bottom)));
+    expected.sort_unstable();
+    expected.dedup();
+    assert_eq!(p.conceal_starts(bid), expected);
+}
+
+#[test]
+fn a_quoted_code_block_spanning_two_panes_is_set_once() {
+    let mut p = preview();
+    // `# a` on line 0, `x` lines, a code block inside a quote on lines
+    // 10..=70, then `x` lines to line 99.
+    let text: String = (0..100)
+        .map(|line| match line {
+            0 => "# a\n",
+            10 | 70 => "> ```\n",
+            11..70 => "> c\n",
+            _ => "x\n",
+        })
+        .collect();
+    let starts = line_starts(&text);
+    let (bid, top, bottom) = two_panes(&mut p, &text, 75);
+    p.render();
+    let (top, bottom) = (p.visible(top), p.visible(bottom));
+    assert!(
+        top.contains(&11) && !top.contains(&70) && bottom.contains(&70) && top.end < bottom.start,
+        "premise: {top:?} shows the block's start and {bottom:?} its end, apart"
     );
+    let block = (starts[10], starts[71]);
+    let mut expected = vec![replaced(0, 1, " 1 ", Some("markup.heading.1.marker"))];
+    for (line, &at) in starts.iter().enumerate().take(71).skip(10) {
+        expected.push(replaced(at, at + 1, "┃", Some("markup.quote")));
+        if line == 10 || line == 70 {
+            expected.push(hidden(at + 2, at + 5).revealing(block.0, block.1));
+        }
+    }
+    assert_eq!(p.conceals(bid), expected);
+    let mut expected_bands = vec![band(0, "markup.heading.1.line")];
+    expected_bands.extend(bands(10..71, "markup.raw.block.line"));
+    assert_eq!(p.bands(bid), expected_bands);
+    assert_eq!(
+        p.highlights(bid),
+        [highlight(2, 3, "markup.heading.1.text")]
+    );
+}
+
+#[test]
+fn a_table_spanning_two_panes_keeps_its_top_border_and_sets_each_row_once() {
+    let mut p = preview();
+    // `x` lines, a blank line 9, the table `| a |` on lines 10..70, a blank
+    // line 70, `x` lines to line 99.
+    let text: String = (0..100)
+        .map(|line| match line {
+            9 | 70 => "\n",
+            10 => "| a |\n",
+            11 => "|---|\n",
+            12..70 => "| r |\n",
+            _ => "x\n",
+        })
+        .collect();
+    let starts = line_starts(&text);
+    let (bid, top, bottom) = two_panes(&mut p, &text, 75);
+    p.render();
+    let (top, bottom) = (p.visible(top), p.visible(bottom));
+    assert!(
+        top.contains(&8) && !top.contains(&70) && bottom.contains(&70) && top.end < bottom.start,
+        "premise: {top:?} shows the line above the top border and {bottom:?} the bottom border, apart"
+    );
+    let mut expected = vec![edge(starts[9], "┌───┐")];
+    for (line, &row) in starts.iter().enumerate().take(70).skip(10) {
+        if line == 11 {
+            expected.push(bar(row, row + 5, "├───┤"));
+        } else {
+            expected.extend([bar(row, row + 2, "│ "), bar(row + 3, row + 5, " │")]);
+        }
+    }
+    expected.push(edge(starts[70], "└───┘"));
+    assert_eq!(p.conceals(bid), revealing(expected, starts[10], starts[70]));
 }
 
 #[test]

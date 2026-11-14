@@ -7,6 +7,7 @@ use std::sync::Arc;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 use ropey::Rope;
+use rustc_hash::FxHashSet;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor, QueryError};
 
@@ -54,40 +55,68 @@ impl CaptureQuery {
     }
 
     /// Replace `out` with every capture of every match over each layer of
-    /// `layers` parsed with this query's bundle over any of `lines`,
-    /// injected layers included, predicates evaluated against `rope`. Sorted by start, then by end
-    /// descending, so an enclosing node precedes the nodes it starts with.
+    /// `layers` parsed with this query's bundle over the lines of any range
+    /// in `lines`, injected layers included, predicates evaluated against
+    /// `rope`. Sorted by start, then by end descending, so an enclosing node
+    /// precedes the nodes it starts with.
     ///
     /// A match is returned when the node its pattern is rooted at intersects
-    /// `lines`, with every capture of the match, inside the lines or not. A
-    /// pattern rooted at a table returns the whole table, one rooted at a
-    /// delimiter only the delimiters on the lines.
+    /// one of the ranges, with every capture of the match, inside the lines
+    /// or not. A pattern rooted at a table returns the whole table, one
+    /// rooted at a delimiter only the delimiters on the lines. A match that
+    /// several ranges reach is returned once.
     pub fn collect(
         &self,
         layers: &SyntaxLayers,
         rope: &Rope,
-        lines: InclusiveRange<ContentLine>,
+        lines: &[InclusiveRange<ContentLine>],
         out: &mut Vec<Capture>,
     ) {
         out.clear();
         let mut cursor = QueryCursor::new();
-        let (bytes, covering) = layers.covering_lines(rope, lines);
-        cursor.set_byte_range(bytes);
-        for layer in covering.filter(|layer| layer.bundle.config_gen == self.config_gen) {
-            let mut matches =
-                cursor.matches(&self.query, layer.tree.root_node(), RopeProvider(rope));
-            while let Some(m) = matches.next() {
-                out.extend(m.captures().iter().map(|capture| Capture {
-                    name: capture.index,
-                    range: ExclusiveRange::new(
-                        CharOffset::new(rope.byte_to_char(capture.node.start_byte())),
-                        CharOffset::new(rope.byte_to_char(capture.node.end_byte())),
-                    ),
-                }));
+        let mut seen = FxHashSet::default();
+        for lines in joined(lines) {
+            let (bytes, covering) = layers.covering_lines(rope, lines);
+            cursor.set_byte_range(bytes);
+            for layer in covering.filter(|layer| layer.bundle.config_gen == self.config_gen) {
+                let root = layer.tree.root_node();
+                let mut matches = cursor.matches(&self.query, root, RopeProvider(rope));
+                while let Some(m) = matches.next() {
+                    let nodes: Vec<_> = m
+                        .captures()
+                        .iter()
+                        .map(|capture| (capture.index, capture.node.id()))
+                        .collect();
+                    if !seen.insert((root.id(), m.pattern_index, nodes)) {
+                        continue;
+                    }
+                    out.extend(m.captures().iter().map(|capture| Capture {
+                        name: capture.index,
+                        range: ExclusiveRange::new(
+                            CharOffset::new(rope.byte_to_char(capture.node.start_byte())),
+                            CharOffset::new(rope.byte_to_char(capture.node.end_byte())),
+                        ),
+                    }));
+                }
             }
         }
         out.sort_by_key(|capture| (capture.range.start, Reverse(capture.range.end)));
     }
+}
+
+/// `lines` sorted by start, with the ranges that overlap or touch joined, so
+/// no line is walked twice.
+fn joined(lines: &[InclusiveRange<ContentLine>]) -> Vec<InclusiveRange<ContentLine>> {
+    let mut sorted = lines.to_vec();
+    sorted.sort_by_key(|range| range.start);
+    let mut out: Vec<InclusiveRange<ContentLine>> = Vec::with_capacity(sorted.len());
+    for range in sorted {
+        match out.last_mut() {
+            Some(last) if range.start <= last.end.advance(1) => last.end = last.end.max(range.end),
+            _ => out.push(range),
+        }
+    }
+    out
 }
 
 #[cfg(test)]

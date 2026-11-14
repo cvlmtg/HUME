@@ -13,7 +13,7 @@
 use std::path::Path;
 
 use super::*;
-use hume_core::BufferId;
+use hume_core::{BufferId, PaneId};
 use hume_engine::pipeline::RenderContext;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 
@@ -70,7 +70,7 @@ struct TwoServers {
     requests: RequestLog,
     sid_a: ServerId,
     sid_b: ServerId,
-    pane_b: hume_core::PaneId,
+    pane_b: PaneId,
 }
 
 /// Two buffers, each attached to its own server: `rust-analyzer` answers
@@ -1046,4 +1046,162 @@ fn a_buffer_leaving_core_lsps_languages_loses_its_hints() {
     pump_lsp(&mut ed);
 
     assert_eq!(hints(&ed), 0);
+}
+
+/// 100 lines of `let x = 1;`, 11 chars each, the cursor at the start.
+fn long_fixture() -> String {
+    format!("-[l]>et x = 1;\n{}", "let x = 1;\n".repeat(99))
+}
+
+/// The char offset of column 4 on `line` of [`long_fixture`].
+fn long_fixture_offset(line: usize) -> usize {
+    line * 11 + 4
+}
+
+/// A rig over [`long_fixture`] with hints off, its pane split in two side by
+/// side, the second pane at `line`, a frame drawn. Each `answers` entry is
+/// one queued `textDocument/inlayHint` result. Returns the two panes.
+fn split_long_fixture(
+    tmp: &Path,
+    line: usize,
+    answers: &[&[(u32, u32, serde_json::Value)]],
+) -> (LspRig, RealRuntimeDirs, PaneId, PaneId) {
+    let (mut rig, guard) = core_lsp_rig_configured(
+        tmp,
+        &long_fixture(),
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        None,
+        |backend, _sid| {
+            for answer in answers {
+                backend.respond_to("textDocument/inlayHint", inlay_hint_response(answer));
+            }
+        },
+    );
+    let top = rig.ed.view.focused_pane();
+    rig.ed.execute_typed("vsplit", None).unwrap();
+    let bottom = rig.ed.view.focused_pane();
+    seek_to_line(&mut rig.ed, line);
+    fire_viewport_change(&mut rig.ed);
+    settle_until_idle(&mut rig.ed);
+    (rig, guard, top, bottom)
+}
+
+/// The lines pane `pid` showed on the last frame.
+fn visible(ed: &Editor, pid: PaneId) -> (usize, usize) {
+    let (_, range) = ed.last_visible_range[&pid];
+    (range.start.index(), range.end.index())
+}
+
+/// The `(start, end)` line range of each `textDocument/inlayHint` request, in
+/// the order they were sent.
+fn requested_ranges(requests: &RequestLog) -> Vec<(usize, usize)> {
+    requests
+        .borrow()
+        .iter()
+        .filter(|(_, method, _)| method == "textDocument/inlayHint")
+        .map(|(_, _, params)| {
+            let line = |end: &str| params["range"][end]["line"].as_u64().unwrap() as usize;
+            (line("start"), line("end"))
+        })
+        .collect()
+}
+
+fn hint_positions(ed: &Editor, bid: BufferId) -> Vec<usize> {
+    let mut positions: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .inlay_hints_for_buffer(bid)
+        .map(|hint| hint.pos.index())
+        .collect();
+    positions.sort_unstable();
+    positions
+}
+
+#[test]
+fn two_panes_far_apart_each_request_their_own_lines() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Every answer holds a hint on the first line and one on the last: each
+    // request keeps the one on its own lines.
+    let both: &[(u32, u32, serde_json::Value)] = &[
+        (0, 4, serde_json::json!(": i32")),
+        (99, 4, serde_json::json!(": i32")),
+    ];
+    let (mut rig, _guard, top, bottom) = split_long_fixture(tmp.path(), 99, &[both, both]);
+    let bid = rig.ed.focused_buffer_id();
+    let (top, bottom) = (visible(&rig.ed, top), visible(&rig.ed, bottom));
+    assert!(
+        top.1 < bottom.0 && bottom.1 == 100,
+        "premise: {top:?} and {bottom:?} are apart, the second at the end"
+    );
+
+    type_cmd(&mut rig.ed, ":toggle-inlay-hints");
+    settle_until_idle(&mut rig.ed);
+
+    assert_eq!(requested_ranges(&rig.requests), [top, bottom]);
+    assert_eq!(
+        hint_positions(&rig.ed, bid),
+        [long_fixture_offset(0), long_fixture_offset(99)]
+    );
+}
+
+#[test]
+fn overlapping_panes_send_one_request() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard, top, bottom) = split_long_fixture(tmp.path(), 0, &[&[]]);
+    let (top, bottom) = (visible(&rig.ed, top), visible(&rig.ed, bottom));
+    assert_eq!(top, bottom, "premise: both panes show the top");
+
+    type_cmd(&mut rig.ed, ":toggle-inlay-hints");
+    settle_until_idle(&mut rig.ed);
+
+    assert_eq!(requested_ranges(&rig.requests), [top]);
+}
+
+#[test]
+fn hints_wait_for_every_range_to_answer() {
+    let tmp = tempfile::tempdir().unwrap();
+    // One answer: the first pane's request gets it, the second's stays in
+    // flight.
+    let first: &[(u32, u32, serde_json::Value)] = &[(0, 4, serde_json::json!(": i32"))];
+    let (mut rig, _guard, _top, _bottom) = split_long_fixture(tmp.path(), 99, &[first]);
+    let bid = rig.ed.focused_buffer_id();
+
+    type_cmd(&mut rig.ed, ":toggle-inlay-hints");
+    settle_until_idle(&mut rig.ed);
+
+    assert_eq!(hint_positions(&rig.ed, bid), Vec::<usize>::new());
+}
+
+#[test]
+fn a_hint_outside_its_requested_lines_is_dropped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = core_lsp_rig_configured(
+        tmp.path(),
+        &long_fixture(),
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        None,
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/inlayHint",
+                inlay_hint_response(&[
+                    (0, 4, serde_json::json!(": i32")),
+                    (99, 4, serde_json::json!(": i32")),
+                ]),
+            );
+        },
+    );
+    let bid = rig.ed.focused_buffer_id();
+    fire_viewport_change(&mut rig.ed);
+    settle_until_idle(&mut rig.ed);
+    let shown = visible(&rig.ed, rig.ed.view.focused_pane());
+    assert!(
+        shown.1 <= 99,
+        "premise: {shown:?} stops above the last line"
+    );
+
+    type_cmd(&mut rig.ed, ":toggle-inlay-hints");
+    settle_until_idle(&mut rig.ed);
+
+    assert_eq!(hint_positions(&rig.ed, bid), [long_fixture_offset(0)]);
 }
