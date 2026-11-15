@@ -153,7 +153,8 @@ pub(super) fn apply_visual_vertical(
     let inputs = state.raw_layout_inputs(view, pid, size);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
-    let mut dlm = view.panes[pid].display_lines(state.buffers.get(buf_id).text().rope(), inputs);
+    let mut dlm =
+        view.panes[pid].raw_display_lines(state.buffers.get(buf_id).text().rope(), inputs);
 
     // Not `apply_focused_motion`: the closure also captures the display-line
     // map and the sticky-column buffer, disjoint fields of `state` that must
@@ -381,7 +382,7 @@ fn copy_selection_on_line(
     let size = state.pane_size(view, t.pid());
     let inputs = state.raw_layout_inputs(view, t.pid(), size);
     let mut dlm =
-        view.panes[t.pid()].display_lines(state.buffers.get(buf_id).text().rope(), inputs);
+        view.panes[t.pid()].raw_display_lines(state.buffers.get(buf_id).text().rope(), inputs);
 
     doc_ops::apply_doc_motion(
         &state.buffers,

@@ -249,9 +249,8 @@ impl EditorState {
             enabled: doc.overrides.context_enabled(&self.settings),
             outer_level: doc.overrides.context_outer_level(&self.settings),
         };
-        // A buffer without conceals lays out as its raw text, so the drawn
-        // and raw walks share the line store and a moving selection leaves
-        // the key alone.
+        // A buffer without conceals lays out as its raw text, so a moving
+        // selection leaves the key alone.
         let revealed = if self.config.decorations.has_conceals(bid) {
             let sels = self.panes.entries.shown(&view.panes, pid).view(doc.text());
             RevealedLines::Lines(LineSet::from_ranges(sels.iter().map(|sel| sel.lines())))
@@ -272,9 +271,10 @@ impl EditorState {
     }
 
     /// The inputs of pane `pid`'s layout at `size` with every line
-    /// revealed: the layout of the raw text, which vertical motion and a
-    /// scroll place the cursor by so a column means the same on a concealed
-    /// line as on a raw one.
+    /// revealed: the layout of the raw text, kept in the pane's raw store,
+    /// which vertical motion places the cursor by so a column means the same
+    /// on a concealed line as on a raw one. Builds no reveal set, unlike
+    /// [`Self::layout_key`].
     pub(in crate::editor) fn raw_layout_inputs(
         &self,
         view: &EngineView,

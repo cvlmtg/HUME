@@ -486,7 +486,9 @@ impl EngineView {
     /// no ordering hazard against `:split`.
     pub fn begin_frame(&mut self) {
         for pid in self.active_pane_ids() {
-            self.panes[pid].line_store.rewind();
+            let pane = &mut self.panes[pid];
+            pane.line_store.rewind();
+            pane.raw_line_store.rewind();
         }
     }
 

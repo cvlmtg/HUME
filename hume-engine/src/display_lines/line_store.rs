@@ -6,9 +6,12 @@
 //! under wrapping the content format arrives with the shape.
 //!
 //! A [`PaneLineStore`] lives on its [`Pane`](crate::pane::Pane), so the scroll
-//! pass, render pass and between-frame consumers (mouse, visual movement,
-//! `z`-scroll) share entries. It is per pane because [`ResolvedFormatKey`] names no
-//! pane: two panes on the same buffer and width can resolve an identical key.
+//! pass, render pass and between-frame consumers (mouse, `z`-scroll) share
+//! entries. It is per pane because [`ResolvedFormatKey`] names no pane: two
+//! panes on the same buffer and width can resolve an identical key. The pane
+//! keeps its raw layout, which vertical motion and a scroll place the cursor
+//! by, in a second store, so in a buffer with conceals the raw and drawn
+//! layouts do not evict each other.
 //!
 //! A store drops its entries when its [`ResolvedFormatKey`] changes. The unwrapped
 //! render's `h_window` is not in the key because it doesn't affect block
@@ -20,7 +23,7 @@
 //! since they decide which lines a walk visits, never how one formats.
 //!
 //! [`EngineView::begin_frame`](crate::pipeline::EngineView::begin_frame)
-//! rewinds every pane's store, and correctness depends on it: inlay-hint and
+//! rewinds both of every pane's stores, and correctness depends on it: inlay-hint and
 //! EOL-text mirrors are rebuilt per frame for the visible viewport without
 //! bumping the decoration generation, so a line scrolling into view can change
 //! its wrap count under an unchanged key. The scope-header store needs no

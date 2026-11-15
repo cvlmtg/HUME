@@ -1669,3 +1669,30 @@ fn scroll_onto_a_concealed_line_lands_on_the_raw_column() {
 fn scroll_onto_a_concealed_line_lands_on_the_raw_column_under_soft_wrap() {
     scroll_onto_a_concealed_line(hume_engine::pane::WrapMode::Soft { width: 0 });
 }
+
+/// At width 4 the concealed line draws as `abcd`, `efgh` but lays out raw as
+/// `**ab`, `**cd`, `efgh`: a scroll landing on its second drawn row lands on
+/// the text that row shows.
+#[test]
+fn scroll_onto_a_wrapped_concealed_line_lands_on_the_text_of_its_row() {
+    use crate::editor::commands::scroll_view;
+    use hume_ops::MotionMode;
+
+    let (mut ed, _file) = decorated_editor("-[x]>\n**ab**cdefgh\n");
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 4 });
+    super::conceal_bridge::set(&mut ed, "md", vec![hiding(2, 4), hiding(6, 8)]);
+    ed.settle();
+    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+    let pid = ed.view.focused_pane();
+    let size = ed.pane_size(pid);
+    scroll_view(
+        &mut ed.state,
+        &mut ed.view,
+        pid,
+        size,
+        2,
+        true,
+        MotionMode::Move,
+    );
+    assert_eq!(state(&ed), "x\n**ab**cd-[e]>fgh\n");
+}

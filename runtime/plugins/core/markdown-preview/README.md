@@ -40,7 +40,8 @@ The choices the plugin and the Rust surface under it are built on:
   heading bold and band: only the hidden or replaced text comes back, and on the primary
   cursor's line the cursorline background wins over a band.
 - **Layout:** `j` and `k` resolve their target line against its revealed layout, because
-  landing on a line reveals it. Mouse clicks and scrolling use the drawn layout.
+  landing on a line reveals it. Mouse clicks use the drawn layout. Scrolling moves by drawn
+  rows, and the cursor lands on the text of its row at the column `j` and `k` would use.
 - **Inserts:** a conceal with an empty range is an insert that follows the reveal rule.
   Table borders, the outer bars of a table written without outer pipes, and the bar of a
   quote line with no `>` are inserts.

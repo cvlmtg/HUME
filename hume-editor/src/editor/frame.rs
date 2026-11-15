@@ -17,7 +17,7 @@ use hume_grid::{Grid, Rect};
 
 use hume_core::PaneId;
 use hume_engine::display_lines::{DisplayLineMap, Revealed};
-use hume_engine::pane::{Pane, Viewport};
+use hume_engine::pane::{Pane, ViewLayouts, Viewport};
 use hume_engine::pipeline::{
     EngineView, PanePool, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout, SettledRows,
 };
@@ -978,6 +978,24 @@ pub(in crate::editor) fn settled_pane_view<'a>(
     settle(buffers, entries, panes, pid, layout_key);
     let pane = &mut panes[pid];
     pane.display_lines_and_viewport(
+        buffers.get(pane.buffer_id()).text().rope(),
+        layout_key.inputs(),
+    )
+}
+
+/// [`settled_pane_view`] with the pane's raw layout beside the drawn one,
+/// for a view move that places cursors by the raw layout.
+#[allow(clippy::disallowed_methods)] // settled first
+pub(in crate::editor) fn settled_view_layouts<'a>(
+    buffers: &'a BufferStore,
+    entries: &mut PaneEntries,
+    panes: &'a mut PanePool,
+    pid: PaneId,
+    layout_key: &LayoutKey,
+) -> ViewLayouts<'a> {
+    settle(buffers, entries, panes, pid, layout_key);
+    let pane = &mut panes[pid];
+    pane.view_layouts(
         buffers.get(pane.buffer_id()).text().rope(),
         layout_key.inputs(),
     )

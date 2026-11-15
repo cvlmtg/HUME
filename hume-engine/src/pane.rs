@@ -4,6 +4,7 @@ use slotmap::SecondaryMap;
 
 use crate::display_lines::{DisplayLineInputs, DisplayLineMap, DisplayLinePos};
 use crate::providers::ProviderSet;
+use crate::reveal::RevealedLines;
 use crate::scope_headers::{HeaderLayout, PaneRows, ScopeHeaderInputs};
 use crate::types::PaintedSelections;
 use hume_core::BufferId;
@@ -267,6 +268,21 @@ impl Default for WhitespaceConfig {
     }
 }
 
+/// A pane's two layouts and its viewport, from [`Pane::view_layouts`].
+pub struct ViewLayouts<'a> {
+    pub drawn: DisplayLineMap<'a>,
+    pub raw: DisplayLineMap<'a>,
+    pub viewport: &'a mut Viewport,
+}
+
+/// `inputs` with every line revealed.
+fn all_revealed(inputs: DisplayLineInputs) -> DisplayLineInputs {
+    DisplayLineInputs {
+        revealed: RevealedLines::All,
+        ..inputs
+    }
+}
+
 // Pane
 
 /// A single editor pane: an independent view into a buffer.
@@ -293,7 +309,7 @@ pub struct Pane {
     /// [`Pane::wrap`]/[`Pane::set_wrap`], or [`Pane::wrap_in`]/
     /// [`Pane::resume_wrap`] for a buffer the pane may not show.
     pub wraps: SecondaryMap<BufferId, WrapOverride>,
-    /// What every walk of this pane's display lines has learned about the
+    /// What every walk of this pane's drawn layout has learned about the
     /// lines it visited; see [`crate::display_lines::line_store`].
     ///
     /// Per pane because two panes on one buffer at one width resolve the
@@ -302,6 +318,11 @@ pub struct Pane {
     /// step also runs before any pane renders, so one shared store would hold
     /// only the last pane's lines.
     pub line_store: crate::display_lines::line_store::PaneLineStore,
+    /// The store of this pane's raw layout, every line revealed, which
+    /// vertical motion and a scroll place the cursor by. Apart from
+    /// `line_store` so the raw and drawn layouts of a buffer with conceals
+    /// do not evict each other's lines.
+    pub raw_line_store: crate::display_lines::line_store::PaneLineStore,
     /// What this pane's scope header rows are laid out with. Per pane for
     /// the same reason as `line_store`: a header row lays out with this
     /// pane's providers under a key that names no pane.
@@ -319,6 +340,7 @@ impl Pane {
             providers: ProviderSet::new(),
             wraps: SecondaryMap::new(),
             line_store: crate::display_lines::line_store::PaneLineStore::new(),
+            raw_line_store: crate::display_lines::line_store::PaneLineStore::new(),
             header_layout: HeaderLayout::default(),
         }
     }
@@ -335,8 +357,9 @@ impl Pane {
             selections: _, // engine render copy, repopulated every frame
             providers: _,  // allocated per pane in build_pane
             wraps,
-            line_store: _,    // per-frame scratch, rewound every frame
-            header_layout: _, // laid out again for this pane's own providers
+            line_store: _,     // per-frame scratch, rewound every frame
+            raw_line_store: _, // per-frame scratch, rewound every frame
+            header_layout: _,  // laid out again for this pane's own providers
         } = src;
         self.viewport = *viewport;
         self.saved_scrolls = saved_scrolls.clone();
@@ -389,6 +412,37 @@ impl Pane {
     ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
         let dlm = DisplayLineMap::new(rope, &self.providers, inputs, &mut self.line_store);
         (dlm, &mut self.viewport)
+    }
+
+    /// The raw layout of `rope` in this pane: `inputs` with every line
+    /// revealed.
+    pub fn raw_display_lines<'a>(
+        &'a mut self,
+        rope: &'a Rope,
+        inputs: DisplayLineInputs,
+    ) -> DisplayLineMap<'a> {
+        DisplayLineMap::new(
+            rope,
+            &self.providers,
+            all_revealed(inputs),
+            &mut self.raw_line_store,
+        )
+    }
+
+    /// The drawn layout of `rope` laid out by `inputs`, the raw layout
+    /// beside it, and the viewport, for a view move that scrolls by the one
+    /// and places cursors by the other.
+    pub fn view_layouts<'a>(
+        &'a mut self,
+        rope: &'a Rope,
+        inputs: DisplayLineInputs,
+    ) -> ViewLayouts<'a> {
+        let raw_inputs = all_revealed(inputs.clone());
+        ViewLayouts {
+            drawn: DisplayLineMap::new(rope, &self.providers, inputs, &mut self.line_store),
+            raw: DisplayLineMap::new(rope, &self.providers, raw_inputs, &mut self.raw_line_store),
+            viewport: &mut self.viewport,
+        }
     }
 
     /// Show `target`, saving the scroll of the buffer shown until now and
