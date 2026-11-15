@@ -111,18 +111,33 @@ macro_rules! motion_cmd {
 
 // ── Command table ─────────────────────────────────────────────────────────────
 
-motion_cmd!(/// Move or extend cursors one grapheme to the right.
-    cmd_move_right, move_right);
-motion_cmd!(/// Move or extend cursors one grapheme to the left.
-    cmd_move_left, move_left);
+motion_cmd!(
+    /// Move or extend cursors one grapheme to the right.
+    cmd_move_right,
+    move_right
+);
+motion_cmd!(
+    /// Move or extend cursors one grapheme to the left.
+    cmd_move_left,
+    move_left
+);
 
-motion_cmd!(/// Move or extend cursors to the first character of the buffer.
-    cmd_goto_first_line, goto_first_line);
-motion_cmd!(/// Move or extend cursors to the first character of the last line.
-    cmd_goto_last_line, goto_last_line);
+motion_cmd!(
+    /// Move or extend cursors to the first character of the buffer.
+    cmd_goto_first_line,
+    goto_first_line
+);
+motion_cmd!(
+    /// Move or extend cursors to the first character of the last line.
+    cmd_goto_last_line,
+    goto_last_line
+);
 
-motion_cmd!(/// Move or extend cursors to the start of their current line.
-    cmd_goto_line_start, goto_line_start);
+motion_cmd!(
+    /// Move or extend cursors to the start of their current line.
+    cmd_goto_line_start,
+    goto_line_start
+);
 /// Move or extend cursors to the end of their current line, landing where
 /// `end` says.
 pub fn cmd_goto_line_end(
@@ -135,8 +150,11 @@ pub fn cmd_goto_line_end(
         goto_line_end(s.text(), s.head(), end)
     })
 }
-motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
-    cmd_goto_first_nonblank, goto_first_nonblank);
+motion_cmd!(
+    /// Move or extend cursors to the first non-blank character on their current line.
+    cmd_goto_first_nonblank,
+    goto_first_nonblank
+);
 
 /// Move or extend cursors to the matching bracket or tag (`#`).
 ///
