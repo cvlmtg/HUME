@@ -250,6 +250,13 @@ mod conceals {
     }
 
     #[test]
+    fn set_conceals_names_the_entry_later_in_the_list() {
+        let mut ed = editor("abcdefghij\n");
+        let message = refusal(set(&mut ed, vec![hidden(5, 8), hidden(0, 6)]), 1);
+        assert!(message.contains("overlaps entry 0"), "got: {message}");
+    }
+
+    #[test]
     fn dropping_overlaps_keeps_the_earlier_of_two_entries() {
         // A hidden range inside an earlier one, an insert strictly inside
         // one, and two inserts at one point.

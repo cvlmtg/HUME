@@ -275,7 +275,7 @@ impl EditorHostImpl<'_> {
         overlaps: ConcealOverlaps,
     ) -> Result<Vec<ConcealEntry>, SetError> {
         let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let mut placed = each_entry(specs.into_iter().enumerate().collect(), |(index, spec)| {
+        let placed = each_entry(specs.into_iter().enumerate().collect(), |(index, spec)| {
             let mut shown = |t: ConcealSpecText| ConcealText {
                 text: t.text.into(),
                 scope: t.scope.map(|name| self.view.registry.intern(&name)),
@@ -320,24 +320,35 @@ impl EditorHostImpl<'_> {
             }
             Ok((index, entry))
         })?;
-        if overlaps == ConcealOverlaps::DropLater {
-            return Ok(keep_earlier(placed.into_iter().map(|(_, entry)| entry)));
-        }
-        placed.sort_by_key(|(_, entry)| {
+        let mut kept: BTreeMap<(CharOffset, CharOffset), (usize, ConcealEntry)> = BTreeMap::new();
+        for (index, entry) in placed {
             let chars = entry.chars();
-            (chars.start, chars.end)
-        });
-        // Sorted by start, an entry that overlaps any earlier one overlaps
-        // its predecessor, so adjacent pairs are enough.
-        for ((earlier, a), (later, b)) in placed.iter().zip(placed.iter().skip(1)) {
-            if conceal_ranges_overlap(a.chars(), b.chars()) {
-                return Err(SetError::Entry {
-                    index: *later,
-                    message: format!("overlaps entry {earlier}"),
-                });
+            let key = (chars.start, chars.end);
+            // Kept entries are disjoint, so their order by start is their
+            // order by end too, and an entry overlapping any kept one
+            // overlaps the kept entry just before or just after its own
+            // place in that order.
+            let before = kept.range(..=key).next_back();
+            let after = kept.range((Bound::Excluded(key), Bound::Unbounded)).next();
+            let earlier = before
+                .into_iter()
+                .chain(after)
+                .find(|(_, (_, k))| conceal_ranges_overlap(k.chars(), chars))
+                .map(|(_, (earlier, _))| *earlier);
+            match (earlier, overlaps) {
+                (None, _) => {
+                    kept.insert(key, (index, entry));
+                }
+                (Some(_), ConcealOverlaps::DropLater) => {}
+                (Some(earlier), ConcealOverlaps::Refuse) => {
+                    return Err(SetError::Entry {
+                        index,
+                        message: format!("overlaps entry {earlier}"),
+                    });
+                }
             }
         }
-        Ok(placed.into_iter().map(|(_, entry)| entry).collect())
+        Ok(kept.into_values().map(|(_, entry)| entry).collect())
     }
 
     /// Each `(start, end, scope)` char range of `bid`'s text as an extra
@@ -445,26 +456,4 @@ pub(super) fn validate_offset(
         }
     }
     Ok(pos)
-}
-
-/// `entries` without each one that overlaps an entry kept before it, in
-/// position order. Kept entries are disjoint, so their order by start is
-/// their order by end too, and an entry overlapping any kept one overlaps the
-/// kept entry just before or just after its own place in that order.
-fn keep_earlier(entries: impl IntoIterator<Item = ConcealEntry>) -> Vec<ConcealEntry> {
-    let mut kept: BTreeMap<(CharOffset, CharOffset), ConcealEntry> = BTreeMap::new();
-    for entry in entries {
-        let chars = entry.chars();
-        let key = (chars.start, chars.end);
-        let before = kept.range(..=key).next_back();
-        let after = kept.range((Bound::Excluded(key), Bound::Unbounded)).next();
-        if before
-            .into_iter()
-            .chain(after)
-            .all(|(_, k)| !conceal_ranges_overlap(k.chars(), chars))
-        {
-            kept.insert(key, entry);
-        }
-    }
-    kept.into_values().collect()
 }

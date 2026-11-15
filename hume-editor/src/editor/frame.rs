@@ -975,12 +975,8 @@ pub(in crate::editor) fn settled_pane_view<'a>(
     pid: PaneId,
     layout_key: &LayoutKey,
 ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
-    settle(buffers, entries, panes, pid, layout_key);
-    let pane = &mut panes[pid];
-    pane.display_lines_and_viewport(
-        buffers.get(pane.buffer_id()).text().rope(),
-        layout_key.inputs(),
-    )
+    let (pane, rope) = settled(buffers, entries, panes, pid, layout_key);
+    pane.display_lines_and_viewport(rope, layout_key.inputs())
 }
 
 /// [`settled_pane_view`] with the pane's raw layout beside the drawn one,
@@ -993,12 +989,22 @@ pub(in crate::editor) fn settled_view_layouts<'a>(
     pid: PaneId,
     layout_key: &LayoutKey,
 ) -> ViewLayouts<'a> {
+    let (pane, rope) = settled(buffers, entries, panes, pid, layout_key);
+    pane.view_layouts(rope, layout_key.inputs())
+}
+
+/// Pane `pid` and the text it shows, after [`settle`].
+fn settled<'a>(
+    buffers: &'a BufferStore,
+    entries: &mut PaneEntries,
+    panes: &'a mut PanePool,
+    pid: PaneId,
+    layout_key: &LayoutKey,
+) -> (&'a mut Pane, &'a ropey::Rope) {
     settle(buffers, entries, panes, pid, layout_key);
     let pane = &mut panes[pid];
-    pane.view_layouts(
-        buffers.get(pane.buffer_id()).text().rope(),
-        layout_key.inputs(),
-    )
+    let rope = buffers.get(pane.buffer_id()).text().rope();
+    (pane, rope)
 }
 
 /// [`settled_pane_view`] for a reader that wants no display lines back:

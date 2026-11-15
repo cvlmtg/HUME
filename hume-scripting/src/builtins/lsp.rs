@@ -456,9 +456,10 @@ pub(crate) fn lsp_supersede_key(ctx: &mut SteelCtx) -> SteelResult {
         .into_steel_val())
 }
 
-/// `(lsp-cancel! pane key)`: cancels the request `pane`'s buffer has in
-/// flight under supersede `key`, as a new request under `key` would,
-/// without sending one. Nothing happens when none is in flight.
+/// `(lsp-cancel! pane key)`: cancels the request `pane`'s buffer has
+/// pending under supersede `key`, as a new request under `key` would,
+/// without sending one. Its callback never runs, even when its answer is
+/// already queued. Nothing happens when none is pending.
 pub(crate) fn lsp_cancel(ctx: &mut SteelCtx, bid: BufferId, key: SteelVal) -> SteelResult {
     let key = supersede_key_arg(key, "key")?;
     ctx.push_effect(Effect::LspCancel { bid, key });

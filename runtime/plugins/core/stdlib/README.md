@@ -199,6 +199,6 @@ per-buffer state. When the new batch is shorter, the previous one's requests pas
 length are cancelled with `lsp-cancel!` before any request is sent.
 
 The editor never runs a superseded or cancelled request's callback, even one whose answer
-had already arrived, so a replaced batch never completes and needs no round counter. The
-answers of a batch live in a box its `done` procedures share, keyed by request index; the
-callback runs when the count reaches the number of requests.
+had already arrived, so a replaced batch never completes. The answers of a batch live in a
+box its `done` procedures share, keyed by request index; the callback runs when the count
+reaches the number of requests.

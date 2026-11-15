@@ -271,7 +271,9 @@ impl Default for WhitespaceConfig {
 /// A pane's two layouts and its viewport, from [`Pane::view_layouts`].
 pub struct ViewLayouts<'a> {
     pub drawn: DisplayLineMap<'a>,
-    pub raw: DisplayLineMap<'a>,
+    /// `None` when the drawn layout reveals every line and so is the raw
+    /// layout itself.
+    pub raw: Option<DisplayLineMap<'a>>,
     pub viewport: &'a mut Viewport,
 }
 
@@ -319,9 +321,10 @@ pub struct Pane {
     /// only the last pane's lines.
     pub line_store: crate::display_lines::line_store::PaneLineStore,
     /// The store of this pane's raw layout, every line revealed, which
-    /// vertical motion and a scroll place the cursor by. Apart from
-    /// `line_store` so the raw and drawn layouts of a buffer with conceals
-    /// do not evict each other's lines.
+    /// vertical motion and a scroll place the cursor by, while the drawn
+    /// layout conceals something. Apart from `line_store` so the two
+    /// layouts do not evict each other's lines; a drawn layout that reveals
+    /// every line is the raw one and serves it from `line_store`.
     pub raw_line_store: crate::display_lines::line_store::PaneLineStore,
     /// What this pane's scope header rows are laid out with. Per pane for
     /// the same reason as `line_store`: a header row lays out with this
@@ -414,13 +417,16 @@ impl Pane {
         (dlm, &mut self.viewport)
     }
 
-    /// The raw layout of `rope` in this pane: `inputs` with every line
-    /// revealed.
+    /// The raw layout of `rope` in this pane, whose drawn layout `inputs`
+    /// describe: `inputs` with every line revealed.
     pub fn raw_display_lines<'a>(
         &'a mut self,
         rope: &'a Rope,
         inputs: DisplayLineInputs,
     ) -> DisplayLineMap<'a> {
+        if inputs.revealed == RevealedLines::All {
+            return DisplayLineMap::new(rope, &self.providers, inputs, &mut self.line_store);
+        }
         DisplayLineMap::new(
             rope,
             &self.providers,
@@ -437,10 +443,17 @@ impl Pane {
         rope: &'a Rope,
         inputs: DisplayLineInputs,
     ) -> ViewLayouts<'a> {
-        let raw_inputs = all_revealed(inputs.clone());
+        let raw = (inputs.revealed != RevealedLines::All).then(|| {
+            DisplayLineMap::new(
+                rope,
+                &self.providers,
+                all_revealed(inputs.clone()),
+                &mut self.raw_line_store,
+            )
+        });
         ViewLayouts {
             drawn: DisplayLineMap::new(rope, &self.providers, inputs, &mut self.line_store),
-            raw: DisplayLineMap::new(rope, &self.providers, raw_inputs, &mut self.raw_line_store),
+            raw,
             viewport: &mut self.viewport,
         }
     }

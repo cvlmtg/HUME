@@ -1,5 +1,5 @@
 use hume_core::{Count, PaneId};
-use hume_engine::display_lines::{DisplayLineMap, carry};
+use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap, DisplayLinePos, carry};
 use hume_engine::pane::{ViewGeometry, ViewLayouts, Viewport};
 use hume_engine::pipeline::{EngineView, PaneSize};
 use hume_ops::MotionMode;
@@ -12,15 +12,18 @@ use super::super::pane_state::PaneEntries;
 use super::{CommandPane, sticky_landing};
 use crate::editor::error::CommandError;
 use hume_editing::selection::Selection;
+use hume_rope::cluster::ClusterStart;
+use hume_rope::column::DisplayLineCol;
 
 // ── Moving the view ───────────────────────────────────────────────────────────
 
 /// What [`move_view`] hands its caller: the pane's settled drawn layout and
-/// viewport, its raw layout, its scroll geometry, and the selection stores,
-/// free to write while the layouts are held.
+/// viewport, its raw layout (`None` when the drawn one is raw), its scroll
+/// geometry, and the selection stores, free to write while the layouts are
+/// held.
 struct ViewMove<'a> {
     drawn: DisplayLineMap<'a>,
-    raw: DisplayLineMap<'a>,
+    raw: Option<DisplayLineMap<'a>>,
     viewport: &'a mut Viewport,
     geo: ViewGeometry<'a>,
     buffers: &'a BufferStore,
@@ -105,7 +108,7 @@ fn move_view(
 /// would resolve on the raw layout: the line it lands on reveals once it
 /// holds the cursor. A row number means different text in the two layouts
 /// once conceals change how a line wraps, so the row crosses as the cluster
-/// it starts with.
+/// it starts with, and the landing stays within the row's clusters.
 pub(in crate::editor) fn scroll_view(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -151,11 +154,7 @@ pub(in crate::editor) fn scroll_view(
                     let Some(landed) = carry(&mut drawn, geo, top, head_pos, delta) else {
                         return sel.selection();
                     };
-                    let raw_pos = match drawn.content_display_line_clusters(landed) {
-                        Some(row) => raw.locate_display_line(row.start()),
-                        None => raw.first_content_display_line(landed.line),
-                    };
-                    let new_head = raw.char_at(raw_pos, target_col, landing);
+                    let new_head = land(&mut drawn, raw.as_mut(), landed, target_col, landing);
                     let anchor = if mode == MotionMode::Extend {
                         sel.anchor()
                     } else {
@@ -166,6 +165,36 @@ pub(in crate::editor) fn scroll_view(
             });
         },
     );
+}
+
+/// The cluster a cursor landing on drawn display line `landed` at
+/// `target_col` takes, resolved on the raw layout `raw`, or on `drawn`
+/// when it reveals every line and so is the raw layout.
+fn land(
+    drawn: &mut DisplayLineMap<'_>,
+    raw: Option<&mut DisplayLineMap<'_>>,
+    landed: DisplayLinePos,
+    target_col: DisplayLineCol,
+    landing: DisplayColTarget,
+) -> ClusterStart {
+    let Some(raw) = raw else {
+        return drawn.char_at(landed, target_col, landing);
+    };
+    // Unwrapped, a line is one display line in either layout.
+    let row = if drawn.is_wrapping() {
+        drawn.content_display_line_clusters(landed)
+    } else {
+        None
+    };
+    let Some(row) = row else {
+        let raw_pos = raw.first_content_display_line(landed.line);
+        return raw.char_at(raw_pos, target_col, landing);
+    };
+    // The raw display line holding the row's first cluster can start
+    // before the row or run past it.
+    let raw_pos = raw.locate_display_line(row.start());
+    raw.char_at(raw_pos, target_col, landing)
+        .clamp(row.start(), row.last())
 }
 
 /// How far `Ctrl-d`/`Ctrl-u` move given `visible_rows` rows on screen. The

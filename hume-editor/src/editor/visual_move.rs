@@ -150,7 +150,7 @@ pub(super) fn apply_visual_vertical(
     let treat_as_line = is_buffer_line || !wrapping;
     let landing = sticky_landing(state, pid, buf_id);
     let size = state.pane_size(view, pid);
-    let inputs = state.raw_layout_inputs(view, pid, size);
+    let inputs = state.layout_key(view, pid, size).inputs();
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
     let mut dlm =
@@ -380,7 +380,7 @@ fn copy_selection_on_line(
     let buf_id = t.bid(view);
     let landing = sticky_landing(state, t.pid(), buf_id);
     let size = state.pane_size(view, t.pid());
-    let inputs = state.raw_layout_inputs(view, t.pid(), size);
+    let inputs = state.layout_key(view, t.pid(), size).inputs();
     let mut dlm =
         view.panes[t.pid()].raw_display_lines(state.buffers.get(buf_id).text().rope(), inputs);
 

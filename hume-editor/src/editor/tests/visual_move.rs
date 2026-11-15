@@ -1696,3 +1696,30 @@ fn scroll_onto_a_wrapped_concealed_line_lands_on_the_text_of_its_row() {
     );
     assert_eq!(state(&ed), "x\n**ab**cd-[e]>fgh\n");
 }
+
+/// At width 4 the concealed line draws as `abcd`, `efgh` but lays out raw as
+/// `*abc`, `defg`, `h`: the raw row holding `e` starts with `d`, which the
+/// drawn row above shows.
+#[test]
+fn scroll_onto_a_wrapped_concealed_line_stays_within_its_drawn_row() {
+    use crate::editor::commands::scroll_view;
+    use hume_ops::MotionMode;
+
+    let (mut ed, _file) = decorated_editor("-[x]>\n*abcdefgh\n");
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 4 });
+    super::conceal_bridge::set(&mut ed, "md", vec![hiding(2, 3)]);
+    ed.settle();
+    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+    let pid = ed.view.focused_pane();
+    let size = ed.pane_size(pid);
+    scroll_view(
+        &mut ed.state,
+        &mut ed.view,
+        pid,
+        size,
+        2,
+        true,
+        MotionMode::Move,
+    );
+    assert_eq!(state(&ed), "x\n*abcd-[e]>fgh\n");
+}

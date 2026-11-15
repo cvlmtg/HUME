@@ -267,15 +267,15 @@ fn ctrl_d_in_a_concealed_buffer_leaves_the_view_settled() {
 }
 
 #[test]
-fn a_buffer_without_conceals_lays_out_the_same_drawn_and_raw() {
+fn a_buffer_without_conceals_reveals_every_line() {
     let (ed, _file) = decorated_editor("0\n1\n2\n-[3]>\n4\n");
     let pid = ed.view.focused_pane();
     let size = ed.pane_size(pid);
     let key = ed.state.layout_key(&ed.view, pid, size);
 
     assert_eq!(
-        key.inputs(),
-        ed.state.raw_layout_inputs(&ed.view, pid, size)
+        key.inputs().revealed,
+        hume_engine::reveal::RevealedLines::All
     );
 }
 

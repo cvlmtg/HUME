@@ -250,7 +250,8 @@ impl EditorState {
             outer_level: doc.overrides.context_outer_level(&self.settings),
         };
         // A buffer without conceals lays out as its raw text, so a moving
-        // selection leaves the key alone.
+        // selection leaves the key alone and the raw layout shares the drawn
+        // one's store.
         let revealed = if self.config.decorations.has_conceals(bid) {
             let sels = self.panes.entries.shown(&view.panes, pid).view(doc.text());
             RevealedLines::Lines(LineSet::from_ranges(sels.iter().map(|sel| sel.lines())))
@@ -258,7 +259,12 @@ impl EditorState {
             RevealedLines::All
         };
         LayoutKey {
-            inputs: self.display_line_inputs(view, pid, size, revealed),
+            inputs: DisplayLineInputs {
+                format: self.format_key(&view.panes[pid]),
+                hidden: self.hidden_lines(view, pid).clone(),
+                content_width: self.pane_geometry(view, pid, size).content_width,
+                revealed,
+            },
             size,
             scroll_margin: self.settings.scroll_margin,
             context,
@@ -267,35 +273,6 @@ impl EditorState {
                 .as_ref()
                 .filter(|_| context.enabled)
                 .and_then(Syntax::committed_gen),
-        }
-    }
-
-    /// The inputs of pane `pid`'s layout at `size` with every line
-    /// revealed: the layout of the raw text, kept in the pane's raw store,
-    /// which vertical motion places the cursor by so a column means the same
-    /// on a concealed line as on a raw one. Builds no reveal set, unlike
-    /// [`Self::layout_key`].
-    pub(in crate::editor) fn raw_layout_inputs(
-        &self,
-        view: &EngineView,
-        pid: PaneId,
-        size: PaneSize,
-    ) -> DisplayLineInputs {
-        self.display_line_inputs(view, pid, size, RevealedLines::All)
-    }
-
-    fn display_line_inputs(
-        &self,
-        view: &EngineView,
-        pid: PaneId,
-        size: PaneSize,
-        revealed: RevealedLines,
-    ) -> DisplayLineInputs {
-        DisplayLineInputs {
-            format: self.format_key(&view.panes[pid]),
-            hidden: self.hidden_lines(view, pid).clone(),
-            content_width: self.pane_geometry(view, pid, size).content_width,
-            revealed,
         }
     }
 }
