@@ -38,7 +38,8 @@ pub(crate) enum Driver {
     /// A scripted key stream (`--keys`), with no one to answer a prompt. With
     /// no terminal to negotiate the kitty protocol, it assumes full
     /// capability: without it a Ctrl-letter key such as `<c-w>` does nothing,
-    /// since `handle_normal` strips the Ctrl modifier only under kitty.
+    /// since `handle_normal` strips the Ctrl modifier only under kitty. It has
+    /// no OS clipboard: the `c` register is the run's clipboard.
     Headless,
 }
 
@@ -131,7 +132,6 @@ impl Editor {
         dirs: hume_platform::dirs::Dirs,
         startup_cwd: hume_platform::path::AbsolutePath,
     ) -> io::Result<Self> {
-        use super::clipboard;
         use crate::editor::buffer::NewBuffer;
         use crate::editor::buffer::store::BufferStore;
         use crate::editor::pane_state::{PaneChrome, PaneView};
@@ -179,7 +179,6 @@ impl Editor {
                 clock,
                 buffer_positions: super::position_stores::BufferPositions::default(),
                 lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
-                clipboard: clipboard::SystemClipboard::new(),
                 settings,
                 panes,
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
@@ -273,6 +272,9 @@ impl Editor {
         editor.detached = detached;
         editor.set_kitty_support(kitty_enabled);
         editor.state.headless = headless;
+        if !headless {
+            editor.state.clipboard = super::clipboard::SystemClipboard::new();
+        }
         editor.set_config_source(config);
         let host = editor.load_config();
         // Finished once init.scm has set what it reads, such as

@@ -14,6 +14,7 @@
 ### Fixes
 - Inlay hints show in every pane on a buffer, not only one of them.
 - A request replaced by a newer one under its `#:supersede` key, or cancelled with `lsp-cancel!`, never calls back, even when its answer had already arrived.
+- `hume --keys` leaves the system clipboard alone.
 
 ## [0.21.0] - 2026-11-12
 

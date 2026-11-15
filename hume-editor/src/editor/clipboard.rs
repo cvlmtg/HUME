@@ -62,10 +62,11 @@ impl SystemClipboard {
         }
     }
 
-    /// The OSC 52 backend, also the inert baseline in `EditorState::default()`
-    /// so proptest never reaches the real NSPasteboard (which throws
-    /// uncatchable ObjC exceptions in test threads); `Editor::bootstrap` overrides
-    /// it via `new()`.
+    /// The OSC 52 backend, also the inert baseline every editor state starts
+    /// with, so proptest never reaches the real NSPasteboard (which throws
+    /// uncatchable ObjC exceptions in test threads). `Editor::start` replaces it
+    /// with `new()` for a terminal driver only: a headless run without a
+    /// terminal never flushes the queue, so the `c` register is its clipboard.
     pub(in crate::editor) fn osc52() -> Self {
         Self::with_backend(Backend::Osc52)
     }

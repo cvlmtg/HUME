@@ -189,6 +189,24 @@ fn clipboard_register_falls_back_to_memory_when_unavailable() {
     );
 }
 
+/// A headless run (`--keys`) has no OS clipboard: the `c` register is the
+/// only clipboard it reads or writes.
+#[test]
+fn headless_start_keeps_the_clipboard_in_memory() {
+    use crate::editor::clipboard::ClipboardRead;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let cwd = AbsolutePath::canonicalize(tmp.path()).unwrap();
+    let mut ed = start_headless(
+        &["a.txt"],
+        &cwd,
+        Dirs::none(),
+        crate::cli::ConfigSource::Skip,
+    );
+
+    assert!(matches!(ed.state.clipboard.read(), ClipboardRead::Mirror));
+}
+
 /// A `"cp` that cannot read the clipboard names the in-memory copy only when
 /// it pasted that copy.
 #[test]
