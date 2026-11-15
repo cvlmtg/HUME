@@ -222,7 +222,8 @@ impl<F: FnMut(ClusterStart) -> Option<BreakIndent>> NewLineIndent<F> {
 /// A computed width is rendered in `style`. With `after_token` set and a
 /// cursor between the halves of an asymmetric pair of `pairs`, the break
 /// opens a block: an inner line one level deeper, then the closer on a line
-/// of its own.
+/// of its own. A pair that is text inside a string is no token of the tree,
+/// so the break between its halves is plain.
 ///
 /// `allowed`: per-selection (by sorted index) range of whitespace some
 /// earlier auto-indent recorded as its own; see `owned_indent`. A collapsed

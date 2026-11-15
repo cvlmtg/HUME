@@ -14,6 +14,8 @@ shows what the current revision changed.
 - **Depends on:** nothing. Draws the revision diff through `core:git-diff`'s commands when
   they exist (see [Revision diff](#revision-diff)).
 - **Activates on:** `:undotree` or `undotree/toggle` (`manifest.scm`).
+- **Keys:** none. The two commands are the plugin's only entry points, so `init.scm` binds
+  one, as above.
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-undotree).
 
 ## Commands
@@ -95,7 +97,9 @@ Here the current revision is 4 and the saved one is 0:
  o-'     S 12m
 ```
 
-Every row is a revision, so a row always names a revision to jump to.
+A merge is drawn on the fork's own row (`o-'`), with no connector row between two
+revisions. Every row is a revision, so a row always names a revision to jump to. A row
+shows no revision number, since Enter jumps by row.
 
 The graph depends only on each revision's id and parent, so `undotree/render` keeps the
 layout of its last call: the graph rows as a vector oldest first, the width of the widest,
@@ -141,7 +145,8 @@ was last given.
 
 Enter calls `goto-revision!` and leaves the drawer open. `goto-revision!` raises for a
 read-only buffer, and the error reaches the user as any Steel error does; the session stays
-open.
+open. Moving the highlight does not jump: a jump is a text change, which every pane of the
+buffer, its syntax tree and its language servers follow.
 
 ### Refresh
 
@@ -169,7 +174,8 @@ another buffer, Enter retargets the drawer to it and does not jump.
 
 While the drawer is open the buffer shows what separates the current revision from its
 parent, drawn inline under the decoration source `"undotree"`: the parent's lines as
-deleted lines, word highlights and a line tint. The hunks come from
+deleted lines, word highlights and a line tint. The source is the plugin's own, so a draw
+or a clear leaves `core:git-diff`'s decorations alone. The hunks come from
 `(buffer-revision-diff pane parent-id)`'s `'hunks`, so the parent's text is the old side and
 the buffer's text the new, and `core:git-diff` draws them through its `git-diff/render-diff`
 command (see its
@@ -201,9 +207,10 @@ session clears it too, for a buffer that is still open. A session that never dre
 
 ## Known limitations
 
-- The tree is in memory only, so it starts empty after a restart.
-- Ages are relative. A saved timestamp would need a wall-clock format the history does not
-  keep.
+- Without the `undo-persist` option the tree is in memory only, so it starts empty after a
+  restart.
+- Ages are relative: `buffer-undo-tree` reports each revision's age, not the time it was
+  made.
 - Opening any other drawer, such as the LSP references list, replaces this one.
 - With `undo-levels` set, the root row stands for the oldest kept text, and once a trim
   drops the saved revision no row shows `S`.

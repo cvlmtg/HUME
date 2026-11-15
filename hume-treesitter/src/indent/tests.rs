@@ -1,3 +1,9 @@
+//! Hand-derived cases: each expected width is worked out from the text and
+//! the query, the derivation beside the case when it is not obvious. A
+//! custom query isolates one rule; the fixture `indents.scm` files cover
+//! alignment, header scope and opaque strings. Splits beside wide text and
+//! on a rope chunk boundary expose a byte or char read in the wrong unit.
+
 use std::sync::Arc;
 
 use hume_editing::indent::ElectricTrigger;

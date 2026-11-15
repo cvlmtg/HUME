@@ -1,3 +1,9 @@
+//! The corpus oracle. Each corpus file is Helix's `tests/indent/<file>` at
+//! the commit the language's queries come from, the file those queries are
+//! checked against upstream (`scripts/fetch-test-grammars.sh` fetches it).
+//! A line that fails is a bug in the engine: the test has no list of
+//! excepted lines.
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -90,7 +96,9 @@ fn has_missing_node(root: tree_sitter::Node) -> bool {
 
 /// Every indent corpus file re-indents to its own widths, and a line
 /// break typed at the end of each line indents the next line at least as
-/// far as the file does.
+/// far as the file does. Blank and comment-led lines are not checked. A
+/// line starting inside an opaque node re-indents to `None` and is no
+/// typing target; the set of such lines must equal `opaque_lines`.
 #[test]
 fn the_indent_corpus_indents_as_written() {
     let mut failures = Vec::new();

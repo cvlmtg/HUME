@@ -982,8 +982,7 @@ fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
 
 // ── A streaming source re-ranking under a moved selection ──────────────────
 
-/// A `Minibuf` source answering in parts (the async streaming case
-/// `docs/COMPLETION-PICKER.md` documents): a wide first part, then later
+/// A `Minibuf` source answering in parts: a wide first part, then later
 /// (via a separate command here, standing in for a real async callback) a
 /// narrower last one. Between the two, the user Tabs the selection off row
 /// 0. `settle_minibuf_session`'s own re-rank must reset that selection, or

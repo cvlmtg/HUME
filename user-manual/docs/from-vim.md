@@ -59,7 +59,7 @@ A few more keys you'll want early:
 
 `:q` closes the focused pane when the tab has several, and the tab when other tabs are open. On the last pane it closes the current buffer, not the editor: if another file is still open you land on it, and HUME quits only when no other file or unsaved buffer is left. `:q!` and `:wq` close the same way, discarding your changes or saving them first. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
 
-HUME writes no swap files, and undo history doesn't survive a restart yet. See [Persistence and safety](files-and-buffers.md#persistence-and-safety).
+HUME writes no swap files, and undo history survives a restart only with the `undo-persist` setting on. See [Persistence and safety](files-and-buffers.md#persistence-and-safety).
 
 The tutor you started is the hands-on tour of everything else: carry on from its Introduction. To start over with a clean copy, close it with `:bd!` and run `:tutor` again.
 
@@ -273,7 +273,7 @@ The keys moved: `g t` / `g T` jump between classes or types (see [Muscle-memory 
 - `:x` and `ZZ`
 - `:help`: `:tutor` opens the tutorial, and `:messages` shows the message log
 - A file explorer
-- Swap files and persistent undo
+- Swap files
 - `:tabonly`, `:tabmove`, `:tabfirst` / `:tablast`, `:tabs`, `{count}gt` to jump straight to tab *N*, and the `:tab` command modifier (`:tab split`)
 
 ## What HUME has that Vim doesn't

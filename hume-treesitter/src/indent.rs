@@ -1,5 +1,5 @@
 //! Tree-sitter indentation: the width a new line gets from the language's
-//! `indents.scm` and the buffer's syntax tree. `docs/TS-INDENT.md` states
+//! `indents.scm` and the buffer's syntax tree. `indent/README.md` states
 //! the model this implements.
 
 mod query;

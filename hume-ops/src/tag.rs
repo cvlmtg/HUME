@@ -238,8 +238,8 @@ fn next_tag<'a>(text: &'a BufferText, cursor: &mut CharCursor<'a>) -> Option<Tag
 
 /// Find the tag construct whose own markup (its `<`, its `>`, the name, or
 /// an attribute) contains `pos`. Walks left from `pos` for the nearest `<`
-/// and parses forward from there. Matching matchit/vim's `%`, which fires
-/// from anywhere in a tag's own markup, not just its two delimiter chars.
+/// and parses forward from there, so the match fires from anywhere in a
+/// tag's own markup, not just its two delimiter chars.
 ///
 /// The nearest preceding `<` does *not* always settle the answer on its own:
 /// a `<` can sit inside an *enclosing* tag's own markup, such as a quoted attribute

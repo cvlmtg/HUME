@@ -1503,7 +1503,7 @@ language and how to switch or tune it, in a few short paragraphs. Per-language
 token lists, edge-case rules and engine terms stay in `docs/` or source
 comments; an example uses a neutral setting, not one language's syntax.
 
-**Files:** `user-manual/docs/editing.md`, `docs/TS-INDENT.md`.
+**Files:** `user-manual/docs/editing.md`, `hume-treesitter/src/indent/README.md`.
 
 ## L42 — `smart-indent` off fell back to copying the indent (2026-10-14)
 

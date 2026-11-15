@@ -82,7 +82,8 @@ pub(super) fn break_line(
 /// `trigger` completes, as one grouped edit. The single path electric
 /// dedent takes: right after a typed character lands, and right before
 /// Enter breaks the line, so the new line is indented from the dedented
-/// one.
+/// one. `o` and `O` open a line without finishing the current line's text,
+/// so they do not run it. With `indent-smart` off nothing is dedented.
 ///
 /// The candidates are found before anything else, so a keystroke on any
 /// other line costs no reparse. A rewritten line is re-armed with its new

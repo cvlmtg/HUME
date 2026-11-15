@@ -348,7 +348,7 @@ impl ObjectSpans {
     ///
     /// **Start-keyed in both directions**, not `end` for the backward
     /// case: a backward press from inside an object must land on that
-    /// object's own start first (Vim `[m`), then walk further back on a
+    /// object's own start first, then walk further back on a
     /// repeat. Keying backward on `end < pos` can never select
     /// the object currently enclosing the cursor, since its end is `>= pos`
     /// by definition.

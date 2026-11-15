@@ -229,9 +229,8 @@ impl History {
     /// Set the maximum number of non-root revisions to retain. `0` means
     /// unlimited.
     ///
-    /// Takes effect on the *next* `record` call, not immediately, matching
-    /// Vim's `undolevels` semantics, where lowering the cap does not
-    /// retroactively trim existing history.
+    /// Takes effect on the *next* `record` call: lowering the cap does not
+    /// trim existing history.
     pub fn set_undo_levels(&mut self, levels: usize) {
         self.undo_levels = levels;
     }
@@ -310,7 +309,7 @@ impl History {
     }
 
     /// Trim the tree down to at most `undo_levels` non-root revisions,
-    /// Vim-`undolevels`-style: evict from the root end, oldest first.
+    /// evicting from the root end, oldest first.
     ///
     /// The revision on the path to `current` is always protected: `current`
     /// is a freshly recorded leaf, and `undo_levels` (when enforced) is at
@@ -319,14 +318,13 @@ impl History {
     /// Each iteration looks at the root's children (creation order, oldest
     /// first):
     /// - More than one child: the root has old alternate branches. The
-    ///   oldest branch *not* on the path to `current` is discarded whole
-    ///   (mirrors Vim freeing an entire unreachable redo branch).
+    ///   oldest branch *not* on the path to `current` is discarded whole.
     /// - Exactly one child `C` (so `C` is necessarily on the path to
     ///   `current`, and `C != current`, see above): there is nothing to
     ///   discard without cutting into the live path, so `C` is *promoted*:
     ///   its children become the root's children, and `C` itself is
     ///   removed. This may still overshoot below the cap when a whole
-    ///   branch is discarded in one step, as Vim does.
+    ///   branch is discarded in one step.
     ///
     /// Returns the id of the last revision promoted into the root, if any.
     fn enforce_undo_levels(&mut self) -> Option<RevisionId> {
@@ -423,8 +421,8 @@ impl History {
     /// Redo one step: return the forward Transaction of the redo child and
     /// move to it. Returns `None` if the current revision has no children.
     ///
-    /// The redo child is the one most recently created or walked through, as
-    /// in Vim: after undoing and making a new edit, redo goes to that edit,
+    /// The redo child is the one most recently created or walked through:
+    /// after undoing and making a new edit, redo goes to that edit,
     /// and after jumping into an older branch, redo stays on it.
     ///
     /// Returns an owned `Transaction` for the same reason as [`Self::undo`].

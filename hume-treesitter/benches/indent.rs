@@ -1,3 +1,7 @@
+//! Indent benchmarks, run by hand. A budget is the median a benchmark must
+//! stay under; the `syntax_reparse_*` ones have none and show how much of
+//! a keystroke's time is the reparse.
+
 use std::hint::black_box;
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
@@ -111,7 +115,8 @@ fn worst_case_text() -> (BufferText, CharOffset) {
     (BufferText::from(source.as_str()), CharOffset::new(split))
 }
 
-/// The worst-case hybrid: the target and four mismatching baselines.
+/// The worst-case hybrid: the target and four mismatching baselines, so
+/// the absolute width is the answer. Budget: 300 µs.
 fn bench_worst_case_hybrid(c: &mut Criterion) {
     let (text, split) = worst_case_text();
     let syntax = Syntax::attach_sync(Arc::clone(&GRAMMARS.rust), &text, &no_langs());
@@ -129,6 +134,7 @@ fn bench_worst_case_hybrid(c: &mut Criterion) {
 
 /// A one-char edit at the buffer start, the synchronous reparse, then the
 /// worst-case hybrid. Iterations alternate inserting and deleting the char.
+/// Budget: 2 ms.
 fn bench_edit_reparse_hybrid(c: &mut Criterion) {
     let langs = no_langs();
     let (mut text, split) = worst_case_text();
@@ -248,6 +254,8 @@ fn rust_buffer() -> (BufferText, CharOffset) {
     with_fresh_line(&corpus.repeat(LINES.div_ceil(corpus.lines().count())), "")
 }
 
+/// The keystroke and its dedent on the fresh line of the rust buffer.
+/// Budget: 2 ms.
 fn bench_electric_keystroke(c: &mut Criterion) {
     bench_keystroke(
         c,
@@ -259,6 +267,7 @@ fn bench_electric_keystroke(c: &mut Criterion) {
     );
 }
 
+/// The keystroke's reparse alone in the rust buffer.
 fn bench_reparse_keystroke_rust(c: &mut Criterion) {
     bench_keystroke(
         c,
@@ -310,6 +319,7 @@ fn markdown_langs(rust: &Arc<GrammarBundle>) -> Langs {
     ]))
 }
 
+/// The keystroke and its dedent in the markdown buffer. Budget: 8 ms.
 fn bench_electric_keystroke_in_markdown(c: &mut Criterion) {
     bench_keystroke(
         c,
@@ -321,6 +331,7 @@ fn bench_electric_keystroke_in_markdown(c: &mut Criterion) {
     );
 }
 
+/// The keystroke's reparse alone in the markdown buffer.
 fn bench_reparse_keystroke_markdown(c: &mut Criterion) {
     bench_keystroke(
         c,
