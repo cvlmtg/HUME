@@ -198,7 +198,10 @@ scopes each supersede key to the buffer it is used for, so a batch key needs no
 per-buffer state. When the new batch is shorter, the previous one's requests past its
 length are cancelled with `lsp-cancel!` before any request is sent.
 
-The editor never runs a superseded or cancelled request's callback, even one whose answer
-had already arrived, so a replaced batch never completes. The answers of a batch live in a
-box its `done` procedures share, keyed by request index; the callback runs when the count
-reaches the number of requests.
+Each batch under a batch key takes a new serial, and the key holds, per buffer, the pane
+and serial of the buffer's current batch. A batch calls back only while it is current, so a
+replaced batch never completes, even when one of its requests leaves out `#:supersede`; the
+supersede keys only cancel the old requests on the wire. A batch's entry leaves when it
+calls back, and the entries of closed buffers leave when the next batch under the key
+starts. The answers of a batch live in a box its `done` procedures share, keyed by request
+index; the callback runs when the count reaches the number of requests.

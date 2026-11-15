@@ -8,10 +8,8 @@
 //! A [`PaneLineStore`] lives on its [`Pane`](crate::pane::Pane), so the scroll
 //! pass, render pass and between-frame consumers (mouse, `z`-scroll) share
 //! entries. It is per pane because [`ResolvedFormatKey`] names no pane: two
-//! panes on the same buffer and width can resolve an identical key. While
-//! the drawn layout conceals something, the pane keeps its raw layout, which
-//! vertical motion and a scroll place the cursor by, in a second store, so
-//! the raw and drawn layouts do not evict each other.
+//! panes on the same buffer and width can resolve an identical key. A
+//! pane's raw layout has a store of its own; see `Pane::raw_line_store`.
 //!
 //! A store drops its entries when its [`ResolvedFormatKey`] changes. The unwrapped
 //! render's `h_window` is not in the key because it doesn't affect block

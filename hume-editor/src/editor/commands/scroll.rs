@@ -1,13 +1,14 @@
 use hume_core::{Count, PaneId};
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap, DisplayLinePos, carry};
 use hume_engine::pane::{ViewGeometry, ViewLayouts, Viewport};
-use hume_engine::pipeline::{EngineView, PaneSize};
+use hume_engine::pipeline::{EngineView, PanePool, PaneSize};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::super::buffer::store::BufferStore;
 use super::super::doc_ops;
-use super::super::frame::{reveal_due_cursor, settled_view_layouts};
+use super::super::frame::{reveal_due_cursor, settled_pane_view, settled_view_layouts};
+use super::super::geometry::LayoutKey;
 use super::super::pane_state::PaneEntries;
 use super::{CommandPane, sticky_landing};
 use crate::editor::error::CommandError;
@@ -17,57 +18,31 @@ use hume_rope::column::DisplayLineCol;
 
 // ── Moving the view ───────────────────────────────────────────────────────────
 
-/// What [`move_view`] hands its caller: the pane's settled drawn layout and
-/// viewport, its raw layout (`None` when the drawn one is raw), its scroll
-/// geometry, and the selection stores, free to write while the layouts are
-/// held.
-struct ViewMove<'a> {
-    drawn: DisplayLineMap<'a>,
-    raw: Option<DisplayLineMap<'a>>,
-    viewport: &'a mut Viewport,
-    geo: ViewGeometry<'a>,
-    buffers: &'a BufferStore,
-    entries: &'a mut PaneEntries,
-}
-
-/// Move pane `pid`'s view between frames with `f`, laid out at `size`. `f`
-/// starts from the view the last cursor move would have drawn, whether or
-/// not a frame drew it, and the reveal `f` leaves due runs after it, so
-/// `PaneBufferState::parked` describes the view `f` ends on. A pane with no
-/// rows has no view to move, and `f` does not run.
-fn move_view(
+/// Move pane `pid`'s view between frames, laid out at `size`: `run`
+/// settles the pane, so the move starts from the view the last cursor move
+/// would have drawn, whether or not a frame drew it, and moves it. The
+/// reveal the move leaves due runs after it, so `PaneBufferState::parked`
+/// describes the view the move ends on. A pane with no rows has no view to
+/// move, and `run` does not run.
+fn view_move(
     state: &mut EditorState,
     view: &mut EngineView,
     pid: PaneId,
     size: PaneSize,
-    f: impl FnOnce(ViewMove<'_>),
+    run: impl FnOnce(&BufferStore, &mut PaneEntries, &mut PanePool, &LayoutKey, ViewGeometry<'_>),
 ) {
     let key = state.layout_key(view, pid, size);
     let buffer = state.buffers.get(view.panes[pid].buffer_id());
-    {
-        let ViewLayouts {
-            drawn,
-            raw,
-            viewport,
-        } = settled_view_layouts(
-            &state.buffers,
-            &mut state.panes.entries,
-            &mut view.panes,
-            pid,
-            &key,
-        );
-        let Some(geo) = key.geometry(buffer.syntax_source()) else {
-            return;
-        };
-        f(ViewMove {
-            drawn,
-            raw,
-            viewport,
-            geo,
-            buffers: &state.buffers,
-            entries: &mut state.panes.entries,
-        });
-    }
+    let Some(geo) = key.geometry(buffer.syntax_source()) else {
+        return;
+    };
+    run(
+        &state.buffers,
+        &mut state.panes.entries,
+        &mut view.panes,
+        &key,
+        geo,
+    );
     // Built after the move: in a buffer with conceals the moved selections
     // reveal other lines, and recording the pre-move key would read as a
     // layout change and reveal again before the next input.
@@ -78,6 +53,81 @@ fn move_view(
         &mut view.panes,
         pid,
         &moved,
+    );
+}
+
+/// What a view move gets: the pane's settled drawn layout and viewport, and
+/// its scroll geometry.
+struct ViewMove<'a> {
+    drawn: DisplayLineMap<'a>,
+    viewport: &'a mut Viewport,
+    geo: ViewGeometry<'a>,
+}
+
+/// Move pane `pid`'s view with `f`, leaving every selection where it is.
+fn move_view(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    pid: PaneId,
+    size: PaneSize,
+    f: impl FnOnce(ViewMove<'_>),
+) {
+    view_move(
+        state,
+        view,
+        pid,
+        size,
+        |buffers, entries, panes, key, geo| {
+            let (drawn, viewport) = settled_pane_view(buffers, entries, panes, pid, key);
+            f(ViewMove {
+                drawn,
+                viewport,
+                geo,
+            });
+        },
+    );
+}
+
+/// What a view move that carries the cursors gets beyond a [`ViewMove`]:
+/// the pane's raw layout ([`ViewLayouts::raw`]) and the selection stores,
+/// free to write while the layouts are held.
+struct CarryMove<'a> {
+    view: ViewMove<'a>,
+    raw: Option<DisplayLineMap<'a>>,
+    buffers: &'a BufferStore,
+    entries: &'a mut PaneEntries,
+}
+
+/// Move pane `pid`'s view with `f`, which carries the cursors with it.
+fn carry_view(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    pid: PaneId,
+    size: PaneSize,
+    f: impl FnOnce(CarryMove<'_>),
+) {
+    view_move(
+        state,
+        view,
+        pid,
+        size,
+        |buffers, entries, panes, key, geo| {
+            let ViewLayouts {
+                drawn,
+                raw,
+                viewport,
+            } = settled_view_layouts(buffers, entries, panes, pid, key);
+            f(CarryMove {
+                view: ViewMove {
+                    drawn,
+                    viewport,
+                    geo,
+                },
+                raw,
+                buffers,
+                entries,
+            });
+        },
     );
 }
 
@@ -105,10 +155,7 @@ fn move_view(
 ///
 /// The scroll and `carry` walk the drawn layout, the rows on screen. The
 /// cursor lands on the text of the row `carry` picks, at the column `j`/`k`
-/// would resolve on the raw layout: the line it lands on reveals once it
-/// holds the cursor. A row number means different text in the two layouts
-/// once conceals change how a line wraps, so the row crosses as the cluster
-/// it starts with, and the landing stays within the row's clusters.
+/// would use: see [`land`].
 pub(in crate::editor) fn scroll_view(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -125,16 +172,19 @@ pub(in crate::editor) fn scroll_view(
     } else {
         -(count as isize)
     };
-    move_view(
+    carry_view(
         state,
         view,
         pid,
         size,
-        |ViewMove {
-             mut drawn,
+        |CarryMove {
+             view:
+                 ViewMove {
+                     mut drawn,
+                     viewport,
+                     geo,
+                 },
              mut raw,
-             viewport,
-             geo,
              buffers,
              entries,
          }| {
@@ -168,8 +218,12 @@ pub(in crate::editor) fn scroll_view(
 }
 
 /// The cluster a cursor landing on drawn display line `landed` at
-/// `target_col` takes, resolved on the raw layout `raw`, or on `drawn`
-/// when it reveals every line and so is the raw layout.
+/// `target_col` takes, resolved on `raw`, or on `drawn` when `raw` is
+/// `None`. The column resolves on the raw layout, as `j`/`k` place it,
+/// because the line the cursor lands on reveals once it holds the cursor.
+/// A row number means different text in the two layouts once conceals
+/// change how a line wraps, so the row crosses as the cluster it starts
+/// with, and the landing stays within the row's clusters.
 fn land(
     drawn: &mut DisplayLineMap<'_>,
     raw: Option<&mut DisplayLineMap<'_>>,
@@ -293,7 +347,6 @@ fn cmd_view_scroll_to_display_line(
              mut drawn,
              viewport,
              geo,
-             ..
          }| {
             let cursor_pos = drawn.locate_display_line(cursor_char);
             viewport.align(&mut drawn, geo, cursor_pos, target_display_line);

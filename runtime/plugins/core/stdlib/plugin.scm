@@ -182,9 +182,32 @@
 ;; ── LSP request batches ──────────────────────────────────────────────────────
 ;;; See README.md's "LSP request batches".
 
-(struct stdlib/batch-key (subkeys) #:mutable)
+(struct stdlib/batch-key (subkeys current) #:mutable)
 
-(define (stdlib/lsp-batch-key) (stdlib/batch-key '()))
+(define (stdlib/lsp-batch-key) (stdlib/batch-key '() (hash)))
+
+(define stdlib/*batch-serial* 0)
+
+(define (stdlib/batch-start! batch pane)
+  (set! stdlib/*batch-serial* (+ stdlib/*batch-serial* 1))
+  (let ([current (stdlib/batch-key-current batch)])
+    (set-stdlib/batch-key-current! batch
+      (hash-insert
+        (foldl (lambda (bkey kept)
+                 (if (buffer-live? (car (hash-ref kept bkey))) kept (hash-remove kept bkey)))
+               current
+               (hash-keys->list current))
+        (buffer-key pane)
+        (cons pane stdlib/*batch-serial*))))
+  stdlib/*batch-serial*)
+
+(define (stdlib/batch-current? batch pane serial)
+  (let ([entry (hash-try-get (stdlib/batch-key-current batch) (buffer-key pane))])
+    (and entry (= (cdr entry) serial))))
+
+(define (stdlib/batch-finish! batch pane)
+  (set-stdlib/batch-key-current! batch
+    (hash-remove (stdlib/batch-key-current batch) (buffer-key pane))))
 
 (define (stdlib/batch-mint-subkey! batch)
   (let ([key (lsp-supersede-key)])
@@ -207,15 +230,18 @@
        batch)]))
 
 (define (stdlib/lsp-batch pane requests callback options)
-  (let ([batch (stdlib/batch-of options)]
-        [n (length requests)]
-        [answers (box (hash))])
+  (let* ([batch (stdlib/batch-of options)]
+         [n (length requests)]
+         [answers (box (hash))]
+         [serial (and batch (stdlib/batch-start! batch pane))])
     (when batch
       (let ([keys (stdlib/batch-key-subkeys batch)])
         (when (> (length keys) n)
           (for-each (lambda (key) (lsp-cancel! pane key)) (list-tail keys n)))))
     (if (= n 0)
-        (callback '())
+        (begin
+          (when batch (stdlib/batch-finish! batch pane))
+          (callback '()))
         (let loop ([rest requests] [index 0]
                    [keys (if batch (stdlib/batch-key-subkeys batch) '())])
           (unless (null? rest)
@@ -230,7 +256,9 @@
                    (error (string-append "stdlib/lsp-batch: request " (number->string index)
                                          " answered twice")))
                  (set-box! answers (hash-insert got index args))
-                 (when (= (hash-length (unbox answers)) n)
+                 (when (and (= (hash-length (unbox answers)) n)
+                            (or (not batch) (stdlib/batch-current? batch pane serial)))
+                   (when batch (stdlib/batch-finish! batch pane))
                    (callback (map (lambda (i) (hash-ref (unbox answers) i)) (range 0 n)))))))
             (loop (cdr rest) (+ index 1) (if (pair? keys) (cdr keys) '())))))))
 

@@ -1,7 +1,7 @@
 //! core:stdlib: real shipped plugin.
 
 use super::*;
-use hume_scripting::PluginStatus;
+use hume_scripting::{Effect, PluginStatus};
 
 // ── core:stdlib — real shipped plugin ─────────────────────────────────────────
 
@@ -14,6 +14,12 @@ const STDLIB_FILES: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../runtime/plugins/core/stdlib/files.scm"
 ));
+
+/// Evaluates `source` in `host` in init mode, against `ed`.
+fn eval(ed: &mut Editor, host: &mut ScriptingHost, source: &str) -> Result<Vec<Effect>, String> {
+    let mut ih = init_host!(ed);
+    host.eval_source(source, &mut ih)
+}
 
 /// A Scheme `(check name got want)` raising `name` and `got` unless `got`
 /// equals `want`.
@@ -122,10 +128,7 @@ fn core_stdlib_selection_commands() {
   (error "primary-selection #f when no selection is flagged"))
 "#;
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, assertions);
     assert!(
         result.is_ok(),
         "stdlib selection command assertions must all pass: {result:?}"
@@ -238,10 +241,7 @@ fn core_stdlib_config_commands() {
     (error "config-value: expected a raise on a string key")))
 "#;
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, assertions);
     assert!(
         result.is_ok(),
         "stdlib config command assertions must all pass: {result:?}"
@@ -274,10 +274,7 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
 "#
     );
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(&assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, &assertions);
     assert!(
         result.is_ok(),
         "stdlib/list-subdirs assertions must pass: {result:?}"
@@ -313,10 +310,7 @@ fn core_stdlib_list_entries_lists_everything_and_both_listings_raise_when_missin
 "#
     );
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(&assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, &assertions);
     assert!(
         result.is_ok(),
         "stdlib listing assertions must pass: {result:?}"
@@ -338,10 +332,7 @@ fn core_stdlib_path_absolute_holds_only_for_a_rooted_path() {
 (check "" #f)
 "#;
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, assertions);
 
     assert!(result.is_ok(), "{result:?}");
 }
@@ -366,10 +357,7 @@ fn core_stdlib_concat_joins_lists_in_order() {
 (check "many lists" (call! "stdlib/concat" (map list (range 0 2000))) (range 0 2000))
 "#;
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(&assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, &assertions);
     assert!(
         result.is_ok(),
         "stdlib/concat assertions must pass: {result:?}"
@@ -400,10 +388,7 @@ fn core_stdlib_lsp_batch_gathers_answers_in_request_order() {
 (check "no key without options" (unbox keys) (list #f #f))
 "#;
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(&assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, &assertions);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -419,10 +404,7 @@ fn core_stdlib_lsp_batch_of_no_requests_calls_back_at_once() {
 (check "no answers" (unbox answers) '())
 "#;
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(&assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, &assertions);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -449,13 +431,71 @@ fn core_stdlib_lsp_batch_refuses_bad_options_and_a_second_answer() {
             "request 0 answered twice",
         ),
     ] {
-        let result = {
-            let mut ih = init_host!(ed);
-            host.eval_source(source, &mut ih)
-        };
+        let result = eval(&mut ed, &mut host, source);
         let error = format!("{:?}", result.expect_err(message));
         assert!(error.contains(message), "{error}");
     }
+}
+
+/// A batch replaced by a newer one on its buffer under the same batch key
+/// never calls back, even when its request answers without `#:supersede`.
+#[test]
+fn core_stdlib_lsp_batch_drops_a_replaced_batch() {
+    let (mut ed, host, _guard, init_dir) = setup_stdlib_editor();
+
+    let only_newer_called_back = run_probe(
+        &mut ed,
+        host,
+        init_dir.path(),
+        r#"
+  (let ([batch-key (call! "stdlib/lsp-batch-key")]
+        [stale (box #f)]
+        [calls (box '())])
+    (call! "stdlib/lsp-batch" bid
+      (list (lambda (key done) (set-box! stale done)))
+      (lambda (all) (set-box! calls (cons 'replaced (unbox calls))))
+      (hash 'supersede batch-key))
+    (call! "stdlib/lsp-batch" bid
+      (list (lambda (key done) (done #f 'answer)))
+      (lambda (all) (set-box! calls (cons 'newer (unbox calls))))
+      (hash 'supersede batch-key))
+    ((unbox stale) #f 'late)
+    (equal? (unbox calls) '(newer)))"#,
+    );
+    assert!(only_newer_called_back, "{:?}", error_log(&ed));
+}
+
+/// A batch key is scoped to the buffer: a batch for another buffer under
+/// the same key leaves this buffer's batch to call back.
+#[test]
+fn core_stdlib_lsp_batch_keeps_another_buffers_batch() {
+    let (mut ed, host, _guard, init_dir) = setup_stdlib_editor();
+    let other = init_dir.path().join("other.txt");
+    std::fs::write(&other, "other\n").unwrap();
+
+    let both_called_back = run_probe(
+        &mut ed,
+        host,
+        init_dir.path(),
+        &format!(
+            r#"
+  (let ([batch-key (call! "stdlib/lsp-batch-key")]
+        [pending (box #f)]
+        [calls (box '())])
+    (call! "stdlib/lsp-batch" bid
+      (list (lambda (key done) (set-box! pending done)))
+      (lambda (all) (set-box! calls (cons 'first (unbox calls))))
+      (hash 'supersede batch-key))
+    (call! "stdlib/lsp-batch" (open-buffer! "{}")
+      (list (lambda (key done) (done #f 'answer)))
+      (lambda (all) (set-box! calls (cons 'other (unbox calls))))
+      (hash 'supersede batch-key))
+    ((unbox pending) #f 'answer)
+    (equal? (unbox calls) '(first other)))"#,
+            other.display()
+        ),
+    );
+    assert!(both_called_back, "{:?}", error_log(&ed));
 }
 
 /// `stdlib/write-file!` must replace a file's entire content, not just
@@ -480,10 +520,7 @@ fn core_stdlib_write_file_truncates_existing_content() {
 "#
     );
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(&assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, &assertions);
     assert!(
         result.is_ok(),
         "stdlib/write-file! assertions must pass: {result:?}"
@@ -505,7 +542,7 @@ fn core_stdlib_write_file_truncates_existing_content() {
 /// parameter (an `Init` session eval has no dispatch to inject it from), so
 /// unlike the other `stdlib` command tests this defines a throwaway probe
 /// command and dispatches it via `:`, the same shape `run_probe`
-/// (`tests/mod.rs`) uses, rather than `eval_source`'s bare init-mode
+/// (`tests/mod.rs`) uses, rather than [`eval`]'s bare init-mode
 /// assertions.
 ///
 /// The buffer's language is set via `set-buffer-option!`'s `"language"`
@@ -533,11 +570,7 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
     (unless (equal? (call! "stdlib/resolve-lang-arg" bid "probe-cmd" 1) "python")
       (error "resolve-lang-arg: non-string arg must fall back to the buffer's language"))))
 "#;
-    {
-        let mut ih = init_host!(ed);
-        host.eval_source(define_probe, &mut ih)
-            .expect("define probe-resolve-lang-arg command");
-    }
+    eval(&mut ed, &mut host, define_probe).expect("define probe-resolve-lang-arg command");
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":probe-resolve-lang-arg");
@@ -585,11 +618,7 @@ fn core_stdlib_split_words_uses_the_buffers_own_word_chars() {
                     (list "foo-bar" "baz"))
       (error "split-words: must pick up the buffer's own word-chars setting"))))
 "#;
-    {
-        let mut ih = init_host!(ed);
-        host.eval_source(define_probe, &mut ih)
-            .expect("define probe-split-words command");
-    }
+    eval(&mut ed, &mut host, define_probe).expect("define probe-split-words command");
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":probe-split-words");
@@ -632,10 +661,7 @@ fn core_stdlib_git_probes_inside_a_work_tree() {
 "#
     );
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(&assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, &assertions);
     assert!(
         result.is_ok(),
         "stdlib git probe assertions must pass inside a work tree: {result:?}"
@@ -662,10 +688,7 @@ fn core_stdlib_git_probes_outside_a_work_tree() {
   (error "git-toplevel must be #f outside a work tree"))
 "#;
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, assertions);
     assert!(
         result.is_ok(),
         "stdlib git probe assertions must pass outside a work tree: {result:?}"
@@ -721,11 +744,7 @@ fn picker_keymap_editor() -> (Editor, RuntimeDirs, tempfile::TempDir) {
                  (call! "stdlib/picker-keymap"
                    (lambda (item) (log! 'info (if item (number->string item) "none")))))))"#
     );
-    {
-        let mut ih = init_host!(ed);
-        host.eval_source(&source, &mut ih)
-            .expect("define the pick command");
-    }
+    eval(&mut ed, &mut host, &source).expect("define the pick command");
     ed.scripting = Some(host);
     frame(&mut ed, 60, 16);
     type_cmd(&mut ed, ":pick");
@@ -836,11 +855,7 @@ fn picker_keymap_takes_an_overriding_key_through_hash_insert() {
            (picker! pane (list (cons "a" "A") (cons "b" "B"))
              (hash-insert (call! "stdlib/picker-keymap" (lambda (item) (log! 'info item)))
                           "esc" (lambda (item token) (picker-close! token) (log! 'info "custom esc"))))))"#;
-    {
-        let mut ih = init_host!(ed);
-        host.eval_source(source, &mut ih)
-            .expect("define the pick command");
-    }
+    eval(&mut ed, &mut host, source).expect("define the pick command");
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":pick");
 
@@ -1052,10 +1067,7 @@ fn delete_dir_of_a_missing_directory_is_a_no_op() {
     let missing = tmp.path().join("missing");
 
     let source = format!(r#"(call! "stdlib/delete-dir!" {})"#, steel_path(&missing));
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(&source, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, &source);
 
     assert!(result.is_ok(), "{result:?}");
 }
@@ -1084,10 +1096,7 @@ fn core_stdlib_verify_sha256_compares_case_insensitively() {
 "#
     );
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(&assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, &assertions);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -1112,10 +1121,7 @@ fn core_stdlib_find_extractor_resolves_through_the_search_path() {
     (error (string-append "an unknown format must raise naming it, got " (to-string raised)))))
 "#;
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, assertions);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -1136,10 +1142,7 @@ fn core_stdlib_find_extractor_is_false_with_no_extractor() {
   (list "tar" "zip"))
 "#;
 
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
-    };
+    let result = eval(&mut ed, &mut host, assertions);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -1184,11 +1187,7 @@ fn core_stdlib_download_runs_curl_for_a_file_or_a_range() {
         whole = steel_path(&whole),
         part = steel_path(&part),
     );
-    {
-        let mut ih = init_host!(ed);
-        host.eval_source(&define_probe, &mut ih)
-            .expect("define probe-download command");
-    }
+    eval(&mut ed, &mut host, &define_probe).expect("define probe-download command");
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":probe-download");
@@ -1248,11 +1247,7 @@ fn core_stdlib_extract_archive_returns_the_extracted_files() {
         archive = steel_path(&archive),
         dest = steel_path(&dest),
     );
-    {
-        let mut ih = init_host!(ed);
-        host.eval_source(&define_probe, &mut ih)
-            .expect("define probe-extract command");
-    }
+    eval(&mut ed, &mut host, &define_probe).expect("define probe-extract command");
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":probe-extract");

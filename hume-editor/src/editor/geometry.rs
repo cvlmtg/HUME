@@ -250,8 +250,7 @@ impl EditorState {
             outer_level: doc.overrides.context_outer_level(&self.settings),
         };
         // A buffer without conceals lays out as its raw text, so a moving
-        // selection leaves the key alone and the raw layout shares the drawn
-        // one's store.
+        // selection leaves the key alone.
         let revealed = if self.config.decorations.has_conceals(bid) {
             let sels = self.panes.entries.shown(&view.panes, pid).view(doc.text());
             RevealedLines::Lines(LineSet::from_ranges(sels.iter().map(|sel| sel.lines())))
