@@ -14,8 +14,9 @@ release carries the fix. Each entry's upstream status refers to steel's `master`
 Upstream: [mattwparas/steel](https://github.com/mattwparas/steel), `crates/steel-core` at
 commit `11a57adcf42c22733463c59b1f44ec49eb7043bc` (the published 0.8.3).
 
-**`Cargo.toml` allows `dead_code`, `deprecated` and `unused_imports`.** Cargo caps a registry
-crate's warnings but shows a path dependency's, and upstream's code raises those three.
+**`Cargo.toml` allows `dead_code`, `deprecated`, `unused_imports` and `unreachable_code`.**
+Cargo caps a registry crate's warnings but shows a path dependency's, and upstream's code
+raises those four.
 
 **`with-handler` (`src/scheme/stdlib.scm`) reinstates its own meta-continuation before
 running the handler.** `with-handler` wraps its body in a `reset`, which installs a

@@ -82,6 +82,7 @@ without-drop-protection = []
 dead_code = "allow"
 deprecated = "allow"
 unused_imports = "allow"
+unreachable_code = "allow"
 
 [lib]
 name = "steel"
