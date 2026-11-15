@@ -11,27 +11,8 @@ use super::super::lsp_bridge::{OrderedLogBackend, bridge_initialize_result};
 #[test]
 fn supersede_cancels_the_prior_request_under_the_same_key() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut b, _, _) = RecordingLspBackend::new();
-    b.respond_to("initialize", bridge_initialize_result());
-    b.respond_to(
-        "textDocument/completion",
-        serde_json::json!({"marker": "A"}),
-    );
-    b.respond_to(
-        "textDocument/completion",
-        serde_json::json!({"marker": "B"}),
-    );
-    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[a]>bcdef\n"), b);
-    rig.eval(
-        r#"(define key (lsp-supersede-key))
-           (define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request! bid "textDocument/completion" (hash)
-               (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
-               #:supersede key)
-             (lsp-request! bid "textDocument/completion" (hash)
-               (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
-               #:supersede key)))"#,
-    );
+    let mut rig = queued_supersede_rig(tmp.path());
+    rig.eval(r#"(define-typed-command! "test-cmd" "" (lambda (bid) (send bid) (send bid)))"#);
     let sid = rig.sid("rust-analyzer");
     let ed = &mut rig.ed;
 
@@ -69,10 +50,10 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
     );
 }
 
-/// A rig whose server answers two completions, `A` then `B`, with
-/// `send-a`, `send-b` and `cancel-key` commands: the first two send a
-/// completion request under one `#:supersede` key logging its marker, the
-/// last cancels that key.
+/// A rig whose server answers two completions, `A` then `B`, with a
+/// `send` procedure sending a completion request under one `#:supersede`
+/// key that logs its marker, `send-a` and `send-b` commands calling it, and
+/// a `cancel-key` command cancelling that key.
 fn queued_supersede_rig(tmp: &std::path::Path) -> LspRig {
     let (mut b, _, _) = RecordingLspBackend::new();
     b.respond_to("initialize", bridge_initialize_result());

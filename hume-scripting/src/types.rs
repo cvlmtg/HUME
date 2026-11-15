@@ -135,9 +135,8 @@ hume_core::named_enum! {
     /// What `set-conceals!` does with an entry that overlaps an earlier one:
     /// `Refuse` raises naming it, `DropLater` leaves it out, so the earlier
     /// entry in the list wins. `#:overlaps` names it.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum ConcealOverlaps {
-        #[default]
         Refuse => "error",
         DropLater => "drop",
     }

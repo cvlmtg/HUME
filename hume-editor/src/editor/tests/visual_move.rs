@@ -1638,12 +1638,12 @@ fn copy_selection_down_onto_a_concealed_line_lands_on_the_raw_column_under_soft_
     copy_selection_down_onto_a_concealed_line(hume_engine::pane::WrapMode::Soft { width: 0 });
 }
 
-fn scroll_onto_a_concealed_line(wrap: hume_engine::pane::WrapMode) {
+/// Scrolls the focused pane down `count` rows, after a frame syncs the
+/// conceals into the pane: the scroll walks the drawn layout.
+fn scroll_down(ed: &mut Editor, count: usize) {
     use crate::editor::commands::scroll_view;
     use hume_ops::MotionMode;
 
-    let (mut ed, _file) = bold_markers_hidden("ab-[c]>def\n**bold**\n", 1, wrap);
-    // A frame syncs the conceals into the pane: the scroll walks the drawn layout.
     ed.settle();
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
     let pid = ed.view.focused_pane();
@@ -1653,10 +1653,15 @@ fn scroll_onto_a_concealed_line(wrap: hume_engine::pane::WrapMode) {
         &mut ed.view,
         pid,
         size,
-        1,
+        count,
         true,
         MotionMode::Move,
     );
+}
+
+fn scroll_onto_a_concealed_line(wrap: hume_engine::pane::WrapMode) {
+    let (mut ed, _file) = bold_markers_hidden("ab-[c]>def\n**bold**\n", 1, wrap);
+    scroll_down(&mut ed, 1);
     assert_eq!(state(&ed), "abcdef\n**-[b]>old**\n");
 }
 
@@ -1675,25 +1680,10 @@ fn scroll_onto_a_concealed_line_lands_on_the_raw_column_under_soft_wrap() {
 /// the text that row shows.
 #[test]
 fn scroll_onto_a_wrapped_concealed_line_lands_on_the_text_of_its_row() {
-    use crate::editor::commands::scroll_view;
-    use hume_ops::MotionMode;
-
     let (mut ed, _file) = decorated_editor("-[x]>\n**ab**cdefgh\n");
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 4 });
     super::conceal_bridge::set(&mut ed, "md", vec![hiding(2, 4), hiding(6, 8)]);
-    ed.settle();
-    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
-    let pid = ed.view.focused_pane();
-    let size = ed.pane_size(pid);
-    scroll_view(
-        &mut ed.state,
-        &mut ed.view,
-        pid,
-        size,
-        2,
-        true,
-        MotionMode::Move,
-    );
+    scroll_down(&mut ed, 2);
     assert_eq!(state(&ed), "x\n**ab**cd-[e]>fgh\n");
 }
 
@@ -1702,24 +1692,9 @@ fn scroll_onto_a_wrapped_concealed_line_lands_on_the_text_of_its_row() {
 /// drawn row above shows.
 #[test]
 fn scroll_onto_a_wrapped_concealed_line_stays_within_its_drawn_row() {
-    use crate::editor::commands::scroll_view;
-    use hume_ops::MotionMode;
-
     let (mut ed, _file) = decorated_editor("-[x]>\n*abcdefgh\n");
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 4 });
     super::conceal_bridge::set(&mut ed, "md", vec![hiding(2, 3)]);
-    ed.settle();
-    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
-    let pid = ed.view.focused_pane();
-    let size = ed.pane_size(pid);
-    scroll_view(
-        &mut ed.state,
-        &mut ed.view,
-        pid,
-        size,
-        2,
-        true,
-        MotionMode::Move,
-    );
+    scroll_down(&mut ed, 2);
     assert_eq!(state(&ed), "x\n*abcd-[e]>fgh\n");
 }

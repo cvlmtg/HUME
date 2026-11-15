@@ -162,7 +162,7 @@ pub(in crate::editor) enum DeliveryKey {
 /// latest until another request is filed under the key or `lsp-cancel!`
 /// retires it, and only the latest one's callback runs, whether its answer
 /// is still in flight or already queued.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub(in crate::editor) struct SupersedeTicket {
     key: DeliveryKey,
     id: u64,
@@ -287,10 +287,11 @@ impl Deliveries {
         self.supersede_keys.mint()
     }
 
-    /// The delivery still in flight under `key`. A new request under the
-    /// same key cancels it first, so at most one delivery holds a key (for a
-    /// script's, one per buffer).
-    fn in_flight_under(&self, key: DeliveryKey) -> Option<DeliveryId> {
+    /// Retires `key`'s latest request and returns the delivery still in
+    /// flight under it. A new request under the same key retires it first,
+    /// so at most one delivery holds a key (for a script's, one per buffer).
+    fn retire(&mut self, key: DeliveryKey) -> Option<DeliveryId> {
+        self.latest.remove(&key);
         self.map
             .iter()
             .find(|(_, delivery)| delivery.supersede.is_some_and(|ticket| ticket.key == key))
@@ -399,9 +400,7 @@ impl EditorState {
     /// Cancels the script request `bid` has under `key`, for `lsp-cancel!`:
     /// in flight, or answered with its callback still queued.
     pub(in crate::editor) fn lsp_cancel(&mut self, bid: BufferId, key: SupersedeKey) {
-        let key = DeliveryKey::Script(key, bid);
-        self.cancel_superseded(key);
-        self.lsp.deliveries.latest.remove(&key);
+        self.cancel_superseded(DeliveryKey::Script(key, bid));
     }
 
     /// Sends pending text changes, cancels the delivery filed under
@@ -683,10 +682,11 @@ impl EditorState {
         );
     }
 
-    /// Drops the delivery in flight under supersede `key`, if any, without
-    /// calling it back.
+    /// Retires supersede `key`'s latest request: its delivery in flight, if
+    /// any, drops without calling back, and a callback it already queued
+    /// never runs.
     pub(in crate::editor) fn cancel_superseded(&mut self, key: DeliveryKey) {
-        if let Some(did) = self.lsp.deliveries.in_flight_under(key) {
+        if let Some(did) = self.lsp.deliveries.retire(key) {
             self.cancel_delivery(did);
         }
     }

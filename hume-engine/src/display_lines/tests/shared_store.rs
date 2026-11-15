@@ -1,18 +1,7 @@
 //! Shared-line-store tests (cross-map, cross-frame reuse).
 
 use super::*;
-
-/// A call-counting source emitting one `Before(0)` display line, so the entry whose
-/// re-query the counter is watching has a non-trivial block shape.
-fn with_counting_anchor() -> (ProviderSet, Rc<Cell<usize>>) {
-    let calls = Rc::new(Cell::new(0));
-    let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(
-        VirtualLineBlock::uniform(Side::Before, ContentLine::new(0), 1, "V")
-            .counting(Rc::clone(&calls)),
-    ));
-    (providers, calls)
-}
+use crate::test_support::with_counting_anchor;
 
 // Shared line store
 

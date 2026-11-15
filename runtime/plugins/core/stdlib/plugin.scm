@@ -186,13 +186,10 @@
 
 (define (stdlib/lsp-batch-key) (stdlib/batch-key '()))
 
-(define (stdlib/batch-subkey batch index)
-  (let ([keys (stdlib/batch-key-subkeys batch)])
-    (if (< index (length keys))
-        (list-ref keys index)
-        (let ([key (lsp-supersede-key)])
-          (set-stdlib/batch-key-subkeys! batch (append keys (list key)))
-          key))))
+(define (stdlib/batch-mint-subkey! batch)
+  (let ([key (lsp-supersede-key)])
+    (set-stdlib/batch-key-subkeys! batch (append (stdlib/batch-key-subkeys batch) (list key)))
+    key))
 
 (define (stdlib/batch-of options)
   (cond
@@ -219,10 +216,14 @@
           (for-each (lambda (key) (lsp-cancel! pane key)) (list-tail keys n)))))
     (if (= n 0)
         (callback '())
-        (let loop ([rest requests] [index 0])
+        (let loop ([rest requests] [index 0]
+                   [keys (if batch (stdlib/batch-key-subkeys batch) '())])
           (unless (null? rest)
             ((car rest)
-             (and batch (stdlib/batch-subkey batch index))
+             (cond
+               [(not batch) #f]
+               [(pair? keys) (car keys)]
+               [else (stdlib/batch-mint-subkey! batch)])
              (lambda args
                (let ([got (unbox answers)])
                  (when (hash-contains? got index)
@@ -231,7 +232,7 @@
                  (set-box! answers (hash-insert got index args))
                  (when (= (hash-length (unbox answers)) n)
                    (callback (map (lambda (i) (hash-ref (unbox answers) i)) (range 0 n)))))))
-            (loop (cdr rest) (+ index 1)))))))
+            (loop (cdr rest) (+ index 1) (if (pair? keys) (cdr keys) '())))))))
 
 ;; ── call!-able commands (public API) ────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::{cursor_mirror, mirror, painted};
+use crate::test_support::{cursor_mirror, mirror, painted, pane_inputs, with_counting_anchor};
 
 #[test]
 fn viewport_defaults() {
@@ -220,35 +220,13 @@ fn a_selection_mirror_refuses_a_rewrite_to_an_empty_list() {
 
 // ── raw layout store ────────────────────────────────────────────────────
 
-/// A pane on `rope` whose provider counts how often line 0's block shape is
-/// laid out: once per store entry, so a repeat count means a store missed.
+/// A pane whose provider counts how often line 0's block shape is laid
+/// out: once per store entry, so a repeat count means a store missed.
 fn pane_counting_line_0() -> (Pane, std::rc::Rc<std::cell::Cell<usize>>) {
-    let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let (providers, calls) = with_counting_anchor();
     let mut pane = Pane::new(BufferId::default());
-    pane.providers.add_decoration_source(Box::new(
-        crate::test_doubles::VirtualLineBlock::uniform(
-            hume_core::Side::Before,
-            ContentLine::new(0),
-            1,
-            "V",
-        )
-        .counting(std::rc::Rc::clone(&calls)),
-    ));
+    pane.providers = providers;
     (pane, calls)
-}
-
-fn layout_inputs(revealed: RevealedLines) -> DisplayLineInputs {
-    DisplayLineInputs {
-        format: crate::display_lines::line_store::FormatKey {
-            buffer_tag: [0; 3],
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-        },
-        hidden: crate::folds::HiddenLines::default(),
-        content_width: crate::pipeline::ContentWidth::for_test(80),
-        revealed,
-    }
 }
 
 #[test]
@@ -256,9 +234,9 @@ fn a_layout_concealing_nothing_serves_the_raw_walk_from_the_drawn_store() {
     let rope = Rope::from_str("alpha\nbravo\n");
     let (mut pane, calls) = pane_counting_line_0();
 
-    pane.display_lines(&rope, layout_inputs(RevealedLines::All))
+    pane.display_lines(&rope, pane_inputs(RevealedLines::All))
         .block(ContentLine::new(0));
-    pane.raw_display_lines(&rope, layout_inputs(RevealedLines::All))
+    pane.raw_display_lines(&rope, pane_inputs(RevealedLines::All))
         .block(ContentLine::new(0));
 
     assert_eq!(calls.get(), 1);
@@ -268,7 +246,7 @@ fn a_layout_concealing_nothing_serves_the_raw_walk_from_the_drawn_store() {
 fn a_raw_walk_of_a_concealing_layout_keeps_the_drawn_store() {
     let rope = Rope::from_str("alpha\nbravo\n");
     let (mut pane, calls) = pane_counting_line_0();
-    let drawn = || layout_inputs(RevealedLines::default());
+    let drawn = || pane_inputs(RevealedLines::default());
 
     pane.display_lines(&rope, drawn())
         .block(ContentLine::new(0));

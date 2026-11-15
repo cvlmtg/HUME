@@ -129,6 +129,7 @@ mod conceals {
     use hume_editing::text::BufferText;
     use hume_scripting::host::{DecorationHost, SetError};
     use hume_scripting::{ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText};
+    use proptest::prelude::*;
 
     use crate::editor::Editor;
     use crate::editor::tests::init_host;
@@ -278,32 +279,25 @@ mod conceals {
         assert_eq!(kept("abcdef\n", vec![hidden(1, 3), hidden(0, 4)]), [(1, 3)]);
     }
 
-    /// Against an oracle that checks each entry against every kept one:
-    /// generated lists of ranges over an 8-char line keep the same entries.
-    #[test]
-    fn dropping_overlaps_matches_a_pairwise_oracle() {
-        fn overlap((a0, a1): (usize, usize), (b0, b1): (usize, usize)) -> bool {
-            match (a0 == a1, b0 == b1) {
-                (false, false) => a0 < b1 && b0 < a1,
-                (true, false) => b0 < a0 && a0 < b1,
-                (false, true) => a0 < b0 && b0 < a1,
-                (true, true) => a0 == b0,
-            }
+    fn overlap((a0, a1): (usize, usize), (b0, b1): (usize, usize)) -> bool {
+        match (a0 == a1, b0 == b1) {
+            (false, false) => a0 < b1 && b0 < a1,
+            (true, false) => b0 < a0 && a0 < b1,
+            (false, true) => a0 < b0 && b0 < a1,
+            (true, true) => a0 == b0,
         }
-        let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
-        let mut next = |bound: usize| {
-            seed = seed
-                .wrapping_mul(6_364_136_223_846_793_005)
-                .wrapping_add(1_442_695_040_888_963_407);
-            (seed >> 33) as usize % bound
-        };
-        for _ in 0..300 {
-            let ranges: Vec<(usize, usize)> = (0..12)
-                .map(|_| {
-                    let start = next(9);
-                    (start, start + next(9 - start).min(3))
-                })
-                .collect();
+    }
+
+    proptest! {
+        /// Against an oracle that checks each entry against every kept one:
+        /// lists of ranges over an 8-char line keep the same entries.
+        #[test]
+        fn dropping_overlaps_matches_a_pairwise_oracle(
+            ranges in proptest::collection::vec(
+                (0..9usize, 0..=3usize).prop_map(|(start, len)| (start, (start + len).min(8))),
+                0..12,
+            )
+        ) {
             let mut want: Vec<(usize, usize)> = Vec::new();
             for &range in &ranges {
                 if !want.iter().any(|&k| overlap(k, range)) {
@@ -321,7 +315,7 @@ mod conceals {
                     }
                 })
                 .collect();
-            assert_eq!(kept("abcdefgh\n", specs), want, "{ranges:?}");
+            prop_assert_eq!(kept("abcdefgh\n", specs), want);
         }
     }
 

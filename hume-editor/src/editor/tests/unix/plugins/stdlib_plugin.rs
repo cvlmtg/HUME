@@ -15,6 +15,14 @@ const STDLIB_FILES: &str = include_str!(concat!(
     "/../runtime/plugins/core/stdlib/files.scm"
 ));
 
+/// A Scheme `(check name got want)` raising `name` and `got` unless `got`
+/// equals `want`.
+const SCHEME_CHECK: &str = r#"
+(define (check name got want)
+  (unless (equal? got want)
+    (error (string-append name ": got " (to-string got)))))
+"#;
+
 /// Stage the real shipped `core:stdlib` plugin, manifest and both entries, into
 /// an isolated runtime directory and eagerly load both entries via a real
 /// `init.scm`, returning everything the caller needs kept alive plus the host
@@ -345,10 +353,8 @@ fn core_stdlib_path_absolute_holds_only_for_a_rooted_path() {
 fn core_stdlib_concat_joins_lists_in_order() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
-    let assertions = r#"
-(define (check name got want)
-  (unless (equal? got want)
-    (error (string-append name ": got " (to-string got)))))
+    let assertions = SCHEME_CHECK.to_owned()
+        + r#"
 (check "no lists" (call! "stdlib/concat" '()) '())
 (check "in order" (call! "stdlib/concat" (list '(1 2) '() '(3) '(4 5))) '(1 2 3 4 5))
 (check "empty first, then mapped"
@@ -362,7 +368,7 @@ fn core_stdlib_concat_joins_lists_in_order() {
 
     let result = {
         let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
+        host.eval_source(&assertions, &mut ih)
     };
     assert!(
         result.is_ok(),
@@ -378,10 +384,8 @@ fn core_stdlib_concat_joins_lists_in_order() {
 fn core_stdlib_lsp_batch_gathers_answers_in_request_order() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
-    let assertions = r#"
-(define (check name got want)
-  (unless (equal? got want)
-    (error (string-append name ": got " (to-string got)))))
+    let assertions = SCHEME_CHECK.to_owned()
+        + r#"
 (define later (box #f))
 (define keys (box '()))
 (define answers (box 'none))
@@ -398,7 +402,7 @@ fn core_stdlib_lsp_batch_gathers_answers_in_request_order() {
 
     let result = {
         let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
+        host.eval_source(&assertions, &mut ih)
     };
     assert!(result.is_ok(), "{result:?}");
 }
@@ -408,16 +412,16 @@ fn core_stdlib_lsp_batch_gathers_answers_in_request_order() {
 fn core_stdlib_lsp_batch_of_no_requests_calls_back_at_once() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
-    let assertions = r#"
+    let assertions = SCHEME_CHECK.to_owned()
+        + r#"
 (define answers (box 'none))
 (call! "stdlib/lsp-batch" 0 '() (lambda (all) (set-box! answers all)) #f)
-(unless (equal? (unbox answers) '())
-  (error (string-append "got " (to-string (unbox answers)))))
+(check "no answers" (unbox answers) '())
 "#;
 
     let result = {
         let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
+        host.eval_source(&assertions, &mut ih)
     };
     assert!(result.is_ok(), "{result:?}");
 }

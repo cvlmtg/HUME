@@ -319,13 +319,13 @@ pub struct Pane {
     /// shared hit would skip the other pane's providers. Every pane's scroll
     /// step also runs before any pane renders, so one shared store would hold
     /// only the last pane's lines.
-    pub line_store: crate::display_lines::line_store::PaneLineStore,
+    pub(crate) line_store: crate::display_lines::line_store::PaneLineStore,
     /// The store of this pane's raw layout, every line revealed, which
     /// vertical motion and a scroll place the cursor by, while the drawn
     /// layout conceals something. Apart from `line_store` so the two
     /// layouts do not evict each other's lines; a drawn layout that reveals
     /// every line is the raw one and serves it from `line_store`.
-    pub raw_line_store: crate::display_lines::line_store::PaneLineStore,
+    pub(crate) raw_line_store: crate::display_lines::line_store::PaneLineStore,
     /// What this pane's scope header rows are laid out with. Per pane for
     /// the same reason as `line_store`: a header row lays out with this
     /// pane's providers under a key that names no pane.
@@ -424,15 +424,12 @@ impl Pane {
         rope: &'a Rope,
         inputs: DisplayLineInputs,
     ) -> DisplayLineMap<'a> {
-        if inputs.revealed == RevealedLines::All {
-            return DisplayLineMap::new(rope, &self.providers, inputs, &mut self.line_store);
-        }
-        DisplayLineMap::new(
-            rope,
-            &self.providers,
-            all_revealed(inputs),
-            &mut self.raw_line_store,
-        )
+        let store = if inputs.revealed == RevealedLines::All {
+            &mut self.line_store
+        } else {
+            &mut self.raw_line_store
+        };
+        DisplayLineMap::new(rope, &self.providers, all_revealed(inputs), store)
     }
 
     /// The drawn layout of `rope` laid out by `inputs`, the raw layout

@@ -8,14 +8,16 @@ use crate::display_lines::DisplayColTarget;
 use crate::display_lines::line_store::PaneLineStore;
 use crate::folds::{Fold, HiddenLines};
 use crate::line_set::LineSet;
-use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::pipeline::{ContentWidth, PaneSize};
+use crate::pane::WrapMode;
+use crate::pipeline::PaneSize;
 use crate::providers::{
     Decoration, DecorationKinds, DecorationSource, HighlightTier, InlineInsert, ProviderSet,
 };
 use crate::reveal::RevealedLines;
 use crate::test_doubles::{ConcealSource, ScopeTable, VirtualLineBlock};
-use crate::test_support::{at, bg, byte_range, hidden, map, map_hiding, replaced, theme_with};
+use crate::test_support::{
+    at, bg, byte_range, hidden, map, map_hiding, pane_inputs, replaced, theme_with,
+};
 use crate::types::{CellContent, ResolvedStyle};
 use hume_core::Side;
 use hume_grid::Rgb;
@@ -258,22 +260,6 @@ fn a_header_line_a_fold_hides_is_not_shown() {
     };
     let rows = rows_of(&mut dlm, top(11), 24, inputs);
     assert_eq!(rows.headers(), [ContentLine::new(0)]);
-}
-
-/// The inputs of a pane that lays its lines out at 80 columns with
-/// `revealed` shown raw.
-fn pane_inputs(revealed: RevealedLines) -> DisplayLineInputs {
-    DisplayLineInputs {
-        format: FormatKey {
-            buffer_tag: [0; 3],
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-        },
-        hidden: HiddenLines::default(),
-        content_width: ContentWidth::for_test(80),
-        revealed,
-    }
 }
 
 /// A HIGHLIGHT and INLINE source that tints bytes 0..1 of every line with

@@ -6,16 +6,22 @@
 //! (`at`), for a painted selection (`painted`) and a pane's selection mirror
 //! (`mirror`, `cursor_mirror`), for a `DisplayLineMap` over a fixed
 //! `FormatKey` (`map`, or `map_hiding` with closed folds), for a pane's geometry with no header rows
-//! (`plain_geo`), and for a body row with the primary head on line 0
-//! (`body_row_on_line_0`).
+//! (`plain_geo`), for a body row with the primary head on line 0
+//! (`body_row_on_line_0`), for a pane's layout inputs at 80 columns
+//! (`pane_inputs`), and for a source counting its layouts of line 0
+//! (`with_counting_anchor`).
 
+use std::cell::Cell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use hume_grid::Rgb;
 use ropey::Rope;
 
+use hume_core::Side;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::ByteCol;
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::display_lines::line_store::{FormatKey, PaneLineStore};
@@ -24,7 +30,9 @@ use crate::folds::HiddenLines;
 use crate::pane::{ViewGeometry, WhitespaceConfig, WrapMode};
 use crate::pipeline::PaneSize;
 use crate::providers::{Conceal, ConcealSpan, ConcealText, GutterRow, ProviderSet};
+use crate::reveal::RevealedLines;
 use crate::scope_headers::ScopeHeaderInputs;
+use crate::test_doubles::VirtualLineBlock;
 use crate::theme::Theme;
 use crate::types::{
     DisplayLine, Grapheme, PaintedSelection, PaintedSelections, ResolvedStyle, ScopeId,
@@ -116,6 +124,34 @@ pub(crate) fn map_hiding<'a>(
         },
         store,
     )
+}
+
+/// The inputs of a pane that lays its lines out at 80 columns with
+/// `revealed` shown raw.
+pub(crate) fn pane_inputs(revealed: RevealedLines) -> DisplayLineInputs {
+    DisplayLineInputs {
+        format: FormatKey {
+            buffer_tag: [0; 3],
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        },
+        hidden: HiddenLines::default(),
+        content_width: crate::pipeline::ContentWidth::for_test(80),
+        revealed,
+    }
+}
+
+/// A call-counting source emitting one `Before(0)` display line, so the entry whose
+/// re-query the counter is watching has a non-trivial block shape.
+pub(crate) fn with_counting_anchor() -> (ProviderSet, Rc<Cell<usize>>) {
+    let calls = Rc::new(Cell::new(0));
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(
+        VirtualLineBlock::uniform(Side::Before, ContentLine::new(0), 1, "V")
+            .counting(Rc::clone(&calls)),
+    ));
+    (providers, calls)
 }
 
 pub(crate) fn fg(color: Rgb) -> ResolvedStyle {
