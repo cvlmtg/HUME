@@ -10,7 +10,10 @@ use test_fixtures::require_grammars;
 
 use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
-use crate::test_support::{bundle_with_fixture_query, fixture_query, make_bundle, syntax_with};
+use crate::test_support::{
+    assert_rejected_at_pattern_start, bundle_with_fixture_query, fixture_query, make_bundle,
+    syntax_with,
+};
 
 fn fold(first: usize, last: usize, shows_last: bool) -> Fold {
     Fold::new(ContentLine::new(first), ContentLine::new(last), shows_last)
@@ -106,6 +109,53 @@ fn a_region_ending_in_content_hides_its_last_line() {
     let call = "f(\n    1,\n    2,\n)\n";
     let (syn, text) = syntax_with(bundle, call);
     assert_eq!(fold_at(&syn, &text, 0), Some(fold(0, 3, true)));
+}
+
+const MARKDOWN_SECTIONS: &str = "# A\n\npara\n\n# B\n\ntext\n";
+
+#[test]
+fn a_trimmed_region_leaves_out_its_trailing_blank_lines() {
+    let markdown =
+        bundle_with_fixture_query("markdown", "tree_sitter_markdown", OptionalQuery::Folds);
+    let (syn, text) = syntax_with(markdown, MARKDOWN_SECTIONS);
+    assert_eq!(fold_at(&syn, &text, 0), Some(fold(0, 2, false)));
+}
+
+#[test]
+fn an_untrimmed_region_keeps_its_trailing_blank_lines() {
+    let markdown = with_folds("markdown", "tree_sitter_markdown", "(section) @fold");
+    let (syn, text) = syntax_with(markdown, MARKDOWN_SECTIONS);
+    assert_eq!(fold_at(&syn, &text, 0), Some(fold(0, 3, false)));
+}
+
+#[test]
+fn a_not_has_parent_match_under_those_parents_does_not_fold() {
+    let bundle = with_folds(
+        "rust",
+        "tree_sitter_rust",
+        "((block) @b (#not-has-parent? @b function_item)) @fold",
+    );
+    let source = "fn f() {\n    if x {\n        a();\n    }\n}\n";
+    let (syn, text) = syntax_with(bundle, source);
+    assert_eq!(fold_at(&syn, &text, 0), None);
+    assert_eq!(fold_at(&syn, &text, 1), Some(fold(1, 3, true)));
+}
+
+#[test]
+fn an_unsupported_fold_directive_fails_the_compile_on_its_pattern_row() {
+    assert_rejected_at_pattern_start(
+        OptionalQuery::Folds,
+        "(block) @fold",
+        &[
+            r#"((block) @fold (#frobnicate! @fold))"#,
+            r#"((block) @fold (#is? "local"))"#,
+            r#"((block) @fold (#set! "a" "b"))"#,
+            r#"((block) @b (#trim! @b)) @fold"#,
+            r#"((block) @fold (#trim! @fold 1 1 1 1))"#,
+            r#"((block) @b (#not-has-parent? @b)) @fold"#,
+            r#"((block) @b (#not-has-parent? "x" @b)) @fold"#,
+        ],
+    );
 }
 
 #[test]

@@ -1,7 +1,9 @@
 use rustc_hash::FxHashSet;
 use tree_sitter::{
-    Language, Query, QueryError, QueryErrorKind, QueryPredicate, QueryPredicateArg as Arg,
+    Language, Query, QueryError, QueryPredicate, QueryPredicateArg as Arg, QueryProperty,
 };
+
+use crate::directives::{PatternDirectives, parse_patterns, unsupported};
 
 hume_core::named_enum! {
     /// What an indents-query capture name means to the engine. Any other
@@ -41,7 +43,7 @@ impl Predicate {
             "not-kind-eq?" => "a capture and a node kind",
             "same-line?" | "not-same-line?" => "two captures",
             "one-line?" | "not-one-line?" => "one capture",
-            _ => return Err(format!("#{operator} is not an indents predicate")),
+            _ => return Err(unsupported(operator)),
         };
         match (operator, &*predicate.args) {
             ("not-kind-eq?", [Arg::Capture(capture), Arg::String(kind)]) => Ok(Self::NotKindEq {
@@ -64,16 +66,43 @@ impl Predicate {
     }
 }
 
+/// What one `indents.scm` pattern sets and the predicates the engine
+/// evaluates for it.
+#[derive(Default)]
+struct IndentPattern {
+    /// `#set! "scope" "header"`.
+    header: bool,
+    predicates: Vec<Predicate>,
+}
+
+impl PatternDirectives for IndentPattern {
+    fn setting(&mut self, setting: &QueryProperty) -> Result<(), String> {
+        match (&*setting.key, setting.value.as_deref(), setting.capture_id) {
+            ("scope", Some("header"), None) => {
+                self.header = true;
+                Ok(())
+            }
+            _ => Err(format!(
+                "#set! {} is not an indents property; only #set! \"scope\" \"header\" is",
+                setting.key
+            )),
+        }
+    }
+
+    fn predicate(&mut self, _: &[&str], predicate: &QueryPredicate) -> Result<(), String> {
+        self.predicates.push(Predicate::parse(predicate)?);
+        Ok(())
+    }
+}
+
 /// A compiled `indents.scm`: the query plus, resolved once at load, the
-/// engine role of each capture, whether each pattern sets the header scope,
-/// each pattern's engine-evaluated predicates, and the texts that could
-/// still grow into another of the grammar's tokens. Tree-sitter evaluates
-/// the text predicates (`#eq?`, `#match?`, `#any-of?`) itself.
+/// engine role of each capture, each pattern's header setting and
+/// engine-evaluated predicates, and the texts that could still grow into
+/// another of the grammar's tokens.
 pub struct IndentQuery {
     pub(super) query: Query,
     captures: Vec<Option<IndentCapture>>,
-    header: Vec<bool>,
-    predicates: Vec<Vec<Predicate>>,
+    patterns: Vec<IndentPattern>,
     /// Every proper prefix of the grammar's anonymous token kinds.
     token_prefixes: FxHashSet<Box<str>>,
 }
@@ -88,41 +117,11 @@ impl IndentQuery {
             .iter()
             .map(|name| IndentCapture::from_name(name))
             .collect();
-        let mut header = Vec::with_capacity(query.pattern_count());
-        let mut predicates = Vec::with_capacity(query.pattern_count());
-        for pattern in 0..query.pattern_count() {
-            let error = |message| pattern_error(&query, source, pattern, message);
-            if let Some((_, positive)) = query.property_predicates(pattern).first() {
-                let operator = if *positive { "is?" } else { "is-not?" };
-                return Err(error(format!("#{operator} is not an indents predicate")));
-            }
-            let mut is_header = false;
-            for setting in query.property_settings(pattern) {
-                match (&*setting.key, setting.value.as_deref(), setting.capture_id) {
-                    ("scope", Some("header"), None) => is_header = true,
-                    _ => {
-                        return Err(error(format!(
-                            "#set! {} is not an indents property; only #set! \"scope\" \"header\" is",
-                            setting.key
-                        )));
-                    }
-                }
-            }
-            header.push(is_header);
-            predicates.push(
-                query
-                    .general_predicates(pattern)
-                    .iter()
-                    .map(Predicate::parse)
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(error)?,
-            );
-        }
+        let patterns = parse_patterns(&query, source)?;
         Ok(Self {
             query,
             captures,
-            header,
-            predicates,
+            patterns,
             token_prefixes: token_prefixes(language),
         })
     }
@@ -134,11 +133,11 @@ impl IndentQuery {
     /// Whether `pattern` sets `#set! "scope" "header"`: its indent captures
     /// open their scope on the captured node's parent's first line.
     pub(super) fn is_header(&self, pattern: usize) -> bool {
-        self.header[pattern]
+        self.patterns[pattern].header
     }
 
     pub(super) fn predicates(&self, pattern: usize) -> &[Predicate] {
-        &self.predicates[pattern]
+        &self.patterns[pattern].predicates
     }
 
     /// Whether `text` is a proper prefix of one of the grammar's anonymous
@@ -163,19 +162,4 @@ fn token_prefixes(language: &Language) -> FxHashSet<Box<str>> {
                 .map(move |(end, _)| Box::from(&kind[..end]))
         })
         .collect()
-}
-
-/// A `Predicate` error at `pattern`'s start, with tree-sitter's own row
-/// and byte-column convention.
-fn pattern_error(query: &Query, source: &str, pattern: usize, message: String) -> QueryError {
-    let offset = query.start_byte_for_pattern(pattern);
-    let before = &source[..offset];
-    let line_start = before.rfind('\n').map_or(0, |newline| newline + 1);
-    QueryError {
-        row: before.matches('\n').count(),
-        column: offset - line_start,
-        offset,
-        message,
-        kind: QueryErrorKind::Predicate,
-    }
 }

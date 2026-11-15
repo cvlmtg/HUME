@@ -7,12 +7,13 @@ use std::sync::Arc;
 
 use hume_engine::folds::Fold;
 use hume_rope::line::ContentLine;
-use hume_rope::lines::leading_whitespace_end;
+use hume_rope::lines::{is_blank, leading_whitespace_end};
 use hume_rope::offset::InclusiveRange;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Node, QueryCursor, Tree};
+use tree_sitter::{Node, QueryCursor, QueryError, QueryPredicate, QueryPredicateArg as Arg, Tree};
 
 use crate::context::ContextQuery;
+use crate::directives::{PatternDirectives, parse_patterns, unsupported};
 use crate::highlight::RopeProvider;
 use crate::layers::{SyntaxLayer, SyntaxLayers};
 
@@ -22,16 +23,91 @@ pub enum FoldQuery {
     Folds {
         query: tree_sitter::Query,
         fold: u32,
+        patterns: Vec<FoldPattern>,
     },
     /// Each scope is a region starting at its header line.
     Scopes(Arc<ContextQuery>),
 }
 
+/// The directives one `folds.scm` pattern carries.
+#[derive(Default)]
+pub struct FoldPattern {
+    /// `#trim! @fold`: the region ends at its last non-blank line.
+    trim: bool,
+    /// `#not-has-parent? @c kind…`: no node of capture `c` sits directly
+    /// under a node of one of the kinds.
+    not_has_parent: Vec<(u32, Box<[Box<str>]>)>,
+}
+
+const NOT_HAS_PARENT_ARGS: &str = "#not-has-parent? takes a capture and node kinds";
+
+impl PatternDirectives for FoldPattern {
+    fn predicate(
+        &mut self,
+        capture_names: &[&str],
+        predicate: &QueryPredicate,
+    ) -> Result<(), String> {
+        match (&*predicate.operator, &*predicate.args) {
+            ("trim!", [Arg::Capture(capture)]) if capture_names[*capture as usize] == "fold" => {
+                self.trim = true;
+            }
+            ("trim!", _) => return Err("#trim! takes only the @fold capture".to_owned()),
+            ("not-has-parent?", [Arg::Capture(capture), kinds @ ..]) if !kinds.is_empty() => {
+                let kinds = kinds
+                    .iter()
+                    .map(|kind| match kind {
+                        Arg::String(kind) => Some(kind.clone()),
+                        Arg::Capture(_) => None,
+                    })
+                    .collect::<Option<_>>()
+                    .ok_or(NOT_HAS_PARENT_ARGS)?;
+                self.not_has_parent.push((*capture, kinds));
+            }
+            ("not-has-parent?", _) => return Err(NOT_HAS_PARENT_ARGS.to_owned()),
+            (operator, _) => return Err(unsupported(operator)),
+        }
+        Ok(())
+    }
+}
+
+impl FoldPattern {
+    /// `fold`, ending at its last non-blank line when the pattern trims.
+    fn trimmed(&self, fold: Fold, rope: &ropey::Rope) -> Option<Fold> {
+        if !self.trim {
+            return Some(fold);
+        }
+        let mut last = fold.last();
+        while last > fold.first() && is_blank(rope, last) {
+            last = last.retreat_saturating(1);
+        }
+        Fold::new(fold.first(), last, fold.shows_last() && last == fold.last())
+    }
+
+    fn admits(&self, m: &tree_sitter::QueryMatch<'_, '_>) -> bool {
+        self.not_has_parent.iter().all(|(capture, kinds)| {
+            m.nodes_for_capture_index(*capture).all(|node| {
+                node.parent()
+                    .is_none_or(|parent| !kinds.iter().any(|kind| **kind == *parent.kind()))
+            })
+        })
+    }
+}
+
 impl FoldQuery {
-    /// A compiled `folds.scm`, `None` when it captures no `@fold`.
-    pub(crate) fn new(query: tree_sitter::Query) -> Option<Self> {
-        let fold = query.capture_index_for_name("fold")?;
-        Some(Self::Folds { query, fold })
+    /// A compiled `folds.scm`, `None` when it captures no `@fold`. Fails, as
+    /// a `Predicate` error at the offending pattern's start in `source`, on
+    /// any engine predicate or directive but `#trim! @fold` and
+    /// `#not-has-parent? @c kind…`.
+    pub(crate) fn new(query: tree_sitter::Query, source: &str) -> Result<Option<Self>, QueryError> {
+        let Some(fold) = query.capture_index_for_name("fold") else {
+            return Ok(None);
+        };
+        let patterns = parse_patterns(&query, source)?;
+        Ok(Some(Self::Folds {
+            query,
+            fold,
+            patterns,
+        }))
     }
 
     /// Call `f` with every region of `tree` with a node in `bytes` whose
@@ -48,13 +124,22 @@ impl FoldQuery {
     ) {
         let wanted = |header: Node| wanted(ContentLine::new(header.start_position().row));
         match self {
-            Self::Folds { query, fold } => {
+            Self::Folds {
+                query,
+                fold,
+                patterns,
+            } => {
                 cursor.set_byte_range(bytes);
                 let mut matches = cursor.matches(query, tree.root_node(), RopeProvider(rope));
                 while let Some(m) = matches.next() {
+                    let pattern = &patterns[m.pattern_index];
+                    if !pattern.admits(m) {
+                        continue;
+                    }
                     m.nodes_for_capture_index(*fold)
                         .filter(|&node| wanted(node))
                         .filter_map(|node| fold_of(node, node, rope))
+                        .filter_map(|fold| pattern.trimmed(fold, rope))
                         .for_each(&mut *f);
                 }
             }
@@ -160,16 +245,16 @@ fn canonical(folds: &mut Vec<Fold>) {
 /// the scope's closing token (`}`, `end`, `)`), possibly followed by more
 /// text (`} else {`).
 fn fold_of(header: Node, scope: Node, rope: &ropey::Rope) -> Option<Fold> {
-    let first = header.start_position().row;
+    let first = ContentLine::new(header.start_position().row);
     let end = scope.end_position();
-    let ends_at_line_start = end.column == 0 && end.row > first;
-    let last = if ends_at_line_start {
+    let ends_at_line_start = end.column == 0 && end.row > first.index();
+    let last = ContentLine::new(if ends_at_line_start {
         end.row - 1
     } else {
         end.row
-    };
+    });
     let shows_last = !ends_at_line_start && closes_on_own_line(scope, end.row, rope);
-    Fold::new(ContentLine::new(first), ContentLine::new(last), shows_last)
+    Fold::new(first, last, shows_last)
 }
 
 /// Whether `scope`'s last token is anonymous, starts on `row`, and only

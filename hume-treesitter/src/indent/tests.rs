@@ -9,19 +9,18 @@ use std::sync::Arc;
 use hume_editing::indent::ElectricTrigger;
 use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
-use hume_engine::theme::ScopeRegistry;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::BufferLineCol;
 use hume_rope::offset::CharOffset;
 use test_fixtures::{require_grammars, require_helix_query};
-use tree_sitter::QueryErrorKind;
 
 use super::query::IndentCapture;
 use super::*;
-use crate::registry::{GrammarBundle, GrammarSnapshot, RegisterError, compile_queries};
+use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
 use crate::test_support::{
-    bundle_with_fixture_query, empty_langs, fixture_query, make_bundle, open_grammar,
+    assert_rejected_at_pattern_start, bundle_with_fixture_query, empty_langs, fixture_query,
+    make_bundle, open_grammar,
 };
 use hume_core::OptionalQuery;
 
@@ -149,47 +148,24 @@ fn the_indents_queries_of_every_fixture_language_compile() {
     }
 }
 
-/// Each query is invalid on its third line (row 2), where its invalid pattern
-/// starts.
 #[test]
 fn an_unsupported_predicate_or_property_fails_the_compile_on_its_pattern_row() {
-    require_grammars(&["rust"]);
-    let grammar = open_grammar("rust", "tree_sitter_rust");
-    let invalid = [
-        r#"(block (#is? "local"))"#,
-        r#"(block (#is-not? "local"))"#,
-        r#"(block (#set! "scope" "tail"))"#,
-        r#"(block (#set! "kind" "header"))"#,
-        r#"((block) @b (#kind-eq? @b "block"))"#,
-        r#"((block) @b (#not-kind-eq? "block" @b))"#,
-        r#"((block) @b (#same-line? @b))"#,
-        r#"((block) @b (#not-same-line? @b "x"))"#,
-        r#"((block) @b (#one-line? "x"))"#,
-        r#"((block) @b (#not-one-line? @b @b))"#,
-    ];
-    for pattern in invalid {
-        let src = format!("(block) @indent\n\n{pattern}\n");
-        let error = match compile_queries(
-            grammar.language(),
-            "",
-            &[(OptionalQuery::Indents, &src)],
-            &mut ScopeRegistry::new(),
-        ) {
-            Err(RegisterError::OptionalQueryBuild {
-                kind: OptionalQuery::Indents,
-                error,
-            }) => error,
-            Err(other) => panic!("{pattern}: expected an indents build error, got {other}"),
-            Ok(_) => panic!("{pattern}: must not compile"),
-        };
-        assert_eq!(error.kind, QueryErrorKind::Predicate, "{pattern}");
-        assert_eq!((error.row, error.column), (2, 0), "{pattern}");
-        assert_eq!(
-            error.offset,
-            src.find(pattern).expect("pattern in source"),
-            "{pattern}"
-        );
-    }
+    assert_rejected_at_pattern_start(
+        OptionalQuery::Indents,
+        "(block) @indent",
+        &[
+            r#"(block (#is? "local"))"#,
+            r#"(block (#is-not? "local"))"#,
+            r#"(block (#set! "scope" "tail"))"#,
+            r#"(block (#set! "kind" "header"))"#,
+            r#"((block) @b (#kind-eq? @b "block"))"#,
+            r#"((block) @b (#not-kind-eq? "block" @b))"#,
+            r#"((block) @b (#same-line? @b))"#,
+            r#"((block) @b (#not-same-line? @b "x"))"#,
+            r#"((block) @b (#one-line? "x"))"#,
+            r#"((block) @b (#not-one-line? @b @b))"#,
+        ],
+    );
 }
 
 #[test]

@@ -319,10 +319,14 @@ pub(crate) fn compile_queries(
                 )
                 .is_some(),
             OptionalQuery::Folds => folds
-                .replace(FoldQuery::new(query).ok_or(RegisterError::MissingCapture {
-                    kind,
-                    capture: "fold",
-                })?)
+                .replace(
+                    FoldQuery::new(query, src)
+                        .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?
+                        .ok_or(RegisterError::MissingCapture {
+                            kind,
+                            capture: "fold",
+                        })?,
+                )
                 .is_some(),
         };
         assert!(!duplicate, "{} given twice", kind.file_name());

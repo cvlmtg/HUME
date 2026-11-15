@@ -187,7 +187,7 @@ Five optional keyword arguments can follow, in any order, each the path to one m
 - `#:textobjects`: structural text objects and navigation (functions, classes, arguments, …).
 - `#:indents`: how new lines are indented, using Helix's `indents.scm` captures; see [Indentation](editing.md#indentation) for what it drives.
 - `#:context`: the scopes whose first line stays at the top of the pane while you scroll inside them, each captured as `@context`. A `@context.start` capture in the same pattern names the node whose first line heads the scope instead. See [Scope headers](#scope-headers).
-- `#:folds`: the regions you can fold, each captured as `@fold`. See [Folding](#folding).
+- `#:folds`: the regions you can fold, each captured as `@fold`. `(#trim! @fold)` leaves a region's trailing blank lines out of it, and `(#not-has-parent? @capture kind…)` skips a match whose captured node sits directly inside a node of one of those kinds. A `folds.scm` using any other directive fails to load. See [Folding](#folding).
 
 Registered from `init.scm`, a grammar loads the first time a file or an embedded block needs it, and `:messages` reports then if its library or a query file can't be loaded. Registered from a command, it loads right away, and the command fails with the reason.
 

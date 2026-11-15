@@ -107,10 +107,9 @@ impl<'a> LineView<'a> {
         hume_rope::lines::leading_whitespace_end(self.0.rope(), line)
     }
 
-    /// Whether `line` holds nothing but blanks before its `\n`, an empty
-    /// line included.
+    /// See [`hume_rope::lines::is_blank`].
     pub fn is_blank(self, line: ContentLine) -> bool {
-        self.indent_end(line) == self.newline(line)
+        hume_rope::lines::is_blank(self.0.rope(), line)
     }
 }
 

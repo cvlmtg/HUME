@@ -9,9 +9,12 @@ use hume_core::OptionalQuery;
 use hume_editing::text::BufferText;
 use hume_engine::theme::ScopeRegistry;
 
+use tree_sitter::QueryErrorKind;
+
 use crate::grammar::LoadedGrammar;
 use crate::registry::{
-    GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, compile_queries, new_bundle,
+    GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, RegisterError, compile_queries,
+    new_bundle,
 };
 use crate::syntax::Syntax;
 
@@ -47,6 +50,34 @@ pub(crate) fn make_bundle(
     )
     .expect("compile queries");
     new_bundle(test_language_id(name), grammar, compiled)
+}
+
+/// Assert that each of `invalid`, compiled as the third line of a rust
+/// `kind` query whose first line is `valid`, fails the grammar with a
+/// `Predicate` error at the start of that line.
+pub(crate) fn assert_rejected_at_pattern_start(kind: OptionalQuery, valid: &str, invalid: &[&str]) {
+    test_fixtures::require_grammars(&["rust"]);
+    let grammar = open_grammar("rust", "tree_sitter_rust");
+    for pattern in invalid {
+        let src = format!("{valid}\n\n{pattern}\n");
+        let error = match compile_queries(
+            grammar.language(),
+            "",
+            &[(kind, &src)],
+            &mut ScopeRegistry::new(),
+        ) {
+            Err(RegisterError::OptionalQueryBuild { kind: built, error }) if built == kind => error,
+            Err(other) => panic!("{pattern}: expected a {kind:?} build error, got {other}"),
+            Ok(_) => panic!("{pattern}: must not compile"),
+        };
+        assert_eq!(error.kind, QueryErrorKind::Predicate, "{pattern}");
+        assert_eq!((error.row, error.column), (2, 0), "{pattern}");
+        assert_eq!(
+            error.offset,
+            src.find(pattern).expect("pattern in source"),
+            "{pattern}"
+        );
+    }
 }
 
 /// The fetched Helix `kind` query for `language`.

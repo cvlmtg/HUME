@@ -401,6 +401,12 @@ pub fn leading_whitespace_end(rope: &Rope, line: ContentLine) -> ClusterStart {
     leading_indent(rope, line, 1).0
 }
 
+/// Whether `line` holds nothing but blanks before its `\n`, an empty line
+/// included.
+pub fn is_blank(rope: &Rope, line: ContentLine) -> bool {
+    leading_whitespace_end(rope, line) == line_break(rope, line)
+}
+
 /// [`leading_whitespace_end`], plus the leading whitespace run's display
 /// width in `tab_width`, one scan instead of two. The run is measured by
 /// `width::blank_advance`'s rule, the one indent guides use too.

@@ -13,6 +13,7 @@
 
 pub mod captures;
 pub mod context;
+mod directives;
 mod edited_bytes;
 mod edits;
 pub mod fold;
