@@ -38,7 +38,9 @@ use hume_rope::position_encoding::PositionEncoding;
 use super::Editor;
 use super::async_source::AsyncSource;
 use bridge::Deliveries;
-pub(in crate::editor) use bridge::{DeliveryKey, EditorDeliveryKey, RustDelivery, RustResponder};
+pub(in crate::editor) use bridge::{
+    DeliveryKey, EditorDeliveryKey, RustDelivery, RustResponder, SupersedeTicket,
+};
 use instances::Instances;
 use progress::SpinnerClock;
 use registry::Registry;
@@ -194,6 +196,11 @@ impl LspState {
     /// A `#:supersede` key no earlier call returned.
     pub(in crate::editor) fn new_supersede_key(&mut self) -> hume_scripting::host::SupersedeKey {
         self.deliveries.new_supersede_key()
+    }
+
+    /// Whether `ticket`'s request is still the latest under its key.
+    pub(in crate::editor) fn supersede_is_latest(&self, ticket: SupersedeTicket) -> bool {
+        self.deliveries.is_latest(ticket)
     }
 
     /// Drops the stop of every root of `name`, so the next reconcile may

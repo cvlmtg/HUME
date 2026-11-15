@@ -370,6 +370,90 @@ fn core_stdlib_concat_joins_lists_in_order() {
     );
 }
 
+/// `stdlib/lsp-batch` over requests that answer by calling `done`
+/// themselves: the callback runs once every request answered, with each
+/// answer in request order whatever order they arrived in, and with no
+/// options each request gets no key.
+#[test]
+fn core_stdlib_lsp_batch_gathers_answers_in_request_order() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let assertions = r#"
+(define (check name got want)
+  (unless (equal? got want)
+    (error (string-append name ": got " (to-string got)))))
+(define later (box #f))
+(define keys (box '()))
+(define answers (box 'none))
+(call! "stdlib/lsp-batch" 0
+  (list (lambda (key done) (set-box! keys (cons key (unbox keys))) (set-box! later done))
+        (lambda (key done) (set-box! keys (cons key (unbox keys))) (done #f 'second)))
+  (lambda (all) (set-box! answers all))
+  #f)
+(check "waits for every request" (unbox answers) 'none)
+((unbox later) #f 'first)
+(check "in request order" (unbox answers) (list (list #f 'first) (list #f 'second)))
+(check "no key without options" (unbox keys) (list #f #f))
+"#;
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(assertions, &mut ih)
+    };
+    assert!(result.is_ok(), "{result:?}");
+}
+
+/// An empty batch calls back with no answers at once.
+#[test]
+fn core_stdlib_lsp_batch_of_no_requests_calls_back_at_once() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let assertions = r#"
+(define answers (box 'none))
+(call! "stdlib/lsp-batch" 0 '() (lambda (all) (set-box! answers all)) #f)
+(unless (equal? (unbox answers) '())
+  (error (string-append "got " (to-string (unbox answers)))))
+"#;
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(assertions, &mut ih)
+    };
+    assert!(result.is_ok(), "{result:?}");
+}
+
+/// Each malformed call raises: an option other than `'supersede`, a
+/// `'supersede` that is not a batch key, and a request answering twice.
+#[test]
+fn core_stdlib_lsp_batch_refuses_bad_options_and_a_second_answer() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    for (source, message) in [
+        (
+            r#"(call! "stdlib/lsp-batch" 0 '() (lambda (all) #f) (hash 'timeout 5))"#,
+            "unknown option timeout",
+        ),
+        (
+            r#"(call! "stdlib/lsp-batch" 0 '() (lambda (all) #f) (hash 'supersede 'key))"#,
+            "'supersede takes a stdlib/lsp-batch-key",
+        ),
+        (
+            r#"(call! "stdlib/lsp-batch" 0
+                 (list (lambda (key done) (done #f 1) (done #f 2)))
+                 (lambda (all) #f)
+                 #f)"#,
+            "request 0 answered twice",
+        ),
+    ] {
+        let result = {
+            let mut ih = init_host!(ed);
+            host.eval_source(source, &mut ih)
+        };
+        let error = format!("{:?}", result.expect_err(message));
+        assert!(error.contains(message), "{error}");
+    }
+}
+
 /// `stdlib/write-file!` must replace a file's entire content, not just
 /// overwrite its leading bytes: writing a shorter string over a longer
 /// existing file must not leave the old tail behind.

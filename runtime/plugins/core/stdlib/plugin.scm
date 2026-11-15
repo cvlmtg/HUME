@@ -179,6 +179,60 @@
       (stdlib/config-key-error plugin key "must be a list of strings"))
     v))
 
+;; ── LSP request batches ──────────────────────────────────────────────────────
+;;; See README.md's "LSP request batches".
+
+(struct stdlib/batch-key (subkeys) #:mutable)
+
+(define (stdlib/lsp-batch-key) (stdlib/batch-key '()))
+
+(define (stdlib/batch-subkey batch index)
+  (let ([keys (stdlib/batch-key-subkeys batch)])
+    (if (< index (length keys))
+        (list-ref keys index)
+        (let ([key (lsp-supersede-key)])
+          (set-stdlib/batch-key-subkeys! batch (append keys (list key)))
+          key))))
+
+(define (stdlib/batch-of options)
+  (cond
+    [(not options) #f]
+    [(not (hash? options)) (error "stdlib/lsp-batch: options must be #f or a hash")]
+    [else
+     (for-each
+       (lambda (option)
+         (unless (equal? option 'supersede)
+           (error (string-append "stdlib/lsp-batch: unknown option " (symbol->string option)))))
+       (hash-keys->list options))
+     (let ([batch (hash-try-get options 'supersede)])
+       (unless (stdlib/batch-key? batch)
+         (error "stdlib/lsp-batch: 'supersede takes a stdlib/lsp-batch-key"))
+       batch)]))
+
+(define (stdlib/lsp-batch pane requests callback options)
+  (let ([batch (stdlib/batch-of options)]
+        [n (length requests)]
+        [answers (box (hash))])
+    (when batch
+      (let ([keys (stdlib/batch-key-subkeys batch)])
+        (when (> (length keys) n)
+          (for-each (lambda (key) (lsp-cancel! pane key)) (list-tail keys n)))))
+    (if (= n 0)
+        (callback '())
+        (let loop ([rest requests] [index 0])
+          (unless (null? rest)
+            ((car rest)
+             (and batch (stdlib/batch-subkey batch index))
+             (lambda args
+               (let ([got (unbox answers)])
+                 (when (hash-contains? got index)
+                   (error (string-append "stdlib/lsp-batch: request " (number->string index)
+                                         " answered twice")))
+                 (set-box! answers (hash-insert got index args))
+                 (when (= (hash-length (unbox answers)) n)
+                   (callback (map (lambda (i) (hash-ref (unbox answers) i)) (range 0 n)))))))
+            (loop (cdr rest) (+ index 1)))))))
+
 ;; ── call!-able commands (public API) ────────────────────────────────────────
 
 (define-command! "stdlib/primary-selection"
@@ -260,6 +314,14 @@
 (define-command! "stdlib/picker-keymap"
   "The default picker!/live-picker! keymap for the given handler: Down/Ctrl-N and Up/Ctrl-P move the selection, PageDown/PageUp page it, Ctrl-D/Ctrl-U move it half a page, Esc closes the picker, and Enter/Ctrl-O close it and call the handler with the selected item (#f when nothing matches); Ctrl-T, Ctrl-V and Ctrl-S do the same in a new tab, a vertical split, and a horizontal split."
   stdlib/picker-keymap)
+
+(define-command! "stdlib/lsp-batch-key"
+  "A new key for stdlib/lsp-batch's 'supersede option. Make one at a plugin's top level."
+  stdlib/lsp-batch-key)
+
+(define-command! "stdlib/lsp-batch"
+  "Sends the given requests as one batch for the given pane and calls the given callback once with every answer, in request order. Each request is a procedure of a supersede key and a done procedure; it sends its request with #:supersede key and done as the callback. The options are #f or a hash whose 'supersede, a stdlib/lsp-batch-key, makes this batch replace the previous one under that key for the same buffer."
+  stdlib/lsp-batch)
 
 (define-command! "stdlib/split-words"
   "Every word in the given string, tokenized using the given buffer's own word-chars setting — split-words with word-chars pulled from get-buffer-option automatically."

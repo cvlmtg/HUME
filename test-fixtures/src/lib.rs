@@ -19,6 +19,11 @@ pub mod slow_delete;
 pub mod testing;
 pub mod unicode;
 
+/// For `assert_state!`, which names it through `$crate` so a crate using
+/// the macro needs no dependency of its own.
+#[doc(hidden)]
+pub use pretty_assertions;
+
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

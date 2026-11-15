@@ -641,6 +641,7 @@ fn set_conceals_without_decoration_host_errors() {
         default_bid(),
         "test".to_string(),
         empty,
+        SteelVal::SymbolV("error".into()),
     ));
 }
 
@@ -815,5 +816,25 @@ fn a_hidden_entry_without_text_decodes_with_no_replacement() {
             },
             reveal: None,
         }]
+    );
+}
+
+#[test]
+fn conceal_overlaps_decode_to_their_policy() {
+    let symbol = |name: &str| SteelVal::SymbolV(name.into());
+    assert_eq!(
+        conceal_overlaps_arg(symbol("error")).unwrap(),
+        ConcealOverlaps::Refuse
+    );
+    assert_eq!(
+        conceal_overlaps_arg(symbol("drop")).unwrap(),
+        ConcealOverlaps::DropLater
+    );
+    let err = conceal_overlaps_arg(symbol("merge"))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("#:overlaps: must be 'error or 'drop, got 'merge"),
+        "got: {err}"
     );
 }

@@ -128,7 +128,7 @@ mod conceals {
     use hume_decorations::{ConcealEntry, ConcealEntrySpan};
     use hume_editing::text::BufferText;
     use hume_scripting::host::{DecorationHost, SetError};
-    use hume_scripting::{ConcealSpec, ConcealSpecSpan, ConcealSpecText};
+    use hume_scripting::{ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText};
 
     use crate::editor::Editor;
     use crate::editor::tests::init_host;
@@ -140,9 +140,24 @@ mod conceals {
     }
 
     fn set(ed: &mut Editor, specs: Vec<ConcealSpec>) -> Result<(), SetError> {
+        set_with(ed, specs, ConcealOverlaps::Refuse)
+    }
+
+    fn set_with(
+        ed: &mut Editor,
+        specs: Vec<ConcealSpec>,
+        overlaps: ConcealOverlaps,
+    ) -> Result<(), SetError> {
         let bid = ed.focused_buffer_id();
         let mut host = init_host!(ed);
-        host.set_conceals(SOURCE.to_owned(), bid, specs)
+        host.set_conceals(SOURCE.to_owned(), bid, specs, overlaps)
+    }
+
+    /// The ranges stored after setting `specs` with overlaps dropped.
+    fn kept(text: &str, specs: Vec<ConcealSpec>) -> Vec<(usize, usize)> {
+        let mut ed = editor(text);
+        set_with(&mut ed, specs, ConcealOverlaps::DropLater).unwrap();
+        stored(&ed)
     }
 
     fn entries(ed: &Editor) -> &[ConcealEntry] {
@@ -232,6 +247,75 @@ mod conceals {
         let message = refusal(set(&mut ed, vec![hidden(0, 3), hidden(2, 4)]), 1);
         assert!(message.contains("overlaps entry 0"), "got: {message}");
         assert!(stored(&ed).is_empty());
+    }
+
+    #[test]
+    fn dropping_overlaps_keeps_the_earlier_of_two_entries() {
+        // A hidden range inside an earlier one, an insert strictly inside
+        // one, and two inserts at one point.
+        assert_eq!(kept("abcdef\n", vec![hidden(0, 4), hidden(1, 3)]), [(0, 4)]);
+        assert_eq!(kept("abcdef\n", vec![hidden(0, 4), inserted(2)]), [(0, 4)]);
+        assert_eq!(kept("abcdef\n", vec![inserted(2), inserted(2)]), [(2, 2)]);
+    }
+
+    #[test]
+    fn dropping_overlaps_keeps_inserts_at_a_hidden_ranges_edges() {
+        assert_eq!(
+            kept("abcdef\n", vec![hidden(0, 4), inserted(4), inserted(0)]),
+            [(0, 0), (0, 4), (4, 4)]
+        );
+    }
+
+    #[test]
+    fn dropping_overlaps_follows_list_order() {
+        assert_eq!(kept("abcdef\n", vec![hidden(1, 3), hidden(0, 4)]), [(1, 3)]);
+    }
+
+    /// Against an oracle that checks each entry against every kept one:
+    /// generated lists of ranges over an 8-char line keep the same entries.
+    #[test]
+    fn dropping_overlaps_matches_a_pairwise_oracle() {
+        fn overlap((a0, a1): (usize, usize), (b0, b1): (usize, usize)) -> bool {
+            match (a0 == a1, b0 == b1) {
+                (false, false) => a0 < b1 && b0 < a1,
+                (true, false) => b0 < a0 && a0 < b1,
+                (false, true) => a0 < b0 && b0 < a1,
+                (true, true) => a0 == b0,
+            }
+        }
+        let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = |bound: usize| {
+            seed = seed
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (seed >> 33) as usize % bound
+        };
+        for _ in 0..300 {
+            let ranges: Vec<(usize, usize)> = (0..12)
+                .map(|_| {
+                    let start = next(9);
+                    (start, start + next(9 - start).min(3))
+                })
+                .collect();
+            let mut want: Vec<(usize, usize)> = Vec::new();
+            for &range in &ranges {
+                if !want.iter().any(|&k| overlap(k, range)) {
+                    want.push(range);
+                }
+            }
+            want.sort_unstable();
+            let specs = ranges
+                .iter()
+                .map(|&(start, end)| {
+                    if start == end {
+                        inserted(start)
+                    } else {
+                        hidden(start, end)
+                    }
+                })
+                .collect();
+            assert_eq!(kept("abcdefgh\n", specs), want, "{ranges:?}");
+        }
     }
 
     #[test]

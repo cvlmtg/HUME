@@ -118,7 +118,7 @@ pub fn serialize_state(text: &BufferText, sels: &SelectionSet) -> String {
 #[macro_export]
 macro_rules! assert_state {
     ($initial:expr, $op:expr, $expected:expr) => {{
-        use pretty_assertions::assert_eq;
+        use $crate::pretty_assertions::assert_eq;
         use $crate::testing::{parse_state, serialize_state};
 
         let (text, sels) = parse_state($initial);

@@ -760,6 +760,7 @@ mod git_diff_plugin;
 mod injections_editor;
 mod language_config;
 mod lsp_actions;
+mod lsp_batch;
 mod lsp_bridge;
 mod lsp_completion_feature;
 mod lsp_diagnostic_signs;

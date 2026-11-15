@@ -10,7 +10,9 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::host::{DiagnosticEntry, DiagnosticRange, MarkedLines, SetError, each_entry};
 use crate::json::{WireOrigin, to_steel_handle};
-use crate::types::{ConcealSpec, ConcealSpecSpan, ConcealSpecText, VirtualLineSpec};
+use crate::types::{
+    ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText, VirtualLineSpec,
+};
 
 use super::SteelResult;
 use super::args::{
@@ -290,24 +292,37 @@ fn marked_lines(
         .ok_or_else(|| format!("'end-line {end} is not after 'line {line}"))
 }
 
-/// `(set-conceals! pane source entries)`: `entries`: list of `(hash 'start-char
-/// 'end-char)` entries hiding that char range, each with an optional `'text`
-/// drawn in its place, an optional `'scope` styling it, and an optional
-/// `'reveal` `(hash 'start-line s 'end-line e)` naming lines revealed with it.
-/// An empty range with `'text` draws the text before that char and hides
-/// nothing.
+/// `(%set-conceals! pane source entries overlaps)`: Rust half of the
+/// bootstrap-wrapped `(set-conceals! pane source entries #:overlaps ..)`.
+/// `entries`: list of `(hash 'start-char 'end-char)` entries hiding that
+/// char range, each with an optional `'text` drawn in its place, an optional
+/// `'scope` styling it, and an optional `'reveal` `(hash 'start-line s
+/// 'end-line e)` naming lines revealed with it. An empty range with `'text`
+/// draws the text before that char and hides nothing. `overlaps` is
+/// `'error` or `'drop`, see [`ConcealOverlaps`].
 pub(crate) fn set_conceals(
     ctx: &mut SteelCtx,
     bid: BufferId,
     source: String,
     entries: SteelVal,
+    overlaps: SteelVal,
 ) -> SteelResult {
+    let overlaps = conceal_overlaps_arg(overlaps)?;
     let line_count = decorated_line_count(ctx, bid)?;
     let parsed = conceal_specs(entries, line_count)?;
     require_cap(ctx.host.decorations())?
-        .set_conceals(source, bid, parsed)
+        .set_conceals(source, bid, parsed, overlaps)
         .map_err(set_err(CONCEALS))?;
     Ok(SteelVal::Void)
+}
+
+fn conceal_overlaps_arg(overlaps: SteelVal) -> Result<ConcealOverlaps, SteelErr> {
+    const LABEL: &str = "#:overlaps";
+    symbol_enum_arg(
+        symbol_arg(&overlaps, LABEL, "a symbol")?,
+        LABEL,
+        &ConcealOverlaps::NAMED,
+    )
 }
 
 /// Decodes `entries` for a buffer of `line_count` content lines. The one

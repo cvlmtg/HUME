@@ -484,8 +484,14 @@ impl Editor {
     /// and what the guard holds is released right after this call alone.
     fn run_guarded(&mut self, guard: CallGuard, call: hume_scripting::SteelCall) {
         match guard {
-            CallGuard::Reply { anchor, hold } => {
-                if anchor.is_none_or(|anchor| self.state.anchor_admits(&self.view, &anchor)) {
+            CallGuard::Reply {
+                anchor,
+                hold,
+                supersede,
+            } => {
+                if supersede.is_none_or(|ticket| self.state.lsp.supersede_is_latest(ticket))
+                    && anchor.is_none_or(|anchor| self.state.anchor_admits(&self.view, &anchor))
+                {
                     self.run_call_batch(vec![call]);
                 }
                 drop(hold);

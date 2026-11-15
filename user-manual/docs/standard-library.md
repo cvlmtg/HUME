@@ -1,6 +1,6 @@
 # Standard Library
 
-`core:stdlib` gives plugin authors small helpers that many plugins need: selections, lists, files, downloads and archives, git, command arguments, reports, word splitting, config validation and a picker keymap. Each one is an editor command reached through `call!`, never a plain Scheme function.
+`core:stdlib` gives plugin authors small helpers that many plugins need: selections, lists, files, downloads and archives, git, command arguments, reports, word splitting, config validation, a picker keymap and batches of language server requests. Each one is an editor command reached through `call!`, never a plain Scheme function.
 
 ## Setup
 
@@ -121,3 +121,31 @@ The keymap's keys:
 `handler` takes one argument, the selected item's payload, or `#f` when nothing matches. `picker-keymap` returns a hash, so a plugin changes or adds a key with `hash-insert` (see [Custom pickers](writing-plugins.md#custom-pickers)).
 
 `with-tab`/`with-vsplit`/`with-split` are its building blocks, for a binding of your own that opens the item somewhere else. With a `#f` payload they open nothing and still call `handler`. When the focused pane is too small to split, `with-vsplit` and `with-split` leave it as it is and don't call `handler`.
+
+## Language server request batches
+
+| Call | Effect |
+|------|--------|
+| `stdlib/lsp-batch-key` | `(call! "stdlib/lsp-batch-key")`{.sig} A new key for a batch's `'supersede` option. Make one at your plugin's top level |
+| `stdlib/lsp-batch` | `(call! "stdlib/lsp-batch" pane requests callback options)`{.sig} Send `requests` as one batch and call `callback` once, when every one has answered |
+
+Use a batch for several requests that act as one, such as one request per range of lines on screen.
+
+- Each entry of `requests` is a procedure `(lambda (key done) ...)` that sends one request. It passes `#:supersede key` and uses `done` as the request's callback, with `lsp-request!`, `lsp-request-all!` or anything that calls `done` once.
+- `callback` gets one list per request, in the order of `requests`, holding the arguments that request's `done` was called with, such as `(err result)`.
+- `options` is `#f` or a hash. With `'supersede` set to a key from `stdlib/lsp-batch-key`, a new batch for the same buffer replaces the one before it: requests of the old batch still waiting are cancelled, and its `callback` never runs.
+- An empty `requests` calls `callback` with `'()` at once.
+
+```scheme
+(define hint-batch (call! "stdlib/lsp-batch-key"))
+
+(define (request-hints pane ranges)
+  (call! "stdlib/lsp-batch" pane
+    (map (lambda (range)
+           (lambda (key done)
+             (lsp-request-all! pane "textDocument/inlayHint" (hint-params pane range) done
+                               #:unavailable 'empty #:supersede key)))
+         ranges)
+    (lambda (answers) (show-hints! pane ranges answers))
+    (hash 'supersede hint-batch)))
+```

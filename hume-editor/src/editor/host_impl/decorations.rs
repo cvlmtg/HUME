@@ -4,6 +4,9 @@
 //! `validate_offset` is `pub(super)` because `host_impl/tests.rs`, a
 //! sibling of this module, calls it.
 
+use std::collections::BTreeMap;
+use std::ops::Bound;
+
 use hume_core::{BufferId, DiagSeverity, Side};
 use hume_decorations::{ConcealEntry, ConcealEntrySpan};
 use hume_engine::providers::{ConcealText, conceal_ranges_overlap};
@@ -16,7 +19,7 @@ use crate::statusline::StatusElement;
 
 use super::EditorHostImpl;
 use hume_scripting::host::{DecorationHost, DiagnosticCounts, MarkedLines, SetError, each_entry};
-use hume_scripting::{ConcealSpec, ConcealSpecSpan, ConcealSpecText};
+use hume_scripting::{ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText};
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {
     fn set_inlay_hints(
@@ -145,8 +148,9 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         entries: Vec<ConcealSpec>,
+        overlaps: ConcealOverlaps,
     ) -> Result<(), SetError> {
-        let entries = self.conceal_entries(bid, entries)?;
+        let entries = self.conceal_entries(bid, entries, overlaps)?;
         self.state
             .config
             .decorations
@@ -259,14 +263,16 @@ impl EditorHostImpl<'_> {
     }
 
     /// `specs` as conceals of `bid`'s text, in position order. Each entry's
-    /// range is checked and widened to whole clusters, must stay on one line
-    /// without covering its `\n` and must not overlap another
-    /// ([`conceal_ranges_overlap`]); an `Inserted` may sit before a line's
-    /// `\n` but not at the text's end.
+    /// range is checked and widened to whole clusters and must stay on one
+    /// line without covering its `\n`; an `Inserted` may sit before a line's
+    /// `\n` but not at the text's end. An entry overlapping another
+    /// ([`conceal_ranges_overlap`]) is refused or left out, as `overlaps`
+    /// says.
     fn conceal_entries(
         &mut self,
         bid: BufferId,
         specs: Vec<ConcealSpec>,
+        overlaps: ConcealOverlaps,
     ) -> Result<Vec<ConcealEntry>, SetError> {
         let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
         let mut placed = each_entry(specs.into_iter().enumerate().collect(), |(index, spec)| {
@@ -314,6 +320,9 @@ impl EditorHostImpl<'_> {
             }
             Ok((index, entry))
         })?;
+        if overlaps == ConcealOverlaps::DropLater {
+            return Ok(keep_earlier(placed.into_iter().map(|(_, entry)| entry)));
+        }
         placed.sort_by_key(|(_, entry)| {
             let chars = entry.chars();
             (chars.start, chars.end)
@@ -436,4 +445,26 @@ pub(super) fn validate_offset(
         }
     }
     Ok(pos)
+}
+
+/// `entries` without each one that overlaps an entry kept before it, in
+/// position order. Kept entries are disjoint, so their order by start is
+/// their order by end too, and an entry overlapping any kept one overlaps the
+/// kept entry just before or just after its own place in that order.
+fn keep_earlier(entries: impl IntoIterator<Item = ConcealEntry>) -> Vec<ConcealEntry> {
+    let mut kept: BTreeMap<(CharOffset, CharOffset), ConcealEntry> = BTreeMap::new();
+    for entry in entries {
+        let chars = entry.chars();
+        let key = (chars.start, chars.end);
+        let before = kept.range(..=key).next_back();
+        let after = kept.range((Bound::Excluded(key), Bound::Unbounded)).next();
+        if before
+            .into_iter()
+            .chain(after)
+            .all(|(_, k)| !conceal_ranges_overlap(k.chars(), chars))
+        {
+            kept.insert(key, entry);
+        }
+    }
+    kept.into_values().collect()
 }

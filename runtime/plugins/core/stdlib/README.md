@@ -43,6 +43,7 @@ a contributor needs beyond that.
 | [Picker keymap](#picker-keymap) | `plugin.scm` | `stdlib/picker-keymap`, `stdlib/with-tab`, `stdlib/with-vsplit`, `stdlib/with-split` |
 | [Word tokenization](#word-tokenization) | `plugin.scm` | `stdlib/split-words` |
 | [Plugin config](#plugin-config) | `plugin.scm` | `stdlib/config-boolean`, `-string`, `-enum`, `-integer`, `-list` |
+| [LSP request batches](#lsp-request-batches) | `plugin.scm` | `stdlib/lsp-batch-key`, `stdlib/lsp-batch` |
 
 ## How it works
 
@@ -186,3 +187,18 @@ or `default` if absent.
   command exits 0, and `#f` otherwise. Trimming is safe for a single-value probe like the
   git commands; a `-z`-delimited multi-entry blob such as `git status` can start with
   significant whitespace in its first entry.
+
+### LSP request batches
+
+A batch key is a struct holding a list of `#:supersede` keys, one per request index,
+minted with `lsp-supersede-key` the first time a batch reaches that index. Request *i* of
+every batch under the key is filed under the key's *i*-th supersede key, so a new batch
+for a buffer replaces the previous batch's request *i* for that buffer, and the editor
+scopes each supersede key to the buffer it is used for, so a batch key needs no
+per-buffer state. When the new batch is shorter, the previous one's requests past its
+length are cancelled with `lsp-cancel!` before any request is sent.
+
+The editor never runs a superseded or cancelled request's callback, even one whose answer
+had already arrived, so a replaced batch never completes and needs no round counter. The
+answers of a batch live in a box its `done` procedures share, keyed by request index; the
+callback runs when the count reaches the number of requests.

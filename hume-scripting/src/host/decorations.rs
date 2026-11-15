@@ -8,7 +8,7 @@ use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
 use hume_rope::position_encoding::PositionEncoding;
 
-use crate::types::{ConcealSpec, VirtualLineSpec};
+use crate::types::{ConcealOverlaps, ConcealSpec, VirtualLineSpec};
 
 /// The lines a line-anchored decoration entry marks, never none: `start`
 /// alone, or every line up to `end` (`'end-line`, exclusive).
@@ -149,17 +149,19 @@ pub trait DecorationHost {
         spans: Vec<(usize, usize, String)>,
     ) -> Result<(), SetError>;
 
-    /// `(set-conceals! pane source entries)`: replaces `source`'s conceals
-    /// for `bid` wholesale. Char offsets are checked against the buffer and
-    /// widened to whole clusters; `Err` names the first entry that is out of
-    /// range, crosses a line break, covers a line's `\n`, is an insert at
-    /// the text's end, or overlaps an earlier one. A `reveal` is caller-validated against
-    /// `BufferHost::buffer_line_count`.
+    /// `(set-conceals! pane source entries #:overlaps o)`: replaces
+    /// `source`'s conceals for `bid` wholesale. Char offsets are checked
+    /// against the buffer and widened to whole clusters; `Err` names the
+    /// first entry that is out of range, crosses a line break, covers a
+    /// line's `\n`, is an insert at the text's end, or, under
+    /// [`ConcealOverlaps::Refuse`], overlaps an earlier one. A `reveal` is
+    /// caller-validated against `BufferHost::buffer_line_count`.
     fn set_conceals(
         &mut self,
         source: String,
         bid: BufferId,
         entries: Vec<ConcealSpec>,
+        overlaps: ConcealOverlaps,
     ) -> Result<(), SetError>;
 
     /// `(set-eol-text! pane source lines)`: replaces `source`'s EOL text for

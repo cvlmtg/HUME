@@ -10,23 +10,8 @@
 ;;; Buffers toggled away from `lsp/inlay-default`, keyed by `(buffer-key pane)`.
 (define lsp/*inlay-overrides* (hash))
 
-;;; The latest round of hint requests per buffer, keyed by `(buffer-key pane)`.
-(define lsp/*inlay-rounds* (hash))
-
-;;; One supersede key per request index within a round.
-(define lsp/*inlay-keys* '())
-
-(define (lsp/inlay-key index)
-  (when (= index (length lsp/*inlay-keys*))
-    (set! lsp/*inlay-keys* (append lsp/*inlay-keys* (list (lsp-supersede-key)))))
-  (list-ref lsp/*inlay-keys* index))
-
-(define (lsp/cancel-inlay-keys-from! pane from)
-  (let loop ((keys lsp/*inlay-keys*) (index 0))
-    (unless (null? keys)
-      (when (>= index from)
-        (lsp-cancel! pane (car keys)))
-      (loop (cdr keys) (+ index 1)))))
+;;; Each buffer's round of hint requests is one batch under this key.
+(define lsp/inlay-batch (call! "stdlib/lsp-batch-key"))
 
 (define (lsp/inlay-on? pane)
   (let ((key (buffer-key pane)))
@@ -81,25 +66,20 @@
                      answers))))))
 
 (define (lsp/request-round! pane ranges)
-  (let* ((key (buffer-key pane))
-         (round (+ 1 (or (hash-try-get lsp/*inlay-rounds* key) 0)))
-         (answers (box '())))
-    (set! lsp/*inlay-rounds* (hash-insert lsp/*inlay-rounds* key round))
-    (lsp/cancel-inlay-keys-from! pane (length ranges))
-    (let loop ((rest ranges) (index 0))
-      (unless (null? rest)
-        (let ((range (car rest)))
-          (lsp-request-all! pane "textDocument/inlayHint"
-            (lsp/inlay-hint-params pane range)
-            (lambda (err results)
-              (when (equal? round (hash-try-get lsp/*inlay-rounds* key))
-                (lsp/report-answer-errors! "inlay hints" results)
-                (set-box! answers (cons (cons range results) (unbox answers)))
-                (when (= (length (unbox answers)) (length ranges))
-                  (lsp/set-round-hints! pane (unbox answers)))))
-            #:unavailable 'empty
-            #:supersede (lsp/inlay-key index)))
-        (loop (cdr rest) (+ index 1))))))
+  (call! "stdlib/lsp-batch" pane
+    (map (lambda (range)
+           (lambda (key done)
+             (lsp-request-all! pane "textDocument/inlayHint"
+               (lsp/inlay-hint-params pane range)
+               done
+               #:unavailable 'empty
+               #:supersede key)))
+         ranges)
+    (lambda (answers)
+      (let ((results (map cadr answers)))
+        (for-each (lambda (r) (lsp/report-answer-errors! "inlay hints" r)) results)
+        (lsp/set-round-hints! pane (map cons ranges results))))
+    (hash 'supersede lsp/inlay-batch)))
 
 ;;; `pane` is any pane value of the buffer; the pane is resolved when the debounce fires.
 ;; See docs/decorations.md, "Inlay hints".
@@ -136,7 +116,6 @@
 (register-hook! 'on-buffer-close
   (lambda (pane)
     (set! lsp/*inlay-overrides* (hash-remove lsp/*inlay-overrides* (buffer-key pane)))
-    (set! lsp/*inlay-rounds* (hash-remove lsp/*inlay-rounds* (buffer-key pane)))
     (when (buffer-live? pane)
       (set-inlay-hints! pane lsp/inlay-source '()))))
 

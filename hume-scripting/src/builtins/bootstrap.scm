@@ -151,6 +151,9 @@
 (define (syntax-captures pane language query #:ranges [ranges #f])
   (%syntax-captures pane language query ranges))
 
+(define (set-conceals! pane source entries #:overlaps [overlaps 'error])
+  (%set-conceals! pane source entries overlaps))
+
 (define (bind-key! mode key cmd #:keymap [keymap #f])
   (%bind-key! mode key cmd keymap))
 

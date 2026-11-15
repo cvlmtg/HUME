@@ -138,11 +138,10 @@ refresh. When the debounce fires, the refresh:
 3. Otherwise takes `buffer-viewport-ranges`, so two panes showing the same lines send one
    request and two panes far apart send one each, never the lines between them.
 4. Sends one request per range, a round, each asking every server of the buffer that
-   offers inlay hints. Request *n* of a round is filed under supersede key *n*, so it
-   cancels request *n* of the buffer's previous round if that is still unanswered. When the
-   previous round had more requests, `lsp-cancel!` cancels the ones past the new round's
-   count first, so a slow server is never left with a queue of stale requests. An answer
-   to a request of an earlier round is dropped.
+   offers inlay hints. The round is one `stdlib/lsp-batch` under the plugin's batch key,
+   so it replaces the buffer's previous round: that round's unanswered requests are
+   cancelled, a slow server is never left with a queue of stale requests, and an answer
+   to the earlier round is never used.
 
 The hints are set once every request of the round has answered, as one set, since
 `set-inlay-hints!` replaces the plugin's hints for the whole buffer. A range's hints are

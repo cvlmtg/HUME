@@ -249,8 +249,10 @@ macro_rules! builtins {
 // lsp-request-all!: callback is (lambda (err results)), results one hash per
 // server. the method, #:feature and #:to choose the servers when the request is
 // sent. #:supersede <key>, a key from lsp-supersede-key, cancels the pending
-// request under the same key for the same buffer. #:require-focus drops the callback unless pane is still focused
-// when the answers arrive.
+// request under the same key for the same buffer, and lsp-cancel! cancels it
+// without sending one: a cancelled request's callback never runs, even when
+// its answer is already queued. #:require-focus drops the callback unless
+// pane is still focused when the answers arrive.
 //
 // debounce / debounce-by: trailing-edge; debounce-by keeps one timer per
 // #:key (default: first argument). A firing timer clears its pending entry
@@ -530,7 +532,7 @@ builtins! {
     cmd "set-virtual-lines!" decorations::set_virtual_lines(pane: args::LiveBuffer, source: args::SourceName, lines: SteelVal);
     cmd "%set-eol-text!" => "set-eol-text!" decorations::set_eol_text(pane: args::LiveBuffer, source: args::SourceName, lines: SteelVal, hide_on_insert_line: SteelVal);
     cmd "set-extra-highlights!" decorations::set_extra_highlights(pane: args::LiveBuffer, source: args::SourceName, spans: SteelVal);
-    cmd "set-conceals!" decorations::set_conceals(pane: args::LiveBuffer, source: args::SourceName, entries: SteelVal);
+    cmd "%set-conceals!" => "set-conceals!" decorations::set_conceals(pane: args::LiveBuffer, source: args::SourceName, entries: SteelVal, overlaps: SteelVal);
     cmd "set-line-backgrounds!" decorations::set_line_backgrounds(pane: args::LiveBuffer, source: args::SourceName, entries: SteelVal);
     cmd "set-statusline-text!" decorations::set_statusline_text(pane: args::LiveBuffer, source: args::SourceName, text: SteelVal);
     cmd "%diagnostics-for-buffer" => "diagnostics-for-buffer" decorations::diagnostics_for_buffer(pane: args::ArgPane, severity: SteelVal, range: SteelVal);

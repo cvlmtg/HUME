@@ -8,7 +8,7 @@
                "stdlib/config-boolean" "stdlib/config-string" "stdlib/config-enum"
                "stdlib/config-integer" "stdlib/config-list"
                "stdlib/with-tab" "stdlib/with-vsplit" "stdlib/with-split" "stdlib/picker-keymap"
-               "stdlib/split-words"))
+               "stdlib/split-words" "stdlib/lsp-batch-key" "stdlib/lsp-batch"))
 (declare-plugin! "core:stdlib"
   #:entry "files.scm"
   #:commands '("stdlib/write-file!" "stdlib/delete-dir!" "stdlib/delete-file!"

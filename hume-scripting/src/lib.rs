@@ -61,9 +61,9 @@ pub use keys::parse_key_stream;
 pub use lazy::PluginStatus;
 pub use rooted::{Callback, Rooted, SteelCall};
 pub use types::{
-    CapabilityQuery, ConcealSpec, ConcealSpecSpan, ConcealSpecText, DocSpan, Effect, EvalError,
-    GrammarReg, LspErrKind, LspRoute, LspServerStatusEntry, LspServerTarget, Params,
-    PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    CapabilityQuery, ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText, DocSpan,
+    Effect, EvalError, GrammarReg, LspErrKind, LspRoute, LspServerStatusEntry, LspServerTarget,
+    Params, PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
     PendingLspServerReg, RequestMode, RequestParams, RouteSpec, SteelCmdBody, SteelCmdDef,
     SteelTypedCmdBody, SteelTypedCmdDef, TriggerScope, VirtualLineSpec, WhenUnavailable,
     lsp_err_value,

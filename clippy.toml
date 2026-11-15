@@ -60,8 +60,8 @@ disallowed-methods = [
     # `CommandPane::checked`/`FocusedPane::checked`
     # (`hume-editor/src/editor/commands/target.rs`) run that check and are the
     # only readers of the raw pane.
-    "hume_scripting::host::ShownHandle::handle",
-    "hume_scripting::host::FocusedHandle::handle",
+    "hume_scripting::builtins::args::pane::ShownHandle::handle",
+    "hume_scripting::builtins::args::pane::FocusedHandle::handle",
     # A view read between frames must first follow the cursor moves made
     # since the last frame, and that reveal policy is the editor's, so the
     # engine cannot run it itself. `frame::settled_pane_view`,

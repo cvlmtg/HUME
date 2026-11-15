@@ -6,7 +6,7 @@ use hume_scripting::SteelCall;
 use hume_scripting::host::JobHandle;
 
 use super::EditorEvent;
-use crate::editor::lsp::ResponseAnchor;
+use crate::editor::lsp::{ResponseAnchor, SupersedeTicket};
 use crate::editor::replay::{AnswerTicket, PickerKeyRun};
 use crate::editor::{Editor, EditorState};
 use hume_core::TimerId;
@@ -58,10 +58,14 @@ pub(in crate::editor) enum CallGuard {
     /// (`EditorState::anchor_admits`), checked again here. `hold` is the
     /// request's hold on its `#:tracked` position, dropped once the call
     /// has run, raised, or been dropped, which releases the position unless
-    /// the callback kept it. At least one of the two is `Some`.
+    /// the callback kept it. `supersede` is the request's filing under its
+    /// `#:supersede` key: the call is dropped when a later request under the
+    /// key or `lsp-cancel!` retired it before its turn. At least one of the
+    /// three is `Some`.
     Reply {
         anchor: Option<ResponseAnchor>,
         hold: Option<hume_scripting::host::TrackedHold>,
+        supersede: Option<SupersedeTicket>,
     },
     /// The ticket of the interactive input this call answers (a read,
     /// picker, prompt or menu callback), when that input belongs to a
@@ -168,17 +172,23 @@ impl EditorState {
     }
 
     /// Queue `call`, an `lsp-request!` callback: carries the delivery's `ResponseAnchor` (`None` for a
-    /// request no server took) and the request's hold on its `#:tracked`
-    /// position; see [`CallGuard::Reply`]. Never carries an answer ticket:
-    /// an LSP response resolves no waiting input.
+    /// request no server took), the request's hold on its `#:tracked`
+    /// position and its supersede filing; see [`CallGuard::Reply`]. Never
+    /// carries an answer ticket: an LSP response resolves no waiting input.
     pub(in crate::editor) fn queue_lsp_callback(
         &mut self,
         call: SteelCall,
         anchor: Option<ResponseAnchor>,
         hold: Option<hume_scripting::host::TrackedHold>,
+        supersede: Option<SupersedeTicket>,
     ) {
-        let guard =
-            (anchor.is_some() || hold.is_some()).then_some(CallGuard::Reply { anchor, hold });
+        let guard = (anchor.is_some() || hold.is_some() || supersede.is_some()).then_some(
+            CallGuard::Reply {
+                anchor,
+                hold,
+                supersede,
+            },
+        );
         self.push_work(PendingWork::Call { call, guard });
     }
 

@@ -13,32 +13,27 @@
 (define (lsp/format-edits res)
   (if (void? res) (list) (json-list res)))
 
-;; Sends one `rangeFormatting` request per range to `server` and hands
-;; `apply!` every answer's edits once all have answered, or `fail!` the first
-;; error.
+;; Sends one `rangeFormatting` request per range to `server` and, once all
+;; have answered, hands `apply!` every answer's edits, or `fail!` the first
+;; error in range order.
 (define (lsp/format-fan-out! pane server td ranges fail! apply!)
-  (let ((pending (box (length ranges)))
-        (edits (box (list)))
-        (aborted (box #f))
-        (opts (lsp/format-options pane)))
-    (for-each
-      (lambda (range)
-        (lsp-request! pane "textDocument/rangeFormatting"
-          (hash "textDocument" td "range" range "options" opts)
-          (lambda (err res)
-            (unless (unbox aborted)
-              (if err
-                  (begin
-                    (set-box! aborted #t)
-                    (fail! err))
-                  (begin
-                    (set-box! edits (cons (lsp/format-edits res) (unbox edits)))
-                    (set-box! pending (- (unbox pending) 1))
-                    (when (= (unbox pending) 0)
-                      (apply! (call! "stdlib/concat" (reverse (unbox edits)))))))))
-          #:to server
-          #:allow-stale #t))
-      ranges)))
+  (let ((opts (lsp/format-options pane)))
+    (call! "stdlib/lsp-batch" pane
+      (map (lambda (range)
+             (lambda (key done)
+               (lsp-request! pane "textDocument/rangeFormatting"
+                 (hash "textDocument" td "range" range "options" opts)
+                 done
+                 #:to server
+                 #:allow-stale #t)))
+           ranges)
+      (lambda (answers)
+        (let ((failed (call! "stdlib/find" car answers)))
+          (if failed
+              (fail! (car failed))
+              (apply! (call! "stdlib/concat"
+                        (map (lambda (answer) (lsp/format-edits (cadr answer))) answers))))))
+      #f)))
 
 ;; `get-ranges` a thunk returning a list of LSP ranges, or #f for the whole
 ;; buffer; `done` a thunk called once the format ends, or #f. `quiet` skips the

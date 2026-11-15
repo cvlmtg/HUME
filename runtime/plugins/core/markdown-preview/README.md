@@ -93,7 +93,7 @@ The choices the plugin and the Rust surface under it are built on:
 | `lib/table.scm` | Table captures to conceals, and the line spans of the tables, which the inline query also covers. Reads no buffer either: lines come in as procedures, and cells are measured with `string-width` |
 | `lib/inline.scm` | Inline captures to conceals. Calls no editor builtin either |
 | `lib/entities.scm` | The named entities the plugin replaces, and the numeric references it accepts |
-| `lib/render.scm` | The render funnel: the pane ranges, the two `syntax-captures` calls, the fenced-block filter, the disjoint pass, the three setters |
+| `lib/render.scm` | The render funnel: the pane ranges, the two `syntax-captures` calls, the fenced-block filter, the conceal order, the three setters |
 
 ### Rendering
 
@@ -235,15 +235,13 @@ that table.
 
 The table-specific limitations are under [Limitations](#limitations).
 
-### Disjoint conceals
+### Overlapping conceals
 
-The setter refuses two conceals of one source that overlap, and inline conceals can: an
-escape or an entity inside a link's destination or title lies inside the conceal hiding
-that part. `render.scm` sorts the conceals by start, the longer first at one start, and
-keeps each one that overlaps no conceal kept before it, by the setter's rule: two hidden
-ranges overlap when they share a char, an insert overlaps a hidden range it lies strictly
-inside, and two inserts overlap at one position. The conceal hiding more wins, and the
-one it drops lay inside text that is hidden anyway.
+Inline conceals can overlap: an escape or an entity inside a link's destination or title
+lies inside the conceal hiding that part. `render.scm` sorts the conceals by start, the
+longer first at one start, and sets them with `#:overlaps 'drop`, so the setter keeps
+each one that overlaps no conceal before it in that order. The conceal hiding more wins,
+and the one it drops lay inside text that is hidden anyway.
 
 ### Fenced blocks
 

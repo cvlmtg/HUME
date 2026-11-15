@@ -131,6 +131,18 @@ pub struct ConcealSpec {
     pub reveal: Option<MarkedLines>,
 }
 
+hume_core::named_enum! {
+    /// What `set-conceals!` does with an entry that overlaps an earlier one:
+    /// `Refuse` raises naming it, `DropLater` leaves it out, so the earlier
+    /// entry in the list wins. `#:overlaps` names it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum ConcealOverlaps {
+        #[default]
+        Refuse => "error",
+        DropLater => "drop",
+    }
+}
+
 /// What a [`ConcealSpec`] does, in char offsets of the buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConcealSpecSpan {

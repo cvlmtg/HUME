@@ -636,6 +636,23 @@ fn fan_out_error_response_applies_nothing() {
     );
 }
 
+/// When every range fails, the error reported is the first range's.
+#[test]
+fn fan_out_reports_the_first_ranges_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.fail_with("textDocument/rangeFormatting", -32603, "boom-first");
+        backend.fail_with("textDocument/rangeFormatting", -32603, "boom-second");
+    });
+    select_full_lines_1_and_3(&mut ed);
+
+    run_fmt(&mut ed);
+
+    let log = ed.state.message_log.format_for_display();
+    assert_eq!(log.matches("boom-first").count(), 1, "{log:?}");
+    assert!(!log.contains("boom-second"), "{log:?}");
+}
+
 #[test]
 fn null_result_reports_already_formatted() {
     let tmp = tempfile::tempdir().unwrap();

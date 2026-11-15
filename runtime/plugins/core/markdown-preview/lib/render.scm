@@ -66,23 +66,6 @@
         conceal
         (hash-insert conceal 'end-char line-end))))
 
-(define (md-preview/disjoint conceals)
-  (let loop ([cs (sort conceals md-preview/conceal-before?)]
-             [hidden-start -1] [hidden-end -1] [inserted-at -1] [kept '()])
-    (if (null? cs)
-        (reverse kept)
-        (let* ([c (car cs)]
-               [start (hash-ref c 'start-char)]
-               [end (hash-ref c 'end-char)])
-          (cond
-            [(< start end)
-             (if (< start hidden-end)
-                 (loop (cdr cs) hidden-start hidden-end inserted-at kept)
-                 (loop (cdr cs) start end inserted-at (cons c kept)))]
-            [(or (= start inserted-at) (and (< hidden-start start) (< start hidden-end)))
-             (loop (cdr cs) hidden-start hidden-end inserted-at kept)]
-            [else (loop (cdr cs) hidden-start hidden-end start (cons c kept))])))))
-
 (define (md-preview/draw! pane ranges rule-width)
   (let* ([lines (md-preview/line-reader pane)]
          [line-of (car lines)]
@@ -104,11 +87,12 @@
          [tables (md-preview/table-elements groups inline ranges line-of line-info
                                             (buffer-line-count pane))])
     (set-conceals! pane md-preview/source
-                   (md-preview/disjoint
-                     (map (lambda (c) (md-preview/clamped line-of line-info c))
-                          (append (hash-ref elements 'conceals)
-                                  (hash-ref tables 'conceals)
-                                  (hash-ref tables 'inline)))))
+                   (sort (map (lambda (c) (md-preview/clamped line-of line-info c))
+                              (append (hash-ref elements 'conceals)
+                                      (hash-ref tables 'conceals)
+                                      (hash-ref tables 'inline)))
+                         md-preview/conceal-before?)
+                   #:overlaps 'drop)
     (set-line-backgrounds! pane md-preview/source (hash-ref elements 'bands))
     (set-extra-highlights! pane md-preview/source (hash-ref elements 'highlights))))
 

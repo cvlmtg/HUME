@@ -69,6 +69,127 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
     );
 }
 
+/// A rig whose server answers two completions, `A` then `B`, with
+/// `send-a`, `send-b` and `cancel-key` commands: the first two send a
+/// completion request under one `#:supersede` key logging its marker, the
+/// last cancels that key.
+fn queued_supersede_rig(tmp: &std::path::Path) -> LspRig {
+    let (mut b, _, _) = RecordingLspBackend::new();
+    b.respond_to("initialize", bridge_initialize_result());
+    for marker in ["A", "B"] {
+        b.respond_to(
+            "textDocument/completion",
+            serde_json::json!({ "marker": marker }),
+        );
+    }
+    let mut rig = LspRig::drained(tmp, RigSpec::rust("-[a]>bcdef\n"), b);
+    rig.eval(
+        r#"(define key (lsp-supersede-key))
+           (define (send bid)
+             (lsp-request! bid "textDocument/completion" (hash)
+               (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
+               #:supersede key))
+           (define-typed-command! "send-a" "" send)
+           (define-typed-command! "send-b" "" send)
+           (define-typed-command! "cancel-key" "" (lambda (bid) (lsp-cancel! bid key)))"#,
+    );
+    rig
+}
+
+/// An answer already queued when a new request under its key is sent is
+/// superseded too: its callback never runs.
+#[test]
+fn supersede_drops_a_callback_whose_answer_was_already_queued() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = queued_supersede_rig(tmp.path());
+    let ed = &mut rig.ed;
+
+    type_cmd(ed, ":send-a");
+    ed.drain_lsp();
+    type_cmd(ed, ":send-b");
+    ed.drain_lsp();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(!log.contains("marker-A"), "{log:?}");
+    assert!(log.contains("marker-B"), "{log:?}");
+}
+
+/// `lsp-cancel!` drops a callback whose answer was already queued.
+#[test]
+fn cancel_drops_a_callback_whose_answer_was_already_queued() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = queued_supersede_rig(tmp.path());
+    let ed = &mut rig.ed;
+
+    type_cmd(ed, ":send-a");
+    ed.drain_lsp();
+    type_cmd(ed, ":cancel-key");
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(!log.contains("marker-A"), "{log:?}");
+}
+
+/// A request no server can take calls back without waiting, and a later
+/// request under its key in the same dispatch supersedes that call too.
+#[test]
+fn supersede_drops_the_callback_of_a_request_no_server_took() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut b, _, _) = RecordingLspBackend::new();
+    b.respond_to("initialize", bridge_initialize_result());
+    b.respond_to("textDocument/completion", serde_json::json!({}));
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[a]>bcdef\n"), b);
+    rig.eval(
+        r#"(define key (lsp-supersede-key))
+           (define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request! bid "textDocument/inlayHint" (hash)
+               (lambda (err result) (log! 'trace "marker-unavailable"))
+               #:unavailable 'empty
+               #:supersede key)
+             (lsp-request! bid "textDocument/completion" (hash)
+               (lambda (err result) (log! 'trace "marker-served"))
+               #:supersede key)))"#,
+    );
+    let ed = &mut rig.ed;
+
+    type_cmd(ed, ":test-cmd");
+    ed.drain_lsp();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(!log.contains("marker-unavailable"), "{log:?}");
+    assert!(log.contains("marker-served"), "{log:?}");
+}
+
+/// A key is scoped to its buffer: a request under it for one buffer leaves
+/// another buffer's queued answer to run.
+#[test]
+fn supersede_keeps_a_queued_callback_of_another_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = queued_supersede_rig(tmp.path());
+    let other = tmp.path().join("src/other.rs");
+    std::fs::write(&other, "fn main() {}\n").unwrap();
+    rig.eval(&format!(
+        r#"(define-typed-command! "send-other" "" (lambda (bid)
+             (lsp-request! (open-buffer! "{}") "textDocument/completion" (hash)
+               (lambda (err result) #f)
+               #:unavailable 'empty
+               #:supersede key)))"#,
+        other.display()
+    ));
+    let ed = &mut rig.ed;
+
+    type_cmd(ed, ":send-a");
+    ed.drain_lsp();
+    type_cmd(ed, ":send-other");
+    ed.drain_lsp();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(log.contains("marker-A"), "{log:?}");
+}
+
 /// A rig over a real file (so `Buffer.path()` is `Some(canonical)`) whose
 /// running server answers one `textDocument/hover`, with `source(uri)`
 /// evaluated in its host: `uri` is the `file://` URI a request's

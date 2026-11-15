@@ -115,6 +115,7 @@ impl EditorState {
         let mut retired = Vec::new();
         self.lsp_detach_all(view, bid, Announce::BufferClosing, &mut retired);
         self.lsp_stop_unreferenced(view, retired);
+        self.lsp.deliveries.forget_buffer(bid);
     }
 
     /// Stops `target`'s servers: every buffer attached to one detaches from

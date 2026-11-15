@@ -143,7 +143,7 @@ To reach one server in particular, such as the one an earlier answer came from, 
 
 ### Asking every server
 
-`lsp-request-all!` sends the request to every server the method and `#:feature` allow, and calls back once all have answered. It takes the same keywords as `lsp-request!` except `#:to`.
+`lsp-request-all!` sends the request to every server the method and `#:feature` allow, and calls back once all have answered. It takes the same keywords as `lsp-request!` except `#:to`. For several requests that should act as one, such as one per range of lines, use [`stdlib/lsp-batch`](standard-library.md#language-server-request-batches).
 
 - `params` is one hash for all servers, or a non-empty list of `(server . params)` pairs, each server once, giving each its own; the method and `#:feature` still decide which of them get it.
 - `results` holds one `(hash 'server s 'err e 'result r)` per server, in the buffer's server order.
@@ -152,7 +152,7 @@ To reach one server in particular, such as the one an earlier answer came from, 
 
 `#:unavailable 'empty` (default `'error`) is for a request the user did not ask for, such as completion or inlay hints. A request no server can take then calls back with no error instead of an `'unavailable` error: a void result for `lsp-request!`, an empty `results` list for `lsp-request-all!`.
 
-`#:supersede key` cancels the pending request filed under the same key for the same buffer, even when no server can take the new one: every server it went to gets `$/cancelRequest`, and its callback never fires. A request for another buffer under the same key is left alone. Each `(lsp-supersede-key)` call returns a new key that no other plugin's request, nor any of HUME's own, can share. Make one at your plugin's top level and pass it to every request it should replace. `(lsp-cancel! pane key)` cancels the pending request under `key` without sending a new one.
+`#:supersede key` cancels the pending request filed under the same key for the same buffer, even when no server can take the new one: every server it went to gets `$/cancelRequest`, and its callback never fires, even when its answer had already arrived. A request for another buffer under the same key is left alone. Each `(lsp-supersede-key)` call returns a new key that no other plugin's request, nor any of HUME's own, can share. Make one at your plugin's top level and pass it to every request it should replace. `(lsp-cancel! pane key)` cancels the pending request under `key` the same way, without sending a new one.
 
 `#:allow-stale #t` runs the callback even if the buffer changed after the request was sent; by default that answer is dropped. Its positions describe the text the request was sent for, but `lsp-position->char-offset`/`lsp-range->char-range` read the buffer as it is now, so after an edit they may land on different text. Before using one, compare `buffer-generation` (with `equal?`) against the value you read when sending, and resend if it moved.
 
