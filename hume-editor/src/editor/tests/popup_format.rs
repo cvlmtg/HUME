@@ -424,3 +424,54 @@ fn a_theme_change_keeps_the_format_without_calling_the_formatter_again() {
     type_cmd(&mut ed, ":calls");
     assert_eq!(status(&ed), "1");
 }
+
+#[test]
+fn a_theme_change_keeps_the_documentation_boxs_format_without_calling_the_formatter_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor();
+    ed.state.dirs = repo_runtime_dirs();
+    let source = completion_source(
+        "test",
+        r#"(list (hash "label" "foo" "documentation" (hash "kind" "markdown" "value" "ab")))"#,
+        "",
+    );
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define calls 0)
+               (define-command! "format-text/markdown" "" (lambda (text parsed)
+                 (set! calls (+ calls 1))
+                 (hash 'conceals (list (hash 'start-char 0 'end-char 1)))))
+               (define-typed-command! "calls" "" (lambda (pane) (log! 'info (number->string calls))))
+               {source}"#
+        ),
+    );
+    let doc_rows = |ed: &Editor| {
+        ed.state
+            .views
+            .completion_doc
+            .read()
+            .as_ref()
+            .map(|state| state.rows.lines.texts())
+            .expect("the documentation box shows")
+    };
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl(' '));
+    ed.settle();
+    frame(&mut ed, 80, 24);
+    assert_eq!(doc_rows(&ed), ["b"]);
+
+    let fp = FocusedPane::current(&ed.view);
+    crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"))
+        .expect(":theme gruvbox must succeed");
+    ed.settle();
+    frame(&mut ed, 80, 24);
+    assert_eq!(doc_rows(&ed), ["b"]);
+
+    // The first Esc closes the menu, the second leaves Insert mode.
+    ed.feed_key(key_esc());
+    ed.feed_key(key_esc());
+    type_cmd(&mut ed, ":calls");
+    assert_eq!(status(&ed), "1");
+}

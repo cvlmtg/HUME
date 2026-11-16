@@ -173,10 +173,12 @@ impl Layer for BufferCompletionLayer {
     }
     fn theme_changed(
         &mut self,
-        _theme: &mut hume_engine::theme::Theme,
-        _registry: &hume_engine::theme::ScopeRegistry,
+        theme: &mut hume_engine::theme::Theme,
+        registry: &hume_engine::theme::ScopeRegistry,
     ) {
-        self.doc = DocView::default();
+        for (_, markup) in &mut self.doc.built {
+            markup.rebuild(theme, registry);
+        }
     }
 }
 
