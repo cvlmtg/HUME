@@ -12,6 +12,7 @@ use crate::edited_bytes::{EditedBytes, push_merging};
 use crate::highlight::RopeProvider;
 
 use crate::layers::{SyntaxLayer, SyntaxLayers};
+use crate::locals::{LayerLocals, layer_locals};
 use crate::parse_worker::{MAX_INJECTION_DEPTH, run_parse};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId, SnapshotGrammar};
 
@@ -156,9 +157,9 @@ fn normalize_ranges(mut ranges: Vec<tree_sitter::Range>) -> Vec<tree_sitter::Ran
 }
 
 /// Read a small node's text directly from the rope, borrowed when it sits in
-/// one chunk. Only used for `@injection.language` capture nodes (a few
-/// bytes: a fenced code block's info string).
-fn node_text<'r>(node: tree_sitter::Node, rope: &'r ropey::Rope) -> Cow<'r, str> {
+/// one chunk: an `@injection.language` capture (a fenced code block's info
+/// string), or a name `locals.scm` defines or references.
+pub(crate) fn node_text<'r>(node: tree_sitter::Node, rope: &'r ropey::Rope) -> Cow<'r, str> {
     rope.byte_slice(node.start_byte()..node.end_byte()).into()
 }
 
@@ -493,8 +494,8 @@ pub(crate) struct PriorInjections {
 
 /// How a layer about to be parsed uses the committed layers.
 enum Reuse<'p> {
-    /// Install the prior layer's tree as it is, unparsed.
-    Unchanged(SitePrior<'p>),
+    /// Install the prior layer's tree as it is, unparsed, with its locals.
+    Unchanged(SitePrior<'p>, &'p Arc<LayerLocals>),
     /// Reparse against the prior layer's tree.
     Incremental(SitePrior<'p>),
     /// Parse with no old tree.
@@ -547,7 +548,7 @@ impl PriorInjections {
         if edited.touches(ranges) {
             Reuse::Incremental(prior.site_prior(edited, true))
         } else {
-            Reuse::Unchanged(prior.site_prior(edited, false))
+            Reuse::Unchanged(prior.site_prior(edited, false), &prior.locals)
         }
     }
 }
@@ -619,21 +620,27 @@ pub(crate) fn resolve_and_parse_injections(
         let reuse = cx.prior.map_or(Reuse::Fresh, |(prior, edited)| {
             prior.reuse(&group.bundle, depth, &group.ranges, edited)
         });
-        let (child_tree, child_prior) = match reuse {
-            Reuse::Unchanged(prior) => (prior.old_tree.clone(), Some(prior)),
+        let (child_tree, child_prior, kept_locals) = match reuse {
+            Reuse::Unchanged(prior, locals) => (
+                prior.old_tree.clone(),
+                Some(prior),
+                Some(Arc::clone(locals)),
+            ),
             Reuse::Incremental(prior) => {
                 let Some(tree) = parse_group(parser, cx, &group, Some(prior.old_tree)) else {
                     continue;
                 };
-                (tree, Some(prior))
+                (tree, Some(prior), None)
             }
             Reuse::Fresh => {
                 let Some(tree) = parse_group(parser, cx, &group, None) else {
                     continue;
                 };
-                (tree, None)
+                (tree, None, None)
             }
         };
+        let locals =
+            kept_locals.unwrap_or_else(|| layer_locals(&group.bundle, &child_tree, cx.rope));
 
         let (child_sites, descendants) = resolve_and_parse_injections(
             parser,
@@ -651,6 +658,7 @@ pub(crate) fn resolve_and_parse_injections(
             ranges: group.ranges,
             depth,
             sites: child_sites,
+            locals,
         });
     }
 

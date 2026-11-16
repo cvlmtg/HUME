@@ -4,6 +4,7 @@
 
 ### Panes & interface
 - Scope headers now show search matches and diagnostics, and highlights from plugins.
+- A parameter, `self` and other local names keep the color of their definition wherever they are used, in every language whose grammar has a `locals.scm`.
 
 ### Plugins & scripting
 - `core:markdown-preview` draws Markdown without its syntax, and the lines you are on show their source. It needs the `markdown` and `markdown.inline` grammars.
@@ -13,6 +14,7 @@
 - `buffer-viewport-ranges` returns the lines every pane on a buffer shows, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
 - `stdlib/lsp-batch` sends several language server requests as one batch and calls back once all have answered; a new batch under a `stdlib/lsp-batch-key` replaces the one before it.
 - A grammar's `folds.scm` can use `#trim!` and `#not-has-parent?`, its `textobjects.scm` `#make-range!` and `#offset!`, and its `context.scm` `#make-range!`.
+- `register-grammar!` takes a `#:locals` query file, and `highlights.scm` can use `#is? local` and `#is-not? local`.
 - A query pattern using a predicate or directive HUME doesn't apply is left out with a warning, and an optional query file that doesn't compile no longer keeps its grammar from loading.
 
 ### Fixes

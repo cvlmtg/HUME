@@ -51,6 +51,7 @@ fn parse_done_for(
         outcome: ParseOutcome::Ok(ParsedLayers {
             root: tree,
             root_sites: InjectionSites::default(),
+            root_locals: Default::default(),
             injected: Vec::new(),
             unloaded: Vec::new(),
         }),
@@ -399,6 +400,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     );
     assert_eq!(injected.len(), 1, "expected one rust injection layer");
     let original_start = injected[0].ranges[0].start_byte;
+    let root_locals = crate::locals::layer_locals(&markdown, &root, &rope);
 
     syn.install(
         ParseDone {
@@ -409,6 +411,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
             outcome: ParseOutcome::Ok(ParsedLayers {
                 root,
                 root_sites,
+                root_locals,
                 injected,
                 unloaded: Vec::new(),
             }),

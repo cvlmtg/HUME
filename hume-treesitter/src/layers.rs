@@ -7,6 +7,7 @@ use hume_rope::offset::InclusiveRange;
 
 use crate::edited_bytes::EditedBytes;
 use crate::injections::{InjectionSites, PriorInjections};
+use crate::locals::LayerLocals;
 use crate::parse_worker::PriorLayers;
 use crate::registry::{GrammarBundle, LanguageId};
 use crate::textobjects::{ObjectSpans, SpanSelector};
@@ -19,10 +20,8 @@ pub struct SyntaxLayer {
     pub tree: tree_sitter::Tree,
     /// The layer's language bundle, `Arc`'d from the `LanguageRegistry`,
     /// not owned per-buffer. Carries the whole bundle, not just its
-    /// highlighter: any per-language query a layer may later need
-    /// (`locals.scm`) comes for free, and it's what makes an injected
-    /// layer's `textobjects` query reachable at all; a highlighter-only
-    /// field left it unreachable.
+    /// highlighter, so every per-language query, an injected layer's
+    /// `textobjects` and `locals` among them, is reachable from the layer.
     pub bundle: Arc<GrammarBundle>,
     /// Absolute byte ranges this layer's tree was parsed over, sorted by
     /// `start_byte`. Empty means "the whole buffer", true only for the root
@@ -34,6 +33,9 @@ pub struct SyntaxLayer {
     /// with the tree by every edit since the parse. Empty at the nesting
     /// cap and for a grammar without an injections query.
     pub sites: InjectionSites,
+    /// The layer's scopes, definitions and references, from its grammar's
+    /// `locals.scm`, moved with the tree by every edit since the parse.
+    pub locals: Arc<LayerLocals>,
 }
 
 /// A buffer's full syntax tree: the root grammar's tree plus every embedded
@@ -118,6 +120,7 @@ impl SyntaxLayers {
             for layer in &mut self.layers {
                 layer.tree.edit(edit);
                 layer.sites.edit(edit);
+                Arc::make_mut(&mut layer.locals).edit(edit);
             }
             self.edited.record(edit);
         }

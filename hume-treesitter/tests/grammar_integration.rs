@@ -65,6 +65,7 @@ fn highlights_for_line(
         ranges: vec![],
         depth: 0,
         sites: InjectionSites::default(),
+        locals: Default::default(),
     }]);
     let mut raw = Vec::new();
     let mut stack = Vec::new();

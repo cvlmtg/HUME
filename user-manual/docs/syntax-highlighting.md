@@ -169,7 +169,7 @@ The required fields, in order:
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file
 
-Five optional keyword arguments can follow, in any order, each the path to one more query file:
+Six optional keyword arguments can follow, in any order, each the path to one more query file:
 
 ```scheme
 (register-grammar! "my-lang"
@@ -180,7 +180,8 @@ Five optional keyword arguments can follow, in any order, each the path to one m
   #:textobjects "/path/to/textobjects.scm"
   #:indents "/path/to/indents.scm"
   #:context "/path/to/context.scm"
-  #:folds "/path/to/folds.scm")
+  #:folds "/path/to/folds.scm"
+  #:locals "/path/to/locals.scm")
 ```
 
 - `#:injections`: the language embeds other languages, like Markdown's fenced code blocks. Its patterns name the embedded language with `#set!`.
@@ -188,8 +189,9 @@ Five optional keyword arguments can follow, in any order, each the path to one m
 - `#:indents`: how new lines are indented, using Helix's `indents.scm` captures and predicates; see [Indentation](editing.md#indentation) for what it drives.
 - `#:context`: the scopes whose first line stays at the top of the pane while you scroll inside them, each captured as `@context` or made with `(#make-range! "context" @start @end)` from the start of one capture through the end of another. A `@context.start` capture in the same pattern names the node whose first line heads the scope instead. See [Scope headers](#scope-headers).
 - `#:folds`: the regions you can fold, each captured as `@fold`. `(#trim! @fold)` leaves a region's trailing blank lines out of it, and `(#not-has-parent? @capture kind…)` skips a match whose captured node sits directly inside a node of one of those kinds. See [Folding](#folding).
+- `#:locals`: the language's local names. A scope is captured as `@local.scope`, a definition as `@local.definition.<scope>` and a use as `@local.reference`. A use of a name takes the color its definition names, so a parameter captured as `@local.definition.variable.parameter` keeps `variable.parameter` wherever it is used. A use sees the definitions before it in its own scope and the scopes around it, the nearest one winning; a scope with `(#set! local.scope-inherits false)` doesn't see the scopes around it.
 
-Every query file can use `#eq?`, `#match?`, `#any-of?` and their `#not-` forms, and each optional one also what its entry above names. HUME doesn't track local variables, so `(#is-not? local)` always holds and a pattern with `(#is? local)` never matches. A pattern using any other predicate or directive is left out, and so is an optional query file that can't be read, doesn't compile or captures nothing its entry above reads. The rest of the grammar still loads, and `:messages` warns, naming the file and the line of the pattern. Only a `highlights.scm` that can't be read or doesn't compile keeps the grammar from loading.
+Every query file can use `#eq?`, `#match?`, `#any-of?` and their `#not-` forms, and each optional one also what its entry above names. `highlights.scm` can also use `(#is? local)` and `(#is-not? local)`: a node is local when `locals.scm` captures it as a definition, or as a use of a definition it sees. Without a `locals.scm`, no node is local. A pattern using any other predicate or directive is left out, and so is an optional query file that can't be read, doesn't compile or captures nothing its entry above reads. The rest of the grammar still loads, and `:messages` warns, naming the file and the line of the pattern. Only a `highlights.scm` that can't be read or doesn't compile keeps the grammar from loading.
 
 Registered from `init.scm`, a grammar loads the first time a file or an embedded block needs it, and `:messages` reports then if it can't be loaded or left part of its queries out. Registered from a command, it loads right away, and the command fails with the reason.
 

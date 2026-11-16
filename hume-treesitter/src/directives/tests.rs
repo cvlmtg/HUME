@@ -48,11 +48,15 @@ fn a_pattern_with_an_unsupported_predicate_never_matches_and_is_reported() {
 }
 
 #[test]
-fn no_node_is_local() {
+fn a_local_predicate_is_unsupported_where_the_kind_reads_no_locals() {
     let source = "((block) @a (#is-not? local))\n((block) @b (#is? local))\n";
     let (matched, skipped) = matching_patterns(source, "fn f() {}\n");
-    assert_eq!(matched, BTreeSet::from([0]));
-    assert!(skipped.is_empty(), "{skipped:?}");
+    assert!(matched.is_empty(), "{matched:?}");
+    let messages: Vec<_> = skipped.iter().map(|e| e.message.as_str()).collect();
+    assert_eq!(
+        messages,
+        ["#is-not? is not supported", "#is? is not supported"]
+    );
 }
 
 #[test]

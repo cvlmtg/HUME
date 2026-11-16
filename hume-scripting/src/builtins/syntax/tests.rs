@@ -539,6 +539,7 @@ fn grammar_optional_queries_lists_every_kind_with_its_file() {
             "(indents . \"indents.scm\")",
             "(context . \"context.scm\")",
             "(folds . \"folds.scm\")",
+            "(locals . \"locals.scm\")",
         ]
     );
 }

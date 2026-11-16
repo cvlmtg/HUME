@@ -527,6 +527,7 @@ impl Syntax {
                     ranges: Vec::new(),
                     depth: 0,
                     sites: parsed.root_sites,
+                    locals: parsed.root_locals,
                 });
                 layers.extend(parsed.injected);
                 self.committed = Some(Committed {

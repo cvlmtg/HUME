@@ -164,3 +164,124 @@ fn shallower_layer_started_later_still_loses_to_deeper() {
     let got = run_d(vec![(2, 5, s(3), 3), (0, 10, s(1), 1)]);
     assert_eq!(got, vec![(0, 2, s(1)), (2, 5, s(3)), (5, 10, s(1))]);
 }
+
+// ── Locals ─────────────────────────────────────────────────────────────────
+
+const RUST_LOCALS: &str = "(function_item) @local.scope
+(parameter pattern: (identifier) @local.definition.variable.parameter)
+(identifier) @local.reference
+";
+
+/// Each highlighted piece of `text`'s first line, as `(text, scope)`, under
+/// rust's `highlights` and `locals`, and the registry its scopes are in.
+fn rust_spans(
+    highlights: &str,
+    locals: &str,
+    text: &str,
+) -> (Vec<(String, ScopeId)>, ScopeRegistry) {
+    use hume_core::OptionalQuery;
+    use hume_engine::providers::SyntaxSource;
+
+    test_fixtures::require_grammars(&["rust"]);
+    let mut registry = ScopeRegistry::new();
+    let bundle = crate::test_support::make_bundle_in(
+        "rust",
+        "tree_sitter_rust",
+        highlights,
+        &[(OptionalQuery::Locals, locals)],
+        &mut registry,
+    );
+    let (syntax, buffer) = crate::test_support::syntax_with(bundle, text);
+    let mut out = Vec::new();
+    syntax.spans_for_line(
+        hume_rope::line::ContentLine::new(0),
+        buffer.rope(),
+        &mut out,
+    );
+    let spans = out
+        .into_iter()
+        .map(|(range, scope)| (text[range.as_byte_range()].to_owned(), scope))
+        .collect();
+    (spans, registry)
+}
+
+fn piece(text: &str, scope: ScopeId) -> (String, ScopeId) {
+    (text.to_owned(), scope)
+}
+
+#[test]
+fn a_reference_takes_its_definitions_highlight_and_the_definition_keeps_its_own() {
+    let (spans, mut registry) = rust_spans(
+        "(identifier) @variable",
+        RUST_LOCALS,
+        "fn f(a: u8) -> u8 { a }\n",
+    );
+    let variable = registry.intern("variable");
+    let parameter = registry.intern("variable.parameter");
+    assert_eq!(
+        spans,
+        [
+            piece("f", variable),
+            piece("a", variable),
+            piece("a", parameter)
+        ]
+    );
+}
+
+#[test]
+fn an_is_not_local_pattern_skips_local_nodes() {
+    let (spans, mut registry) = rust_spans(
+        "((identifier) @constant (#is-not? local))",
+        "(parameter pattern: (identifier) @local.definition)\n(identifier) @local.reference\n",
+        "fn f(a: u8) -> u8 { a + b }\n",
+    );
+    let constant = registry.intern("constant");
+    assert_eq!(spans, [piece("f", constant), piece("b", constant)]);
+}
+
+#[test]
+fn an_is_local_pattern_applies_only_to_local_nodes() {
+    let (spans, mut registry) = rust_spans(
+        "((identifier) @keyword (#is? local))",
+        "(parameter pattern: (identifier) @local.definition)\n(identifier) @local.reference\n",
+        "fn f(a: u8) -> u8 { a + b }\n",
+    );
+    let keyword = registry.intern("keyword");
+    assert_eq!(spans, [piece("a", keyword), piece("a", keyword)]);
+}
+
+#[test]
+fn each_injected_layer_resolves_its_references_in_itself() {
+    use hume_core::OptionalQuery;
+    use hume_engine::providers::SyntaxSource;
+
+    test_fixtures::require_grammars(&["markdown", "rust"]);
+    let mut registry = ScopeRegistry::new();
+    let rust = crate::test_support::make_bundle_in(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        &[(OptionalQuery::Locals, RUST_LOCALS)],
+        &mut registry,
+    );
+    let langs = std::sync::Arc::new(crate::registry::GrammarSnapshot::from_iter([(
+        "rust".to_owned(),
+        rust,
+    )]));
+    let source = "```rust\nfn f(a: u8) -> u8 { a }\n```\n\n```rust\nfn g() -> u8 { a }\n```\n";
+    let text = hume_editing::text::BufferText::from(source);
+    let syntax =
+        crate::syntax::Syntax::attach_sync(crate::test_support::fixture_markdown(), &text, &langs);
+    let parameter = registry.intern("variable.parameter");
+    let parameter_on = |line: usize| {
+        let mut out = Vec::new();
+        syntax.spans_for_line(
+            hume_rope::line::ContentLine::new(line),
+            text.rope(),
+            &mut out,
+        );
+        out.iter().any(|&(_, scope)| scope == parameter)
+    };
+    assert!(parameter_on(1), "the use in the first block resolves");
+    assert!(!parameter_on(5), "the second block sees no definition of a");
+}

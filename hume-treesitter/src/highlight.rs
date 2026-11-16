@@ -8,7 +8,7 @@ use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor};
 
 use crate::directives::PatternDirectives;
-use crate::layers::SyntaxLayers;
+use crate::layers::{SyntaxLayer, SyntaxLayers};
 
 // RopeProvider
 
@@ -39,12 +39,48 @@ impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
 
 // TreeSitterHighlighter
 
-/// A `highlights.scm` pattern, which takes no predicate or directive of the
+/// A `highlights.scm` pattern: which nodes its `#is?`/`#is-not? local`
+/// lets it highlight. It takes no other predicate or directive of the
 /// engine's.
 #[derive(Default)]
-pub(crate) struct HighlightPattern;
+pub(crate) struct HighlightPattern {
+    locality: Locality,
+}
 
-impl PatternDirectives for HighlightPattern {}
+/// The nodes a highlights pattern applies to, by whether the layer's
+/// locals make them local.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Locality {
+    #[default]
+    Any,
+    NonLocal,
+    LocalOnly,
+}
+
+impl Locality {
+    fn admits(self, local: bool) -> bool {
+        match self {
+            Self::Any => true,
+            Self::NonLocal => !local,
+            Self::LocalOnly => local,
+        }
+    }
+}
+
+impl PatternDirectives for HighlightPattern {
+    fn local(&mut self, positive: bool) -> Result<(), String> {
+        let wanted = if positive {
+            Locality::LocalOnly
+        } else {
+            Locality::NonLocal
+        };
+        if self.locality != Locality::Any && self.locality != wanted {
+            return Err("#is? local and #is-not? local never hold together".to_owned());
+        }
+        self.locality = wanted;
+        Ok(())
+    }
+}
 
 /// Built-in highlighter that drives one language's compiled tree-sitter
 /// highlight query against a parse tree.
@@ -64,6 +100,8 @@ pub struct TreeSitterHighlighter {
     query: Arc<Query>,
     /// Maps tree-sitter capture index → interned scope id (None = ignored).
     capture_scopes: Vec<Option<ScopeId>>,
+    /// Per pattern, the nodes it applies to.
+    localities: Vec<Locality>,
     /// Reused query cursor: tree-sitter recommends reuse to amortise its
     /// internal allocation. `Mutex` because renders run through a shared
     /// `&TreeSitterHighlighter`; never contended in practice (rendering is
@@ -74,8 +112,13 @@ pub struct TreeSitterHighlighter {
 impl TreeSitterHighlighter {
     /// Create a provider from a query compiled once per grammar bundle and
     /// shared by every buffer's highlighting, so `highlights.scm` is not
-    /// re-parsed per buffer open.
-    pub(crate) fn from_shared_query(query: Arc<Query>, registry: &mut ScopeRegistry) -> Self {
+    /// re-parsed per buffer open. `patterns` is the query's patterns as
+    /// `parse_patterns` read them.
+    pub(crate) fn from_shared_query(
+        query: Arc<Query>,
+        patterns: &[HighlightPattern],
+        registry: &mut ScopeRegistry,
+    ) -> Self {
         // Leading-underscore captures (e.g. `@_f`, `@_lib`) are the queries'
         // convention for pattern-internal predicate helpers, never meant to
         // be styled, so map them to `None` so they never emit a span.
@@ -93,14 +136,21 @@ impl TreeSitterHighlighter {
         Self {
             query,
             capture_scopes,
+            localities: patterns.iter().map(|pattern| pattern.locality).collect(),
             cursor: Mutex::new(QueryCursor::new()),
         }
     }
 
-    /// Append this layer's raw (line-relative) capture intervals for
-    /// `line_idx` into `raw`, tagged with `depth` for `flatten_overlaps`'s
-    /// depth-first priority. Does not flatten overlaps; the caller merges
-    /// captures from every layer covering the line before flattening once.
+    /// Append `layer`'s raw (line-relative) highlight intervals for the
+    /// line at `line_start..line_end` into `raw`, tagged with the layer's
+    /// depth for `flatten_overlaps`'s depth-first priority. Does not flatten
+    /// overlaps; the caller merges every layer covering the line before
+    /// flattening once.
+    ///
+    /// A capture whose pattern's `#is?`/`#is-not? local` disagrees with the
+    /// layer's locals is left out. Each resolved local reference starting on
+    /// the line follows the captures with its definition's highlight, so it
+    /// wins the same-range tiebreak over the captures of its node.
     ///
     /// Uses `cursor.captures()` (not `matches()`): the highlight queries rely
     /// on later patterns overriding earlier ones for the *same* node, e.g.
@@ -115,17 +165,16 @@ impl TreeSitterHighlighter {
     /// the precedence the queries are written for.
     pub(crate) fn collect_line_spans(
         &self,
-        tree: &tree_sitter::Tree,
+        layer: &SyntaxLayer,
         rope: &ropey::Rope,
         line_start: usize,
         line_end: usize,
-        depth: u8,
         raw: &mut Vec<(ByteCol, ByteCol, u8, ScopeId)>,
     ) {
         let mut cursor = self.cursor.lock().expect("query cursor lock poisoned");
         cursor.set_byte_range(line_start..line_end);
 
-        let root = tree.root_node();
+        let root = layer.tree.root_node();
         // A capture node can span multiple lines (markdown fenced blocks,
         // paragraphs); `set_byte_range` only filters which nodes match, it
         // does not clip a matched node's end to the queried line. Clamp to
@@ -136,6 +185,13 @@ impl TreeSitterHighlighter {
         let content_len = (line_end - line_start).saturating_sub(usize::from(
             line_end > line_start && rope.byte(line_end - 1) == b'\n',
         ));
+        let mut push = |abs_start: usize, abs_end: usize, scope: ScopeId| {
+            let rel_start = ByteCol::new(abs_start.saturating_sub(line_start));
+            let rel_end = ByteCol::new(abs_end.saturating_sub(line_start).min(content_len));
+            if rel_start < rel_end {
+                raw.push((rel_start, rel_end, layer.depth, scope));
+            }
+        };
         let mut captures = cursor.captures(&self.query, root, RopeProvider(rope));
         while let Some((m, capture_index)) = captures.next() {
             let cap = m.captures()[*capture_index];
@@ -148,13 +204,16 @@ impl TreeSitterHighlighter {
                 continue;
             };
             let node = cap.node;
-            let abs_start = node.start_byte();
-            let abs_end = node.end_byte();
-            let rel_start = ByteCol::new(abs_start.saturating_sub(line_start));
-            let rel_end = ByteCol::new(abs_end.saturating_sub(line_start).min(content_len));
-            if rel_start < rel_end {
-                raw.push((rel_start, rel_end, depth, scope));
+            let locality = self.localities[m.pattern_index];
+            if locality != Locality::Any
+                && !locality.admits(layer.locals.is_local(node.start_byte(), node.end_byte()))
+            {
+                continue;
             }
+            push(node.start_byte(), node.end_byte(), scope);
+        }
+        for (range, scope) in layer.locals.references_in(line_start, line_end) {
+            push(range.start_byte, range.end_byte, *scope);
         }
     }
 }
@@ -193,14 +252,10 @@ pub fn layer_highlights_for_line(
     let (bytes, covering) = layers.covering_line(rope, line_idx);
     raw.clear();
     for layer in covering {
-        layer.bundle.highlighter.collect_line_spans(
-            &layer.tree,
-            rope,
-            bytes.start,
-            bytes.end,
-            layer.depth,
-            raw,
-        );
+        layer
+            .bundle
+            .highlighter
+            .collect_line_spans(layer, rope, bytes.start, bytes.end, raw);
     }
 
     hume_engine::interval_sweep::flatten_overlapping_spans(

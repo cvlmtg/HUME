@@ -48,3 +48,7 @@ harness = false
 [[bench]]
 name = "captures"
 harness = false
+
+[[bench]]
+name = "locals"
+harness = false

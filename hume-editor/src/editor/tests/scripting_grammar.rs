@@ -196,6 +196,50 @@ fn a_grammar_loaded_without_a_pattern_warns_once() {
     );
 }
 
+#[test]
+fn a_parameter_takes_its_definitions_color_where_it_is_used() {
+    require_grammars(&["rust"]);
+    let source = "fn f(a: u8) -> u8 { a }\n";
+    let mut ed = editor_from("-[f]>n f(a: u8) -> u8 { a }\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .config
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+    let highlights = test_fixtures::grammar_query_path("rust");
+    let queries = hume_core::QueryFiles::new(highlights.clone()).with(
+        hume_core::OptionalQuery::Locals,
+        highlights.with_file_name("locals.scm"),
+    );
+    super::attach_fixture_grammar_with(&mut ed, "rust", "tree_sitter_rust", &queries);
+    let lang = ed.state.config.languages.intern("rust");
+    super::language::attach_host(&mut ed, "");
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
+    ed.reparse_stale_buffers();
+
+    let buffer = ed.state.buffers.get(bid);
+    let mut spans = Vec::new();
+    buffer
+        .syntax_source()
+        .expect("the buffer is highlighted")
+        .spans_for_line(
+            hume_rope::line::ContentLine::new(0),
+            buffer.text().rope(),
+            &mut spans,
+        );
+    let parameter = ed.view.registry.intern("variable.parameter");
+    let at = source.rfind('a').unwrap();
+    let expected = hume_rope::offset::ExclusiveRange::new(
+        hume_rope::column::ByteCol::new(at),
+        hume_rope::column::ByteCol::new(at + 1),
+    );
+    assert!(
+        spans.contains(&(expected, parameter)),
+        "the use of the parameter takes variable.parameter: {spans:?}"
+    );
+}
+
 /// `reset_config_state` (via `BufferStore::clear_languages_all`) bypasses
 /// `set_buffer_language` entirely: it writes `buf.language = None` directly,
 /// a path `clear_language_detaches_syntax_keeps_identity` above doesn't

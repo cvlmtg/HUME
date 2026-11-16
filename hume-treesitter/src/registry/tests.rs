@@ -180,6 +180,7 @@ fn attach_leaving_out(kind: OptionalQuery, path: std::path::PathBuf) -> FileSkip
         OptionalQuery::Indents => bundle.indents.is_some(),
         OptionalQuery::Context => bundle.context.is_some(),
         OptionalQuery::Folds => bundle.folds.is_some(),
+        OptionalQuery::Locals => bundle.locals.is_some(),
     };
     assert!(!present, "{} must be left out", kind.file_name());
     let mut reports = reg.take_load_reports();
@@ -240,6 +241,43 @@ fn a_missing_injections_scm_is_left_out() {
     let dir = tempfile::tempdir().unwrap();
     let reason = attach_leaving_out(OptionalQuery::Injections, dir.path().join("injections.scm"));
     assert!(matches!(reason, FileSkip::Read(_)), "{reason:?}");
+}
+
+#[test]
+fn a_locals_scm_that_does_not_compile_is_left_out() {
+    let (_dir, path) = write_temp_scm("locals.scm", "(nonexistent_node) @local.scope");
+    let reason = attach_leaving_out(OptionalQuery::Locals, path);
+    assert!(matches!(reason, FileSkip::Build(_)), "{reason:?}");
+}
+
+#[test]
+fn a_locals_scm_capturing_nothing_it_reads_is_left_out() {
+    let (_dir, path) = write_temp_scm("locals.scm", "(identifier) @name");
+    let reason = attach_leaving_out(OptionalQuery::Locals, path);
+    assert!(
+        matches!(
+            reason,
+            FileSkip::NamesNothing("a @local.scope, @local.definition or @local.reference capture")
+        ),
+        "{reason:?}"
+    );
+}
+
+#[test]
+fn every_fixture_locals_scm_loads_with_nothing_skipped() {
+    for name in ["c", "python", "rust"] {
+        require_grammars(&[name]);
+        let highlights = grammar_query_path(name);
+        let locals = highlights.with_file_name("locals.scm");
+        let read = |path: &Path| std::fs::read_to_string(path).expect("read the fixture query");
+        let bundle = crate::test_support::make_bundle(
+            name,
+            &format!("tree_sitter_{name}"),
+            &read(&highlights),
+            &[(OptionalQuery::Locals, &read(&locals))],
+        );
+        assert!(bundle.locals.is_some(), "{name}'s locals.scm names locals");
+    }
 }
 
 #[test]

@@ -175,6 +175,7 @@ named_enum! {
         Indents => "indents",
         Context => "context",
         Folds => "folds",
+        Locals => "locals",
     }
 }
 
@@ -187,6 +188,7 @@ impl OptionalQuery {
             Self::Indents => "indents.scm",
             Self::Context => "context.scm",
             Self::Folds => "folds.scm",
+            Self::Locals => "locals.scm",
         }
     }
 }
@@ -201,6 +203,7 @@ pub struct QueryFiles {
     indents: Option<PathBuf>,
     context: Option<PathBuf>,
     folds: Option<PathBuf>,
+    locals: Option<PathBuf>,
 }
 
 impl QueryFiles {
@@ -213,6 +216,7 @@ impl QueryFiles {
             indents: None,
             context: None,
             folds: None,
+            locals: None,
         }
     }
 
@@ -224,6 +228,7 @@ impl QueryFiles {
             OptionalQuery::Indents => self.indents = Some(path),
             OptionalQuery::Context => self.context = Some(path),
             OptionalQuery::Folds => self.folds = Some(path),
+            OptionalQuery::Locals => self.locals = Some(path),
         }
         self
     }
@@ -239,6 +244,7 @@ impl QueryFiles {
             OptionalQuery::Indents => self.indents.as_deref(),
             OptionalQuery::Context => self.context.as_deref(),
             OptionalQuery::Folds => self.folds.as_deref(),
+            OptionalQuery::Locals => self.locals.as_deref(),
         }
     }
 }

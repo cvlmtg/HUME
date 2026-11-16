@@ -22,6 +22,7 @@ fn layer_of(name: &str, ranges: Vec<tree_sitter::Range>, depth: u8) -> SyntaxLay
         ranges,
         depth,
         sites: InjectionSites::default(),
+        locals: Default::default(),
     }
 }
 

@@ -27,6 +27,7 @@ use tree_sitter::QueryError;
 
 use crate::indent::IndentQuery;
 use crate::injections::InjectionsQuery;
+use crate::locals::LocalsQuery;
 use crate::textobjects::TextObjectsQuery;
 
 /// Interned language identity. Dense, append-only, minted by `LanguageRegistry`.
@@ -90,6 +91,10 @@ pub struct GrammarBundle {
     /// The regions a pane can fold: compiled `folds.scm`, or without one
     /// the scopes of `context`. `None` means this language folds nothing.
     pub folds: Option<FoldQuery>,
+    /// Compiled `locals.scm`, if the grammar has one. `None` means no node
+    /// of this language is local, and no reference takes a definition's
+    /// highlight.
+    pub locals: Option<LocalsQuery>,
     /// Unique per bundle, issued by `next_config_gen`. Grammar-swap
     /// / staleness checks compare this instead of `Arc::ptr_eq`, a plain
     /// integer identity that survives across the worker-thread boundary.
@@ -272,6 +277,7 @@ pub(crate) fn new_bundle(
         indents,
         context,
         folds,
+        locals,
     } = compiled;
     Arc::new(GrammarBundle {
         grammar,
@@ -281,6 +287,7 @@ pub(crate) fn new_bundle(
         indents,
         context,
         folds,
+        locals,
         config_gen: next_config_gen(),
         language,
         capture_queries: Mutex::default(),
@@ -295,6 +302,7 @@ pub(crate) struct CompiledQueries {
     pub(crate) indents: Option<IndentQuery>,
     pub(crate) context: Option<Arc<ContextQuery>>,
     pub(crate) folds: Option<FoldQuery>,
+    pub(crate) locals: Option<LocalsQuery>,
 }
 
 /// Compiles a grammar's queries, with what the compile left out. This is
@@ -302,8 +310,8 @@ pub(crate) struct CompiledQueries {
 /// `highlights.scm` that does not compile fails the grammar: a pattern using
 /// a predicate or directive HUME does not apply is disabled, and an optional
 /// file that does not compile or names nothing its kind reads is left out.
-/// Every compile happens before `scope_reg` is touched, so a failure leaves
-/// it unchanged.
+/// `highlights.scm` compiles before `scope_reg` is touched, so a failure
+/// leaves it unchanged.
 pub(crate) fn compile_queries(
     language: &tree_sitter::Language,
     highlights_src: &str,
@@ -321,13 +329,15 @@ pub(crate) fn compile_queries(
         tree_sitter::Query::new(language, highlights_src).map_err(RegisterError::QueryBuild)?;
     let mut skipped = Vec::new();
     let mut errors = Vec::new();
-    let _: Vec<HighlightPattern> = parse_patterns(&mut highlights, highlights_src, &mut errors);
+    let highlight_patterns: Vec<HighlightPattern> =
+        parse_patterns(&mut highlights, highlights_src, &mut errors);
     skip_patterns(&mut skipped, "highlights.scm", &mut errors);
     let mut injections = None;
     let mut textobjects = None;
     let mut indents = None;
     let mut context = None;
     let mut folds = None;
+    let mut locals = None;
     for &(kind, src) in optional {
         let query = match tree_sitter::Query::new(language, src) {
             Ok(query) => query,
@@ -360,6 +370,10 @@ pub(crate) fn compile_queries(
                 folds = FoldQuery::new(query, src, &mut errors);
                 folds.is_none().then_some(FoldQuery::NEEDS)
             }
+            OptionalQuery::Locals => {
+                locals = LocalsQuery::new(query, src, scope_reg, &mut errors);
+                locals.is_none().then_some(LocalsQuery::NEEDS)
+            }
         };
         skip_patterns(&mut skipped, kind.file_name(), &mut errors);
         if let Some(needs) = names_nothing {
@@ -380,6 +394,7 @@ pub(crate) fn compile_queries(
     let compiled = CompiledQueries {
         highlighter: Arc::new(TreeSitterHighlighter::from_shared_query(
             Arc::new(highlights),
+            &highlight_patterns,
             scope_reg,
         )),
         injections,
@@ -387,6 +402,7 @@ pub(crate) fn compile_queries(
         indents,
         context,
         folds,
+        locals,
     };
     Ok((compiled, skipped))
 }

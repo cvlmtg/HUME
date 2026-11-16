@@ -14,6 +14,7 @@ use crate::injections::{
     InjectionContext, InjectionSites, PriorInjections, SitePrior, resolve_and_parse_injections,
 };
 use crate::layers::SyntaxLayer;
+use crate::locals::{LayerLocals, layer_locals};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
 use hume_editing::text::BufferText;
 
@@ -79,6 +80,8 @@ pub struct ParsedLayers {
     pub root: tree_sitter::Tree,
     /// The root tree's injection sites.
     pub root_sites: InjectionSites,
+    /// The root tree's locals.
+    pub root_locals: Arc<LayerLocals>,
     pub injected: Vec<SyntaxLayer>,
     /// Languages a site named whose grammar `langs` had registered but not
     /// loaded, so no layer of theirs is among `injected`.
@@ -217,9 +220,11 @@ pub(crate) fn do_parse(
                 root_prior,
                 &mut unloaded,
             );
+            let root_locals = layer_locals(&req.bundle, &root, rope);
             ParseOutcome::Ok(ParsedLayers {
                 root,
                 root_sites,
+                root_locals,
                 injected,
                 unloaded,
             })

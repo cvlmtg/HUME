@@ -22,6 +22,7 @@ pub mod highlight;
 pub mod indent;
 pub mod injections;
 pub mod layers;
+pub mod locals;
 pub mod parse_worker;
 pub mod registry;
 pub mod syntax;

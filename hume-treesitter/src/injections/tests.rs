@@ -410,6 +410,7 @@ fn reuse_prior(rust: &Arc<GrammarBundle>) -> PriorInjections {
             tree: root,
             ranges: Vec::new(),
             sites: InjectionSites::default(),
+            locals: Default::default(),
         },
         SyntaxLayer {
             bundle: Arc::clone(rust),
@@ -417,6 +418,7 @@ fn reuse_prior(rust: &Arc<GrammarBundle>) -> PriorInjections {
             tree,
             ranges: vec![reuse_range()],
             sites: InjectionSites::default(),
+            locals: Default::default(),
         },
     ]))
 }
@@ -445,7 +447,7 @@ fn an_exact_untouched_prior_is_reused_unchanged() {
     let edited = edited_by_insertion(0, 1);
     assert!(matches!(
         prior.reuse(&rust, 1, &[reuse_range()], &edited),
-        Reuse::Unchanged(site) if std::ptr::eq(site.old_tree, &prior.layers[0].tree)
+        Reuse::Unchanged(site, _) if std::ptr::eq(site.old_tree, &prior.layers[0].tree)
     ));
 }
 

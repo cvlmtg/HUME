@@ -6,9 +6,6 @@
 //! A pattern using one HUME does not apply is disabled, so it never matches
 //! instead of matching as if the predicate held, and reported; the rest of
 //! its file still loads.
-//!
-//! HUME tracks no locals, so no node is local: `#is-not? local` holds, and
-//! a pattern with `#is? local` never matches.
 
 use hume_rope::column::ByteCol;
 use hume_rope::lines::advance_byte_point;
@@ -17,12 +14,17 @@ use tree_sitter::{
     QueryProperty,
 };
 
-/// What one pattern of a query file makes of its `#set!` settings and of
-/// the predicates tree-sitter does not evaluate. Each method rejects its
-/// input unless the kind overrides it.
+/// What one pattern of a query file makes of its `#set!` settings, its
+/// `#is?`/`#is-not? local` and the predicates tree-sitter does not
+/// evaluate. Each method rejects its input unless the kind overrides it.
 pub(crate) trait PatternDirectives: Default {
     fn setting(&mut self, _setting: &QueryProperty) -> Result<(), String> {
         Err(unsupported("set!"))
+    }
+
+    /// `#is? local` when `positive`, `#is-not? local` otherwise.
+    fn local(&mut self, positive: bool) -> Result<(), String> {
+        Err(unsupported(if positive { "is?" } else { "is-not?" }))
     }
 
     fn predicate(
@@ -37,8 +39,7 @@ pub(crate) trait PatternDirectives: Default {
 /// Every pattern of `query`, compiled from `source`, read as `P`. A pattern
 /// with a predicate or directive `P` rejects, or a property predicate on
 /// anything but `local`, is disabled and read as `P::default()`, and a
-/// `Predicate` error at its start is pushed to `skipped`. A pattern with
-/// `#is? local` is disabled with no error: it never matches.
+/// `Predicate` error at its start is pushed to `skipped`.
 pub(crate) fn parse_patterns<P: PatternDirectives>(
     query: &mut Query,
     source: &str,
@@ -46,42 +47,33 @@ pub(crate) fn parse_patterns<P: PatternDirectives>(
 ) -> Vec<P> {
     let mut patterns = Vec::with_capacity(query.pattern_count());
     for pattern in 0..query.pattern_count() {
-        let parsed = match parse_pattern(query, pattern) {
-            Ok(Some(parsed)) => parsed,
-            Ok(None) => {
-                query.disable_pattern(pattern);
-                P::default()
-            }
-            Err(message) => {
-                skipped.push(pattern_error(query, source, pattern, message));
-                query.disable_pattern(pattern);
-                P::default()
-            }
-        };
+        let parsed = parse_pattern(query, pattern).unwrap_or_else(|message| {
+            skipped.push(pattern_error(query, source, pattern, message));
+            query.disable_pattern(pattern);
+            P::default()
+        });
         patterns.push(parsed);
     }
     patterns
 }
 
-/// `pattern` read as `P`, `None` when it can never match.
-fn parse_pattern<P: PatternDirectives>(query: &Query, pattern: usize) -> Result<Option<P>, String> {
-    let mut never = false;
+fn parse_pattern<P: PatternDirectives>(query: &Query, pattern: usize) -> Result<P, String> {
+    let mut parsed = P::default();
     for (property, positive) in query.property_predicates(pattern) {
         let local =
             &*property.key == "local" && property.value.is_none() && property.capture_id.is_none();
         if !local {
             return Err(unsupported(if *positive { "is?" } else { "is-not?" }));
         }
-        never |= *positive;
+        parsed.local(*positive)?;
     }
-    let mut parsed = P::default();
     for setting in query.property_settings(pattern) {
         parsed.setting(setting)?;
     }
     for predicate in query.general_predicates(pattern) {
         parsed.predicate(query.capture_names(), predicate)?;
     }
-    Ok((!never).then_some(parsed))
+    Ok(parsed)
 }
 
 /// The message for a predicate or directive a query kind does not support.

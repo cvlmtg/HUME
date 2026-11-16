@@ -41,14 +41,28 @@ pub(crate) fn make_bundle(
     highlights_src: &str,
     optional: &[(OptionalQuery, &str)],
 ) -> Arc<GrammarBundle> {
-    let grammar = open_grammar(name, symbol);
-    let (compiled, skipped) = compile_queries(
-        grammar.language(),
+    make_bundle_in(
+        name,
+        symbol,
         highlights_src,
         optional,
         &mut ScopeRegistry::new(),
     )
-    .expect("compile queries");
+}
+
+/// [`make_bundle`] interning its scopes in `registry`, for a test that
+/// compares the scopes it highlights with.
+pub(crate) fn make_bundle_in(
+    name: &str,
+    symbol: &str,
+    highlights_src: &str,
+    optional: &[(OptionalQuery, &str)],
+    registry: &mut ScopeRegistry,
+) -> Arc<GrammarBundle> {
+    let grammar = open_grammar(name, symbol);
+    let (compiled, skipped) =
+        compile_queries(grammar.language(), highlights_src, optional, registry)
+            .expect("compile queries");
     assert!(skipped.is_empty(), "the test queries left out {skipped:?}");
     new_bundle(test_language_id(name), grammar, compiled)
 }
