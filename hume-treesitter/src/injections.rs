@@ -1,6 +1,6 @@
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
-use std::ops::{Range, RangeInclusive};
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -8,11 +8,11 @@ use streaming_iterator::StreamingIterator;
 use tree_sitter::{QueryError, QueryProperty};
 
 use crate::directives::{PatternDirectives, hull, parse_patterns};
-use crate::edited_bytes::{EditedBytes, push_merging};
+use crate::edited_bytes::EditedBytes;
 use crate::highlight::RopeProvider;
 
-use crate::layers::{SyntaxLayer, SyntaxLayers};
-use crate::locals::{LayerLocals, layer_locals};
+use crate::layers::{LayerPrior, SyntaxLayer, SyntaxLayers, dirty_bytes};
+use crate::locals::layer_locals;
 use crate::parse_worker::{MAX_INJECTION_DEPTH, run_parse};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId, SnapshotGrammar};
 
@@ -296,45 +296,6 @@ fn push_sites(
     }
 }
 
-/// A layer's committed sites and tree, edited to the text being parsed,
-/// and where they were found.
-pub(crate) struct SitePrior<'p> {
-    /// The layer's committed tree, edited to the text being parsed.
-    pub(crate) old_tree: &'p tree_sitter::Tree,
-    /// The sites of `old_tree`, edited with it.
-    pub(crate) sites: &'p InjectionSites,
-    /// The bytes from the layer's first range's start to its last one's
-    /// end.
-    pub(crate) hull: RangeInclusive<usize>,
-    /// Whether the new tree is a reparse of `old_tree`, rather than
-    /// `old_tree` itself.
-    pub(crate) reparsed: bool,
-    /// The bytes the edits changed.
-    pub(crate) edited: &'p EditedBytes,
-}
-
-/// The bytes where a layer's sites can differ from `prior`'s, as sorted,
-/// disjoint closed intervals: the edited bytes in the layer's hull and,
-/// when `tree` was reparsed from `prior.old_tree`, every range the two
-/// trees differ in, its end byte included.
-fn dirty_bytes(prior: &SitePrior<'_>, tree: &tree_sitter::Tree) -> Vec<RangeInclusive<usize>> {
-    let mut dirty: Vec<RangeInclusive<usize>> = prior.edited.within(prior.hull.clone()).collect();
-    if prior.reparsed {
-        dirty.extend(
-            prior
-                .old_tree
-                .changed_ranges(tree)
-                .map(|range| range.start_byte..=range.end_byte),
-        );
-    }
-    dirty.sort_unstable_by_key(|region| *region.start());
-    let mut merged: Vec<RangeInclusive<usize>> = Vec::with_capacity(dirty.len());
-    for region in dirty {
-        push_merging(&mut merged, region);
-    }
-    merged
-}
-
 /// The sites of `tree`: a full query without `prior`, else `prior`'s sites
 /// with those that can have changed queried again.
 ///
@@ -360,7 +321,7 @@ fn resolve_sites(
     inj: &InjectionsQuery,
     tree: &tree_sitter::Tree,
     rope: &ropey::Rope,
-    prior: Option<SitePrior<'_>>,
+    prior: Option<LayerPrior<'_>>,
 ) -> InjectionSites {
     let Some(prior) = prior else {
         return InjectionSites::canonical(query_sites(inj, tree, rope, None));
@@ -469,15 +430,16 @@ impl SyntaxLayer {
         (self.depth, self.ranges[0].start_byte)
     }
 
-    /// What the sites of this layer's next tree resolve from.
-    fn site_prior<'p>(&'p self, edited: &'p EditedBytes, reparsed: bool) -> SitePrior<'p> {
+    /// What this layer's next tree, sites and locals are built from.
+    fn layer_prior<'p>(&'p self, edited: &'p EditedBytes, reparsed: bool) -> LayerPrior<'p> {
         let last = self
             .ranges
             .last()
             .expect("an injected layer's ranges are never empty");
-        SitePrior {
+        LayerPrior {
             old_tree: &self.tree,
             sites: &self.sites,
+            locals: &self.locals,
             hull: self.ranges[0].start_byte..=last.end_byte,
             reparsed,
             edited,
@@ -494,10 +456,10 @@ pub(crate) struct PriorInjections {
 
 /// How a layer about to be parsed uses the committed layers.
 enum Reuse<'p> {
-    /// Install the prior layer's tree as it is, unparsed, with its locals.
-    Unchanged(SitePrior<'p>, &'p Arc<LayerLocals>),
+    /// Install the prior layer's tree as it is, unparsed.
+    Unchanged(LayerPrior<'p>),
     /// Reparse against the prior layer's tree.
-    Incremental(SitePrior<'p>),
+    Incremental(LayerPrior<'p>),
     /// Parse with no old tree.
     Fresh,
 }
@@ -546,9 +508,9 @@ impl PriorInjections {
             return Reuse::Fresh;
         };
         if edited.touches(ranges) {
-            Reuse::Incremental(prior.site_prior(edited, true))
+            Reuse::Incremental(prior.layer_prior(edited, true))
         } else {
-            Reuse::Unchanged(prior.site_prior(edited, false), &prior.locals)
+            Reuse::Unchanged(prior.layer_prior(edited, false))
         }
     }
 }
@@ -603,7 +565,7 @@ pub(crate) fn resolve_and_parse_injections(
     tree: &tree_sitter::Tree,
     bundle: &GrammarBundle,
     depth: u8,
-    prior: Option<SitePrior<'_>>,
+    prior: Option<LayerPrior<'_>>,
     unloaded: &mut Vec<LanguageId>,
 ) -> (InjectionSites, Vec<SyntaxLayer>) {
     let Some(inj) = bundle
@@ -620,27 +582,22 @@ pub(crate) fn resolve_and_parse_injections(
         let reuse = cx.prior.map_or(Reuse::Fresh, |(prior, edited)| {
             prior.reuse(&group.bundle, depth, &group.ranges, edited)
         });
-        let (child_tree, child_prior, kept_locals) = match reuse {
-            Reuse::Unchanged(prior, locals) => (
-                prior.old_tree.clone(),
-                Some(prior),
-                Some(Arc::clone(locals)),
-            ),
+        let (child_tree, child_prior) = match reuse {
+            Reuse::Unchanged(prior) => (prior.old_tree.clone(), Some(prior)),
             Reuse::Incremental(prior) => {
                 let Some(tree) = parse_group(parser, cx, &group, Some(prior.old_tree)) else {
                     continue;
                 };
-                (tree, Some(prior), None)
+                (tree, Some(prior))
             }
             Reuse::Fresh => {
                 let Some(tree) = parse_group(parser, cx, &group, None) else {
                     continue;
                 };
-                (tree, None, None)
+                (tree, None)
             }
         };
-        let locals =
-            kept_locals.unwrap_or_else(|| layer_locals(&group.bundle, &child_tree, cx.rope));
+        let locals = layer_locals(&group.bundle, &child_tree, cx.rope, child_prior.as_ref());
 
         let (child_sites, descendants) = resolve_and_parse_injections(
             parser,

@@ -447,7 +447,7 @@ fn an_exact_untouched_prior_is_reused_unchanged() {
     let edited = edited_by_insertion(0, 1);
     assert!(matches!(
         prior.reuse(&rust, 1, &[reuse_range()], &edited),
-        Reuse::Unchanged(site, _) if std::ptr::eq(site.old_tree, &prior.layers[0].tree)
+        Reuse::Unchanged(site) if std::ptr::eq(site.old_tree, &prior.layers[0].tree)
     ));
 }
 
@@ -567,9 +567,10 @@ impl Reparsed {
             inj,
             &self.new,
             &self.rope,
-            Some(SitePrior {
+            Some(LayerPrior {
                 old_tree: &self.old,
                 sites: prior_sites,
+                locals: &Default::default(),
                 hull: 0..=self.rope.len_bytes(),
                 reparsed: true,
                 edited: &self.edited,
@@ -598,9 +599,10 @@ fn without_dirty_bytes_the_prior_sites_are_kept_as_given() {
         inj,
         &tree,
         &rope,
-        Some(SitePrior {
+        Some(LayerPrior {
             old_tree: &tree,
             sites: &given,
+            locals: &Default::default(),
             hull: 0..=rope.len_bytes(),
             reparsed: false,
             edited: &edited,
@@ -678,9 +680,10 @@ fn a_match_two_dirty_regions_meet_is_resolved_once() {
             inj,
             &tree,
             &rope,
-            Some(SitePrior {
+            Some(LayerPrior {
                 old_tree: &tree,
                 sites: &fresh,
+                locals: &Default::default(),
                 hull: 0..=rope.len_bytes(),
                 reparsed,
                 edited: &edited,

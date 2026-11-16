@@ -1,11 +1,11 @@
 use std::cmp::Reverse;
-use std::ops::Range;
+use std::ops::{Range, RangeInclusive};
 use std::sync::{Arc, Mutex};
 
 use hume_rope::line::ContentLine;
 use hume_rope::offset::InclusiveRange;
 
-use crate::edited_bytes::EditedBytes;
+use crate::edited_bytes::{EditedBytes, push_merging};
 use crate::injections::{InjectionSites, PriorInjections};
 use crate::locals::LayerLocals;
 use crate::parse_worker::PriorLayers;
@@ -36,6 +36,53 @@ pub struct SyntaxLayer {
     /// The layer's scopes, definitions and references, from its grammar's
     /// `locals.scm`, moved with the tree by every edit since the parse.
     pub locals: Arc<LayerLocals>,
+}
+
+/// A layer's committed tree, sites and locals, edited to the text being
+/// parsed, and where they were found: what the layer's next tree, sites and
+/// locals are built from.
+#[derive(Clone)]
+pub(crate) struct LayerPrior<'p> {
+    /// The layer's committed tree, edited to the text being parsed.
+    pub(crate) old_tree: &'p tree_sitter::Tree,
+    /// The sites of `old_tree`, edited with it.
+    pub(crate) sites: &'p InjectionSites,
+    /// The locals of `old_tree`, edited with it.
+    pub(crate) locals: &'p Arc<LayerLocals>,
+    /// The bytes from the layer's first range's start to its last one's
+    /// end.
+    pub(crate) hull: RangeInclusive<usize>,
+    /// Whether the new tree is a reparse of `old_tree`, rather than
+    /// `old_tree` itself.
+    pub(crate) reparsed: bool,
+    /// The bytes the edits changed.
+    pub(crate) edited: &'p EditedBytes,
+}
+
+/// The bytes where a layer's query results, its sites and locals, can
+/// differ from `prior`'s, as sorted, disjoint closed intervals: the edited
+/// bytes in the layer's hull and, when `tree` was reparsed from
+/// `prior.old_tree`, every range the two trees differ in, its end byte
+/// included.
+pub(crate) fn dirty_bytes(
+    prior: &LayerPrior<'_>,
+    tree: &tree_sitter::Tree,
+) -> Vec<RangeInclusive<usize>> {
+    let mut dirty: Vec<RangeInclusive<usize>> = prior.edited.within(prior.hull.clone()).collect();
+    if prior.reparsed {
+        dirty.extend(
+            prior
+                .old_tree
+                .changed_ranges(tree)
+                .map(|range| range.start_byte..=range.end_byte),
+        );
+    }
+    dirty.sort_unstable_by_key(|region| *region.start());
+    let mut merged: Vec<RangeInclusive<usize>> = Vec::with_capacity(dirty.len());
+    for region in dirty {
+        push_merging(&mut merged, region);
+    }
+    merged
 }
 
 /// A buffer's full syntax tree: the root grammar's tree plus every embedded
@@ -145,6 +192,7 @@ impl SyntaxLayers {
         PriorLayers {
             root: root.tree.clone(),
             root_sites: root.sites.clone(),
+            root_locals: Arc::clone(&root.locals),
             injected: PriorInjections::of(self),
             edited: self.edited.clone(),
         }

@@ -130,7 +130,7 @@ impl GrammarBundle {
 
 /// A language's grammar, from registration through its first load.
 enum GrammarSlot {
-    Registered(GrammarSource),
+    Registered(Box<GrammarSource>),
     Loaded(Arc<GrammarBundle>),
 }
 
@@ -1020,7 +1020,7 @@ impl LanguageRegistry {
             return None;
         }
         let id = self.intern(name);
-        self.set_grammar(id, GrammarSlot::Registered(source), by);
+        self.set_grammar(id, GrammarSlot::Registered(Box::new(source)), by);
         Some(id)
     }
 

@@ -3,10 +3,13 @@ use std::sync::Arc;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use hume_core::{GrammarSource, OptionalQuery, QueryFiles};
+use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
 use hume_engine::providers::SyntaxSource;
 use hume_engine::theme::ScopeRegistry;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::CharOffset;
 use hume_treesitter::registry::{GrammarBundle, GrammarSnapshot, LanguageRegistry};
 use hume_treesitter::syntax::Syntax;
 use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
@@ -76,5 +79,61 @@ fn bench_locals(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_locals);
+/// `text` with `inserted` at char `at`, and the change that makes it.
+fn inserted(text: &BufferText, at: usize, inserted: &str) -> (BufferText, ChangeSet) {
+    let mut builder = ChangeSetBuilder::new(text.end());
+    builder.retain_to(CharOffset::new(at));
+    builder.insert(inserted);
+    let change = builder.finish();
+    let after = change.apply(text).expect("an insertion applies");
+    (after, change)
+}
+
+/// `text` without the char at `at`, and the change that makes it.
+fn deleted(text: &BufferText, at: usize) -> (BufferText, ChangeSet) {
+    let mut builder = ChangeSetBuilder::new(text.end());
+    builder.retain_to(CharOffset::new(at));
+    builder.delete_to(CharOffset::new(at + 1));
+    let change = builder.finish();
+    let after = change.apply(text).expect("a deletion applies");
+    (after, change)
+}
+
+/// Reparse after typing one char at the first `needle` of the source, then
+/// after deleting it, as the editor reparses after each keystroke.
+fn bench_reparse(c: &mut Criterion) {
+    let source = source();
+    let langs = Arc::new(GrammarSnapshot::default());
+    let middle = |needle: &str| {
+        let half = source.len() / 2;
+        half + source[half..]
+            .find(needle)
+            .expect("the needle is in the source")
+    };
+    for (place, at, typed) in [
+        ("in_a_function", middle("    let delta"), " "),
+        ("at_the_top_level", middle("fn f"), "\n"),
+    ] {
+        for (name, locals) in [("without_locals", false), ("with_locals", true)] {
+            let mut text = BufferText::from(source.as_str());
+            let mut syntax = Syntax::attach_sync(rust(locals), &text, &langs);
+            c.bench_function(&format!("reparse_after_a_keystroke_{place}_{name}"), |b| {
+                b.iter(|| {
+                    for edit in [true, false] {
+                        let (after, change) = if edit {
+                            inserted(&text, at, typed)
+                        } else {
+                            deleted(&text, at)
+                        };
+                        syntax.record_edit(&TextChange::new(&text, &after, &change));
+                        syntax.ensure_current(&after, &langs);
+                        text = after;
+                    }
+                });
+            });
+        }
+    }
+}
+
+criterion_group!(benches, bench_locals, bench_reparse);
 criterion_main!(benches);

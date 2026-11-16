@@ -11,9 +11,9 @@ use hume_platform::wake::{WakeCallback, spawn_waking};
 
 use crate::edited_bytes::EditedBytes;
 use crate::injections::{
-    InjectionContext, InjectionSites, PriorInjections, SitePrior, resolve_and_parse_injections,
+    InjectionContext, InjectionSites, PriorInjections, resolve_and_parse_injections,
 };
-use crate::layers::SyntaxLayer;
+use crate::layers::{LayerPrior, SyntaxLayer};
 use crate::locals::{LayerLocals, layer_locals};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
 use hume_editing::text::BufferText;
@@ -58,6 +58,7 @@ pub struct ParseRequest {
 pub(crate) struct PriorLayers {
     pub(crate) root: tree_sitter::Tree,
     pub(crate) root_sites: InjectionSites,
+    pub(crate) root_locals: Arc<LayerLocals>,
     pub(crate) injected: PriorInjections,
     /// The bytes the edits changed.
     pub(crate) edited: EditedBytes,
@@ -203,9 +204,10 @@ pub(crate) fn do_parse(
                 prior: prior.map(|prior| (&prior.injected, &prior.edited)),
                 cancel,
             };
-            let root_prior = prior.map(|prior| SitePrior {
+            let root_prior = prior.map(|prior| LayerPrior {
                 old_tree: &prior.root,
                 sites: &prior.root_sites,
+                locals: &prior.root_locals,
                 hull: 0..=rope.len_bytes(),
                 reparsed: true,
                 edited: &prior.edited,
@@ -217,10 +219,10 @@ pub(crate) fn do_parse(
                 &root,
                 &req.bundle,
                 1,
-                root_prior,
+                root_prior.clone(),
                 &mut unloaded,
             );
-            let root_locals = layer_locals(&req.bundle, &root, rope);
+            let root_locals = layer_locals(&req.bundle, &root, rope, root_prior.as_ref());
             ParseOutcome::Ok(ParsedLayers {
                 root,
                 root_sites,

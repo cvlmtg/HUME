@@ -30,14 +30,16 @@ fn locals(source: &str, text: &str) -> (LayerLocals, ScopeRegistry) {
         .expect("the grammar loads");
     let tree = parser.parse(text, None).expect("the text parses");
     let rope = ropey::Rope::from_str(text);
-    (LayerLocals::of(&query, &tree, &rope), registry)
+    let mut locals = LayerLocals::default();
+    locals.rebuild(&query, &tree, &rope, None);
+    (locals, registry)
 }
 
 /// Each resolved reference with a highlight, as `(byte offset, highlight)`.
 fn references(locals: &LayerLocals) -> Vec<(usize, ScopeId)> {
     locals
         .references_in(0, usize::MAX)
-        .map(|(range, highlight)| (range.start_byte, *highlight))
+        .map(|(range, highlight)| (range.start_byte, highlight))
         .collect()
 }
 
@@ -131,4 +133,219 @@ fn an_edit_moves_every_range() {
     assert_eq!(references(&locals), after);
     let definition = text.find('a').unwrap() + 2;
     assert!(locals.is_local(definition, definition + 1));
+}
+
+// ── Rebuilding after an edit ───────────────────────────────────────────────
+
+use std::sync::Arc;
+
+use hume_core::OptionalQuery;
+use hume_rope::column::ByteCol;
+use hume_rope::lines::advance_byte_point;
+use proptest::prelude::*;
+
+use crate::edited_bytes::EditedBytes;
+use crate::injections::InjectionSites;
+use crate::layers::LayerPrior;
+use crate::registry::GrammarBundle;
+
+const RUST: &str = "fn f(alpha: u32) -> u32 {\n    let beta = alpha + 1;\n    beta * alpha\n}\n\nfn g(gamma: u32) -> u32 {\n    gamma\n}\n";
+const PYTHON: &str = "def f(alpha):\n    beta = alpha + 1\n    return beta * alpha\n\ndef g(gamma):\n    return gamma\n";
+
+/// `name`'s fixture grammar with its fixture `locals.scm` and no other query.
+fn fixture_bundle(name: &str) -> Arc<GrammarBundle> {
+    test_fixtures::require_grammars(&[name]);
+    let locals = test_fixtures::grammar_query_path(name).with_file_name("locals.scm");
+    crate::test_support::make_bundle(
+        name,
+        &format!("tree_sitter_{name}"),
+        "",
+        &[(
+            OptionalQuery::Locals,
+            &std::fs::read_to_string(locals).expect("read the fixture locals.scm"),
+        )],
+    )
+}
+
+fn point_at(text: &str, byte: usize) -> Point {
+    let (row, column) = advance_byte_point(0, ByteCol::default(), &text[..byte]);
+    Point::new(row, column.index())
+}
+
+/// The locals of `before` with `removed` bytes at `at` replaced by
+/// `inserted`, updated from `before`'s locals as the parse worker updates
+/// them, after `tamper` changes those, and built afresh.
+fn updated_and_fresh(
+    bundle: &Arc<GrammarBundle>,
+    before: &str,
+    at: usize,
+    removed: usize,
+    inserted: &str,
+    tamper: impl FnOnce(&mut LayerLocals),
+) -> (Arc<LayerLocals>, Arc<LayerLocals>) {
+    let mut parser = Parser::new();
+    parser
+        .set_language(bundle.grammar.language())
+        .expect("the grammar loads");
+    let mut old_tree = parser.parse(before, None).expect("the text parses");
+    let mut prior = LayerLocals::clone(&layer_locals(
+        bundle,
+        &old_tree,
+        &ropey::Rope::from_str(before),
+        None,
+    ));
+    tamper(&mut prior);
+    let after = format!("{}{inserted}{}", &before[..at], &before[at + removed..]);
+    let edit = InputEdit {
+        start_byte: at,
+        old_end_byte: at + removed,
+        new_end_byte: at + inserted.len(),
+        start_position: point_at(before, at),
+        old_end_position: point_at(before, at + removed),
+        new_end_position: point_at(&after, at + inserted.len()),
+    };
+    old_tree.edit(&edit);
+    prior.edit(&edit);
+    let mut edited = EditedBytes::default();
+    edited.record(&edit);
+    let tree = parser
+        .parse(&after, Some(&old_tree))
+        .expect("the text parses");
+    let rope = ropey::Rope::from_str(&after);
+    let prior = Arc::new(prior);
+    let sites = InjectionSites::default();
+    let layer_prior = LayerPrior {
+        old_tree: &old_tree,
+        sites: &sites,
+        locals: &prior,
+        hull: 0..=after.len(),
+        reparsed: true,
+        edited: &edited,
+    };
+    (
+        layer_locals(bundle, &tree, &rope, Some(&layer_prior)),
+        layer_locals(bundle, &tree, &rope, None),
+    )
+}
+
+/// One edit of `source`: `removed` bytes at the first `needle`, offset by
+/// `skip`, replaced by `inserted`.
+fn edit_at(
+    source: &str,
+    needle: &str,
+    skip: usize,
+    removed: usize,
+    inserted: &'static str,
+) -> (usize, usize, &'static str) {
+    (
+        source.find(needle).expect("the needle is in the source") + skip,
+        removed,
+        inserted,
+    )
+}
+
+/// Whether an entry planted in the prior locals over `RUST`'s use of
+/// `gamma` in `g` survives the edit: true when the update did not rebuild
+/// the scope it is in.
+fn keeps_a_marker_in_g(at: usize, removed: usize, inserted: &str) -> bool {
+    let bundle = fixture_bundle("rust");
+    let in_g = RUST.rfind("gamma\n").unwrap();
+    let marker = tree_sitter::Range {
+        start_byte: in_g,
+        end_byte: in_g + "gamma".len(),
+        start_point: point_at(RUST, in_g),
+        end_point: point_at(RUST, in_g + "gamma".len()),
+    };
+    let (updated, _) = updated_and_fresh(&bundle, RUST, at, removed, inserted, |prior| {
+        prior.resolved.retain(|(range, _)| *range != marker);
+        let place = prior
+            .resolved
+            .partition_point(|(r, _)| key(r) < key(&marker));
+        prior.resolved.insert(place, (marker, None));
+    });
+    let moved = if at <= in_g {
+        in_g + inserted.len() - removed
+    } else {
+        in_g
+    };
+    updated
+        .resolved
+        .iter()
+        .any(|(range, highlight)| range.start_byte == moved && highlight.is_none())
+}
+
+#[test]
+fn an_edit_in_one_function_leaves_the_others_locals_as_they_were() {
+    let (at, removed, inserted) = edit_at(RUST, "beta * alpha", 0, 4, "delta");
+    assert!(keeps_a_marker_in_g(at, removed, inserted));
+}
+
+#[test]
+fn a_top_level_edit_rebuilds_the_layer() {
+    assert!(!keeps_a_marker_in_g(0, 0, "fn h() {}\n"));
+}
+
+#[test]
+fn removing_a_functions_closing_brace_rebuilds_what_it_closed_over() {
+    let (at, removed, inserted) = edit_at(RUST, "alpha\n}", 6, 1, "");
+    assert!(!keeps_a_marker_in_g(at, removed, inserted));
+}
+
+#[test]
+fn an_incremental_update_equals_a_fresh_build() {
+    for (name, source, edits) in [
+        (
+            "rust",
+            RUST,
+            vec![
+                edit_at(RUST, "beta * alpha", 0, 4, "delta"),
+                edit_at(RUST, "let beta", 4, 4, "bet"),
+                edit_at(RUST, "alpha: u32", 0, 10, ""),
+                edit_at(RUST, "gamma\n}", 5, 0, ";\n    let gamma = 2;\n    gamma"),
+                edit_at(RUST, "alpha\n}", 6, 1, ""),
+                edit_at(RUST, "-> u32 {\n    let", 7, 1, ""),
+                edit_at(RUST, "}\n\nfn g", 0, 7, ""),
+                (0, 0, "fn h() {}\n"),
+                (RUST.len(), 0, "fn k(a: u8) -> u8 { a }\n"),
+            ],
+        ),
+        (
+            "python",
+            PYTHON,
+            vec![
+                edit_at(PYTHON, "beta * alpha", 0, 4, "delta"),
+                edit_at(PYTHON, "beta = ", 0, 4, "bet"),
+                edit_at(PYTHON, "(gamma)", 1, 5, "delta"),
+                edit_at(PYTHON, "return gamma", 0, 0, "gamma = 2\n    "),
+                (0, 0, "x = 1\n"),
+                (PYTHON.len(), 0, "def k(a):\n    return a\n"),
+            ],
+        ),
+    ] {
+        let bundle = fixture_bundle(name);
+        for (at, removed, inserted) in edits {
+            let (updated, fresh) =
+                updated_and_fresh(&bundle, source, at, removed, inserted, |_| {});
+            assert_eq!(
+                updated, fresh,
+                "{name}: {removed} bytes at {at} replaced by {inserted:?}"
+            );
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    #[test]
+    fn any_single_edit_updates_to_a_fresh_build(
+        at in 0..=RUST.len(),
+        removed in 0usize..12,
+        inserted in prop::sample::select(vec!["", "a", "{", "}", "(", ")", "\n", "let x = 1;", "fn z() {}", "alpha"]),
+    ) {
+        let removed = removed.min(RUST.len() - at);
+        let bundle = fixture_bundle("rust");
+        let (updated, fresh) = updated_and_fresh(&bundle, RUST, at, removed, inserted, |_| {});
+        prop_assert_eq!(updated, fresh);
+    }
 }
