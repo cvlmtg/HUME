@@ -15,8 +15,9 @@
 //!
 //! A reparse rebuilds only the scopes an edit can have changed: the
 //! innermost scope around each byte the edit or the reparse touched, since
-//! a definition changes what references see only inside its own scope. A
-//! change outside every scope rebuilds the whole layer.
+//! a definition changes what references see only inside its own scope,
+//! and around every definition or reference holding such a byte, since its
+//! name is its text. A change outside every scope rebuilds the whole layer.
 
 use std::cmp::Reverse;
 use std::ops::RangeInclusive;
@@ -82,8 +83,8 @@ impl LocalsQuery {
 
     /// A compiled `locals.scm`, its definition highlights interned in
     /// `registry`. `None` when no pattern it keeps captures a scope,
-    /// definition or reference. A pattern using an engine predicate or directive is
-    /// skipped, its error in `source` pushed to `skipped`.
+    /// definition or reference. A pattern using an engine predicate or
+    /// directive is skipped, its error in `source` pushed to `skipped`.
     pub(crate) fn new(
         mut query: Query,
         source: &str,
@@ -216,9 +217,10 @@ impl LayerLocals {
 
     /// These locals, edited to `tree`, with the locals `query` finds in each
     /// of `regions` in place of theirs. `regions` are sorted, disjoint scopes
-    /// of `tree` and of these locals alike, so a reference inside one sees
-    /// the definitions of the scopes around it that these locals hold, and
-    /// one outside sees nothing inside it.
+    /// of `tree` and of these locals alike, that no definition or reference
+    /// of either crosses, so a reference inside one sees the definitions of
+    /// the scopes around it that these locals hold, and one outside sees
+    /// nothing inside it.
     fn rebuilt(
         &self,
         query: &LocalsQuery,
@@ -235,11 +237,8 @@ impl LayerLocals {
         let (mut scopes, mut definitions, mut resolved) =
             (&self.scopes[..], &self.definitions[..], &self.resolved[..]);
         let mut open = vec![OpenScope::new(None, true)];
-        // `out.definitions` from `unseeded` on are not yet in `open`, and
-        // those at `spanning` started before a region but ended after its
-        // start.
+        // `out.definitions` from `unseeded` on are not yet in `open`.
         let mut unseeded = 0;
-        let mut spanning: Vec<usize> = Vec::new();
         for &region in regions {
             let before = scopes.partition_point(|s| {
                 (s.range.start, Reverse(s.range.end)) < (region.start, Reverse(region.end))
@@ -262,12 +261,12 @@ impl LayerLocals {
             out.resolved.extend_from_slice(&resolved[..kept]);
             resolved = &resolved[kept..];
 
-            spanning.extend(unseeded..out.definitions.len());
-            spanning.retain(|&at| {
-                let definition = &out.definitions[at];
-                if definition.range.end > region.start {
-                    return true;
-                }
+            for definition in &out.definitions[unseeded..] {
+                debug_assert!(
+                    definition.range.end <= region.start,
+                    "definition {:?} crosses region {region:?}",
+                    definition.range
+                );
                 // Of two scopes of one range, the later opened is the
                 // innermost, which a walk defines in.
                 if let Some(scope) = open.iter_mut().rev().find(|s| s.range == definition.scope) {
@@ -276,8 +275,7 @@ impl LayerLocals {
                         (definition.range.end, definition.highlight),
                     );
                 }
-                false
-            });
+            }
             out.append(query, cursor, tree, rope, Some(region), &mut open);
             unseeded = out.definitions.len();
 
@@ -429,9 +427,11 @@ fn resolve(scopes: &[OpenScope], name: &str, start: usize) -> Option<Option<Scop
 }
 
 /// The scopes of `tree` to rebuild from `prior`'s locals: for each region
-/// `dirty`, widened over every scope of `prior` whose start or end lies in
-/// it, the innermost scope of `tree` holding it, the outermost kept where
-/// two nest. `None` when one has no such scope: the whole layer is rebuilt.
+/// `dirty`, widened until no scope of `prior` starts or ends in it and no
+/// definition or reference of `prior` or `tree` overlaps it without lying
+/// inside it, the innermost scope of `tree` holding it, the outermost kept
+/// where two nest. `None` when one has no such scope: the whole layer is
+/// rebuilt.
 fn dirty_scopes(
     query: &LocalsQuery,
     cursor: &mut QueryCursor,
@@ -445,39 +445,17 @@ fn dirty_scopes(
     }
     let mut regions = Vec::new();
     for region in dirty {
-        let (mut lo, mut hi) = (*region.start(), *region.end());
-        loop {
-            let crossing = |s: &&ScopeEntry| {
-                let (start, end) = key(&s.range);
-                (lo..=hi).contains(&start) || (lo..=hi).contains(&end)
-            };
-            let (wider_lo, wider_hi) = prior
-                .scopes
-                .iter()
-                .filter(crossing)
-                .fold((lo, hi), |(l, h), s| {
-                    (l.min(s.range.start), h.max(s.range.end))
-                });
-            if (wider_lo, wider_hi) == (lo, hi) {
-                break;
+        // Half-open, so a scope it absorbs bounds it by its own end.
+        let mut bytes = ExclusiveRange::new(*region.start(), *region.end() + 1);
+        let holder = loop {
+            bytes = widened_over_prior(prior, bytes);
+            let (holder, wider) = holder_in_tree(query, cursor, tree, rope, bytes);
+            if wider == bytes {
+                break holder;
             }
-            (lo, hi) = (wider_lo, wider_hi);
-        }
-        cursor.set_byte_range(lo..hi + 1);
-        let mut innermost: Option<NodeBytes> = None;
-        let mut captures = cursor.captures(&query.query, tree.root_node(), RopeProvider(rope));
-        while let Some((m, index)) = captures.next() {
-            let capture = m.captures()[*index];
-            let range = node_bytes(capture.node);
-            let holds = range.start <= lo && hi < range.end;
-            if query.role(capture.index) == CaptureRole::Scope
-                && holds
-                && innermost.is_none_or(|i| within(&range, &i))
-            {
-                innermost = Some(range);
-            }
-        }
-        regions.push(innermost?);
+            bytes = wider;
+        };
+        regions.push(holder?);
     }
     regions.sort_by_key(|r| (r.start, Reverse(r.end)));
     let mut kept: Vec<NodeBytes> = Vec::with_capacity(regions.len());
@@ -487,6 +465,74 @@ fn dirty_scopes(
         }
     }
     Some(kept)
+}
+
+/// Whether `range` overlaps `bytes` without lying inside it.
+fn crosses(range: &NodeBytes, bytes: &NodeBytes) -> bool {
+    range.start < bytes.end && bytes.start < range.end && !within(range, bytes)
+}
+
+/// `bytes` widened over every scope of `prior` starting or ending in it and
+/// every definition and reference of `prior` crossing it, until none is
+/// left.
+fn widened_over_prior(prior: &LayerLocals, mut bytes: NodeBytes) -> NodeBytes {
+    loop {
+        let in_bytes = |byte: usize| bytes.start <= byte && byte < bytes.end;
+        let scopes = prior
+            .scopes
+            .iter()
+            .map(|s| s.range)
+            .filter(|range| in_bytes(range.start) || in_bytes(range.end));
+        let named = prior
+            .definitions
+            .iter()
+            .map(|d| d.range)
+            .chain(prior.resolved.iter().map(|&(range, _)| range))
+            .filter(|range| crosses(range, &bytes));
+        let wider = scopes.chain(named).fold(bytes, hull);
+        if wider == bytes {
+            return bytes;
+        }
+        bytes = wider;
+    }
+}
+
+/// The innermost scope of `tree` holding `bytes`, and `bytes` widened over
+/// every definition and reference of `tree` crossing it.
+fn holder_in_tree(
+    query: &LocalsQuery,
+    cursor: &mut QueryCursor,
+    tree: &tree_sitter::Tree,
+    rope: &ropey::Rope,
+    bytes: NodeBytes,
+) -> (Option<NodeBytes>, NodeBytes) {
+    cursor.set_byte_range(bytes.start..bytes.end);
+    let mut innermost: Option<NodeBytes> = None;
+    let mut wider = bytes;
+    let mut captures = cursor.captures(&query.query, tree.root_node(), RopeProvider(rope));
+    while let Some((m, index)) = captures.next() {
+        let capture = m.captures()[*index];
+        let range = node_bytes(capture.node);
+        match query.role(capture.index) {
+            CaptureRole::Scope => {
+                if within(&bytes, &range) && innermost.is_none_or(|i| within(&range, &i)) {
+                    innermost = Some(range);
+                }
+            }
+            CaptureRole::Definition(_) | CaptureRole::Reference => {
+                if crosses(&range, &bytes) {
+                    wider = hull(wider, range);
+                }
+            }
+            CaptureRole::Discard => {}
+        }
+    }
+    (innermost, wider)
+}
+
+/// The smallest range holding `a` and `b`.
+fn hull(a: NodeBytes, b: NodeBytes) -> NodeBytes {
+    ExclusiveRange::new(a.start.min(b.start), a.end.max(b.end))
 }
 
 /// The locals of `tree`, a layer parsed from `rope` with `bundle`: empty

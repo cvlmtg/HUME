@@ -290,6 +290,27 @@ fn a_top_level_edit_rebuilds_the_layer() {
 }
 
 #[test]
+fn an_edit_at_a_functions_body_rebuilds_only_that_function() {
+    let (at, removed, inserted) = edit_at(RUST, "{\n    let beta", 0, 0, " ");
+    assert!(keeps_a_marker_in_g(at, removed, inserted));
+}
+
+#[test]
+fn a_definition_holding_an_edited_scope_updates_to_a_fresh_build() {
+    let text = "fn f() -> u8 {\n    let c = |x| x + 1;\n    c(2)\n}\n";
+    for definition in [
+        "(closure_expression) @local.definition.function",
+        "(let_declaration) @local.definition.variable",
+    ] {
+        let source = format!("(closure_parameters) @local.scope\n{definition}\n{REFERENCES}");
+        let bundle = crate::test_support::rust_bundle_with(OptionalQuery::Locals, &source);
+        let replaces = [edit_at(text, "|x|", 1, 1, "xy")];
+        let (updated, fresh) = updated_and_fresh(&bundle, text, &replaces, |_| {});
+        assert_eq!(updated, fresh, "{definition}");
+    }
+}
+
+#[test]
 fn removing_a_functions_closing_brace_rebuilds_what_it_closed_over() {
     let (at, removed, inserted) = edit_at(RUST, "alpha\n}", 6, 1, "");
     assert!(!keeps_a_marker_in_g(at, removed, inserted));

@@ -1,7 +1,7 @@
 //! Each time a session's layers are parsed, every installed layer is
-//! checked: its sites and its injected layers equal those a fresh
-//! resolution finds over its tree, and an injected layer's nodes equal
-//! what tree-sitter gives for its ranges against the right prior tree.
+//! checked: its sites, its locals and its injected layers equal those a
+//! fresh resolution finds over its tree, and an injected layer's nodes
+//! equal what tree-sitter gives for its ranges against the right prior tree.
 //!
 //! The right prior tree is the previously installed layer of the same
 //! grammar and depth whose ranges, after the session's edits, equal the
@@ -32,6 +32,7 @@ use test_fixtures::{require_grammars, require_helix_query, unicode};
 use super::{ChainBreak, Syntax};
 use crate::edits::input_edits_from_changeset;
 use crate::layers::{LayerField, LayerMismatch, LayerShape, SyntaxLayer, first_layer_mismatch};
+use crate::locals::layer_locals;
 use crate::parse_worker::{MAX_INJECTION_DEPTH, ParseDone, ParseOutcome, run_parse};
 use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::test_support::make_bundle;
@@ -39,8 +40,9 @@ use crate::test_support::make_bundle;
 type Langs = Arc<GrammarSnapshot>;
 
 /// Markdown with the fixture injections query, and what it injects: rust
-/// with the fixture injections query (rust into macro bodies, rustdoc
-/// comments as one combined markdown layer), json, and markdown.inline.
+/// with the fixture injections and locals queries (rust into macro bodies,
+/// rustdoc comments as one combined markdown layer), json, and
+/// markdown.inline.
 struct Grammars {
     markdown: Arc<GrammarBundle>,
     json: Arc<GrammarBundle>,
@@ -59,22 +61,37 @@ impl Grammars {
 
 fn grammars() -> Grammars {
     require_grammars(&["markdown", "markdown.inline", "rust", "json"]);
-    let fixture_injections = |name: &str| {
-        let path = require_helix_query(name, OptionalQuery::Injections.file_name());
-        std::fs::read_to_string(path).expect("read the helix injections query")
+    let fixture = |name: &str, kind: OptionalQuery| {
+        let path = require_helix_query(name, kind.file_name());
+        std::fs::read_to_string(path).expect("read the helix query")
     };
-    let injecting = |name: &str, symbol: &str| {
-        make_bundle(
-            name,
-            symbol,
-            "",
-            &[(OptionalQuery::Injections, &fixture_injections(name))],
-        )
-    };
-    let markdown = injecting("markdown", "tree_sitter_markdown");
+    let markdown = make_bundle(
+        "markdown",
+        "tree_sitter_markdown",
+        "",
+        &[(
+            OptionalQuery::Injections,
+            &fixture("markdown", OptionalQuery::Injections),
+        )],
+    );
+    let rust = make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        &[
+            (
+                OptionalQuery::Injections,
+                &fixture("rust", OptionalQuery::Injections),
+            ),
+            (
+                OptionalQuery::Locals,
+                &fixture("rust", OptionalQuery::Locals),
+            ),
+        ],
+    );
     let json = make_bundle("json", "tree_sitter_json", "", &[]);
     let by_name = FxHashMap::from_iter([
-        ("rust".to_owned(), injecting("rust", "tree_sitter_rust")),
+        ("rust".to_owned(), rust),
         ("markdown-rustdoc".to_owned(), Arc::clone(&markdown)),
         ("json".to_owned(), Arc::clone(&json)),
         (
@@ -308,6 +325,12 @@ impl Session {
                 layer.sites,
                 sites,
                 "sites of layer {index} in {:?}",
+                self.text.to_string()
+            );
+            assert_eq!(
+                layer.locals,
+                layer_locals(&layer.bundle, &layer.tree, rope, None),
+                "locals of layer {index} in {:?}",
                 self.text.to_string()
             );
             let expected: Vec<LayerShape> = injected
