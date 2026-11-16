@@ -929,6 +929,16 @@ fn char_to_line_byte_gives_a_line_relative_utf8_offset() {
 }
 
 #[test]
+fn char_to_byte_point_gives_the_absolute_byte_and_its_line_relative_offset() {
+    // "é" is 2 bytes, "\n" 1, "漢" 3: 'x' starts at byte 6, 3 into line 1.
+    let buf = rope("\u{e9}\n\u{6f22}x\n");
+    assert_eq!(
+        char_to_byte_point(&buf, co(3)),
+        (6, RopeyLine::new(1), ByteCol::new(3))
+    );
+}
+
+#[test]
 fn line_segments_report_utf8_byte_columns_per_line() {
     let buf = rope("\u{e9}\u{6f22}\n\u{1f600}x\n");
     let got: Vec<_> = line_segments(&buf, ExclusiveRange::new(co(0), co(5))).collect();

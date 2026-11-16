@@ -271,7 +271,8 @@ fn classify(raw: RawMessage) -> Result<Message, CodecError> {
 }
 
 /// Serializes `msg` and writes it with the exact `Content-Length: N\r\n\r\n`
-/// framing, since some servers reject a bare `\n\n` terminator.
+/// framing, since some servers reject a bare `\n\n` terminator. `w` is the
+/// server's unbuffered stdin, so the header and body go out as one buffer.
 pub(crate) fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
     let raw = match msg {
         Message::Request { id, method, params } => RawMessageRef {
@@ -309,8 +310,9 @@ pub(crate) fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Resul
     };
     let body = serde_json::to_vec(&raw)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    write!(w, "Content-Length: {}\r\n\r\n", body.len())?;
-    w.write_all(&body)?;
+    let mut frame = format!("Content-Length: {}\r\n\r\n", body.len()).into_bytes();
+    frame.extend_from_slice(&body);
+    w.write_all(&frame)?;
     w.flush()
 }
 

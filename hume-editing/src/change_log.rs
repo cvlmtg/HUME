@@ -49,18 +49,18 @@ impl ChangeLog {
             change.after().generation() > change.before().generation(),
             "ChangeLog::record: a step must move the text to a later generation"
         );
-        let undo = change.changes().invert(change.before());
-        let chars = undo
+        let chars = change
+            .changes()
             .ops()
             .iter()
             .map(|op| match op {
-                Operation::Insert(s) => s.chars().count(),
-                Operation::Retain(_) | Operation::Delete(_) => 0,
+                Operation::Delete(n) => *n,
+                Operation::Retain(_) | Operation::Insert(_) => 0,
             })
             .sum();
         self.push(Step {
             from: change.before().generation(),
-            undo: Some(undo),
+            undo: Some(change.changes().invert(change.before())),
             chars,
         });
     }

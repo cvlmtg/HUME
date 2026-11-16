@@ -96,23 +96,19 @@ fn parse_wire_diagnostics(
 ) -> Option<(Vec<WireDiagnostic>, Vec<String>)> {
     use serde::Deserialize as _;
 
-    let parsed: Vec<Result<lsp_types::Diagnostic, String>> = wire
-        .iter()
-        .map(|value| lsp_types::Diagnostic::deserialize(value).map_err(|e| e.to_string()))
-        .collect();
-    if !parsed.is_empty() && parsed.iter().all(Result::is_err) {
-        return None;
-    }
-    let mut diagnostics = Vec::with_capacity(parsed.len());
+    let mut diagnostics = Vec::with_capacity(wire.len());
     let mut skipped = Vec::new();
-    for (parsed, raw) in parsed.into_iter().zip(wire) {
-        match parsed {
+    for raw in wire.iter_mut() {
+        match lsp_types::Diagnostic::deserialize(&*raw) {
             Ok(diagnostic) => diagnostics.push(WireDiagnostic {
                 diagnostic,
                 raw: raw.take(),
             }),
-            Err(error) => skipped.push(error),
+            Err(error) => skipped.push(error.to_string()),
         }
+    }
+    if diagnostics.is_empty() && !skipped.is_empty() {
+        return None;
     }
     Some((diagnostics, skipped))
 }

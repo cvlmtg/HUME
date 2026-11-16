@@ -26,8 +26,9 @@ pub struct SyntaxLayer {
     /// `textobjects` and `locals` among them, is reachable from the layer.
     pub bundle: Arc<GrammarBundle>,
     /// Absolute byte ranges this layer's tree was parsed over, sorted by
-    /// `start_byte`. Empty means "the whole buffer", true only for the root
-    /// layer (index 0).
+    /// `start_byte`, moved with the tree by every edit since the parse.
+    /// Empty means "the whole buffer", true only for the root layer
+    /// (index 0).
     pub ranges: Vec<tree_sitter::Range>,
     /// Nesting depth: 0 for the root layer, 1+ for each level of injection.
     pub depth: u8,
@@ -211,6 +212,11 @@ impl SyntaxLayers {
             for edit in change.iter() {
                 for layer in &mut self.layers {
                     layer.tree.edit(edit);
+                    // The same `ts_range_edit` the tree applies to its own
+                    // included ranges.
+                    for range in &mut layer.ranges {
+                        edit.edit_range(range);
+                    }
                     layer.sites.edit(edit);
                 }
                 self.edited.record(edit);
@@ -218,14 +224,6 @@ impl SyntaxLayers {
             let map = change.byte_map();
             for layer in &mut self.layers {
                 Arc::make_mut(&mut layer.locals).edit(&map);
-            }
-        }
-        for layer in &mut self.layers {
-            // `ranges` is a cached copy of the tree's included ranges,
-            // consulted by `layer_covers_line`. The root's are always empty
-            // (whole buffer).
-            if layer.depth > 0 {
-                layer.ranges = layer.tree.included_ranges();
             }
         }
         self.clear_textobject_memo();

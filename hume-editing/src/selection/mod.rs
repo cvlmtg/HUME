@@ -237,6 +237,9 @@ impl<'a> LineEdits<'a> {
 
     /// Whether none of the edits touches `head`'s line.
     pub(crate) fn leave_line_alone(&mut self, head: CharOffset) -> bool {
+        if self.next == self.edits.len() {
+            return true;
+        }
         let line = self.before.lines().range(self.before.char_to_line(head));
         let (line_start, line_end) = (line.start().offset(), line.end().offset());
         // An edit ending before this line touches no later head's line

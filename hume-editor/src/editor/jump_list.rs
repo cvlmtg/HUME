@@ -18,7 +18,6 @@ use hume_engine::pipeline::EngineView;
 
 use hume_editing::edit::TextChange;
 use hume_editing::selection::{EditView, Selection, SelectionSet};
-use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 
 use super::commands::{CommandPane, pane_view};
@@ -449,14 +448,8 @@ impl JumpCapture {
             JumpRule::Selections => current_jump_entry(state, view, t),
             JumpRule::Primary | JumpRule::PrimaryPastThreshold => {
                 let text = state.buffers.get(pre_bid).text();
-                let selections = t.state(&state.panes.entries, view).selections().clone();
-                JumpEntry::new(
-                    EditState::bind(text.clone(), selections)
-                        .keep_primary()
-                        .into_selections(),
-                    text,
-                    pre_bid,
-                )
+                let primary = pane_view(state, view, t).primary().selection();
+                JumpEntry::new(SelectionSet::new(text, vec![primary], 0), text, pre_bid)
             }
         };
         if let Some(insert) = state

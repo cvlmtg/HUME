@@ -683,11 +683,18 @@ impl Default for LineText {
 /// the line. Used to build tree-sitter `Point`s and line-relative highlight
 /// spans.
 pub fn char_to_line_byte(rope: &Rope, char_pos: CharOffset) -> (RopeyLine, ByteCol) {
+    let (_, line, byte_col) = char_to_byte_point(rope, char_pos);
+    (line, byte_col)
+}
+
+/// [`char_to_line_byte`] with the absolute byte offset ahead of it: a
+/// tree-sitter edit endpoint's byte and `Point` from one lookup.
+pub fn char_to_byte_point(rope: &Rope, char_pos: CharOffset) -> (usize, RopeyLine, ByteCol) {
     let char_pos = char_pos.index();
     let line = rope.char_to_line(char_pos);
-    let line_start_byte = rope.line_to_byte(line);
-    let byte = rope.char_to_byte(char_pos).saturating_sub(line_start_byte);
-    (RopeyLine::new(line), ByteCol::new(byte))
+    let byte = rope.char_to_byte(char_pos);
+    let byte_col = byte.saturating_sub(rope.line_to_byte(line));
+    (byte, RopeyLine::new(line), ByteCol::new(byte_col))
 }
 
 /// `(row, byte_col)` of the end of `inserted` written starting at

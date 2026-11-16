@@ -261,6 +261,39 @@ fn write_emits_exact_crlf_crlf() {
 }
 
 #[test]
+fn write_message_writes_a_frame_in_one_call() {
+    /// Keeps each `write` call's bytes apart.
+    #[derive(Default)]
+    struct Calls(Vec<Vec<u8>>);
+    impl Write for Calls {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.push(buf.to_vec());
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // Larger than `BufWriter`'s 8 KiB default, which writes a body that
+    // size straight through after flushing the header.
+    let text = "x".repeat(10_000);
+    let msg = Message::Notification {
+        method: "textDocument/didOpen".to_string(),
+        params: serde_json::json!({ "text": text }),
+    };
+    let mut calls = Calls::default();
+    write_message(&mut calls, &msg).unwrap();
+    assert_eq!(calls.0.len(), 1, "one write call per frame");
+    match read_message(&mut Cursor::new(&calls.0[0])).unwrap() {
+        Message::Notification { params, .. } => {
+            assert_eq!(params, serde_json::json!({ "text": text }));
+        }
+        other => panic!("expected Notification, got {other:?}"),
+    }
+}
+
+#[test]
 fn ambiguous_body_is_error() {
     // Both method and result present: neither request/notification nor response.
     let body = br#"{"id":1,"method":"foo","result":{}}"#;

@@ -11,39 +11,30 @@
 /// bare `$n` -> "" (dropped) in an `insertTextFormat: Snippet` item's text:
 /// v1 has no snippet-expansion UI (no tabstop cycling), so inserting raw
 /// snippet syntax verbatim would show it literally in the buffer. No
-/// choices (`${n|a,b|}`), no nested placeholders, no `\$` escapes. Operates
-/// on `char`s (Unicode scalars), matching how this logic worked when it was
-/// Steel `string-ref`/`substring`. This is text-content transformation on
-/// server-provided strings, not motion/selection code over buffer
-/// positions, so grapheme-cluster stepping doesn't apply here.
+/// choices (`${n|a,b|}`), no nested placeholders, no `\$` escapes. An
+/// unclosed `${` runs to the end of `text`. This is text-content
+/// transformation on server-provided strings, not motion/selection code over
+/// buffer positions, so grapheme-cluster stepping doesn't apply here.
 pub fn strip_snippet(text: &str) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let n = chars.len();
     let mut out = String::with_capacity(text.len());
-    let mut i = 0;
-    while i < n {
-        if chars[i] == '$' && i + 1 < n && chars[i + 1] == '{' {
-            let close = chars[i + 2..]
-                .iter()
-                .position(|&c| c == '}')
-                .map(|p| i + 2 + p);
-            let body_end = close.unwrap_or(n);
-            let body = &chars[i + 2..body_end];
-            if let Some(colon) = body.iter().position(|&c| c == ':') {
-                out.extend(&body[colon + 1..]);
+    let mut rest = text;
+    while let Some(dollar) = rest.find('$') {
+        out.push_str(&rest[..dollar]);
+        let after = &rest[dollar + 1..];
+        if let Some(body) = after.strip_prefix('{') {
+            let (body, tail) = body.split_once('}').unwrap_or((body, ""));
+            if let Some((_, default)) = body.split_once(':') {
+                out.push_str(default);
             }
-            i = close.map_or(n, |c| c + 1);
-        } else if chars[i] == '$' && i + 1 < n && chars[i + 1].is_ascii_digit() {
-            let mut j = i + 1;
-            while j < n && chars[j].is_ascii_digit() {
-                j += 1;
-            }
-            i = j;
+            rest = tail;
+        } else if after.starts_with(|c: char| c.is_ascii_digit()) {
+            rest = after.trim_start_matches(|c: char| c.is_ascii_digit());
         } else {
-            out.push(chars[i]);
-            i += 1;
+            out.push('$');
+            rest = after;
         }
     }
+    out.push_str(rest);
     out
 }
 

@@ -187,7 +187,7 @@ fn compose_gutter(
             // Only write a separator after the last cell: it's the column's
             // right padding, not a separator between sub-cells.
             if is_last {
-                canvas.fill_glyph_run(after, y, " ", 1, style, lane_x + lane_width);
+                canvas.write_text_run(after, y, " ", style, lane_x + lane_width);
                 gutter_x += usable_per_cell + 1;
             } else {
                 gutter_x += usable_per_cell;
@@ -202,17 +202,15 @@ fn compose_gutter(
         // edge, not this column's. Using it here left leftover cells
         // unpainted and `gutter_x` short of the column boundary for any
         // non-first column with uneven leftover.
-        if gutter_x < lane_x + lane_width {
+        let lane_end = lane_x + lane_width;
+        if gutter_x < lane_end {
             let style = gutter_cell_style(last_scope, compose_ctx.theme, cell_bg);
-            while gutter_x < lane_x + lane_width {
-                canvas.write_cell(gutter_x, y, " ", 1, style, lane_x + lane_width);
-                gutter_x += 1;
-            }
+            canvas.fill_glyph_run(gutter_x, y, " ", lane_end - gutter_x, style, lane_end);
         }
         // Providers are a public extension point; their cell-width math
         // isn't guaranteed to sum to lane_width exactly. Land on the column
         // boundary regardless, so the next column never inherits any drift.
-        gutter_x = lane_x + lane_width;
+        gutter_x = lane_end;
     }
 }
 
@@ -326,10 +324,14 @@ pub(crate) fn compose_display_line(
         // integer solution when `g.width == 1`.
         if g.display_col < h_offset {
             let visible_cells = g.width as u32 - h_offset.cells_since(g.display_col);
-            for i in 0..visible_cells as u16 {
-                let sx = screen_x + i;
-                canvas.write_cell(sx, y, " ", 1, cell_style, right_edge);
-            }
+            canvas.fill_glyph_run(
+                screen_x,
+                y,
+                " ",
+                visible_cells as u16,
+                cell_style,
+                right_edge,
+            );
             continue;
         }
 
@@ -342,9 +344,14 @@ pub(crate) fn compose_display_line(
                     // the terminal renders next (a neighbouring pane, the
                     // divider seam). Render spaces for the columns that are
                     // ours, mirroring the h-scroll straddle policy above.
-                    for sx in screen_x..right_edge {
-                        canvas.write_cell(sx, y, " ", 1, cell_style, right_edge);
-                    }
+                    canvas.fill_glyph_run(
+                        screen_x,
+                        y,
+                        " ",
+                        right_edge - screen_x,
+                        cell_style,
+                        right_edge,
+                    );
                 } else {
                     canvas.write_cell(screen_x, y, text, g.width, cell_style, right_edge);
                 }
@@ -352,9 +359,7 @@ pub(crate) fn compose_display_line(
             CellDraw::Run(text) => {
                 let cell_end = (screen_x + g.width as u16).min(right_edge);
                 let after = canvas.write_text_run(screen_x, y, text, cell_style, cell_end);
-                for ex in after..cell_end {
-                    canvas.write_cell(ex, y, " ", 1, cell_style, cell_end);
-                }
+                canvas.fill_glyph_run(after, y, " ", cell_end - after, cell_style, cell_end);
             }
         }
     }

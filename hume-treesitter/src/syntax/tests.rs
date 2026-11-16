@@ -358,15 +358,12 @@ fn bake_mid_chain_gap_rejected() {
     );
 }
 
-/// All prior `bake` coverage used JSON (no injections), so the
-/// `layer.depth > 0` ranges-refresh branch never ran. This installs a
-/// real markdown root + rust fenced-code injection layer, edits text
-/// *before* the fenced block (shifting the injection forward), bakes,
-/// and checks the injected layer's cached `ranges` (the copy
-/// `layer_covers_line` consults) actually moved with it instead of
-/// staying pinned at the pre-edit byte offset.
+/// Installs a markdown root with a rust fenced-code injection layer, edits
+/// text before the fenced block, bakes, and checks the injected layer's
+/// `ranges` (the copy `layer_covers_line` consults) moved with the edit
+/// instead of staying at the pre-edit byte offset.
 #[test]
-fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
+fn bake_moves_injected_layer_ranges_with_an_edit() {
     require_grammars(&["markdown", "rust"]);
     let markdown = fixture_markdown();
     let rust = make_bundle("rust", "tree_sitter_rust");
@@ -448,7 +445,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     assert_eq!(
         rust_layer.ranges[0].start_byte,
         original_start + prefix.len(),
-        "ranges must be refreshed to the tree's post-edit included_ranges, not left stale"
+        "ranges must move with the tree's edit"
     );
 }
 
