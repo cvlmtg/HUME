@@ -148,6 +148,10 @@ pub(crate) struct ConfigState {
     /// The styles `set-scope-styles!` set, layered onto every theme
     /// `theme::install_theme` installs.
     pub(in crate::editor) scope_styles: hume_engine::theme::scope_styles::ScopeStyles,
+    /// Whether `scope_styles` holds a style `view.theme` does not show yet,
+    /// stored while a theme install was pending. Cleared by every layering
+    /// of all of them (`theme::apply_scope_styles`).
+    pub(in crate::editor) scope_styles_deferred: bool,
     /// Deferred Steel work: events queued during command dispatch
     /// (`EditorState::queue_event`) and closure completions
     /// (`EditorState::queue_steel_call` and its siblings), drained in FIFO
@@ -197,6 +201,7 @@ impl ConfigState {
             messages_highlighted: false,
             statusline_text: rustc_hash::FxHashMap::default(),
             scope_styles: Default::default(),
+            scope_styles_deferred: false,
             pending_work: VecDeque::new(),
             pending_language_detection: Vec::new(),
             async_jobs: rustc_hash::FxHashMap::default(),

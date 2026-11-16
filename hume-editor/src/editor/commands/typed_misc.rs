@@ -253,7 +253,8 @@ pub(in crate::editor) fn typed_theme(
 ///
 /// Cursor rows report the pre-resolved style the renderer reads; every other
 /// row (bracket/search match, selection, cursorline, statusline) reports its
-/// resolved style plus every name on its dot-notation chain the theme defines.
+/// resolved style plus every name on its dot-notation chain with an entry,
+/// from the theme file or a script.
 pub(in crate::editor) fn typed_theme_debug(
     ed: &mut Editor,
     _fp: FocusedPane,
@@ -265,11 +266,11 @@ pub(in crate::editor) fn typed_theme_debug(
         }
     }
 
-    /// Every name in `names` the theme actually defines, in the order given,
-    /// not necessarily the resolution path: both a dot-notation lookup and a
-    /// cursor ladder stop at the *first* match, so a later name here is only
-    /// what it would have fallen through to next. `empty_label` covers the
-    /// "theme defines none of them" case, which reads differently for an
+    /// Every name in `names` with an entry, from the theme file or a script,
+    /// in the order given, not necessarily the resolution path: both a
+    /// dot-notation lookup and a cursor ladder stop at the *first* match, so
+    /// a later name here is only what it would have fallen through to next.
+    /// `empty_label` covers the "none of them has an entry" case, which reads differently for an
     /// ordinary scope (`"{scope} → default"`, from `fallback_chain`, which
     /// always yields `scope` itself first) than for a cursor ladder's rung
     /// list (`"default"`: the rungs are never dot-trimmed from one shared

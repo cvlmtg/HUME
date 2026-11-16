@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use rustc_hash::FxHashMap;
 
 use crate::theme::error::ThemeError;
-use crate::theme::scope_styles::ScopeStyles;
+use crate::theme::scope_styles::{Layered, ScopeStyles};
 use crate::theme::style_spec::Palette;
 use crate::types::{ResolvedStyle, Scope, ScopeId};
 
@@ -192,6 +192,15 @@ pub struct UiScopes {
 
 // Theme
 
+/// Which scopes [`Theme::apply_scope_styles`] layers.
+#[derive(Clone, Copy, Debug)]
+pub enum Restyle<'a> {
+    /// Every scope, replacing the styles layered before.
+    All,
+    /// These scopes, in this order; every other scope keeps its layered style.
+    Scopes(&'a [&'a str]),
+}
+
 /// Maps semantic scope names to concrete styles.
 ///
 /// # Two-phase API
@@ -263,30 +272,48 @@ impl Theme {
         t
     }
 
-    /// Layer `styles` over and under the theme's own entries, replacing the
-    /// styles applied before, and resolve their colors against the theme's
-    /// palette. Returns a warning for each color that does not resolve; its
-    /// field stays unset. Scopes baked before re-bake at the next
-    /// [`Self::bake_if_stale`].
-    pub fn apply_scope_styles(&mut self, styles: &ScopeStyles) -> Vec<ThemeError> {
-        self.above.clear();
-        self.below.clear();
+    /// Layer the scopes `which` selects from `styles` over and under the
+    /// theme's own entries, and resolve their colors against the theme's
+    /// palette. Returns a warning for each color that does not resolve, in
+    /// the order the scopes are layered; its field stays unset. Scopes baked
+    /// before re-bake at the next [`Self::bake_if_stale`].
+    pub fn apply_scope_styles(
+        &mut self,
+        styles: &ScopeStyles,
+        which: Restyle<'_>,
+    ) -> Vec<ThemeError> {
         let mut warnings = Vec::new();
-        for layered in styles.layered() {
-            for (spec, layer) in [
-                (layered.above_theme, &mut self.above),
-                (layered.below_theme, &mut self.below),
-            ] {
-                let Some(spec) = spec else { continue };
-                let (style, color_warnings) = spec.resolve(layered.scope, &self.palette);
-                warnings.extend(color_warnings);
-                layer.insert(layered.scope.to_owned(), style);
+        match which {
+            Restyle::All => {
+                self.above.clear();
+                self.below.clear();
+                for layered in styles.layered() {
+                    self.layer_scope(layered, &mut warnings);
+                }
+            }
+            Restyle::Scopes(scopes) => {
+                for layered in scopes.iter().filter_map(|s| styles.layered_scope(s)) {
+                    self.layer_scope(layered, &mut warnings);
+                }
             }
         }
         self.default = self.entry(ui_scopes::TEXT).unwrap_or(self.file_default);
         self.baked.clear();
         self.ui = self.compute_ui();
         warnings
+    }
+
+    /// Set `layered.scope`'s entry in `above` and `below` from its styles.
+    fn layer_scope(&mut self, layered: Layered<'_>, warnings: &mut Vec<ThemeError>) {
+        for (spec, layer) in [
+            (layered.above_theme, &mut self.above),
+            (layered.below_theme, &mut self.below),
+        ] {
+            let Some(spec) = spec else { continue };
+            let (style, color_warnings) = spec.resolve(layered.scope, &self.palette);
+            warnings.extend(color_warnings);
+            layer.insert(layered.scope.to_owned(), style);
+        }
     }
 
     /// Re-resolve every scope interned in `registry`, already baked or not.

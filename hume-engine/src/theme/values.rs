@@ -88,7 +88,7 @@ pub(super) const MODIFIER_NAMES: [(&str, Modifiers); 8] = [
 /// by `StyleSpec::add_modifier` before `parse_modifier` ever sees it, and
 /// routed to the dedicated underline field instead of the modifier bitset.
 /// Named so it can join [`MODIFIER_NAMES`] in the generated vocabulary
-/// rather than being a bare literal only `style_spec.rs`'s match arm and the
+/// rather than being a bare literal only `StyleSpec::add_modifier` and the
 /// JS side each know about.
 pub(super) const UNDERLINE_MODIFIER: &str = "underlined";
 

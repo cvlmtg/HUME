@@ -2,6 +2,7 @@
 
 use hume_core::{ConfigOrigin, ScopeStyleInput};
 use hume_engine::pipeline::EngineView;
+use hume_engine::theme::Restyle;
 use hume_engine::theme::error::ThemeError;
 use hume_engine::theme::loader::{LoadedTheme, load_theme};
 use hume_engine::theme::style_spec::StyleSpec;
@@ -28,7 +29,7 @@ fn install_theme(
 ) {
     view.theme = theme;
     name.clone_into(&mut state.shown_theme);
-    load_warnings.extend(apply_scope_styles(state, view));
+    load_warnings.extend(apply_scope_styles(state, view, Restyle::All));
     let count = load_warnings.len();
     report_warnings(
         state,
@@ -52,9 +53,10 @@ pub(in crate::editor) fn set_theme(
 }
 
 /// `(set-scope-styles! styles)` from `by`: refuses the whole call for one
-/// malformed entry, before any is stored. The live theme takes the styles
-/// at once unless a theme install is pending, which takes them itself:
-/// resolved now, a palette name would warn against a theme about to go.
+/// malformed entry, before any is stored. The live theme takes the call's
+/// styles at once, warning only for their colors, unless a theme install is
+/// pending, which takes them itself: resolved now, a palette name would warn
+/// against a theme about to go.
 pub(in crate::editor) fn set_scope_styles(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -66,15 +68,41 @@ pub(in crate::editor) fn set_scope_styles(
         .map(|input| StyleSpec::from_input(input).map(|spec| (input.scope.as_str(), spec)))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+    let written: Vec<&str> = specs.iter().map(|(scope, _)| *scope).collect();
     for (scope, spec) in specs {
         if state.config.scope_styles.set(scope, spec, by) {
             state.report_shadowed("set-scope-styles!", format_args!("'{scope}' style"));
         }
     }
     if state.theme_install_pending() {
+        state.config.scope_styles_deferred = true;
         return Ok(());
     }
-    let warnings = apply_scope_styles(state, view);
+    // A pending install that failed leaves earlier styles unshown.
+    let which = if state.config.scope_styles_deferred {
+        Restyle::All
+    } else {
+        Restyle::Scopes(&written)
+    };
+    restyle_live_theme(state, view, which);
+    Ok(())
+}
+
+/// Layer the styles stored while a theme install was pending onto the theme
+/// on screen, when no install has taken them since.
+pub(in crate::editor) fn apply_deferred_scope_styles(
+    state: &mut EditorState,
+    view: &mut EngineView,
+) {
+    if state.config.scope_styles_deferred {
+        restyle_live_theme(state, view, Restyle::All);
+    }
+}
+
+/// [`apply_scope_styles`] on the theme already shown, reporting the colors
+/// it does not resolve.
+fn restyle_live_theme(state: &mut EditorState, view: &mut EngineView, which: Restyle<'_>) {
+    let warnings = apply_scope_styles(state, view, which);
     let count = warnings.len();
     let summary = format!(
         "{count} scope style color{} not in {}",
@@ -82,14 +110,22 @@ pub(in crate::editor) fn set_scope_styles(
         theme_label(&state.shown_theme)
     );
     report_warnings(state, warnings, summary);
-    Ok(())
 }
 
-/// Layer the scripts' scope styles onto `view.theme` and rebuild what the
-/// input-stack layers built against its colors. Returns a warning for each
-/// color the theme does not resolve.
-fn apply_scope_styles(state: &mut EditorState, view: &mut EngineView) -> Vec<ThemeError> {
-    let warnings = view.theme.apply_scope_styles(&state.config.scope_styles);
+/// Layer the scripts' scope styles `which` selects onto `view.theme` and
+/// rebuild what the input-stack layers built against its colors. Returns a
+/// warning for each color the theme does not resolve.
+fn apply_scope_styles(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    which: Restyle<'_>,
+) -> Vec<ThemeError> {
+    let warnings = view
+        .theme
+        .apply_scope_styles(&state.config.scope_styles, which);
+    if matches!(which, Restyle::All) {
+        state.config.scope_styles_deferred = false;
+    }
     state.input.theme_changed(&mut view.theme, &view.registry);
     warnings
 }

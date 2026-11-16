@@ -161,14 +161,15 @@ pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut Engin
 /// the theme on screen. Run once after `init.scm`; a theme `init.scm` set has
 /// already loaded, so this only ever loads the default config never chose.
 /// When that theme is not on disk the setting becomes empty, matching the
-/// fallback on screen.
+/// fallback on screen. The scope styles `init.scm` stored for a theme that
+/// never installed then go on the theme on screen.
 pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut EngineView) {
-    if !state.theme_install_pending() {
-        return;
+    if state.theme_install_pending() {
+        let name = state.settings.theme.clone();
+        theme::load_default_theme(state, view, &name);
+        state.settings.theme.clone_from(&state.shown_theme);
     }
-    let name = state.settings.theme.clone();
-    theme::load_default_theme(state, view, &name);
-    state.settings.theme.clone_from(&state.shown_theme);
+    theme::apply_deferred_scope_styles(state, view);
 }
 
 /// Write `target` on `bid` from `by`: the one write path for `:set buffer`

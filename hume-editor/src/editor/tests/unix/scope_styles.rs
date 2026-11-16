@@ -23,6 +23,19 @@ const SCRIPT_RGB: Rgb = Rgb(0xab, 0xcd, 0xef);
 /// A session's directories with `sand` and the other themes on disk, the
 /// real prelude, and `plugin` as the user plugin `user/tp`.
 fn session(init: &str, plugin: &str) -> (Editor, ReloadFixture) {
+    session_with_themes(
+        init,
+        plugin,
+        &[("sand", SAND), ("other", OTHER), ("golden", GOLDEN)],
+    )
+}
+
+/// [`session`] with only `themes` on disk.
+fn session_with_themes(
+    init: &str,
+    plugin: &str,
+    themes: &[(&str, &str)],
+) -> (Editor, ReloadFixture) {
     let fixture = ReloadFixture::new(init);
     let plugin_dir = fixture.data_dir.join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
@@ -31,10 +44,10 @@ fn session(init: &str, plugin: &str) -> (Editor, ReloadFixture) {
     std::fs::create_dir_all(&scheme_dir).unwrap();
     std::fs::write(scheme_dir.join("prelude.scm"), prelude_source()).unwrap();
     std::fs::write(scheme_dir.join("languages.scm"), "").unwrap();
-    let themes = fixture.runtime_dir.join("themes");
-    std::fs::create_dir_all(&themes).unwrap();
-    for (name, body) in [("sand", SAND), ("other", OTHER), ("golden", GOLDEN)] {
-        std::fs::write(themes.join(format!("{name}.toml")), body).unwrap();
+    let theme_dir = fixture.runtime_dir.join("themes");
+    std::fs::create_dir_all(&theme_dir).unwrap();
+    for (name, body) in themes {
+        std::fs::write(theme_dir.join(format!("{name}.toml")), body).unwrap();
     }
 
     let mut ed = editor_from("-[a]>b\n");
@@ -122,6 +135,68 @@ fn an_unresolved_color_name_warns_at_each_theme_install() {
 }
 
 #[test]
+fn init_styles_reach_the_fallback_when_the_default_theme_is_missing() {
+    let (ed, _fixture) = session_with_themes(
+        r##"(set-scope-styles! (list (hash 'scope "keyword" 'fg "#abcdef")))"##,
+        "",
+        &[("other", OTHER)],
+    );
+    assert_eq!(ed.state.shown_theme, "");
+    assert_eq!(style(&ed, "keyword").fg, Some(SCRIPT_RGB));
+}
+
+#[test]
+fn init_styles_reach_the_fallback_when_the_configured_theme_fails() {
+    let (ed, _fixture) = session(
+        r##"(set-scope-styles! (list (hash 'scope "keyword" 'fg "#abcdef")))
+            (with-handler (lambda (e) 0) (set-option! "theme" "missing"))"##,
+        "",
+    );
+    assert_eq!(ed.state.shown_theme, "");
+    assert_eq!(style(&ed, "keyword").fg, Some(SCRIPT_RGB));
+}
+
+#[test]
+fn a_live_call_warns_only_for_its_own_entries() {
+    let (mut ed, fixture) = session(
+        r##"(set-scope-styles! (list (hash 'scope "keyword" 'fg "gold")))"##,
+        "",
+    );
+    assert_eq!(warnings(&ed).len(), 1, "{:?}", warnings(&ed));
+
+    run(
+        &mut ed,
+        &fixture.config_dir,
+        r##"(set-scope-styles! (list (hash 'scope "string" 'fg "#abcdef")))"##,
+    );
+
+    assert_eq!(warnings(&ed).len(), 1, "{:?}", warnings(&ed));
+    assert_eq!(style(&ed, "string").fg, Some(SCRIPT_RGB));
+}
+
+#[test]
+fn a_call_warns_in_the_order_it_names_its_scopes() {
+    let (mut ed, fixture) = session("", "");
+    let scopes = ["zeta.x", "alpha.x", "mid.x", "beta.x", "omega.x"];
+    let entries: String = scopes
+        .iter()
+        .map(|scope| format!(r#"(hash 'scope "{scope}" 'fg "gold")"#))
+        .collect();
+
+    run(
+        &mut ed,
+        &fixture.config_dir,
+        &format!("(set-scope-styles! (list {entries}))"),
+    );
+
+    let warned: Vec<&str> = warnings(&ed)
+        .iter()
+        .filter_map(|text| scopes.iter().copied().find(|scope| text.contains(*scope)))
+        .collect();
+    assert_eq!(warned, scopes);
+}
+
+#[test]
 fn a_write_after_startup_restyles_the_live_theme() {
     let (mut ed, fixture) = session("", "");
     assert_eq!(style(&ed, "keyword").fg, Some(Rgb(0x11, 0x11, 0x11)));
@@ -149,7 +224,7 @@ fn a_malformed_entry_refuses_the_whole_call() {
 }
 
 #[test]
-fn reload_config_drops_styles_init_no_longer_sets() {
+fn reload_config_drops_styles_the_new_init_does_not_set() {
     let (mut ed, fixture) = session(
         r##"(set-scope-styles! (list (hash 'scope "keyword" 'fg "#abcdef")))"##,
         "",

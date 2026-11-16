@@ -1,16 +1,18 @@
 //! Scope styles a script set, kept apart from any theme so they apply to
 //! whichever theme is installed.
 
+use std::collections::BTreeMap;
+
 use hume_core::{ByOrigin, ConfigOrigin};
-use rustc_hash::FxHashMap;
 
 use crate::theme::style_spec::StyleSpec;
 
 /// The style each origin set for a scope. The user's applies above the
 /// theme's own entry for the scope; the highest of the others applies
 /// beneath it, only where the theme has no entry of that exact name.
+/// Ordered by scope name, so a theme install warns in that order.
 #[derive(Debug, Default)]
-pub struct ScopeStyles(FxHashMap<Box<str>, ByOrigin<Option<StyleSpec>>>);
+pub struct ScopeStyles(BTreeMap<Box<str>, ByOrigin<Option<StyleSpec>>>);
 
 /// A scope's styles as [`super::Theme::apply_scope_styles`] layers them.
 pub(crate) struct Layered<'a> {
@@ -29,18 +31,29 @@ impl ScopeStyles {
     }
 
     pub(crate) fn layered(&self) -> impl Iterator<Item = Layered<'_>> {
-        self.0.iter().map(|(scope, layers)| {
-            let highest = |above: bool| {
-                layers
-                    .iter()
-                    .filter(|(origin, _)| (*origin == ConfigOrigin::User) == above)
-                    .find_map(|(_, spec)| spec.as_ref())
-            };
-            Layered {
-                scope,
-                above_theme: highest(true),
-                below_theme: highest(false),
-            }
-        })
+        self.0
+            .iter()
+            .map(|(scope, layers)| Self::layer(scope, layers))
+    }
+
+    /// `scope`'s styles, `None` when no origin set one.
+    pub(crate) fn layered_scope(&self, scope: &str) -> Option<Layered<'_>> {
+        self.0
+            .get_key_value(scope)
+            .map(|(scope, layers)| Self::layer(scope, layers))
+    }
+
+    fn layer<'a>(scope: &'a str, layers: &'a ByOrigin<Option<StyleSpec>>) -> Layered<'a> {
+        let highest = |above: bool| {
+            layers
+                .iter()
+                .filter(|(origin, _)| (*origin == ConfigOrigin::User) == above)
+                .find_map(|(_, spec)| spec.as_ref())
+        };
+        Layered {
+            scope,
+            above_theme: highest(true),
+            below_theme: highest(false),
+        }
     }
 }
