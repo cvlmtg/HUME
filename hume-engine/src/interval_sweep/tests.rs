@@ -9,14 +9,21 @@ fn run_tb<R: Ord + Copy>(
     raw: Vec<(usize, usize, R, u16)>,
     tie_break: TieBreak,
 ) -> Vec<(usize, usize, u16)> {
-    let mut raw = raw;
+    let mut raw = raw
+        .into_iter()
+        .map(|(start, end, rank, scope)| (ByteCol::new(start), ByteCol::new(end), rank, scope))
+        .collect();
     let mut stack = Vec::new();
     let mut events = Vec::new();
     let mut out = Vec::new();
     flatten_overlapping_spans(&mut raw, &mut stack, &mut events, &mut out, tie_break);
     out.into_iter()
-        .map(|(range, scope)| (range.start, range.end, scope))
+        .map(|(range, scope)| (range.start.index(), range.end.index(), scope))
         .collect()
+}
+
+fn bytes(start: usize, end: usize) -> ExclusiveRange<ByteCol> {
+    ExclusiveRange::new(ByteCol::new(start), ByteCol::new(end))
 }
 
 // ── Depth-ranked (hume-treesitter's convention: higher rank wins as-is) ──
@@ -93,7 +100,8 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
     let mut events = Vec::new();
     let mut out = Vec::new();
 
-    let mut first: Vec<(usize, usize, u8, u16)> = vec![(0, 3, 0, 0)];
+    let mut first: Vec<(ByteCol, ByteCol, u8, u16)> =
+        vec![(ByteCol::new(0), ByteCol::new(3), 0, 0)];
     flatten_overlapping_spans(
         &mut first,
         &mut stack,
@@ -101,10 +109,11 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
         &mut out,
         TieBreak::LastPushed,
     );
-    assert_eq!(out, vec![(ExclusiveRange::new(0, 3), 0)]);
+    assert_eq!(out, vec![(bytes(0, 3), 0)]);
 
     out.clear();
-    let mut second: Vec<(usize, usize, u8, u16)> = vec![(10, 12, 0, 1)];
+    let mut second: Vec<(ByteCol, ByteCol, u8, u16)> =
+        vec![(ByteCol::new(10), ByteCol::new(12), 0, 1)];
     flatten_overlapping_spans(
         &mut second,
         &mut stack,
@@ -112,5 +121,5 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
         &mut out,
         TieBreak::LastPushed,
     );
-    assert_eq!(out, vec![(ExclusiveRange::new(10, 12), 1)]);
+    assert_eq!(out, vec![(bytes(10, 12), 1)]);
 }

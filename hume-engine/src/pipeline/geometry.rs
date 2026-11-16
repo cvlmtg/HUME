@@ -291,8 +291,10 @@ impl PaneSize {
 }
 
 /// The columns a pane leaves for text once its gutter takes its own, at
-/// least one. Built only from a [`PaneSize`], by
-/// [`compute_viewport`](crate::layout::compute_viewport).
+/// least one. Built only from a [`PaneSize`]: a pane's, by
+/// [`compute_viewport`](crate::layout::compute_viewport), or a one-cell size
+/// by [`styled_lines`](crate::text_lines::styled_lines), whose layout never
+/// wraps and so never reads it.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ContentWidth(NonZeroU16);
 

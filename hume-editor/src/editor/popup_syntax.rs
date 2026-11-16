@@ -213,7 +213,7 @@ fn popup_content(
     let base = theme.resolve_by_name(Scope(ui_scopes::POPUP));
     PopupContent::styled(styled_lines(
         syntax.text.rope(),
-        Some(&syntax.syntax),
+        &syntax.syntax,
         providers,
         base,
         theme,

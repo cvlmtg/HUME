@@ -1,7 +1,7 @@
 pub(crate) mod highlight;
 use highlight::HighlightStack;
 pub use highlight::TierBufs;
-pub(crate) use highlight::rebuild_line_decorations;
+use highlight::rebuild_line_decorations;
 
 use hume_grid::Rgb;
 use hume_rope::cluster::ClusterStart;
@@ -9,6 +9,7 @@ use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
+use crate::display_lines::{DisplayLineMap, RenderDisplayLine};
 use crate::providers::{Decoration, ProviderSet, SyntaxSource};
 use crate::theme::Theme;
 use crate::types::{
@@ -71,7 +72,7 @@ pub(crate) struct SelectionPaint<'a> {
 }
 
 /// `base` with `bg` layered over it, a background only: the style under a
-/// pane's line, over the theme's default.
+/// line of text drawn over `base`.
 pub(crate) fn line_base(base: ResolvedStyle, bg: Option<Rgb>) -> ResolvedStyle {
     base.layer(ResolvedStyle {
         bg,
@@ -115,16 +116,45 @@ impl LineStyle {
     }
 }
 
+/// `line`'s first content display line of `map`, laid out, and styled into
+/// `scratch.styles` over `base` with no selections, cursors or cursorline:
+/// a scope header row, or a line of a text drawn outside a pane. `chars`
+/// are the line's, from the [`LineStyle`] that entered it.
+pub(crate) fn style_unselected_line<'m>(
+    map: &'m mut DisplayLineMap<'_>,
+    line: ContentLine,
+    chars: ExclusiveRange<CharOffset>,
+    base: ResolvedStyle,
+    theme: &Theme,
+    scratch: &mut StyleScratch,
+) -> RenderDisplayLine<'m> {
+    let pos = map.first_content_display_line(line);
+    let rendered = map.render_display_line(pos);
+    scratch
+        .styles
+        .resize(rendered.graphemes.len(), ResolvedStyle::default());
+    style_display_line(
+        rendered.display_line,
+        rendered.graphemes,
+        chars,
+        None,
+        base,
+        theme,
+        scratch,
+    );
+    rendered
+}
+
 /// Resolve per-grapheme styles for one display line.
 ///
 /// `styles_out` must be pre-sized to at least `display_line.graphemes.end` (parallel
 /// to `graphemes`). Writes into the display line's slice of `styles_out`; entries
 /// outside `display_line.graphemes` are untouched.
 ///
-/// Call [`rebuild_line_decorations`] for the current buffer line before
-/// this. `base` is the style under the whole line, [`line_base`] for a pane's
-/// line. `selection` is `None` for a line drawn without selections, cursors
-/// or cursorline: a scope header row or a popup's line.
+/// Enter the current buffer line with [`LineStyle::enter`] before this.
+/// `base` is the style under the whole line, from [`line_base`].
+/// `selection` is `None` for a line drawn without selections, cursors or
+/// cursorline: a scope header row or a popup's line.
 pub(crate) fn style_display_line(
     display_line: &DisplayLine,
     graphemes: &[Grapheme],

@@ -148,6 +148,18 @@ fn a_tab_draws_as_one_blank_column() {
 }
 
 #[test]
+fn a_wide_char_draws_once() {
+    let rows = formatted("a中b", "(hash)");
+    assert_eq!(texts(&rows), ["a中b"]);
+}
+
+#[test]
+fn a_control_char_draws_as_its_placeholder() {
+    let rows = formatted("a\u{7}b", "(hash)");
+    insta::assert_snapshot!(texts(&rows).concat(), @"a<7>b");
+}
+
+#[test]
 fn a_replacement_draws_in_its_scope_over_the_syntax_style() {
     let rows = formatted(
         "# H",

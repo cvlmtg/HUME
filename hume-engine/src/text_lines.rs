@@ -1,14 +1,13 @@
-//! A text drawn outside a pane, such as a popup's: each line laid out and
-//! styled as a pane lays out and styles a scope header row, then handed
-//! over as styled runs for the caller to wrap and draw.
-
-use std::borrow::Cow;
+//! A text drawn outside a pane, such as a popup's: each line laid out as a
+//! pane lays out a scope header row, styled as a pane styles a line it
+//! draws without selections, then handed over as styled runs for the caller
+//! to wrap and draw.
 
 use hume_grid::Rgb;
 use hume_rope::line::ContentLine;
 use hume_rope::lines::content_line_count;
 use hume_rope::offset::ExclusiveRange;
-use hume_rope::width::CHROME_TAB_WIDTH;
+use hume_rope::width::{CHROME_TAB_WIDTH, chrome_width};
 use ropey::Rope;
 
 use crate::display_lines::DisplayLineInputs;
@@ -17,15 +16,14 @@ use crate::folds::HiddenLines;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::pipeline::{ContentWidth, PaneSize};
 use crate::providers::{ProviderSet, SyntaxSource};
-use crate::render::resolve_arena_text;
+use crate::render::{CellDraw, cell_draw};
 use crate::reveal::RevealedLines;
 use crate::scope_headers::HeaderLayout;
-use crate::style::{LineStyle, StyleScratch, line_base, style_display_line};
+use crate::style::{LineStyle, StyleScratch, line_base, style_unselected_line};
 use crate::theme::Theme;
 use crate::types::{CellContent, ResolvedStyle};
 
 /// One line of a text as [`styled_lines`] draws it.
-#[derive(Clone, Debug, PartialEq)]
 pub struct StyledLine {
     /// The line's cells as runs of text, none holding a `\n`.
     pub runs: Vec<(String, ResolvedStyle)>,
@@ -39,7 +37,7 @@ pub struct StyledLine {
 /// without selections. A tab is one column wide, as in other chrome text.
 pub fn styled_lines(
     rope: &Rope,
-    syntax: Option<&dyn SyntaxSource>,
+    syntax: &dyn SyntaxSource,
     providers: &ProviderSet,
     base: ResolvedStyle,
     theme: &Theme,
@@ -68,17 +66,11 @@ pub fn styled_lines(
         let LineStyle {
             chars,
             tint_bg: fill,
-        } = LineStyle::enter(line, rope, syntax, providers, theme, &mut scratch);
-        let pos = map.first_content_display_line(line);
-        let rendered = map.render_display_line(pos);
-        scratch
-            .styles
-            .resize(rendered.graphemes.len(), ResolvedStyle::default());
-        style_display_line(
-            rendered.display_line,
-            rendered.graphemes,
+        } = LineStyle::enter(line, rope, Some(syntax), providers, theme, &mut scratch);
+        let rendered = style_unselected_line(
+            &mut map,
+            line,
             chars,
-            None,
             line_base(base, fill),
             theme,
             &mut scratch,
@@ -89,22 +81,19 @@ pub fn styled_lines(
             .iter()
             .zip(&scratch.styles[cells])
         {
-            let text = match g.content {
-                CellContent::Grapheme => {
-                    Cow::Borrowed(&rendered.line_text[g.byte_range.as_byte_range()])
+            // A popup line has no cursor to stand past its end.
+            if matches!(g.content, CellContent::Empty) {
+                continue;
+            }
+            match cell_draw(g, rendered.line_text, rendered.virtual_texts) {
+                Some(CellDraw::Glyph(text)) => push_run(&mut runs, text, style),
+                Some(CellDraw::Run(text)) => {
+                    push_run(&mut runs, text, style);
+                    let blank = usize::from(g.width).saturating_sub(chrome_width(text));
+                    push_run(&mut runs, &" ".repeat(blank), style);
                 }
-                CellContent::Whitespace { start, len }
-                | CellContent::Placeholder { start, len }
-                | CellContent::Virtual { start, len }
-                | CellContent::Replacement { start, len } => {
-                    Cow::Borrowed(resolve_arena_text(rendered.virtual_texts, start, len))
-                }
-                CellContent::TabFill => Cow::Owned(" ".repeat(usize::from(g.width))),
-                // The second cell of a wide cluster, and the end-of-line
-                // sentinel, draw nothing of their own.
-                CellContent::WidthContinuation | CellContent::Empty => continue,
-            };
-            push_run(&mut runs, &text, style);
+                None => {}
+            }
         }
         StyledLine { runs, fill }
     })

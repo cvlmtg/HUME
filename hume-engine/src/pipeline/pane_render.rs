@@ -257,16 +257,10 @@ pub(crate) fn render_pane(
     let header_bg = pane_ctx.theme.ui.context.bg;
     for (header_row, &header) in (0u16..).zip(rows.headers()) {
         let line = enter_line(header, last_content_line, header_providers, pane_ctx, style);
-        let pos = header_dlm.first_content_display_line(header);
-        let rendered = header_dlm.render_display_line(pos);
-        style
-            .styles
-            .resize(rendered.graphemes.len(), ResolvedStyle::default());
-        crate::style::style_display_line(
-            rendered.display_line,
-            rendered.graphemes,
+        let rendered = crate::style::style_unselected_line(
+            &mut header_dlm,
+            header,
             line.chars,
-            None,
             crate::style::line_base(pane_ctx.theme.default, header_bg),
             pane_ctx.theme,
             style,

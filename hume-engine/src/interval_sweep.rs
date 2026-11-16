@@ -1,14 +1,16 @@
 //! Event-sweep flattener for overlapping same-scan-unit spans; see
 //! [`flatten_overlapping_spans`]'s doc for why the wrapper.
 
+use hume_rope::column::ByteCol;
 use hume_rope::offset::ExclusiveRange;
 
 /// Which span wins when two spans have exactly equal `rank` and overlap;
 /// see [`flatten_overlapping_spans`]. The two current callers
 /// disagree, so this is a real two-case distinction, not a speculative
 /// flag: `hume-treesitter` wants the most-recently-collected (nested)
-/// layer to win a tie; `hume-editor` wants the alphabetically-first source
-/// (already sorted ascending into `raw` before the call) to win, pinned by
+/// layer to win a tie; `hume-editor` wants the span it pushed first to win,
+/// pushing spans by start and those starting together by source name,
+/// pinned by
 /// `overlapping_extra_highlights_from_two_sources_resolve_alphabetically`.
 #[derive(Clone, Copy)]
 pub enum TieBreak {
@@ -22,11 +24,8 @@ pub enum TieBreak {
 /// scan unit: one line, one byte range, whatever the caller means by
 /// "overlapping") into the sorted, non-overlapping `(range, scope)`
 /// sequence a single rendering layer's contract requires: its own output
-/// must not overlap itself. `P` is the position type: a line-relative
-/// `hume_rope::column::ByteCol` for a highlight layer, a text's
-/// `hume_rope::offset::CharOffset` for a popup's format. Nothing here needs
-/// more of it than `Ord + Copy + Default` (`P::default()` is the sweep's
-/// origin). At each position, the span with the
+/// must not overlap itself. Positions are a highlight layer's line-relative
+/// bytes. At each position, the span with the
 /// highest-`R`-per-`Ord` wins (`R` need not be a priority number directly:
 /// `hume-editor`'s caller passes `std::cmp::Reverse<u8>` so its "lower
 /// priority number wins" convention becomes "highest `Reverse` value wins"
@@ -41,11 +40,11 @@ pub enum TieBreak {
 /// another of the same scope is still active (e.g. A=[0,5), B=[3,8): at pos
 /// 5, A ends and B continues, producing (3,5,B) then (5,8,B) without this
 /// merge pass).
-pub fn flatten_overlapping_spans<P: Ord + Copy + Default, R: Ord + Copy, S: PartialEq + Copy>(
-    raw: &mut Vec<(P, P, R, S)>,
+pub fn flatten_overlapping_spans<R: Ord + Copy, S: PartialEq + Copy>(
+    raw: &mut Vec<(ByteCol, ByteCol, R, S)>,
     stack: &mut Vec<(R, u32, S)>,
-    events: &mut Vec<(P, bool, u32, R, S)>,
-    out: &mut Vec<(ExclusiveRange<P>, S)>,
+    events: &mut Vec<(ByteCol, bool, u32, R, S)>,
+    out: &mut Vec<(ExclusiveRange<ByteCol>, S)>,
     tie_break: TieBreak,
 ) {
     debug_assert!(stack.is_empty());
@@ -78,7 +77,7 @@ pub fn flatten_overlapping_spans<P: Ord + Copy + Default, R: Ord + Copy, S: Part
     // below, not by event processing order.
     events.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
 
-    let mut pos = P::default();
+    let mut pos = ByteCol::default();
     for &(event_pos, is_end, seq, rank, scope) in events.iter() {
         // Emit the gap before this event using the currently active
         // (highest rank, then highest seq) scope.

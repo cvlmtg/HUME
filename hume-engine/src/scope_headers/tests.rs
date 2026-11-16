@@ -18,10 +18,10 @@ use crate::test_doubles::{ConcealSource, ScopeTable, VirtualLineBlock};
 use crate::test_support::{
     at, bg, byte_range, hidden, map, map_hiding, pane_inputs, replaced, theme_with,
 };
-use crate::types::{CellContent, ResolvedStyle};
+use crate::types::CellContent;
 use hume_core::Side;
 use hume_grid::Rgb;
-use hume_rope::offset::{ExclusiveRange, InclusiveRange};
+use hume_rope::offset::InclusiveRange;
 
 const SHOWN: ContextSettings = ContextSettings {
     enabled: true,
@@ -433,28 +433,20 @@ fn header_row_takes_a_highlight_decorations_scope() {
     let mut layout = HeaderLayout::default();
     let mut dlm = layout.display_map(&rope, &providers, &inputs);
     let header_providers = dlm.providers();
-    let pos = dlm.first_content_display_line(ContentLine::new(0));
-    let rendered = dlm.render_display_line(pos);
 
     let mut scratch = crate::style::StyleScratch::new();
-    scratch
-        .styles
-        .resize(rendered.graphemes.len(), ResolvedStyle::default());
-    crate::style::rebuild_line_decorations(
+    let line = crate::style::LineStyle::enter(
         ContentLine::new(0),
+        &rope,
         None,
         header_providers,
-        &rope,
+        &theme,
         &mut scratch,
     );
-    crate::style::style_display_line(
-        rendered.display_line,
-        rendered.graphemes,
-        ExclusiveRange::new(
-            hume_rope::offset::CharOffset::new(0),
-            hume_rope::offset::CharOffset::new(4),
-        ),
-        None,
+    let rendered = crate::style::style_unselected_line(
+        &mut dlm,
+        ContentLine::new(0),
+        line.chars,
         crate::style::line_base(theme.default, None),
         &theme,
         &mut scratch,

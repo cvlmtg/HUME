@@ -18,9 +18,9 @@ fn run(raw: Vec<(usize, usize, ScopeId)>) -> Vec<(usize, usize, ScopeId)> {
 }
 
 fn run_d(raw: Vec<(usize, usize, ScopeId, u8)>) -> Vec<(usize, usize, ScopeId)> {
-    let mut raw: Vec<(usize, usize, u8, ScopeId)> = raw
+    let mut raw: Vec<(ByteCol, ByteCol, u8, ScopeId)> = raw
         .into_iter()
-        .map(|(s, e, scope, d)| (s, e, d, scope))
+        .map(|(s, e, scope, d)| (ByteCol::new(s), ByteCol::new(e), d, scope))
         .collect();
     let mut stack = Vec::new();
     let mut events = Vec::new();
@@ -33,8 +33,12 @@ fn run_d(raw: Vec<(usize, usize, ScopeId, u8)>) -> Vec<(usize, usize, ScopeId)> 
         TieBreak::LastPushed,
     );
     out.into_iter()
-        .map(|(range, scope)| (range.start, range.end, scope))
+        .map(|(range, scope)| (range.start.index(), range.end.index(), scope))
         .collect()
+}
+
+fn bytes(start: usize, end: usize) -> ExclusiveRange<ByteCol> {
+    ExclusiveRange::new(ByteCol::new(start), ByteCol::new(end))
 }
 
 #[test]
@@ -112,7 +116,8 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
     let mut events = Vec::new();
     let mut out = Vec::new();
 
-    let mut first: Vec<(usize, usize, u8, ScopeId)> = vec![(0, 3, 0, s(0))];
+    let mut first: Vec<(ByteCol, ByteCol, u8, ScopeId)> =
+        vec![(ByteCol::new(0), ByteCol::new(3), 0, s(0))];
     flatten_overlapping_spans(
         &mut first,
         &mut stack,
@@ -120,10 +125,11 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
         &mut out,
         TieBreak::LastPushed,
     );
-    assert_eq!(out, vec![(ExclusiveRange::new(0, 3), s(0))]);
+    assert_eq!(out, vec![(bytes(0, 3), s(0))]);
 
     out.clear();
-    let mut second: Vec<(usize, usize, u8, ScopeId)> = vec![(10, 12, 0, s(1))];
+    let mut second: Vec<(ByteCol, ByteCol, u8, ScopeId)> =
+        vec![(ByteCol::new(10), ByteCol::new(12), 0, s(1))];
     flatten_overlapping_spans(
         &mut second,
         &mut stack,
@@ -131,7 +137,7 @@ fn scratch_reuse_across_calls_leaves_no_stale_events() {
         &mut out,
         TieBreak::LastPushed,
     );
-    assert_eq!(out, vec![(ExclusiveRange::new(10, 12), s(1))]);
+    assert_eq!(out, vec![(bytes(10, 12), s(1))]);
 }
 
 #[test]

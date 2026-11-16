@@ -13,7 +13,7 @@ use crate::display_lines::RenderDisplayLine;
 use crate::layout::PaneGeometry;
 use crate::providers::{FoldMark, GutterColumn, GutterCtx, GutterInputs, ProviderId};
 use crate::theme::Theme;
-use crate::types::{CellContent, DisplayLineKind, EditorMode, ResolvedStyle, ScopeId};
+use crate::types::{CellContent, DisplayLineKind, EditorMode, Grapheme, ResolvedStyle, ScopeId};
 
 // Stage 4: compose
 
@@ -283,10 +283,9 @@ pub(crate) fn compose_display_line(
     let line_graphemes = &graphemes[display_line.graphemes.start..display_line.graphemes.end];
 
     for (g, style) in line_graphemes.iter().zip(styles) {
-        // Skip WidthContinuation: already handled by the primary cell.
-        if matches!(g.content, CellContent::WidthContinuation) {
+        let Some(draw) = cell_draw(g, line_text, virtual_texts) else {
             continue;
-        }
+        };
 
         // Horizontal scroll: skip cells left of the viewport.
         if g.display_col.advance_saturating(g.width as u32) <= h_offset {
@@ -334,36 +333,15 @@ pub(crate) fn compose_display_line(
             continue;
         }
 
-        match &g.content {
-            CellContent::Grapheme => {
-                // `format.rs` cuts every `byte_range` out of this same line with
-                // `grapheme_indices`, so a range that won't slice means the formatted
-                // line and `line_text` have desynced: a `PaneLineStore` entry walked
-                // against another line's text. `.get()` rather than `&line_text[..]`
-                // because the bounds pair alone says nothing about char boundaries: a
-                // desynced range can still land mid-cluster and panic.
-                let Some(text) = line_text.get(g.byte_range.as_byte_range()) else {
-                    debug_assert!(
-                        false,
-                        "grapheme byte range {}..{} does not slice the {}-byte line: \
-                         formatted line and line text have desynced",
-                        g.byte_range.start.index(),
-                        g.byte_range.end.index(),
-                        line_text.len()
-                    );
-                    // Release: leave the cell as `fill_row_bg` painted it. One blank
-                    // cell beats taking the editor down over a frame that is already
-                    // wrong.
-                    continue;
-                };
+        match draw {
+            CellDraw::Glyph(text) => {
                 if screen_x + g.width as u16 > right_edge {
-                    // A wide grapheme whose right half would cross
-                    // `right_edge` cannot be drawn: there is no such
-                    // thing as half a glyph, and the cell past the edge
-                    // belongs to whatever the terminal renders next (a
-                    // neighbouring pane, the divider seam). Render spaces
-                    // for the columns that are ours, mirroring the
-                    // h-scroll straddle policy below.
+                    // A wide glyph whose right half would cross `right_edge`
+                    // cannot be drawn: there is no such thing as half a
+                    // glyph, and the cell past the edge belongs to whatever
+                    // the terminal renders next (a neighbouring pane, the
+                    // divider seam). Render spaces for the columns that are
+                    // ours, mirroring the h-scroll straddle policy above.
                     for sx in screen_x..right_edge {
                         canvas.write_cell(sx, y, " ", 1, cell_style, right_edge);
                     }
@@ -371,50 +349,13 @@ pub(crate) fn compose_display_line(
                     canvas.write_cell(screen_x, y, text, g.width, cell_style, right_edge);
                 }
             }
-            CellContent::Whitespace { start, len } | CellContent::Placeholder { start, len } => {
-                let s = resolve_arena_text(virtual_texts, *start, *len);
-                // The indicator's text may be wider than one cell (an
-                // unrenderable cluster's `<200b>` placeholder spans as many
-                // cells as it has characters), so it is written across the
-                // span rather than into the first cell. A one-glyph
-                // indicator (a whitespace marker, a tab's `→`) writes one
-                // cell and leaves the rest to the fill below, exactly as
-                // before.
+            CellDraw::Run(text) => {
                 let cell_end = (screen_x + g.width as u16).min(right_edge);
-                let after = canvas.write_text_run(screen_x, y, s, cell_style, cell_end);
-                // Fill the reserved cells the text didn't cover: a tab's
-                // expanse beyond its marker, or a wide cell's second column.
+                let after = canvas.write_text_run(screen_x, y, text, cell_style, cell_end);
                 for ex in after..cell_end {
                     canvas.write_cell(ex, y, " ", 1, cell_style, cell_end);
                 }
             }
-            CellContent::TabFill => {
-                // A tab with its indicator off: blank across its whole
-                // expanse, same `cell_style` a `Whitespace` glyph's fill
-                // would use; this is just that fill with no glyph in front.
-                let cell_end = (screen_x + g.width as u16).min(right_edge);
-                for ex in screen_x..cell_end {
-                    canvas.write_cell(ex, y, " ", 1, cell_style, cell_end);
-                }
-            }
-            CellContent::Virtual { start, len } | CellContent::Replacement { start, len } => {
-                let s = resolve_arena_text(virtual_texts, *start, *len);
-                if screen_x + g.width as u16 > right_edge {
-                    // Same straddle policy as `Grapheme` above: a wide
-                    // decoration glyph (an inlay hint containing CJK text)
-                    // cannot be drawn half-on-screen.
-                    for sx in screen_x..right_edge {
-                        canvas.write_cell(sx, y, " ", 1, cell_style, right_edge);
-                    }
-                } else {
-                    canvas.write_cell(screen_x, y, s, g.width, cell_style, right_edge);
-                }
-            }
-            CellContent::Empty => {
-                canvas.write_cell(screen_x, y, " ", 1, cell_style, right_edge);
-            }
-            // Filtered by the `WidthContinuation` skip above before reaching this match.
-            CellContent::WidthContinuation => unreachable!(),
         }
     }
 
@@ -464,12 +405,63 @@ pub(crate) fn compose_display_line(
     }
 }
 
+/// What a cell draws.
+pub(crate) enum CellDraw<'t> {
+    /// One cluster across the cell's width, never split at an edge.
+    Glyph(&'t str),
+    /// Text from the cell's left edge, blank after it to the cell's width.
+    Run(&'t str),
+}
+
+/// What `g`, a cell of a display line formatted from `line_text` with its
+/// virtual text in `arena`, draws. `None` for the right half of a wide
+/// cluster, which its left half draws, and for a grapheme whose range does
+/// not slice `line_text`.
+pub(crate) fn cell_draw<'t>(
+    g: &Grapheme,
+    line_text: &'t str,
+    arena: &'t str,
+) -> Option<CellDraw<'t>> {
+    match g.content {
+        CellContent::Grapheme => {
+            // `format.rs` cuts every `byte_range` out of this same line with
+            // `grapheme_indices`, so a range that won't slice means the
+            // formatted line and `line_text` have desynced: a
+            // `PaneLineStore` entry walked against another line's text.
+            // `.get()` because the bounds pair alone says nothing about char
+            // boundaries: a desynced range can still land mid-cluster. In a
+            // release build the cell is left as the row's fill painted it.
+            let text = line_text.get(g.byte_range.as_byte_range());
+            debug_assert!(
+                text.is_some(),
+                "grapheme byte range {}..{} does not slice the {}-byte line: \
+                 formatted line and line text have desynced",
+                g.byte_range.start.index(),
+                g.byte_range.end.index(),
+                line_text.len()
+            );
+            text.map(CellDraw::Glyph)
+        }
+        CellContent::Virtual { start, len } | CellContent::Replacement { start, len } => {
+            Some(CellDraw::Glyph(resolve_arena_text(arena, start, len)))
+        }
+        // An indicator can be wider than one cell (an unrenderable cluster's
+        // `<200b>`) or narrower than its cell (a tab's `→`).
+        CellContent::Whitespace { start, len } | CellContent::Placeholder { start, len } => {
+            Some(CellDraw::Run(resolve_arena_text(arena, start, len)))
+        }
+        // A tab with its indicator off, and the cell past a line's end.
+        CellContent::TabFill | CellContent::Empty => Some(CellDraw::Run("")),
+        CellContent::WidthContinuation => None,
+    }
+}
+
 /// Resolve a `(start, len)` arena range into the underlying text. Never
 /// panics: `start`/`len` are always produced by the same `push_arena_text`
 /// call that sized the arena, so an out-of-range slice should not happen, but
 /// degrading to an empty string is cheaper than a debug_assert on a hot path.
 #[inline]
-pub(crate) fn resolve_arena_text(arena: &str, start: u32, len: u16) -> &str {
+fn resolve_arena_text(arena: &str, start: u32, len: u16) -> &str {
     let start = start as usize;
     let end = start + len as usize;
     arena.get(start..end).unwrap_or("")
