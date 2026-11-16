@@ -256,5 +256,14 @@ impl<T> ByOrigin<T> {
     }
 }
 
+impl<T> ByOrigin<Option<T>> {
+    /// Sets (`Some`) or clears (`None`) `origin`'s value, leaving the other
+    /// origins'. Returns whether a higher origin's value hides it.
+    pub fn set(&mut self, origin: ConfigOrigin, value: Option<T>) -> bool {
+        *self.get_mut(origin) = value;
+        self.above(origin).any(Option::is_some)
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -164,6 +164,20 @@ fn by_origin_iterates_highest_first_and_keeps_each_value_apart() {
 }
 
 #[test]
+fn by_origin_set_reports_whether_a_higher_origin_hides_the_value() {
+    let mut layers = ByOrigin::<Option<u8>>::default();
+
+    assert!(!layers.set(ConfigOrigin::Plugin, Some(1)));
+    assert!(!layers.set(ConfigOrigin::User, Some(2)));
+    assert!(layers.set(ConfigOrigin::Bundled, Some(0)));
+    assert!(layers.set(ConfigOrigin::Plugin, None));
+    assert!(!layers.set(ConfigOrigin::User, None));
+
+    let values: Vec<_> = layers.iter().map(|(_, value)| *value).collect();
+    assert_eq!(values, [None, None, Some(0)]);
+}
+
+#[test]
 fn by_origin_above_is_every_higher_origin_highest_first() {
     let mut layers = ByOrigin::<u8>::default();
     for origin in ORIGINS {

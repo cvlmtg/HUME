@@ -30,12 +30,15 @@ impl ScopeStyles {
     /// Sets `scope`'s style from `by`, replacing the one `by` set before.
     /// Returns whether a higher origin's style for the scope hides it.
     pub fn set(&mut self, scope: &str, spec: StyleSpec, by: ConfigOrigin) -> bool {
-        let layers = self.styles.entry(scope.into()).or_default();
-        *layers.get_mut(by) = Some(spec);
+        let hidden = self
+            .styles
+            .entry(scope.into())
+            .or_default()
+            .set(by, Some(spec));
         if !self.unshown.iter().any(|unshown| **unshown == *scope) {
             self.unshown.push(scope.into());
         }
-        layers.above(by).any(Option::is_some)
+        hidden
     }
 
     pub(crate) fn layered(&self) -> impl Iterator<Item = Layered<'_>> {

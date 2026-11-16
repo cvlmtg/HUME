@@ -178,8 +178,7 @@ impl LanguageLists {
             ListTier::Explicit => &mut self.explicit,
             ListTier::Default => &mut self.defaults,
         };
-        *layers.get_mut(origin) = entries;
-        layers.above(origin).any(Option::is_some)
+        layers.set(origin, entries)
     }
 
     /// The servers the language's buffers attach to, in order: the entries
