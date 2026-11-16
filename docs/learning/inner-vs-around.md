@@ -43,6 +43,9 @@ The `m` root holds a small family beyond `mi`/`ma`:
 - `mw` plus a delimiter wraps the current selection in that pair.
 - `mm` and `MM` select the word/WORD under the cursor directly; they are
   `maw`/`maW` under a shorter name (see below).
+- `m/` turns every search match into a selection.
+- `mu` and `mU` step back and forward through the selections you built
+  (see [The Undo Tree](undo-tree.md)).
 
 ## The whitespace rule for `maw`/`maW`
 

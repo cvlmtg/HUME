@@ -43,8 +43,12 @@ order and stops at the first match:
    file whose first line runs `swipl` is Prolog. A shebang naming none of
    them leaves the choice unspecified.
 
-3. **Shebangs.** If the file has no extension, or an extension no language
-   claims, the first line is checked for a shebang (`#!/usr/bin/env python3`,
+   A file opened through a symlink tries both tiers on the path as you
+   opened it first, then on the file the link points to, so a link named
+   `vimrc-local` pointing at `config.lua` is still Lua.
+
+3. **Shebangs.** If neither path's name or extension identifies it, the
+   first line is checked for a shebang (`#!/usr/bin/env python3`,
    `#!/bin/bash`). This covers extensionless scripts like `build` or
    `configure`. A language lists interpreter names, and a version after the
    name (`python3`, `lua5.4`) still finds the language listing `python` or

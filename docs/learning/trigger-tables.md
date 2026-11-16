@@ -76,7 +76,7 @@ for each random sequence of set / clear operations:
         assert table.fires_on(c) == model.fires_on(c)
 ```
 
-The alphabet is kept small on purpose: with few characters and few
+The alphabet is kept small: with few characters and few
 listeners, sets overlap and repeat constantly, which is where
 replace-versus-merge and empty-set mistakes hide. The model shares no code
 with the table, so a mistake in one cannot hide behind the same mistake in the

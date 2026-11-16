@@ -32,9 +32,22 @@ An installed grammar gives HUME two things that belong together:
    query is the bridge between the parse tree and meaning: it matches
    patterns in the tree and assigns named captures to them.
 
-A grammar whose language embeds others carries an optional third piece, an
-**injection query**, which marks regions of the tree as belonging to another
-language (see [Injections](#injections-embedded-languages) below).
+Every other query is optional, and each answers one more question about the
+tree:
+
+| Query | Answers |
+|-------|---------|
+| injections | which regions belong to another language (see [Injections](#injections-embedded-languages)) |
+| textobjects | where the function, class or argument around the cursor begins and ends (see [Text objects](#text-objects-selecting-and-navigating-by-structure)) |
+| indents | how far a new line is indented |
+| context | which scopes pin their first line at the top of the pane while you scroll inside them |
+| folds | which regions a pane can fold |
+| locals | which names are local, and which definition each use of a name refers to (see [Locals](#locals-coloring-a-name-by-its-definition)) |
+
+Some fall back on others. Without a context query, the scopes are the
+functions and classes the text-object query names. Without a folds query,
+the foldable regions are those scopes. So a language with only text objects
+still gets scope headers and folding.
 
 These pieces form one bundle because the queries are compiled against the
 language handle inside the shared library. A query compiled for one version
@@ -57,7 +70,7 @@ and annotate them with named captures:
 The capture names (`@function`, `@string`, `@keyword`) are the bridge to the
 theme system. The theme defines colors for these names; the query says which
 tree nodes get which name. HUME's highlight queries are Helix's, with Helix's
-capture names; the scope and fold queries come from the nvim-treesitter
+capture names; the context and fold queries come from the nvim-treesitter
 projects.
 A Helix query can inherit another language's patterns through an
 `; inherits:` line; HUME does not follow that line itself, and the grammars it
@@ -67,6 +80,29 @@ When a query is compiled, its capture names are added to the editor's scope
 registry, the vocabulary of token types that themes speak. A theme maps scope
 names to colors and a query maps tree patterns to scope names, so together
 they map parse trees to styled text.
+
+A query can also carry predicates and directives, small instructions attached
+to a pattern (`#eq?` compares a node's text, `#make-range!` builds a region
+from two captures). Each query kind accepts the ones its job needs. A pattern
+using one HUME does not apply is disabled rather than matched as if it held,
+since matching it anyway would color or select the wrong thing; the rest of
+its file still loads, and the editor warns once, naming the file and line.
+
+## Locals: coloring a name by its definition
+
+A highlight pattern sees one node at a time, so it cannot tell that the `x`
+on line 40 is the parameter declared on line 12. A **locals query** supplies
+that: it marks scopes (a function body, a block), the definitions inside them
+(a parameter, a `let`), and the uses of names. Each use then resolves to the
+definition it can see: the latest one before it with the same name, searching
+its own scope first and then each scope around it. The use takes that
+definition's color, so a parameter keeps its parameter color wherever it is
+used, and a highlight pattern can ask whether a node is local at all.
+
+Resolving every name on every keystroke would be wasteful. After a reparse,
+only the scopes an edit could have changed are rebuilt: the innermost scope
+around each edited byte, since a definition is only visible inside its own
+scope. An edit outside every scope rebuilds the whole layer.
 
 ## Injections: embedded languages
 
@@ -137,6 +173,10 @@ single-line comment nodes. A query pattern can tag several nodes with the same
 object name in one match, and the object is the span from the earliest node's
 start to the latest node's end. This is what lets "select the function"
 include its attribute.
+
+A pattern can also build an object explicitly: one directive makes it run
+from the start of one capture through the end of another, and another trims
+bytes off its ends, so an object can leave out a block's braces.
 
 That hull is only meaningful when the tagged nodes sit side by side. A loosely
 written pattern ("one or more nodes of this kind") can match two nodes far
@@ -229,7 +269,9 @@ An install runs these steps in order:
    right language and this platform, and moves it into a new install folder.
 3. **Load before registering.** Plum loads the library and compiles the
    queries. A grammar the editor can't use, such as one built for a
-   tree-sitter ABI version it can't load, is rejected here. Only a grammar
+   tree-sitter ABI version it can't load or one whose highlight query
+   doesn't compile, is rejected here. An optional query that doesn't compile
+   only leaves that query out, with a warning. Only a grammar
    that loads gets its folder marked as checked, and only a checked folder
    counts as an install, so a rejected grammar never replaces a working one.
 4. **Register and clean up.** Plum registers the grammar with the running
@@ -307,12 +349,23 @@ Here is what happens when you open `main.rs`:
 7. **Render.** The renderer's style stage reads the syntax trees once they
    are available (the root plus any injected layers) and walks each with its
    language's shared query to produce per-grapheme style spans, deeper layers
-   winning where they overlap. The active theme turns those spans into
-   colors.
+   winning where they overlap. Where the locals query resolved a name, the
+   name takes its definition's color. The active theme turns those spans
+   into colors.
 
 Before each frame, pending edits are applied to every layer's tree, so the
 trees the renderer reads line up with the text on screen even while a fresh
 parse is still running in the background.
+
+## Plugins reading the tree
+
+The tree is not only for the editor's own features. A plugin can run a query
+of its own over a buffer, across every layer parsed as a given language, and
+get back the captured nodes and their positions. The compiled query is
+cached, so asking again each time the buffer changes costs only the match. A
+hook tells the plugin each time a fresh parse lands, so it can update what it
+drew. The Markdown preview is built this way; see [Conceals and the Markdown
+Preview](conceals-and-preview.md).
 
 ---
 

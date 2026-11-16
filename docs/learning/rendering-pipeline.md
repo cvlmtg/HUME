@@ -29,13 +29,16 @@ Buffer (text + config)
 and output, and each is the natural extension point for one class of
 feature:
 
-- **Gutter columns** (line numbers, git signs, diagnostic icons) plug into
-  Stage 4: they draw in the gutter laid out by Stage 1.
+- **Gutter columns** (line numbers, git signs, diagnostic icons, fold
+  carets: ▾ beside an open fold, ▸ beside a closed one) plug into Stage 4: they draw in the gutter laid out by Stage 1.
 - **Syntax highlighting, search matches, bracket highlighting** plug into
   Stage 3: they add or override style on individual graphemes.
-- **Virtual lines** (display lines any plugin can inject, such as diff
-  context or code lenses) plug into Stage 2: they are display lines that do
+- **Virtual lines** (display lines any plugin can inject, such as the deleted
+  lines git-diff shows) plug into Stage 2: they are display lines that do
   not correspond to buffer lines.
+- **Conceals** (a plugin drawing part of a line as something else, as the
+  Markdown preview does) plug into Stage 2 too: they change which cells a
+  line has. See [Conceals and the Markdown Preview](conceals-and-preview.md).
 - **Floating overlays** (completion popup, hover) plug into Stage 4: they
   draw over the composed output.
 
@@ -74,6 +77,9 @@ a small set:
   which inherits its neighbour's style;
 - a **virtual** cell: text injected by a provider that is not backed by
   buffer content (inlay hints, ghost text);
+- a **replacement** cell: text a conceal draws in place of the characters it
+  hides. Unlike a virtual cell it stands for real text, so the cursor can
+  land on it;
 - an **empty** cell: the cell at the end of every line that the cursor sits
   on when it is on the newline (and the only cell of an empty line).
 
@@ -92,6 +98,8 @@ foreground, background, bold, italic, underline. Style comes from several
 layered sources:
 
 - the base theme
+- the line's own background: a provider's full-row tint (git-diff's
+  changed lines) or a scope header row's background
 - the cursorline background, on the primary cursor's line
 - syntax highlighting
 - plugin-supplied highlight spans
@@ -101,7 +109,7 @@ layered sources:
 - the selection background
 - the cursor head itself
 
-Inline decorations carry their own colour, above every highlight layer but
+Inline decorations and conceal text carry their own colour, above every highlight layer but
 below the selection. Layers are applied in priority order, each compositing
 *over* the previous one: a later layer overrides only the fields it sets.
 So a search match's background wins over syntax highlighting's, but on a
@@ -114,6 +122,9 @@ the gutter on the left, the content area to its right. On the first display
 line of each buffer line, indent guides (thin vertical rules at each inner
 tab stop of the leading whitespace) keep nested blocks visually aligned.
 Overlays such as the completion popup are drawn last, on top of everything.
+A popup's text still goes through Stages 2 and 3 first, laid out and styled
+the way a pane line is, so a Markdown popup gets the same highlighting and
+conceals as a Markdown buffer.
 The status line, a tab bar and the bottom drawer (used for list output such
 as diagnostics) each reserve rows above or below the content instead of
 covering it.
@@ -128,16 +139,26 @@ into that walk:
 ```
 start at the viewport's top display line
 while the pane has rows left:
-    take the next display line (a virtual line, a line start, or a continuation)
+    take the next display line (a virtual line, a line start, or a continuation),
+        stepping over the lines a closed fold hides
     if it starts a buffer line not formatted yet:
         format that buffer line once (Stage 2) → all of its display lines
     style this display line   (Stage 3)
     compose it to the screen  (Stage 4)
 fill the rows below the last buffer line with filler (tilde lines, or blank)
+paint the scope headers over the pane's top rows
 ```
 
 Because the walk itself decides what is visible, no separate estimate of
 "how many lines fit" can disagree with what is drawn.
+
+The scope headers are the first lines of the functions, classes or sections
+the top of the pane is inside, pinned over its top rows (at most three) so
+you can see where you are in a long block. Each is laid out on its own with
+wrapping off: a long header is cut at the pane's edge. A header row shows the
+line's highlights and conceals, but no inlay hints, virtual lines, tint or
+selection. The top scroll margin grows by the header rows, so the cursor
+never sits under one.
 
 Work is measured and kept one buffer line at a time, so what a frame holds
 is proportional to what is on screen, not to the size of the file.

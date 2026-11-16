@@ -130,6 +130,12 @@ the named languages. It is the usual pattern for language-specific plugins
 The name `"*"` matches any language: the body runs the first time a buffer's
 language is set to anything, and the plugin then works in every buffer.
 
+A plugin limited to some languages cannot also list an event about a buffer,
+such as `on-buffer-open`, in `#:events`: setting one of its languages already
+loads it before any such event could reach it, so the event would never be
+the one that loads it. `declare-plugin!` refuses that combination. `"*"`
+limits nothing, so it does not count.
+
 Prefer `#:languages` to `#:events '(on-language-set)` when you care about
 particular languages. An `on-language-set` event fires for every language, so
 a Rust plugin declared that way would load the moment you open a PHP file.
@@ -138,8 +144,9 @@ The user manual lists [every lifecycle
 hook](../../user-manual/docs/writing-plugins.md#hooks) with its arguments.
 They cover buffers opening, closing, saving and gaining focus, mode and
 language changes, language servers attaching and sending notifications,
-diagnostics, the viewport, typed trigger characters, completion, settings,
-text changes and the undo history.
+diagnostics, inlay-hint refresh requests, the viewport, typed trigger
+characters, completion, settings, text changes, a fresh syntax parse landing
+and the undo history.
 
 Hooks never fire mid-command, so plugins always see the editor between edits.
 Whatever triggers a hook (a command, a language server, a timer, the terminal

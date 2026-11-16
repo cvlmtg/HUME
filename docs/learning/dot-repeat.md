@@ -86,7 +86,8 @@ changes it for the next one.
 
 A register or a count typed right before `.` replaces the recorded one for
 that repeat: deleting into another register, or pasting what another
-register holds.
+register holds. The register goes to the first command in the repeat that
+takes one; a later paste in the same repeat still pastes its recorded text.
 
 ## Dot-repeat and macros
 

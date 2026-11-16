@@ -19,10 +19,15 @@ Each pane owns:
 
 - **Selections**: the pane's own cursors. Two panes on the same buffer have
   independent selections, and moving the cursor in one never moves it in the
-  other.
+  other. The pane also keeps the history of the selections it built, which
+  `mu` steps back through.
+- **Folds**: which folds are closed. One pane can fold a function away while
+  another shows it open. A selection that lands inside a closed fold opens
+  it, so the cursor is never hidden.
 - **Viewport**: scroll position and pane size. A pane also remembers where
   it last scrolled to in *every* buffer it has shown, so switching back to a
-  buffer restores the old scroll position instead of jumping to the top.
+  buffer restores the scroll position it had there instead of jumping to the
+  top.
 - **Wrap-mode override**: whether and how long lines soft-wrap normally comes
   from the buffer's own setting, or the editor-wide default. A pane can pin
   its own wrap style instead, so one pane can show a file wrapped while
@@ -94,8 +99,8 @@ temporary needs to appear:
 
 Splitting the focused pane creates a new pane next to it, vertically
 (side by side) or horizontally (stacked), showing the same buffer. The new
-pane starts from the source pane's view: its selections, scroll position,
-jump history and any wrap-mode override. From there the two diverge as you
+pane starts from the source pane's view: its selections and their history,
+closed folds, scroll position, jump history and any wrap-mode override. From there the two diverge as you
 work in each.
 
 A row nobody has resized stays even: every split there resizes its panes

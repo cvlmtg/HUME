@@ -94,7 +94,15 @@ History replay needs no validation of its own. Every undo and redo replays
 changesets the editor itself recorded, so a replay that fails means the history
 is corrupt, and the editor stops with a diagnostic instead of miscomputing.
 
-Reloading a file from disk (`:e!`) is the other place untrusted text enters the
+A history saved to disk (`undo-persist`) is the exception that proves the
+rule: it comes from outside the running editor, so it is checked once, when
+the file is opened. The text must match the checksum saved with the history,
+every stored change must fit the text it applies to, and no stored selection
+may split a character. A history that fails any check is dropped whole. One
+that passes is rebuilt into a tree of the editor's own, and undo then trusts
+it like any other.
+
+Reloading a file from disk (`:e!`) is another place untrusted text enters the
 buffer. The contents come from outside the editor, but they enter as a forward
 and inverse changeset derived from a line-level diff against the current
 buffer, not as raw text replacing it. See [The Undo Tree](undo-tree.md).

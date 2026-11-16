@@ -102,6 +102,12 @@ selection flips to grow in the *other* direction, again keeping full words.
 This mirrors how `Ctrl-h`/`Ctrl-j`/`Ctrl-k`/`Ctrl-l` walk a selection back
 and forth character by character or line by line.
 
+A selection that did not start as a cursor can have its anchor in the middle
+of a word: searching `/bar` in `foobar baz` selects `bar`, anchored on its
+`b`. The anchor's word then counts only from the selection's edge, so
+extending with `w` grows to `bar baz` and never back over `foo`. A cursor
+still grows to its whole word.
+
 The whitespace rule carries into extend mode too: growing extends through
 the target word's own whitespace, and shrinking back toward the anchor never
 cuts into the anchor word's own whitespace.

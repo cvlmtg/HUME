@@ -11,7 +11,8 @@ twenty display lines.
 HUME treats the display line as the unit of rendering even when wrapping is
 off and the two are the same. A renderer that walks buffer lines has no
 place to put a line that is not in the buffer; one that walks display lines
-gets virtual lines (diagnostics, diff context, annotations) as one more kind
+gets virtual lines (the deleted lines git-diff shows, a plugin's annotations)
+as one more kind
 of display line.
 
 ## The four kinds of display line
@@ -27,6 +28,18 @@ Each buffer line owns a block of display lines: the virtual lines anchored
 before it, its line start, its continuations, then the virtual lines
 anchored after it. The renderer walks these blocks in order, and after the
 last buffer line, filler lines fill the remaining space.
+
+A line hidden by a closed fold has no block at all. A fold stays visible as
+its first line; stepping down from it lands on the next line the fold does
+not hide, and a position inside the hidden lines answers with the fold's
+first line. When the fold's last line holds only its closing delimiter (a
+lone `}`), that line stays visible too, so the fold reads as `fn main() {`
+then `}`. Folds belong to the pane, so two panes on one buffer can fold
+differently.
+
+The pane's top rows can show scope headers instead of display lines: the
+first lines of the scopes the top of the pane is inside, pinned there. See
+[The Rendering Pipeline](rendering-pipeline.md#the-fused-loop).
 
 ## Soft wrap
 
@@ -64,6 +77,13 @@ below that sits closest to the same column. To find it without re-rendering
 the frame, the engine formats just the buffer line being moved into and
 scans its graphemes for the one nearest the target column.
 
+When a plugin conceals part of the text, as the Markdown preview does, the
+line the cursor lands on shows its source, which is often wider than what
+was drawn. So `j` and `k` measure columns against the source layout of the
+whole buffer, with every conceal left out and every closed fold kept. A pane
+with conceals keeps two layouts for this: the drawn one, for painting and
+mouse clicks, and the source one, for vertical movement.
+
 ### The sticky column
 
 Press `j` three times in a row and the third press should still aim for the
@@ -89,7 +109,11 @@ keeps its column.
 
 Inline decorations inject cells *inside* a display line, at byte offsets,
 rather than adding display lines. Inlay hints and the end-of-line diagnostic
-summary are drawn this way, inline with the code they annotate. Virtual
+summary are drawn this way, inline with the code they annotate. Conceals are
+the third mechanism: they hide part of a line, optionally drawing other text
+in its place, and so change where the line wraps. Every line a selection
+touches shows its source instead; see [Conceals and the Markdown
+Preview](conceals-and-preview.md). Virtual
 lines are the whole-line counterpart: any plugin can anchor an annotation
 line before or after a buffer line without changing the buffer text or any
 line number.

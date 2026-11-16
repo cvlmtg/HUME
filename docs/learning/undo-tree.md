@@ -48,6 +48,7 @@ Every node except the root, which is the state before any edit, stores:
   available, so it never has to be reconstructed and always undoes what the
   forward one did.
 - A list of child node references.
+- Which pane made the edit, if any.
 - A timestamp, which `:earlier` and `:later` read to travel by age
   (`:earlier 5m` goes back to how the buffer looked five minutes ago). Both
   also take a step count, and each walk is the same one `u` and `Ctrl-r` take.
@@ -58,6 +59,15 @@ redoing applies the forward transaction. No buffer snapshots are needed, so a
 very large file does not make the undo history proportionally large.
 
 See [Changesets](changesets.md) for what a transaction contains.
+
+The cursor positions are worth a second look: each node holds the selections
+the edit was made with and the ones it left. Selection undo (`mu`, `mU`)
+reads them. It first steps back through the selections a pane built since
+its last edit, then continues into the tree, walking the selections of that
+pane's own edits, newest first. So after `d` and `u`, `mu` brings back the
+selection the text was deleted from, even after the cursor has collapsed.
+Each pane walks only the edits it made, which is why a node records its
+pane.
 
 ## The arena
 
@@ -171,8 +181,10 @@ its undo tree, and opening the file again brings it back. Version labels
 can't be saved with it: they are counters that start over every time the
 editor runs, so a saved label could match a different text in the next run.
 
-The saved tree stores what can't be recomputed. Selections are plain char
-offsets. Each node keeps one of its two transactions, whichever a walk
+The saved tree stores what can't be recomputed. Each node keeps both of its
+selection sets, as plain char offsets, and whether the pane that made the
+newest edit made this one too, so that pane's selection undo still reaches
+it in the next run. Of its two changesets it keeps one, whichever a walk
 starting at the current node crosses its edge with: the current node and its
 ancestors keep the inverse, since the walk steps up from each of them to its
 parent, and every other node keeps the forward one, since the walk steps down
@@ -181,8 +193,8 @@ into it. A checksum of the text the current node holds comes before the tree.
 Opening the file checks that checksum first, before reading the tree: a file
 changed elsewhere since the save makes the tree useless, so it is dropped.
 Otherwise loading walks outward from the current node. Each step applies the
-stored transaction to the text it already holds, computes the opposite
-transaction from that text, and rebuilds the node's selections against the
+stored changeset to the text it already holds, computes the opposite
+changeset from that text, and rebuilds the node's selections against the
 texts they belong to. Every
 text the walk makes gets a fresh label, so the loaded tree is the one
 recording those edits in this run would have built. A stored change that

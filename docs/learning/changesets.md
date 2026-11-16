@@ -81,7 +81,8 @@ The same mapping serves every position the editor stores between edits, not
 only selections:
 
 - the selections of every pane that has ever shown the buffer, whether or not
-  it shows it now;
+  it shows it now, with the selections each built since its last edit (what
+  selection undo steps back through) and its closed folds;
 - jump lists, and positions a script is tracking;
 - the snapshots of open prompts and the open completion session;
 - diagnostics and decoration anchors, so a diagnostic keeps pointing at the
@@ -127,7 +128,7 @@ chars, including the structural newline):
 
   keep(3)       →  consumed=3, produced=3    (skip "hel")
   insert("x")   →  consumed=3, produced=4    (insert 'x')
-  keep_rest()   →  consumed=6, produced=7    (keep "lo\n")
+  keep the rest →  consumed=6, produced=7    (keep "lo\n")
 
   Result: keep(3), insert("x"), keep(3)
   Cursor position at insert time = 4  →  "helx|lo\n"

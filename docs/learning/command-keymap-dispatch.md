@@ -268,6 +268,6 @@ Dispatch also enforces one invariant at compile time: every native command's
 function runs through a single funnel. Each function is stored wrapped in a
 type only the funnel can unwrap, so a second call site that tries to invoke
 it directly does not compile. The funnel applies the bookkeeping around every
-command: dot-repeat, paste-session commits, jump-list updates and the
-extend-mode exit. A second path that bypassed it would lose that bookkeeping
+command: dot-repeat, paste-session commits, jump-list updates, the selection
+history, keeping the cursor in view and the extend-mode exit. A second path that bypassed it would lose that bookkeeping
 without any test of the command's main effect noticing.

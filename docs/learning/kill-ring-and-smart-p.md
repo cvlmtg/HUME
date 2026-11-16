@@ -46,7 +46,10 @@ interactive editing, not for storage.
 
 The kill ring holds the last ten yanks, deletes, and changes, plus text
 copied in other applications, newest at the head. Once it is full, the oldest entry falls off. Every capture pushes a new
-entry, with two exceptions.
+entry, with three exceptions.
+
+Text that is empty, such as an empty clipboard, never joins the ring: it
+would paste nothing.
 
 If the head is pure whitespace (spaces, tabs, newlines), the new entry
 overwrites that slot instead of taking a fresh one. Deleting a stray space
@@ -106,7 +109,9 @@ With no readable clipboard (OSC 52 over SSH, where a program can set the
 clipboard but not read it), nothing is ever new, and `p` pastes the ring
 alone.
 
-An option narrows the moments. With the check at `p` only, a delete leaves
+An option, `clipboard-joins-ring`, narrows the moments: `always` (the
+default) checks at every `p`, `d`, `c` and `y`, `paste` only at `p`, and
+`never` not at all. With the check at `p` only, a delete leaves
 the copy alone, so `d` then `p` pastes the copy and `[` reaches the delete.
 With no check at all, copied text stays on the clipboard's own register,
 which is what the bundled alternate keymap plugin picks.
