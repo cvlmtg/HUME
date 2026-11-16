@@ -1,6 +1,7 @@
 ;;; HUME demo config, passed with --config by tools/demo/record.sh
 
 (load-plugin! "core:stdlib")
+(load-plugin! "core:markdown-preview")
 (load-plugin! "core:pickers")
 (load-plugin! "core:lsp" #:config (hash 'inlay-hints #t))
 (load-plugin! "core:undotree")
@@ -9,7 +10,7 @@
 (register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
 (set-language-servers! "rust" '("rust-analyzer"))
 
-(declare-plugin! "./demo.scm" #:typed-commands '("demo-table"))
+(declare-plugin! "./demo.scm" #:typed-commands '("demo-toc"))
 
 (configure-statusline!
   '("Position" "steel:git-branch" "FilePath" "Language" "ReadOnly" "DirtyIndicator")

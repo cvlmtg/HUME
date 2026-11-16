@@ -1,26 +1,37 @@
-;;; demo plugin — formats a markdown pipe table
+;;; demo plugin — inserts a markdown table of contents
 
-(define (demo/select-row pane row)
-  (goto-location! pane (hash 'target pane 'char-offset (line->char-offset pane row)))
-  (select-line pane))
+;; The characters VitePress turns into `-` when it builds a heading's anchor.
+(define demo/slug-separators (string->list "~`!@#$%^&*()-_+=[]{}|\\;:\"'“”‘’<>,.?/"))
 
-(define-typed-command! "demo-table"
-  "Align the selected pipe table and frame it with separator rules."
+(define (demo/separator? c)
+  (or (char-whitespace? c) (memv c demo/slug-separators)))
+
+(define (demo/slug title)
+  (let loop ([chars (string->list title)] [dash #f] [out '()])
+    (cond
+      [(null? chars) (string-downcase (list->string (reverse out)))]
+      [(demo/separator? (car chars)) (loop (cdr chars) (pair? out) out)]
+      [else (loop (cdr chars) #f (cons (car chars) (if dash (cons #\- out) out)))])))
+
+(define (demo/headings lines)
+  (let loop ([lines lines] [line 0] [found '()])
+    (cond
+      [(null? lines) (reverse found)]
+      [(starts-with? (car lines) "## ")
+       (loop (cdr lines)
+             (+ line 1)
+             (cons (cons line (substring (car lines) 3 (string-length (car lines)))) found))]
+      [else (loop (cdr lines) (+ line 1) found)])))
+
+(define (demo/entry heading)
+  (string-append "- [" (cdr heading) "](#" (demo/slug (cdr heading)) ")\n"))
+
+(define-typed-command! "demo-toc"
+  "Insert a table of contents linking every `##` heading, above the first one."
   (lambda (pane)
-    (let* ((sel (call! "stdlib/primary-selection" (buffer-selections pane)))
-           (top (char-offset->line pane (selection-start-char sel)))
-           (bottom (char-offset->line pane (- (selection-end-char sel) 1))))
-      (sift-within pane "\\|")
-      (align-selections pane)
-      (demo/select-row pane (+ top 1))
-      (sift-within pane "\\|.*\\|")
-      (sift-within pane "[^|]+")
-      (replace pane #\-)
-      (demo/select-row pane (+ top 1))
-      (yank pane)
-      (demo/select-row pane bottom)
-      (collapse-selection pane)
-      (paste-after pane)
-      (demo/select-row pane top)
-      (collapse-selection pane)
-      (paste-before pane))))
+    (let ([headings (demo/headings (buffer-lines pane))])
+      (if (null? headings)
+          (error "demo-toc: the buffer has no ## heading")
+          (let ([at (line->char-offset pane (car (car headings)))]
+                [toc (string-append (apply string-append (map demo/entry headings)) "\n")])
+            (edit-text! pane (list (hash 'start-char at 'end-char at 'text toc))))))))

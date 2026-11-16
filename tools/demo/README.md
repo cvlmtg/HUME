@@ -21,10 +21,9 @@ with `film.swift` and converts the film to a GIF with `ffmpeg`. HUME starts with
   come out black, like the title bar.
 - `init.scm` — the demo's own config: the core plugins the scenes use, rust-analyzer
   registered from `$PATH`, the git branch in the statusline, and `demo.scm` declared as a lazy
-  local file that loads on the first `:demo-table`.
-- `demo.scm` — the plugin the last scene opens through the file picker. `:demo-table` aligns
-  a markdown pipe table's columns, redraws its separator row to match and frames the table
-  with a separator rule above and below.
+  local file that loads on the first `:demo-toc`.
+- `demo.scm` — the plugin the last scene opens through the file picker. `:demo-toc` inserts
+  a bulleted list of links to the page's `##` headings above the first one.
 
 The demo runs no language server on `demo.scm`. With no `cog.scm` above it,
 `core:steel-server` would start `steel-language-server` with the repo root as its project
@@ -39,8 +38,9 @@ root, and that server has crashed on this repository's Scheme files.
 - A Rust toolchain: `record.sh` runs `cargo build --release` before it opens the window.
 - `rust-analyzer` on `$PATH`. It indexes the whole workspace, and the recording waits off-camera
   until the workspace symbol picker lists results.
-- The `rust`, `scheme` and `markdown` tree-sitter grammars installed (`:plum-install-grammar
-  rust scheme markdown`). A `rust` grammar installed before smart indentation shipped needs
+- The `rust`, `scheme`, `markdown` and `markdown.inline` tree-sitter grammars installed
+  (`:plum-install-grammar rust scheme markdown` installs `markdown.inline` with `markdown`).
+  The Markdown preview needs both Markdown grammars. A `rust` grammar installed before smart indentation shipped needs
   reinstalling, or the new method in the typing scene is not indented.
 - `ffmpeg` and `jq`.
 

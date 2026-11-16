@@ -11,7 +11,7 @@
 # hoist two lines with a few multi-cursor edits, and step back through the
 # session in the undo tree. Then open the Steel plugin through the file picker,
 # the manual page in a split below it, and run the plugin's command on the
-# manual's table.
+# manual page, which the Markdown preview draws without its syntax.
 
 # ── Launch (off-camera) ───────────────────────────────────────────────────────
 # rust-analyzer answers a workspace symbol query with the crates it has loaded
@@ -225,11 +225,13 @@ pause 800
 press Escape
 pause 800
 
-# ── Scene 7 — the plugin's command on the manual's table, in two panes ───────
-# The file picker opens demo.scm, held long enough to read: the split below
-# leaves its pane too short for the whole command. Ctrl+S in a picker opens the
-# pick in a split below. `m i p` selects the table, and :demo-table aligns it, redraws its
-# separator row and frames it with a rule above and below.
+# ── Scene 7 — the plugin builds the manual's table of contents, in two panes ─
+# The file picker opens demo.scm, and Ctrl+S in a second picker opens the
+# manual page in a split below it. `z k` on the line above the table brings the
+# whole table into view, drawn by the preview while the cursor stays off it.
+# :demo-toc inserts a list of links to the page's sections below the cursor, so
+# the preview draws it at once. Each `j` then shows one line's source while the
+# cursor is on it.
 type_text "zf"
 pause 400
 type_text "demo.scm"
@@ -238,15 +240,21 @@ press Enter
 pause 1200
 type_text "zf"
 pause 400
-type_text "getting-started"
+type_text "gettin"
 pause 800
 press Ctrl+S
-pause 1200
-type_text ":36"
+pause 1500
+type_text ":34"
 press Enter
-pause 600
-type_text "mip"
-pause 1000
-type_text ":demo-table"
+type_text "zk"
+pause 2500
+type_text "gg"
+pause 800
+type_text ":demo-toc"
 press Enter
-pause 3000
+pause 2000
+type_text ":5"
+press Enter
+pause 500
+type_text "jjjj" 500
+pause 2500
