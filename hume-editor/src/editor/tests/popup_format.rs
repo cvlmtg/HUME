@@ -62,7 +62,7 @@ fn theme() -> Theme {
             },
         ),
     ]);
-    Theme::new(styles, ResolvedStyle::default())
+    Theme::new(styles)
 }
 
 /// An editor with the `markdown` grammar and this file's theme.

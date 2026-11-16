@@ -52,8 +52,8 @@ pub(in crate::editor) struct PopupLayer {
     /// keyed by width, so an unchanged width across frames is O(1), not a
     /// re-wrap. Rebuilt by [`Layer::theme_changed`] (reached from
     /// `theme::apply_scope_styles`, the one chokepoint every change to
-    /// `view.theme`'s styles goes through), since the baked styles are the one input here that can
-    /// change out from under an open popup.
+    /// `view.theme`'s styles goes through), since the baked styles are the
+    /// one input here that can change out from under an open popup.
     markup: Markup,
     /// Identifies which `show-popup!` call opened this popup; see
     /// [`Self::token`]'s doc.

@@ -750,7 +750,7 @@ fn indent_guide_leaves_a_reversed_cursor_cell_visibly_distinct() {
             ..Default::default()
         },
     );
-    let theme = Theme::new(background_scopes, ResolvedStyle::default());
+    let theme = Theme::new(background_scopes);
     let lane_widths: Vec<u16> = Vec::new();
     let rope = ropey::Rope::new();
     let ctx = ComposeCtx {

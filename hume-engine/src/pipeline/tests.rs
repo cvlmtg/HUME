@@ -10,7 +10,7 @@ use super::*;
 use crate::display_lines::DisplayLinePos;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine};
-use crate::types::{DisplayLineKind, ResolvedStyle};
+use crate::types::DisplayLineKind;
 use hume_rope::line::{ContentLine, RopeyLine};
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
@@ -229,7 +229,7 @@ fn virtual_display_line_resolves_scopes_from_segments_given_out_of_order() {
     for (name, color) in scope_names.iter().zip(colors) {
         styles_map.insert(*name, crate::test_support::fg(color));
     }
-    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    let mut theme = Theme::new(styles_map);
     theme.bake(&registry);
 
     let rope = ropey::Rope::from_str("z\n");

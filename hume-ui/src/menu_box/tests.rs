@@ -626,7 +626,7 @@ fn menu_theme() -> (Theme, ScopeId, ScopeId) {
     let mut registry = ScopeRegistry::new();
     let span = registry.intern("span");
     let row = registry.intern("row");
-    let mut theme = Theme::new(styles, ResolvedStyle::default());
+    let mut theme = Theme::new(styles);
     theme.bake(&registry);
     (theme, span, row)
 }

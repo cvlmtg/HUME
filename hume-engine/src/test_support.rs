@@ -169,7 +169,7 @@ pub(crate) fn bg(color: Rgb) -> ResolvedStyle {
 }
 
 pub(crate) fn theme_with<const N: usize>(entries: [(&'static str, ResolvedStyle); N]) -> Theme {
-    Theme::new(HashMap::from(entries), ResolvedStyle::default())
+    Theme::new(HashMap::from(entries))
 }
 
 pub(crate) fn byte_range(start: usize, end: usize) -> ExclusiveRange<ByteCol> {

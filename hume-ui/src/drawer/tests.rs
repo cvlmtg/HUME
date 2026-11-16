@@ -69,8 +69,8 @@ struct Ids {
 
 /// A theme styling the drawer, its selected row, [`SELECTED_SPAN_SCOPE`] as
 /// bold, [`ROW_SCOPE`] in its own colors and, when `span_style` is set,
-/// [`SPAN_SCOPE`]. It is baked against a registry holding the three scopes,
-/// whose ids are returned with it.
+/// [`SPAN_SCOPE`], with `default` as its `ui.text`. It is baked against a
+/// registry holding the three scopes, whose ids are returned with it.
 fn drawer_theme(span_style: Option<ResolvedStyle>, default: ResolvedStyle) -> (Theme, Ids) {
     let mut styles = HashMap::from([
         ("ui.drawer", colors(DRAWER_FG, DRAWER_BG)),
@@ -83,6 +83,7 @@ fn drawer_theme(span_style: Option<ResolvedStyle>, default: ResolvedStyle) -> (T
             },
         ),
         (ROW_SCOPE, colors(ROW_FG, ROW_BG)),
+        ("ui.text", default),
     ]);
     if let Some(style) = span_style {
         styles.insert(SPAN_SCOPE, style);
@@ -93,7 +94,7 @@ fn drawer_theme(span_style: Option<ResolvedStyle>, default: ResolvedStyle) -> (T
         selected_span: registry.intern(SELECTED_SPAN_SCOPE),
         row: registry.intern(ROW_SCOPE),
     };
-    let mut theme = Theme::new(styles, default);
+    let mut theme = Theme::new(styles);
     theme.bake(&registry);
     (theme, ids)
 }

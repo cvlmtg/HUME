@@ -30,33 +30,20 @@ fn install_theme(
     view.theme = theme;
     name.clone_into(&mut state.shown_theme);
     load_warnings.extend(apply_scope_styles(state, view, Restyle::All));
-    let count = load_warnings.len();
-    report_warnings(
-        state,
-        load_warnings,
-        format!(
-            "{} loaded with {count} warning{}",
-            theme_label(name),
-            plural(count)
-        ),
-    );
+    report_warnings(state, load_warnings, |count, theme| {
+        format!("{theme} loaded with {count} warning{}", plural(count))
+    });
 }
 
-/// [`install_theme`] for a theme with no load warnings of its own.
-pub(in crate::editor) fn set_theme(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    theme: hume_engine::theme::Theme,
-    name: &str,
-) {
-    install_theme(state, view, theme, name, Vec::new());
+/// [`install_theme`] for the compiled-in fallback, recorded as `""`.
+pub(in crate::editor) fn install_fallback_theme(state: &mut EditorState, view: &mut EngineView) {
+    install_theme(state, view, fallback_theme(), "", Vec::new());
 }
 
 /// `(set-scope-styles! styles)` from `by`: refuses the whole call for one
-/// malformed entry, before any is stored. The live theme takes the call's
-/// styles at once, warning only for their colors, unless a theme install is
-/// pending, which takes them itself: resolved now, a palette name would warn
-/// against a theme about to go.
+/// malformed entry, before any is stored. The live theme takes the styles at
+/// once, unless a theme install is pending, which takes them itself:
+/// resolved now, a palette name would warn against a theme about to go.
 pub(in crate::editor) fn set_scope_styles(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -68,48 +55,28 @@ pub(in crate::editor) fn set_scope_styles(
         .map(|input| StyleSpec::from_input(input).map(|spec| (input.scope.as_str(), spec)))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
-    let written: Vec<&str> = specs.iter().map(|(scope, _)| *scope).collect();
     for (scope, spec) in specs {
         if state.config.scope_styles.set(scope, spec, by) {
             state.report_shadowed("set-scope-styles!", format_args!("'{scope}' style"));
         }
     }
-    if state.theme_install_pending() {
-        state.config.scope_styles_deferred = true;
-        return Ok(());
+    if !state.theme_install_pending() {
+        show_unshown_scope_styles(state, view);
     }
-    // A pending install that failed leaves earlier styles unshown.
-    let which = if state.config.scope_styles_deferred {
-        Restyle::All
-    } else {
-        Restyle::Scopes(&written)
-    };
-    restyle_live_theme(state, view, which);
     Ok(())
 }
 
-/// Layer the styles stored while a theme install was pending onto the theme
-/// on screen, when no install has taken them since.
-pub(in crate::editor) fn apply_deferred_scope_styles(
-    state: &mut EditorState,
-    view: &mut EngineView,
-) {
-    if state.config.scope_styles_deferred {
-        restyle_live_theme(state, view, Restyle::All);
+/// Layer the scope styles set since a theme last took them onto the theme
+/// on screen, warning only for their colors. Besides a live call's own,
+/// these are the styles stored for a pending install that never happened.
+pub(in crate::editor) fn show_unshown_scope_styles(state: &mut EditorState, view: &mut EngineView) {
+    if !state.config.scope_styles.has_unshown() {
+        return;
     }
-}
-
-/// [`apply_scope_styles`] on the theme already shown, reporting the colors
-/// it does not resolve.
-fn restyle_live_theme(state: &mut EditorState, view: &mut EngineView, which: Restyle<'_>) {
-    let warnings = apply_scope_styles(state, view, which);
-    let count = warnings.len();
-    let summary = format!(
-        "{count} scope style color{} not in {}",
-        plural(count),
-        theme_label(&state.shown_theme)
-    );
-    report_warnings(state, warnings, summary);
+    let warnings = apply_scope_styles(state, view, Restyle::Unshown);
+    report_warnings(state, warnings, |count, theme| {
+        format!("{count} scope style color{} not in {theme}", plural(count))
+    });
 }
 
 /// Layer the scripts' scope styles `which` selects onto `view.theme` and
@@ -118,23 +85,26 @@ fn restyle_live_theme(state: &mut EditorState, view: &mut EngineView, which: Res
 fn apply_scope_styles(
     state: &mut EditorState,
     view: &mut EngineView,
-    which: Restyle<'_>,
+    which: Restyle,
 ) -> Vec<ThemeError> {
     let warnings = view
         .theme
-        .apply_scope_styles(&state.config.scope_styles, which);
-    if matches!(which, Restyle::All) {
-        state.config.scope_styles_deferred = false;
-    }
+        .apply_scope_styles(&mut state.config.scope_styles, which);
     state.input.theme_changed(&mut view.theme, &view.registry);
     warnings
 }
 
-/// Log each warning, and show `summary` in the status bar when there is one.
-fn report_warnings(state: &mut EditorState, warnings: Vec<ThemeError>, summary: String) {
+/// Log each warning and, when there is one, show in the status bar the
+/// summary `summary` builds from their count and the shown theme's label.
+fn report_warnings(
+    state: &mut EditorState,
+    warnings: Vec<ThemeError>,
+    summary: impl FnOnce(usize, &str) -> String,
+) {
     if warnings.is_empty() {
         return;
     }
+    let summary = summary(warnings.len(), &theme_label(&state.shown_theme));
     for warning in &warnings {
         state
             .message_log
@@ -189,7 +159,7 @@ pub(in crate::editor) fn load_default_theme(
 ) {
     match load_theme(name, &super::theme_search_paths(&state.dirs)) {
         Err(ThemeError::NotFound { name: missing }) if missing == name => {
-            state.message_log.push(
+            state.report(
                 Severity::Trace,
                 format!("theme '{name}' not found, using the built-in fallback"),
             );
@@ -212,9 +182,7 @@ fn install_load_result(
             true
         }
         Err(e) => {
-            let text = e.to_string();
-            state.status_msg.show(Severity::Warning, text.clone());
-            state.message_log.push(Severity::Warning, text);
+            state.report(Severity::Warning, e.to_string());
             false
         }
     }

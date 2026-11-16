@@ -18,7 +18,11 @@ pub(super) fn boot(
     init: &str,
     plugin: &str,
 ) -> (Editor, ReloadFixture) {
-    let fixture = stage(languages_scm, bundled, init, plugin);
+    start(stage(languages_scm, bundled, init, plugin))
+}
+
+/// A session over `fixture`, started as [`boot`] starts one.
+pub(super) fn start(fixture: ReloadFixture) -> (Editor, ReloadFixture) {
     let mut ed = editor_from("-[a]>b\n");
     ed.state.dirs = fixture.dirs();
     ed.init_scripting(&mut Default::default());
@@ -26,7 +30,12 @@ pub(super) fn boot(
 }
 
 /// The files [`boot`] runs against.
-fn stage(languages_scm: &str, bundled: &[(&str, &str)], init: &str, plugin: &str) -> ReloadFixture {
+pub(super) fn stage(
+    languages_scm: &str,
+    bundled: &[(&str, &str)],
+    init: &str,
+    plugin: &str,
+) -> ReloadFixture {
     let fixture = ReloadFixture::new(init);
 
     let plugin_dir = fixture.data_dir.join("plugins").join("user").join("tp");

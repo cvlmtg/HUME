@@ -149,7 +149,7 @@ pub(crate) fn buffer_option_for_test(
 /// theme that fails to load ends on the fallback rather than on the default.
 pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
     state.settings = crate::editor::settings::EditorSettings::new(&state.startup_dir);
-    theme::set_theme(state, view, crate::editor::theme::fallback_theme(), "");
+    theme::install_fallback_theme(state, view);
     for rk in GlobalKey::ALL.iter().filter_map(|key| key.resync()) {
         if rk != ResyncKey::theme {
             resync_derived_state(state, view, rk);
@@ -169,7 +169,7 @@ pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut
         theme::load_default_theme(state, view, &name);
         state.settings.theme.clone_from(&state.shown_theme);
     }
-    theme::apply_deferred_scope_styles(state, view);
+    theme::show_unshown_scope_styles(state, view);
 }
 
 /// Write `target` on `bid` from `by`: the one write path for `:set buffer`
@@ -292,7 +292,7 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
         }
         // Empty theme: the compiled-in fallback.
         ResyncKey::theme => {
-            theme::set_theme(state, view, crate::editor::theme::fallback_theme(), "");
+            theme::install_fallback_theme(state, view);
             true
         }
     }

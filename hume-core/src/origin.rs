@@ -227,6 +227,10 @@ impl<T: Eq, P> Eq for Ranked<T, P> {}
 pub struct ByOrigin<T>([T; ConfigOrigin::LOWEST_FIRST.len()]);
 
 impl<T> ByOrigin<T> {
+    pub fn get(&self, origin: ConfigOrigin) -> &T {
+        &self.0[usize::from(origin.level())]
+    }
+
     pub fn get_mut(&mut self, origin: ConfigOrigin) -> &mut T {
         &mut self.0[usize::from(origin.level())]
     }
@@ -236,7 +240,7 @@ impl<T> ByOrigin<T> {
         ConfigOrigin::LOWEST_FIRST
             .into_iter()
             .rev()
-            .map(|origin| (origin, &self.0[usize::from(origin.level())]))
+            .map(|origin| (origin, self.get(origin)))
     }
 
     /// Every origin's value, to change in place.

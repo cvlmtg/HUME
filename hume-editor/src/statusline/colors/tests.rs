@@ -27,7 +27,7 @@ fn make_theme_with_statusline(
             ..Default::default()
         },
     );
-    hume_engine::theme::Theme::new(styles, ResolvedStyle::default())
+    hume_engine::theme::Theme::new(styles)
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn from_theme_fallback_to_statusline_when_mode_missing() {
             ..Default::default()
         },
     );
-    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let theme = hume_engine::theme::Theme::new(styles);
 
     // Fully-specifying: a plain fg/bg style also clears every modifier bit
     // (see the `From<ResolvedStyle> for ResolvedStyle` contract).
@@ -119,7 +119,7 @@ fn separator_scope_honored_when_defined() {
             ..Default::default()
         },
     );
-    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let theme = hume_engine::theme::Theme::new(styles);
     let colors = EditorColors::from_theme(&theme, Some(EditorMode::Normal));
 
     let want_base = ResolvedStyle {
@@ -162,7 +162,7 @@ fn separator_falls_back_to_the_active_row_style_not_the_base_scope_when_undefine
         },
     );
     // No "ui.statusline.separator" entry.
-    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let theme = hume_engine::theme::Theme::new(styles);
     let colors = EditorColors::from_theme(&theme, Some(EditorMode::Insert));
 
     let want_insert = ResolvedStyle {
@@ -208,7 +208,7 @@ fn from_theme_without_a_mode_reads_the_base_scope() {
             ..Default::default()
         },
     );
-    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let theme = hume_engine::theme::Theme::new(styles);
 
     let want_base = ResolvedStyle {
         fg: Some(Rgb(255, 255, 255)),
@@ -247,7 +247,7 @@ fn tabline_colors_reads_its_own_scopes() {
             ..Default::default()
         },
     );
-    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let theme = hume_engine::theme::Theme::new(styles);
     let colors = TablineColors::from_theme(&theme);
 
     assert_eq!(
@@ -281,7 +281,7 @@ fn tabline_active_falls_back_to_the_base_tabline_scope_when_undefined() {
             ..Default::default()
         },
     );
-    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let theme = hume_engine::theme::Theme::new(styles);
     let colors = TablineColors::from_theme(&theme);
 
     assert_eq!(colors.active, colors.inactive);
@@ -309,7 +309,7 @@ fn tabline_colors_falls_back_to_helix_s_bufferline_scopes_when_untabbed() {
             ..Default::default()
         },
     );
-    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let theme = hume_engine::theme::Theme::new(styles);
     let colors = TablineColors::from_theme(&theme);
 
     assert_eq!(
@@ -351,7 +351,7 @@ fn tabline_colors_prefers_its_own_scopes_over_bufferline_when_both_are_themed() 
             ..Default::default()
         },
     );
-    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let theme = hume_engine::theme::Theme::new(styles);
     let colors = TablineColors::from_theme(&theme);
 
     assert_eq!(
@@ -367,7 +367,7 @@ fn tabline_colors_prefers_its_own_scopes_over_bufferline_when_both_are_themed() 
 
 #[test]
 fn tabline_colors_falls_back_to_default_when_neither_tabline_nor_bufferline_is_themed() {
-    let theme = hume_engine::theme::Theme::new(HashMap::new(), ResolvedStyle::default());
+    let theme = hume_engine::theme::Theme::new(HashMap::new());
     let colors = TablineColors::from_theme(&theme);
 
     assert_eq!(colors.inactive, ResolvedStyle::default());

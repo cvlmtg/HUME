@@ -226,8 +226,9 @@ fn reset_reverts_statusline_config_to_default() {
 }
 
 /// The loaded theme reverts to the compiled-in fallback through the explicit
-/// `set_theme` write `reset_globals` makes, which also empties `shown_theme`.
-/// The default theme is only loaded afterwards, by `init_scripting`.
+/// `install_fallback_theme` call `reset_globals` makes, which also empties
+/// `shown_theme`. The default theme is only loaded afterwards, by
+/// `init_scripting`.
 ///
 /// Swaps in a synthetic theme directly (no Steel eval, no dependency on a
 /// real bundled theme file) so the test is self-contained; only the

@@ -190,7 +190,7 @@ fn make_mode_theme() -> hume_engine::theme::Theme {
             },
         );
     }
-    hume_engine::theme::Theme::new(styles, ResolvedStyle::default())
+    hume_engine::theme::Theme::new(styles)
 }
 
 #[test]

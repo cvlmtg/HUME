@@ -87,9 +87,7 @@ pub(super) const MODIFIER_NAMES: [(&str, Modifiers); 8] = [
 /// The one modifier name accepted outside [`MODIFIER_NAMES`], intercepted
 /// by `StyleSpec::add_modifier` before `parse_modifier` ever sees it, and
 /// routed to the dedicated underline field instead of the modifier bitset.
-/// Named so it can join [`MODIFIER_NAMES`] in the generated vocabulary
-/// rather than being a bare literal only `StyleSpec::add_modifier` and the
-/// JS side each know about.
+/// Named so it can join [`MODIFIER_NAMES`] in the generated vocabulary.
 pub(super) const UNDERLINE_MODIFIER: &str = "underlined";
 
 pub(super) fn parse_modifier(key: &str, s: &str) -> Result<Modifiers, ThemeError> {

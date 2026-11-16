@@ -1,6 +1,7 @@
 use super::*;
+use crate::builtins::args::list_of;
 use crate::host::StoredLanguage;
-use crate::testing::test_support::{SteelCtxTestHarness, default_bid};
+use crate::testing::test_support::{SteelCtxTestHarness, default_bid, str_val, sym};
 use hume_core::{
     BufferId, BufferOptionWrite, ConfigOrigin, OnUnsaved, OptionInput, ScopeStyleInput,
 };
@@ -535,30 +536,8 @@ fn option_writes_carry_the_callers_origin() {
 
 // ── set-scope-styles! ────────────────────────────────────────────────
 
-fn hashmap(entries: Vec<(&str, SteelVal)>) -> SteelVal {
-    let mut map = steel::HashMap::new();
-    for (key, value) in entries {
-        map.insert(SteelVal::SymbolV(key.into()), value);
-    }
-    SteelVal::HashMapV(steel::gc::Gc::new(map).into())
-}
-
-fn list(items: Vec<SteelVal>) -> SteelVal {
-    items.into_steelval().unwrap()
-}
-
-fn string(s: &str) -> SteelVal {
-    SteelVal::StringV(s.into())
-}
-
-fn symbol(s: &str) -> SteelVal {
-    SteelVal::SymbolV(s.into())
-}
-
-fn scope_entry(scope: &str, rest: Vec<(&str, SteelVal)>) -> SteelVal {
-    let mut entries = vec![("scope", string(scope))];
-    entries.extend(rest);
-    hashmap(entries)
+fn scope_entry(scope: &str, rest: Vec<(&'static str, SteelVal)>) -> SteelVal {
+    symbol_hash(std::iter::once(("scope", str_val(scope))).chain(rest))
 }
 
 /// The error `set-scope-styles!` raises for `styles`, after checking it
@@ -580,17 +559,17 @@ fn scope_styles_reach_the_host_decoded_with_the_callers_origin() {
     use crate::attribution::{EntryId, PluginId};
 
     let styles = || {
-        list(vec![
+        list_of([
             scope_entry(
                 "markup.heading.1.line",
                 vec![
-                    ("fg", string("gold")),
-                    ("bg", string("#2b2a33")),
+                    ("fg", str_val("gold")),
+                    ("bg", str_val("#2b2a33")),
                     (
                         "underline",
-                        hashmap(vec![("style", symbol("curl")), ("color", string("red"))]),
+                        symbol_hash([("style", sym("curl")), ("color", str_val("red"))]),
                     ),
-                    ("modifiers", list(vec![symbol("bold"), symbol("italic")])),
+                    ("modifiers", list_of([sym("bold"), sym("italic")])),
                 ],
             ),
             scope_entry("csscolor.ff8800", vec![]),
@@ -629,39 +608,39 @@ fn scope_styles_reach_the_host_decoded_with_the_callers_origin() {
 
 #[test]
 fn a_scope_style_with_an_unknown_key_is_refused() {
-    let err = scope_styles_error(list(vec![scope_entry(
+    let err = scope_styles_error(list_of([scope_entry(
         "keyword",
-        vec![("foreground", string("red"))],
+        vec![("foreground", str_val("red"))],
     )]));
     assert!(err.contains("unknown key 'foreground"), "{err}");
 }
 
 #[test]
 fn a_scope_style_without_a_scope_is_refused() {
-    let err = scope_styles_error(list(vec![hashmap(vec![("fg", string("red"))])]));
+    let err = scope_styles_error(list_of([symbol_hash([("fg", str_val("red"))])]));
     assert!(err.contains("missing 'scope"), "{err}");
 }
 
 #[test]
 fn an_empty_scope_name_is_refused() {
-    let err = scope_styles_error(list(vec![scope_entry("", vec![])]));
+    let err = scope_styles_error(list_of([scope_entry("", vec![])]));
     assert!(err.contains("'scope: must not be empty"), "{err}");
 }
 
 #[test]
 fn a_scope_named_twice_in_one_call_is_refused() {
-    let err = scope_styles_error(list(vec![
-        scope_entry("keyword", vec![("fg", string("red"))]),
-        scope_entry("keyword", vec![("bg", string("blue"))]),
+    let err = scope_styles_error(list_of([
+        scope_entry("keyword", vec![("fg", str_val("red"))]),
+        scope_entry("keyword", vec![("bg", str_val("blue"))]),
     ]));
     assert!(err.contains("'keyword' appears twice"), "{err}");
 }
 
 #[test]
 fn a_modifier_given_as_a_string_is_refused() {
-    let err = scope_styles_error(list(vec![scope_entry(
+    let err = scope_styles_error(list_of([scope_entry(
         "keyword",
-        vec![("modifiers", list(vec![string("bold")]))],
+        vec![("modifiers", list_of([str_val("bold")]))],
     )]));
     assert!(err.contains("'modifiers"), "{err}");
     assert!(err.contains("a modifier symbol"), "{err}");
@@ -669,9 +648,9 @@ fn a_modifier_given_as_a_string_is_refused() {
 
 #[test]
 fn an_underline_style_given_as_a_string_is_refused() {
-    let err = scope_styles_error(list(vec![scope_entry(
+    let err = scope_styles_error(list_of([scope_entry(
         "keyword",
-        vec![("underline", hashmap(vec![("style", string("curl"))]))],
+        vec![("underline", symbol_hash([("style", str_val("curl"))]))],
     )]));
     assert!(err.contains("'style"), "{err}");
     assert!(err.contains("an underline style symbol"), "{err}");

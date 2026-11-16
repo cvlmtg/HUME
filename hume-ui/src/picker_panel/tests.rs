@@ -415,7 +415,7 @@ fn picker_styles_resolve_from_helix_scopes() {
     m.insert("ui.text", resolved(Rgb(0, 0, 255)));
     m.insert("ui.text.focus", resolved(Rgb(0, 255, 0)));
     m.insert("ui.cursor.primary", resolved(Rgb(255, 255, 0)));
-    let theme = Theme::new(m, ResolvedStyle::default());
+    let theme = Theme::new(m);
 
     let styles = picker_styles(&theme);
     assert_eq!(styles.background.fg, Some(Rgb(0, 0, 0)), "ui.background");
@@ -430,9 +430,9 @@ fn picker_styles_resolve_from_helix_scopes() {
 
 #[test]
 fn picker_styles_default_when_scopes_absent() {
-    // No custom aliasing: an empty theme resolves every picker scope to the
-    // theme's plain `default`, exactly like any other unset scope.
-    let theme = Theme::new(HashMap::new(), resolved(Rgb(255, 0, 0)));
+    // No custom aliasing: a theme styling only `ui.text` resolves every
+    // picker scope to that default, like any other unset scope.
+    let theme = Theme::new(HashMap::from([("ui.text", resolved(Rgb(255, 0, 0)))]));
 
     let styles = picker_styles(&theme);
     assert_eq!(styles.background.fg, Some(Rgb(255, 0, 0)));
@@ -491,16 +491,13 @@ fn a_rendered_rows_span_layers_over_ui_text_focus() {
     let mut registry = ScopeRegistry::new();
     let span: ScopeId = registry.intern("span");
     let focus_bg = Rgb(9, 9, 9);
-    let mut theme = Theme::new(
-        HashMap::from([(
-            "span",
-            ResolvedStyle {
-                modifiers: Modifiers::ITALIC,
-                ..Default::default()
-            },
-        )]),
-        ResolvedStyle::default(),
-    );
+    let mut theme = Theme::new(HashMap::from([(
+        "span",
+        ResolvedStyle {
+            modifiers: Modifiers::ITALIC,
+            ..Default::default()
+        },
+    )]));
     theme.bake(&registry);
     let mut buf = Grid::new(20, 20);
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);

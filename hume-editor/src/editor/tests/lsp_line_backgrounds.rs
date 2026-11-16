@@ -187,8 +187,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
                 ..Default::default()
             },
         )]);
-    ed.view.theme =
-        hume_engine::theme::Theme::new(styles, hume_engine::types::ResolvedStyle::default());
+    ed.view.theme = hume_engine::theme::Theme::new(styles);
     type_text(&mut ed, "abc\ndef"); // Esc lands the cursor on line 1 ("def").
     run(
         &mut ed,

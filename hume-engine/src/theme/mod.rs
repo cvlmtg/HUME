@@ -194,11 +194,12 @@ pub struct UiScopes {
 
 /// Which scopes [`Theme::apply_scope_styles`] layers.
 #[derive(Clone, Copy, Debug)]
-pub enum Restyle<'a> {
+pub enum Restyle {
     /// Every scope, replacing the styles layered before.
     All,
-    /// These scopes, in this order; every other scope keeps its layered style.
-    Scopes(&'a [&'a str]),
+    /// The scopes set since a theme last took them, in the order first
+    /// set; every other scope keeps its layered style.
+    Unshown,
 }
 
 /// Maps semantic scope names to concrete styles.
@@ -226,12 +227,11 @@ pub struct Theme {
     above: FxHashMap<String, ResolvedStyle>,
     /// The other origins' script styles, set by [`Self::apply_scope_styles`].
     below: FxHashMap<String, ResolvedStyle>,
-    /// `default` as constructed, before any script `ui.text` style.
-    file_default: ResolvedStyle,
     /// Indexed by [`ScopeId`]; `None` when no name on the scope's fallback
     /// chain has an entry.
     baked: Vec<Option<ResolvedStyle>>,
-    /// Default style used when no scope matches.
+    /// Default style used when no scope matches: the `ui.text` entry, or
+    /// empty.
     pub default: ResolvedStyle,
     /// Pre-resolved styles for hot-path UI scopes.
     pub ui: UiScopes,
@@ -243,45 +243,42 @@ impl Theme {
     /// A convenience for tests; production builds themes through
     /// [`loader::parse_theme`]/[`Self::from_owned`]. A plain `HashMap` lets a
     /// test build `styles` from a literal.
-    pub fn new(styles: HashMap<&'static str, ResolvedStyle>, default: ResolvedStyle) -> Self {
+    pub fn new(styles: HashMap<&'static str, ResolvedStyle>) -> Self {
         let owned: FxHashMap<String, ResolvedStyle> = styles
             .into_iter()
             .map(|(k, v)| (k.to_string(), v))
             .collect();
-        Self::from_owned(owned, default, Palette::default())
+        Self::from_owned(owned, Palette::default())
     }
 
     /// Build a theme from a `scope → style` map with owned string keys,
     /// resolved against `palette`.
-    pub fn from_owned(
-        styles: FxHashMap<String, ResolvedStyle>,
-        default: ResolvedStyle,
-        palette: Palette,
-    ) -> Self {
+    pub fn from_owned(styles: FxHashMap<String, ResolvedStyle>, palette: Palette) -> Self {
         let mut t = Self {
             raw: styles,
             palette,
             above: FxHashMap::default(),
             below: FxHashMap::default(),
-            file_default: default,
             baked: Vec::new(),
-            default,
+            default: ResolvedStyle::default(),
             ui: UiScopes::default(),
         };
-        t.ui = t.compute_ui();
+        t.derive_from_entries();
         t
     }
 
     /// Layer the scopes `which` selects from `styles` over and under the
     /// theme's own entries, and resolve their colors against the theme's
-    /// palette. Returns a warning for each color that does not resolve, in
-    /// the order the scopes are layered; its field stays unset. Scopes baked
-    /// before re-bake at the next [`Self::bake_if_stale`].
+    /// palette. Either way `styles` then has no unshown scope. Returns a
+    /// warning for each color that does not resolve, in the order the
+    /// scopes are layered; its field stays unset. Scopes baked before
+    /// re-bake at the next [`Self::bake_if_stale`].
     pub fn apply_scope_styles(
         &mut self,
-        styles: &ScopeStyles,
-        which: Restyle<'_>,
+        styles: &mut ScopeStyles,
+        which: Restyle,
     ) -> Vec<ThemeError> {
+        let unshown = styles.take_unshown();
         let mut warnings = Vec::new();
         match which {
             Restyle::All => {
@@ -291,16 +288,27 @@ impl Theme {
                     self.layer_scope(layered, &mut warnings);
                 }
             }
-            Restyle::Scopes(scopes) => {
-                for layered in scopes.iter().filter_map(|s| styles.layered_scope(s)) {
+            Restyle::Unshown => {
+                for layered in unshown.iter().filter_map(|s| styles.layered_scope(s)) {
                     self.layer_scope(layered, &mut warnings);
                 }
             }
         }
-        self.default = self.entry(ui_scopes::TEXT).unwrap_or(self.file_default);
         self.baked.clear();
-        self.ui = self.compute_ui();
+        self.derive_from_entries();
         warnings
+    }
+
+    /// Recompute what the entries determine: `default` and the
+    /// pre-resolved `ui`. `ui.text` (Helix's base-foreground convention)
+    /// folds into `default`, the style every cell starts from (see
+    /// `style::apply_styles`). Without it, plain text has `fg: None` and
+    /// renders in the terminal's own default colour, which the pane dim has
+    /// no numeric value to blend, so it stays at full strength in an
+    /// unfocused pane.
+    fn derive_from_entries(&mut self) {
+        self.default = self.entry(ui_scopes::TEXT).unwrap_or_default();
+        self.ui = self.compute_ui();
     }
 
     /// Set `layered.scope`'s entry in `above` and `below` from its styles.
@@ -466,11 +474,7 @@ impl Theme {
 
 impl Default for Theme {
     fn default() -> Self {
-        Self::from_owned(
-            FxHashMap::default(),
-            ResolvedStyle::default(),
-            Palette::default(),
-        )
+        Self::from_owned(FxHashMap::default(), Palette::default())
     }
 }
 

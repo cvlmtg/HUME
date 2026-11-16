@@ -270,11 +270,12 @@ pub(in crate::editor) fn typed_theme_debug(
     /// in the order given, not necessarily the resolution path: both a
     /// dot-notation lookup and a cursor ladder stop at the *first* match, so
     /// a later name here is only what it would have fallen through to next.
-    /// `empty_label` covers the "none of them has an entry" case, which reads differently for an
-    /// ordinary scope (`"{scope} → default"`, from `fallback_chain`, which
-    /// always yields `scope` itself first) than for a cursor ladder's rung
-    /// list (`"default"`: the rungs are never dot-trimmed from one shared
-    /// name, so there's no single name to report finding nothing for).
+    /// `empty_label` covers the "none of them has an entry" case, which
+    /// reads differently for an ordinary scope (`"{scope} → default"`, from
+    /// `fallback_chain`, which always yields `scope` itself first) than for
+    /// a cursor ladder's rung list (`"default"`: the rungs are never
+    /// dot-trimmed from one shared name, so there's no single name to report
+    /// finding nothing for).
     fn defined_chain<'a>(
         theme: &hume_engine::theme::Theme,
         names: impl Iterator<Item = &'a str>,

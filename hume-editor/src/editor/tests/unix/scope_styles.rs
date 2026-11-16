@@ -3,7 +3,8 @@
 
 use super::*;
 
-use super::super::scripting_grammar::prelude_source;
+use super::super::before_save::{warning_texts, warnings};
+use super::language_config::{stage, start};
 use hume_engine::types::Scope;
 use hume_grid::Rgb;
 
@@ -36,37 +37,17 @@ fn session_with_themes(
     plugin: &str,
     themes: &[(&str, &str)],
 ) -> (Editor, ReloadFixture) {
-    let fixture = ReloadFixture::new(init);
-    let plugin_dir = fixture.data_dir.join("plugins").join("user").join("tp");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), plugin).unwrap();
-    let scheme_dir = fixture.runtime_dir.join("scheme");
-    std::fs::create_dir_all(&scheme_dir).unwrap();
-    std::fs::write(scheme_dir.join("prelude.scm"), prelude_source()).unwrap();
-    std::fs::write(scheme_dir.join("languages.scm"), "").unwrap();
+    let fixture = stage("", &[], init, plugin);
     let theme_dir = fixture.runtime_dir.join("themes");
     std::fs::create_dir_all(&theme_dir).unwrap();
     for (name, body) in themes {
         std::fs::write(theme_dir.join(format!("{name}.toml")), body).unwrap();
     }
-
-    let mut ed = editor_from("-[a]>b\n");
-    ed.state.dirs = fixture.dirs();
-    ed.init_scripting(&mut Default::default());
-    (ed, fixture)
+    start(fixture)
 }
 
 fn style(ed: &Editor, scope: &'static str) -> hume_engine::types::ResolvedStyle {
     ed.view.theme.resolve_by_name(Scope(scope))
-}
-
-fn warnings(ed: &Editor) -> Vec<String> {
-    ed.state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Warning)
-        .map(|e| e.text.clone())
-        .collect()
 }
 
 #[test]
@@ -112,7 +93,7 @@ fn a_palette_name_set_before_its_theme_loads_resolves_without_a_warning() {
         "",
     );
     assert_eq!(style(&ed, "keyword").fg, Some(Rgb(0xff, 0xd7, 0x00)));
-    assert_eq!(warnings(&ed), Vec::<String>::new());
+    assert_eq!(warning_texts(&ed), Vec::<String>::new());
 }
 
 #[test]
@@ -122,15 +103,15 @@ fn an_unresolved_color_name_warns_at_each_theme_install() {
         "",
     );
     assert_eq!(ed.state.shown_theme, "sand");
-    assert_eq!(warnings(&ed).len(), 1, "{:?}", warnings(&ed));
+    assert_eq!(warnings(&ed), 1, "{:?}", warning_texts(&ed));
     let keyword = style(&ed, "keyword");
     assert_eq!((keyword.fg, keyword.bg), (None, Some(SCRIPT_RGB)));
 
     type_cmd(&mut ed, ":theme other");
-    assert_eq!(warnings(&ed).len(), 2, "{:?}", warnings(&ed));
+    assert_eq!(warnings(&ed), 2, "{:?}", warning_texts(&ed));
 
     type_cmd(&mut ed, ":theme golden");
-    assert_eq!(warnings(&ed).len(), 2, "{:?}", warnings(&ed));
+    assert_eq!(warnings(&ed), 2, "{:?}", warning_texts(&ed));
     assert_eq!(style(&ed, "keyword").fg, Some(Rgb(0xff, 0xd7, 0x00)));
 }
 
@@ -162,7 +143,7 @@ fn a_live_call_warns_only_for_its_own_entries() {
         r##"(set-scope-styles! (list (hash 'scope "keyword" 'fg "gold")))"##,
         "",
     );
-    assert_eq!(warnings(&ed).len(), 1, "{:?}", warnings(&ed));
+    assert_eq!(warnings(&ed), 1, "{:?}", warning_texts(&ed));
 
     run(
         &mut ed,
@@ -170,7 +151,7 @@ fn a_live_call_warns_only_for_its_own_entries() {
         r##"(set-scope-styles! (list (hash 'scope "string" 'fg "#abcdef")))"##,
     );
 
-    assert_eq!(warnings(&ed).len(), 1, "{:?}", warnings(&ed));
+    assert_eq!(warnings(&ed), 1, "{:?}", warning_texts(&ed));
     assert_eq!(style(&ed, "string").fg, Some(SCRIPT_RGB));
 }
 
@@ -189,7 +170,7 @@ fn a_call_warns_in_the_order_it_names_its_scopes() {
         &format!("(set-scope-styles! (list {entries}))"),
     );
 
-    let warned: Vec<&str> = warnings(&ed)
+    let warned: Vec<&str> = warning_texts(&ed)
         .iter()
         .filter_map(|text| scopes.iter().copied().find(|scope| text.contains(*scope)))
         .collect();

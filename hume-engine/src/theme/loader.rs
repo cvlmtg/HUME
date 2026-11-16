@@ -23,7 +23,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::theme::Theme;
 use crate::theme::error::ThemeError;
-use crate::theme::ui_scopes;
 use crate::types::ResolvedStyle;
 
 mod discovery;
@@ -31,7 +30,7 @@ mod flatten;
 #[cfg(test)]
 mod vocabulary;
 
-use crate::theme::style_spec::{ColorRef, Palette, StyleSpec};
+use crate::theme::style_spec::{ColorRef, Palette, StyleSpec, bad_color};
 use crate::theme::values::{parse_hex_color, parse_underline};
 use discovery::find_theme_file;
 use flatten::flatten_scopes;
@@ -368,11 +367,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
                     Ok(color) => Some(color),
                     Err(_) => {
                         warnings.push(attribute(
-                            ThemeError::BadColor {
-                                key: format!("palette.{k}"),
-                                field: None,
-                                value: hex.to_owned(),
-                            },
+                            bad_color(&format!("palette.{k}"), None, hex),
                             origin,
                         ));
                         None
@@ -418,15 +413,8 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
         scopes.insert(key, style);
     }
 
-    // `ui.text` (Helix's base-foreground convention) folds into `default`, the
-    // style every cell starts from (see `style::apply_styles`). Without this,
-    // plain/unhighlighted text has `fg: None` → renders as the terminal's own
-    // default colour, which the pane dim has no numeric value to blend and so
-    // leaves at full strength in an unfocused pane.
-    let default = scopes.get(ui_scopes::TEXT).copied().unwrap_or_default();
-
     LoadedTheme {
-        theme: Theme::from_owned(scopes, default, palette),
+        theme: Theme::from_owned(scopes, palette),
         warnings,
     }
 }
@@ -565,8 +553,6 @@ fn parse_style_table(
             warnings.push(bad_style_field(key, "underline", "a string or a table"));
         }
     }
-    // Parsed after `underline`, so an explicit underline style wins over
-    // the `underlined` modifier.
     if let Some(v) = t.get("modifiers") {
         match v.as_array() {
             Some(arr) => {

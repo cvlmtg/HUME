@@ -66,7 +66,7 @@ impl ColorRef {
     }
 }
 
-fn bad_color(key: &str, field: Option<&'static str>, value: &str) -> ThemeError {
+pub(crate) fn bad_color(key: &str, field: Option<&'static str>, value: &str) -> ThemeError {
     ThemeError::BadColor {
         key: key.to_owned(),
         field,
@@ -107,7 +107,6 @@ impl StyleSpec {
                 .unwrap_or_default(),
             modifiers: Modifiers::empty(),
         };
-        // After `underline`, so a given underline style wins over `underlined`.
         for name in &input.modifiers {
             spec.add_modifier(key, name)?;
         }
@@ -115,7 +114,8 @@ impl StyleSpec {
     }
 
     /// Add the modifier `name` to the style. `underlined` sets a solid
-    /// underline instead, unless an underline style is already set.
+    /// underline instead, unless an underline style is already set, so an
+    /// underline style wins whichever is parsed first.
     pub(crate) fn add_modifier(&mut self, key: &str, name: &str) -> Result<(), ThemeError> {
         if name == UNDERLINE_MODIFIER {
             if self.underline == UnderlineStyle::None {

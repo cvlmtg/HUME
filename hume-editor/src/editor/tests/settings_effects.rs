@@ -184,7 +184,7 @@ fn set_option_statusline_mode_colors_gates_whole_row_tint() {
             ..Default::default()
         },
     );
-    ed.view.theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    ed.view.theme = hume_engine::theme::Theme::new(styles);
 
     let base_bg = ed.view.theme.resolve_by_name(Scope("ui.statusline")).bg;
     let normal_bg = ed
