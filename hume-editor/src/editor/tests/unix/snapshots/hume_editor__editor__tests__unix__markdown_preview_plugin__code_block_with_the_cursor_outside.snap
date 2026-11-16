@@ -1,11 +1,11 @@
 ---
 source: hume-editor/src/editor/tests/unix/markdown_preview_plugin.rs
-assertion_line: 1545
+assertion_line: 1799
 expression: p.snapshot()
 ---
 <fg=#665c54,bg=#282828>  7 ▾ </><fg=#ebdbb2,bg=#282828>Text</>
 <fg=#665c54,bg=#282828>  6</>
-<fg=#665c54,bg=#363532>  5 ▾ </><fg=#fb4934,bg=#363532>rust</>
+<fg=#665c54,bg=#363532>  5 ▾</>
 <fg=#665c54,bg=#363532>  4   </><fg=#ebdbb2,bg=#363532>fn main() {</>
 <fg=#665c54,bg=#363532>  3   </><fg=#ebdbb2,bg=#363532>}</>
 <fg=#665c54,bg=#363532>  2</>

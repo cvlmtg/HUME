@@ -127,7 +127,7 @@
                                                  #f #f span)))
           (cdr record))))
     (md-preview/records (md-preview/captured groups "fence")
-                        (md-preview/captured groups "fence-delimiter"))))
+                        (md-preview/captured groups "fence-hidden"))))
 
 (define (md-preview/block-elements groups ranges line-of line-info rule-width)
   (let* ([found (box (hash 'conceals '() 'bands '() 'highlights '()))]

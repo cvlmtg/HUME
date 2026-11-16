@@ -1,5 +1,6 @@
 ---
 source: hume-editor/src/editor/tests/unix/markdown_preview_plugin.rs
+assertion_line: 1911
 expression: p.snapshot()
 ---
 <fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836> 1 ▾ </><fg=#3c3836,bg=#bdae93>#</><fg=#8ec07c,bg=#3c3836> </><fg=#8ec07c,bg=#3c3836,bold>A heading</><fg=#928374,bg=#3c3836,bold>: hint</><fg=#8ec07c,bg=#3c3836,bold> long enough to</>
@@ -10,7 +11,7 @@ expression: p.snapshot()
 <fg=#665c54,bg=#282828>   4   </><fg=#fe8019,bg=#282828>│ </><fg=#ebdbb2,bg=#282828>c</><fg=#fe8019,bg=#282828> │ </><fg=#ebdbb2,bg=#282828>d</><fg=#fe8019,bg=#282828> │</><fg=#fabd2f,bg=#282828,underline>eol</>
 <fg=#665c54,bg=#282828>   5   </><fg=#fe8019,bg=#282828>└───┴───┘</>
 <fg=#665c54,bg=#282828>       </><fg=#fabd2f,bg=#282828,underline>virtual</>
-<fg=#665c54,bg=#363532>   6 ▾ </><fg=#fb4934,bg=#363532>sh</>
+<fg=#665c54,bg=#363532>   6 ▾</>
 <fg=#665c54,bg=#363532>   7   </><fg=#ebdbb2,bg=#363532>echo hi</>
 <fg=#665c54,bg=#363532>   8</>
 <fg=#665c54,bg=#282828>   9   </><fg=#ebdbb2,bg=#282828>end</>

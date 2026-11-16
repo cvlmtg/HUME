@@ -1,5 +1,6 @@
 ---
 source: hume-editor/src/editor/tests/unix/markdown_preview_plugin.rs
+assertion_line: 1954
 expression: p.snapshot()
 ---
 <fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1</>
@@ -43,7 +44,7 @@ expression: p.snapshot()
 <bg=#3c3836>│</><fg=#fabd2f,bg=#3c3836>•</><bg=#3c3836> one                                 │</>
 <bg=#3c3836>│</><fg=#fabd2f,bg=#3c3836>•</><bg=#3c3836> two                                 │</>
 <bg=#3c3836>│                                      │</>
-<bg=#3c3836>│</><fg=#fb4934,bg=#363532>rust</><bg=#363532>                                  </><bg=#3c3836>│</>
+<bg=#3c3836>│</><bg=#363532>                                      </><bg=#3c3836>│</>
 <bg=#3c3836>│</><fg=#ebdbb2,bg=#363532>fn main() {}</><bg=#363532>                          </><bg=#3c3836>│</>
 <bg=#3c3836>│</><bg=#363532>                                      </><bg=#3c3836>│</>
 <bg=#3c3836>│</><fg=#fe8019,bg=#3c3836>┌───┬───┐</><bg=#3c3836>                             │</>

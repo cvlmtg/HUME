@@ -50,7 +50,7 @@ The choices the plugin and the Rust surface under it are built on:
 - **Borders:** a table's top and bottom borders are drawn on the empty lines next to it, so
   the table keeps its height when it reveals.
 - **Code blocks:** a background band over every line of the block. The fence characters
-  are hidden and the info string stays as the label.
+  and the info string are hidden: the info string picks the block's highlighting language.
 - **Shortcut links** (`[text]`) stay raw, and so does Markdown inside a fenced code block.
 - **Header rows:** a pinned heading draws its level number and bold text like the same line in the
   body. Header rows draw conceals and the search, diagnostic and extra highlights, and no
@@ -194,7 +194,7 @@ Captures are grouped by name. Each element below is one or two capture names in
 | Quote marker | `block_quote_marker`, and each `>` in a `block_continuation` | The `>` becomes `┃`, scope `markup.quote`. The space after it stays |
 | Lazy quote line | a line of a `block_quote` with no marker on it | `┃ ` inserted at the line's first non-blank char |
 | Rule | `thematic_break` | `─` repeated `'rule-width` times, scope `punctuation.special` |
-| Fence | `fenced_code_block` and its `fenced_code_block_delimiter`s | Both delimiters are hidden and reveal with the block's lines. The info string stays. Every line of the block gets `markup.raw.block.line`, which stays while the block is revealed |
+| Fence | `fenced_code_block`, its `fenced_code_block_delimiter`s and its `info_string` | Both delimiters and the info string are hidden and reveal with the block's lines. Every line of the block gets `markup.raw.block.line`, which stays while the block is revealed |
 
 A quote marker's continuation on a later line of the same paragraph is a
 `block_continuation`, not a `block_quote_marker`. A continuation holds every marker of its

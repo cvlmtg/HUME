@@ -480,7 +480,7 @@ fn horizontal_rule_is_rule_width_dashes() {
 }
 
 #[test]
-fn fence_lines_hide_their_fence_chars_keep_the_info_string_and_band_the_block() {
+fn fence_lines_hide_their_fence_chars_and_info_string_and_band_the_block() {
     let mut p = preview();
     // "```rust\n" 0..8, "fn f() {}\n" 8..18, "```\n" 18..22.
     let bid = p.open("a.md", "```rust\nfn f() {}\n```\n");
@@ -489,6 +489,7 @@ fn fence_lines_hide_their_fence_chars_keep_the_info_string_and_band_the_block() 
         p.conceals(bid),
         [
             hidden(0, 3).revealing(0, 22),
+            hidden(3, 7).revealing(0, 22),
             hidden(18, 21).revealing(0, 22)
         ]
     );
@@ -503,7 +504,10 @@ fn an_unclosed_fence_runs_to_the_end_of_the_document() {
     // so the heading line is code.
     let bid = p.open("a.md", "```rust\nfn f() {}\n# h\n");
     p.render();
-    assert_eq!(p.conceals(bid), [hidden(0, 3).revealing(0, 22)]);
+    assert_eq!(
+        p.conceals(bid),
+        [hidden(0, 3).revealing(0, 22), hidden(3, 7).revealing(0, 22)]
+    );
     assert_eq!(p.bands(bid), bands(0..3, "markup.raw.block.line"));
     assert_eq!(p.highlights(bid), []);
 }
@@ -533,6 +537,7 @@ fn markdown_fence_sets_conceals_for_its_two_fence_lines_only() {
         p.conceals(bid),
         [
             hidden(0, 3).revealing(0, 30),
+            hidden(3, 11).revealing(0, 30),
             hidden(26, 29).revealing(0, 30)
         ]
     );
@@ -592,6 +597,7 @@ fn a_quoted_code_block_inside_a_markdown_fence_sets_no_bar() {
         p.conceals(bid),
         [
             hidden(0, 4).revealing(0, 34),
+            hidden(4, 12).revealing(0, 34),
             hidden(29, 33).revealing(0, 34)
         ]
     );

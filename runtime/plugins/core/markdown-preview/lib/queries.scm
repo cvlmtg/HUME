@@ -94,7 +94,7 @@
     "(code_fence_content (block_continuation) @fence-continuation)\n"
     "(thematic_break) @rule\n"
     "(fenced_code_block) @fence\n"
-    "(fenced_code_block (fenced_code_block_delimiter) @fence-delimiter)\n"
+    "(fenced_code_block [(fenced_code_block_delimiter) (info_string)] @fence-hidden)\n"
     "(fenced_code_block (code_fence_content) @fence-content)\n"
     "(pipe_table) @table\n"
     "(pipe_table [(pipe_table_header) (pipe_table_row)] @table-row)\n"

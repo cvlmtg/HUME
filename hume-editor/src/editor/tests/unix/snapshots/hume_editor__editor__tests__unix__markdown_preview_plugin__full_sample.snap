@@ -1,5 +1,6 @@
 ---
 source: hume-editor/src/editor/tests/unix/markdown_preview_plugin.rs
+assertion_line: 1757
 expression: p.snapshot()
 ---
 <fg=#665c54,bg=#384035>  23 ▾ </><fg=#384035,bg=#8ec07c> 1 </><fg=#8ec07c,bg=#384035> </><fg=#8ec07c,bg=#384035,bold>Title</>
@@ -21,7 +22,7 @@ expression: p.snapshot()
 <fg=#665c54,bg=#282828>   7   </><fg=#fe8019,bg=#282828>│ </><fg=#ebdbb2,bg=#282828>apple</><fg=#fe8019,bg=#282828> │   </><fg=#ebdbb2,bg=#282828>3</><fg=#fe8019,bg=#282828> │</>
 <fg=#665c54,bg=#282828>   6   </><fg=#fe8019,bg=#282828>│ </><fg=#ebdbb2,bg=#282828,bold>kiwi</><fg=#fe8019,bg=#282828>  │  </><fg=#ebdbb2,bg=#282828>12</><fg=#fe8019,bg=#282828> │</>
 <fg=#665c54,bg=#282828>   5   </><fg=#fe8019,bg=#282828>└───────┴─────┘</>
-<fg=#665c54,bg=#363532>   4 ▾ </><fg=#fb4934,bg=#363532>rust</>
+<fg=#665c54,bg=#363532>   4 ▾</>
 <fg=#665c54,bg=#363532>   3   </><fg=#ebdbb2,bg=#363532>fn main() {}</>
 <fg=#665c54,bg=#363532>   2</>
 <fg=#665c54,bg=#282828>   1</>
