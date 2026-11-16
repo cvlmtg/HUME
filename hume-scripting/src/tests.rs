@@ -73,6 +73,31 @@ fn process_and_fs_globals_are_available_unrequired() {
         .expect("sort/file-name round trip failed");
 }
 
+/// `sort` with a Scheme comparator keeps equal elements in their input
+/// order, and sorts input that is already in order or in reverse.
+#[test]
+fn sort_with_a_scheme_comparator_is_stable() {
+    let mut host = ScriptingHost::for_testing(&Dirs::none());
+    let src = r#"
+        (define (by-key a b) (< (car a) (car b)))
+        (define keyed (list (cons 2 0) (cons 1 1) (cons 2 2) (cons 1 3)
+                            (cons 2 4) (cons 1 5) (cons 0 6) (cons 2 7)))
+        (define sorted (map cdr (sort keyed by-key)))
+        (if (equal? sorted (list 6 1 3 5 0 2 4 7))
+            (begin)
+            (error (string-append "sort is not stable: " (to-string sorted))))
+        (define (count-down n) (if (= n 0) '() (cons n (count-down (- n 1)))))
+        (define ascending (reverse (count-down 500)))
+        (define (less? a b) (< a b))
+        (if (and (equal? (sort (count-down 500) less?) ascending)
+                 (equal? (sort ascending less?) ascending))
+            (begin)
+            (error "sort did not sort ordered input"))
+    "#;
+    host.eval_source(src, &mut NullHost)
+        .expect("sort with a Scheme comparator");
+}
+
 /// End-to-end proof, not just presence checks: a real spawn writes to a
 /// real temp directory and its piped stdout is captured back correctly.
 #[test]

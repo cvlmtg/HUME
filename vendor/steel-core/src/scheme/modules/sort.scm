@@ -8,65 +8,42 @@
 (define (sort l less?)
   (if (#%function-pointer? less?)
       (#%list-sort l less?)
-      (begin
-        (define v (list->mutable-vector l))
-        (quick-1 v less?)
-        (mutable-vector->list v))))
+      (mutable-vector->list
+        (merge-sort (list->mutable-vector l) (list->mutable-vector l) less?))))
 
-(define (quick-1 v less?)
-  (define (helper left right)
-    (if (< left right)
-        (let ([median (partition v left right less?)])
-          (if (< (- median left) (- right median))
-              (begin
-                (helper left (- median 1))
-                (helper (+ median 1) right))
-              (begin
-                (helper (+ median 1) right)
-                (helper left (- median 1)))))
-        v))
+;; Bottom-up merge sort: merges runs of `width` from `src` into `dst`,
+;; doubling `width` and swapping the two each pass, and returns the vector
+;; holding the result. O(n log n) on any input, and stable.
+(define (merge-sort src dst less?)
+  (define n (vector-length src))
+  (let pass ([src src] [dst dst] [width 1])
+    (if (>= width n)
+        src
+        (begin
+          (merge-runs! src dst 0 width n less?)
+          (pass dst src (* width 2))))))
 
-  (define res (helper 0 (- (vector-length v) 1)))
+(define (merge-runs! src dst left width n less?)
+  (if (< left n)
+      (let* ([mid (if (< (+ left width) n) (+ left width) n)]
+             [right (if (< (+ mid width) n) (+ mid width) n)])
+        (merge! src dst left mid right less?)
+        (merge-runs! src dst right width n less?))
+      dst))
 
-  res)
-
-(define (uploop v less? mid i right)
-  (let ([i (+ i 1)])
-    (if (and (< i right) (less? (vector-ref v i) mid))
-        (uploop v less? mid i right)
-        i)))
-
-;; Same goes for down here
-(define (downloop v less? mid j left)
-  (let ([j (- j 1)])
-    (if (and (> j left) (less? mid (vector-ref v j)))
-        (downloop v less? mid j left)
-        j)))
-
-(define (ploop v less? left right mid i j)
-  (let* ([i (uploop v less? mid i right)]
-         [j (downloop v less? mid j left)])
-    (let ([tmp (vector-ref v i)])
-      ; (vector-set! v i (vector-ref v j))
-      (vector-swap! v i j)
-      (vector-set! v j tmp)
-      (if (< i j)
-          (ploop v less? left right mid i j)
-          (begin
-            (vector-swap! v j i)
-            (vector-swap! v i right)
-            (vector-set! v right tmp)
-            i)))))
-
-;; This is super duper slow?
-(define (partition v left right less?)
-
-  (let ([mid (vector-ref v right)])
-
-    ;; Then, we should also implement a pass that does:
-    ;; (vector-set! v j (vector-ref v i)) => (vector-swap v j i)
-
-    (ploop v less? left right mid (- left 1) right)))
+;; An element of the right run goes first only when it is strictly less.
+(define (merge! src dst left mid right less?)
+  (let loop ([i left] [j mid] [k left])
+    (if (< k right)
+        (if (and (< i mid)
+                 (or (>= j right) (not (less? (vector-ref src j) (vector-ref src i)))))
+            (begin
+              (vector-set! dst k (vector-ref src i))
+              (loop (+ i 1) j (+ k 1)))
+            (begin
+              (vector-set! dst k (vector-ref src j))
+              (loop i (+ j 1) (+ k 1))))
+        dst)))
 
 ;;; Hansen's original code for this benchmark used Larceny's
 ;;; predefined random procedure.  When Marc Feeley modified

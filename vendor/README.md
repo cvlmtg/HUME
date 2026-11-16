@@ -60,6 +60,15 @@ same input and their results compared equal. Timings are under Benchmarks below.
 rewrites reporting it or the forced second run, so it can stop before folding a constant
 defined after its use. The rest of this patch is proposed in [#732].
 
+**`sort` with a Scheme comparator is a stable merge sort.** Upstream's `sort`
+(`src/scheme/modules/sort.scm`) hands a native comparator to `#%list-sort`, and sorts with a
+Scheme procedure through a quicksort that takes the last element as its pivot. That is
+quadratic on input already in order or in reverse, and it reorders equal elements. A bottom-up
+merge sort replaces it: O(n log n) on any input, and stable. `core:markdown-preview` sorts the
+conceals of a whole popup text, which arrive nearly in order: formatting a 3,000-line Markdown
+text took 30.1 s with the quicksort and 0.82 s with the merge sort (debug build, Apple M4
+Pro). Not proposed upstream.
+
 ### Benchmarks
 
 Apple M4 Pro, macOS 26.5.2, rustc 1.99.1, release builds, measured 2026-10-23. Each figure is
