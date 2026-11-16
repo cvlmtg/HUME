@@ -61,7 +61,7 @@ struct ContextPattern {
 
 impl PatternDirectives for ContextPattern {
     fn predicate(&mut self, _: &[&str], predicate: &QueryPredicate) -> Result<(), String> {
-        if *predicate.operator != *"make-range!" {
+        if &*predicate.operator != "make-range!" {
             return Err(unsupported(&predicate.operator));
         }
         let (name, range) = MakeRange::parse(&predicate.args)?;

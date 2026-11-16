@@ -10,7 +10,8 @@
 - `set-conceals!` hides part of a line or draws other text in its place (`#:overlaps 'drop` leaves out an entry overlapping an earlier one), `syntax-captures` returns the nodes a tree-sitter query captures (`#:ranges` limits it to some lines), and the `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.
 - `buffer-viewport-ranges` returns the lines every pane on a buffer shows, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
 - `stdlib/lsp-batch` sends several language server requests as one batch and calls back once all have answered; a new batch under a `stdlib/lsp-batch-key` replaces the one before it.
-- A grammar's `folds.scm` can use `#trim!` and `#not-has-parent?`. A `folds.scm` using any other directive now fails to load: remove the directive.
+- A grammar's `folds.scm` can use `#trim!` and `#not-has-parent?`, its `textobjects.scm` `#make-range!` and `#offset!`, and its `context.scm` `#make-range!`.
+- A grammar whose `folds.scm`, `textobjects.scm`, `context.scm` or `injections.scm` uses a predicate or directive HUME doesn't support fails to load: remove it from the query file.
 
 ### Fixes
 - Inlay hints show in every pane on a buffer, not only one of them.

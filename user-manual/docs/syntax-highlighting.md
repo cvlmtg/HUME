@@ -183,11 +183,13 @@ Five optional keyword arguments can follow, in any order, each the path to one m
   #:folds "/path/to/folds.scm")
 ```
 
-- `#:injections`: the language embeds other languages, like Markdown's fenced code blocks.
-- `#:textobjects`: structural text objects and navigation (functions, classes, arguments, …).
-- `#:indents`: how new lines are indented, using Helix's `indents.scm` captures; see [Indentation](editing.md#indentation) for what it drives.
-- `#:context`: the scopes whose first line stays at the top of the pane while you scroll inside them, each captured as `@context`. A `@context.start` capture in the same pattern names the node whose first line heads the scope instead. See [Scope headers](#scope-headers).
-- `#:folds`: the regions you can fold, each captured as `@fold`. `(#trim! @fold)` leaves a region's trailing blank lines out of it, and `(#not-has-parent? @capture kind…)` skips a match whose captured node sits directly inside a node of one of those kinds. A `folds.scm` using any other directive fails to load. See [Folding](#folding).
+- `#:injections`: the language embeds other languages, like Markdown's fenced code blocks. Its patterns name the embedded language with `#set!`.
+- `#:textobjects`: structural text objects and navigation (functions, classes, arguments, …). `(#make-range! "parameter.around" @start @end)` makes an object running from the start of one capture through the end of another, or through the end of `@start` when `@end` captures nothing. `(#offset! @capture 0 start 0 end)` moves an object's start and end that many bytes along their lines (`0 1 0 -1` leaves out a block's braces), and drops the object when a bound would leave its line or nothing would be left.
+- `#:indents`: how new lines are indented, using Helix's `indents.scm` captures and predicates; see [Indentation](editing.md#indentation) for what it drives.
+- `#:context`: the scopes whose first line stays at the top of the pane while you scroll inside them, each captured as `@context` or made with `(#make-range! "context" @start @end)` from the start of one capture through the end of another. A `@context.start` capture in the same pattern names the node whose first line heads the scope instead. See [Scope headers](#scope-headers).
+- `#:folds`: the regions you can fold, each captured as `@fold`. `(#trim! @fold)` leaves a region's trailing blank lines out of it, and `(#not-has-parent? @capture kind…)` skips a match whose captured node sits directly inside a node of one of those kinds. See [Folding](#folding).
+
+Every query file can use `#eq?`, `#match?`, `#any-of?` and their `#not-` forms, and each optional one also what its entry above names. An optional query file using any other predicate or directive, or any query file that doesn't compile, keeps the whole grammar from loading, so files in that language get no highlighting either.
 
 Registered from `init.scm`, a grammar loads the first time a file or an embedded block needs it, and `:messages` reports then if its library or a query file can't be loaded. Registered from a command, it loads right away, and the command fails with the reason.
 
