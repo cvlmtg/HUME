@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use super::{DetectPaths, LanguageId, LanguageRegistry, RegisterError, detect_language};
+use super::{
+    DetectPaths, FileSkip, LanguageId, LanguageRegistry, LoadReport, RegisterError, Skipped,
+    detect_language,
+};
 use hume_core::{
     BlockCommentTokens, ConfigOrigin, FileExtension, GrammarSource, LanguageField, LanguageFields,
     LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFiles, WriteOutcome,
@@ -157,52 +160,138 @@ fn attach_grammar_without_injections_file_leaves_injections_none() {
     );
 }
 
-/// A broken injections.scm hard-fails the whole attach (same as a broken
-/// highlights.scm) rather than degrading to a warning. Both files come
-/// from the same trusted pinned source, so there is no separate soft-fail
-/// path.
-#[test]
-fn attach_grammar_with_broken_injections_fails_whole_attach() {
+/// Attach rust with `kind`'s query file at `path`: the grammar loads with
+/// no `kind` query, and its one report says why the file was left out.
+fn attach_leaving_out(kind: OptionalQuery, path: std::path::PathBuf) -> FileSkip {
     require_grammars(&["rust"]);
-    let hl_path = grammar_query_path("rust");
-    let (_dir, inj_path) = write_temp_scm(
-        "injections.scm",
-        "(this is not valid tree-sitter query syntax",
-    );
-
     let mut reg = LanguageRegistry::for_testing();
-    let mut scope_reg = ScopeRegistry::new();
-    let scopes_before = scope_reg.len();
-    let result = reg.attach_grammar(
-        "rust",
-        &rust_source(
-            QueryFiles::new(hl_path.clone()).with(OptionalQuery::Injections, inj_path.clone()),
-        ),
-        ConfigOrigin::User,
-        &mut scope_reg,
-    );
-    let Err(err) = result else {
-        panic!("broken injections.scm must fail the attach");
+    let bundle = reg
+        .attach_grammar(
+            "rust",
+            &rust_source(QueryFiles::new(grammar_query_path("rust")).with(kind, path)),
+            ConfigOrigin::User,
+            &mut ScopeRegistry::new(),
+        )
+        .expect("the grammar still loads")
+        .expect("no higher origin holds the grammar");
+    let present = match kind {
+        OptionalQuery::Injections => bundle.injections.is_some(),
+        OptionalQuery::TextObjects => bundle.textobjects.is_some(),
+        OptionalQuery::Indents => bundle.indents.is_some(),
+        OptionalQuery::Context => bundle.context.is_some(),
+        OptionalQuery::Folds => bundle.folds.is_some(),
     };
+    assert!(!present, "{} must be left out", kind.file_name());
+    let mut reports = reg.take_load_reports();
+    match (reports.pop(), reports.is_empty()) {
+        (Some((_, LoadReport::Skipped(Skipped::File { kind: k, reason }))), true) if k == kind => {
+            reason
+        }
+        other => panic!("expected one report leaving out {kind:?}, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_injections_scm_that_does_not_compile_is_left_out() {
+    let (_dir, path) = write_temp_scm("injections.scm", "(this is not valid query syntax");
+    let reason = attach_leaving_out(OptionalQuery::Injections, path);
+    assert!(matches!(reason, FileSkip::Build(_)), "{reason:?}");
+}
+
+#[test]
+fn a_textobjects_scm_that_does_not_compile_is_left_out() {
+    let (_dir, path) = write_temp_scm("textobjects.scm", "(this is not valid query syntax");
+    let reason = attach_leaving_out(OptionalQuery::TextObjects, path);
+    assert!(matches!(reason, FileSkip::Build(_)), "{reason:?}");
+}
+
+#[test]
+fn a_context_scm_naming_an_unknown_node_is_left_out() {
+    let (_dir, path) = write_temp_scm("context.scm", "(nonexistent_node) @context");
+    let reason = attach_leaving_out(OptionalQuery::Context, path);
+    assert!(matches!(reason, FileSkip::Build(_)), "{reason:?}");
+}
+
+#[test]
+fn a_folds_scm_capturing_no_fold_is_left_out() {
+    let (_dir, path) = write_temp_scm("folds.scm", "(block) @region");
+    let reason = attach_leaving_out(OptionalQuery::Folds, path);
+    assert!(
+        matches!(reason, FileSkip::NamesNothing("a @fold capture")),
+        "{reason:?}"
+    );
+}
+
+#[test]
+fn a_context_scm_capturing_no_context_is_left_out() {
+    let (_dir, path) = write_temp_scm("context.scm", "(function_item) @scope");
+    let reason = attach_leaving_out(OptionalQuery::Context, path);
     assert!(
         matches!(
-            err,
-            super::RegisterError::OptionalQueryBuild {
-                kind: OptionalQuery::Injections,
-                ..
-            }
+            reason,
+            FileSkip::NamesNothing(r#"a @context capture or a #make-range! "context""#)
         ),
-        "broken injections.scm must surface as OptionalQueryBuild for Injections, got: {err:?}"
+        "{reason:?}"
     );
-    assert!(
-        reg.defined_id("rust").is_none(),
-        "a failed attach must not leave a partial identity behind"
-    );
+}
+
+#[test]
+fn a_missing_injections_scm_is_left_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let reason = attach_leaving_out(OptionalQuery::Injections, dir.path().join("injections.scm"));
+    assert!(matches!(reason, FileSkip::Read(_)), "{reason:?}");
+}
+
+#[test]
+fn a_skipped_part_reads_as_its_file_and_why() {
+    let (_dir, path) = write_temp_scm("folds.scm", "(block) @region");
+    let reason = attach_leaving_out(OptionalQuery::Folds, path);
+    let skipped = Skipped::File {
+        kind: OptionalQuery::Folds,
+        reason,
+    };
     assert_eq!(
-        scope_reg.len(),
-        scopes_before,
-        "a failed attach must not intern highlight scopes"
+        skipped.to_string(),
+        "folds.scm is left out: it names nothing to use, it needs a @fold capture"
     );
+}
+
+#[test]
+fn a_highlights_pattern_with_an_unsupported_predicate_is_skipped() {
+    let skipped = crate::test_support::rust_skips(
+        "(identifier) @variable\n\n((identifier) @function (#frobnicate! @function))\n",
+        &[],
+    );
+    let [skip @ Skipped::Pattern { file, .. }] = skipped.as_slice() else {
+        panic!("expected one skipped pattern, got {skipped:?}");
+    };
+    assert_eq!(*file, "highlights.scm");
+    assert_eq!(
+        skip.to_string(),
+        "highlights.scm: Query error at 3:1. Invalid predicate: #frobnicate! is not supported; \
+         the pattern is left out"
+    );
+}
+
+#[test]
+fn a_highlights_pattern_reading_locals_is_not_skipped() {
+    let skipped = crate::test_support::rust_skips(
+        "((identifier) @function (#is-not? local))\n((identifier) @variable (#is? local))\n",
+        &[],
+    );
+    assert!(skipped.is_empty(), "{skipped:?}");
+}
+
+#[test]
+fn check_grammar_passes_a_grammar_with_a_skipped_part() {
+    require_grammars(&["rust"]);
+    let (_dir, path) = write_temp_scm("folds.scm", "((block) @fold (#frobnicate! @fold))");
+    let reg = LanguageRegistry::for_testing();
+    reg.check_grammar(
+        "rust",
+        &rust_source(QueryFiles::new(grammar_query_path("rust")).with(OptionalQuery::Folds, path)),
+    )
+    .expect("a skipped pattern leaves the grammar loading");
 }
 
 #[test]
@@ -261,135 +350,6 @@ fn attach_grammar_without_textobjects_file_leaves_textobjects_none() {
     );
 }
 
-/// A broken textobjects.scm hard-fails the whole attach, same policy as a
-/// broken injections.scm (see `attach_grammar_with_broken_injections_fails_whole_attach`).
-#[test]
-fn attach_grammar_with_broken_textobjects_fails_whole_attach() {
-    require_grammars(&["rust"]);
-    let hl_path = grammar_query_path("rust");
-    let (_dir, to_path) = write_temp_scm(
-        "textobjects.scm",
-        "(this is not valid tree-sitter query syntax",
-    );
-
-    let mut reg = LanguageRegistry::for_testing();
-    let mut scope_reg = ScopeRegistry::new();
-    let result = reg.attach_grammar(
-        "rust",
-        &rust_source(
-            QueryFiles::new(hl_path.clone()).with(OptionalQuery::TextObjects, to_path.clone()),
-        ),
-        ConfigOrigin::User,
-        &mut scope_reg,
-    );
-    let Err(err) = result else {
-        panic!("broken textobjects.scm must fail the attach");
-    };
-    assert!(
-        matches!(
-            err,
-            super::RegisterError::OptionalQueryBuild {
-                kind: OptionalQuery::TextObjects,
-                ..
-            }
-        ),
-        "broken textobjects.scm must surface as OptionalQueryBuild for TextObjects, got: {err:?}"
-    );
-    assert!(
-        reg.defined_id("rust").is_none(),
-        "a failed attach must not leave a partial identity behind"
-    );
-}
-
-/// A broken context.scm hard-fails the whole attach, same policy as a broken
-/// textobjects.scm.
-#[test]
-fn attach_grammar_with_broken_context_fails_whole_attach() {
-    require_grammars(&["rust"]);
-    let hl_path = grammar_query_path("rust");
-    let (_dir, context_path) = write_temp_scm("context.scm", "(nonexistent_node) @context");
-
-    let mut reg = LanguageRegistry::for_testing();
-    let mut scope_reg = ScopeRegistry::new();
-    let result = reg.attach_grammar(
-        "rust",
-        &rust_source(QueryFiles::new(hl_path).with(OptionalQuery::Context, context_path)),
-        ConfigOrigin::User,
-        &mut scope_reg,
-    );
-    let Err(err) = result else {
-        panic!("broken context.scm must fail the attach");
-    };
-    assert!(
-        matches!(
-            err,
-            super::RegisterError::OptionalQueryBuild {
-                kind: OptionalQuery::Context,
-                ..
-            }
-        ),
-        "broken context.scm must surface as OptionalQueryBuild for Context, got: {err:?}"
-    );
-    assert!(
-        err.to_string()
-            .starts_with("context.scm compilation failed:"),
-        "{err}"
-    );
-    assert!(
-        reg.defined_id("rust").is_none(),
-        "a failed attach must not leave a partial identity behind"
-    );
-}
-
-/// Attach rust with `kind`'s query file holding `src`, which must fail with
-/// [`super::RegisterError::NamesNothing`] saying it needs `needs`.
-fn assert_attach_names_nothing(kind: OptionalQuery, src: &str, needs: &str) {
-    require_grammars(&["rust"]);
-    let hl_path = grammar_query_path("rust");
-    let (_dir, path) = write_temp_scm(kind.file_name(), src);
-
-    let mut reg = LanguageRegistry::for_testing();
-    let mut scope_reg = ScopeRegistry::new();
-    let result = reg.attach_grammar(
-        "rust",
-        &rust_source(QueryFiles::new(hl_path).with(kind, path)),
-        ConfigOrigin::User,
-        &mut scope_reg,
-    );
-    let Err(err) = result else {
-        panic!("{} without {needs} must fail the attach", kind.file_name());
-    };
-    assert!(
-        matches!(err, super::RegisterError::NamesNothing { kind: k, .. } if k == kind),
-        "got: {err:?}"
-    );
-    assert_eq!(
-        err.to_string(),
-        format!(
-            "{} names nothing to use: it needs {needs}",
-            kind.file_name()
-        )
-    );
-    assert!(
-        reg.defined_id("rust").is_none(),
-        "a failed attach must not leave a partial identity behind"
-    );
-}
-
-#[test]
-fn attach_grammar_with_folds_capturing_no_fold_fails_whole_attach() {
-    assert_attach_names_nothing(OptionalQuery::Folds, "(block) @region", "a @fold capture");
-}
-
-#[test]
-fn attach_grammar_with_context_capturing_no_context_fails_whole_attach() {
-    assert_attach_names_nothing(
-        OptionalQuery::Context,
-        "(function_item) @scope",
-        r#"a @context capture or a #make-range! "context""#,
-    );
-}
-
 #[test]
 fn query_files_get_returns_what_with_stored_per_kind() {
     let files = QueryFiles::new("hl.scm".into());
@@ -406,36 +366,6 @@ fn query_files_get_returns_what_with_stored_per_kind() {
             assert_eq!(files.get(other), None, "{other:?} stays unset");
         }
     }
-}
-
-#[test]
-fn attach_grammar_with_missing_injections_file_fails_with_read_error() {
-    require_grammars(&["rust"]);
-    let hl_path = grammar_query_path("rust");
-    let dir = tempfile::tempdir().unwrap();
-    let missing = dir.path().join("injections.scm");
-
-    let mut reg = LanguageRegistry::for_testing();
-    let mut scope_reg = ScopeRegistry::new();
-    let result = reg.attach_grammar(
-        "rust",
-        &rust_source(QueryFiles::new(hl_path).with(OptionalQuery::Injections, missing)),
-        ConfigOrigin::User,
-        &mut scope_reg,
-    );
-    let Err(err) = result else {
-        panic!("a missing injections.scm must fail the attach");
-    };
-    assert!(
-        matches!(
-            err,
-            super::RegisterError::OptionalQueryRead {
-                kind: OptionalQuery::Injections,
-                ..
-            }
-        ),
-        "got: {err:?}"
-    );
 }
 
 #[test]
@@ -1532,11 +1462,14 @@ fn a_failed_load_is_queued_once_then_is_unavailable() {
     assert!(reg.load_grammar(id, &mut scope_reg).is_none());
     assert!(reg.load_grammar(id, &mut scope_reg).is_none());
 
-    let failed = reg.take_failed_loads();
-    assert_eq!(failed.len(), 1);
-    assert_eq!(failed[0].0, id);
-    assert!(matches!(failed[0].1, super::RegisterError::GrammarLoad(_)));
-    assert!(reg.take_failed_loads().is_empty(), "taken once");
+    let reports = reg.take_load_reports();
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].0, id);
+    assert!(matches!(
+        reports[0].1,
+        LoadReport::Failed(super::RegisterError::GrammarLoad(_))
+    ));
+    assert!(reg.take_load_reports().is_empty(), "taken once");
     assert!(!reg.has_grammar("missing"));
     assert!(!reg.grammar_available(id));
 }

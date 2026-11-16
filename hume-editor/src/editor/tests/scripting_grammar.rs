@@ -158,6 +158,44 @@ fn a_registered_grammar_that_fails_to_load_warns_once() {
     assert!(ed.state.buffers.get(bid).syntax.is_none());
 }
 
+#[test]
+fn a_grammar_loaded_without_a_pattern_warns_once() {
+    require_grammars(&["json"]);
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .config
+        .languages
+        .register_identity("json", &["json"], &[], &[])
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let folds = dir.path().join("folds.scm");
+    std::fs::write(
+        &folds,
+        "(object) @fold\n\n((pair) @fold (#frobnicate! @fold))\n",
+    )
+    .unwrap();
+    let queries = hume_core::QueryFiles::new(test_fixtures::grammar_query_path("json"))
+        .with(hume_core::OptionalQuery::Folds, folds);
+    let lang = register_fixture_grammar_with(&mut ed, "json", "tree_sitter_json", &queries);
+    super::language::attach_host(&mut ed, "");
+
+    ed.set_buffer_language(bid, Some(lang)).expect_open();
+    for _ in 0..3 {
+        ed.reparse_stale_buffers();
+    }
+
+    assert!(has_layers(&ed, bid), "the grammar still loads");
+    let warnings = grammar_warnings(&ed, "json");
+    assert_eq!(
+        warnings,
+        [
+            "grammar 'json': folds.scm: Query error at 3:1. Invalid predicate: \
+          #frobnicate! is not supported; the pattern is left out"
+        ]
+    );
+}
+
 /// `reset_config_state` (via `BufferStore::clear_languages_all`) bypasses
 /// `set_buffer_language` entirely: it writes `buf.language = None` directly,
 /// a path `clear_language_detaches_syntax_keeps_identity` above doesn't

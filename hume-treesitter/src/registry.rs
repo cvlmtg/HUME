@@ -11,9 +11,10 @@ use ropey::Rope;
 
 use crate::captures::CaptureQuery;
 use crate::context::ContextQuery;
+use crate::directives::parse_patterns;
 use crate::fold::FoldQuery;
 use crate::grammar::LoadedGrammar;
-use crate::highlight::TreeSitterHighlighter;
+use crate::highlight::{HighlightPattern, TreeSitterHighlighter};
 use hume_core::{
     BlockCommentTokens, ByOrigin, CommentTokens, ConfigOrigin, FirstWins, GrammarSource,
     LanguageField, LanguageFields, LanguageIdentity, LaterWins, LineCommentTokens, OptionalQuery,
@@ -22,6 +23,7 @@ use hume_core::{
 #[cfg(any(test, feature = "test-util"))]
 use hume_core::{FileExtension, FileGlob};
 use hume_engine::theme::ScopeRegistry;
+use tree_sitter::QueryError;
 
 use crate::indent::IndentQuery;
 use crate::injections::InjectionsQuery;
@@ -210,14 +212,15 @@ fn require_abi(name: &str, abi: usize) -> Result<(), RegisterError> {
 }
 
 /// Opens `source`'s library through `library_wait`, checks its ABI, and
-/// reads and compiles its queries. `scope_reg` is touched only once
-/// everything else succeeded.
+/// reads and compiles its queries, with what the compile left out. An
+/// optional query file that cannot be read is left out. `scope_reg` is
+/// touched only once everything else succeeded.
 fn compile_source(
     name: &str,
     source: &GrammarSource,
     library_wait: &OsWait,
     scope_reg: &mut ScopeRegistry,
-) -> Result<(LoadedGrammar, CompiledQueries), RegisterError> {
+) -> Result<(LoadedGrammar, CompiledQueries, Vec<Skipped>), RegisterError> {
     let grammar = library_wait
         .waiting(|| LoadedGrammar::open(&source.path, &source.symbol))
         .map_err(RegisterError::GrammarLoad)?;
@@ -226,19 +229,35 @@ fn compile_source(
     let highlights_src =
         std::fs::read_to_string(queries.highlights()).map_err(RegisterError::HighlightsRead)?;
     let mut optional_src = Vec::new();
+    let mut skipped = Vec::new();
     for kind in OptionalQuery::ALL {
         if let Some(path) = queries.get(kind) {
-            let src = std::fs::read_to_string(path)
-                .map_err(|error| RegisterError::OptionalQueryRead { kind, error })?;
-            optional_src.push((kind, src));
+            match std::fs::read_to_string(path) {
+                Ok(src) => optional_src.push((kind, src)),
+                Err(error) => skipped.push(Skipped::File {
+                    kind,
+                    reason: FileSkip::Read(error),
+                }),
+            }
         }
     }
     let optional: Vec<(OptionalQuery, &str)> = optional_src
         .iter()
         .map(|(kind, src)| (*kind, src.as_str()))
         .collect();
-    let compiled = compile_queries(grammar.language(), &highlights_src, &optional, scope_reg)?;
-    Ok((grammar, compiled))
+    let (compiled, compile_skipped) =
+        compile_queries(grammar.language(), &highlights_src, &optional, scope_reg)?;
+    skipped.extend(compile_skipped);
+    Ok((grammar, compiled, skipped))
+}
+
+/// Each of `errors`, a pattern of `file` left out, as a skip in `skipped`.
+fn skip_patterns(skipped: &mut Vec<Skipped>, file: &'static str, errors: &mut Vec<QueryError>) {
+    skipped.extend(
+        errors
+            .drain(..)
+            .map(|error| Skipped::Pattern { file, error }),
+    );
 }
 
 pub(crate) fn new_bundle(
@@ -278,52 +297,77 @@ pub(crate) struct CompiledQueries {
     pub(crate) folds: Option<FoldQuery>,
 }
 
-/// Compiles a grammar's queries. This is the one place query sources become
-/// compiled queries. Every compile happens before `scope_reg` is touched, so
-/// a failure leaves it unchanged.
+/// Compiles a grammar's queries, with what the compile left out. This is
+/// the one place query sources become compiled queries. Only a
+/// `highlights.scm` that does not compile fails the grammar: a pattern using
+/// a predicate or directive HUME does not apply is disabled, and an optional
+/// file that does not compile or names nothing its kind reads is left out.
+/// Every compile happens before `scope_reg` is touched, so a failure leaves
+/// it unchanged.
 pub(crate) fn compile_queries(
     language: &tree_sitter::Language,
-    highlights: &str,
+    highlights_src: &str,
     optional: &[(OptionalQuery, &str)],
     scope_reg: &mut ScopeRegistry,
-) -> Result<CompiledQueries, RegisterError> {
-    let highlights =
-        Arc::new(tree_sitter::Query::new(language, highlights).map_err(RegisterError::QueryBuild)?);
+) -> Result<(CompiledQueries, Vec<Skipped>), RegisterError> {
+    for (i, &(kind, _)) in optional.iter().enumerate() {
+        assert!(
+            optional[..i].iter().all(|&(earlier, _)| earlier != kind),
+            "{} given twice",
+            kind.file_name()
+        );
+    }
+    let mut highlights =
+        tree_sitter::Query::new(language, highlights_src).map_err(RegisterError::QueryBuild)?;
+    let mut skipped = Vec::new();
+    let mut errors = Vec::new();
+    let _: Vec<HighlightPattern> = parse_patterns(&mut highlights, highlights_src, &mut errors);
+    skip_patterns(&mut skipped, "highlights.scm", &mut errors);
     let mut injections = None;
     let mut textobjects = None;
     let mut indents = None;
     let mut context = None;
     let mut folds = None;
     for &(kind, src) in optional {
-        let build = |error| RegisterError::OptionalQueryBuild { kind, error };
-        let names_nothing = |needs| RegisterError::NamesNothing { kind, needs };
-        let query = tree_sitter::Query::new(language, src).map_err(build)?;
-        let duplicate = match kind {
-            OptionalQuery::Injections => injections
-                .replace(InjectionsQuery::new(Arc::new(query), src).map_err(build)?)
-                .is_some(),
-            OptionalQuery::TextObjects => textobjects
-                .replace(Arc::new(TextObjectsQuery::new(query, src).map_err(build)?))
-                .is_some(),
-            OptionalQuery::Indents => indents
-                .replace(IndentQuery::new(query, src, language).map_err(build)?)
-                .is_some(),
-            OptionalQuery::Context => context
-                .replace(
-                    ContextQuery::new(query, src)
-                        .map_err(build)?
-                        .ok_or_else(|| names_nothing(ContextQuery::NEEDS))?,
-                )
-                .is_some(),
-            OptionalQuery::Folds => folds
-                .replace(
-                    FoldQuery::new(query, src)
-                        .map_err(build)?
-                        .ok_or_else(|| names_nothing(FoldQuery::NEEDS))?,
-                )
-                .is_some(),
+        let query = match tree_sitter::Query::new(language, src) {
+            Ok(query) => query,
+            Err(error) => {
+                skipped.push(Skipped::File {
+                    kind,
+                    reason: FileSkip::Build(error),
+                });
+                continue;
+            }
         };
-        assert!(!duplicate, "{} given twice", kind.file_name());
+        let names_nothing = match kind {
+            OptionalQuery::Injections => {
+                injections = Some(InjectionsQuery::new(query, src, &mut errors));
+                None
+            }
+            OptionalQuery::TextObjects => {
+                textobjects = Some(Arc::new(TextObjectsQuery::new(query, src, &mut errors)));
+                None
+            }
+            OptionalQuery::Indents => {
+                indents = Some(IndentQuery::new(query, src, language, &mut errors));
+                None
+            }
+            OptionalQuery::Context => {
+                context = ContextQuery::new(query, src, &mut errors);
+                context.is_none().then_some(ContextQuery::NEEDS)
+            }
+            OptionalQuery::Folds => {
+                folds = FoldQuery::new(query, src, &mut errors);
+                folds.is_none().then_some(FoldQuery::NEEDS)
+            }
+        };
+        skip_patterns(&mut skipped, kind.file_name(), &mut errors);
+        if let Some(needs) = names_nothing {
+            skipped.push(Skipped::File {
+                kind,
+                reason: FileSkip::NamesNothing(needs),
+            });
+        }
     }
     let context = context
         .or_else(|| {
@@ -333,16 +377,18 @@ pub(crate) fn compile_queries(
         })
         .map(Arc::new);
     let folds = folds.or_else(|| context.clone().map(FoldQuery::Scopes));
-    Ok(CompiledQueries {
+    let compiled = CompiledQueries {
         highlighter: Arc::new(TreeSitterHighlighter::from_shared_query(
-            highlights, scope_reg,
+            Arc::new(highlights),
+            scope_reg,
         )),
         injections,
         textobjects,
         indents,
         context,
         folds,
-    })
+    };
+    Ok((compiled, skipped))
 }
 
 /// Everything the registry holds for one interned language.
@@ -439,9 +485,10 @@ pub struct LanguageRegistry {
     /// A syntax layer exists only for a language with a grammar, so reading
     /// these before any parse means every layer's language has its data.
     bundled_pending: Vec<LanguageId>,
-    /// Grammars whose load failed since the last take, each with its error.
-    /// A failed load clears the grammar, so each failure is queued once.
-    failed_loads: Vec<(LanguageId, RegisterError)>,
+    /// What each grammar load since the last take had to report. A failed
+    /// load clears the grammar, and a loaded one is never loaded again, so
+    /// each report is queued once.
+    load_reports: Vec<(LanguageId, LoadReport)>,
     /// What each grammar library opens through. The editor's is connected
     /// to the scripting budget, since macOS checks a library file the first
     /// time it opens, about 100 ms for a grammar.
@@ -458,22 +505,6 @@ pub enum RegisterError {
     HighlightsRead(std::io::Error),
     /// Failed to compile the highlights query.
     QueryBuild(tree_sitter::QueryError),
-    /// Failed to read an optional query file.
-    OptionalQueryRead {
-        kind: OptionalQuery,
-        error: std::io::Error,
-    },
-    /// Failed to compile an optional query.
-    OptionalQueryBuild {
-        kind: OptionalQuery,
-        error: tree_sitter::QueryError,
-    },
-    /// An optional query compiled without naming anything its kind reads;
-    /// `needs` is what would.
-    NamesNothing {
-        kind: OptionalQuery,
-        needs: &'static str,
-    },
     /// Grammar ABI version is outside the range the linked tree-sitter
     /// loads.  Recompile the grammar with a compatible generator.
     AbiIncompatible { name: String, abi: usize },
@@ -486,25 +517,68 @@ impl std::fmt::Display for RegisterError {
             Self::GrammarLoad(e) => write!(f, "grammar load failed: {e}"),
             Self::HighlightsRead(e) => write!(f, "highlights.scm read failed: {e}"),
             Self::QueryBuild(e) => write!(f, "highlight query compilation failed: {e}"),
-            Self::OptionalQueryRead { kind, error } => {
-                write!(f, "{} read failed: {error}", kind.file_name())
-            }
-            Self::OptionalQueryBuild { kind, error } => {
-                write!(f, "{} compilation failed: {error}", kind.file_name())
-            }
-            Self::NamesNothing { kind, needs } => {
-                write!(
-                    f,
-                    "{} names nothing to use: it needs {needs}",
-                    kind.file_name()
-                )
-            }
             Self::AbiIncompatible { name, abi } => write!(
                 f,
                 "grammar '{name}' ABI {abi} not in supported range {GRAMMAR_ABI:?}"
             ),
         }
     }
+}
+
+/// Part of a grammar's queries a load left out, and why. The grammar loads
+/// without it.
+#[derive(Debug)]
+pub enum Skipped {
+    /// A pattern of `file` using a predicate or directive HUME does not
+    /// apply, disabled so it never matches. `error` is at its start.
+    Pattern {
+        file: &'static str,
+        error: tree_sitter::QueryError,
+    },
+    /// An optional query file left out whole.
+    File {
+        kind: OptionalQuery,
+        reason: FileSkip,
+    },
+}
+
+/// Why an optional query file was left out.
+#[derive(Debug)]
+pub enum FileSkip {
+    Read(std::io::Error),
+    Build(tree_sitter::QueryError),
+    /// It compiled without naming anything its kind reads; this is what
+    /// would.
+    NamesNothing(&'static str),
+}
+
+impl std::fmt::Display for Skipped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pattern { file, error } => {
+                write!(f, "{file}: {error}; the pattern is left out")
+            }
+            Self::File { kind, reason } => {
+                write!(f, "{} is left out: ", kind.file_name())?;
+                match reason {
+                    FileSkip::Read(error) => write!(f, "it cannot be read: {error}"),
+                    FileSkip::Build(error) => write!(f, "{error}"),
+                    FileSkip::NamesNothing(needs) => {
+                        write!(f, "it names nothing to use, it needs {needs}")
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// What a grammar's load had to report.
+#[derive(Debug)]
+pub enum LoadReport {
+    /// The grammar did not load.
+    Failed(RegisterError),
+    /// It loaded without this part.
+    Skipped(Skipped),
 }
 
 impl LanguageRegistry {
@@ -521,7 +595,7 @@ impl LanguageRegistry {
             registered: Claimants::default(),
             grammar_snapshot: Arc::new(GrammarSnapshot::default()),
             bundled_pending: Vec::new(),
-            failed_loads: Vec::new(),
+            load_reports: Vec::new(),
             library_wait,
         }
     }
@@ -655,10 +729,19 @@ impl LanguageRegistry {
         std::mem::take(&mut self.bundled_pending)
     }
 
-    /// The grammars whose load failed since the last call, for the caller to
-    /// report.
-    pub fn take_failed_loads(&mut self) -> Vec<(LanguageId, RegisterError)> {
-        std::mem::take(&mut self.failed_loads)
+    /// What each grammar load since the last call had to report, for the
+    /// caller to report.
+    pub fn take_load_reports(&mut self) -> Vec<(LanguageId, LoadReport)> {
+        std::mem::take(&mut self.load_reports)
+    }
+
+    /// Queue `skipped`, what `id`'s load left out.
+    fn report_skipped(&mut self, id: LanguageId, skipped: Vec<Skipped>) {
+        self.load_reports.extend(
+            skipped
+                .into_iter()
+                .map(|skip| (id, LoadReport::Skipped(skip))),
+        );
     }
 
     /// Record that `id`'s bundled data file has been read, filling each field
@@ -944,16 +1027,19 @@ impl LanguageRegistry {
         if !self.rank_grammar(name, by).is_applied() {
             return Ok(None);
         }
-        let (grammar, queries) = compile_source(name, source, &self.library_wait, scope_reg)?;
+        let (grammar, queries, skipped) =
+            compile_source(name, source, &self.library_wait, scope_reg)?;
         let id = self.intern(name);
         let bundle = new_bundle(id, grammar, queries);
         self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)), by);
+        self.report_skipped(id, skipped);
         Ok(Some(bundle))
     }
 
     /// Opens `source`'s library and compiles its queries as a load of
-    /// `name`'s grammar would, registering nothing. The library stays open,
-    /// as every library this process opens does.
+    /// `name`'s grammar would, registering nothing. What the load would
+    /// leave out is reported when the grammar loads. The library stays
+    /// open, as every library this process opens does.
     pub fn check_grammar(&self, name: &str, source: &GrammarSource) -> Result<(), RegisterError> {
         compile_source(name, source, &self.library_wait, &mut ScopeRegistry::new()).map(drop)
     }
@@ -969,8 +1055,8 @@ impl LanguageRegistry {
 
     /// `id`'s grammar bundle, loading a registered grammar first. `None` when
     /// `id` has no grammar or its load fails. A failed load leaves `id` with
-    /// no grammar until it is registered again and queues its error for
-    /// [`Self::take_failed_loads`].
+    /// no grammar until it is registered again. Its error, or what a
+    /// successful load left out, is queued for [`Self::take_load_reports`].
     pub fn load_grammar(
         &mut self,
         id: LanguageId,
@@ -985,15 +1071,16 @@ impl LanguageRegistry {
             GrammarSlot::Loaded(bundle) => return Some(Arc::clone(bundle)),
         };
         match compiled {
-            Ok((grammar, queries)) => {
+            Ok((grammar, queries, skipped)) => {
                 let bundle = new_bundle(id, grammar, queries);
                 self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)), by);
+                self.report_skipped(id, skipped);
                 Some(bundle)
             }
             Err(error) => {
                 self.entry_mut(id).grammar = Ranked::default();
                 self.rebuild_grammar_snapshot();
-                self.failed_loads.push((id, error));
+                self.load_reports.push((id, LoadReport::Failed(error)));
                 None
             }
         }

@@ -8,11 +8,11 @@ use hume_rope::line::ContentLine;
 use hume_rope::offset::InclusiveRange;
 use test_fixtures::require_grammars;
 
-use crate::registry::{GrammarBundle, GrammarSnapshot};
+use crate::registry::{FileSkip, GrammarBundle, GrammarSnapshot, Skipped};
 use crate::syntax::Syntax;
 use crate::test_support::{
-    assert_rejected_at_pattern_start, bundle_with_fixture_query, fixture_query, make_bundle,
-    rust_bundle_with, syntax_with,
+    assert_skipped_at_pattern_start, bundle_with_fixture_query, fixture_query, make_bundle,
+    rust_bundle_with, rust_skips, syntax_with,
 };
 
 fn fold(first: usize, last: usize, shows_last: bool) -> Fold {
@@ -142,13 +142,12 @@ fn a_not_has_parent_match_under_those_parents_does_not_fold() {
 }
 
 #[test]
-fn an_unsupported_fold_directive_fails_the_compile_on_its_pattern_row() {
-    assert_rejected_at_pattern_start(
+fn an_unsupported_fold_directive_skips_its_pattern() {
+    assert_skipped_at_pattern_start(
         OptionalQuery::Folds,
         "(block) @fold",
         &[
             r#"((block) @fold (#frobnicate! @fold))"#,
-            r#"((block) @fold (#is? "local"))"#,
             r#"((block) @fold (#set! "a" "b"))"#,
             r#"((block) @b (#trim! @b)) @fold"#,
             r#"((block) @fold (#trim! @fold 1 1 1 1))"#,
@@ -159,11 +158,26 @@ fn an_unsupported_fold_directive_fails_the_compile_on_its_pattern_row() {
 }
 
 #[test]
-fn an_unsupported_fold_directive_fails_on_its_row_without_a_fold_capture() {
-    assert_rejected_at_pattern_start(
-        OptionalQuery::Folds,
-        "(block) @b",
-        &[r#"((block) @b (#frobnicate! @b))"#],
+fn a_folds_scm_without_a_fold_capture_reports_its_skipped_pattern_too() {
+    let skipped = rust_skips(
+        "",
+        &[(OptionalQuery::Folds, "((block) @b (#frobnicate! @b))\n")],
+    );
+    assert!(
+        matches!(
+            skipped.as_slice(),
+            [
+                Skipped::Pattern {
+                    file: "folds.scm",
+                    ..
+                },
+                Skipped::File {
+                    kind: OptionalQuery::Folds,
+                    reason: FileSkip::NamesNothing(_),
+                },
+            ]
+        ),
+        "{skipped:?}"
     );
 }
 

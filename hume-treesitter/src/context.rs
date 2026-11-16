@@ -82,24 +82,28 @@ impl ContextQuery {
     pub(crate) const NEEDS: &str = r#"a @context capture or a #make-range! "context""#;
 
     /// A compiled `context.scm`, `None` when it names no scope: no
-    /// `@context` capture and no `#make-range! "context"`. Fails, as a
-    /// `Predicate` error at the offending pattern's start in `source`, on
-    /// any engine predicate or directive but `#make-range! "context"`.
-    pub(crate) fn new(query: tree_sitter::Query, source: &str) -> Result<Option<Self>, QueryError> {
-        let patterns: Vec<ContextPattern> = parse_patterns(&query, source)?;
+    /// `@context` capture and no `#make-range! "context"`. A pattern using
+    /// any engine predicate or directive but `#make-range! "context"` is
+    /// skipped, its error in `source` pushed to `skipped`.
+    pub(crate) fn new(
+        mut query: tree_sitter::Query,
+        source: &str,
+        skipped: &mut Vec<QueryError>,
+    ) -> Option<Self> {
+        let patterns: Vec<ContextPattern> = parse_patterns(&mut query, source, skipped);
         let context = query.capture_index_for_name("context");
         if context.is_none() && patterns.iter().all(|pattern| pattern.ranges.is_empty()) {
-            return Ok(None);
+            return None;
         }
         let start = query.capture_index_for_name("context.start");
-        Ok(Some(Self {
+        Some(Self {
             query,
             scopes: Scopes::Context {
                 context,
                 start,
                 patterns,
             },
-        }))
+        })
     }
 
     /// The scopes of a grammar without `context.scm`: its function and class

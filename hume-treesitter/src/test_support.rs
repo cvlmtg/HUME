@@ -13,7 +13,7 @@ use tree_sitter::QueryErrorKind;
 
 use crate::grammar::LoadedGrammar;
 use crate::registry::{
-    GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, RegisterError, compile_queries,
+    GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, Skipped, compile_queries,
     new_bundle,
 };
 use crate::syntax::Syntax;
@@ -42,34 +42,44 @@ pub(crate) fn make_bundle(
     optional: &[(OptionalQuery, &str)],
 ) -> Arc<GrammarBundle> {
     let grammar = open_grammar(name, symbol);
-    let compiled = compile_queries(
+    let (compiled, skipped) = compile_queries(
         grammar.language(),
         highlights_src,
         optional,
         &mut ScopeRegistry::new(),
     )
     .expect("compile queries");
+    assert!(skipped.is_empty(), "the test queries left out {skipped:?}");
     new_bundle(test_language_id(name), grammar, compiled)
 }
 
-/// Assert that each of `invalid`, compiled as the third line of a rust
-/// `kind` query whose first line is `valid`, fails the grammar with a
-/// `Predicate` error at the start of that line.
-pub(crate) fn assert_rejected_at_pattern_start(kind: OptionalQuery, valid: &str, invalid: &[&str]) {
+/// What compiling rust's queries from `highlights` and `optional` left out.
+/// Panics if the grammar would not load.
+pub(crate) fn rust_skips(highlights: &str, optional: &[(OptionalQuery, &str)]) -> Vec<Skipped> {
     test_fixtures::require_grammars(&["rust"]);
     let grammar = open_grammar("rust", "tree_sitter_rust");
+    compile_queries(
+        grammar.language(),
+        highlights,
+        optional,
+        &mut ScopeRegistry::new(),
+    )
+    .unwrap_or_else(|e| panic!("the grammar must still load, got {e}"))
+    .1
+}
+
+/// Assert that each of `invalid`, compiled as the third line of a rust
+/// `kind` query whose first line is `valid`, leaves the grammar loading
+/// with that one pattern skipped, reported as a `Predicate` error at the
+/// start of its line.
+pub(crate) fn assert_skipped_at_pattern_start(kind: OptionalQuery, valid: &str, invalid: &[&str]) {
     for pattern in invalid {
         let src = format!("{valid}\n\n{pattern}\n");
-        let error = match compile_queries(
-            grammar.language(),
-            "",
-            &[(kind, &src)],
-            &mut ScopeRegistry::new(),
-        ) {
-            Err(RegisterError::OptionalQueryBuild { kind: built, error }) if built == kind => error,
-            Err(other) => panic!("{pattern}: expected a {kind:?} build error, got {other}"),
-            Ok(_) => panic!("{pattern}: must not compile"),
+        let skipped = rust_skips("", &[(kind, &src)]);
+        let [Skipped::Pattern { file, error }] = skipped.as_slice() else {
+            panic!("{pattern}: expected that pattern skipped alone, got {skipped:?}");
         };
+        assert_eq!(*file, kind.file_name(), "{pattern}");
         assert_eq!(error.kind, QueryErrorKind::Predicate, "{pattern}");
         assert_eq!((error.row, error.column), (2, 0), "{pattern}");
         assert_eq!(

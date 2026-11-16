@@ -7,6 +7,7 @@ use hume_rope::offset::ExclusiveRange;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor};
 
+use crate::directives::PatternDirectives;
 use crate::layers::SyntaxLayers;
 
 // RopeProvider
@@ -37,6 +38,13 @@ impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
 }
 
 // TreeSitterHighlighter
+
+/// A `highlights.scm` pattern, which takes no predicate or directive of the
+/// engine's.
+#[derive(Default)]
+pub(crate) struct HighlightPattern;
+
+impl PatternDirectives for HighlightPattern {}
 
 /// Built-in highlighter that drives one language's compiled tree-sitter
 /// highlight query against a parse tree.

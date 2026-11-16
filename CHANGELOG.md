@@ -2,9 +2,6 @@
 
 ## Unreleased
 
-### Breaking changes
-- A grammar whose `folds.scm`, `textobjects.scm`, `context.scm` or `injections.scm` uses a predicate or directive HUME doesn't support fails to load: remove it from the query file.
-
 ### Panes & interface
 - Scope headers now show search matches and diagnostics, and highlights from plugins.
 
@@ -16,6 +13,7 @@
 - `buffer-viewport-ranges` returns the lines every pane on a buffer shows, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
 - `stdlib/lsp-batch` sends several language server requests as one batch and calls back once all have answered; a new batch under a `stdlib/lsp-batch-key` replaces the one before it.
 - A grammar's `folds.scm` can use `#trim!` and `#not-has-parent?`, its `textobjects.scm` `#make-range!` and `#offset!`, and its `context.scm` `#make-range!`.
+- A query pattern using a predicate or directive HUME doesn't apply is left out with a warning, and an optional query file that doesn't compile no longer keeps its grammar from loading.
 
 ### Fixes
 - Inlay hints show in every pane on a buffer, not only one of them.

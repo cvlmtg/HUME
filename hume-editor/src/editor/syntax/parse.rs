@@ -128,7 +128,7 @@ impl Editor {
         self.load_grammar_languages();
         // Before the key `Editor::run` dispatches next, so a grammar these
         // results failed to load is not reported as that key's message.
-        self.state.report_failed_grammar_loads();
+        self.state.report_grammar_loads();
     }
 
     /// Read the bundled data file of every language given a grammar since the
@@ -175,7 +175,7 @@ impl Editor {
         if !self.parse_worker.is_disconnected() {
             self.post_stale_requests();
         }
-        self.state.report_failed_grammar_loads();
+        self.state.report_grammar_loads();
     }
 
     /// The per-buffer pass of [`Self::reparse_stale_buffers`]: detach,

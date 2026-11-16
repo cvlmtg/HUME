@@ -70,17 +70,21 @@ impl InjectionsQuery {
     /// Build from a compiled `injections.scm` query and its `source`. Unknown
     /// captures and properties (the installed queries carry extras like
     /// `injection.filename`) are ignored; only the standard tree-sitter
-    /// injection convention is interpreted. Fails, as a `Predicate` error at
-    /// the offending pattern's start, on `#is?`, `#is-not?` and every
-    /// predicate or directive tree-sitter leaves to the engine.
-    pub(crate) fn new(query: Arc<tree_sitter::Query>, source: &str) -> Result<Self, QueryError> {
-        let patterns = parse_patterns(&query, source)?;
-        Ok(Self {
+    /// injection convention is interpreted. A pattern using a predicate or
+    /// directive tree-sitter leaves to the engine is skipped, its error in
+    /// `source` pushed to `skipped`.
+    pub(crate) fn new(
+        mut query: tree_sitter::Query,
+        source: &str,
+        skipped: &mut Vec<QueryError>,
+    ) -> Self {
+        let patterns = parse_patterns(&mut query, source, skipped);
+        Self {
             content_capture: query.capture_index_for_name("injection.content"),
             language_capture: query.capture_index_for_name("injection.language"),
-            query,
+            query: Arc::new(query),
             patterns,
-        })
+        }
     }
 }
 

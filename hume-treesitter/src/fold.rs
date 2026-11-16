@@ -98,20 +98,22 @@ impl FoldQuery {
     /// What a `folds.scm` needs to name a region.
     pub(crate) const NEEDS: &str = "a @fold capture";
 
-    /// A compiled `folds.scm`, `None` when it captures no `@fold`. Fails, as
-    /// a `Predicate` error at the offending pattern's start in `source`, on
-    /// any engine predicate or directive but `#trim! @fold` and
-    /// `#not-has-parent? @c kind…`.
-    pub(crate) fn new(query: tree_sitter::Query, source: &str) -> Result<Option<Self>, QueryError> {
-        let patterns = parse_patterns(&query, source)?;
-        let Some(fold) = query.capture_index_for_name("fold") else {
-            return Ok(None);
-        };
-        Ok(Some(Self::Folds {
+    /// A compiled `folds.scm`, `None` when it captures no `@fold`. A pattern
+    /// using any engine predicate or directive but `#trim! @fold` and
+    /// `#not-has-parent? @c kind…` is skipped, its error in `source` pushed
+    /// to `skipped`.
+    pub(crate) fn new(
+        mut query: tree_sitter::Query,
+        source: &str,
+        skipped: &mut Vec<QueryError>,
+    ) -> Option<Self> {
+        let patterns = parse_patterns(&mut query, source, skipped);
+        let fold = query.capture_index_for_name("fold")?;
+        Some(Self::Folds {
             query,
             fold,
             patterns,
-        }))
+        })
     }
 
     /// Call `f` with every region of `tree` with a node in `bytes` whose

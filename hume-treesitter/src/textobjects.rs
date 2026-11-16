@@ -136,11 +136,15 @@ struct ObjectDef {
 }
 
 impl TextObjectsQuery {
-    /// Fails, as a `Predicate` error at the offending pattern's start in
-    /// `source`, on any engine predicate or directive but `#make-range!` and
-    /// `#offset!`, and on either of those with arguments it can't apply.
-    pub(crate) fn new(query: tree_sitter::Query, source: &str) -> Result<Self, QueryError> {
-        let patterns: Vec<ObjectPattern> = parse_patterns(&query, source)?;
+    /// A pattern using any engine predicate or directive but `#make-range!`
+    /// and `#offset!`, or either of those with arguments it can't apply, is
+    /// skipped, its error in `source` pushed to `skipped`.
+    pub(crate) fn new(
+        mut query: tree_sitter::Query,
+        source: &str,
+        skipped: &mut Vec<QueryError>,
+    ) -> Self {
+        let patterns: Vec<ObjectPattern> = parse_patterns(&mut query, source, skipped);
         let mut objects = [[ObjectDef::default(); ObjectSpan::ALL.len()]; ObjectKind::ALL.len()];
         for (idx, name) in query.capture_names().iter().enumerate() {
             if let Some((kind, span)) = object_named(name) {
@@ -150,11 +154,11 @@ impl TextObjectsQuery {
         for &(kind, span, _) in patterns.iter().flat_map(|pattern| &pattern.ranges) {
             objects[kind as usize][span as usize].made = true;
         }
-        Ok(Self {
+        Self {
             query,
             objects,
             patterns,
-        })
+        }
     }
 
     /// The compiled query, for code that runs its matches itself.

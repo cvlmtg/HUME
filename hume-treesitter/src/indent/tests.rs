@@ -19,7 +19,7 @@ use super::*;
 use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
 use crate::test_support::{
-    assert_rejected_at_pattern_start, bundle_with_fixture_query, empty_langs, fixture_query,
+    assert_skipped_at_pattern_start, bundle_with_fixture_query, empty_langs, fixture_query,
     make_bundle, open_grammar,
 };
 use hume_core::OptionalQuery;
@@ -129,11 +129,15 @@ fn has_kind(bundle: &Arc<GrammarBundle>, src: &str, kind: &str) -> bool {
     tree_has(bundle, src, |node| node.kind() == kind)
 }
 
-fn compile(name: &str, src: &str) -> Result<IndentQuery, tree_sitter::QueryError> {
+/// `src` compiled as `name`'s indents query, none of its patterns skipped.
+fn compile(name: &str, src: &str) -> IndentQuery {
     require_grammars(&[name]);
     let grammar = open_grammar(name, &symbol(name));
     let query = tree_sitter::Query::new(grammar.language(), src).expect("query syntax is valid");
-    IndentQuery::new(query, src, grammar.language())
+    let mut skipped = Vec::new();
+    let query = IndentQuery::new(query, src, grammar.language(), &mut skipped);
+    assert!(skipped.is_empty(), "{skipped:?}");
+    query
 }
 
 // ── IndentQuery ──────────────────────────────────────────────────────────
@@ -149,13 +153,11 @@ fn the_indents_queries_of_every_fixture_language_compile() {
 }
 
 #[test]
-fn an_unsupported_predicate_or_property_fails_the_compile_on_its_pattern_row() {
-    assert_rejected_at_pattern_start(
+fn an_unsupported_predicate_or_property_skips_its_pattern() {
+    assert_skipped_at_pattern_start(
         OptionalQuery::Indents,
         "(block) @indent",
         &[
-            r#"(block (#is? "local"))"#,
-            r#"(block (#is-not? "local"))"#,
             r#"(block (#set! "scope" "tail"))"#,
             r#"(block (#set! "kind" "header"))"#,
             r#"((block) @b (#kind-eq? @b "block"))"#,
@@ -170,7 +172,7 @@ fn an_unsupported_predicate_or_property_fails_the_compile_on_its_pattern_row() {
 
 #[test]
 fn every_supported_predicate_and_property_compiles() {
-    let query = compile(
+    compile(
         "rust",
         r#"((block) @a (#not-kind-eq? @a "block"))
            ((block) @a (block) @b (#same-line? @a @b))
@@ -180,7 +182,6 @@ fn every_supported_predicate_and_property_compiles() {
            ((block) @a (#set! "scope" "header"))
            ((block) @a (#eq? @a "{}"))"#,
     );
-    assert!(query.is_ok(), "{:?}", query.err());
 }
 
 #[test]
@@ -190,8 +191,7 @@ fn the_header_flag_is_set_only_on_patterns_that_set_the_header_scope() {
         r#"(block) @indent
            (if_expression consequence: (_) @indent (#set! "scope" "header"))
            (arguments) @indent"#,
-    )
-    .expect("compiles");
+    );
     assert_eq!(
         (0..3)
             .map(|pattern| query.is_header(pattern))
@@ -208,8 +208,7 @@ fn helper_captures_compile_and_name_no_indent_role() {
             (#not-same-line? @indent @expr-start))
            (return_expression) @extend.prevent-once
            ((block) @_helper @outdent.always)"#,
-    )
-    .expect("helper captures are accepted");
+    );
     let role = |name: &str| {
         let index = query
             .query
@@ -1280,9 +1279,9 @@ fn a_line_break_before_an_outdent_tokens_end_does_not_complete_it() {
 
 #[test]
 fn the_token_prefixes_come_from_the_grammars_anonymous_tokens() {
-    let rust = compile("rust", BLOCK_QUERY).expect("compiles");
+    let rust = compile("rust", BLOCK_QUERY);
     assert!(rust.is_token_prefix("."), "`.` prefixes `..`");
     assert!(!rust.is_token_prefix("}"), "no rust token extends `}}`");
-    let c = compile("c", "(compound_statement) @indent").expect("compiles");
+    let c = compile("c", "(compound_statement) @indent");
     assert!(c.is_token_prefix("]"), "`]` prefixes `]]`");
 }

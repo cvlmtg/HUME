@@ -38,7 +38,10 @@ fn compile(source: &str) -> TextObjectsQuery {
     require_grammars(&["rust"]);
     let grammar = crate::test_support::open_grammar("rust", "tree_sitter_rust");
     let query = tree_sitter::Query::new(grammar.language(), source).expect("compile query");
-    TextObjectsQuery::new(query, source).expect("supported directives")
+    let mut skipped = Vec::new();
+    let query = TextObjectsQuery::new(query, source, &mut skipped);
+    assert!(skipped.is_empty(), "{skipped:?}");
+    query
 }
 
 #[test]
@@ -860,12 +863,11 @@ fn an_offset_leaving_its_line_or_emptying_the_object_makes_none() {
 }
 
 #[test]
-fn an_unsupported_textobjects_directive_fails_the_compile_on_its_pattern_row() {
-    crate::test_support::assert_rejected_at_pattern_start(
+fn an_unsupported_textobjects_directive_skips_its_pattern() {
+    crate::test_support::assert_skipped_at_pattern_start(
         OptionalQuery::TextObjects,
         "(block) @function.inside",
         &[
-            r#"((block) @function.inside (#is? "local"))"#,
             r#"((block) @function.inside (#set! "a" "b"))"#,
             r#"((block) @function.inside (#frobnicate! @function.inside))"#,
             r#"((block) @b (#make-range! "function.x" @b @b))"#,

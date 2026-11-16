@@ -2,6 +2,13 @@
 //! pattern when a query file loads, and the regions a match's captures
 //! make. Tree-sitter evaluates the text predicates (`#eq?`, `#match?`,
 //! `#any-of?` and their forms) itself.
+//!
+//! A pattern using one HUME does not apply is disabled, so it never matches
+//! instead of matching as if the predicate held, and reported; the rest of
+//! its file still loads.
+//!
+//! HUME tracks no locals, so no node is local: `#is-not? local` holds, and
+//! a pattern with `#is? local` never matches.
 
 use hume_rope::column::ByteCol;
 use hume_rope::lines::advance_byte_point;
@@ -27,24 +34,45 @@ pub(crate) trait PatternDirectives: Default {
     }
 }
 
-/// Every pattern of `query`, compiled from `source`, read as `P`. Fails, as
-/// a `Predicate` error at the offending pattern's start, on `#is?` and
-/// `#is-not?` and on whatever `P` rejects.
+/// Every pattern of `query`, compiled from `source`, read as `P`. A pattern
+/// with a predicate or directive `P` rejects, or a property predicate on
+/// anything but `local`, is disabled and read as `P::default()`, and a
+/// `Predicate` error at its start is pushed to `skipped`. A pattern with
+/// `#is? local` is disabled with no error: it never matches.
 pub(crate) fn parse_patterns<P: PatternDirectives>(
-    query: &Query,
+    query: &mut Query,
     source: &str,
-) -> Result<Vec<P>, QueryError> {
-    (0..query.pattern_count())
-        .map(|pattern| {
-            parse_pattern(query, pattern)
-                .map_err(|message| pattern_error(query, source, pattern, message))
-        })
-        .collect()
+    skipped: &mut Vec<QueryError>,
+) -> Vec<P> {
+    let mut patterns = Vec::with_capacity(query.pattern_count());
+    for pattern in 0..query.pattern_count() {
+        let parsed = match parse_pattern(query, pattern) {
+            Ok(Some(parsed)) => parsed,
+            Ok(None) => {
+                query.disable_pattern(pattern);
+                P::default()
+            }
+            Err(message) => {
+                skipped.push(pattern_error(query, source, pattern, message));
+                query.disable_pattern(pattern);
+                P::default()
+            }
+        };
+        patterns.push(parsed);
+    }
+    patterns
 }
 
-fn parse_pattern<P: PatternDirectives>(query: &Query, pattern: usize) -> Result<P, String> {
-    if let Some((_, positive)) = query.property_predicates(pattern).first() {
-        return Err(unsupported(if *positive { "is?" } else { "is-not?" }));
+/// `pattern` read as `P`, `None` when it can never match.
+fn parse_pattern<P: PatternDirectives>(query: &Query, pattern: usize) -> Result<Option<P>, String> {
+    let mut never = false;
+    for (property, positive) in query.property_predicates(pattern) {
+        let local =
+            &*property.key == "local" && property.value.is_none() && property.capture_id.is_none();
+        if !local {
+            return Err(unsupported(if *positive { "is?" } else { "is-not?" }));
+        }
+        never |= *positive;
     }
     let mut parsed = P::default();
     for setting in query.property_settings(pattern) {
@@ -53,7 +81,7 @@ fn parse_pattern<P: PatternDirectives>(query: &Query, pattern: usize) -> Result<
     for predicate in query.general_predicates(pattern) {
         parsed.predicate(query.capture_names(), predicate)?;
     }
-    Ok(parsed)
+    Ok((!never).then_some(parsed))
 }
 
 /// The message for a predicate or directive a query kind does not support.
@@ -169,3 +197,6 @@ pub(crate) fn hull(a: tree_sitter::Range, b: tree_sitter::Range) -> tree_sitter:
         end_point,
     }
 }
+
+#[cfg(test)]
+mod tests;

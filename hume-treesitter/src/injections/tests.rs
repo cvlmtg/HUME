@@ -814,13 +814,11 @@ fn an_unloaded_language_an_injected_layer_names_is_reported() {
 }
 
 #[test]
-fn an_unsupported_injections_predicate_fails_the_compile_on_its_pattern_row() {
-    crate::test_support::assert_rejected_at_pattern_start(
+fn an_unsupported_injections_predicate_skips_its_pattern() {
+    crate::test_support::assert_skipped_at_pattern_start(
         OptionalQuery::Injections,
         r#"((line_comment) @injection.content (#set! injection.language "comment"))"#,
         &[
-            r#"((block) @injection.content (#is? "local"))"#,
-            r#"((block) @injection.content (#is-not? "local"))"#,
             r#"((block) @injection.content (#offset! @injection.content 0 1 0 -1))"#,
             r#"((block) @injection.content (#make-range! "x" @injection.content @injection.content))"#,
             r#"((block) @injection.content (#frobnicate! @injection.content))"#,

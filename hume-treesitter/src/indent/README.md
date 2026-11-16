@@ -14,9 +14,10 @@ The model `indent.rs`, `walk.rs` and `query.rs` implement: the width a line gets
   planned break are a private `PlannedLine` type, so a pre-insertion line cannot be compared with
   one.
 - **Fail soft to copy, fail loud on bugs.** No layer with an indents query, or a split inside a
-  multi-line literal, gives `None`, and the caller keeps its own indent. A broken `indents.scm`
-  fails the grammar load. A tree reaching past the text's end panics: it was not parsed from that
-  text.
+  multi-line literal, gives `None`, and the caller keeps its own indent. An `indents.scm` that
+  does not compile is left out of the grammar, and a pattern using a predicate or property the
+  engine does not evaluate is disabled, each reported as a warning. A tree reaching past the
+  text's end panics: it was not parsed from that text.
 
 ## Engine
 

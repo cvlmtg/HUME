@@ -18,12 +18,15 @@ use crate::textobjects::{ObjectKind, ObjectSpan, ObjectSpans, SpanSelector};
 fn compile(source: &str) -> ContextQuery {
     require_grammars(&["rust"]);
     let grammar = open_grammar("rust", "tree_sitter_rust");
-    ContextQuery::new(
+    let mut skipped = Vec::new();
+    let query = ContextQuery::new(
         tree_sitter::Query::new(grammar.language(), source).expect("compile query"),
         source,
+        &mut skipped,
     )
-    .expect("supported directives")
-    .expect("the query captures @context")
+    .expect("the query captures @context");
+    assert!(skipped.is_empty(), "{skipped:?}");
+    query
 }
 
 /// Rust with the fixture `kind` query and no other optional query.
@@ -228,13 +231,14 @@ fn textobjects_name_scopes_only_with_function_or_class_objects() {
     require_grammars(&["rust"]);
     let grammar = open_grammar("rust", "tree_sitter_rust");
     let textobjects = |source: &str| {
-        Arc::new(
-            TextObjectsQuery::new(
-                tree_sitter::Query::new(grammar.language(), source).expect("compile query"),
-                source,
-            )
-            .expect("supported directives"),
-        )
+        let mut skipped = Vec::new();
+        let query = TextObjectsQuery::new(
+            tree_sitter::Query::new(grammar.language(), source).expect("compile query"),
+            source,
+            &mut skipped,
+        );
+        assert!(skipped.is_empty(), "{skipped:?}");
+        Arc::new(query)
     };
     assert!(
         ContextQuery::from_textobjects(&textobjects("(parameter) @parameter.around")).is_none()
@@ -306,12 +310,11 @@ fn a_made_context_scope_is_headed_by_its_context_start_capture() {
 }
 
 #[test]
-fn an_unsupported_context_directive_fails_the_compile_on_its_pattern_row() {
-    crate::test_support::assert_rejected_at_pattern_start(
+fn an_unsupported_context_directive_skips_its_pattern() {
+    crate::test_support::assert_skipped_at_pattern_start(
         OptionalQuery::Context,
         "(function_item) @context",
         &[
-            r#"((function_item) @context (#is? "local"))"#,
             r#"((function_item) @context (#set! "a" "b"))"#,
             r#"((function_item) @context (#offset! @context 0 1 0 -1))"#,
             r#"((function_item) @b (#make-range! "function.around" @b @b))"#,

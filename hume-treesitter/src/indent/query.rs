@@ -108,22 +108,27 @@ pub struct IndentQuery {
 }
 
 impl IndentQuery {
-    /// Fails, as a `Predicate` error at the offending pattern's start in
-    /// `source`, on any predicate the engine does not evaluate, on `#is?`
-    /// and `#is-not?`, and on any `#set!` other than `"scope" "header"`.
-    pub(crate) fn new(query: Query, source: &str, language: &Language) -> Result<Self, QueryError> {
+    /// A pattern using a predicate the engine does not evaluate, or a
+    /// `#set!` other than `"scope" "header"`, is skipped, its error in
+    /// `source` pushed to `skipped`.
+    pub(crate) fn new(
+        mut query: Query,
+        source: &str,
+        language: &Language,
+        skipped: &mut Vec<QueryError>,
+    ) -> Self {
         let captures = query
             .capture_names()
             .iter()
             .map(|name| IndentCapture::from_name(name))
             .collect();
-        let patterns = parse_patterns(&query, source)?;
-        Ok(Self {
+        let patterns = parse_patterns(&mut query, source, skipped);
+        Self {
             query,
             captures,
             patterns,
             token_prefixes: token_prefixes(language),
-        })
+        }
     }
 
     pub(super) fn capture(&self, index: u32) -> Option<IndentCapture> {
