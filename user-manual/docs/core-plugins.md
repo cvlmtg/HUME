@@ -244,7 +244,7 @@ The history lives in memory only, so it starts fresh each time you open a file.
 
 <img src="/core_markdown_preview.png" alt="core:markdown-preview in action" />
 
-Draws Markdown without its syntax, in the style of a rendered preview, right in the buffer you edit. A heading's `#` becomes its level number in a colored block over a tinted band, bullets become dots, task boxes become checkboxes, quotes get a bar, horizontal rules become a line, code fences give way to a background band, and tables are drawn as box grids. Emphasis, strikethrough and code spans lose their markers, links show only their text, and escapes and entities (`\*`, `&amp;`, `&#65;`) show the character they stand for.
+Draws Markdown without its syntax, in the style of a rendered preview, right in the buffer you edit. A heading's `#` becomes its level as a glyph of one to six dots and a bar (`⠘▌` for a second-level heading) over a tinted band, bullets become dots, task boxes become checkboxes, quotes get a bar, horizontal rules become a line, code fences give way to a background band, and tables are drawn as box grids. Emphasis, strikethrough and code spans lose their markers, links show only their text, and escapes and entities (`\*`, `&amp;`, `&#65;`) show the character they stand for.
 
 ```scheme
 (load-plugin! "core:stdlib")

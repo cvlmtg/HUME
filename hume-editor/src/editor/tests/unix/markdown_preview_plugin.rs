@@ -321,12 +321,12 @@ fn atx_heading_marker_becomes_its_level_with_band_and_text_highlight() {
     assert_eq!(
         p.conceals(bid),
         [
-            replaced(0, 1, " 1 ", Some("markup.heading.1.marker")),
-            replaced(4, 6, " 2 ", Some("markup.heading.2.marker")),
-            replaced(9, 12, " 3 ", Some("markup.heading.3.marker")),
-            replaced(15, 19, " 4 ", Some("markup.heading.4.marker")),
-            replaced(22, 27, " 5 ", Some("markup.heading.5.marker")),
-            replaced(30, 36, " 6 ", Some("markup.heading.6.marker")),
+            replaced(0, 1, "⠈▌", Some("markup.heading.1.marker")),
+            replaced(4, 6, "⠘▌", Some("markup.heading.2.marker")),
+            replaced(9, 12, "⠸▌", Some("markup.heading.3.marker")),
+            replaced(15, 19, "⠹▌", Some("markup.heading.4.marker")),
+            replaced(22, 27, "⠻▌", Some("markup.heading.5.marker")),
+            replaced(30, 36, "⠿▌", Some("markup.heading.6.marker")),
         ]
     );
     assert_eq!(
@@ -1093,7 +1093,7 @@ fn table_border_is_skipped_next_to_text_and_at_the_buffer_edges() {
         0,
         12,
     );
-    expected.push(replaced(12, 13, " 1 ", Some("markup.heading.1.marker")));
+    expected.push(replaced(12, 13, "⠈▌", Some("markup.heading.1.marker")));
     expected.extend(revealing(
         vec![bar(19, 21, "│ "), bar(22, 24, " │"), bar(25, 30, "├───┤")],
         19,
@@ -1478,7 +1478,7 @@ fn a_quoted_code_block_spanning_two_panes_is_set_once() {
         "premise: {first:?} shows the block's start and {second:?} its end, apart"
     );
     let block = (starts[10], starts[71]);
-    let mut expected = vec![replaced(0, 1, " 1 ", Some("markup.heading.1.marker"))];
+    let mut expected = vec![replaced(0, 1, "⠈▌", Some("markup.heading.1.marker"))];
     for (line, &at) in starts.iter().enumerate().take(71).skip(10) {
         expected.push(replaced(at, at + 1, "┃", Some("markup.quote")));
         if line == 10 || line == 70 {
@@ -1670,7 +1670,7 @@ fn missing_inline_grammar_draws_the_block_elements_alone() {
     p.render();
     assert_eq!(
         p.conceals(bid),
-        [replaced(0, 1, " 1 ", Some("markup.heading.1.marker"))]
+        [replaced(0, 1, "⠈▌", Some("markup.heading.1.marker"))]
     );
 }
 
@@ -1967,7 +1967,7 @@ fn a_popup_activates_the_plugin_with_no_markdown_buffer_open() {
     );
     p.show_popup("# a");
     p.frame();
-    assert_eq!(p.popup_rows(), [" 1  a"]);
+    assert_eq!(p.popup_rows(), ["⠈▌ a"]);
     assert_eq!(error_log(&p.ed), Vec::<String>::new());
 }
 

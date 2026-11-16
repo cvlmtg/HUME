@@ -7,6 +7,11 @@
 (define (md-preview/heading-scope n suffix)
   (string-append "markup.heading." (number->string n) suffix))
 
+(define md-preview/level-glyphs '("⠈" "⠘" "⠸" "⠹" "⠻" "⠿"))
+
+(define (md-preview/heading-marker n)
+  (string-append (list-ref md-preview/level-glyphs (- n 1)) "▌"))
+
 (define (md-preview/highlight capture scope)
   (hash 'start-char (md-preview/capture-start capture)
         'end-char (md-preview/capture-end capture)
@@ -28,7 +33,7 @@
           (let ([start (md-preview/capture-start c)])
             (emit! 'conceals
                    (md-preview/conceal start (md-preview/capture-end c)
-                                       (string-append " " (number->string n) " ")
+                                       (md-preview/heading-marker n)
                                        (md-preview/heading-scope n ".marker")
                                        #f))
             (emit! 'bands (hash 'line (line-of start) 'scope (md-preview/heading-scope n ".line")))))

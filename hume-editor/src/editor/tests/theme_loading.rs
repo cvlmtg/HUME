@@ -320,20 +320,20 @@ fn bundled_theme_heading_text_is_bold_in_its_headings_color() {
     }
 }
 
-/// Each `markup.heading.N.marker` is the level number drawn reversed in the
-/// color of `markup.heading.N`, so the number shows as a block of the heading's
-/// color with the band's tint inside it.
+/// Each `markup.heading.N.marker` is the level glyph and bar drawn in
+/// the color of `markup.heading.N` over the line's band, never reversed: a
+/// reversed bar would show as a block with a gap on its right.
 #[test]
-fn bundled_theme_heading_marker_is_reversed_in_its_headings_color() {
+fn bundled_theme_heading_marker_is_its_headings_color_not_reversed() {
     for (name, theme) in load_bundled_themes() {
         for (heading, marker, _, _) in HEADING_SCOPES {
             let marker_style = theme.resolve_by_name(hume_engine::types::Scope(marker));
             let heading_style = theme.resolve_by_name(hume_engine::types::Scope(heading));
             assert!(
-                marker_style
+                !marker_style
                     .modifiers
                     .contains(hume_engine::types::Modifiers::REVERSED),
-                "bundled theme '{name}': '{marker}' is not reversed"
+                "bundled theme '{name}': '{marker}' is reversed"
             );
             assert_eq!(
                 marker_style.fg, heading_style.fg,

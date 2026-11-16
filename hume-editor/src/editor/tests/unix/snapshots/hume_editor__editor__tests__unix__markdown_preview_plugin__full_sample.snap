@@ -3,7 +3,7 @@ source: hume-editor/src/editor/tests/unix/markdown_preview_plugin.rs
 assertion_line: 1757
 expression: p.snapshot()
 ---
-<fg=#665c54,bg=#384035>  23 ▾ </><fg=#384035,bg=#8ec07c> 1 </><fg=#8ec07c,bg=#384035> </><fg=#8ec07c,bg=#384035,bold>Title</>
+<fg=#665c54,bg=#384035>  23 ▾ </><fg=#8ec07c,bg=#384035>⠈▌ </><fg=#8ec07c,bg=#384035,bold>Title</>
 <fg=#665c54,bg=#282828>  22</>
 <fg=#665c54,bg=#282828>  21   </><fg=#ebdbb2,bg=#282828>Some </><fg=#ebdbb2,bg=#282828,italic>emphasis</><fg=#ebdbb2,bg=#282828>, </><fg=#ebdbb2,bg=#282828,bold>bold</><fg=#ebdbb2,bg=#282828>, </><fg=#ebdbb2,bg=#282828>strike</><fg=#ebdbb2,bg=#282828> and </><fg=#d3869b,bg=#282828>code</><fg=#ebdbb2,bg=#282828>.</>
 <fg=#665c54,bg=#282828>  20   </><fg=#ebdbb2,bg=#282828>A </><fg=#fb4934,bg=#282828>link</><fg=#ebdbb2,bg=#282828> and & entity, </><fg=#fe8019,bg=#282828>*</><fg=#ebdbb2,bg=#282828> escaped.</>

@@ -52,7 +52,7 @@ The choices the plugin and the Rust surface under it are built on:
 - **Code blocks:** a background band over every line of the block. The fence characters
   and the info string are hidden: the info string picks the block's highlighting language.
 - **Shortcut links** (`[text]`) stay raw, and so does Markdown inside a fenced code block.
-- **Header rows:** a pinned heading draws its level number and bold text like the same line in the
+- **Header rows:** a pinned heading draws its level marker and bold text like the same line in the
   body. Header rows draw conceals and the search, diagnostic and extra highlights, and no
   inlay hints, virtual lines, line backgrounds or selections.
 - **Viewport:** a render covers the visible lines widened to whole syntax nodes (see
@@ -164,7 +164,7 @@ decides how far past the visible lines an element is fetched:
 
 - Headings are rooted at `section`: `(section (atx_heading (atx_h1_marker) @heading.1))`.
   Every section that overlaps a range returns its heading, ancestors included, so the
-  heading of a section scrolled into a sticky header row keeps its level number and bold text.
+  heading of a section scrolled into a sticky header row keeps its level marker and bold text.
 - Fences are rooted at `fenced_code_block`. A block one line of which is visible comes back
   whole: both fence lines, and the line span its band and reveal need.
 - Tables are rooted at `pipe_table`, their rows and cells included. A table one row of
@@ -187,7 +187,7 @@ Captures are grouped by name. Each element below is one or two capture names in
 
 | Element | Node | Drawn as |
 |---|---|---|
-| ATX heading | the `atx_hN_marker` of a section's `atx_heading` | The marker becomes the level number with a space on each side, scope `markup.heading.N.marker`, which the bundled themes draw reversed. The space after it stays. The heading's `inline` gets `markup.heading.N.text` and its line `markup.heading.N.line` |
+| ATX heading | the `atx_hN_marker` of a section's `atx_heading` | The marker becomes the level as a Braille glyph of one to six dots followed by `▌` (`⠈▌`, `⠘▌`, `⠸▌`, `⠹▌`, `⠻▌`, `⠿▌`), scope `markup.heading.N.marker`. The space after it stays. The heading's `inline` gets `markup.heading.N.text` and its line `markup.heading.N.line` |
 | Setext heading | `setext_heading` with `setext_hN_underline` | No conceal: the text's `inline` gets `markup.heading.N.text`, and every line of the heading, underline included, `markup.heading.N.line` |
 | Bullet | `list_marker_minus`, `_plus`, `_star` | Its first char becomes `•`, unscoped, so the bullet keeps its syntax color. Ordered markers stay raw |
 | Task | `task_list_marker_unchecked`, `_checked` | The bullet and the box become `☐` or `☑`, scope `markup.list.unchecked` or `markup.list.checked`. A box starts where its bullet ends |

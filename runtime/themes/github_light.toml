@@ -161,22 +161,22 @@ error = "danger.fg"
 "markup.heading.marker" = { fg = "border.default" }
 "markup.link" = { fg = "accent.fg", modifiers = ["underlined"] }
 # HUME's markdown preview: heading level, heading text, heading band and code-block band.
-"markup.heading.1.marker" = { fg = "scale.blue.6", modifiers = [ "reversed" ] }
+"markup.heading.1.marker" = { fg = "scale.blue.6" }
 "markup.heading.1.text" = { fg = "scale.blue.6", modifiers = [ "bold" ] }
 "markup.heading.1.line" = { bg = "heading_1_bg" }
-"markup.heading.2.marker" = { fg = "scale.blue.6", modifiers = [ "reversed" ] }
+"markup.heading.2.marker" = { fg = "scale.blue.6" }
 "markup.heading.2.text" = { fg = "scale.blue.6", modifiers = [ "bold" ] }
 "markup.heading.2.line" = { bg = "heading_2_bg" }
-"markup.heading.3.marker" = { fg = "scale.blue.6", modifiers = [ "reversed" ] }
+"markup.heading.3.marker" = { fg = "scale.blue.6" }
 "markup.heading.3.text" = { fg = "scale.blue.6", modifiers = [ "bold" ] }
 "markup.heading.3.line" = { bg = "heading_3_bg" }
-"markup.heading.4.marker" = { fg = "scale.blue.6", modifiers = [ "reversed" ] }
+"markup.heading.4.marker" = { fg = "scale.blue.6" }
 "markup.heading.4.text" = { fg = "scale.blue.6", modifiers = [ "bold" ] }
 "markup.heading.4.line" = { bg = "heading_4_bg" }
-"markup.heading.5.marker" = { fg = "scale.blue.6", modifiers = [ "reversed" ] }
+"markup.heading.5.marker" = { fg = "scale.blue.6" }
 "markup.heading.5.text" = { fg = "scale.blue.6", modifiers = [ "bold" ] }
 "markup.heading.5.line" = { bg = "heading_5_bg" }
-"markup.heading.6.marker" = { fg = "scale.blue.6", modifiers = [ "reversed" ] }
+"markup.heading.6.marker" = { fg = "scale.blue.6" }
 "markup.heading.6.text" = { fg = "scale.blue.6", modifiers = [ "bold" ] }
 "markup.heading.6.line" = { bg = "heading_6_bg" }
 "markup.raw.block.line" = { bg = "code_block_bg" }

@@ -113,17 +113,17 @@ inherits = "kanagawa"
 "markup.raw" = "dragonGreen2"
 
 # HUME's markdown preview: heading level, heading text, heading band and code-block band.
-"markup.heading.1.marker" = { fg = "dragonOrange", modifiers = [ "reversed" ] }
+"markup.heading.1.marker" = { fg = "dragonOrange" }
 "markup.heading.1.text" = { fg = "dragonOrange", modifiers = [ "bold" ] }
-"markup.heading.2.marker" = { fg = "dragonYellow", modifiers = [ "reversed" ] }
+"markup.heading.2.marker" = { fg = "dragonYellow" }
 "markup.heading.2.text" = { fg = "dragonYellow", modifiers = [ "bold" ] }
-"markup.heading.3.marker" = { fg = "dragonBlue2", modifiers = [ "reversed" ] }
+"markup.heading.3.marker" = { fg = "dragonBlue2" }
 "markup.heading.3.text" = { fg = "dragonBlue2", modifiers = [ "bold" ] }
-"markup.heading.4.marker" = { fg = "dragonWhite", modifiers = [ "reversed" ] }
+"markup.heading.4.marker" = { fg = "dragonWhite" }
 "markup.heading.4.text" = { fg = "dragonWhite", modifiers = [ "bold" ] }
-"markup.heading.5.marker" = { fg = "dragonRed", modifiers = [ "reversed" ] }
+"markup.heading.5.marker" = { fg = "dragonRed" }
 "markup.heading.5.text" = { fg = "dragonRed", modifiers = [ "bold" ] }
-"markup.heading.6.marker" = { fg = "dragonPink", modifiers = [ "reversed" ] }
+"markup.heading.6.marker" = { fg = "dragonPink" }
 "markup.heading.6.text" = { fg = "dragonPink", modifiers = [ "bold" ] }
 
 [palette]
