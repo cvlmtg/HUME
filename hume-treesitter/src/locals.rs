@@ -153,7 +153,7 @@ struct Definition {
     highlight: Option<ScopeId>,
 }
 
-/// A scope open during [`LayerLocals::rebuild`]'s walk.
+/// A scope open during a walk over a layer's captures.
 struct OpenScope {
     /// `None` for the layer's own scope.
     range: Option<NodeBytes>,
@@ -164,6 +164,14 @@ struct OpenScope {
 }
 
 impl OpenScope {
+    fn new(range: Option<NodeBytes>, inherits: bool) -> Self {
+        Self {
+            range,
+            inherits,
+            definitions: FxHashMap::default(),
+        }
+    }
+
     fn ends_by(&self, byte: usize) -> bool {
         self.range.is_some_and(|range| range.end <= byte)
     }
@@ -183,54 +191,120 @@ fn within(inner: &NodeBytes, outer: &NodeBytes) -> bool {
 }
 
 impl LayerLocals {
-    /// Rebuild the locals `query` finds in `region` of `tree`, parsed from
-    /// `rope`, or in the whole tree for `None`, keeping every entry outside
-    /// it. `region` is a scope of `tree` and of these locals' scopes alike,
-    /// so a reference inside it sees the definitions of the scopes around it
-    /// that these locals hold, and one outside sees nothing inside it.
-    fn rebuild(
+    /// The locals `query` finds in `tree`, parsed from `rope`.
+    fn built(
+        query: &LocalsQuery,
+        cursor: &mut QueryCursor,
+        tree: &tree_sitter::Tree,
+        rope: &ropey::Rope,
+    ) -> Self {
+        let mut locals = Self::default();
+        locals.append(
+            query,
+            cursor,
+            tree,
+            rope,
+            None,
+            &mut vec![OpenScope::new(None, true)],
+        );
+        locals
+    }
+
+    /// These locals, edited to `tree`, with the locals `query` finds in each
+    /// of `regions` in place of theirs. `regions` are sorted, disjoint scopes
+    /// of `tree` and of these locals alike, so a reference inside one sees
+    /// the definitions of the scopes around it that these locals hold, and
+    /// one outside sees nothing inside it.
+    fn rebuilt(
+        &self,
+        query: &LocalsQuery,
+        cursor: &mut QueryCursor,
+        tree: &tree_sitter::Tree,
+        rope: &ropey::Rope,
+        regions: &[NodeBytes],
+    ) -> Self {
+        let mut out = Self {
+            scopes: Vec::with_capacity(self.scopes.len()),
+            definitions: Vec::with_capacity(self.definitions.len()),
+            resolved: Vec::with_capacity(self.resolved.len()),
+        };
+        let (mut scopes, mut definitions, mut resolved) =
+            (&self.scopes[..], &self.definitions[..], &self.resolved[..]);
+        let mut open = vec![OpenScope::new(None, true)];
+        // `out.definitions` from `unseeded` on are not yet in `open`, and
+        // those at `spanning` started before a region but ended after its
+        // start.
+        let mut unseeded = 0;
+        let mut spanning: Vec<usize> = Vec::new();
+        for &region in regions {
+            let before = scopes.partition_point(|s| {
+                (s.range.start, Reverse(s.range.end)) < (region.start, Reverse(region.end))
+            });
+            open.extend(
+                scopes[..before]
+                    .iter()
+                    .map(|s| OpenScope::new(Some(s.range), s.inherits)),
+            );
+            out.scopes.extend_from_slice(&scopes[..before]);
+            scopes = &scopes[before..];
+            open.retain(|s| {
+                s.range
+                    .is_none_or(|range| within(&region, &range) && range != region)
+            });
+            let kept = definitions.partition_point(|d| d.range.start < region.start);
+            out.definitions.extend_from_slice(&definitions[..kept]);
+            definitions = &definitions[kept..];
+            let kept = resolved.partition_point(|(r, _)| r.start < region.start);
+            out.resolved.extend_from_slice(&resolved[..kept]);
+            resolved = &resolved[kept..];
+
+            spanning.extend(unseeded..out.definitions.len());
+            spanning.retain(|&at| {
+                let definition = &out.definitions[at];
+                if definition.range.end > region.start {
+                    return true;
+                }
+                // Of two scopes of one range, the later opened is the
+                // innermost, which a walk defines in.
+                if let Some(scope) = open.iter_mut().rev().find(|s| s.range == definition.scope) {
+                    scope.definitions.insert(
+                        definition.name.clone(),
+                        (definition.range.end, definition.highlight),
+                    );
+                }
+                false
+            });
+            out.append(query, cursor, tree, rope, Some(region), &mut open);
+            unseeded = out.definitions.len();
+
+            scopes = &scopes[scopes.partition_point(|s| s.range.start < region.end)..];
+            definitions =
+                &definitions[definitions.partition_point(|d| d.range.start < region.end)..];
+            resolved = &resolved[resolved.partition_point(|(r, _)| r.start < region.end)..];
+        }
+        out.scopes.extend_from_slice(scopes);
+        out.definitions.extend_from_slice(definitions);
+        out.resolved.extend_from_slice(resolved);
+        out
+    }
+
+    /// Append the locals `query` finds in `region` of `tree`, parsed from
+    /// `rope`, or in the whole tree for `None`, to these, which hold nothing
+    /// after `region`'s start. `open` holds the scopes around `region`,
+    /// innermost last, with the definitions a reference inside it sees; a
+    /// definition found directly in one of them is added to it.
+    fn append(
         &mut self,
         query: &LocalsQuery,
         cursor: &mut QueryCursor,
         tree: &tree_sitter::Tree,
         rope: &ropey::Rope,
         region: Option<NodeBytes>,
+        open: &mut Vec<OpenScope>,
     ) {
-        let mut scopes = vec![OpenScope {
-            range: None,
-            inherits: true,
-            definitions: FxHashMap::default(),
-        }];
-        if let Some(region) = region {
-            scopes.extend(
-                self.scopes
-                    .iter()
-                    .filter(|s| within(&region, &s.range) && s.range != region)
-                    .map(|s| OpenScope {
-                        range: Some(s.range),
-                        inherits: s.inherits,
-                        definitions: FxHashMap::default(),
-                    }),
-            );
-            for definition in self
-                .definitions
-                .iter()
-                .take_while(|d| d.range.start < region.start)
-                .filter(|d| d.range.end <= region.start)
-            {
-                if let Some(open) = scopes.iter_mut().find(|s| s.range == definition.scope) {
-                    open.definitions.insert(
-                        definition.name.clone(),
-                        (definition.range.end, definition.highlight),
-                    );
-                }
-            }
-        }
-        let seeded = scopes.len();
-
-        let mut new_scopes = Vec::new();
-        let mut new_definitions = Vec::new();
-        let mut new_resolved = Vec::new();
+        let seeded = open.len();
+        let (first_scope, first_definition) = (self.scopes.len(), self.definitions.len());
+        let mut resolved = Vec::new();
         let mut discarded = Vec::new();
         cursor.set_byte_range(region.map_or(0..usize::MAX, |region| region.start..region.end));
         let mut captures = cursor.captures(&query.query, tree.root_node(), RopeProvider(rope));
@@ -241,26 +315,22 @@ impl LayerLocals {
             if region.is_some_and(|region| !within(&range, &region)) {
                 continue;
             }
-            while scopes.len() > seeded && scopes.last().is_some_and(|s| s.ends_by(range.start)) {
-                scopes.pop();
+            while open.len() > seeded && open.last().is_some_and(|s| s.ends_by(range.start)) {
+                open.pop();
             }
             match query.role(capture.index) {
                 CaptureRole::Scope => {
                     let inherits = !query.patterns[m.pattern_index].no_inheritance;
-                    new_scopes.push(ScopeEntry { range, inherits });
-                    scopes.push(OpenScope {
-                        range: Some(range),
-                        inherits,
-                        definitions: FxHashMap::default(),
-                    });
+                    self.scopes.push(ScopeEntry { range, inherits });
+                    open.push(OpenScope::new(Some(range), inherits));
                 }
                 CaptureRole::Definition(highlight) => {
                     let name: Arc<str> = node_text(node, rope).into();
-                    let innermost = scopes.last_mut().expect("the layer's scope stays open");
+                    let innermost = open.last_mut().expect("the layer's scope stays open");
                     innermost
                         .definitions
                         .insert(name.clone(), (range.end, highlight));
-                    new_definitions.push(Definition {
+                    self.definitions.push(Definition {
                         range,
                         scope: innermost.range,
                         name,
@@ -268,43 +338,28 @@ impl LayerLocals {
                     });
                 }
                 CaptureRole::Reference => {
-                    if let Some(highlight) = resolve(&scopes, &node_text(node, rope), range.start) {
-                        new_resolved.push((range, highlight));
+                    if let Some(highlight) = resolve(open, &node_text(node, rope), range.start) {
+                        resolved.push((range, highlight));
                     }
                 }
                 CaptureRole::Discard => discarded.push(key(&range)),
             }
         }
-        new_scopes.sort_by_key(|s| (s.range.start, Reverse(s.range.end)));
-        new_definitions.sort_by_key(|d| key(&d.range));
+        open.truncate(seeded);
+        self.scopes[first_scope..].sort_by_key(|s| (s.range.start, Reverse(s.range.end)));
+        let definitions = &mut self.definitions[first_definition..];
+        definitions.sort_by_key(|d| key(&d.range));
         discarded.sort_unstable();
         // A definition's own node is never a reference to it, and a node a
         // discard captures is no reference at all.
-        new_resolved.retain(|(range, _)| {
-            new_definitions
+        resolved.retain(|(range, _)| {
+            definitions
                 .binary_search_by_key(&key(range), |d| key(&d.range))
                 .is_err()
                 && discarded.binary_search(&key(range)).is_err()
         });
-        new_resolved.sort_by_key(|(range, _)| key(range));
-
-        let Some(region) = region else {
-            *self = Self {
-                scopes: new_scopes,
-                definitions: new_definitions,
-                resolved: new_resolved,
-            };
-            return;
-        };
-        let before =
-            |start: usize, end: usize| (start, Reverse(end)) < (region.start, Reverse(region.end));
-        let first = self
-            .scopes
-            .partition_point(|s| before(s.range.start, s.range.end));
-        let last = self.scopes.partition_point(|s| s.range.start < region.end);
-        self.scopes.splice(first..last, new_scopes);
-        splice_within(&mut self.definitions, region, new_definitions, |d| &d.range);
-        splice_within(&mut self.resolved, region, new_resolved, |(range, _)| range);
+        resolved.sort_by_key(|(range, _)| key(range));
+        self.resolved.extend(resolved);
     }
 
     /// Whether the node spanning `start..end` is local.
@@ -352,20 +407,6 @@ impl LayerLocals {
             moved(range);
         }
     }
-}
-
-/// `entries`, sorted by the range `range_of` reads, with those inside
-/// `region` replaced by `new`, sorted the same way. An entry starting
-/// inside a scope ends inside it.
-fn splice_within<T>(
-    entries: &mut Vec<T>,
-    region: NodeBytes,
-    new: Vec<T>,
-    range_of: impl Fn(&T) -> &NodeBytes,
-) {
-    let first = entries.partition_point(|e| range_of(e).start < region.start);
-    let last = entries.partition_point(|e| range_of(e).start < region.end);
-    entries.splice(first..last, new);
 }
 
 /// The highlight of the definition of `name` a reference at `start` sees
@@ -464,21 +505,10 @@ pub(crate) fn layer_locals(
             .map(|regions| (prior, regions)),
         None => None,
     };
-    let locals = match scoped {
-        Some((prior, regions)) => {
-            let mut locals = LayerLocals::clone(prior);
-            for region in regions {
-                locals.rebuild(query, &mut cursor, tree, rope, Some(region));
-            }
-            locals
-        }
-        None => {
-            let mut locals = LayerLocals::default();
-            locals.rebuild(query, &mut cursor, tree, rope, None);
-            locals
-        }
-    };
-    Arc::new(locals)
+    Arc::new(match scoped {
+        Some((prior, regions)) => prior.rebuilt(query, &mut cursor, tree, rope, &regions),
+        None => LayerLocals::built(query, &mut cursor, tree, rope),
+    })
 }
 
 #[cfg(test)]

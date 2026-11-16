@@ -35,8 +35,7 @@ fn locals(source: &str, text: &str) -> (LayerLocals, ScopeRegistry) {
     assert!(skipped.is_empty(), "{skipped:?}");
     let (_parser, tree) = parse(grammar.language(), text);
     let rope = ropey::Rope::from_str(text);
-    let mut locals = LayerLocals::default();
-    locals.rebuild(&query, &mut QueryCursor::new(), &tree, &rope, None);
+    let locals = LayerLocals::built(&query, &mut QueryCursor::new(), &tree, &rope);
     (locals, registry)
 }
 
@@ -374,6 +373,18 @@ fn changes_in_two_blocks_of_one_function_update_to_a_fresh_build() {
         edit_at(BLOCKS, "{ beta; }", 5, 1, ""),
     ];
     let (updated, fresh) = updated_and_fresh(&bundle, BLOCKS, &replaces, |_| {});
+    assert_eq!(updated, fresh);
+}
+
+#[test]
+fn a_scope_captured_twice_updates_to_a_fresh_build() {
+    let source = format!(
+        "(function_item) @local.scope\n((function_item) @local.scope (#set! local.scope-inherits false))\n(block) @local.scope\n{DEFINITIONS}{REFERENCES}"
+    );
+    let bundle = crate::test_support::rust_bundle_with(OptionalQuery::Locals, &source);
+    let text = "fn f(alpha: u8) -> u8 {\n    { alpha }\n}\n";
+    let replaces = [edit_at(text, "{ alpha }", 2, 0, "alpha; ")];
+    let (updated, fresh) = updated_and_fresh(&bundle, text, &replaces, |_| {});
     assert_eq!(updated, fresh);
 }
 
