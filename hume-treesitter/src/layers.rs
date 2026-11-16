@@ -51,13 +51,36 @@ pub(crate) struct LayerPrior<'p> {
     /// The locals of `old_tree`, edited with it.
     pub(crate) locals: &'p Arc<LayerLocals>,
     /// The bytes from the layer's first range's start to its last one's
-    /// end.
+    /// end, every byte for the root.
     pub(crate) hull: RangeInclusive<usize>,
     /// Whether the new tree is a reparse of `old_tree`, rather than
     /// `old_tree` itself.
     pub(crate) reparsed: bool,
     /// The bytes the edits changed.
     pub(crate) edited: &'p EditedBytes,
+}
+
+impl SyntaxLayer {
+    /// What this layer's next tree, sites and locals are built from. The
+    /// root's hull, with no ranges, is every byte.
+    pub(crate) fn layer_prior<'p>(
+        &'p self,
+        edited: &'p EditedBytes,
+        reparsed: bool,
+    ) -> LayerPrior<'p> {
+        let hull = match (self.ranges.first(), self.ranges.last()) {
+            (Some(first), Some(last)) => first.start_byte..=last.end_byte,
+            _ => 0..=usize::MAX,
+        };
+        LayerPrior {
+            old_tree: &self.tree,
+            sites: &self.sites,
+            locals: &self.locals,
+            hull,
+            reparsed,
+            edited,
+        }
+    }
 }
 
 impl<'a> LayerPrior<'a> {
@@ -214,11 +237,8 @@ impl SyntaxLayers {
     /// # Panics
     /// If there are no layers: `layers[0]` is the root.
     pub(crate) fn prior(&self) -> PriorLayers {
-        let root = self.layers.first().expect("layers[0] is the root");
         PriorLayers {
-            root: root.tree.clone(),
-            root_sites: root.sites.clone(),
-            root_locals: Arc::clone(&root.locals),
+            root: self.layers.first().expect("layers[0] is the root").clone(),
             injected: PriorInjections::of(self),
             edited: self.edited.clone(),
         }

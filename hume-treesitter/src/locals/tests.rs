@@ -1,8 +1,17 @@
+use hume_core::OptionalQuery;
+use hume_editing::changeset::ChangeSetBuilder;
 use hume_engine::theme::ScopeRegistry;
-use tree_sitter::{Parser, Query};
+use hume_rope::offset::CharOffset;
+use proptest::prelude::*;
+use tree_sitter::Query;
 
 use super::*;
-use crate::test_support::open_grammar;
+use crate::edited_bytes::EditedBytes;
+use crate::edits::{ChangeEdits, input_edits_from_changeset};
+use crate::injections::InjectionSites;
+use crate::test_support::{
+    bundle_with_fixture_query, fixture_query, open_grammar, parse, whole_text_prior,
+};
 
 const SCOPES: &str = "(function_item) @local.scope\n(block) @local.scope\n";
 const DEFINITIONS: &str = "(parameter pattern: (identifier) @local.definition.variable.parameter)
@@ -24,14 +33,10 @@ fn locals(source: &str, text: &str) -> (LayerLocals, ScopeRegistry) {
     )
     .expect("the query names locals");
     assert!(skipped.is_empty(), "{skipped:?}");
-    let mut parser = Parser::new();
-    parser
-        .set_language(grammar.language())
-        .expect("the grammar loads");
-    let tree = parser.parse(text, None).expect("the text parses");
+    let (_parser, tree) = parse(grammar.language(), text);
     let rope = ropey::Rope::from_str(text);
     let mut locals = LayerLocals::default();
-    locals.rebuild(&query, &tree, &rope, None);
+    locals.rebuild(&query, &mut QueryCursor::new(), &tree, &rope, None);
     (locals, registry)
 }
 
@@ -133,10 +138,7 @@ fn a_node_another_capture_names_is_no_reference_whatever_the_pattern_order() {
 #[test]
 fn the_rust_fixture_leaves_lifetimes_labels_and_paths_out_of_references() {
     test_fixtures::require_grammars(&["rust"]);
-    let source = std::fs::read_to_string(
-        test_fixtures::grammar_query_path("rust").with_file_name("locals.scm"),
-    )
-    .expect("read the fixture locals.scm");
+    let source = fixture_query("rust", OptionalQuery::Locals);
     let text = "fn f<'a>(a: &'a str, len: usize, outer: u8) -> &'a str { 'outer: loop { m::len(); break 'outer; } a }\n";
     let (locals, mut registry) = locals(&source, text);
     let parameter = registry.intern("variable.parameter");
@@ -168,35 +170,12 @@ fn an_edit_moves_every_range() {
 
 // ── Rebuilding after an edit ───────────────────────────────────────────────
 
-use std::sync::Arc;
-
-use hume_core::OptionalQuery;
-use hume_editing::changeset::ChangeSetBuilder;
-use hume_rope::offset::CharOffset;
-use proptest::prelude::*;
-
-use crate::edited_bytes::EditedBytes;
-use crate::edits::{ChangeEdits, input_edits_from_changeset};
-use crate::injections::InjectionSites;
-use crate::layers::LayerPrior;
-use crate::registry::GrammarBundle;
-
 const RUST: &str = "fn f(alpha: u32) -> u32 {\n    let beta = alpha + 1;\n    beta * alpha\n}\n\nfn g(gamma: u32) -> u32 {\n    gamma\n}\n";
 const PYTHON: &str = "def f(alpha):\n    beta = alpha + 1\n    return beta * alpha\n\ndef g(gamma):\n    return gamma\n";
 
 /// `name`'s fixture grammar with its fixture `locals.scm` and no other query.
 fn fixture_bundle(name: &str) -> Arc<GrammarBundle> {
-    test_fixtures::require_grammars(&[name]);
-    let locals = test_fixtures::grammar_query_path(name).with_file_name("locals.scm");
-    crate::test_support::make_bundle(
-        name,
-        &format!("tree_sitter_{name}"),
-        "",
-        &[(
-            OptionalQuery::Locals,
-            &std::fs::read_to_string(locals).expect("read the fixture locals.scm"),
-        )],
-    )
+    bundle_with_fixture_query(name, &format!("tree_sitter_{name}"), OptionalQuery::Locals)
 }
 
 /// One replacement of a change: `removed` bytes at `at` replaced by
@@ -231,11 +210,7 @@ fn updated_and_fresh(
     replaces: &[Replace<'_>],
     tamper: impl FnOnce(&mut LayerLocals),
 ) -> (Arc<LayerLocals>, Arc<LayerLocals>) {
-    let mut parser = Parser::new();
-    parser
-        .set_language(bundle.grammar.language())
-        .expect("the grammar loads");
-    let mut old_tree = parser.parse(before, None).expect("the text parses");
+    let (mut parser, mut old_tree) = parse(bundle.grammar.language(), before);
     let mut prior = LayerLocals::clone(&layer_locals(
         bundle,
         &old_tree,
@@ -256,14 +231,7 @@ fn updated_and_fresh(
     let rope = ropey::Rope::from_str(&after);
     let prior = Arc::new(prior);
     let sites = InjectionSites::default();
-    let layer_prior = LayerPrior {
-        old_tree: &old_tree,
-        sites: &sites,
-        locals: &prior,
-        hull: 0..=after.len(),
-        reparsed: true,
-        edited: &edited,
-    };
+    let layer_prior = whole_text_prior(&old_tree, &sites, &prior, &edited, true);
     (
         layer_locals(bundle, &tree, &rope, Some(&layer_prior.against(&tree))),
         layer_locals(bundle, &tree, &rope, None),
@@ -278,7 +246,7 @@ fn edit_at(
     skip: usize,
     removed: usize,
     inserted: &'static str,
-) -> (usize, usize, &'static str) {
+) -> Replace<'static> {
     (
         source.find(needle).expect("the needle is in the source") + skip,
         removed,

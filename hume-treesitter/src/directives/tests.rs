@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Parser, Query, QueryCursor, QueryError};
+use tree_sitter::{Query, QueryCursor, QueryError};
 
 use super::*;
-use crate::test_support::open_grammar;
+use crate::test_support::{open_grammar, parse};
 
 /// A query kind with no directives of its own.
 #[derive(Default)]
@@ -21,11 +21,7 @@ fn matching_patterns(source: &str, text: &str) -> (BTreeSet<usize>, Vec<QueryErr
     let mut skipped = Vec::new();
     let patterns: Vec<Plain> = parse_patterns(&mut query, source, &mut skipped);
     assert_eq!(patterns.len(), query.pattern_count());
-    let mut parser = Parser::new();
-    parser
-        .set_language(grammar.language())
-        .expect("the grammar loads");
-    let tree = parser.parse(text, None).expect("the text parses");
+    let (_parser, tree) = parse(grammar.language(), text);
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(&query, tree.root_node(), text.as_bytes());
     let mut matched = BTreeSet::new();

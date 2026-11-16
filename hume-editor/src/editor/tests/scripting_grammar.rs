@@ -207,10 +207,9 @@ fn a_parameter_takes_its_definitions_color_where_it_is_used() {
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
-    let highlights = test_fixtures::grammar_query_path("rust");
-    let queries = hume_core::QueryFiles::new(highlights.clone()).with(
+    let queries = hume_core::QueryFiles::new(test_fixtures::grammar_query_path("rust")).with(
         hume_core::OptionalQuery::Locals,
-        highlights.with_file_name("locals.scm"),
+        test_fixtures::require_helix_query("rust", hume_core::OptionalQuery::Locals.file_name()),
     );
     super::attach_fixture_grammar_with(&mut ed, "rust", "tree_sitter_rust", &queries);
     let lang = ed.state.config.languages.intern("rust");

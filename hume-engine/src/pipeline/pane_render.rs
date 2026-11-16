@@ -1,11 +1,11 @@
-use hume_grid::{Grid, Rgb};
+use hume_grid::Grid;
 use hume_rope::column::DisplayLineCol;
-use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
+use hume_rope::offset::InclusiveRange;
 
 use crate::display_lines::{DisplayLineMap, h_window};
 use crate::providers::{GutterRow, ProviderSet};
 use crate::render::{self, ComposeCtx};
-use crate::style::SelectionPaint;
+use crate::style::{LineStyle, SelectionPaint};
 use crate::types::{DisplayLineKind, ResolvedStyle};
 
 use super::{FrameScratch, PaneRenderCtx, PaneSize};
@@ -189,7 +189,7 @@ pub(crate) fn render_pane(
             | DisplayLineKind::Wrap { .. }
             | DisplayLineKind::Filler => {
                 let line = line.get_or_insert_with(|| {
-                    LineStyle::enter(pos.line, last_content_line, providers, pane_ctx, style)
+                    enter_line(pos.line, last_content_line, providers, pane_ctx, style)
                 });
                 // Cursorline highlights only the primary cursor's line.
                 let is_head_line = pos.line == head_line;
@@ -206,7 +206,7 @@ pub(crate) fn render_pane(
                         mode: pane_ctx.settings.mode,
                         cursor_is_block: pane_ctx.settings.cursor_is_block,
                     }),
-                    crate::style::line_base(pane_ctx.theme, line.tint_bg),
+                    crate::style::line_base(pane_ctx.theme.default, line.tint_bg),
                     pane_ctx.theme,
                     style,
                 );
@@ -256,7 +256,7 @@ pub(crate) fn render_pane(
     };
     let header_bg = pane_ctx.theme.ui.context.bg;
     for (header_row, &header) in (0u16..).zip(rows.headers()) {
-        let line = LineStyle::enter(header, last_content_line, header_providers, pane_ctx, style);
+        let line = enter_line(header, last_content_line, header_providers, pane_ctx, style);
         let pos = header_dlm.first_content_display_line(header);
         let rendered = header_dlm.render_display_line(pos);
         style
@@ -267,7 +267,7 @@ pub(crate) fn render_pane(
             rendered.graphemes,
             line.chars,
             None,
-            crate::style::line_base(pane_ctx.theme, header_bg),
+            crate::style::line_base(pane_ctx.theme.default, header_bg),
             pane_ctx.theme,
             style,
         );
@@ -285,49 +285,29 @@ pub(crate) fn render_pane(
 
 // Per-line style state
 
-/// The per-line facts every content display line of one buffer line shares.
-///
-/// Built once when the walk crosses into a line; building it also rebuilds the
-/// highlight interval buffers, which is the expensive part. Its decorations
-/// come from the providers the line's display map lays it out with.
-struct LineStyle {
-    chars: ExclusiveRange<CharOffset>,
-    /// The background of a provider-requested full-row tint for this line,
-    /// if any (`Decoration::LineBg`), resolved once here and read at both
-    /// paint sites (the row-fill `row_bg` and `style_display_line`'s
-    /// per-grapheme layering) so they can't disagree about which line is
-    /// tinted.
-    tint_bg: Option<Rgb>,
-}
-
-impl LineStyle {
-    fn enter(
-        line_idx: hume_rope::line::ContentLine,
-        last_content_line: hume_rope::line::ContentLine,
-        providers: &ProviderSet,
-        pane_ctx: &PaneRenderCtx,
-        style: &mut super::StyleScratch,
-    ) -> Self {
-        debug_assert!(
-            line_idx <= last_content_line,
-            "display-line walk reached line {}, past the buffer's last \
-             content line {}: `DisplayLineMap::last_line`, not \
-             `visible.last_line_idx` (the phantom trailing-\\n line one past it)",
-            line_idx.index(),
-            last_content_line.index()
-        );
-        let tint = crate::style::rebuild_line_decorations(
-            line_idx,
-            pane_ctx.syntax,
-            providers,
-            pane_ctx.rope,
-            style,
-        );
-        let start_char = hume_rope::lines::line_start_char(pane_ctx.rope, line_idx.into());
-        let end_char = hume_rope::lines::next_line_start(pane_ctx.rope, line_idx.into());
-        Self {
-            chars: ExclusiveRange::new(start_char, end_char),
-            tint_bg: tint.and_then(|scope| pane_ctx.theme.resolve(scope).bg),
-        }
-    }
+/// The [`LineStyle`] of `line_idx`, its decorations from the providers the
+/// line's display map lays it out with.
+fn enter_line(
+    line_idx: hume_rope::line::ContentLine,
+    last_content_line: hume_rope::line::ContentLine,
+    providers: &ProviderSet,
+    pane_ctx: &PaneRenderCtx,
+    style: &mut super::StyleScratch,
+) -> LineStyle {
+    debug_assert!(
+        line_idx <= last_content_line,
+        "display-line walk reached line {}, past the buffer's last \
+         content line {}: `DisplayLineMap::last_line`, not \
+         `visible.last_line_idx` (the phantom trailing-\\n line one past it)",
+        line_idx.index(),
+        last_content_line.index()
+    );
+    LineStyle::enter(
+        line_idx,
+        pane_ctx.rope,
+        pane_ctx.syntax,
+        providers,
+        pane_ctx.theme,
+        style,
+    )
 }

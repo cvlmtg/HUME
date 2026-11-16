@@ -12,7 +12,9 @@ use hume_rope::line::ContentLine;
 use hume_rope::offset::CharOffset;
 use hume_treesitter::registry::{GrammarBundle, GrammarSnapshot, LanguageRegistry};
 use hume_treesitter::syntax::Syntax;
-use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
+use test_fixtures::{
+    grammar_parser_path, grammar_query_path, require_grammars, require_helix_query,
+};
 
 /// Functions of the benchmarked file, ten lines each.
 const FUNCTIONS: usize = 500;
@@ -23,12 +25,11 @@ const ROWS: usize = 50;
 /// The rust fixture grammar, with its `locals.scm` when `locals`.
 fn rust(locals: bool) -> Arc<GrammarBundle> {
     require_grammars(&["rust"]);
-    let highlights = grammar_query_path("rust");
-    let mut queries = QueryFiles::new(highlights.clone());
+    let mut queries = QueryFiles::new(grammar_query_path("rust"));
     if locals {
         queries = queries.with(
             OptionalQuery::Locals,
-            highlights.with_file_name("locals.scm"),
+            require_helix_query("rust", OptionalQuery::Locals.file_name()),
         );
     }
     LanguageRegistry::for_testing()

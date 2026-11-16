@@ -10,11 +10,8 @@ use hume_core::BufferId;
 use hume_platform::wake::{WakeCallback, spawn_waking};
 
 use crate::edited_bytes::EditedBytes;
-use crate::injections::{
-    InjectionContext, InjectionSites, PriorInjections, resolve_and_parse_injections,
-};
-use crate::layers::{LayerPrior, SyntaxLayer};
-use crate::locals::{LayerLocals, layer_locals};
+use crate::injections::{InjectionContext, PriorInjections, build_layer};
+use crate::layers::SyntaxLayer;
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
 use hume_editing::text::BufferText;
 
@@ -56,9 +53,7 @@ pub struct ParseRequest {
 
 /// Committed layers edited to a request's text.
 pub(crate) struct PriorLayers {
-    pub(crate) root: tree_sitter::Tree,
-    pub(crate) root_sites: InjectionSites,
-    pub(crate) root_locals: Arc<LayerLocals>,
+    pub(crate) root: SyntaxLayer,
     pub(crate) injected: PriorInjections,
     /// The bytes the edits changed.
     pub(crate) edited: EditedBytes,
@@ -76,13 +71,9 @@ pub enum ParseOutcome {
     ParseFailed,
 }
 
-/// The root parse tree plus every injected layer resolved from it.
+/// The root layer plus every injected layer resolved from it.
 pub struct ParsedLayers {
-    pub root: tree_sitter::Tree,
-    /// The root tree's injection sites.
-    pub root_sites: InjectionSites,
-    /// The root tree's locals.
-    pub root_locals: Arc<LayerLocals>,
+    pub root: SyntaxLayer,
     pub injected: Vec<SyntaxLayer>,
     /// Languages a site named whose grammar `langs` had registered but not
     /// loaded, so no layer of theirs is among `injected`.
@@ -196,40 +187,27 @@ pub(crate) fn do_parse(
 
     let rope = req.text.rope();
     let prior = req.prior.as_ref();
-    let outcome = match run_parse(parser, rope, prior.map(|prior| &prior.root), cancel) {
-        Some(root) => {
+    let outcome = match run_parse(parser, rope, prior.map(|prior| &prior.root.tree), cancel) {
+        Some(tree) => {
             let cx = InjectionContext {
                 rope,
                 langs: &req.langs,
                 prior: prior.map(|prior| (&prior.injected, &prior.edited)),
                 cancel,
             };
-            let root_change = prior.map(|prior| {
-                LayerPrior {
-                    old_tree: &prior.root,
-                    sites: &prior.root_sites,
-                    locals: &prior.root_locals,
-                    hull: 0..=rope.len_bytes(),
-                    reparsed: true,
-                    edited: &prior.edited,
-                }
-                .against(&root)
-            });
             let mut unloaded = Vec::new();
-            let (root_sites, injected) = resolve_and_parse_injections(
+            let (root, injected) = build_layer(
                 parser,
                 &cx,
-                &root,
-                &req.bundle,
-                1,
-                root_change.as_ref(),
+                tree,
+                Arc::clone(&req.bundle),
+                Vec::new(),
+                0,
+                prior.map(|prior| prior.root.layer_prior(&prior.edited, true)),
                 &mut unloaded,
             );
-            let root_locals = layer_locals(&req.bundle, &root, rope, root_change.as_ref());
             ParseOutcome::Ok(ParsedLayers {
                 root,
-                root_sites,
-                root_locals,
                 injected,
                 unloaded,
             })

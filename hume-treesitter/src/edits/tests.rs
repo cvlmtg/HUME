@@ -272,12 +272,7 @@ proptest::proptest! {
         }
         let edits = input_edits_from_changeset(&b.finish(), &ropey::Rope::from_str(text));
         let (start, end) = (ends.0.min(ends.1), ends.0.max(ends.1));
-        let mut range = tree_sitter::Range {
-            start_byte: start,
-            end_byte: end,
-            start_point: tree_sitter::Point { row: 0, column: start },
-            end_point: tree_sitter::Point { row: 0, column: end },
-        };
+        let mut range = crate::test_support::range(start, end);
         for edit in edits.iter() {
             edit.edit_range(&mut range);
         }

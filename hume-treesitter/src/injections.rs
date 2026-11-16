@@ -429,22 +429,6 @@ impl SyntaxLayer {
     fn key(&self) -> (u8, usize) {
         (self.depth, self.ranges[0].start_byte)
     }
-
-    /// What this layer's next tree, sites and locals are built from.
-    fn layer_prior<'p>(&'p self, edited: &'p EditedBytes, reparsed: bool) -> LayerPrior<'p> {
-        let last = self
-            .ranges
-            .last()
-            .expect("an injected layer's ranges are never empty");
-        LayerPrior {
-            old_tree: &self.tree,
-            sites: &self.sites,
-            locals: &self.locals,
-            hull: self.ranges[0].start_byte..=last.end_byte,
-            reparsed,
-            edited,
-        }
-    }
 }
 
 /// The committed layers' injected layers, edited to the text being parsed,
@@ -597,30 +581,57 @@ pub(crate) fn resolve_and_parse_injections(
                 (tree, None)
             }
         };
-        let child_change = child_prior.map(|prior| prior.against(&child_tree));
-        let locals = layer_locals(&group.bundle, &child_tree, cx.rope, child_change.as_ref());
-
-        let (child_sites, descendants) = resolve_and_parse_injections(
+        let (child, descendants) = build_layer(
             parser,
             cx,
-            &child_tree,
-            &group.bundle,
-            depth + 1,
-            child_change.as_ref(),
+            child_tree,
+            group.bundle,
+            group.ranges,
+            depth,
+            child_prior,
             unloaded,
         );
         out.extend(descendants);
-        out.push(SyntaxLayer {
-            bundle: group.bundle,
-            tree: child_tree,
-            ranges: group.ranges,
-            depth,
-            sites: child_sites,
-            locals,
-        });
+        out.push(child);
     }
 
     (sites, out)
+}
+
+/// `tree`, a layer of `bundle` parsed over `ranges` at `depth`, with its
+/// sites and locals built from `prior`, and every layer it injects, as
+/// [`resolve_and_parse_injections`] gives them.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_layer(
+    parser: &mut tree_sitter::Parser,
+    cx: &InjectionContext<'_>,
+    tree: tree_sitter::Tree,
+    bundle: Arc<GrammarBundle>,
+    ranges: Vec<tree_sitter::Range>,
+    depth: u8,
+    prior: Option<LayerPrior<'_>>,
+    unloaded: &mut Vec<LanguageId>,
+) -> (SyntaxLayer, Vec<SyntaxLayer>) {
+    let change = prior.map(|prior| prior.against(&tree));
+    let locals = layer_locals(&bundle, &tree, cx.rope, change.as_ref());
+    let (sites, injected) = resolve_and_parse_injections(
+        parser,
+        cx,
+        &tree,
+        &bundle,
+        depth + 1,
+        change.as_ref(),
+        unloaded,
+    );
+    let layer = SyntaxLayer {
+        tree,
+        bundle,
+        ranges,
+        depth,
+        sites,
+        locals,
+    };
+    (layer, injected)
 }
 
 #[cfg(test)]

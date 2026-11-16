@@ -11,10 +11,9 @@ use ropey::Rope;
 
 use crate::captures::CaptureQuery;
 use crate::context::ContextQuery;
-use crate::directives::parse_patterns;
 use crate::fold::FoldQuery;
 use crate::grammar::LoadedGrammar;
-use crate::highlight::{HighlightPattern, TreeSitterHighlighter};
+use crate::highlight::TreeSitterHighlighter;
 use hume_core::{
     BlockCommentTokens, ByOrigin, CommentTokens, ConfigOrigin, FirstWins, GrammarSource,
     LanguageField, LanguageFields, LanguageIdentity, LaterWins, LineCommentTokens, OptionalQuery,
@@ -325,12 +324,16 @@ pub(crate) fn compile_queries(
             kind.file_name()
         );
     }
-    let mut highlights =
+    let highlights =
         tree_sitter::Query::new(language, highlights_src).map_err(RegisterError::QueryBuild)?;
     let mut skipped = Vec::new();
     let mut errors = Vec::new();
-    let highlight_patterns: Vec<HighlightPattern> =
-        parse_patterns(&mut highlights, highlights_src, &mut errors);
+    let highlighter = Arc::new(TreeSitterHighlighter::new(
+        highlights,
+        highlights_src,
+        scope_reg,
+        &mut errors,
+    ));
     skip_patterns(&mut skipped, "highlights.scm", &mut errors);
     let mut injections = None;
     let mut textobjects = None;
@@ -392,11 +395,7 @@ pub(crate) fn compile_queries(
         .map(Arc::new);
     let folds = folds.or_else(|| context.clone().map(FoldQuery::Scopes));
     let compiled = CompiledQueries {
-        highlighter: Arc::new(TreeSitterHighlighter::from_shared_query(
-            Arc::new(highlights),
-            &highlight_patterns,
-            scope_reg,
-        )),
+        highlighter,
         injections,
         textobjects,
         indents,
@@ -595,6 +594,15 @@ pub enum LoadReport {
     Failed(RegisterError),
     /// It loaded without this part.
     Skipped(Skipped),
+}
+
+impl std::fmt::Display for LoadReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Failed(error) => error.fmt(f),
+            Self::Skipped(skipped) => skipped.fmt(f),
+        }
+    }
 }
 
 impl LanguageRegistry {
@@ -1028,11 +1036,12 @@ impl LanguageRegistry {
     /// `Ok(None)`, opening nothing, when a higher origin registered `name`'s
     /// grammar, as [`Self::register_grammar`] ranks it.
     ///
-    /// A broken optional query fails the whole attach, same as a broken
-    /// `highlights.scm`: they all come from the same trusted pinned source,
-    /// so there is no separate soft-degrade path. All fallible work happens
-    /// before any registry mutation, so a failed attach leaves the registry
-    /// as it was, including any grammar `name` already had.
+    /// Fails when the library does not open or `highlights.scm` cannot be
+    /// read or compiled. An optional query or a pattern that cannot be used
+    /// is left out instead, and queued for [`Self::take_load_reports`].
+    /// All fallible work happens before any
+    /// registry mutation, so a failed attach leaves the registry as it was,
+    /// including any grammar `name` already had.
     pub fn attach_grammar(
         &mut self,
         name: &str,

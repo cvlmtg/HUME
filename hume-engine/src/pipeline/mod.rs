@@ -12,7 +12,7 @@ use crate::providers::{ChromeProvider, DEFAULT_GUTTER_SCOPE, OverlayProvider, Sy
 use crate::scope_headers::PaneRows;
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
-use crate::types::{EditorMode, ResolvedStyle, ScopeId};
+use crate::types::{EditorMode, ScopeId};
 
 mod geometry;
 mod layout;
@@ -682,10 +682,8 @@ impl EngineView {
             // contributing a foreground, and letting it would give a theme
             // that sets `ui.background = { fg, bg }` a seam glyph in that fg
             // and nowhere else, contradicting the base-layer rule above.
-            let seam_base = self.theme.default.layer(ResolvedStyle {
-                bg: self.theme.ui.background.bg,
-                ..ResolvedStyle::default()
-            });
+            let seam_base =
+                crate::style::line_base(self.theme.default, self.theme.ui.background.bg);
             let muted = seam_base.layer(self.theme.ui.window);
             let accent = seam_base.layer(self.theme.ui.window_focused);
 

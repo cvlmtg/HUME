@@ -10,6 +10,7 @@ use hume_rope::offset::CharOffset;
 
 use super::{InjectionLoader, Syntax};
 use crate::injections::InjectionSites;
+use crate::layers::SyntaxLayer;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParseRequest, ParsedLayers};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
 use crate::test_support::{empty_langs, fixture_markdown};
@@ -49,9 +50,14 @@ fn parse_done_for(
         bundle: Arc::clone(bundle),
         snapshot_generation: empty_langs().generation(),
         outcome: ParseOutcome::Ok(ParsedLayers {
-            root: tree,
-            root_sites: InjectionSites::default(),
-            root_locals: Default::default(),
+            root: SyntaxLayer {
+                tree,
+                bundle: Arc::clone(bundle),
+                ranges: Vec::new(),
+                depth: 0,
+                sites: InjectionSites::default(),
+                locals: Default::default(),
+            },
             injected: Vec::new(),
             unloaded: Vec::new(),
         }),
@@ -380,7 +386,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     parser
         .set_language(markdown.grammar.language())
         .expect("set language");
-    let root = parser.parse(source, None).expect("parse root");
+    let tree = parser.parse(source, None).expect("parse root");
     let rope = ropey::Rope::from_str(source);
     let cancel = std::sync::atomic::AtomicBool::new(false);
     let cx = crate::injections::InjectionContext {
@@ -389,18 +395,18 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
         prior: None,
         cancel: &cancel,
     };
-    let (root_sites, injected) = crate::injections::resolve_and_parse_injections(
+    let (root, injected) = crate::injections::build_layer(
         &mut parser,
         &cx,
-        &root,
-        &markdown,
-        1,
+        tree,
+        Arc::clone(&markdown),
+        Vec::new(),
+        0,
         None,
         &mut Vec::new(),
     );
     assert_eq!(injected.len(), 1, "expected one rust injection layer");
     let original_start = injected[0].ranges[0].start_byte;
-    let root_locals = crate::locals::layer_locals(&markdown, &root, &rope, None);
 
     syn.install(
         ParseDone {
@@ -410,8 +416,6 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
             snapshot_generation: langs.generation(),
             outcome: ParseOutcome::Ok(ParsedLayers {
                 root,
-                root_sites,
-                root_locals,
                 injected,
                 unloaded: Vec::new(),
             }),

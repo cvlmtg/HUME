@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use hume_engine::theme::ScopeRegistry;
-use hume_treesitter::registry::{
-    GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, LoadReport,
-};
+use hume_treesitter::registry::{GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry};
 use hume_treesitter::syntax::InjectionLoader;
 
 use crate::editor::EditorState;
@@ -68,11 +66,7 @@ impl EditorState {
     pub(in crate::editor) fn report_grammar_loads(&mut self) {
         for (id, report) in self.config.languages.take_load_reports() {
             let name = self.config.languages.name_of(id);
-            let text = match report {
-                LoadReport::Failed(error) => format!("grammar '{name}': {error}"),
-                LoadReport::Skipped(skipped) => format!("grammar '{name}': {skipped}"),
-            };
-            self.report(Severity::Warning, text);
+            self.report(Severity::Warning, format!("grammar '{name}': {report}"));
         }
     }
 }

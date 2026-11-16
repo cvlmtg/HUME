@@ -11,7 +11,11 @@ use hume_engine::theme::ScopeRegistry;
 
 use tree_sitter::QueryErrorKind;
 
+use crate::edited_bytes::EditedBytes;
 use crate::grammar::LoadedGrammar;
+use crate::injections::InjectionSites;
+use crate::layers::LayerPrior;
+use crate::locals::LayerLocals;
 use crate::registry::{
     GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, Skipped, compile_queries,
     new_bundle,
@@ -138,6 +142,36 @@ pub(crate) fn fixture_markdown() -> Arc<GrammarBundle> {
         &read(&highlights),
         &[(OptionalQuery::Injections, &read(&injections))],
     )
+}
+
+/// A parser for `language` and its parse of `source`.
+pub(crate) fn parse(
+    language: &tree_sitter::Language,
+    source: &str,
+) -> (tree_sitter::Parser, tree_sitter::Tree) {
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(language).expect("the grammar loads");
+    let tree = parser.parse(source, None).expect("the text parses");
+    (parser, tree)
+}
+
+/// A prior over the whole text: `old_tree`, with its `sites` and `locals`,
+/// edited by `edited`.
+pub(crate) fn whole_text_prior<'p>(
+    old_tree: &'p tree_sitter::Tree,
+    sites: &'p InjectionSites,
+    locals: &'p Arc<LayerLocals>,
+    edited: &'p EditedBytes,
+    reparsed: bool,
+) -> LayerPrior<'p> {
+    LayerPrior {
+        old_tree,
+        sites,
+        locals,
+        hull: 0..=usize::MAX,
+        reparsed,
+        edited,
+    }
 }
 
 /// A snapshot with no grammars, for tests with no injections to resolve.

@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicBool;
 
 use super::*;
 use crate::registry::{GrammarBundle, GrammarSnapshot};
-use crate::test_support::fixture_markdown;
+use crate::test_support::{fixture_markdown, parse, whole_text_prior};
 use hume_core::OptionalQuery;
 use test_fixtures::{grammar_query_path, require_grammars};
 
@@ -21,13 +21,6 @@ fn make_bundle(name: &str, symbol: &str, injections_src: Option<&str>) -> Arc<Gr
             .map(|src| (OptionalQuery::Injections, src))
             .as_slice(),
     )
-}
-
-fn parse(bundle: &GrammarBundle, source: &str) -> (tree_sitter::Parser, tree_sitter::Tree) {
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(bundle.grammar.language()).unwrap();
-    let tree = parser.parse(source, None).expect("parse");
-    (parser, tree)
 }
 
 /// The layers `tree`, a layer of `bundle`, injects, with their own
@@ -75,7 +68,7 @@ fn content_ranges_excludes_only_unnamed_children_by_default() {
     // "2" (named), `]` (unnamed). Excluding only unnamed children must
     // leave the two number spans (the named children) as content,
     // cutting out just the bracket/comma punctuation.
-    let (_parser, tree) = parse(&json, "[1,2]\n");
+    let (_parser, tree) = parse(json.grammar.language(), "[1,2]\n");
     let array = tree.root_node().named_child(0).expect("array node");
     assert_eq!(array.kind(), "array");
 
@@ -93,7 +86,7 @@ fn content_ranges_excludes_only_unnamed_children_by_default() {
 fn content_ranges_include_unnamed_children_returns_whole_node() {
     require_grammars(&["json"]);
     let json = make_bundle("json", "tree_sitter_json", None);
-    let (_parser, tree) = parse(&json, "[1,2]\n");
+    let (_parser, tree) = parse(json.grammar.language(), "[1,2]\n");
     let array = tree.root_node().named_child(0).expect("array node");
 
     let included = content_ranges(array, true);
@@ -136,7 +129,7 @@ fn static_language_override_wins_regardless_of_content() {
     let langs = GrammarSnapshot::from_iter([("rust".to_owned(), Arc::clone(&rust))]);
 
     let source = "[\"hello\"]\n";
-    let (mut parser, tree) = parse(&json, source);
+    let (mut parser, tree) = parse(json.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
 
     let out = injected(&mut parser, &tree, &json, &rope, &langs);
@@ -166,7 +159,7 @@ fn unknown_injection_language_is_skipped_silently() {
     )]);
 
     let source = "[\"hello\"]\n";
-    let (mut parser, tree) = parse(&json, source);
+    let (mut parser, tree) = parse(json.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
 
     let out = injected(&mut parser, &tree, &json, &rope, &langs);
@@ -193,7 +186,7 @@ fn combined_merges_multiple_matches_into_one_layer() {
     // Three string literals. Without `injection.combined` these would be
     // three separate layers; with it, exactly one layer with 3 ranges.
     let source = "[\"a\", \"b\", \"c\"]\n";
-    let (mut parser, tree) = parse(&json, source);
+    let (mut parser, tree) = parse(json.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
 
     let out = injected(&mut parser, &tree, &json, &rope, &langs);
@@ -226,7 +219,7 @@ fn depth_cap_stops_recursion_at_max_depth() {
     let langs = GrammarSnapshot::from_iter([("json".to_owned(), Arc::clone(&json))]);
 
     let source = "[1]\n";
-    let (mut parser, tree) = parse(&json, source);
+    let (mut parser, tree) = parse(json.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
 
     let out = injected(&mut parser, &tree, &json, &rope, &langs);
@@ -258,7 +251,7 @@ fn dynamic_language_capture_reads_fenced_code_info_string() {
     let langs = GrammarSnapshot::from_iter([("rust".to_owned(), Arc::clone(&rust))]);
 
     let source = "```rust\nfn main() {}\n```\n";
-    let (mut parser, tree) = parse(&markdown, source);
+    let (mut parser, tree) = parse(markdown.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
 
     let out = injected(&mut parser, &tree, &markdown, &rope, &langs);
@@ -276,7 +269,7 @@ fn dynamic_language_capture_unknown_info_string_no_layer() {
     let langs = GrammarSnapshot::default();
 
     let source = "```no-such-lang\nwhatever\n```\n";
-    let (mut parser, tree) = parse(&markdown, source);
+    let (mut parser, tree) = parse(markdown.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
 
     let out = injected(&mut parser, &tree, &markdown, &rope, &langs);
@@ -366,7 +359,7 @@ fn an_edit_before_a_fence_moves_the_sites_with_the_text() {
     assert!(baked.chain_break.is_none());
 
     let source = after.to_string();
-    let (_parser, fresh) = parse(&markdown, &source);
+    let (_parser, fresh) = parse(markdown.grammar.language(), &source);
     let inj = markdown.injections.as_ref().expect("an injections query");
     let expected = resolve_sites(inj, &fresh, after.rope(), None);
     let fence = expected
@@ -534,7 +527,7 @@ fn reparse(
 ) -> Reparsed {
     let inj = bundle.injections.as_ref().expect("an injections query");
     let text = hume_editing::text::BufferText::from(before);
-    let (mut parser, mut old) = parse(bundle, before);
+    let (mut parser, mut old) = parse(bundle.grammar.language(), before);
     let mut old_sites = resolve_sites(inj, &old, text.rope(), None);
     let mut builder = hume_editing::changeset::ChangeSetBuilder::new(text.end());
     builder.retain_to(hume_rope::offset::CharOffset::new(at));
@@ -568,14 +561,13 @@ impl Reparsed {
             &self.new,
             &self.rope,
             Some(
-                &LayerPrior {
-                    old_tree: &self.old,
-                    sites: prior_sites,
-                    locals: &Default::default(),
-                    hull: 0..=self.rope.len_bytes(),
-                    reparsed: true,
-                    edited: &self.edited,
-                }
+                &whole_text_prior(
+                    &self.old,
+                    prior_sites,
+                    &Default::default(),
+                    &self.edited,
+                    true,
+                )
                 .against(&self.new),
             ),
         )
@@ -593,7 +585,7 @@ fn without_dirty_bytes_the_prior_sites_are_kept_as_given() {
     let markdown = fixture_markdown();
     let inj = markdown.injections.as_ref().expect("an injections query");
     let source = "```rust\nfn a() {}\n```\n";
-    let (_parser, tree) = parse(&markdown, source);
+    let (_parser, tree) = parse(markdown.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
     let mut given = resolve_sites(inj, &tree, &rope, None);
     given.0[0].language = "elsewhere".to_owned();
@@ -602,17 +594,7 @@ fn without_dirty_bytes_the_prior_sites_are_kept_as_given() {
         inj,
         &tree,
         &rope,
-        Some(
-            &LayerPrior {
-                old_tree: &tree,
-                sites: &given,
-                locals: &Default::default(),
-                hull: 0..=rope.len_bytes(),
-                reparsed: false,
-                edited: &edited,
-            }
-            .against(&tree),
-        ),
+        Some(&whole_text_prior(&tree, &given, &Default::default(), &edited, false).against(&tree)),
     );
     assert_eq!(resolved, given);
 }
@@ -647,7 +629,7 @@ fn a_match_two_dirty_regions_meet_is_resolved_once() {
     let markdown = fixture_markdown();
     let inj = markdown.injections.as_ref().expect("an injections query");
     let source = "```rust\nfn a() {}\nfn b() {}\n```\n";
-    let (_parser, tree) = parse(&markdown, source);
+    let (_parser, tree) = parse(markdown.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
     let fresh = resolve_sites(inj, &tree, &rope, None);
     assert_eq!(fresh.0.len(), 1, "one fence");
@@ -687,15 +669,8 @@ fn a_match_two_dirty_regions_meet_is_resolved_once() {
             &tree,
             &rope,
             Some(
-                &LayerPrior {
-                    old_tree: &tree,
-                    sites: &fresh,
-                    locals: &Default::default(),
-                    hull: 0..=rope.len_bytes(),
-                    reparsed,
-                    edited: &edited,
-                }
-                .against(&tree),
+                &whole_text_prior(&tree, &fresh, &Default::default(), &edited, reparsed)
+                    .against(&tree),
             ),
         );
         assert_eq!(resolved, fresh, "reparsed: {reparsed}");
@@ -791,7 +766,7 @@ fn an_unloaded_language_is_reported_once_and_injects_nothing() {
         .with_unloaded("rust", rust_id);
     let source = "```rust\nfn a() {}\n```\n\n```json\n[1]\n```\n\n\
                   ```rust\nfn b() {}\n```\n\n```no-such-lang\nx\n```\n";
-    let (mut parser, tree) = parse(&markdown, source);
+    let (mut parser, tree) = parse(markdown.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
 
     let (layers, unloaded) = injected_reporting(&mut parser, &tree, &markdown, &rope, &langs);
@@ -817,7 +792,7 @@ fn an_unloaded_language_an_injected_layer_names_is_reported() {
     let langs = GrammarSnapshot::from_iter([("rust".to_owned(), Arc::clone(&rust))])
         .with_unloaded("c", c_id);
     let source = "```rust\nlet s = \"x\";\n```\n";
-    let (mut parser, tree) = parse(&markdown, source);
+    let (mut parser, tree) = parse(markdown.grammar.language(), source);
     let rope = ropey::Rope::from_str(source);
 
     let (layers, unloaded) = injected_reporting(&mut parser, &tree, &markdown, &rope, &langs);

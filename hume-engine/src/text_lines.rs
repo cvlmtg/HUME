@@ -6,20 +6,21 @@ use std::borrow::Cow;
 
 use hume_grid::Rgb;
 use hume_rope::line::ContentLine;
-use hume_rope::lines::{content_line_count, line_start_char, next_line_start};
+use hume_rope::lines::content_line_count;
 use hume_rope::offset::ExclusiveRange;
 use hume_rope::width::CHROME_TAB_WIDTH;
 use ropey::Rope;
 
-use crate::display_lines::line_store::{FormatKey, PaneLineStore};
-use crate::display_lines::{DisplayLineInputs, DisplayLineMap};
+use crate::display_lines::DisplayLineInputs;
+use crate::display_lines::line_store::FormatKey;
 use crate::folds::HiddenLines;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::pipeline::{ContentWidth, PaneSize};
-use crate::providers::{DecorationKinds, ProviderSet, SyntaxSource};
+use crate::providers::{ProviderSet, SyntaxSource};
 use crate::render::resolve_arena_text;
 use crate::reveal::RevealedLines;
-use crate::style::{StyleScratch, rebuild_line_decorations, style_display_line};
+use crate::scope_headers::HeaderLayout;
+use crate::style::{LineStyle, StyleScratch, line_base, style_display_line};
 use crate::theme::Theme;
 use crate::types::{CellContent, ResolvedStyle};
 
@@ -43,7 +44,7 @@ pub fn styled_lines(
     base: ResolvedStyle,
     theme: &Theme,
 ) -> Vec<StyledLine> {
-    let mut store = PaneLineStore::new();
+    let mut layout = HeaderLayout::default();
     let inputs = DisplayLineInputs {
         format: FormatKey {
             buffer_tag: [0; 3],
@@ -56,13 +57,7 @@ pub fn styled_lines(
         content_width: ContentWidth::of(PaneSize::new(1, 1), 0),
         revealed: RevealedLines::default(),
     };
-    let mut map = DisplayLineMap::narrowed(
-        rope,
-        providers,
-        inputs,
-        &mut store,
-        DecorationKinds::CONCEAL,
-    );
+    let mut map = layout.display_map(rope, providers, &inputs);
     let mut scratch = StyleScratch::new();
     ExclusiveRange::new(
         ContentLine::default(),
@@ -70,12 +65,10 @@ pub fn styled_lines(
     )
     .iter()
     .map(|line| {
-        let tint = rebuild_line_decorations(line, syntax, providers, rope, &mut scratch);
-        let fill = tint.and_then(|scope| theme.resolve(scope).bg);
-        let chars = ExclusiveRange::new(
-            line_start_char(rope, line.into()),
-            next_line_start(rope, line.into()),
-        );
+        let LineStyle {
+            chars,
+            tint_bg: fill,
+        } = LineStyle::enter(line, rope, syntax, providers, theme, &mut scratch);
         let pos = map.first_content_display_line(line);
         let rendered = map.render_display_line(pos);
         scratch
@@ -86,10 +79,7 @@ pub fn styled_lines(
             rendered.graphemes,
             chars,
             None,
-            base.layer(ResolvedStyle {
-                bg: fill,
-                ..ResolvedStyle::default()
-            }),
+            line_base(base, fill),
             theme,
             &mut scratch,
         );

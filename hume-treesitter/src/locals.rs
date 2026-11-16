@@ -42,9 +42,7 @@ pub struct LocalsQuery {
     query: Query,
     /// Per capture index, what the capture names.
     roles: Vec<CaptureRole>,
-    /// Per pattern, whether its `@local.scope` sees its parents'
-    /// definitions.
-    inherits: Vec<bool>,
+    patterns: Vec<LocalsPattern>,
 }
 
 /// What a `locals.scm` capture makes of its node.
@@ -61,7 +59,8 @@ enum CaptureRole {
 /// What one `locals.scm` pattern sets.
 #[derive(Default)]
 struct LocalsPattern {
-    /// `#set! local.scope-inherits` to anything but `"true"`.
+    /// `#set! local.scope-inherits` to anything but `"true"`: the pattern's
+    /// `@local.scope` does not see its parents' definitions.
     no_inheritance: bool,
 }
 
@@ -112,7 +111,7 @@ impl LocalsQuery {
         Some(Self {
             query,
             roles,
-            inherits: patterns.iter().map(|p| !p.no_inheritance).collect(),
+            patterns,
         })
     }
 
@@ -192,6 +191,7 @@ impl LayerLocals {
     fn rebuild(
         &mut self,
         query: &LocalsQuery,
+        cursor: &mut QueryCursor,
         tree: &tree_sitter::Tree,
         rope: &ropey::Rope,
         region: Option<NodeBytes>,
@@ -232,10 +232,7 @@ impl LayerLocals {
         let mut new_definitions = Vec::new();
         let mut new_resolved = Vec::new();
         let mut discarded = Vec::new();
-        let mut cursor = QueryCursor::new();
-        if let Some(region) = region {
-            cursor.set_byte_range(region.start..region.end);
-        }
+        cursor.set_byte_range(region.map_or(0..usize::MAX, |region| region.start..region.end));
         let mut captures = cursor.captures(&query.query, tree.root_node(), RopeProvider(rope));
         while let Some((m, index)) = captures.next() {
             let capture = m.captures()[*index];
@@ -249,7 +246,7 @@ impl LayerLocals {
             }
             match query.role(capture.index) {
                 CaptureRole::Scope => {
-                    let inherits = query.inherits[m.pattern_index];
+                    let inherits = !query.patterns[m.pattern_index].no_inheritance;
                     new_scopes.push(ScopeEntry { range, inherits });
                     scopes.push(OpenScope {
                         range: Some(range),
@@ -392,6 +389,7 @@ fn resolve(scopes: &[OpenScope], name: &str, start: usize) -> Option<Option<Scop
 /// two nest. `None` when one has no such scope: the whole layer is rebuilt.
 fn dirty_scopes(
     query: &LocalsQuery,
+    cursor: &mut QueryCursor,
     prior: &LayerLocals,
     tree: &tree_sitter::Tree,
     rope: &ropey::Rope,
@@ -400,7 +398,6 @@ fn dirty_scopes(
     if !query.roles.contains(&CaptureRole::Scope) {
         return None;
     }
-    let mut cursor = QueryCursor::new();
     let mut regions = Vec::new();
     for region in dirty {
         let (mut lo, mut hi) = (*region.start(), *region.end());
@@ -460,24 +457,27 @@ pub(crate) fn layer_locals(
     let Some(query) = bundle.locals.as_ref() else {
         return Arc::default();
     };
-    let Some(change) = change else {
-        let mut locals = LayerLocals::default();
-        locals.rebuild(query, tree, rope, None);
-        return Arc::new(locals);
+    let mut cursor = QueryCursor::new();
+    let scoped = match change.map(|change| (change.prior.locals, change.dirty())) {
+        Some((prior, [])) => return Arc::clone(prior),
+        Some((prior, dirty)) => dirty_scopes(query, &mut cursor, prior, tree, rope, dirty)
+            .map(|regions| (prior, regions)),
+        None => None,
     };
-    let dirty = change.dirty();
-    if dirty.is_empty() {
-        return Arc::clone(change.prior.locals);
-    }
-    let mut locals = LayerLocals::clone(change.prior.locals);
-    match dirty_scopes(query, &locals, tree, rope, dirty) {
-        Some(regions) => {
+    let locals = match scoped {
+        Some((prior, regions)) => {
+            let mut locals = LayerLocals::clone(prior);
             for region in regions {
-                locals.rebuild(query, tree, rope, Some(region));
+                locals.rebuild(query, &mut cursor, tree, rope, Some(region));
             }
+            locals
         }
-        None => locals.rebuild(query, tree, rope, None),
-    }
+        None => {
+            let mut locals = LayerLocals::default();
+            locals.rebuild(query, &mut cursor, tree, rope, None);
+            locals
+        }
+    };
     Arc::new(locals)
 }
 

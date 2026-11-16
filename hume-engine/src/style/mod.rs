@@ -6,9 +6,10 @@ pub(crate) use highlight::rebuild_line_decorations;
 use hume_grid::Rgb;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::DisplayLineCol;
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use crate::providers::Decoration;
+use crate::providers::{Decoration, ProviderSet, SyntaxSource};
 use crate::theme::Theme;
 use crate::types::{
     CursorStop, DisplayLine, EditorMode, Grapheme, PaintedSelections, ResolvedStyle,
@@ -69,12 +70,49 @@ pub(crate) struct SelectionPaint<'a> {
     pub cursor_is_block: bool,
 }
 
-/// The style under a pane's line: the theme's default, over `bg`.
-pub(crate) fn line_base(theme: &Theme, bg: Option<Rgb>) -> ResolvedStyle {
-    theme.default.layer(ResolvedStyle {
+/// `base` with `bg` layered over it, a background only: the style under a
+/// pane's line, over the theme's default.
+pub(crate) fn line_base(base: ResolvedStyle, bg: Option<Rgb>) -> ResolvedStyle {
+    base.layer(ResolvedStyle {
         bg,
         ..ResolvedStyle::default()
     })
+}
+
+/// The per-line facts every content display line of one buffer line shares.
+///
+/// Built once when a walk crosses into a line; building it also rebuilds the
+/// highlight interval buffers, which is the expensive part.
+pub(crate) struct LineStyle {
+    pub(crate) chars: ExclusiveRange<CharOffset>,
+    /// The background of a provider-requested full-row tint for this line,
+    /// if any (`Decoration::LineBg`), resolved once here and read at both
+    /// paint sites (the row-fill `row_bg` and `style_display_line`'s
+    /// per-grapheme layering) so they can't disagree about which line is
+    /// tinted.
+    pub(crate) tint_bg: Option<Rgb>,
+}
+
+impl LineStyle {
+    /// `line` of `rope`, its decorations from `syntax` and `providers`,
+    /// rebuilt into `scratch`.
+    pub(crate) fn enter(
+        line: ContentLine,
+        rope: &ropey::Rope,
+        syntax: Option<&dyn SyntaxSource>,
+        providers: &ProviderSet,
+        theme: &Theme,
+        scratch: &mut StyleScratch,
+    ) -> Self {
+        let tint = rebuild_line_decorations(line, syntax, providers, rope, scratch);
+        Self {
+            chars: ExclusiveRange::new(
+                hume_rope::lines::line_start_char(rope, line.into()),
+                hume_rope::lines::next_line_start(rope, line.into()),
+            ),
+            tint_bg: tint.and_then(|scope| theme.resolve(scope).bg),
+        }
+    }
 }
 
 /// Resolve per-grapheme styles for one display line.

@@ -5,9 +5,9 @@ use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
 use hume_rope::offset::ExclusiveRange;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Query, QueryCursor};
+use tree_sitter::{Query, QueryCursor, QueryError};
 
-use crate::directives::PatternDirectives;
+use crate::directives::{PatternDirectives, parse_patterns};
 use crate::layers::{SyntaxLayer, SyntaxLayers};
 
 // RopeProvider
@@ -39,16 +39,9 @@ impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
 
 // TreeSitterHighlighter
 
-/// A `highlights.scm` pattern: which nodes its `#is?`/`#is-not? local`
-/// lets it highlight. It takes no other predicate or directive of the
-/// engine's.
-#[derive(Default)]
-pub(crate) struct HighlightPattern {
-    locality: Locality,
-}
-
-/// The nodes a highlights pattern applies to, by whether the layer's
-/// locals make them local.
+/// The nodes a `highlights.scm` pattern applies to, by whether the layer's
+/// locals make them local: what its `#is?`/`#is-not? local` sets. A
+/// highlights pattern takes no other predicate or directive of the engine's.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Locality {
     #[default]
@@ -58,26 +51,28 @@ enum Locality {
 }
 
 impl Locality {
-    fn admits(self, local: bool) -> bool {
+    /// Whether the pattern applies to a node `local` says is local or not,
+    /// asked only when the answer matters.
+    fn admits(self, local: impl FnOnce() -> bool) -> bool {
         match self {
             Self::Any => true,
-            Self::NonLocal => !local,
-            Self::LocalOnly => local,
+            Self::NonLocal => !local(),
+            Self::LocalOnly => local(),
         }
     }
 }
 
-impl PatternDirectives for HighlightPattern {
+impl PatternDirectives for Locality {
     fn local(&mut self, positive: bool) -> Result<(), String> {
         let wanted = if positive {
-            Locality::LocalOnly
+            Self::LocalOnly
         } else {
-            Locality::NonLocal
+            Self::NonLocal
         };
-        if self.locality != Locality::Any && self.locality != wanted {
+        if *self != Self::Any && *self != wanted {
             return Err("#is? local and #is-not? local never hold together".to_owned());
         }
-        self.locality = wanted;
+        *self = wanted;
         Ok(())
     }
 }
@@ -112,13 +107,16 @@ pub struct TreeSitterHighlighter {
 impl TreeSitterHighlighter {
     /// Create a provider from a query compiled once per grammar bundle and
     /// shared by every buffer's highlighting, so `highlights.scm` is not
-    /// re-parsed per buffer open. `patterns` is the query's patterns as
-    /// `parse_patterns` read them.
-    pub(crate) fn from_shared_query(
-        query: Arc<Query>,
-        patterns: &[HighlightPattern],
+    /// re-parsed per buffer open. A pattern using an engine predicate or
+    /// directive other than `#is?`/`#is-not? local` is skipped, its error in
+    /// `source` pushed to `skipped`.
+    pub(crate) fn new(
+        mut query: Query,
+        source: &str,
         registry: &mut ScopeRegistry,
+        skipped: &mut Vec<QueryError>,
     ) -> Self {
+        let localities = parse_patterns(&mut query, source, skipped);
         // Leading-underscore captures (e.g. `@_f`, `@_lib`) are the queries'
         // convention for pattern-internal predicate helpers, never meant to
         // be styled, so map them to `None` so they never emit a span.
@@ -134,9 +132,9 @@ impl TreeSitterHighlighter {
             })
             .collect();
         Self {
-            query,
+            query: Arc::new(query),
             capture_scopes,
-            localities: patterns.iter().map(|pattern| pattern.locality).collect(),
+            localities,
             cursor: Mutex::new(QueryCursor::new()),
         }
     }
@@ -204,9 +202,8 @@ impl TreeSitterHighlighter {
                 continue;
             };
             let node = cap.node;
-            let locality = self.localities[m.pattern_index];
-            if locality != Locality::Any
-                && !locality.admits(layer.locals.is_local(node.start_byte(), node.end_byte()))
+            if !self.localities[m.pattern_index]
+                .admits(|| layer.locals.is_local(node.start_byte(), node.end_byte()))
             {
                 continue;
             }

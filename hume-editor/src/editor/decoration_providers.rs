@@ -303,7 +303,7 @@ impl Editor {
 
                 let render = &self.state.panes.entries[pid].render;
                 render.set_diagnostics(diag_spans);
-                render.set_extra(extra_spans);
+                render.text().set_extra(extra_spans);
             }
         }
     }
@@ -558,7 +558,10 @@ impl Editor {
         let text = self.state.buffers.get(bid).text();
         let by_line =
             conceals_by_line(text, self.state.config.decorations.conceals_for_buffer(bid));
-        self.state.panes.entries[pid].render.set_conceals(by_line);
+        self.state.panes.entries[pid]
+            .render
+            .text()
+            .set_conceals(by_line);
     }
 
     /// Write per-frame line-background data to every pane's own
@@ -585,6 +588,7 @@ impl Editor {
 
             self.state.panes.entries[pid]
                 .render
+                .text()
                 .set_line_backgrounds(by_line);
         }
     }

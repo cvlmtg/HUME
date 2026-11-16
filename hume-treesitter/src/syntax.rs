@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::highlight::layer_highlights_for_line;
-use crate::layers::{SyntaxLayer, SyntaxLayers};
+use crate::layers::SyntaxLayers;
 use hume_core::BufferId;
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
@@ -521,14 +521,7 @@ impl Syntax {
         let unloaded = match outcome {
             ParseOutcome::Ok(parsed) => {
                 let mut layers = Vec::with_capacity(1 + parsed.injected.len());
-                layers.push(SyntaxLayer {
-                    tree: parsed.root,
-                    bundle: Arc::clone(&bundle),
-                    ranges: Vec::new(),
-                    depth: 0,
-                    sites: parsed.root_sites,
-                    locals: parsed.root_locals,
-                });
+                layers.push(parsed.root);
                 layers.extend(parsed.injected);
                 self.committed = Some(Committed {
                     layers: SyntaxLayers::new(layers),

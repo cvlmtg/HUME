@@ -267,14 +267,16 @@ fn a_locals_scm_capturing_nothing_it_reads_is_left_out() {
 fn every_fixture_locals_scm_loads_with_nothing_skipped() {
     for name in ["c", "python", "rust"] {
         require_grammars(&[name]);
-        let highlights = grammar_query_path(name);
-        let locals = highlights.with_file_name("locals.scm");
-        let read = |path: &Path| std::fs::read_to_string(path).expect("read the fixture query");
+        let highlights = std::fs::read_to_string(grammar_query_path(name))
+            .expect("read the fixture highlights.scm");
         let bundle = crate::test_support::make_bundle(
             name,
             &format!("tree_sitter_{name}"),
-            &read(&highlights),
-            &[(OptionalQuery::Locals, &read(&locals))],
+            &highlights,
+            &[(
+                OptionalQuery::Locals,
+                &crate::test_support::fixture_query(name, OptionalQuery::Locals),
+            )],
         );
         assert!(bundle.locals.is_some(), "{name}'s locals.scm names locals");
     }

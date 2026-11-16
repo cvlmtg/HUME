@@ -59,6 +59,9 @@ pub(in crate::editor) struct Markup {
     /// ([`Self::begin_format`]).
     syntax: Option<MarkupSyntax>,
     format: Format,
+    /// The providers of the format the formatter returned, empty until it
+    /// returns one.
+    providers: ProviderSet,
     content: PopupContent,
 }
 
@@ -66,9 +69,7 @@ pub(in crate::editor) struct Markup {
 enum Format {
     /// A formatter for the text's grammar may still apply.
     Pending,
-    /// The format the formatter returned, `None` when there was no formatter
-    /// or it failed.
-    Done(Option<TextFormat>),
+    Done,
 }
 
 impl Markup {
@@ -110,13 +111,15 @@ impl Markup {
     ) -> Self {
         let format = match syntax {
             Some(_) => Format::Pending,
-            None => Format::Done(None),
+            None => Format::Done,
         };
-        let content = popup_content(&text, syntax.as_ref(), None, theme, registry);
+        let providers = ProviderSet::new();
+        let content = popup_content(&text, syntax.as_ref(), &providers, theme, registry);
         Self {
             text,
             syntax,
             format,
+            providers,
             content,
         }
     }
@@ -155,7 +158,7 @@ impl Markup {
     pub(in crate::editor) fn begin_format(&mut self) -> Option<MarkupSyntax> {
         match self.format {
             Format::Pending => self.syntax.take(),
-            Format::Done(_) => None,
+            Format::Done => None,
         }
     }
 
@@ -169,27 +172,29 @@ impl Markup {
         theme: &mut Theme,
         registry: &ScopeRegistry,
     ) {
-        let formatted = format.is_some();
         self.syntax = Some(syntax);
-        self.format = Format::Done(format);
-        if formatted {
+        self.format = Format::Done;
+        if let Some(format) = format {
+            self.providers = format.providers;
             self.rebuild(theme, registry);
         }
     }
 
     /// Builds the content again against `theme`, keeping the format.
     pub(in crate::editor) fn rebuild(&mut self, theme: &mut Theme, registry: &ScopeRegistry) {
-        let format = match &self.format {
-            Format::Done(format) => format.as_ref(),
-            Format::Pending => None,
-        };
-        self.content = popup_content(&self.text, self.syntax.as_ref(), format, theme, registry);
+        self.content = popup_content(
+            &self.text,
+            self.syntax.as_ref(),
+            &self.providers,
+            theme,
+            registry,
+        );
     }
 }
 
 /// A `ui.popup` box's content for `text`: highlighted through `syntax` and
-/// drawn with `format` when there is a parse, as a pane draws a line, plain
-/// otherwise. Its styled runs bake `theme`'s colors in.
+/// drawn with a format's `providers` when there is a parse, as a pane draws
+/// a line, plain otherwise. Its styled runs bake `theme`'s colors in.
 ///
 /// Bakes `theme` first: the grammar interned its scopes when `syntax` was
 /// built, and the format when it was checked, possibly since the last bake,
@@ -197,7 +202,7 @@ impl Markup {
 fn popup_content(
     text: &str,
     syntax: Option<&MarkupSyntax>,
-    format: Option<&TextFormat>,
+    providers: &ProviderSet,
     theme: &mut Theme,
     registry: &ScopeRegistry,
 ) -> PopupContent {
@@ -206,14 +211,6 @@ fn popup_content(
     };
     theme.bake_if_stale(registry);
     let base = theme.resolve_by_name(Scope(ui_scopes::POPUP));
-    let unformatted;
-    let providers = match format {
-        Some(format) => &format.providers,
-        None => {
-            unformatted = ProviderSet::new();
-            &unformatted
-        }
-    };
     PopupContent::styled(styled_lines(
         syntax.text.rope(),
         Some(&syntax.syntax),

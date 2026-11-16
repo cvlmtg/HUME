@@ -99,6 +99,11 @@ impl TextDecorationHandles {
 }
 
 impl PaneDecorationHandles {
+    /// The pane's extra highlights, line backgrounds and conceals.
+    pub fn text(&self) -> &TextDecorationHandles {
+        &self.text
+    }
+
     pub fn set_signs(&self, by_line: FxHashMap<ContentLine, Vec<Sign>>) {
         self.signs.set(by_line);
     }
@@ -120,24 +125,12 @@ impl PaneDecorationHandles {
         self.virtual_lines.set(by_line);
     }
 
-    pub fn set_line_backgrounds(&self, by_line: FxHashMap<ContentLine, ScopeId>) {
-        self.text.set_line_backgrounds(by_line);
-    }
-
-    pub fn set_conceals(&self, by_line: FxHashMap<ContentLine, Vec<Conceal>>) {
-        self.text.set_conceals(by_line);
-    }
-
     pub fn set_search(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
         self.highlights.search.set(spans);
     }
 
     pub fn set_diagnostics(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
         self.highlights.diagnostics.set(spans);
-    }
-
-    pub fn set_extra(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
-        self.text.set_extra(spans);
     }
 
     /// At most one bracket match per pane: `None` blanks it (every
