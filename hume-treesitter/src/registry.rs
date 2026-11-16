@@ -77,7 +77,7 @@ pub struct GrammarBundle {
     pub injections: Option<InjectionsQuery>,
     /// Compiled `textobjects.scm`, if the grammar has one. `None` means this
     /// language ships no structural text objects or navigation.
-    pub textobjects: Option<TextObjectsQuery>,
+    pub textobjects: Option<Arc<TextObjectsQuery>>,
     /// Compiled `indents.scm`, if the grammar has one. `None` means new
     /// lines in this language are never indented from its syntax tree.
     pub indents: Option<IndentQuery>,
@@ -272,7 +272,7 @@ pub(crate) fn new_bundle(
 pub(crate) struct CompiledQueries {
     pub(crate) highlighter: Arc<TreeSitterHighlighter>,
     pub(crate) injections: Option<InjectionsQuery>,
-    pub(crate) textobjects: Option<TextObjectsQuery>,
+    pub(crate) textobjects: Option<Arc<TextObjectsQuery>>,
     pub(crate) indents: Option<IndentQuery>,
     pub(crate) context: Option<Arc<ContextQuery>>,
     pub(crate) folds: Option<FoldQuery>,
@@ -303,7 +303,7 @@ pub(crate) fn compile_queries(
                 .replace(InjectionsQuery::new(Arc::new(query), src).map_err(build)?)
                 .is_some(),
             OptionalQuery::TextObjects => textobjects
-                .replace(TextObjectsQuery::new(query, src).map_err(build)?)
+                .replace(Arc::new(TextObjectsQuery::new(query, src).map_err(build)?))
                 .is_some(),
             OptionalQuery::Indents => indents
                 .replace(IndentQuery::new(query, src, language).map_err(build)?)

@@ -1,12 +1,13 @@
 use std::ops::Range;
+use std::sync::Arc;
 
 use hume_rope::line::ContentLine;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{CaptureQuantifier, Point, QueryCursor, QueryError, QueryPredicate, Tree};
+use tree_sitter::{Point, QueryCursor, QueryError, QueryPredicate, Tree};
 
-use crate::directives::{PatternDirectives, parse_patterns, unsupported};
+use crate::directives::{MakeRange, PatternDirectives, parse_patterns, unsupported};
 use crate::highlight::RopeProvider;
-use crate::textobjects::{MakeRange, ObjectKind, ObjectPattern, ObjectSpan, TextObjectsQuery};
+use crate::textobjects::{ObjectKind, ObjectSpan, TextObjectsQuery};
 
 /// The query whose matches are the scopes a pane shows the first line of
 /// above its text once that line has scrolled off.
@@ -46,11 +47,9 @@ enum Scopes {
     },
     /// `textobjects.scm`'s `function.around` and `class.around` objects,
     /// each captured node and each made range a scope headed by its own
-    /// first line.
-    TextObjects {
-        around: [Option<u32>; 2],
-        patterns: Vec<ObjectPattern>,
-    },
+    /// first line. [`ContextQuery::query`] is its query with the patterns
+    /// naming neither disabled.
+    TextObjects(Arc<TextObjectsQuery>),
 }
 
 /// The `#make-range! "context"` scopes one `context.scm` pattern makes.
@@ -109,35 +108,23 @@ impl ContextQuery {
     /// A copy of `textobjects`'s query with every pattern that neither
     /// captures nor makes one disabled, so a header lookup does not run the
     /// other text objects' patterns on every line.
-    pub(crate) fn from_textobjects(textobjects: &TextObjectsQuery) -> Option<Self> {
-        if !SCOPE_KINDS
-            .iter()
-            .any(|&kind| textobjects.defines(kind, ObjectSpan::Around))
-        {
+    pub(crate) fn from_textobjects(textobjects: &Arc<TextObjectsQuery>) -> Option<Self> {
+        let scope_pattern = |pattern| {
+            SCOPE_KINDS
+                .iter()
+                .any(|&kind| textobjects.pattern_defines(pattern, kind, ObjectSpan::Around))
+        };
+        let patterns = 0..textobjects.query().pattern_count();
+        if !patterns.clone().any(scope_pattern) {
             return None;
         }
-        let around = SCOPE_KINDS.map(|kind| textobjects.capture_index(kind, ObjectSpan::Around));
-        let patterns = textobjects.patterns();
         let mut query = textobjects.query().deep_clone();
-        for (pattern, directives) in patterns.iter().enumerate() {
-            let quantifiers = query.capture_quantifiers(pattern);
-            let captures_a_scope = around
-                .iter()
-                .flatten()
-                .any(|&index| quantifiers[index as usize] != CaptureQuantifier::Zero);
-            let makes_a_scope = SCOPE_KINDS
-                .iter()
-                .any(|&kind| directives.makes(kind, ObjectSpan::Around));
-            if !captures_a_scope && !makes_a_scope {
-                query.disable_pattern(pattern);
-            }
+        for pattern in patterns.filter(|&pattern| !scope_pattern(pattern)) {
+            query.disable_pattern(pattern);
         }
         Some(Self {
             query,
-            scopes: Scopes::TextObjects {
-                around,
-                patterns: patterns.to_vec(),
-            },
+            scopes: Scopes::TextObjects(Arc::clone(textobjects)),
         })
     }
 
@@ -199,15 +186,13 @@ impl ContextQuery {
                         .filter_map(|range| range.region(m))
                         .for_each(headed);
                 }
-                Scopes::TextObjects { around, patterns } => {
-                    let pattern = &patterns[m.pattern_index];
-                    for &index in around.iter().flatten() {
-                        m.nodes_for_capture_index(index)
-                            .filter_map(|node| pattern.moved(index, node.range(), rope))
-                            .for_each(|range| f(Scope::of(range)));
-                    }
+                Scopes::TextObjects(objects) => {
                     for kind in SCOPE_KINDS {
-                        pattern.made(kind, ObjectSpan::Around, m, |range| f(Scope::of(range)));
+                        let captured =
+                            |capture| m.nodes_for_capture_index(capture).map(|node| node.range());
+                        objects.regions(m, kind, ObjectSpan::Around, rope, captured, |range| {
+                            f(Scope::of(range));
+                        });
                     }
                 }
             }

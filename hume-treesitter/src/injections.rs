@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicBool;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{QueryError, QueryProperty};
 
-use crate::directives::{PatternDirectives, parse_patterns};
+use crate::directives::{PatternDirectives, hull, parse_patterns};
 use crate::edited_bytes::{EditedBytes, push_merging};
 use crate::highlight::RopeProvider;
 
@@ -156,26 +156,6 @@ fn normalize_ranges(mut ranges: Vec<tree_sitter::Range>) -> Vec<tree_sitter::Ran
 /// bytes: a fenced code block's info string).
 fn node_text<'r>(node: tree_sitter::Node, rope: &'r ropey::Rope) -> Cow<'r, str> {
     rope.byte_slice(node.start_byte()..node.end_byte()).into()
-}
-
-/// The smallest range holding both `a` and `b`.
-fn hull(a: tree_sitter::Range, b: tree_sitter::Range) -> tree_sitter::Range {
-    let (start_byte, start_point) = if b.start_byte < a.start_byte {
-        (b.start_byte, b.start_point)
-    } else {
-        (a.start_byte, a.start_point)
-    };
-    let (end_byte, end_point) = if b.end_byte > a.end_byte {
-        (b.end_byte, b.end_point)
-    } else {
-        (a.end_byte, a.end_point)
-    };
-    tree_sitter::Range {
-        start_byte,
-        end_byte,
-        start_point,
-        end_point,
-    }
 }
 
 /// One match of a layer's injections query. It depends only on the layer's

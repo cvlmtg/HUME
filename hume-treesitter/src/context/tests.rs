@@ -10,7 +10,8 @@ use super::*;
 use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
 use crate::test_support::{
-    bundle_with_fixture_query, empty_langs, fixture_query, make_bundle, open_grammar, syntax_with,
+    bundle_with_fixture_query, empty_langs, fixture_query, make_bundle, open_grammar,
+    rust_bundle_with, syntax_with,
 };
 use crate::textobjects::{ObjectKind, ObjectSpan, ObjectSpans, SpanSelector};
 
@@ -227,11 +228,13 @@ fn textobjects_name_scopes_only_with_function_or_class_objects() {
     require_grammars(&["rust"]);
     let grammar = open_grammar("rust", "tree_sitter_rust");
     let textobjects = |source: &str| {
-        TextObjectsQuery::new(
-            tree_sitter::Query::new(grammar.language(), source).expect("compile query"),
-            source,
+        Arc::new(
+            TextObjectsQuery::new(
+                tree_sitter::Query::new(grammar.language(), source).expect("compile query"),
+                source,
+            )
+            .expect("supported directives"),
         )
-        .expect("supported directives")
     };
     assert!(
         ContextQuery::from_textobjects(&textobjects("(parameter) @parameter.around")).is_none()
@@ -241,24 +244,13 @@ fn textobjects_name_scopes_only_with_function_or_class_objects() {
     );
 }
 
-/// Rust with `textobjects` as its `textobjects.scm` and no other optional
-/// query, so its scopes come from the text objects.
-fn with_textobjects(textobjects: &str) -> Arc<GrammarBundle> {
-    require_grammars(&["rust"]);
-    make_bundle(
-        "rust",
-        "tree_sitter_rust",
-        "",
-        &[(OptionalQuery::TextObjects, textobjects)],
-    )
-}
-
 /// A function whose signature spans rows 0 to 3.
 const SIGNATURE: &str = "fn f(\n    a: u32,\n    b: u32,\n) {\n    body();\n}\n";
 
 #[test]
 fn textobject_made_function_ranges_are_fallback_scopes() {
-    let bundle = with_textobjects(
+    let bundle = rust_bundle_with(
+        OptionalQuery::TextObjects,
         r#"((function_item name: (identifier) @_s parameters: (parameters) @_e)
             (#make-range! "function.around" @_s @_e))"#,
     );
@@ -272,26 +264,18 @@ fn textobject_made_function_ranges_are_fallback_scopes() {
 
 #[test]
 fn a_fallback_scope_whose_offset_leaves_its_line_is_absent() {
-    let bundle =
-        with_textobjects("((function_item) @function.around (#offset! @function.around 0 0 0 -2))");
+    let bundle = rust_bundle_with(
+        OptionalQuery::TextObjects,
+        "((function_item) @function.around (#offset! @function.around 0 0 0 -2))",
+    );
     let (syn, text) = syntax_with(bundle, "fn f() {\n    a();\n    b();\n}\n");
     assert_eq!(headers(&syn, &text, ContentLine::new(2)), []);
 }
 
-/// Rust with `context` as its `context.scm` and no other optional query.
-fn with_context(context: &str) -> Arc<GrammarBundle> {
-    require_grammars(&["rust"]);
-    make_bundle(
-        "rust",
-        "tree_sitter_rust",
-        "",
-        &[(OptionalQuery::Context, context)],
-    )
-}
-
 #[test]
 fn a_made_context_scope_runs_from_its_start_through_its_end() {
-    let bundle = with_context(
+    let bundle = rust_bundle_with(
+        OptionalQuery::Context,
         r#"((function_item name: (identifier) @_s parameters: (parameters) @_e)
             (#make-range! "context" @_s @_e))"#,
     );
@@ -307,7 +291,8 @@ fn a_made_context_scope_runs_from_its_start_through_its_end() {
 /// its `@context.start` heads it on row 1.
 #[test]
 fn a_made_context_scope_is_headed_by_its_context_start_capture() {
-    let bundle = with_context(
+    let bundle = rust_bundle_with(
+        OptionalQuery::Context,
         r#"((attribute_item) @_s
             .
             (function_item name: (identifier) @context.start parameters: (parameters) @_e)

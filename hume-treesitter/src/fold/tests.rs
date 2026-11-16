@@ -12,7 +12,7 @@ use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
 use crate::test_support::{
     assert_rejected_at_pattern_start, bundle_with_fixture_query, fixture_query, make_bundle,
-    syntax_with,
+    rust_bundle_with, syntax_with,
 };
 
 fn fold(first: usize, last: usize, shows_last: bool) -> Fold {
@@ -158,54 +158,33 @@ fn an_unsupported_fold_directive_fails_the_compile_on_its_pattern_row() {
     );
 }
 
-/// Rust with `textobjects` as its `textobjects.scm` and no other optional
-/// query, so its regions are the text objects' scopes.
-fn with_textobjects(textobjects: &str) -> Arc<GrammarBundle> {
-    require_grammars(&["rust"]);
-    make_bundle(
-        "rust",
-        "tree_sitter_rust",
-        "",
-        &[(OptionalQuery::TextObjects, textobjects)],
-    )
-}
-
 /// The end moves from after the closing `}` to column 0 of its line, so the
 /// region ends on the line before.
 #[test]
 fn an_offset_function_object_ends_its_fallback_fold_on_the_line_before() {
     let source = "fn f() {\n    a();\n    b();\n}\n";
-    let offset =
-        with_textobjects("((function_item) @function.around (#offset! @function.around 0 0 0 -1))");
+    let offset = rust_bundle_with(
+        OptionalQuery::TextObjects,
+        "((function_item) @function.around (#offset! @function.around 0 0 0 -1))",
+    );
     let (syn, text) = syntax_with(offset, source);
     assert_eq!(fold_at(&syn, &text, 0), Some(fold(0, 2, false)));
-    let plain = with_textobjects("(function_item) @function.around");
+    let plain = rust_bundle_with(
+        OptionalQuery::TextObjects,
+        "(function_item) @function.around",
+    );
     let (syn, text) = syntax_with(plain, source);
     assert_eq!(fold_at(&syn, &text, 0), Some(fold(0, 3, true)));
-}
-
-#[test]
-fn a_fallback_fold_whose_offset_leaves_its_line_is_absent() {
-    let bundle =
-        with_textobjects("((function_item) @function.around (#offset! @function.around 0 0 0 -2))");
-    let (syn, text) = syntax_with(bundle, "fn f() {\n    a();\n    b();\n}\n");
-    assert_eq!(fold_at(&syn, &text, 0), None);
 }
 
 /// The region runs from `f` on row 0 through the `)` alone on row 3, which
 /// stays shown.
 #[test]
 fn a_made_context_scope_folds_through_its_end_capture() {
-    require_grammars(&["rust"]);
-    let bundle = make_bundle(
-        "rust",
-        "tree_sitter_rust",
-        "",
-        &[(
-            OptionalQuery::Context,
-            r#"((function_item name: (identifier) @_s parameters: (parameters) @_e)
-                (#make-range! "context" @_s @_e))"#,
-        )],
+    let bundle = rust_bundle_with(
+        OptionalQuery::Context,
+        r#"((function_item name: (identifier) @_s parameters: (parameters) @_e)
+            (#make-range! "context" @_s @_e))"#,
     );
     let source = "fn f(\n    a: u32,\n    b: u32,\n) {\n    body();\n}\n";
     let (syn, text) = syntax_with(bundle, source);

@@ -1,6 +1,6 @@
 //! Tree-sitter structural text objects and navigation: kinds, spans, the
-//! per-`(kind, span)` capture-index table a compiled `textobjects.scm`
-//! resolves to, and [`ObjectSpans`], which runs that query over a buffer's
+//! per-`(kind, span)` object table a compiled `textobjects.scm` resolves
+//! to, and [`ObjectSpans`], which runs that query over a buffer's
 //! syntax layers into a sorted list of cluster ranges.
 //!
 //! Freshness (the tree matches the text before a command runs) is
@@ -13,8 +13,8 @@
 
 /// Emits an object-kind/span enum, its dense `ALL` slice, and its
 /// `capture_name`/`from_capture_name` pair from one variant↦capture-name
-/// list. `TextObjectsQuery`'s capture table is sized
-/// `[[Option<u32>; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()]` and
+/// list. `TextObjectsQuery`'s object table is sized
+/// `[[ObjectDef; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()]` and
 /// indexed by `kind as usize`/`span as usize`, so a variant added to the enum
 /// but not to a hand-synced `ALL` list compiles fine and panics out of
 /// bounds on the first query attach. One list generating all three closes
@@ -117,13 +117,22 @@ fn object_named(name: &str) -> Option<(ObjectKind, ObjectSpan)> {
     ))
 }
 
-/// A compiled `textobjects.scm` query plus a dense `(kind, span) → capture
-/// index` table and each pattern's directives, resolved once, when the
-/// grammar loads.
+/// A compiled `textobjects.scm` query plus a dense `(kind, span)` table of
+/// how it defines each object and each pattern's directives, resolved once,
+/// when the grammar loads.
 pub struct TextObjectsQuery {
     query: tree_sitter::Query,
-    captures: [[Option<u32>; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()],
+    objects: [[ObjectDef; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()],
     patterns: Vec<ObjectPattern>,
+}
+
+/// How a [`TextObjectsQuery`] defines one `<kind>.<span>` object.
+#[derive(Clone, Copy, Default)]
+struct ObjectDef {
+    /// The index of its `@<kind>.<span>` capture.
+    capture: Option<u32>,
+    /// Whether a pattern's `#make-range!` names it.
+    made: bool,
 }
 
 impl TextObjectsQuery {
@@ -131,16 +140,19 @@ impl TextObjectsQuery {
     /// `source`, on any engine predicate or directive but `#make-range!` and
     /// `#offset!`, and on either of those with arguments it can't apply.
     pub(crate) fn new(query: tree_sitter::Query, source: &str) -> Result<Self, QueryError> {
-        let mut captures = [[None; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()];
+        let patterns: Vec<ObjectPattern> = parse_patterns(&query, source)?;
+        let mut objects = [[ObjectDef::default(); ObjectSpan::ALL.len()]; ObjectKind::ALL.len()];
         for (idx, name) in query.capture_names().iter().enumerate() {
             if let Some((kind, span)) = object_named(name) {
-                captures[kind as usize][span as usize] = Some(idx as u32);
+                objects[kind as usize][span as usize].capture = Some(idx as u32);
             }
         }
-        let patterns = parse_patterns(&query, source)?;
+        for &(kind, span, _) in patterns.iter().flat_map(|pattern| &pattern.ranges) {
+            objects[kind as usize][span as usize].made = true;
+        }
         Ok(Self {
             query,
-            captures,
+            objects,
             patterns,
         })
     }
@@ -150,58 +162,70 @@ impl TextObjectsQuery {
         &self.query
     }
 
-    /// The capture index for a `<kind>.<span>` pair, if this query defines it.
+    fn object(&self, kind: ObjectKind, span: ObjectSpan) -> ObjectDef {
+        self.objects[kind as usize][span as usize]
+    }
+
+    /// The capture index for a `<kind>.<span>` pair, if this query captures it.
     pub(crate) fn capture_index(&self, kind: ObjectKind, span: ObjectSpan) -> Option<u32> {
-        self.captures[kind as usize][span as usize]
+        self.object(kind, span).capture
     }
 
     /// Whether this query defines a `<kind>.<span>` object, by a capture or
     /// by a `#make-range!`.
     pub(crate) fn defines(&self, kind: ObjectKind, span: ObjectSpan) -> bool {
-        self.capture_index(kind, span).is_some()
-            || self
-                .patterns
-                .iter()
-                .any(|pattern| pattern.makes(kind, span))
+        let object = self.object(kind, span);
+        object.capture.is_some() || object.made
     }
 
-    /// Each pattern's directives, by pattern index.
-    pub(crate) fn patterns(&self) -> &[ObjectPattern] {
-        &self.patterns
+    /// Whether `pattern` captures or makes a `kind.span` object.
+    pub(crate) fn pattern_defines(
+        &self,
+        pattern: usize,
+        kind: ObjectKind,
+        span: ObjectSpan,
+    ) -> bool {
+        self.capture_index(kind, span).is_some_and(|capture| {
+            self.query.capture_quantifiers(pattern)[capture as usize] != CaptureQuantifier::Zero
+        }) || self.patterns[pattern].makes(kind, span)
     }
 
     /// Call `f` with each region match `m` makes the `kind.span` object of:
-    /// its capture's hull, moved by the pattern's `#offset!` of it, and each
-    /// `#make-range!` naming it.
-    fn regions(
+    /// each region `captured` gives for its capture, moved by the pattern's
+    /// `#offset!` of it, and each `#make-range!` naming it. `m` is a match
+    /// of this query or of a [`tree_sitter::Query::deep_clone`] of it.
+    pub(crate) fn regions<I: IntoIterator<Item = tree_sitter::Range>>(
         &self,
         m: &QueryMatch<'_, '_>,
         kind: ObjectKind,
         span: ObjectSpan,
         rope: &Rope,
+        captured: impl FnOnce(u32) -> I,
         mut f: impl FnMut(tree_sitter::Range),
     ) {
         let pattern = &self.patterns[m.pattern_index];
-        if let Some(capture) = self.capture_index(kind, span)
-            && let Some(hull) = capture_hull(m, capture)
-            && let Some(hull) = pattern.moved(capture, hull, rope)
-        {
-            f(hull);
+        if let Some(capture) = self.capture_index(kind, span) {
+            captured(capture)
+                .into_iter()
+                .filter_map(|region| pattern.moved(capture, region, rope))
+                .for_each(&mut f);
         }
-        pattern.made(kind, span, m, f);
+        pattern
+            .ranges_naming(kind, span)
+            .filter_map(|range| range.region(m))
+            .for_each(f);
     }
 }
 
 /// The directives one `textobjects.scm` pattern carries.
-#[derive(Clone, Default)]
-pub(crate) struct ObjectPattern {
+#[derive(Default)]
+struct ObjectPattern {
     offsets: Vec<Offset>,
     ranges: Vec<(ObjectKind, ObjectSpan, MakeRange)>,
 }
 
 /// `#offset! @capture 0 start 0 end`: the capture's region moves `start`
 /// bytes at its start and `end` bytes at its end, each along its own line.
-#[derive(Clone, Copy)]
 struct Offset {
     capture: u32,
     start: isize,
@@ -257,30 +281,22 @@ impl PatternDirectives for ObjectPattern {
 
 impl ObjectPattern {
     /// Whether a `#make-range!` of this pattern names `kind.span`.
-    pub(crate) fn makes(&self, kind: ObjectKind, span: ObjectSpan) -> bool {
-        self.ranges.iter().any(|&(k, s, _)| (k, s) == (kind, span))
+    fn makes(&self, kind: ObjectKind, span: ObjectSpan) -> bool {
+        self.ranges_naming(kind, span).next().is_some()
     }
 
-    /// Call `f` with the region of each `#make-range!` naming `kind.span`
-    /// that `m` makes.
-    pub(crate) fn made(
-        &self,
-        kind: ObjectKind,
-        span: ObjectSpan,
-        m: &QueryMatch<'_, '_>,
-        mut f: impl FnMut(tree_sitter::Range),
-    ) {
+    /// This pattern's `#make-range!`s naming `kind.span`.
+    fn ranges_naming(&self, kind: ObjectKind, span: ObjectSpan) -> impl Iterator<Item = MakeRange> {
         self.ranges
             .iter()
-            .filter(|&&(k, s, _)| (k, s) == (kind, span))
-            .filter_map(|(_, _, range)| range.region(m))
-            .for_each(&mut f);
+            .filter(move |&&(k, s, _)| (k, s) == (kind, span))
+            .map(|&(_, _, range)| range)
     }
 
     /// `region` of `capture`, moved by this pattern's `#offset!` of it.
     /// `None` when a bound would leave its line or the text, or the region
     /// would be empty.
-    pub(crate) fn moved(
+    fn moved(
         &self,
         capture: u32,
         region: tree_sitter::Range,
@@ -315,48 +331,6 @@ fn along_line(byte: usize, point: Point, delta: isize, rope: &Rope) -> Option<(u
     (!crosses_break).then_some((moved, Point { column, ..point }))
 }
 
-/// `#make-range! "name" @start @end`: a region from `@start`'s start
-/// through `@end`'s end.
-#[derive(Clone, Copy)]
-pub(crate) struct MakeRange {
-    start: u32,
-    end: u32,
-}
-
-impl MakeRange {
-    /// The name a `#make-range!` gives, and its range.
-    pub(crate) fn parse(args: &[Arg]) -> Result<(&str, Self), String> {
-        match args {
-            [Arg::String(name), Arg::Capture(start), Arg::Capture(end)] => Ok((
-                name,
-                Self {
-                    start: *start,
-                    end: *end,
-                },
-            )),
-            _ => Err("#make-range! takes a name and two captures".to_owned()),
-        }
-    }
-
-    /// The region `m` makes, ending at `@start`'s end when `@end` captured
-    /// nothing. `None` when `@start` captured nothing or either capture's
-    /// nodes are not contiguous (see [`capture_hull`]), or the region is
-    /// empty.
-    pub(crate) fn region(self, m: &QueryMatch<'_, '_>) -> Option<tree_sitter::Range> {
-        let start = capture_hull(m, self.start)?;
-        let end = match m.nodes_for_capture_index(self.end).next() {
-            Some(_) => capture_hull(m, self.end)?,
-            None => start,
-        };
-        (start.start_byte < end.end_byte).then_some(tree_sitter::Range {
-            start_byte: start.start_byte,
-            start_point: start.start_point,
-            end_byte: end.end_byte,
-            end_point: end.end_point,
-        })
-    }
-}
-
 // ── ObjectSpans ────────────────────────────────────────────────────────────
 
 use std::sync::Arc;
@@ -365,9 +339,11 @@ use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 use ropey::Rope;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Point, QueryError, QueryMatch, QueryPredicate, QueryPredicateArg as Arg};
+use tree_sitter::{
+    CaptureQuantifier, Point, QueryError, QueryMatch, QueryPredicate, QueryPredicateArg as Arg,
+};
 
-use crate::directives::{PatternDirectives, parse_patterns, unsupported};
+use crate::directives::{MakeRange, PatternDirectives, capture_hull, parse_patterns, unsupported};
 use crate::highlight::RopeProvider;
 use crate::layers::{SyntaxLayer, SyntaxLayers};
 
@@ -587,42 +563,6 @@ impl ObjectSpans {
     }
 }
 
-/// The hull of every node captured under `capture_idx`, from the first
-/// node's start to the furthest end, or `None` if the capture is empty or
-/// its nodes are not contiguous.
-///
-/// A quantified capture legitimately spans several nodes (a function's
-/// leading attributes, a run of line comments). But an unanchored quantifier
-/// lets tree-sitter match across unrelated siblings: rust `test.around`'s
-/// attribute group can skip over one test's body and latch onto the next
-/// test's `#[test]`. So consecutive nodes must overlap or nest, or the second
-/// must be the first's `next_sibling()` (the adjacency a `.` anchor enforces).
-/// A failing match is dropped whole, not trimmed to its contiguous prefix,
-/// since the prefix would still tag an unrelated function as a test.
-fn capture_hull(m: &tree_sitter::QueryMatch, capture_idx: u32) -> Option<tree_sitter::Range> {
-    let mut nodes = m.nodes_for_capture_index(capture_idx);
-    let first = nodes.next()?;
-    let mut prev = first;
-    let mut hull = first.range();
-    for node in nodes {
-        debug_assert!(
-            node.start_byte() >= prev.start_byte(),
-            "tree-sitter yields one capture's nodes in document order"
-        );
-        let contiguous = node.start_byte() <= hull.end_byte
-            || prev.next_sibling().is_some_and(|sib| sib.id() == node.id());
-        if !contiguous {
-            return None;
-        }
-        if node.end_byte() > hull.end_byte {
-            hull.end_byte = node.end_byte();
-            hull.end_point = node.end_position();
-        }
-        prev = node;
-    }
-    Some(hull)
-}
-
 /// Run `query`'s matches over `layer`'s tree and push the clusters holding
 /// each region a match makes the `kind.span` object of. A zero-width region
 /// (a `MISSING` node standing in for absent syntax) contributes nothing. A
@@ -648,7 +588,8 @@ fn collect_hulls(
     let root = layer.tree.root_node();
     let mut matches = cursor.matches(&query.query, root, RopeProvider(text.rope()));
     while let Some(m) = matches.next() {
-        query.regions(m, kind, span, text.rope(), |region| {
+        let captured = |capture| capture_hull(m, capture);
+        query.regions(m, kind, span, text.rope(), captured, |region| {
             // Callers hand over only a tree parsed from `text`; a stale one
             // could name bytes past its end.
             assert!(

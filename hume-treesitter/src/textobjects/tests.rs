@@ -6,7 +6,9 @@ use test_fixtures::{require_grammars, require_helix_query};
 use super::*;
 use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
-use crate::test_support::{bundle_with_fixture_query, empty_langs, make_bundle, syntax_with};
+use crate::test_support::{
+    bundle_with_fixture_query, empty_langs, make_bundle, rust_bundle_with, syntax_with,
+};
 use hume_core::OptionalQuery;
 use hume_editing::changeset::ChangeSetBuilder;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
@@ -778,25 +780,13 @@ fn grammar_defines_is_false_for_the_empty_default() {
 
 // ── #make-range! and #offset! ──────────────────────────────────────────────
 
-/// Rust with `textobjects` as its `textobjects.scm` and no other optional
-/// query.
-fn with_textobjects(textobjects: &str) -> Arc<GrammarBundle> {
-    require_grammars(&["rust"]);
-    make_bundle(
-        "rust",
-        "tree_sitter_rust",
-        "",
-        &[(OptionalQuery::TextObjects, textobjects)],
-    )
-}
-
 const MADE_PARAMETERS: &str = r#"((parameters (parameter) @parameter.inside . ","? @_end)
   (#make-range! "parameter.around" @parameter.inside @_end))"#;
 
 #[test]
 fn a_made_parameter_runs_through_its_trailing_comma_or_ends_with_itself() {
     let (syn, text) = syntax_with(
-        with_textobjects(MADE_PARAMETERS),
+        rust_bundle_with(OptionalQuery::TextObjects, MADE_PARAMETERS),
         "fn add(a: i32, b: i32) {}\n",
     );
     let layers = syn.layers().expect("layers installed");
@@ -807,7 +797,8 @@ fn a_made_parameter_runs_through_its_trailing_comma_or_ends_with_itself() {
 #[test]
 fn a_made_object_whose_start_captured_nothing_is_absent() {
     let (syn, text) = syntax_with(
-        with_textobjects(
+        rust_bundle_with(
+            OptionalQuery::TextObjects,
             r#"((parameters (parameter)? @_s ")" @_e)
                 (#make-range! "parameter.around" @_s @_e))"#,
         ),
@@ -820,7 +811,10 @@ fn a_made_object_whose_start_captured_nothing_is_absent() {
 
 #[test]
 fn a_made_object_is_defined_without_a_capture_of_its_own() {
-    let bundle = with_textobjects(&MADE_PARAMETERS.replace("@parameter.inside", "@_p"));
+    let bundle = rust_bundle_with(
+        OptionalQuery::TextObjects,
+        &MADE_PARAMETERS.replace("@parameter.inside", "@_p"),
+    );
     let query = bundle.textobjects.as_ref().expect("textobjects compiled");
     assert!(query.defines(ObjectKind::Parameter, ObjectSpan::Around));
     assert!(!query.defines(ObjectKind::Parameter, ObjectSpan::Inside));
@@ -835,7 +829,7 @@ fn a_made_object_is_defined_without_a_capture_of_its_own() {
 /// `offset` (`r1 c1 r2 c2`).
 fn offset_bodies(offset: &str, source: &str) -> (bool, Vec<String>) {
     let query = format!("((block) @function.inside (#offset! @function.inside {offset}))");
-    let (syn, text) = syntax_with(with_textobjects(&query), source);
+    let (syn, text) = syntax_with(rust_bundle_with(OptionalQuery::TextObjects, &query), source);
     let layers = syn.layers().expect("layers installed");
     let inside = ObjectSpans::collect(layers, &text, ObjectKind::Function, ObjectSpan::Inside);
     (inside.grammar_defines(), span_texts(&text, &inside))

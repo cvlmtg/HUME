@@ -86,6 +86,12 @@ pub(crate) fn fixture_query(language: &str, kind: OptionalQuery) -> String {
     std::fs::read_to_string(path).expect("read fixture query")
 }
 
+/// The rust bundle carrying `src` as its `kind` query and no other.
+pub(crate) fn rust_bundle_with(kind: OptionalQuery, src: &str) -> Arc<GrammarBundle> {
+    test_fixtures::require_grammars(&["rust"]);
+    make_bundle("rust", "tree_sitter_rust", "", &[(kind, src)])
+}
+
 /// The `name` bundle carrying the fetched Helix `kind` query and no other.
 pub(crate) fn bundle_with_fixture_query(
     name: &str,

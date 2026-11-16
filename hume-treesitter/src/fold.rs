@@ -76,10 +76,11 @@ impl FoldPattern {
         if !self.trim {
             return Some(fold);
         }
-        let mut last = fold.last();
-        while last > fold.first() && is_blank(rope, last) {
-            last = last.retreat_saturating(1);
-        }
+        let last = InclusiveRange::new(fold.first().advance(1), fold.last())
+            .iter()
+            .rev()
+            .find(|&line| !is_blank(rope, line))
+            .unwrap_or(fold.first());
         Fold::new(fold.first(), last, fold.shows_last() && last == fold.last())
     }
 
@@ -133,15 +134,12 @@ impl FoldQuery {
                 patterns,
             } => {
                 cursor.set_byte_range(bytes);
-                let mut matches = cursor.matches(query, tree.root_node(), RopeProvider(rope));
+                let mut matches = cursor.matches(query, root, RopeProvider(rope));
                 while let Some(m) = matches.next() {
                     let pattern = &patterns[m.pattern_index];
-                    if !pattern.admits(m) {
-                        continue;
-                    }
                     m.nodes_for_capture_index(*fold)
                         .map(|node| Scope::of(node.range()))
-                        .filter(|scope| wanted(scope.header))
+                        .filter(|scope| wanted(scope.header) && pattern.admits(m))
                         .filter_map(|scope| fold_of(scope, root, rope))
                         .filter_map(|fold| pattern.trimmed(fold, rope))
                         .for_each(&mut *f);
@@ -258,13 +256,14 @@ fn fold_of(scope: Scope, root: Node, rope: &ropey::Rope) -> Option<Fold> {
     } else {
         end.row
     });
-    let shows_last = !ends_at_line_start && closes_on_own_line(root, scope.end_byte, end.row, rope);
+    let shows_last = !ends_at_line_start && closes_on_own_line(scope, root, rope);
     Fold::new(first, last, shows_last)
 }
 
-/// Whether the token ending at `end` under `root` is anonymous, starts on
-/// `row`, and only whitespace precedes it there.
-fn closes_on_own_line(root: Node, end: usize, row: usize, rope: &ropey::Rope) -> bool {
+/// Whether the token ending `scope` under `root` is anonymous, starts on
+/// `scope`'s last row, and only whitespace precedes it there.
+fn closes_on_own_line(scope: Scope, root: Node, rope: &ropey::Rope) -> bool {
+    let (end, row) = (scope.end_byte, scope.end.row);
     let Some(token) = root.descendant_for_byte_range(end.saturating_sub(1), end) else {
         return false;
     };

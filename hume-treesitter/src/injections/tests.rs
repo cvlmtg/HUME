@@ -830,17 +830,11 @@ fn an_unsupported_injections_predicate_fails_the_compile_on_its_pattern_row() {
 
 #[test]
 fn an_injections_pattern_with_an_unknown_property_compiles() {
-    require_grammars(&["rust"]);
-    let bundle = crate::test_support::make_bundle(
-        "rust",
-        "tree_sitter_rust",
-        "",
-        &[(
-            OptionalQuery::Injections,
-            r#"((line_comment) @injection.content
-                (#set! injection.frobnicate "x")
-                (#set! injection.language "rust"))"#,
-        )],
+    let bundle = crate::test_support::rust_bundle_with(
+        OptionalQuery::Injections,
+        r#"((line_comment) @injection.content
+            (#set! injection.frobnicate "x")
+            (#set! injection.language "rust"))"#,
     );
     let injections = bundle.injections.as_ref().expect("injections compile");
     assert_eq!(injections.patterns[0].language.as_deref(), Some("rust"));
