@@ -296,6 +296,7 @@ pub(crate) fn compile_queries(
     let mut folds = None;
     for &(kind, src) in optional {
         let build = |error| RegisterError::OptionalQueryBuild { kind, error };
+        let names_nothing = |needs| RegisterError::NamesNothing { kind, needs };
         let query = tree_sitter::Query::new(language, src).map_err(build)?;
         let duplicate = match kind {
             OptionalQuery::Injections => injections
@@ -309,19 +310,17 @@ pub(crate) fn compile_queries(
                 .is_some(),
             OptionalQuery::Context => context
                 .replace(
-                    ContextQuery::new(query).ok_or(RegisterError::MissingCapture {
-                        kind,
-                        capture: "context",
-                    })?,
+                    ContextQuery::new(query, src)
+                        .map_err(build)?
+                        .ok_or_else(|| names_nothing(ContextQuery::NEEDS))?,
                 )
                 .is_some(),
             OptionalQuery::Folds => folds
-                .replace(FoldQuery::new(query, src).map_err(build)?.ok_or(
-                    RegisterError::MissingCapture {
-                        kind,
-                        capture: "fold",
-                    },
-                )?)
+                .replace(
+                    FoldQuery::new(query, src)
+                        .map_err(build)?
+                        .ok_or_else(|| names_nothing(FoldQuery::NEEDS))?,
+                )
                 .is_some(),
         };
         assert!(!duplicate, "{} given twice", kind.file_name());
@@ -469,10 +468,11 @@ pub enum RegisterError {
         kind: OptionalQuery,
         error: tree_sitter::QueryError,
     },
-    /// An optional query compiled without the capture its kind reads.
-    MissingCapture {
+    /// An optional query compiled without naming anything its kind reads;
+    /// `needs` is what would.
+    NamesNothing {
         kind: OptionalQuery,
-        capture: &'static str,
+        needs: &'static str,
     },
     /// Grammar ABI version is outside the range the linked tree-sitter
     /// loads.  Recompile the grammar with a compatible generator.
@@ -492,8 +492,12 @@ impl std::fmt::Display for RegisterError {
             Self::OptionalQueryBuild { kind, error } => {
                 write!(f, "{} compilation failed: {error}", kind.file_name())
             }
-            Self::MissingCapture { kind, capture } => {
-                write!(f, "{} captures no @{capture}", kind.file_name())
+            Self::NamesNothing { kind, needs } => {
+                write!(
+                    f,
+                    "{} names nothing to use: it needs {needs}",
+                    kind.file_name()
+                )
             }
             Self::AbiIncompatible { name, abi } => write!(
                 f,

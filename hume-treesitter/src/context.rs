@@ -2,10 +2,11 @@ use std::ops::Range;
 
 use hume_rope::line::ContentLine;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{CaptureQuantifier, Point, QueryCursor, Tree};
+use tree_sitter::{CaptureQuantifier, Point, QueryCursor, QueryError, QueryPredicate, Tree};
 
+use crate::directives::{PatternDirectives, parse_patterns, unsupported};
 use crate::highlight::RopeProvider;
-use crate::textobjects::{ObjectKind, ObjectPattern, ObjectSpan, TextObjectsQuery};
+use crate::textobjects::{MakeRange, ObjectKind, ObjectPattern, ObjectSpan, TextObjectsQuery};
 
 /// The query whose matches are the scopes a pane shows the first line of
 /// above its text once that line has scrolled off.
@@ -35,10 +36,14 @@ impl Scope {
 
 /// How a [`ContextQuery`] match names a scope and the node heading it.
 enum Scopes {
-    /// `context.scm`: `@context` captures a scope's node; `@context.start`
-    /// optionally names the node whose first line is the scope's header
-    /// instead.
-    Context { context: u32, start: Option<u32> },
+    /// `context.scm`: `@context` captures a scope's node and each
+    /// `#make-range! "context"` makes one; `@context.start` optionally names
+    /// the node whose first line is the scope's header instead.
+    Context {
+        context: Option<u32>,
+        start: Option<u32>,
+        patterns: Vec<ContextPattern>,
+    },
     /// `textobjects.scm`'s `function.around` and `class.around` objects,
     /// each captured node and each made range a scope headed by its own
     /// first line.
@@ -48,18 +53,54 @@ enum Scopes {
     },
 }
 
+/// The `#make-range! "context"` scopes one `context.scm` pattern makes.
+#[derive(Default)]
+struct ContextPattern {
+    ranges: Vec<MakeRange>,
+}
+
+impl PatternDirectives for ContextPattern {
+    fn predicate(&mut self, _: &[&str], predicate: &QueryPredicate) -> Result<(), String> {
+        if *predicate.operator != *"make-range!" {
+            return Err(unsupported(&predicate.operator));
+        }
+        let (name, range) = MakeRange::parse(&predicate.args)?;
+        if name != "context" {
+            return Err(format!(
+                "#make-range! \"{name}\" names no scope; only \"context\" does"
+            ));
+        }
+        self.ranges.push(range);
+        Ok(())
+    }
+}
+
 /// The text objects whose `around` span is a scope.
 const SCOPE_KINDS: [ObjectKind; 2] = [ObjectKind::Function, ObjectKind::Class];
 
 impl ContextQuery {
-    /// A compiled `context.scm`, `None` when it captures no `@context`.
-    pub(crate) fn new(query: tree_sitter::Query) -> Option<Self> {
-        let context = query.capture_index_for_name("context")?;
+    /// What a `context.scm` needs to name a scope.
+    pub(crate) const NEEDS: &str = r#"a @context capture or a #make-range! "context""#;
+
+    /// A compiled `context.scm`, `None` when it names no scope: no
+    /// `@context` capture and no `#make-range! "context"`. Fails, as a
+    /// `Predicate` error at the offending pattern's start in `source`, on
+    /// any engine predicate or directive but `#make-range! "context"`.
+    pub(crate) fn new(query: tree_sitter::Query, source: &str) -> Result<Option<Self>, QueryError> {
+        let patterns: Vec<ContextPattern> = parse_patterns(&query, source)?;
+        let context = query.capture_index_for_name("context");
+        if context.is_none() && patterns.iter().all(|pattern| pattern.ranges.is_empty()) {
+            return Ok(None);
+        }
         let start = query.capture_index_for_name("context.start");
-        Some(Self {
+        Ok(Some(Self {
             query,
-            scopes: Scopes::Context { context, start },
-        })
+            scopes: Scopes::Context {
+                context,
+                start,
+                patterns,
+            },
+        }))
     }
 
     /// The scopes of a grammar without `context.scm`: its function and class
@@ -134,17 +175,29 @@ impl ContextQuery {
         let mut matches = cursor.matches(&self.query, tree.root_node(), RopeProvider(rope));
         while let Some(m) = matches.next() {
             match &self.scopes {
-                &Scopes::Context { context, start } => {
-                    let Some(scope) = m.nodes_for_capture_index(context).next() else {
-                        continue;
-                    };
-                    let scope = Scope::of(scope.range());
+                Scopes::Context {
+                    context,
+                    start,
+                    patterns,
+                } => {
                     let header = start
                         .and_then(|start| m.nodes_for_capture_index(start).next())
-                        .map_or(scope.header, |start| {
-                            ContentLine::new(start.start_position().row)
+                        .map(|start| ContentLine::new(start.start_position().row));
+                    let mut headed = |range| {
+                        let scope = Scope::of(range);
+                        f(Scope {
+                            header: header.unwrap_or(scope.header),
+                            ..scope
                         });
-                    f(Scope { header, ..scope });
+                    };
+                    if let Some(node) = context.and_then(|c| m.nodes_for_capture_index(c).next()) {
+                        headed(node.range());
+                    }
+                    patterns[m.pattern_index]
+                        .ranges
+                        .iter()
+                        .filter_map(|range| range.region(m))
+                        .for_each(headed);
                 }
                 Scopes::TextObjects { around, patterns } => {
                     let pattern = &patterns[m.pattern_index];

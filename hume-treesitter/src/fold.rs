@@ -94,6 +94,9 @@ impl FoldPattern {
 }
 
 impl FoldQuery {
+    /// What a `folds.scm` needs to name a region.
+    pub(crate) const NEEDS: &str = "a @fold capture";
+
     /// A compiled `folds.scm`, `None` when it captures no `@fold`. Fails, as
     /// a `Predicate` error at the offending pattern's start in `source`, on
     /// any engine predicate or directive but `#trim! @fold` and

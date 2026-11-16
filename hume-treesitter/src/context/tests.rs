@@ -17,8 +17,12 @@ use crate::textobjects::{ObjectKind, ObjectSpan, ObjectSpans, SpanSelector};
 fn compile(source: &str) -> ContextQuery {
     require_grammars(&["rust"]);
     let grammar = open_grammar("rust", "tree_sitter_rust");
-    ContextQuery::new(tree_sitter::Query::new(grammar.language(), source).expect("compile query"))
-        .expect("the query captures @context")
+    ContextQuery::new(
+        tree_sitter::Query::new(grammar.language(), source).expect("compile query"),
+        source,
+    )
+    .expect("supported directives")
+    .expect("the query captures @context")
 }
 
 /// Rust with the fixture `kind` query and no other optional query.
@@ -60,8 +64,9 @@ fn context_query_resolves_its_captures() {
     assert!(matches!(
         fixture.scopes,
         Scopes::Context {
-            context: _,
-            start: None
+            context: Some(_),
+            start: None,
+            ..
         }
     ));
 
@@ -69,8 +74,9 @@ fn context_query_resolves_its_captures() {
     assert!(matches!(
         with_start.scopes,
         Scopes::Context {
-            context: _,
-            start: Some(_)
+            context: Some(_),
+            start: Some(_),
+            ..
         }
     ));
 }
@@ -270,4 +276,62 @@ fn a_fallback_scope_whose_offset_leaves_its_line_is_absent() {
         with_textobjects("((function_item) @function.around (#offset! @function.around 0 0 0 -2))");
     let (syn, text) = syntax_with(bundle, "fn f() {\n    a();\n    b();\n}\n");
     assert_eq!(headers(&syn, &text, ContentLine::new(2)), []);
+}
+
+/// Rust with `context` as its `context.scm` and no other optional query.
+fn with_context(context: &str) -> Arc<GrammarBundle> {
+    require_grammars(&["rust"]);
+    make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        &[(OptionalQuery::Context, context)],
+    )
+}
+
+#[test]
+fn a_made_context_scope_runs_from_its_start_through_its_end() {
+    let bundle = with_context(
+        r#"((function_item name: (identifier) @_s parameters: (parameters) @_e)
+            (#make-range! "context" @_s @_e))"#,
+    );
+    let (syn, text) = syntax_with(bundle, SIGNATURE);
+    assert_eq!(
+        headers(&syn, &text, ContentLine::new(2)),
+        [ContentLine::new(0)]
+    );
+    assert_eq!(headers(&syn, &text, ContentLine::new(4)), []);
+}
+
+/// The scope runs from the attribute on row 0 through the `)` on row 4, and
+/// its `@context.start` heads it on row 1.
+#[test]
+fn a_made_context_scope_is_headed_by_its_context_start_capture() {
+    let bundle = with_context(
+        r#"((attribute_item) @_s
+            .
+            (function_item name: (identifier) @context.start parameters: (parameters) @_e)
+            (#make-range! "context" @_s @_e))"#,
+    );
+    let (syn, text) = syntax_with(bundle, "#[a]\nfn f(\n    a: u32,\n    b: u32,\n) {}\n");
+    assert_eq!(
+        headers(&syn, &text, ContentLine::new(3)),
+        [ContentLine::new(1)]
+    );
+}
+
+#[test]
+fn an_unsupported_context_directive_fails_the_compile_on_its_pattern_row() {
+    crate::test_support::assert_rejected_at_pattern_start(
+        OptionalQuery::Context,
+        "(function_item) @context",
+        &[
+            r#"((function_item) @context (#is? "local"))"#,
+            r#"((function_item) @context (#set! "a" "b"))"#,
+            r#"((function_item) @context (#offset! @context 0 1 0 -1))"#,
+            r#"((function_item) @b (#make-range! "function.around" @b @b))"#,
+            r#"((function_item) @b (#make-range! "context" @b))"#,
+            r#"((function_item) @context (#frobnicate! @context))"#,
+        ],
+    );
 }

@@ -342,8 +342,8 @@ fn attach_grammar_with_broken_context_fails_whole_attach() {
 }
 
 /// Attach rust with `kind`'s query file holding `src`, which must fail with
-/// [`super::RegisterError::MissingCapture`] naming `capture`.
-fn assert_attach_misses_capture(kind: OptionalQuery, src: &str, capture: &str) {
+/// [`super::RegisterError::NamesNothing`] saying it needs `needs`.
+fn assert_attach_names_nothing(kind: OptionalQuery, src: &str, needs: &str) {
     require_grammars(&["rust"]);
     let hl_path = grammar_query_path("rust");
     let (_dir, path) = write_temp_scm(kind.file_name(), src);
@@ -357,18 +357,18 @@ fn assert_attach_misses_capture(kind: OptionalQuery, src: &str, capture: &str) {
         &mut scope_reg,
     );
     let Err(err) = result else {
-        panic!(
-            "{} without @{capture} must fail the attach",
-            kind.file_name()
-        );
+        panic!("{} without {needs} must fail the attach", kind.file_name());
     };
     assert!(
-        matches!(err, super::RegisterError::MissingCapture { kind: k, capture: c } if k == kind && c == capture),
+        matches!(err, super::RegisterError::NamesNothing { kind: k, .. } if k == kind),
         "got: {err:?}"
     );
     assert_eq!(
         err.to_string(),
-        format!("{} captures no @{capture}", kind.file_name())
+        format!(
+            "{} names nothing to use: it needs {needs}",
+            kind.file_name()
+        )
     );
     assert!(
         reg.defined_id("rust").is_none(),
@@ -378,12 +378,16 @@ fn assert_attach_misses_capture(kind: OptionalQuery, src: &str, capture: &str) {
 
 #[test]
 fn attach_grammar_with_folds_capturing_no_fold_fails_whole_attach() {
-    assert_attach_misses_capture(OptionalQuery::Folds, "(block) @region", "fold");
+    assert_attach_names_nothing(OptionalQuery::Folds, "(block) @region", "a @fold capture");
 }
 
 #[test]
 fn attach_grammar_with_context_capturing_no_context_fails_whole_attach() {
-    assert_attach_misses_capture(OptionalQuery::Context, "(function_item) @scope", "context");
+    assert_attach_names_nothing(
+        OptionalQuery::Context,
+        "(function_item) @scope",
+        r#"a @context capture or a #make-range! "context""#,
+    );
 }
 
 #[test]

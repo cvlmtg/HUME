@@ -192,6 +192,26 @@ fn a_fallback_fold_whose_offset_leaves_its_line_is_absent() {
     assert_eq!(fold_at(&syn, &text, 0), None);
 }
 
+/// The region runs from `f` on row 0 through the `)` alone on row 3, which
+/// stays shown.
+#[test]
+fn a_made_context_scope_folds_through_its_end_capture() {
+    require_grammars(&["rust"]);
+    let bundle = make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        &[(
+            OptionalQuery::Context,
+            r#"((function_item name: (identifier) @_s parameters: (parameters) @_e)
+                (#make-range! "context" @_s @_e))"#,
+        )],
+    );
+    let source = "fn f(\n    a: u32,\n    b: u32,\n) {\n    body();\n}\n";
+    let (syn, text) = syntax_with(bundle, source);
+    assert_eq!(fold_at(&syn, &text, 0), Some(fold(0, 3, true)));
+}
+
 #[test]
 fn without_folds_scm_scopes_fold() {
     let impl_fn = "impl Foo {\n    fn bar(&self) {\n        a();\n        b();\n    }\n}\n";
