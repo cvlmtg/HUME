@@ -111,7 +111,8 @@ impl IndentQuery {
     /// What an `indents.scm` needs to indent anything.
     pub(crate) const NEEDS: &str = "an indent capture such as @indent or @outdent";
 
-    /// A compiled `indents.scm`, `None` when it has no indent capture. A
+    /// A compiled `indents.scm`, `None` when no pattern it keeps has an
+    /// indent capture. A
     /// pattern using a predicate the engine does not evaluate, or a `#set!`
     /// other than `"scope" "header"`, is skipped, its error in `source`
     /// pushed to `skipped`.
@@ -127,13 +128,17 @@ impl IndentQuery {
             .map(|name| IndentCapture::from_name(name))
             .collect();
         let patterns = parse_patterns(&mut query, source, skipped);
-        if captures.iter().all(Option::is_none) {
+        if !captures
+            .iter()
+            .enumerate()
+            .any(|(idx, capture)| capture.is_some() && patterns.captures(idx))
+        {
             return None;
         }
         Some(Self {
             query,
             captures,
-            patterns,
+            patterns: patterns.parsed,
             token_prefixes: token_prefixes(language),
         })
     }

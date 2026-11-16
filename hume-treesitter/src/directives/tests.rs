@@ -19,7 +19,7 @@ fn matching_patterns(source: &str, text: &str) -> (BTreeSet<usize>, Vec<QueryErr
     let grammar = open_grammar("rust", "tree_sitter_rust");
     let mut query = Query::new(grammar.language(), source).expect("the query compiles");
     let mut skipped = Vec::new();
-    let patterns: Vec<Plain> = parse_patterns(&mut query, source, &mut skipped);
+    let patterns = parse_patterns::<Plain>(&mut query, source, &mut skipped).parsed;
     assert_eq!(patterns.len(), query.pattern_count());
     let (_parser, tree) = parse(grammar.language(), text);
     let mut cursor = QueryCursor::new();

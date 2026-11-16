@@ -338,7 +338,8 @@ impl LanguageHost for MockHost {
         }
         if !source.queries.highlights().exists() {
             return Err(format!(
-                "'{name}': highlights.scm read failed: {}",
+                "'{name}': {} read failed: {}",
+                hume_core::QueryFile::Highlights.file_name(),
                 source.queries.highlights().display()
             ));
         }

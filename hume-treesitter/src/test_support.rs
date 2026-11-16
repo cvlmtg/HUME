@@ -5,7 +5,7 @@
 
 use std::sync::{Arc, LazyLock, Mutex};
 
-use hume_core::OptionalQuery;
+use hume_core::{OptionalQuery, QueryFile};
 use hume_editing::text::BufferText;
 use hume_engine::theme::ScopeRegistry;
 
@@ -97,7 +97,7 @@ pub(crate) fn assert_skipped_at_pattern_start(kind: OptionalQuery, valid: &str, 
         let [Skipped::Pattern { file, error }] = skipped.as_slice() else {
             panic!("{pattern}: expected that pattern skipped alone, got {skipped:?}");
         };
-        assert_eq!(*file, kind.file_name(), "{pattern}");
+        assert_eq!(*file, QueryFile::Optional(kind), "{pattern}");
         assert_eq!(error.kind, QueryErrorKind::Predicate, "{pattern}");
         assert_eq!((error.row, error.column), (2, 0), "{pattern}");
         assert_eq!(

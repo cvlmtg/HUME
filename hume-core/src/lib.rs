@@ -92,7 +92,7 @@ pub use keymap::BindMode;
 pub use language::{
     BufferLanguageTie, FileExtension, FileGlob, GrammarSource, InvalidExtension,
     InvalidShebangInterpreter, LanguageField, LanguageFields, LanguageIdentity, OptionalQuery,
-    QueryFiles, ShebangInterpreter,
+    QueryFile, QueryFiles, ShebangInterpreter,
 };
 pub use lsp::{
     FeatureFilter, InvalidServerName, LanguageLists, ListEntry, ListTier, LspFeature,

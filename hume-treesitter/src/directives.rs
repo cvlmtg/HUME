@@ -10,8 +10,8 @@
 use hume_rope::column::ByteCol;
 use hume_rope::lines::advance_byte_point;
 use tree_sitter::{
-    Query, QueryError, QueryErrorKind, QueryMatch, QueryPredicate, QueryPredicateArg as Arg,
-    QueryProperty,
+    CaptureQuantifier, Query, QueryError, QueryErrorKind, QueryMatch, QueryPredicate,
+    QueryPredicateArg as Arg, QueryProperty,
 };
 
 /// What one pattern of a query file makes of its `#set!` settings, its
@@ -36,6 +36,32 @@ pub(crate) trait PatternDirectives: Default {
     }
 }
 
+/// The patterns of a query file read as `P`, and which captures the
+/// patterns left enabled use. A disabled pattern keeps its captures in the
+/// query's names, so whether a file names something its kind reads is
+/// asked here, never of the query.
+pub(crate) struct Patterns<P> {
+    /// Every pattern, a disabled one as `P::default()`.
+    pub(crate) parsed: Vec<P>,
+    /// By capture index: whether an enabled pattern captures it.
+    live: Vec<bool>,
+}
+
+impl<P> Patterns<P> {
+    /// Whether a pattern left enabled captures `capture`.
+    pub(crate) fn captures(&self, capture: usize) -> bool {
+        self.live[capture]
+    }
+
+    /// The index of `query`'s capture `name`, when a pattern left enabled
+    /// captures it.
+    pub(crate) fn capture_named(&self, query: &Query, name: &str) -> Option<u32> {
+        query
+            .capture_index_for_name(name)
+            .filter(|&capture| self.captures(capture as usize))
+    }
+}
+
 /// Every pattern of `query`, compiled from `source`, read as `P`. A pattern
 /// with a predicate or directive `P` rejects, or a property predicate on
 /// anything but `local`, is disabled and read as `P::default()`, and a
@@ -44,17 +70,25 @@ pub(crate) fn parse_patterns<P: PatternDirectives>(
     query: &mut Query,
     source: &str,
     skipped: &mut Vec<QueryError>,
-) -> Vec<P> {
-    let mut patterns = Vec::with_capacity(query.pattern_count());
+) -> Patterns<P> {
+    let mut parsed = Vec::with_capacity(query.pattern_count());
+    let mut live = vec![false; query.capture_names().len()];
     for pattern in 0..query.pattern_count() {
-        let parsed = parse_pattern(query, pattern).unwrap_or_else(|message| {
-            skipped.push(pattern_error(query, source, pattern, message));
-            query.disable_pattern(pattern);
-            P::default()
-        });
-        patterns.push(parsed);
+        match parse_pattern(query, pattern) {
+            Ok(directives) => {
+                for (used, quantifier) in live.iter_mut().zip(query.capture_quantifiers(pattern)) {
+                    *used |= *quantifier != CaptureQuantifier::Zero;
+                }
+                parsed.push(directives);
+            }
+            Err(message) => {
+                skipped.push(pattern_error(query, source, pattern, message));
+                query.disable_pattern(pattern);
+                parsed.push(P::default());
+            }
+        }
     }
-    patterns
+    Patterns { parsed, live }
 }
 
 fn parse_pattern<P: PatternDirectives>(query: &Query, pattern: usize) -> Result<P, String> {

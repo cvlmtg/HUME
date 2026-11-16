@@ -81,8 +81,9 @@ impl ContextQuery {
     /// What a `context.scm` needs to name a scope.
     pub(crate) const NEEDS: &str = r#"a @context capture or a #make-range! "context""#;
 
-    /// A compiled `context.scm`, `None` when it names no scope: no
-    /// `@context` capture and no `#make-range! "context"`. A pattern using
+    /// A compiled `context.scm`, `None` when no pattern it keeps names a
+    /// scope with a `@context` capture or a `#make-range! "context"`. A
+    /// pattern using
     /// any engine predicate or directive but `#make-range! "context"` is
     /// skipped, its error in `source` pushed to `skipped`.
     pub(crate) fn new(
@@ -90,18 +91,23 @@ impl ContextQuery {
         source: &str,
         skipped: &mut Vec<QueryError>,
     ) -> Option<Self> {
-        let patterns: Vec<ContextPattern> = parse_patterns(&mut query, source, skipped);
-        let context = query.capture_index_for_name("context");
-        if context.is_none() && patterns.iter().all(|pattern| pattern.ranges.is_empty()) {
+        let patterns = parse_patterns::<ContextPattern>(&mut query, source, skipped);
+        let context = patterns.capture_named(&query, "context");
+        if context.is_none()
+            && patterns
+                .parsed
+                .iter()
+                .all(|pattern| pattern.ranges.is_empty())
+        {
             return None;
         }
-        let start = query.capture_index_for_name("context.start");
+        let start = patterns.capture_named(&query, "context.start");
         Some(Self {
             query,
             scopes: Scopes::Context {
                 context,
                 start,
-                patterns,
+                patterns: patterns.parsed,
             },
         })
     }

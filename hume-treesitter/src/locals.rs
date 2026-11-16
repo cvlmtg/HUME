@@ -81,8 +81,8 @@ impl LocalsQuery {
     pub(crate) const NEEDS: &str = "a @local.scope, @local.definition or @local.reference capture";
 
     /// A compiled `locals.scm`, its definition highlights interned in
-    /// `registry`. `None` when it captures no scope, definition or
-    /// reference. A pattern using an engine predicate or directive is
+    /// `registry`. `None` when no pattern it keeps captures a scope,
+    /// definition or reference. A pattern using an engine predicate or directive is
     /// skipped, its error in `source` pushed to `skipped`.
     pub(crate) fn new(
         mut query: Query,
@@ -90,7 +90,7 @@ impl LocalsQuery {
         registry: &mut ScopeRegistry,
         skipped: &mut Vec<QueryError>,
     ) -> Option<Self> {
-        let patterns: Vec<LocalsPattern> = parse_patterns(&mut query, source, skipped);
+        let patterns = parse_patterns::<LocalsPattern>(&mut query, source, skipped);
         let roles: Vec<CaptureRole> = query
             .capture_names()
             .iter()
@@ -105,13 +105,17 @@ impl LocalsQuery {
                     }),
             })
             .collect();
-        if roles.iter().all(|role| *role == CaptureRole::Discard) {
+        if !roles
+            .iter()
+            .enumerate()
+            .any(|(idx, role)| *role != CaptureRole::Discard && patterns.captures(idx))
+        {
             return None;
         }
         Some(Self {
             query,
             roles,
-            patterns,
+            patterns: patterns.parsed,
         })
     }
 

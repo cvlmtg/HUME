@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hume_core::OptionalQuery;
+use hume_core::{OptionalQuery, QueryFile};
 use hume_editing::text::BufferText;
 use hume_engine::folds::Fold;
 use hume_engine::providers::SyntaxSource;
@@ -168,7 +168,7 @@ fn a_folds_scm_without_a_fold_capture_reports_its_skipped_pattern_too() {
             skipped.as_slice(),
             [
                 Skipped::Pattern {
-                    file: "folds.scm",
+                    file: QueryFile::Optional(OptionalQuery::Folds),
                     ..
                 },
                 Skipped::File {

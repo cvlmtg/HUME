@@ -129,7 +129,8 @@ pub struct TextObjectsQuery {
 /// How a [`TextObjectsQuery`] defines one `<kind>.<span>` object.
 #[derive(Clone, Copy, Default)]
 struct ObjectDef {
-    /// The index of its `@<kind>.<span>` capture.
+    /// The index of its `@<kind>.<span>` capture, when an enabled pattern
+    /// captures it.
     capture: Option<u32>,
     /// Whether a pattern's `#make-range!` names it.
     made: bool,
@@ -146,7 +147,8 @@ impl TextObjectsQuery {
     pub(crate) const NEEDS: &str =
         "an object capture such as @function.inside, or a #make-range! naming one";
 
-    /// A compiled `textobjects.scm`, `None` when it defines no object. A
+    /// A compiled `textobjects.scm`, `None` when no pattern it keeps
+    /// defines an object. A
     /// pattern using any engine predicate or directive but `#make-range!`
     /// and `#offset!`, or either of those with arguments it can't apply, is
     /// skipped, its error in `source` pushed to `skipped`.
@@ -155,14 +157,16 @@ impl TextObjectsQuery {
         source: &str,
         skipped: &mut Vec<QueryError>,
     ) -> Option<Self> {
-        let patterns: Vec<ObjectPattern> = parse_patterns(&mut query, source, skipped);
+        let patterns = parse_patterns::<ObjectPattern>(&mut query, source, skipped);
         let mut objects = [[ObjectDef::default(); ObjectSpan::ALL.len()]; ObjectKind::ALL.len()];
         for (idx, name) in query.capture_names().iter().enumerate() {
-            if let Some((kind, span)) = object_named(name) {
+            if let Some((kind, span)) = object_named(name)
+                && patterns.captures(idx)
+            {
                 objects[kind as usize][span as usize].capture = Some(idx as u32);
             }
         }
-        for &(kind, span, _) in patterns.iter().flat_map(|pattern| &pattern.ranges) {
+        for &(kind, span, _) in patterns.parsed.iter().flat_map(|pattern| &pattern.ranges) {
             objects[kind as usize][span as usize].made = true;
         }
         if !objects.as_flattened().iter().any(|object| object.defined()) {
@@ -171,7 +175,7 @@ impl TextObjectsQuery {
         Some(Self {
             query,
             objects,
-            patterns,
+            patterns: patterns.parsed,
         })
     }
 

@@ -98,7 +98,8 @@ impl FoldQuery {
     /// What a `folds.scm` needs to name a region.
     pub(crate) const NEEDS: &str = "a @fold capture";
 
-    /// A compiled `folds.scm`, `None` when it captures no `@fold`. A pattern
+    /// A compiled `folds.scm`, `None` when no pattern it keeps captures
+    /// `@fold`. A pattern
     /// using any engine predicate or directive but `#trim! @fold` and
     /// `#not-has-parent? @c kind…` is skipped, its error in `source` pushed
     /// to `skipped`.
@@ -108,11 +109,11 @@ impl FoldQuery {
         skipped: &mut Vec<QueryError>,
     ) -> Option<Self> {
         let patterns = parse_patterns(&mut query, source, skipped);
-        let fold = query.capture_index_for_name("fold")?;
+        let fold = patterns.capture_named(&query, "fold")?;
         Some(Self::Folds {
             query,
             fold,
-            patterns,
+            patterns: patterns.parsed,
         })
     }
 

@@ -72,7 +72,7 @@ impl InjectionsQuery {
     pub(crate) const NEEDS: &str = "an @injection.content capture";
 
     /// Build from a compiled `injections.scm` query and its `source`, `None`
-    /// when it captures no `@injection.content`. Unknown captures and
+    /// when no pattern it keeps captures `@injection.content`. Unknown captures and
     /// properties (the installed queries carry extras like
     /// `injection.filename`) are ignored; only the standard tree-sitter
     /// injection convention is interpreted. A pattern using a predicate or
@@ -85,10 +85,10 @@ impl InjectionsQuery {
     ) -> Option<Self> {
         let patterns = parse_patterns(&mut query, source, skipped);
         Some(Self {
-            content_capture: query.capture_index_for_name("injection.content")?,
-            language_capture: query.capture_index_for_name("injection.language"),
+            content_capture: patterns.capture_named(&query, "injection.content")?,
+            language_capture: patterns.capture_named(&query, "injection.language"),
             query: Arc::new(query),
-            patterns,
+            patterns: patterns.parsed,
         })
     }
 }

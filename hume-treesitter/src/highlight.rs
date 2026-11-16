@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::ScopeId;
@@ -92,7 +92,7 @@ impl PatternDirectives for Locality {
 /// tree-sitter returns *absolute* byte offsets within the full file.
 /// `collect_line_spans` converts them to *line-relative* offsets.
 pub struct TreeSitterHighlighter {
-    query: Arc<Query>,
+    query: Query,
     /// Maps tree-sitter capture index → interned scope id (None = ignored).
     capture_scopes: Vec<Option<ScopeId>>,
     /// Per pattern, the nodes it applies to.
@@ -116,7 +116,7 @@ impl TreeSitterHighlighter {
         registry: &mut ScopeRegistry,
         skipped: &mut Vec<QueryError>,
     ) -> Self {
-        let localities = parse_patterns(&mut query, source, skipped);
+        let localities = parse_patterns(&mut query, source, skipped).parsed;
         // Leading-underscore captures (e.g. `@_f`, `@_lib`) are the queries'
         // convention for pattern-internal predicate helpers, never meant to
         // be styled, so map them to `None` so they never emit a span.
@@ -132,7 +132,7 @@ impl TreeSitterHighlighter {
             })
             .collect();
         Self {
-            query: Arc::new(query),
+            query,
             capture_scopes,
             localities,
             cursor: Mutex::new(QueryCursor::new()),

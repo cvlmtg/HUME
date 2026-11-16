@@ -17,7 +17,7 @@ use crate::highlight::TreeSitterHighlighter;
 use hume_core::{
     BlockCommentTokens, ByOrigin, CommentTokens, ConfigOrigin, FirstWins, GrammarSource,
     LanguageField, LanguageFields, LanguageIdentity, LaterWins, LineCommentTokens, OptionalQuery,
-    OsWait, Ranked, ShebangInterpreter, WriteOutcome,
+    OsWait, QueryFile, Ranked, ShebangInterpreter, WriteOutcome,
 };
 #[cfg(any(test, feature = "test-util"))]
 use hume_core::{FileExtension, FileGlob};
@@ -267,7 +267,7 @@ fn store<T>(
 }
 
 /// Each of `errors`, a pattern of `file` left out, as a skip in `skipped`.
-fn skip_patterns(skipped: &mut Vec<Skipped>, file: &'static str, errors: &mut Vec<QueryError>) {
+fn skip_patterns(skipped: &mut Vec<Skipped>, file: QueryFile, errors: &mut Vec<QueryError>) {
     skipped.extend(
         errors
             .drain(..)
@@ -345,7 +345,7 @@ pub(crate) fn compile_queries(
         scope_reg,
         &mut errors,
     ));
-    skip_patterns(&mut skipped, "highlights.scm", &mut errors);
+    skip_patterns(&mut skipped, QueryFile::Highlights, &mut errors);
     let mut injections = None;
     let mut textobjects = None;
     let mut indents = None;
@@ -395,7 +395,7 @@ pub(crate) fn compile_queries(
                 LocalsQuery::NEEDS,
             ),
         };
-        skip_patterns(&mut skipped, kind.file_name(), &mut errors);
+        skip_patterns(&mut skipped, QueryFile::Optional(kind), &mut errors);
         if let Some(needs) = names_nothing {
             skipped.push(Skipped::File {
                 kind,
@@ -547,7 +547,9 @@ impl std::fmt::Display for RegisterError {
         match self {
             Self::GlobBuild(e) => write!(f, "glob set compilation failed: {e}"),
             Self::GrammarLoad(e) => write!(f, "grammar load failed: {e}"),
-            Self::HighlightsRead(e) => write!(f, "highlights.scm read failed: {e}"),
+            Self::HighlightsRead(e) => {
+                write!(f, "{} read failed: {e}", QueryFile::Highlights.file_name())
+            }
             Self::QueryBuild(e) => write!(f, "highlight query compilation failed: {e}"),
             Self::AbiIncompatible { name, abi } => write!(
                 f,
@@ -564,7 +566,7 @@ pub enum Skipped {
     /// A pattern of `file` using a predicate or directive HUME does not
     /// apply, disabled so it never matches. `error` is at its start.
     Pattern {
-        file: &'static str,
+        file: QueryFile,
         error: tree_sitter::QueryError,
     },
     /// An optional query file left out whole.
@@ -588,7 +590,7 @@ impl std::fmt::Display for Skipped {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Pattern { file, error } => {
-                write!(f, "{file}: {error}; the pattern is left out")
+                write!(f, "{}: {error}; the pattern is left out", file.file_name())
             }
             Self::File { kind, reason } => {
                 write!(f, "{} is left out: ", kind.file_name())?;

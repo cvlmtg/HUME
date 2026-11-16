@@ -193,17 +193,31 @@ impl OptionalQuery {
     }
 }
 
+/// One query file of a grammar: its required highlights, or an optional
+/// kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueryFile {
+    Highlights,
+    Optional(OptionalQuery),
+}
+
+impl QueryFile {
+    /// The query file's name inside a grammar's query directory.
+    pub const fn file_name(self) -> &'static str {
+        match self {
+            Self::Highlights => "highlights.scm",
+            Self::Optional(kind) => kind.file_name(),
+        }
+    }
+}
+
 /// The query files a grammar's load compiles. `highlights`
 /// is required; each `OptionalQuery` kind is independently optional.
 #[derive(Debug, Clone)]
 pub struct QueryFiles {
     highlights: PathBuf,
-    injections: Option<PathBuf>,
-    textobjects: Option<PathBuf>,
-    indents: Option<PathBuf>,
-    context: Option<PathBuf>,
-    folds: Option<PathBuf>,
-    locals: Option<PathBuf>,
+    /// By `OptionalQuery` discriminant.
+    optional: [Option<PathBuf>; OptionalQuery::ALL.len()],
 }
 
 impl QueryFiles {
@@ -211,25 +225,13 @@ impl QueryFiles {
     pub fn new(highlights: PathBuf) -> Self {
         Self {
             highlights,
-            injections: None,
-            textobjects: None,
-            indents: None,
-            context: None,
-            folds: None,
-            locals: None,
+            optional: Default::default(),
         }
     }
 
     /// These files plus `path` as the `kind` query.
     pub fn with(mut self, kind: OptionalQuery, path: PathBuf) -> Self {
-        match kind {
-            OptionalQuery::Injections => self.injections = Some(path),
-            OptionalQuery::TextObjects => self.textobjects = Some(path),
-            OptionalQuery::Indents => self.indents = Some(path),
-            OptionalQuery::Context => self.context = Some(path),
-            OptionalQuery::Folds => self.folds = Some(path),
-            OptionalQuery::Locals => self.locals = Some(path),
-        }
+        self.optional[kind as usize] = Some(path);
         self
     }
 
@@ -238,14 +240,7 @@ impl QueryFiles {
     }
 
     pub fn get(&self, kind: OptionalQuery) -> Option<&Path> {
-        match kind {
-            OptionalQuery::Injections => self.injections.as_deref(),
-            OptionalQuery::TextObjects => self.textobjects.as_deref(),
-            OptionalQuery::Indents => self.indents.as_deref(),
-            OptionalQuery::Context => self.context.as_deref(),
-            OptionalQuery::Folds => self.folds.as_deref(),
-            OptionalQuery::Locals => self.locals.as_deref(),
-        }
+        self.optional[kind as usize].as_deref()
     }
 }
 
@@ -268,7 +263,7 @@ impl GrammarSource {
         Self {
             path: dir.join(format!("{name}.so")),
             symbol: format!("tree_sitter_{name}"),
-            queries: QueryFiles::new(dir.join("highlights.scm")),
+            queries: QueryFiles::new(dir.join(QueryFile::Highlights.file_name())),
         }
     }
 }

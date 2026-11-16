@@ -6,7 +6,7 @@ use super::{
 };
 use hume_core::{
     BlockCommentTokens, ConfigOrigin, FileExtension, GrammarSource, LanguageField, LanguageFields,
-    LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFiles, WriteOutcome,
+    LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFile, QueryFiles, WriteOutcome,
 };
 use hume_engine::theme::ScopeRegistry;
 use hume_platform::path::AbsolutePath;
@@ -345,11 +345,69 @@ fn a_highlights_pattern_with_an_unsupported_predicate_is_skipped() {
     let [skip @ Skipped::Pattern { file, .. }] = skipped.as_slice() else {
         panic!("expected one skipped pattern, got {skipped:?}");
     };
-    assert_eq!(*file, "highlights.scm");
+    assert_eq!(*file, QueryFile::Highlights);
     assert_eq!(
         skip.to_string(),
         "highlights.scm: Query error at 3:1. Invalid predicate: #frobnicate! is not supported; \
          the pattern is left out"
+    );
+}
+
+#[test]
+fn a_file_whose_only_capturing_pattern_is_skipped_names_nothing() {
+    for (kind, src) in [
+        (
+            OptionalQuery::Injections,
+            "((macro_invocation (token_tree) @injection.content) (#frobnicate! @injection.content))",
+        ),
+        (
+            OptionalQuery::TextObjects,
+            "((function_item) @function.around (#frobnicate! @function.around))",
+        ),
+        (
+            OptionalQuery::Indents,
+            "((block) @indent (#frobnicate! @indent))",
+        ),
+        (
+            OptionalQuery::Context,
+            "((function_item) @context (#frobnicate! @context))",
+        ),
+        (OptionalQuery::Folds, "((block) @fold (#frobnicate! @fold))"),
+        (
+            OptionalQuery::Locals,
+            "((block) @local.scope (#frobnicate! @local.scope))",
+        ),
+    ] {
+        let skipped = crate::test_support::rust_skips("", &[(kind, src)]);
+        let [
+            Skipped::Pattern { file, .. },
+            Skipped::File {
+                kind: left_out,
+                reason: FileSkip::NamesNothing(_),
+            },
+        ] = skipped.as_slice()
+        else {
+            panic!("{kind:?}: expected the pattern and the file left out, got {skipped:?}");
+        };
+        assert_eq!(*file, QueryFile::Optional(kind));
+        assert_eq!(*left_out, kind);
+    }
+}
+
+#[test]
+fn a_highlights_pattern_both_local_and_not_is_skipped() {
+    let skipped = crate::test_support::rust_skips(
+        "(identifier) @variable\n((identifier) @function (#is? local) (#is-not? local))\n",
+        &[],
+    );
+    let [skip @ Skipped::Pattern { file, .. }] = skipped.as_slice() else {
+        panic!("expected one skipped pattern, got {skipped:?}");
+    };
+    assert_eq!(*file, QueryFile::Highlights);
+    assert_eq!(
+        skip.to_string(),
+        "highlights.scm: Query error at 2:1. Invalid predicate: #is? local and #is-not? local \
+         never hold together; the pattern is left out"
     );
 }
 
