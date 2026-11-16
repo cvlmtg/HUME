@@ -4,11 +4,15 @@
 //! use it too without depending on `hume-editor`.
 //!
 //! [`MockHost`] depends on `hume_engine` + `hume_scripting` and stays here.
-//! [`SelectionHistoryBench`] and [`ConcealBench`] are the headless editors
-//! `benches/selection_history.rs` and `benches/conceal.rs` drive.
+//! [`SelectionHistoryBench`], [`ConcealBench`] and [`MarkdownPreviewBench`]
+//! are the headless editors `benches/selection_history.rs`,
+//! `benches/conceal.rs` and `benches/markdown_preview.rs` drive.
 
 mod mock_host;
-pub use crate::editor::bench::{ConcealBench, Keys, SelectionHistoryBench, StoreSize};
+pub use crate::editor::bench::{
+    ConcealBench, Keys, MarkdownPreviewBench, PreviewSample, SelectionHistoryBench, StoreSize,
+    TALL_TABLE_ROWS,
+};
 pub use mock_host::MockHost;
 
 // Not needed by the `test-util` external test crates `mock_host`'s own doc

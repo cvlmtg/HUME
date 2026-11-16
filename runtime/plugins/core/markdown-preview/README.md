@@ -107,7 +107,7 @@ The choices the plugin and the Rust surface under it are built on:
 `render-buffer!` is the one path that draws a buffer. Three callers reach it:
 
 - `on-viewport-change`, with the pane in hand. Rust debounces it by
-  `hook-viewport-debounce-ms` (150 ms by default), and it fires when a pane's visible lines
+  `hook-viewport-debounce-ms` (80 ms by default), and it fires when a pane's visible lines
   change, including a pane's first frame on a buffer, a buffer switch, and a tab coming
   back.
 - `on-syntax-changed`, after `debounce-by 50` keyed by `buffer-key`. It fires after every

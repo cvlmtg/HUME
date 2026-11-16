@@ -85,3 +85,7 @@ harness = false
 [[bench]]
 name = "conceal"
 harness = false
+
+[[bench]]
+name = "markdown_preview"
+harness = false

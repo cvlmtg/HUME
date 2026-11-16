@@ -20,7 +20,7 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` at the `:` or `\|` prompt does when several candidates match. `common-prefix` completes their longest shared text without picking one, so the next `Tab` picks the first; `first-candidate` fills in the first candidate at once |
 | `completion-docs` | bool | `true` | Show the highlighted completion's details and documentation in a box beside the completion menu. When off, or when the box doesn't fit beside the menu, the details show in the menu instead. |
 | `hook-before-save-timeout-ms` | integer ≥ 1 | `1000` | How long a save waits for `on-before-buffer-save` handlers before writing the file anyway |
-| `hook-viewport-debounce-ms` | integer ≥ 1 | `150` | Delay after scrolling stops before plugins are told which lines are visible, e.g. to request inlay hints for them |
+| `hook-viewport-debounce-ms` | integer ≥ 1 | `80` | Delay after scrolling stops before plugins are told which lines are visible, e.g. to request inlay hints for them |
 | `insert-cursor-shape` | `block` \| `bar` \| `underline` | `bar` | Cursor shape in Insert mode, for every cursor when there are several |
 | `jump-list-capacity` | integer ≥ 1 | `100` | Max jump list entries |
 | `jump-list-min-lines` | integer | `5` | Line distance to record a jump |

@@ -109,7 +109,7 @@ impl Timers {
     }
 
     /// Whether no timer is scheduled or queued.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-util"))]
     pub(in crate::editor) fn is_empty(&self) -> bool {
         self.payloads.is_empty() && self.queued.is_empty()
     }

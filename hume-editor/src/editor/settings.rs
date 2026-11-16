@@ -868,7 +868,7 @@ define_settings! {
             parser: UsizeNonzero;
         // Scroll bursts (page-down held, mouse wheel) must collapse to one
         // OnViewportChange fire, not one per frame.
-        "hook-viewport-debounce-ms" => hook_viewport_debounce_ms: usize = 150,
+        "hook-viewport-debounce-ms" => hook_viewport_debounce_ms: usize = 80,
             parser: UsizeNonzero;
         // rust-analyzer's first requests during indexing are slow; 10s
         // gives real-world servers room before the request is dropped as

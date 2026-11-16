@@ -1112,7 +1112,7 @@ fn settle_until_idle(ed: &mut Editor) {
 /// `on-viewport-change` hook and does something slow (`eval_with_real_host`
 /// builds a whole Steel VM from disk) before observing the *next* viewport
 /// change. Plain `frame` leaves a real timer armed (`viewport_debounce_ms`,
-/// default 150ms); if enough wall-clock time passes before the next drain, it
+/// default 80ms); if enough wall-clock time passes before the next drain, it
 /// fires for real, reading the pane's *current* (by then transitioned)
 /// state per `timer_bridge.rs`'s documented fire-site contract, and
 /// double-counts whatever the test goes on to observe. Zeroing the debounce

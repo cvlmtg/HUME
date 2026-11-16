@@ -1,6 +1,7 @@
 //! Headless editors for the criterion benches: a pane with a full selection
-//! history (`benches/selection_history.rs`) and a concealed Markdown buffer
-//! (`benches/conceal.rs`).
+//! history (`benches/selection_history.rs`), a concealed Markdown buffer
+//! (`benches/conceal.rs`) and a Markdown buffer drawn by the real
+//! `core:markdown-preview` plugin (`benches/markdown_preview.rs`).
 
 use std::path::Path;
 
@@ -49,8 +50,8 @@ pub struct SelectionHistoryBench {
     editor: Editor,
 }
 
-/// An editor opened on `file` with no config and no terminal.
-fn headless_editor(file: &Path) -> Editor {
+/// An editor opened on `file` with no terminal, reading `config` from `dirs`.
+fn headless_editor(file: &Path, dirs: Dirs, config: ConfigSource) -> Editor {
     let cwd = AbsolutePath::current_dir().expect("the bench runs in a directory");
     let input = FileArg {
         path: AbsolutePath::from_path(file, &cwd).expect("the bench file has a path"),
@@ -59,8 +60,8 @@ fn headless_editor(file: &Path) -> Editor {
     Editor::start(
         std::slice::from_ref(&input),
         Driver::Headless,
-        Dirs::none(),
-        ConfigSource::Skip,
+        dirs,
+        config,
         cwd,
     )
     .expect("the editor starts headless")
@@ -83,7 +84,7 @@ impl SelectionHistoryBench {
     /// setup logs an error.
     pub fn new(file: &Path, cursors: usize) -> Self {
         assert!(cursors >= 2, "the setup copies the first cursor down");
-        let editor = headless_editor(file);
+        let editor = headless_editor(file, Dirs::none(), ConfigSource::Skip);
         let mut bench = Self { editor };
         bench.editor.settle();
         bench.press(&Keys::parse(&format!(
@@ -256,7 +257,7 @@ impl ConcealBench {
     pub fn new(file: &Path, lines: usize, conceals: Option<StoreSize>) -> Self {
         let text = markdown_sample(lines);
         std::fs::write(file, &text).expect("the bench file is written");
-        let editor = headless_editor(file);
+        let editor = headless_editor(file, Dirs::none(), ConfigSource::Skip);
         let mut bench = Self { editor, down: true };
         bench.editor.resize_terminal(80, 25);
         bench.editor.settle();
@@ -328,5 +329,143 @@ impl ConcealBench {
         for line in 0..text.content_line_count().get() {
             std::hint::black_box(map.block(ContentLine::new(line)));
         }
+    }
+}
+
+/// The text a [`MarkdownPreviewBench`] opens, its first screen being what
+/// each render draws.
+#[derive(Clone, Copy, Debug)]
+pub enum PreviewSample {
+    /// The 5,000-line [`markdown_sample`].
+    Prose,
+    /// A [`TALL_TABLE_ROWS`]-row table under a heading: a render that shows
+    /// one of its rows fetches and draws all of them.
+    TallTable,
+}
+
+/// Rows of the [`PreviewSample::TallTable`] table, many screens tall.
+pub const TALL_TABLE_ROWS: usize = 400;
+
+impl PreviewSample {
+    fn text(self) -> String {
+        match self {
+            Self::Prose => markdown_sample(5_000),
+            Self::TallTable => {
+                let mut text =
+                    String::from("## Table\n\n| name | value | note |\n|------|-------|------|\n");
+                for n in 0..TALL_TABLE_ROWS {
+                    text.push_str(&format!("| row {n} | {n} | *text* |\n"));
+                }
+                text.push_str("\nAfter the table.\n");
+                text
+            }
+        }
+    }
+}
+
+/// Loads `core:markdown-preview` as a user's `init.scm` does.
+const PREVIEW_INIT: &str =
+    "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:markdown-preview\")\n";
+
+/// The plugin's decoration source.
+const PREVIEW_SOURCE: &str = "markdown-preview";
+
+/// How often, and how long apart, [`MarkdownPreviewBench::new`] looks for the
+/// first render: the parse runs on a worker thread and the render it leads
+/// to waits out the plugin's own debounce.
+const SETUP_TRIES: usize = 1_000;
+const SETUP_PAUSE: std::time::Duration = std::time::Duration::from_millis(5);
+
+/// A headless editor started as a user's would, with `core:markdown-preview`
+/// loaded by its `init.scm` and the `markdown` and `markdown.inline` grammars
+/// installed in its data dir, showing a [`PreviewSample`] the plugin has
+/// drawn.
+pub struct MarkdownPreviewBench {
+    editor: Editor,
+}
+
+impl MarkdownPreviewBench {
+    /// Writes `sample` to `<root>/<name>.md` and an `init.scm` loading the
+    /// plugin to `<root>/config/`, starts the editor on the file at
+    /// `width` x `height` with `<root>/data/` as its data dir and the repo's
+    /// `runtime/`, and waits for the plugin's first render. `<root>/data/grammars/`
+    /// holds both grammars, installed as PLUM installs them.
+    ///
+    /// # Panics
+    /// Panics if the editor cannot start, the plugin draws nothing, a pending
+    /// timer outlasts the wait, or the setup logs an error.
+    pub fn new(root: &Path, sample: PreviewSample, width: u16, height: u16) -> Self {
+        let config = root.join("config");
+        std::fs::create_dir_all(&config).expect("the config dir is made");
+        std::fs::write(config.join("init.scm"), PREVIEW_INIT).expect("init.scm is written");
+        let file = root.join(format!("{sample:?}.md"));
+        std::fs::write(&file, sample.text()).expect("the bench file is written");
+        let dirs = Dirs {
+            config: Some(config),
+            data: Some(root.join("data")),
+            runtime: Some(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("hume-editor sits under the workspace root")
+                    .join("runtime"),
+            ),
+            ..Dirs::none()
+        };
+        let mut editor = headless_editor(&file, dirs, ConfigSource::Default);
+        editor.resize_terminal(width, height);
+        let mut bench = Self { editor };
+        bench.settle_until_drawn();
+        // The hook the timed loop fires renders on its own: with the store
+        // emptied, only that render can refill it.
+        let bid = bench.editor.focused_buffer_id();
+        bench
+            .editor
+            .state
+            .config
+            .decorations
+            .set_conceals(PREVIEW_SOURCE.into(), bid, Vec::new());
+        bench.render();
+        assert!(bench.conceal_count() > 0, "the viewport hook drew nothing");
+        assert_setup_clean(&bench.editor);
+        bench
+    }
+
+    /// Draws frames until the plugin has set conceals and no timer is left
+    /// to fire inside a timed loop.
+    fn settle_until_drawn(&mut self) {
+        for _ in 0..SETUP_TRIES {
+            self.editor.settle();
+            self.editor.prepare_frame(&mut RenderContext::new());
+            if self.conceal_count() > 0 && self.editor.timers.is_empty() {
+                return;
+            }
+            std::thread::sleep(SETUP_PAUSE);
+        }
+        panic!("the plugin did not draw, or a timer stayed pending");
+    }
+
+    /// How many conceals the plugin holds for the focused buffer.
+    pub fn conceal_count(&self) -> usize {
+        let bid = self.editor.focused_buffer_id();
+        self.editor
+            .state
+            .config
+            .decorations
+            .conceals_for(PREVIEW_SOURCE, bid)
+            .len()
+    }
+
+    /// The focused pane's `on-viewport-change`, fired as its debounce timer
+    /// fires it, and settled: one render of the visible lines.
+    pub fn render(&mut self) {
+        let pid = self.editor.view.focused_pane();
+        self.editor.queue_viewport_change(pid);
+        self.editor.settle();
+    }
+
+    /// [`Self::render`], then the frame that draws what it set.
+    pub fn render_then_frame(&mut self) {
+        self.render();
+        std::hint::black_box(self.editor.prepare_frame(&mut RenderContext::new()));
     }
 }
