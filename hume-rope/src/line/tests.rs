@@ -138,11 +138,15 @@ fn lines(start: usize, end: usize) -> ExclusiveRange<ContentLine> {
     ExclusiveRange::new(ContentLine::new(start), ContentLine::new(end))
 }
 
+fn joined(start: usize, last: usize) -> InclusiveRange<ContentLine> {
+    InclusiveRange::new(ContentLine::new(start), ContentLine::new(last))
+}
+
 #[test]
 fn join_line_ranges_keeps_ranges_apart_sorted() {
     assert_eq!(
         join_line_ranges([lines(50, 60), lines(0, 10)]),
-        [lines(0, 10), lines(50, 60)]
+        [joined(0, 9), joined(50, 59)]
     );
 }
 
@@ -150,15 +154,15 @@ fn join_line_ranges_keeps_ranges_apart_sorted() {
 fn join_line_ranges_joins_overlapping_touching_and_contained_ranges() {
     assert_eq!(
         join_line_ranges([lines(0, 10), lines(5, 20)]),
-        [lines(0, 20)]
+        [joined(0, 19)]
     );
     assert_eq!(
         join_line_ranges([lines(10, 20), lines(0, 10)]),
-        [lines(0, 20)]
+        [joined(0, 19)]
     );
     assert_eq!(
         join_line_ranges([lines(0, 20), lines(5, 10)]),
-        [lines(0, 20)]
+        [joined(0, 19)]
     );
 }
 
@@ -166,30 +170,17 @@ fn join_line_ranges_joins_overlapping_touching_and_contained_ranges() {
 fn join_line_ranges_drops_empty_ranges() {
     assert_eq!(
         join_line_ranges([lines(3, 3), lines(20, 30), lines(40, 40)]),
-        [lines(20, 30)]
+        [joined(20, 29)]
     );
 }
 
 #[test]
-fn as_inclusive_ends_on_the_line_before_the_end() {
-    assert_eq!(
-        lines(3, 7).as_inclusive(),
-        Some(InclusiveRange::new(
-            ContentLine::new(3),
-            ContentLine::new(6)
-        ))
-    );
-    assert_eq!(
-        lines(3, 4).as_inclusive(),
-        Some(InclusiveRange::new(
-            ContentLine::new(3),
-            ContentLine::new(3)
-        ))
-    );
+fn join_line_ranges_gives_a_one_line_range_as_that_line() {
+    assert_eq!(join_line_ranges([lines(3, 4)]), [joined(3, 3)]);
 }
 
 #[test]
-fn as_inclusive_is_none_for_an_empty_range() {
-    assert_eq!(lines(3, 3).as_inclusive(), None);
-    assert_eq!(lines(4, 3).as_inclusive(), None);
+fn to_exclusive_ends_on_the_line_after_the_last() {
+    assert_eq!(joined(3, 6).to_exclusive(), lines(3, 7));
+    assert_eq!(joined(3, 3).to_exclusive(), lines(3, 4));
 }

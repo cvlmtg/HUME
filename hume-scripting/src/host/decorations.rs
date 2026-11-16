@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use hume_core::{BufferId, DiagSeverity, Side};
 use hume_rope::line::ContentLine;
-use hume_rope::offset::ExclusiveRange;
+use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 use hume_rope::position_encoding::PositionEncoding;
 
 use crate::types::{ConcealOverlaps, ConcealSpec, VirtualLineSpec};
@@ -33,6 +33,11 @@ impl MarkedLines {
 
     pub fn lines(self) -> ExclusiveRange<ContentLine> {
         ExclusiveRange::new(self.start, self.end)
+    }
+
+    /// The marked lines from the first through the last.
+    pub fn span(self) -> InclusiveRange<ContentLine> {
+        InclusiveRange::new(self.start, self.end.retreat_saturating(1))
     }
 }
 

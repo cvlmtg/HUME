@@ -90,8 +90,7 @@ impl CaptureQuery {
     ) {
         out.clear();
         let mut cursor = QueryCursor::new();
-        for range in join_line_ranges(lines.iter().copied()) {
-            let lines = range.as_inclusive().expect("joined ranges are non-empty");
+        for lines in join_line_ranges(lines.iter().copied()) {
             let (bytes, covering) = layers.covering_lines(rope, lines);
             cursor.set_byte_range(bytes);
             for layer in covering.filter(|layer| layer.bundle.config_gen == self.config_gen) {

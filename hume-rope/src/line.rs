@@ -164,6 +164,11 @@ impl InclusiveRange<ContentLine> {
     pub fn iter(self) -> impl DoubleEndedIterator<Item = ContentLine> + Clone {
         (self.start.0..=self.end.0).map(ContentLine)
     }
+
+    /// The same lines, up to the line after `end`.
+    pub fn to_exclusive(self) -> ExclusiveRange<ContentLine> {
+        ExclusiveRange::new(self.start, self.end.advance(1))
+    }
 }
 
 impl ExclusiveRange<ContentLine> {
@@ -172,20 +177,14 @@ impl ExclusiveRange<ContentLine> {
     pub fn iter(self) -> impl DoubleEndedIterator<Item = ContentLine> + Clone {
         (self.start.0..self.end.0).map(ContentLine)
     }
-
-    /// The same lines from `start` through the line before `end`, `None`
-    /// when the range is empty.
-    pub fn as_inclusive(self) -> Option<InclusiveRange<ContentLine>> {
-        (self.start < self.end)
-            .then(|| InclusiveRange::new(self.start, ContentLine(self.end.0 - 1)))
-    }
 }
 
 /// `ranges` without the empty ones, sorted by start, with the ranges that
-/// overlap or touch joined, so no line is in two of them.
+/// overlap or touch joined, so no line is in two of them. Each joined range
+/// holds a line, so it is given from its first line through its last.
 pub fn join_line_ranges(
     ranges: impl IntoIterator<Item = ExclusiveRange<ContentLine>>,
-) -> Vec<ExclusiveRange<ContentLine>> {
+) -> Vec<InclusiveRange<ContentLine>> {
     let mut sorted: Vec<_> = ranges
         .into_iter()
         .filter(|range| !range.is_empty())
@@ -199,6 +198,9 @@ pub fn join_line_ranges(
         }
     }
     joined
+        .into_iter()
+        .map(|range| InclusiveRange::new(range.start, ContentLine(range.end.0 - 1)))
+        .collect()
 }
 
 impl RopeyLineCount {

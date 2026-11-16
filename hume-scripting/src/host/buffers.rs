@@ -204,8 +204,9 @@ pub trait BufferHost {
 
     /// The content lines every pane showing `id` shows, as
     /// [`viewport_range`](Self::viewport_range) gives them, joined by
-    /// [`hume_rope::line::join_line_ranges`], for
-    /// `(buffer-viewport-ranges pane)`. Empty when no pane shows `id`.
+    /// [`hume_rope::line::join_line_ranges`] and each given up to the line
+    /// after its last, for `(buffer-viewport-ranges pane)`. Empty when no
+    /// pane shows `id`.
     fn buffer_viewport_ranges(
         &mut self,
         id: BufferId,

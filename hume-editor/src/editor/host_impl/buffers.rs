@@ -5,7 +5,7 @@ use hume_core::{BufferId, OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::{ContentLine, join_line_ranges};
 use hume_rope::lines::line_token_content;
-use hume_rope::offset::ExclusiveRange;
+use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 
 use super::EditorHostImpl;
 use crate::editor::buffer::lifecycle::CloseBufferRefused;
@@ -297,5 +297,8 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
                 .into_iter()
                 .map(|pid| crate::editor::geometry::viewport_range(self.state, self.view, pid)),
         )
+        .into_iter()
+        .map(InclusiveRange::to_exclusive)
+        .collect()
     }
 }
