@@ -79,41 +79,61 @@ fn bench_locals(c: &mut Criterion) {
     }
 }
 
-/// `text` with `inserted` at char `at`, and the change that makes it.
-fn inserted(text: &BufferText, at: usize, inserted: &str) -> (BufferText, ChangeSet) {
+/// Selections typed at by the multi-cursor rows.
+const CURSORS: usize = 200;
+
+/// `text` with `inserted` at each of the ascending chars `at`, and the
+/// change that makes it.
+fn inserted(text: &BufferText, at: &[usize], inserted: &str) -> (BufferText, ChangeSet) {
     let mut builder = ChangeSetBuilder::new(text.end());
-    builder.retain_to(CharOffset::new(at));
-    builder.insert(inserted);
+    for &at in at {
+        builder.retain_to(CharOffset::new(at));
+        builder.insert(inserted);
+    }
     let change = builder.finish();
     let after = change.apply(text).expect("an insertion applies");
     (after, change)
 }
 
-/// `text` without the char at `at`, and the change that makes it.
-fn deleted(text: &BufferText, at: usize) -> (BufferText, ChangeSet) {
+/// `text` without the char at each of the ascending chars `at`, and the
+/// change that makes it.
+fn deleted(text: &BufferText, at: &[usize]) -> (BufferText, ChangeSet) {
     let mut builder = ChangeSetBuilder::new(text.end());
-    builder.retain_to(CharOffset::new(at));
-    builder.delete_to(CharOffset::new(at + 1));
+    for &at in at {
+        builder.retain_to(CharOffset::new(at));
+        builder.delete_to(CharOffset::new(at + 1));
+    }
     let change = builder.finish();
     let after = change.apply(text).expect("a deletion applies");
     (after, change)
 }
 
-/// Reparse after typing one char at the first `needle` of the source, then
-/// after deleting it, as the editor reparses after each keystroke.
+/// Reparse after typing one char at the first `needle` of the source, or
+/// at `CURSORS` of them, then after deleting it, as the editor reparses
+/// after each keystroke.
 fn bench_reparse(c: &mut Criterion) {
     let source = source();
     let langs = Arc::new(GrammarSnapshot::default());
     let middle = |needle: &str| {
         let half = source.len() / 2;
-        half + source[half..]
-            .find(needle)
-            .expect("the needle is in the source")
+        vec![
+            half + source[half..]
+                .find(needle)
+                .expect("the needle is in the source"),
+        ]
     };
+    let cursors: Vec<usize> = source
+        .match_indices("    let delta")
+        .map(|(at, _)| at)
+        .take(CURSORS)
+        .collect();
     for (place, at, typed) in [
         ("in_a_function", middle("    let delta"), " "),
         ("at_the_top_level", middle("fn f"), "\n"),
+        ("at_200_cursors", cursors, " "),
     ] {
+        // Each typed char lands after those typed before it.
+        let typed_at: Vec<usize> = at.iter().enumerate().map(|(i, at)| at + i).collect();
         for (name, locals) in [("without_locals", false), ("with_locals", true)] {
             let mut text = BufferText::from(source.as_str());
             let mut syntax = Syntax::attach_sync(rust(locals), &text, &langs);
@@ -121,9 +141,9 @@ fn bench_reparse(c: &mut Criterion) {
                 b.iter(|| {
                     for edit in [true, false] {
                         let (after, change) = if edit {
-                            inserted(&text, at, typed)
+                            inserted(&text, &at, typed)
                         } else {
-                            deleted(&text, at)
+                            deleted(&text, &typed_at)
                         };
                         syntax.record_edit(&TextChange::new(&text, &after, &change));
                         syntax.ensure_current(&after, &langs);
