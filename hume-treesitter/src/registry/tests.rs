@@ -125,10 +125,6 @@ fn attach_grammar_with_valid_injections_populates_bundle() {
         .injections
         .as_ref()
         .expect("injections query must be populated");
-    assert!(
-        injections.content_capture.is_some(),
-        "injection.content capture must be found"
-    );
     assert_eq!(injections.patterns.len(), 1);
     assert_eq!(
         injections.patterns[0].language.as_deref(),
@@ -231,6 +227,50 @@ fn a_context_scm_capturing_no_context_is_left_out() {
         matches!(
             reason,
             FileSkip::NamesNothing(r#"a @context capture or a #make-range! "context""#)
+        ),
+        "{reason:?}"
+    );
+}
+
+#[test]
+fn an_injections_scm_capturing_no_content_is_left_out() {
+    let (_dir, path) = write_temp_scm(
+        "injections.scm",
+        r#"((macro_invocation (token_tree) @block) (#set! injection.language "rust"))"#,
+    );
+    let reason = attach_leaving_out(OptionalQuery::Injections, path);
+    assert!(
+        matches!(
+            reason,
+            FileSkip::NamesNothing("an @injection.content capture")
+        ),
+        "{reason:?}"
+    );
+}
+
+#[test]
+fn a_textobjects_scm_capturing_no_object_is_left_out() {
+    let (_dir, path) = write_temp_scm("textobjects.scm", "(function_item) @function");
+    let reason = attach_leaving_out(OptionalQuery::TextObjects, path);
+    assert!(
+        matches!(
+            reason,
+            FileSkip::NamesNothing(
+                "an object capture such as @function.inside, or a #make-range! naming one"
+            )
+        ),
+        "{reason:?}"
+    );
+}
+
+#[test]
+fn an_indents_scm_capturing_no_indent_is_left_out() {
+    let (_dir, path) = write_temp_scm("indents.scm", "(block) @scope");
+    let reason = attach_leaving_out(OptionalQuery::Indents, path);
+    assert!(
+        matches!(
+            reason,
+            FileSkip::NamesNothing("an indent capture such as @indent or @outdent")
         ),
         "{reason:?}"
     );

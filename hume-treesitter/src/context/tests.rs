@@ -236,7 +236,8 @@ fn textobjects_name_scopes_only_with_function_or_class_objects() {
             tree_sitter::Query::new(grammar.language(), source).expect("compile query"),
             source,
             &mut skipped,
-        );
+        )
+        .expect("the query defines an object");
         assert!(skipped.is_empty(), "{skipped:?}");
         Arc::new(query)
     };

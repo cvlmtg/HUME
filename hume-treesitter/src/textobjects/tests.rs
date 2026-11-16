@@ -39,7 +39,8 @@ fn compile(source: &str) -> TextObjectsQuery {
     let grammar = crate::test_support::open_grammar("rust", "tree_sitter_rust");
     let query = tree_sitter::Query::new(grammar.language(), source).expect("compile query");
     let mut skipped = Vec::new();
-    let query = TextObjectsQuery::new(query, source, &mut skipped);
+    let query =
+        TextObjectsQuery::new(query, source, &mut skipped).expect("the query defines an object");
     assert!(skipped.is_empty(), "{skipped:?}");
     query
 }

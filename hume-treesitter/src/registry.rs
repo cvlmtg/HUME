@@ -255,6 +255,17 @@ fn compile_source(
     Ok((grammar, compiled, skipped))
 }
 
+/// `compiled` stored in `slot`, and `needs`, what its kind needs to name
+/// anything, when it is `None`.
+fn store<T>(
+    slot: &mut Option<T>,
+    compiled: Option<T>,
+    needs: &'static str,
+) -> Option<&'static str> {
+    *slot = compiled;
+    slot.is_none().then_some(needs)
+}
+
 /// Each of `errors`, a pattern of `file` left out, as a skip in `skipped`.
 fn skip_patterns(skipped: &mut Vec<Skipped>, file: &'static str, errors: &mut Vec<QueryError>) {
     skipped.extend(
@@ -353,30 +364,36 @@ pub(crate) fn compile_queries(
             }
         };
         let names_nothing = match kind {
-            OptionalQuery::Injections => {
-                injections = Some(InjectionsQuery::new(query, src, &mut errors));
-                None
-            }
-            OptionalQuery::TextObjects => {
-                textobjects = Some(Arc::new(TextObjectsQuery::new(query, src, &mut errors)));
-                None
-            }
-            OptionalQuery::Indents => {
-                indents = Some(IndentQuery::new(query, src, language, &mut errors));
-                None
-            }
-            OptionalQuery::Context => {
-                context = ContextQuery::new(query, src, &mut errors);
-                context.is_none().then_some(ContextQuery::NEEDS)
-            }
-            OptionalQuery::Folds => {
-                folds = FoldQuery::new(query, src, &mut errors);
-                folds.is_none().then_some(FoldQuery::NEEDS)
-            }
-            OptionalQuery::Locals => {
-                locals = LocalsQuery::new(query, src, scope_reg, &mut errors);
-                locals.is_none().then_some(LocalsQuery::NEEDS)
-            }
+            OptionalQuery::Injections => store(
+                &mut injections,
+                InjectionsQuery::new(query, src, &mut errors),
+                InjectionsQuery::NEEDS,
+            ),
+            OptionalQuery::TextObjects => store(
+                &mut textobjects,
+                TextObjectsQuery::new(query, src, &mut errors).map(Arc::new),
+                TextObjectsQuery::NEEDS,
+            ),
+            OptionalQuery::Indents => store(
+                &mut indents,
+                IndentQuery::new(query, src, language, &mut errors),
+                IndentQuery::NEEDS,
+            ),
+            OptionalQuery::Context => store(
+                &mut context,
+                ContextQuery::new(query, src, &mut errors),
+                ContextQuery::NEEDS,
+            ),
+            OptionalQuery::Folds => store(
+                &mut folds,
+                FoldQuery::new(query, src, &mut errors),
+                FoldQuery::NEEDS,
+            ),
+            OptionalQuery::Locals => store(
+                &mut locals,
+                LocalsQuery::new(query, src, scope_reg, &mut errors),
+                LocalsQuery::NEEDS,
+            ),
         };
         skip_patterns(&mut skipped, kind.file_name(), &mut errors);
         if let Some(needs) = names_nothing {

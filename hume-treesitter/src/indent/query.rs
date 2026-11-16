@@ -108,27 +108,34 @@ pub struct IndentQuery {
 }
 
 impl IndentQuery {
-    /// A pattern using a predicate the engine does not evaluate, or a
-    /// `#set!` other than `"scope" "header"`, is skipped, its error in
-    /// `source` pushed to `skipped`.
+    /// What an `indents.scm` needs to indent anything.
+    pub(crate) const NEEDS: &str = "an indent capture such as @indent or @outdent";
+
+    /// A compiled `indents.scm`, `None` when it has no indent capture. A
+    /// pattern using a predicate the engine does not evaluate, or a `#set!`
+    /// other than `"scope" "header"`, is skipped, its error in `source`
+    /// pushed to `skipped`.
     pub(crate) fn new(
         mut query: Query,
         source: &str,
         language: &Language,
         skipped: &mut Vec<QueryError>,
-    ) -> Self {
-        let captures = query
+    ) -> Option<Self> {
+        let captures: Vec<Option<IndentCapture>> = query
             .capture_names()
             .iter()
             .map(|name| IndentCapture::from_name(name))
             .collect();
         let patterns = parse_patterns(&mut query, source, skipped);
-        Self {
+        if captures.iter().all(Option::is_none) {
+            return None;
+        }
+        Some(Self {
             query,
             captures,
             patterns,
             token_prefixes: token_prefixes(language),
-        }
+        })
     }
 
     pub(super) fn capture(&self, index: u32) -> Option<IndentCapture> {

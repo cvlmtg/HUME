@@ -135,15 +135,26 @@ struct ObjectDef {
     made: bool,
 }
 
+impl ObjectDef {
+    fn defined(self) -> bool {
+        self.capture.is_some() || self.made
+    }
+}
+
 impl TextObjectsQuery {
-    /// A pattern using any engine predicate or directive but `#make-range!`
+    /// What a `textobjects.scm` needs to define an object.
+    pub(crate) const NEEDS: &str =
+        "an object capture such as @function.inside, or a #make-range! naming one";
+
+    /// A compiled `textobjects.scm`, `None` when it defines no object. A
+    /// pattern using any engine predicate or directive but `#make-range!`
     /// and `#offset!`, or either of those with arguments it can't apply, is
     /// skipped, its error in `source` pushed to `skipped`.
     pub(crate) fn new(
         mut query: tree_sitter::Query,
         source: &str,
         skipped: &mut Vec<QueryError>,
-    ) -> Self {
+    ) -> Option<Self> {
         let patterns: Vec<ObjectPattern> = parse_patterns(&mut query, source, skipped);
         let mut objects = [[ObjectDef::default(); ObjectSpan::ALL.len()]; ObjectKind::ALL.len()];
         for (idx, name) in query.capture_names().iter().enumerate() {
@@ -154,11 +165,14 @@ impl TextObjectsQuery {
         for &(kind, span, _) in patterns.iter().flat_map(|pattern| &pattern.ranges) {
             objects[kind as usize][span as usize].made = true;
         }
-        Self {
+        if !objects.as_flattened().iter().any(|object| object.defined()) {
+            return None;
+        }
+        Some(Self {
             query,
             objects,
             patterns,
-        }
+        })
     }
 
     /// The compiled query, for code that runs its matches itself.
@@ -178,8 +192,7 @@ impl TextObjectsQuery {
     /// Whether this query defines a `<kind>.<span>` object, by a capture or
     /// by a `#make-range!`.
     pub(crate) fn defines(&self, kind: ObjectKind, span: ObjectSpan) -> bool {
-        let object = self.object(kind, span);
-        object.capture.is_some() || object.made
+        self.object(kind, span).defined()
     }
 
     /// Whether `pattern` captures or makes a `kind.span` object.

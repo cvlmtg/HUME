@@ -135,7 +135,8 @@ fn compile(name: &str, src: &str) -> IndentQuery {
     let grammar = open_grammar(name, &symbol(name));
     let query = tree_sitter::Query::new(grammar.language(), src).expect("query syntax is valid");
     let mut skipped = Vec::new();
-    let query = IndentQuery::new(query, src, grammar.language(), &mut skipped);
+    let query = IndentQuery::new(query, src, grammar.language(), &mut skipped)
+        .expect("the query has an indent capture");
     assert!(skipped.is_empty(), "{skipped:?}");
     query
 }
@@ -174,7 +175,8 @@ fn an_unsupported_predicate_or_property_skips_its_pattern() {
 fn every_supported_predicate_and_property_compiles() {
     compile(
         "rust",
-        r#"((block) @a (#not-kind-eq? @a "block"))
+        r#"(block) @indent
+           ((block) @a (#not-kind-eq? @a "block"))
            ((block) @a (block) @b (#same-line? @a @b))
            ((block) @a (block) @b (#not-same-line? @a @b))
            ((block) @a (#one-line? @a))

@@ -25,8 +25,8 @@ use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId, SnapshotGramma
 /// through an `Arc`.
 pub struct InjectionsQuery {
     pub(crate) query: Arc<tree_sitter::Query>,
-    /// Capture index for `@injection.content`, if the query defines it.
-    pub(crate) content_capture: Option<u32>,
+    /// Capture index for `@injection.content`.
+    pub(crate) content_capture: u32,
     /// Capture index for `@injection.language`, if the query defines it.
     pub(crate) language_capture: Option<u32>,
     /// Index-aligned with `query.pattern_count()`.
@@ -68,8 +68,12 @@ impl PatternDirectives for PatternConfig {
 }
 
 impl InjectionsQuery {
-    /// Build from a compiled `injections.scm` query and its `source`. Unknown
-    /// captures and properties (the installed queries carry extras like
+    /// What an `injections.scm` needs to inject anything.
+    pub(crate) const NEEDS: &str = "an @injection.content capture";
+
+    /// Build from a compiled `injections.scm` query and its `source`, `None`
+    /// when it captures no `@injection.content`. Unknown captures and
+    /// properties (the installed queries carry extras like
     /// `injection.filename`) are ignored; only the standard tree-sitter
     /// injection convention is interpreted. A pattern using a predicate or
     /// directive tree-sitter leaves to the engine is skipped, its error in
@@ -78,14 +82,14 @@ impl InjectionsQuery {
         mut query: tree_sitter::Query,
         source: &str,
         skipped: &mut Vec<QueryError>,
-    ) -> Self {
+    ) -> Option<Self> {
         let patterns = parse_patterns(&mut query, source, skipped);
-        Self {
-            content_capture: query.capture_index_for_name("injection.content"),
+        Some(Self {
+            content_capture: query.capture_index_for_name("injection.content")?,
             language_capture: query.capture_index_for_name("injection.language"),
             query: Arc::new(query),
             patterns,
-        }
+        })
     }
 }
 
@@ -229,17 +233,14 @@ fn query_sites(
     rope: &ropey::Rope,
     within: Option<&[Range<usize>]>,
 ) -> Vec<InjectionSite> {
-    let Some(content_idx) = inj.content_capture else {
-        return Vec::new();
-    };
     let mut sites = Vec::new();
     let mut cursor = tree_sitter::QueryCursor::new();
     match within {
-        None => push_sites(inj, content_idx, &mut cursor, tree, rope, &mut sites),
+        None => push_sites(inj, &mut cursor, tree, rope, &mut sites),
         Some(regions) => {
             for region in regions {
                 cursor.set_byte_range(region.clone());
-                push_sites(inj, content_idx, &mut cursor, tree, rope, &mut sites);
+                push_sites(inj, &mut cursor, tree, rope, &mut sites);
             }
         }
     }
@@ -250,7 +251,6 @@ fn query_sites(
 /// names a language and captures content.
 fn push_sites(
     inj: &InjectionsQuery,
-    content_idx: u32,
     cursor: &mut tree_sitter::QueryCursor,
     tree: &tree_sitter::Tree,
     rope: &ropey::Rope,
@@ -275,7 +275,7 @@ fn push_sites(
         let ranges: Vec<tree_sitter::Range> = m
             .captures()
             .iter()
-            .filter(|c| c.index == content_idx)
+            .filter(|c| c.index == inj.content_capture)
             .flat_map(|c| content_ranges(c.node, pattern.include_unnamed_children))
             .collect();
         if ranges.is_empty() {
