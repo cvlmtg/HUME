@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Installation
+- Install on Arch Linux from the AUR: `paru -S hume`, a community-maintained package.
+
 ### Panes & interface
 - Scope headers now show search matches and diagnostics, and highlights from plugins.
 - A parameter, `self` and other local names keep the color of their definition wherever they are used, in every language whose grammar has a `locals.scm`.

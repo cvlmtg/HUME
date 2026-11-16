@@ -42,6 +42,8 @@ On macOS and Linux, install with Homebrew:
 brew install cvlmtg/tap/hume
 ```
 
+On Arch Linux, install the community-maintained [`hume`](https://aur.archlinux.org/packages/hume) package from the AUR, for example with `paru -S hume`.
+
 Or grab the archive for your platform from the [latest release](https://github.com/cvlmtg/HUME/releases/latest):
 
 | Platform | Archive |

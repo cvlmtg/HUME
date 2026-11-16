@@ -1,6 +1,6 @@
 # Installation
 
-HUME ships as one archive: the editor plus the themes, plugins and language definitions it reads at runtime. Install it with Homebrew, or download it, extract it, and run it. You add syntax highlighting and language servers later, on demand, only for the languages you use.
+HUME ships as one archive: the editor plus the themes, plugins and language definitions it reads at runtime. Install it with Homebrew or, on Arch Linux, from the AUR. Or download it, extract it, and run it. You add syntax highlighting and language servers later, on demand, only for the languages you use.
 
 ## Homebrew (macOS, Linux)
 
@@ -9,6 +9,24 @@ brew install cvlmtg/tap/hume
 ```
 
 `brew upgrade hume` updates it to the newest release.
+
+## Arch Linux (AUR)
+
+The Arch User Repository has a community-maintained [`hume`](https://aur.archlinux.org/packages/hume) package for x86\_64. It builds the newest release from source. Install it with an AUR helper such as `paru` or `yay`:
+
+```sh
+paru -S hume
+```
+
+Or build it with `makepkg`:
+
+```sh
+git clone https://aur.archlinux.org/hume.git
+cd hume
+makepkg -si
+```
+
+A new HUME release can take a while to reach the package.
 
 ## Download
 
