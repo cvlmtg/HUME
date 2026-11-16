@@ -379,9 +379,9 @@ impl ObjectSpans {
     }
 }
 
-/// The byte hull (`min(start_byte)..max(end_byte)`) of every node captured
-/// under `capture_idx`, or `None` if the capture is empty or its nodes are
-/// not contiguous.
+/// The hull of every node captured under `capture_idx`, from the first
+/// node's start to the furthest end, or `None` if the capture is empty or
+/// its nodes are not contiguous.
 ///
 /// A quantified capture legitimately spans several nodes (a function's
 /// leading attributes, a run of line comments). But an unanchored quantifier
@@ -391,26 +391,28 @@ impl ObjectSpans {
 /// must be the first's `next_sibling()` (the adjacency a `.` anchor enforces).
 /// A failing match is dropped whole, not trimmed to its contiguous prefix,
 /// since the prefix would still tag an unrelated function as a test.
-fn capture_hull(m: &tree_sitter::QueryMatch, capture_idx: u32) -> Option<(usize, usize)> {
+fn capture_hull(m: &tree_sitter::QueryMatch, capture_idx: u32) -> Option<tree_sitter::Range> {
     let mut nodes = m.nodes_for_capture_index(capture_idx);
     let first = nodes.next()?;
     let mut prev = first;
-    let (mut hull_start, mut hull_end) = (first.start_byte(), first.end_byte());
+    let mut hull = first.range();
     for node in nodes {
         debug_assert!(
             node.start_byte() >= prev.start_byte(),
             "tree-sitter yields one capture's nodes in document order"
         );
-        let contiguous = node.start_byte() <= hull_end
+        let contiguous = node.start_byte() <= hull.end_byte
             || prev.next_sibling().is_some_and(|sib| sib.id() == node.id());
         if !contiguous {
             return None;
         }
-        hull_start = hull_start.min(node.start_byte());
-        hull_end = hull_end.max(node.end_byte());
+        if node.end_byte() > hull.end_byte {
+            hull.end_byte = node.end_byte();
+            hull.end_point = node.end_position();
+        }
         prev = node;
     }
-    Some((hull_start, hull_end))
+    Some(hull)
 }
 
 /// Run `query`'s matches over `layer`'s tree and, for every match that
@@ -438,9 +440,10 @@ fn collect_hulls(
     let root = layer.tree.root_node();
     let mut matches = cursor.matches(&query.query, root, RopeProvider(text.rope()));
     while let Some(m) = matches.next() {
-        let Some((start_byte, end_byte)) = capture_hull(m, capture_idx) else {
+        let Some(hull) = capture_hull(m, capture_idx) else {
             continue;
         };
+        let (start_byte, end_byte) = (hull.start_byte, hull.end_byte);
         // Callers hand over only a tree parsed from `text`; a stale one
         // could name bytes past its end.
         assert!(

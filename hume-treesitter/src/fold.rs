@@ -12,7 +12,7 @@ use hume_rope::offset::InclusiveRange;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, QueryCursor, QueryError, QueryPredicate, QueryPredicateArg as Arg, Tree};
 
-use crate::context::ContextQuery;
+use crate::context::{ContextQuery, Scope};
 use crate::directives::{PatternDirectives, parse_patterns, unsupported};
 use crate::highlight::RopeProvider;
 use crate::layers::{SyntaxLayer, SyntaxLayers};
@@ -122,7 +122,7 @@ impl FoldQuery {
         wanted: &impl Fn(ContentLine) -> bool,
         f: &mut impl FnMut(Fold),
     ) {
-        let wanted = |header: Node| wanted(ContentLine::new(header.start_position().row));
+        let root = tree.root_node();
         match self {
             Self::Folds {
                 query,
@@ -137,15 +137,16 @@ impl FoldQuery {
                         continue;
                     }
                     m.nodes_for_capture_index(*fold)
-                        .filter(|&node| wanted(node))
-                        .filter_map(|node| fold_of(node, node, rope))
+                        .map(|node| Scope::of(node.range()))
+                        .filter(|scope| wanted(scope.header))
+                        .filter_map(|scope| fold_of(scope, root, rope))
                         .filter_map(|fold| pattern.trimmed(fold, rope))
                         .for_each(&mut *f);
                 }
             }
-            Self::Scopes(scopes) => scopes.for_each_scope(cursor, tree, rope, bytes, |h, s| {
-                if wanted(h) {
-                    fold_of(h, s, rope).into_iter().for_each(&mut *f);
+            Self::Scopes(scopes) => scopes.for_each_scope(cursor, tree, rope, bytes, |scope| {
+                if wanted(scope.header) {
+                    fold_of(scope, root, rope).into_iter().for_each(&mut *f);
                 }
             }),
         }
@@ -238,30 +239,30 @@ fn canonical(folds: &mut Vec<Fold>) {
     folds.dedup_by_key(|f| f.first());
 }
 
-/// The region from `header`'s first line through `scope`'s last line.
+/// The region from `scope`'s header line through its last line, in the
+/// tree whose root is `root`.
 ///
 /// A scope ending at column 0 ends on the line before (a Markdown section
 /// runs to the next heading). Its last line stays shown when it holds only
 /// the scope's closing token (`}`, `end`, `)`), possibly followed by more
 /// text (`} else {`).
-fn fold_of(header: Node, scope: Node, rope: &ropey::Rope) -> Option<Fold> {
-    let first = ContentLine::new(header.start_position().row);
-    let end = scope.end_position();
+fn fold_of(scope: Scope, root: Node, rope: &ropey::Rope) -> Option<Fold> {
+    let first = scope.header;
+    let end = scope.end;
     let ends_at_line_start = end.column == 0 && end.row > first.index();
     let last = ContentLine::new(if ends_at_line_start {
         end.row - 1
     } else {
         end.row
     });
-    let shows_last = !ends_at_line_start && closes_on_own_line(scope, end.row, rope);
+    let shows_last = !ends_at_line_start && closes_on_own_line(root, scope.end_byte, end.row, rope);
     Fold::new(first, last, shows_last)
 }
 
-/// Whether `scope`'s last token is anonymous, starts on `row`, and only
-/// whitespace precedes it there.
-fn closes_on_own_line(scope: Node, row: usize, rope: &ropey::Rope) -> bool {
-    let end = scope.end_byte();
-    let Some(token) = scope.descendant_for_byte_range(end.saturating_sub(1), end) else {
+/// Whether the token ending at `end` under `root` is anonymous, starts on
+/// `row`, and only whitespace precedes it there.
+fn closes_on_own_line(root: Node, end: usize, row: usize, rope: &ropey::Rope) -> bool {
+    let Some(token) = root.descendant_for_byte_range(end.saturating_sub(1), end) else {
         return false;
     };
     !token.is_named()

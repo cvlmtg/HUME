@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use hume_rope::line::ContentLine;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{CaptureQuantifier, Node, QueryCursor, Tree};
+use tree_sitter::{CaptureQuantifier, Point, QueryCursor, Tree};
 
 use crate::highlight::RopeProvider;
 use crate::textobjects::{ObjectKind, ObjectSpan, TextObjectsQuery};
@@ -12,6 +12,25 @@ use crate::textobjects::{ObjectKind, ObjectSpan, TextObjectsQuery};
 pub struct ContextQuery {
     query: tree_sitter::Query,
     scopes: Scopes,
+}
+
+/// A scope a match names: the line heading it and where it ends.
+#[derive(Clone, Copy)]
+pub(crate) struct Scope {
+    pub(crate) header: ContentLine,
+    pub(crate) end: Point,
+    pub(crate) end_byte: usize,
+}
+
+impl Scope {
+    /// The scope `range` spans, headed by its own first line.
+    pub(crate) fn of(range: tree_sitter::Range) -> Self {
+        Self {
+            header: ContentLine::new(range.start_point.row),
+            end: range.end_point,
+            end_byte: range.end_byte,
+        }
+    }
 }
 
 /// How a [`ContextQuery`] match names a scope and the node heading it.
@@ -76,24 +95,24 @@ impl ContextQuery {
         line: ContentLine,
         out: &mut Vec<ContentLine>,
     ) {
-        self.for_each_scope(cursor, tree, rope, bytes, |header, scope| {
-            out.extend(scope_header(header, scope, line));
+        self.for_each_scope(cursor, tree, rope, bytes, |scope| {
+            out.extend(scope_header(scope, line));
         });
     }
 
-    /// Call `f` with the header and the node of every scope of `tree` a
-    /// match over `bytes` names, in match order.
+    /// Call `f` with every scope of `tree` a match over `bytes` names, in
+    /// match order.
     ///
     /// A text object's grouped capture (an attribute above a function) names
     /// each of its nodes as a scope of its own, so a caller keeping only
     /// scopes around a line keeps the item, never the node above it.
-    pub(crate) fn for_each_scope<'t>(
+    pub(crate) fn for_each_scope(
         &self,
         cursor: &mut QueryCursor,
-        tree: &'t Tree,
+        tree: &Tree,
         rope: &ropey::Rope,
         bytes: Range<usize>,
-        mut f: impl FnMut(Node<'t>, Node<'t>),
+        mut f: impl FnMut(Scope),
     ) {
         cursor.set_byte_range(bytes);
         let mut matches = cursor.matches(&self.query, tree.root_node(), RopeProvider(rope));
@@ -103,15 +122,18 @@ impl ContextQuery {
                     let Some(scope) = m.nodes_for_capture_index(context).next() else {
                         continue;
                     };
+                    let scope = Scope::of(scope.range());
                     let header = start
                         .and_then(|start| m.nodes_for_capture_index(start).next())
-                        .unwrap_or(scope);
-                    f(header, scope);
+                        .map_or(scope.header, |start| {
+                            ContentLine::new(start.start_position().row)
+                        });
+                    f(Scope { header, ..scope });
                 }
                 Scopes::TextObjects { around } => {
                     for index in around.into_iter().flatten() {
                         for node in m.nodes_for_capture_index(index) {
-                            f(node, node);
+                            f(Scope::of(node.range()));
                         }
                     }
                 }
@@ -124,9 +146,8 @@ impl ContextQuery {
 /// scope's last line is outside it, so its header drops once that line (a
 /// closing `}`) reaches the header's row. A Markdown section ends at column 0
 /// of the next heading, so its own last line stays inside.
-fn scope_header(header: Node, scope: Node, line: ContentLine) -> Option<ContentLine> {
-    let header = ContentLine::new(header.start_position().row);
-    (header < line && line.index() < scope.end_position().row).then_some(header)
+fn scope_header(scope: Scope, line: ContentLine) -> Option<ContentLine> {
+    (scope.header < line && line.index() < scope.end.row).then_some(scope.header)
 }
 
 #[cfg(test)]
