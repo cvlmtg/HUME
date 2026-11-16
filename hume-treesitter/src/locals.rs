@@ -14,10 +14,11 @@
 //! whatever the order of the patterns.
 //!
 //! A reparse rebuilds only the scopes an edit can have changed: the
-//! innermost scope around each byte the edit or the reparse touched, since
-//! a definition changes what references see only inside its own scope,
-//! and around every definition or reference holding such a byte, since its
-//! name is its text. A change outside every scope rebuilds the whole layer.
+//! innermost scope around each byte the edit or the reparse touched and
+//! around every definition or reference holding such a byte, since a
+//! definition changes what references see only inside its own scope, and a
+//! name is its node's text. A change outside every scope rebuilds the whole
+//! layer.
 
 use std::cmp::Reverse;
 use std::ops::RangeInclusive;
