@@ -295,20 +295,17 @@ pub(crate) fn compile_queries(
     let mut context = None;
     let mut folds = None;
     for &(kind, src) in optional {
-        let query = tree_sitter::Query::new(language, src)
-            .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?;
+        let build = |error| RegisterError::OptionalQueryBuild { kind, error };
+        let query = tree_sitter::Query::new(language, src).map_err(build)?;
         let duplicate = match kind {
             OptionalQuery::Injections => injections
-                .replace(InjectionsQuery::new(Arc::new(query)))
+                .replace(InjectionsQuery::new(Arc::new(query), src).map_err(build)?)
                 .is_some(),
             OptionalQuery::TextObjects => {
                 textobjects.replace(TextObjectsQuery::new(query)).is_some()
             }
             OptionalQuery::Indents => indents
-                .replace(
-                    IndentQuery::new(query, src, language)
-                        .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?,
-                )
+                .replace(IndentQuery::new(query, src, language).map_err(build)?)
                 .is_some(),
             OptionalQuery::Context => context
                 .replace(
@@ -319,14 +316,12 @@ pub(crate) fn compile_queries(
                 )
                 .is_some(),
             OptionalQuery::Folds => folds
-                .replace(
-                    FoldQuery::new(query, src)
-                        .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?
-                        .ok_or(RegisterError::MissingCapture {
-                            kind,
-                            capture: "fold",
-                        })?,
-                )
+                .replace(FoldQuery::new(query, src).map_err(build)?.ok_or(
+                    RegisterError::MissingCapture {
+                        kind,
+                        capture: "fold",
+                    },
+                )?)
                 .is_some(),
         };
         assert!(!duplicate, "{} given twice", kind.file_name());

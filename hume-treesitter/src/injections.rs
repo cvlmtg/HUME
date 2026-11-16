@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use streaming_iterator::StreamingIterator;
+use tree_sitter::{QueryError, QueryProperty};
 
+use crate::directives::{PatternDirectives, parse_patterns};
 use crate::edited_bytes::{EditedBytes, push_merging};
 use crate::highlight::RopeProvider;
 
@@ -31,6 +33,7 @@ pub struct InjectionsQuery {
 }
 
 /// Per-pattern `#set!` properties from an `injections.scm` query.
+#[derive(Default)]
 pub(crate) struct PatternConfig {
     /// Static `#set! injection.language "x"`, used when the pattern has no
     /// `@injection.language` capture (e.g. doc-comment content).
@@ -49,42 +52,35 @@ pub(crate) struct PatternConfig {
     pub(crate) include_unnamed_children: bool,
 }
 
-impl InjectionsQuery {
-    /// Build from a compiled `injections.scm` query. Unknown captures and
-    /// properties (the installed queries carry extras like
-    /// `injection.filename`) are ignored; only the standard tree-sitter
-    /// injection convention is interpreted.
-    pub(crate) fn new(query: Arc<tree_sitter::Query>) -> Self {
-        let content_capture = query.capture_index_for_name("injection.content");
-        let language_capture = query.capture_index_for_name("injection.language");
-        let patterns = (0..query.pattern_count())
-            .map(|i| {
-                let mut language = None;
-                let mut combined = false;
-                let mut include_unnamed_children = false;
-                for prop in query.property_settings(i) {
-                    match &*prop.key {
-                        "injection.language" => {
-                            language = prop.value.as_deref().map(str::to_owned);
-                        }
-                        "injection.combined" => combined = true,
-                        "injection.include-unnamed-children" => include_unnamed_children = true,
-                        _ => {}
-                    }
-                }
-                PatternConfig {
-                    language,
-                    combined,
-                    include_unnamed_children,
-                }
-            })
-            .collect();
-        Self {
-            query,
-            content_capture,
-            language_capture,
-            patterns,
+impl PatternDirectives for PatternConfig {
+    fn setting(&mut self, setting: &QueryProperty) -> Result<(), String> {
+        match &*setting.key {
+            "injection.language" => {
+                self.language = setting.value.as_deref().map(str::to_owned);
+            }
+            "injection.combined" => self.combined = true,
+            "injection.include-unnamed-children" => self.include_unnamed_children = true,
+            _ => {}
         }
+        Ok(())
+    }
+}
+
+impl InjectionsQuery {
+    /// Build from a compiled `injections.scm` query and its `source`. Unknown
+    /// captures and properties (the installed queries carry extras like
+    /// `injection.filename`) are ignored; only the standard tree-sitter
+    /// injection convention is interpreted. Fails, as a `Predicate` error at
+    /// the offending pattern's start, on `#is?`, `#is-not?` and every
+    /// predicate or directive tree-sitter leaves to the engine.
+    pub(crate) fn new(query: Arc<tree_sitter::Query>, source: &str) -> Result<Self, QueryError> {
+        let patterns = parse_patterns(&query, source)?;
+        Ok(Self {
+            content_capture: query.capture_index_for_name("injection.content"),
+            language_capture: query.capture_index_for_name("injection.language"),
+            query,
+            patterns,
+        })
     }
 }
 
