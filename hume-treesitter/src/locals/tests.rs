@@ -117,6 +117,44 @@ fn a_bare_definition_makes_its_references_local_without_a_highlight() {
 }
 
 #[test]
+fn a_node_another_capture_names_is_no_reference_whatever_the_pattern_order() {
+    let text = "fn f(a: u8) { a; a.max(a); }\n";
+    let discard = "(field_expression value: (identifier) @_)\n";
+    for source in [format!("{}{discard}", all()), format!("{discard}{}", all())] {
+        let (locals, _) = locals(&source, text);
+        let receiver = text.find("a.").unwrap();
+        let (first, argument) = (text.find("a;").unwrap(), text.find("a)").unwrap());
+        assert!(!locals.is_local(receiver, receiver + 1), "{source}");
+        assert!(locals.is_local(first, first + 1), "{source}");
+        assert!(locals.is_local(argument, argument + 1), "{source}");
+    }
+}
+
+#[test]
+fn the_rust_fixture_leaves_lifetimes_labels_and_paths_out_of_references() {
+    test_fixtures::require_grammars(&["rust"]);
+    let source = std::fs::read_to_string(
+        test_fixtures::grammar_query_path("rust").with_file_name("locals.scm"),
+    )
+    .expect("read the fixture locals.scm");
+    let text = "fn f<'a>(a: &'a str, len: usize, outer: u8) -> &'a str { 'outer: loop { m::len(); break 'outer; } a }\n";
+    let (locals, mut registry) = locals(&source, text);
+    let parameter = registry.intern("variable.parameter");
+    let body = text.rfind(" a }").unwrap() + 1;
+    assert_eq!(references(&locals), [(body, parameter)]);
+    let lifetimes = text.match_indices("'a").map(|(at, _)| at + 1);
+    let labels = text.match_indices("'outer").map(|(at, _)| at + 1);
+    let path = text.find("::len").unwrap() + 2;
+    for (at, len) in lifetimes
+        .map(|at| (at, 1))
+        .chain(labels.map(|at| (at, 5)))
+        .chain([(path, 3)])
+    {
+        assert!(!locals.is_local(at, at + len), "{:?}", &text[at..at + len]);
+    }
+}
+
+#[test]
 fn an_edit_moves_every_range() {
     let text = "fn f(a: u8) -> u8 { a }\n";
     let (mut locals, _) = locals(&all(), text);

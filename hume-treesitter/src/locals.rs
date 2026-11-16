@@ -9,7 +9,9 @@
 //! not see its parents' definitions. A definition's highlight is its capture
 //! name after `local.definition.`, `@local.definition.variable.parameter`
 //! giving its references `variable.parameter`; a bare `@local.definition`
-//! makes them local and leaves their highlight alone.
+//! makes them local and leaves their highlight alone. A node any pattern
+//! captures under another name, `@_` among them, is not a reference,
+//! whatever the order of the patterns.
 //!
 //! A reparse rebuilds only the scopes an edit can have changed: the
 //! innermost scope around each byte the edit or the reparse touched, since
@@ -36,14 +38,22 @@ use crate::registry::GrammarBundle;
 /// A compiled `locals.scm`.
 pub struct LocalsQuery {
     query: Query,
-    scope: Option<u32>,
-    reference: Option<u32>,
-    /// Per capture index, `Some` for a definition capture, holding the
-    /// highlight its references take.
-    definitions: Vec<Option<Option<ScopeId>>>,
+    /// Per capture index, what the capture names.
+    roles: Vec<CaptureRole>,
     /// Per pattern, whether its `@local.scope` sees its parents'
     /// definitions.
     inherits: Vec<bool>,
+}
+
+/// What a `locals.scm` capture makes of its node.
+#[derive(Clone, Copy, PartialEq)]
+enum CaptureRole {
+    Scope,
+    /// A definition, with the highlight its references take.
+    Definition(Option<ScopeId>),
+    Reference,
+    /// Any other name, `@_` among them: the node is not a reference.
+    Discard,
 }
 
 /// What one `locals.scm` pattern sets.
@@ -80,28 +90,32 @@ impl LocalsQuery {
         skipped: &mut Vec<QueryError>,
     ) -> Option<Self> {
         let patterns: Vec<LocalsPattern> = parse_patterns(&mut query, source, skipped);
-        let definitions: Vec<Option<Option<ScopeId>>> = query
+        let roles: Vec<CaptureRole> = query
             .capture_names()
             .iter()
             .map(|name| match *name {
-                "local.definition" => Some(None),
+                "local.scope" => CaptureRole::Scope,
+                "local.reference" => CaptureRole::Reference,
+                "local.definition" => CaptureRole::Definition(None),
                 name => name
                     .strip_prefix("local.definition.")
-                    .map(|highlight| Some(registry.intern(highlight))),
+                    .map_or(CaptureRole::Discard, |highlight| {
+                        CaptureRole::Definition(Some(registry.intern(highlight)))
+                    }),
             })
             .collect();
-        let scope = query.capture_index_for_name("local.scope");
-        let reference = query.capture_index_for_name("local.reference");
-        if scope.is_none() && reference.is_none() && definitions.iter().all(Option::is_none) {
+        if roles.iter().all(|role| *role == CaptureRole::Discard) {
             return None;
         }
         Some(Self {
             query,
-            scope,
-            reference,
-            definitions,
+            roles,
             inherits: patterns.iter().map(|p| !p.no_inheritance).collect(),
         })
+    }
+
+    fn role(&self, capture: u32) -> CaptureRole {
+        self.roles[capture as usize]
     }
 }
 
@@ -208,6 +222,7 @@ impl LayerLocals {
         let mut new_scopes = Vec::new();
         let mut new_definitions = Vec::new();
         let mut new_resolved = Vec::new();
+        let mut discarded = Vec::new();
         let mut cursor = QueryCursor::new();
         if let Some(region) = region {
             cursor.set_byte_range(region.start_byte..region.end_byte);
@@ -225,39 +240,49 @@ impl LayerLocals {
             {
                 scopes.pop();
             }
-            if Some(capture.index) == query.scope {
-                let inherits = query.inherits[m.pattern_index];
-                new_scopes.push(ScopeEntry { range, inherits });
-                scopes.push(OpenScope {
-                    range: Some(range),
-                    inherits,
-                    definitions: FxHashMap::default(),
-                });
-            } else if let Some(&Some(highlight)) = query.definitions.get(capture.index as usize) {
-                let name: Box<str> = node_text(node, rope).into();
-                let innermost = scopes.last_mut().expect("the layer's scope stays open");
-                innermost
-                    .definitions
-                    .insert(name.clone(), (range.end_byte, highlight));
-                new_definitions.push(Definition {
-                    range,
-                    scope: innermost.range,
-                    name,
-                    highlight,
-                });
-            } else if Some(capture.index) == query.reference
-                && let Some(highlight) = resolve(&scopes, &node_text(node, rope), range.start_byte)
-            {
-                new_resolved.push((range, highlight));
+            match query.role(capture.index) {
+                CaptureRole::Scope => {
+                    let inherits = query.inherits[m.pattern_index];
+                    new_scopes.push(ScopeEntry { range, inherits });
+                    scopes.push(OpenScope {
+                        range: Some(range),
+                        inherits,
+                        definitions: FxHashMap::default(),
+                    });
+                }
+                CaptureRole::Definition(highlight) => {
+                    let name: Box<str> = node_text(node, rope).into();
+                    let innermost = scopes.last_mut().expect("the layer's scope stays open");
+                    innermost
+                        .definitions
+                        .insert(name.clone(), (range.end_byte, highlight));
+                    new_definitions.push(Definition {
+                        range,
+                        scope: innermost.range,
+                        name,
+                        highlight,
+                    });
+                }
+                CaptureRole::Reference => {
+                    if let Some(highlight) =
+                        resolve(&scopes, &node_text(node, rope), range.start_byte)
+                    {
+                        new_resolved.push((range, highlight));
+                    }
+                }
+                CaptureRole::Discard => discarded.push(key(&range)),
             }
         }
         new_scopes.sort_by_key(|s| (s.range.start_byte, Reverse(s.range.end_byte)));
         new_definitions.sort_by_key(|d| key(&d.range));
-        // A definition's own node is never a reference to it.
+        discarded.sort_unstable();
+        // A definition's own node is never a reference to it, and a node a
+        // discard captures is no reference at all.
         new_resolved.retain(|(range, _)| {
             new_definitions
                 .binary_search_by_key(&key(range), |d| key(&d.range))
                 .is_err()
+                && discarded.binary_search(&key(range)).is_err()
         });
         new_resolved.sort_by_key(|(range, _)| key(range));
 
@@ -366,7 +391,9 @@ fn dirty_scopes(
     rope: &ropey::Rope,
     dirty: &[RangeInclusive<usize>],
 ) -> Option<Vec<tree_sitter::Range>> {
-    let scope = query.scope?;
+    if !query.roles.contains(&CaptureRole::Scope) {
+        return None;
+    }
     let mut cursor = QueryCursor::new();
     let mut regions = Vec::new();
     for region in dirty {
@@ -395,7 +422,10 @@ fn dirty_scopes(
             let capture = m.captures()[*index];
             let range = capture.node.range();
             let holds = range.start_byte <= lo && hi < range.end_byte;
-            if capture.index == scope && holds && innermost.is_none_or(|i| within(&range, &i)) {
+            if query.role(capture.index) == CaptureRole::Scope
+                && holds
+                && innermost.is_none_or(|i| within(&range, &i))
+            {
                 innermost = Some(range);
             }
         }
