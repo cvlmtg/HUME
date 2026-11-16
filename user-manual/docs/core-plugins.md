@@ -259,7 +259,7 @@ It needs the `markdown` and `markdown.inline` grammars: install them with `:plum
 
 Every line the cursor or a selection touches shows its source, in every mode. While a selection is inside a code block or a table, the whole block shows its source.
 
-Ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block are left as written. The colors and bands come from the [theme](themes.md#scopes-hume-adds).
+Ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block are left as written. The colors and bands come from the [theme](themes.md#scopes-hume-adds); to change them without editing it, [style the scopes from your config](themes.md#styling-scopes-from-your-config).
 
 Only the lines on screen are drawn. After you scroll, the lines that came into view appear as written until `hook-viewport-debounce-ms` after you stop; lower it in [Settings](settings.md#global-options) to shorten the wait.
 

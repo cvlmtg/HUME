@@ -84,7 +84,7 @@ fn sand_defines_ui_context() {
         .into_iter()
         .find(|(name, _)| name == "sand")
         .expect("sand is bundled");
-    assert!(sand.raw_contains("ui.context"));
+    assert!(sand.has_entry("ui.context"));
     assert_eq!(
         sand.ui.context,
         sand.resolve_by_name(hume_engine::types::Scope("ui.context"))
@@ -145,16 +145,16 @@ fn bundled_themes_carry_their_license_notices() {
 }
 
 /// Every bundled theme must carry its own `ui.cursor.match.search` entry.
-/// `raw_contains`, not `resolve_by_name`: after the `ui.selection.search` →
+/// `has_entry`, not `resolve_by_name`: after the `ui.selection.search` →
 /// `ui.cursor.match.search` rename, a theme that dropped the key would
 /// silently resolve through the dot-notation fallback onto `ui.cursor.match`
 /// instead. A `resolve_by_name` check can't tell "has its own colour" from
-/// "fell back to the bracket-match colour", only `raw_contains` can.
+/// "fell back to the bracket-match colour", only `has_entry` can.
 #[test]
 fn bundled_themes_define_their_own_search_match_scope() {
     for (name, theme) in load_bundled_themes() {
         assert!(
-            theme.raw_contains("ui.cursor.match.search"),
+            theme.has_entry("ui.cursor.match.search"),
             "bundled theme '{name}': missing ui.cursor.match.search (renamed from ui.selection.search)"
         );
     }
@@ -171,7 +171,7 @@ fn bundled_theme_gutter_diagnostic_scopes_have_no_underline() {
     for (name, theme) in load_bundled_themes() {
         for scope in ["error", "warning", "info", "hint"] {
             assert!(
-                theme.raw_contains(scope),
+                theme.has_entry(scope),
                 "bundled theme '{name}': missing gutter diagnostic scope '{scope}'"
             );
             let style = theme.resolve_by_name(hume_engine::types::Scope(scope));
@@ -471,15 +471,8 @@ fn theme_debug_cursor_rows_show_a_real_chain_not_a_placeholder() {
 #[test]
 fn load_theme_by_name_fails_gracefully() {
     let mut ed = editor_from("-[a]>b\n");
-    let ok = crate::editor::theme::load_theme_by_name(
-        &mut ed.view,
-        &mut ed.state.shown_theme,
-        &mut ed.state.message_log,
-        &mut ed.state.status_msg,
-        &mut ed.state.input,
-        &ed.state.dirs,
-        "no_such_theme_xyz",
-    );
+    let ok =
+        crate::editor::theme::load_theme_by_name(&mut ed.state, &mut ed.view, "no_such_theme_xyz");
     assert!(!ok, "expected false for nonexistent theme");
     // Failure warning ends up in the message log, not as an error result.
     assert!(
@@ -492,15 +485,8 @@ fn load_theme_by_name_fails_gracefully() {
 fn a_failed_theme_load_leaves_an_error_already_on_the_statusline() {
     let mut ed = editor_from("-[a]>b\n");
     ed.state.status_msg.show(Severity::Error, "earlier failure");
-    let ok = crate::editor::theme::load_theme_by_name(
-        &mut ed.view,
-        &mut ed.state.shown_theme,
-        &mut ed.state.message_log,
-        &mut ed.state.status_msg,
-        &mut ed.state.input,
-        &ed.state.dirs,
-        "no_such_theme_xyz",
-    );
+    let ok =
+        crate::editor::theme::load_theme_by_name(&mut ed.state, &mut ed.view, "no_such_theme_xyz");
     assert!(!ok);
     assert_eq!(ed.state.status_msg.text(), Some("earlier failure"));
 }

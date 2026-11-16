@@ -78,7 +78,7 @@ impl EditorColors {
         // "ui.statusline" scope, the wrong target, since the row itself is
         // mode-tinted. Check for an explicit entry first and fall back to
         // the row's own (already-resolved) style instead.
-        let statusline_separator = if theme.raw_contains(ui_scopes::STATUSLINE_SEPARATOR) {
+        let statusline_separator = if theme.has_entry(ui_scopes::STATUSLINE_SEPARATOR) {
             style_for(ui_scopes::STATUSLINE_SEPARATOR)
         } else {
             statusline
@@ -109,7 +109,7 @@ pub(crate) struct TablineColors {
 impl TablineColors {
     /// `ui.tabline`/`ui.tabline.active` win when themed; otherwise fall
     /// back to Helix's own `ui.bufferline`/`ui.bufferline.active` via
-    /// `raw_contains`, the same guard the statusline separator above uses,
+    /// `has_entry`, the same guard the statusline separator above uses,
     /// needed here for the same reason: `ui.bufferline` isn't `ui.tabline`'s
     /// parent scope, so the engine's own dot-fallback chain never reaches
     /// it. Every Helix theme defines `ui.bufferline` and none defines
@@ -127,7 +127,7 @@ impl TablineColors {
         // falls back to `inactive`'s resolved value, not to re-deriving
         // through `ui.tabline`'s own chain, which would skip `ui.bufferline`
         // entirely when that's where `inactive` actually came from).
-        let explicit = |s: &'static str| theme.raw_contains(s).then(|| style_for(s));
+        let explicit = |s: &'static str| theme.has_entry(s).then(|| style_for(s));
 
         let inactive = explicit(ui_scopes::TABLINE)
             .or_else(|| explicit(ui_scopes::BUFFERLINE))

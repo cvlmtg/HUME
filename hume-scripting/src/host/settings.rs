@@ -52,6 +52,17 @@ pub trait SettingsHost {
         origin: hume_core::ConfigOrigin,
     ) -> Result<BufferOptionWrite, String>;
 
+    /// `(set-scope-styles! styles)`: sets each entry's scope style as
+    /// `origin`, the user's above every theme's own entry and any other
+    /// origin's beneath it. `open` kind, so a hook can add styles at any
+    /// time. `Err` for a malformed color, modifier or underline name, before
+    /// any entry is stored.
+    fn set_scope_styles(
+        &mut self,
+        styles: Vec<hume_core::ScopeStyleInput>,
+        origin: hume_core::ConfigOrigin,
+    ) -> Result<(), String>;
+
     /// `(get-option key)`: `key`'s global value, ignoring any buffer
     /// override even if one exists. No eval-mode gate (`open` kind),
     /// mirroring `set_global_option`: callable from `init.scm` too.

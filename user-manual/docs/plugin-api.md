@@ -62,10 +62,11 @@ Steel's library functions and your own `define`s are plain Scheme functions, not
 | `set-buffer-option!` | `(set-buffer-option! pane key value)`{.sig} Set an option on `pane`'s buffer only, ranked against the buffer's own overrides as `set-option!` is against the global value. Raises for a global-only option |
 | `get-option` | `(get-option key)`{.sig} Read an option's global value, ignoring any buffer override. Raises for the per-buffer `language` and `line-ending` |
 | `get-buffer-option` | `(get-buffer-option pane key)`{.sig} Read `pane`'s buffer's effective value: its own override if set, else the global default (`language` and `line-ending` have no global default). Raises for a global-only option |
+| `set-scope-styles!` | `(set-scope-styles! styles)`{.sig} Style scopes on top of every theme. `styles`: a list of `(hash 'scope name 'fg color 'bg color 'underline (hash 'style sym 'color color) 'modifiers (sym ...))`, every key but `'scope` optional. From `init.scm` a style wins over the theme's entry for its scope; from a plugin it applies only where the theme has no entry of that name. Of two styles from the same rank, the later wins. Raises for a malformed entry, a scope named twice, a malformed hex color, or an unknown modifier or underline name, and applies none of the entries |
 | `configure-statusline!` | `(configure-statusline! left center right)`{.sig} Set the three statusline sections, each a list of element name strings; `(get-option "statusline")` reads them back as `(hash 'left 'center 'right)` |
 | `set-statusline-text!` | `(set-statusline-text! pane source text)`{.sig} Push `text` for a `"steel:<source>"` statusline element, scoped to `pane`'s buffer; an empty string clears it |
 
-See [Reading options from Scheme](writing-plugins.md#reading-options-from-scheme) for the two option readers' fallback rules, [Statusline](settings.md#statusline) for the built-in element names, and [Custom elements](settings.md#custom-elements) for the two statusline calls together.
+See [Reading options from Scheme](writing-plugins.md#reading-options-from-scheme) for the two option readers' fallback rules, [Styling scopes from your config](themes.md#styling-scopes-from-your-config) for scope styles and their colors, [Statusline](settings.md#statusline) for the built-in element names, and [Custom elements](settings.md#custom-elements) for the two statusline calls together.
 
 ## Key bindings
 

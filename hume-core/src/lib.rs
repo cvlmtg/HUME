@@ -72,6 +72,7 @@ mod origin;
 mod os_wait;
 mod picker;
 mod popup;
+mod scope_style;
 mod setting;
 mod severity;
 mod side;
@@ -105,6 +106,7 @@ pub use origin::{
 pub use os_wait::OsWait;
 pub use picker::TruncateEnd;
 pub use popup::PopupLayout;
+pub use scope_style::ScopeStyleInput;
 pub use setting::{
     BufferIntrinsicOption, BufferOptionWrite, LanguageOptionText, OptionInput, OptionType,
     OptionValue, StatuslineSections,

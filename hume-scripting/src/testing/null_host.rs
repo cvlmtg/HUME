@@ -255,6 +255,13 @@ impl SettingsHost for NullHost {
     ) -> Result<BufferOptionWrite, String> {
         Err("NullHost: set_buffer_option not available".into())
     }
+    fn set_scope_styles(
+        &mut self,
+        _styles: Vec<hume_core::ScopeStyleInput>,
+        _origin: ConfigOrigin,
+    ) -> Result<(), String> {
+        Err("NullHost: set_scope_styles not available".into())
+    }
     fn get_global_option(&self, _key: &str) -> Result<OptionValue, String> {
         Err("NullHost: get_global_option not available".into())
     }

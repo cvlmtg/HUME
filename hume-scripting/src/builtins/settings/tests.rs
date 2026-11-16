@@ -1,7 +1,9 @@
 use super::*;
 use crate::host::StoredLanguage;
 use crate::testing::test_support::{SteelCtxTestHarness, default_bid};
-use hume_core::{BufferId, BufferOptionWrite, ConfigOrigin, OnUnsaved, OptionInput};
+use hume_core::{
+    BufferId, BufferOptionWrite, ConfigOrigin, OnUnsaved, OptionInput, ScopeStyleInput,
+};
 use steel::rvals::IntoSteelVal as _;
 
 /// `set-option!` is registered `open` (`builtins/mod.rs`): no eval-mode
@@ -271,6 +273,8 @@ struct RecordingBufferOptionHost {
     pub(crate) origins: Vec<ConfigOrigin>,
     /// What every buffer write answers, `Applied` when unset.
     answer: Option<BufferOptionWrite>,
+    /// Every `set-scope-styles!` call, with its origin.
+    scope_styles: Vec<(Vec<ScopeStyleInput>, ConfigOrigin)>,
 }
 
 impl crate::host::EditorHost for RecordingBufferOptionHost {
@@ -458,6 +462,14 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
         self.origins.push(origin);
         Ok(self.answer.clone().unwrap_or(BufferOptionWrite::Applied))
     }
+    fn set_scope_styles(
+        &mut self,
+        styles: Vec<ScopeStyleInput>,
+        origin: ConfigOrigin,
+    ) -> Result<(), String> {
+        self.scope_styles.push((styles, origin));
+        Ok(())
+    }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
         crate::host::SettingsHost::get_global_option(&self.inner, key)
     }
@@ -519,4 +531,148 @@ fn option_writes_carry_the_callers_origin() {
             ConfigOrigin::Plugin
         ]
     );
+}
+
+// ── set-scope-styles! ────────────────────────────────────────────────
+
+fn hashmap(entries: Vec<(&str, SteelVal)>) -> SteelVal {
+    let mut map = steel::HashMap::new();
+    for (key, value) in entries {
+        map.insert(SteelVal::SymbolV(key.into()), value);
+    }
+    SteelVal::HashMapV(steel::gc::Gc::new(map).into())
+}
+
+fn list(items: Vec<SteelVal>) -> SteelVal {
+    items.into_steelval().unwrap()
+}
+
+fn string(s: &str) -> SteelVal {
+    SteelVal::StringV(s.into())
+}
+
+fn symbol(s: &str) -> SteelVal {
+    SteelVal::SymbolV(s.into())
+}
+
+fn scope_entry(scope: &str, rest: Vec<(&str, SteelVal)>) -> SteelVal {
+    let mut entries = vec![("scope", string(scope))];
+    entries.extend(rest);
+    hashmap(entries)
+}
+
+/// The error `set-scope-styles!` raises for `styles`, after checking it
+/// never reached the host.
+fn scope_styles_error(styles: SteelVal) -> String {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = RecordingBufferOptionHost::default();
+    let err = set_scope_styles(&mut h.ctx_with_host(&mut host), styles)
+        .expect_err("the call must be refused");
+    assert!(
+        host.scope_styles.is_empty(),
+        "a refused call reaches no host"
+    );
+    crate::builtins::errors::message(&err)
+}
+
+#[test]
+fn scope_styles_reach_the_host_decoded_with_the_callers_origin() {
+    use crate::attribution::{EntryId, PluginId};
+
+    let styles = || {
+        list(vec![
+            scope_entry(
+                "markup.heading.1.line",
+                vec![
+                    ("fg", string("gold")),
+                    ("bg", string("#2b2a33")),
+                    (
+                        "underline",
+                        hashmap(vec![("style", symbol("curl")), ("color", string("red"))]),
+                    ),
+                    ("modifiers", list(vec![symbol("bold"), symbol("italic")])),
+                ],
+            ),
+            scope_entry("csscolor.ff8800", vec![]),
+        ])
+    };
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = RecordingBufferOptionHost::default();
+    set_scope_styles(&mut h.ctx_with_host(&mut host), styles()).expect("user write");
+    h.state
+        .attribution
+        .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
+    set_scope_styles(&mut h.ctx_with_host(&mut host), styles()).expect("plugin write");
+
+    let expected = vec![
+        ScopeStyleInput {
+            scope: "markup.heading.1.line".to_owned(),
+            fg: Some("gold".to_owned()),
+            bg: Some("#2b2a33".to_owned()),
+            underline_color: Some("red".to_owned()),
+            underline_style: Some("curl".to_owned()),
+            modifiers: vec!["bold".to_owned(), "italic".to_owned()],
+        },
+        ScopeStyleInput {
+            scope: "csscolor.ff8800".to_owned(),
+            ..Default::default()
+        },
+    ];
+    assert_eq!(
+        host.scope_styles,
+        [
+            (expected.clone(), ConfigOrigin::User),
+            (expected, ConfigOrigin::Plugin)
+        ]
+    );
+}
+
+#[test]
+fn a_scope_style_with_an_unknown_key_is_refused() {
+    let err = scope_styles_error(list(vec![scope_entry(
+        "keyword",
+        vec![("foreground", string("red"))],
+    )]));
+    assert!(err.contains("unknown key 'foreground"), "{err}");
+}
+
+#[test]
+fn a_scope_style_without_a_scope_is_refused() {
+    let err = scope_styles_error(list(vec![hashmap(vec![("fg", string("red"))])]));
+    assert!(err.contains("missing 'scope"), "{err}");
+}
+
+#[test]
+fn an_empty_scope_name_is_refused() {
+    let err = scope_styles_error(list(vec![scope_entry("", vec![])]));
+    assert!(err.contains("'scope: must not be empty"), "{err}");
+}
+
+#[test]
+fn a_scope_named_twice_in_one_call_is_refused() {
+    let err = scope_styles_error(list(vec![
+        scope_entry("keyword", vec![("fg", string("red"))]),
+        scope_entry("keyword", vec![("bg", string("blue"))]),
+    ]));
+    assert!(err.contains("'keyword' appears twice"), "{err}");
+}
+
+#[test]
+fn a_modifier_given_as_a_string_is_refused() {
+    let err = scope_styles_error(list(vec![scope_entry(
+        "keyword",
+        vec![("modifiers", list(vec![string("bold")]))],
+    )]));
+    assert!(err.contains("'modifiers"), "{err}");
+    assert!(err.contains("a modifier symbol"), "{err}");
+}
+
+#[test]
+fn an_underline_style_given_as_a_string_is_refused() {
+    let err = scope_styles_error(list(vec![scope_entry(
+        "keyword",
+        vec![("underline", hashmap(vec![("style", string("curl"))]))],
+    )]));
+    assert!(err.contains("'style"), "{err}");
+    assert!(err.contains("an underline style symbol"), "{err}");
 }

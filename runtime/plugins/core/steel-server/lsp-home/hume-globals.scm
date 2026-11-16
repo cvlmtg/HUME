@@ -372,6 +372,7 @@
 (#%register-global "set-line-backgrounds!")
 (#%register-global "set-option!")
 (#%register-global "set-register-prefix!")
+(#%register-global "set-scope-styles!")
 (#%register-global "set-signs!")
 (#%register-global "set-statusline-text!")
 (#%register-global "set-virtual-lines!")

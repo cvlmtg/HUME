@@ -427,7 +427,7 @@ fn header_rows_use_popup_background_when_ui_context_is_unset() {
     assert!(
         !ed.view
             .theme
-            .raw_contains(hume_engine::theme::ui_scopes::CONTEXT),
+            .has_entry(hume_engine::theme::ui_scopes::CONTEXT),
         "premise: gruvbox leaves ui.context unset"
     );
 

@@ -111,15 +111,7 @@ fn load_theme_by_name_loads_despite_a_malformed_key_and_warns() {
 
     let mut ed = editor_from("-[a]>b\n");
     ed.state.dirs = fixture.dirs.clone();
-    let ok = crate::editor::theme::load_theme_by_name(
-        &mut ed.view,
-        &mut ed.state.shown_theme,
-        &mut ed.state.message_log,
-        &mut ed.state.status_msg,
-        &mut ed.state.input,
-        &ed.state.dirs,
-        "flawed",
-    );
+    let ok = crate::editor::theme::load_theme_by_name(&mut ed.state, &mut ed.view, "flawed");
     assert!(ok, "a theme with a malformed key still loads");
     assert!(
         ed.state.message_log.has_unseen(),
@@ -135,7 +127,7 @@ fn load_theme_by_name_loads_despite_a_malformed_key_and_warns() {
     // The malformed entry lands as a default style rather than being dropped,
     // so it still blocks the dot-notation chain the way a real entry would.
     assert!(
-        ed.view.theme.raw_contains("keyword"),
+        ed.view.theme.has_entry("keyword"),
         "a malformed entry stays present, blocking fallback"
     );
     let text = ed

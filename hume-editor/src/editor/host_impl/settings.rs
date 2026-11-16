@@ -1,11 +1,12 @@
 //! `EditorHostImpl`'s global settings, statusline config, and the Steel
 //! eval budget.
 
-use hume_core::{BufferId, BufferOptionWrite, OptionInput, OptionValue};
+use hume_core::{BufferId, BufferOptionWrite, OptionInput, OptionValue, ScopeStyleInput};
 
 use super::EditorHostImpl;
 use crate::editor::buffer::Buffer;
 use crate::editor::settings::{OptionAccess, buffer_target, global_key, ops, read_global};
+use crate::editor::theme;
 use hume_scripting::host::SettingsHost;
 
 impl EditorHostImpl<'_> {
@@ -39,6 +40,14 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         let target = buffer_target(key, OptionAccess::Write)?;
         self.live_buffer(bid)?;
         ops::apply_buffer_target(self.state, bid, target, &value, origin)
+    }
+
+    fn set_scope_styles(
+        &mut self,
+        styles: Vec<ScopeStyleInput>,
+        origin: hume_core::ConfigOrigin,
+    ) -> Result<(), String> {
+        theme::set_scope_styles(self.state, self.view, &styles, origin)
     }
 
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {

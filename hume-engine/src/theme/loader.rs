@@ -5,7 +5,7 @@
 //!   merge before any color resolves, child winning, so a child's palette
 //!   override reaches every scope that uses it.
 //! - `[palette]` named colors, falling back to the sixteen ANSI names
-//!   (`loader::values::ANSI_COLORS`).
+//!   (`theme::values::ANSI_COLORS`).
 //! - Flat dotted keys (`"keyword.function" = { fg = "red" }`) and section
 //!   headers (`[keyword.function]`), promoted to the same dotted name as the
 //!   theme editor's `walkScopes` does.
@@ -21,22 +21,20 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use hume_grid::Rgb;
-
 use crate::theme::Theme;
 use crate::theme::error::ThemeError;
 use crate::theme::ui_scopes;
-use crate::types::{ResolvedStyle, UnderlineStyle};
+use crate::types::ResolvedStyle;
 
 mod discovery;
 mod flatten;
-mod values;
 #[cfg(test)]
 mod vocabulary;
 
+use crate::theme::style_spec::{ColorRef, Palette, StyleSpec};
+use crate::theme::values::{parse_hex_color, parse_underline};
 use discovery::find_theme_file;
 use flatten::flatten_scopes;
-use values::{UNDERLINE_MODIFIER, parse_hex_color, parse_modifier, parse_underline, resolve_color};
 
 const MAX_DEPTH: usize = 8;
 
@@ -353,8 +351,8 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     // warned and recorded as `None` (declared but broken) rather than simply
     // omitted: omitting it would let a scope referencing the same name fall
     // through to an ANSI/hex match instead of getting its own cascading
-    // warning from `resolve_color` below.
-    let mut palette: FxHashMap<String, Option<Rgb>> = FxHashMap::default();
+    // warning from `StyleSpec::resolve` below.
+    let mut palette = Palette::default();
     if let Some(toml::Value::Table(pal_table)) = table.remove("palette") {
         for (k, v) in pal_table {
             let origin = palette_origins.get(&k).map(Arc::as_ref);
@@ -401,9 +399,15 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
             continue;
         }
         let origin = origins.get(&key).map(Arc::as_ref);
-        let style = match parse_scope_value(&key, &value, &palette) {
-            Ok((style, field_warnings)) => {
-                warnings.extend(field_warnings.into_iter().map(|e| attribute(e, origin)));
+        let style = match parse_scope_value(&key, &value) {
+            Ok((spec, field_warnings)) => {
+                let (style, color_warnings) = spec.resolve(&key, &palette);
+                warnings.extend(
+                    field_warnings
+                        .into_iter()
+                        .chain(color_warnings)
+                        .map(|e| attribute(e, origin)),
+                );
                 style
             }
             Err(e) => {
@@ -422,14 +426,14 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     let default = scopes.get(ui_scopes::TEXT).copied().unwrap_or_default();
 
     LoadedTheme {
-        theme: Theme::from_owned(scopes, default),
+        theme: Theme::from_owned(scopes, default, palette),
         warnings,
     }
 }
 
 // Scope value parsing
 
-/// Parse one TOML scope entry into a `ResolvedStyle`, plus a warning for
+/// Parse one TOML scope entry into a [`StyleSpec`], plus a warning for
 /// every individually malformed field inside a style table (the `Ok` arm's
 /// second element, empty for a clean table). Helix supports two forms:
 /// - `"keyword" = "red"`: shorthand; sets `fg` only
@@ -443,21 +447,17 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
 fn parse_scope_value(
     key: &str,
     value: &toml::Value,
-    palette: &FxHashMap<String, Option<Rgb>>,
-) -> Result<(ResolvedStyle, Vec<ThemeError>), ThemeError> {
+) -> Result<(StyleSpec, Vec<ThemeError>), ThemeError> {
     match value {
         // Shorthand: `"keyword" = "red"` sets fg only.
-        toml::Value::String(s) => {
-            let fg = Some(resolve_color(key, None, s, palette)?);
-            Ok((
-                ResolvedStyle {
-                    fg,
-                    ..Default::default()
-                },
-                Vec::new(),
-            ))
-        }
-        toml::Value::Table(t) => Ok(parse_style_table(key, t, palette)),
+        toml::Value::String(s) => Ok((
+            StyleSpec {
+                fg: Some(ColorRef::parse(key, None, s)?),
+                ..Default::default()
+            },
+            Vec::new(),
+        )),
+        toml::Value::Table(t) => Ok(parse_style_table(key, t)),
         other => Err(ThemeError::BadScopeValue {
             key: key.to_owned(),
             value: format!("{other:?}"),
@@ -515,49 +515,42 @@ fn str_field<T>(
 fn parse_style_table(
     key: &str,
     t: &toml::map::Map<String, toml::Value>,
-    palette: &FxHashMap<String, Option<Rgb>>,
-) -> (ResolvedStyle, Vec<ThemeError>) {
-    let mut style = ResolvedStyle::default();
+) -> (StyleSpec, Vec<ThemeError>) {
+    let mut spec = StyleSpec::default();
     let mut warnings = Vec::new();
 
-    if let Some(c) = str_field(
+    spec.fg = str_field(
         key,
         t,
         "fg",
         "fg",
-        |s| resolve_color(key, None, s, palette),
+        |s| ColorRef::parse(key, None, s),
         &mut warnings,
-    ) {
-        style.fg = Some(c);
-    }
-    if let Some(c) = str_field(
+    );
+    spec.bg = str_field(
         key,
         t,
         "bg",
         "bg",
-        |s| resolve_color(key, None, s, palette),
+        |s| ColorRef::parse(key, None, s),
         &mut warnings,
-    ) {
-        style.bg = Some(c);
-    }
+    );
     if let Some(v) = t.get("underline") {
         if let Some(s) = v.as_str() {
             match parse_underline(key, s) {
-                Ok(u) => style.underline = u,
+                Ok(u) => spec.underline = u,
                 Err(e) => warnings.push(e),
             }
         } else if let Some(ut) = v.as_table() {
             // `underline = { color = "#...", style = "..." }` (Helix extended form)
-            if let Some(c) = str_field(
+            spec.underline_color = str_field(
                 key,
                 ut,
                 "color",
                 "underline.color",
-                |s| resolve_color(key, Some("underline.color"), s, palette),
+                |s| ColorRef::parse(key, Some("underline.color"), s),
                 &mut warnings,
-            ) {
-                style.underline_color = Some(c);
-            }
+            );
             if let Some(u) = str_field(
                 key,
                 ut,
@@ -566,32 +559,24 @@ fn parse_style_table(
                 |s| parse_underline(key, s),
                 &mut warnings,
             ) {
-                style.underline = u;
+                spec.underline = u;
             }
         } else {
             warnings.push(bad_style_field(key, "underline", "a string or a table"));
         }
     }
+    // Parsed after `underline`, so an explicit underline style wins over
+    // the `underlined` modifier.
     if let Some(v) = t.get("modifiers") {
         match v.as_array() {
             Some(arr) => {
                 for item in arr {
                     match item.as_str() {
-                        Some(s) => match s {
-                            // Helix exposes underline as a modifier; route it to the
-                            // dedicated underline field so underline has a single
-                            // source of truth. A more specific `underline = "..."`
-                            // key (parsed above) wins.
-                            UNDERLINE_MODIFIER => {
-                                if style.underline == UnderlineStyle::None {
-                                    style.underline = UnderlineStyle::Solid;
-                                }
+                        Some(s) => {
+                            if let Err(e) = spec.add_modifier(key, s) {
+                                warnings.push(e);
                             }
-                            _ => match parse_modifier(key, s) {
-                                Ok(m) => style.modifiers |= m,
-                                Err(e) => warnings.push(e),
-                            },
-                        },
+                        }
                         None => {
                             warnings.push(bad_style_field(key, "modifiers", "an array of strings"))
                         }
@@ -602,7 +587,7 @@ fn parse_style_table(
         }
     }
 
-    (style, warnings)
+    (spec, warnings)
 }
 
 #[cfg(test)]

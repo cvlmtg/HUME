@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::discovery::is_safe_theme_name;
 use super::*;
-use crate::types::Modifiers;
+use crate::types::{Modifiers, UnderlineStyle};
 use tempfile::TempDir;
 
 // ── Test fixture helpers ──────────────────────────────────────────────────

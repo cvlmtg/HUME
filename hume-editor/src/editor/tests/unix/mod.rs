@@ -788,6 +788,7 @@ mod plugins;
 mod plum_grammars;
 mod ranked_writes;
 mod reload_config;
+mod scope_styles;
 mod scripting_effects;
 mod scripting_grammar;
 mod scripting_lsp_install;

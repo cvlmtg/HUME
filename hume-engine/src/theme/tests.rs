@@ -448,7 +448,7 @@ fn from_owned_resolves_same_as_new() {
         m
     };
     let t1 = Theme::new(static_styles, ResolvedStyle::default());
-    let t2 = Theme::from_owned(owned_styles, ResolvedStyle::default());
+    let t2 = Theme::from_owned(owned_styles, ResolvedStyle::default(), Default::default());
     // Pinned to the literal both must produce, not to each other: the two
     // constructors funnel into the same code, so comparing their outputs would
     // still hold if dot-notation fallback broke in both at once.
@@ -460,4 +460,193 @@ fn from_owned_resolves_same_as_new() {
         t2.resolve_by_name(Scope("keyword.function")).fg,
         Some(Rgb(0, 0, 255)),
     );
+}
+
+// ── Scope styles set by scripts ──────────────────────────────────────
+
+mod scope_styles {
+    use super::*;
+    use crate::theme::error::ThemeError;
+    use crate::theme::scope_styles::ScopeStyles;
+    use crate::theme::style_spec::{ColorRef, StyleSpec};
+    use hume_core::ConfigOrigin;
+
+    const RED: Rgb = Rgb(0xff, 0, 0);
+    const GREEN: Rgb = Rgb(0, 0xff, 0);
+    const BLUE: Rgb = Rgb(0, 0, 0xff);
+
+    fn fg_spec(color: Rgb) -> StyleSpec {
+        StyleSpec {
+            fg: Some(ColorRef::Rgb(color)),
+            ..Default::default()
+        }
+    }
+
+    fn named_fg_spec(name: &str) -> StyleSpec {
+        StyleSpec {
+            fg: Some(ColorRef::Name(name.into())),
+            ..Default::default()
+        }
+    }
+
+    fn styles(entries: &[(&str, StyleSpec, ConfigOrigin)]) -> ScopeStyles {
+        let mut styles = ScopeStyles::default();
+        for (scope, spec, by) in entries {
+            let _ = styles.set(scope, spec.clone(), *by);
+        }
+        styles
+    }
+
+    fn fg_of(theme: &Theme, scope: &'static str) -> Option<Rgb> {
+        theme.resolve_by_name(Scope(scope)).fg
+    }
+
+    #[test]
+    fn a_user_style_replaces_the_themes_entry() {
+        let mut theme = theme_with([("keyword", fg(RED))]);
+        let warnings =
+            theme.apply_scope_styles(&styles(&[("keyword", fg_spec(GREEN), ConfigOrigin::User)]));
+        assert!(warnings.is_empty());
+        assert_eq!(fg_of(&theme, "keyword"), Some(GREEN));
+    }
+
+    #[test]
+    fn a_plugin_style_yields_to_the_themes_entry_of_the_same_name() {
+        let mut theme = theme_with([("keyword", fg(RED))]);
+        let _ = theme.apply_scope_styles(&styles(&[(
+            "keyword",
+            fg_spec(GREEN),
+            ConfigOrigin::Plugin,
+        )]));
+        assert_eq!(fg_of(&theme, "keyword"), Some(RED));
+    }
+
+    #[test]
+    fn a_plugin_style_beats_a_themes_parent_scope() {
+        let mut theme = theme_with([("markup.heading.1", fg(RED))]);
+        let _ = theme.apply_scope_styles(&styles(&[(
+            "markup.heading.1.text",
+            fg_spec(GREEN),
+            ConfigOrigin::Plugin,
+        )]));
+        assert_eq!(fg_of(&theme, "markup.heading.1.text"), Some(GREEN));
+        assert_eq!(fg_of(&theme, "markup.heading.1.line"), Some(RED));
+    }
+
+    #[test]
+    fn a_bundled_style_sits_beneath_the_theme_like_a_plugins() {
+        let mut theme = theme_with([("keyword", fg(RED))]);
+        let _ = theme.apply_scope_styles(&styles(&[
+            ("keyword", fg_spec(GREEN), ConfigOrigin::Bundled),
+            ("string", fg_spec(BLUE), ConfigOrigin::Bundled),
+        ]));
+        assert_eq!(fg_of(&theme, "keyword"), Some(RED));
+        assert_eq!(fg_of(&theme, "string"), Some(BLUE));
+    }
+
+    #[test]
+    fn a_higher_origins_style_hides_a_lower_ones() {
+        let mut styles = ScopeStyles::default();
+        assert!(!styles.set("keyword", fg_spec(RED), ConfigOrigin::User));
+        assert!(styles.set("keyword", fg_spec(GREEN), ConfigOrigin::Plugin));
+        assert!(!styles.set("keyword", fg_spec(BLUE), ConfigOrigin::User));
+
+        let mut theme = theme_with([]);
+        let _ = theme.apply_scope_styles(&styles);
+        assert_eq!(fg_of(&theme, "keyword"), Some(BLUE));
+    }
+
+    #[test]
+    fn a_user_ui_style_reaches_the_pre_resolved_ui_scopes() {
+        let mut theme = theme_with([("ui.selection", fg(RED))]);
+        let _ = theme.apply_scope_styles(&styles(&[(
+            "ui.selection",
+            fg_spec(GREEN),
+            ConfigOrigin::User,
+        )]));
+        assert_eq!(theme.ui.selection.fg, Some(GREEN));
+    }
+
+    #[test]
+    fn a_ui_text_style_sets_the_default() {
+        let mut theme = theme_with([]);
+        let _ = theme.apply_scope_styles(&styles(&[(
+            "ui.text",
+            fg_spec(GREEN),
+            ConfigOrigin::Plugin,
+        )]));
+        assert_eq!(theme.default.fg, Some(GREEN));
+
+        let _ =
+            theme.apply_scope_styles(&styles(&[("ui.text", fg_spec(BLUE), ConfigOrigin::User)]));
+        assert_eq!(theme.default.fg, Some(BLUE));
+    }
+
+    #[test]
+    fn a_plugin_ui_text_style_leaves_a_themes_ui_text_default() {
+        let mut theme = Theme::new(HashMap::from([("ui.text", fg(RED))]), fg(RED));
+        let _ = theme.apply_scope_styles(&styles(&[(
+            "ui.text",
+            fg_spec(GREEN),
+            ConfigOrigin::Plugin,
+        )]));
+        assert_eq!(theme.default.fg, Some(RED));
+    }
+
+    #[test]
+    fn a_color_name_resolves_against_the_themes_palette_then_ansi() {
+        let palette = [("gold".to_owned(), Some(RED))].into_iter().collect();
+        let mut theme = Theme::from_owned(FxHashMap::default(), ResolvedStyle::default(), palette);
+        let warnings = theme.apply_scope_styles(&styles(&[
+            ("a", named_fg_spec("gold"), ConfigOrigin::User),
+            ("b", named_fg_spec("blue"), ConfigOrigin::User),
+        ]));
+        assert!(warnings.is_empty());
+        assert_eq!(fg_of(&theme, "a"), Some(RED));
+        assert_eq!(fg_of(&theme, "b"), Some(Rgb(0x00, 0x00, 0xee)));
+    }
+
+    #[test]
+    fn an_unknown_color_name_warns_and_leaves_its_field_unset() {
+        let mut theme = theme_with([("keyword", fg(RED))]);
+        let spec = StyleSpec {
+            bg: Some(ColorRef::Rgb(BLUE)),
+            ..named_fg_spec("gold")
+        };
+        let warnings =
+            theme.apply_scope_styles(&styles(&[("keyword.control", spec, ConfigOrigin::User)]));
+        assert!(
+            matches!(
+                warnings.as_slice(),
+                [ThemeError::BadColor { key, value, .. }] if key == "keyword.control" && value == "gold"
+            ),
+            "{warnings:?}"
+        );
+        let style = theme.resolve_by_name(Scope("keyword.control"));
+        assert_eq!((style.fg, style.bg), (None, Some(BLUE)));
+    }
+
+    #[test]
+    fn applying_styles_rebakes_scopes_baked_before() {
+        let mut reg = ScopeRegistry::new();
+        let id = reg.intern("keyword");
+        let mut theme = theme_with([("keyword", fg(RED))]);
+        theme.bake(&reg);
+        let _ =
+            theme.apply_scope_styles(&styles(&[("keyword", fg_spec(GREEN), ConfigOrigin::User)]));
+        theme.bake_if_stale(&reg);
+        assert_eq!(theme.resolve(id).fg, Some(GREEN));
+    }
+
+    #[test]
+    fn a_script_style_counts_as_an_entry() {
+        let mut theme = theme_with([]);
+        assert!(!theme.has_entry("ui.statusline.separator"));
+        let _ = theme.apply_scope_styles(&styles(&[(
+            "ui.statusline.separator",
+            fg_spec(GREEN),
+            ConfigOrigin::Plugin,
+        )]));
+        assert!(theme.has_entry("ui.statusline.separator"));
+    }
 }

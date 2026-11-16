@@ -1,30 +1,122 @@
 //! Theme loading applied to a live editor.
 
+use hume_core::{ConfigOrigin, ScopeStyleInput};
 use hume_engine::pipeline::EngineView;
 use hume_engine::theme::error::ThemeError;
 use hume_engine::theme::loader::{LoadedTheme, load_theme};
+use hume_engine::theme::style_spec::StyleSpec;
 
-use crate::editor::input_stack::InputStack;
-use crate::editor::message_log::{MessageLog, StatusMsg};
+use crate::editor::EditorState;
 use hume_core::Severity;
 
 /// Replace `view.theme`, record the name it came from in `shown_theme` (empty
-/// for the fallback), and rebuild or drop everything built against its baked
-/// colors: each input-stack layer handles its own
-/// ([`InputStack::theme_changed`]). The single chokepoint for replacing a
-/// *live* `view.theme`, so no replacement site can skip that step.
-/// `Editor::bootstrap`'s initial construction bypasses this: there is no layer
-/// yet to rebuild.
-pub(in crate::editor) fn set_theme(
+/// for the fallback), layer the scripts' scope styles onto it, and rebuild or
+/// drop everything built against its baked colors: each input-stack layer
+/// handles its own ([`crate::editor::input_stack::InputStack::theme_changed`]).
+/// The single chokepoint for replacing a *live* `view.theme`, so no
+/// replacement site can skip those steps. `Editor::bootstrap`'s initial
+/// construction bypasses this: there is no layer and no script style yet.
+///
+/// `load_warnings` are the theme file's own; they are reported together
+/// with any scope style color the theme does not resolve.
+fn install_theme(
+    state: &mut EditorState,
     view: &mut EngineView,
-    shown_theme: &mut String,
-    input: &mut InputStack,
+    theme: hume_engine::theme::Theme,
+    name: &str,
+    mut load_warnings: Vec<ThemeError>,
+) {
+    view.theme = theme;
+    name.clone_into(&mut state.shown_theme);
+    load_warnings.extend(apply_scope_styles(state, view));
+    let count = load_warnings.len();
+    report_warnings(
+        state,
+        load_warnings,
+        format!(
+            "{} loaded with {count} warning{}",
+            theme_label(name),
+            plural(count)
+        ),
+    );
+}
+
+/// [`install_theme`] for a theme with no load warnings of its own.
+pub(in crate::editor) fn set_theme(
+    state: &mut EditorState,
+    view: &mut EngineView,
     theme: hume_engine::theme::Theme,
     name: &str,
 ) {
-    view.theme = theme;
-    name.clone_into(shown_theme);
-    input.theme_changed(&mut view.theme, &view.registry);
+    install_theme(state, view, theme, name, Vec::new());
+}
+
+/// `(set-scope-styles! styles)` from `by`: refuses the whole call for one
+/// malformed entry, before any is stored. The live theme takes the styles
+/// at once unless a theme install is pending, which takes them itself:
+/// resolved now, a palette name would warn against a theme about to go.
+pub(in crate::editor) fn set_scope_styles(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    styles: &[ScopeStyleInput],
+    by: ConfigOrigin,
+) -> Result<(), String> {
+    let specs = styles
+        .iter()
+        .map(|input| StyleSpec::from_input(input).map(|spec| (input.scope.as_str(), spec)))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    for (scope, spec) in specs {
+        if state.config.scope_styles.set(scope, spec, by) {
+            state.report_shadowed("set-scope-styles!", format_args!("'{scope}' style"));
+        }
+    }
+    if state.theme_install_pending() {
+        return Ok(());
+    }
+    let warnings = apply_scope_styles(state, view);
+    let count = warnings.len();
+    let summary = format!(
+        "{count} scope style color{} not in {}",
+        plural(count),
+        theme_label(&state.shown_theme)
+    );
+    report_warnings(state, warnings, summary);
+    Ok(())
+}
+
+/// Layer the scripts' scope styles onto `view.theme` and rebuild what the
+/// input-stack layers built against its colors. Returns a warning for each
+/// color the theme does not resolve.
+fn apply_scope_styles(state: &mut EditorState, view: &mut EngineView) -> Vec<ThemeError> {
+    let warnings = view.theme.apply_scope_styles(&state.config.scope_styles);
+    state.input.theme_changed(&mut view.theme, &view.registry);
+    warnings
+}
+
+/// Log each warning, and show `summary` in the status bar when there is one.
+fn report_warnings(state: &mut EditorState, warnings: Vec<ThemeError>, summary: String) {
+    if warnings.is_empty() {
+        return;
+    }
+    for warning in &warnings {
+        state
+            .message_log
+            .push(Severity::Warning, warning.to_string());
+    }
+    state.status_msg.show(Severity::Warning, summary);
+}
+
+fn theme_label(name: &str) -> String {
+    if name.is_empty() {
+        "the built-in fallback theme".to_owned()
+    } else {
+        format!("theme '{name}'")
+    }
+}
+
+fn plural(count: usize) -> &'static str {
+    if count == 1 { "" } else { "s" }
 }
 
 /// Load a theme by name and apply it to the engine view.
@@ -41,28 +133,13 @@ pub(in crate::editor) fn set_theme(
 /// Each warning goes to `message_log`, with a one-line count in `status_msg`.
 /// A document-level failure shows its own message in `status_msg` and
 /// leaves `input` untouched. Returns `true` unless the load failed outright.
-///
-/// The `Editor` fields are passed separately so the caller can borrow
-/// `&editor.settings.theme` for `name` without cloning.
 pub(in crate::editor) fn load_theme_by_name(
-    engine_view: &mut EngineView,
-    shown_theme: &mut String,
-    message_log: &mut MessageLog,
-    status_msg: &mut StatusMsg,
-    input: &mut InputStack,
-    dirs: &hume_platform::dirs::Dirs,
+    state: &mut EditorState,
+    view: &mut EngineView,
     name: &str,
 ) -> bool {
-    let result = load_theme(name, &super::theme_search_paths(dirs));
-    install_load_result(
-        result,
-        engine_view,
-        shown_theme,
-        message_log,
-        status_msg,
-        input,
-        name,
-    )
+    let result = load_theme(name, &super::theme_search_paths(&state.dirs));
+    install_load_result(state, view, result, name)
 }
 
 /// [`load_theme_by_name`] for the default theme config never chose. A theme
@@ -70,66 +147,38 @@ pub(in crate::editor) fn load_theme_by_name(
 /// logs a Trace line and leaves the view alone; any other failure is reported
 /// like a named theme's.
 pub(in crate::editor) fn load_default_theme(
-    engine_view: &mut EngineView,
-    shown_theme: &mut String,
-    message_log: &mut MessageLog,
-    status_msg: &mut StatusMsg,
-    input: &mut InputStack,
-    dirs: &hume_platform::dirs::Dirs,
+    state: &mut EditorState,
+    view: &mut EngineView,
     name: &str,
 ) {
-    match load_theme(name, &super::theme_search_paths(dirs)) {
+    match load_theme(name, &super::theme_search_paths(&state.dirs)) {
         Err(ThemeError::NotFound { name: missing }) if missing == name => {
-            message_log.push(
+            state.message_log.push(
                 Severity::Trace,
                 format!("theme '{name}' not found, using the built-in fallback"),
             );
         }
         result => {
-            install_load_result(
-                result,
-                engine_view,
-                shown_theme,
-                message_log,
-                status_msg,
-                input,
-                name,
-            );
+            install_load_result(state, view, result, name);
         }
     }
 }
 
 fn install_load_result(
+    state: &mut EditorState,
+    view: &mut EngineView,
     result: Result<LoadedTheme, ThemeError>,
-    engine_view: &mut EngineView,
-    shown_theme: &mut String,
-    message_log: &mut MessageLog,
-    status_msg: &mut StatusMsg,
-    input: &mut InputStack,
     name: &str,
 ) -> bool {
     match result {
         Ok(loaded) => {
-            set_theme(engine_view, shown_theme, input, loaded.theme, name);
-            if !loaded.warnings.is_empty() {
-                let count = loaded.warnings.len();
-                for warning in &loaded.warnings {
-                    message_log.push(Severity::Warning, warning.to_string());
-                }
-                status_msg.show(
-                    Severity::Warning,
-                    format!(
-                        "theme '{name}' loaded with {count} warning{}",
-                        if count == 1 { "" } else { "s" }
-                    ),
-                );
-            }
+            install_theme(state, view, loaded.theme, name, loaded.warnings);
             true
         }
         Err(e) => {
             let text = e.to_string();
-            status_msg.show(Severity::Warning, text.clone());
-            message_log.push(Severity::Warning, text);
+            state.status_msg.show(Severity::Warning, text.clone());
+            state.message_log.push(Severity::Warning, text);
             false
         }
     }
@@ -166,4 +215,12 @@ pub(in crate::editor) fn fallback_theme() -> hume_engine::theme::Theme {
         loaded.warnings
     );
     loaded.theme
+}
+
+impl EditorState {
+    /// Whether the `theme` setting names a theme other than the one shown,
+    /// which `apply_pending_theme` installs once `init.scm` has run.
+    pub(in crate::editor) fn theme_install_pending(&self) -> bool {
+        self.settings.theme != self.shown_theme
+    }
 }

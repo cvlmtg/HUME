@@ -32,7 +32,24 @@ HUME falls back to a built-in theme when no `sand` theme is found or when the th
 
 Hand-authored themes go in the `themes/` subdirectory of your HUME config directory, alongside `init.scm`. A theme installed by a tool goes in the `themes/` subdirectory of your HUME data directory instead (see [File locations](configuration.md#file-locations)).
 
-A theme in your config directory wins over an installed or bundled one of the same name. To change a bundled theme, copy its file into your config directory's `themes/` and edit the copy there.
+A theme in your config directory wins over an installed or bundled one of the same name. To change a bundled theme, copy its file into your config directory's `themes/` and edit the copy there. To change a few scopes, [style them from your config](#styling-scopes-from-your-config) instead.
+
+## Styling scopes from your config
+
+`set-scope-styles!` in `init.scm` styles scopes without editing a theme file:
+
+```scheme
+(set-scope-styles!
+  (list (hash 'scope "markup.heading.1.line" 'bg "#2b2a33")
+        (hash 'scope "keyword" 'fg "gold" 'modifiers '(bold italic))
+        (hash 'scope "diagnostic.error" 'underline (hash 'style 'curl 'color "red"))))
+```
+
+An entry takes the fields a theme file entry does: `'fg`, `'bg`, `'underline` with its `'style` and `'color`, and `'modifiers`. Modifier and underline style names are symbols spelled as in a theme file (`'crossed_out`, `'double_line`). An entry replaces the scope's whole style, so a field it leaves out is unset rather than taken from the theme.
+
+A style from `init.scm` wins over every theme and stays when you switch with `:theme`. A plugin's styles are defaults: the theme's own entry for a scope wins, and the plugin's applies where the theme has none, even when the theme styles a parent scope. A plugin's `markup.heading.1.line` style applies under a theme that styles only `markup.heading.1`.
+
+A color is a hex literal, one of the sixteen terminal color names, or a name from the current theme's palette. A palette name is looked up again in each theme you switch to. In a theme that doesn't define it, that field stays unset and `:messages` names it. A malformed hex color or an unknown modifier or underline name raises an error, and none of the call's entries apply.
 
 ## Theme files
 

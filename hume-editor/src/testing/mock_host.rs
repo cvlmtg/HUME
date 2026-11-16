@@ -300,6 +300,14 @@ impl SettingsHost for MockHost {
         // MockHost models no buffers, so no per-buffer value to write to.
         Err("MockHost: set_buffer_option not available".into())
     }
+    fn set_scope_styles(
+        &mut self,
+        _styles: Vec<hume_core::ScopeStyleInput>,
+        _origin: hume_core::ConfigOrigin,
+    ) -> Result<(), String> {
+        // MockHost models no theme to layer the styles onto.
+        Err("MockHost: set_scope_styles not available".into())
+    }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
         hume::editor::settings::ops::global_option(key, &self.settings)
     }

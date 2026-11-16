@@ -8,7 +8,7 @@ use super::*;
 use super::language_config::boot;
 use hume_core::{
     BindMode, ConfigOrigin, FeatureFilter, LanguageFields, ListEntry, ListTier, LspServerConfig,
-    OptionInput, OptionValue, ServerName,
+    OptionInput, OptionValue, ScopeStyleInput, ServerName,
 };
 use hume_editing::text::LineEnding;
 use hume_scripting::host::KeymapTarget;
@@ -299,6 +299,36 @@ fn read_language_field(ed: &Editor) -> Option<u8> {
     label_of(LANGUAGE_IDS, languages.lsp_language_id_of(id))
 }
 
+const SCOPE_STYLE_FGS: [&str; 2] = ["#000001", "#000002"];
+
+/// The theme the session starts on once `init.scm` would have run, so a
+/// script style applies to it at once.
+fn settle_theme(ed: &mut Editor) {
+    ops::apply_pending_theme(&mut ed.state, &mut ed.view);
+}
+
+fn write_scope_style(ed: &mut Editor, by: ConfigOrigin, label: u8) {
+    let style = ScopeStyleInput {
+        scope: "matrix.scope".to_string(),
+        fg: Some(SCOPE_STYLE_FGS[label as usize - 1].to_string()),
+        ..Default::default()
+    };
+    crate::editor::theme::set_scope_styles(&mut ed.state, &mut ed.view, &[style], by)
+        .expect("a well-formed style");
+}
+
+fn read_scope_style(ed: &Editor) -> Option<u8> {
+    let fg = ed
+        .view
+        .theme
+        .resolve_by_name(hume_engine::types::Scope("matrix.scope"))
+        .fg?;
+    label_of(
+        SCOPE_STYLE_FGS,
+        &format!("#{:02x}{:02x}{:02x}", fg.0, fg.1, fg.2),
+    )
+}
+
 const STORES: &[Store] = &[
     Store {
         name: "global option",
@@ -369,6 +399,13 @@ const STORES: &[Store] = &[
         prepare: define_matrix_language,
         write: write_language_field,
         read: read_language_field,
+    },
+    Store {
+        name: "scope style",
+        on_tie: OnTie::LaterWins,
+        prepare: settle_theme,
+        write: write_scope_style,
+        read: read_scope_style,
     },
 ];
 

@@ -279,7 +279,7 @@ pub(in crate::editor) fn typed_theme_debug(
         names: impl Iterator<Item = &'a str>,
         empty_label: &str,
     ) -> String {
-        let chain: Vec<&str> = names.filter(|key| theme.raw_contains(key)).collect();
+        let chain: Vec<&str> = names.filter(|key| theme.has_entry(key)).collect();
         if chain.is_empty() {
             empty_label.to_owned()
         } else {

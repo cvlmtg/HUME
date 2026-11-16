@@ -149,13 +149,7 @@ pub(crate) fn buffer_option_for_test(
 /// theme that fails to load ends on the fallback rather than on the default.
 pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
     state.settings = crate::editor::settings::EditorSettings::new(&state.startup_dir);
-    theme::set_theme(
-        view,
-        &mut state.shown_theme,
-        &mut state.input,
-        crate::editor::theme::fallback_theme(),
-        "",
-    );
+    theme::set_theme(state, view, crate::editor::theme::fallback_theme(), "");
     for rk in GlobalKey::ALL.iter().filter_map(|key| key.resync()) {
         if rk != ResyncKey::theme {
             resync_derived_state(state, view, rk);
@@ -169,18 +163,11 @@ pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut Engin
 /// When that theme is not on disk the setting becomes empty, matching the
 /// fallback on screen.
 pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut EngineView) {
-    if state.settings.theme == state.shown_theme {
+    if !state.theme_install_pending() {
         return;
     }
-    theme::load_default_theme(
-        view,
-        &mut state.shown_theme,
-        &mut state.message_log,
-        &mut state.status_msg,
-        &mut state.input,
-        &state.dirs,
-        &state.settings.theme,
-    );
+    let name = state.settings.theme.clone();
+    theme::load_default_theme(state, view, &name);
     state.settings.theme.clone_from(&state.shown_theme);
 }
 
@@ -298,24 +285,13 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
             }
             true
         }
-        ResyncKey::theme if !state.settings.theme.is_empty() => theme::load_theme_by_name(
-            view,
-            &mut state.shown_theme,
-            &mut state.message_log,
-            &mut state.status_msg,
-            &mut state.input,
-            &state.dirs,
-            &state.settings.theme,
-        ),
+        ResyncKey::theme if !state.settings.theme.is_empty() => {
+            let name = state.settings.theme.clone();
+            theme::load_theme_by_name(state, view, &name)
+        }
         // Empty theme: the compiled-in fallback.
         ResyncKey::theme => {
-            theme::set_theme(
-                view,
-                &mut state.shown_theme,
-                &mut state.input,
-                crate::editor::theme::fallback_theme(),
-                "",
-            );
+            theme::set_theme(state, view, crate::editor::theme::fallback_theme(), "");
             true
         }
     }

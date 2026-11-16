@@ -14,6 +14,7 @@
 
 ### Plugins & scripting
 - `core:markdown-preview` draws Markdown without its syntax, and the lines you are on show their source. It needs the `markdown` and `markdown.inline` grammars.
+- `set-scope-styles!` styles scopes from `init.scm` or a plugin without editing the theme, and the styles stay when you switch themes.
 - `core:markdown-preview` also draws Markdown popups, the hover and the completion documentation box included.
 - A `format-text/<language>` editor command draws the text of every popup shown in that language; `parsed-text-captures` queries that text's syntax tree.
 - `set-conceals!` hides part of a line or draws other text in its place (`#:overlaps 'drop` leaves out an entry overlapping an earlier one), `syntax-captures` returns the nodes a tree-sitter query captures (`#:ranges` limits it to some lines), and the `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.

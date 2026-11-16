@@ -1,12 +1,13 @@
 //! `(set-option! key value)` / `(get-option key)` / `(set-buffer-option! pane
-//! key value)` / `(get-buffer-option pane key)` builtins.
+//! key value)` / `(get-buffer-option pane key)` / `(set-scope-styles!
+//! styles)` builtins.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use hume_core::{
     BufferId, BufferIntrinsicOption, BufferOptionWrite, LanguageOptionText, OptionInput,
-    OptionType, OptionValue, StatuslineSections,
+    OptionType, OptionValue, ScopeStyleInput, StatuslineSections,
 };
 
 use crate::SteelCtx;
@@ -14,7 +15,9 @@ use crate::host::option_value_to_steel;
 use crate::types::{Effect, QueuedEffect};
 
 use super::SteelResult;
-use super::args::{hash_entry, list_items, string_list, symbol_hash};
+use super::args::{
+    HashEntry, hash_entry, hash_list, list_items, string_list, symbol_arg, symbol_hash,
+};
 use super::errors::{generic_err, message};
 
 /// `value` as the editor's option layer takes it. Nothing is refused here: a
@@ -115,6 +118,78 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
         .set_global_option(&key, option_input(value), origin)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
+}
+
+/// `(set-scope-styles! styles)`: `styles` is a list of `(hash 'scope name
+/// 'fg color 'bg color 'underline (hash 'style sym 'color color) 'modifiers
+/// (sym ...))`, every key but `'scope` optional. The call is refused whole
+/// for a malformed entry or a scope named twice; the editor refuses a bad
+/// color, modifier or underline name the same way.
+pub(crate) fn set_scope_styles(ctx: &mut SteelCtx, styles: SteelVal) -> SteelResult {
+    let list = "styles";
+    let inputs = hash_list(
+        styles,
+        list,
+        &["scope", "fg", "bg", "underline", "modifiers"],
+        scope_style_input,
+    )?;
+    let mut seen = rustc_hash::FxHashSet::default();
+    if let Some(twice) = inputs
+        .iter()
+        .find(|input| !seen.insert(input.scope.as_str()))
+    {
+        steel::stop!(Generic => "{}: scope '{}' appears twice", list, twice.scope);
+    }
+    let origin = ctx.registration_origin();
+    ctx.host
+        .settings()
+        .set_scope_styles(inputs, origin)
+        .map_err(generic_err)?;
+    Ok(SteelVal::Void)
+}
+
+fn scope_style_input(entry: &HashEntry) -> Result<ScopeStyleInput, SteelErr> {
+    let scope = entry.string("scope")?;
+    if scope.is_empty() {
+        steel::stop!(Generic => "{}: must not be empty", entry.label("scope"));
+    }
+    let (underline_style, underline_color) = match entry.optional("underline") {
+        None => (None, None),
+        Some(underline) => {
+            let label = entry.label("underline");
+            let underline = hash_entry(underline, &label, &["style", "color"])?;
+            let style = underline
+                .optional("style")
+                .map(|style| {
+                    symbol_arg(
+                        &style,
+                        &underline.label("style"),
+                        "an underline style symbol like 'curl",
+                    )
+                    .map(str::to_owned)
+                })
+                .transpose()?;
+            (style, underline.optional_string("color")?)
+        }
+    };
+    let modifiers = match entry.optional("modifiers") {
+        None => Vec::new(),
+        Some(modifiers) => {
+            let label = entry.label("modifiers");
+            list_items(modifiers, &label)?
+                .iter()
+                .map(|m| symbol_arg(m, &label, "a modifier symbol like 'bold").map(str::to_owned))
+                .collect::<Result<_, _>>()?
+        }
+    };
+    Ok(ScopeStyleInput {
+        scope,
+        fg: entry.optional_string("fg")?,
+        bg: entry.optional_string("bg")?,
+        underline_color,
+        underline_style,
+        modifiers,
+    })
 }
 
 /// `(set-buffer-option! pane key value)`

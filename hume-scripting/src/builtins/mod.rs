@@ -339,6 +339,7 @@ builtins! {
     cmd  "set-buffer-option!" settings::set_buffer_option(pane: args::LiveBuffer, key: String, value: SteelVal);
     open "get-option" settings::get_option(key: String);
     cmd  "get-buffer-option" settings::get_buffer_option(pane: args::LiveBuffer, key: String);
+    open "set-scope-styles!" settings::set_scope_styles(styles: SteelVal);
 
     // Keymap
     open   "%bind-key!" => "bind-key!" keymap_bind::bind_key(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);

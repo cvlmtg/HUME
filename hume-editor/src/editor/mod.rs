@@ -145,6 +145,9 @@ pub(crate) struct ConfigState {
     /// to invalidate.
     pub(crate) statusline_text:
         rustc_hash::FxHashMap<BufferId, rustc_hash::FxHashMap<Box<str>, Box<str>>>,
+    /// The styles `set-scope-styles!` set, layered onto every theme
+    /// `theme::install_theme` installs.
+    pub(in crate::editor) scope_styles: hume_engine::theme::scope_styles::ScopeStyles,
     /// Deferred Steel work: events queued during command dispatch
     /// (`EditorState::queue_event`) and closure completions
     /// (`EditorState::queue_steel_call` and its siblings), drained in FIFO
@@ -193,6 +196,7 @@ impl ConfigState {
             decorations: hume_decorations::DecorationStores::reset(prior_clock),
             messages_highlighted: false,
             statusline_text: rustc_hash::FxHashMap::default(),
+            scope_styles: Default::default(),
             pending_work: VecDeque::new(),
             pending_language_detection: Vec::new(),
             async_jobs: rustc_hash::FxHashMap::default(),

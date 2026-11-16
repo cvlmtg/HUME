@@ -9,7 +9,7 @@ use crate::theme::ui_scopes;
 use crate::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, CURSOR_MODES, cursor_ladder_ids};
 
 use super::flatten::STYLE_KEYS;
-use super::values::{ANSI_COLORS, MODIFIER_NAMES, UNDERLINE_MODIFIER, UNDERLINE_NAMES};
+use crate::theme::values::{ANSI_COLORS, MODIFIER_NAMES, UNDERLINE_MODIFIER, UNDERLINE_NAMES};
 
 /// `<repo>/tools/theme-editor/src/lib/`.
 fn vocabulary_dir() -> std::path::PathBuf {

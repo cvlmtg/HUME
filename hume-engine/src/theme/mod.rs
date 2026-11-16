@@ -1,12 +1,18 @@
 pub mod diagnostic_scopes;
 pub mod error;
 pub mod loader;
+pub mod scope_styles;
+pub mod style_spec;
 pub mod ui_scopes;
+mod values;
 
 use std::collections::HashMap;
 
 use rustc_hash::FxHashMap;
 
+use crate::theme::error::ThemeError;
+use crate::theme::scope_styles::ScopeStyles;
+use crate::theme::style_spec::Palette;
 use crate::types::{ResolvedStyle, Scope, ScopeId};
 
 // ScopeRegistry
@@ -198,9 +204,21 @@ pub struct UiScopes {
 ///
 /// Scope names fall back by dot-notation: `keyword.function` → `keyword` →
 /// default.
+///
+/// A name's entry is the first of `above`, `raw` and `below` to have one
+/// (`entry`), so a script's style sits above or beneath the theme's per
+/// name, never per fallback chain.
 pub struct Theme {
-    /// Source map, never mutated after construction.
+    /// The theme file's map, never mutated after construction.
     raw: FxHashMap<String, ResolvedStyle>,
+    /// The palette `raw` was resolved against.
+    palette: Palette,
+    /// The user's script styles, set by [`Self::apply_scope_styles`].
+    above: FxHashMap<String, ResolvedStyle>,
+    /// The other origins' script styles, set by [`Self::apply_scope_styles`].
+    below: FxHashMap<String, ResolvedStyle>,
+    /// `default` as constructed, before any script `ui.text` style.
+    file_default: ResolvedStyle,
     /// Indexed by [`ScopeId`]; `None` when no name on the scope's fallback
     /// chain has an entry.
     baked: Vec<Option<ResolvedStyle>>,
@@ -221,19 +239,54 @@ impl Theme {
             .into_iter()
             .map(|(k, v)| (k.to_string(), v))
             .collect();
-        Self::from_owned(owned, default)
+        Self::from_owned(owned, default, Palette::default())
     }
 
-    /// Build a theme from a `scope → style` map with owned string keys.
-    pub fn from_owned(styles: FxHashMap<String, ResolvedStyle>, default: ResolvedStyle) -> Self {
+    /// Build a theme from a `scope → style` map with owned string keys,
+    /// resolved against `palette`.
+    pub fn from_owned(
+        styles: FxHashMap<String, ResolvedStyle>,
+        default: ResolvedStyle,
+        palette: Palette,
+    ) -> Self {
         let mut t = Self {
             raw: styles,
+            palette,
+            above: FxHashMap::default(),
+            below: FxHashMap::default(),
+            file_default: default,
             baked: Vec::new(),
             default,
             ui: UiScopes::default(),
         };
         t.ui = t.compute_ui();
         t
+    }
+
+    /// Layer `styles` over and under the theme's own entries, replacing the
+    /// styles applied before, and resolve their colors against the theme's
+    /// palette. Returns a warning for each color that does not resolve; its
+    /// field stays unset. Scopes baked before re-bake at the next
+    /// [`Self::bake_if_stale`].
+    pub fn apply_scope_styles(&mut self, styles: &ScopeStyles) -> Vec<ThemeError> {
+        self.above.clear();
+        self.below.clear();
+        let mut warnings = Vec::new();
+        for layered in styles.layered() {
+            for (spec, layer) in [
+                (layered.above_theme, &mut self.above),
+                (layered.below_theme, &mut self.below),
+            ] {
+                let Some(spec) = spec else { continue };
+                let (style, color_warnings) = spec.resolve(layered.scope, &self.palette);
+                warnings.extend(color_warnings);
+                layer.insert(layered.scope.to_owned(), style);
+            }
+        }
+        self.default = self.entry(ui_scopes::TEXT).unwrap_or(self.file_default);
+        self.baked.clear();
+        self.ui = self.compute_ui();
+        warnings
     }
 
     /// Re-resolve every scope interned in `registry`, already baked or not.
@@ -296,9 +349,19 @@ impl Theme {
         self.resolve_raw(scope.0)
     }
 
-    /// Return `true` if this scope name has an explicit entry in the raw map.
-    pub fn raw_contains(&self, key: &str) -> bool {
-        self.raw.contains_key(key)
+    /// Whether this exact scope name has an entry, from the theme or a script.
+    pub fn has_entry(&self, key: &str) -> bool {
+        self.entry(key).is_some()
+    }
+
+    /// The entry for this exact scope name: the user's script style, else
+    /// the theme's, else another origin's script style.
+    fn entry(&self, key: &str) -> Option<ResolvedStyle> {
+        self.above
+            .get(key)
+            .or_else(|| self.raw.get(key))
+            .or_else(|| self.below.get(key))
+            .copied()
     }
 
     /// Resolve `s` through its dot-notation fallback chain, or `default`.
@@ -308,7 +371,7 @@ impl Theme {
 
     /// The style of the first name on `s`'s fallback chain with an entry.
     fn lookup(&self, s: &str) -> Option<ResolvedStyle> {
-        fallback_chain(s).find_map(|key| self.raw.get(key).copied())
+        fallback_chain(s).find_map(|key| self.entry(key))
     }
 
     fn compute_ui(&self) -> UiScopes {
@@ -338,9 +401,7 @@ impl Theme {
             window: self.resolve_raw(ui_scopes::WINDOW),
             window_focused: self.resolve_raw(ui_scopes::WINDOW_FOCUSED),
             context: self
-                .raw
-                .get(ui_scopes::CONTEXT)
-                .copied()
+                .entry(ui_scopes::CONTEXT)
                 .unwrap_or_else(|| self.resolve_raw(ui_scopes::POPUP)),
         }
     }
@@ -372,15 +433,17 @@ impl Theme {
     /// Not `resolve_raw`: both ladders end at `ui.selection`, which
     /// dot-trimming never reaches, and the secondary ladder skips `ui`.
     fn resolve_cursor_chain(&self, keys: &[&str]) -> ResolvedStyle {
-        keys.iter()
-            .find_map(|k| self.raw.get(*k).copied())
-            .unwrap_or_default()
+        keys.iter().find_map(|k| self.entry(k)).unwrap_or_default()
     }
 }
 
 impl Default for Theme {
     fn default() -> Self {
-        Self::from_owned(FxHashMap::default(), ResolvedStyle::default())
+        Self::from_owned(
+            FxHashMap::default(),
+            ResolvedStyle::default(),
+            Palette::default(),
+        )
     }
 }
 

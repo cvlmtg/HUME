@@ -48,8 +48,8 @@ fn build_markup_syntax(
 
 /// A popup's text, its parse, its format, and the `ui.popup` box content
 /// built from them. The built content bakes the theme's colors in, so a
-/// holder calls [`Self::rebuild`] when the theme changes
-/// (`theme::set_theme`).
+/// holder calls [`Self::rebuild`] when the theme's styles change
+/// (`theme::apply_scope_styles`).
 pub(in crate::editor) struct Markup {
     /// Every line break a `\n`, so the parse's text is this one, padded
     /// with a final `\n` when it lacks one.

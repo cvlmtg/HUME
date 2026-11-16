@@ -205,6 +205,13 @@ impl SettingsHost for ReadOnlyHost<'_> {
     ) -> Result<BufferOptionWrite, String> {
         Err(self.refuse("set_buffer_option"))
     }
+    fn set_scope_styles(
+        &mut self,
+        _styles: Vec<hume_core::ScopeStyleInput>,
+        _origin: hume_core::ConfigOrigin,
+    ) -> Result<(), String> {
+        Err(self.refuse("set_scope_styles"))
+    }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
         self.inner.borrow_mut().settings().get_global_option(key)
     }
