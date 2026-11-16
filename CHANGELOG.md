@@ -22,6 +22,7 @@
 - A request replaced by a newer one under its `#:supersede` key, or cancelled with `lsp-cancel!`, never calls back, even when its answer had already arrived.
 - `hume --keys` leaves the system clipboard alone.
 - A closed Markdown section keeps the blank line before the next heading visible.
+- A popup whose text ends in a line break shows no blank row after it.
 
 ## [0.21.0] - 2026-11-12
 

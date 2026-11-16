@@ -166,6 +166,9 @@ fn row_text(row: &StyledRow) -> String {
 }
 
 impl PopupContent {
+    /// `text`, one row per line before wrapping. A final line break ends
+    /// the last line, as in a styled popup's text, rather than starting a
+    /// blank one.
     pub fn plain(text: &str) -> Self {
         Self {
             source: PopupSource::Plain(text.to_string()),
@@ -245,7 +248,9 @@ impl PopupContent {
         match &self.source {
             PopupSource::Plain(text) => WrappedLines::Plain(
                 wrap_styled(
-                    text.split('\n')
+                    text.strip_suffix('\n')
+                        .unwrap_or(text)
+                        .split('\n')
                         .map(|line| ([(line, ResolvedStyle::default())], None)),
                     width,
                 )

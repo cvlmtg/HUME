@@ -1055,9 +1055,10 @@ impl LanguageRegistry {
     /// `Ok(None)`, opening nothing, when a higher origin registered `name`'s
     /// grammar, as [`Self::register_grammar`] ranks it.
     ///
-    /// Fails when the library does not open or `highlights.scm` cannot be
-    /// read or compiled. An optional query or a pattern that cannot be used
-    /// is left out instead, and queued for [`Self::take_load_reports`].
+    /// Fails when the library does not open, its ABI is outside the range
+    /// tree-sitter loads, or `highlights.scm` cannot be read or compiled. An
+    /// optional query or a pattern that cannot be used is left out instead,
+    /// and queued for [`Self::take_load_reports`].
     /// All fallible work happens before any
     /// registry mutation, so a failed attach leaves the registry as it was,
     /// including any grammar `name` already had.

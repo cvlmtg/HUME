@@ -192,7 +192,7 @@ owns the install layout, which PLUM writes through the same functions.
   from the `%grammar-optional-queries` builtin, an association list of `(key . file-name)`
   pairs, one per kind the editor can compile. `register-installed-grammar!` registers
   `highlights.scm` plus each of those files present under `queries/`, so a new kind needs no
-  change here. The archive's other query files (`locals.scm`, `tags.scm`, …) are not read.
+  change here. The archive's other query files (`tags.scm`, …) are not read.
 - **`register-installed-grammar!` is the one registration.** Startup and PLUM's install both
   register through it, naming the install folder: startup the language's current install,
   PLUM the install it has just moved in and checked.

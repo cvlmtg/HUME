@@ -39,6 +39,12 @@ fn wrap_text_hard_breaks_an_overlong_word() {
 }
 
 #[test]
+fn wrap_text_a_final_line_break_ends_the_last_line() {
+    assert_eq!(wrap_text("abc\n", 60), vec!["abc"]);
+    assert_eq!(wrap_text("abc\n\n", 60), vec!["abc", ""]);
+}
+
+#[test]
 fn wrap_text_empty_line_preserved() {
     assert_eq!(wrap_text("a\n\nb", 60), vec!["a", "", "b"]);
 }
