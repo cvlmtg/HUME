@@ -301,9 +301,9 @@ pub(crate) fn compile_queries(
             OptionalQuery::Injections => injections
                 .replace(InjectionsQuery::new(Arc::new(query), src).map_err(build)?)
                 .is_some(),
-            OptionalQuery::TextObjects => {
-                textobjects.replace(TextObjectsQuery::new(query)).is_some()
-            }
+            OptionalQuery::TextObjects => textobjects
+                .replace(TextObjectsQuery::new(query, src).map_err(build)?)
+                .is_some(),
             OptionalQuery::Indents => indents
                 .replace(IndentQuery::new(query, src, language).map_err(build)?)
                 .is_some(),

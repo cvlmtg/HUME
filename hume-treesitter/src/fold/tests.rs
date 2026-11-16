@@ -158,6 +158,40 @@ fn an_unsupported_fold_directive_fails_the_compile_on_its_pattern_row() {
     );
 }
 
+/// Rust with `textobjects` as its `textobjects.scm` and no other optional
+/// query, so its regions are the text objects' scopes.
+fn with_textobjects(textobjects: &str) -> Arc<GrammarBundle> {
+    require_grammars(&["rust"]);
+    make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        &[(OptionalQuery::TextObjects, textobjects)],
+    )
+}
+
+/// The end moves from after the closing `}` to column 0 of its line, so the
+/// region ends on the line before.
+#[test]
+fn an_offset_function_object_ends_its_fallback_fold_on_the_line_before() {
+    let source = "fn f() {\n    a();\n    b();\n}\n";
+    let offset =
+        with_textobjects("((function_item) @function.around (#offset! @function.around 0 0 0 -1))");
+    let (syn, text) = syntax_with(offset, source);
+    assert_eq!(fold_at(&syn, &text, 0), Some(fold(0, 2, false)));
+    let plain = with_textobjects("(function_item) @function.around");
+    let (syn, text) = syntax_with(plain, source);
+    assert_eq!(fold_at(&syn, &text, 0), Some(fold(0, 3, true)));
+}
+
+#[test]
+fn a_fallback_fold_whose_offset_leaves_its_line_is_absent() {
+    let bundle =
+        with_textobjects("((function_item) @function.around (#offset! @function.around 0 0 0 -2))");
+    let (syn, text) = syntax_with(bundle, "fn f() {\n    a();\n    b();\n}\n");
+    assert_eq!(fold_at(&syn, &text, 0), None);
+}
+
 #[test]
 fn without_folds_scm_scopes_fold() {
     let impl_fn = "impl Foo {\n    fn bar(&self) {\n        a();\n        b();\n    }\n}\n";

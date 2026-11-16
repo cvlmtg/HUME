@@ -36,7 +36,7 @@ fn compile(source: &str) -> TextObjectsQuery {
     require_grammars(&["rust"]);
     let grammar = crate::test_support::open_grammar("rust", "tree_sitter_rust");
     let query = tree_sitter::Query::new(grammar.language(), source).expect("compile query");
-    TextObjectsQuery::new(query)
+    TextObjectsQuery::new(query, source).expect("supported directives")
 }
 
 #[test]
@@ -774,4 +774,115 @@ fn grammar_defines_is_true_for_a_query_with_the_kind_even_without_matches() {
 #[test]
 fn grammar_defines_is_false_for_the_empty_default() {
     assert!(!ObjectSpans::default().grammar_defines());
+}
+
+// ── #make-range! and #offset! ──────────────────────────────────────────────
+
+/// Rust with `textobjects` as its `textobjects.scm` and no other optional
+/// query.
+fn with_textobjects(textobjects: &str) -> Arc<GrammarBundle> {
+    require_grammars(&["rust"]);
+    make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        &[(OptionalQuery::TextObjects, textobjects)],
+    )
+}
+
+const MADE_PARAMETERS: &str = r#"((parameters (parameter) @parameter.inside . ","? @_end)
+  (#make-range! "parameter.around" @parameter.inside @_end))"#;
+
+#[test]
+fn a_made_parameter_runs_through_its_trailing_comma_or_ends_with_itself() {
+    let (syn, text) = syntax_with(
+        with_textobjects(MADE_PARAMETERS),
+        "fn add(a: i32, b: i32) {}\n",
+    );
+    let layers = syn.layers().expect("layers installed");
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::Parameter, ObjectSpan::Around);
+    assert_eq!(span_texts(&text, &around), ["a: i32,", "b: i32"]);
+}
+
+#[test]
+fn a_made_object_whose_start_captured_nothing_is_absent() {
+    let (syn, text) = syntax_with(
+        with_textobjects(
+            r#"((parameters (parameter)? @_s ")" @_e)
+                (#make-range! "parameter.around" @_s @_e))"#,
+        ),
+        "fn f() {}\nfn g(a: i32) {}\n",
+    );
+    let layers = syn.layers().expect("layers installed");
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::Parameter, ObjectSpan::Around);
+    assert_eq!(span_texts(&text, &around), ["a: i32)"]);
+}
+
+#[test]
+fn a_made_object_is_defined_without_a_capture_of_its_own() {
+    let bundle = with_textobjects(&MADE_PARAMETERS.replace("@parameter.inside", "@_p"));
+    let query = bundle.textobjects.as_ref().expect("textobjects compiled");
+    assert!(query.defines(ObjectKind::Parameter, ObjectSpan::Around));
+    assert!(!query.defines(ObjectKind::Parameter, ObjectSpan::Inside));
+    let (syn, text) = syntax_with(bundle, "fn add(a: i32, b: i32) {}\n");
+    let layers = syn.layers().expect("layers installed");
+    let spans = ObjectSpans::collect_for_navigation(layers, &text, ObjectKind::Parameter);
+    assert!(spans.grammar_defines());
+    assert_eq!(span_texts(&text, &spans), ["a: i32,", "b: i32"]);
+}
+
+/// The function bodies of `source` as `function.inside` objects offset by
+/// `offset` (`r1 c1 r2 c2`).
+fn offset_bodies(offset: &str, source: &str) -> (bool, Vec<String>) {
+    let query = format!("((block) @function.inside (#offset! @function.inside {offset}))");
+    let (syn, text) = syntax_with(with_textobjects(&query), source);
+    let layers = syn.layers().expect("layers installed");
+    let inside = ObjectSpans::collect(layers, &text, ObjectKind::Function, ObjectSpan::Inside);
+    (inside.grammar_defines(), span_texts(&text, &inside))
+}
+
+#[test]
+fn an_offset_object_moves_its_start_and_end_along_their_lines() {
+    assert_eq!(
+        offset_bodies("0 1 0 -1", "fn f() {\n    a();\n}\n"),
+        (true, vec!["\n    a();\n".to_owned()])
+    );
+}
+
+#[test]
+fn an_offset_leaving_its_line_or_emptying_the_object_makes_none() {
+    let multi_line = "fn f() {\n    a();\n}\n";
+    for (offset, source) in [
+        ("0 2 0 0", multi_line),
+        ("0 0 0 -2", multi_line),
+        ("0 1 0 -1", "fn f() {}\n"),
+    ] {
+        assert_eq!(
+            offset_bodies(offset, source),
+            (true, Vec::new()),
+            "{offset} on {source:?}"
+        );
+    }
+}
+
+#[test]
+fn an_unsupported_textobjects_directive_fails_the_compile_on_its_pattern_row() {
+    crate::test_support::assert_rejected_at_pattern_start(
+        OptionalQuery::TextObjects,
+        "(block) @function.inside",
+        &[
+            r#"((block) @function.inside (#is? "local"))"#,
+            r#"((block) @function.inside (#set! "a" "b"))"#,
+            r#"((block) @function.inside (#frobnicate! @function.inside))"#,
+            r#"((block) @b (#make-range! "function.x" @b @b))"#,
+            r#"((block) @b (#make-range! "context" @b @b))"#,
+            r#"((block) @b (#make-range! "function.inside" @b))"#,
+            r#"((block) @b (#make-range! @b "function.inside" @b))"#,
+            r#"((block) @function.inside (#offset! @function.inside 1 0 0 0))"#,
+            r#"((block) @function.inside (#offset! @function.inside 0 1 0))"#,
+            r#"((block) @function.inside (#offset! @function.inside 0 x 0 0))"#,
+            r#"((block) @_b (#offset! @_b 0 1 0 -1))"#,
+            r#"((block) @function.inside (#offset! @function.inside 0 1 0 -1) (#offset! @function.inside 0 1 0 -1))"#,
+        ],
+    );
 }

@@ -223,7 +223,9 @@ fn textobjects_name_scopes_only_with_function_or_class_objects() {
     let textobjects = |source: &str| {
         TextObjectsQuery::new(
             tree_sitter::Query::new(grammar.language(), source).expect("compile query"),
+            source,
         )
+        .expect("supported directives")
     };
     assert!(
         ContextQuery::from_textobjects(&textobjects("(parameter) @parameter.around")).is_none()
@@ -231,4 +233,41 @@ fn textobjects_name_scopes_only_with_function_or_class_objects() {
     assert!(
         ContextQuery::from_textobjects(&textobjects("(function_item) @function.around")).is_some()
     );
+}
+
+/// Rust with `textobjects` as its `textobjects.scm` and no other optional
+/// query, so its scopes come from the text objects.
+fn with_textobjects(textobjects: &str) -> Arc<GrammarBundle> {
+    require_grammars(&["rust"]);
+    make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        &[(OptionalQuery::TextObjects, textobjects)],
+    )
+}
+
+/// A function whose signature spans rows 0 to 3.
+const SIGNATURE: &str = "fn f(\n    a: u32,\n    b: u32,\n) {\n    body();\n}\n";
+
+#[test]
+fn textobject_made_function_ranges_are_fallback_scopes() {
+    let bundle = with_textobjects(
+        r#"((function_item name: (identifier) @_s parameters: (parameters) @_e)
+            (#make-range! "function.around" @_s @_e))"#,
+    );
+    let (syn, text) = syntax_with(bundle, SIGNATURE);
+    assert_eq!(
+        headers(&syn, &text, ContentLine::new(2)),
+        [ContentLine::new(0)]
+    );
+    assert_eq!(headers(&syn, &text, ContentLine::new(4)), []);
+}
+
+#[test]
+fn a_fallback_scope_whose_offset_leaves_its_line_is_absent() {
+    let bundle =
+        with_textobjects("((function_item) @function.around (#offset! @function.around 0 0 0 -2))");
+    let (syn, text) = syntax_with(bundle, "fn f() {\n    a();\n    b();\n}\n");
+    assert_eq!(headers(&syn, &text, ContentLine::new(2)), []);
 }
