@@ -162,7 +162,7 @@ pub trait BufferHost {
     /// `(buffer-line-count bid)`: the number of content lines in `id`'s live
     /// text, without the empty line ropey counts after the structural `\n`,
     /// as the statusline and `:w` report it. `None` if `id` is unknown.
-    fn buffer_line_count(&self, id: BufferId) -> Option<usize>;
+    fn buffer_line_count(&self, id: BufferId) -> Option<hume_rope::line::ContentLineCount>;
 
     /// `(buffer-char-count bid)`: length of `id`'s live text in chars, the
     /// structural trailing `\n` included, so the largest offset

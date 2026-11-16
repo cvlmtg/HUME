@@ -190,9 +190,9 @@ pub(crate) fn register_grammar(
 /// `(%check-grammar! name grammar-path symbol highlights-path optional-queries)`:
 /// the arguments of `%register-grammar!`. Loads the grammar they name as
 /// `name`'s would load, registering nothing, and raises when it cannot
-/// load: its library does not open, its ABI is out of range, or a query
-/// does not compile. The same in every session, and whatever origin holds
-/// `name`'s grammar.
+/// load: its library does not open, its ABI is out of range, or its
+/// `highlights.scm` cannot be read or does not compile. The same in every
+/// session, and whatever origin holds `name`'s grammar.
 pub(crate) fn check_grammar(
     ctx: &mut SteelCtx,
     name: SteelVal,

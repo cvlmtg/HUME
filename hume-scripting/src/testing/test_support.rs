@@ -42,6 +42,12 @@ pub(crate) fn default_focused() -> crate::host::FocusedHandle {
     crate::host::FocusedHandle::for_test(default_pane_with_pane())
 }
 
+/// The content line count of a text of `lines` lines, minted as a buffer's
+/// is.
+pub(crate) fn content_lines(lines: usize) -> hume_rope::line::ContentLineCount {
+    hume_editing::text::BufferText::from("x\n".repeat(lines).as_str()).content_line_count()
+}
+
 /// The Steel symbol `name`.
 pub(crate) fn sym(name: &str) -> steel::rvals::SteelVal {
     steel::rvals::SteelVal::SymbolV(name.into())

@@ -293,13 +293,16 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) ->
 /// the statusline and `:w`). O(1): reads `buffer_line_count` directly rather
 /// than counting a materialized `(buffer-lines pane)` list.
 pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
-    Ok(SteelVal::IntV(live_line_count(ctx, bid)? as isize))
+    Ok(SteelVal::IntV(live_line_count(ctx, bid)?.get() as isize))
 }
 
 /// `bid`'s content line count. `bid` was checked live when the pane argument
 /// resolved, so the not-live error is for a host that answers inconsistently
 /// with `buffer_exists`.
-pub(super) fn live_line_count(ctx: &mut SteelCtx, bid: BufferId) -> Result<usize, SteelErr> {
+pub(super) fn live_line_count(
+    ctx: &mut SteelCtx,
+    bid: BufferId,
+) -> Result<hume_rope::line::ContentLineCount, SteelErr> {
     ctx.host
         .buffers()
         .buffer_line_count(bid)
@@ -348,7 +351,7 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -
 /// an item [`line_range_entry`] refuses.
 pub(super) fn line_ranges_arg(
     ranges: SteelVal,
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> Result<Vec<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>, SteelErr> {
     const LABEL: &str = "#:ranges";
     match optional_hash_list(ranges, LABEL, LINE_RANGE_KEYS, |entry| {
@@ -364,7 +367,7 @@ pub(super) fn line_ranges_arg(
 pub(super) fn optional_line_range_arg(
     val: SteelVal,
     label: &str,
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> Result<Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>, SteelErr> {
     optional_hash_entry(val, label, LINE_RANGE_KEYS)?
         .map(|entry| line_range_entry(&entry, label, line_count))
@@ -377,7 +380,7 @@ pub(super) fn optional_line_range_arg(
 fn line_range_entry(
     entry: &HashEntry,
     label: &str,
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, SteelErr> {
     let (start, end) = entry.line_range()?;
     line_range_bounds(start, end, label, line_count)
@@ -385,12 +388,11 @@ fn line_range_entry(
 
 /// Every content line of a buffer with `line_count` of them.
 fn every_line(
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
-    // Trusted mint: `line_count` is the exclusive end one past the last line.
     hume_rope::offset::ExclusiveRange::new(
         hume_rope::line::ContentLine::default(),
-        hume_rope::line::ContentLine::new(line_count),
+        line_count.end_exclusive(),
     )
 }
 
@@ -398,7 +400,7 @@ fn line_range_bounds(
     start: usize,
     end: usize,
     label: &str,
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, SteelErr> {
     match (
         content_line_bound(start, line_count),
@@ -408,7 +410,8 @@ fn line_range_bounds(
             Ok(hume_rope::offset::ExclusiveRange::new(start, end))
         }
         _ => Err(generic_err(format!(
-            "{label}: range {start}..{end} out of bounds for a {line_count}-line buffer"
+            "{label}: range {start}..{end} out of bounds for a {}-line buffer",
+            line_count.get()
         ))),
     }
 }
@@ -629,11 +632,12 @@ pub(crate) fn char_offset_to_line(ctx: &mut SteelCtx, bid: BufferId, idx: usize)
 /// phantom line is past it: it has no `\n` of its own and nothing to address.
 pub(super) fn content_line_arg(
     line: usize,
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> Result<hume_rope::line::ContentLine, String> {
-    if line >= line_count {
+    if line >= line_count.get() {
         return Err(format!(
-            "line {line} is out of range (buffer has {line_count} content lines)"
+            "line {line} is out of range (buffer has {} content lines)",
+            line_count.get()
         ));
     }
     // Trusted mint: the check above is what licenses ContentLine::new here.
@@ -646,10 +650,10 @@ pub(super) fn content_line_arg(
 /// `ContentLine::checked` would reject.
 pub(super) fn content_line_bound(
     bound: usize,
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> Option<hume_rope::line::ContentLine> {
     // Trusted mint: the check is what licenses ContentLine::new here.
-    (bound <= line_count).then(|| hume_rope::line::ContentLine::new(bound))
+    (bound <= line_count.get()).then(|| hume_rope::line::ContentLine::new(bound))
 }
 
 /// `(line->char-offset pane line)` → 0-based char offset where 0-based content

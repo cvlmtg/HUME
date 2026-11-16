@@ -1,5 +1,5 @@
 use super::*;
-use crate::testing::test_support::{SteelCtxTestHarness, default_bid, default_pane};
+use crate::testing::test_support::{SteelCtxTestHarness, content_lines, default_bid, default_pane};
 use hume_rope::line::ContentLine;
 use hume_rope::spanned::SpannedText;
 use steel::HashMap as SteelHashMap;
@@ -628,7 +628,7 @@ fn reveal(start: isize, end: isize) -> (&'static str, SteelVal) {
 }
 
 fn decode_conceal(entry: SteelVal) -> Result<Vec<ConcealSpec>, String> {
-    conceal_specs(list(vec![entry]), CONCEALS, 10).map_err(|e| e.to_string())
+    conceal_specs(list(vec![entry]), CONCEALS, content_lines(10)).map_err(|e| e.to_string())
 }
 
 #[test]

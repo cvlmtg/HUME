@@ -270,7 +270,10 @@ fn set_err(list: &str) -> impl Fn(SetError) -> SteelErr + '_ {
 /// `bid`'s content line count, read once the host is known to take
 /// decorations, so a host without them raises that before anything about
 /// the buffer.
-fn decorated_line_count(ctx: &mut SteelCtx, bid: BufferId) -> Result<usize, SteelErr> {
+fn decorated_line_count(
+    ctx: &mut SteelCtx,
+    bid: BufferId,
+) -> Result<hume_rope::line::ContentLineCount, SteelErr> {
     require_cap(ctx.host.decorations())?;
     live_line_count(ctx, bid)
 }
@@ -279,14 +282,17 @@ fn decorated_line_count(ctx: &mut SteelCtx, bid: BufferId) -> Result<usize, Stee
 /// of `line_count` content lines.
 fn marked_lines(
     (line, end): (usize, Option<usize>),
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> Result<MarkedLines, String> {
     let start = content_line_arg(line, line_count)?;
     let Some(end) = end else {
         return Ok(MarkedLines::one(start));
     };
     let end_line = content_line_bound(end, line_count).ok_or_else(|| {
-        format!("'end-line {end} is past the last line (buffer has {line_count} content lines)")
+        format!(
+            "'end-line {end} is past the last line (buffer has {} content lines)",
+            line_count.get()
+        )
     })?;
     MarkedLines::run(start, end_line)
         .ok_or_else(|| format!("'end-line {end} is not after 'line {line}"))
@@ -331,14 +337,17 @@ fn conceal_overlaps_arg(overlaps: SteelVal, label: &str) -> Result<ConcealOverla
 fn conceal_specs(
     entries: SteelVal,
     list: &str,
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> Result<Vec<ConcealSpec>, SteelErr> {
     hash_list(entries, list, CONCEAL_KEYS, |entry| {
         conceal_spec(entry, line_count)
     })
 }
 
-fn conceal_spec(entry: &HashEntry, line_count: usize) -> Result<ConcealSpec, SteelErr> {
+fn conceal_spec(
+    entry: &HashEntry,
+    line_count: hume_rope::line::ContentLineCount,
+) -> Result<ConcealSpec, SteelErr> {
     let (start, end) = entry.char_range()?;
     if end < start {
         steel::stop!(Generic => "{}: {} is before '{} {}", entry.label(END_CHAR), end, START_CHAR, start);
@@ -469,7 +478,7 @@ fn line_background(entry: &HashEntry) -> Result<((usize, Option<usize>), String)
 fn line_backgrounds_within(
     entries: Vec<((usize, Option<usize>), String)>,
     list: &str,
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
 ) -> Result<Vec<(MarkedLines, String)>, SteelErr> {
     each_entry(entries, |(lines, scope)| {
         Ok((marked_lines(lines, line_count)?, scope))
@@ -485,7 +494,10 @@ const TEXT_FORMAT_KEYS: &[&str] = &["conceals", "overlaps", "line-backgrounds", 
 /// `set-extra-highlights!` take, and whose `'overlaps` is `set-conceals!`'s
 /// `#:overlaps`. A missing list is empty and a missing `'overlaps` is
 /// `'error`. A conceal's `'reveal` is decoded and has no use in a text.
-pub(crate) fn text_format(val: SteelVal, line_count: usize) -> Result<TextFormatSpec, SteelErr> {
+pub(crate) fn text_format(
+    val: SteelVal,
+    line_count: hume_rope::line::ContentLineCount,
+) -> Result<TextFormatSpec, SteelErr> {
     let entry = hash_entry(val, "result", TEXT_FORMAT_KEYS)?;
     let list = |key: &str| {
         let label = entry.label(key);

@@ -127,7 +127,8 @@ impl Editor {
         }
         self.load_grammar_languages();
         // Before the key `Editor::run` dispatches next, so a grammar these
-        // results failed to load is not reported as that key's message.
+        // results failed to load, or loaded without part of its queries, is
+        // not reported as that key's message.
         self.state.report_grammar_loads();
     }
 

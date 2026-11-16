@@ -325,7 +325,7 @@ impl BufferHost for ReadOnlyHost<'_> {
     ) -> Option<Result<String, String>> {
         self.inner.borrow_mut().buffers().buffer_text(id, range)
     }
-    fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
+    fn buffer_line_count(&self, id: BufferId) -> Option<hume_rope::line::ContentLineCount> {
         self.inner.borrow_mut().buffers().buffer_line_count(id)
     }
     fn buffer_char_count(&self, id: BufferId) -> Option<usize> {

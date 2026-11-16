@@ -242,8 +242,8 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         })
     }
 
-    fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
-        Some(self.buffer(id)?.text().content_line_count().get())
+    fn buffer_line_count(&self, id: BufferId) -> Option<hume_rope::line::ContentLineCount> {
+        Some(self.buffer(id)?.text().content_line_count())
     }
 
     fn buffer_char_count(&self, id: BufferId) -> Option<usize> {

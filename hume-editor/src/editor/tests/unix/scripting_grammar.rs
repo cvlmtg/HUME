@@ -172,6 +172,28 @@ fn register_grammar_indents_only_populates_indents() {
     assert!(bundle.textobjects.is_none());
 }
 
+/// `#:locals` alone populates the bundle's `locals` and leaves the other
+/// optional queries `None`.
+#[test]
+fn register_grammar_locals_only_populates_locals() {
+    require_grammars(&["json"]);
+    let (parser, hl) = grammar_fixture("json");
+    let tmp = tempfile::tempdir().unwrap();
+    let locals_path = tmp.path().join("locals.scm");
+    std::fs::write(&locals_path, "(object) @local.scope\n").unwrap();
+    let body = format!(
+        r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" #:locals "{}")"#,
+        parser.display(),
+        hl.display(),
+        locals_path.display(),
+    );
+
+    let bundle = attach_json_via_init(&body);
+    assert!(bundle.locals.is_some());
+    assert!(bundle.indents.is_none());
+    assert!(bundle.injections.is_none());
+}
+
 /// `#:injections` alone still populates `injections` when `textobjects`
 /// isn't supplied at all: the sibling half of
 /// `register_grammar_textobjects_only_populates_textobjects_not_injections`.

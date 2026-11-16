@@ -1,5 +1,5 @@
 use super::*;
-use crate::testing::test_support::SteelCtxTestHarness;
+use crate::testing::test_support::{SteelCtxTestHarness, content_lines};
 
 // ── Gate (init mode rejection) ────────────────────────────────────────────
 //
@@ -159,7 +159,7 @@ fn a_selection_accessor_raises_for_anything_but_an_entry() {
 #[test]
 fn content_line_arg_accepts_the_last_content_line() {
     assert_eq!(
-        content_line_arg(2, 3),
+        content_line_arg(2, content_lines(3)),
         Ok(hume_rope::line::ContentLine::new(2))
     );
 }
@@ -167,7 +167,7 @@ fn content_line_arg_accepts_the_last_content_line() {
 #[test]
 fn content_line_arg_rejects_the_trailing_phantom_line() {
     assert_eq!(
-        content_line_arg(3, 3),
+        content_line_arg(3, content_lines(3)),
         Err("line 3 is out of range (buffer has 3 content lines)".to_string())
     );
 }

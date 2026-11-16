@@ -558,7 +558,7 @@ impl ScriptingHost {
         ];
         let base = Provenance::own(Owner::clone(proc.owner()));
         let value = self.read_only_call(host, base, |steel| proc.call(steel, args))?;
-        builtins::decorations::text_format(value, text.content_line_count().get())
+        builtins::decorations::text_format(value, text.content_line_count())
             .map_err(|e| e.to_string())
     }
 

@@ -403,7 +403,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     ) -> Option<Result<String, String>> {
         self.inner.buffer_text(id, range)
     }
-    fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
+    fn buffer_line_count(&self, id: BufferId) -> Option<hume_rope::line::ContentLineCount> {
         self.inner.buffer_line_count(id)
     }
     fn buffer_char_count(&self, id: BufferId) -> Option<usize> {

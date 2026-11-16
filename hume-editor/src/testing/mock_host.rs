@@ -243,7 +243,7 @@ impl BufferHost for MockHost {
     ) -> Option<Result<String, String>> {
         None
     }
-    fn buffer_line_count(&self, _id: BufferId) -> Option<usize> {
+    fn buffer_line_count(&self, _id: BufferId) -> Option<hume_rope::line::ContentLineCount> {
         None
     }
     fn buffer_char_count(&self, _id: BufferId) -> Option<usize> {
