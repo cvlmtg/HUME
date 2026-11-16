@@ -197,14 +197,9 @@ fn applying_edits_drops_the_textobject_memo() {
     );
     assert!(layers.textobject_memo.lock().unwrap().is_some());
 
-    let start = tree_sitter::Point { row: 0, column: 0 };
-    layers.apply_edits(&[tree_sitter::InputEdit {
-        start_byte: 0,
-        old_end_byte: 0,
-        new_end_byte: 1,
-        start_position: start,
-        old_end_position: start,
-        new_end_position: tree_sitter::Point { row: 0, column: 1 },
-    }]);
+    let mut builder = hume_editing::changeset::ChangeSetBuilder::new(text.end());
+    builder.insert("x");
+    let change = crate::edits::input_edits_from_changeset(&builder.finish(), text.rope());
+    layers.apply_edits([&change]);
     assert!(layers.textobject_memo.lock().unwrap().is_none());
 }

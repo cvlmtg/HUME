@@ -242,8 +242,8 @@ impl Session {
         self.syntax
             .record_edit(&TextChange::new(&self.text, &next, &change));
         if let Some(previous) = &mut self.previous {
-            for edit in input_edits_from_changeset(&change, self.text.rope()) {
-                previous.edit(&edit);
+            for edit in input_edits_from_changeset(&change, self.text.rope()).iter() {
+                previous.edit(edit);
             }
         }
         self.text = next;

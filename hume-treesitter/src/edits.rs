@@ -12,10 +12,7 @@ use hume_editing::changeset::ChangeSet;
 /// produce either, and `indent`/`unindent` emit
 /// insert-then-delete; see `hume-ops/src/edit/indent.rs`) into one region,
 /// so this walk doesn't have to.
-pub(crate) fn input_edits_from_changeset(
-    cs: &ChangeSet,
-    rope: &ropey::Rope,
-) -> Vec<tree_sitter::InputEdit> {
+pub(crate) fn input_edits_from_changeset(cs: &ChangeSet, rope: &ropey::Rope) -> ChangeEdits {
     // All edits are computed in pre-edit coordinate space (the old rope).
     // `tree.edit()` mutates coordinates in-place: applying a left edit first shifts
     // every subsequent byte position, so a right edit specified in original coords
@@ -23,11 +20,66 @@ pub(crate) fn input_edits_from_changeset(
     // rightmost edit is applied first: its coordinates are never invalidated by
     // anything to its left, and vice versa, so all edits remain valid in the
     // pre-edit coordinate space at apply time.
-    cs.edited_regions()
-        .into_iter()
-        .rev()
-        .map(|r| make_input_edit(r.old.start.index(), r.old.end.index(), &r.inserted, rope))
-        .collect()
+    ChangeEdits(
+        cs.edited_regions()
+            .into_iter()
+            .rev()
+            .map(|r| make_input_edit(r.old.start.index(), r.old.end.index(), &r.inserted, rope))
+            .collect(),
+    )
+}
+
+/// The `InputEdit`s of one change, in the order `Tree::edit` takes them:
+/// over disjoint regions of the text before it, each ending before the
+/// next one starts, by descending start, each in that text's coordinates.
+#[derive(Clone, Debug)]
+pub(crate) struct ChangeEdits(Vec<tree_sitter::InputEdit>);
+
+impl std::ops::Deref for ChangeEdits {
+    type Target = [tree_sitter::InputEdit];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl ChangeEdits {
+    /// Where the change moves each byte of the text before it.
+    pub(crate) fn byte_map(&self) -> ByteMap {
+        let mut edits = Vec::with_capacity(self.0.len());
+        let mut shifts = Vec::with_capacity(self.0.len() + 1);
+        let mut shift = 0isize;
+        shifts.push(shift);
+        for edit in self.0.iter().rev() {
+            edits.push((edit.start_byte, edit.old_end_byte));
+            shift += edit.new_end_byte as isize - edit.old_end_byte as isize;
+            shifts.push(shift);
+        }
+        ByteMap { edits, shifts }
+    }
+}
+
+/// Where one change moves each byte of the text before it, as
+/// `InputEdit::edit_range` moves a range's ends through each of its edits
+/// in turn: a byte inside an edit moves to the edit's start, and one at or
+/// past an edit's old end shifts with it.
+pub(crate) struct ByteMap {
+    /// Each edit's start and old end, by ascending start.
+    edits: Vec<(usize, usize)>,
+    /// `shifts[i]` is the change in length the first `i` edits make.
+    shifts: Vec<isize>,
+}
+
+impl ByteMap {
+    pub(crate) fn map(&self, byte: usize) -> usize {
+        let past = self.edits.partition_point(|&(_, old_end)| old_end <= byte);
+        let byte = match self.edits.get(past) {
+            Some(&(start, _)) if start < byte => start,
+            _ => byte,
+        };
+        byte.checked_add_signed(self.shifts[past])
+            .expect("a change moves no byte before the text's start")
+    }
 }
 
 /// Build a single `InputEdit` from char-indexed old/new positions and the inserted text.

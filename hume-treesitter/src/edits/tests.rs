@@ -228,7 +228,7 @@ fn multi_edit_changeset_incremental_tree_matches_full_reparse() {
 
     // Apply edits and do an incremental reparse.
     let mut baked_tree = old_tree;
-    for edit in &edits {
+    for edit in edits.iter() {
         baked_tree.edit(edit);
     }
     let new_text = "[\"X\",\"YY\"]\n";
@@ -243,4 +243,45 @@ fn multi_edit_changeset_incremental_tree_matches_full_reparse() {
         full_tree.root_node().to_sexp(),
         "incremental tree from multi-edit changeset must match full parse"
     );
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+
+    #[test]
+    fn a_byte_map_moves_a_range_as_each_edit_in_turn_does(
+        replaces in proptest::collection::vec((0usize..40, 0usize..4, "[a-z]{0,3}"), 0..6),
+        ends in (0usize..=40, 0usize..=40),
+    ) {
+        let text = "abcdefghijklmnopqrstuvwxyzabcdefghijklmn\n";
+        let mut b = ChangeSetBuilder::new(CharOffset::new(text.len()));
+        let mut at = 0;
+        for (gap, removed, inserted) in replaces {
+            let start = at + gap % 8;
+            let end = (start + removed).min(text.len());
+            if start > end {
+                break;
+            }
+            b.retain_to(CharOffset::new(start));
+            b.delete_to(CharOffset::new(end));
+            b.insert(&inserted);
+            at = end + 1;
+            if at >= text.len() {
+                break;
+            }
+        }
+        let edits = input_edits_from_changeset(&b.finish(), &ropey::Rope::from_str(text));
+        let (start, end) = (ends.0.min(ends.1), ends.0.max(ends.1));
+        let mut range = tree_sitter::Range {
+            start_byte: start,
+            end_byte: end,
+            start_point: tree_sitter::Point { row: 0, column: start },
+            end_point: tree_sitter::Point { row: 0, column: end },
+        };
+        for edit in edits.iter() {
+            edit.edit_range(&mut range);
+        }
+        let map = edits.byte_map();
+        proptest::prop_assert_eq!((map.map(start), map.map(end)), (range.start_byte, range.end_byte));
+    }
 }

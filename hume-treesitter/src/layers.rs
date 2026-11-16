@@ -6,6 +6,7 @@ use hume_rope::line::ContentLine;
 use hume_rope::offset::InclusiveRange;
 
 use crate::edited_bytes::{EditedBytes, push_merging};
+use crate::edits::ChangeEdits;
 use crate::injections::{InjectionSites, PriorInjections};
 use crate::locals::LayerLocals;
 use crate::parse_worker::PriorLayers;
@@ -155,21 +156,24 @@ impl SyntaxLayers {
         (start..end, covering)
     }
 
-    /// Apply `edits`, in the order `Tree::edit` takes them, to every
-    /// layer's tree and sites, move each injected layer's `ranges` with its
-    /// tree, and record the edited bytes. Drops the text-object memo, whose
-    /// spans were collected at the pre-edit positions.
-    pub(crate) fn apply_edits<'e>(
-        &mut self,
-        edits: impl IntoIterator<Item = &'e tree_sitter::InputEdit>,
-    ) {
-        for edit in edits {
-            for layer in &mut self.layers {
-                layer.tree.edit(edit);
-                layer.sites.edit(edit);
-                Arc::make_mut(&mut layer.locals).edit(edit);
+    /// Apply `changes`, in order, to every layer's tree, sites and locals,
+    /// move each injected layer's `ranges` with its tree, and record the
+    /// edited bytes. Locals move once per change, through its byte map.
+    /// Drops the text-object memo, whose spans were collected at the
+    /// pre-edit positions.
+    pub(crate) fn apply_edits<'e>(&mut self, changes: impl IntoIterator<Item = &'e ChangeEdits>) {
+        for change in changes {
+            for edit in change.iter() {
+                for layer in &mut self.layers {
+                    layer.tree.edit(edit);
+                    layer.sites.edit(edit);
+                }
+                self.edited.record(edit);
             }
-            self.edited.record(edit);
+            let map = change.byte_map();
+            for layer in &mut self.layers {
+                Arc::make_mut(&mut layer.locals).edit(&map);
+            }
         }
         for layer in &mut self.layers {
             // `ranges` is a cached copy of the tree's included ranges,

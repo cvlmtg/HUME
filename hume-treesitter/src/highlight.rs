@@ -213,7 +213,7 @@ impl TreeSitterHighlighter {
             push(node.start_byte(), node.end_byte(), scope);
         }
         for (range, scope) in layer.locals.references_in(line_start, line_end) {
-            push(range.start_byte, range.end_byte, scope);
+            push(range.start, range.end, scope);
         }
     }
 }

@@ -542,10 +542,10 @@ fn reparse(
     builder.insert(inserted);
     let change = builder.finish();
     let mut edited = crate::edited_bytes::EditedBytes::default();
-    for edit in crate::edits::input_edits_from_changeset(&change, text.rope()) {
-        old.edit(&edit);
-        old_sites.edit(&edit);
-        edited.record(&edit);
+    for edit in crate::edits::input_edits_from_changeset(&change, text.rope()).iter() {
+        old.edit(edit);
+        old_sites.edit(edit);
+        edited.record(edit);
     }
     let after = change.apply(&text).expect("the replacement applies");
     let rope = after.rope().clone();

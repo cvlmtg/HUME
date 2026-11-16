@@ -12,7 +12,7 @@ use hume_rope::line::ContentLine;
 use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 use tree_sitter::QueryCursor;
 
-use crate::edits::input_edits_from_changeset;
+use crate::edits::{ChangeEdits, input_edits_from_changeset};
 use crate::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
 
@@ -84,7 +84,7 @@ pub struct ChainBreak {
 pub struct PendingEdit {
     from: u64,
     to: u64,
-    edits: Vec<tree_sitter::InputEdit>,
+    edits: ChangeEdits,
 }
 
 /// The text generation committed layers describe, and whether they were
@@ -435,7 +435,7 @@ impl Syntax {
         if chain_ok {
             committed
                 .layers
-                .apply_edits(self.pending_edits.iter().flat_map(|e| &e.edits));
+                .apply_edits(self.pending_edits.iter().map(|e| &e.edits));
             committed.at = LayersAt::Baked(generation);
             self.pending_edits.clear();
             None

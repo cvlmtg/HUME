@@ -289,8 +289,8 @@ proptest! {
 
             let change = builder.finish();
             prop_assert_eq!(&change.apply(&text).expect("the change applies").to_string(), &next_source);
-            for edit in input_edits_from_changeset(&change, text.rope()) {
-                edited.record(&edit);
+            for edit in input_edits_from_changeset(&change, text.rope()).iter() {
+                edited.record(edit);
             }
             source = next_source;
             origins = next_origins;
