@@ -150,7 +150,7 @@ struct Definition {
     range: NodeBytes,
     /// The innermost scope it was defined in, `None` for the layer's own.
     scope: Option<NodeBytes>,
-    name: Box<str>,
+    name: Arc<str>,
     highlight: Option<ScopeId>,
 }
 
@@ -161,7 +161,7 @@ struct OpenScope {
     inherits: bool,
     /// Each name defined so far, with where its latest definition ends and
     /// that definition's highlight.
-    definitions: FxHashMap<Box<str>, (usize, Option<ScopeId>)>,
+    definitions: FxHashMap<Arc<str>, (usize, Option<ScopeId>)>,
 }
 
 impl OpenScope {
@@ -258,7 +258,7 @@ impl LayerLocals {
                     });
                 }
                 CaptureRole::Definition(highlight) => {
-                    let name: Box<str> = node_text(node, rope).into();
+                    let name: Arc<str> = node_text(node, rope).into();
                     let innermost = scopes.last_mut().expect("the layer's scope stays open");
                     innermost
                         .definitions
