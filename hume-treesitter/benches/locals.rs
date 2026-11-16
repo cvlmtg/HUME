@@ -111,7 +111,9 @@ fn deleted(text: &BufferText, at: &[usize]) -> (BufferText, ChangeSet) {
 
 /// Reparse after typing one char at the first `needle` of the source, or
 /// at `CURSORS` of them, then after deleting it, as the editor reparses
-/// after each keystroke.
+/// after each keystroke. Typed after `CURSORS` parameter names, the char
+/// renames each parameter, so its uses stop resolving and every rebuilt
+/// scope holds fewer resolved references than before.
 fn bench_reparse(c: &mut Criterion) {
     let source = source();
     let langs = Arc::new(GrammarSnapshot::default());
@@ -128,10 +130,16 @@ fn bench_reparse(c: &mut Criterion) {
         .map(|(at, _)| at)
         .take(CURSORS)
         .collect();
+    let parameters: Vec<usize> = source
+        .match_indices("(alpha:")
+        .map(|(at, _)| at + "(alpha".len())
+        .take(CURSORS)
+        .collect();
     for (place, at, typed) in [
         ("in_a_function", middle("    let delta"), " "),
         ("at_the_top_level", middle("fn f"), "\n"),
         ("at_200_cursors", cursors, " "),
+        ("at_200_parameter_names", parameters, "x"),
     ] {
         // Each typed char lands after those typed before it.
         let typed_at: Vec<usize> = at.iter().enumerate().map(|(i, at)| at + i).collect();

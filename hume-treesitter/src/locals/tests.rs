@@ -352,14 +352,71 @@ fn a_change_at_several_places_updates_to_a_fresh_build() {
     assert_eq!(updated, fresh);
 }
 
+#[test]
+fn a_change_in_several_functions_changing_their_counts_updates_to_a_fresh_build() {
+    const FIVE: &str = "fn a(alpha: u32) -> u32 {\n    alpha + alpha\n}\n\nfn b(beta: u32) -> u32 {\n    beta\n}\n\nfn c(gamma: u32) -> u32 {\n    gamma\n}\n\nfn d(delta: u32) -> u32 {\n    delta\n}\n\nfn e(eps: u32) -> u32 {\n    eps\n}\n";
+    let bundle = fixture_bundle("rust");
+    let replaces = [
+        edit_at(FIVE, "(alpha:", 6, 0, "x"),
+        edit_at(FIVE, "    gamma\n", 4, 0, "let mut z = 1;\n    z;\n    "),
+        edit_at(FIVE, "    delta\n", 4, 0, "let f = |q: u32| q;\n    "),
+    ];
+    let (updated, fresh) = updated_and_fresh(&bundle, FIVE, &replaces, |_| {});
+    assert_eq!(updated, fresh);
+}
+
+#[test]
+fn changes_in_two_blocks_of_one_function_update_to_a_fresh_build() {
+    const BLOCKS: &str = "fn f(alpha: u32) -> u32 {\n    { alpha; }\n    let mut beta = 1;\n    { beta; }\n    beta\n}\n";
+    let bundle = fixture_bundle("rust");
+    let replaces = [
+        edit_at(BLOCKS, "{ alpha; }", 2, 0, "alpha; "),
+        edit_at(BLOCKS, "{ beta; }", 5, 1, ""),
+    ];
+    let (updated, fresh) = updated_and_fresh(&bundle, BLOCKS, &replaces, |_| {});
+    assert_eq!(updated, fresh);
+}
+
+/// The texts the edit proptests insert.
+fn inserted_texts() -> impl Strategy<Value = &'static str> {
+    prop::sample::select(vec![
+        "",
+        "a",
+        "{",
+        "}",
+        "(",
+        ")",
+        "\n",
+        "let x = 1;",
+        "fn z() {}",
+        "alpha",
+    ])
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(64))]
+
+    #[test]
+    fn any_two_edits_update_to_a_fresh_build(
+        ats in (0..=RUST.len(), 0..=RUST.len()),
+        removed in (0usize..12, 0usize..12),
+        inserted in (inserted_texts(), inserted_texts()),
+    ) {
+        let (first, second) = (ats.0.min(ats.1), ats.0.max(ats.1));
+        let replaces = [
+            (first, removed.0.min(second - first), inserted.0),
+            (second, removed.1.min(RUST.len() - second), inserted.1),
+        ];
+        let bundle = fixture_bundle("rust");
+        let (updated, fresh) = updated_and_fresh(&bundle, RUST, &replaces, |_| {});
+        prop_assert_eq!(updated, fresh);
+    }
 
     #[test]
     fn any_single_edit_updates_to_a_fresh_build(
         at in 0..=RUST.len(),
         removed in 0usize..12,
-        inserted in prop::sample::select(vec!["", "a", "{", "}", "(", ")", "\n", "let x = 1;", "fn z() {}", "alpha"]),
+        inserted in inserted_texts(),
     ) {
         let removed = removed.min(RUST.len() - at);
         let bundle = fixture_bundle("rust");
