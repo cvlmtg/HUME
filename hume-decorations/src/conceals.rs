@@ -10,11 +10,11 @@ use hume_rope::line::ContentLine;
 
 pub(crate) type ConcealMap = SharedSlot<FxHashMap<ContentLine, Vec<Conceal>>>;
 
-pub(crate) struct PaneConceals {
+pub(crate) struct TextConceals {
     pub(crate) data: ConcealMap,
 }
 
-impl DecorationSource for PaneConceals {
+impl DecorationSource for TextConceals {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::CONCEAL
     }
@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn pane_conceals_answers_its_line_and_nothing_else() {
-        let provider = PaneConceals {
+        let provider = TextConceals {
             data: SharedSlot::new(FxHashMap::default()),
         };
         provider.data.set(FxHashMap::from_iter([

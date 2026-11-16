@@ -44,22 +44,23 @@ use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
 
-use conceals::{ConcealMap, PaneConceals};
+use conceals::{ConcealMap, TextConceals};
 use highlight_providers::{PaneHighlights, ScopedHighlightRanges, ScopedHighlighter};
 use inline_decorations::{InlineDecorationMap, InlineDecorationProvider};
-use line_backgrounds::{LineBgMap, PaneLineBackgrounds};
+use line_backgrounds::{LineBgMap, TextLineBackgrounds};
 use signs::{SharedSignSource, SignMap};
 use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 
-/// A pane's seven render-decoration handles, allocated together by
+/// A pane's render-decoration handles, allocated together by
 /// [`build_providers`] and stored as the `render` field of the pane's one
 /// `hume-editor` `PaneEntry`. They are always seeded and dropped as a
 /// unit (never independently), and every read site borrows the entry
 /// shared, so bundling them costs nothing and removes the "added a new
 /// per-pane provider, forgot to drop it in `drop_pane_state`" bug class.
 /// Fields are private: `hume-editor`'s per-frame sync writes through the
-/// `set_*` methods below, one per decoration kind, rather than reaching a
-/// raw [`SharedSlot`] guard directly.
+/// `set_*` methods below and those of its [`TextDecorationHandles`], one
+/// per decoration kind, rather than reaching a raw [`SharedSlot`] guard
+/// directly.
 pub struct PaneDecorationHandles {
     highlights: PaneHighlights,
     signs: SignMap,
@@ -275,10 +276,10 @@ pub fn build_text_providers(providers: &mut ProviderSet) -> TextDecorationHandle
         tier: HighlightTier::Extra,
         data: extra.clone(),
     }));
-    providers.add_decoration_source(Box::new(PaneLineBackgrounds {
+    providers.add_decoration_source(Box::new(TextLineBackgrounds {
         data: line_backgrounds.clone(),
     }));
-    providers.add_decoration_source(Box::new(PaneConceals {
+    providers.add_decoration_source(Box::new(TextConceals {
         data: conceals.clone(),
     }));
     TextDecorationHandles {

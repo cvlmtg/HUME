@@ -11,11 +11,11 @@ use hume_rope::line::ContentLine;
 
 pub(crate) type LineBgMap = SharedSlot<FxHashMap<ContentLine, ScopeId>>;
 
-pub(crate) struct PaneLineBackgrounds {
+pub(crate) struct TextLineBackgrounds {
     pub(crate) data: LineBgMap,
 }
 
-impl DecorationSource for PaneLineBackgrounds {
+impl DecorationSource for TextLineBackgrounds {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::LINE_BG
     }

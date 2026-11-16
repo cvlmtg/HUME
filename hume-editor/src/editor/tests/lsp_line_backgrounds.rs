@@ -1,11 +1,11 @@
 // Provider-driven full-row background tint (`set-line-backgrounds!`): the
-// `update_line_bg_providers` write side that feeds the new
-// `PaneLineBackgrounds` (LINE_BG-kind `DecorationSource`) from the
+// `update_line_bg_providers` write side that feeds the
+// `TextLineBackgrounds` (LINE_BG-kind `DecorationSource`) from the
 // `decorations.line_backgrounds` store, and the engine's `row_bg`
 // generalization that renders it.
 //
 // Every test here goes through `open_headless(None)` (not `editor_from`'s
-// bare `Pane::new`): `PaneLineBackgrounds` is only registered by
+// bare `Pane::new`): `TextLineBackgrounds` is only registered by
 // `build_pane`, same reasoning as `lsp_render.rs`.
 
 use super::*;

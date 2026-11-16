@@ -1,5 +1,5 @@
 // The conceal mirror: `update_conceal_providers` flattens every source's
-// `decorations.conceals` entries into each pane's `PaneConceals` map. Then
+// `decorations.conceals` entries into each pane's `TextConceals` map. Then
 // the lines each pane's selections touch, which it draws raw.
 
 use super::scope_headers::{DrawnRow, drawn};

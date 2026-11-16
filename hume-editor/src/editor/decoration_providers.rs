@@ -289,9 +289,10 @@ impl Editor {
                 };
 
                 // `extra_highlights_starting_before` yields sources in
-                // ascending name order, so the alphabetically-first source
-                // wins an overlap, deterministic across sessions rather than
-                // whichever source called `set-extra-highlights!` first.
+                // ascending name order, so of two spans starting together
+                // the alphabetically-first source's wins, the same in every
+                // session rather than whichever source called
+                // `set-extra-highlights!` first.
                 let extra_spans = extra_highlight_spans(
                     text,
                     self.state
@@ -566,7 +567,7 @@ impl Editor {
 
     /// Write per-frame line-background data to every pane's own
     /// line-background decoration handle, read by that pane's
-    /// `PaneLineBackgrounds` provider. Rebuilds unconditionally each frame:
+    /// `TextLineBackgrounds` provider. Rebuilds unconditionally each frame:
     /// unlike `virtual_lines`, the payload is filtered to the viewport
     /// before any per-entry clone or scope resolution runs (mirrors
     /// `update_sign_providers`), so the per-frame cost is one `ScopeId` per
@@ -619,7 +620,8 @@ pub(in crate::editor) fn conceals_by_line<'e>(
 
 /// The parts of `entries`, extra highlights of `text`, inside `ranges`, one
 /// span per line they touch. Plugin spans have no severity, so where two
-/// overlap the one listed first wins.
+/// overlap the one starting earlier wins, and of two starting together the
+/// one listed first.
 pub(in crate::editor) fn extra_highlight_spans<'e>(
     text: &hume_editing::text::BufferText,
     entries: impl IntoIterator<Item = &'e ExtraHighlightEntry>,
@@ -742,12 +744,12 @@ fn push_priority_highlight_lines(
 /// same line). One line's worth of spans at a time through
 /// [`hume_engine::interval_sweep::flatten_overlapping_spans`], the same
 /// event-sweep `hume-treesitter/src/highlight.rs` uses for nested injection
-/// layers, generic over both crates now instead of a second hand-rolled
-/// copy. `Reverse<priority>` makes "lower priority number wins" read as
-/// "highest rank wins" with no inversion arithmetic;
-/// `TieBreak::FirstPushed` matches this function's original contract:
-/// same-priority ties keep whichever span was pushed to `raw` first, pinned
-/// by `overlapping_extra_highlights_from_two_sources_resolve_alphabetically`
+/// layers. `Reverse<priority>` makes "lower priority number wins" read as
+/// "highest rank wins" with no inversion arithmetic. Of two spans of one
+/// priority, the one starting earlier wins, and of two starting together
+/// the one pushed to `raw` first: `raw` is sorted stably by start, then
+/// swept with `TieBreak::FirstPushed`, pinned by
+/// `overlapping_extra_highlights_from_two_sources_resolve_alphabetically`
 /// (`raw`'s push order comes from `extra_highlights_starting_before`'s
 /// ascending source-name order). `raw` need not be pre-sorted.
 ///
