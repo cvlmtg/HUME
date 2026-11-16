@@ -10,6 +10,7 @@ use ropey::Rope;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor, QueryError};
 
+use crate::directives::{PatternDirectives, parse_patterns};
 use crate::highlight::RopeProvider;
 use crate::layers::SyntaxLayers;
 use crate::registry::GrammarBundle;
@@ -32,10 +33,24 @@ pub struct Capture {
     pub range: ExclusiveRange<CharOffset>,
 }
 
+/// A capture query's pattern, which takes no predicate or directive of the
+/// engine's.
+#[derive(Default)]
+struct NoDirectives;
+
+impl PatternDirectives for NoDirectives {}
+
 impl CaptureQuery {
-    /// `source` compiled against `bundle`'s grammar.
+    /// `source` compiled against `bundle`'s grammar. A pattern using a
+    /// predicate or directive tree-sitter leaves to the engine fails it,
+    /// with the error at the first such pattern's start.
     pub(crate) fn new(bundle: &GrammarBundle, source: &str) -> Result<Self, QueryError> {
-        let query = Query::new(bundle.grammar.language(), source)?;
+        let mut query = Query::new(bundle.grammar.language(), source)?;
+        let mut skipped = Vec::new();
+        parse_patterns::<NoDirectives>(&mut query, source, &mut skipped);
+        if let Some(error) = skipped.into_iter().next() {
+            return Err(error);
+        }
         let names = query
             .capture_names()
             .iter()

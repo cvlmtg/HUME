@@ -300,6 +300,31 @@ fn compile_error_reports_row_column_and_kind() {
 }
 
 #[test]
+fn a_pattern_using_a_directive_hume_does_not_apply_fails_at_its_start() {
+    require_grammars(&["markdown"]);
+    for (pattern, operator) in [
+        (r#"((paragraph) @p (#set! kind "text"))"#, "#set!"),
+        ("((paragraph) @p (#is? local))", "#is?"),
+        ("((paragraph) @p (#frobnicate! @p))", "#frobnicate!"),
+    ] {
+        let Err(error) = fixture_markdown().capture_query(&format!("(atx_heading) @h\n{pattern}"))
+        else {
+            panic!("{pattern}: a pattern HUME cannot apply does not compile");
+        };
+        assert_eq!(
+            (error.row, error.column, error.kind),
+            (1, 0, QueryErrorKind::Predicate),
+            "{pattern}"
+        );
+        assert_eq!(
+            error.message,
+            format!("{operator} is not supported"),
+            "{pattern}"
+        );
+    }
+}
+
+#[test]
 fn capture_query_compiles_once_per_bundle_and_source() {
     require_grammars(&["markdown"]);
     let bundle = fixture_markdown();

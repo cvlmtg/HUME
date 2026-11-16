@@ -204,6 +204,23 @@ fn query_that_does_not_compile_raises_with_its_position() {
 }
 
 #[test]
+fn query_using_a_directive_hume_does_not_apply_raises_with_its_position() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor("# A\n");
+    let errors = errors_of(
+        &mut ed,
+        tmp.path(),
+        r#"(syntax-captures bid "markdown" "(atx_heading) @h\n((paragraph) @p (#set! kind \"text\"))")"#,
+    );
+    assert!(
+        errors.iter().any(|e| e.contains(
+            "syntax-captures: 'markdown' query: Query error at 2:1. Invalid predicate: #set! is not supported"
+        )),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn reattached_grammar_answers_from_its_new_bundles_tree() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor("# A\n");
